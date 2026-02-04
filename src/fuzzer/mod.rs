@@ -703,12 +703,10 @@ impl ZkFuzzer {
     }
 
     fn get_random_interesting_value(&mut self) -> FieldElement {
-        let interesting_values = vec![
-            FieldElement::zero(),
+        let interesting_values = [FieldElement::zero(),
             FieldElement::one(),
             FieldElement::from_u64(2),
-            FieldElement::from_u64(u64::MAX),
-        ];
+            FieldElement::from_u64(u64::MAX)];
 
         let idx = self.rng.gen_range(0..interesting_values.len());
         interesting_values[idx].clone()
@@ -720,7 +718,7 @@ impl ZkFuzzer {
         // For now, we simulate by hashing the inputs
         let mut hasher = Sha256::new();
         for input in &test_case.inputs {
-            hasher.update(&input.0);
+            hasher.update(input.0);
         }
         let hash = hasher.finalize();
 
@@ -740,7 +738,7 @@ impl ZkFuzzer {
         // First 32 bytes: hash of inputs (commitment)
         let mut hasher = Sha256::new();
         for input in &test_case.inputs {
-            hasher.update(&input.0);
+            hasher.update(input.0);
         }
         let hash = hasher.finalize();
         proof[0..32].copy_from_slice(&hash);
@@ -766,7 +764,7 @@ impl ZkFuzzer {
         // Compute expected hash from inputs
         let mut hasher = Sha256::new();
         for input in inputs {
-            hasher.update(&input.0);
+            hasher.update(input.0);
         }
         let input_hash = hasher.finalize();
 
@@ -778,7 +776,7 @@ impl ZkFuzzer {
     fn hash_output(&self, output: &[FieldElement]) -> Vec<u8> {
         let mut hasher = Sha256::new();
         for fe in output {
-            hasher.update(&fe.0);
+            hasher.update(fe.0);
         }
         hasher.finalize().to_vec()
     }

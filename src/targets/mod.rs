@@ -17,10 +17,6 @@ pub use halo2::Halo2Target;
 pub use cairo::CairoTarget;
 
 // Re-export analysis modules
-pub use circom::analysis as circom_analysis;
-pub use noir::analysis as noir_analysis;
-pub use halo2::analysis as halo2_analysis;
-pub use cairo::analysis as cairo_analysis;
 
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
@@ -102,7 +98,7 @@ impl TargetCircuit for MockCircuit {
         use sha2::{Sha256, Digest};
         let mut hasher = Sha256::new();
         for input in inputs {
-            hasher.update(&input.0);
+            hasher.update(input.0);
         }
         let hash = hasher.finalize();
         let mut output = [0u8; 32];
@@ -115,7 +111,7 @@ impl TargetCircuit for MockCircuit {
         use sha2::{Sha256, Digest};
         let mut hasher = Sha256::new();
         for w in witness {
-            hasher.update(&w.0);
+            hasher.update(w.0);
         }
         let hash = hasher.finalize();
         Ok(hash.to_vec())

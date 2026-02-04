@@ -98,10 +98,8 @@ impl WitnessFuzzer {
                     findings.push(Finding {
                         attack_type: AttackType::Underconstrained,
                         severity: Severity::Critical,
-                        description: format!(
-                            "Non-deterministic witness generation: same input produces \
-                             different outputs across executions"
-                        ),
+                        description: "Non-deterministic witness generation: same input produces \
+                             different outputs across executions".to_string(),
                         poc: ProofOfConcept {
                             witness_a: inputs.clone(),
                             witness_b: None,

@@ -61,7 +61,7 @@ pub fn load_corpus_from_dir(dir: &Path) -> anyhow::Result<Vec<CorpusEntry>> {
         let entry = entry?;
         let path = entry.path();
 
-        if path.extension().map_or(false, |ext| ext == "json") {
+        if path.extension().is_some_and(|ext| ext == "json") {
             match load_test_case(&path) {
                 Ok(corpus_entry) => entries.push(corpus_entry),
                 Err(e) => {

@@ -95,9 +95,9 @@ impl MockCircuitExecutor {
 
             // Simulate constraint satisfaction based on input hash
             let mut hasher = Sha256::new();
-            hasher.update(&[i as u8]);
+            hasher.update([i as u8]);
             for input in inputs {
-                hasher.update(&input.0);
+                hasher.update(input.0);
             }
             let hash = hasher.finalize();
 
@@ -116,14 +116,14 @@ impl MockCircuitExecutor {
 
         for output_idx in 0..self.num_outputs {
             let mut hasher = Sha256::new();
-            hasher.update(&[output_idx as u8]);
+            hasher.update([output_idx as u8]);
 
             // If simulating underconstrained, only hash first input
             if self.simulate_underconstrained && !inputs.is_empty() {
-                hasher.update(&inputs[0].0);
+                hasher.update(inputs[0].0);
             } else {
                 for input in inputs {
-                    hasher.update(&input.0);
+                    hasher.update(input.0);
                 }
             }
 
@@ -196,7 +196,7 @@ impl CircuitExecutor for MockCircuitExecutor {
         // Mock proof: hash the witness
         let mut hasher = Sha256::new();
         for w in witness {
-            hasher.update(&w.0);
+            hasher.update(w.0);
         }
         let hash = hasher.finalize();
 
@@ -230,7 +230,7 @@ impl CircuitExecutor for MockCircuitExecutor {
         // This makes soundness testing meaningful in mock mode
         let mut hasher = Sha256::new();
         for input in public_inputs {
-            hasher.update(&input.0);
+            hasher.update(input.0);
         }
         let input_hash = hasher.finalize();
 

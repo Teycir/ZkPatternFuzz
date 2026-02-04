@@ -10,13 +10,10 @@ use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::process::Command;
 
 /// Circom circuit target with full backend integration
 pub struct CircomTarget {
@@ -436,13 +433,11 @@ impl CircomTarget {
         ];
 
         for dir in &ptau_dirs {
-            for entry in std::fs::read_dir(dir).into_iter().flatten() {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if path.extension().map(|e| e == "ptau").unwrap_or(false) {
-                        tracing::info!("Found existing ptau file: {:?}", path);
-                        return Ok(path);
-                    }
+            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "ptau").unwrap_or(false) {
+                    tracing::info!("Found existing ptau file: {:?}", path);
+                    return Ok(path);
                 }
             }
         }
@@ -774,7 +769,7 @@ pub mod analysis {
     }
 
     /// Extract constraints from compiled R1CS (placeholder - requires binary parsing)
-    pub fn extract_constraints(r1cs_path: &str) -> Result<Vec<Constraint>> {
+    pub fn extract_constraints(_r1cs_path: &str) -> Result<Vec<Constraint>> {
         // R1CS is a binary format, would need full parser
         // For now, return empty
         Ok(vec![])

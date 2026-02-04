@@ -11,7 +11,7 @@ use crate::fuzzer::FieldElement;
 use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Performance profile for a circuit
 #[derive(Debug, Clone)]

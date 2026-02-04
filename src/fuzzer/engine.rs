@@ -5,9 +5,8 @@
 
 use super::{Finding, FieldElement, TestCase, TestMetadata, mutate_field_element, bn254_modulus_bytes};
 use crate::analysis::symbolic::{SymbolicFuzzerIntegration, SymbolicConfig, VulnerabilityPattern};
-use crate::attacks::{Attack, AttackContext, CircuitInfo};
 use crate::config::*;
-use crate::corpus::{Corpus, CorpusEntry, SharedCorpus, create_corpus};
+use crate::corpus::{CorpusEntry, SharedCorpus, create_corpus};
 use crate::executor::{CircuitExecutor, ExecutorFactory, SharedCoverageTracker, create_coverage_tracker};
 use crate::progress::{FuzzingStats, ProgressReporter};
 use crate::reporting::FuzzReport;
@@ -658,7 +657,7 @@ impl FuzzingEngine {
         use sha2::{Sha256, Digest};
         let mut hasher = Sha256::new();
         for fe in output {
-            hasher.update(&fe.0);
+            hasher.update(fe.0);
         }
         hasher.finalize().to_vec()
     }

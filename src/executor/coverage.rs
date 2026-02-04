@@ -3,7 +3,6 @@
 //! Implements coverage-guided fuzzing by tracking which constraints
 //! are exercised during circuit execution.
 
-use sha2::{Sha256, Digest};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
@@ -96,7 +95,7 @@ impl CoverageTracker {
         // (DefaultHasher uses SipHash which is fast but has higher collision rates)
         let mut hasher = Sha256::new();
         for constraint in &sorted {
-            hasher.update(&constraint.to_le_bytes());
+            hasher.update(constraint.to_le_bytes());
         }
         let hash = hasher.finalize();
 

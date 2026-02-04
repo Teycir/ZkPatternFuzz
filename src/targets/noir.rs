@@ -10,7 +10,6 @@ use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -85,16 +84,13 @@ pub enum NoirType {
 /// Parameter visibility
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Visibility {
+    #[default]
     Private,
     Public,
 }
 
-impl Default for Visibility {
-    fn default() -> Self {
-        Visibility::Private
-    }
-}
 
 impl NoirTarget {
     /// Create a new Noir target from a project path
@@ -524,8 +520,6 @@ fn field_element_to_noir_value(fe: &FieldElement) -> String {
 
 /// Noir-specific analysis utilities
 pub mod analysis {
-    use super::*;
-
     /// Extract function signatures from Noir source
     pub fn extract_functions(source: &str) -> Vec<NoirFunction> {
         let mut functions = Vec::new();

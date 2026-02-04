@@ -60,11 +60,7 @@ impl UnderconstrainedDetector {
         let min_acceptable_ratio = 1.0 - self.tolerance;
 
         if constraint_ratio < min_acceptable_ratio {
-            let dof = if num_constraints < num_private_inputs {
-                num_private_inputs - num_constraints
-            } else {
-                0
-            };
+            let dof = num_private_inputs.saturating_sub(num_constraints);
 
             return Some(Finding {
                 attack_type: AttackType::Underconstrained,

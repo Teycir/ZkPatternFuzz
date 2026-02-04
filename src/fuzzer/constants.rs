@@ -35,8 +35,10 @@ pub fn bn254_modulus_minus_one_bytes() -> [u8; 32] {
 
 /// Supported field types for ZK circuits
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum FieldType {
     /// BN254 (alt_bn128) scalar field - most common for Ethereum
+    #[default]
     Bn254,
     /// BLS12-381 scalar field - used in Zcash, Ethereum 2.0
     Bls12_381,
@@ -100,11 +102,6 @@ impl FieldType {
     }
 }
 
-impl Default for FieldType {
-    fn default() -> Self {
-        FieldType::Bn254
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use tracing_subscriber;
 
 mod analysis;
 mod attacks;

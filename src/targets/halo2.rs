@@ -11,10 +11,8 @@ use crate::fuzzer::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 
 /// Halo2 circuit target
 ///
@@ -305,7 +303,7 @@ impl Halo2Target {
 
         // Try to run the circuit binary with inputs
         let input_json = serde_json::to_string(&inputs.iter().map(|fe| {
-            format!("0x{}", hex::encode(&fe.0))
+            format!("0x{}", hex::encode(fe.0))
         }).collect::<Vec<_>>())?;
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
@@ -336,7 +334,7 @@ impl Halo2Target {
         let mut hasher = Sha256::new();
         hasher.update(b"halo2_mock");
         for input in inputs {
-            hasher.update(&input.0);
+            hasher.update(input.0);
         }
         let hash = hasher.finalize();
 
@@ -351,7 +349,7 @@ impl Halo2Target {
         let mut hasher = Sha256::new();
         hasher.update(b"halo2_mock_proof");
         for w in witness {
-            hasher.update(&w.0);
+            hasher.update(w.0);
         }
         let hash = hasher.finalize();
 
@@ -379,7 +377,7 @@ impl Halo2Target {
         let mut hasher = Sha256::new();
         hasher.update(b"halo2_mock_proof");
         for input in public_inputs {
-            hasher.update(&input.0);
+            hasher.update(input.0);
         }
         let expected = hasher.finalize();
 
@@ -423,7 +421,7 @@ impl TargetCircuit for Halo2Target {
         
         // Try running the circuit binary with prove command
         let witness_json = serde_json::to_string(&witness.iter().map(|fe| {
-            format!("0x{}", hex::encode(&fe.0))
+            format!("0x{}", hex::encode(fe.0))
         }).collect::<Vec<_>>())?;
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
@@ -451,7 +449,7 @@ impl TargetCircuit for Halo2Target {
         // Try running verify command
         let proof_hex = hex::encode(proof);
         let inputs_json = serde_json::to_string(&public_inputs.iter().map(|fe| {
-            format!("0x{}", hex::encode(&fe.0))
+            format!("0x{}", hex::encode(fe.0))
         }).collect::<Vec<_>>())?;
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
@@ -472,7 +470,6 @@ impl TargetCircuit for Halo2Target {
 
 /// Halo2-specific analysis utilities
 pub mod analysis {
-    use super::*;
 
     /// Analyze a Halo2 circuit for common issues
     pub fn analyze_circuit(source: &str) -> Vec<Halo2Issue> {

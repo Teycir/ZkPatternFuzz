@@ -6,10 +6,8 @@
 //! - Privacy violations
 
 use crate::config::Severity;
-use crate::executor::{CircuitExecutor, ConstraintInspector};
-use crate::fuzzer::{FieldElement, Finding, ProofOfConcept};
+use crate::fuzzer::{Finding, ProofOfConcept};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
 /// Taint label for tracking data flow
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -28,6 +26,7 @@ pub enum TaintLabel {
 
 /// Taint state for a signal
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct TaintState {
     /// Labels that contribute to this signal's value
     pub labels: HashSet<TaintLabel>,
@@ -37,15 +36,6 @@ pub struct TaintState {
     pub is_leaked: bool,
 }
 
-impl Default for TaintState {
-    fn default() -> Self {
-        Self {
-            labels: HashSet::new(),
-            influencing_constraints: Vec::new(),
-            is_leaked: false,
-        }
-    }
-}
 
 impl TaintState {
     pub fn new_public(index: usize) -> Self {

@@ -2,7 +2,7 @@
 //!
 //! Defines the core abstraction for executing ZK circuits across different backends.
 
-use super::{ExecutionCoverage, ExecutionResult};
+use super::ExecutionResult;
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use async_trait::async_trait;

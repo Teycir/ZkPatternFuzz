@@ -10,9 +10,6 @@ use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -324,7 +321,7 @@ impl CairoTarget {
         std::fs::write(&input_path, &input_json)?;
 
         // Run cairo-run
-        let output_path = self.build_dir.join("output.json");
+        let _output_path = self.build_dir.join("output.json");
         let trace_path = self.build_dir.join("trace.bin");
         let memory_path = self.build_dir.join("memory.bin");
 
@@ -515,7 +512,7 @@ impl TargetCircuit for CairoTarget {
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
         // First execute with proof mode to generate trace
-        let mut target = self.clone_with_proof_mode(true);
+        let target = self.clone_with_proof_mode(true);
         target.execute_cairo(witness)?;
         
         // Then generate STARK proof
@@ -567,8 +564,6 @@ fn field_element_to_decimal(fe: &FieldElement) -> String {
 
 /// Cairo-specific analysis utilities
 pub mod analysis {
-    use super::*;
-
     /// Analyze Cairo source for common vulnerability patterns
     pub fn analyze_for_vulnerabilities(source: &str) -> Vec<CairoIssue> {
         let mut issues = Vec::new();

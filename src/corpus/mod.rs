@@ -5,8 +5,6 @@
 pub mod storage;
 pub mod minimizer;
 
-pub use storage::*;
-pub use minimizer::*;
 
 use crate::fuzzer::{FieldElement, TestCase, TestMetadata};
 use std::collections::HashMap;

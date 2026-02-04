@@ -8,8 +8,6 @@
 mod composition;
 mod recursive;
 
-pub use composition::*;
-pub use recursive::*;
 
 use crate::config::Severity;
 use crate::executor::{CircuitExecutor, ExecutionResult};

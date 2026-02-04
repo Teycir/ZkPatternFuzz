@@ -392,7 +392,7 @@ impl Z3Solver {
         match value {
             SymbolicValue::Concrete(fe) => {
                 let bytes = fe.to_bytes();
-                let hex_str = hex::encode(&bytes);
+                let hex_str = hex::encode(bytes);
                 ast::Int::from_str(ctx, &format!("0x{}", hex_str))
                     .unwrap_or_else(|| ast::Int::from_i64(ctx, 0))
             }
@@ -588,7 +588,7 @@ impl Z3Solver {
                     for (name, var) in &vars {
                         if let Some(fe) = assignments.get(name) {
                             let bytes = fe.to_bytes();
-                            let hex_str = hex::encode(&bytes);
+                            let hex_str = hex::encode(bytes);
                             if let Some(val) = ast::Int::from_str(&ctx, &format!("0x{}", hex_str)) {
                                 blocking_terms.push(var._eq(&val).not());
                             }
@@ -779,22 +779,19 @@ impl SymbolicExecutor {
     pub fn complete_path(&mut self, state: SymbolicState) {
         let path = state.path_condition;
 
-        match self.solver.solve(&path) {
-            SolverResult::Sat(assignments) => {
-                let test_case = self.assignments_to_inputs(&assignments);
-                self.generated_tests.push(test_case);
+        if let SolverResult::Sat(assignments) = self.solver.solve(&path) {
+            let test_case = self.assignments_to_inputs(&assignments);
+            self.generated_tests.push(test_case);
 
-                if self.config.solutions_per_path > 1 {
-                    let additional = self
-                        .solver
-                        .solve_all(&path, self.config.solutions_per_path);
-                    for solution in additional.into_iter().skip(1) {
-                        let test_case = self.assignments_to_inputs(&solution);
-                        self.generated_tests.push(test_case);
-                    }
+            if self.config.solutions_per_path > 1 {
+                let additional = self
+                    .solver
+                    .solve_all(&path, self.config.solutions_per_path);
+                for solution in additional.into_iter().skip(1) {
+                    let test_case = self.assignments_to_inputs(&solution);
+                    self.generated_tests.push(test_case);
                 }
             }
-            _ => {}
         }
 
         self.completed_paths.push(path);

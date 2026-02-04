@@ -28,7 +28,7 @@ impl UnderconstrainedOracle {
         use sha2::{Sha256, Digest};
         let mut hasher = Sha256::new();
         for fe in output {
-            hasher.update(&fe.0);
+            hasher.update(fe.0);
         }
         hasher.finalize().to_vec()
     }

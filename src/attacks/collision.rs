@@ -37,8 +37,10 @@ pub struct CollisionDetector {
 
 /// Types of collisions to detect
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum CollisionMode {
     /// Standard output collision (different inputs → same output)
+    #[default]
     OutputCollision,
     /// Nullifier-specific collision detection
     NullifierCollision,
@@ -48,11 +50,6 @@ pub enum CollisionMode {
     NearCollision { max_bit_diff: usize },
 }
 
-impl Default for CollisionMode {
-    fn default() -> Self {
-        CollisionMode::OutputCollision
-    }
-}
 
 /// Result of collision detection
 #[derive(Debug, Clone)]
@@ -122,7 +119,7 @@ impl CollisionDetector {
     }
 
     /// Detect collisions by generating random inputs and hashing outputs
-    pub fn detect_collisions(&self, context: &AttackContext) -> Vec<CollisionResult> {
+    pub fn detect_collisions(&self, _context: &AttackContext) -> Vec<CollisionResult> {
         let mut rng = match self.seed {
             Some(s) => StdRng::seed_from_u64(s),
             None => StdRng::from_entropy(),
@@ -237,7 +234,7 @@ impl CollisionDetector {
     fn compute_output_hash(&self, inputs: &[FieldElement]) -> Vec<u8> {
         let mut hasher = Sha256::new();
         for input in inputs {
-            hasher.update(&input.0);
+            hasher.update(input.0);
         }
         hasher.finalize().to_vec()
     }
@@ -250,10 +247,10 @@ impl CollisionDetector {
         hasher.update(b"NULLIFIER_DOMAIN");
         
         for s in secret {
-            hasher.update(&s.0);
+            hasher.update(s.0);
         }
         for c in commitment {
-            hasher.update(&c.0);
+            hasher.update(c.0);
         }
         
         hasher.finalize().to_vec()
@@ -451,14 +448,14 @@ impl MerkleCollisionDetector {
 
     fn merkle_hash(&self, left: &FieldElement, right: &FieldElement) -> Vec<u8> {
         let mut hasher = Sha256::new();
-        hasher.update(&left.0);
-        hasher.update(&right.0);
+        hasher.update(left.0);
+        hasher.update(right.0);
         hasher.finalize().to_vec()
     }
 
     fn single_element_hash(&self, element: &FieldElement) -> Vec<u8> {
         let mut hasher = Sha256::new();
-        hasher.update(&element.0);
+        hasher.update(element.0);
         hasher.finalize().to_vec()
     }
 }
