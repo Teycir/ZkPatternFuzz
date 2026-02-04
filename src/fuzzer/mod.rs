@@ -11,8 +11,6 @@ pub use constants::*;
 pub use mutators::*;
 pub use oracle::*;
 pub use engine::FuzzingEngine;
-pub use power_schedule::{PowerSchedule, PowerScheduler, TestCaseMetrics};
-pub use structure_aware::{StructureAwareMutator, InputStructure, Splicer};
 
 use crate::config::*;
 use crate::progress::ProgressReporter;

@@ -4,7 +4,7 @@
 //! when the required tools are available in the environment.
 
 use zk_fuzzer::config::Framework;
-use zk_fuzzer::executor::{ExecutorFactory, CircuitExecutor};
+use zk_fuzzer::executor::ExecutorFactory;
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CircomTarget, NoirTarget, Halo2Target, CairoTarget, TargetCircuit};
 
@@ -46,7 +46,7 @@ fn test_mock_executor_creation() {
 /// Test Halo2 mock mode
 #[test]
 fn test_halo2_mock_mode() {
-    let mut target = Halo2Target::new("test_circuit").unwrap();
+    let target = Halo2Target::new("test_circuit").unwrap();
     let target = target.with_mock_mode(true);
     
     // Would need to call setup() for actual execution

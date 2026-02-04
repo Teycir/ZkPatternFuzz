@@ -11,11 +11,12 @@
 mod underconstrained;
 mod soundness;
 mod arithmetic;
-mod verification;
-mod witness;
+pub mod verification;
+pub mod witness;
 mod collision;
 mod boundary;
 
+pub use underconstrained::UnderconstrainedDetector;
 
 use crate::config::AttackType;
 use crate::fuzzer::Finding;

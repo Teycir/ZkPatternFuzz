@@ -16,7 +16,11 @@ pub use noir::NoirTarget;
 pub use halo2::Halo2Target;
 pub use cairo::CairoTarget;
 
-// Re-export analysis modules
+// Re-export analysis modules for use in integration tests
+pub use circom::analysis as circom_analysis;
+pub use noir::analysis as noir_analysis;
+pub use halo2::analysis as halo2_analysis;
+pub use cairo::analysis as cairo_analysis;
 
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
@@ -136,7 +140,7 @@ impl TargetFactory {
             Framework::Circom => Ok(Box::new(CircomTarget::new(circuit_path, main_component)?)),
             Framework::Noir => Ok(Box::new(NoirTarget::new(circuit_path)?)),
             Framework::Halo2 => Ok(Box::new(Halo2Target::new(circuit_path)?)),
-            Framework::Cairo => anyhow::bail!("Cairo backend not yet implemented"),
+            Framework::Cairo => Ok(Box::new(CairoTarget::new(circuit_path)?)),
             Framework::Mock => Ok(Box::new(MockCircuit::new(main_component, 10, 2))),
         }
     }

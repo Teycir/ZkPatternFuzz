@@ -134,29 +134,6 @@ impl Attack for UnderconstrainedDetector {
     }
 }
 
-/// Check for common underconstrained patterns
-pub struct PatternChecker;
-
-impl PatternChecker {
-    /// Check for the "assigned but not constrained" pattern
-    pub fn check_assigned_not_constrained(_signals: &[String]) -> Vec<String> {
-        // Return list of signals that are assigned but never used in constraints
-        vec![]
-    }
-
-    /// Check for missing range checks
-    pub fn check_missing_range_checks(_signals: &[String]) -> Vec<String> {
-        // Return list of signals that should have range checks but don't
-        vec![]
-    }
-
-    /// Check for missing binary constraints
-    pub fn check_missing_binary_constraints(_signals: &[String]) -> Vec<String> {
-        // Return list of signals that should be binary but aren't constrained
-        vec![]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

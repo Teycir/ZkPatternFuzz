@@ -6,7 +6,7 @@
 //! - Circuit composition security
 
 mod composition;
-mod recursive;
+pub mod recursive;
 
 
 use crate::config::Severity;

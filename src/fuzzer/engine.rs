@@ -174,6 +174,27 @@ impl FuzzingEngine {
                 AttackType::Boundary => {
                     self.run_boundary_attack(&attack_config.config, progress).await?;
                 }
+                AttackType::VerificationFuzzing => {
+                    self.run_verification_fuzzing_attack(&attack_config.config, progress).await?;
+                }
+                AttackType::WitnessFuzzing => {
+                    self.run_witness_fuzzing_attack(&attack_config.config, progress).await?;
+                }
+                AttackType::Differential => {
+                    self.run_differential_attack(&attack_config.config, progress).await?;
+                }
+                AttackType::InformationLeakage => {
+                    self.run_information_leakage_attack(&attack_config.config, progress).await?;
+                }
+                AttackType::TimingSideChannel => {
+                    self.run_timing_sidechannel_attack(&attack_config.config, progress).await?;
+                }
+                AttackType::CircuitComposition => {
+                    self.run_circuit_composition_attack(&attack_config.config, progress).await?;
+                }
+                AttackType::RecursiveProof => {
+                    self.run_recursive_proof_attack(&attack_config.config, progress).await?;
+                }
                 _ => {
                     tracing::warn!("Attack type {:?} not yet implemented", attack_config.attack_type);
                 }
@@ -744,6 +765,346 @@ impl FuzzingEngine {
         }
 
         Ok(())
+    }
+
+    async fn run_verification_fuzzing_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::attacks::{Attack, verification::VerificationFuzzer};
+        
+        let malleability_tests = config
+            .get("malleability_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1000) as usize;
+
+        tracing::info!("Running verification fuzzing with {} malleability tests", malleability_tests);
+
+        let fuzzer = VerificationFuzzer::new()
+            .with_malleability_tests(malleability_tests);
+
+        let context = crate::attacks::AttackContext {
+            circuit_info: self.get_circuit_info(),
+            samples: malleability_tests,
+            timeout_seconds: self.config.campaign.parameters.timeout_seconds,
+        };
+
+        let findings = fuzzer.run(&context);
+        
+        for finding in findings {
+            self.findings.write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn run_witness_fuzzing_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::attacks::{Attack, witness::WitnessFuzzer};
+        
+        let determinism_tests = config
+            .get("determinism_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as usize;
+
+        tracing::info!("Running witness fuzzing with {} determinism tests", determinism_tests);
+
+        let fuzzer = WitnessFuzzer::new()
+            .with_determinism_tests(determinism_tests);
+
+        let context = crate::attacks::AttackContext {
+            circuit_info: self.get_circuit_info(),
+            samples: determinism_tests,
+            timeout_seconds: self.config.campaign.parameters.timeout_seconds,
+        };
+
+        let findings = fuzzer.run(&context);
+        
+        for finding in findings {
+            self.findings.write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn run_differential_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::differential::{DifferentialFuzzer, DifferentialConfig};
+        
+        let num_tests = config
+            .get("num_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(500) as usize;
+
+        tracing::info!("Running differential fuzzing with {} tests", num_tests);
+
+        let diff_config = DifferentialConfig {
+            num_tests,
+            ..Default::default()
+        };
+
+        let mut diff_fuzzer = DifferentialFuzzer::new(diff_config);
+        diff_fuzzer.add_executor(self.config.campaign.target.framework, self.executor.clone());
+
+        let test_cases: Vec<_> = (0..num_tests)
+            .map(|_| self.generate_random_test_case())
+            .collect();
+
+        let results = diff_fuzzer.run(&test_cases);
+        
+        for result in results {
+            let finding = Finding {
+                attack_type: AttackType::Differential,
+                severity: Severity::Medium,
+                description: format!("Differential discrepancy: {:?}", result.severity),
+                poc: super::ProofOfConcept {
+                    witness_a: result.input.clone(),
+                    witness_b: None,
+                    public_inputs: vec![],
+                    proof: None,
+                },
+                location: None,
+            };
+
+            self.findings.write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding("MEDIUM", &finding.description);
+            }
+        }
+
+        if let Some(p) = progress {
+            for _ in 0..num_tests {
+                p.inc();
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn run_circuit_composition_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::multi_circuit::MultiCircuitFuzzer;
+        
+        let num_tests = config
+            .get("num_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(200) as usize;
+
+        tracing::info!("Running circuit composition fuzzing with {} tests", num_tests);
+
+        let mut multi_fuzzer = MultiCircuitFuzzer::new(
+            crate::multi_circuit::MultiCircuitConfig::default()
+        );
+        
+        multi_fuzzer.add_circuit("main", self.executor.clone());
+
+        let mut rng = rand::thread_rng();
+        let findings = multi_fuzzer.run(&mut rng);
+        
+        for finding in findings {
+            self.findings.write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            }
+        }
+
+        if let Some(p) = progress {
+            for _ in 0..num_tests {
+                p.inc();
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn run_information_leakage_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::analysis::taint::TaintAnalyzer;
+        
+        let num_tests = config
+            .get("num_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(300) as usize;
+
+        tracing::info!("Running information leakage detection with {} tests", num_tests);
+
+        let num_public = self.executor.num_public_inputs();
+        let num_private = self.executor.num_private_inputs();
+        let analyzer = TaintAnalyzer::new(num_public, num_private);
+
+        for _ in 0..num_tests {
+            let test_case = self.generate_random_test_case();
+            let result = self.executor.execute_sync(&test_case.inputs);
+
+            if result.success {
+                let findings = analyzer.analyze();
+                
+                for finding in findings {
+                    let leak_finding = Finding {
+                        attack_type: AttackType::InformationLeakage,
+                        severity: Severity::High,
+                        description: format!("Information leakage: {:?}", finding.finding_type),
+                        poc: super::ProofOfConcept {
+                            witness_a: test_case.inputs.clone(),
+                            witness_b: None,
+                            public_inputs: vec![],
+                            proof: None,
+                        },
+                        location: Some(format!("signal_{}", finding.signal_index)),
+                    };
+
+                    self.findings.write().unwrap().push(leak_finding.clone());
+                    if let Some(p) = progress {
+                        p.log_finding("HIGH", &leak_finding.description);
+                    }
+                }
+            }
+
+            if let Some(p) = progress {
+                p.inc();
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn run_timing_sidechannel_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::analysis::profiling::Profiler;
+        
+        let num_samples = config
+            .get("num_samples")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1000) as usize;
+
+        tracing::info!("Running timing side-channel detection with {} samples", num_samples);
+
+        let profiler = Profiler::new().with_samples(num_samples);
+        let mut rng = rand::thread_rng();
+        
+        let profile = profiler.profile(&self.executor, &mut rng);
+        
+        if profile.execution_stats.has_timing_variation() {
+            let finding = Finding {
+                attack_type: AttackType::TimingSideChannel,
+                severity: Severity::Medium,
+                description: format!(
+                    "Timing side-channel detected: execution time varies significantly (CV: {:.2}%)",
+                    (profile.execution_stats.std_dev_us / profile.execution_stats.mean_us) * 100.0
+                ),
+                poc: super::ProofOfConcept {
+                    witness_a: vec![],
+                    witness_b: None,
+                    public_inputs: vec![],
+                    proof: None,
+                },
+                location: None,
+            };
+
+            self.findings.write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding("MEDIUM", &finding.description);
+            }
+        }
+
+        if let Some(p) = progress {
+            for _ in 0..num_samples {
+                p.inc();
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn run_recursive_proof_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::multi_circuit::recursive::{RecursiveTester, RecursionResult};
+        
+        let num_tests = config
+            .get("num_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as usize;
+        
+        let max_depth = config
+            .get("max_depth")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(3) as usize;
+
+        tracing::info!("Running recursive proof fuzzing with {} tests, max depth {}", num_tests, max_depth);
+
+        let tester = RecursiveTester::new(max_depth).with_verifier(self.executor.clone());
+
+        for _ in 0..num_tests {
+            let test_case = self.generate_random_test_case();
+            let result = tester.test_recursion(&test_case.inputs, max_depth);
+            
+            match result {
+                RecursionResult::VerificationFailed { depth, error } => {
+                    let finding = Finding {
+                        attack_type: AttackType::RecursiveProof,
+                        severity: Severity::High,
+                        description: format!("Recursive verification failed at depth {}: {}", depth, error),
+                        poc: super::ProofOfConcept {
+                            witness_a: test_case.inputs.clone(),
+                            witness_b: None,
+                            public_inputs: vec![],
+                            proof: None,
+                        },
+                        location: None,
+                    };
+                    
+                    self.findings.write().unwrap().push(finding.clone());
+                    if let Some(p) = progress {
+                        p.log_finding("HIGH", &finding.description);
+                    }
+                }
+                RecursionResult::Error(err) => {
+                    tracing::warn!("Recursive test error: {}", err);
+                }
+                _ => {}
+            }
+
+            if let Some(p) = progress {
+                p.inc();
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_circuit_info(&self) -> crate::attacks::CircuitInfo {
+        crate::attacks::CircuitInfo {
+            name: self.config.campaign.target.main_component.clone(),
+            num_constraints: self.executor.num_constraints(),
+            num_private_inputs: self.executor.num_private_inputs(),
+            num_public_inputs: self.executor.num_public_inputs(),
+            num_outputs: 1,
+        }
     }
 
     fn hash_output(&self, output: &[FieldElement]) -> Vec<u8> {
