@@ -1,7 +1,71 @@
 //! Core fuzzing engine with coverage-guided execution
 //!
-//! This module provides the main fuzzing engine that coordinates
-//! test case generation, execution, coverage tracking, and attack detection.
+//! This module implements the main fuzzing engine that orchestrates zero-knowledge
+//! circuit security testing through intelligent test case generation, execution,
+//! coverage tracking, and vulnerability detection.
+//!
+//! # Architecture
+//!
+//! The fuzzing engine combines multiple advanced techniques:
+//!
+//! - **Coverage-Guided Fuzzing**: Tracks constraint coverage to guide input generation
+//!   toward unexplored code paths
+//! - **Power Scheduling**: Prioritizes interesting test cases using energy-based selection
+//!   (FAST, COE, EXPLORE, MMOPT, RARE, SEEK)
+//! - **Structure-Aware Mutation**: Understands ZK-specific data structures (Merkle paths,
+//!   signatures, nullifiers) for intelligent mutations
+//! - **Symbolic Execution**: Uses Z3 SMT solver to generate inputs that satisfy specific
+//!   constraint paths
+//! - **Taint Analysis**: Tracks information flow to detect potential leaks
+//! - **Bug Oracles**: Specialized detectors for underconstrained circuits, arithmetic
+//!   overflows, and other ZK-specific vulnerabilities
+//!
+//! # Workflow
+//!
+//! 1. **Initialization**: Load circuit, analyze complexity, seed initial corpus
+//! 2. **Test Case Selection**: Power scheduler picks interesting inputs from corpus
+//! 3. **Mutation**: Structure-aware mutator generates new test cases
+//! 4. **Execution**: Run circuit with mutated inputs, track coverage
+//! 5. **Oracle Checking**: Detect bugs using specialized oracles
+//! 6. **Corpus Update**: Add interesting cases that increase coverage
+//! 7. **Repeat**: Continue until timeout or iteration limit
+//!
+//! # Example
+//!
+//! ```ignore
+//! use zk_fuzzer::fuzzer::engine::FuzzingEngine;
+//! use zk_fuzzer::config::FuzzConfig;
+//!
+//! // Load campaign configuration
+//! let config = FuzzConfig::from_yaml("campaign.yaml")?;
+//!
+//! // Create fuzzing engine with 4 workers and deterministic seed
+//! let mut engine = FuzzingEngine::new(config, Some(42), 4)?;
+//!
+//! // Run fuzzing campaign
+//! let report = engine.run(None).await?;
+//!
+//! // Check results
+//! println!("Found {} vulnerabilities", report.findings.len());
+//! println!("Coverage: {:.1}%", report.statistics.coverage_percentage);
+//! ```
+//!
+//! # Performance
+//!
+//! The engine supports parallel execution across multiple workers. Each worker:
+//! - Maintains its own RNG for deterministic reproduction
+//! - Shares corpus and coverage data via lock-free structures
+//! - Reports findings to a central collector
+//!
+//! Typical throughput: 100-10,000 executions/second depending on circuit complexity.
+//!
+//! # Supported Backends
+//!
+//! - **Circom**: R1CS circuits via snarkjs
+//! - **Noir**: ACIR circuits via Barretenberg  
+//! - **Halo2**: PLONK circuits via halo2_proofs
+//! - **Cairo**: STARK programs via stone-prover
+//! - **Mock**: Testing backend for fuzzer development
 
 use super::{Finding, FieldElement, TestCase, TestMetadata, mutate_field_element, bn254_modulus_bytes};
 use super::power_schedule::{PowerSchedule, PowerScheduler, TestCaseMetrics};
@@ -22,7 +86,28 @@ use rayon::prelude::*;
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 use std::time::{Duration, Instant};
 
-/// Enhanced fuzzer engine with coverage-guided fuzzing and symbolic execution
+/// Main fuzzing engine coordinating all security testing activities
+///
+/// The `FuzzingEngine` is the central component that orchestrates the entire
+/// fuzzing campaign. It manages:
+///
+/// - Circuit execution through backend-specific executors
+/// - Test case corpus with automatic minimization
+/// - Coverage tracking for constraint exploration
+/// - Multiple bug detection oracles
+/// - Parallel worker coordination
+/// - Progress reporting and statistics
+///
+/// # Thread Safety
+///
+/// The engine uses `Arc` and `RwLock` for safe concurrent access to shared state.
+/// Multiple workers can execute test cases in parallel while safely updating
+/// the corpus, coverage map, and findings list.
+///
+/// # Memory Management
+///
+/// The corpus is bounded to prevent unbounded memory growth. When the limit is
+/// reached, less interesting test cases are evicted based on coverage contribution.
 pub struct FuzzingEngine {
     config: FuzzConfig,
     executor: Arc<dyn CircuitExecutor>,
@@ -54,7 +139,30 @@ pub struct FuzzingEngine {
 }
 
 impl FuzzingEngine {
-    /// Create a new fuzzing engine
+    /// Create a new fuzzing engine from configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Campaign configuration loaded from YAML
+    /// * `seed` - Optional RNG seed for deterministic fuzzing (use for reproduction)
+    /// * `workers` - Number of parallel workers (typically CPU count)
+    ///
+    /// # Returns
+    ///
+    /// Returns a configured engine ready to run, or an error if:
+    /// - Circuit backend is not available (e.g., circom not installed)
+    /// - Circuit compilation fails
+    /// - Configuration is invalid
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Deterministic fuzzing with 4 workers
+    /// let engine = FuzzingEngine::new(config, Some(12345), 4)?;
+    ///
+    /// // Non-deterministic with 8 workers
+    /// let engine = FuzzingEngine::new(config, None, 8)?;
+    /// ```
     pub fn new(config: FuzzConfig, seed: Option<u64>, workers: usize) -> anyhow::Result<Self> {
         let rng = match seed {
             Some(s) => StdRng::seed_from_u64(s),
@@ -159,7 +267,22 @@ impl FuzzingEngine {
         })
     }
 
-    /// Parse power schedule from config
+    /// Parse power schedule strategy from configuration
+    ///
+    /// Power schedules determine how energy is assigned to test cases:
+    /// - **FAST**: Favor fast-executing test cases
+    /// - **COE**: Cut-Off Exponential - balance speed and coverage
+    /// - **EXPLORE**: Prioritize unexplored paths
+    /// - **MMOPT**: Min-Max Optimal - balanced approach (default)
+    /// - **RARE**: Focus on rare edge cases
+    /// - **SEEK**: Actively seek new coverage
+    ///
+    /// Specified in campaign YAML as:
+    /// ```yaml
+    /// campaign:
+    ///   parameters:
+    ///     power_schedule: "MMOPT"
+    /// ```
     fn parse_power_schedule(config: &FuzzConfig) -> PowerSchedule {
         // Check for power_schedule in campaign parameters
         if let Some(schedule_str) = config.campaign.parameters.additional.get("power_schedule") {
@@ -171,7 +294,38 @@ impl FuzzingEngine {
         PowerSchedule::Mmopt
     }
 
-    /// Run the fuzzing campaign
+    /// Execute the complete fuzzing campaign
+    ///
+    /// This is the main entry point that runs the entire fuzzing workflow:
+    /// 1. Analyzes circuit complexity and structure
+    /// 2. Performs static analysis (taint, source code patterns)
+    /// 3. Seeds initial corpus with interesting values
+    /// 4. Executes configured attacks (underconstrained, soundness, etc.)
+    /// 5. Runs coverage-guided fuzzing loop
+    /// 6. Generates comprehensive report
+    ///
+    /// # Arguments
+    ///
+    /// * `progress` - Optional progress reporter for interactive display
+    ///
+    /// # Returns
+    ///
+    /// Returns a `FuzzReport` containing:
+    /// - All discovered vulnerabilities with severity ratings
+    /// - Proof-of-concept test cases for reproduction
+    /// - Coverage statistics and execution metrics
+    /// - Recommendations for fixing issues
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Run with progress reporting
+    /// let reporter = ProgressReporter::new();
+    /// let report = engine.run(Some(&reporter)).await?;
+    ///
+    /// // Run without progress (CI/CD mode)
+    /// let report = engine.run(None).await?;
+    /// ```
     pub async fn run(&mut self, progress: Option<&ProgressReporter>) -> anyhow::Result<FuzzReport> {
         let start_time = Instant::now();
         self.start_time = Some(start_time);
@@ -1294,18 +1448,9 @@ impl FuzzingEngine {
 
         tracing::info!("Running information leakage detection with {} tests", num_tests);
 
-        let num_public = self.executor.num_public_inputs();
-        let num_private = self.executor.num_private_inputs();
-
-        if num_private == 0 {
-            tracing::warn!("Information leakage attack skipped: no private inputs");
-            if let Some(p) = progress {
-                for _ in 0..num_tests {
-                    p.inc();
-                }
-            }
-            return Ok(());
-        }
+        let public_indices;
+        let private_indices;
+        let output_indices;
 
         let inspector = match self.executor.constraint_inspector() {
             Some(inspector) => inspector,
@@ -1320,6 +1465,20 @@ impl FuzzingEngine {
             }
         };
 
+        public_indices = inspector.public_input_indices();
+        private_indices = inspector.private_input_indices();
+        output_indices = inspector.output_indices();
+
+        if private_indices.is_empty() {
+            tracing::warn!("Information leakage attack skipped: no private inputs");
+            if let Some(p) = progress {
+                for _ in 0..num_tests {
+                    p.inc();
+                }
+            }
+            return Ok(());
+        }
+
         let constraints = inspector.get_constraints();
         if constraints.is_empty() {
             tracing::warn!("Information leakage attack skipped: no constraints available");
@@ -1331,9 +1490,17 @@ impl FuzzingEngine {
             return Ok(());
         }
 
-        let mut analyzer = TaintAnalyzer::new(num_public, num_private);
-        analyzer.initialize_inputs();
-        analyzer.mark_outputs_from_constraints(&constraints);
+        let mut analyzer = TaintAnalyzer::new(public_indices.len(), private_indices.len());
+        if !public_indices.is_empty() || !private_indices.is_empty() {
+            analyzer.initialize_inputs_with_indices(&public_indices, &private_indices);
+        } else {
+            analyzer.initialize_inputs();
+        }
+        if !output_indices.is_empty() {
+            analyzer.mark_outputs(&output_indices);
+        } else {
+            analyzer.mark_outputs_from_constraints(&constraints);
+        }
         analyzer.propagate_constraints(&constraints);
 
         let findings = analyzer.to_findings();

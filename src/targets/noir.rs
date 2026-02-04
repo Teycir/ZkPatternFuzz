@@ -7,6 +7,7 @@
 
 use super::TargetCircuit;
 use crate::config::Framework;
+use crate::executor::ConstraintEquation;
 use crate::fuzzer::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,8 @@ pub struct NoirTarget {
     proving_key: Option<Vec<u8>>,
     /// Cached verification key
     verification_key: Option<Vec<u8>>,
+    /// Cached ACIR constraint info
+    acir_info: OnceLock<NoirAcirInfo>,
 }
 
 /// Metadata extracted from compiled Noir circuit
@@ -45,6 +48,14 @@ pub struct NoirMetadata {
     pub num_return_values: usize,
     /// ABI information
     pub abi: NoirAbi,
+}
+
+#[derive(Debug, Clone)]
+struct NoirAcirInfo {
+    constraints: Vec<ConstraintEquation>,
+    public_indices: Vec<usize>,
+    private_indices: Vec<usize>,
+    return_indices: Vec<usize>,
 }
 
 /// Noir ABI (Application Binary Interface)
@@ -114,6 +125,7 @@ impl NoirTarget {
             compiled: false,
             proving_key: None,
             verification_key: None,
+            acir_info: OnceLock::new(),
         })
     }
 
@@ -289,6 +301,61 @@ impl NoirTarget {
         Ok(NoirAbi::default())
     }
 
+    fn acir_info(&self) -> Result<&NoirAcirInfo> {
+        if self.acir_info.get().is_none() {
+            let info = self.build_acir_info()?;
+            let _ = self.acir_info.set(info);
+        }
+
+        self.acir_info
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("ACIR info unavailable"))
+    }
+
+    fn build_acir_info(&self) -> Result<NoirAcirInfo> {
+        let _guard = noir_io_lock().lock().unwrap();
+
+        let nargo_home = self.build_dir.join("nargo_home");
+        std::fs::create_dir_all(&nargo_home)?;
+
+        let mut command = Command::new("nargo");
+        command
+            .args(["compile", "--print-acir"])
+            .current_dir(&self.project_path)
+            .env("HOME", &nargo_home);
+
+        let output = command.output().context("Failed to run nargo compile --print-acir")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Nargo ACIR print failed: {}", stderr);
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(parse_acir_output(&stdout))
+    }
+
+    pub fn load_constraints(&self) -> Result<Vec<ConstraintEquation>> {
+        Ok(self.acir_info()?.constraints.clone())
+    }
+
+    pub fn public_input_indices(&self) -> Vec<usize> {
+        self.acir_info()
+            .map(|info| info.public_indices.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn private_input_indices(&self) -> Vec<usize> {
+        self.acir_info()
+            .map(|info| info.private_indices.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn output_signal_indices(&self) -> Vec<usize> {
+        self.acir_info()
+            .map(|info| info.return_indices.clone())
+            .unwrap_or_default()
+    }
+
     /// Execute circuit with given inputs
     pub fn execute_noir(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
         if !self.compiled {
@@ -324,10 +391,23 @@ impl NoirTarget {
         let mut toml = String::new();
 
         if let Some(metadata) = &self.metadata {
-            for (i, param) in metadata.abi.parameters.iter().enumerate() {
-                if i < inputs.len() {
-                    let value = field_element_to_noir_value(&inputs[i]);
+            let mut public_params = Vec::new();
+            let mut private_params = Vec::new();
+
+            for param in &metadata.abi.parameters {
+                if param.visibility == Visibility::Public {
+                    public_params.push(param);
+                } else {
+                    private_params.push(param);
+                }
+            }
+
+            let mut idx = 0usize;
+            for param in public_params.into_iter().chain(private_params.into_iter()) {
+                if idx < inputs.len() {
+                    let value = field_element_to_noir_value(&inputs[idx]);
                     toml.push_str(&format!("{} = {}\n", param.name, value));
+                    idx += 1;
                 }
             }
         } else {
@@ -429,11 +509,29 @@ impl TargetCircuit for NoirTarget {
     }
 
     fn num_private_inputs(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_witnesses).unwrap_or(0)
+        if let Some(metadata) = &self.metadata {
+            if !metadata.abi.parameters.is_empty() {
+                return metadata.abi.parameters.len();
+            }
+            return metadata.num_witnesses;
+        }
+        0
     }
 
     fn num_public_inputs(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_public_inputs).unwrap_or(0)
+        if let Some(metadata) = &self.metadata {
+            let public = metadata
+                .abi
+                .parameters
+                .iter()
+                .filter(|p| p.visibility == Visibility::Public)
+                .count();
+            if public > 0 {
+                return public;
+            }
+            return metadata.num_public_inputs;
+        }
+        0
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -499,6 +597,93 @@ impl TargetCircuit for NoirTarget {
             .context("Failed to verify Noir proof")?;
 
         Ok(output.status.success())
+    }
+}
+
+fn extract_witness_indices(text: &str) -> Vec<usize> {
+    let mut indices = Vec::new();
+    let mut chars = text.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == 'w' {
+            let mut digits = String::new();
+            while let Some(next) = chars.peek() {
+                if next.is_ascii_digit() {
+                    digits.push(*next);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            if !digits.is_empty() {
+                if let Ok(idx) = digits.parse::<usize>() {
+                    indices.push(idx);
+                }
+            }
+        }
+    }
+
+    indices
+}
+
+fn parse_acir_output(output: &str) -> NoirAcirInfo {
+    let mut public_indices = Vec::new();
+    let mut private_indices = Vec::new();
+    let mut return_indices = Vec::new();
+    let mut constraints = Vec::new();
+    let mut id = 0usize;
+
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("private parameters:") {
+            private_indices = extract_witness_indices(trimmed);
+            continue;
+        }
+        if trimmed.starts_with("public parameters:") {
+            public_indices = extract_witness_indices(trimmed);
+            continue;
+        }
+        if trimmed.starts_with("return values:") {
+            return_indices = extract_witness_indices(trimmed);
+            continue;
+        }
+        if trimmed.starts_with("ASSERT") {
+            let (output_idx, input_indices) = if let Some((lhs, rhs)) = trimmed.split_once('=') {
+                let lhs_indices = extract_witness_indices(lhs);
+                let rhs_indices = extract_witness_indices(rhs);
+                (lhs_indices.into_iter().next(), rhs_indices)
+            } else {
+                let all_indices = extract_witness_indices(trimmed);
+                if all_indices.len() >= 2 {
+                    (Some(all_indices[0]), all_indices[1..].to_vec())
+                } else {
+                    (None, Vec::new())
+                }
+            };
+
+            if let Some(out_idx) = output_idx {
+                let a_terms = input_indices
+                    .into_iter()
+                    .map(|idx| (idx, FieldElement::one()))
+                    .collect();
+
+                constraints.push(ConstraintEquation {
+                    id,
+                    a_terms,
+                    b_terms: Vec::new(),
+                    c_terms: vec![(out_idx, FieldElement::one())],
+                    description: Some("noir acir".to_string()),
+                });
+                id += 1;
+            }
+        }
+    }
+
+    NoirAcirInfo {
+        constraints,
+        public_indices,
+        private_indices,
+        return_indices,
     }
 }
 

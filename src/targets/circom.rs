@@ -7,10 +7,11 @@
 
 use super::TargetCircuit;
 use crate::config::Framework;
+use crate::executor::ConstraintEquation;
 use crate::fuzzer::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -51,10 +52,33 @@ pub struct CircomMetadata {
     pub signals: HashMap<String, usize>,
     /// Input signal names
     pub input_signals: Vec<String>,
+    /// Input signal indices (ordered, public first)
+    pub input_signal_indices: Vec<usize>,
+    /// Public input signal indices
+    pub public_input_indices: Vec<usize>,
+    /// Private input signal indices
+    pub private_input_indices: Vec<usize>,
     /// Output signal names
     pub output_signals: Vec<String>,
+    /// Output signal indices
+    pub output_signal_indices: Vec<usize>,
     /// Prime field used
     pub prime: String,
+}
+
+#[derive(Default)]
+struct CircomIoInfo {
+    input_signals: Vec<analysis::SignalInfo>,
+    output_signals: Vec<analysis::SignalInfo>,
+    public_inputs: Vec<String>,
+}
+
+fn map_signal_index(signals: &HashMap<String, usize>, name: &str) -> Option<usize> {
+    let with_main = format!("main.{}", name);
+    signals
+        .get(&with_main)
+        .or_else(|| signals.get(name))
+        .copied()
 }
 
 /// Witness calculator using compiled WASM
@@ -265,6 +289,31 @@ impl CircomTarget {
         Ok(())
     }
 
+    /// Parse IO information from the source file
+    fn parse_io_info(&self) -> Result<CircomIoInfo> {
+        let source = std::fs::read_to_string(&self.circuit_path)?;
+        let signals = analysis::extract_signals(&source);
+
+        let mut input_signals = Vec::new();
+        let mut output_signals = Vec::new();
+
+        for signal in signals {
+            match signal.direction {
+                analysis::SignalDirection::Input => input_signals.push(signal),
+                analysis::SignalDirection::Output => output_signals.push(signal),
+                analysis::SignalDirection::Intermediate => {}
+            }
+        }
+
+        let public_inputs = analysis::extract_public_inputs(&source);
+
+        Ok(CircomIoInfo {
+            input_signals,
+            output_signals,
+            public_inputs,
+        })
+    }
+
     /// Parse R1CS info to extract metadata
     fn parse_r1cs_info(&mut self) -> Result<()> {
         let basename = self.output_basename();
@@ -329,21 +378,67 @@ impl CircomTarget {
             HashMap::new()
         };
 
-        // Extract input/output signal names from symbols
-        let input_signals: Vec<String> = signals
-            .keys()
-            .filter(|s| s.starts_with("main."))
-            .cloned()
+        let io_info = self.parse_io_info().unwrap_or_else(|e| {
+            tracing::warn!("Failed to parse Circom IO metadata: {}", e);
+            CircomIoInfo::default()
+        });
+
+        let input_names: Vec<String> = io_info
+            .input_signals
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+        let output_names: Vec<String> = io_info
+            .output_signals
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+
+        let public_inputs: Vec<String> = io_info.public_inputs;
+        let public_set: HashSet<String> = public_inputs.iter().cloned().collect();
+
+        let mut ordered_inputs = Vec::new();
+        for name in &public_inputs {
+            if input_names.contains(name) {
+                ordered_inputs.push(name.clone());
+            }
+        }
+        for name in &input_names {
+            if !public_set.contains(name) {
+                ordered_inputs.push(name.clone());
+            }
+        }
+
+        let input_signal_indices: Vec<usize> = ordered_inputs
+            .iter()
+            .filter_map(|name| map_signal_index(&signals, name))
+            .collect();
+        let public_input_indices: Vec<usize> = public_inputs
+            .iter()
+            .filter_map(|name| map_signal_index(&signals, name))
+            .collect();
+        let private_input_indices: Vec<usize> = ordered_inputs
+            .iter()
+            .filter(|name| !public_set.contains(*name))
+            .filter_map(|name| map_signal_index(&signals, name))
+            .collect();
+        let output_signal_indices: Vec<usize> = output_names
+            .iter()
+            .filter_map(|name| map_signal_index(&signals, name))
             .collect();
 
         self.metadata = Some(CircomMetadata {
             num_constraints,
-            num_private_inputs,
-            num_public_inputs,
-            num_outputs,
+            num_private_inputs: ordered_inputs.len(),
+            num_public_inputs: public_input_indices.len(),
+            num_outputs: output_signal_indices.len().max(num_outputs),
             signals,
-            input_signals,
-            output_signals: vec![],
+            input_signals: ordered_inputs,
+            input_signal_indices,
+            public_input_indices,
+            private_input_indices,
+            output_signals: output_names,
+            output_signal_indices,
             prime: "bn128".to_string(),
         });
 
@@ -510,6 +605,99 @@ impl CircomTarget {
         
         Ok(map)
     }
+
+    fn constraints_json_path(&self) -> PathBuf {
+        let basename = self.output_basename();
+        self.build_dir.join(format!("{}_constraints.json", basename))
+    }
+
+    /// Load constraint equations from Circom-generated JSON
+    pub fn load_constraints(&self) -> Result<Vec<ConstraintEquation>> {
+        let mut constraints_path = self.constraints_json_path();
+        let basename = self.output_basename();
+
+        if !constraints_path.exists() {
+            let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
+            if !r1cs_path.exists() {
+                return Ok(Vec::new());
+            }
+
+            let temp_dir = create_temp_dir()?;
+            let temp_path = temp_dir.path().join("constraints.json");
+
+            let output = Command::new("npx")
+                .args([
+                    "snarkjs",
+                    "r1cs",
+                    "export",
+                    "json",
+                    r1cs_path.to_str().unwrap(),
+                    temp_path.to_str().unwrap(),
+                ])
+                .output()
+                .context("Failed to export R1CS constraints")?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!("Constraint export failed: {}", stderr);
+            }
+
+            constraints_path = temp_path;
+        }
+
+        let contents = std::fs::read_to_string(&constraints_path)?;
+        let json: serde_json::Value = serde_json::from_str(&contents)?;
+        let constraints = json
+            .get("constraints")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid constraints JSON format"))?;
+
+        let mut equations = Vec::new();
+
+        for (id, constraint) in constraints.iter().enumerate() {
+            let parts = constraint
+                .as_array()
+                .ok_or_else(|| anyhow::anyhow!("Constraint entry is not an array"))?;
+            if parts.len() != 3 {
+                continue;
+            }
+
+            let a_terms = parse_constraint_terms(&parts[0])?;
+            let b_terms = parse_constraint_terms(&parts[1])?;
+            let c_terms = parse_constraint_terms(&parts[2])?;
+
+            equations.push(ConstraintEquation {
+                id,
+                a_terms,
+                b_terms,
+                c_terms,
+                description: Some("circom r1cs".to_string()),
+            });
+        }
+
+        Ok(equations)
+    }
+
+    pub fn public_input_indices(&self) -> Vec<usize> {
+        self.metadata
+            .as_ref()
+            .map(|m| m.public_input_indices.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn private_input_indices(&self) -> Vec<usize> {
+        self.metadata
+            .as_ref()
+            .map(|m| m.private_input_indices.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn output_signal_indices(&self) -> Vec<usize> {
+        self.metadata
+            .as_ref()
+            .map(|m| m.output_signal_indices.clone())
+            .unwrap_or_default()
+    }
 }
 
 impl TargetCircuit for CircomTarget {
@@ -539,12 +727,25 @@ impl TargetCircuit for CircomTarget {
         }
 
         let witness = self.calculate_witness(inputs)?;
-        
-        // Return output signals (typically after public inputs)
+
+        if let Some(metadata) = &self.metadata {
+            if !metadata.output_signal_indices.is_empty() {
+                let mut outputs = Vec::new();
+                for idx in &metadata.output_signal_indices {
+                    if let Some(value) = witness.get(*idx) {
+                        outputs.push(value.clone());
+                    }
+                }
+                if !outputs.is_empty() {
+                    return Ok(outputs);
+                }
+            }
+        }
+
+        // Fallback: outputs are typically at the start of the witness after signal 0
         let num_public = self.num_public_inputs();
         let num_outputs = self.metadata.as_ref().map(|m| m.num_outputs).unwrap_or(1);
-        
-        // Outputs are typically at the start of the witness after signal 0
+
         if witness.len() > 1 + num_public + num_outputs {
             Ok(witness[1..1 + num_outputs].to_vec())
         } else if !witness.is_empty() {
@@ -656,6 +857,26 @@ impl TargetCircuit for CircomTarget {
     }
 }
 
+fn parse_constraint_terms(value: &serde_json::Value) -> Result<Vec<(usize, FieldElement)>> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("Constraint term is not an object"))?;
+
+    let mut terms = Vec::new();
+    for (key, val) in obj {
+        let idx: usize = key.parse().unwrap_or(0);
+        let coeff = match val {
+            serde_json::Value::String(s) => parse_decimal_to_field_element(s)?,
+            serde_json::Value::Number(n) => parse_decimal_to_field_element(&n.to_string())?,
+            _ => parse_decimal_to_field_element("0")?,
+        };
+        terms.push((idx, coeff));
+    }
+
+    terms.sort_by_key(|(idx, _)| *idx);
+    Ok(terms)
+}
+
 /// Parse a decimal string to FieldElement
 fn parse_decimal_to_field_element(s: &str) -> Result<FieldElement> {
     use num_bigint::BigUint;
@@ -735,16 +956,27 @@ pub mod analysis {
             }
         }
 
-        let name = parts.get(name_idx)?
+        let raw_name = parts.get(name_idx)?
             .trim_end_matches(';')
-            .trim_end_matches('[')
             .to_string();
+
+        let (name, array_size) = if let Some(open_idx) = raw_name.find('[') {
+            if let Some(close_idx) = raw_name.find(']') {
+                let size_str = &raw_name[open_idx + 1..close_idx];
+                let size = size_str.parse::<usize>().ok();
+                (raw_name[..open_idx].to_string(), size)
+            } else {
+                (raw_name.clone(), None)
+            }
+        } else {
+            (raw_name, None)
+        };
 
         Some(SignalInfo {
             name,
             direction,
             is_public,
-            array_size: None,
+            array_size,
         })
     }
 
@@ -763,6 +995,39 @@ pub mod analysis {
         Input,
         Output,
         Intermediate,
+    }
+
+    /// Extract public input list from the main component declaration
+    pub fn extract_public_inputs(source: &str) -> Vec<String> {
+        let mut inputs = Vec::new();
+        let mut cursor = 0usize;
+
+        while let Some(pos) = source[cursor..].find("public") {
+            let start = cursor + pos + "public".len();
+            let rest = &source[start..];
+            let open = match rest.find('[') {
+                Some(idx) => start + idx,
+                None => {
+                    cursor = start;
+                    continue;
+                }
+            };
+            let close = match source[open..].find(']') {
+                Some(idx) => open + idx,
+                None => break,
+            };
+
+            let list = &source[open + 1..close];
+            for item in list.split(',') {
+                let name = item.trim();
+                if !name.is_empty() {
+                    inputs.push(name.to_string());
+                }
+            }
+            break;
+        }
+
+        inputs
     }
 
     /// Extract constraints from compiled R1CS (placeholder - requires binary parsing)
@@ -836,6 +1101,7 @@ pub mod analysis {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_field_element_conversion() {
@@ -858,5 +1124,24 @@ mod tests {
         assert_eq!(signals.len(), 4);
         assert_eq!(signals[0].name, "a");
         assert_eq!(signals[0].direction, analysis::SignalDirection::Input);
+    }
+
+    #[test]
+    fn test_constraint_parsing() {
+        let circuit_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("circuits")
+            .join("multiplier.circom");
+        let build_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("circuits")
+            .join("build");
+
+        let target = CircomTarget::new(circuit_path.to_str().unwrap(), "Multiplier")
+            .unwrap()
+            .with_build_dir(build_dir);
+
+        let constraints = target.load_constraints().unwrap();
+        assert!(!constraints.is_empty());
     }
 }

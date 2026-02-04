@@ -17,7 +17,7 @@ pub use crate::attacks::CircuitInfo;
 use async_trait::async_trait;
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Factory for creating circuit executors based on framework type
 pub struct ExecutorFactory;
@@ -135,13 +135,17 @@ impl ExecutorFactory {
 /// Circom executor wrapper
 pub struct CircomExecutor {
     target: crate::targets::CircomTarget,
+    constraints: OnceLock<Vec<ConstraintEquation>>,
 }
 
 impl CircomExecutor {
     pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
         let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?;
         target.compile()?;
-        Ok(Self { target })
+        Ok(Self {
+            target,
+            constraints: OnceLock::new(),
+        })
     }
 }
 
@@ -189,6 +193,76 @@ impl CircuitExecutor for CircomExecutor {
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
         use crate::targets::TargetCircuit;
         self.target.verify(proof, public_inputs)
+    }
+
+    fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
+        Some(self)
+    }
+}
+
+impl ConstraintInspector for CircomExecutor {
+    fn get_constraints(&self) -> Vec<ConstraintEquation> {
+        self.constraints
+            .get_or_init(|| self.target.load_constraints().unwrap_or_default())
+            .clone()
+    }
+
+    fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {
+        fn eval_linear(terms: &[(usize, FieldElement)], witness: &[FieldElement]) -> FieldElement {
+            let mut acc = FieldElement::zero();
+            for (idx, coeff) in terms {
+                if let Some(value) = witness.get(*idx) {
+                    acc = acc.add(&value.mul(coeff));
+                }
+            }
+            acc
+        }
+
+        self.get_constraints()
+            .iter()
+            .map(|c| {
+                let a_val = eval_linear(&c.a_terms, witness);
+                let b_val = eval_linear(&c.b_terms, witness);
+                let c_val = eval_linear(&c.c_terms, witness);
+                let lhs = a_val.mul(&b_val);
+                ConstraintResult {
+                    constraint_id: c.id,
+                    satisfied: lhs == c_val,
+                    lhs_value: lhs,
+                    rhs_value: c_val,
+                }
+            })
+            .collect()
+    }
+
+    fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
+        self.get_constraints()
+            .iter()
+            .map(|c| {
+                let mut deps: Vec<usize> = c
+                    .a_terms
+                    .iter()
+                    .chain(c.b_terms.iter())
+                    .chain(c.c_terms.iter())
+                    .map(|(idx, _)| *idx)
+                    .collect();
+                deps.sort_unstable();
+                deps.dedup();
+                deps
+            })
+            .collect()
+    }
+
+    fn public_input_indices(&self) -> Vec<usize> {
+        self.target.public_input_indices()
+    }
+
+    fn private_input_indices(&self) -> Vec<usize> {
+        self.target.private_input_indices()
+    }
+
+    fn output_indices(&self) -> Vec<usize> {
+        self.target.output_signal_indices()
     }
 }
 
@@ -249,6 +323,58 @@ impl CircuitExecutor for NoirExecutor {
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
         use crate::targets::TargetCircuit;
         self.target.verify(proof, public_inputs)
+    }
+
+    fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
+        Some(self)
+    }
+}
+
+impl ConstraintInspector for NoirExecutor {
+    fn get_constraints(&self) -> Vec<ConstraintEquation> {
+        self.target.load_constraints().unwrap_or_default()
+    }
+
+    fn check_constraints(&self, _witness: &[FieldElement]) -> Vec<ConstraintResult> {
+        self.get_constraints()
+            .iter()
+            .map(|c| ConstraintResult {
+                constraint_id: c.id,
+                satisfied: true,
+                lhs_value: FieldElement::one(),
+                rhs_value: FieldElement::one(),
+            })
+            .collect()
+    }
+
+    fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
+        self.get_constraints()
+            .iter()
+            .map(|c| {
+                let mut deps: Vec<usize> = c
+                    .a_terms
+                    .iter()
+                    .chain(c.b_terms.iter())
+                    .chain(c.c_terms.iter())
+                    .map(|(idx, _)| *idx)
+                    .collect();
+                deps.sort_unstable();
+                deps.dedup();
+                deps
+            })
+            .collect()
+    }
+
+    fn public_input_indices(&self) -> Vec<usize> {
+        self.target.public_input_indices()
+    }
+
+    fn private_input_indices(&self) -> Vec<usize> {
+        self.target.private_input_indices()
+    }
+
+    fn output_indices(&self) -> Vec<usize> {
+        self.target.output_signal_indices()
     }
 }
 

@@ -1,5 +1,10 @@
 # ZkPatternFuzz
 
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![Documentation](https://img.shields.io/badge/docs-architecture-purple.svg)](ARCHITECTURE.md)
+
 A Zero-Knowledge Proof Security Testing Framework written in Rust.
 
 ## Overview
@@ -197,6 +202,13 @@ ZkPatternFuzz/
 └── reports/                 # Generated reports
 ```
 
+## Documentation
+
+- **[README.md](README.md)** - Quick start and feature overview (this file)
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into internal design and extension points
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
+- **[API Documentation](https://docs.rs/zk-fuzzer)** - Generated from source code
+
 ## Development
 
 ```bash
@@ -298,25 +310,55 @@ corpus:
 
 ## Contributing
 
-Contributions are welcome! Please:
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+**Quick Start for Contributors:**
 
 1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes and add tests
 4. Ensure `cargo test` and `cargo clippy` pass
-5. Submit a pull request
+5. Commit your changes (`git commit -m 'feat: add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+**Areas Needing Help:**
+- Real backend integration testing (Circom, Noir, Halo2, Cairo)
+- SARIF report format implementation
+- Additional attack patterns
+- Documentation and examples
+- Performance optimizations
 
 ## Roadmap
 
+### Completed ✅
 - [x] Complete Circom backend integration
 - [x] Complete Noir backend integration
 - [x] Complete Halo2 backend integration
 - [x] Add Cairo support
+- [x] Coverage-guided fuzzing
+- [x] Power scheduling algorithms
+- [x] Structure-aware mutations
+- [x] Symbolic execution with Z3
+- [x] Taint analysis
+- [x] Complexity analysis
+- [x] Parallel execution
+- [x] Corpus management
+- [x] JSON and Markdown reports
+
+### In Progress 🚧
 - [ ] Implement SARIF report format
-- [ ] Add collision detection attacks
+- [ ] Complete collision detection attacks
+- [ ] Complete boundary value attacks
 - [ ] Enhance symbolic execution capabilities
+
+### Planned 📋
 - [ ] Add GUI for campaign management
-- [ ] Integrate with CI/CD pipelines
+- [ ] Integrate with CI/CD pipelines (GitHub Actions templates)
+- [ ] Distributed fuzzing with corpus sharing
+- [ ] Machine learning-based mutation strategies
+- [ ] Real-time web dashboard
+- [ ] Formal verification integration
 
 ## References
 
@@ -336,3 +378,23 @@ Built with:
 - [Z3](https://github.com/Z3Prover/z3) - SMT solver for symbolic execution
 - [Tokio](https://tokio.rs/) - Async runtime
 - [Rayon](https://github.com/rayon-rs/rayon) - Data parallelism
+
+Inspired by:
+- [AFL](https://github.com/google/AFL) - Coverage-guided fuzzing
+- [LibFuzzer](https://llvm.org/docs/LibFuzzer.html) - Corpus management
+- [Trail of Bits](https://www.trailofbits.com/) - ZK security research
+- [0xPARC](https://0xparc.org/) - ZK bug tracking
+
+## Citation
+
+If you use ZkPatternFuzz in your research, please cite:
+
+```bibtex
+@software{zkpatternfuzz2024,
+  title = {ZkPatternFuzz: Zero-Knowledge Proof Security Testing Framework},
+  author = {ZkPatternFuzz Contributors},
+  year = {2024},
+  url = {https://github.com/yourusername/ZkPatternFuzz},
+  version = {0.1.0}
+}
+```

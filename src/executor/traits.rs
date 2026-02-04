@@ -89,6 +89,23 @@ pub trait ConstraintInspector: CircuitExecutor {
 
     /// Get constraint dependencies (which signals each constraint uses)
     fn get_constraint_dependencies(&self) -> Vec<Vec<usize>>;
+
+    /// Get indices for public inputs in the witness/signal space
+    fn public_input_indices(&self) -> Vec<usize> {
+        (0..self.num_public_inputs()).collect()
+    }
+
+    /// Get indices for private inputs in the witness/signal space
+    fn private_input_indices(&self) -> Vec<usize> {
+        let total_inputs = self.num_private_inputs();
+        let public_inputs = self.num_public_inputs().min(total_inputs);
+        (public_inputs..total_inputs).collect()
+    }
+
+    /// Get indices for public outputs in the witness/signal space
+    fn output_indices(&self) -> Vec<usize> {
+        Vec::new()
+    }
 }
 
 /// Representation of a constraint equation (A * B = C form for R1CS)

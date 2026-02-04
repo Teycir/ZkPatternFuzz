@@ -1,31 +1,188 @@
-//! ZK-Fuzzer: Zero-Knowledge Proof Security Testing Framework
+//! ZkPatternFuzz: Zero-Knowledge Proof Security Testing Framework
 //!
-//! This library provides a comprehensive fuzzing and security testing
-//! framework for ZK circuits across multiple backends (Circom, Noir, Halo2, Cairo).
+//! A comprehensive fuzzing and security testing framework for ZK circuits across
+//! multiple proving systems. Detects vulnerabilities through coverage-guided fuzzing,
+//! symbolic execution, and specialized attack patterns.
 //!
-//! # Architecture
-//!
-//! The fuzzer is organized into several key modules:
-//!
-//! - **executor**: Abstraction layer for circuit execution across backends
-//! - **fuzzer**: Core fuzzing engine with mutation and coverage tracking
-//! - **attacks**: Attack implementations for different vulnerability classes
-//! - **corpus**: Test case management and persistence
-//! - **reporting**: Result generation and output formatting
-//! - **differential**: Differential fuzzing across multiple backends
-//! - **analysis**: Taint analysis, profiling, and complexity analysis
-//! - **multi_circuit**: Multi-circuit and recursive proof testing
-//!
-//! # Example
+//! # Quick Start
 //!
 //! ```ignore
 //! use zk_fuzzer::{FuzzConfig, ZkFuzzer};
 //!
+//! // Load campaign configuration
 //! let config = FuzzConfig::from_yaml("campaign.yaml")?;
+//!
+//! // Create fuzzer with deterministic seed
 //! let mut fuzzer = ZkFuzzer::new(config, Some(42));
+//!
+//! // Run fuzzing campaign
 //! let report = fuzzer.run().await?;
+//!
+//! // Display results
 //! report.print_summary();
+//! report.save_to_files()?;
 //! ```
+//!
+//! # Supported Backends
+//!
+//! | Backend | Status | Proof System | Use Cases |
+//! |---------|--------|--------------|----------|
+//! | **Circom** | ✅ Full | Groth16 (R1CS) | Semaphore, Tornado Cash |
+//! | **Noir** | ✅ Full | Barretenberg (ACIR) | Aztec, privacy protocols |
+//! | **Halo2** | ✅ Full | PLONK | zkEVM, PSE circuits |
+//! | **Cairo** | ✅ Full | STARK | StarkNet, StarkEx |
+//! | **Mock** | ✅ Full | Testing | Fuzzer development |
+//!
+//! # Attack Types
+//!
+//! ## Underconstrained Detection
+//! Finds circuits that accept multiple valid witnesses for the same public inputs,
+//! indicating missing constraints.
+//!
+//! ```yaml
+//! attacks:
+//!   - type: underconstrained
+//!     config:
+//!       witness_pairs: 1000
+//!       symbolic_execution: true
+//! ```
+//!
+//! ## Soundness Testing  
+//! Attempts to forge proofs for invalid statements by manipulating witnesses.
+//!
+//! ```yaml
+//! attacks:
+//!   - type: soundness
+//!     config:
+//!       forge_attempts: 1000
+//!       mutation_rate: 0.1
+//! ```
+//!
+//! ## Arithmetic Overflow
+//! Tests field arithmetic edge cases (0, 1, p-1, p) to detect overflow issues.
+//!
+//! ```yaml
+//! attacks:
+//!   - type: arithmetic_overflow
+//!     config:
+//!       test_values: ["0", "1", "p-1", "p"]
+//! ```
+//!
+//! ## Witness Validation
+//! Verifies witness consistency and correctness across multiple executions.
+//!
+//! ## Verification Testing
+//! Tests proof verification with edge cases and malformed proofs.
+//!
+//! # Architecture Overview
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │                     Campaign Config (YAML)                  │
+//! └────────────────────────┬────────────────────────────────────┘
+//!                          │
+//!                          ▼
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │                    Fuzzing Engine                           │
+//! │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+//! │  │   Corpus     │  │   Coverage   │  │   Oracles    │     │
+//! │  │  Management  │  │   Tracking   │  │  (Bug Detect)│     │
+//! │  └──────────────┘  └──────────────┘  └──────────────┘     │
+//! └────────────────────────┬────────────────────────────────────┘
+//!                          │
+//!          ┌───────────────┼───────────────┐
+//!          ▼               ▼               ▼
+//!    ┌──────────┐    ┌──────────┐    ┌──────────┐
+//!    │  Circom  │    │   Noir   │    │  Halo2   │
+//!    │ Executor │    │ Executor │    │ Executor │
+//!    └──────────┘    └──────────┘    └──────────┘
+//!          │               │               │
+//!          └───────────────┴───────────────┘
+//!                          │
+//!                          ▼
+//!                  ┌──────────────┐
+//!                  │    Report    │
+//!                  │ (JSON/MD)    │
+//!                  └──────────────┘
+//! ```
+//!
+//! # Module Organization
+//!
+//! - [`executor`] - Circuit execution abstraction layer
+//! - [`fuzzer`] - Core fuzzing engine with mutation strategies
+//! - [`attacks`] - Vulnerability-specific attack implementations
+//! - [`corpus`] - Test case storage and minimization
+//! - [`analysis`] - Symbolic execution, taint analysis, profiling
+//! - [`differential`] - Cross-backend differential testing
+//! - [`multi_circuit`] - Composition and recursive proof analysis
+//! - [`reporting`] - Result generation (JSON, Markdown, SARIF)
+//! - [`config`] - YAML configuration parsing
+//! - [`targets`] - Backend-specific integrations
+//!
+//! # Configuration Example
+//!
+//! ```yaml
+//! campaign:
+//!   name: "Merkle Tree Audit"
+//!   version: "1.0"
+//!   target:
+//!     framework: circom
+//!     circuit_path: "./circuits/merkle.circom"
+//!     main_component: "MerkleTreeChecker"
+//!   parameters:
+//!     field: bn254
+//!     max_constraints: 100000
+//!     timeout_seconds: 300
+//!
+//! attacks:
+//!   - type: underconstrained
+//!     description: "Find multiple valid witnesses"
+//!     config:
+//!       witness_pairs: 1000
+//!       symbolic_execution: true
+//!
+//! inputs:
+//!   - name: "leaf"
+//!     type: "field"
+//!     fuzz_strategy: random
+//!   - name: "pathElements"
+//!     type: "field[]"
+//!     length: 20
+//!     fuzz_strategy: interesting_values
+//!
+//! reporting:
+//!   output_dir: "./reports"
+//!   formats: ["json", "markdown"]
+//!   include_poc: true
+//! ```
+//!
+//! # Performance Tips
+//!
+//! 1. **Use deterministic seeds** for reproducible fuzzing campaigns
+//! 2. **Adjust worker count** based on circuit complexity (light circuits: 8+, heavy: 2-4)
+//! 3. **Enable symbolic execution** for targeted constraint exploration
+//! 4. **Use corpus minimization** to reduce redundant test cases
+//! 5. **Set appropriate timeouts** based on circuit size
+//!
+//! # Safety and Soundness
+//!
+//! This fuzzer helps detect:
+//! - ❌ Underconstrained circuits (multiple valid witnesses)
+//! - ❌ Missing range checks
+//! - ❌ Arithmetic overflows
+//! - ❌ Information leaks through public outputs
+//! - ❌ Proof malleability
+//! - ❌ Verification bypass vulnerabilities
+//!
+//! However, fuzzing cannot prove absence of bugs - it can only find them.
+//! Combine with formal verification for complete assurance.
+//!
+//! # References
+//!
+//! - [Trail of Bits ZK Security](https://blog.trailofbits.com/tag/zero-knowledge-proofs/)
+//! - [0xPARC ZK Bug Tracker](https://github.com/0xPARC/zk-bug-tracker)
+//! - [Circom Documentation](https://docs.circom.io/)
+//! - [Noir Documentation](https://noir-lang.org/)
 
 pub mod attacks;
 pub mod config;

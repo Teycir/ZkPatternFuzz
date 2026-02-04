@@ -156,39 +156,58 @@ impl MultiCircuitFuzzer {
         for name in &circuit_names {
             let circuit = &self.circuits[name];
 
-            // Test with a "marker" value in private input
-            let marker = FieldElement::from_u64(0xDEADBEEF);
-            let mut inputs: Vec<FieldElement> = (0..circuit.num_private_inputs())
-                .map(|_| FieldElement::random(rng))
-                .collect();
-            
-            if !inputs.is_empty() {
-                inputs[0] = marker.clone();
+            let inspector = match circuit.constraint_inspector() {
+                Some(inspector) => inspector,
+                None => continue,
+            };
+
+            let constraints = inspector.get_constraints();
+            if constraints.is_empty() {
+                continue;
             }
 
-            let result = circuit.execute_sync(&inputs);
+            let public_indices = inspector.public_input_indices();
+            let private_indices = inspector.private_input_indices();
+            if private_indices.is_empty() {
+                continue;
+            }
 
-            if result.success {
-                // Check if marker appears in output (potential leakage)
-                for (i, output) in result.outputs.iter().enumerate() {
-                    if *output == marker {
-                        findings.push(Finding {
-                            attack_type: crate::config::AttackType::InformationLeakage,
-                            severity: Severity::High,
-                            description: format!(
-                                "Private input appears unchanged in output #{} of circuit '{}'",
-                                i, name
-                            ),
-                            poc: ProofOfConcept {
-                                witness_a: inputs.clone(),
-                                witness_b: None,
-                                public_inputs: vec![],
-                                proof: None,
-                            },
-                            location: Some(format!("{}:output_{}", name, i)),
-                        });
-                    }
-                }
+            let output_indices = inspector.output_indices();
+
+            let mut analyzer = crate::analysis::taint::TaintAnalyzer::new(
+                public_indices.len(),
+                private_indices.len(),
+            );
+
+            if !public_indices.is_empty() || !private_indices.is_empty() {
+                analyzer.initialize_inputs_with_indices(&public_indices, &private_indices);
+            } else {
+                analyzer.initialize_inputs();
+            }
+
+            if !output_indices.is_empty() {
+                analyzer.mark_outputs(&output_indices);
+            } else {
+                analyzer.mark_outputs_from_constraints(&constraints);
+            }
+
+            analyzer.propagate_constraints(&constraints);
+
+            for finding in analyzer.to_findings() {
+                findings.push(Finding {
+                    attack_type: finding.attack_type,
+                    severity: finding.severity,
+                    description: format!("{}: {}", name, finding.description),
+                    poc: ProofOfConcept {
+                        witness_a: (0..circuit.num_private_inputs())
+                            .map(|_| FieldElement::random(rng))
+                            .collect(),
+                        witness_b: None,
+                        public_inputs: vec![],
+                        proof: None,
+                    },
+                    location: finding.location.map(|loc| format!("{}:{}", name, loc)),
+                });
             }
         }
 

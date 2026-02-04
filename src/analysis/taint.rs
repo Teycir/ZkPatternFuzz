@@ -138,6 +138,21 @@ impl TaintAnalyzer {
         }
     }
 
+    /// Initialize taint labels for inputs using explicit signal indices
+    pub fn initialize_inputs_with_indices(
+        &mut self,
+        public_indices: &[usize],
+        private_indices: &[usize],
+    ) {
+        for (i, idx) in public_indices.iter().enumerate() {
+            self.signal_taints.insert(*idx, TaintState::new_public(i));
+        }
+
+        for (i, idx) in private_indices.iter().enumerate() {
+            self.signal_taints.insert(*idx, TaintState::new_private(i));
+        }
+    }
+
     /// Propagate taint through a constraint
     /// 
     /// In R1CS form: A * B = C
@@ -231,6 +246,13 @@ impl TaintAnalyzer {
             .entry(signal_idx)
             .or_default()
             .is_leaked = true;
+    }
+
+    /// Mark a list of signals as public outputs (potential leak points)
+    pub fn mark_outputs(&mut self, output_indices: &[usize]) {
+        for idx in output_indices {
+            self.mark_as_output(*idx);
+        }
     }
 
     /// Mark output signals based on constraint definitions
