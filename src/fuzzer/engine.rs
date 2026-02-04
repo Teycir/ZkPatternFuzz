@@ -4,6 +4,7 @@
 //! test case generation, execution, coverage tracking, and attack detection.
 
 use super::{Finding, FieldElement, TestCase, TestMetadata, mutate_field_element, bn254_modulus_bytes};
+use crate::analysis::symbolic::{SymbolicFuzzerIntegration, SymbolicConfig, VulnerabilityPattern};
 use crate::attacks::{Attack, AttackContext, CircuitInfo};
 use crate::config::*;
 use crate::corpus::{Corpus, CorpusEntry, SharedCorpus, create_corpus};
@@ -17,7 +18,7 @@ use rayon::prelude::*;
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 use std::time::Instant;
 
-/// Enhanced fuzzer engine with coverage-guided fuzzing
+/// Enhanced fuzzer engine with coverage-guided fuzzing and symbolic execution
 pub struct FuzzingEngine {
     config: FuzzConfig,
     executor: Arc<dyn CircuitExecutor>,
@@ -28,6 +29,8 @@ pub struct FuzzingEngine {
     stats: Arc<std::sync::RwLock<FuzzingStats>>,
     execution_count: AtomicU64,
     workers: usize,
+    /// Symbolic execution integration for guided test generation
+    symbolic: Option<SymbolicFuzzerIntegration>,
 }
 
 impl FuzzingEngine {
@@ -49,6 +52,18 @@ impl FuzzingEngine {
         let coverage = create_coverage_tracker(num_constraints);
         let corpus = create_corpus(10000);
 
+        // Initialize symbolic execution integration
+        let num_inputs = config.inputs.len().max(1);
+        let symbolic = Some(SymbolicFuzzerIntegration::new(num_inputs).with_config(
+            SymbolicConfig {
+                max_paths: 100,
+                max_depth: 20,
+                solver_timeout_ms: 2000,
+                generate_boundary_tests: true,
+                solutions_per_path: 2,
+            }
+        ));
+
         Ok(Self {
             config,
             executor,
@@ -59,6 +74,7 @@ impl FuzzingEngine {
             stats: Arc::new(std::sync::RwLock::new(FuzzingStats::default())),
             execution_count: AtomicU64::new(0),
             workers,
+            symbolic,
         })
     }
 
@@ -162,6 +178,66 @@ impl FuzzingEngine {
             if let Ok(fe) = FieldElement::from_hex(hex) {
                 self.add_to_corpus(self.create_test_case_with_value(fe));
             }
+        }
+
+        // Generate seeds from symbolic execution
+        let symbolic_test_cases = if let Some(ref mut symbolic) = self.symbolic {
+            tracing::info!("Generating symbolic execution seeds...");
+            
+            let mut test_cases = Vec::new();
+            
+            // Generate initial seeds using symbolic solver
+            let symbolic_seeds = symbolic.generate_seeds(20);
+            let expected_len = self.config.inputs.len();
+            for inputs in symbolic_seeds {
+                if inputs.len() == expected_len {
+                    test_cases.push(TestCase {
+                        inputs,
+                        expected_output: None,
+                        metadata: TestMetadata::default(),
+                    });
+                }
+            }
+
+            // Generate vulnerability-targeted test cases
+            let vuln_patterns = vec![
+                VulnerabilityPattern::OverflowBoundary,
+                VulnerabilityPattern::ZeroDivision,
+                VulnerabilityPattern::BitDecomposition { bits: 8 },
+                VulnerabilityPattern::BitDecomposition { bits: 64 },
+            ];
+
+            for pattern in vuln_patterns {
+                let targeted_tests = symbolic.generate_vulnerability_tests(pattern);
+                for inputs in targeted_tests {
+                    if inputs.len() >= expected_len {
+                        let truncated: Vec<_> = inputs.into_iter()
+                            .take(expected_len)
+                            .collect();
+                        test_cases.push(TestCase {
+                            inputs: truncated,
+                            expected_output: None,
+                            metadata: TestMetadata::default(),
+                        });
+                    }
+                }
+            }
+
+            let stats = symbolic.stats();
+            tracing::info!(
+                "Symbolic execution: {} paths explored, {} tests generated",
+                stats.paths_explored,
+                stats.tests_generated
+            );
+            
+            test_cases
+        } else {
+            Vec::new()
+        };
+        
+        // Add symbolic test cases to corpus
+        for test_case in symbolic_test_cases {
+            self.add_to_corpus(test_case);
         }
 
         // Add random cases

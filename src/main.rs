@@ -1,11 +1,15 @@
 use clap::{Parser, Subcommand};
 use tracing_subscriber;
 
+mod analysis;
 mod attacks;
 mod config;
 mod corpus;
+mod differential;
+mod errors;
 mod executor;
 mod fuzzer;
+mod multi_circuit;
 mod progress;
 mod reporting;
 mod targets;

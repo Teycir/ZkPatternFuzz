@@ -154,8 +154,238 @@ interesting_values:
     - "0xbeef"
     - "0xcafe"
 
-# Mutation strategies
-mutation_strategies:
+  # zkEVM-specific values
+  zkevm_evm:
+    - "0x0"                                                                 # Zero
+    - "0x1"                                                                 # One  
+    - "0xff"                                                                # Max uint8
+    - "0xffff"                                                              # Max uint16
+    - "0xffffffff"                                                          # Max uint32
+    - "0xffffffffffffffff"                                                  # Max uint64
+    - "0xffffffffffffffffffffffffffffffff"                                  # Max uint128
+    - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # Max uint256
+    - "0x8000000000000000000000000000000000000000000000000000000000000000"  # Min int256 (two's complement)
+    - "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # Max int256
+
+  # Gas-related values for griefing attacks
+  gas_values:
+    - "0x0"                    # Zero gas
+    - "0x5208"                 # 21000 - base transaction cost
+    - "0x7a120"                # 500000 - medium contract call
+    - "0x1c9c380"              # 30000000 - block gas limit
+    - "0xfffffffffff"          # Overflow attempt
+
+  # Storage slot patterns
+  storage_slots:
+    - "0x0"                                                                 # Slot 0
+    - "0x1"                                                                 # Slot 1
+    - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # Max slot
+    - "0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"  # keccak256(0)
+    - "0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"  # keccak256(1)
+
+  # Front-running attacks for DeFi circuits
+  front_running:
+    description: "Attacks exploiting transaction ordering and MEV extraction"
+    attacks:
+      - type: "ordering_dependency"
+        description: "Check if proof validity depends on transaction ordering"
+        config:
+          permutation_tests: 100
+          time_window_ms: 12000  # Typical block time
+
+      - type: "sandwich_attack"
+        description: "Test vulnerability to sandwich attacks in AMM/DEX circuits"
+        config:
+          price_impact_threshold: 0.01
+          samples: 500
+
+      - type: "backrun_extraction"
+        description: "Check if committed values can be extracted before reveal"
+        config:
+          commitment_schemes: ["pedersen", "poseidon", "mimc"]
+          extraction_attempts: 1000
+
+  # MEV extraction patterns
+  mev_extraction:
+    description: "Maximum Extractable Value vulnerability patterns"
+    attacks:
+      - type: "state_leakage"
+        description: "Check if private state leaks through public signals"
+        config:
+          correlation_threshold: 0.8
+          samples: 5000
+
+      - type: "oracle_manipulation"
+        description: "Test price oracle manipulation in ZK circuits"
+        config:
+          price_deviation_percent: [1, 5, 10, 50, 100]
+          twap_windows: [1, 5, 30]
+
+      - type: "liquidation_race"
+        description: "Check for liquidation front-running vulnerabilities"
+        config:
+          health_factor_range: [0.9, 1.0, 1.1]
+          samples: 500
+
+  # Griefing attacks (valid but expensive proofs)
+  griefing:
+    description: "Attacks that create valid but resource-expensive proofs"
+    attacks:
+      - type: "proof_size_explosion"
+        description: "Find inputs that maximize proof size"
+        config:
+          size_multiplier_threshold: 10
+          samples: 1000
+
+      - type: "verification_gas_dos"
+        description: "Find proofs with maximum verification cost"
+        config:
+          gas_limit_target: 30000000
+          optimization_rounds: 100
+
+      - type: "recursive_depth_attack"
+        description: "Exploit recursive proof depth for DoS"
+        config:
+          max_recursion_depth: 100
+          depth_increment: 5
+
+      - type: "memory_exhaustion"
+        description: "Find inputs causing prover memory exhaustion"
+        config:
+          memory_limit_mb: 16384
+          samples: 200
+
+  # Batch verification bypass attacks
+  batch_verification:
+    description: "Attacks on batched proof verification"
+    attacks:
+      - type: "batch_mixing"
+        description: "Mix valid and invalid proofs to bypass batch verification"
+        config:
+          batch_sizes: [2, 4, 8, 16, 32]
+          invalid_positions: "all"
+
+      - type: "aggregation_forgery"
+        description: "Forge aggregated proofs from valid individual proofs"
+        config:
+          aggregation_methods: ["naive", "snarkpack", "halo2_aggregation"]
+          forgery_attempts: 1000
+
+      - type: "cross_circuit_batch"
+        description: "Batch proofs from different circuits to bypass verification"
+        config:
+          circuit_combinations: 100
+          
+      - type: "randomness_reuse"
+        description: "Detect randomness reuse across batch elements"
+        config:
+          correlation_tests: 500
+
+  # zkEVM-specific patterns
+  zkevm:
+    description: "Attacks specific to zkEVM implementations"
+    attacks:
+      - type: "state_transition_edge"
+        description: "Edge cases in state transition proofs"
+        config:
+          test_cases:
+            - "empty_block"
+            - "max_gas_block"
+            - "single_tx_block"
+            - "max_calldata"
+            - "deep_call_stack"
+            - "storage_collision"
+
+      - type: "opcode_boundary"
+        description: "Test boundary conditions for each opcode"
+        config:
+          opcodes: ["ADD", "MUL", "SUB", "DIV", "MOD", "EXP", "SIGNEXTEND"]
+          boundary_values: ["0", "1", "2^8-1", "2^16-1", "2^32-1", "2^64-1", "2^128-1", "2^256-1"]
+
+      - type: "memory_expansion"
+        description: "Memory expansion edge cases"
+        config:
+          memory_sizes: [0, 32, 1024, 65536, "max_memory"]
+          offset_values: [0, 31, 32, 33, "boundary"]
+
+      - type: "storage_proof_manipulation"
+        description: "Manipulate storage proofs in state transitions"
+        config:
+          trie_depth_tests: [0, 1, 8, 64]
+          key_patterns: ["zero", "max", "collision_prone"]
+
+      - type: "precompile_bypass"
+        description: "Bypass or exploit precompile implementations"
+        config:
+          precompiles: ["ecrecover", "sha256", "ripemd160", "identity", "modexp", "ecadd", "ecmul", "ecpairing", "blake2f"]
+          malformed_inputs: true
+
+      - type: "cross_contract_state"
+        description: "State inconsistencies across contract calls"
+        config:
+          call_depth: [1, 2, 5, 10]
+          reentry_patterns: true
+
+  # Recursive SNARK composition bugs
+  recursive_snark:
+    description: "Vulnerabilities in recursive SNARK composition"
+    attacks:
+      - type: "base_case_bypass"
+        description: "Bypass base case verification in recursion"
+        config:
+          recursion_depths: [0, 1, 2]
+          base_case_mutations: 100
+
+      - type: "accumulator_overflow"
+        description: "Overflow in recursive accumulators"
+        config:
+          accumulator_bits: [128, 256, 512]
+          iteration_counts: [100, 1000, 10000]
+
+      - type: "verification_key_substitution"
+        description: "Substitute verification keys in recursive proofs"
+        config:
+          substitution_strategies: ["related_circuit", "malicious_circuit", "null_circuit"]
+
+      - type: "folding_attack"
+        description: "Attack Nova/Supernova folding schemes"
+        config:
+          folding_schemes: ["nova", "supernova", "hypernova", "protostar"]
+          relaxed_instance_tests: 100
+
+      - type: "ivc_chain_break"
+        description: "Break IVC chain by manipulating intermediate proofs"
+        config:
+          chain_lengths: [2, 5, 10, 50]
+          break_positions: "all"
+
+      - type: "cycle_detection_bypass"
+        description: "Bypass cycle detection in recursive composition"
+        config:
+          cycle_patterns: ["self_reference", "mutual_reference", "deep_cycle"]
+
+  # Proof aggregation vulnerabilities  
+  proof_aggregation:
+    description: "Vulnerabilities in proof aggregation schemes"
+    attacks:
+      - type: "aggregation_malleability"
+        description: "Create malleable aggregated proofs"
+        config:
+          aggregation_schemes: ["groth16_aggregation", "plonk_aggregation", "halo2_aggregation"]
+          malleability_tests: 500
+
+      - type: "subset_forgery"
+        description: "Forge proofs for subset of aggregated statements"
+        config:
+          subset_sizes: [1, 2, "half", "all_but_one"]
+
+      - type: "ordering_independence"
+        description: "Check if aggregation order affects validity"
+        config:
+          permutation_tests: 100
+
+# Interesting values for different field types
+interesting_values:
   conservative:
     description: "Low mutation rate, focused mutations"
     mutations:

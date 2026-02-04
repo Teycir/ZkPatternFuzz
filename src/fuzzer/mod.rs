@@ -50,6 +50,19 @@ impl FieldElement {
         Self(bytes)
     }
 
+    /// Maximum field value (p - 1 for BN254 scalar field)
+    pub fn max_value() -> Self {
+        // BN254 scalar field: p - 1
+        Self::from_hex("0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000")
+            .unwrap_or_else(|_| Self::zero())
+    }
+
+    /// Half of the field modulus: (p - 1) / 2
+    pub fn half_modulus() -> Self {
+        Self::from_hex("0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000")
+            .unwrap_or_else(|_| Self::zero())
+    }
+
     pub fn random(rng: &mut impl Rng) -> Self {
         let mut bytes = [0u8; 32];
         rng.fill(&mut bytes);
@@ -60,6 +73,74 @@ impl FieldElement {
         let mut bytes = [0u8; 32];
         bytes[24..32].copy_from_slice(&value.to_be_bytes());
         Self(bytes)
+    }
+
+    /// Create from raw bytes (big-endian, padded to 32 bytes)
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let mut result = [0u8; 32];
+        let start = 32usize.saturating_sub(bytes.len());
+        let copy_len = bytes.len().min(32);
+        result[start..start + copy_len].copy_from_slice(&bytes[..copy_len]);
+        Self(result)
+    }
+
+    /// Get raw bytes
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.0
+    }
+
+    /// Field addition (mod p) - simplified for mock purposes
+    pub fn add(&self, other: &Self) -> Self {
+        use num_bigint::BigUint;
+        let modulus = BigUint::parse_bytes(
+            b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
+            10,
+        ).unwrap();
+        
+        let a = BigUint::from_bytes_be(&self.0);
+        let b = BigUint::from_bytes_be(&other.0);
+        let result = (a + b) % &modulus;
+        
+        let result_bytes = result.to_bytes_be();
+        Self::from_bytes(&result_bytes)
+    }
+
+    /// Field subtraction (mod p) - simplified for mock purposes
+    pub fn sub(&self, other: &Self) -> Self {
+        use num_bigint::BigUint;
+        let modulus = BigUint::parse_bytes(
+            b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
+            10,
+        ).unwrap();
+        
+        let a = BigUint::from_bytes_be(&self.0);
+        let b = BigUint::from_bytes_be(&other.0);
+        
+        // (a - b + p) % p to handle underflow
+        let result = if a >= b {
+            (a - b) % &modulus
+        } else {
+            (&modulus - (b - a) % &modulus) % &modulus
+        };
+        
+        let result_bytes = result.to_bytes_be();
+        Self::from_bytes(&result_bytes)
+    }
+
+    /// Field multiplication (mod p) - simplified for mock purposes
+    pub fn mul(&self, other: &Self) -> Self {
+        use num_bigint::BigUint;
+        let modulus = BigUint::parse_bytes(
+            b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
+            10,
+        ).unwrap();
+        
+        let a = BigUint::from_bytes_be(&self.0);
+        let b = BigUint::from_bytes_be(&other.0);
+        let result = (a * b) % &modulus;
+        
+        let result_bytes = result.to_bytes_be();
+        Self::from_bytes(&result_bytes)
     }
 
     /// Parse a hex string into a FieldElement

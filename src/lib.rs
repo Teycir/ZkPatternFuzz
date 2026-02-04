@@ -56,6 +56,8 @@ pub use reporting::FuzzReport;
 pub use analysis::{
     TaintAnalyzer, TaintFinding, Profiler, PerformanceProfile,
     ComplexityAnalyzer, ComplexityMetrics, SymbolicExecutor, SymbolicState,
+    SymbolicConfig, SymbolicFuzzerIntegration, SymbolicConstraint, SymbolicValue,
+    VulnerabilityPattern, Z3Solver, SolverResult, PathCondition, SymbolicStats,
 };
 pub use differential::{DifferentialFuzzer, DifferentialConfig, DifferentialResult};
 pub use multi_circuit::{MultiCircuitFuzzer, MultiCircuitConfig, CircuitChain};
