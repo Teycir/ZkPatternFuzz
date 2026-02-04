@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tempfile::Builder;
 
 /// Circom circuit target with full backend integration
 pub struct CircomTarget {
@@ -62,6 +63,13 @@ struct WitnessCalculator {
     wasm_path: PathBuf,
 }
 
+fn create_temp_dir() -> Result<tempfile::TempDir> {
+    Builder::new()
+        .prefix("zkfuzzer_")
+        .tempdir()
+        .context("Failed to create temp directory")
+}
+
 impl WitnessCalculator {
     fn new(wasm_path: PathBuf) -> Self {
         Self { wasm_path }
@@ -70,12 +78,12 @@ impl WitnessCalculator {
     /// Calculate witness using node.js and snarkjs
     fn calculate(&self, inputs: &HashMap<String, Vec<String>>) -> Result<Vec<FieldElement>> {
         // Create temporary input file
-        let temp_dir = std::env::temp_dir().join("zkfuzzer");
-        std::fs::create_dir_all(&temp_dir)?;
-        
-        let input_path = temp_dir.join("input.json");
-        let witness_path = temp_dir.join("witness.wtns");
-        let witness_json_path = temp_dir.join("witness.json");
+        let temp_dir = create_temp_dir()?;
+        let temp_path = temp_dir.path();
+
+        let input_path = temp_path.join("input.json");
+        let witness_path = temp_path.join("witness.wtns");
+        let witness_json_path = temp_path.join("witness.json");
         
         // Write inputs to JSON
         let input_json = serde_json::to_string(inputs)?;
@@ -126,11 +134,6 @@ impl WitnessCalculator {
             .iter()
             .map(|v| parse_decimal_to_field_element(v))
             .collect::<Result<Vec<_>>>()?;
-        
-        // Cleanup temp files
-        let _ = std::fs::remove_file(&input_path);
-        let _ = std::fs::remove_file(&witness_path);
-        let _ = std::fs::remove_file(&witness_json_path);
         
         Ok(witness)
     }
@@ -555,18 +558,18 @@ impl TargetCircuit for CircomTarget {
         let zkey_path = self.proving_key_path.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Proving key not set. Call setup_keys() first."))?;
 
-        let temp_dir = std::env::temp_dir().join("zkfuzzer");
-        std::fs::create_dir_all(&temp_dir)?;
-        
-        let witness_path = temp_dir.join("witness.wtns");
-        let proof_path = temp_dir.join("proof.json");
-        let public_path = temp_dir.join("public.json");
+        let temp_dir = create_temp_dir()?;
+        let temp_path = temp_dir.path();
+
+        let witness_path = temp_path.join("witness.wtns");
+        let proof_path = temp_path.join("proof.json");
+        let public_path = temp_path.join("public.json");
 
         // First need to create witness file
         // For now, use the WASM-based approach
         let input_map = self.inputs_to_map(witness)?;
         let input_json = serde_json::to_string(&input_map)?;
-        let input_path = temp_dir.join("input.json");
+        let input_path = temp_path.join("input.json");
         std::fs::write(&input_path, &input_json)?;
 
         if let Some(calc) = &self.witness_calculator {
@@ -610,12 +613,6 @@ impl TargetCircuit for CircomTarget {
         // Read proof JSON
         let proof_json = std::fs::read_to_string(&proof_path)?;
         
-        // Cleanup
-        let _ = std::fs::remove_file(&witness_path);
-        let _ = std::fs::remove_file(&proof_path);
-        let _ = std::fs::remove_file(&public_path);
-        let _ = std::fs::remove_file(&input_path);
-
         Ok(proof_json.into_bytes())
     }
 
@@ -623,11 +620,11 @@ impl TargetCircuit for CircomTarget {
         let vkey_path = self.verification_key_path.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Verification key not set."))?;
 
-        let temp_dir = std::env::temp_dir().join("zkfuzzer");
-        std::fs::create_dir_all(&temp_dir)?;
-        
-        let proof_path = temp_dir.join("proof.json");
-        let public_path = temp_dir.join("public.json");
+        let temp_dir = create_temp_dir()?;
+        let temp_path = temp_dir.path();
+
+        let proof_path = temp_path.join("proof.json");
+        let public_path = temp_path.join("public.json");
 
         // Write proof
         std::fs::write(&proof_path, proof)?;
@@ -652,10 +649,6 @@ impl TargetCircuit for CircomTarget {
             ])
             .output()
             .context("Failed to verify proof")?;
-
-        // Cleanup
-        let _ = std::fs::remove_file(&proof_path);
-        let _ = std::fs::remove_file(&public_path);
 
         // snarkjs outputs "OK!" on success
         let stdout = String::from_utf8_lossy(&output.stdout);

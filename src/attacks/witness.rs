@@ -54,6 +54,21 @@ impl WitnessFuzzer {
         self
     }
 
+    pub fn with_stress_tests(mut self, count: usize) -> Self {
+        self.stress_tests = count;
+        self
+    }
+
+    pub fn with_timing_threshold_us(mut self, threshold_us: u64) -> Self {
+        self.timing_threshold_us = threshold_us;
+        self
+    }
+
+    pub fn with_timing_cv_threshold(mut self, threshold: f64) -> Self {
+        self.timing_cv_threshold = threshold;
+        self
+    }
+
     /// Run witness fuzzing against an executor
     pub fn fuzz(
         &self,
@@ -344,7 +359,7 @@ impl Attack for WitnessFuzzer {
     }
 
     fn attack_type(&self) -> AttackType {
-        AttackType::Underconstrained
+        AttackType::WitnessFuzzing
     }
 
     fn description(&self) -> &str {

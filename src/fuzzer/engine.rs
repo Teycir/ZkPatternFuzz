@@ -416,7 +416,12 @@ impl FuzzingEngine {
         self.corpus.add(entry);
 
         // Record coverage
-        self.coverage.record_execution(&result.coverage.satisfied_constraints);
+        if result.coverage.satisfied_constraints.is_empty() {
+            self.coverage.record_coverage_hash(result.coverage.coverage_hash);
+        } else {
+            self.coverage
+                .record_execution(&result.coverage.satisfied_constraints);
+        }
     }
 
     fn create_test_case_with_value(&self, value: FieldElement) -> TestCase {
@@ -547,7 +552,12 @@ impl FuzzingEngine {
         }
 
         // Track coverage - record_execution is already thread-safe
-        let is_new = self.coverage.record_execution(&result.coverage.satisfied_constraints);
+        let is_new = if result.coverage.satisfied_constraints.is_empty() {
+            self.coverage.record_coverage_hash(result.coverage.coverage_hash)
+        } else {
+            self.coverage
+                .record_execution(&result.coverage.satisfied_constraints)
+        };
 
         // Add to corpus if new coverage discovered
         // The corpus.add() method has built-in deduplication, so even if
@@ -608,12 +618,30 @@ impl FuzzingEngine {
 
         // Execute in parallel and collect outputs
         let executor = self.executor.clone();
-        let results: Vec<_> = test_cases.par_iter()
-            .map(|tc| {
-                let result = executor.execute_sync(&tc.inputs);
-                (tc.clone(), result)
+        let results: Vec<_> = if self.workers <= 1 {
+            test_cases
+                .iter()
+                .map(|tc| {
+                    let result = executor.execute_sync(&tc.inputs);
+                    (tc.clone(), result)
+                })
+                .collect()
+        } else {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(self.workers)
+                .build()
+                .map_err(|e| anyhow::anyhow!("Failed to build thread pool: {}", e))?;
+
+            pool.install(|| {
+                test_cases
+                    .par_iter()
+                    .map(|tc| {
+                        let result = executor.execute_sync(&tc.inputs);
+                        (tc.clone(), result)
+                    })
+                    .collect()
             })
-            .collect();
+        };
 
         // Group by output hash to find collisions
         let mut output_map: std::collections::HashMap<Vec<u8>, Vec<TestCase>> = 
@@ -677,12 +705,26 @@ impl FuzzingEngine {
 
         tracing::info!("Attempting {} proof forgeries", forge_attempts);
 
+        let num_public = self.executor.num_public_inputs();
+        if num_public == 0 {
+            tracing::warn!("Soundness attack skipped: circuit has no public inputs to mutate");
+            return Ok(());
+        }
+
         for _ in 0..forge_attempts {
             let valid_case = self.generate_test_case();
             let valid_proof = self.executor.prove(&valid_case.inputs)?;
 
-            // Mutate inputs
-            let mutated_inputs: Vec<FieldElement> = valid_case.inputs.iter()
+            let valid_public: Vec<FieldElement> = valid_case
+                .inputs
+                .iter()
+                .take(num_public)
+                .cloned()
+                .collect();
+
+            // Mutate public inputs only
+            let mutated_public: Vec<FieldElement> = valid_public
+                .iter()
                 .map(|input| {
                     if self.rng.gen::<f64>() < mutation_rate {
                         mutate_field_element(input, &mut self.rng)
@@ -692,16 +734,21 @@ impl FuzzingEngine {
                 })
                 .collect();
 
+            // Skip if mutation didn't change public inputs
+            if mutated_public == valid_public {
+                continue;
+            }
+
             // Try to verify with mutated inputs
-            if self.executor.verify(&valid_proof, &mutated_inputs)? {
+            if self.executor.verify(&valid_proof, &mutated_public)? {
                 let finding = Finding {
                     attack_type: AttackType::Soundness,
                     severity: Severity::Critical,
                     description: "Proof verified with mutated inputs - soundness violation!".to_string(),
                     poc: super::ProofOfConcept {
                         witness_a: valid_case.inputs,
-                        witness_b: Some(mutated_inputs),
-                        public_inputs: vec![],
+                        witness_b: None,
+                        public_inputs: mutated_public,
                         proof: Some(valid_proof),
                     },
                     location: None,
@@ -809,12 +856,30 @@ impl FuzzingEngine {
             .collect();
 
         let executor = self.executor.clone();
-        let results: Vec<_> = test_cases.par_iter()
-            .map(|tc| {
-                let result = executor.execute_sync(&tc.inputs);
-                (tc.clone(), result)
+        let results: Vec<_> = if self.workers <= 1 {
+            test_cases
+                .iter()
+                .map(|tc| {
+                    let result = executor.execute_sync(&tc.inputs);
+                    (tc.clone(), result)
+                })
+                .collect()
+        } else {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(self.workers)
+                .build()
+                .map_err(|e| anyhow::anyhow!("Failed to build thread pool: {}", e))?;
+
+            pool.install(|| {
+                test_cases
+                    .par_iter()
+                    .map(|tc| {
+                        let result = executor.execute_sync(&tc.inputs);
+                        (tc.clone(), result)
+                    })
+                    .collect()
             })
-            .collect();
+        };
 
         let mut hash_map: std::collections::HashMap<Vec<u8>, TestCase> = 
             std::collections::HashMap::new();
@@ -909,25 +974,38 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::{Attack, verification::VerificationFuzzer};
+        use crate::attacks::verification::VerificationFuzzer;
         
         let malleability_tests = config
             .get("malleability_tests")
             .and_then(|v| v.as_u64())
             .unwrap_or(1000) as usize;
+        let malformed_tests = config
+            .get("malformed_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1000) as usize;
+        let edge_case_tests = config
+            .get("edge_case_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(500) as usize;
+        let mutation_rate = config
+            .get("mutation_rate")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.05);
 
-        tracing::info!("Running verification fuzzing with {} malleability tests", malleability_tests);
+        tracing::info!(
+            "Running verification fuzzing: malleability={}, malformed={}, edge_cases={}",
+            malleability_tests, malformed_tests, edge_case_tests
+        );
 
         let fuzzer = VerificationFuzzer::new()
-            .with_malleability_tests(malleability_tests);
+            .with_malleability_tests(malleability_tests)
+            .with_malformed_tests(malformed_tests)
+            .with_edge_case_tests(edge_case_tests)
+            .with_mutation_rate(mutation_rate);
 
-        let context = crate::attacks::AttackContext {
-            circuit_info: self.get_circuit_info(),
-            samples: malleability_tests,
-            timeout_seconds: self.config.campaign.parameters.timeout_seconds,
-        };
-
-        let findings = fuzzer.run(&context);
+        let mut rng = rand::thread_rng();
+        let findings = fuzzer.fuzz(&self.executor, &mut rng);
         
         for finding in findings {
             self.findings.write().unwrap().push(finding.clone());
@@ -944,25 +1022,43 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::{Attack, witness::WitnessFuzzer};
+        use crate::attacks::witness::WitnessFuzzer;
         
         let determinism_tests = config
             .get("determinism_tests")
             .and_then(|v| v.as_u64())
             .unwrap_or(100) as usize;
+        let timing_tests = config
+            .get("timing_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(500) as usize;
+        let stress_tests = config
+            .get("stress_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1000) as usize;
+        let timing_threshold_us = config
+            .get("timing_threshold_us")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10_000);
+        let timing_cv_threshold = config
+            .get("timing_cv_threshold")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.5);
 
-        tracing::info!("Running witness fuzzing with {} determinism tests", determinism_tests);
+        tracing::info!(
+            "Running witness fuzzing: determinism={}, timing={}, stress={}",
+            determinism_tests, timing_tests, stress_tests
+        );
 
         let fuzzer = WitnessFuzzer::new()
-            .with_determinism_tests(determinism_tests);
+            .with_determinism_tests(determinism_tests)
+            .with_timing_tests(timing_tests)
+            .with_stress_tests(stress_tests)
+            .with_timing_threshold_us(timing_threshold_us)
+            .with_timing_cv_threshold(timing_cv_threshold);
 
-        let context = crate::attacks::AttackContext {
-            circuit_info: self.get_circuit_info(),
-            samples: determinism_tests,
-            timeout_seconds: self.config.campaign.parameters.timeout_seconds,
-        };
-
-        let findings = fuzzer.run(&context);
+        let mut rng = rand::thread_rng();
+        let findings = fuzzer.fuzz(&self.executor, &mut rng);
         
         for finding in findings {
             self.findings.write().unwrap().push(finding.clone());
@@ -980,8 +1076,8 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::differential::{DifferentialFuzzer, DifferentialConfig};
-        use crate::differential::executor::MultiBackendExecutor;
         use crate::differential::report::DifferentialReport;
+        use std::collections::{HashMap, HashSet};
         
         let num_tests = config
             .get("num_tests")
@@ -990,20 +1086,82 @@ impl FuzzingEngine {
 
         tracing::info!("Running differential fuzzing with {} tests", num_tests);
 
-        let diff_config = DifferentialConfig {
+        let parse_framework = |name: &str| -> Option<Framework> {
+            match name.to_lowercase().as_str() {
+                "circom" => Some(Framework::Circom),
+                "noir" => Some(Framework::Noir),
+                "halo2" => Some(Framework::Halo2),
+                "cairo" => Some(Framework::Cairo),
+                "mock" => Some(Framework::Mock),
+                _ => None,
+            }
+        };
+
+        let backends: Vec<Framework> = if let Some(seq) = config.get("backends").and_then(|v| v.as_sequence()) {
+            seq.iter()
+                .filter_map(|v| v.as_str())
+                .filter_map(parse_framework)
+                .collect()
+        } else {
+            vec![self.config.campaign.target.framework]
+        };
+
+        // Optional per-backend circuit paths
+        let mut backend_paths: HashMap<Framework, String> = HashMap::new();
+        if let Some(map) = config.get("backend_paths").and_then(|v| v.as_mapping()) {
+            for (k, v) in map {
+                if let (Some(key), Some(path)) = (k.as_str(), v.as_str()) {
+                    if let Some(framework) = parse_framework(key) {
+                        backend_paths.insert(framework, path.to_string());
+                    }
+                }
+            }
+        }
+
+        let mut unique = HashSet::new();
+        let mut selected_backends = Vec::new();
+        for backend in backends {
+            if unique.insert(backend) {
+                selected_backends.push(backend);
+            }
+        }
+
+        if selected_backends.len() < 2 {
+            tracing::warn!("Differential fuzzing skipped: configure at least two backends");
+            return Ok(());
+        }
+
+        let mut diff_fuzzer = DifferentialFuzzer::new(DifferentialConfig {
             num_tests,
-            backends: vec![self.config.campaign.target.framework],
+            backends: selected_backends.clone(),
             compare_coverage: true,
             compare_proofs: false,
             timing_tolerance_percent: 50.0,
-        };
+        });
 
-        // Create multi-backend executor for potential cross-backend testing
-        let mut multi_executor = MultiBackendExecutor::new(self.config.campaign.target.framework);
-        multi_executor.add_backend(self.config.campaign.target.framework, self.executor.clone());
+        // Add executors for each backend (skip any that fail to initialize)
+        let mut active_backends = Vec::new();
+        for backend in &selected_backends {
+            let circuit_path = backend_paths
+                .get(backend)
+                .map(|s| s.as_str())
+                .unwrap_or_else(|| self.config.campaign.target.circuit_path.to_str().unwrap_or(""));
 
-        let mut diff_fuzzer = DifferentialFuzzer::new(diff_config.clone());
-        diff_fuzzer.add_executor(self.config.campaign.target.framework, self.executor.clone());
+            match ExecutorFactory::create(*backend, circuit_path, &self.config.campaign.target.main_component) {
+                Ok(executor) => {
+                    diff_fuzzer.add_executor(*backend, executor);
+                    active_backends.push(*backend);
+                }
+                Err(e) => {
+                    tracing::warn!("Skipping backend {:?} for differential fuzzing: {}", backend, e);
+                }
+            }
+        }
+
+        if active_backends.len() < 2 {
+            tracing::warn!("Differential fuzzing skipped: fewer than two active backends");
+            return Ok(());
+        }
 
         let test_cases: Vec<_> = (0..num_tests)
             .map(|_| self.generate_random_test_case())
@@ -1014,7 +1172,7 @@ impl FuzzingEngine {
         // Create differential report
         let report = DifferentialReport::new(
             &self.config.campaign.name,
-            diff_config.backends.clone(),
+            active_backends.clone(),
             results.clone(),
             diff_fuzzer.stats().clone(),
         );
@@ -1128,7 +1286,7 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::analysis::taint::TaintAnalyzer;
-        
+
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
@@ -1138,37 +1296,56 @@ impl FuzzingEngine {
 
         let num_public = self.executor.num_public_inputs();
         let num_private = self.executor.num_private_inputs();
-        let analyzer = TaintAnalyzer::new(num_public, num_private);
 
-        for _ in 0..num_tests {
-            let test_case = self.generate_random_test_case();
-            let result = self.executor.execute_sync(&test_case.inputs);
-
-            if result.success {
-                let findings = analyzer.analyze();
-                
-                for finding in findings {
-                    let leak_finding = Finding {
-                        attack_type: AttackType::InformationLeakage,
-                        severity: Severity::High,
-                        description: format!("Information leakage: {:?}", finding.finding_type),
-                        poc: super::ProofOfConcept {
-                            witness_a: test_case.inputs.clone(),
-                            witness_b: None,
-                            public_inputs: vec![],
-                            proof: None,
-                        },
-                        location: Some(format!("signal_{}", finding.signal_index)),
-                    };
-
-                    self.findings.write().unwrap().push(leak_finding.clone());
-                    if let Some(p) = progress {
-                        p.log_finding("HIGH", &leak_finding.description);
-                    }
+        if num_private == 0 {
+            tracing::warn!("Information leakage attack skipped: no private inputs");
+            if let Some(p) = progress {
+                for _ in 0..num_tests {
+                    p.inc();
                 }
             }
+            return Ok(());
+        }
 
+        let inspector = match self.executor.constraint_inspector() {
+            Some(inspector) => inspector,
+            None => {
+                tracing::warn!("Information leakage attack skipped: constraint inspector unavailable");
+                if let Some(p) = progress {
+                    for _ in 0..num_tests {
+                        p.inc();
+                    }
+                }
+                return Ok(());
+            }
+        };
+
+        let constraints = inspector.get_constraints();
+        if constraints.is_empty() {
+            tracing::warn!("Information leakage attack skipped: no constraints available");
             if let Some(p) = progress {
+                for _ in 0..num_tests {
+                    p.inc();
+                }
+            }
+            return Ok(());
+        }
+
+        let mut analyzer = TaintAnalyzer::new(num_public, num_private);
+        analyzer.initialize_inputs();
+        analyzer.mark_outputs_from_constraints(&constraints);
+        analyzer.propagate_constraints(&constraints);
+
+        let findings = analyzer.to_findings();
+        for finding in findings {
+            self.findings.write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            }
+        }
+
+        if let Some(p) = progress {
+            for _ in 0..num_tests {
                 p.inc();
             }
         }

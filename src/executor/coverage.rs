@@ -47,20 +47,11 @@ impl CoverageTracker {
 
     /// Record multiple constraint hits from an execution
     pub fn record_execution(&self, satisfied_constraints: &[usize]) -> bool {
-        let mut is_new = false;
-
         // Calculate coverage hash
         let coverage_hash = self.compute_coverage_hash(satisfied_constraints);
 
         // Check if this is new coverage
-        {
-            let mut unique = self.unique_coverages.write().unwrap();
-            if !unique.contains(&coverage_hash) {
-                unique.insert(coverage_hash);
-                is_new = true;
-                *self.new_coverage_count.write().unwrap() += 1;
-            }
-        }
+        let is_new = self.record_coverage_hash(coverage_hash);
 
         // Record individual hits
         {
@@ -78,6 +69,20 @@ impl CoverageTracker {
         }
 
         is_new
+    }
+
+    /// Record a coverage hash when constraint-level coverage is unavailable
+    ///
+    /// Returns true if this hash represents new coverage.
+    pub fn record_coverage_hash(&self, coverage_hash: u64) -> bool {
+        let mut unique = self.unique_coverages.write().unwrap();
+        if !unique.contains(&coverage_hash) {
+            unique.insert(coverage_hash);
+            *self.new_coverage_count.write().unwrap() += 1;
+            true
+        } else {
+            false
+        }
     }
 
     /// Compute a hash of the coverage bitmap
@@ -283,6 +288,15 @@ mod tests {
         assert!(is_new);
 
         assert_eq!(tracker.unique_coverage_patterns(), 2);
+    }
+
+    #[test]
+    fn test_record_coverage_hash() {
+        let tracker = CoverageTracker::new(100);
+
+        assert!(tracker.record_coverage_hash(42));
+        assert!(!tracker.record_coverage_hash(42));
+        assert_eq!(tracker.unique_coverage_patterns(), 1);
     }
 
     #[test]

@@ -3,7 +3,10 @@
 //! Provides a mock implementation of CircuitExecutor that simulates
 //! circuit execution without requiring actual ZK backends.
 
-use super::{CircuitExecutor, ExecutionCoverage, ExecutionResult, CircuitInfo};
+use super::{
+    CircuitExecutor, ConstraintEquation, ConstraintInspector, ConstraintResult, ExecutionCoverage,
+    ExecutionResult, CircuitInfo,
+};
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use async_trait::async_trait;
@@ -158,6 +161,63 @@ impl MockCircuitExecutor {
     }
 }
 
+impl ConstraintInspector for MockCircuitExecutor {
+    fn get_constraints(&self) -> Vec<ConstraintEquation> {
+        let total_inputs = self.num_public_inputs + self.num_private_inputs;
+        let output_base = total_inputs;
+
+        if total_inputs == 0 {
+            return Vec::new();
+        }
+
+        (0..self.num_constraints)
+            .map(|i| {
+                let a_idx = i % total_inputs;
+                let b_idx = (i + 1) % total_inputs;
+                let c_idx = output_base + (i % self.num_outputs.max(1));
+
+                ConstraintEquation {
+                    id: i,
+                    a_terms: vec![(a_idx, FieldElement::one())],
+                    b_terms: vec![(b_idx, FieldElement::one())],
+                    c_terms: vec![(c_idx, FieldElement::one())],
+                    description: Some("mock constraint".to_string()),
+                }
+            })
+            .collect()
+    }
+
+    fn check_constraints(&self, _witness: &[FieldElement]) -> Vec<ConstraintResult> {
+        self.get_constraints()
+            .iter()
+            .map(|c| ConstraintResult {
+                constraint_id: c.id,
+                satisfied: true,
+                lhs_value: FieldElement::one(),
+                rhs_value: FieldElement::one(),
+            })
+            .collect()
+    }
+
+    fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
+        self.get_constraints()
+            .iter()
+            .map(|c| {
+                let mut deps: Vec<usize> = c
+                    .a_terms
+                    .iter()
+                    .chain(c.b_terms.iter())
+                    .chain(c.c_terms.iter())
+                    .map(|(idx, _)| *idx)
+                    .collect();
+                deps.sort_unstable();
+                deps.dedup();
+                deps
+            })
+            .collect()
+    }
+}
+
 #[async_trait]
 impl CircuitExecutor for MockCircuitExecutor {
     fn framework(&self) -> Framework {
@@ -238,6 +298,10 @@ impl CircuitExecutor for MockCircuitExecutor {
         // This ensures proofs generated for one set of inputs
         // won't verify for different inputs
         Ok(&proof[0..32] == input_hash.as_slice())
+    }
+
+    fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
+        Some(self)
     }
 }
 

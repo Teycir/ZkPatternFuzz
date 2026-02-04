@@ -173,7 +173,7 @@ impl CircuitExecutor for CircomExecutor {
         
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = ExecutionCoverage::default();
+                let coverage = ExecutionCoverage::with_output_hash(&outputs);
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -233,7 +233,7 @@ impl CircuitExecutor for NoirExecutor {
         
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = ExecutionCoverage::default();
+                let coverage = ExecutionCoverage::with_output_hash(&outputs);
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -293,7 +293,7 @@ impl CircuitExecutor for Halo2Executor {
         
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = ExecutionCoverage::default();
+                let coverage = ExecutionCoverage::with_output_hash(&outputs);
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -353,7 +353,7 @@ impl CircuitExecutor for CairoExecutor {
         
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = ExecutionCoverage::default();
+                let coverage = ExecutionCoverage::with_output_hash(&outputs);
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -430,6 +430,25 @@ pub struct ExecutionCoverage {
 impl ExecutionCoverage {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_output_hash(outputs: &[FieldElement]) -> Self {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+        for fe in outputs {
+            hasher.update(fe.0);
+        }
+        let hash = hasher.finalize();
+        let coverage_hash = u64::from_le_bytes([
+            hash[0], hash[1], hash[2], hash[3],
+            hash[4], hash[5], hash[6], hash[7],
+        ]);
+
+        Self {
+            coverage_hash,
+            ..Default::default()
+        }
     }
 
     pub fn with_constraints(satisfied: Vec<usize>, evaluated: Vec<usize>) -> Self {

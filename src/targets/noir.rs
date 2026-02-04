@@ -12,6 +12,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 /// Noir circuit target with full backend integration
 pub struct NoirTarget {
@@ -294,6 +295,8 @@ impl NoirTarget {
             anyhow::bail!("Circuit not compiled. Call compile() first.");
         }
 
+        let _guard = noir_io_lock().lock().unwrap();
+
         // Create Prover.toml with inputs
         let prover_toml = self.create_prover_toml(inputs)?;
         let prover_path = self.project_path.join("Prover.toml");
@@ -399,6 +402,11 @@ impl NoirTarget {
     }
 }
 
+fn noir_io_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 impl TargetCircuit for NoirTarget {
     fn framework(&self) -> Framework {
         Framework::Noir
@@ -437,6 +445,8 @@ impl TargetCircuit for NoirTarget {
             anyhow::bail!("Circuit not compiled. Call compile() first.");
         }
 
+        let _guard = noir_io_lock().lock().unwrap();
+
         // Create Prover.toml
         let prover_toml = self.create_prover_toml(witness)?;
         std::fs::write(self.project_path.join("Prover.toml"), &prover_toml)?;
@@ -473,6 +483,8 @@ impl TargetCircuit for NoirTarget {
     }
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {
+        let _guard = noir_io_lock().lock().unwrap();
+
         // Write proof to file
         let proof_dir = self.project_path.join("proofs");
         std::fs::create_dir_all(&proof_dir)?;

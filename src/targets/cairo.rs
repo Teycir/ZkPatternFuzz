@@ -12,6 +12,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 /// Cairo circuit target with full backend integration
 pub struct CairoTarget {
@@ -304,6 +305,11 @@ impl CairoTarget {
             anyhow::bail!("Program not compiled. Call compile() first.");
         }
 
+        let _guard = cairo_io_lock().lock().unwrap();
+        self.execute_cairo_inner(inputs)
+    }
+
+    fn execute_cairo_inner(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
         match self.cairo_version {
             CairoVersion::Cairo0 => self.execute_cairo0(inputs),
             CairoVersion::Cairo1 => self.execute_cairo1(inputs),
@@ -511,15 +517,19 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
+        let _guard = cairo_io_lock().lock().unwrap();
+
         // First execute with proof mode to generate trace
         let target = self.clone_with_proof_mode(true);
-        target.execute_cairo(witness)?;
+        target.execute_cairo_inner(witness)?;
         
         // Then generate STARK proof
         self.generate_stark_proof()
     }
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {
+        let _guard = cairo_io_lock().lock().unwrap();
+
         // Write proof to file
         let proof_path = self.build_dir.join("proof.json");
         std::fs::write(&proof_path, proof)?;
@@ -553,6 +563,11 @@ impl CairoTarget {
             },
         }
     }
+}
+
+fn cairo_io_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 /// Convert FieldElement to decimal string

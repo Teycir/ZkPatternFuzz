@@ -60,6 +60,11 @@ pub trait CircuitExecutor: Send + Sync {
     fn is_likely_underconstrained(&self) -> bool {
         self.circuit_info().is_likely_underconstrained()
     }
+
+    /// Get constraint inspector if available
+    fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
+        None
+    }
 }
 
 /// Trait for executors that support witness extraction

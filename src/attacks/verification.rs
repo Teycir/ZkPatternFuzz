@@ -50,6 +50,16 @@ impl VerificationFuzzer {
         self
     }
 
+    pub fn with_edge_case_tests(mut self, count: usize) -> Self {
+        self.edge_case_tests = count;
+        self
+    }
+
+    pub fn with_mutation_rate(mut self, rate: f64) -> Self {
+        self.mutation_rate = rate.clamp(0.0, 1.0);
+        self
+    }
+
     /// Run verification fuzzing against an executor
     pub fn fuzz(
         &self,
@@ -373,7 +383,7 @@ impl Attack for VerificationFuzzer {
     }
 
     fn attack_type(&self) -> AttackType {
-        AttackType::Soundness
+        AttackType::VerificationFuzzing
     }
 
     fn description(&self) -> &str {

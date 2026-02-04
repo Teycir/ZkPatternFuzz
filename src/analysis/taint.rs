@@ -7,6 +7,7 @@
 
 use crate::config::Severity;
 use crate::fuzzer::{Finding, ProofOfConcept};
+use crate::executor::ConstraintEquation;
 use std::collections::{HashMap, HashSet};
 
 /// Taint label for tracking data flow
@@ -170,6 +171,10 @@ impl TaintAnalyzer {
         let mut findings = Vec::new();
 
         for (signal_idx, taint_state) in &self.signal_taints {
+            if self.config.analyze_outputs_only && !taint_state.is_leaked {
+                continue;
+            }
+
             // Check for mixed public/private taint (potential leakage)
             if taint_state.has_public_taint() && taint_state.has_private_taint() {
                 let private_indices: Vec<_> = taint_state
@@ -222,8 +227,61 @@ impl TaintAnalyzer {
 
     /// Mark a signal as a public output (potential leak point)
     pub fn mark_as_output(&mut self, signal_idx: usize) {
-        if let Some(taint) = self.signal_taints.get_mut(&signal_idx) {
-            taint.is_leaked = true;
+        self.signal_taints
+            .entry(signal_idx)
+            .or_default()
+            .is_leaked = true;
+    }
+
+    /// Mark output signals based on constraint definitions
+    pub fn mark_outputs_from_constraints(&mut self, constraints: &[ConstraintEquation]) {
+        for constraint in constraints {
+            for (signal_idx, _) in &constraint.c_terms {
+                self.mark_as_output(*signal_idx);
+            }
+        }
+    }
+
+    /// Propagate taint across all constraints until convergence
+    pub fn propagate_constraints(&mut self, constraints: &[ConstraintEquation]) {
+        let mut depth = 0;
+        let max_depth = self.config.max_propagation_depth.max(1);
+
+        loop {
+            let mut changed = false;
+
+            for constraint in constraints {
+                let mut input_signals: Vec<usize> = constraint
+                    .a_terms
+                    .iter()
+                    .chain(constraint.b_terms.iter())
+                    .map(|(idx, _)| *idx)
+                    .collect();
+                input_signals.sort_unstable();
+                input_signals.dedup();
+
+                for (output_idx, _) in &constraint.c_terms {
+                    let before = self
+                        .signal_taints
+                        .get(output_idx)
+                        .map(|t| t.labels.len())
+                        .unwrap_or(0);
+                    self.propagate_constraint(constraint.id, &input_signals, *output_idx);
+                    let after = self
+                        .signal_taints
+                        .get(output_idx)
+                        .map(|t| t.labels.len())
+                        .unwrap_or(0);
+                    if after > before {
+                        changed = true;
+                    }
+                }
+            }
+
+            depth += 1;
+            if !changed || depth >= max_depth {
+                break;
+            }
         }
     }
 
@@ -309,6 +367,7 @@ mod tests {
 
         // Create mixed flow
         analyzer.propagate_constraint(0, &[0, 1], 2);
+        analyzer.mark_as_output(2);
 
         let findings = analyzer.analyze();
         assert!(!findings.is_empty());
