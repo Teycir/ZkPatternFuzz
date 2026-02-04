@@ -91,64 +91,80 @@ impl Corpus {
 
     /// Add a test case to the corpus
     /// Returns true if the case was added (new coverage), false if duplicate
+    /// 
+    /// # Thread Safety
+    /// This method holds write locks for the entire operation to prevent
+    /// TOCTOU race conditions where multiple threads could add the same
+    /// coverage hash between check and insert.
     pub fn add(&self, entry: CorpusEntry) -> bool {
         let coverage_hash = entry.coverage_hash;
 
-        // Check for duplicate coverage
-        {
-            let index = self.coverage_index.read().unwrap();
-            if index.contains_key(&coverage_hash) {
-                return false;
-            }
+        // Acquire write locks upfront to prevent TOCTOU race condition
+        // Previously, we checked with a read lock, released it, then acquired
+        // a write lock - allowing another thread to insert the same hash
+        let mut entries = self.entries.write().unwrap();
+        let mut index = self.coverage_index.write().unwrap();
+
+        // Check for duplicate coverage AFTER acquiring write locks
+        if index.contains_key(&coverage_hash) {
+            return false;
         }
 
-        // Add to corpus
-        {
-            let mut entries = self.entries.write().unwrap();
-            let mut index = self.coverage_index.write().unwrap();
+        // Check size limit and evict if necessary
+        if entries.len() >= self.max_size {
+            // Find and remove the lowest energy entry
+            // Using swap_remove for O(1) removal, then only update the swapped entry's index
+            if let Some(min_idx) = entries
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, e)| e.energy)
+                .map(|(i, _)| i)
+            {
+                let removed = entries.swap_remove(min_idx);
+                index.remove(&removed.coverage_hash);
 
-            // Check size limit
-            if entries.len() >= self.max_size {
-                // Remove lowest energy entry
-                if let Some(min_idx) = entries
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(_, e)| e.energy)
-                    .map(|(i, _)| i)
-                {
-                    let removed = entries.remove(min_idx);
-                    index.remove(&removed.coverage_hash);
-
-                    // Rebuild index to ensure consistency
-                    // This is safer than trying to update indices incrementally
-                    // which can lead to corruption if the removed entry's hash
-                    // collides or if there are edge cases
-                    index.clear();
-                    for (i, entry) in entries.iter().enumerate() {
-                        index.insert(entry.coverage_hash, i);
-                    }
+                // Only update the index for the entry that was swapped into min_idx position
+                // (if any entry was swapped, i.e., min_idx wasn't the last element)
+                if min_idx < entries.len() {
+                    let swapped_hash = entries[min_idx].coverage_hash;
+                    index.insert(swapped_hash, min_idx);
                 }
             }
-
-            let new_idx = entries.len();
-            index.insert(coverage_hash, new_idx);
-            entries.push(entry);
         }
+
+        let new_idx = entries.len();
+        index.insert(coverage_hash, new_idx);
+        entries.push(entry);
 
         true
     }
 
-    /// Get a random entry from the corpus
+    /// Get a random entry from the corpus using energy-weighted selection
+    /// 
+    /// Entries with higher energy are more likely to be selected.
+    /// Each entry has a minimum effective energy of 1 to ensure selection
+    /// is always possible even after aggressive energy decay.
+    /// 
+    /// # Panics
+    /// This function will panic if the invariant `total_energy > 0` is violated,
+    /// which should never happen given the `.max(1)` guarantee.
     pub fn get_random(&self, rng: &mut impl rand::Rng) -> Option<CorpusEntry> {
         let entries = self.entries.read().unwrap();
         if entries.is_empty() {
             return None;
         }
 
-        // Energy-weighted selection
-        // Note: total_energy can never be 0 because we use max(1) for each entry
-        // This ensures we always have valid energy for weighted selection
+        // Energy-weighted selection with minimum energy guarantee
+        // Each entry contributes at least 1 to total_energy, preventing division by zero
+        // even after aggressive decay_energy() calls that might set all energies to 0
         let total_energy: usize = entries.iter().map(|e| e.energy.max(1)).sum();
+
+        // Invariant: total_energy >= entries.len() >= 1
+        debug_assert!(
+            total_energy > 0,
+            "Total energy must be > 0 when corpus is non-empty (got {} entries)",
+            entries.len()
+        );
 
         let mut target = rng.gen_range(0..total_energy);
         for entry in entries.iter() {
@@ -159,6 +175,7 @@ impl Corpus {
             target -= energy;
         }
 
+        // Fallback (should be unreachable due to energy sum matching selection)
         entries.last().cloned()
     }
 
@@ -298,6 +315,8 @@ pub fn create_corpus(max_size: usize) -> SharedCorpus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::thread;
 
     #[test]
     fn test_corpus_add() {
@@ -349,5 +368,66 @@ mod tests {
         }
 
         assert!(corpus.len() <= 2);
+    }
+
+    #[test]
+    fn test_corpus_concurrent_add_no_duplicates() {
+        // Test that concurrent adds of the same coverage hash don't result in duplicates
+        let corpus = Arc::new(Corpus::new(1000));
+        let num_threads = 10;
+        let entries_per_thread = 100;
+
+        let handles: Vec<_> = (0..num_threads)
+            .map(|thread_id| {
+                let corpus = Arc::clone(&corpus);
+                thread::spawn(move || {
+                    for i in 0..entries_per_thread {
+                        // Use same coverage hash across threads to test deduplication
+                        let hash = i as u64;
+                        let entry = CorpusEntry::new(
+                            TestCase {
+                                inputs: vec![FieldElement::from_u64((thread_id * 1000 + i) as u64)],
+                                expected_output: None,
+                                metadata: TestMetadata::default(),
+                            },
+                            hash,
+                        );
+                        corpus.add(entry);
+                    }
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Should have exactly entries_per_thread unique hashes
+        // (not num_threads * entries_per_thread duplicates)
+        assert_eq!(corpus.len(), entries_per_thread);
+    }
+
+    #[test]
+    fn test_get_random_with_zero_energy() {
+        let corpus = Corpus::new(100);
+        
+        // Add entries with zero energy
+        for i in 0..5u64 {
+            let mut entry = CorpusEntry::new(
+                TestCase {
+                    inputs: vec![FieldElement::from_u64(i)],
+                    expected_output: None,
+                    metadata: TestMetadata::default(),
+                },
+                i,
+            );
+            entry.energy = 0; // Force zero energy
+            corpus.add(entry);
+        }
+
+        // Should still be able to select (due to .max(1) guarantee)
+        let mut rng = rand::thread_rng();
+        let selected = corpus.get_random(&mut rng);
+        assert!(selected.is_some());
     }
 }

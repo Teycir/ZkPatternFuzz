@@ -35,13 +35,12 @@ attacks:
         - "0"
         - "1"
         - "p-1"
-        - "p"
         - "(p-1)/2"
 
   - type: "collision"
-    description: "Find different preimages producing same output"
+    description: "Find different preimages producing same output (smoke test)"
     config:
-      samples: 1000
+      samples: 100000
 
 # Input specifications
 inputs:

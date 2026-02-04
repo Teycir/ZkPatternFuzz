@@ -11,7 +11,7 @@ campaign:
     and state transition validity.
   target:
     framework: halo2
-    circuit_path: "/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits"
+    circuit_path: "./circuits/zkevm-circuits"
     main_component: "SuperCircuit"
   
   parameters:

@@ -11,7 +11,7 @@ campaign:
     nullifier circuits.
   target:
     framework: circom
-    circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+    circuit_path: "./circuits/semaphore.circom"
     main_component: "Semaphore"
   
   parameters:

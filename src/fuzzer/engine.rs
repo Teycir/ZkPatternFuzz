@@ -421,7 +421,13 @@ impl FuzzingEngine {
         let field_modulus = self.get_field_modulus();
 
         for value in test_values {
-            let expanded = crate::config::parser::expand_value_placeholder(&value, &field_modulus);
+            let expanded = match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::warn!("Skipping invalid arithmetic test value '{}': {}", value, e);
+                    continue;
+                }
+            };
             let mut fe_bytes = [0u8; 32];
             let start = 32_usize.saturating_sub(expanded.len());
             fe_bytes[start..].copy_from_slice(&expanded[..expanded.len().min(32)]);
@@ -549,7 +555,13 @@ impl FuzzingEngine {
         let field_modulus = self.get_field_modulus();
 
         for value in test_values {
-            let expanded = crate::config::parser::expand_value_placeholder(&value, &field_modulus);
+            let expanded = match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::warn!("Skipping invalid boundary test value '{}': {}", value, e);
+                    continue;
+                }
+            };
             let mut fe_bytes = [0u8; 32];
             let start = 32_usize.saturating_sub(expanded.len());
             fe_bytes[start..].copy_from_slice(&expanded[..expanded.len().min(32)]);

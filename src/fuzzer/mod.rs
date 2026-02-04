@@ -62,12 +62,30 @@ impl FieldElement {
         Self(bytes)
     }
 
+    /// Parse a hex string into a FieldElement
+    /// 
+    /// # Errors
+    /// Returns an error if:
+    /// - The hex string is invalid
+    /// - The decoded value exceeds 32 bytes (silently truncating large values
+    ///   could hide bugs in test configurations)
     pub fn from_hex(hex_str: &str) -> anyhow::Result<Self> {
         let clean = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+        let clean = clean.strip_prefix("0X").unwrap_or(clean);
         let decoded = hex::decode(clean)?;
+        
+        // Reject values that are too large instead of silently truncating
+        if decoded.len() > 32 {
+            anyhow::bail!(
+                "Hex value too long: {} bytes (max 32). Value: 0x{}...",
+                decoded.len(),
+                &clean[..clean.len().min(16)]
+            );
+        }
+        
         let mut bytes = [0u8; 32];
-        let start = 32_usize.saturating_sub(decoded.len());
-        bytes[start..].copy_from_slice(&decoded[..decoded.len().min(32)]);
+        let start = 32 - decoded.len();
+        bytes[start..].copy_from_slice(&decoded);
         Ok(Self(bytes))
     }
 
@@ -221,9 +239,19 @@ impl ZkFuzzer {
         // Add interesting values from input specs
         for input in &self.config.inputs {
             for interesting in &input.interesting {
-                if let Ok(fe) = FieldElement::from_hex(interesting) {
-                    let test_case = self.create_test_case_with_value(fe);
-                    self.corpus.push(test_case);
+                match FieldElement::from_hex(interesting) {
+                    Ok(fe) => {
+                        let test_case = self.create_test_case_with_value(fe);
+                        self.corpus.push(test_case);
+                    }
+                    Err(e) => {
+                        // Log warning instead of silently ignoring invalid values
+                        tracing::warn!(
+                            "Ignoring invalid interesting value '{}': {}",
+                            interesting,
+                            e
+                        );
+                    }
                 }
             }
         }
@@ -404,7 +432,13 @@ impl ZkFuzzer {
         let field_modulus = self.get_field_modulus();
 
         for value in test_values {
-            let expanded = crate::config::parser::expand_value_placeholder(&value, &field_modulus);
+            let expanded = match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::warn!("Skipping invalid test value '{}': {}", value, e);
+                    continue;
+                }
+            };
             let mut fe_bytes = [0u8; 32];
             let start = 32_usize.saturating_sub(expanded.len());
             fe_bytes[start..].copy_from_slice(&expanded[..expanded.len().min(32)]);
@@ -717,7 +751,8 @@ impl ZkFuzzer {
 
     fn parse_boundary_value(&mut self, value: &str) -> anyhow::Result<FieldElement> {
         let field_modulus = self.get_field_modulus();
-        let expanded = crate::config::parser::expand_value_placeholder(value, &field_modulus);
+        let expanded = crate::config::parser::expand_value_placeholder(value, &field_modulus)
+            .map_err(|e| anyhow::anyhow!("Invalid boundary value '{}': {}", value, e))?;
         let mut fe_bytes = [0u8; 32];
         let start = 32_usize.saturating_sub(expanded.len());
         fe_bytes[start..].copy_from_slice(&expanded[..expanded.len().min(32)]);

@@ -11,7 +11,7 @@ campaign:
     proves knowledge of a commitment in a merkle tree.
   target:
     framework: circom
-    circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/tornado-core/circuits/withdraw.circom"
+    circuit_path: "./circuits/withdraw.circom"
     main_component: "Withdraw"
   
   parameters:

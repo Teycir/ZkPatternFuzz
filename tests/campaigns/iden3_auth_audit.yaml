@@ -11,7 +11,7 @@ campaign:
     privacy-preserving identity proofs.
   target:
     framework: circom
-    circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/auth/authV3.circom"
+    circuit_path: "./circuits/auth/authV3.circom"
     main_component: "AuthV3"
   
   parameters:
