@@ -1,0 +1,146 @@
+# Real-world ZK Fuzzing Campaign: Iden3 Auth Circuits
+# Target: Identity verification circuits
+# Source: /media/elements/Repos/zk0d/cat3_privacy/circuits
+
+campaign:
+  name: "Iden3 Authentication Circuit Audit"
+  version: "1.0"
+  description: |
+    Iden3 circuits for ZK identity verification.
+    Tests authentication, credential verification, and
+    privacy-preserving identity proofs.
+  target:
+    framework: circom
+    circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/auth/authV3.circom"
+    main_component: "AuthV3"
+  
+  parameters:
+    field: "bn254"
+    max_constraints: 80000
+    timeout_seconds: 600
+
+attacks:
+  # Critical: Identity impersonation
+  - type: underconstrained
+    description: "Detect if different identities can produce valid auth proofs"
+    config:
+      witness_pairs: 8000
+      critical_signals:
+        - "userID"
+        - "claimHash"
+        - "authClaim"
+
+  # Critical: Signature forgery
+  - type: soundness
+    description: "Attempt to forge EdDSA signatures in circuits"
+    config:
+      forge_attempts: 5000
+      mutation_rate: 0.1
+      focus_on:
+        - "signature"
+        - "publicKey"
+
+  # High: Claim validation bypass
+  - type: boundary
+    description: "Test claim validity date and schema boundaries"
+    config:
+      test_values:
+        - "0"
+        - "current_timestamp"
+        - "max_timestamp"
+        - "2^64-1"
+
+  # High: Merkle tree state manipulation
+  - type: collision
+    description: "Search for state tree collisions"
+    config:
+      samples: 15000
+      focus_hashes:
+        - "claimTreeRoot"
+        - "revTreeRoot"
+        - "rootsTreeRoot"
+
+  # Medium: Field arithmetic in BJJ operations
+  - type: arithmetic_overflow
+    description: "Test Baby JubJub curve arithmetic edge cases"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "p-1"
+        - "p"
+        - "subgroup_order"
+        - "subgroup_order-1"
+
+inputs:
+  - name: "genesisID"
+    type: "field"
+    fuzz_strategy: random
+    description: "Genesis identity"
+
+  - name: "profileNonce"
+    type: "field"
+    fuzz_strategy: interesting_values
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0xffffffff"
+    description: "Profile nonce for derived identity"
+
+  - name: "authClaim"
+    type: "array[8]"
+    fuzz_strategy: random
+    description: "Authentication claim slots"
+
+  - name: "authClaimIncMtp"
+    type: "array[40]"
+    fuzz_strategy: random
+    description: "Inclusion proof for auth claim"
+
+  - name: "authClaimNonRevMtp"
+    type: "array[40]"
+    fuzz_strategy: random
+    description: "Non-revocation proof"
+
+  - name: "claimsTreeRoot"
+    type: "field"
+    fuzz_strategy: random
+    description: "Claims tree root"
+
+  - name: "revTreeRoot"
+    type: "field"
+    fuzz_strategy: random
+    description: "Revocation tree root"
+
+  - name: "rootsTreeRoot"
+    type: "field"
+    fuzz_strategy: random
+    description: "Roots tree root"
+
+  - name: "challenge"
+    type: "field"
+    fuzz_strategy: random
+    description: "Authentication challenge"
+
+  - name: "challengeSignatureR8x"
+    type: "field"
+    fuzz_strategy: random
+    description: "Signature R point x-coordinate"
+
+  - name: "challengeSignatureR8y"
+    type: "field"
+    fuzz_strategy: random
+    description: "Signature R point y-coordinate"
+
+  - name: "challengeSignatureS"
+    type: "field"
+    fuzz_strategy: random
+    description: "Signature scalar"
+
+reporting:
+  output_dir: "./reports/iden3"
+  formats:
+    - json
+    - markdown
+  include_poc: true
+  crash_reproduction: true

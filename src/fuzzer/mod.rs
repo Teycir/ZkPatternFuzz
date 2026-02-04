@@ -1,12 +1,17 @@
 //! Core fuzzing engine for ZK circuits
 
+mod constants;
 mod mutators;
 mod oracle;
+mod engine;
 
+pub use constants::*;
 pub use mutators::*;
 pub use oracle::*;
+pub use engine::FuzzingEngine;
 
 use crate::config::*;
+use crate::progress::ProgressReporter;
 use crate::reporting::FuzzReport;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
@@ -140,6 +145,30 @@ impl ZkFuzzer {
             coverage: CoverageMap::new(),
             rng,
         }
+    }
+
+    /// Create and run using the new engine with progress reporting
+    pub async fn run_with_progress(
+        config: FuzzConfig,
+        seed: Option<u64>,
+        workers: usize,
+        verbose: bool,
+    ) -> anyhow::Result<FuzzReport> {
+        // Calculate total iterations for progress bar
+        let total: u64 = config.attacks.iter().map(|a| {
+            a.config.get("witness_pairs").and_then(|v| v.as_u64()).unwrap_or(1000)
+            + a.config.get("forge_attempts").and_then(|v| v.as_u64()).unwrap_or(0)
+            + a.config.get("samples").and_then(|v| v.as_u64()).unwrap_or(0)
+        }).sum();
+
+        let progress = ProgressReporter::new(&config.campaign.name, total.max(1000), verbose);
+
+        let mut engine = FuzzingEngine::new(config, seed, workers)?;
+        let report = engine.run(Some(&progress)).await?;
+
+        progress.finish(&engine.stats());
+
+        Ok(report)
     }
 
     /// Run the fuzzing campaign
@@ -518,9 +547,12 @@ impl ZkFuzzer {
                         if let Some(input) = self.corpus[base_idx].inputs.get(inputs.len()) {
                             mutate_field_element(input, &mut self.rng)
                         } else {
+                            // Fallback to random if no input at this position
                             FieldElement::random(&mut self.rng)
                         }
                     } else {
+                        // Proper fallback when corpus is empty - use random generation
+                        // instead of returning zero which would be unhelpful
                         FieldElement::random(&mut self.rng)
                     }
                 }
@@ -583,20 +615,49 @@ impl ZkFuzzer {
     }
 
     /// Generate a proof for the given test case (mock)
-    async fn generate_proof(&self, _test_case: &TestCase) -> anyhow::Result<Vec<u8>> {
-        // Mock proof generation
+    /// 
+    /// The mock proof embeds a hash of the inputs so that verification
+    /// can check consistency (making soundness tests meaningful).
+    async fn generate_proof(&self, test_case: &TestCase) -> anyhow::Result<Vec<u8>> {
+        // Mock proof generation with input commitment
         let mut proof = vec![0u8; 256];
-        for (i, byte) in proof.iter_mut().enumerate() {
-            *byte = (i % 256) as u8;
+        
+        // First 32 bytes: hash of inputs (commitment)
+        let mut hasher = Sha256::new();
+        for input in &test_case.inputs {
+            hasher.update(&input.0);
         }
+        let hash = hasher.finalize();
+        proof[0..32].copy_from_slice(&hash);
+        
+        // Add some structure for format validation
+        proof[32] = 0x01; // Version byte
+        proof[33..65].copy_from_slice(&hash); // Duplicate for padding
+        
         Ok(proof)
     }
 
     /// Verify a proof with given inputs (mock)
-    async fn verify_proof(&self, _proof: &[u8], _inputs: &[FieldElement]) -> anyhow::Result<bool> {
-        // Mock verification - always returns false (sound behavior)
-        // In a real implementation, this would verify using the ZK backend
-        Ok(false)
+    /// 
+    /// In mock mode, we perform a basic consistency check to make
+    /// soundness testing meaningful. A proof is valid if it was
+    /// generated for inputs that produce the same hash.
+    async fn verify_proof(&self, proof: &[u8], inputs: &[FieldElement]) -> anyhow::Result<bool> {
+        // Extract the commitment from proof (first 32 bytes contain input hash)
+        if proof.len() < 32 {
+            return Ok(false);
+        }
+
+        // Compute expected hash from inputs
+        let mut hasher = Sha256::new();
+        for input in inputs {
+            hasher.update(&input.0);
+        }
+        let input_hash = hasher.finalize();
+
+        // Check if proof was generated for these inputs
+        // This makes mock soundness testing meaningful
+        Ok(&proof[0..32] == input_hash.as_slice())
     }
 
     fn hash_output(&self, output: &[FieldElement]) -> Vec<u8> {
@@ -636,13 +697,8 @@ impl ZkFuzzer {
     }
 
     fn get_field_modulus(&self) -> [u8; 32] {
-        // bn254 scalar field modulus
-        let mut modulus = [0u8; 32];
-        let hex_modulus = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
-        if let Ok(decoded) = hex::decode(hex_modulus) {
-            modulus.copy_from_slice(&decoded);
-        }
-        modulus
+        // Use centralized field constants
+        bn254_modulus_bytes()
     }
 
     fn detect_overflow_indicator(&self, output: &[FieldElement]) -> bool {

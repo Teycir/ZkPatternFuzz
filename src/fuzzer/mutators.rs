@@ -1,6 +1,6 @@
 //! Mutation strategies for fuzzing
 
-use super::FieldElement;
+use super::{FieldElement, BN254_MODULUS_MINUS_ONE};
 use rand::Rng;
 
 /// Apply a random mutation to a field element
@@ -118,10 +118,9 @@ fn boundary_mutation(rng: &mut impl Rng) -> FieldElement {
             FieldElement([0xff; 32])
         }
         3 => {
-            // bn254 scalar field p - 1
+            // bn254 scalar field p - 1 (using centralized constant)
             let mut bytes = [0u8; 32];
-            let hex = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000";
-            if let Ok(decoded) = hex::decode(hex) {
+            if let Ok(decoded) = hex::decode(BN254_MODULUS_MINUS_ONE) {
                 bytes.copy_from_slice(&decoded);
             }
             FieldElement(bytes)
