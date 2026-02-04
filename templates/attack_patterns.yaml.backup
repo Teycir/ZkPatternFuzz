@@ -15,7 +15,6 @@ patterns:
       - type: "boundary"
         description: "Test edge case tree depths"
         config:
-          # Note: Strings like "max_depth" are symbolic references to be evaluated by the fuzzer
           test_depths: [0, 1, "max_depth", "max_depth+1"]
 
       - type: "underconstrained"
@@ -57,7 +56,6 @@ patterns:
       - type: "boundary"
         description: "Test range proof boundaries"
         config:
-          # Note: Arithmetic expressions in strings (e.g., "range_max-1") are symbolic and should be evaluated
           test_values: ["0", "range_max-1", "range_max", "range_max+1", "-1", "field_mod-1"]
 
       - type: "underconstrained"
@@ -69,7 +67,6 @@ patterns:
       - type: "arithmetic_overflow"
         description: "Test recomposition arithmetic"
         config:
-          # Note: Expressions like "2*field_mod" should be evaluated by the fuzzer
           test_values: ["field_mod-1", "field_mod", "2*field_mod"]
 
   # Signature verification attacks
@@ -131,52 +128,95 @@ patterns:
         config:
           attempts: 500
 
-  # Front-running attacks for DeFi circuits
-  front_running:
-    description: "Attacks exploiting transaction ordering and MEV extraction"
-    attacks:
-      - type: "ordering_dependency"
-        description: "Check if proof validity depends on transaction ordering"
-        config:
-          permutation_tests: 100
-          time_window_ms: 12000  # Typical block time
+# Interesting values for different field types
+interesting_values:
+  bn254_scalar:
+    - "0x0"                                                                # Zero
+    - "0x1"                                                                # One
+    - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000" # p - 1
+    - "0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000" # (p-1)/2
+    - "0x2"                                                                # Two (common in doubling)
+    - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" # Max u256
 
-      - type: "sandwich_attack"
-        description: "Test vulnerability to sandwich attacks in AMM/DEX circuits"
-        config:
-          price_impact_threshold: 0.01
-          samples: 500
+  bn254_base:
+    - "0x0"
+    - "0x1"
+    - "0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd46" # Base field p - 1
 
-      - type: "backrun_extraction"
-        description: "Check if committed values can be extracted before reveal"
-        config:
-          commitment_schemes: ["pedersen", "poseidon", "mimc"]
-          extraction_attempts: 1000
+  common:
+    - "0x0"
+    - "0x1"
+    - "0xff"
+    - "0xffff"
+    - "0xffffffff"
+    - "0xffffffffffffffff"
+    - "0xdead"
+    - "0xbeef"
+    - "0xcafe"
 
-  # MEV extraction patterns
-  mev_extraction:
-    description: "Maximum Extractable Value vulnerability patterns"
-    attacks:
-      - type: "state_leakage"
-        description: "Check if private state leaks through public signals"
-        config:
-          correlation_threshold: 0.8
-          samples: 5000
+  # zkEVM-specific values
+  zkevm_evm:
+    - "0x0"                                                                 # Zero
+    - "0x1"                                                                 # One  
+    - "0xff"                                                                # Max uint8
+    - "0xffff"                                                              # Max uint16
+    - "0xffffffff"                                                          # Max uint32
+    - "0xffffffffffffffff"                                                  # Max uint64
+    - "0xffffffffffffffffffffffffffffffff"                                  # Max uint128
+    - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # Max uint256
+    - "0x8000000000000000000000000000000000000000000000000000000000000000"  # Min int256 (two's complement)
+    - "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # Max int256
 
-      - type: "oracle_manipulation"
-        description: "Test price oracle manipulation in ZK circuits"
-        config:
-          price_deviation_percent: [1, 5, 10, 50, 100]
-          twap_windows: [1, 5, 30]
+  # Gas-related values for griefing attacks
+  gas_values:
+    - "0x0"                    # Zero gas
+    - "0x5208"                 # 21000 - base transaction cost
+    - "0x7a120"                # 500000 - medium contract call
+    - "0x1c9c380"              # 30000000 - block gas limit
+    - "0xfffffffffff"          # Overflow attempt
 
-      - type: "liquidation_race"
-        description: "Check for liquidation front-running vulnerabilities"
-        config:
-          health_factor_range: [0.9, 1.0, 1.1]
-          samples: 500
+  # Storage slot patterns
+  storage_slots:
+    - "0x0"                                                                 # Slot 0
+    - "0x1"                                                                 # Slot 1
+    - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # Max slot
+    - "0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"  # keccak256(0)
+    - "0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"  # keccak256(1)
 
-  # Griefing attacks (valid but expensive proofs)
-  griefing:
+# Mutation strategies for fuzzing campaigns
+mutation_strategies:
+  conservative:
+    description: "Low mutation rate, focused mutations"
+    mutations:
+      - name: "bit_flip"
+        probability: 0.1
+      - name: "arithmetic"
+        probability: 0.1
+        operations: ["add_one", "sub_one"]
+
+  aggressive:
+    description: "High mutation rate, diverse mutations"
+    mutations:
+      - name: "bit_flip"
+        probability: 0.3
+      - name: "byte_flip"
+        probability: 0.2
+      - name: "arithmetic"
+        probability: 0.2
+        operations: ["add_one", "sub_one", "negate", "double"]
+      - name: "havoc"
+        probability: 0.2
+        max_stacked_mutations: 10
+
+  boundary_focused:
+    description: "Focus on boundary values"
+    mutations:
+      - name: "boundary"
+        probability: 0.6
+        use_values: ["zero", "one", "max_field", "half_field"]
+      - name: "arithmetic"
+        probability: 0.3
+        operations: ["add_one", "sub_one"]
     description: "Attacks that create valid but resource-expensive proofs"
     attacks:
       - type: "proof_size_explosion"
@@ -211,7 +251,7 @@ patterns:
         description: "Mix valid and invalid proofs to bypass batch verification"
         config:
           batch_sizes: [2, 4, 8, 16, 32]
-          invalid_positions: [0, 1, "middle", "last", "random"]  # Array of positions
+          invalid_positions: "all"
 
       - type: "aggregation_forgery"
         description: "Forge aggregated proofs from valid individual proofs"
@@ -305,7 +345,7 @@ patterns:
         description: "Break IVC chain by manipulating intermediate proofs"
         config:
           chain_lengths: [2, 5, 10, 50]
-          break_positions: [0, 1, "middle", "last", "random"]  # Array of positions
+          break_positions: "all"
 
       - type: "cycle_detection_bypass"
         description: "Bypass cycle detection in recursive composition"
@@ -331,61 +371,6 @@ patterns:
         description: "Check if aggregation order affects validity"
         config:
           permutation_tests: 100
-
-# Interesting values for different field types
-interesting_values:
-  bn254_scalar:
-    - "0x0"                                                                # Zero
-    - "0x1"                                                                # One
-    - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000" # p - 1
-    - "0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000" # (p-1)/2
-    - "0x2"                                                                # Two (common in doubling)
-    - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" # Max u256
-
-  bn254_base:
-    - "0x0"
-    - "0x1"
-    - "0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd46" # Base field p - 1
-
-  common:
-    - "0x0"
-    - "0x1"
-    - "0xff"
-    - "0xffff"
-    - "0xffffffff"
-    - "0xffffffffffffffff"
-    - "0xdead"
-    - "0xbeef"
-    - "0xcafe"
-
-  # zkEVM-specific values
-  zkevm_evm:
-    - "0x0"                                                                 # Zero
-    - "0x1"                                                                 # One  
-    - "0xff"                                                                # Max uint8
-    - "0xffff"                                                              # Max uint16
-    - "0xffffffff"                                                          # Max uint32
-    - "0xffffffffffffffff"                                                  # Max uint64
-    - "0xffffffffffffffffffffffffffffffff"                                  # Max uint128
-    - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # Max uint256
-    - "0x8000000000000000000000000000000000000000000000000000000000000000"  # Min int256 (two's complement)
-    - "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # Max int256
-
-  # Gas-related values for griefing attacks
-  gas_values:
-    - "0x0"                    # Zero gas
-    - "0x5208"                 # 21000 - base transaction cost
-    - "0x7a120"                # 500000 - medium contract call
-    - "0x1c9c380"              # 30000000 - block gas limit
-    - "0xfffffffffff"          # Overflow attempt
-
-  # Storage slot patterns
-  storage_slots:
-    - "0x0"                                                                 # Slot 0
-    - "0x1"                                                                 # Slot 1
-    - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # Max slot
-    - "0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"  # keccak256(0)
-    - "0xb10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf6"  # keccak256(1)
 
 # Mutation strategies for fuzzing campaigns
 mutation_strategies:
