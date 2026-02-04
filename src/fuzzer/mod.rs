@@ -27,6 +27,7 @@ pub struct ZkFuzzer {
     crashes: Vec<Finding>,
     coverage: CoverageMap,
     rng: StdRng,
+    seed: Option<u64>,
 }
 
 /// A single test case with inputs
@@ -245,6 +246,7 @@ impl ZkFuzzer {
             crashes: Vec::new(),
             coverage: CoverageMap::new(),
             rng,
+            seed,
         }
     }
 
@@ -274,7 +276,29 @@ impl ZkFuzzer {
 
     /// Run the fuzzing campaign
     pub async fn run(&mut self) -> anyhow::Result<FuzzReport> {
-        tracing::info!("Starting fuzzing campaign: {}", self.config.campaign.name);
+        if self.use_legacy_fuzzer() {
+            return self.run_legacy().await;
+        }
+
+        let mut engine = FuzzingEngine::new(self.config.clone(), self.seed, 1)?;
+        engine.run(None).await
+    }
+
+    fn use_legacy_fuzzer(&self) -> bool {
+        self.config
+            .campaign
+            .parameters
+            .additional
+            .get("legacy_fuzzer")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
+    async fn run_legacy(&mut self) -> anyhow::Result<FuzzReport> {
+        tracing::info!(
+            "Starting fuzzing campaign (legacy engine): {}",
+            self.config.campaign.name
+        );
 
         // Initialize corpus with interesting values
         self.seed_corpus()?;
@@ -301,7 +325,10 @@ impl ZkFuzzer {
                     self.run_collision_attack(&attack.config).await?;
                 }
                 _ => {
-                    tracing::warn!("Attack type {:?} not yet fully implemented", attack.attack_type);
+                    tracing::warn!(
+                        "Attack type {:?} not yet fully implemented",
+                        attack.attack_type
+                    );
                 }
             }
         }

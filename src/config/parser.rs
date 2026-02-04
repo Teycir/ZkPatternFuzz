@@ -59,25 +59,58 @@ impl std::error::Error for ValueExpansionError {}
 /// - Hex string is invalid
 /// - Decimal parsing fails for non-placeholder values
 pub fn expand_value_placeholder(value: &str, field_modulus: &[u8; 32]) -> Result<Vec<u8>, ValueExpansionError> {
-    match value.to_lowercase().as_str() {
+    use num_bigint::BigUint;
+
+    let normalized = value.to_lowercase().replace(' ', "");
+    let modulus = BigUint::from_bytes_be(field_modulus);
+
+    let parse_offset = |base: BigUint, offset: &str| -> Result<Vec<u8>, ValueExpansionError> {
+        if offset.is_empty() {
+            return Ok(base.to_bytes_be());
+        }
+
+        let (sign, digits) = offset.split_at(1);
+        let delta = digits.parse::<u64>().map_err(|e| ValueExpansionError {
+            value: value.to_string(),
+            reason: format!("Invalid decimal: {}", e),
+        })?;
+        let delta = BigUint::from(delta);
+
+        let result = match sign {
+            "+" => base + delta,
+            "-" => {
+                if base < delta {
+                    return Err(ValueExpansionError {
+                        value: value.to_string(),
+                        reason: "Underflow while applying offset".to_string(),
+                    });
+                }
+                base - delta
+            }
+            _ => {
+                return Err(ValueExpansionError {
+                    value: value.to_string(),
+                    reason: "Invalid offset format".to_string(),
+                })
+            }
+        };
+
+        Ok(result.to_bytes_be())
+    };
+
+    match normalized.as_str() {
         "0" | "zero" => Ok(vec![0u8; 32]),
         "1" | "one" => {
             let mut bytes = vec![0u8; 32];
             bytes[31] = 1;
             Ok(bytes)
         }
-        "p-1" | "max_field" => {
-            // p - 1
-            let mut result = field_modulus.to_vec();
-            // Subtract 1
-            for i in (0..32).rev() {
-                if result[i] > 0 {
-                    result[i] -= 1;
-                    break;
-                }
-                result[i] = 0xff;
+        "max_field" | "max" => {
+            // max field element = p - 1
+            if modulus == BigUint::from(0u8) {
+                return Ok(vec![0u8; 32]);
             }
-            Ok(result)
+            Ok((modulus.clone() - BigUint::from(1u8)).to_bytes_be())
         }
         "p" | "field_mod" => Ok(field_modulus.to_vec()),
         "(p-1)/2" => {
@@ -98,6 +131,16 @@ pub fn expand_value_placeholder(value: &str, field_modulus: &[u8; 32]) -> Result
                 carry = new_carry;
             }
             Ok(result)
+        }
+        _ if normalized.starts_with("p+") || normalized.starts_with("p-") => {
+            parse_offset(modulus.clone(), &normalized[1..])
+        }
+        _ if normalized.starts_with("max+") || normalized.starts_with("max-") => {
+            if modulus == BigUint::from(0u8) {
+                return Ok(vec![0u8; 32]);
+            }
+            let base = modulus - BigUint::from(1u8);
+            parse_offset(base, &normalized[3..])
         }
         _ if value.starts_with("0x") || value.starts_with("0X") => {
             // Hex value - properly propagate errors
@@ -140,6 +183,7 @@ pub fn expand_value_placeholder_with_default(value: &str, field_modulus: &[u8; 3
 #[cfg(test)]
 mod tests {
     use super::*;
+    use num_bigint::BigUint;
 
     #[test]
     fn test_expand_zero() {
@@ -180,5 +224,21 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.reason.contains("Invalid decimal"));
+    }
+
+    #[test]
+    fn test_expand_max_offsets() {
+        let mut modulus = [0u8; 32];
+        modulus[31] = 5; // p = 5
+
+        let max = expand_value_placeholder("max", &modulus).unwrap();
+        let max_minus = expand_value_placeholder("max-1", &modulus).unwrap();
+        let max_plus = expand_value_placeholder("max+1", &modulus).unwrap();
+        let p_plus = expand_value_placeholder("p+1", &modulus).unwrap();
+
+        assert_eq!(BigUint::from_bytes_be(&max), BigUint::from(4u8));
+        assert_eq!(BigUint::from_bytes_be(&max_minus), BigUint::from(3u8));
+        assert_eq!(BigUint::from_bytes_be(&max_plus), BigUint::from(5u8));
+        assert_eq!(BigUint::from_bytes_be(&p_plus), BigUint::from(6u8));
     }
 }

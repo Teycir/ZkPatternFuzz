@@ -41,26 +41,22 @@ fn halo2_spec_path(name: &str) -> PathBuf {
         .join(format!("{}.json", name))
 }
 
-/// Test that we can detect available backends
+/// Test that all required backends are available
 #[test]
 fn test_backend_availability() {
-    // Check Circom
-    match CircomTarget::check_circom_available() {
-        Ok(version) => println!("Circom available: {}", version),
-        Err(e) => println!("Circom not available: {}", e),
-    }
+    let circom_version = CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    let snarkjs_version = CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
+    let noir_version = NoirTarget::check_nargo_available()
+        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+    let (cairo_version, cairo_str) = CairoTarget::check_cairo_available()
+        .expect("Cairo not available. Ensure cairo-compile and cairo-run are on PATH");
 
-    // Check Noir
-    match NoirTarget::check_nargo_available() {
-        Ok(version) => println!("Noir available: {}", version),
-        Err(e) => println!("Noir not available: {}", e),
-    }
-
-    // Check Cairo
-    match CairoTarget::check_cairo_available() {
-        Ok((version, ver_str)) => println!("Cairo available: {:?} - {}", version, ver_str),
-        Err(e) => println!("Cairo not available: {}", e),
-    }
+    println!("Circom available: {}", circom_version);
+    println!("snarkjs available: {}", snarkjs_version);
+    println!("Noir available: {}", noir_version);
+    println!("Cairo available: {:?} - {}", cairo_version, cairo_str);
 }
 
 /// Test mock executor creation
@@ -184,12 +180,11 @@ fn test_cairo_analysis() {
 
 /// Integration test for Circom (only runs if circom is available)
 #[test]
-#[ignore] // Run with: cargo test --ignored
 fn test_circom_integration() {
-    if CircomTarget::check_circom_available().is_err() {
-        println!("Skipping Circom integration test - circom not available");
-        return;
-    }
+    CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
 
     let circuit_path = circom_test_circuit("multiplier");
     assert!(circuit_path.exists(), "Missing test circuit at {:?}", circuit_path);
@@ -210,12 +205,9 @@ fn test_circom_integration() {
 
 /// Integration test for Noir (only runs if nargo is available)
 #[test]
-#[ignore] // Run with: cargo test --ignored
 fn test_noir_integration() {
-    if NoirTarget::check_nargo_available().is_err() {
-        println!("Skipping Noir integration test - nargo not available");
-        return;
-    }
+    NoirTarget::check_nargo_available()
+        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
 
     let project_path = noir_project_path("multiplier");
     assert!(project_path.exists(), "Missing Noir project at {:?}", project_path);
@@ -234,12 +226,9 @@ fn test_noir_integration() {
 
 /// Integration test for Cairo (only runs if cairo tools are available)
 #[test]
-#[ignore] // Run with: cargo test --ignored
 fn test_cairo_integration() {
-    if CairoTarget::check_cairo_available().is_err() {
-        println!("Skipping Cairo integration test - cairo not available");
-        return;
-    }
+    CairoTarget::check_cairo_available()
+        .expect("Cairo not available. Ensure cairo-compile and cairo-run are on PATH");
 
     let program_path = cairo_program_path("multiplier");
     assert!(program_path.exists(), "Missing Cairo program at {:?}", program_path);
@@ -254,7 +243,6 @@ fn test_cairo_integration() {
 
 /// Integration test for Halo2 JSON spec loading/execution
 #[test]
-#[ignore] // Run with: cargo test --ignored
 fn test_halo2_json_integration() {
     let spec_path = halo2_spec_path("minimal");
     assert!(spec_path.exists(), "Missing Halo2 spec at {:?}", spec_path);

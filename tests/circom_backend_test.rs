@@ -22,32 +22,20 @@ fn test_circuit_path(name: &str) -> PathBuf {
 /// Test that circom and snarkjs are available
 #[test]
 fn test_circom_snarkjs_available() {
-    match CircomTarget::check_circom_available() {
-        Ok(version) => {
-            println!("✓ Circom available: {}", version);
-            assert!(!version.is_empty());
-        }
-        Err(e) => {
-            println!("✗ Circom not available: {}", e);
-            println!("  Install with: npm install -g circom");
-        }
-    }
+    let circom_version = CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    let snarkjs_version = CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
 
-    match CircomTarget::check_snarkjs_available() {
-        Ok(version) => {
-            println!("✓ snarkjs available: {}", version);
-        }
-        Err(e) => {
-            println!("✗ snarkjs not available: {}", e);
-            println!("  Install with: npm install -g snarkjs");
-        }
-    }
+    println!("✓ Circom available: {}", circom_version);
+    println!("✓ snarkjs available: {}", snarkjs_version);
 }
 
 /// Test circuit compilation (requires circom)
 #[test]
-#[ignore] // Run with: cargo test --test circom_backend_test test_multiplier_compilation -- --ignored
 fn test_multiplier_compilation() {
+    CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
     let circuit_path = test_circuit_path("multiplier");
     
     if !circuit_path.exists() {
@@ -74,8 +62,11 @@ fn test_multiplier_compilation() {
 
 /// Test witness generation (requires circom + snarkjs)
 #[test]
-#[ignore] 
 fn test_multiplier_witness_generation() {
+    CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
     let circuit_path = test_circuit_path("multiplier");
     
     let mut target = CircomTarget::new(
@@ -102,8 +93,11 @@ fn test_multiplier_witness_generation() {
 
 /// Test proof generation and verification (requires full snarkjs setup)
 #[test]
-#[ignore]
 fn test_multiplier_proof_generation() {
+    CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
     let circuit_path = test_circuit_path("multiplier");
     
     let mut target = CircomTarget::new(
@@ -132,8 +126,11 @@ fn test_multiplier_proof_generation() {
 
 /// Test range check circuit (underconstrained detection test)
 #[test]
-#[ignore]
 fn test_range_check_circuit() {
+    CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
     let circuit_path = test_circuit_path("range_check");
     
     let mut target = CircomTarget::new(
@@ -163,8 +160,11 @@ fn test_range_check_circuit() {
 
 /// Test boundary conditions
 #[test]
-#[ignore]
 fn test_arithmetic_boundaries() {
+    CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
     let circuit_path = test_circuit_path("multiplier");
     
     let mut target = CircomTarget::new(
@@ -198,24 +198,14 @@ fn test_arithmetic_boundaries() {
 
 /// Run all backend verification tests
 #[test]
-#[ignore]
 fn test_full_backend_verification() {
     println!("\n=== Circom Backend Verification ===\n");
     
     // 1. Check tools are available
-    let circom_available = CircomTarget::check_circom_available().is_ok();
-    let snarkjs_available = CircomTarget::check_snarkjs_available().is_ok();
-    
-    if !circom_available || !snarkjs_available {
-        println!("⚠ Required tools not available:");
-        if !circom_available {
-            println!("  - circom: npm install -g circom");
-        }
-        if !snarkjs_available {
-            println!("  - snarkjs: npm install -g snarkjs");
-        }
-        return;
-    }
+    CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
     
     println!("✓ All required tools available\n");
     

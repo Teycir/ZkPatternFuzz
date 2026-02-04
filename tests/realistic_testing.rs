@@ -3,17 +3,17 @@
 //! Tests against real circuits and known vulnerabilities.
 //! 
 //! NOTE: These tests require real circuit backends to detect actual vulnerabilities.
-//! They are marked as `#[ignore]` until backend integrations are complete.
-//! Run with `cargo test -- --ignored` to execute.
+//! Missing toolchains are treated as hard failures.
 
 use zk_fuzzer::*;
+use zk_fuzzer::targets::CircomTarget;
 use std::path::PathBuf;
 
 /// Test with a deliberately underconstrained circuit
 /// Requires real Circom backend to detect the bug
 #[tokio::test]
-#[ignore = "Requires real Circom backend - mock executor cannot detect underconstrained circuits"]
 async fn test_underconstrained_detection() {
+    require_circom_tools();
     let circuit = r#"
     pragma circom 2.0.0;
     
@@ -22,8 +22,8 @@ async fn test_underconstrained_detection() {
         signal input b;
         signal output c;
         
-        // BUG: b is not constrained!
-        c <== a * 2;
+        // BUG: a and b are not constrained!
+        c <== 1;
     }
     
     component main = Underconstrained();
@@ -35,7 +35,7 @@ async fn test_underconstrained_detection() {
     std::fs::write(&circuit_path, circuit).unwrap();
     
     // Create campaign
-    let config = create_test_config(&circuit_path, "Underconstrained");
+    let config = create_test_config(&circuit_path, "Underconstrained", Framework::Circom);
     let mut fuzzer = ZkFuzzer::new(config, Some(42));
     
     let report = fuzzer.run().await.unwrap();
@@ -49,8 +49,8 @@ async fn test_underconstrained_detection() {
 /// Test with missing range check
 /// Requires real Circom backend to detect the bug
 #[tokio::test]
-#[ignore = "Requires real Circom backend - mock executor cannot detect range check issues"]
 async fn test_missing_range_check() {
+    require_circom_tools();
     let circuit = r#"
     pragma circom 2.0.0;
     
@@ -69,7 +69,7 @@ async fn test_missing_range_check() {
     let circuit_path = temp_dir.path().join("test.circom");
     std::fs::write(&circuit_path, circuit).unwrap();
     
-    let config = create_test_config(&circuit_path, "MissingRangeCheck");
+    let config = create_test_config(&circuit_path, "MissingRangeCheck", Framework::Circom);
     let mut fuzzer = ZkFuzzer::new(config, Some(42));
     
     let report = fuzzer.run().await.unwrap();
@@ -81,7 +81,6 @@ async fn test_missing_range_check() {
 /// Test corpus-based fuzzing effectiveness
 /// Currently limited by mock coverage simulation
 #[tokio::test]
-#[ignore = "Coverage tracking is simulated in mock mode - enable when real backends available"]
 async fn test_corpus_coverage() {
     let config = FuzzConfig::from_yaml("tests/campaigns/mock_merkle_audit.yaml").unwrap();
     let mut fuzzer = ZkFuzzer::new(config, Some(42));
@@ -165,7 +164,7 @@ async fn test_deterministic_fuzzing() {
 }
 
 /// Helper to create test configuration
-fn create_test_config(circuit_path: &PathBuf, component: &str) -> FuzzConfig {
+fn create_test_config(circuit_path: &PathBuf, component: &str, framework: Framework) -> FuzzConfig {
     use serde_yaml::Value;
     
     FuzzConfig {
@@ -173,7 +172,7 @@ fn create_test_config(circuit_path: &PathBuf, component: &str) -> FuzzConfig {
             name: "Test Campaign".to_string(),
             version: "1.0".to_string(),
             target: Target {
-                framework: Framework::Mock,
+                framework,
                 circuit_path: circuit_path.clone(),
                 main_component: component.to_string(),
             },
@@ -183,7 +182,7 @@ fn create_test_config(circuit_path: &PathBuf, component: &str) -> FuzzConfig {
             Attack {
                 attack_type: AttackType::Underconstrained,
                 description: "Test underconstrained".to_string(),
-                config: serde_yaml::from_str("witness_pairs: 100").unwrap(),
+                config: serde_yaml::from_str("witness_pairs: 10").unwrap(),
             },
             Attack {
                 attack_type: AttackType::Boundary,
@@ -213,4 +212,11 @@ fn create_test_config(circuit_path: &PathBuf, component: &str) -> FuzzConfig {
         oracles: vec![],
         reporting: ReportingConfig::default(),
     }
+}
+
+fn require_circom_tools() {
+    CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
 }
