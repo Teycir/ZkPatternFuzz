@@ -1,0 +1,109 @@
+# Mock Merkle Tree Circuit Audit Campaign
+# This campaign tests a mock merkle tree circuit for common vulnerabilities
+---
+campaign:
+  name: "Mock Merkle Tree Audit"
+  version: "1.0"
+  target:
+    framework: "mock"
+    circuit_path: "./circuits/mock_merkle.circom"
+    main_component: "MerkleProof"
+
+  parameters:
+    field: "bn254"
+    max_constraints: 100000
+    timeout_seconds: 60
+
+# Attack vectors to test
+attacks:
+  - type: "underconstrained"
+    description: "Find inputs that satisfy constraints but produce wrong outputs"
+    config:
+      witness_pairs: 500
+      compare_outputs: true
+
+  - type: "soundness"
+    description: "Attempt to create valid proofs for false statements"
+    config:
+      forge_attempts: 500
+      mutation_rate: 0.15
+
+  - type: "arithmetic_overflow"
+    description: "Test field arithmetic edge cases"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "p-1"
+        - "p"
+        - "(p-1)/2"
+
+  - type: "collision"
+    description: "Find different preimages producing same output"
+    config:
+      samples: 1000
+
+# Input specifications
+inputs:
+  - name: "root"
+    type: "field"
+    constraints:
+      - "nonzero"
+    fuzz_strategy: "random"
+
+  - name: "leaf"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0xdead"
+      - "0xbeef"
+
+  - name: "pathElements"
+    type: "array<field>"
+    length: 10
+    fuzz_strategy: "mutation"
+
+  - name: "pathIndices"
+    type: "array<bool>"
+    length: 10
+    fuzz_strategy: "random"
+
+# Mutation strategies
+mutations:
+  - name: "bit_flip"
+    probability: 0.3
+
+  - name: "arithmetic"
+    operations: ["add_one", "sub_one", "negate", "double"]
+    probability: 0.2
+
+  - name: "boundary"
+    use_values: ["zero", "one", "max_field", "random"]
+    probability: 0.2
+
+  - name: "havoc"
+    probability: 0.1
+    max_stacked_mutations: 5
+
+# Oracle definitions
+oracles:
+  - name: "different_witness_same_output"
+    severity: "critical"
+    description: "Two different witnesses produce the same public output"
+
+  - name: "constraint_count_mismatch"
+    severity: "high"
+    description: "Actual constraints differ from expected"
+
+  - name: "proof_forgery"
+    severity: "critical"
+    description: "Valid proof for invalid statement"
+
+# Reporting
+reporting:
+  output_dir: "./reports/merkle_audit"
+  formats: ["json", "markdown"]
+  include_poc: true
+  crash_reproduction: true

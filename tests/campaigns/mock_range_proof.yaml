@@ -1,0 +1,84 @@
+# Mock Range Proof Circuit Test Campaign
+# Tests range proof circuits for boundary and constraint issues
+---
+campaign:
+  name: "Mock Range Proof Audit"
+  version: "1.0"
+  target:
+    framework: "mock"
+    circuit_path: "./circuits/mock_range.circom"
+    main_component: "RangeProof"
+
+  parameters:
+    field: "bn254"
+    max_constraints: 10000
+    timeout_seconds: 60
+
+attacks:
+  - type: "boundary"
+    description: "Test range proof boundary conditions"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "254"  # 2^8 - 2
+        - "255"  # 2^8 - 1 (max for 8-bit range)
+        - "256"  # 2^8 (should fail for 8-bit range)
+        - "65535"  # 2^16 - 1
+        - "65536"  # 2^16
+
+  - type: "arithmetic_overflow"
+    description: "Test arithmetic edge cases in bit decomposition"
+    config:
+      test_values:
+        - "0"
+        - "p-1"
+        - "(p-1)/2"
+
+  - type: "underconstrained"
+    description: "Check if all bits are properly constrained"
+    config:
+      witness_pairs: 500
+      compare_outputs: true
+
+inputs:
+  - name: "value"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0xff"
+      - "0x100"
+      - "0xffff"
+      - "0x10000"
+
+  - name: "max_bits"
+    type: "u8"
+    fuzz_strategy: "random"
+    constraints:
+      - "range: 1-253"
+
+mutations:
+  - name: "boundary"
+    use_values: ["zero", "one", "max_field"]
+    probability: 0.4
+
+  - name: "arithmetic"
+    operations: ["add_one", "sub_one"]
+    probability: 0.3
+
+oracles:
+  - name: "range_bypass"
+    severity: "critical"
+    description: "Value outside range passes verification"
+
+  - name: "bit_constraint_bypass"
+    severity: "high"
+    description: "Non-binary values pass bit constraints"
+
+reporting:
+  output_dir: "./reports/range_proof"
+  formats: ["json", "markdown"]
+  include_poc: true
+  crash_reproduction: true

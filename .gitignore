@@ -1,0 +1,31 @@
+# Rust
+/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Reports and outputs
+/reports/
+*.log
+
+# Development tools
+.history
+.qodo
+.zencoder
+.zenflow

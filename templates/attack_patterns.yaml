@@ -1,0 +1,190 @@
+# Reusable Attack Pattern Library for ZK-Fuzzer
+# These patterns can be included in campaign files or used as templates
+---
+patterns:
+  # Merkle Tree specific attacks
+  merkle_tree:
+    description: "Common vulnerabilities in Merkle tree implementations"
+    attacks:
+      - type: "underconstrained"
+        focus: "path_validation"
+        description: "Check if path indices are properly constrained to binary"
+        config:
+          witness_pairs: 1000
+
+      - type: "boundary"
+        description: "Test edge case tree depths"
+        config:
+          test_depths: [0, 1, "max_depth", "max_depth+1"]
+
+      - type: "underconstrained"
+        focus: "sibling_swap"
+        description: "Verify left/right sibling ordering is enforced"
+        config:
+          witness_pairs: 500
+
+      - type: "collision"
+        focus: "root_collision"
+        description: "Find different leaves producing same root"
+        config:
+          samples: 10000
+
+  # Nullifier specific attacks
+  nullifier:
+    description: "Common vulnerabilities in nullifier schemes"
+    attacks:
+      - type: "collision"
+        description: "Find different preimages producing same nullifier"
+        config:
+          samples: 100000
+
+      - type: "underconstrained"
+        focus: "determinism"
+        description: "Same inputs must always produce same nullifier"
+        config:
+          witness_pairs: 1000
+
+      - type: "replay_attack"
+        description: "Check if nullifiers can be reused across contexts"
+        config:
+          contexts: ["domain_a", "domain_b"]
+
+  # Range proof specific attacks
+  range_proof:
+    description: "Common vulnerabilities in range proofs"
+    attacks:
+      - type: "boundary"
+        description: "Test range proof boundaries"
+        config:
+          test_values: ["0", "max-1", "max", "max+1", "-1", "field_mod-1"]
+
+      - type: "underconstrained"
+        focus: "bit_decomposition"
+        description: "Verify bit constraints are enforced"
+        config:
+          witness_pairs: 500
+
+      - type: "arithmetic_overflow"
+        description: "Test recomposition arithmetic"
+        config:
+          test_values: ["p-1", "p", "2p"]
+
+  # Signature verification attacks
+  signature:
+    description: "Common vulnerabilities in signature schemes"
+    attacks:
+      - type: "malleability"
+        description: "Check for signature malleability"
+        config:
+          attempts: 1000
+
+      - type: "boundary"
+        focus: "public_key_validation"
+        description: "Test with invalid curve points"
+        config:
+          test_cases:
+            - "identity_point"
+            - "low_order_point"
+            - "off_curve_point"
+
+      - type: "replay_attack"
+        description: "Check if signatures can be replayed"
+        config:
+          domains: ["chain_a", "chain_b"]
+
+  # Hash function attacks
+  hash_function:
+    description: "Common vulnerabilities in hash implementations"
+    attacks:
+      - type: "collision"
+        description: "Attempt to find hash collisions"
+        config:
+          samples: 1000000
+
+      - type: "underconstrained"
+        focus: "padding"
+        description: "Check padding constraint correctness"
+        config:
+          witness_pairs: 500
+
+      - type: "arithmetic_overflow"
+        focus: "absorb"
+        description: "Test absorb phase arithmetic"
+        config:
+          test_values: ["0", "p-1", "2^64-1"]
+
+  # Encryption/commitment attacks
+  encryption:
+    description: "Common vulnerabilities in encryption/commitment schemes"
+    attacks:
+      - type: "underconstrained"
+        focus: "randomness"
+        description: "Check if randomness is properly used"
+        config:
+          witness_pairs: 1000
+
+      - type: "malleability"
+        description: "Check for ciphertext/commitment malleability"
+        config:
+          attempts: 500
+
+# Interesting values for different field types
+interesting_values:
+  bn254_scalar:
+    - "0x0"                                                                # Zero
+    - "0x1"                                                                # One
+    - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000" # p - 1
+    - "0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000" # (p-1)/2
+    - "0x2"                                                                # Two (common in doubling)
+    - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" # Max u256
+
+  bn254_base:
+    - "0x0"
+    - "0x1"
+    - "0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd46" # Base field p - 1
+
+  common:
+    - "0x0"
+    - "0x1"
+    - "0xff"
+    - "0xffff"
+    - "0xffffffff"
+    - "0xffffffffffffffff"
+    - "0xdead"
+    - "0xbeef"
+    - "0xcafe"
+
+# Mutation strategies
+mutation_strategies:
+  conservative:
+    description: "Low mutation rate, focused mutations"
+    mutations:
+      - name: "bit_flip"
+        probability: 0.1
+      - name: "arithmetic"
+        probability: 0.1
+        operations: ["add_one", "sub_one"]
+
+  aggressive:
+    description: "High mutation rate, diverse mutations"
+    mutations:
+      - name: "bit_flip"
+        probability: 0.3
+      - name: "byte_flip"
+        probability: 0.2
+      - name: "arithmetic"
+        probability: 0.2
+        operations: ["add_one", "sub_one", "negate", "double"]
+      - name: "havoc"
+        probability: 0.2
+        max_stacked_mutations: 10
+
+  boundary_focused:
+    description: "Focus on boundary values"
+    mutations:
+      - name: "boundary"
+        probability: 0.6
+        use_values: ["zero", "one", "max_field", "half_field"]
+      - name: "arithmetic"
+        probability: 0.3
+        operations: ["add_one", "sub_one"]
