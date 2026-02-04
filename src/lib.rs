@@ -12,6 +12,9 @@
 //! - **attacks**: Attack implementations for different vulnerability classes
 //! - **corpus**: Test case management and persistence
 //! - **reporting**: Result generation and output formatting
+//! - **differential**: Differential fuzzing across multiple backends
+//! - **analysis**: Taint analysis, profiling, and complexity analysis
+//! - **multi_circuit**: Multi-circuit and recursive proof testing
 //!
 //! # Example
 //!
@@ -34,6 +37,11 @@ pub mod progress;
 pub mod reporting;
 pub mod targets;
 
+// New feature modules
+pub mod analysis;
+pub mod differential;
+pub mod multi_circuit;
+
 pub use attacks::CircuitInfo;
 pub use config::{
     FuzzConfig, Campaign, Target, Parameters, Attack, AttackType, 
@@ -43,3 +51,11 @@ pub use errors::{ZkFuzzerError, Result};
 pub use executor::{CircuitExecutor, ExecutorFactory, MockCircuitExecutor};
 pub use fuzzer::ZkFuzzer;
 pub use reporting::FuzzReport;
+
+// Re-export new feature types
+pub use analysis::{
+    TaintAnalyzer, TaintFinding, Profiler, PerformanceProfile,
+    ComplexityAnalyzer, ComplexityMetrics, SymbolicExecutor, SymbolicState,
+};
+pub use differential::{DifferentialFuzzer, DifferentialConfig, DifferentialResult};
+pub use multi_circuit::{MultiCircuitFuzzer, MultiCircuitConfig, CircuitChain};

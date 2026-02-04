@@ -42,7 +42,7 @@ pub struct Target {
 }
 
 /// Supported ZK frameworks
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum Framework {
     Circom,
@@ -110,6 +110,21 @@ pub enum AttackType {
     Boundary,
     BitDecomposition,
     Malleability,
+    // New attack types for enhanced fuzzing
+    /// Proof verification fuzzing
+    VerificationFuzzing,
+    /// Witness generation fuzzing
+    WitnessFuzzing,
+    /// Differential testing across backends
+    Differential,
+    /// Information leakage detection
+    InformationLeakage,
+    /// Timing side-channel detection
+    TimingSideChannel,
+    /// Multi-circuit composition testing
+    CircuitComposition,
+    /// Recursive proof testing
+    RecursiveProof,
 }
 
 /// Input specification for fuzzing

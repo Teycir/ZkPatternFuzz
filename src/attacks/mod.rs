@@ -3,10 +3,14 @@
 mod underconstrained;
 mod soundness;
 mod arithmetic;
+mod verification;
+mod witness;
 
 pub use underconstrained::*;
 pub use soundness::*;
 pub use arithmetic::*;
+pub use verification::*;
+pub use witness::*;
 
 use crate::config::AttackType;
 use crate::fuzzer::Finding;
