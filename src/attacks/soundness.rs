@@ -105,10 +105,38 @@ impl Attack for SoundnessDetector {
 }
 
 /// Malleability attack detector
-pub struct MalleabilityDetector;
+/// 
+/// **Status: Experimental** - Not yet integrated with fuzzer engine.
+/// 
+/// This detector is designed to find malleability vulnerabilities where
+/// proofs or signatures can be modified while remaining valid.
+/// 
+/// # Future Implementation
+/// - Integration with proof mutation in SoundnessDetector
+/// - ECDSA s-value malleability checks
+/// - BLS signature malleability detection
+#[deprecated(note = "Experimental - use SoundnessDetector for proof mutation attacks")]
+pub struct MalleabilityDetector {
+    /// Enable experimental checks
+    pub enabled: bool,
+}
 
+impl Default for MalleabilityDetector {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
+}
+
+#[allow(deprecated)]
 impl MalleabilityDetector {
+    /// Create a new malleability detector
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Check if proofs can be modified while remaining valid
+    /// 
+    /// TODO: Implement proof structure analysis and mutation
     pub fn check_proof_malleability(_proof: &[u8]) -> Option<Finding> {
         // In real implementation, try to create equivalent proofs
         // by exploiting algebraic structure
@@ -116,14 +144,21 @@ impl MalleabilityDetector {
     }
 
     /// Check if signatures can be modified
+    /// 
+    /// TODO: Implement ECDSA s-value and BLS signature checks
     pub fn check_signature_malleability(_signature: &[u8]) -> Option<Finding> {
         // Check for signature malleability (e.g., ECDSA s-value)
         None
     }
 }
 
+#[allow(deprecated)]
 impl Attack for MalleabilityDetector {
     fn run(&self, _context: &AttackContext) -> Vec<Finding> {
+        if !self.enabled {
+            tracing::debug!("MalleabilityDetector is experimental and disabled");
+            return vec![];
+        }
         vec![]
     }
 
@@ -132,7 +167,7 @@ impl Attack for MalleabilityDetector {
     }
 
     fn description(&self) -> &str {
-        "Check for proof and signature malleability"
+        "Check for proof and signature malleability (experimental)"
     }
 }
 

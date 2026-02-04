@@ -142,11 +142,11 @@ impl CircomTarget {
         let path = PathBuf::from(circuit_path);
         
         // Create build directory next to the circuit
+        // Note: circom outputs files based on source filename, not template name
         let build_dir = path
             .parent()
             .unwrap_or(Path::new("."))
-            .join("build")
-            .join(main_component);
+            .join("build");
         
         Ok(Self {
             circuit_path: path,
@@ -158,6 +158,15 @@ impl CircomTarget {
             proving_key_path: None,
             verification_key_path: None,
         })
+    }
+
+    /// Get the base name for output files (derived from source filename)
+    fn output_basename(&self) -> String {
+        self.circuit_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&self.main_component)
+            .to_lowercase()
     }
 
     /// Create with custom build directory
@@ -237,24 +246,16 @@ impl CircomTarget {
         self.parse_r1cs_info()?;
 
         // Setup witness calculator
+        // circom outputs: {basename}_js/{basename}.wasm
+        let basename = self.output_basename();
         let wasm_path = self.build_dir
-            .join(&self.main_component)
-            .join(format!("{}_js", self.main_component))
-            .join(format!("{}.wasm", self.main_component));
-        
-        // Try alternative path structure
-        let wasm_path = if wasm_path.exists() {
-            wasm_path
-        } else {
-            self.build_dir
-                .join(format!("{}_js", self.main_component))
-                .join(format!("{}.wasm", self.main_component))
-        };
+            .join(format!("{}_js", basename))
+            .join(format!("{}.wasm", basename));
 
         if wasm_path.exists() {
             self.witness_calculator = Some(WitnessCalculator::new(wasm_path));
         } else {
-            tracing::warn!("WASM file not found at expected path, witness calculation may fail");
+            tracing::warn!("WASM file not found at expected path {:?}, witness calculation may fail", wasm_path);
         }
 
         self.compiled = true;
@@ -263,7 +264,8 @@ impl CircomTarget {
 
     /// Parse R1CS info to extract metadata
     fn parse_r1cs_info(&mut self) -> Result<()> {
-        let r1cs_path = self.build_dir.join(format!("{}.r1cs", self.main_component));
+        let basename = self.output_basename();
+        let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         
         if !r1cs_path.exists() {
             tracing::warn!("R1CS file not found: {:?}", r1cs_path);
@@ -295,28 +297,29 @@ impl CircomTarget {
         let mut num_public_inputs = 0;
         let mut num_outputs = 0;
 
+        // Parse the snarkjs output which looks like:
+        // [INFO]  snarkJS: # of Constraints: 1
+        // [INFO]  snarkJS: # of Private Inputs: 2
+        // We need to extract the last colon-separated value
         for line in stdout.lines() {
-            if line.contains("Constraints:") {
-                if let Some(num) = line.split(':').nth(1) {
-                    num_constraints = num.trim().parse().unwrap_or(0);
-                }
-            } else if line.contains("Private Inputs:") {
-                if let Some(num) = line.split(':').nth(1) {
-                    num_private_inputs = num.trim().parse().unwrap_or(0);
-                }
-            } else if line.contains("Public Inputs:") {
-                if let Some(num) = line.split(':').nth(1) {
-                    num_public_inputs = num.trim().parse().unwrap_or(0);
-                }
-            } else if line.contains("Outputs:") {
-                if let Some(num) = line.split(':').nth(1) {
-                    num_outputs = num.trim().parse().unwrap_or(0);
+            // Get the value after the last colon
+            if let Some(last_colon_idx) = line.rfind(':') {
+                let value_str = line[last_colon_idx + 1..].trim();
+                
+                if line.contains("Constraints") {
+                    num_constraints = value_str.parse().unwrap_or(0);
+                } else if line.contains("Private Inputs") {
+                    num_private_inputs = value_str.parse().unwrap_or(0);
+                } else if line.contains("Public Inputs") {
+                    num_public_inputs = value_str.parse().unwrap_or(0);
+                } else if line.contains("Outputs") && !line.contains("Public") && !line.contains("Private") {
+                    num_outputs = value_str.parse().unwrap_or(0);
                 }
             }
         }
 
         // Also parse the symbols file for signal names
-        let sym_path = self.build_dir.join(format!("{}.sym", self.main_component));
+        let sym_path = self.build_dir.join(format!("{}.sym", basename));
         let signals = if sym_path.exists() {
             self.parse_symbols_file(&sym_path)?
         } else {
@@ -372,11 +375,12 @@ impl CircomTarget {
 
     /// Setup proving and verification keys using Groth16
     pub fn setup_keys(&mut self) -> Result<()> {
-        let r1cs_path = self.build_dir.join(format!("{}.r1cs", self.main_component));
+        let basename = self.output_basename();
+        let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         let ptau_path = self.find_or_download_ptau()?;
         
-        let zkey_path = self.build_dir.join(format!("{}.zkey", self.main_component));
-        let vkey_path = self.build_dir.join(format!("{}_vkey.json", self.main_component));
+        let zkey_path = self.build_dir.join(format!("{}.zkey", basename));
+        let vkey_path = self.build_dir.join(format!("{}_vkey.json", basename));
 
         // Generate zkey (proving key)
         tracing::info!("Generating proving key...");

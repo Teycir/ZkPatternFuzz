@@ -4,7 +4,10 @@
 //! test case generation, execution, coverage tracking, and attack detection.
 
 use super::{Finding, FieldElement, TestCase, TestMetadata, mutate_field_element, bn254_modulus_bytes};
+use super::power_schedule::{PowerSchedule, PowerScheduler, TestCaseMetrics};
+use super::structure_aware::{StructureAwareMutator, Splicer};
 use crate::analysis::symbolic::{SymbolicFuzzerIntegration, SymbolicConfig, VulnerabilityPattern};
+use crate::analysis::taint::TaintAnalyzer;
 use crate::config::*;
 use crate::corpus::{CorpusEntry, SharedCorpus, create_corpus};
 use crate::executor::{CircuitExecutor, ExecutorFactory, SharedCoverageTracker, create_coverage_tracker};
@@ -15,7 +18,7 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use rayon::prelude::*;
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Enhanced fuzzer engine with coverage-guided fuzzing and symbolic execution
 pub struct FuzzingEngine {
@@ -30,6 +33,16 @@ pub struct FuzzingEngine {
     workers: usize,
     /// Symbolic execution integration for guided test generation
     symbolic: Option<SymbolicFuzzerIntegration>,
+    /// Taint analyzer for information flow tracking
+    taint_analyzer: Option<TaintAnalyzer>,
+    /// Power scheduler for energy-based test case selection
+    power_scheduler: PowerScheduler,
+    /// Structure-aware mutator for intelligent mutations
+    structure_mutator: StructureAwareMutator,
+    /// Start time for time-based metrics
+    start_time: Option<Instant>,
+    /// Global average execution time
+    avg_exec_time: Duration,
 }
 
 impl FuzzingEngine {
@@ -63,6 +76,23 @@ impl FuzzingEngine {
             }
         ));
 
+        // Initialize taint analyzer based on circuit info
+        let taint_analyzer = {
+            let circuit_info = executor.circuit_info();
+            let mut analyzer = TaintAnalyzer::new(
+                circuit_info.num_public_inputs,
+                circuit_info.num_private_inputs,
+            );
+            analyzer.initialize_inputs();
+            Some(analyzer)
+        };
+
+        // Initialize power scheduler (default to MMOPT for balanced performance)
+        let power_scheduler = PowerScheduler::new(PowerSchedule::Mmopt);
+
+        // Initialize structure-aware mutator
+        let structure_mutator = StructureAwareMutator::new(config.campaign.target.framework);
+
         Ok(Self {
             config,
             executor,
@@ -74,12 +104,18 @@ impl FuzzingEngine {
             execution_count: AtomicU64::new(0),
             workers,
             symbolic,
+            taint_analyzer,
+            power_scheduler,
+            structure_mutator,
+            start_time: None,
+            avg_exec_time: Duration::from_micros(100),
         })
     }
 
     /// Run the fuzzing campaign
     pub async fn run(&mut self, progress: Option<&ProgressReporter>) -> anyhow::Result<FuzzReport> {
         let start_time = Instant::now();
+        self.start_time = Some(start_time);
 
         tracing::info!("Starting fuzzing campaign: {}", self.config.campaign.name);
         tracing::info!("Circuit: {} ({:?})", 
@@ -94,6 +130,20 @@ impl FuzzingEngine {
                 "Circuit appears underconstrained (DOF = {})",
                 self.executor.circuit_info().degrees_of_freedom()
             );
+        }
+
+        // Run taint analysis before fuzzing
+        if let Some(ref analyzer) = self.taint_analyzer {
+            let taint_findings = analyzer.to_findings();
+            if !taint_findings.is_empty() {
+                tracing::info!("Taint analysis found {} potential issues", taint_findings.len());
+                for finding in taint_findings {
+                    if let Some(p) = progress {
+                        p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                    }
+                    self.findings.write().unwrap().push(finding);
+                }
+            }
         }
 
         // Seed corpus
@@ -284,17 +334,60 @@ impl FuzzingEngine {
     }
 
     fn generate_test_case(&mut self) -> TestCase {
-        // Try to get from corpus and mutate
+        // Try to get from corpus using energy-weighted selection
         if let Some(entry) = self.corpus.get_random(&mut self.rng) {
-            let mutated_inputs: Vec<FieldElement> = entry.test_case.inputs.iter()
-                .map(|input| {
-                    if self.rng.gen::<f64>() < 0.3 {
-                        mutate_field_element(input, &mut self.rng)
-                    } else {
-                        input.clone()
+            // Calculate energy using power scheduler
+            let metrics = TestCaseMetrics {
+                selection_count: entry.execution_count,
+                new_coverage_count: if entry.discovered_new_coverage { 1 } else { 0 },
+                findings_count: 0, // Would need to track per-entry
+                avg_execution_time: Duration::from_micros(100),
+                path_frequency: 1,
+                generation: entry.test_case.metadata.generation as u32,
+                depth: entry.test_case.metadata.generation as u32,
+                time_since_finding: self.start_time
+                    .map(|t| t.elapsed())
+                    .unwrap_or(Duration::ZERO),
+            };
+            
+            let energy = self.power_scheduler.calculate_energy(&metrics);
+            
+            // Decide mutation strategy based on energy and randomness
+            let mutation_strategy = self.rng.gen_range(0..100);
+            
+            let mutated_inputs = if mutation_strategy < 40 {
+                // 40%: Structure-aware mutation
+                self.structure_mutator.mutate(&entry.test_case.inputs, &mut self.rng)
+            } else if mutation_strategy < 70 {
+                // 30%: Standard byte-level mutation
+                entry.test_case.inputs.iter()
+                    .map(|input| {
+                        if self.rng.gen::<f64>() < 0.3 {
+                            mutate_field_element(input, &mut self.rng)
+                        } else {
+                            input.clone()
+                        }
+                    })
+                    .collect()
+            } else if mutation_strategy < 85 {
+                // 15%: Splice with another corpus entry
+                if let Some(other) = self.corpus.get_random(&mut self.rng) {
+                    Splicer::splice(&entry.test_case.inputs, &other.test_case.inputs, &mut self.rng)
+                } else {
+                    entry.test_case.inputs.clone()
+                }
+            } else {
+                // 15%: Havoc - multiple random mutations
+                let mut inputs = entry.test_case.inputs.clone();
+                let num_mutations = self.rng.gen_range(1..=energy.min(10));
+                for _ in 0..num_mutations {
+                    let idx = self.rng.gen_range(0..inputs.len().max(1));
+                    if idx < inputs.len() {
+                        inputs[idx] = mutate_field_element(&inputs[idx], &mut self.rng);
                     }
-                })
-                .collect();
+                }
+                inputs
+            };
 
             TestCase {
                 inputs: mutated_inputs,
