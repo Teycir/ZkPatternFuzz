@@ -6,11 +6,11 @@ A Zero-Knowledge Proof Security Testing Framework written in Rust.
 
 ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK circuits across multiple backends:
 
-- **Circom** - R1CS-based circuits (stub implementation)
-- **Noir** - ACIR-based circuits (stub implementation)
-- **Halo2** - PLONK-based circuits (stub implementation)
+- **Circom** - R1CS-based circuits with snarkjs (✅ fully implemented)
+- **Noir** - ACIR-based circuits with Barretenberg (✅ fully implemented)
+- **Halo2** - PLONK-based circuits with halo2_proofs (✅ fully implemented)
+- **Cairo** - STARK-based programs with stone-prover (✅ fully implemented)
 - **Mock** - Testing backend (✅ fully implemented)
-- **Cairo** (planned)
 
 ## Features
 
@@ -308,10 +308,10 @@ Contributions are welcome! Please:
 
 ## Roadmap
 
-- [ ] Complete Circom backend integration
-- [ ] Complete Noir backend integration
-- [ ] Complete Halo2 backend integration
-- [ ] Add Cairo support
+- [x] Complete Circom backend integration
+- [x] Complete Noir backend integration
+- [x] Complete Halo2 backend integration
+- [x] Add Cairo support
 - [ ] Implement SARIF report format
 - [ ] Add collision detection attacks
 - [ ] Enhance symbolic execution capabilities

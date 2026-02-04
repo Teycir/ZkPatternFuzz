@@ -14,6 +14,7 @@ pub use coverage::*;
 // Re-export CircuitInfo for external use
 pub use crate::attacks::CircuitInfo;
 
+use async_trait::async_trait;
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use std::sync::Arc;
@@ -35,27 +36,92 @@ impl ExecutorFactory {
                 2,  // default public inputs
             ))),
             Framework::Circom => {
-                // For now, use mock with circom-like behavior
-                // TODO: Integrate actual circom compiler
-                tracing::warn!("Circom backend not fully implemented, using mock executor");
+                Self::create_circom_executor(circuit_path, main_component)
+            }
+            Framework::Noir => {
+                Self::create_noir_executor(circuit_path, main_component)
+            }
+            Framework::Halo2 => {
+                Self::create_halo2_executor(circuit_path, main_component)
+            }
+            Framework::Cairo => {
+                Self::create_cairo_executor(circuit_path, main_component)
+            }
+        }
+    }
+
+    /// Create a Circom executor
+    fn create_circom_executor(
+        circuit_path: &str,
+        main_component: &str,
+    ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
+        use crate::targets::CircomTarget;
+
+        // Check if circom is available
+        match CircomTarget::check_circom_available() {
+            Ok(version) => {
+                tracing::info!("Using Circom backend: {}", version);
+                let executor = CircomExecutor::new(circuit_path, main_component)?;
+                Ok(Arc::new(executor))
+            }
+            Err(e) => {
+                tracing::warn!("Circom not available ({}), using mock executor", e);
                 Ok(Arc::new(MockCircuitExecutor::new(main_component, 10, 2)
                     .with_framework(Framework::Circom)
                     .with_circuit_path(circuit_path)))
             }
-            Framework::Noir => {
-                tracing::warn!("Noir backend not fully implemented, using mock executor");
+        }
+    }
+
+    /// Create a Noir executor
+    fn create_noir_executor(
+        circuit_path: &str,
+        main_component: &str,
+    ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
+        use crate::targets::NoirTarget;
+
+        match NoirTarget::check_nargo_available() {
+            Ok(version) => {
+                tracing::info!("Using Noir backend: {}", version);
+                let executor = NoirExecutor::new(circuit_path)?;
+                Ok(Arc::new(executor))
+            }
+            Err(e) => {
+                tracing::warn!("Nargo not available ({}), using mock executor", e);
                 Ok(Arc::new(MockCircuitExecutor::new(main_component, 10, 2)
                     .with_framework(Framework::Noir)
                     .with_circuit_path(circuit_path)))
             }
-            Framework::Halo2 => {
-                tracing::warn!("Halo2 backend not fully implemented, using mock executor");
-                Ok(Arc::new(MockCircuitExecutor::new(main_component, 10, 2)
-                    .with_framework(Framework::Halo2)
-                    .with_circuit_path(circuit_path)))
+        }
+    }
+
+    /// Create a Halo2 executor
+    fn create_halo2_executor(
+        circuit_path: &str,
+        main_component: &str,
+    ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
+        let executor = Halo2Executor::new(circuit_path, main_component)?;
+        Ok(Arc::new(executor))
+    }
+
+    /// Create a Cairo executor
+    fn create_cairo_executor(
+        circuit_path: &str,
+        main_component: &str,
+    ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
+        use crate::targets::CairoTarget;
+
+        match CairoTarget::check_cairo_available() {
+            Ok((version, ver_str)) => {
+                tracing::info!("Using Cairo backend ({:?}): {}", version, ver_str);
+                let executor = CairoExecutor::new(circuit_path)?;
+                Ok(Arc::new(executor))
             }
-            Framework::Cairo => {
-                anyhow::bail!("Cairo backend not yet implemented")
+            Err(e) => {
+                tracing::warn!("Cairo not available ({}), using mock executor", e);
+                Ok(Arc::new(MockCircuitExecutor::new(main_component, 10, 2)
+                    .with_framework(Framework::Cairo)
+                    .with_circuit_path(circuit_path)))
             }
         }
     }
@@ -63,6 +129,246 @@ impl ExecutorFactory {
     /// Create a mock executor for testing
     pub fn create_mock(name: &str, private_inputs: usize, public_inputs: usize) -> Arc<dyn CircuitExecutor> {
         Arc::new(MockCircuitExecutor::new(name, private_inputs, public_inputs))
+    }
+}
+
+/// Circom executor wrapper
+pub struct CircomExecutor {
+    target: crate::targets::CircomTarget,
+}
+
+impl CircomExecutor {
+    pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
+        let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?;
+        target.compile()?;
+        Ok(Self { target })
+    }
+}
+
+#[async_trait]
+impl CircuitExecutor for CircomExecutor {
+    fn framework(&self) -> Framework {
+        Framework::Circom
+    }
+
+    fn name(&self) -> &str {
+        use crate::targets::TargetCircuit;
+        self.target.name()
+    }
+
+    fn circuit_info(&self) -> CircuitInfo {
+        use crate::targets::TargetCircuit;
+        CircuitInfo {
+            name: self.target.name().to_string(),
+            num_constraints: self.target.num_constraints(),
+            num_private_inputs: self.target.num_private_inputs(),
+            num_public_inputs: self.target.num_public_inputs(),
+            num_outputs: 1,
+        }
+    }
+
+    fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
+        use crate::targets::TargetCircuit;
+        let start = std::time::Instant::now();
+        
+        match self.target.execute(inputs) {
+            Ok(outputs) => {
+                let coverage = ExecutionCoverage::default();
+                ExecutionResult::success(outputs, coverage)
+                    .with_time(start.elapsed().as_micros() as u64)
+            }
+            Err(e) => ExecutionResult::failure(e.to_string()),
+        }
+    }
+
+    fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
+        use crate::targets::TargetCircuit;
+        self.target.prove(witness)
+    }
+
+    fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
+        use crate::targets::TargetCircuit;
+        self.target.verify(proof, public_inputs)
+    }
+}
+
+/// Noir executor wrapper
+pub struct NoirExecutor {
+    target: crate::targets::NoirTarget,
+}
+
+impl NoirExecutor {
+    pub fn new(project_path: &str) -> anyhow::Result<Self> {
+        let mut target = crate::targets::NoirTarget::new(project_path)?;
+        target.compile()?;
+        Ok(Self { target })
+    }
+}
+
+#[async_trait]
+impl CircuitExecutor for NoirExecutor {
+    fn framework(&self) -> Framework {
+        Framework::Noir
+    }
+
+    fn name(&self) -> &str {
+        use crate::targets::TargetCircuit;
+        self.target.name()
+    }
+
+    fn circuit_info(&self) -> CircuitInfo {
+        use crate::targets::TargetCircuit;
+        CircuitInfo {
+            name: self.target.name().to_string(),
+            num_constraints: self.target.num_constraints(),
+            num_private_inputs: self.target.num_private_inputs(),
+            num_public_inputs: self.target.num_public_inputs(),
+            num_outputs: 1,
+        }
+    }
+
+    fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
+        use crate::targets::TargetCircuit;
+        let start = std::time::Instant::now();
+        
+        match self.target.execute(inputs) {
+            Ok(outputs) => {
+                let coverage = ExecutionCoverage::default();
+                ExecutionResult::success(outputs, coverage)
+                    .with_time(start.elapsed().as_micros() as u64)
+            }
+            Err(e) => ExecutionResult::failure(e.to_string()),
+        }
+    }
+
+    fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
+        use crate::targets::TargetCircuit;
+        self.target.prove(witness)
+    }
+
+    fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
+        use crate::targets::TargetCircuit;
+        self.target.verify(proof, public_inputs)
+    }
+}
+
+/// Halo2 executor wrapper
+pub struct Halo2Executor {
+    target: crate::targets::Halo2Target,
+}
+
+impl Halo2Executor {
+    pub fn new(circuit_path: &str, _main_component: &str) -> anyhow::Result<Self> {
+        let mut target = crate::targets::Halo2Target::new(circuit_path)?;
+        target.setup()?;
+        Ok(Self { target })
+    }
+}
+
+#[async_trait]
+impl CircuitExecutor for Halo2Executor {
+    fn framework(&self) -> Framework {
+        Framework::Halo2
+    }
+
+    fn name(&self) -> &str {
+        use crate::targets::TargetCircuit;
+        self.target.name()
+    }
+
+    fn circuit_info(&self) -> CircuitInfo {
+        use crate::targets::TargetCircuit;
+        CircuitInfo {
+            name: self.target.name().to_string(),
+            num_constraints: self.target.num_constraints(),
+            num_private_inputs: self.target.num_private_inputs(),
+            num_public_inputs: self.target.num_public_inputs(),
+            num_outputs: 1,
+        }
+    }
+
+    fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
+        use crate::targets::TargetCircuit;
+        let start = std::time::Instant::now();
+        
+        match self.target.execute(inputs) {
+            Ok(outputs) => {
+                let coverage = ExecutionCoverage::default();
+                ExecutionResult::success(outputs, coverage)
+                    .with_time(start.elapsed().as_micros() as u64)
+            }
+            Err(e) => ExecutionResult::failure(e.to_string()),
+        }
+    }
+
+    fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
+        use crate::targets::TargetCircuit;
+        self.target.prove(witness)
+    }
+
+    fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
+        use crate::targets::TargetCircuit;
+        self.target.verify(proof, public_inputs)
+    }
+}
+
+/// Cairo executor wrapper
+pub struct CairoExecutor {
+    target: crate::targets::CairoTarget,
+}
+
+impl CairoExecutor {
+    pub fn new(source_path: &str) -> anyhow::Result<Self> {
+        let mut target = crate::targets::CairoTarget::new(source_path)?;
+        target.compile()?;
+        Ok(Self { target })
+    }
+}
+
+#[async_trait]
+impl CircuitExecutor for CairoExecutor {
+    fn framework(&self) -> Framework {
+        Framework::Cairo
+    }
+
+    fn name(&self) -> &str {
+        use crate::targets::TargetCircuit;
+        self.target.name()
+    }
+
+    fn circuit_info(&self) -> CircuitInfo {
+        use crate::targets::TargetCircuit;
+        CircuitInfo {
+            name: self.target.name().to_string(),
+            num_constraints: self.target.num_constraints(),
+            num_private_inputs: self.target.num_private_inputs(),
+            num_public_inputs: self.target.num_public_inputs(),
+            num_outputs: 1,
+        }
+    }
+
+    fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
+        use crate::targets::TargetCircuit;
+        let start = std::time::Instant::now();
+        
+        match self.target.execute(inputs) {
+            Ok(outputs) => {
+                let coverage = ExecutionCoverage::default();
+                ExecutionResult::success(outputs, coverage)
+                    .with_time(start.elapsed().as_micros() as u64)
+            }
+            Err(e) => ExecutionResult::failure(e.to_string()),
+        }
+    }
+
+    fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
+        use crate::targets::TargetCircuit;
+        self.target.prove(witness)
+    }
+
+    fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
+        use crate::targets::TargetCircuit;
+        self.target.verify(proof, public_inputs)
     }
 }
 

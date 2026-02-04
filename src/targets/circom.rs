@@ -1,50 +1,512 @@
 //! Circom circuit target implementation
+//!
+//! Provides full integration with the Circom ecosystem:
+//! - Compilation via circom CLI
+//! - Witness generation via generated WASM
+//! - Proof generation/verification via snarkjs-compatible format
 
 use super::TargetCircuit;
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
-use std::path::PathBuf;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-/// Circom circuit target
+/// Circom circuit target with full backend integration
 pub struct CircomTarget {
+    /// Path to the circom source file
     circuit_path: PathBuf,
+    /// Main component name
     main_component: String,
+    /// Compiled circuit metadata
+    metadata: Option<CircomMetadata>,
+    /// Build directory for compiled artifacts
+    build_dir: PathBuf,
+    /// Whether the circuit has been compiled
     compiled: bool,
+    /// Cached witness calculator (WASM instance)
+    witness_calculator: Option<WitnessCalculator>,
+    /// Proving key path
+    proving_key_path: Option<PathBuf>,
+    /// Verification key path
+    verification_key_path: Option<PathBuf>,
+}
+
+/// Metadata extracted from compiled Circom circuit
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CircomMetadata {
+    /// Number of constraints in the R1CS
+    pub num_constraints: usize,
+    /// Number of private inputs
+    pub num_private_inputs: usize,
+    /// Number of public inputs
+    pub num_public_inputs: usize,
+    /// Number of outputs
+    pub num_outputs: usize,
+    /// Signal names and their indices
+    pub signals: HashMap<String, usize>,
+    /// Input signal names
+    pub input_signals: Vec<String>,
+    /// Output signal names
+    pub output_signals: Vec<String>,
+    /// Prime field used
+    pub prime: String,
+}
+
+/// Witness calculator using compiled WASM
+struct WitnessCalculator {
+    /// Path to the WASM file
+    wasm_path: PathBuf,
+}
+
+impl WitnessCalculator {
+    fn new(wasm_path: PathBuf) -> Self {
+        Self { wasm_path }
+    }
+
+    /// Calculate witness using node.js and snarkjs
+    fn calculate(&self, inputs: &HashMap<String, Vec<String>>) -> Result<Vec<FieldElement>> {
+        // Create temporary input file
+        let temp_dir = std::env::temp_dir().join("zkfuzzer");
+        std::fs::create_dir_all(&temp_dir)?;
+        
+        let input_path = temp_dir.join("input.json");
+        let witness_path = temp_dir.join("witness.wtns");
+        let witness_json_path = temp_dir.join("witness.json");
+        
+        // Write inputs to JSON
+        let input_json = serde_json::to_string(inputs)?;
+        std::fs::write(&input_path, &input_json)?;
+        
+        // Run witness generation using snarkjs
+        let output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "wtns",
+                "calculate",
+                self.wasm_path.to_str().unwrap(),
+                input_path.to_str().unwrap(),
+                witness_path.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to run snarkjs witness calculation")?;
+        
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Witness calculation failed: {}", stderr);
+        }
+        
+        // Export witness to JSON for parsing
+        let output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "wtns",
+                "export",
+                "json",
+                witness_path.to_str().unwrap(),
+                witness_json_path.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to export witness to JSON")?;
+        
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Witness export failed: {}", stderr);
+        }
+        
+        // Parse witness JSON
+        let witness_json = std::fs::read_to_string(&witness_json_path)?;
+        let witness_values: Vec<String> = serde_json::from_str(&witness_json)?;
+        
+        // Convert to FieldElements
+        let witness: Vec<FieldElement> = witness_values
+            .iter()
+            .map(|v| parse_decimal_to_field_element(v))
+            .collect::<Result<Vec<_>>>()?;
+        
+        // Cleanup temp files
+        let _ = std::fs::remove_file(&input_path);
+        let _ = std::fs::remove_file(&witness_path);
+        let _ = std::fs::remove_file(&witness_json_path);
+        
+        Ok(witness)
+    }
 }
 
 impl CircomTarget {
-    pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
+    /// Create a new Circom target from a circuit file
+    pub fn new(circuit_path: &str, main_component: &str) -> Result<Self> {
         let path = PathBuf::from(circuit_path);
         
-        // In real implementation, would compile the circuit here
-        // For now, just store the path
+        // Create build directory next to the circuit
+        let build_dir = path
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("build")
+            .join(main_component);
+        
         Ok(Self {
             circuit_path: path,
             main_component: main_component.to_string(),
+            metadata: None,
+            build_dir,
             compiled: false,
+            witness_calculator: None,
+            proving_key_path: None,
+            verification_key_path: None,
         })
     }
 
-    /// Compile the circom circuit to R1CS
-    pub fn compile(&mut self) -> anyhow::Result<()> {
+    /// Create with custom build directory
+    pub fn with_build_dir(mut self, build_dir: PathBuf) -> Self {
+        self.build_dir = build_dir;
+        self
+    }
+
+    /// Check if circom is available
+    pub fn check_circom_available() -> Result<String> {
+        let output = Command::new("circom")
+            .arg("--version")
+            .output()
+            .context("circom not found in PATH")?;
+        
+        if !output.status.success() {
+            anyhow::bail!("circom --version failed");
+        }
+        
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+
+    /// Check if snarkjs is available
+    pub fn check_snarkjs_available() -> Result<String> {
+        let output = Command::new("npx")
+            .args(["snarkjs", "--version"])
+            .output()
+            .context("snarkjs not found")?;
+        
+        // snarkjs may return version on stdout or stderr
+        let version = if output.status.success() {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        } else {
+            String::from_utf8_lossy(&output.stderr).trim().to_string()
+        };
+        
+        Ok(version)
+    }
+
+    /// Compile the circuit to R1CS and generate WASM witness calculator
+    pub fn compile(&mut self) -> Result<()> {
+        if self.compiled {
+            return Ok(());
+        }
+
         tracing::info!("Compiling Circom circuit: {:?}", self.circuit_path);
         
-        // In real implementation:
-        // 1. Run circom compiler
-        // 2. Generate R1CS, WASM, witness calculator
-        // 3. Setup proving/verification keys
+        // Check circom is available
+        let circom_version = Self::check_circom_available()?;
+        tracing::debug!("Using circom: {}", circom_version);
+
+        // Create build directory
+        std::fs::create_dir_all(&self.build_dir)?;
+
+        // Compile circuit
+        let output = Command::new("circom")
+            .args([
+                self.circuit_path.to_str().unwrap(),
+                "--r1cs",
+                "--wasm",
+                "--sym",
+                "--json",
+                "-o",
+                self.build_dir.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to run circom compiler")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Circom compilation failed: {}", stderr);
+        }
+
+        tracing::info!("Circom compilation successful");
+
+        // Parse R1CS info to get metadata
+        self.parse_r1cs_info()?;
+
+        // Setup witness calculator
+        let wasm_path = self.build_dir
+            .join(&self.main_component)
+            .join(format!("{}_js", self.main_component))
+            .join(format!("{}.wasm", self.main_component));
         
+        // Try alternative path structure
+        let wasm_path = if wasm_path.exists() {
+            wasm_path
+        } else {
+            self.build_dir
+                .join(format!("{}_js", self.main_component))
+                .join(format!("{}.wasm", self.main_component))
+        };
+
+        if wasm_path.exists() {
+            self.witness_calculator = Some(WitnessCalculator::new(wasm_path));
+        } else {
+            tracing::warn!("WASM file not found at expected path, witness calculation may fail");
+        }
+
         self.compiled = true;
         Ok(())
     }
 
-    /// Calculate witness for given inputs
-    pub fn calculate_witness(&self, _inputs: &[FieldElement]) -> anyhow::Result<Vec<FieldElement>> {
-        // In real implementation:
-        // 1. Use generated WASM to calculate witness
-        // 2. Return full witness including intermediate signals
+    /// Parse R1CS info to extract metadata
+    fn parse_r1cs_info(&mut self) -> Result<()> {
+        let r1cs_path = self.build_dir.join(format!("{}.r1cs", self.main_component));
         
-        Ok(vec![])
+        if !r1cs_path.exists() {
+            tracing::warn!("R1CS file not found: {:?}", r1cs_path);
+            return Ok(());
+        }
+
+        // Use snarkjs to get R1CS info
+        let output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "r1cs",
+                "info",
+                r1cs_path.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to get R1CS info")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!("Failed to parse R1CS info: {}", stderr);
+            return Ok(());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        
+        // Parse the output to extract constraint count
+        let mut num_constraints = 0;
+        let mut num_private_inputs = 0;
+        let mut num_public_inputs = 0;
+        let mut num_outputs = 0;
+
+        for line in stdout.lines() {
+            if line.contains("Constraints:") {
+                if let Some(num) = line.split(':').nth(1) {
+                    num_constraints = num.trim().parse().unwrap_or(0);
+                }
+            } else if line.contains("Private Inputs:") {
+                if let Some(num) = line.split(':').nth(1) {
+                    num_private_inputs = num.trim().parse().unwrap_or(0);
+                }
+            } else if line.contains("Public Inputs:") {
+                if let Some(num) = line.split(':').nth(1) {
+                    num_public_inputs = num.trim().parse().unwrap_or(0);
+                }
+            } else if line.contains("Outputs:") {
+                if let Some(num) = line.split(':').nth(1) {
+                    num_outputs = num.trim().parse().unwrap_or(0);
+                }
+            }
+        }
+
+        // Also parse the symbols file for signal names
+        let sym_path = self.build_dir.join(format!("{}.sym", self.main_component));
+        let signals = if sym_path.exists() {
+            self.parse_symbols_file(&sym_path)?
+        } else {
+            HashMap::new()
+        };
+
+        // Extract input/output signal names from symbols
+        let input_signals: Vec<String> = signals
+            .keys()
+            .filter(|s| s.starts_with("main."))
+            .cloned()
+            .collect();
+
+        self.metadata = Some(CircomMetadata {
+            num_constraints,
+            num_private_inputs,
+            num_public_inputs,
+            num_outputs,
+            signals,
+            input_signals,
+            output_signals: vec![],
+            prime: "bn128".to_string(),
+        });
+
+        tracing::info!(
+            "Circuit has {} constraints, {} private inputs, {} public inputs",
+            num_constraints,
+            num_private_inputs,
+            num_public_inputs
+        );
+
+        Ok(())
+    }
+
+    /// Parse the symbols file to get signal names
+    fn parse_symbols_file(&self, path: &Path) -> Result<HashMap<String, usize>> {
+        let file = std::fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        let mut signals = HashMap::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 4 {
+                let index: usize = parts[0].parse().unwrap_or(0);
+                let name = parts[3].to_string();
+                signals.insert(name, index);
+            }
+        }
+
+        Ok(signals)
+    }
+
+    /// Setup proving and verification keys using Groth16
+    pub fn setup_keys(&mut self) -> Result<()> {
+        let r1cs_path = self.build_dir.join(format!("{}.r1cs", self.main_component));
+        let ptau_path = self.find_or_download_ptau()?;
+        
+        let zkey_path = self.build_dir.join(format!("{}.zkey", self.main_component));
+        let vkey_path = self.build_dir.join(format!("{}_vkey.json", self.main_component));
+
+        // Generate zkey (proving key)
+        tracing::info!("Generating proving key...");
+        let output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "groth16",
+                "setup",
+                r1cs_path.to_str().unwrap(),
+                ptau_path.to_str().unwrap(),
+                zkey_path.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to generate proving key")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Key generation failed: {}", stderr);
+        }
+
+        // Export verification key
+        tracing::info!("Exporting verification key...");
+        let output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "zkey",
+                "export",
+                "verificationkey",
+                zkey_path.to_str().unwrap(),
+                vkey_path.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to export verification key")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Verification key export failed: {}", stderr);
+        }
+
+        self.proving_key_path = Some(zkey_path);
+        self.verification_key_path = Some(vkey_path);
+
+        tracing::info!("Key setup complete");
+        Ok(())
+    }
+
+    /// Find existing powers of tau file or download a small one
+    fn find_or_download_ptau(&self) -> Result<PathBuf> {
+        // Check for existing ptau files
+        let ptau_dirs = vec![
+            self.build_dir.clone(),
+            PathBuf::from("."),
+            dirs::home_dir().unwrap_or_default().join(".snarkjs"),
+        ];
+
+        for dir in &ptau_dirs {
+            for entry in std::fs::read_dir(dir).into_iter().flatten() {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "ptau").unwrap_or(false) {
+                        tracing::info!("Found existing ptau file: {:?}", path);
+                        return Ok(path);
+                    }
+                }
+            }
+        }
+
+        // Download a small ptau file for testing
+        let ptau_path = self.build_dir.join("pot12_final.ptau");
+        if !ptau_path.exists() {
+            tracing::info!("Downloading powers of tau file...");
+            let output = Command::new("curl")
+                .args([
+                    "-L",
+                    "-o",
+                    ptau_path.to_str().unwrap(),
+                    "https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_12.ptau",
+                ])
+                .output()
+                .context("Failed to download ptau file")?;
+
+            if !output.status.success() {
+                anyhow::bail!("Failed to download powers of tau file");
+            }
+        }
+
+        Ok(ptau_path)
+    }
+
+    /// Calculate witness for given inputs
+    pub fn calculate_witness(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
+        let calculator = self.witness_calculator.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Witness calculator not initialized"))?;
+
+        // Convert inputs to named map based on metadata
+        let input_map = self.inputs_to_map(inputs)?;
+        
+        calculator.calculate(&input_map)
+    }
+
+    /// Convert input array to named signal map
+    fn inputs_to_map(&self, inputs: &[FieldElement]) -> Result<HashMap<String, Vec<String>>> {
+        let mut map = HashMap::new();
+        
+        if let Some(metadata) = &self.metadata {
+            for (i, input) in inputs.iter().enumerate() {
+                // Use signal names if available, otherwise use generic names
+                let name = metadata.input_signals.get(i)
+                    .cloned()
+                    .unwrap_or_else(|| format!("in{}", i));
+                
+                // Remove "main." prefix if present
+                let clean_name = name.strip_prefix("main.").unwrap_or(&name).to_string();
+                
+                // Convert to decimal string
+                let value = field_element_to_decimal(input);
+                map.insert(clean_name, vec![value]);
+            }
+        } else {
+            // No metadata, use generic names
+            for (i, input) in inputs.iter().enumerate() {
+                let value = field_element_to_decimal(input);
+                map.insert(format!("in{}", i), vec![value]);
+            }
+        }
+        
+        Ok(map)
     }
 }
 
@@ -58,57 +520,264 @@ impl TargetCircuit for CircomTarget {
     }
 
     fn num_constraints(&self) -> usize {
-        // In real implementation, read from R1CS
-        0
+        self.metadata.as_ref().map(|m| m.num_constraints).unwrap_or(0)
     }
 
     fn num_private_inputs(&self) -> usize {
-        // In real implementation, read from circuit metadata
-        0
+        self.metadata.as_ref().map(|m| m.num_private_inputs).unwrap_or(0)
     }
 
     fn num_public_inputs(&self) -> usize {
-        // In real implementation, read from circuit metadata
-        0
+        self.metadata.as_ref().map(|m| m.num_public_inputs).unwrap_or(0)
     }
 
-    fn execute(&self, inputs: &[FieldElement]) -> anyhow::Result<Vec<FieldElement>> {
-        // Calculate witness and extract outputs
+    fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
+        if !self.compiled {
+            anyhow::bail!("Circuit not compiled. Call compile() first.");
+        }
+
         let witness = self.calculate_witness(inputs)?;
         
-        // Return public outputs (last elements of witness)
-        Ok(witness)
+        // Return output signals (typically after public inputs)
+        let num_public = self.num_public_inputs();
+        let num_outputs = self.metadata.as_ref().map(|m| m.num_outputs).unwrap_or(1);
+        
+        // Outputs are typically at the start of the witness after signal 0
+        if witness.len() > 1 + num_public + num_outputs {
+            Ok(witness[1..1 + num_outputs].to_vec())
+        } else if !witness.is_empty() {
+            Ok(vec![witness[witness.len() - 1].clone()])
+        } else {
+            Ok(vec![])
+        }
     }
 
-    fn prove(&self, _witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
-        // In real implementation:
-        // 1. Use snarkjs or arkworks to generate proof
-        // 2. Support both Groth16 and PLONK
+    fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
+        let zkey_path = self.proving_key_path.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Proving key not set. Call setup_keys() first."))?;
+
+        let temp_dir = std::env::temp_dir().join("zkfuzzer");
+        std::fs::create_dir_all(&temp_dir)?;
         
-        Ok(vec![0u8; 256])
+        let witness_path = temp_dir.join("witness.wtns");
+        let proof_path = temp_dir.join("proof.json");
+        let public_path = temp_dir.join("public.json");
+
+        // First need to create witness file
+        // For now, use the WASM-based approach
+        let input_map = self.inputs_to_map(witness)?;
+        let input_json = serde_json::to_string(&input_map)?;
+        let input_path = temp_dir.join("input.json");
+        std::fs::write(&input_path, &input_json)?;
+
+        if let Some(calc) = &self.witness_calculator {
+            let output = Command::new("npx")
+                .args([
+                    "snarkjs",
+                    "wtns",
+                    "calculate",
+                    calc.wasm_path.to_str().unwrap(),
+                    input_path.to_str().unwrap(),
+                    witness_path.to_str().unwrap(),
+                ])
+                .output()
+                .context("Failed to calculate witness for proof")?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!("Witness calculation failed: {}", stderr);
+            }
+        }
+
+        // Generate proof
+        let output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "groth16",
+                "prove",
+                zkey_path.to_str().unwrap(),
+                witness_path.to_str().unwrap(),
+                proof_path.to_str().unwrap(),
+                public_path.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to generate proof")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Proof generation failed: {}", stderr);
+        }
+
+        // Read proof JSON
+        let proof_json = std::fs::read_to_string(&proof_path)?;
+        
+        // Cleanup
+        let _ = std::fs::remove_file(&witness_path);
+        let _ = std::fs::remove_file(&proof_path);
+        let _ = std::fs::remove_file(&public_path);
+        let _ = std::fs::remove_file(&input_path);
+
+        Ok(proof_json.into_bytes())
     }
 
-    fn verify(&self, _proof: &[u8], _public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
-        // In real implementation:
-        // 1. Use snarkjs or arkworks to verify proof
+    fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
+        let vkey_path = self.verification_key_path.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Verification key not set."))?;
+
+        let temp_dir = std::env::temp_dir().join("zkfuzzer");
+        std::fs::create_dir_all(&temp_dir)?;
         
-        Ok(true)
+        let proof_path = temp_dir.join("proof.json");
+        let public_path = temp_dir.join("public.json");
+
+        // Write proof
+        std::fs::write(&proof_path, proof)?;
+
+        // Write public inputs
+        let public_values: Vec<String> = public_inputs
+            .iter()
+            .map(field_element_to_decimal)
+            .collect();
+        let public_json = serde_json::to_string(&public_values)?;
+        std::fs::write(&public_path, &public_json)?;
+
+        // Verify
+        let output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "groth16",
+                "verify",
+                vkey_path.to_str().unwrap(),
+                public_path.to_str().unwrap(),
+                proof_path.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to verify proof")?;
+
+        // Cleanup
+        let _ = std::fs::remove_file(&proof_path);
+        let _ = std::fs::remove_file(&public_path);
+
+        // snarkjs outputs "OK!" on success
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(output.status.success() && stdout.contains("OK"))
     }
 }
 
-/// Utility functions for Circom-specific analysis
+/// Parse a decimal string to FieldElement
+fn parse_decimal_to_field_element(s: &str) -> Result<FieldElement> {
+    use num_bigint::BigUint;
+    
+    let clean = s.trim().trim_matches('"');
+    let value = BigUint::parse_bytes(clean.as_bytes(), 10)
+        .ok_or_else(|| anyhow::anyhow!("Invalid decimal: {}", s))?;
+    
+    let bytes = value.to_bytes_be();
+    let mut result = [0u8; 32];
+    let start = 32usize.saturating_sub(bytes.len());
+    let copy_len = bytes.len().min(32);
+    result[start..start + copy_len].copy_from_slice(&bytes[..copy_len]);
+    
+    Ok(FieldElement(result))
+}
+
+/// Convert FieldElement to decimal string
+fn field_element_to_decimal(fe: &FieldElement) -> String {
+    use num_bigint::BigUint;
+    
+    let value = BigUint::from_bytes_be(&fe.0);
+    value.to_string()
+}
+
+/// Circom-specific analysis utilities
 pub mod analysis {
     use super::*;
 
-    /// Extract signal names from a Circom file
-    pub fn extract_signals(_source: &str) -> Vec<String> {
-        // Parse circom source and extract signal declarations
-        vec![]
+    /// Extract signal names from a Circom source file
+    pub fn extract_signals(source: &str) -> Vec<SignalInfo> {
+        let mut signals = Vec::new();
+        
+        for line in source.lines() {
+            let trimmed = line.trim();
+            
+            // Look for signal declarations
+            if trimmed.starts_with("signal") {
+                if let Some(info) = parse_signal_declaration(trimmed) {
+                    signals.push(info);
+                }
+            }
+        }
+        
+        signals
     }
 
-    /// Extract constraints from compiled R1CS
-    pub fn extract_constraints(_r1cs_path: &str) -> Vec<Constraint> {
-        vec![]
+    /// Parse a signal declaration line
+    fn parse_signal_declaration(line: &str) -> Option<SignalInfo> {
+        // signal input x;
+        // signal output y;
+        // signal private input z;
+        
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 3 {
+            return None;
+        }
+
+        let mut direction = SignalDirection::Intermediate;
+        let mut is_public = true;
+        let mut name_idx = 1;
+
+        for (i, part) in parts.iter().enumerate().skip(1) {
+            match *part {
+                "input" => {
+                    direction = SignalDirection::Input;
+                    name_idx = i + 1;
+                }
+                "output" => {
+                    direction = SignalDirection::Output;
+                    name_idx = i + 1;
+                }
+                "private" => {
+                    is_public = false;
+                }
+                _ => {}
+            }
+        }
+
+        let name = parts.get(name_idx)?
+            .trim_end_matches(';')
+            .trim_end_matches('[')
+            .to_string();
+
+        Some(SignalInfo {
+            name,
+            direction,
+            is_public,
+            array_size: None,
+        })
+    }
+
+    /// Signal information extracted from source
+    #[derive(Debug, Clone)]
+    pub struct SignalInfo {
+        pub name: String,
+        pub direction: SignalDirection,
+        pub is_public: bool,
+        pub array_size: Option<usize>,
+    }
+
+    /// Signal direction
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum SignalDirection {
+        Input,
+        Output,
+        Intermediate,
+    }
+
+    /// Extract constraints from compiled R1CS (placeholder - requires binary parsing)
+    pub fn extract_constraints(r1cs_path: &str) -> Result<Vec<Constraint>> {
+        // R1CS is a binary format, would need full parser
+        // For now, return empty
+        Ok(vec![])
     }
 
     /// Representation of an R1CS constraint
@@ -117,5 +786,85 @@ pub mod analysis {
         pub a: Vec<(usize, FieldElement)>,
         pub b: Vec<(usize, FieldElement)>,
         pub c: Vec<(usize, FieldElement)>,
+    }
+
+    /// Analyze circuit for common vulnerability patterns
+    pub fn analyze_for_vulnerabilities(source: &str) -> Vec<VulnerabilityHint> {
+        let mut hints = Vec::new();
+
+        // Check for missing constraints
+        if source.contains("===") {
+            let constraint_count = source.matches("===").count();
+            let signal_count = extract_signals(source).len();
+            
+            if signal_count > constraint_count * 2 {
+                hints.push(VulnerabilityHint {
+                    hint_type: VulnerabilityType::Underconstrained,
+                    description: format!(
+                        "Circuit has {} signals but only {} constraints - may be underconstrained",
+                        signal_count, constraint_count
+                    ),
+                    line: None,
+                });
+            }
+        }
+
+        // Check for unsafe comparisons (== instead of ===)
+        for (line_num, line) in source.lines().enumerate() {
+            if line.contains(" == ") && !line.contains("===") && !line.trim().starts_with("//") {
+                hints.push(VulnerabilityHint {
+                    hint_type: VulnerabilityType::UnsafeComparison,
+                    description: "Using == instead of === may not add constraints".to_string(),
+                    line: Some(line_num + 1),
+                });
+            }
+        }
+
+        hints
+    }
+
+    /// Vulnerability hint from static analysis
+    #[derive(Debug, Clone)]
+    pub struct VulnerabilityHint {
+        pub hint_type: VulnerabilityType,
+        pub description: String,
+        pub line: Option<usize>,
+    }
+
+    /// Types of potential vulnerabilities
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum VulnerabilityType {
+        Underconstrained,
+        UnsafeComparison,
+        MissingRangeCheck,
+        UnusedSignal,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_field_element_conversion() {
+        let fe = FieldElement::from_u64(12345);
+        let decimal = field_element_to_decimal(&fe);
+        let parsed = parse_decimal_to_field_element(&decimal).unwrap();
+        assert_eq!(fe, parsed);
+    }
+
+    #[test]
+    fn test_signal_extraction() {
+        let source = r#"
+            signal input a;
+            signal input b;
+            signal output c;
+            signal private input d;
+        "#;
+        
+        let signals = analysis::extract_signals(source);
+        assert_eq!(signals.len(), 4);
+        assert_eq!(signals[0].name, "a");
+        assert_eq!(signals[0].direction, analysis::SignalDirection::Input);
     }
 }

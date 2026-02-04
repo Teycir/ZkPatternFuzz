@@ -1,12 +1,26 @@
 //! Target ZK framework backends
+//!
+//! This module provides integrations with various ZK proving systems:
+//! - **Circom**: R1CS-based circuits with snarkjs
+//! - **Noir**: ACIR-based circuits with Barretenberg
+//! - **Halo2**: PLONK-based circuits (PSE fork)
+//! - **Cairo**: STARK-based programs with stone-prover
 
 mod circom;
 mod noir;
 mod halo2;
+mod cairo;
 
 pub use circom::CircomTarget;
 pub use noir::NoirTarget;
 pub use halo2::Halo2Target;
+pub use cairo::CairoTarget;
+
+// Re-export analysis modules
+pub use circom::analysis as circom_analysis;
+pub use noir::analysis as noir_analysis;
+pub use halo2::analysis as halo2_analysis;
+pub use cairo::analysis as cairo_analysis;
 
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
