@@ -291,12 +291,113 @@ impl Serialize for Finding {
 }
 
 impl<'de> Deserialize<'de> for Finding {
-    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        // Simplified deserialization for now
-        unimplemented!("Finding deserialization not implemented")
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            AttackType,
+            Severity,
+            Description,
+            Location,
+            PocWitnessA,
+        }
+
+        struct FindingVisitor;
+
+        impl<'de> Visitor<'de> for FindingVisitor {
+            type Value = Finding;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct Finding")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Finding, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                use crate::config::AttackType;
+                use crate::fuzzer::{FieldElement, ProofOfConcept};
+
+                let mut attack_type: Option<String> = None;
+                let mut severity: Option<Severity> = None;
+                let mut description: Option<String> = None;
+                let mut location: Option<Option<String>> = None;
+                let mut poc_witness_a: Option<Vec<String>> = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::AttackType => {
+                            attack_type = Some(map.next_value()?);
+                        }
+                        Field::Severity => {
+                            severity = Some(map.next_value()?);
+                        }
+                        Field::Description => {
+                            description = Some(map.next_value()?);
+                        }
+                        Field::Location => {
+                            location = Some(map.next_value()?);
+                        }
+                        Field::PocWitnessA => {
+                            poc_witness_a = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                let attack_type_str = attack_type.ok_or_else(|| de::Error::missing_field("attack_type"))?;
+                let parsed_attack_type = match attack_type_str.as_str() {
+                    "Underconstrained" => AttackType::Underconstrained,
+                    "Soundness" => AttackType::Soundness,
+                    "ArithmeticOverflow" => AttackType::ArithmeticOverflow,
+                    "ConstraintBypass" => AttackType::ConstraintBypass,
+                    "TrustedSetup" => AttackType::TrustedSetup,
+                    "WitnessLeakage" => AttackType::WitnessLeakage,
+                    "ReplayAttack" => AttackType::ReplayAttack,
+                    "Collision" => AttackType::Collision,
+                    "Boundary" => AttackType::Boundary,
+                    "BitDecomposition" => AttackType::BitDecomposition,
+                    "Malleability" => AttackType::Malleability,
+                    "VerificationFuzzing" => AttackType::VerificationFuzzing,
+                    "WitnessFuzzing" => AttackType::WitnessFuzzing,
+                    "Differential" => AttackType::Differential,
+                    "InformationLeakage" => AttackType::InformationLeakage,
+                    "TimingSideChannel" => AttackType::TimingSideChannel,
+                    "CircuitComposition" => AttackType::CircuitComposition,
+                    "RecursiveProof" => AttackType::RecursiveProof,
+                    _ => return Err(de::Error::unknown_variant(&attack_type_str, &[
+                        "Underconstrained", "Soundness", "ArithmeticOverflow", "Collision", "Boundary"
+                    ])),
+                };
+
+                let witness_a: Vec<FieldElement> = poc_witness_a
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|hex| FieldElement::from_hex(hex).ok())
+                    .collect();
+
+                Ok(Finding {
+                    attack_type: parsed_attack_type,
+                    severity: severity.ok_or_else(|| de::Error::missing_field("severity"))?,
+                    description: description.ok_or_else(|| de::Error::missing_field("description"))?,
+                    location: location.unwrap_or(None),
+                    poc: ProofOfConcept {
+                        witness_a,
+                        witness_b: None,
+                        public_inputs: vec![],
+                        proof: None,
+                    },
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &["attack_type", "severity", "description", "location", "poc_witness_a"];
+        deserializer.deserialize_struct("Finding", FIELDS, FindingVisitor)
     }
 }
 
@@ -325,5 +426,47 @@ mod tests {
 
         assert!(report.has_critical_findings());
         assert_eq!(report.findings.len(), 1);
+    }
+
+    #[test]
+    fn test_finding_serialization_roundtrip() {
+        let original = Finding {
+            attack_type: AttackType::Collision,
+            severity: Severity::High,
+            description: "Test collision finding".to_string(),
+            poc: ProofOfConcept::default(),
+            location: Some("test_circuit.circom:42".to_string()),
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&original).expect("Failed to serialize Finding");
+        
+        // Deserialize back
+        let deserialized: Finding = serde_json::from_str(&json).expect("Failed to deserialize Finding");
+
+        assert_eq!(deserialized.attack_type, AttackType::Collision);
+        assert_eq!(deserialized.severity, Severity::High);
+        assert_eq!(deserialized.description, "Test collision finding");
+        assert_eq!(deserialized.location, Some("test_circuit.circom:42".to_string()));
+    }
+
+    #[test]
+    fn test_finding_deserialization_from_json() {
+        // Note: Severity uses lowercase per serde rename_all = "lowercase"
+        let json = r#"{
+            "attack_type": "Soundness",
+            "severity": "critical",
+            "description": "Proof forgery detected",
+            "location": null,
+            "poc_witness_a": ["0x0000000000000000000000000000000000000000000000000000000000000001"]
+        }"#;
+
+        let finding: Finding = serde_json::from_str(json).expect("Failed to deserialize");
+        
+        assert_eq!(finding.attack_type, AttackType::Soundness);
+        assert_eq!(finding.severity, Severity::Critical);
+        assert_eq!(finding.description, "Proof forgery detected");
+        assert!(finding.location.is_none());
+        assert_eq!(finding.poc.witness_a.len(), 1);
     }
 }

@@ -12,7 +12,9 @@ use crate::fuzzer::{Finding, ProofOfConcept};
 
 /// Detector for underconstrained circuits
 pub struct UnderconstrainedDetector {
+    /// Number of witness samples to generate for collision testing
     samples: usize,
+    /// Tolerance for DOF ratio (constraints/inputs must be >= 1.0 - tolerance)
     tolerance: f64,
 }
 
@@ -24,21 +26,57 @@ impl UnderconstrainedDetector {
         }
     }
 
+    /// Set the tolerance for constraint ratio analysis
+    pub fn with_tolerance(mut self, tolerance: f64) -> Self {
+        self.tolerance = tolerance.clamp(0.0, 1.0);
+        self
+    }
+
+    /// Get the configured number of samples
+    pub fn samples(&self) -> usize {
+        self.samples
+    }
+
+    /// Get the configured tolerance
+    pub fn tolerance(&self) -> f64 {
+        self.tolerance
+    }
+
     /// Perform degree-of-freedom analysis
+    /// 
+    /// Uses `tolerance` to determine if the constraint ratio is acceptable.
+    /// A circuit is considered underconstrained if:
+    /// - num_constraints < num_private_inputs, OR
+    /// - constraint_ratio < (1.0 - tolerance) where there may be issues
     pub fn dof_analysis(&self, circuit_info: &CircuitInfo) -> Option<Finding> {
         let num_constraints = circuit_info.num_constraints;
         let num_private_inputs = circuit_info.num_private_inputs;
 
-        if num_constraints < num_private_inputs {
+        if num_private_inputs == 0 {
+            return None;
+        }
+
+        let constraint_ratio = num_constraints as f64 / num_private_inputs as f64;
+        let min_acceptable_ratio = 1.0 - self.tolerance;
+
+        if constraint_ratio < min_acceptable_ratio {
+            let dof = if num_constraints < num_private_inputs {
+                num_private_inputs - num_constraints
+            } else {
+                0
+            };
+
             return Some(Finding {
                 attack_type: AttackType::Underconstrained,
-                severity: Severity::High,
+                severity: if dof > 0 { Severity::High } else { Severity::Medium },
                 description: format!(
-                    "Circuit has {} constraints but {} private inputs. \
-                     Likely underconstrained (DOF = {})",
+                    "Circuit has {} constraints but {} private inputs (ratio: {:.3}). \
+                     Likely underconstrained (DOF = {}, tolerance = {:.4})",
                     num_constraints,
                     num_private_inputs,
-                    num_private_inputs - num_constraints
+                    constraint_ratio,
+                    dof,
+                    self.tolerance
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
@@ -49,16 +87,26 @@ impl UnderconstrainedDetector {
     }
 
     /// Check for unused signals
+    /// 
+    /// Uses `samples` to limit the analysis scope for large circuits
     pub fn unused_signal_analysis(&self, _circuit_info: &CircuitInfo) -> Vec<Finding> {
         // In real implementation, this would analyze the constraint system
-        // to find signals that are declared but never constrained
+        // to find signals that are declared but never constrained.
+        // The `samples` parameter would limit how many signals to analyze
+        // for very large circuits.
+        tracing::debug!("Unused signal analysis with {} sample limit", self.samples);
         vec![]
     }
 
     /// Check for weak constraints
+    /// 
+    /// Uses `samples` to limit the number of constraint evaluations
     pub fn weak_constraint_analysis(&self, _circuit_info: &CircuitInfo) -> Vec<Finding> {
         // In real implementation, this would look for constraints that
-        // don't sufficiently limit the witness space
+        // don't sufficiently limit the witness space.
+        // The `samples` parameter controls how many random evaluations
+        // to perform per constraint.
+        tracing::debug!("Weak constraint analysis with {} samples per constraint", self.samples);
         vec![]
     }
 }

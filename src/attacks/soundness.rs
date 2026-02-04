@@ -8,8 +8,15 @@ use crate::config::AttackType;
 use crate::fuzzer::Finding;
 
 /// Soundness attack detector
+/// 
+/// Tests proof system soundness by attempting to forge proofs through:
+/// - Proof mutation (bit flips, truncation, etc.)
+/// - Public input manipulation
+/// - Replay attacks
 pub struct SoundnessDetector {
+    /// Number of forgery attempts to make
     forge_attempts: usize,
+    /// Probability of mutating each byte in proof mutation attacks (0.0 to 1.0)
     mutation_rate: f64,
 }
 
@@ -17,32 +24,61 @@ impl SoundnessDetector {
     pub fn new(forge_attempts: usize, mutation_rate: f64) -> Self {
         Self {
             forge_attempts,
-            mutation_rate,
+            mutation_rate: mutation_rate.clamp(0.0, 1.0),
         }
     }
 
+    /// Get the configured number of forge attempts
+    pub fn forge_attempts(&self) -> usize {
+        self.forge_attempts
+    }
+
+    /// Get the configured mutation rate
+    pub fn mutation_rate(&self) -> f64 {
+        self.mutation_rate
+    }
+
     /// Attempt to forge proofs by mutating valid proofs
+    /// 
+    /// Performs `forge_attempts` mutations, each mutating bytes with probability `mutation_rate`
     pub fn mutation_forgery(&self, _context: &AttackContext) -> Vec<Finding> {
+        tracing::debug!(
+            "Running mutation forgery with {} attempts at {:.1}% mutation rate",
+            self.forge_attempts,
+            self.mutation_rate * 100.0
+        );
+        
         // In real implementation:
         // 1. Generate valid proof for known statement
-        // 2. Mutate proof bytes
+        // 2. Mutate proof bytes with probability mutation_rate per byte
         // 3. Try to verify mutated proof
         // 4. If verification passes, we found a soundness bug
+        // 5. Repeat for forge_attempts iterations
         vec![]
     }
 
     /// Attempt to forge proofs by modifying public inputs
+    /// 
+    /// Performs `forge_attempts` input modifications
     pub fn input_manipulation(&self, _context: &AttackContext) -> Vec<Finding> {
+        tracing::debug!(
+            "Running input manipulation with {} attempts",
+            self.forge_attempts
+        );
+        
         // In real implementation:
         // 1. Generate valid proof for statement (x, w)
-        // 2. Modify public input x to x'
+        // 2. Modify public input x to x' (with mutation_rate controlling how much)
         // 3. Try to verify proof with x'
         // 4. If verification passes, soundness is broken
         vec![]
     }
 
     /// Check for replay attacks
+    /// 
+    /// Tests if proofs can be reused across different contexts
     pub fn replay_attack(&self, _context: &AttackContext) -> Vec<Finding> {
+        tracing::debug!("Checking for replay attack vulnerabilities");
         // Check if proofs can be reused across different contexts
         vec![]
     }

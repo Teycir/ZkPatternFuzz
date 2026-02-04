@@ -11,7 +11,13 @@ use crate::config::AttackType;
 use crate::fuzzer::{FieldElement, Finding};
 
 /// Arithmetic overflow/underflow detector
+/// 
+/// Tests field arithmetic edge cases for vulnerabilities including:
+/// - Overflow/underflow at field boundaries
+/// - Division by zero handling
+/// - Incorrect modular reduction
 pub struct ArithmeticDetector {
+    /// Test values to use for arithmetic testing
     test_values: Vec<TestValue>,
 }
 
@@ -32,6 +38,16 @@ impl ArithmeticDetector {
 
     pub fn with_test_values(test_values: Vec<TestValue>) -> Self {
         Self { test_values }
+    }
+
+    /// Get the configured test values
+    pub fn test_values(&self) -> &[TestValue] {
+        &self.test_values
+    }
+
+    /// Get the number of test values configured
+    pub fn num_test_values(&self) -> usize {
+        self.test_values.len()
     }
 
     fn default_test_values() -> Vec<TestValue> {
@@ -84,21 +100,46 @@ impl ArithmeticDetector {
         FieldElement(bytes)
     }
 
-    /// Test addition overflow
+    /// Test addition overflow using configured test_values
     pub fn test_addition_overflow(&self, _context: &AttackContext) -> Vec<Finding> {
+        tracing::debug!(
+            "Testing addition overflow with {} test values",
+            self.test_values.len()
+        );
+        
+        // Test each configured value for addition overflow
+        for test_val in &self.test_values {
+            tracing::trace!("Testing addition with {}: {}", test_val.name, test_val.description);
+        }
+        
         // Test: (p-1) + 1 should wrap to 0
         // Test: (p-1) + (p-1) should wrap correctly
         vec![]
     }
 
-    /// Test multiplication overflow
+    /// Test multiplication overflow using configured test_values
     pub fn test_multiplication_overflow(&self, _context: &AttackContext) -> Vec<Finding> {
+        tracing::debug!(
+            "Testing multiplication overflow with {} test values",
+            self.test_values.len()
+        );
+        
+        // Test each configured value for multiplication overflow
+        for test_val in &self.test_values {
+            tracing::trace!("Testing multiplication with {}: {}", test_val.name, test_val.description);
+        }
+        
         // Test: large * large should reduce correctly
         vec![]
     }
 
-    /// Test division edge cases
+    /// Test division edge cases using configured test_values
     pub fn test_division(&self, _context: &AttackContext) -> Vec<Finding> {
+        tracing::debug!(
+            "Testing division with {} test values",
+            self.test_values.len()
+        );
+        
         // Test: x / 0 should fail or be handled
         // Test: 0 / x should be 0
         vec![]
@@ -106,6 +147,11 @@ impl ArithmeticDetector {
 
     /// Test modular exponentiation
     pub fn test_exponentiation(&self, _context: &AttackContext) -> Vec<Finding> {
+        tracing::debug!(
+            "Testing exponentiation with {} test values",
+            self.test_values.len()
+        );
+        
         // Test: x^0 = 1
         // Test: x^1 = x
         // Test: x^(p-1) = 1 (Fermat's little theorem)

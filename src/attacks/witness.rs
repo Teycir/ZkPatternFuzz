@@ -5,13 +5,13 @@
 //! - Non-deterministic witness generation
 //! - Timing side-channels in witness computation
 
-use super::{Attack, AttackContext, CircuitInfo};
+use super::{Attack, AttackContext};
 use crate::config::{AttackType, Severity};
-use crate::executor::{CircuitExecutor, WitnessExtractor};
+use crate::executor::CircuitExecutor;
 use crate::fuzzer::{Finding, FieldElement, ProofOfConcept};
 use rand::Rng;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Witness generation fuzzer
 pub struct WitnessFuzzer {

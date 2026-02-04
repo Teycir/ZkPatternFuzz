@@ -5,7 +5,7 @@
 //! - Verifier edge case handling
 //! - Soundness violations
 
-use super::{Attack, AttackContext, CircuitInfo};
+use super::{Attack, AttackContext};
 use crate::config::{AttackType, Severity};
 use crate::executor::CircuitExecutor;
 use crate::fuzzer::{Finding, FieldElement, ProofOfConcept};
