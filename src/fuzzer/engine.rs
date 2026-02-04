@@ -6,12 +6,14 @@
 use super::{Finding, FieldElement, TestCase, TestMetadata, mutate_field_element, bn254_modulus_bytes};
 use super::power_schedule::{PowerSchedule, PowerScheduler, TestCaseMetrics};
 use super::structure_aware::{StructureAwareMutator, Splicer};
+use super::oracle::{BugOracle, UnderconstrainedOracle, ArithmeticOverflowOracle};
+use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::symbolic::{SymbolicFuzzerIntegration, SymbolicConfig, VulnerabilityPattern};
 use crate::analysis::taint::TaintAnalyzer;
 use crate::config::*;
-use crate::corpus::{CorpusEntry, SharedCorpus, create_corpus};
+use crate::corpus::{CorpusEntry, SharedCorpus, create_corpus, storage as corpus_storage};
 use crate::executor::{CircuitExecutor, ExecutorFactory, SharedCoverageTracker, create_coverage_tracker};
-use crate::progress::{FuzzingStats, ProgressReporter};
+use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
 use crate::reporting::FuzzReport;
 
 use rand::{Rng, SeedableRng};
@@ -41,8 +43,14 @@ pub struct FuzzingEngine {
     structure_mutator: StructureAwareMutator,
     /// Start time for time-based metrics
     start_time: Option<Instant>,
-    /// Global average execution time
-    avg_exec_time: Duration,
+    /// Global average execution time (exponential moving average)
+    avg_exec_time: Arc<std::sync::RwLock<Duration>>,
+    /// Complexity analyzer for circuit analysis
+    complexity_analyzer: ComplexityAnalyzer,
+    /// Bug oracles for detection
+    oracles: Vec<Box<dyn BugOracle>>,
+    /// Simple progress tracker for non-interactive mode
+    simple_tracker: Option<SimpleProgressTracker>,
 }
 
 impl FuzzingEngine {
@@ -87,11 +95,47 @@ impl FuzzingEngine {
             Some(analyzer)
         };
 
-        // Initialize power scheduler (default to MMOPT for balanced performance)
-        let power_scheduler = PowerScheduler::new(PowerSchedule::Mmopt);
+        // Initialize power scheduler based on config (support all variants)
+        let schedule = Self::parse_power_schedule(&config);
+        let power_scheduler = PowerScheduler::new(schedule)
+            .with_base_energy(100)
+            .with_schedule(schedule);
 
-        // Initialize structure-aware mutator
-        let structure_mutator = StructureAwareMutator::new(config.campaign.target.framework);
+        // Initialize structure-aware mutator with inferred structures
+        let mut structure_mutator = StructureAwareMutator::new(config.campaign.target.framework);
+        
+        // Infer input structures from circuit source if available
+        if let Some(path) = config.campaign.target.circuit_path.to_str() {
+            if let Ok(source) = std::fs::read_to_string(path) {
+                let structures = StructureAwareMutator::infer_structure_from_source(
+                    &source,
+                    config.campaign.target.framework,
+                );
+                structure_mutator = structure_mutator.with_structures(structures);
+            }
+        }
+
+        // Initialize complexity analyzer
+        let complexity_analyzer = ComplexityAnalyzer::new();
+        
+        // Analyze circuit complexity
+        let complexity = complexity_analyzer.analyze(&executor);
+        tracing::info!(
+            "Circuit complexity: {} constraints, density: {:.2}, DOF: {}",
+            complexity.r1cs_constraints,
+            complexity.constraint_density,
+            complexity.degrees_of_freedom
+        );
+        
+        for suggestion in &complexity.optimization_suggestions {
+            tracing::info!("Optimization suggestion: {:?} - {}", suggestion.priority, suggestion.description);
+        }
+
+        // Initialize bug oracles
+        let oracles: Vec<Box<dyn BugOracle>> = vec![
+            Box::new(UnderconstrainedOracle::new()),
+            Box::new(ArithmeticOverflowOracle::new()),
+        ];
 
         Ok(Self {
             config,
@@ -108,8 +152,23 @@ impl FuzzingEngine {
             power_scheduler,
             structure_mutator,
             start_time: None,
-            avg_exec_time: Duration::from_micros(100),
+            avg_exec_time: Arc::new(std::sync::RwLock::new(Duration::from_micros(100))),
+            complexity_analyzer,
+            oracles,
+            simple_tracker: None,
         })
+    }
+
+    /// Parse power schedule from config
+    fn parse_power_schedule(config: &FuzzConfig) -> PowerSchedule {
+        // Check for power_schedule in campaign parameters
+        if let Some(schedule_str) = config.campaign.parameters.additional.get("power_schedule") {
+            if let Some(s) = schedule_str.as_str() {
+                return PowerSchedule::from_str(s);
+            }
+        }
+        // Default to MMOPT for balanced performance
+        PowerSchedule::Mmopt
     }
 
     /// Run the fuzzing campaign
@@ -146,9 +205,18 @@ impl FuzzingEngine {
             }
         }
 
+        // Run source code analysis for vulnerability hints
+        self.run_source_analysis(progress);
+
         // Seed corpus
         self.seed_corpus()?;
         tracing::info!("Seeded corpus with {} initial test cases", self.corpus.len());
+
+        // Initialize simple progress tracker for non-interactive environments
+        self.simple_tracker = Some(SimpleProgressTracker::new());
+
+        // Update power scheduler with initial global stats
+        self.update_power_scheduler_globals();
 
         // Run attacks
         for attack_config in &self.config.attacks.clone() {
@@ -206,6 +274,27 @@ impl FuzzingEngine {
             if let Some(p) = progress {
                 p.log_attack_complete(&format!("{:?}", attack_config.attack_type), new_findings);
             }
+
+            // Update power scheduler with current stats after each attack
+            self.update_power_scheduler_globals();
+
+            // Update simple tracker
+            let current_stats = self.stats();
+            if let Some(ref mut tracker) = self.simple_tracker {
+                tracker.update(current_stats);
+            }
+        }
+
+        // Finish simple tracker
+        if let Some(ref tracker) = self.simple_tracker {
+            tracker.finish();
+        }
+
+        // Export corpus to output directory
+        let corpus_dir = self.config.reporting.output_dir.join("corpus");
+        match self.export_corpus(&corpus_dir) {
+            Ok(count) => tracing::info!("Exported {} interesting test cases to {:?}", count, corpus_dir),
+            Err(e) => tracing::warn!("Failed to export corpus: {}", e),
         }
 
         // Generate report
@@ -431,8 +520,31 @@ impl FuzzingEngine {
     /// is that we might miss adding a test case that another thread added
     /// first with the same coverage, which is acceptable behavior.
     fn execute_and_track(&self, test_case: &TestCase) -> crate::executor::ExecutionResult {
+        let exec_start = Instant::now();
         let result = self.executor.execute_sync(&test_case.inputs);
+        let exec_time = exec_start.elapsed();
+        
         self.execution_count.fetch_add(1, Ordering::Relaxed);
+
+        // Update average execution time (using exponential moving average with alpha=0.1)
+        if let Ok(mut avg_time) = self.avg_exec_time.write() {
+            let current_avg_micros = avg_time.as_micros() as f64;
+            let new_exec_micros = exec_time.as_micros() as f64;
+            let updated_avg = current_avg_micros * 0.9 + new_exec_micros * 0.1;
+            *avg_time = Duration::from_micros(updated_avg as u64);
+        }
+
+        // Update stats
+        if let Ok(mut stats) = self.stats.write() {
+            stats.executions = self.execution_count.load(Ordering::Relaxed);
+            stats.corpus_size = self.corpus.len();
+            stats.crashes = self.findings.read().unwrap().len() as u64;
+            stats.unique_crashes = self.findings.read().unwrap().len() as u64;
+            stats.coverage_percentage = self.coverage.coverage_percentage();
+            if let Some(start) = self.start_time {
+                stats.update_exec_rate(start);
+            }
+        }
 
         // Track coverage - record_execution is already thread-safe
         let is_new = self.coverage.record_execution(&result.coverage.satisfied_constraints);
@@ -445,9 +557,34 @@ impl FuzzingEngine {
             let entry = CorpusEntry::new(test_case.clone(), result.coverage.coverage_hash)
                 .with_new_coverage();
             // add() returns false if entry already exists, preventing duplicates
-            let _ = self.corpus.add(entry);
+            if self.corpus.add(entry) {
+                if let Ok(mut stats) = self.stats.write() {
+                    stats.new_coverage_count += 1;
+                }
+            }
         }
 
+        // Run bug oracles on successful executions
+        if result.success {
+            let oracle_findings = self.run_oracles(test_case, &result.outputs);
+            if !oracle_findings.is_empty() {
+                let mut findings = self.findings.write().unwrap();
+                findings.extend(oracle_findings);
+            }
+        }
+
+        result
+    }
+
+    /// Execute test case, update coverage, and learn patterns (mutable version)
+    fn execute_and_learn(&mut self, test_case: &TestCase) -> crate::executor::ExecutionResult {
+        let result = self.execute_and_track(test_case);
+        
+        // Learn mutation patterns from successful executions
+        if result.success {
+            self.learn_mutation_patterns(test_case, &result);
+        }
+        
         result
     }
 
@@ -623,7 +760,7 @@ impl FuzzingEngine {
             let fe = FieldElement(fe_bytes);
 
             let test_case = self.create_test_case_with_value(fe);
-            let result = self.execute_and_track(&test_case);
+            let result = self.execute_and_learn(&test_case);
 
             if result.success && self.detect_overflow_indicator(&result.outputs) {
                 let finding = Finding {
@@ -757,7 +894,7 @@ impl FuzzingEngine {
             let fe = FieldElement(fe_bytes);
 
             let test_case = self.create_test_case_with_value(fe);
-            let _ = self.execute_and_track(&test_case);
+            let _ = self.execute_and_learn(&test_case);
 
             if let Some(p) = progress {
                 p.inc();
@@ -843,6 +980,8 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::differential::{DifferentialFuzzer, DifferentialConfig};
+        use crate::differential::executor::MultiBackendExecutor;
+        use crate::differential::report::DifferentialReport;
         
         let num_tests = config
             .get("num_tests")
@@ -853,10 +992,17 @@ impl FuzzingEngine {
 
         let diff_config = DifferentialConfig {
             num_tests,
-            ..Default::default()
+            backends: vec![self.config.campaign.target.framework],
+            compare_coverage: true,
+            compare_proofs: false,
+            timing_tolerance_percent: 50.0,
         };
 
-        let mut diff_fuzzer = DifferentialFuzzer::new(diff_config);
+        // Create multi-backend executor for potential cross-backend testing
+        let mut multi_executor = MultiBackendExecutor::new(self.config.campaign.target.framework);
+        multi_executor.add_backend(self.config.campaign.target.framework, self.executor.clone());
+
+        let mut diff_fuzzer = DifferentialFuzzer::new(diff_config.clone());
         diff_fuzzer.add_executor(self.config.campaign.target.framework, self.executor.clone());
 
         let test_cases: Vec<_> = (0..num_tests)
@@ -864,6 +1010,20 @@ impl FuzzingEngine {
             .collect();
 
         let results = diff_fuzzer.run(&test_cases);
+        
+        // Create differential report
+        let report = DifferentialReport::new(
+            &self.config.campaign.name,
+            diff_config.backends.clone(),
+            results.clone(),
+            diff_fuzzer.stats().clone(),
+        );
+        
+        if report.has_critical_issues() {
+            tracing::warn!("Differential fuzzing found {} critical issues", report.critical_findings().len());
+        }
+        
+        tracing::info!("{}", report.summary());
         
         for result in results {
             let finding = Finding {
@@ -899,7 +1059,8 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::multi_circuit::MultiCircuitFuzzer;
+        use crate::multi_circuit::{MultiCircuitFuzzer, CircuitChain};
+        use crate::multi_circuit::composition::{CompositionTester, CompositionType};
         
         let num_tests = config
             .get("num_tests")
@@ -907,6 +1068,34 @@ impl FuzzingEngine {
             .unwrap_or(200) as usize;
 
         tracing::info!("Running circuit composition fuzzing with {} tests", num_tests);
+
+        // Create composition tester for sequential composition
+        let mut composition_tester = CompositionTester::new(CompositionType::Sequential);
+        composition_tester.add_circuit(self.executor.clone());
+
+        // Create circuit chain for chained execution testing
+        let mut chain = CircuitChain::new();
+        chain.add("main", self.executor.clone());
+
+        // Test chain execution with random inputs
+        for _ in 0..num_tests.min(10) {
+            let inputs: Vec<FieldElement> = (0..self.executor.num_private_inputs())
+                .map(|_| FieldElement::random(&mut self.rng))
+                .collect();
+            
+            let chain_result = chain.execute(&inputs);
+            if !chain_result.success {
+                tracing::debug!("Chain execution failed at step: {:?}", 
+                    chain_result.steps.last().map(|s| &s.circuit_name));
+            }
+        }
+
+        // Test composition with vulnerability detection
+        let vulnerabilities = composition_tester.check_vulnerabilities();
+        for vuln in &vulnerabilities {
+            tracing::warn!("Composition vulnerability: {:?} - {}", 
+                vuln.vuln_type, vuln.description);
+        }
 
         let mut multi_fuzzer = MultiCircuitFuzzer::new(
             crate::multi_circuit::MultiCircuitConfig::default()
@@ -1165,14 +1354,111 @@ impl FuzzingEngine {
 
     /// Get current statistics
     pub fn stats(&self) -> FuzzingStats {
-        FuzzingStats {
-            executions: self.execution_count.load(Ordering::Relaxed),
-            crashes: self.findings.read().unwrap().len() as u64,
-            coverage_percentage: self.coverage.coverage_percentage(),
-            unique_crashes: self.findings.read().unwrap().len() as u64,
-            corpus_size: self.corpus.len(),
-            new_coverage_count: self.coverage.new_coverage_count(),
-            ..Default::default()
+        // Return cached stats if available, otherwise compute fresh
+        if let Ok(stats) = self.stats.read() {
+            stats.clone()
+        } else {
+            FuzzingStats {
+                executions: self.execution_count.load(Ordering::Relaxed),
+                crashes: self.findings.read().unwrap().len() as u64,
+                coverage_percentage: self.coverage.coverage_percentage(),
+                unique_crashes: self.findings.read().unwrap().len() as u64,
+                corpus_size: self.corpus.len(),
+                new_coverage_count: self.coverage.new_coverage_count(),
+                ..Default::default()
+            }
+        }
+    }
+
+    /// Run bug oracles on test case results
+    fn run_oracles(&self, test_case: &TestCase, outputs: &[FieldElement]) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for oracle in &self.oracles {
+            if let Some(finding) = oracle.check(test_case, outputs) {
+                tracing::warn!("Oracle '{}' detected issue: {}", oracle.name(), finding.description);
+                findings.push(finding);
+            }
+        }
+        findings
+    }
+
+    /// Update power scheduler with global statistics
+    fn update_power_scheduler_globals(&mut self) {
+        let avg_time = self.avg_exec_time.read()
+            .map(|t| *t)
+            .unwrap_or(Duration::from_micros(100));
+        let total_edges = self.coverage.unique_constraints_hit() as u64;
+        self.power_scheduler.update_globals(avg_time, total_edges);
+    }
+
+    /// Export corpus to disk for persistence
+    pub fn export_corpus(&self, output_dir: &std::path::Path) -> anyhow::Result<usize> {
+        let entries = self.corpus.all_entries();
+        corpus_storage::export_interesting_cases(&entries, output_dir)
+    }
+
+    /// Get complexity metrics for the circuit
+    pub fn get_complexity_metrics(&self) -> crate::analysis::complexity::ComplexityMetrics {
+        self.complexity_analyzer.analyze(&self.executor)
+    }
+
+    /// Learn patterns from successful executions for structure-aware mutations
+    fn learn_mutation_patterns(&mut self, test_case: &TestCase, result: &crate::executor::ExecutionResult) {
+        if result.success && !result.outputs.is_empty() {
+            // Learn patterns from inputs that produce interesting outputs
+            for (i, input) in test_case.inputs.iter().enumerate() {
+                let pattern_name = format!("input_{}", i);
+                self.structure_mutator.learn_pattern(&pattern_name, vec![input.clone()]);
+            }
+        }
+    }
+
+    /// Run source code analysis to find vulnerability hints
+    fn run_source_analysis(&self, progress: Option<&ProgressReporter>) {
+        use crate::targets::{circom_analysis, noir_analysis, halo2_analysis, cairo_analysis};
+        
+        // Try to read the circuit source file
+        let source = match std::fs::read_to_string(&self.config.campaign.target.circuit_path) {
+            Ok(s) => s,
+            Err(_) => return, // Skip if source not readable
+        };
+
+        let hints: Vec<String> = match self.config.campaign.target.framework {
+            Framework::Circom => {
+                circom_analysis::analyze_for_vulnerabilities(&source)
+                    .into_iter()
+                    .map(|h| format!("{:?}: {} at line {}", h.hint_type, h.description, h.line.unwrap_or(0)))
+                    .collect()
+            }
+            Framework::Noir => {
+                noir_analysis::analyze_for_vulnerabilities(&source)
+                    .into_iter()
+                    .map(|h| format!("{:?}: {} at line {}", h.hint_type, h.description, h.line.unwrap_or(0)))
+                    .collect()
+            }
+            Framework::Halo2 => {
+                halo2_analysis::analyze_circuit(&source)
+                    .into_iter()
+                    .map(|h| format!("[{}] {}: {}", h.severity, h.gate_type, h.description))
+                    .collect()
+            }
+            Framework::Cairo => {
+                cairo_analysis::analyze_for_vulnerabilities(&source)
+                    .into_iter()
+                    .map(|h| format!("{:?}: {}", h.issue_type, h.description))
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
+
+        if !hints.is_empty() {
+            tracing::info!("Source analysis found {} vulnerability hints", hints.len());
+            for hint in &hints {
+                tracing::warn!("Vulnerability hint: {}", hint);
+                if let Some(p) = progress {
+                    p.log_finding("INFO", hint);
+                }
+            }
         }
     }
 }

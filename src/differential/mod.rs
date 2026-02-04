@@ -3,8 +3,8 @@
 //! Compares outputs across different ZK backends (Circom vs Noir vs Halo2)
 //! for the same circuit logic to detect implementation inconsistencies.
 
-mod executor;
-mod report;
+pub mod executor;
+pub mod report;
 
 
 use crate::config::Framework;

@@ -60,6 +60,9 @@ pub struct Parameters {
     pub max_constraints: u64,
     #[serde(default = "default_timeout")]
     pub timeout_seconds: u64,
+    /// Additional configuration options
+    #[serde(default, flatten)]
+    pub additional: std::collections::HashMap<String, serde_yaml::Value>,
 }
 
 fn default_field() -> String {
@@ -80,6 +83,7 @@ impl Default for Parameters {
             field: default_field(),
             max_constraints: default_max_constraints(),
             timeout_seconds: default_timeout(),
+            additional: std::collections::HashMap::new(),
         }
     }
 }

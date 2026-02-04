@@ -182,9 +182,40 @@ impl StructureAwareMutator {
     /// Mutate inputs based on their structure
     pub fn mutate(&self, inputs: &[FieldElement], rng: &mut impl Rng) -> Vec<FieldElement> {
         if self.structures.is_empty() {
-            // Fall back to byte-level mutation
+            // Fall back to byte-level mutation with framework-specific heuristics
             return inputs.iter()
-                .map(|fe| super::mutate_field_element(fe, rng))
+                .enumerate()
+                .map(|(i, fe)| {
+                    // Check if we have a learned pattern for this input
+                    let pattern_key = format!("input_{}", i);
+                    if let Some(pattern) = self.patterns.get(&pattern_key) {
+                        // 20% chance to replay learned pattern
+                        if rng.gen::<f64>() < 0.2 && !pattern.is_empty() {
+                            return pattern[rng.gen_range(0..pattern.len())].clone();
+                        }
+                    }
+                    
+                    // Framework-specific mutation hints
+                    match self.framework {
+                        Framework::Circom | Framework::Noir => {
+                            // These use BN254, so bias toward field boundaries
+                            if rng.gen::<f64>() < 0.1 {
+                                self.interesting_field_value(rng)
+                            } else {
+                                super::mutate_field_element(fe, rng)
+                            }
+                        }
+                        Framework::Halo2 => {
+                            // Halo2 often uses lookup tables, try boundary values
+                            if rng.gen::<f64>() < 0.15 {
+                                FieldElement::from_u64(rng.gen_range(0..256))
+                            } else {
+                                super::mutate_field_element(fe, rng)
+                            }
+                        }
+                        _ => super::mutate_field_element(fe, rng),
+                    }
+                })
                 .collect();
         }
 

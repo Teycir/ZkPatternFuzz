@@ -5,7 +5,7 @@
 //! - Cross-circuit vulnerabilities
 //! - Circuit composition security
 
-mod composition;
+pub mod composition;
 pub mod recursive;
 
 
