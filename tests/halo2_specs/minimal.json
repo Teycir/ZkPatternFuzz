@@ -1,0 +1,11 @@
+{
+  "name": "minimal_halo2",
+  "k": 4,
+  "advice_columns": 2,
+  "fixed_columns": 1,
+  "instance_columns": 1,
+  "constraints": 8,
+  "private_inputs": 2,
+  "public_inputs": 1,
+  "lookups": 0
+}

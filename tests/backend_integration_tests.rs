@@ -3,10 +3,43 @@
 //! These tests verify that the backend integrations work correctly
 //! when the required tools are available in the environment.
 
+use std::path::PathBuf;
 use zk_fuzzer::config::Framework;
 use zk_fuzzer::executor::ExecutorFactory;
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CircomTarget, NoirTarget, Halo2Target, CairoTarget, TargetCircuit};
+
+fn repo_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+fn circom_test_circuit(name: &str) -> PathBuf {
+    repo_path()
+        .join("tests")
+        .join("circuits")
+        .join(format!("{}.circom", name))
+}
+
+fn noir_project_path(name: &str) -> PathBuf {
+    repo_path()
+        .join("tests")
+        .join("noir_projects")
+        .join(name)
+}
+
+fn cairo_program_path(name: &str) -> PathBuf {
+    repo_path()
+        .join("tests")
+        .join("cairo_programs")
+        .join(format!("{}.cairo", name))
+}
+
+fn halo2_spec_path(name: &str) -> PathBuf {
+    repo_path()
+        .join("tests")
+        .join("halo2_specs")
+        .join(format!("{}.json", name))
+}
 
 /// Test that we can detect available backends
 #[test]
@@ -157,9 +190,22 @@ fn test_circom_integration() {
         println!("Skipping Circom integration test - circom not available");
         return;
     }
-    
-    // Would need an actual circom file to test fully
-    println!("Circom integration test would run here");
+
+    let circuit_path = circom_test_circuit("multiplier");
+    assert!(circuit_path.exists(), "Missing test circuit at {:?}", circuit_path);
+
+    let mut target = CircomTarget::new(
+        circuit_path.to_str().unwrap(),
+        "Multiplier",
+    ).expect("Failed to create CircomTarget");
+    target.compile().expect("Circom compilation failed");
+
+    let outputs = target.execute(&[
+        FieldElement::from_u64(3),
+        FieldElement::from_u64(4),
+    ]).expect("Circom execution failed");
+
+    assert_eq!(outputs.get(0), Some(&FieldElement::from_u64(12)));
 }
 
 /// Integration test for Noir (only runs if nargo is available)
@@ -170,9 +216,20 @@ fn test_noir_integration() {
         println!("Skipping Noir integration test - nargo not available");
         return;
     }
-    
-    // Would need an actual Noir project to test fully
-    println!("Noir integration test would run here");
+
+    let project_path = noir_project_path("multiplier");
+    assert!(project_path.exists(), "Missing Noir project at {:?}", project_path);
+
+    let mut target = NoirTarget::new(project_path.to_str().unwrap())
+        .expect("Failed to create NoirTarget");
+    target.compile().expect("Noir compilation failed");
+
+    let outputs = target.execute(&[
+        FieldElement::from_u64(3),
+        FieldElement::from_u64(5),
+    ]).expect("Noir execution failed");
+
+    assert_eq!(outputs.get(0), Some(&FieldElement::from_u64(15)));
 }
 
 /// Integration test for Cairo (only runs if cairo tools are available)
@@ -183,9 +240,34 @@ fn test_cairo_integration() {
         println!("Skipping Cairo integration test - cairo not available");
         return;
     }
-    
-    // Would need an actual Cairo file to test fully
-    println!("Cairo integration test would run here");
+
+    let program_path = cairo_program_path("multiplier");
+    assert!(program_path.exists(), "Missing Cairo program at {:?}", program_path);
+
+    let mut target = CairoTarget::new(program_path.to_str().unwrap())
+        .expect("Failed to create CairoTarget");
+    target.compile().expect("Cairo compilation failed");
+
+    let outputs = target.execute(&[]).expect("Cairo execution failed");
+    assert_eq!(outputs.get(0), Some(&FieldElement::from_u64(12)));
+}
+
+/// Integration test for Halo2 JSON spec loading/execution
+#[test]
+#[ignore] // Run with: cargo test --ignored
+fn test_halo2_json_integration() {
+    let spec_path = halo2_spec_path("minimal");
+    assert!(spec_path.exists(), "Missing Halo2 spec at {:?}", spec_path);
+
+    let mut target = Halo2Target::new(spec_path.to_str().unwrap())
+        .expect("Failed to create Halo2Target");
+    target.setup().expect("Halo2 setup failed");
+
+    let outputs = target.execute(&[
+        FieldElement::from_u64(1),
+        FieldElement::from_u64(2),
+    ]).expect("Halo2 execution failed");
+    assert!(!outputs.is_empty());
 }
 
 /// Test executor factory fallback behavior

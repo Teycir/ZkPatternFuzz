@@ -133,14 +133,8 @@ Commit message prefixes:
 
 ### Low Priority
 
-7. **GUI Development**
-   - Web-based dashboard
-   - Campaign visualization
-   - Real-time progress
-
-8. **Advanced Features**
+7. **Advanced Features**
    - Distributed fuzzing
-   - ML-based mutations
    - Formal verification integration
 
 ## Testing

@@ -145,23 +145,26 @@ impl CairoTarget {
 
     /// Check if Cairo compiler is available
     pub fn check_cairo_available() -> Result<(CairoVersion, String)> {
-        // Try Cairo 1 first (scarb)
-        if let Ok(output) = Command::new("scarb").arg("--version").output() {
-            if output.status.success() {
-                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                return Ok((CairoVersion::Cairo1, version));
-            }
+        let output = Command::new("cairo-compile")
+            .arg("--version")
+            .output()
+            .context("cairo-compile not found in PATH")?;
+
+        if !output.status.success() {
+            anyhow::bail!("cairo-compile --version failed");
         }
 
-        // Try Cairo 0
-        if let Ok(output) = Command::new("cairo-compile").arg("--version").output() {
-            if output.status.success() {
-                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                return Ok((CairoVersion::Cairo0, version));
-            }
+        let run_output = Command::new("cairo-run")
+            .arg("--version")
+            .output()
+            .context("cairo-run not found in PATH")?;
+
+        if !run_output.status.success() {
+            anyhow::bail!("cairo-run --version failed");
         }
 
-        anyhow::bail!("Neither scarb nor cairo-compile found in PATH")
+        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok((CairoVersion::Cairo0, version))
     }
 
     /// Check if stone-prover is available
@@ -201,12 +204,20 @@ impl CairoTarget {
     fn compile_cairo0(&mut self) -> Result<()> {
         let output_path = self.build_dir.join(format!("{}.json", self.name));
 
+        let mut args = vec![
+            self.source_path.to_str().unwrap().to_string(),
+            "--output".to_string(),
+            output_path.to_str().unwrap().to_string(),
+        ];
+
+        if self.config.proof_mode {
+            args.push("--proof_mode".to_string());
+        } else {
+            args.push("--no_proof_mode".to_string());
+        }
+
         let output = Command::new("cairo-compile")
-            .args([
-                self.source_path.to_str().unwrap(),
-                "--output",
-                output_path.to_str().unwrap(),
-            ])
+            .args(&args)
             .output()
             .context("Failed to run cairo-compile")?;
 

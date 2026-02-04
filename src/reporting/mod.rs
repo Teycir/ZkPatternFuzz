@@ -1,4 +1,11 @@
 //! Reporting module for fuzzing results
+//!
+//! Provides multiple output formats for fuzzing findings:
+//! - JSON: Machine-readable format for automation
+//! - Markdown: Human-readable reports for documentation
+//! - SARIF: IDE integration (VS Code, GitHub Code Scanning)
+
+pub mod sarif;
 
 use crate::config::{ReportingConfig, Severity};
 use crate::fuzzer::{CoverageMap, Finding};
@@ -7,6 +14,8 @@ use colored::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+
+pub use sarif::{SarifBuilder, SarifReport, SarifLevel};
 
 
 /// Complete fuzzing report
@@ -228,40 +237,31 @@ impl FuzzReport {
     }
 
     fn save_sarif(&self) -> anyhow::Result<()> {
-        // SARIF (Static Analysis Results Interchange Format)
         let path = self.config.output_dir.join("report.sarif");
 
-        let sarif = serde_json::json!({
-            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-            "version": "2.1.0",
-            "runs": [{
-                "tool": {
-                    "driver": {
-                        "name": "zk-fuzzer",
-                        "version": "0.1.0",
-                        "informationUri": "https://github.com/example/zk-fuzzer"
-                    }
-                },
-                "results": self.findings.iter().map(|f| {
-                    serde_json::json!({
-                        "ruleId": format!("{:?}", f.attack_type),
-                        "level": match f.severity {
-                            Severity::Critical | Severity::High => "error",
-                            Severity::Medium => "warning",
-                            _ => "note"
-                        },
-                        "message": {
-                            "text": f.description.clone()
-                        }
-                    })
-                }).collect::<Vec<_>>()
-            }]
-        });
+        // Use the full SARIF builder for comprehensive output
+        let report = SarifBuilder::new("zk-fuzzer", env!("CARGO_PKG_VERSION"))
+            .with_information_uri("https://github.com/example/zk-fuzzer")
+            .with_circuit_path(
+                self.campaign_name
+                    .split('/')
+                    .last()
+                    .unwrap_or(&self.campaign_name),
+            )
+            .add_findings(&self.findings)
+            .build();
 
-        let json = serde_json::to_string_pretty(&sarif)?;
-        fs::write(&path, json)?;
+        report.save_to_file(&path)?;
         tracing::info!("Saved SARIF report to {:?}", path);
         Ok(())
+    }
+
+    /// Generate SARIF report object for programmatic access
+    pub fn to_sarif(&self) -> SarifReport {
+        SarifBuilder::new("zk-fuzzer", env!("CARGO_PKG_VERSION"))
+            .with_information_uri("https://github.com/example/zk-fuzzer")
+            .add_findings(&self.findings)
+            .build()
     }
 }
 

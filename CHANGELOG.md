@@ -154,7 +154,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collision attack partially implemented
 - Boundary attack partially implemented
 - Real backend integration tests require manual setup
-- GUI not implemented
 - CI/CD integration templates not provided
 
 ### Breaking Changes

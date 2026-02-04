@@ -353,11 +353,8 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 - [ ] Enhance symbolic execution capabilities
 
 ### Planned 📋
-- [ ] Add GUI for campaign management
 - [ ] Integrate with CI/CD pipelines (GitHub Actions templates)
 - [ ] Distributed fuzzing with corpus sharing
-- [ ] Machine learning-based mutation strategies
-- [ ] Real-time web dashboard
 - [ ] Formal verification integration
 
 ## References

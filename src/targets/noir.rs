@@ -64,13 +64,14 @@ pub struct NoirAbi {
     /// Parameter definitions
     pub parameters: Vec<NoirParameter>,
     /// Return type info
-    pub return_type: Option<String>,
+    pub return_type: Option<serde_json::Value>,
 }
 
 /// Noir function parameter
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirParameter {
     pub name: String,
+    #[serde(rename = "type")]
     pub typ: NoirType,
     pub visibility: Visibility,
 }
@@ -105,6 +106,28 @@ pub enum Visibility {
 
 
 impl NoirTarget {
+    fn nargo_home_dir(&self) -> PathBuf {
+        self.build_dir.join("nargo_home")
+    }
+
+    fn nargo_command(&self) -> Result<Command> {
+        std::fs::create_dir_all(&self.build_dir)?;
+        let nargo_home = self.nargo_home_dir();
+        std::fs::create_dir_all(&nargo_home)?;
+
+        let cargo_home = nargo_home.join("cargo");
+        std::fs::create_dir_all(&cargo_home)?;
+
+        let mut command = Command::new("nargo");
+        command
+            .current_dir(&self.project_path)
+            .env("HOME", &nargo_home)
+            .env("NARGO_HOME", &nargo_home)
+            .env("CARGO_HOME", &cargo_home);
+
+        Ok(command)
+    }
+
     /// Create a new Noir target from a project path
     pub fn new(project_path: &str) -> Result<Self> {
         let path = PathBuf::from(project_path);
@@ -172,10 +195,12 @@ impl NoirTarget {
         let nargo_version = Self::check_nargo_available()?;
         tracing::debug!("Using nargo: {}", nargo_version);
 
+        let _guard = noir_io_lock().lock().unwrap();
+
         // Compile the project
-        let output = Command::new("nargo")
+        let output = self
+            .nargo_command()?
             .args(["compile"])
-            .current_dir(&self.project_path)
             .output()
             .context("Failed to run nargo compile")?;
 
@@ -205,21 +230,26 @@ impl NoirTarget {
         };
 
         // Try to get circuit info using nargo info
-        let output = Command::new("nargo")
-            .args(["info", "--json"])
-            .current_dir(&self.project_path)
-            .output();
+        let output = self
+            .nargo_command()
+            .and_then(|mut command| {
+                command.args(["info", "--json"]);
+                Ok(command)
+            })
+            .and_then(|mut command| command.output().context("Failed to run nargo info --json"))
+            .ok();
 
-        let (num_opcodes, num_witnesses, num_public_inputs) = if let Ok(output) = output {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                self.parse_nargo_info(&stdout)
-            } else {
-                (0, 0, 0)
-            }
-        } else {
-            (0, 0, 0)
-        };
+        let (num_opcodes, num_witnesses, num_public_inputs) = output
+            .as_ref()
+            .and_then(|output| {
+                if output.status.success() {
+                    Some(String::from_utf8_lossy(&output.stdout))
+                } else {
+                    None
+                }
+            })
+            .map(|stdout| self.parse_nargo_info(&stdout))
+            .unwrap_or((0, 0, 0));
 
         // Parse ABI from compiled artifact
         let abi = self.parse_abi().unwrap_or_default();
@@ -284,12 +314,35 @@ impl NoirTarget {
 
     /// Parse ABI from compiled artifact
     fn parse_abi(&self) -> Result<NoirAbi> {
-        // Look for the compiled JSON in target directory
-        let json_path = self.build_dir
-            .join(self.metadata.as_ref().map(|m| m.name.as_str()).unwrap_or("main"))
-            .with_extension("json");
+        let mut candidates = Vec::new();
 
-        if json_path.exists() {
+        if let Some(metadata) = &self.metadata {
+            candidates.push(self.build_dir.join(format!("{}.json", metadata.name)));
+        }
+
+        let nargo_toml_path = self.project_path.join("Nargo.toml");
+        if nargo_toml_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&nargo_toml_path) {
+                let name = self.parse_project_name(&content);
+                candidates.push(self.build_dir.join(format!("{}.json", name)));
+            }
+        }
+
+        if candidates.is_empty() {
+            if let Ok(entries) = std::fs::read_dir(&self.build_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "json").unwrap_or(false) {
+                        candidates.push(path);
+                    }
+                }
+            }
+        }
+
+        for json_path in candidates {
+            if !json_path.exists() {
+                continue;
+            }
             let content = std::fs::read_to_string(&json_path)?;
             if let Ok(artifact) = serde_json::from_str::<serde_json::Value>(&content) {
                 if let Some(abi) = artifact.get("abi") {
@@ -315,16 +368,11 @@ impl NoirTarget {
     fn build_acir_info(&self) -> Result<NoirAcirInfo> {
         let _guard = noir_io_lock().lock().unwrap();
 
-        let nargo_home = self.build_dir.join("nargo_home");
-        std::fs::create_dir_all(&nargo_home)?;
-
-        let mut command = Command::new("nargo");
-        command
+        let output = self
+            .nargo_command()?
             .args(["compile", "--print-acir"])
-            .current_dir(&self.project_path)
-            .env("HOME", &nargo_home);
-
-        let output = command.output().context("Failed to run nargo compile --print-acir")?;
+            .output()
+            .context("Failed to run nargo compile --print-acir")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("Nargo ACIR print failed: {}", stderr);
@@ -369,12 +417,26 @@ impl NoirTarget {
         let prover_path = self.project_path.join("Prover.toml");
         std::fs::write(&prover_path, &prover_toml)?;
 
-        // Execute using nargo execute
-        let output = Command::new("nargo")
+        // Execute using nargo execute (JSON output is version-dependent)
+        let output = self
+            .nargo_command()?
             .args(["execute", "--json"])
-            .current_dir(&self.project_path)
             .output()
             .context("Failed to execute Noir circuit")?;
+
+        let output = if output.status.success() {
+            output
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("unexpected argument '--json'") {
+                self.nargo_command()?
+                    .args(["execute"])
+                    .output()
+                    .context("Failed to execute Noir circuit without --json")?
+            } else {
+                anyhow::bail!("Noir execution failed: {}", stderr);
+            }
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -427,6 +489,25 @@ impl NoirTarget {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(output) {
             if let Some(return_value) = json.get("return_value") {
                 return self.parse_noir_value(return_value);
+            }
+        }
+
+        for line in output.lines() {
+            if let Some(idx) = line.find("Circuit output:") {
+                let value_str = line[idx + "Circuit output:".len()..].trim();
+                if value_str.starts_with('[') && value_str.ends_with(']') {
+                    let inner = &value_str[1..value_str.len().saturating_sub(1)];
+                    let mut results = Vec::new();
+                    for part in inner.split(',') {
+                        let part = part.trim();
+                        if part.is_empty() {
+                            continue;
+                        }
+                        results.push(parse_noir_field(part)?);
+                    }
+                    return Ok(results);
+                }
+                return Ok(vec![parse_noir_field(value_str)?]);
             }
         }
 
@@ -550,9 +631,9 @@ impl TargetCircuit for NoirTarget {
         std::fs::write(self.project_path.join("Prover.toml"), &prover_toml)?;
 
         // Generate proof using nargo
-        let output = Command::new("nargo")
+        let output = self
+            .nargo_command()?
             .args(["prove"])
-            .current_dir(&self.project_path)
             .output()
             .context("Failed to generate Noir proof")?;
 
@@ -590,9 +671,9 @@ impl TargetCircuit for NoirTarget {
         std::fs::write(&proof_path, proof)?;
 
         // Verify using nargo
-        let output = Command::new("nargo")
+        let output = self
+            .nargo_command()?
             .args(["verify"])
-            .current_dir(&self.project_path)
             .output()
             .context("Failed to verify Noir proof")?;
 

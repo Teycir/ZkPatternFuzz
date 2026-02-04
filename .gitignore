@@ -29,3 +29,4 @@ Thumbs.db
 .qodo
 .zencoder
 .zenflow
+tests/noir_projects/multiplier/target/noir_multiplier.gz

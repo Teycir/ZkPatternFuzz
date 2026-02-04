@@ -17,8 +17,8 @@ mod collision;
 mod boundary;
 
 pub use underconstrained::UnderconstrainedDetector;
-pub use collision::CollisionDetector;
-pub use boundary::BoundaryTester;
+pub use collision::{CollisionDetector, CollisionAnalysis, CollisionPair, HashType};
+pub use boundary::{BoundaryTester, BoundaryCategory, BoundaryTestResult, BoundaryTestSummary, RangeSpec, common_ranges};
 pub use arithmetic::ArithmeticTester;
 pub use soundness::SoundnessTester;
 
