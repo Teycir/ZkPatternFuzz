@@ -3,7 +3,7 @@ name = "zk-fuzzer"
 version = "0.1.0"
 edition = "2021"
 description = "Zero-Knowledge Proof Security Testing Framework"
-license = "MIT"
+license = "BUSL-1.1"
 
 [dependencies]
 # Config & Serialization

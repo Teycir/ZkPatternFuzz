@@ -71,6 +71,7 @@ use super::{Finding, FieldElement, TestCase, TestMetadata, mutate_field_element,
 use super::power_schedule::{PowerSchedule, PowerScheduler, TestCaseMetrics};
 use super::structure_aware::{StructureAwareMutator, Splicer};
 use super::oracle::{BugOracle, UnderconstrainedOracle, ArithmeticOverflowOracle};
+use crate::attacks::{Attack, AttackContext};
 use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::symbolic::{SymbolicFuzzerIntegration, SymbolicConfig, VulnerabilityPattern};
 use crate::analysis::taint::TaintAnalyzer;
@@ -641,7 +642,11 @@ impl FuzzingEngine {
             } else if mutation_strategy < 85 {
                 // 15%: Splice with another corpus entry
                 if let Some(other) = self.corpus.get_random(&mut self.rng) {
-                    Splicer::splice(&entry.test_case.inputs, &other.test_case.inputs, &mut self.rng)
+                    if self.rng.gen::<f64>() < 0.5 {
+                        Splicer::splice(&entry.test_case.inputs, &other.test_case.inputs, &mut self.rng)
+                    } else {
+                        Splicer::insert(&entry.test_case.inputs, &other.test_case.inputs, &mut self.rng)
+                    }
                 } else {
                     entry.test_case.inputs.clone()
                 }
@@ -764,6 +769,16 @@ impl FuzzingEngine {
             .unwrap_or(1000) as usize;
 
         tracing::info!("Testing {} witness pairs for underconstrained circuits", witness_pairs);
+        {
+            use crate::attacks::UnderconstrainedDetector;
+            let tolerance = config.get("tolerance").and_then(|v| v.as_f64());
+            let detector = if let Some(tol) = tolerance {
+                UnderconstrainedDetector::new(witness_pairs).with_tolerance(tol)
+            } else {
+                UnderconstrainedDetector::new(witness_pairs)
+            };
+            self.add_attack_findings(&detector, witness_pairs, progress);
+        }
 
         // Generate test cases
         let test_cases: Vec<TestCase> = (0..witness_pairs)
@@ -858,6 +873,13 @@ impl FuzzingEngine {
             .unwrap_or(0.1);
 
         tracing::info!("Attempting {} proof forgeries", forge_attempts);
+        {
+            use crate::attacks::SoundnessTester;
+            let tester = SoundnessTester::new()
+                .with_forge_attempts(forge_attempts)
+                .with_mutation_rate(mutation_rate);
+            self.add_attack_findings(&tester, forge_attempts, progress);
+        }
 
         let num_public = self.executor.num_public_inputs();
         if num_public == 0 {
@@ -944,6 +966,11 @@ impl FuzzingEngine {
             ]);
 
         tracing::info!("Testing {} arithmetic edge cases", test_values.len());
+        {
+            use crate::attacks::ArithmeticTester;
+            let tester = ArithmeticTester::new().with_test_values(test_values.clone());
+            self.add_attack_findings(&tester, test_values.len(), progress);
+        }
 
         let field_modulus = self.get_field_modulus();
 
@@ -1003,6 +1030,11 @@ impl FuzzingEngine {
             .unwrap_or(10000) as usize;
 
         tracing::info!("Running collision detection with {} samples", samples);
+        {
+            use crate::attacks::CollisionDetector;
+            let detector = CollisionDetector::new(samples);
+            self.add_attack_findings(&detector, samples, progress);
+        }
 
         // Generate and execute in parallel
         let test_cases: Vec<TestCase> = (0..samples)
@@ -1096,6 +1128,11 @@ impl FuzzingEngine {
             ]);
 
         tracing::info!("Testing {} boundary values", test_values.len());
+        {
+            use crate::attacks::BoundaryTester;
+            let tester = BoundaryTester::new().with_custom_values(test_values.clone());
+            self.add_attack_findings(&tester, test_values.len(), progress);
+        }
 
         let field_modulus = self.get_field_modulus();
 
@@ -1628,6 +1665,33 @@ impl FuzzingEngine {
         }
 
         Ok(())
+    }
+
+    fn add_attack_findings(
+        &self,
+        attack: &dyn Attack,
+        samples: usize,
+        progress: Option<&ProgressReporter>,
+    ) -> usize {
+        let context = AttackContext::new(
+            self.get_circuit_info(),
+            samples,
+            self.config.campaign.parameters.timeout_seconds,
+        );
+        let findings = attack.run(&context);
+        let count = findings.len();
+
+        if count > 0 {
+            let mut store = self.findings.write().unwrap();
+            for finding in findings {
+                if let Some(p) = progress {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
+                store.push(finding);
+            }
+        }
+
+        count
     }
 
     fn get_circuit_info(&self) -> crate::attacks::CircuitInfo {

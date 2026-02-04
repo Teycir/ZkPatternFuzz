@@ -197,6 +197,7 @@ impl PowerScheduler {
         let finding_score = (metrics.findings_count as f64 + 1.0) * 2.0;
         let freshness_score = 1.0 / (1.0 + metrics.selection_count as f64 / 32.0);
         let depth_penalty = 1.0 / (1.0 + metrics.depth as f64 / 10.0);
+        let generation_penalty = 1.0 / (1.0 + metrics.generation as f64 / 8.0);
         
         // Speed factor (prefer faster tests)
         let speed_factor = if !metrics.avg_execution_time.is_zero() {
@@ -212,16 +213,11 @@ impl PowerScheduler {
             * (1.0 + finding_score / 10.0)
             * freshness_score
             * depth_penalty
+            * generation_penalty
             * speed_factor;
 
         combined as usize
     }
-}
-
-/// Integration with corpus entries
-pub trait HasMetrics {
-    fn get_metrics(&self) -> TestCaseMetrics;
-    fn update_metrics(&mut self, new_metrics: TestCaseMetrics);
 }
 
 #[cfg(test)]

@@ -105,24 +105,37 @@ impl CompositionTester {
     pub fn check_vulnerabilities(&self) -> Vec<CompositionVulnerability> {
         let mut vulnerabilities = Vec::new();
 
-        // Check for type mismatches between circuits
-        for i in 0..self.circuits.len().saturating_sub(1) {
-            let current = &self.circuits[i];
-            let next = &self.circuits[i + 1];
+        if self.composition_type == CompositionType::Recursive && self.circuits.len() != 1 {
+            vulnerabilities.push(CompositionVulnerability {
+                vuln_type: VulnerabilityType::InvalidRecursion,
+                description: format!(
+                    "Recursive composition expects exactly 1 circuit, found {}",
+                    self.circuits.len()
+                ),
+                circuit_indices: (0..self.circuits.len()).collect(),
+            });
+        }
 
-            // Check if outputs match inputs
-            let current_outputs = current.circuit_info().num_outputs;
-            let next_inputs = next.num_private_inputs();
+        if matches!(self.composition_type, CompositionType::Sequential | CompositionType::Recursive) {
+            // Check for type mismatches between circuits
+            for i in 0..self.circuits.len().saturating_sub(1) {
+                let current = &self.circuits[i];
+                let next = &self.circuits[i + 1];
 
-            if current_outputs != next_inputs {
-                vulnerabilities.push(CompositionVulnerability {
-                    vuln_type: VulnerabilityType::TypeMismatch,
-                    description: format!(
-                        "Circuit {} outputs {} values but circuit {} expects {} inputs",
-                        i, current_outputs, i + 1, next_inputs
-                    ),
-                    circuit_indices: vec![i, i + 1],
-                });
+                // Check if outputs match inputs
+                let current_outputs = current.circuit_info().num_outputs;
+                let next_inputs = next.num_private_inputs();
+
+                if current_outputs != next_inputs {
+                    vulnerabilities.push(CompositionVulnerability {
+                        vuln_type: VulnerabilityType::TypeMismatch,
+                        description: format!(
+                            "Circuit {} outputs {} values but circuit {} expects {} inputs",
+                            i, current_outputs, i + 1, next_inputs
+                        ),
+                        circuit_indices: vec![i, i + 1],
+                    });
+                }
             }
         }
 

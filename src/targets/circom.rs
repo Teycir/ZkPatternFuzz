@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use tempfile::Builder;
 
 /// Circom circuit target with full backend integration
@@ -52,6 +53,9 @@ pub struct CircomMetadata {
     pub signals: HashMap<String, usize>,
     /// Input signal names
     pub input_signals: Vec<String>,
+    /// Input signal array sizes (None for scalar inputs)
+    #[serde(default)]
+    pub input_signal_sizes: HashMap<String, Option<usize>>,
     /// Input signal indices (ordered, public first)
     pub input_signal_indices: Vec<usize>,
     /// Public input signal indices
@@ -81,6 +85,28 @@ fn map_signal_index(signals: &HashMap<String, usize>, name: &str) -> Option<usiz
         .copied()
 }
 
+fn infer_array_size(signals: &HashMap<String, usize>, name: &str) -> Option<usize> {
+    let prefixes = [
+        format!("main.{}[", name),
+        format!("{}[", name),
+    ];
+
+    let mut max_index: Option<usize> = None;
+    for key in signals.keys() {
+        for prefix in &prefixes {
+            if let Some(rest) = key.strip_prefix(prefix) {
+                if let Some(close_idx) = rest.find(']') {
+                    if let Ok(idx) = rest[..close_idx].parse::<usize>() {
+                        max_index = Some(max_index.map(|v| v.max(idx)).unwrap_or(idx));
+                    }
+                }
+            }
+        }
+    }
+
+    max_index.map(|idx| idx + 1)
+}
+
 /// Witness calculator using compiled WASM
 struct WitnessCalculator {
     /// Path to the WASM file
@@ -92,6 +118,11 @@ fn create_temp_dir() -> Result<tempfile::TempDir> {
         .prefix("zkfuzzer_")
         .tempdir()
         .context("Failed to create temp directory")
+}
+
+fn circom_io_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 impl WitnessCalculator {
@@ -238,6 +269,8 @@ impl CircomTarget {
         if self.compiled {
             return Ok(());
         }
+
+        let _guard = circom_io_lock().lock().unwrap();
 
         tracing::info!("Compiling Circom circuit: {:?}", self.circuit_path);
         
@@ -427,6 +460,13 @@ impl CircomTarget {
             .filter_map(|name| map_signal_index(&signals, name))
             .collect();
 
+        let mut input_signal_sizes = HashMap::new();
+        for signal in &io_info.input_signals {
+            let inferred = infer_array_size(&signals, &signal.name);
+            let size = signal.array_size.or(inferred);
+            input_signal_sizes.insert(signal.name.clone(), size);
+        }
+
         self.metadata = Some(CircomMetadata {
             num_constraints,
             num_private_inputs: ordered_inputs.len(),
@@ -434,6 +474,7 @@ impl CircomTarget {
             num_outputs: output_signal_indices.len().max(num_outputs),
             signals,
             input_signals: ordered_inputs,
+            input_signal_sizes,
             input_signal_indices,
             public_input_indices,
             private_input_indices,
@@ -473,6 +514,7 @@ impl CircomTarget {
 
     /// Setup proving and verification keys using Groth16
     pub fn setup_keys(&mut self) -> Result<()> {
+        let _guard = circom_io_lock().lock().unwrap();
         let basename = self.output_basename();
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         let ptau_path = self.find_or_download_ptau()?;
@@ -568,6 +610,7 @@ impl CircomTarget {
 
     /// Calculate witness for given inputs
     pub fn calculate_witness(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
+        let _guard = circom_io_lock().lock().unwrap();
         let calculator = self.witness_calculator.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Witness calculator not initialized"))?;
 
@@ -582,18 +625,38 @@ impl CircomTarget {
         let mut map = HashMap::new();
         
         if let Some(metadata) = &self.metadata {
-            for (i, input) in inputs.iter().enumerate() {
-                // Use signal names if available, otherwise use generic names
-                let name = metadata.input_signals.get(i)
-                    .cloned()
-                    .unwrap_or_else(|| format!("in{}", i));
-                
-                // Remove "main." prefix if present
-                let clean_name = name.strip_prefix("main.").unwrap_or(&name).to_string();
-                
-                // Convert to decimal string
-                let value = field_element_to_decimal(input);
-                map.insert(clean_name, vec![value]);
+            let mut cursor = 0usize;
+            for (i, name) in metadata.input_signals.iter().enumerate() {
+                let size = metadata
+                    .input_signal_sizes
+                    .get(name)
+                    .copied()
+                    .flatten()
+                    .unwrap_or(1);
+
+                if cursor + size > inputs.len() {
+                    anyhow::bail!(
+                        "Not enough inputs for signal '{}' (expected {}, got {})",
+                        name,
+                        size,
+                        inputs.len().saturating_sub(cursor)
+                    );
+                }
+
+                let clean_name = name.strip_prefix("main.").unwrap_or(name).to_string();
+                let values = inputs[cursor..cursor + size]
+                    .iter()
+                    .map(field_element_to_decimal)
+                    .collect::<Vec<_>>();
+                map.insert(clean_name, values);
+
+                cursor += size;
+                if i == metadata.input_signals.len() - 1 && cursor < inputs.len() {
+                    tracing::warn!(
+                        "Unused inputs provided: {} extra values",
+                        inputs.len().saturating_sub(cursor)
+                    );
+                }
             }
         } else {
             // No metadata, use generic names
@@ -756,6 +819,7 @@ impl TargetCircuit for CircomTarget {
     }
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
+        let _guard = circom_io_lock().lock().unwrap();
         let zkey_path = self.proving_key_path.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Proving key not set. Call setup_keys() first."))?;
 
@@ -818,6 +882,7 @@ impl TargetCircuit for CircomTarget {
     }
 
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
+        let _guard = circom_io_lock().lock().unwrap();
         let vkey_path = self.verification_key_path.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Verification key not set."))?;
 

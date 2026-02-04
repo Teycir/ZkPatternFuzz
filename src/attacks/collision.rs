@@ -27,7 +27,6 @@
 use super::{Attack, AttackContext};
 use crate::config::{AttackType, Severity};
 use crate::fuzzer::{FieldElement, Finding, ProofOfConcept};
-use sha2::{Sha256, Digest};
 use std::collections::HashMap;
 
 /// Known ZK-friendly hash types for specialized collision testing
@@ -232,38 +231,6 @@ impl CollisionDetector {
         entropy * (output_len as f64)
     }
 
-    /// Check if output distribution suggests weak randomness
-    fn check_distribution_weakness(&self, outputs: &[Vec<u8>]) -> Option<String> {
-        if outputs.len() < 100 {
-            return None;
-        }
-
-        // Check for leading zeros (common weakness)
-        let leading_zero_count = outputs.iter()
-            .filter(|o| !o.is_empty() && o[0] == 0)
-            .count();
-        
-        let expected_zeros = outputs.len() / 256;
-        if leading_zero_count > expected_zeros * 4 {
-            return Some(format!(
-                "Unusual distribution: {} outputs start with zero byte (expected ~{})",
-                leading_zero_count, expected_zeros
-            ));
-        }
-
-        // Check for repeated patterns in outputs
-        let unique_outputs: std::collections::HashSet<Vec<u8>> = outputs.iter().cloned().collect();
-        let uniqueness_ratio = unique_outputs.len() as f64 / outputs.len() as f64;
-        
-        if uniqueness_ratio < 0.99 {
-            return Some(format!(
-                "Low output uniqueness: {:.1}% unique (expected >99%)",
-                uniqueness_ratio * 100.0
-            ));
-        }
-
-        None
-    }
 
     /// Perform comprehensive collision analysis on a set of input/output pairs
     pub fn analyze_collisions(
@@ -425,14 +392,6 @@ impl CollisionDetector {
         inputs
     }
 
-    /// Hash field elements to bytes (mock implementation for testing)
-    fn hash_inputs(&self, inputs: &[FieldElement]) -> Vec<u8> {
-        let mut hasher = Sha256::new();
-        for input in inputs {
-            hasher.update(input.to_bytes());
-        }
-        hasher.finalize().to_vec()
-    }
 }
 
 impl Attack for CollisionDetector {

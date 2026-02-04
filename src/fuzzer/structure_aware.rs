@@ -77,21 +77,28 @@ impl StructureAwareMutator {
             // Look for signal declarations with type hints in names
             if trimmed.starts_with("signal input") || trimmed.starts_with("signal private input") {
                 let name = Self::extract_signal_name(trimmed);
-                
+                let name_lower = name.to_lowercase();
+
                 // Infer type from naming conventions
-                let structure = if name.contains("bit") || name.contains("bool") {
+                let structure = if name_lower.contains("signature") || name_lower.contains("sig") {
+                    InputStructure::Signature
+                } else if name_lower.contains("pubkey") || name_lower.contains("public_key") || name_lower.contains("publickey") {
+                    InputStructure::PublicKey
+                } else if name_lower.contains("nullifier") || name_lower.contains("preimage") {
+                    InputStructure::NullifierPreimage
+                } else if name_lower.contains("bit") || name_lower.contains("bool") {
                     InputStructure::Boolean
-                } else if name.contains("bits[") {
+                } else if name_lower.contains("bits[") {
                     if let Some(len) = Self::extract_array_length(trimmed) {
                         InputStructure::BitDecomposition { bits: len as u32 }
                     } else {
                         InputStructure::Field
                     }
-                } else if name.contains("path") || name.contains("merkle") {
+                } else if name_lower.contains("path") || name_lower.contains("merkle") {
                     InputStructure::MerklePath { depth: 20 } // Default Merkle depth
-                } else if name.contains("secret") || name.contains("nullifier") {
+                } else if name_lower.contains("secret") {
                     InputStructure::Field // High-value target
-                } else if name.contains("hash") {
+                } else if name_lower.contains("hash") {
                     InputStructure::HashPreimage { num_elements: 2 }
                 } else if let Some(len) = Self::extract_array_length(trimmed) {
                     InputStructure::Array {
@@ -115,13 +122,20 @@ impl StructureAwareMutator {
 
         for line in source.lines() {
             let trimmed = line.trim();
+            let lowered = trimmed.to_lowercase();
             
             // Look for function parameters
             if trimmed.contains("fn main(") || trimmed.contains(": Field") 
                 || trimmed.contains(": u") || trimmed.contains(": bool") {
                 
                 // Extract type from Noir type annotations
-                if trimmed.contains(": bool") {
+                if lowered.contains("signature") || lowered.contains("sig") {
+                    structures.push(InputStructure::Signature);
+                } else if lowered.contains("pubkey") || lowered.contains("public_key") || lowered.contains("publickey") {
+                    structures.push(InputStructure::PublicKey);
+                } else if lowered.contains("nullifier") || lowered.contains("preimage") {
+                    structures.push(InputStructure::NullifierPreimage);
+                } else if trimmed.contains(": bool") {
                     structures.push(InputStructure::Boolean);
                 } else if let Some(bits) = Self::extract_noir_int_type(trimmed) {
                     structures.push(InputStructure::Integer { bits });
@@ -188,7 +202,7 @@ impl StructureAwareMutator {
                 .map(|(i, fe)| {
                     // Check if we have a learned pattern for this input
                     let pattern_key = format!("input_{}", i);
-                    if let Some(pattern) = self.patterns.get(&pattern_key) {
+                    if let Some(pattern) = self.get_pattern(&pattern_key) {
                         // 20% chance to replay learned pattern
                         if rng.gen::<f64>() < 0.2 && !pattern.is_empty() {
                             return pattern[rng.gen_range(0..pattern.len())].clone();

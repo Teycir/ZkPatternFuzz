@@ -1,7 +1,7 @@
 # ZkPatternFuzz
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-BSL%201.1-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![Documentation](https://img.shields.io/badge/docs-architecture-purple.svg)](ARCHITECTURE.md)
 
@@ -205,8 +205,10 @@ ZkPatternFuzz/
 ## Documentation
 
 - **[README.md](README.md)** - Quick start and feature overview (this file)
+- **[TUTORIAL.md](docs/TUTORIAL.md)** - Step-by-step guide for beginners
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into internal design and extension points
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
 - **[API Documentation](https://docs.rs/zk-fuzzer)** - Generated from source code
 
 ## Development
@@ -366,7 +368,9 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## License
 
-MIT License
+Business Source License 1.1 - See [LICENSE](LICENSE) for details.
+
+The Licensed Work will convert to Apache License 2.0 on 2028-02-04.
 
 ## Acknowledgments
 

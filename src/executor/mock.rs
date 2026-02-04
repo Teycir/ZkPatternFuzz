@@ -340,7 +340,6 @@ mod tests {
         let result = executor.execute_sync(&inputs);
         assert!(result.success);
         assert!(!result.outputs.is_empty());
-        assert!(result.execution_time_us >= 0);
     }
 
     #[test]

@@ -126,17 +126,21 @@ impl ProgressReporter {
 
     /// Finish with a summary
     pub fn finish(&self, stats: &FuzzingStats) {
+        let total = self.total_iterations.max(stats.executions);
+        self.main_bar.set_length(total);
         self.main_bar.finish_with_message(format!(
-            "Complete - {} execs, {:.1}% coverage, {} findings",
-            stats.executions, stats.coverage_percentage, stats.crashes
+            "Complete - {}/{} execs, {:.1}% coverage, {} findings",
+            stats.executions, total, stats.coverage_percentage, stats.crashes
         ));
         self.stats_bar.finish_and_clear();
+        let _ = self.multi_progress.clear();
     }
 
     /// Finish with an error
     pub fn finish_with_error(&self, error: &str) {
         self.main_bar.abandon_with_message(format!("Error: {}", error));
         self.stats_bar.finish_and_clear();
+        let _ = self.multi_progress.clear();
     }
 
     /// Get elapsed time

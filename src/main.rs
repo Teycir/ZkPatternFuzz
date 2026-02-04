@@ -1,20 +1,6 @@
 use clap::{Parser, Subcommand};
-
-mod analysis;
-mod attacks;
-mod config;
-mod corpus;
-mod differential;
-mod errors;
-mod executor;
-mod fuzzer;
-mod multi_circuit;
-mod progress;
-mod reporting;
-mod targets;
-
-use crate::config::FuzzConfig;
-use crate::fuzzer::ZkFuzzer;
+use zk_fuzzer::config::FuzzConfig;
+use zk_fuzzer::fuzzer::ZkFuzzer;
 
 #[derive(Parser)]
 #[command(name = "zk-fuzzer")]
@@ -207,7 +193,7 @@ fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
 }
 
 fn minimize_corpus(corpus_dir: &str, output: Option<&str>) -> anyhow::Result<()> {
-    use crate::corpus::{minimizer, storage};
+    use zk_fuzzer::corpus::{minimizer, storage};
     use std::path::Path;
 
     tracing::info!("Loading corpus from: {}", corpus_dir);
