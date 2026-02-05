@@ -28,15 +28,29 @@
 //!
 //! # Usage
 //!
-//! ```ignore
-//! use zk_fuzzer::reporting::sarif::{SarifBuilder, SarifReport};
+//! ```rust
+//! use zk_fuzzer::config::{AttackType, Severity};
+//! use zk_fuzzer::fuzzer::{Finding, ProofOfConcept};
+//! use zk_fuzzer::reporting::sarif::SarifBuilder;
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! let findings = vec![Finding {
+//!     attack_type: AttackType::Underconstrained,
+//!     severity: Severity::High,
+//!     description: "Example finding".to_string(),
+//!     poc: ProofOfConcept::default(),
+//!     location: None,
+//! }];
 //!
 //! let report = SarifBuilder::new("zk-fuzzer", "0.1.0")
 //!     .with_circuit_path("circuits/merkle.circom")
 //!     .add_findings(&findings)
 //!     .build();
 //!
-//! report.save_to_file("report.sarif")?;
+//! let temp = tempfile::NamedTempFile::new()?;
+//! report.save_to_file(temp.path())?;
+//! # Ok(())
+//! # }
 //! ```
 
 use crate::config::{AttackType, Severity};

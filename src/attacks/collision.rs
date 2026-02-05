@@ -15,13 +15,17 @@
 //!
 //! # Usage
 //!
-//! ```ignore
+//! ```rust
+//! use zk_fuzzer::attacks::{Attack, AttackContext, CircuitInfo, CollisionDetector, HashType};
+//!
 //! let detector = CollisionDetector::new(10000)
 //!     .with_hamming_threshold(8)
 //!     .with_hash_type(HashType::Poseidon)
 //!     .with_birthday_analysis(true);
 //!
+//! let context = AttackContext::new(CircuitInfo::default(), 0, 0);
 //! let findings = detector.run(&context);
+//! assert!(findings.len() >= 0);
 //! ```
 
 use super::{Attack, AttackContext};

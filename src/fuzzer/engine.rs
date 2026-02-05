@@ -32,22 +32,48 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use zk_fuzzer::fuzzer::engine::FuzzingEngine;
+//! ```rust
+//! use zk_fuzzer::fuzzer::FuzzingEngine;
 //! use zk_fuzzer::config::FuzzConfig;
 //!
+//! # fn main() -> anyhow::Result<()> {
+//! # let config_yaml = r#"
+//! # campaign:
+//! #   name: "Doc Engine Campaign"
+//! #   version: "1.0"
+//! #   target:
+//! #     framework: "mock"
+//! #     circuit_path: "./circuits/mock.circom"
+//! #     main_component: "MockCircuit"
+//! #
+//! # attacks:
+//! #   - type: "boundary"
+//! #     description: "Quick boundary check"
+//! #     config:
+//! #       test_values: ["0", "1"]
+//! #
+//! # inputs:
+//! #   - name: "a"
+//! #     type: "field"
+//! #     fuzz_strategy: "random"
+//! # "#;
+//! # let temp = tempfile::NamedTempFile::new()?;
+//! # std::fs::write(temp.path(), config_yaml)?;
+//! # let config_path = temp.path().to_path_buf();
 //! // Load campaign configuration
-//! let config = FuzzConfig::from_yaml("campaign.yaml")?;
+//! let config = FuzzConfig::from_yaml(config_path.to_str().unwrap())?;
 //!
-//! // Create fuzzing engine with 4 workers and deterministic seed
-//! let mut engine = FuzzingEngine::new(config, Some(42), 4)?;
+//! // Create fuzzing engine with 1 worker and deterministic seed
+//! let mut engine = FuzzingEngine::new(config, Some(42), 1)?;
 //!
 //! // Run fuzzing campaign
-//! let report = engine.run(None).await?;
+//! let report = tokio::runtime::Runtime::new()?.block_on(async { engine.run(None).await })?;
 //!
 //! // Check results
 //! println!("Found {} vulnerabilities", report.findings.len());
 //! println!("Coverage: {:.1}%", report.statistics.coverage_percentage);
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Performance
@@ -157,12 +183,41 @@ impl FuzzingEngine {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```rust
+    /// use zk_fuzzer::config::FuzzConfig;
+    /// use zk_fuzzer::fuzzer::FuzzingEngine;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// # let config_yaml = r#"
+    /// # campaign:
+    /// #   name: "Doc Engine New"
+    /// #   version: "1.0"
+    /// #   target:
+    /// #     framework: "mock"
+    /// #     circuit_path: "./circuits/mock.circom"
+    /// #     main_component: "MockCircuit"
+    /// #
+    /// # attacks:
+    /// #   - type: "boundary"
+    /// #     description: "Quick boundary check"
+    /// #     config:
+    /// #       test_values: ["0", "1"]
+    /// #
+    /// # inputs:
+    /// #   - name: "a"
+    /// #     type: "field"
+    /// #     fuzz_strategy: "random"
+    /// # "#;
+    /// # let temp = tempfile::NamedTempFile::new()?;
+    /// # std::fs::write(temp.path(), config_yaml)?;
+    /// # let config = FuzzConfig::from_yaml(temp.path().to_str().unwrap())?;
     /// // Deterministic fuzzing with 4 workers
-    /// let engine = FuzzingEngine::new(config, Some(12345), 4)?;
+    /// let _engine = FuzzingEngine::new(config.clone(), Some(12345), 4)?;
     ///
     /// // Non-deterministic with 8 workers
-    /// let engine = FuzzingEngine::new(config, None, 8)?;
+    /// let _engine = FuzzingEngine::new(config, None, 8)?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(config: FuzzConfig, seed: Option<u64>, workers: usize) -> anyhow::Result<Self> {
         let rng = match seed {
@@ -319,13 +374,46 @@ impl FuzzingEngine {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```rust
+    /// use zk_fuzzer::config::FuzzConfig;
+    /// use zk_fuzzer::fuzzer::FuzzingEngine;
+    /// use zk_fuzzer::progress::ProgressReporter;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// # let config_yaml = r#"
+    /// # campaign:
+    /// #   name: "Doc Engine Run"
+    /// #   version: "1.0"
+    /// #   target:
+    /// #     framework: "mock"
+    /// #     circuit_path: "./circuits/mock.circom"
+    /// #     main_component: "MockCircuit"
+    /// #
+    /// # attacks:
+    /// #   - type: "boundary"
+    /// #     description: "Quick boundary check"
+    /// #     config:
+    /// #       test_values: ["0", "1"]
+    /// #
+    /// # inputs:
+    /// #   - name: "a"
+    /// #     type: "field"
+    /// #     fuzz_strategy: "random"
+    /// # "#;
+    /// # let temp = tempfile::NamedTempFile::new()?;
+    /// # std::fs::write(temp.path(), config_yaml)?;
+    /// # let config = FuzzConfig::from_yaml(temp.path().to_str().unwrap())?;
+    /// let mut engine = FuzzingEngine::new(config, Some(12345), 1)?;
+    ///
+    /// let rt = tokio::runtime::Runtime::new()?;
     /// // Run with progress reporting
-    /// let reporter = ProgressReporter::new();
-    /// let report = engine.run(Some(&reporter)).await?;
+    /// let reporter = ProgressReporter::new("Doc Engine Run", 10, false);
+    /// let _report = rt.block_on(async { engine.run(Some(&reporter)).await })?;
     ///
     /// // Run without progress (CI/CD mode)
-    /// let report = engine.run(None).await?;
+    /// // let _report = rt.block_on(async { engine.run(None).await })?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub async fn run(&mut self, progress: Option<&ProgressReporter>) -> anyhow::Result<FuzzReport> {
         let start_time = Instant::now();

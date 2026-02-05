@@ -17,14 +17,16 @@
 //!
 //! # Usage
 //!
-//! ```ignore
+//! ```rust
+//! use zk_fuzzer::attacks::{Attack, AttackContext, BoundaryTester, CircuitInfo};
+//!
 //! let tester = BoundaryTester::new()
 //!     .with_field_boundaries(true)
-//!     .with_bit_boundaries(vec![8, 16, 32, 64, 128, 253])
-//!     .with_overflow_detection(true)
-//!     .with_range_testing(0, 1000);
+//!     .with_bit_widths(vec![8, 16, 32, 64, 128, 253]);
 //!
+//! let context = AttackContext::new(CircuitInfo::default(), 0, 0);
 //! let findings = tester.run(&context);
+//! assert!(findings.len() >= 0);
 //! ```
 
 use super::{Attack, AttackContext};

@@ -26,7 +26,7 @@ ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK c
 - 🔬 **Symbolic Execution** - SMT-based constraint analysis using Z3
 - 📊 **Coverage Tracking** - Monitor constraint coverage during fuzzing
 - 🧪 **Differential Testing** - Compare circuit implementations across backends
-- 📝 **Multiple Report Formats** - JSON, Markdown (SARIF planned)
+- 📝 **Multiple Report Formats** - JSON, Markdown, SARIF
 - 🎲 **Advanced Fuzzing** - Corpus management, mutation strategies, and minimization
 - 🔄 **Multi-Circuit Testing** - Composition and recursive proof analysis
 
@@ -124,8 +124,8 @@ reporting:
 | `arithmetic_overflow` | Test field arithmetic edge cases | ✅ Implemented |
 | `witness_validation` | Verify witness consistency | ✅ Implemented |
 | `verification` | Test proof verification edge cases | ✅ Implemented |
-| `collision` | Find hash/nullifier collisions | 🚧 Planned |
-| `boundary` | Test boundary values | 🚧 Planned |
+| `collision` | Find hash/nullifier collisions | ✅ Implemented |
+| `boundary` | Test boundary values | ✅ Implemented |
 
 ### Fuzzing Strategies
 
@@ -258,9 +258,9 @@ Human-readable report with:
 - PoC reproduction steps
 - Recommendations
 
-### SARIF (Planned)
+### SARIF
 
-Static Analysis Results Interchange Format for IDE integration.
+Static Analysis Results Interchange Format for IDE integration (VS Code, GitHub Code Scanning).
 
 ## Example Campaigns
 
@@ -326,7 +326,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 **Areas Needing Help:**
 - Real backend integration testing (Circom, Noir, Halo2, Cairo)
-- SARIF report format implementation
+- Enhanced symbolic execution (direct constraint extraction from circuits)
 - Additional attack patterns
 - Documentation and examples
 - Performance optimizations
@@ -346,18 +346,19 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 - [x] Complexity analysis
 - [x] Parallel execution
 - [x] Corpus management
-- [x] JSON and Markdown reports
+- [x] JSON, Markdown, and SARIF reports
+- [x] Collision detection attacks
+- [x] Boundary value attacks
 
 ### In Progress 🚧
-- [ ] Implement SARIF report format
-- [ ] Complete collision detection attacks
-- [ ] Complete boundary value attacks
-- [ ] Enhance symbolic execution capabilities
+- [ ] Enhanced symbolic execution (constraint extraction from R1CS/ACIR, path pruning)
+- [ ] Real backend integration testing
 
 ### Planned 📋
 - [ ] Integrate with CI/CD pipelines (GitHub Actions templates)
 - [ ] Distributed fuzzing with corpus sharing
-- [ ] Formal verification integration
+- [ ] Formal verification integration (Lean/Coq proofs for ZK circuits)
+
 
 ## References
 

@@ -6,21 +6,46 @@
 //!
 //! # Quick Start
 //!
-//! ```ignore
+//! ```rust
 //! use zk_fuzzer::{FuzzConfig, ZkFuzzer};
 //!
+//! # fn main() -> anyhow::Result<()> {
+//! # let config_yaml = r#"
+//! # campaign:
+//! #   name: "Doc Test Campaign"
+//! #   version: "1.0"
+//! #   target:
+//! #     framework: "mock"
+//! #     circuit_path: "./circuits/mock.circom"
+//! #     main_component: "MockCircuit"
+//! #
+//! # attacks:
+//! #   - type: "boundary"
+//! #     description: "Quick boundary check"
+//! #     config:
+//! #       test_values: ["0", "1"]
+//! #
+//! # inputs:
+//! #   - name: "a"
+//! #     type: "field"
+//! #     fuzz_strategy: "random"
+//! # "#;
+//! # let temp = tempfile::NamedTempFile::new()?;
+//! # std::fs::write(temp.path(), config_yaml)?;
+//! # let config_path = temp.path().to_path_buf();
 //! // Load campaign configuration
-//! let config = FuzzConfig::from_yaml("campaign.yaml")?;
+//! let config = FuzzConfig::from_yaml(config_path.to_str().unwrap())?;
 //!
 //! // Create fuzzer with deterministic seed
 //! let mut fuzzer = ZkFuzzer::new(config, Some(42));
 //!
 //! // Run fuzzing campaign
-//! let report = fuzzer.run().await?;
+//! let report = tokio::runtime::Runtime::new()?.block_on(async { fuzzer.run().await })?;
 //!
 //! // Display results
 //! report.print_summary();
-//! report.save_to_files()?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Supported Backends
@@ -197,6 +222,8 @@ pub mod targets;
 // New feature modules
 pub mod analysis;
 pub mod differential;
+pub mod distributed;
+pub mod formal;
 pub mod multi_circuit;
 
 pub use attacks::CircuitInfo;
@@ -215,6 +242,26 @@ pub use analysis::{
     ComplexityAnalyzer, ComplexityMetrics, SymbolicExecutor, SymbolicState,
     SymbolicConfig, SymbolicFuzzerIntegration, SymbolicConstraint, SymbolicValue,
     VulnerabilityPattern, Z3Solver, SolverResult, PathCondition, SymbolicStats,
+    // Enhanced symbolic execution
+    EnhancedSymbolicExecutor, EnhancedSymbolicConfig, EnhancedSymbolicStats,
+    ConstraintSimplifier, IncrementalSolver, PathPruner, PruningStrategy,
+    // Concolic execution
+    ConcolicExecutor, ConcolicConfig, ConcolicTrace, ConcolicStats,
+    ConcolicFuzzerIntegration,
+    // Extended constraint types
+    ExtendedConstraint, R1CSConstraint, PlonkGate, CustomGateConstraint,
+    LookupConstraint, LookupTable, RangeConstraint, RangeMethod,
+    PolynomialConstraint, PolynomialTerm, AcirOpcode, BlackBoxOp, MemoryOpType,
+    AirConstraint, AirExpression, AirDomain, ConstraintParser, ConstraintChecker,
+    WireRef, SymbolicConversionOptions,
 };
 pub use differential::{DifferentialFuzzer, DifferentialConfig, DifferentialResult};
+pub use distributed::{
+    DistributedCoordinator, DistributedConfig, FuzzerNode, NodeRole,
+    CorpusSyncManager, SyncStrategy, WorkUnit, NodeStatus, ClusterStats,
+};
+pub use formal::{
+    FormalVerificationManager, FormalConfig, ProofSystem, ProofObligation,
+    LeanExporter, CoqExporter, CircuitProperty, PropertyExtractor,
+};
 pub use multi_circuit::{MultiCircuitFuzzer, MultiCircuitConfig, CircuitChain};
