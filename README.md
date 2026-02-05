@@ -354,9 +354,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 - [ ] Enhanced symbolic execution (constraint extraction from R1CS/ACIR, path pruning)
 - [ ] Real backend integration testing
 
-### Planned 📋
-- [ ] Distributed fuzzing with corpus sharing
-- [ ] Formal verification integration (Lean/Coq proofs for ZK circuits)
 
 
 ## References
