@@ -386,13 +386,4 @@ Inspired by:
 ## Citation
 
 If you use ZkPatternFuzz in your research, please cite:
-
-```bibtex
-@software{zkpatternfuzz2024,
-  title = {ZkPatternFuzz: Zero-Knowledge Proof Security Testing Framework},
-  author = {ZkPatternFuzz Contributors},
-  year = {2024},
-  url = {https://github.com/yourusername/ZkPatternFuzz},
-  version = {0.1.0}
-}
-```
+teycirbensoltane.tn
