@@ -101,6 +101,10 @@ use crate::attacks::{Attack, AttackContext};
 use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::symbolic::{SymbolicFuzzerIntegration, SymbolicConfig, VulnerabilityPattern};
 use crate::analysis::taint::TaintAnalyzer;
+use crate::analysis::{
+    collect_input_wire_indices, ConstraintSeedGenerator, ConstraintSeedOutput,
+    EnhancedSymbolicConfig, PruningStrategy,
+};
 use crate::config::*;
 use crate::corpus::{CorpusEntry, SharedCorpus, create_corpus, storage as corpus_storage};
 use crate::executor::{CircuitExecutor, ExecutorFactory, SharedCoverageTracker, create_coverage_tracker};
@@ -580,6 +584,78 @@ impl FuzzingEngine {
             if let Ok(fe) = FieldElement::from_hex(hex) {
                 self.add_to_corpus(self.create_test_case_with_value(fe));
             }
+        }
+
+        // Generate seeds from extracted constraints (R1CS/ACIR/PLONK) when available
+        if let Some(inspector) = self.executor.constraint_inspector() {
+            let expected_len = self.config.inputs.len().max(1);
+            let input_wire_indices = collect_input_wire_indices(inspector, expected_len);
+            let mut generator = ConstraintSeedGenerator::new(EnhancedSymbolicConfig {
+                max_depth: 200,
+                solver_timeout_ms: 3000,
+                solutions_per_path: 4,
+                pruning_strategy: PruningStrategy::DepthBounded,
+                simplify_constraints: true,
+                incremental_solving: false,
+                ..Default::default()
+            });
+
+            let output = if let Some(parsed) = inspector.get_parsed_constraints() {
+                if !parsed.constraints.is_empty() {
+                    tracing::info!(
+                        "Generating constraint-guided seeds from {} parsed constraints...",
+                        parsed.constraints.len()
+                    );
+                    Some(generator.generate_from_extended(
+                        &parsed.constraints,
+                        &parsed.lookup_tables,
+                        &input_wire_indices,
+                        expected_len,
+                    ))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let output = if let Some(output) = output {
+                output
+            } else {
+                let constraints = inspector.get_constraints();
+                if constraints.is_empty() {
+                    tracing::debug!("Constraint-guided seeds skipped: no constraints available");
+                    ConstraintSeedOutput::default()
+                } else {
+                    tracing::info!(
+                        "Generating constraint-guided seeds from {} R1CS constraints...",
+                        constraints.len()
+                    );
+                    generator.generate_from_r1cs(&constraints, &input_wire_indices, expected_len)
+                }
+            };
+
+            if !output.seeds.is_empty() {
+                tracing::info!(
+                    "Constraint-guided seeds: {} solutions ({} symbolic, {} skipped, {} pruned)",
+                    output.stats.solutions,
+                    output.stats.symbolic_constraints,
+                    output.stats.skipped_constraints,
+                    output.stats.pruned_constraints
+                );
+
+                for inputs in output.seeds {
+                    if inputs.len() == expected_len {
+                        self.add_to_corpus(TestCase {
+                            inputs,
+                            expected_output: None,
+                            metadata: TestMetadata::default(),
+                        });
+                    }
+                }
+            }
+        } else {
+            tracing::debug!("Constraint-guided seeds skipped: constraint inspector unavailable");
         }
 
         // Generate seeds from symbolic execution

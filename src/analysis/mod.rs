@@ -10,6 +10,7 @@
 
 pub mod complexity;
 pub mod constraint_types;
+pub mod constraint_guided;
 pub mod profiling;
 pub mod symbolic;
 pub mod symbolic_enhanced;
@@ -26,6 +27,9 @@ pub use symbolic::{
 pub use symbolic_enhanced::{
     EnhancedSymbolicExecutor, EnhancedSymbolicConfig, EnhancedSymbolicStats,
     ConstraintSimplifier, IncrementalSolver, PathPruner, PruningStrategy,
+};
+pub use constraint_guided::{
+    ConstraintSeedGenerator, ConstraintSeedOutput, ConstraintSeedStats, collect_input_wire_indices,
 };
 pub use concolic::{
     ConcolicExecutor, ConcolicConfig, ConcolicTrace, ConcolicStats,

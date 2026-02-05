@@ -474,7 +474,9 @@ impl ConstraintParser {
         if let Some(json) =
             parse_json_from_text(text, &["opcodes", "constraints", "program", "functions"])
         {
-            return parse_acir_json(&json);
+            if json_has_any_key(&json, &["opcodes", "constraints", "program", "functions", "tables", "lookup_tables"]) {
+                return parse_acir_json(&json);
+            }
         }
 
         parse_acir_text(text)
@@ -1119,7 +1121,47 @@ impl ExtendedConstraint {
                 wire_to_symbolic(wire),
                 SymbolicValue::concrete(value.clone()),
             )),
-            ExtendedConstraint::AcirOpcode(_) | ExtendedConstraint::AirConstraint(_) => None,
+            ExtendedConstraint::AcirOpcode(op) => match op {
+                AcirOpcode::Arithmetic { a, b, c, q_m, q_c } => {
+                    let a_sym = linear_combination_to_symbolic(a);
+                    let b_sym = linear_combination_to_symbolic(b);
+                    let c_sym = linear_combination_to_symbolic(c);
+
+                    let mut expr = SymbolicValue::concrete(q_m.clone())
+                        .mul(a_sym.clone().mul(b_sym.clone()));
+                    expr = expr.add(a_sym);
+                    expr = expr.add(b_sym);
+                    expr = expr.add(c_sym);
+                    expr = expr.add(SymbolicValue::concrete(q_c.clone()));
+
+                    Some(SymbolicConstraint::eq(
+                        expr,
+                        SymbolicValue::concrete(FieldElement::zero()),
+                    ))
+                }
+                AcirOpcode::Range { input, bits } => {
+                    if *bits >= 255 {
+                        return Some(SymbolicConstraint::True);
+                    }
+                    let bound = field_from_biguint(&(BigUint::from(1u8) << bits));
+                    Some(SymbolicConstraint::range(
+                        wire_to_symbolic(input),
+                        SymbolicValue::concrete(bound),
+                    ))
+                }
+                AcirOpcode::BlackBox(BlackBoxOp::Range { input, bits }) => {
+                    if *bits >= 255 {
+                        return Some(SymbolicConstraint::True);
+                    }
+                    let bound = field_from_biguint(&(BigUint::from(1u8) << bits));
+                    Some(SymbolicConstraint::range(
+                        wire_to_symbolic(input),
+                        SymbolicValue::concrete(bound),
+                    ))
+                }
+                _ => None,
+            },
+            ExtendedConstraint::AirConstraint(_) => None,
         }
     }
 

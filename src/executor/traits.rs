@@ -4,6 +4,7 @@
 
 use super::ExecutionResult;
 use crate::config::Framework;
+use crate::analysis::ParsedConstraintSet;
 use crate::fuzzer::FieldElement;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -105,6 +106,11 @@ pub trait ConstraintInspector: CircuitExecutor {
     /// Get indices for public outputs in the witness/signal space
     fn output_indices(&self) -> Vec<usize> {
         Vec::new()
+    }
+
+    /// Get parsed constraints with lookup tables when available.
+    fn get_parsed_constraints(&self) -> Option<ParsedConstraintSet> {
+        None
     }
 }
 

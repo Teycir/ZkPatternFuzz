@@ -15,7 +15,7 @@ pub use coverage::*;
 pub use crate::attacks::CircuitInfo;
 
 use async_trait::async_trait;
-use crate::analysis::{ConstraintChecker, UnknownLookupPolicy};
+use crate::analysis::{ConstraintChecker, ConstraintParser, ParsedConstraintSet, UnknownLookupPolicy};
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use std::sync::{Arc, OnceLock};
@@ -336,6 +336,16 @@ impl ConstraintInspector for NoirExecutor {
         self.target.load_constraints().unwrap_or_default()
     }
 
+    fn get_parsed_constraints(&self) -> Option<ParsedConstraintSet> {
+        if let Some(text) = self.target.load_acir_text() {
+            return Some(ConstraintParser::parse_acir_with_tables(text.as_bytes()));
+        }
+
+        self.target
+            .load_acir_artifact()
+            .map(|bytes| ConstraintParser::parse_acir_with_tables(&bytes))
+    }
+
     fn check_constraints(&self, _witness: &[FieldElement]) -> Vec<ConstraintResult> {
         self.get_constraints()
             .iter()
@@ -446,6 +456,10 @@ impl CircuitExecutor for Halo2Executor {
 impl ConstraintInspector for Halo2Executor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
         Vec::new()
+    }
+
+    fn get_parsed_constraints(&self) -> Option<ParsedConstraintSet> {
+        Some(self.target.load_plonk_constraints())
     }
 
     fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {

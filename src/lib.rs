@@ -245,6 +245,8 @@ pub use analysis::{
     // Enhanced symbolic execution
     EnhancedSymbolicExecutor, EnhancedSymbolicConfig, EnhancedSymbolicStats,
     ConstraintSimplifier, IncrementalSolver, PathPruner, PruningStrategy,
+    // Constraint-guided symbolic seeding
+    ConstraintSeedGenerator, ConstraintSeedOutput, ConstraintSeedStats, collect_input_wire_indices,
     // Concolic execution
     ConcolicExecutor, ConcolicConfig, ConcolicTrace, ConcolicStats,
     ConcolicFuzzerIntegration,

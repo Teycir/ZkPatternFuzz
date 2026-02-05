@@ -314,30 +314,7 @@ impl NoirTarget {
 
     /// Parse ABI from compiled artifact
     fn parse_abi(&self) -> Result<NoirAbi> {
-        let mut candidates = Vec::new();
-
-        if let Some(metadata) = &self.metadata {
-            candidates.push(self.build_dir.join(format!("{}.json", metadata.name)));
-        }
-
-        let nargo_toml_path = self.project_path.join("Nargo.toml");
-        if nargo_toml_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&nargo_toml_path) {
-                let name = self.parse_project_name(&content);
-                candidates.push(self.build_dir.join(format!("{}.json", name)));
-            }
-        }
-
-        if candidates.is_empty() {
-            if let Ok(entries) = std::fs::read_dir(&self.build_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().map(|e| e == "json").unwrap_or(false) {
-                        candidates.push(path);
-                    }
-                }
-            }
-        }
+        let candidates = self.candidate_artifact_paths();
 
         for json_path in candidates {
             if !json_path.exists() {
@@ -352,6 +329,84 @@ impl NoirTarget {
         }
 
         Ok(NoirAbi::default())
+    }
+
+    fn candidate_artifact_paths(&self) -> Vec<PathBuf> {
+        use std::collections::HashSet;
+
+        let mut candidates = Vec::new();
+        let mut seen = HashSet::new();
+
+        if let Some(metadata) = &self.metadata {
+            let path = self.build_dir.join(format!("{}.json", metadata.name));
+            if seen.insert(path.clone()) {
+                candidates.push(path);
+            }
+        }
+
+        let nargo_toml_path = self.project_path.join("Nargo.toml");
+        if nargo_toml_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&nargo_toml_path) {
+                let name = self.parse_project_name(&content);
+                let path = self.build_dir.join(format!("{}.json", name));
+                if seen.insert(path.clone()) {
+                    candidates.push(path);
+                }
+            }
+        }
+
+        if let Ok(entries) = std::fs::read_dir(&self.build_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "json").unwrap_or(false) {
+                    if seen.insert(path.clone()) {
+                        candidates.push(path);
+                    }
+                }
+            }
+        }
+
+        candidates
+    }
+
+    /// Load the compiled ACIR artifact (JSON) when available.
+    pub fn load_acir_artifact(&self) -> Option<Vec<u8>> {
+        for json_path in self.candidate_artifact_paths() {
+            if !json_path.exists() {
+                continue;
+            }
+
+            let bytes = std::fs::read(&json_path).ok()?;
+            if let Ok(artifact) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                if artifact.get("opcodes").is_some()
+                    || artifact.get("program").is_some()
+                    || artifact.get("functions").is_some()
+                    || artifact.get("constraints").is_some()
+                {
+                    return Some(bytes);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Load ACIR text via `nargo compile --print-acir` when available.
+    pub fn load_acir_text(&self) -> Option<String> {
+        let _guard = noir_io_lock().lock().unwrap();
+
+        let output = self
+            .nargo_command()
+            .ok()?
+            .args(["compile", "--print-acir"])
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        Some(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
     fn acir_info(&self) -> Result<&NoirAcirInfo> {
