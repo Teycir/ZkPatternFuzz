@@ -16,6 +16,7 @@ set -euo pipefail
 # Configuration
 ZK0D_BASE="${ZK0D_BASE:-/media/elements/Repos/zk0d}"
 OUTPUT_DIR="./reports/benchmarks"
+CAMPAIGNS_DIR="${CAMPAIGNS_DIR:-./tests/campaigns}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 QUICK_MODE=false
 CIRCUIT_FILTER=""
@@ -62,14 +63,11 @@ if ! cargo build --release 2>&1 | tail -5; then
     exit 1
 fi
 
-# Check for zk0d collection
+USE_MOCK=false
 if [ ! -d "$ZK0D_BASE" ]; then
     log_warn "zk0d collection not found at $ZK0D_BASE"
     log_warn "Set ZK0D_BASE environment variable to the correct path"
-    log_warn "Running with mock circuits instead..."
-    USE_MOCK=true
-else
-    USE_MOCK=false
+    log_warn "Benchmark will rely on staged circuits under ./circuits/"
 fi
 
 # Initialize results file
@@ -88,78 +86,59 @@ cat > "$RESULTS_FILE" << EOF
 EOF
 
 # Benchmark function
+prepare_config() {
+    local source_config="$1"
+    local timeout="$2"
+    local tmp_config
+    tmp_config=$(mktemp)
+
+    if $QUICK_MODE; then
+        sed -E "s/timeout_seconds: [0-9]+/timeout_seconds: ${timeout}/" "$source_config" > "$tmp_config"
+    else
+        cp "$source_config" "$tmp_config"
+    fi
+
+    echo "$tmp_config"
+}
+
 run_benchmark() {
     local name="$1"
-    local circuit_path="$2"
+    local config_path="$2"
     local timeout="$3"
-    local attacks="$4"
     
     log_section "Benchmarking: $name"
     
     local start_time=$(date +%s)
     
-    if $USE_MOCK || [ ! -f "$circuit_path" ]; then
-        log_warn "Circuit not found: $circuit_path"
-        log_info "Running with mock executor..."
-        
-        # Create minimal campaign config
-        local config_file="/tmp/benchmark_${name}.yaml"
-        cat > "$config_file" << YAML
-campaign:
-  name: "${name} Benchmark"
-  version: "1.0"
-  target:
-    framework: mock
-    circuit_path: "$circuit_path"
-    main_component: "Main"
-  parameters:
-    timeout_seconds: $timeout
-
-attacks:
-  - type: underconstrained
-    description: "Detect multiple valid witnesses"
-    config:
-      witness_pairs: 1000
-  - type: collision
-    description: "Detect nullifier/hash collisions"
-    config:
-      samples: 5000
-  - type: boundary
-    description: "Test boundary values"
-    config:
-      test_values: ["0", "1", "p-1"]
-
-inputs:
-  - name: secret
-    type: field
-    fuzz_strategy: random
-  - name: nullifier
-    type: field
-    fuzz_strategy: random
-
-reporting:
-  output_dir: "$OUTPUT_DIR"
-  formats: ["json"]
-  include_poc: true
-YAML
-        
-    # Run fuzzer
-        if timeout "$timeout" cargo run --release -- \
-            --config "$config_file" \
-            --workers 4 \
-            --seed 42 \
-            > "$OUTPUT_DIR/${name}_log.txt" 2>&1; then
-            local status="completed"
-        else
-            local status="timeout"
-        fi
-        
-        rm -f "$config_file"
-    else
-        log_info "Using real circuit: $circuit_path"
-        # Would run with real circuit here
-        local status="skipped"
+    if [ ! -f "$config_path" ]; then
+        log_warn "Campaign config not found: $config_path"
+        log_warn "Skipping $name benchmark"
+        return
     fi
+
+    local circuit_path
+    circuit_path=$(grep -m1 "circuit_path:" "$config_path" | awk '{print $2}' | tr -d '"')
+    if [ -n "$circuit_path" ] && [ ! -e "$circuit_path" ]; then
+        log_warn "Circuit path not found: $circuit_path"
+        log_warn "Run ./scripts/setup_real_circuits.sh to stage sources"
+        return
+    fi
+
+    local effective_config
+    effective_config=$(prepare_config "$config_path" "$timeout")
+
+    # Run fuzzer
+    if timeout "$timeout" cargo run --release -- \
+        --config "$effective_config" \
+        --workers 4 \
+        --seed 42 \
+        > "$OUTPUT_DIR/${name}_log.txt" 2>&1; then
+        local status="completed"
+    else
+        local status="timeout"
+    fi
+
+    rm -f "$effective_config"
     
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
@@ -184,23 +163,20 @@ YAML
 # Run benchmarks
 if [ -z "$CIRCUIT_FILTER" ] || [ "$CIRCUIT_FILTER" = "tornado" ]; then
     run_benchmark "tornado_cash" \
-        "$ZK0D_BASE/cat3_privacy/tornado-core/circuits/withdraw.circom" \
-        "$TORNADO_TIMEOUT" \
-        "nullifier_collision,signature_malleability,merkle_soundness"
+        "$CAMPAIGNS_DIR/tornado_core_audit.yaml" \
+        "$TORNADO_TIMEOUT"
 fi
 
 if [ -z "$CIRCUIT_FILTER" ] || [ "$CIRCUIT_FILTER" = "semaphore" ]; then
     run_benchmark "semaphore" \
-        "$ZK0D_BASE/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom" \
-        "$SEMAPHORE_TIMEOUT" \
-        "nullifier_collision,underconstrained"
+        "$CAMPAIGNS_DIR/semaphore_audit.yaml" \
+        "$SEMAPHORE_TIMEOUT"
 fi
 
 if [ -z "$CIRCUIT_FILTER" ] || [ "$CIRCUIT_FILTER" = "zkevm" ]; then
     run_benchmark "zkevm" \
-        "$ZK0D_BASE/cat2_rollups/zkevm-circuits/src/state_circuit.rs" \
-        "$ZKEVM_TIMEOUT" \
-        "state_transition,boundary"
+        "$CAMPAIGNS_DIR/polygon_zkevm_audit.yaml" \
+        "$ZKEVM_TIMEOUT"
 fi
 
 # Generate final report

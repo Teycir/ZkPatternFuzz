@@ -1,0 +1,11 @@
+[submodule "circuits/real/tornado-core"]
+	path = circuits/real/tornado-core
+	url = https://github.com/tornadocash/tornado-core.git
+
+[submodule "circuits/real/semaphore"]
+	path = circuits/real/semaphore
+	url = https://github.com/semaphore-protocol/semaphore.git
+
+[submodule "circuits/real/iden3-auth"]
+	path = circuits/real/iden3-auth
+	url = https://github.com/iden3/auth-contracts.git
