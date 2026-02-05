@@ -140,11 +140,11 @@ impl MockCircuitExecutor {
                 // For high collision probability, we only keep a few bits of entropy
                 // This guarantees collisions for values in same "bucket"
                 let keep_bytes = ((1.0 - self.collision_probability) * 32.0) as usize;
-                let keep_bytes = keep_bytes.max(1).min(32);
+                let keep_bytes = keep_bytes.clamp(1, 32);
 
                 // Zero out most bytes, keeping only a small portion
-                for i in keep_bytes..32 {
-                    output_bytes[i] = 0;
+                for byte in output_bytes.iter_mut().skip(keep_bytes) {
+                    *byte = 0;
                 }
 
                 // For very high collision probability, also reduce remaining entropy

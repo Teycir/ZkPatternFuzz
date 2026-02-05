@@ -184,23 +184,18 @@ impl CollisionDetector {
 
     /// Calculate Hamming distance between two byte arrays
     pub fn hamming_distance(a: &[u8], b: &[u8]) -> usize {
-        let len = a.len().min(b.len());
         let mut distance = 0;
 
-        for i in 0..len {
-            distance += (a[i] ^ b[i]).count_ones() as usize;
+        for (a_byte, b_byte) in a.iter().zip(b.iter()) {
+            distance += (a_byte ^ b_byte).count_ones() as usize;
         }
 
         // Account for length difference
-        if a.len() > len {
-            for byte in &a[len..] {
-                distance += byte.count_ones() as usize;
-            }
+        for byte in a.iter().skip(b.len()) {
+            distance += byte.count_ones() as usize;
         }
-        if b.len() > len {
-            for byte in &b[len..] {
-                distance += byte.count_ones() as usize;
-            }
+        for byte in b.iter().skip(a.len()) {
+            distance += byte.count_ones() as usize;
         }
 
         distance

@@ -735,8 +735,7 @@ impl ConstraintChecker {
             ExtendedConstraint::Boolean { wire } => {
                 let satisfied = wire_values
                     .get(&wire.index)
-                    .map(|v| v.is_zero() || v.is_one())
-                    .unwrap_or(false);
+                    .is_some_and(|v| v.is_zero() || v.is_one());
                 ConstraintEvaluation {
                     satisfied,
                     lhs: if satisfied {

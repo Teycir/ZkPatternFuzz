@@ -76,8 +76,7 @@ impl CoverageTracker {
     /// Returns true if this hash represents new coverage.
     pub fn record_coverage_hash(&self, coverage_hash: u64) -> bool {
         let mut unique = self.unique_coverages.write().unwrap();
-        if !unique.contains(&coverage_hash) {
-            unique.insert(coverage_hash);
+        if unique.insert(coverage_hash) {
             *self.new_coverage_count.write().unwrap() += 1;
             true
         } else {

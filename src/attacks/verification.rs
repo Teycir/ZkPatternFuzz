@@ -277,7 +277,7 @@ impl VerificationFuzzer {
 
         // Additional edge cases based on edge_case_tests count
         // Test various proof sizes
-        let test_sizes = vec![0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
+        let test_sizes = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
         let num_size_tests = (self.edge_case_tests / 3).min(test_sizes.len());
 
         for size in test_sizes.iter().take(num_size_tests) {

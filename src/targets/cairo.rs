@@ -266,8 +266,7 @@ impl CairoTarget {
                 let path = entry.path();
                 if path
                     .extension()
-                    .map(|e| e == "sierra.json" || e == "casm.json")
-                    .unwrap_or(false)
+                    .is_some_and(|e| e == "sierra.json" || e == "casm.json")
                 {
                     self.compiled_path = Some(path);
                     break;
@@ -282,8 +281,7 @@ impl CairoTarget {
                     let path = entry.path();
                     if path
                         .extension()
-                        .map(|e| e == "sierra.json" || e == "casm.json")
-                        .unwrap_or(false)
+                        .is_some_and(|e| e == "sierra.json" || e == "casm.json")
                     {
                         self.compiled_path = Some(path);
                         break;

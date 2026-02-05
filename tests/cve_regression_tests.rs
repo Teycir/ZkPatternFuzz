@@ -4,7 +4,7 @@
 //! Each test loads a CVE pattern and verifies detection capability.
 
 use zk_fuzzer::config::{AttackType, Severity};
-use zk_fuzzer::cve::{CveDatabase, CvePattern};
+use zk_fuzzer::cve::CveDatabase;
 use zk_fuzzer::corpus::{SemanticDeduplicator, calculate_confidence};
 use zk_fuzzer::fuzzer::{
     FieldElement, Finding, ProofOfConcept, TestCase, TestMetadata,

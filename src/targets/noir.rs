@@ -240,9 +240,9 @@ impl NoirTarget {
         // Try to get circuit info using nargo info
         let output = self
             .nargo_command()
-            .and_then(|mut command| {
+            .map(|mut command| {
                 command.args(["info", "--json"]);
-                Ok(command)
+                command
             })
             .and_then(|mut command| command.output().context("Failed to run nargo info --json"))
             .ok();
@@ -369,7 +369,7 @@ impl NoirTarget {
         if let Ok(entries) = std::fs::read_dir(&self.build_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().map(|e| e == "json").unwrap_or(false) {
+                if path.extension().is_some_and(|e| e == "json") {
                     if seen.insert(path.clone()) {
                         candidates.push(path);
                     }

@@ -51,8 +51,7 @@ pub fn deduplicate_corpus(entries: &[CorpusEntry]) -> Vec<CorpusEntry> {
     for entry in entries {
         // Create a hash of inputs for deduplication
         let input_hash = compute_input_hash(&entry.test_case.inputs);
-        if !seen.contains(&input_hash) {
-            seen.insert(input_hash);
+        if seen.insert(input_hash) {
             result.push(entry.clone());
         }
     }

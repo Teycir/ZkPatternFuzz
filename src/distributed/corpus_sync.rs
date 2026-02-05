@@ -294,10 +294,12 @@ impl GlobalCorpusManager {
 
     /// Add entries from a node
     pub fn add_from_node(&mut self, node_id: &str, entries: Vec<CorpusEntry>) {
+        use std::collections::hash_map::Entry;
+
         for entry in entries {
-            if !self.coverage_index.contains_key(&entry.coverage_hash) {
+            if let Entry::Vacant(spot) = self.coverage_index.entry(entry.coverage_hash) {
                 let idx = self.global_corpus.len();
-                self.coverage_index.insert(entry.coverage_hash, idx);
+                spot.insert(idx);
                 self.global_corpus.push(entry.clone());
                 self.stats.unique_entries += 1;
             }

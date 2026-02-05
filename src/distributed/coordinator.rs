@@ -387,10 +387,9 @@ impl DistributedCoordinator {
     /// Update cluster statistics
     fn update_cluster_stats(&self) {
         let workers = self.workers.read().unwrap();
-        let mut stats = ClusterStats::default();
 
-        stats.total_nodes = workers.len();
-        stats.active_nodes = workers
+        let total_nodes = workers.len();
+        let active_nodes = workers
             .values()
             .filter(|w| {
                 !matches!(
@@ -400,23 +399,36 @@ impl DistributedCoordinator {
             })
             .count();
 
+        let mut total_executions = 0;
+        let mut combined_exec_per_second = 0.0;
         for worker in workers.values() {
-            stats.total_executions += worker.stats.executions;
-            stats.combined_exec_per_second += worker.stats.exec_per_second;
+            total_executions += worker.stats.executions;
+            combined_exec_per_second += worker.stats.exec_per_second;
         }
 
-        stats.total_findings = self.findings.read().unwrap().len();
-        stats.global_corpus_size = self.corpus_manager.read().unwrap().stats().unique_entries;
+        let total_findings = self.findings.read().unwrap().len();
+        let global_corpus_size = self.corpus_manager.read().unwrap().stats().unique_entries;
 
         // Calculate global coverage
         let coverage = self.global_coverage.read().unwrap();
-        if !coverage.is_empty() {
+        let global_coverage = if !coverage.is_empty() {
             let total_bits = coverage.len() * 8;
             let set_bits: usize = coverage.iter().map(|b| b.count_ones() as usize).sum();
-            stats.global_coverage = (set_bits as f64 / total_bits as f64) * 100.0;
-        }
+            (set_bits as f64 / total_bits as f64) * 100.0
+        } else {
+            0.0
+        };
 
-        *self.stats.write().unwrap() = stats;
+        *self.stats.write().unwrap() = ClusterStats {
+            total_nodes,
+            active_nodes,
+            total_executions,
+            combined_exec_per_second,
+            total_findings,
+            global_corpus_size,
+            global_coverage,
+            ..Default::default()
+        };
     }
 
     /// Check for and handle timed-out workers

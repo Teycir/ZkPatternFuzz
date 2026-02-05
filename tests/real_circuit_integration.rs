@@ -160,7 +160,7 @@ fn test_parse_snarkjs_groth16_with_symbols() {
         return;
     };
 
-    let r1cs = R1CS::from_file(&r1cs_path)
+    let _r1cs = R1CS::from_file(&r1cs_path)
         .expect("Should parse R1CS");
     
     // Parse symbol file for wire names

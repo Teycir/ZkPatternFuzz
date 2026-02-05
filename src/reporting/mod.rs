@@ -46,22 +46,27 @@ impl FuzzReport {
         coverage: CoverageMap,
         config: ReportingConfig,
     ) -> Self {
-        let mut stats = FuzzStatistics::default();
-        stats.coverage_percentage = coverage.coverage_percentage();
-        stats.unique_crashes = findings.len() as u64;
-
+        let mut findings_by_severity = HashMap::new();
+        let mut findings_by_type = HashMap::new();
+        
         // Count by severity
         for finding in &findings {
-            *stats
-                .findings_by_severity
+            *findings_by_severity
                 .entry(finding.severity.to_string())
                 .or_insert(0) += 1;
 
-            *stats
-                .findings_by_type
+            *findings_by_type
                 .entry(format!("{:?}", finding.attack_type))
                 .or_insert(0) += 1;
         }
+
+        let stats = FuzzStatistics {
+            coverage_percentage: coverage.coverage_percentage(),
+            unique_crashes: findings.len() as u64,
+            findings_by_severity,
+            findings_by_type,
+            ..Default::default()
+        };
 
         Self {
             campaign_name,
@@ -235,8 +240,8 @@ impl FuzzReport {
             .with_information_uri("https://github.com/example/zk-fuzzer")
             .with_circuit_path(
                 self.campaign_name
-                    .split('/')
-                    .last()
+                    .rsplit('/')
+                    .next()
                     .unwrap_or(&self.campaign_name),
             )
             .add_findings(&self.findings)

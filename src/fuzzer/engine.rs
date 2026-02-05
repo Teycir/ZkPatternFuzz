@@ -1899,10 +1899,6 @@ impl FuzzingEngine {
             num_tests
         );
 
-        let public_indices;
-        let private_indices;
-        let output_indices;
-
         let inspector = match self.executor.constraint_inspector() {
             Some(inspector) => inspector,
             None => {
@@ -1918,9 +1914,9 @@ impl FuzzingEngine {
             }
         };
 
-        public_indices = inspector.public_input_indices();
-        private_indices = inspector.private_input_indices();
-        output_indices = inspector.output_indices();
+        let public_indices = inspector.public_input_indices();
+        let private_indices = inspector.private_input_indices();
+        let output_indices = inspector.output_indices();
 
         if private_indices.is_empty() {
             tracing::warn!("Information leakage attack skipped: no private inputs");
@@ -2144,9 +2140,9 @@ impl FuzzingEngine {
             return false;
         }
 
-        for i in 0..witnesses.len() {
-            for j in (i + 1)..witnesses.len() {
-                if witnesses[i].inputs != witnesses[j].inputs {
+        for (i, left) in witnesses.iter().enumerate() {
+            for right in witnesses.iter().skip(i + 1) {
+                if left.inputs != right.inputs {
                     return true;
                 }
             }

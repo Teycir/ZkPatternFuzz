@@ -575,7 +575,7 @@ impl CircomTarget {
         for dir in &ptau_dirs {
             for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
                 let path = entry.path();
-                if path.extension().map(|e| e == "ptau").unwrap_or(false) {
+                if path.extension().is_some_and(|e| e == "ptau") {
                     tracing::info!("Found existing ptau file: {:?}", path);
                     return Ok(path);
                 }

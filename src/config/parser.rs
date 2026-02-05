@@ -132,9 +132,9 @@ pub fn expand_value_placeholder(
             }
             // Divide by 2 (right shift)
             let mut carry = 0u8;
-            for i in 0..32 {
-                let new_carry = result[i] & 1;
-                result[i] = (result[i] >> 1) | (carry << 7);
+            for byte in result.iter_mut() {
+                let new_carry = *byte & 1;
+                *byte = (*byte >> 1) | (carry << 7);
                 carry = new_carry;
             }
             Ok(result)

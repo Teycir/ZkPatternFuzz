@@ -75,7 +75,7 @@ impl CveDatabase {
         self.vulnerabilities
             .iter()
             .filter(|p| p.regression_test.enabled)
-            .map(|p| RegressionTest::from_pattern(p))
+            .map(RegressionTest::from_pattern)
             .collect()
     }
 

@@ -208,11 +208,11 @@ impl SemanticDeduplicator {
         // Hash the full POC
         let mut hasher = Sha256::new();
         for fe in &finding.poc.witness_a {
-            hasher.update(&fe.0);
+            hasher.update(fe.0);
         }
         if let Some(ref witness_b) = finding.poc.witness_b {
             for fe in witness_b {
-                hasher.update(&fe.0);
+                hasher.update(fe.0);
             }
         }
         hasher.update(format!("{:?}", finding.attack_type).as_bytes());
@@ -234,13 +234,17 @@ impl SemanticDeduplicator {
 
         let fp = self.fingerprint(&finding);
 
-        if self.seen_fingerprints.contains_key(&fp) {
-            self.stats.duplicates_filtered += 1;
-            false
-        } else {
-            self.seen_fingerprints.insert(fp, finding);
-            self.stats.unique_findings += 1;
-            true
+        use std::collections::hash_map::Entry;
+        match self.seen_fingerprints.entry(fp) {
+            Entry::Occupied(_) => {
+                self.stats.duplicates_filtered += 1;
+                false
+            }
+            Entry::Vacant(e) => {
+                e.insert(finding);
+                self.stats.unique_findings += 1;
+                true
+            }
         }
     }
 

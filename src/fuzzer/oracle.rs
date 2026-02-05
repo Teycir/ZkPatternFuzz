@@ -180,11 +180,11 @@ impl BugOracle for ArithmeticOverflowOracle {
 
 impl ArithmeticOverflowOracle {
     fn is_overflow(&self, value: &[u8; 32]) -> bool {
-        for i in 0..32 {
-            if value[i] > self.field_modulus[i] {
+        for (v, m) in value.iter().zip(self.field_modulus.iter()) {
+            if v > m {
                 return true;
             }
-            if value[i] < self.field_modulus[i] {
+            if v < m {
                 return false;
             }
         }

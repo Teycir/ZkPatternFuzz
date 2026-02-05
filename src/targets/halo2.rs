@@ -83,7 +83,7 @@ impl Default for Halo2Config {
         Self {
             k: 10,
             field: Halo2Field::Bn254,
-            commitment: CommitmentScheme::KZG,
+            commitment: CommitmentScheme::Kzg,
         }
     }
 }
@@ -103,9 +103,9 @@ pub enum Halo2Field {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum CommitmentScheme {
     /// Kate-Zaverucha-Goldberg (trusted setup)
-    KZG,
+    Kzg,
     /// Inner Product Argument (no trusted setup)
-    IPA,
+    Ipa,
 }
 
 impl Halo2Target {
@@ -198,8 +198,7 @@ impl Halo2Target {
         } else if self
             .circuit_path
             .extension()
-            .map(|e| e == "json")
-            .unwrap_or(false)
+            .is_some_and(|e| e == "json")
         {
             self.setup_from_json()?;
         } else {
@@ -325,8 +324,7 @@ impl Halo2Target {
         if self
             .circuit_path
             .extension()
-            .map(|e| e == "json")
-            .unwrap_or(false)
+            .is_some_and(|e| e == "json")
         {
             if let Ok(content) = std::fs::read_to_string(&self.circuit_path) {
                 let parsed = ConstraintParser::parse_plonk_with_tables(&content);

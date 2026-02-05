@@ -22,8 +22,8 @@ fn bn254_modulus_bytes() -> [u8; 32] {
 /// Compare two 32-byte big-endian integers
 /// Returns Ordering::Less if a < b, Equal if a == b, Greater if a > b
 fn compare_bytes(a: &[u8; 32], b: &[u8; 32]) -> std::cmp::Ordering {
-    for i in 0..32 {
-        match a[i].cmp(&b[i]) {
+    for (a_byte, b_byte) in a.iter().zip(b.iter()) {
+        match a_byte.cmp(b_byte) {
             std::cmp::Ordering::Equal => continue,
             other => return other,
         }
@@ -159,8 +159,8 @@ fn sub_one(input: &FieldElement) -> FieldElement {
 /// reduced to ensure it's a valid field element.
 fn negate(input: &FieldElement) -> FieldElement {
     let mut result = [0u8; 32];
-    for i in 0..32 {
-        result[i] = !input.0[i];
+    for (i, byte) in result.iter_mut().enumerate() {
+        *byte = !input.0[i];
     }
     // Reduce to ensure validity (NOT of small values produces large values)
     reduce_modulo_field(FieldElement(result))

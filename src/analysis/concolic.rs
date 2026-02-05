@@ -223,14 +223,13 @@ impl ConcolicExecutor {
 
         // Check if this is a new path
         let path_hash = self.hash_path(&trace.path_condition);
-        if self.explored_paths.contains(&path_hash) {
+        if !self.explored_paths.insert(path_hash) {
             return Some(trace);
         }
-        self.explored_paths.insert(path_hash);
 
         // Add to traces and generated tests
         self.traces.push(trace.clone());
-        if !self.generated_tests.iter().any(|t| *t == inputs) {
+        if !self.generated_tests.contains(&inputs) {
             self.generated_tests.push(inputs);
         }
 

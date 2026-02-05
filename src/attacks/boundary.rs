@@ -589,7 +589,7 @@ impl BoundaryTester {
         // Find the largest 2^n < p
         let mut power = BigUint::from(1u32);
         let mut exp = 0u32;
-        while &power < &p {
+        while power < p {
             power <<= 1;
             exp += 1;
         }
