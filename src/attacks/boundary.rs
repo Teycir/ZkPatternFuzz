@@ -31,7 +31,7 @@
 
 use super::{Attack, AttackContext};
 use crate::config::{AttackType, Severity};
-use crate::fuzzer::{FieldElement, Finding, ProofOfConcept, bn254_modulus_bytes};
+use crate::fuzzer::{bn254_modulus_bytes, FieldElement, Finding, ProofOfConcept};
 use num_bigint::BigUint;
 use std::collections::HashMap;
 
@@ -164,7 +164,7 @@ fn biguint_to_field_element(value: &BigUint) -> Option<FieldElement> {
     if bytes.len() > 32 {
         return None;
     }
-    
+
     let mut result = [0u8; 32];
     let start = 32 - bytes.len();
     result[start..].copy_from_slice(&bytes);
@@ -197,11 +197,7 @@ impl Default for BoundaryTester {
             test_field_boundaries: true,
             bit_widths: vec![8, 16, 32, 64, 128, 252, 253, 254],
             test_integer_boundaries: true,
-            custom_values: vec![
-                "0".to_string(),
-                "1".to_string(),
-                "p-1".to_string(),
-            ],
+            custom_values: vec!["0".to_string(), "1".to_string(), "p-1".to_string()],
             ranges: Vec::new(),
             test_overflow: true,
             test_sign_boundary: true,
@@ -311,7 +307,7 @@ impl BoundaryTester {
     fn generate_field_boundaries(&self) -> Vec<(FieldElement, String, BoundaryCategory)> {
         let modulus = bn254_modulus_bytes();
         let p = BigUint::from_bytes_be(&modulus);
-        
+
         let mut values = Vec::new();
 
         // Zero
@@ -348,11 +344,7 @@ impl BoundaryTester {
         // p - 2
         let p_minus_2 = &p - BigUint::from(2u32);
         if let Some(fe) = biguint_to_field_element(&p_minus_2) {
-            values.push((
-                fe,
-                "p-2".to_string(),
-                BoundaryCategory::FieldElement,
-            ));
+            values.push((fe, "p-2".to_string(), BoundaryCategory::FieldElement));
         }
 
         // p (should wrap to 0)
@@ -408,11 +400,7 @@ impl BoundaryTester {
         // 2^n + 1
         let power_plus_one = (BigUint::from(1u32) << bits) + BigUint::from(1u32);
         if let Some(fe) = biguint_to_field_element(&power_plus_one) {
-            values.push((
-                fe,
-                format!("2^{} + 1", bits),
-                BoundaryCategory::BitBoundary,
-            ));
+            values.push((fe, format!("2^{} + 1", bits), BoundaryCategory::BitBoundary));
         }
 
         // 2^(n-1) (highest bit set, useful for sign interpretation)
@@ -434,19 +422,44 @@ impl BoundaryTester {
     fn generate_integer_boundaries(&self) -> Vec<(FieldElement, String, BoundaryCategory)> {
         vec![
             // u8 boundaries
-            (FieldElement::from_u64(u8::MAX as u64), "u8::MAX (255)".to_string(), BoundaryCategory::IntegerRange),
-            (FieldElement::from_u64(256), "u8::MAX + 1 (256)".to_string(), BoundaryCategory::IntegerRange),
-            
+            (
+                FieldElement::from_u64(u8::MAX as u64),
+                "u8::MAX (255)".to_string(),
+                BoundaryCategory::IntegerRange,
+            ),
+            (
+                FieldElement::from_u64(256),
+                "u8::MAX + 1 (256)".to_string(),
+                BoundaryCategory::IntegerRange,
+            ),
             // u16 boundaries
-            (FieldElement::from_u64(u16::MAX as u64), "u16::MAX (65535)".to_string(), BoundaryCategory::IntegerRange),
-            (FieldElement::from_u64(65536), "u16::MAX + 1 (65536)".to_string(), BoundaryCategory::IntegerRange),
-            
+            (
+                FieldElement::from_u64(u16::MAX as u64),
+                "u16::MAX (65535)".to_string(),
+                BoundaryCategory::IntegerRange,
+            ),
+            (
+                FieldElement::from_u64(65536),
+                "u16::MAX + 1 (65536)".to_string(),
+                BoundaryCategory::IntegerRange,
+            ),
             // u32 boundaries
-            (FieldElement::from_u64(u32::MAX as u64), "u32::MAX".to_string(), BoundaryCategory::IntegerRange),
-            (FieldElement::from_u64(u32::MAX as u64 + 1), "u32::MAX + 1".to_string(), BoundaryCategory::IntegerRange),
-            
+            (
+                FieldElement::from_u64(u32::MAX as u64),
+                "u32::MAX".to_string(),
+                BoundaryCategory::IntegerRange,
+            ),
+            (
+                FieldElement::from_u64(u32::MAX as u64 + 1),
+                "u32::MAX + 1".to_string(),
+                BoundaryCategory::IntegerRange,
+            ),
             // u64 boundaries
-            (FieldElement::from_u64(u64::MAX), "u64::MAX".to_string(), BoundaryCategory::IntegerRange),
+            (
+                FieldElement::from_u64(u64::MAX),
+                "u64::MAX".to_string(),
+                BoundaryCategory::IntegerRange,
+            ),
         ]
     }
 
@@ -496,7 +509,7 @@ impl BoundaryTester {
     fn generate_overflow_values(&self) -> Vec<(FieldElement, String, BoundaryCategory)> {
         let modulus = bn254_modulus_bytes();
         let p = BigUint::from_bytes_be(&modulus);
-        
+
         let mut values = Vec::new();
 
         // Values that cause overflow when added to themselves
@@ -539,7 +552,7 @@ impl BoundaryTester {
         let modulus = bn254_modulus_bytes();
         let p = BigUint::from_bytes_be(&modulus);
         let p_minus_1 = &p - BigUint::from(1u32);
-        
+
         let mut values = Vec::new();
 
         // (p-1) + 1 = p = 0 (mod p) - addition overflow
@@ -582,7 +595,7 @@ impl BoundaryTester {
         }
         power >>= 1;
         exp -= 1;
-        
+
         if let Some(fe) = biguint_to_field_element(&power) {
             values.push((
                 fe,
@@ -594,11 +607,7 @@ impl BoundaryTester {
         // p - 2^exp (distance from largest power of 2)
         let diff = &p - &power;
         if let Some(fe) = biguint_to_field_element(&diff) {
-            values.push((
-                fe,
-                format!("p - 2^{}", exp),
-                BoundaryCategory::NearModulus,
-            ));
+            values.push((fe, format!("p - 2^{}", exp), BoundaryCategory::NearModulus));
         }
 
         values
@@ -625,10 +634,7 @@ impl BoundaryTester {
                     } else {
                         Severity::Medium
                     },
-                    description: format!(
-                        "Range enforcement issue for {}: {}",
-                        range.name, desc
-                    ),
+                    description: format!("Range enforcement issue for {}: {}", range.name, desc),
                     test_value: fe,
                     expected: if should_accept { "accept" } else { "reject" }.to_string(),
                     actual: if did_accept { "accepted" } else { "rejected" }.to_string(),
@@ -670,8 +676,7 @@ impl Attack for BoundaryTester {
                 description: format!(
                     "Circuit '{}' has {} degrees of freedom - some inputs may not be \
                      properly range-checked",
-                    context.circuit_info.name,
-                    dof
+                    context.circuit_info.name, dof
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
@@ -686,8 +691,7 @@ impl Attack for BoundaryTester {
                 severity: Severity::Info,
                 description: format!(
                     "Low constraint density ({:.2}) in '{}' - consider adding range checks",
-                    density,
-                    context.circuit_info.name
+                    density, context.circuit_info.name
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
@@ -767,13 +771,13 @@ mod tests {
     fn test_generate_field_boundaries() {
         let tester = BoundaryTester::new();
         let values = tester.generate_field_boundaries();
-        
+
         // Should include 0, 1, p-1, p
         assert!(values.len() >= 4);
-        
+
         // Check zero is included
         assert!(values.iter().any(|(fe, _, _)| *fe == FieldElement::zero()));
-        
+
         // Check one is included
         assert!(values.iter().any(|(fe, _, _)| *fe == FieldElement::one()));
     }
@@ -782,14 +786,14 @@ mod tests {
     fn test_generate_bit_boundaries() {
         let tester = BoundaryTester::new();
         let values = tester.generate_bit_boundaries(8);
-        
+
         // Should include 2^8-1=255, 2^8=256, 2^8+1=257, 2^7=128
         assert!(values.len() >= 4);
-        
+
         // Check 255 is included
-        let has_255 = values.iter().any(|(fe, _, _)| {
-            *fe == FieldElement::from_u64(255)
-        });
+        let has_255 = values
+            .iter()
+            .any(|(fe, _, _)| *fe == FieldElement::from_u64(255));
         assert!(has_255);
     }
 
@@ -797,23 +801,21 @@ mod tests {
     fn test_generate_integer_boundaries() {
         let tester = BoundaryTester::new();
         let values = tester.generate_integer_boundaries();
-        
+
         // Should have u8, u16, u32, u64 boundaries
         assert!(values.len() >= 4);
     }
 
     #[test]
     fn test_generate_all_test_values() {
-        let tester = BoundaryTester::new()
-            .with_bit_widths(vec![8, 16]);
-        
+        let tester = BoundaryTester::new().with_bit_widths(vec![8, 16]);
+
         let values = tester.generate_all_test_values();
         assert!(!values.is_empty());
-        
+
         // Check we have different categories
-        let categories: std::collections::HashSet<_> = values.iter()
-            .map(|(_, _, cat)| cat)
-            .collect();
+        let categories: std::collections::HashSet<_> =
+            values.iter().map(|(_, _, cat)| cat).collect();
         assert!(categories.len() >= 2);
     }
 
@@ -821,7 +823,7 @@ mod tests {
     fn test_range_spec_boundary_values() {
         let range = common_ranges::age_range();
         let values = range.boundary_values();
-        
+
         // Should include min, max, below min, above max, middle
         assert!(values.len() >= 4);
     }
@@ -831,7 +833,7 @@ mod tests {
         let small = BigUint::from(42u32);
         let fe = biguint_to_field_element(&small).unwrap();
         assert_eq!(fe, FieldElement::from_u64(42));
-        
+
         // Test zero
         let zero = BigUint::from(0u32);
         let fe_zero = biguint_to_field_element(&zero).unwrap();
@@ -842,16 +844,16 @@ mod tests {
     fn test_check_range_enforcement() {
         let tester = BoundaryTester::new();
         let range = common_ranges::percentage_range(); // 0-100
-        
+
         // Mock circuit that only accepts values <= 50
         let accepts = |fe: &FieldElement| {
             let bytes = fe.to_bytes();
             let value = u64::from_be_bytes(bytes[24..32].try_into().unwrap());
             value <= 50
         };
-        
+
         let vulnerabilities = tester.check_range_enforcement(accepts, &range);
-        
+
         // Should find vulnerability at max (100) and above max (101)
         // since our mock only accepts <= 50
         assert!(!vulnerabilities.is_empty());
@@ -868,15 +870,17 @@ mod tests {
     fn test_overflow_values() {
         let tester = BoundaryTester::new().with_overflow_testing(true);
         let values = tester.generate_overflow_values();
-        
+
         // Should have near-modulus and near-zero values
         assert!(!values.is_empty());
-        
-        let has_near_modulus = values.iter()
+
+        let has_near_modulus = values
+            .iter()
             .any(|(_, _, cat)| *cat == BoundaryCategory::NearModulus);
-        let has_near_zero = values.iter()
+        let has_near_zero = values
+            .iter()
             .any(|(_, _, cat)| *cat == BoundaryCategory::NearZero);
-        
+
         assert!(has_near_modulus);
         assert!(has_near_zero);
     }
@@ -885,9 +889,11 @@ mod tests {
     fn test_sign_boundaries() {
         let tester = BoundaryTester::new().with_sign_boundary_testing(true);
         let values = tester.generate_sign_boundaries();
-        
+
         // Should have (p-1)/2 and surrounding values
         assert!(values.len() >= 2);
-        assert!(values.iter().all(|(_, _, cat)| *cat == BoundaryCategory::SignBoundary));
+        assert!(values
+            .iter()
+            .all(|(_, _, cat)| *cat == BoundaryCategory::SignBoundary));
     }
 }

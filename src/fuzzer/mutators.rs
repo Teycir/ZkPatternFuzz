@@ -52,20 +52,20 @@ fn subtract_bytes(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
 }
 
 /// Reduce a field element modulo the BN254 scalar field prime
-/// 
+///
 /// Repeatedly subtracts the modulus until the value is in the valid range [0, p-1].
 /// This handles any value, including values much larger than p (e.g., bitwise NOT of zero).
 fn reduce_modulo_field(fe: FieldElement) -> FieldElement {
     let modulus = bn254_modulus_bytes();
     let mut current = fe.0;
-    
+
     // Keep subtracting modulus while current >= modulus
     // For values close to 2^256, this might need multiple iterations
     // but in practice, fuzzing mutations rarely produce values > 2p
     while compare_bytes(&current, &modulus) != std::cmp::Ordering::Less {
         current = subtract_bytes(&current, &modulus);
     }
-    
+
     FieldElement(current)
 }
 
@@ -114,7 +114,7 @@ fn arithmetic_mutation(input: &FieldElement, rng: &mut impl Rng) -> FieldElement
 }
 
 /// Add one to the field element with modular reduction
-/// 
+///
 /// Ensures the result is always a valid field element (< p)
 fn add_one(input: &FieldElement) -> FieldElement {
     let mut result = input.0;
@@ -153,7 +153,7 @@ fn sub_one(input: &FieldElement) -> FieldElement {
 }
 
 /// Negate the field element (bitwise NOT) with modular reduction
-/// 
+///
 /// Note: Bitwise NOT doesn't produce a mathematically correct field negation,
 /// but it's useful for fuzzing to explore the input space. The result is
 /// reduced to ensure it's a valid field element.
@@ -167,7 +167,7 @@ fn negate(input: &FieldElement) -> FieldElement {
 }
 
 /// Double the field element (left shift by 1) with modular reduction
-/// 
+///
 /// Ensures the result is always a valid field element (< p)
 /// Previously, this could overflow and wrap around incorrectly
 fn double(input: &FieldElement) -> FieldElement {
@@ -230,8 +230,8 @@ fn havoc_mutation(input: &FieldElement, rng: &mut impl Rng) -> FieldElement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_add_one() {
@@ -281,7 +281,7 @@ mod tests {
             p_minus_one.copy_from_slice(&decoded);
         }
         let input = FieldElement(p_minus_one);
-        
+
         // Adding 1 to p-1 gives p, which should reduce to 0
         let result = add_one(&input);
         assert_eq!(result, FieldElement::zero());
@@ -297,10 +297,10 @@ mod tests {
         }
         // Add 1 to make it slightly more than half
         half_plus[31] = half_plus[31].wrapping_add(1);
-        
+
         let input = FieldElement(half_plus);
         let result = double(&input);
-        
+
         // Result should be properly reduced (less than modulus)
         let modulus = bn254_modulus_bytes();
         assert!(compare_bytes(&result.0, &modulus) == std::cmp::Ordering::Less);

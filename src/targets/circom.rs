@@ -86,10 +86,7 @@ fn map_signal_index(signals: &HashMap<String, usize>, name: &str) -> Option<usiz
 }
 
 fn infer_array_size(signals: &HashMap<String, usize>, name: &str) -> Option<usize> {
-    let prefixes = [
-        format!("main.{}[", name),
-        format!("{}[", name),
-    ];
+    let prefixes = [format!("main.{}[", name), format!("{}[", name)];
 
     let mut max_index: Option<usize> = None;
     for key in signals.keys() {
@@ -139,11 +136,11 @@ impl WitnessCalculator {
         let input_path = temp_path.join("input.json");
         let witness_path = temp_path.join("witness.wtns");
         let witness_json_path = temp_path.join("witness.json");
-        
+
         // Write inputs to JSON
         let input_json = serde_json::to_string(inputs)?;
         std::fs::write(&input_path, &input_json)?;
-        
+
         // Run witness generation using snarkjs
         let output = Command::new("npx")
             .args([
@@ -156,12 +153,12 @@ impl WitnessCalculator {
             ])
             .output()
             .context("Failed to run snarkjs witness calculation")?;
-        
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("Witness calculation failed: {}", stderr);
         }
-        
+
         // Export witness to JSON for parsing
         let output = Command::new("npx")
             .args([
@@ -174,22 +171,22 @@ impl WitnessCalculator {
             ])
             .output()
             .context("Failed to export witness to JSON")?;
-        
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("Witness export failed: {}", stderr);
         }
-        
+
         // Parse witness JSON
         let witness_json = std::fs::read_to_string(&witness_json_path)?;
         let witness_values: Vec<String> = serde_json::from_str(&witness_json)?;
-        
+
         // Convert to FieldElements
         let witness: Vec<FieldElement> = witness_values
             .iter()
             .map(|v| parse_decimal_to_field_element(v))
             .collect::<Result<Vec<_>>>()?;
-        
+
         Ok(witness)
     }
 }
@@ -198,14 +195,11 @@ impl CircomTarget {
     /// Create a new Circom target from a circuit file
     pub fn new(circuit_path: &str, main_component: &str) -> Result<Self> {
         let path = PathBuf::from(circuit_path);
-        
+
         // Create build directory next to the circuit
         // Note: circom outputs files based on source filename, not template name
-        let build_dir = path
-            .parent()
-            .unwrap_or(Path::new("."))
-            .join("build");
-        
+        let build_dir = path.parent().unwrap_or(Path::new(".")).join("build");
+
         Ok(Self {
             circuit_path: path,
             main_component: main_component.to_string(),
@@ -239,11 +233,11 @@ impl CircomTarget {
             .arg("--version")
             .output()
             .context("circom not found in PATH")?;
-        
+
         if !output.status.success() {
             anyhow::bail!("circom --version failed");
         }
-        
+
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
@@ -253,14 +247,14 @@ impl CircomTarget {
             .args(["snarkjs", "--version"])
             .output()
             .context("snarkjs not found")?;
-        
+
         // snarkjs may return version on stdout or stderr
         let version = if output.status.success() {
             String::from_utf8_lossy(&output.stdout).trim().to_string()
         } else {
             String::from_utf8_lossy(&output.stderr).trim().to_string()
         };
-        
+
         Ok(version)
     }
 
@@ -273,7 +267,7 @@ impl CircomTarget {
         let _guard = circom_io_lock().lock().unwrap();
 
         tracing::info!("Compiling Circom circuit: {:?}", self.circuit_path);
-        
+
         // Check circom is available
         let circom_version = Self::check_circom_available()?;
         tracing::debug!("Using circom: {}", circom_version);
@@ -308,14 +302,18 @@ impl CircomTarget {
         // Setup witness calculator
         // circom outputs: {basename}_js/{basename}.wasm
         let basename = self.output_basename();
-        let wasm_path = self.build_dir
+        let wasm_path = self
+            .build_dir
             .join(format!("{}_js", basename))
             .join(format!("{}.wasm", basename));
 
         if wasm_path.exists() {
             self.witness_calculator = Some(WitnessCalculator::new(wasm_path));
         } else {
-            tracing::warn!("WASM file not found at expected path {:?}, witness calculation may fail", wasm_path);
+            tracing::warn!(
+                "WASM file not found at expected path {:?}, witness calculation may fail",
+                wasm_path
+            );
         }
 
         self.compiled = true;
@@ -351,7 +349,7 @@ impl CircomTarget {
     fn parse_r1cs_info(&mut self) -> Result<()> {
         let basename = self.output_basename();
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
-        
+
         if !r1cs_path.exists() {
             tracing::warn!("R1CS file not found: {:?}", r1cs_path);
             return Ok(());
@@ -359,12 +357,7 @@ impl CircomTarget {
 
         // Use snarkjs to get R1CS info
         let output = Command::new("npx")
-            .args([
-                "snarkjs",
-                "r1cs",
-                "info",
-                r1cs_path.to_str().unwrap(),
-            ])
+            .args(["snarkjs", "r1cs", "info", r1cs_path.to_str().unwrap()])
             .output()
             .context("Failed to get R1CS info")?;
 
@@ -375,7 +368,7 @@ impl CircomTarget {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        
+
         // Parse the output to extract constraint count
         let mut num_constraints = 0;
         let mut num_private_inputs = 0;
@@ -390,14 +383,17 @@ impl CircomTarget {
             // Get the value after the last colon
             if let Some(last_colon_idx) = line.rfind(':') {
                 let value_str = line[last_colon_idx + 1..].trim();
-                
+
                 if line.contains("Constraints") {
                     num_constraints = value_str.parse().unwrap_or(0);
                 } else if line.contains("Private Inputs") {
                     num_private_inputs = value_str.parse().unwrap_or(0);
                 } else if line.contains("Public Inputs") {
                     num_public_inputs = value_str.parse().unwrap_or(0);
-                } else if line.contains("Outputs") && !line.contains("Public") && !line.contains("Private") {
+                } else if line.contains("Outputs")
+                    && !line.contains("Public")
+                    && !line.contains("Private")
+                {
                     num_outputs = value_str.parse().unwrap_or(0);
                 }
             }
@@ -518,7 +514,7 @@ impl CircomTarget {
         let basename = self.output_basename();
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         let ptau_path = self.find_or_download_ptau()?;
-        
+
         let zkey_path = self.build_dir.join(format!("{}.zkey", basename));
         let vkey_path = self.build_dir.join(format!("{}_vkey.json", basename));
 
@@ -611,19 +607,21 @@ impl CircomTarget {
     /// Calculate witness for given inputs
     pub fn calculate_witness(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
         let _guard = circom_io_lock().lock().unwrap();
-        let calculator = self.witness_calculator.as_ref()
+        let calculator = self
+            .witness_calculator
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Witness calculator not initialized"))?;
 
         // Convert inputs to named map based on metadata
         let input_map = self.inputs_to_map(inputs)?;
-        
+
         calculator.calculate(&input_map)
     }
 
     /// Convert input array to named signal map
     fn inputs_to_map(&self, inputs: &[FieldElement]) -> Result<HashMap<String, Vec<String>>> {
         let mut map = HashMap::new();
-        
+
         if let Some(metadata) = &self.metadata {
             let mut cursor = 0usize;
             for (i, name) in metadata.input_signals.iter().enumerate() {
@@ -665,13 +663,14 @@ impl CircomTarget {
                 map.insert(format!("in{}", i), vec![value]);
             }
         }
-        
+
         Ok(map)
     }
 
     fn constraints_json_path(&self) -> PathBuf {
         let basename = self.output_basename();
-        self.build_dir.join(format!("{}_constraints.json", basename))
+        self.build_dir
+            .join(format!("{}_constraints.json", basename))
     }
 
     /// Load constraint equations from Circom-generated JSON
@@ -773,15 +772,24 @@ impl TargetCircuit for CircomTarget {
     }
 
     fn num_constraints(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_constraints).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_constraints)
+            .unwrap_or(0)
     }
 
     fn num_private_inputs(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_private_inputs).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_private_inputs)
+            .unwrap_or(0)
     }
 
     fn num_public_inputs(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_public_inputs).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_public_inputs)
+            .unwrap_or(0)
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -820,7 +828,9 @@ impl TargetCircuit for CircomTarget {
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
         let _guard = circom_io_lock().lock().unwrap();
-        let zkey_path = self.proving_key_path.as_ref()
+        let zkey_path = self
+            .proving_key_path
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Proving key not set. Call setup_keys() first."))?;
 
         let temp_dir = create_temp_dir()?;
@@ -877,13 +887,15 @@ impl TargetCircuit for CircomTarget {
 
         // Read proof JSON
         let proof_json = std::fs::read_to_string(&proof_path)?;
-        
+
         Ok(proof_json.into_bytes())
     }
 
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
         let _guard = circom_io_lock().lock().unwrap();
-        let vkey_path = self.verification_key_path.as_ref()
+        let vkey_path = self
+            .verification_key_path
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Verification key not set."))?;
 
         let temp_dir = create_temp_dir()?;
@@ -896,10 +908,8 @@ impl TargetCircuit for CircomTarget {
         std::fs::write(&proof_path, proof)?;
 
         // Write public inputs
-        let public_values: Vec<String> = public_inputs
-            .iter()
-            .map(field_element_to_decimal)
-            .collect();
+        let public_values: Vec<String> =
+            public_inputs.iter().map(field_element_to_decimal).collect();
         let public_json = serde_json::to_string(&public_values)?;
         std::fs::write(&public_path, &public_json)?;
 
@@ -945,24 +955,24 @@ fn parse_constraint_terms(value: &serde_json::Value) -> Result<Vec<(usize, Field
 /// Parse a decimal string to FieldElement
 fn parse_decimal_to_field_element(s: &str) -> Result<FieldElement> {
     use num_bigint::BigUint;
-    
+
     let clean = s.trim().trim_matches('"');
     let value = BigUint::parse_bytes(clean.as_bytes(), 10)
         .ok_or_else(|| anyhow::anyhow!("Invalid decimal: {}", s))?;
-    
+
     let bytes = value.to_bytes_be();
     let mut result = [0u8; 32];
     let start = 32usize.saturating_sub(bytes.len());
     let copy_len = bytes.len().min(32);
     result[start..start + copy_len].copy_from_slice(&bytes[..copy_len]);
-    
+
     Ok(FieldElement(result))
 }
 
 /// Convert FieldElement to decimal string
 fn field_element_to_decimal(fe: &FieldElement) -> String {
     use num_bigint::BigUint;
-    
+
     let value = BigUint::from_bytes_be(&fe.0);
     value.to_string()
 }
@@ -974,10 +984,10 @@ pub mod analysis {
     /// Extract signal names from a Circom source file
     pub fn extract_signals(source: &str) -> Vec<SignalInfo> {
         let mut signals = Vec::new();
-        
+
         for line in source.lines() {
             let trimmed = line.trim();
-            
+
             // Look for signal declarations
             if trimmed.starts_with("signal") {
                 if let Some(info) = parse_signal_declaration(trimmed) {
@@ -985,7 +995,7 @@ pub mod analysis {
                 }
             }
         }
-        
+
         signals
     }
 
@@ -994,7 +1004,7 @@ pub mod analysis {
         // signal input x;
         // signal output y;
         // signal private input z;
-        
+
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 3 {
             return None;
@@ -1021,9 +1031,7 @@ pub mod analysis {
             }
         }
 
-        let raw_name = parts.get(name_idx)?
-            .trim_end_matches(';')
-            .to_string();
+        let raw_name = parts.get(name_idx)?.trim_end_matches(';').to_string();
 
         let (name, array_size) = if let Some(open_idx) = raw_name.find('[') {
             if let Some(close_idx) = raw_name.find(']') {
@@ -1118,7 +1126,7 @@ pub mod analysis {
         if source.contains("===") {
             let constraint_count = source.matches("===").count();
             let signal_count = extract_signals(source).len();
-            
+
             if signal_count > constraint_count * 2 {
                 hints.push(VulnerabilityHint {
                     hint_type: VulnerabilityType::Underconstrained,
@@ -1184,7 +1192,7 @@ mod tests {
             signal output c;
             signal private input d;
         "#;
-        
+
         let signals = analysis::extract_signals(source);
         assert_eq!(signals.len(), 4);
         assert_eq!(signals[0].name, "a");

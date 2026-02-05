@@ -136,8 +136,11 @@ impl CairoTarget {
                 // Try to read file and detect version from syntax
                 if let Ok(content) = std::fs::read_to_string(path) {
                     // Cairo 1 uses different syntax
-                    if content.contains("fn main()") || content.contains("#[contract]") 
-                        || content.contains("mod ") || content.contains("use ") {
+                    if content.contains("fn main()")
+                        || content.contains("#[contract]")
+                        || content.contains("mod ")
+                        || content.contains("use ")
+                    {
                         return Ok(CairoVersion::Cairo1);
                     }
                 }
@@ -261,7 +264,11 @@ impl CairoTarget {
         if let Ok(entries) = std::fs::read_dir(&target_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().map(|e| e == "sierra.json" || e == "casm.json").unwrap_or(false) {
+                if path
+                    .extension()
+                    .map(|e| e == "sierra.json" || e == "casm.json")
+                    .unwrap_or(false)
+                {
                     self.compiled_path = Some(path);
                     break;
                 }
@@ -273,7 +280,11 @@ impl CairoTarget {
             if let Ok(entries) = std::fs::read_dir(&fallback_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.extension().map(|e| e == "sierra.json" || e == "casm.json").unwrap_or(false) {
+                    if path
+                        .extension()
+                        .map(|e| e == "sierra.json" || e == "casm.json")
+                        .unwrap_or(false)
+                    {
                         self.compiled_path = Some(path);
                         break;
                     }
@@ -348,7 +359,9 @@ impl CairoTarget {
 
     /// Execute Cairo 0 program
     fn execute_cairo0(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
-        let compiled_path = self.compiled_path.as_ref()
+        let compiled_path = self
+            .compiled_path
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No compiled program"))?;
 
         // Create input file
@@ -405,7 +418,8 @@ impl CairoTarget {
         let project_dir = self.source_path.parent().unwrap_or(Path::new("."));
 
         // Create args JSON
-        let args: Vec<String> = inputs.iter()
+        let args: Vec<String> = inputs
+            .iter()
             .map(|fe| format!("\"{}\"", field_element_to_decimal(fe)))
             .collect();
         let args_json = format!("[{}]", args.join(", "));
@@ -427,7 +441,8 @@ impl CairoTarget {
 
     /// Create input JSON for Cairo program
     fn create_input_json(&self, inputs: &[FieldElement]) -> Result<String> {
-        let values: Vec<String> = inputs.iter()
+        let values: Vec<String> = inputs
+            .iter()
             .map(|fe| format!("\"{}\"", field_element_to_decimal(fe)))
             .collect();
 
@@ -442,12 +457,12 @@ impl CairoTarget {
         // Look for output lines
         for line in stdout.lines() {
             let trimmed = line.trim();
-            
+
             // Cairo outputs values in various formats
             if trimmed.starts_with("Program output:") {
                 continue;
             }
-            
+
             // Try to parse as number
             if let Ok(num) = trimmed.parse::<u64>() {
                 outputs.push(FieldElement::from_u64(num));
@@ -484,7 +499,9 @@ impl CairoTarget {
         let proof_path = self.build_dir.join("proof.json");
 
         if !trace_path.exists() || !memory_path.exists() {
-            anyhow::bail!("Trace and memory files not found. Run execute with proof_mode=true first.");
+            anyhow::bail!(
+                "Trace and memory files not found. Run execute with proof_mode=true first."
+            );
         }
 
         // Create prover config
@@ -495,10 +512,14 @@ impl CairoTarget {
         // Run stone-prover
         let output = Command::new("cpu_air_prover")
             .args([
-                "--out_file", proof_path.to_str().unwrap(),
-                "--trace_file", trace_path.to_str().unwrap(),
-                "--memory_file", memory_path.to_str().unwrap(),
-                "--prover_config_file", config_path.to_str().unwrap(),
+                "--out_file",
+                proof_path.to_str().unwrap(),
+                "--trace_file",
+                trace_path.to_str().unwrap(),
+                "--memory_file",
+                memory_path.to_str().unwrap(),
+                "--prover_config_file",
+                config_path.to_str().unwrap(),
             ])
             .output()
             .context("Failed to run cpu_air_prover")?;
@@ -517,7 +538,8 @@ impl CairoTarget {
             "constraint_polynomial_task_size": 256,
             "n_out_of_memory_merkle_layers": 1,
             "table_prover_n_tasks_per_segment": 32
-        }"#.to_string())
+        }"#
+        .to_string())
     }
 }
 
@@ -552,7 +574,7 @@ impl TargetCircuit for CairoTarget {
         // First execute with proof mode to generate trace
         let target = self.clone_with_proof_mode(true);
         target.execute_cairo_inner(witness)?;
-        
+
         // Then generate STARK proof
         self.generate_stark_proof()
     }
@@ -566,9 +588,7 @@ impl TargetCircuit for CairoTarget {
 
         // Run stone verifier
         let output = Command::new("cpu_air_verifier")
-            .args([
-                "--in_file", proof_path.to_str().unwrap(),
-            ])
+            .args(["--in_file", proof_path.to_str().unwrap()])
             .output()
             .context("Failed to run cpu_air_verifier")?;
 
@@ -627,11 +647,12 @@ pub mod analysis {
         if source.contains("func ") && source.contains("call ") {
             let func_count = source.matches("func ").count();
             let call_count = source.matches("call ").count();
-            
+
             if call_count > func_count * 2 {
                 issues.push(CairoIssue {
                     issue_type: IssueType::DeepRecursion,
-                    description: "Heavy recursion may lead to high step count and potential DoS".to_string(),
+                    description: "Heavy recursion may lead to high step count and potential DoS"
+                        .to_string(),
                     severity: "info".to_string(),
                     line: None,
                 });
@@ -642,7 +663,8 @@ pub mod analysis {
         if source.contains("%{") {
             issues.push(CairoIssue {
                 issue_type: IssueType::HintUsage,
-                description: "Hints are not verified - ensure all hint outputs are constrained".to_string(),
+                description: "Hints are not verified - ensure all hint outputs are constrained"
+                    .to_string(),
                 severity: "warning".to_string(),
                 line: None,
             });
@@ -676,7 +698,7 @@ pub mod analysis {
 
         for line in source.lines() {
             let trimmed = line.trim();
-            
+
             // Cairo 0 syntax
             if trimmed.starts_with("func ") {
                 if let Some(func) = parse_cairo0_func(trimmed) {
@@ -698,7 +720,7 @@ pub mod analysis {
         // func name(arg1: felt, arg2: felt) -> (res: felt)
         let after_func = line.strip_prefix("func ")?;
         let name = after_func.split('(').next()?.trim().to_string();
-        
+
         Some(CairoFunction {
             name,
             args: vec![],
@@ -711,7 +733,7 @@ pub mod analysis {
         let is_external = line.contains("#[external");
         let trimmed = line.trim_start_matches("pub ").trim_start_matches("fn ");
         let name = trimmed.split('(').next()?.trim().to_string();
-        
+
         Some(CairoFunction {
             name,
             args: vec![],
@@ -742,7 +764,7 @@ mod tests {
                 return 42;
             }
         "#;
-        
+
         // Would need actual file for full test
         assert!(cairo1_content.contains("fn main()"));
     }
@@ -758,6 +780,8 @@ mod tests {
         "#;
 
         let issues = analysis::analyze_for_vulnerabilities(source);
-        assert!(issues.iter().any(|i| i.issue_type == analysis::IssueType::HintUsage));
+        assert!(issues
+            .iter()
+            .any(|i| i.issue_type == analysis::IssueType::HintUsage));
     }
 }

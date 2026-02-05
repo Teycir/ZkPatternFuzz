@@ -31,11 +31,7 @@ impl RecursiveTester {
     }
 
     /// Test recursive proof verification
-    pub fn test_recursion(
-        &self,
-        base_inputs: &[FieldElement],
-        depth: usize,
-    ) -> RecursionResult {
+    pub fn test_recursion(&self, base_inputs: &[FieldElement], depth: usize) -> RecursionResult {
         let verifier = match &self.verifier_circuit {
             Some(v) => v,
             None => return RecursionResult::Error("No verifier circuit set".to_string()),
@@ -59,14 +55,14 @@ impl RecursiveTester {
             // Create inputs for recursive verification
             // (proof is typically encoded as field elements in recursive SNARKs)
             let proof_as_inputs = self.encode_proof_as_inputs(&current_proof);
-            
+
             // Combine public inputs with proof encoding
             let mut recursive_inputs = public_inputs.clone();
             recursive_inputs.extend(proof_as_inputs);
 
             // Execute verifier circuit
             let result = verifier.execute_sync(&recursive_inputs);
-            
+
             if !result.success {
                 return RecursionResult::VerificationFailed {
                     depth: d,
@@ -109,11 +105,8 @@ impl RecursiveTester {
 
         // Simulate accumulator verification
         // In a real IVC/PCD scheme, this would accumulate proofs
-        
-        for (i, (proof, public_inputs)) in proofs
-            .iter()
-            .zip(public_inputs_list.iter())
-            .enumerate()
+
+        for (i, (proof, public_inputs)) in proofs.iter().zip(public_inputs_list.iter()).enumerate()
         {
             match verifier.verify(proof, public_inputs) {
                 Ok(true) => {
@@ -172,7 +165,7 @@ impl RecursiveTester {
             .flatten()
             .take(256)
             .collect();
-        
+
         if let Ok(true) = verifier.verify(&fake_proof, &false_inputs) {
             issues.push(RecursiveSoundnessIssue {
                 issue_type: SoundnessIssueType::FakeProofAccepted,
@@ -246,8 +239,8 @@ pub enum SoundnessIssueType {
 mod tests {
     use super::*;
     use crate::executor::MockCircuitExecutor;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_recursive_tester_creation() {

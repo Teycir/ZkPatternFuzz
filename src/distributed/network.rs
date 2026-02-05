@@ -184,7 +184,11 @@ impl FuzzerNode {
             capabilities,
         }) = Self::read_message(&mut stream)
         {
-            tracing::info!("Worker {} registered with {} threads", node_id, capabilities.worker_count);
+            tracing::info!(
+                "Worker {} registered with {} threads",
+                node_id,
+                capabilities.worker_count
+            );
 
             let connection = WorkerConnection {
                 node_id: node_id.clone(),
@@ -214,10 +218,7 @@ impl FuzzerNode {
     fn start_worker(&mut self) -> anyhow::Result<()> {
         let addr = format!("{}:{}", self.config.bind_addr, self.config.port);
 
-        let stream = TcpStream::connect_timeout(
-            &addr.parse()?,
-            self.config.connect_timeout,
-        )?;
+        let stream = TcpStream::connect_timeout(&addr.parse()?, self.config.connect_timeout)?;
 
         stream.set_read_timeout(Some(self.config.read_timeout))?;
         stream.set_write_timeout(Some(self.config.write_timeout))?;

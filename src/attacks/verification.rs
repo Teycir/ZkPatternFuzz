@@ -8,7 +8,7 @@
 use super::{Attack, AttackContext};
 use crate::config::{AttackType, Severity};
 use crate::executor::CircuitExecutor;
-use crate::fuzzer::{Finding, FieldElement, ProofOfConcept};
+use crate::fuzzer::{FieldElement, Finding, ProofOfConcept};
 use rand::Rng;
 use std::sync::Arc;
 
@@ -61,11 +61,7 @@ impl VerificationFuzzer {
     }
 
     /// Run verification fuzzing against an executor
-    pub fn fuzz(
-        &self,
-        executor: &Arc<dyn CircuitExecutor>,
-        rng: &mut impl Rng,
-    ) -> Vec<Finding> {
+    pub fn fuzz(&self, executor: &Arc<dyn CircuitExecutor>, rng: &mut impl Rng) -> Vec<Finding> {
         let mut findings = Vec::new();
 
         // Generate a valid proof first
@@ -88,27 +84,13 @@ impl VerificationFuzzer {
             .collect();
 
         // Test 1: Proof Malleability
-        findings.extend(self.test_malleability(
-            executor,
-            &valid_proof,
-            &public_inputs,
-            rng,
-        ));
+        findings.extend(self.test_malleability(executor, &valid_proof, &public_inputs, rng));
 
         // Test 2: Malformed Proofs
-        findings.extend(self.test_malformed_proofs(
-            executor,
-            &valid_proof,
-            &public_inputs,
-            rng,
-        ));
+        findings.extend(self.test_malformed_proofs(executor, &valid_proof, &public_inputs, rng));
 
         // Test 3: Edge Cases
-        findings.extend(self.test_edge_cases(
-            executor,
-            &valid_proof,
-            &public_inputs,
-        ));
+        findings.extend(self.test_edge_cases(executor, &valid_proof, &public_inputs));
 
         findings
     }
@@ -297,7 +279,7 @@ impl VerificationFuzzer {
         // Test various proof sizes
         let test_sizes = vec![0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
         let num_size_tests = (self.edge_case_tests / 3).min(test_sizes.len());
-        
+
         for size in test_sizes.iter().take(num_size_tests) {
             let edge_proof = vec![0x42u8; *size];
             if let Ok(true) = executor.verify(&edge_proof, public_inputs) {
@@ -322,7 +304,7 @@ impl VerificationFuzzer {
     /// Mutate a proof by flipping random bits
     fn mutate_proof(&self, proof: &[u8], rng: &mut impl Rng) -> Vec<u8> {
         let mut mutated = proof.to_vec();
-        
+
         for byte in &mut mutated {
             if rng.gen::<f64>() < self.mutation_rate {
                 let bit = rng.gen_range(0..8);
@@ -395,15 +377,15 @@ impl Attack for VerificationFuzzer {
 mod tests {
     use super::*;
     use crate::executor::MockCircuitExecutor;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_verification_fuzzer_creation() {
         let fuzzer = VerificationFuzzer::new()
             .with_malleability_tests(100)
             .with_malformed_tests(100);
-        
+
         assert_eq!(fuzzer.malleability_tests, 100);
         assert_eq!(fuzzer.malformed_tests, 100);
     }
@@ -418,7 +400,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
 
         let findings = fuzzer.fuzz(&executor, &mut rng);
-        
+
         // Mock executor should reject malformed proofs
         // So we expect no critical findings for properly implemented verifier
         for finding in &findings {

@@ -8,19 +8,22 @@
 //! - Boundary value testing
 //! - Verification and witness attacks
 
-mod underconstrained;
-mod soundness;
 mod arithmetic;
+mod boundary;
+mod collision;
+mod soundness;
+mod underconstrained;
 pub mod verification;
 pub mod witness;
-mod collision;
-mod boundary;
 
-pub use underconstrained::UnderconstrainedDetector;
-pub use collision::{CollisionDetector, CollisionAnalysis, CollisionPair, HashType};
-pub use boundary::{BoundaryTester, BoundaryCategory, BoundaryTestResult, BoundaryTestSummary, RangeSpec, common_ranges};
 pub use arithmetic::ArithmeticTester;
+pub use boundary::{
+    common_ranges, BoundaryCategory, BoundaryTestResult, BoundaryTestSummary, BoundaryTester,
+    RangeSpec,
+};
+pub use collision::{CollisionAnalysis, CollisionDetector, CollisionPair, HashType};
 pub use soundness::SoundnessTester;
+pub use underconstrained::UnderconstrainedDetector;
 
 use crate::config::AttackType;
 use crate::fuzzer::Finding;

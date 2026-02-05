@@ -29,4 +29,13 @@ Thumbs.db
 .qodo
 .zencoder
 .zenflow
+
+# Test artifacts
 tests/noir_projects/multiplier/target/noir_multiplier.gz
+tests/halo2_specs/target/
+tests/r1cs_parser_test.rs
+tests/semantic_oracles_test.rs
+
+# Experimental modules
+src/fuzzer/oracles/
+src/analysis/r1cs_parser.rs

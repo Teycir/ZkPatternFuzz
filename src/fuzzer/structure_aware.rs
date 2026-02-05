@@ -18,7 +18,10 @@ pub enum InputStructure {
     /// Fixed-width integer with range [0, 2^bits)
     Integer { bits: u32 },
     /// Array of field elements
-    Array { element_type: Box<InputStructure>, length: usize },
+    Array {
+        element_type: Box<InputStructure>,
+        length: usize,
+    },
     /// Bit decomposition (array of booleans representing a value)
     BitDecomposition { bits: u32 },
     /// Hash input (typically 2 field elements for Poseidon)
@@ -73,7 +76,7 @@ impl StructureAwareMutator {
 
         for line in source.lines() {
             let trimmed = line.trim();
-            
+
             // Look for signal declarations with type hints in names
             if trimmed.starts_with("signal input") || trimmed.starts_with("signal private input") {
                 let name = Self::extract_signal_name(trimmed);
@@ -82,7 +85,10 @@ impl StructureAwareMutator {
                 // Infer type from naming conventions
                 let structure = if name_lower.contains("signature") || name_lower.contains("sig") {
                     InputStructure::Signature
-                } else if name_lower.contains("pubkey") || name_lower.contains("public_key") || name_lower.contains("publickey") {
+                } else if name_lower.contains("pubkey")
+                    || name_lower.contains("public_key")
+                    || name_lower.contains("publickey")
+                {
                     InputStructure::PublicKey
                 } else if name_lower.contains("nullifier") || name_lower.contains("preimage") {
                     InputStructure::NullifierPreimage
@@ -123,15 +129,20 @@ impl StructureAwareMutator {
         for line in source.lines() {
             let trimmed = line.trim();
             let lowered = trimmed.to_lowercase();
-            
+
             // Look for function parameters
-            if trimmed.contains("fn main(") || trimmed.contains(": Field") 
-                || trimmed.contains(": u") || trimmed.contains(": bool") {
-                
+            if trimmed.contains("fn main(")
+                || trimmed.contains(": Field")
+                || trimmed.contains(": u")
+                || trimmed.contains(": bool")
+            {
                 // Extract type from Noir type annotations
                 if lowered.contains("signature") || lowered.contains("sig") {
                     structures.push(InputStructure::Signature);
-                } else if lowered.contains("pubkey") || lowered.contains("public_key") || lowered.contains("publickey") {
+                } else if lowered.contains("pubkey")
+                    || lowered.contains("public_key")
+                    || lowered.contains("publickey")
+                {
                     structures.push(InputStructure::PublicKey);
                 } else if lowered.contains("nullifier") || lowered.contains("preimage") {
                     structures.push(InputStructure::NullifierPreimage);
@@ -197,7 +208,8 @@ impl StructureAwareMutator {
     pub fn mutate(&self, inputs: &[FieldElement], rng: &mut impl Rng) -> Vec<FieldElement> {
         if self.structures.is_empty() {
             // Fall back to byte-level mutation with framework-specific heuristics
-            return inputs.iter()
+            return inputs
+                .iter()
                 .enumerate()
                 .map(|(i, fe)| {
                     // Check if we have a learned pattern for this input
@@ -208,7 +220,7 @@ impl StructureAwareMutator {
                             return pattern[rng.gen_range(0..pattern.len())].clone();
                         }
                     }
-                    
+
                     // Framework-specific mutation hints
                     match self.framework {
                         Framework::Circom | Framework::Noir => {
@@ -235,7 +247,7 @@ impl StructureAwareMutator {
 
         let mut result = inputs.to_vec();
         let idx = rng.gen_range(0..inputs.len().min(self.structures.len()));
-        
+
         if idx < self.structures.len() {
             result[idx] = self.mutate_structured(&inputs[idx], &self.structures[idx], rng);
         }
@@ -267,9 +279,7 @@ impl StructureAwareMutator {
                     FieldElement::zero()
                 }
             }
-            InputStructure::Integer { bits } => {
-                self.mutate_integer(input, *bits, rng)
-            }
+            InputStructure::Integer { bits } => self.mutate_integer(input, *bits, rng),
             InputStructure::BitDecomposition { bits } => {
                 // Flip a random bit
                 self.mutate_bit(input, *bits, rng)
@@ -325,8 +335,12 @@ impl StructureAwareMutator {
 
     /// Mutate an integer within its valid range
     fn mutate_integer(&self, input: &FieldElement, bits: u32, rng: &mut impl Rng) -> FieldElement {
-        let max_val = if bits >= 64 { u64::MAX } else { (1u64 << bits) - 1 };
-        
+        let max_val = if bits >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << bits) - 1
+        };
+
         let mutation_type = rng.gen_range(0..5);
         match mutation_type {
             0 => FieldElement::zero(),
@@ -351,12 +365,21 @@ impl StructureAwareMutator {
     fn mutate_bit(&self, input: &FieldElement, bits: u32, rng: &mut impl Rng) -> FieldElement {
         let current = self.to_u64(input);
         let bit_to_flip = rng.gen_range(0..bits);
-        let max_val = if bits >= 64 { u64::MAX } else { (1u64 << bits) - 1 };
+        let max_val = if bits >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << bits) - 1
+        };
         FieldElement::from_u64((current ^ (1u64 << bit_to_flip)) & max_val)
     }
 
     /// Mutate Merkle path elements
-    fn mutate_merkle_element(&self, input: &FieldElement, _depth: usize, rng: &mut impl Rng) -> FieldElement {
+    fn mutate_merkle_element(
+        &self,
+        input: &FieldElement,
+        _depth: usize,
+        rng: &mut impl Rng,
+    ) -> FieldElement {
         let choice = rng.gen_range(0..5);
         match choice {
             0 => FieldElement::zero(), // Empty node
@@ -409,30 +432,26 @@ pub struct Splicer;
 
 impl Splicer {
     /// Splice two test cases together
-    pub fn splice(
-        a: &[FieldElement],
-        b: &[FieldElement],
-        rng: &mut impl Rng,
-    ) -> Vec<FieldElement> {
+    pub fn splice(a: &[FieldElement], b: &[FieldElement], rng: &mut impl Rng) -> Vec<FieldElement> {
         if a.is_empty() || b.is_empty() {
             return a.to_vec();
         }
 
         let min_len = a.len().min(b.len());
         let splice_point = rng.gen_range(0..min_len);
-        
+
         let mut result = Vec::with_capacity(a.len());
         result.extend_from_slice(&a[..splice_point]);
         if splice_point < b.len() {
             result.extend_from_slice(&b[splice_point..]);
         }
-        
+
         // Pad or truncate to original length
         while result.len() < a.len() {
             result.push(FieldElement::zero());
         }
         result.truncate(a.len());
-        
+
         result
     }
 
@@ -448,7 +467,7 @@ impl Splicer {
 
         let insert_pos = rng.gen_range(0..target.len());
         let source_idx = rng.gen_range(0..source.len());
-        
+
         let mut result = target.to_vec();
         result[insert_pos] = source[source_idx].clone();
         result
@@ -458,14 +477,14 @@ impl Splicer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_boolean_mutation() {
         let mutator = StructureAwareMutator::new(Framework::Circom)
             .with_structures(vec![InputStructure::Boolean]);
-        
+
         let mut rng = StdRng::seed_from_u64(42);
         let zero = FieldElement::zero();
         let result = mutator.mutate_structured(&zero, &InputStructure::Boolean, &mut rng);
@@ -476,7 +495,7 @@ mod tests {
     fn test_integer_mutation_stays_in_range() {
         let mutator = StructureAwareMutator::new(Framework::Circom);
         let mut rng = StdRng::seed_from_u64(42);
-        
+
         for _ in 0..100 {
             let input = FieldElement::from_u64(100);
             let result = mutator.mutate_integer(&input, 8, &mut rng);
@@ -493,7 +512,7 @@ mod tests {
             signal input merkle_path[20];
             signal output nullifier;
         "#;
-        
+
         let structures = StructureAwareMutator::infer_circom_structure(source);
         assert!(!structures.is_empty());
     }
@@ -503,7 +522,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         let a = vec![FieldElement::from_u64(1), FieldElement::from_u64(2)];
         let b = vec![FieldElement::from_u64(3), FieldElement::from_u64(4)];
-        
+
         let result = Splicer::splice(&a, &b, &mut rng);
         assert_eq!(result.len(), 2);
     }

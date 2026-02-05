@@ -2,9 +2,8 @@
 //!
 //! Handles storage, persistence, and minimization of test cases.
 
-pub mod storage;
 pub mod minimizer;
-
+pub mod storage;
 
 use crate::fuzzer::{FieldElement, TestCase, TestMetadata};
 use std::collections::HashMap;
@@ -89,7 +88,7 @@ impl Corpus {
 
     /// Add a test case to the corpus
     /// Returns true if the case was added (new coverage), false if duplicate
-    /// 
+    ///
     /// # Thread Safety
     /// This method holds write locks for the entire operation to prevent
     /// TOCTOU race conditions where multiple threads could add the same
@@ -138,11 +137,11 @@ impl Corpus {
     }
 
     /// Get a random entry from the corpus using energy-weighted selection
-    /// 
+    ///
     /// Entries with higher energy are more likely to be selected.
     /// Each entry has a minimum effective energy of 1 to ensure selection
     /// is always possible even after aggressive energy decay.
-    /// 
+    ///
     /// # Panics
     /// This function will panic if the invariant `total_energy > 0` is violated,
     /// which should never happen given the `.max(1)` guarantee.
@@ -230,15 +229,15 @@ impl Corpus {
             if corpus_file.exists() {
                 let data = std::fs::read_to_string(&corpus_file)?;
                 let serializable: SerializableCorpus = serde_json::from_str(&data)?;
-                
+
                 let mut entries = self.entries.write().unwrap();
                 let mut index = self.coverage_index.write().unwrap();
-                
+
                 for (i, entry) in serializable.to_entries().into_iter().enumerate() {
                     index.insert(entry.coverage_hash, i);
                     entries.push(entry);
                 }
-                
+
                 tracing::info!("Loaded {} corpus entries from {:?}", entries.len(), path);
             }
         }
@@ -319,7 +318,7 @@ mod tests {
     #[test]
     fn test_corpus_add() {
         let corpus = Corpus::new(100);
-        
+
         let entry1 = CorpusEntry::new(
             TestCase {
                 inputs: vec![FieldElement::zero()],
@@ -408,7 +407,7 @@ mod tests {
     #[test]
     fn test_get_random_with_zero_energy() {
         let corpus = Corpus::new(100);
-        
+
         // Add entries with zero energy
         for i in 0..5u64 {
             let mut entry = CorpusEntry::new(

@@ -9,11 +9,13 @@ pub const BN254_MODULUS: &str = "30644e72e131a029b85045b68181585d2833e84879b9709
 
 /// BN254 scalar field modulus minus one (p - 1)
 /// Useful for boundary testing
-pub const BN254_MODULUS_MINUS_ONE: &str = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000";
+pub const BN254_MODULUS_MINUS_ONE: &str =
+    "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000";
 
 /// Half of BN254 modulus: (p - 1) / 2
 /// Useful for sign-related testing
-pub const BN254_HALF_MODULUS: &str = "183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000";
+pub const BN254_HALF_MODULUS: &str =
+    "183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000";
 
 /// Get the BN254 modulus as a 32-byte array
 pub fn bn254_modulus_bytes() -> [u8; 32] {
@@ -34,8 +36,7 @@ pub fn bn254_modulus_minus_one_bytes() -> [u8; 32] {
 }
 
 /// Supported field types for ZK circuits
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FieldType {
     /// BN254 (alt_bn128) scalar field - most common for Ethereum
     #[default]
@@ -56,12 +57,8 @@ impl FieldType {
             FieldType::Bls12_381 => {
                 "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001"
             }
-            FieldType::Pasta => {
-                "40000000000000000000000000000000224698fc094cf91b992d30ed00000001"
-            }
-            FieldType::Goldilocks => {
-                "ffffffff00000001"
-            }
+            FieldType::Pasta => "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
+            FieldType::Goldilocks => "ffffffff00000001",
         }
     }
 
@@ -72,12 +69,8 @@ impl FieldType {
             FieldType::Bls12_381 => {
                 "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000000"
             }
-            FieldType::Pasta => {
-                "40000000000000000000000000000000224698fc094cf91b992d30ed00000000"
-            }
-            FieldType::Goldilocks => {
-                "ffffffff00000000"
-            }
+            FieldType::Pasta => "40000000000000000000000000000000224698fc094cf91b992d30ed00000000",
+            FieldType::Goldilocks => "ffffffff00000000",
         }
     }
 
@@ -88,9 +81,9 @@ impl FieldType {
                 "0000000000000000000000000000000000000000000000000000000000000000", // 0
                 "0000000000000000000000000000000000000000000000000000000000000001", // 1
                 "0000000000000000000000000000000000000000000000000000000000000002", // 2
-                BN254_HALF_MODULUS,                                                   // (p-1)/2
-                BN254_MODULUS_MINUS_ONE,                                              // p-1
-                BN254_MODULUS,                                                        // p (should wrap)
+                BN254_HALF_MODULUS,                                                 // (p-1)/2
+                BN254_MODULUS_MINUS_ONE,                                            // p-1
+                BN254_MODULUS, // p (should wrap)
             ],
             _ => vec![
                 "0000000000000000000000000000000000000000000000000000000000000000",
@@ -101,7 +94,6 @@ impl FieldType {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

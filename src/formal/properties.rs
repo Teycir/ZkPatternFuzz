@@ -16,9 +16,7 @@ pub enum CircuitProperty {
         description: String,
     },
     /// A signal is never zero
-    NonZero {
-        signal: String,
-    },
+    NonZero { signal: String },
     /// A signal is within a range
     Range {
         signal: String,
@@ -26,13 +24,9 @@ pub enum CircuitProperty {
         max: FieldElement,
     },
     /// A signal is boolean (0 or 1)
-    Boolean {
-        signal: String,
-    },
+    Boolean { signal: String },
     /// Signals are unique (no collisions)
-    Unique {
-        signals: Vec<String>,
-    },
+    Unique { signals: Vec<String> },
     /// Output is deterministic given inputs
     Deterministic {
         inputs: Vec<String>,
@@ -77,13 +71,15 @@ impl CircuitProperty {
                     SymbolicValue::concrete(FieldElement::max_value()),
                 )]
             }
-            CircuitProperty::Range { signal, min: _min, max: _max } => {
-                vec![
-                    SymbolicConstraint::Range(
-                        SymbolicValue::symbol(signal),
-                        SymbolicValue::concrete(FieldElement::max_value()),
-                    ),
-                ]
+            CircuitProperty::Range {
+                signal,
+                min: _min,
+                max: _max,
+            } => {
+                vec![SymbolicConstraint::Range(
+                    SymbolicValue::symbol(signal),
+                    SymbolicValue::concrete(FieldElement::max_value()),
+                )]
             }
             _ => Vec::new(),
         }
@@ -101,13 +97,15 @@ impl CircuitProperty {
             CircuitProperty::Boolean { signal } => {
                 vec![SymbolicConstraint::Boolean(SymbolicValue::symbol(signal))]
             }
-            CircuitProperty::Range { signal, min: _min, max } => {
-                vec![
-                    SymbolicConstraint::Range(
-                        SymbolicValue::symbol(signal),
-                        SymbolicValue::concrete(max.clone()),
-                    ),
-                ]
+            CircuitProperty::Range {
+                signal,
+                min: _min,
+                max,
+            } => {
+                vec![SymbolicConstraint::Range(
+                    SymbolicValue::symbol(signal),
+                    SymbolicValue::concrete(max.clone()),
+                )]
             }
             _ => Vec::new(),
         }
@@ -186,8 +184,8 @@ impl PropertyExtractor {
         }
 
         // Check if C = 0
-        let c_is_zero = eq.c_terms.is_empty()
-            || (eq.c_terms.len() == 1 && eq.c_terms[0].1.is_zero());
+        let c_is_zero =
+            eq.c_terms.is_empty() || (eq.c_terms.len() == 1 && eq.c_terms[0].1.is_zero());
 
         if !c_is_zero {
             return false;
@@ -196,9 +194,10 @@ impl PropertyExtractor {
         // Check if B = 1 - A (simplified check)
         if eq.b_terms.len() == 2 {
             let has_constant = eq.b_terms.iter().any(|(_, coeff)| coeff.is_one());
-            let has_negation = eq.b_terms.iter().any(|(idx, _)| {
-                eq.a_terms.iter().any(|(a_idx, _)| a_idx == idx)
-            });
+            let has_negation = eq
+                .b_terms
+                .iter()
+                .any(|(idx, _)| eq.a_terms.iter().any(|(a_idx, _)| a_idx == idx));
             return has_constant && has_negation;
         }
 

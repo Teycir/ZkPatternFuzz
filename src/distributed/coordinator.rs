@@ -2,11 +2,11 @@
 //!
 //! Manages work distribution, load balancing, and result aggregation.
 
+use super::corpus_sync::GlobalCorpusManager;
 use super::{
     ClusterStats, DistributedConfig, DistributedMessage, NodeCapabilities, NodeId, NodeStats,
     SerializableCorpusEntry, WorkResults, WorkUnitId,
 };
-use super::corpus_sync::GlobalCorpusManager;
 use crate::config::FuzzConfig;
 use crate::fuzzer::Finding;
 use std::collections::{HashMap, VecDeque};
@@ -154,9 +154,9 @@ impl DistributedCoordinator {
                 None
             }
 
-            DistributedMessage::RequestWork { node_id } => {
-                self.assign_work(&node_id).map(|wu| DistributedMessage::AssignWork { work_unit: wu })
-            }
+            DistributedMessage::RequestWork { node_id } => self
+                .assign_work(&node_id)
+                .map(|wu| DistributedMessage::AssignWork { work_unit: wu }),
 
             DistributedMessage::WorkComplete {
                 node_id,
@@ -173,7 +173,10 @@ impl DistributedCoordinator {
                 None
             }
 
-            DistributedMessage::ReportFinding { node_id: _, finding } => {
+            DistributedMessage::ReportFinding {
+                node_id: _,
+                finding,
+            } => {
                 self.findings.write().unwrap().push(finding);
                 None
             }
@@ -202,7 +205,10 @@ impl DistributedCoordinator {
         self.workers.write().unwrap().insert(node_id, worker);
         self.update_cluster_stats();
 
-        tracing::info!("Worker registered, total workers: {}", self.workers.read().unwrap().len());
+        tracing::info!(
+            "Worker registered, total workers: {}",
+            self.workers.read().unwrap().len()
+        );
     }
 
     /// Update worker statistics
@@ -247,7 +253,12 @@ impl DistributedCoordinator {
     }
 
     /// Handle work completion from a worker
-    fn handle_work_completion(&self, node_id: &str, work_unit_id: WorkUnitId, results: WorkResults) {
+    fn handle_work_completion(
+        &self,
+        node_id: &str,
+        work_unit_id: WorkUnitId,
+        results: WorkResults,
+    ) {
         // Update worker status
         if let Some(worker) = self.workers.write().unwrap().get_mut(node_id) {
             worker.status = NodeStatus::Idle;
@@ -270,7 +281,12 @@ impl DistributedCoordinator {
     }
 
     /// Process results from a work unit
-    fn process_work_results(&self, node_id: &str, _work_unit_id: WorkUnitId, results: &WorkResults) {
+    fn process_work_results(
+        &self,
+        node_id: &str,
+        _work_unit_id: WorkUnitId,
+        results: &WorkResults,
+    ) {
         // Add findings
         for finding in &results.findings {
             self.findings.write().unwrap().push(finding.clone());
@@ -289,10 +305,7 @@ impl DistributedCoordinator {
 
     /// Handle corpus sharing from a worker
     fn handle_corpus_share(&self, node_id: &str, entries: Vec<SerializableCorpusEntry>) {
-        let corpus_entries: Vec<_> = entries
-            .iter()
-            .filter_map(|e| e.to_corpus_entry())
-            .collect();
+        let corpus_entries: Vec<_> = entries.iter().filter_map(|e| e.to_corpus_entry()).collect();
 
         self.corpus_manager
             .write()
@@ -379,7 +392,12 @@ impl DistributedCoordinator {
         stats.total_nodes = workers.len();
         stats.active_nodes = workers
             .values()
-            .filter(|w| !matches!(w.status, NodeStatus::Disconnected | NodeStatus::Failed { .. }))
+            .filter(|w| {
+                !matches!(
+                    w.status,
+                    NodeStatus::Disconnected | NodeStatus::Failed { .. }
+                )
+            })
             .count();
 
         for worker in workers.values() {

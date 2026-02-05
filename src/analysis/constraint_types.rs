@@ -14,11 +14,7 @@ use std::collections::HashMap;
 use super::symbolic::{SymbolicConstraint, SymbolicValue};
 
 #[cfg(feature = "acir-bytecode")]
-use {
-    base64::Engine,
-    flate2::read::GzDecoder,
-    std::io::Read,
-};
+use {base64::Engine, flate2::read::GzDecoder, std::io::Read};
 
 const DEFAULT_LOOKUP_ROW_LIMIT: usize = 256;
 
@@ -27,40 +23,40 @@ const DEFAULT_LOOKUP_ROW_LIMIT: usize = 256;
 pub enum ExtendedConstraint {
     /// Standard R1CS: A * B = C
     R1CS(R1CSConstraint),
-    
+
     /// PLONK custom gate: q_L*a + q_R*b + q_O*c + q_M*a*b + q_C = 0
     PlonkGate(PlonkGate),
 
     /// Custom gate expressed as a named polynomial
     CustomGate(CustomGateConstraint),
-    
+
     /// Lookup constraint: value is in table
     Lookup(LookupConstraint),
-    
+
     /// Range constraint: 0 <= value < 2^bits
     Range(RangeConstraint),
-    
+
     /// Polynomial constraint: P(x1, x2, ...) = 0
     Polynomial(PolynomialConstraint),
-    
+
     /// ACIR opcode (Noir)
     AcirOpcode(AcirOpcode),
-    
+
     /// Cairo AIR constraint
     AirConstraint(AirConstraint),
-    
+
     /// Boolean constraint: x ∈ {0, 1}
     Boolean { wire: WireRef },
-    
+
     /// Equality constraint: a = b
     Equal { a: WireRef, b: WireRef },
-    
+
     /// Addition gate: a + b = c
     Add { a: WireRef, b: WireRef, c: WireRef },
-    
+
     /// Multiplication gate: a * b = c
     Mul { a: WireRef, b: WireRef, c: WireRef },
-    
+
     /// Constant constraint: wire = constant
     Constant { wire: WireRef, value: FieldElement },
 }
@@ -207,7 +203,9 @@ impl PlonkGate {
         let c = wire_values.get(&self.c.index).cloned().unwrap_or_default();
 
         // q_L*a + q_R*b + q_O*c + q_M*a*b + q_C
-        let result = self.q_l.mul(&a)
+        let result = self
+            .q_l
+            .mul(&a)
             .add(&self.q_r.mul(&b))
             .add(&self.q_o.mul(&c))
             .add(&self.q_m.mul(&a).mul(&b))
@@ -366,7 +364,10 @@ pub enum AcirOpcode {
         value: WireRef,
     },
     /// Brillig (unconstrained) code
-    Brillig { inputs: Vec<WireRef>, outputs: Vec<WireRef> },
+    Brillig {
+        inputs: Vec<WireRef>,
+        outputs: Vec<WireRef>,
+    },
     /// Range constraint (explicit opcode)
     Range { input: WireRef, bits: usize },
 }
@@ -374,16 +375,46 @@ pub enum AcirOpcode {
 /// BlackBox operations in ACIR
 #[derive(Debug, Clone)]
 pub enum BlackBoxOp {
-    SHA256 { inputs: Vec<WireRef>, outputs: Vec<WireRef> },
-    Blake2s { inputs: Vec<WireRef>, outputs: Vec<WireRef> },
-    Blake3 { inputs: Vec<WireRef>, outputs: Vec<WireRef> },
-    Keccak256 { inputs: Vec<WireRef>, outputs: Vec<WireRef> },
-    Pedersen { inputs: Vec<WireRef>, outputs: Vec<WireRef> },
-    SchnorrVerify { inputs: Vec<WireRef>, output: WireRef },
-    EcdsaSecp256k1 { inputs: Vec<WireRef>, output: WireRef },
-    FixedBaseScalarMul { inputs: Vec<WireRef>, outputs: Vec<WireRef> },
-    RecursiveAggregation { inputs: Vec<WireRef>, outputs: Vec<WireRef> },
-    Range { input: WireRef, bits: usize },
+    SHA256 {
+        inputs: Vec<WireRef>,
+        outputs: Vec<WireRef>,
+    },
+    Blake2s {
+        inputs: Vec<WireRef>,
+        outputs: Vec<WireRef>,
+    },
+    Blake3 {
+        inputs: Vec<WireRef>,
+        outputs: Vec<WireRef>,
+    },
+    Keccak256 {
+        inputs: Vec<WireRef>,
+        outputs: Vec<WireRef>,
+    },
+    Pedersen {
+        inputs: Vec<WireRef>,
+        outputs: Vec<WireRef>,
+    },
+    SchnorrVerify {
+        inputs: Vec<WireRef>,
+        output: WireRef,
+    },
+    EcdsaSecp256k1 {
+        inputs: Vec<WireRef>,
+        output: WireRef,
+    },
+    FixedBaseScalarMul {
+        inputs: Vec<WireRef>,
+        outputs: Vec<WireRef>,
+    },
+    RecursiveAggregation {
+        inputs: Vec<WireRef>,
+        outputs: Vec<WireRef>,
+    },
+    Range {
+        input: WireRef,
+        bits: usize,
+    },
 }
 
 /// Memory operation type
@@ -478,10 +509,21 @@ impl ConstraintParser {
             return ParsedConstraintSet::default();
         };
 
-        if let Some(json) =
-            parse_json_from_text(text, &["opcodes", "constraints", "program", "functions", "bytecode"])
-        {
-            if json_has_any_key(&json, &["opcodes", "constraints", "program", "functions", "tables", "lookup_tables"]) {
+        if let Some(json) = parse_json_from_text(
+            text,
+            &["opcodes", "constraints", "program", "functions", "bytecode"],
+        ) {
+            if json_has_any_key(
+                &json,
+                &[
+                    "opcodes",
+                    "constraints",
+                    "program",
+                    "functions",
+                    "tables",
+                    "lookup_tables",
+                ],
+            ) {
                 return parse_acir_json(&json);
             }
 
@@ -502,8 +544,7 @@ impl ConstraintParser {
 
     /// Parse Cairo AIR constraints, returning lookup tables separately
     pub fn parse_air_with_tables(content: &str) -> ParsedConstraintSet {
-        if let Some(json) = parse_json_from_text(content, &["constraints", "air", "polynomials"])
-        {
+        if let Some(json) = parse_json_from_text(content, &["constraints", "air", "polynomials"]) {
             return parse_air_json(&json);
         }
 
@@ -635,7 +676,9 @@ impl ConstraintChecker {
                 let a = wire_values.get(&gate.a.index).cloned().unwrap_or_default();
                 let b = wire_values.get(&gate.b.index).cloned().unwrap_or_default();
                 let c = wire_values.get(&gate.c.index).cloned().unwrap_or_default();
-                let lhs = gate.q_l.mul(&a)
+                let lhs = gate
+                    .q_l
+                    .mul(&a)
                     .add(&gate.q_r.mul(&b))
                     .add(&gate.q_o.mul(&c))
                     .add(&gate.q_m.mul(&a).mul(&b))
@@ -669,7 +712,11 @@ impl ConstraintChecker {
                 let satisfied = self.check_lookup(lookup, wire_values);
                 ConstraintEvaluation {
                     satisfied,
-                    lhs: if satisfied { FieldElement::one() } else { FieldElement::zero() },
+                    lhs: if satisfied {
+                        FieldElement::one()
+                    } else {
+                        FieldElement::zero()
+                    },
                     rhs: FieldElement::one(),
                 }
             }
@@ -677,7 +724,11 @@ impl ConstraintChecker {
                 let satisfied = self.check_range(range, wire_values);
                 ConstraintEvaluation {
                     satisfied,
-                    lhs: if satisfied { FieldElement::one() } else { FieldElement::zero() },
+                    lhs: if satisfied {
+                        FieldElement::one()
+                    } else {
+                        FieldElement::zero()
+                    },
                     rhs: FieldElement::one(),
                 }
             }
@@ -688,7 +739,11 @@ impl ConstraintChecker {
                     .unwrap_or(false);
                 ConstraintEvaluation {
                     satisfied,
-                    lhs: if satisfied { FieldElement::one() } else { FieldElement::zero() },
+                    lhs: if satisfied {
+                        FieldElement::one()
+                    } else {
+                        FieldElement::zero()
+                    },
                     rhs: FieldElement::one(),
                 }
             }
@@ -800,7 +855,11 @@ impl ConstraintChecker {
                 );
                 ConstraintEvaluation {
                     satisfied,
-                    lhs: if satisfied { FieldElement::one() } else { FieldElement::zero() },
+                    lhs: if satisfied {
+                        FieldElement::one()
+                    } else {
+                        FieldElement::zero()
+                    },
                     rhs: FieldElement::one(),
                 }
             }
@@ -815,7 +874,11 @@ impl ConstraintChecker {
                 );
                 ConstraintEvaluation {
                     satisfied,
-                    lhs: if satisfied { FieldElement::one() } else { FieldElement::zero() },
+                    lhs: if satisfied {
+                        FieldElement::one()
+                    } else {
+                        FieldElement::zero()
+                    },
                     rhs: FieldElement::one(),
                 }
             }
@@ -840,8 +903,7 @@ impl ConstraintChecker {
         let b_val = b.evaluate(wire_values);
         let c_val = c.evaluate(wire_values);
 
-        q_m
-            .mul(&a_val)
+        q_m.mul(&a_val)
             .mul(&b_val)
             .add(&a_val)
             .add(&b_val)
@@ -1010,9 +1072,10 @@ impl ExtendedConstraint {
                 let mut expr = SymbolicValue::concrete(gate.q_l.clone()).mul(a);
                 expr = expr.add(SymbolicValue::concrete(gate.q_r.clone()).mul(b));
                 expr = expr.add(SymbolicValue::concrete(gate.q_o.clone()).mul(c));
-                expr = expr.add(SymbolicValue::concrete(gate.q_m.clone()).mul(
-                    wire_to_symbolic(&gate.a).mul(wire_to_symbolic(&gate.b)),
-                ));
+                expr = expr.add(
+                    SymbolicValue::concrete(gate.q_m.clone())
+                        .mul(wire_to_symbolic(&gate.a).mul(wire_to_symbolic(&gate.b))),
+                );
                 expr = expr.add(SymbolicValue::concrete(gate.q_c.clone()));
 
                 Some(SymbolicConstraint::eq(
@@ -1077,9 +1140,9 @@ impl ExtendedConstraint {
                             if i >= 255 {
                                 return Some(SymbolicConstraint::range(
                                     wire_val,
-                                    SymbolicValue::concrete(
-                                        field_from_biguint(&(BigUint::from(1u8) << range.bits)),
-                                    ),
+                                    SymbolicValue::concrete(field_from_biguint(
+                                        &(BigUint::from(1u8) << range.bits),
+                                    )),
                                 ));
                             }
 
@@ -1119,12 +1182,10 @@ impl ExtendedConstraint {
                 wire_to_symbolic(a),
                 wire_to_symbolic(b),
             )),
-            ExtendedConstraint::Add { a, b, c } => {
-                Some(SymbolicConstraint::eq(
-                    wire_to_symbolic(a).add(wire_to_symbolic(b)),
-                    wire_to_symbolic(c),
-                ))
-            }
+            ExtendedConstraint::Add { a, b, c } => Some(SymbolicConstraint::eq(
+                wire_to_symbolic(a).add(wire_to_symbolic(b)),
+                wire_to_symbolic(c),
+            )),
             ExtendedConstraint::Mul { a, b, c } => Some(SymbolicConstraint::r1cs(
                 wire_to_symbolic(a),
                 wire_to_symbolic(b),
@@ -1140,8 +1201,8 @@ impl ExtendedConstraint {
                     let b_sym = linear_combination_to_symbolic(b);
                     let c_sym = linear_combination_to_symbolic(c);
 
-                    let mut expr = SymbolicValue::concrete(q_m.clone())
-                        .mul(a_sym.clone().mul(b_sym.clone()));
+                    let mut expr =
+                        SymbolicValue::concrete(q_m.clone()).mul(a_sym.clone().mul(b_sym.clone()));
                     expr = expr.add(a_sym);
                     expr = expr.add(b_sym);
                     expr = expr.add(c_sym);
@@ -1277,8 +1338,7 @@ impl ExtendedConstraint {
                 deps.push(a.index);
                 deps.push(b.index);
             }
-            ExtendedConstraint::Add { a, b, c }
-            | ExtendedConstraint::Mul { a, b, c } => {
+            ExtendedConstraint::Add { a, b, c } | ExtendedConstraint::Mul { a, b, c } => {
                 deps.push(a.index);
                 deps.push(b.index);
                 deps.push(c.index);
@@ -1476,8 +1536,16 @@ fn collect_wire_refs(value: &serde_json::Value, output: &mut Vec<WireRef>) {
 
 fn parse_lookup_inputs(lookup: &serde_json::Value) -> Vec<WireRef> {
     let mut inputs = Vec::new();
-    for key in ["inputs", "input", "values", "columns", "exprs", "expressions", "wires", "cells"]
-    {
+    for key in [
+        "inputs",
+        "input",
+        "values",
+        "columns",
+        "exprs",
+        "expressions",
+        "wires",
+        "cells",
+    ] {
         if let Some(val) = lookup.get(key) {
             collect_wire_refs(val, &mut inputs);
         }
@@ -1488,28 +1556,26 @@ fn parse_lookup_inputs(lookup: &serde_json::Value) -> Vec<WireRef> {
 fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {
     let mut set = ParsedConstraintSet::default();
 
-    let mut add_tables = |tables: &serde_json::Value| {
-        match tables {
-            serde_json::Value::Array(entries) => {
-                for table_val in entries {
-                    if let Some((id, table)) = parse_lookup_table_value(table_val, None) {
-                        set.lookup_tables.entry(id).or_insert(table);
-                    }
+    let mut add_tables = |tables: &serde_json::Value| match tables {
+        serde_json::Value::Array(entries) => {
+            for table_val in entries {
+                if let Some((id, table)) = parse_lookup_table_value(table_val, None) {
+                    set.lookup_tables.entry(id).or_insert(table);
                 }
             }
-            serde_json::Value::Object(map) => {
-                for (key, table_val) in map {
-                    if let Ok(id) = key.parse::<usize>() {
-                        if let Some((_, table)) = parse_lookup_table_value(table_val, Some(id)) {
-                            set.lookup_tables.entry(id).or_insert(table);
-                        }
-                    } else if let Some((id, table)) = parse_lookup_table_value(table_val, None) {
-                        set.lookup_tables.entry(id).or_insert(table);
-                    }
-                }
-            }
-            _ => {}
         }
+        serde_json::Value::Object(map) => {
+            for (key, table_val) in map {
+                if let Ok(id) = key.parse::<usize>() {
+                    if let Some((_, table)) = parse_lookup_table_value(table_val, Some(id)) {
+                        set.lookup_tables.entry(id).or_insert(table);
+                    }
+                } else if let Some((id, table)) = parse_lookup_table_value(table_val, None) {
+                    set.lookup_tables.entry(id).or_insert(table);
+                }
+            }
+        }
+        _ => {}
     };
 
     for key in [
@@ -1580,7 +1646,12 @@ fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {
                 .and_then(|v| v.as_u64())
                 .or_else(|| lookup.get("table_id").and_then(|v| v.as_u64()))
                 .or_else(|| lookup.get("table").and_then(|v| v.as_u64()))
-                .or_else(|| lookup.get("table").and_then(|v| v.as_str()).and_then(|s| s.parse().ok()))
+                .or_else(|| {
+                    lookup
+                        .get("table")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse().ok())
+                })
                 .or_else(|| lookup.get("id").and_then(|v| v.as_u64()))
                 .map(|v| v as usize)
                 .unwrap_or(0);
@@ -1608,13 +1679,14 @@ fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {
             };
 
             let table = set.lookup_tables.get(&table_id).cloned();
-            set.constraints.push(ExtendedConstraint::Lookup(LookupConstraint {
-                input,
-                table_id,
-                table,
-                is_vector_lookup: !additional_inputs.is_empty(),
-                additional_inputs,
-            }));
+            set.constraints
+                .push(ExtendedConstraint::Lookup(LookupConstraint {
+                    input,
+                    table_id,
+                    table,
+                    is_vector_lookup: !additional_inputs.is_empty(),
+                    additional_inputs,
+                }));
         }
     }
 
@@ -1644,7 +1716,10 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
             "table" => {
                 if let Some(id_str) = kv.get("id") {
                     if let Ok(id) = id_str.parse::<usize>() {
-                        let name = kv.get("name").cloned().unwrap_or_else(|| format!("table_{}", id));
+                        let name = kv
+                            .get("name")
+                            .cloned()
+                            .unwrap_or_else(|| format!("table_{}", id));
                         let num_columns = kv
                             .get("columns")
                             .and_then(|v| v.parse::<usize>().ok())
@@ -1694,13 +1769,14 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                 };
 
                 let table = set.lookup_tables.get(&table_id).cloned();
-                set.constraints.push(ExtendedConstraint::Lookup(LookupConstraint {
-                    input,
-                    table_id,
-                    table,
-                    is_vector_lookup: !additional_inputs.is_empty(),
-                    additional_inputs,
-                }));
+                set.constraints
+                    .push(ExtendedConstraint::Lookup(LookupConstraint {
+                        input,
+                        table_id,
+                        table,
+                        is_vector_lookup: !additional_inputs.is_empty(),
+                        additional_inputs,
+                    }));
             }
             "gate" | "plonk" => {
                 if let (Some(a), Some(b), Some(c)) = (
@@ -1712,11 +1788,26 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                         a: WireRef::new(a),
                         b: WireRef::new(b),
                         c: WireRef::new(c),
-                        q_l: kv.get("ql").and_then(|v| parse_field_element_str(v)).unwrap_or_else(FieldElement::zero),
-                        q_r: kv.get("qr").and_then(|v| parse_field_element_str(v)).unwrap_or_else(FieldElement::zero),
-                        q_o: kv.get("qo").and_then(|v| parse_field_element_str(v)).unwrap_or_else(FieldElement::zero),
-                        q_m: kv.get("qm").and_then(|v| parse_field_element_str(v)).unwrap_or_else(FieldElement::zero),
-                        q_c: kv.get("qc").and_then(|v| parse_field_element_str(v)).unwrap_or_else(FieldElement::zero),
+                        q_l: kv
+                            .get("ql")
+                            .and_then(|v| parse_field_element_str(v))
+                            .unwrap_or_else(FieldElement::zero),
+                        q_r: kv
+                            .get("qr")
+                            .and_then(|v| parse_field_element_str(v))
+                            .unwrap_or_else(FieldElement::zero),
+                        q_o: kv
+                            .get("qo")
+                            .and_then(|v| parse_field_element_str(v))
+                            .unwrap_or_else(FieldElement::zero),
+                        q_m: kv
+                            .get("qm")
+                            .and_then(|v| parse_field_element_str(v))
+                            .unwrap_or_else(FieldElement::zero),
+                        q_c: kv
+                            .get("qc")
+                            .and_then(|v| parse_field_element_str(v))
+                            .unwrap_or_else(FieldElement::zero),
                         custom_selectors: Vec::new(),
                     };
                     set.constraints.push(ExtendedConstraint::PlonkGate(gate));
@@ -1786,7 +1877,9 @@ fn parse_acir_json(value: &serde_json::Value) -> ParsedConstraintSet {
 #[cfg(feature = "acir-bytecode")]
 fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet> {
     let bytecode = value.get("bytecode")?.as_str()?;
-    let raw = base64::engine::general_purpose::STANDARD.decode(bytecode).ok()?;
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(bytecode)
+        .ok()?;
     let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
         let mut decoder = GzDecoder::new(raw.as_slice());
         let mut decoded = Vec::new();
@@ -1833,10 +1926,11 @@ fn parse_acir_text(content: &str) -> ParsedConstraintSet {
         if lower.contains("range") && numbers.len() >= 2 {
             let wire = WireRef::new(numbers[0]);
             let bits = numbers[1];
-            set.constraints.push(ExtendedConstraint::AcirOpcode(AcirOpcode::Range {
-                input: wire,
-                bits,
-            }));
+            set.constraints
+                .push(ExtendedConstraint::AcirOpcode(AcirOpcode::Range {
+                    input: wire,
+                    bits,
+                }));
             continue;
         }
 
@@ -1904,10 +1998,11 @@ fn parse_air_json(value: &serde_json::Value) -> ParsedConstraintSet {
             .unwrap_or(AirDomain::All);
 
         if let Some(expr) = expression {
-            set.constraints.push(ExtendedConstraint::AirConstraint(AirConstraint {
-                expression: expr,
-                domain,
-            }));
+            set.constraints
+                .push(ExtendedConstraint::AirConstraint(AirConstraint {
+                    expression: expr,
+                    domain,
+                }));
         }
     }
 
@@ -1930,13 +2025,16 @@ fn parse_air_text(content: &str) -> ParsedConstraintSet {
         };
 
         let expression = parse_air_expression_text(expr_part);
-        let domain = domain_part.and_then(parse_air_domain_text).unwrap_or(AirDomain::All);
+        let domain = domain_part
+            .and_then(parse_air_domain_text)
+            .unwrap_or(AirDomain::All);
 
         if let Some(expr) = expression {
-            set.constraints.push(ExtendedConstraint::AirConstraint(AirConstraint {
-                expression: expr,
-                domain,
-            }));
+            set.constraints
+                .push(ExtendedConstraint::AirConstraint(AirConstraint {
+                    expression: expr,
+                    domain,
+                }));
         }
     }
 
@@ -1973,11 +2071,9 @@ fn parse_plonk_wire_triplet(value: &serde_json::Value) -> Option<(WireRef, WireR
     }
 
     if let Some(wires_obj) = obj.get("wires").and_then(|v| v.as_object()) {
-        if let (Some(a), Some(b), Some(c)) = (
-            wires_obj.get("a"),
-            wires_obj.get("b"),
-            wires_obj.get("c"),
-        ) {
+        if let (Some(a), Some(b), Some(c)) =
+            (wires_obj.get("a"), wires_obj.get("b"), wires_obj.get("c"))
+        {
             return Some((
                 parse_wire_ref_value(a)?,
                 parse_wire_ref_value(b)?,
@@ -2050,8 +2146,7 @@ fn parse_plonk_gate_value(value: &serde_json::Value) -> Option<ExtendedConstrain
             .and_then(|v| v.as_str())
             .unwrap_or("custom_gate");
         return Some(ExtendedConstraint::CustomGate(CustomGateConstraint::new(
-            name,
-            poly,
+            name, poly,
         )));
     }
 
@@ -2155,10 +2250,7 @@ fn parse_lookup_table_value(
         .map(|v| v as usize)
         .or(fallback_id)?;
 
-    let name = obj
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("lookup");
+    let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("lookup");
     let num_columns = obj
         .get("num_columns")
         .and_then(|v| v.as_u64())
@@ -2225,16 +2317,21 @@ fn parse_acir_opcode_named(name: &str, value: &serde_json::Value) -> Option<Acir
 
     match key.as_str() {
         "arithmetic" | "arith" => {
-            let a = parse_linear_combination_value(value.get("a").unwrap_or(&serde_json::Value::Null))
-                .unwrap_or_default();
-            let b = parse_linear_combination_value(value.get("b").unwrap_or(&serde_json::Value::Null))
-                .unwrap_or_default();
-            let c = parse_linear_combination_value(value.get("c").unwrap_or(&serde_json::Value::Null))
-                .unwrap_or_default();
-            let q_m = parse_field_element_value(value.get("q_m").unwrap_or(&serde_json::Value::Null))
-                .unwrap_or_else(FieldElement::zero);
-            let q_c = parse_field_element_value(value.get("q_c").unwrap_or(&serde_json::Value::Null))
-                .unwrap_or_else(FieldElement::zero);
+            let a =
+                parse_linear_combination_value(value.get("a").unwrap_or(&serde_json::Value::Null))
+                    .unwrap_or_default();
+            let b =
+                parse_linear_combination_value(value.get("b").unwrap_or(&serde_json::Value::Null))
+                    .unwrap_or_default();
+            let c =
+                parse_linear_combination_value(value.get("c").unwrap_or(&serde_json::Value::Null))
+                    .unwrap_or_default();
+            let q_m =
+                parse_field_element_value(value.get("q_m").unwrap_or(&serde_json::Value::Null))
+                    .unwrap_or_else(FieldElement::zero);
+            let q_c =
+                parse_field_element_value(value.get("q_c").unwrap_or(&serde_json::Value::Null))
+                    .unwrap_or_else(FieldElement::zero);
 
             Some(AcirOpcode::Arithmetic { a, b, c, q_m, q_c })
         }
@@ -2251,12 +2348,20 @@ fn parse_acir_opcode_named(name: &str, value: &serde_json::Value) -> Option<Acir
             let inputs = value
                 .get("inputs")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(parse_wire_ref_value).collect::<Vec<_>>())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(parse_wire_ref_value)
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
             let outputs = value
                 .get("outputs")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(parse_wire_ref_value).collect::<Vec<_>>())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(parse_wire_ref_value)
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
 
             let op = match name.to_lowercase().as_str() {
@@ -2307,12 +2412,20 @@ fn parse_acir_opcode_named(name: &str, value: &serde_json::Value) -> Option<Acir
             let inputs = value
                 .get("inputs")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(parse_wire_ref_value).collect::<Vec<_>>())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(parse_wire_ref_value)
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
             let outputs = value
                 .get("outputs")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(parse_wire_ref_value).collect::<Vec<_>>())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(parse_wire_ref_value)
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
             Some(AcirOpcode::Brillig { inputs, outputs })
         }
@@ -2439,15 +2552,19 @@ fn parse_air_expression(value: &serde_json::Value) -> Option<AirExpression> {
             if let Some((key, inner)) = obj.iter().next() {
                 return match key.to_lowercase().as_str() {
                     "column" => {
-                        let index = inner.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                        let offset = inner.get("offset").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        let index =
+                            inner.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                        let offset =
+                            inner.get("offset").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                         Some(AirExpression::Column { index, offset })
                     }
                     "constant" => parse_field_element_value(inner).map(AirExpression::Constant),
                     "add" => parse_binary_air_expression(inner, AirExpression::Add),
                     "mul" => parse_binary_air_expression(inner, AirExpression::Mul),
                     "sub" => parse_binary_air_expression(inner, AirExpression::Sub),
-                    "neg" => parse_air_expression(inner).map(|expr| AirExpression::Neg(Box::new(expr))),
+                    "neg" => {
+                        parse_air_expression(inner).map(|expr| AirExpression::Neg(Box::new(expr)))
+                    }
                     _ => None,
                 };
             }
@@ -2547,7 +2664,10 @@ fn parse_air_expression_text(input: &str) -> Option<AirExpression> {
     if trimmed.starts_with("col(") {
         let inner = trimmed.trim_start_matches("col(").trim_end_matches(')');
         let mut parts = inner.split(',');
-        let index = parts.next().and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(0);
+        let index = parts
+            .next()
+            .and_then(|s| s.trim().parse::<usize>().ok())
+            .unwrap_or(0);
         let offset = parts
             .next()
             .and_then(|s| s.trim().parse::<i32>().ok())
@@ -2671,13 +2791,15 @@ fn parse_linear_combination_value(value: &serde_json::Value) -> Option<LinearCom
         for term in array {
             if let Some(pair) = term.as_array() {
                 if pair.len() >= 2 {
-                    if let (Some(wire), Some(coeff)) =
-                        (parse_wire_ref_value(&pair[0]), parse_field_element_value(&pair[1]))
-                    {
+                    if let (Some(wire), Some(coeff)) = (
+                        parse_wire_ref_value(&pair[0]),
+                        parse_field_element_value(&pair[1]),
+                    ) {
                         lc.add_term(wire, coeff);
-                    } else if let (Some(wire), Some(coeff)) =
-                        (parse_wire_ref_value(&pair[1]), parse_field_element_value(&pair[0]))
-                    {
+                    } else if let (Some(wire), Some(coeff)) = (
+                        parse_wire_ref_value(&pair[1]),
+                        parse_field_element_value(&pair[0]),
+                    ) {
                         lc.add_term(wire, coeff);
                     }
                 }
@@ -2714,13 +2836,15 @@ fn parse_linear_combination_value(value: &serde_json::Value) -> Option<LinearCom
             for term in terms {
                 if let Some(pair) = term.as_array() {
                     if pair.len() >= 2 {
-                        if let (Some(wire), Some(coeff)) =
-                            (parse_wire_ref_value(&pair[0]), parse_field_element_value(&pair[1]))
-                        {
+                        if let (Some(wire), Some(coeff)) = (
+                            parse_wire_ref_value(&pair[0]),
+                            parse_field_element_value(&pair[1]),
+                        ) {
                             lc.add_term(wire, coeff);
-                        } else if let (Some(wire), Some(coeff)) =
-                            (parse_wire_ref_value(&pair[1]), parse_field_element_value(&pair[0]))
-                        {
+                        } else if let (Some(wire), Some(coeff)) = (
+                            parse_wire_ref_value(&pair[1]),
+                            parse_field_element_value(&pair[0]),
+                        ) {
                             lc.add_term(wire, coeff);
                         }
                     }
@@ -2791,7 +2915,10 @@ fn parse_polynomial_value(value: &serde_json::Value) -> Option<PolynomialConstra
             }
         }
 
-        terms.push(PolynomialTerm { coefficient, variables });
+        terms.push(PolynomialTerm {
+            coefficient,
+            variables,
+        });
     }
 
     Some(PolynomialConstraint { terms, degree })
@@ -2849,10 +2976,9 @@ mod tests {
     #[test]
     fn test_lookup_vector_constraint() {
         let mut table = LookupTable::new("pair", 2);
-        table.entries.push(vec![
-            FieldElement::from_u64(1),
-            FieldElement::from_u64(2),
-        ]);
+        table
+            .entries
+            .push(vec![FieldElement::from_u64(1), FieldElement::from_u64(2)]);
 
         let lookup = LookupConstraint {
             input: WireRef::new(1),
@@ -2961,7 +3087,8 @@ mod tests {
         let checker = ConstraintChecker::new();
         assert!(!checker.check(&ExtendedConstraint::Lookup(lookup.clone()), &wires));
 
-        let checker = ConstraintChecker::new().with_unknown_lookup_policy(UnknownLookupPolicy::FailOpen);
+        let checker =
+            ConstraintChecker::new().with_unknown_lookup_policy(UnknownLookupPolicy::FailOpen);
         assert!(checker.check(&ExtendedConstraint::Lookup(lookup), &wires));
     }
 
@@ -2996,7 +3123,10 @@ mod tests {
 
         let parsed = ConstraintParser::parse_plonk_with_tables(json);
         assert_eq!(parsed.constraints.len(), 1);
-        assert!(matches!(parsed.constraints[0], ExtendedConstraint::PlonkGate(_)));
+        assert!(matches!(
+            parsed.constraints[0],
+            ExtendedConstraint::PlonkGate(_)
+        ));
     }
 
     #[test]
@@ -3027,7 +3157,10 @@ mod tests {
 
         let parsed = ConstraintParser::parse_acir_with_tables(json.as_bytes());
         assert_eq!(parsed.constraints.len(), 2);
-        assert!(matches!(parsed.constraints[0], ExtendedConstraint::AcirOpcode(_)));
+        assert!(matches!(
+            parsed.constraints[0],
+            ExtendedConstraint::AcirOpcode(_)
+        ));
     }
 
     #[test]
@@ -3060,7 +3193,10 @@ mod tests {
 
         let parsed = ConstraintParser::parse_air_with_tables(json);
         assert_eq!(parsed.constraints.len(), 1);
-        assert!(matches!(parsed.constraints[0], ExtendedConstraint::AirConstraint(_)));
+        assert!(matches!(
+            parsed.constraints[0],
+            ExtendedConstraint::AirConstraint(_)
+        ));
     }
 
     #[test]
@@ -3077,6 +3213,9 @@ mod tests {
 
         let parsed = ConstraintParser::parse_air_with_tables(json);
         assert_eq!(parsed.constraints.len(), 1);
-        assert!(matches!(parsed.constraints[0], ExtendedConstraint::AirConstraint(_)));
+        assert!(matches!(
+            parsed.constraints[0],
+            ExtendedConstraint::AirConstraint(_)
+        ));
     }
 }

@@ -43,7 +43,7 @@ impl UnderconstrainedDetector {
     }
 
     /// Perform degree-of-freedom analysis
-    /// 
+    ///
     /// Uses `tolerance` to determine if the constraint ratio is acceptable.
     /// A circuit is considered underconstrained if:
     /// - num_constraints < num_private_inputs, OR
@@ -64,15 +64,15 @@ impl UnderconstrainedDetector {
 
             return Some(Finding {
                 attack_type: AttackType::Underconstrained,
-                severity: if dof > 0 { Severity::High } else { Severity::Medium },
+                severity: if dof > 0 {
+                    Severity::High
+                } else {
+                    Severity::Medium
+                },
                 description: format!(
                     "Circuit has {} constraints but {} private inputs (ratio: {:.3}). \
                      Likely underconstrained (DOF = {}, tolerance = {:.4})",
-                    num_constraints,
-                    num_private_inputs,
-                    constraint_ratio,
-                    dof,
-                    self.tolerance
+                    num_constraints, num_private_inputs, constraint_ratio, dof, self.tolerance
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
@@ -83,7 +83,7 @@ impl UnderconstrainedDetector {
     }
 
     /// Check for unused signals
-    /// 
+    ///
     /// Uses `samples` to limit the analysis scope for large circuits
     pub fn unused_signal_analysis(&self, _circuit_info: &CircuitInfo) -> Vec<Finding> {
         // In real implementation, this would analyze the constraint system
@@ -95,14 +95,17 @@ impl UnderconstrainedDetector {
     }
 
     /// Check for weak constraints
-    /// 
+    ///
     /// Uses `samples` to limit the number of constraint evaluations
     pub fn weak_constraint_analysis(&self, _circuit_info: &CircuitInfo) -> Vec<Finding> {
         // In real implementation, this would look for constraints that
         // don't sufficiently limit the witness space.
         // The `samples` parameter controls how many random evaluations
         // to perform per constraint.
-        tracing::debug!("Weak constraint analysis with {} samples per constraint", self.samples);
+        tracing::debug!(
+            "Weak constraint analysis with {} samples per constraint",
+            self.samples
+        );
         vec![]
     }
 }
@@ -151,10 +154,7 @@ mod tests {
 
         let finding = detector.dof_analysis(&circuit_info);
         assert!(finding.is_some());
-        assert_eq!(
-            finding.unwrap().attack_type,
-            AttackType::Underconstrained
-        );
+        assert_eq!(finding.unwrap().attack_type, AttackType::Underconstrained);
     }
 
     #[test]

@@ -4,8 +4,8 @@
 //! circuit execution without requiring actual ZK backends.
 
 use super::{
-    CircuitExecutor, ConstraintEquation, ConstraintInspector, ConstraintResult, ExecutionCoverage,
-    ExecutionResult, CircuitInfo,
+    CircuitExecutor, CircuitInfo, ConstraintEquation, ConstraintInspector, ConstraintResult,
+    ExecutionCoverage, ExecutionResult,
 };
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
@@ -141,12 +141,12 @@ impl MockCircuitExecutor {
                 // This guarantees collisions for values in same "bucket"
                 let keep_bytes = ((1.0 - self.collision_probability) * 32.0) as usize;
                 let keep_bytes = keep_bytes.max(1).min(32);
-                
+
                 // Zero out most bytes, keeping only a small portion
                 for i in keep_bytes..32 {
                     output_bytes[i] = 0;
                 }
-                
+
                 // For very high collision probability, also reduce remaining entropy
                 if self.collision_probability > 0.8 && keep_bytes <= 4 {
                     // Mask to only keep a few bits
@@ -248,8 +248,7 @@ impl CircuitExecutor for MockCircuitExecutor {
         // Generate coverage information
         let coverage = self.simulate_coverage(inputs);
 
-        ExecutionResult::success(outputs, coverage)
-            .with_time(start.elapsed().as_micros() as u64)
+        ExecutionResult::success(outputs, coverage).with_time(start.elapsed().as_micros() as u64)
     }
 
     fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
@@ -314,8 +313,7 @@ pub fn create_underconstrained_mock(name: &str) -> MockCircuitExecutor {
 
 /// Create a mock executor that simulates collision-prone circuits
 pub fn create_collision_mock(name: &str, collision_rate: f64) -> MockCircuitExecutor {
-    MockCircuitExecutor::new(name, 10, 2)
-        .with_collision_probability(collision_rate)
+    MockCircuitExecutor::new(name, 10, 2).with_collision_probability(collision_rate)
 }
 
 #[cfg(test)]
@@ -359,12 +357,10 @@ mod tests {
 
     #[test]
     fn test_underconstrained_detection() {
-        let constrained = MockCircuitExecutor::new("test", 5, 2)
-            .with_constraints(10);
+        let constrained = MockCircuitExecutor::new("test", 5, 2).with_constraints(10);
         assert!(!constrained.is_likely_underconstrained());
 
-        let underconstrained = MockCircuitExecutor::new("test", 10, 2)
-            .with_constraints(5);
+        let underconstrained = MockCircuitExecutor::new("test", 10, 2).with_constraints(5);
         assert!(underconstrained.is_likely_underconstrained());
     }
 

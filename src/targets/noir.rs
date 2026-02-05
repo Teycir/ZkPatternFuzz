@@ -91,7 +91,10 @@ pub enum NoirType {
     #[serde(rename = "string")]
     String { length: usize },
     #[serde(rename = "struct")]
-    Struct { path: String, fields: Vec<(String, NoirType)> },
+    Struct {
+        path: String,
+        fields: Vec<(String, NoirType)>,
+    },
 }
 
 /// Parameter visibility
@@ -103,7 +106,6 @@ pub enum Visibility {
     Private,
     Public,
 }
-
 
 impl NoirTarget {
     fn nargo_home_dir(&self) -> PathBuf {
@@ -133,7 +135,7 @@ impl NoirTarget {
     /// Create a new Noir target from a project path
     pub fn new(project_path: &str) -> Result<Self> {
         let path = PathBuf::from(project_path);
-        
+
         // Determine if this is a project dir or a file
         let project_path = if path.is_file() {
             path.parent().unwrap_or(Path::new(".")).to_path_buf()
@@ -166,20 +168,18 @@ impl NoirTarget {
             .arg("--version")
             .output()
             .context("nargo not found in PATH")?;
-        
+
         if !output.status.success() {
             anyhow::bail!("nargo --version failed");
         }
-        
+
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
     /// Check if bb (Barretenberg) is available
     pub fn check_bb_available() -> Result<String> {
-        let output = Command::new("bb")
-            .arg("--version")
-            .output();
-        
+        let output = Command::new("bb").arg("--version").output();
+
         match output {
             Ok(o) if o.status.success() => {
                 Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
@@ -198,7 +198,7 @@ impl NoirTarget {
         }
 
         tracing::info!("Compiling Noir project: {:?}", self.project_path);
-        
+
         // Check nargo is available
         let nargo_version = Self::check_nargo_available()?;
         tracing::debug!("Using nargo: {}", nargo_version);
@@ -292,7 +292,10 @@ impl NoirTarget {
         if let Ok(info) = serde_json::from_str::<serde_json::Value>(output) {
             let opcodes = info.get("opcodes").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
             let witnesses = info.get("witnesses").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-            let public = info.get("public_inputs").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let public = info
+                .get("public_inputs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as usize;
             return (opcodes, witnesses, public);
         }
 
@@ -582,9 +585,7 @@ impl NoirTarget {
     /// Parse a Noir value to FieldElements
     fn parse_noir_value(&self, value: &serde_json::Value) -> Result<Vec<FieldElement>> {
         match value {
-            serde_json::Value::String(s) => {
-                Ok(vec![parse_noir_field(s)?])
-            }
+            serde_json::Value::String(s) => Ok(vec![parse_noir_field(s)?]),
             serde_json::Value::Number(n) => {
                 let num = n.as_u64().unwrap_or(0);
                 Ok(vec![FieldElement::from_u64(num)])
@@ -604,7 +605,7 @@ impl NoirTarget {
                 }
                 Ok(results)
             }
-            _ => Ok(vec![FieldElement::zero()])
+            _ => Ok(vec![FieldElement::zero()]),
         }
     }
 
@@ -707,10 +708,10 @@ impl TargetCircuit for NoirTarget {
         }
 
         // Read the generated proof
-        let proof_path = self.project_path.join("proofs").join(format!(
-            "{}.proof",
-            self.name()
-        ));
+        let proof_path = self
+            .project_path
+            .join("proofs")
+            .join(format!("{}.proof", self.name()));
 
         if proof_path.exists() {
             Ok(std::fs::read(&proof_path)?)
@@ -835,7 +836,7 @@ fn parse_acir_output(output: &str) -> NoirAcirInfo {
 /// Parse a Noir field element string
 fn parse_noir_field(s: &str) -> Result<FieldElement> {
     let clean = s.trim().trim_matches('"');
-    
+
     if clean.starts_with("0x") || clean.starts_with("0X") {
         FieldElement::from_hex(clean)
     } else {
@@ -843,12 +844,12 @@ fn parse_noir_field(s: &str) -> Result<FieldElement> {
         use num_bigint::BigUint;
         let value = BigUint::parse_bytes(clean.as_bytes(), 10)
             .ok_or_else(|| anyhow::anyhow!("Invalid decimal: {}", s))?;
-        
+
         let bytes = value.to_bytes_be();
         let mut result = [0u8; 32];
         let start = 32usize.saturating_sub(bytes.len());
         result[start..].copy_from_slice(&bytes[..bytes.len().min(32)]);
-        
+
         Ok(FieldElement(result))
     }
 }
@@ -865,10 +866,10 @@ pub mod analysis {
     /// Extract function signatures from Noir source
     pub fn extract_functions(source: &str) -> Vec<NoirFunction> {
         let mut functions = Vec::new();
-        
+
         for line in source.lines() {
             let trimmed = line.trim();
-            
+
             // Look for function declarations
             if trimmed.starts_with("fn ") || trimmed.starts_with("pub fn ") {
                 if let Some(func) = parse_function_signature(trimmed) {
@@ -876,7 +877,7 @@ pub mod analysis {
                 }
             }
         }
-        
+
         functions
     }
 
@@ -884,11 +885,11 @@ pub mod analysis {
     fn parse_function_signature(line: &str) -> Option<NoirFunction> {
         // fn main(x: Field, y: pub Field) -> Field
         let is_main = line.contains("fn main");
-        
+
         // Extract name
         let after_fn = line.split("fn ").nth(1)?;
         let name = after_fn.split('(').next()?.trim().to_string();
-        
+
         // Extract parameters
         let params_str = after_fn.split('(').nth(1)?.split(')').next()?;
         let params: Vec<(String, String)> = params_str
@@ -905,14 +906,16 @@ pub mod analysis {
                 }
             })
             .collect();
-        
+
         // Extract return type
         let return_type = if line.contains("->") {
-            line.split("->").nth(1).map(|s| s.trim().trim_end_matches('{').trim().to_string())
+            line.split("->")
+                .nth(1)
+                .map(|s| s.trim().trim_end_matches('{').trim().to_string())
         } else {
             None
         };
-        
+
         Some(NoirFunction {
             name,
             params,
@@ -938,7 +941,9 @@ pub mod analysis {
         if source.contains("unconstrained") {
             hints.push(VulnerabilityHint {
                 hint_type: VulnerabilityType::UnconstrainedFunction,
-                description: "Contains unconstrained functions - ensure they don't leak private data".to_string(),
+                description:
+                    "Contains unconstrained functions - ensure they don't leak private data"
+                        .to_string(),
                 line: None,
             });
         }
@@ -946,7 +951,7 @@ pub mod analysis {
         // Check for missing assertions
         let assert_count = source.matches("assert").count();
         let fn_count = source.matches("fn ").count();
-        
+
         if fn_count > assert_count {
             hints.push(VulnerabilityHint {
                 hint_type: VulnerabilityType::MissingAssertions,
@@ -1003,7 +1008,7 @@ mod tests {
                 // ...
             }
         "#;
-        
+
         let functions = analysis::extract_functions(source);
         assert_eq!(functions.len(), 2);
         assert!(functions[0].is_main);

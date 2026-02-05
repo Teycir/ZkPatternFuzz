@@ -3,8 +3,8 @@
 //! Defines the core abstraction for executing ZK circuits across different backends.
 
 use super::ExecutionResult;
-use crate::config::Framework;
 use crate::analysis::ParsedConstraintSet;
+use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use async_trait::async_trait;
 use std::sync::Arc;

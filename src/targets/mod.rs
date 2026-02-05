@@ -6,21 +6,21 @@
 //! - **Halo2**: PLONK-based circuits (PSE fork)
 //! - **Cairo**: STARK-based programs with stone-prover
 
-mod circom;
-mod noir;
-mod halo2;
 mod cairo;
+mod circom;
+mod halo2;
+mod noir;
 
-pub use circom::CircomTarget;
-pub use noir::NoirTarget;
-pub use halo2::Halo2Target;
 pub use cairo::CairoTarget;
+pub use circom::CircomTarget;
+pub use halo2::Halo2Target;
+pub use noir::NoirTarget;
 
 // Re-export analysis modules for use in integration tests
-pub use circom::analysis as circom_analysis;
-pub use noir::analysis as noir_analysis;
-pub use halo2::analysis as halo2_analysis;
 pub use cairo::analysis as cairo_analysis;
+pub use circom::analysis as circom_analysis;
+pub use halo2::analysis as halo2_analysis;
+pub use noir::analysis as noir_analysis;
 
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
@@ -99,7 +99,7 @@ impl TargetCircuit for MockCircuit {
 
     fn execute(&self, inputs: &[FieldElement]) -> anyhow::Result<Vec<FieldElement>> {
         // Simple mock: hash inputs to produce output
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         for input in inputs {
             hasher.update(input.0);
@@ -112,7 +112,7 @@ impl TargetCircuit for MockCircuit {
 
     fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
         // Mock proof: just hash the witness
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         for w in witness {
             hasher.update(w.0);

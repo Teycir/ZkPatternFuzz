@@ -236,6 +236,12 @@ pub use executor::{CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions, Moc
 pub use fuzzer::ZkFuzzer;
 pub use reporting::FuzzReport;
 
+// Semantic oracles for ZK-specific vulnerability detection
+pub use fuzzer::{
+    SemanticOracle, OracleConfig, OracleStats, CombinedSemanticOracle,
+    NullifierOracle, MerkleOracle, CommitmentOracle, RangeProofOracle,
+};
+
 // Re-export new feature types
 pub use analysis::{
     TaintAnalyzer, TaintFinding, Profiler, PerformanceProfile,
@@ -257,6 +263,8 @@ pub use analysis::{
     AirConstraint, AirExpression, AirDomain, ConstraintParser, ConstraintChecker,
     WireRef, SymbolicConversionOptions, ParsedConstraintSet, UnknownLookupPolicy,
     ConstraintEvaluation,
+    // R1CS binary parsing
+    R1CS, ParsedR1CSConstraint, parse_sym_file,
 };
 pub use differential::{DifferentialFuzzer, DifferentialConfig, DifferentialResult};
 pub use distributed::{

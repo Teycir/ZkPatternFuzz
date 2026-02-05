@@ -11,8 +11,8 @@ use super::symbolic::{
     PathCondition, SolverResult, SymbolicConstraint, SymbolicState, SymbolicValue, Z3Solver,
 };
 use crate::fuzzer::FieldElement;
-use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use z3::ast::Ast;
 use z3::{ast, Config, Context, SatResult, Solver};
 
@@ -152,9 +152,7 @@ impl PathPruner {
                     false
                 }
             }
-            PruningStrategy::LoopBounded => {
-                self.detect_loop_iteration(state) > self.loop_bound
-            }
+            PruningStrategy::LoopBounded => self.detect_loop_iteration(state) > self.loop_bound,
             PruningStrategy::SimilarityBased => {
                 let hash = self.compute_path_hash(state);
                 if self.explored_prefixes.contains(&hash) {
@@ -164,9 +162,7 @@ impl PathPruner {
                     false
                 }
             }
-            PruningStrategy::SubsumptionBased => {
-                self.is_subsumed(state)
-            }
+            PruningStrategy::SubsumptionBased => self.is_subsumed(state),
         }
     }
 
@@ -192,7 +188,7 @@ impl PathPruner {
     fn detect_loop_iteration(&self, state: &SymbolicState) -> usize {
         // Simple heuristic: count repeated constraint patterns
         let mut pattern_counts: HashMap<u64, usize> = HashMap::new();
-        
+
         for constraint in &state.path_condition.constraints {
             let hash = self.hash_constraint(constraint);
             *pattern_counts.entry(hash).or_insert(0) += 1;
@@ -203,11 +199,11 @@ impl PathPruner {
 
     /// Compute hash for similarity detection
     fn compute_path_hash(&self, state: &SymbolicState) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
-        
+
         // Hash first few constraints as prefix
         for (i, constraint) in state.path_condition.constraints.iter().enumerate() {
             if i >= 10 {
@@ -221,8 +217,8 @@ impl PathPruner {
 
     /// Hash a single constraint
     fn hash_constraint(&self, constraint: &SymbolicConstraint) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         format!("{:?}", constraint).hash(&mut hasher);
@@ -248,13 +244,12 @@ impl PathPruner {
             .map(|state| {
                 let coverage_potential = self.estimate_coverage_potential(state) as usize;
                 let constraint_complexity = state.path_condition.constraints.len();
-                
+
                 // Higher priority for:
                 // - Lower depth (explore shallow paths first)
                 // - Higher coverage potential
                 // - Lower constraint complexity
-                let priority = (100.0 - state.depth as f64)
-                    + (coverage_potential as f64 * 10.0)
+                let priority = (100.0 - state.depth as f64) + (coverage_potential as f64 * 10.0)
                     - (constraint_complexity as f64 * 0.5);
 
                 PrioritizedPath {
@@ -291,7 +286,7 @@ impl ConstraintSimplifier {
     /// Simplify a path condition
     pub fn simplify_path(&mut self, path: &PathCondition) -> PathCondition {
         let mut simplified = PathCondition::with_id(path.path_id);
-        
+
         for constraint in &path.constraints {
             if let Some(simplified_constraint) = self.simplify_constraint(constraint) {
                 // Skip trivially true constraints
@@ -308,7 +303,10 @@ impl ConstraintSimplifier {
     }
 
     /// Simplify a single constraint
-    pub fn simplify_constraint(&mut self, constraint: &SymbolicConstraint) -> Option<SymbolicConstraint> {
+    pub fn simplify_constraint(
+        &mut self,
+        constraint: &SymbolicConstraint,
+    ) -> Option<SymbolicConstraint> {
         // Check cache
         let hash = self.hash_constraint(constraint);
         if let Some(cached) = self.cache.get(&hash) {
@@ -316,7 +314,7 @@ impl ConstraintSimplifier {
         }
 
         let simplified = self.simplify_impl(constraint);
-        
+
         // Cache result
         if let Some(ref s) = simplified {
             self.cache.insert(hash, s.clone());
@@ -337,7 +335,9 @@ impl ConstraintSimplifier {
                 }
 
                 // Check for impossible equality (two different constants)
-                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) = (&a_simple, &b_simple) {
+                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) =
+                    (&a_simple, &b_simple)
+                {
                     if va != vb {
                         return Some(SymbolicConstraint::False);
                     }
@@ -351,7 +351,9 @@ impl ConstraintSimplifier {
                 let b_simple = self.simplify_value(b);
 
                 // Check for trivial inequality
-                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) = (&a_simple, &b_simple) {
+                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) =
+                    (&a_simple, &b_simple)
+                {
                     if va != vb {
                         return Some(SymbolicConstraint::True);
                     } else {
@@ -372,7 +374,8 @@ impl ConstraintSimplifier {
                     SymbolicValue::Concrete(va),
                     SymbolicValue::Concrete(vb),
                     SymbolicValue::Concrete(vc),
-                ) = (&a_simple, &b_simple, &c_simple) {
+                ) = (&a_simple, &b_simple, &c_simple)
+                {
                     let product = va.mul(vb);
                     if product == *vc {
                         return Some(SymbolicConstraint::True);
@@ -494,7 +497,9 @@ impl ConstraintSimplifier {
                 let b_simple = self.simplify_value(b);
 
                 // Fold constants
-                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) = (&a_simple, &b_simple) {
+                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) =
+                    (&a_simple, &b_simple)
+                {
                     return SymbolicValue::Concrete(va.add(vb));
                 }
 
@@ -514,7 +519,9 @@ impl ConstraintSimplifier {
                 let b_simple = self.simplify_value(b);
 
                 // Fold constants
-                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) = (&a_simple, &b_simple) {
+                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) =
+                    (&a_simple, &b_simple)
+                {
                     return SymbolicValue::Concrete(va.mul(vb));
                 }
 
@@ -541,7 +548,9 @@ impl ConstraintSimplifier {
                 let b_simple = self.simplify_value(b);
 
                 // Fold constants
-                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) = (&a_simple, &b_simple) {
+                if let (SymbolicValue::Concrete(va), SymbolicValue::Concrete(vb)) =
+                    (&a_simple, &b_simple)
+                {
                     return SymbolicValue::Concrete(va.sub(vb));
                 }
 
@@ -602,8 +611,8 @@ impl ConstraintSimplifier {
     }
 
     fn hash_constraint(&self, constraint: &SymbolicConstraint) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         format!("{:?}", constraint).hash(&mut hasher);
@@ -657,7 +666,7 @@ impl IncrementalSolver {
         for c in new_constraints {
             full_path.add_constraint(c.clone());
         }
-        
+
         let cache_key = self.hash_path(&full_path);
         if let Some(cached) = self.solution_cache.get(&cache_key) {
             return cached.clone();
@@ -884,8 +893,8 @@ impl IncrementalSolver {
     }
 
     fn hash_path(&self, path: &PathCondition) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         for constraint in &path.constraints {
@@ -1016,7 +1025,10 @@ impl EnhancedSymbolicExecutor {
     pub fn next_state(&mut self) -> Option<SymbolicState> {
         while let Some(prioritized) = self.worklist.pop() {
             // Check if path should be pruned
-            if self.pruner.should_prune(&prioritized.state, self.paths_explored) {
+            if self
+                .pruner
+                .should_prune(&prioritized.state, self.paths_explored)
+            {
                 continue;
             }
 
@@ -1049,7 +1061,8 @@ impl EnhancedSymbolicExecutor {
 
         // Solve for satisfying assignments
         let result = if self.config.incremental_solving {
-            self.solver.solve_incremental(&PathCondition::new(), &path.constraints)
+            self.solver
+                .solve_incremental(&PathCondition::new(), &path.constraints)
         } else {
             let basic_solver = Z3Solver::new().with_timeout(self.config.solver_timeout_ms);
             basic_solver.solve(&path)
@@ -1064,7 +1077,10 @@ impl EnhancedSymbolicExecutor {
     }
 
     /// Convert symbol assignments to input vector
-    fn assignments_to_inputs(&self, assignments: &HashMap<String, FieldElement>) -> Vec<FieldElement> {
+    fn assignments_to_inputs(
+        &self,
+        assignments: &HashMap<String, FieldElement>,
+    ) -> Vec<FieldElement> {
         let mut inputs = Vec::with_capacity(self.num_inputs);
         for i in 0..self.num_inputs {
             let key = format!("input_{}", i);
@@ -1086,7 +1102,9 @@ impl EnhancedSymbolicExecutor {
     pub fn stats(&self) -> EnhancedSymbolicStats {
         EnhancedSymbolicStats {
             paths_explored: self.paths_explored,
-            paths_pruned: self.paths_explored.saturating_sub(self.completed_paths.len()),
+            paths_pruned: self
+                .paths_explored
+                .saturating_sub(self.completed_paths.len()),
             tests_generated: self.generated_tests.len(),
             pending_paths: self.worklist.len(),
             cache_hits: 0, // TODO: Track in solver

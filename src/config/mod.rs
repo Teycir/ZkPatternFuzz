@@ -4,7 +4,6 @@
 
 pub mod parser;
 
-
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -253,12 +252,13 @@ impl FuzzConfig {
     fn validate(&self) -> anyhow::Result<()> {
         // Skip circuit path validation for mock framework
         if self.campaign.target.framework != Framework::Mock
-            && !self.campaign.target.circuit_path.exists() {
-                tracing::warn!(
-                    "Circuit file not found: {:?} (will use mock mode)",
-                    self.campaign.target.circuit_path
-                );
-            }
+            && !self.campaign.target.circuit_path.exists()
+        {
+            tracing::warn!(
+                "Circuit file not found: {:?} (will use mock mode)",
+                self.campaign.target.circuit_path
+            );
+        }
 
         // Validate attack configs
         if self.attacks.is_empty() {

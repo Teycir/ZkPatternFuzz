@@ -42,10 +42,7 @@ impl LeanExporter {
 
         // Define the field
         header.push_str("-- BN254 scalar field\n");
-        header.push_str(&format!(
-            "def p : ℕ := {}\n\n",
-            self.field_modulus
-        ));
+        header.push_str(&format!("def p : ℕ := {}\n\n", self.field_modulus));
         header.push_str("abbrev F := ZMod p\n\n");
 
         header
@@ -103,13 +100,25 @@ impl LeanExporter {
                 )
             }
             SymbolicConstraint::Boolean(v) => {
-                format!("({} = 0 ∨ {} = 1)", self.value_to_lean(v), self.value_to_lean(v))
+                format!(
+                    "({} = 0 ∨ {} = 1)",
+                    self.value_to_lean(v),
+                    self.value_to_lean(v)
+                )
             }
             SymbolicConstraint::And(c1, c2) => {
-                format!("({} ∧ {})", self.constraint_to_lean(c1), self.constraint_to_lean(c2))
+                format!(
+                    "({} ∧ {})",
+                    self.constraint_to_lean(c1),
+                    self.constraint_to_lean(c2)
+                )
             }
             SymbolicConstraint::Or(c1, c2) => {
-                format!("({} ∨ {})", self.constraint_to_lean(c1), self.constraint_to_lean(c2))
+                format!(
+                    "({} ∨ {})",
+                    self.constraint_to_lean(c1),
+                    self.constraint_to_lean(c2)
+                )
             }
             SymbolicConstraint::Not(c) => {
                 format!("¬({})", self.constraint_to_lean(c))
@@ -303,13 +312,17 @@ mod tests {
 
     #[test]
     fn test_lean_exporter_creation() {
-        let exporter = LeanExporter::new("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+        let exporter = LeanExporter::new(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        );
         assert_eq!(exporter.system(), ProofSystem::Lean4);
     }
 
     #[test]
     fn test_value_to_lean() {
-        let exporter = LeanExporter::new("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+        let exporter = LeanExporter::new(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        );
 
         let sym = SymbolicValue::Symbol("x".to_string());
         assert_eq!(exporter.value_to_lean(&sym), "x");

@@ -6,11 +6,16 @@ mod oracle;
 mod engine;
 mod power_schedule;
 mod structure_aware;
+pub mod oracles;
 
 pub use constants::*;
 pub use mutators::*;
 pub use oracle::*;
 pub use engine::FuzzingEngine;
+pub use oracles::{
+    SemanticOracle, OracleConfig, OracleStats, CombinedSemanticOracle,
+    NullifierOracle, MerkleOracle, CommitmentOracle, RangeProofOracle,
+};
 
 use crate::config::*;
 use crate::progress::ProgressReporter;
@@ -190,6 +195,11 @@ impl FieldElement {
     /// Field negation: -x mod p
     pub fn neg(&self) -> Self {
         FieldElement::zero().sub(self)
+    }
+
+    /// Convert to BigUint for large number operations
+    pub fn to_biguint(&self) -> num_bigint::BigUint {
+        num_bigint::BigUint::from_bytes_be(&self.0)
     }
 }
 

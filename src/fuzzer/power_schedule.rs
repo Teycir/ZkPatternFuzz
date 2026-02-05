@@ -140,7 +140,7 @@ impl PowerScheduler {
     fn exploit_energy(&self, metrics: &TestCaseMetrics) -> usize {
         let finding_bonus = (metrics.findings_count as f64).sqrt() * 4.0;
         let coverage_bonus = (metrics.new_coverage_count as f64).sqrt() * 2.0;
-        
+
         // Decay based on time since last finding
         let decay = if metrics.time_since_finding.as_secs() > 60 {
             0.5
@@ -198,7 +198,7 @@ impl PowerScheduler {
         let freshness_score = 1.0 / (1.0 + metrics.selection_count as f64 / 32.0);
         let depth_penalty = 1.0 / (1.0 + metrics.depth as f64 / 10.0);
         let generation_penalty = 1.0 / (1.0 + metrics.generation as f64 / 8.0);
-        
+
         // Speed factor (prefer faster tests)
         let speed_factor = if !metrics.avg_execution_time.is_zero() {
             (self.avg_global_exec_time.as_nanos() as f64
@@ -260,7 +260,10 @@ mod tests {
         };
         let without_findings = TestCaseMetrics::default();
 
-        assert!(scheduler.calculate_energy(&with_findings) > scheduler.calculate_energy(&without_findings));
+        assert!(
+            scheduler.calculate_energy(&with_findings)
+                > scheduler.calculate_energy(&without_findings)
+        );
     }
 
     #[test]
@@ -283,13 +286,13 @@ mod tests {
     #[test]
     fn test_energy_clamping() {
         let scheduler = PowerScheduler::new(PowerSchedule::Explore);
-        
+
         // Even with extreme metrics, energy should be clamped
         let extreme = TestCaseMetrics {
             path_frequency: 0,
             ..Default::default()
         };
-        
+
         assert!(scheduler.calculate_energy(&extreme) <= scheduler.max_energy);
     }
 }

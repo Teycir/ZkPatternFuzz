@@ -110,7 +110,10 @@ impl ProgressReporter {
     /// Log an attack completion
     pub fn log_attack_complete(&self, attack_name: &str, findings: usize) {
         let emoji = if findings > 0 { "⚠️" } else { "✅" };
-        let msg = format!("{} Completed: {} ({} findings)", emoji, attack_name, findings);
+        let msg = format!(
+            "{} Completed: {} ({} findings)",
+            emoji, attack_name, findings
+        );
         self.main_bar.println(msg);
     }
 
@@ -138,7 +141,8 @@ impl ProgressReporter {
 
     /// Finish with an error
     pub fn finish_with_error(&self, error: &str) {
-        self.main_bar.abandon_with_message(format!("Error: {}", error));
+        self.main_bar
+            .abandon_with_message(format!("Error: {}", error));
         self.stats_bar.finish_and_clear();
         let _ = self.multi_progress.clear();
     }
@@ -229,8 +233,8 @@ mod tests {
 
     #[test]
     fn test_simple_progress_tracker() {
-        let mut tracker = SimpleProgressTracker::new()
-            .with_log_interval(Duration::from_millis(100));
+        let mut tracker =
+            SimpleProgressTracker::new().with_log_interval(Duration::from_millis(100));
 
         let stats = FuzzingStats {
             executions: 100,

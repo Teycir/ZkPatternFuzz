@@ -6,8 +6,8 @@
 //! - Privacy violations
 
 use crate::config::Severity;
-use crate::fuzzer::{Finding, ProofOfConcept};
 use crate::executor::ConstraintEquation;
+use crate::fuzzer::{Finding, ProofOfConcept};
 use std::collections::{HashMap, HashSet};
 
 /// Taint label for tracking data flow
@@ -26,8 +26,7 @@ pub enum TaintLabel {
 }
 
 /// Taint state for a signal
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TaintState {
     /// Labels that contribute to this signal's value
     pub labels: HashSet<TaintLabel>,
@@ -36,7 +35,6 @@ pub struct TaintState {
     /// Is this signal considered "leaked"?
     pub is_leaked: bool,
 }
-
 
 impl TaintState {
     pub fn new_public(index: usize) -> Self {
@@ -61,18 +59,23 @@ impl TaintState {
 
     /// Check if this state contains any private labels
     pub fn has_private_taint(&self) -> bool {
-        self.labels.iter().any(|l| matches!(l, TaintLabel::Private(_)))
+        self.labels
+            .iter()
+            .any(|l| matches!(l, TaintLabel::Private(_)))
     }
 
     /// Check if this state contains any public labels
     pub fn has_public_taint(&self) -> bool {
-        self.labels.iter().any(|l| matches!(l, TaintLabel::Public(_)))
+        self.labels
+            .iter()
+            .any(|l| matches!(l, TaintLabel::Public(_)))
     }
 
     /// Merge taint states (union of labels)
     pub fn merge(&mut self, other: &TaintState) {
         self.labels.extend(other.labels.iter().cloned());
-        self.influencing_constraints.extend(&other.influencing_constraints);
+        self.influencing_constraints
+            .extend(&other.influencing_constraints);
     }
 }
 
@@ -134,7 +137,8 @@ impl TaintAnalyzer {
         // Label private inputs (after public inputs)
         for i in 0..self.num_private_inputs {
             let signal_idx = self.num_public_inputs + i;
-            self.signal_taints.insert(signal_idx, TaintState::new_private(i));
+            self.signal_taints
+                .insert(signal_idx, TaintState::new_private(i));
         }
     }
 
@@ -154,7 +158,7 @@ impl TaintAnalyzer {
     }
 
     /// Propagate taint through a constraint
-    /// 
+    ///
     /// In R1CS form: A * B = C
     /// If A or B is tainted, C becomes tainted
     pub fn propagate_constraint(
@@ -242,10 +246,7 @@ impl TaintAnalyzer {
 
     /// Mark a signal as a public output (potential leak point)
     pub fn mark_as_output(&mut self, signal_idx: usize) {
-        self.signal_taints
-            .entry(signal_idx)
-            .or_default()
-            .is_leaked = true;
+        self.signal_taints.entry(signal_idx).or_default().is_leaked = true;
     }
 
     /// Mark a list of signals as public outputs (potential leak points)

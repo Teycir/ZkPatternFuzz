@@ -355,13 +355,17 @@ mod tests {
 
     #[test]
     fn test_coq_exporter_creation() {
-        let exporter = CoqExporter::new("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+        let exporter = CoqExporter::new(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        );
         assert_eq!(exporter.system(), ProofSystem::Coq);
     }
 
     #[test]
     fn test_value_to_coq() {
-        let exporter = CoqExporter::new("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+        let exporter = CoqExporter::new(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        );
 
         let sym = SymbolicValue::Symbol("x".to_string());
         assert_eq!(exporter.value_to_coq(&sym), "x");

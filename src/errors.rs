@@ -159,21 +159,20 @@ impl ZkFuzzerError {
                     None
                 }
             }
-            Self::CircuitCompilation { .. } => {
-                Some("Ensure the circuit file is valid and all dependencies are installed.".to_string())
-            }
-            Self::UnsupportedBackend { backend } => {
-                Some(format!(
-                    "Use one of the supported backends: circom, noir, halo2, cairo. Got: {}",
-                    backend
-                ))
-            }
-            Self::Timeout { operation, timeout_seconds } => {
-                Some(format!(
-                    "Consider increasing the timeout or reducing the complexity. Current: {}s for {}",
-                    timeout_seconds, operation
-                ))
-            }
+            Self::CircuitCompilation { .. } => Some(
+                "Ensure the circuit file is valid and all dependencies are installed.".to_string(),
+            ),
+            Self::UnsupportedBackend { backend } => Some(format!(
+                "Use one of the supported backends: circom, noir, halo2, cairo. Got: {}",
+                backend
+            )),
+            Self::Timeout {
+                operation,
+                timeout_seconds,
+            } => Some(format!(
+                "Consider increasing the timeout or reducing the complexity. Current: {}s for {}",
+                timeout_seconds, operation
+            )),
             Self::InvalidInput { message } => {
                 if message.contains("hex") {
                     Some("Hex values should be prefixed with '0x' (e.g., 0xdead).".to_string())

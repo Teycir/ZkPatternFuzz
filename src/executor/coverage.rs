@@ -86,12 +86,12 @@ impl CoverageTracker {
     }
 
     /// Compute a hash of the coverage bitmap
-    /// 
+    ///
     /// Uses a 128-bit hash internally to reduce collision risk with many test cases.
     /// The u64 return type is maintained for API compatibility, but internally
     /// we use a stronger hash function (SHA-256 truncated) to minimize collisions.
     fn compute_coverage_hash(&self, constraints: &[usize]) -> u64 {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
 
         let mut sorted = constraints.to_vec();
         sorted.sort_unstable();
@@ -106,8 +106,7 @@ impl CoverageTracker {
 
         // Take first 8 bytes as u64 (still better distribution than DefaultHasher)
         u64::from_le_bytes([
-            hash[0], hash[1], hash[2], hash[3],
-            hash[4], hash[5], hash[6], hash[7],
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ])
     }
 
@@ -194,7 +193,7 @@ impl std::fmt::Display for CoverageSnapshot {
 }
 
 /// Energy scheduler for prioritizing test cases
-/// 
+///
 /// Uses coverage information to assign "energy" (number of mutations)
 /// to test cases. Cases that discover new coverage get more energy.
 pub struct EnergyScheduler {

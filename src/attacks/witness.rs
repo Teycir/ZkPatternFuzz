@@ -8,7 +8,7 @@
 use super::{Attack, AttackContext};
 use crate::config::{AttackType, Severity};
 use crate::executor::CircuitExecutor;
-use crate::fuzzer::{Finding, FieldElement, ProofOfConcept};
+use crate::fuzzer::{FieldElement, Finding, ProofOfConcept};
 use rand::Rng;
 use std::sync::Arc;
 use std::time::Instant;
@@ -34,7 +34,7 @@ impl Default for WitnessFuzzer {
             timing_tests: 500,
             stress_tests: 1000,
             timing_threshold_us: 10000, // 10ms
-            timing_cv_threshold: 0.5,    // 50% variation is suspicious
+            timing_cv_threshold: 0.5,   // 50% variation is suspicious
         }
     }
 }
@@ -70,11 +70,7 @@ impl WitnessFuzzer {
     }
 
     /// Run witness fuzzing against an executor
-    pub fn fuzz(
-        &self,
-        executor: &Arc<dyn CircuitExecutor>,
-        rng: &mut impl Rng,
-    ) -> Vec<Finding> {
+    pub fn fuzz(&self, executor: &Arc<dyn CircuitExecutor>, rng: &mut impl Rng) -> Vec<Finding> {
         let mut findings = Vec::new();
 
         // Test 1: Determinism - same input should always produce same output
@@ -114,7 +110,8 @@ impl WitnessFuzzer {
                         attack_type: AttackType::Underconstrained,
                         severity: Severity::Critical,
                         description: "Non-deterministic witness generation: same input produces \
-                             different outputs across executions".to_string(),
+                             different outputs across executions"
+                            .to_string(),
                         poc: ProofOfConcept {
                             witness_a: inputs.clone(),
                             witness_b: None,
@@ -149,11 +146,7 @@ impl WitnessFuzzer {
     }
 
     /// Stress test witness generation with edge cases
-    fn test_stress(
-        &self,
-        executor: &Arc<dyn CircuitExecutor>,
-        rng: &mut impl Rng,
-    ) -> Vec<Finding> {
+    fn test_stress(&self, executor: &Arc<dyn CircuitExecutor>, rng: &mut impl Rng) -> Vec<Finding> {
         let mut findings = Vec::new();
         let num_inputs = executor.num_private_inputs();
 
@@ -164,7 +157,7 @@ impl WitnessFuzzer {
             // Use catch_unwind equivalent via thread spawn for panic detection
             let executor_clone = executor.clone();
             let inputs_clone = inputs.clone();
-            
+
             let start = Instant::now();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 executor_clone.execute_sync(&inputs_clone)
@@ -180,8 +173,7 @@ impl WitnessFuzzer {
                             severity: Severity::Medium,
                             description: format!(
                                 "Extremely slow witness generation ({}): {:?}",
-                                description,
-                                elapsed
+                                description, elapsed
                             ),
                             poc: ProofOfConcept {
                                 witness_a: inputs.clone(),
@@ -226,11 +218,7 @@ impl WitnessFuzzer {
     }
 
     /// Analyze timing to detect potential side-channels
-    fn test_timing(
-        &self,
-        executor: &Arc<dyn CircuitExecutor>,
-        rng: &mut impl Rng,
-    ) -> Vec<Finding> {
+    fn test_timing(&self, executor: &Arc<dyn CircuitExecutor>, rng: &mut impl Rng) -> Vec<Finding> {
         let mut findings = Vec::new();
         let mut timings: Vec<(Vec<FieldElement>, u64)> = Vec::new();
 
@@ -251,7 +239,8 @@ impl WitnessFuzzer {
         if !timings.is_empty() {
             let times: Vec<f64> = timings.iter().map(|(_, t)| *t as f64).collect();
             let mean = times.iter().sum::<f64>() / times.len() as f64;
-            let variance = times.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / times.len() as f64;
+            let variance =
+                times.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / times.len() as f64;
             let std_dev = variance.sqrt();
             let cv = std_dev / mean; // Coefficient of variation
 
@@ -324,10 +313,7 @@ impl WitnessFuzzer {
         inputs.push(("all ones", vec![FieldElement::one(); num_inputs]));
 
         // All max values
-        inputs.push((
-            "all max values",
-            vec![FieldElement([0xff; 32]); num_inputs],
-        ));
+        inputs.push(("all max values", vec![FieldElement([0xff; 32]); num_inputs]));
 
         // Alternating zeros and ones
         let alternating: Vec<FieldElement> = (0..num_inputs)
@@ -343,9 +329,8 @@ impl WitnessFuzzer {
 
         // Random stress inputs
         for _ in 0..self.stress_tests.min(100) {
-            let random: Vec<FieldElement> = (0..num_inputs)
-                .map(|_| FieldElement::random(rng))
-                .collect();
+            let random: Vec<FieldElement> =
+                (0..num_inputs).map(|_| FieldElement::random(rng)).collect();
             inputs.push(("random", random));
         }
 
@@ -371,8 +356,8 @@ impl Attack for WitnessFuzzer {
 mod tests {
     use super::*;
     use crate::executor::MockCircuitExecutor;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_witness_fuzzer_creation() {
@@ -391,7 +376,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
 
         let findings = fuzzer.test_determinism(&executor, &mut rng);
-        
+
         // Mock executor should be deterministic
         assert!(findings.is_empty(), "Expected no non-determinism findings");
     }

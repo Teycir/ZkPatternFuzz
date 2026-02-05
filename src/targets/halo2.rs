@@ -187,12 +187,20 @@ impl Halo2Target {
         let cargo_path = if self.circuit_path.is_dir() {
             self.circuit_path.join("Cargo.toml")
         } else {
-            self.circuit_path.parent().unwrap_or(Path::new(".")).join("Cargo.toml")
+            self.circuit_path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .join("Cargo.toml")
         };
 
         if cargo_path.exists() {
             self.setup_rust_circuit(&cargo_path)?;
-        } else if self.circuit_path.extension().map(|e| e == "json").unwrap_or(false) {
+        } else if self
+            .circuit_path
+            .extension()
+            .map(|e| e == "json")
+            .unwrap_or(false)
+        {
             self.setup_from_json()?;
         } else {
             tracing::warn!("Could not determine circuit type, using mock mode");
@@ -209,7 +217,8 @@ impl Halo2Target {
 
         // Build the project
         tracing::info!("Building Halo2 Rust project...");
-        let output = self.cargo_command()
+        let output = self
+            .cargo_command()
             .args(["build", "--release"])
             .current_dir(project_dir)
             .output()
@@ -230,7 +239,8 @@ impl Halo2Target {
     /// Get circuit info by running the binary
     fn get_circuit_info_from_binary(&self, project_dir: &Path) -> Halo2Metadata {
         // Try to run with --info flag
-        let output = self.cargo_command()
+        let output = self
+            .cargo_command()
             .args(["run", "--release", "--", "--info"])
             .current_dir(project_dir)
             .output();
@@ -264,20 +274,39 @@ impl Halo2Target {
         let spec: serde_json::Value = serde_json::from_str(&content)?;
 
         let k = spec.get("k").and_then(|v| v.as_u64()).unwrap_or(10) as u32;
-        
+
         self.config.k = k;
         self.metadata = Some(Halo2Metadata {
-            name: spec.get("name")
+            name: spec
+                .get("name")
                 .and_then(|v| v.as_str())
                 .unwrap_or(&self.name)
                 .to_string(),
             k,
-            num_advice_columns: spec.get("advice_columns").and_then(|v| v.as_u64()).unwrap_or(4) as usize,
-            num_fixed_columns: spec.get("fixed_columns").and_then(|v| v.as_u64()).unwrap_or(2) as usize,
-            num_instance_columns: spec.get("instance_columns").and_then(|v| v.as_u64()).unwrap_or(1) as usize,
-            num_constraints: spec.get("constraints").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
-            num_private_inputs: spec.get("private_inputs").and_then(|v| v.as_u64()).unwrap_or(10) as usize,
-            num_public_inputs: spec.get("public_inputs").and_then(|v| v.as_u64()).unwrap_or(2) as usize,
+            num_advice_columns: spec
+                .get("advice_columns")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(4) as usize,
+            num_fixed_columns: spec
+                .get("fixed_columns")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(2) as usize,
+            num_instance_columns: spec
+                .get("instance_columns")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1) as usize,
+            num_constraints: spec
+                .get("constraints")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as usize,
+            num_private_inputs: spec
+                .get("private_inputs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10) as usize,
+            num_public_inputs: spec
+                .get("public_inputs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(2) as usize,
             num_lookups: spec.get("lookups").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
         });
 
@@ -293,7 +322,12 @@ impl Halo2Target {
             return existing.clone();
         }
 
-        if self.circuit_path.extension().map(|e| e == "json").unwrap_or(false) {
+        if self
+            .circuit_path
+            .extension()
+            .map(|e| e == "json")
+            .unwrap_or(false)
+        {
             if let Ok(content) = std::fs::read_to_string(&self.circuit_path) {
                 let parsed = ConstraintParser::parse_plonk_with_tables(&content);
                 let _ = self.plonk_constraints.set(parsed.clone());
@@ -304,7 +338,10 @@ impl Halo2Target {
         let project_dir = if self.circuit_path.is_dir() {
             self.circuit_path.clone()
         } else {
-            self.circuit_path.parent().unwrap_or(Path::new(".")).to_path_buf()
+            self.circuit_path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_path_buf()
         };
 
         if let Some(parsed) = self.try_extract_constraints_from_binary(&project_dir) {
@@ -315,8 +352,12 @@ impl Halo2Target {
         ParsedConstraintSet::default()
     }
 
-    fn try_extract_constraints_from_binary(&self, project_dir: &Path) -> Option<ParsedConstraintSet> {
-        let output = self.cargo_command()
+    fn try_extract_constraints_from_binary(
+        &self,
+        project_dir: &Path,
+    ) -> Option<ParsedConstraintSet> {
+        let output = self
+            .cargo_command()
             .args(["run", "--release", "--", "--constraints"])
             .current_dir(project_dir)
             .output()
@@ -370,13 +411,17 @@ impl Halo2Target {
         // 3. Return the instance (public) values
 
         // Try to run the circuit binary with inputs
-        let input_json = serde_json::to_string(&inputs.iter().map(|fe| {
-            format!("0x{}", hex::encode(fe.0))
-        }).collect::<Vec<_>>())?;
+        let input_json = serde_json::to_string(
+            &inputs
+                .iter()
+                .map(|fe| format!("0x{}", hex::encode(fe.0)))
+                .collect::<Vec<_>>(),
+        )?;
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
-        
-        let output = self.cargo_command()
+
+        let output = self
+            .cargo_command()
             .args(["run", "--release", "--", "--execute", &input_json])
             .current_dir(project_dir)
             .output();
@@ -385,9 +430,7 @@ impl Halo2Target {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 if let Ok(values) = serde_json::from_str::<Vec<String>>(&stdout) {
-                    return values.iter()
-                        .map(|s| FieldElement::from_hex(s))
-                        .collect();
+                    return values.iter().map(|s| FieldElement::from_hex(s)).collect();
                 }
             }
         }
@@ -408,7 +451,7 @@ impl Halo2Target {
 
         let mut output = [0u8; 32];
         output.copy_from_slice(&hash);
-        
+
         Ok(vec![FieldElement(output)])
     }
 
@@ -464,15 +507,24 @@ impl TargetCircuit for Halo2Target {
     }
 
     fn num_constraints(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_constraints).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_constraints)
+            .unwrap_or(0)
     }
 
     fn num_private_inputs(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_private_inputs).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_private_inputs)
+            .unwrap_or(0)
     }
 
     fn num_public_inputs(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_public_inputs).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_public_inputs)
+            .unwrap_or(0)
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -486,15 +538,19 @@ impl TargetCircuit for Halo2Target {
 
         // For real proving, need to use halo2_proofs crate
         // This would require the circuit to be compiled into this binary
-        
+
         // Try running the circuit binary with prove command
-        let witness_json = serde_json::to_string(&witness.iter().map(|fe| {
-            format!("0x{}", hex::encode(fe.0))
-        }).collect::<Vec<_>>())?;
+        let witness_json = serde_json::to_string(
+            &witness
+                .iter()
+                .map(|fe| format!("0x{}", hex::encode(fe.0)))
+                .collect::<Vec<_>>(),
+        )?;
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
-        
-        let output = self.cargo_command()
+
+        let output = self
+            .cargo_command()
             .args(["run", "--release", "--", "--prove", &witness_json])
             .current_dir(project_dir)
             .output();
@@ -516,14 +572,25 @@ impl TargetCircuit for Halo2Target {
 
         // Try running verify command
         let proof_hex = hex::encode(proof);
-        let inputs_json = serde_json::to_string(&public_inputs.iter().map(|fe| {
-            format!("0x{}", hex::encode(fe.0))
-        }).collect::<Vec<_>>())?;
+        let inputs_json = serde_json::to_string(
+            &public_inputs
+                .iter()
+                .map(|fe| format!("0x{}", hex::encode(fe.0)))
+                .collect::<Vec<_>>(),
+        )?;
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
-        
-        let output = self.cargo_command()
-            .args(["run", "--release", "--", "--verify", &proof_hex, &inputs_json])
+
+        let output = self
+            .cargo_command()
+            .args([
+                "run",
+                "--release",
+                "--",
+                "--verify",
+                &proof_hex,
+                &inputs_json,
+            ])
             .current_dir(project_dir)
             .output();
 
@@ -558,11 +625,11 @@ pub mod analysis {
     /// Check for potentially unused columns
     pub fn check_unused_columns(source: &str) -> Vec<Halo2Issue> {
         let mut issues = Vec::new();
-        
+
         // Look for column declarations vs usage
         let advice_decl = source.matches("advice_column").count();
         let advice_use = source.matches(".query_advice").count();
-        
+
         if advice_decl > advice_use {
             issues.push(Halo2Issue {
                 gate_type: "column".to_string(),
@@ -582,8 +649,10 @@ pub mod analysis {
         let mut issues = Vec::new();
 
         // Look for assignments without copy constraints
-        let assigns = source.matches("assign_advice").count() + source.matches("assign_fixed").count();
-        let copies = source.matches("copy_advice").count() + source.matches("enable_equality").count();
+        let assigns =
+            source.matches("assign_advice").count() + source.matches("assign_fixed").count();
+        let copies =
+            source.matches("copy_advice").count() + source.matches("enable_equality").count();
 
         if assigns > copies * 3 {
             issues.push(Halo2Issue {
@@ -607,7 +676,8 @@ pub mod analysis {
         if source.contains("bit") && !source.contains("range_check") && !source.contains("lookup") {
             issues.push(Halo2Issue {
                 gate_type: "range".to_string(),
-                description: "Bit operations detected without explicit range checks or lookups".to_string(),
+                description: "Bit operations detected without explicit range checks or lookups"
+                    .to_string(),
                 severity: "info".to_string(),
             });
         }
@@ -653,39 +723,38 @@ mod tests {
 
     #[test]
     fn test_halo2_target_mock() {
-        let mut target = Halo2Target::new("test_circuit").unwrap()
+        let mut target = Halo2Target::new("test_circuit")
+            .unwrap()
             .with_mock_mode(true);
-        
+
         target.setup().unwrap();
-        
+
         assert_eq!(target.name(), "test_circuit");
         assert!(target.num_constraints() > 0);
     }
 
     #[test]
     fn test_halo2_mock_execute() {
-        let mut target = Halo2Target::new("test").unwrap()
-            .with_mock_mode(true);
+        let mut target = Halo2Target::new("test").unwrap().with_mock_mode(true);
         target.setup().unwrap();
 
         let inputs = vec![FieldElement::zero(), FieldElement::one()];
         let result = target.execute(&inputs).unwrap();
-        
+
         assert!(!result.is_empty());
     }
 
     #[test]
     fn test_halo2_mock_prove_verify() {
-        let mut target = Halo2Target::new("test").unwrap()
-            .with_mock_mode(true);
+        let mut target = Halo2Target::new("test").unwrap().with_mock_mode(true);
         target.setup().unwrap();
         target.setup_keys().unwrap();
 
         let witness = vec![FieldElement::one()];
         let proof = target.prove(&witness).unwrap();
-        
+
         assert!(!proof.is_empty());
-        
+
         // Should verify with same inputs used for proving
         let verified = target.verify(&proof, &witness).unwrap();
         assert!(verified);

@@ -52,11 +52,11 @@ impl HashType {
     /// Get the expected security level in bits for this hash type
     pub fn security_bits(&self) -> usize {
         match self {
-            HashType::Poseidon => 128,  // Standard Poseidon provides 128-bit security
-            HashType::MiMC => 128,       // MiMC with sufficient rounds
-            HashType::Pedersen => 128,   // Pedersen commitment security
-            HashType::Rescue => 128,     // Rescue hash security
-            HashType::Generic => 256,    // Assume full security for unknown
+            HashType::Poseidon => 128, // Standard Poseidon provides 128-bit security
+            HashType::MiMC => 128,     // MiMC with sufficient rounds
+            HashType::Pedersen => 128, // Pedersen commitment security
+            HashType::Rescue => 128,   // Rescue hash security
+            HashType::Generic => 256,  // Assume full security for unknown
         }
     }
 
@@ -186,11 +186,11 @@ impl CollisionDetector {
     pub fn hamming_distance(a: &[u8], b: &[u8]) -> usize {
         let len = a.len().min(b.len());
         let mut distance = 0;
-        
+
         for i in 0..len {
             distance += (a[i] ^ b[i]).count_ones() as usize;
         }
-        
+
         // Account for length difference
         if a.len() > len {
             for byte in &a[len..] {
@@ -202,7 +202,7 @@ impl CollisionDetector {
                 distance += byte.count_ones() as usize;
             }
         }
-        
+
         distance
     }
 
@@ -235,7 +235,6 @@ impl CollisionDetector {
         entropy * (output_len as f64)
     }
 
-
     /// Perform comprehensive collision analysis on a set of input/output pairs
     pub fn analyze_collisions(
         &self,
@@ -258,7 +257,7 @@ impl CollisionDetector {
         for (output, inputs) in &output_map {
             if inputs.len() > 1 {
                 exact_collisions += inputs.len() - 1;
-                
+
                 // Record collision pairs
                 for i in 1..inputs.len() {
                     collision_pairs.push(CollisionPair {
@@ -276,7 +275,7 @@ impl CollisionDetector {
         // Sample-based near-collision detection (avoid O(n²) for large datasets)
         let outputs: Vec<&Vec<u8>> = input_output_pairs.iter().map(|(_, o)| o).collect();
         let sample_size = outputs.len().min(1000);
-        
+
         for i in 0..sample_size {
             for j in (i + 1)..sample_size.min(i + 100) {
                 let dist = Self::hamming_distance(outputs[i], outputs[j]);
@@ -284,10 +283,10 @@ impl CollisionDetector {
                 total_hamming += dist as u64;
                 comparisons += 1;
 
-                if self.detect_near_collisions 
-                    && dist > 0 
-                    && dist <= self.hamming_threshold 
-                    && collision_pairs.len() < self.max_near_collision_reports 
+                if self.detect_near_collisions
+                    && dist > 0
+                    && dist <= self.hamming_threshold
+                    && collision_pairs.len() < self.max_near_collision_reports
                 {
                     near_collisions += 1;
                     collision_pairs.push(CollisionPair {
@@ -325,7 +324,11 @@ impl CollisionDetector {
             samples_tested: input_output_pairs.len(),
             exact_collisions,
             near_collisions,
-            min_hamming_distance: if min_hamming == usize::MAX { 0 } else { min_hamming },
+            min_hamming_distance: if min_hamming == usize::MAX {
+                0
+            } else {
+                min_hamming
+            },
             avg_hamming_distance: avg_hamming,
             output_entropy_bits: entropy_bits,
             birthday_vulnerable,
@@ -335,9 +338,9 @@ impl CollisionDetector {
 
     /// Generate birthday attack test values targeting specific bit lengths
     pub fn generate_birthday_inputs(&self, count: usize, seed: u64) -> Vec<Vec<FieldElement>> {
-        use rand::SeedableRng;
         use rand::rngs::StdRng;
-        
+        use rand::SeedableRng;
+
         let mut rng = StdRng::seed_from_u64(seed);
         let mut inputs = Vec::with_capacity(count);
 
@@ -352,20 +355,19 @@ impl CollisionDetector {
 
     /// Generate Poseidon-specific test inputs
     pub fn generate_poseidon_test_inputs(&self, count: usize, seed: u64) -> Vec<Vec<FieldElement>> {
-        use rand::SeedableRng;
         use rand::rngs::StdRng;
-        
+        use rand::SeedableRng;
+
         let mut rng = StdRng::seed_from_u64(seed);
         let mut inputs = Vec::with_capacity(count);
 
         // Poseidon typically takes 2-12 field elements as input
         let input_sizes = [2, 3, 4, 8, 12];
-        
+
         for i in 0..count {
             let size = input_sizes[i % input_sizes.len()];
-            let input: Vec<FieldElement> = (0..size)
-                .map(|_| FieldElement::random(&mut rng))
-                .collect();
+            let input: Vec<FieldElement> =
+                (0..size).map(|_| FieldElement::random(&mut rng)).collect();
             inputs.push(input);
         }
 
@@ -374,9 +376,9 @@ impl CollisionDetector {
 
     /// Generate MiMC-specific test inputs  
     pub fn generate_mimc_test_inputs(&self, count: usize, seed: u64) -> Vec<Vec<FieldElement>> {
-        use rand::SeedableRng;
         use rand::rngs::StdRng;
-        
+        use rand::SeedableRng;
+
         let mut rng = StdRng::seed_from_u64(seed);
         let mut inputs = Vec::with_capacity(count);
 
@@ -395,7 +397,6 @@ impl CollisionDetector {
 
         inputs
     }
-
 }
 
 impl Attack for CollisionDetector {
@@ -420,11 +421,11 @@ impl Attack for CollisionDetector {
 
         // Check for truncated hash patterns (heuristic based on constraint count)
         let expected_hash_constraints = match self.hash_type {
-            HashType::Poseidon => 200,  // Approximate constraints for Poseidon
-            HashType::MiMC => 100,       // MiMC is relatively simple
-            HashType::Pedersen => 500,   // Pedersen has more constraints
-            HashType::Rescue => 300,     // Rescue is moderate
-            HashType::Generic => 150,    // Generic estimate
+            HashType::Poseidon => 200, // Approximate constraints for Poseidon
+            HashType::MiMC => 100,     // MiMC is relatively simple
+            HashType::Pedersen => 500, // Pedersen has more constraints
+            HashType::Rescue => 300,   // Rescue is moderate
+            HashType::Generic => 150,  // Generic estimate
         };
 
         if context.circuit_info.num_constraints < expected_hash_constraints / 2 {
@@ -452,8 +453,7 @@ impl Attack for CollisionDetector {
                 severity: Severity::Info,
                 description: format!(
                     "Low constraint density ({:.2}) in '{}' may indicate weak hash implementation",
-                    density,
-                    context.circuit_info.name
+                    density, context.circuit_info.name
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
@@ -508,7 +508,7 @@ mod tests {
     #[test]
     fn test_collision_analysis_no_collisions() {
         let detector = CollisionDetector::new(100);
-        
+
         let pairs: Vec<(Vec<FieldElement>, Vec<u8>)> = (0..100)
             .map(|i| {
                 let input = vec![FieldElement::from_u64(i)];
@@ -525,13 +525,13 @@ mod tests {
     #[test]
     fn test_collision_analysis_with_collision() {
         let detector = CollisionDetector::new(100);
-        
+
         let mut pairs: Vec<(Vec<FieldElement>, Vec<u8>)> = Vec::new();
-        
+
         // Add a collision - two different inputs, same output
         pairs.push((vec![FieldElement::from_u64(1)], vec![0xAA; 32]));
         pairs.push((vec![FieldElement::from_u64(2)], vec![0xAA; 32]));
-        
+
         // Add some non-colliding pairs
         for i in 3..10 {
             pairs.push((vec![FieldElement::from_u64(i)], vec![i as u8; 32]));
@@ -559,8 +559,7 @@ mod tests {
 
     #[test]
     fn test_generate_poseidon_inputs() {
-        let detector = CollisionDetector::new(100)
-            .with_hash_type(HashType::Poseidon);
+        let detector = CollisionDetector::new(100).with_hash_type(HashType::Poseidon);
         let inputs = detector.generate_poseidon_test_inputs(10, 42);
         assert_eq!(inputs.len(), 10);
         // Poseidon inputs vary in size
@@ -569,11 +568,10 @@ mod tests {
 
     #[test]
     fn test_generate_mimc_inputs() {
-        let detector = CollisionDetector::new(100)
-            .with_hash_type(HashType::MiMC);
+        let detector = CollisionDetector::new(100).with_hash_type(HashType::MiMC);
         let inputs = detector.generate_mimc_test_inputs(10, 42);
         assert!(inputs.len() >= 10); // Extra edge cases added
-        // MiMC inputs are message + key pairs
+                                     // MiMC inputs are message + key pairs
         assert!(inputs[0].len() == 2);
     }
 
@@ -584,12 +582,12 @@ mod tests {
             .with_near_collision_detection(true);
 
         let mut pairs: Vec<(Vec<FieldElement>, Vec<u8>)> = Vec::new();
-        
+
         // Create near-collision: outputs differ by only 1 bit
         let output_a = vec![0x00; 32];
         let mut output_b = vec![0x00; 32];
         output_b[0] = 0x01; // Single bit difference
-        
+
         pairs.push((vec![FieldElement::from_u64(1)], output_a));
         pairs.push((vec![FieldElement::from_u64(2)], output_b));
 

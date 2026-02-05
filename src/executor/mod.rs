@@ -3,23 +3,25 @@
 //! Provides a unified interface for executing ZK circuits across different backends.
 //! Separates mock execution from real circuit execution for testing and production use.
 
-mod traits;
-mod mock;
 mod coverage;
+mod mock;
+mod traits;
 
-pub use traits::*;
-pub use mock::*;
 pub use coverage::*;
+pub use mock::*;
+pub use traits::*;
 
 // Re-export CircuitInfo for external use
 pub use crate::attacks::CircuitInfo;
 
-use async_trait::async_trait;
-use crate::analysis::{ConstraintChecker, ConstraintParser, ParsedConstraintSet, UnknownLookupPolicy};
+use crate::analysis::{
+    ConstraintChecker, ConstraintParser, ParsedConstraintSet, UnknownLookupPolicy,
+};
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
-use std::sync::{Arc, OnceLock};
+use async_trait::async_trait;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
 /// Options for controlling executor creation (e.g., build directory overrides).
 #[derive(Debug, Clone, Default)]
@@ -147,15 +149,9 @@ impl ExecutorFactory {
             Framework::Circom => {
                 Self::create_circom_executor(circuit_path, main_component, options)
             }
-            Framework::Noir => {
-                Self::create_noir_executor(circuit_path, main_component, options)
-            }
-            Framework::Halo2 => {
-                Self::create_halo2_executor(circuit_path, main_component, options)
-            }
-            Framework::Cairo => {
-                Self::create_cairo_executor(circuit_path, main_component, options)
-            }
+            Framework::Noir => Self::create_noir_executor(circuit_path, main_component, options),
+            Framework::Halo2 => Self::create_halo2_executor(circuit_path, main_component, options),
+            Framework::Cairo => Self::create_cairo_executor(circuit_path, main_component, options),
         }
     }
 
@@ -174,16 +170,20 @@ impl ExecutorFactory {
                 let build_dir =
                     options.resolve_build_dir(Framework::Circom, circuit_path, main_component);
                 let executor = match build_dir {
-                    Some(dir) => CircomExecutor::new_with_build_dir(circuit_path, main_component, dir)?,
+                    Some(dir) => {
+                        CircomExecutor::new_with_build_dir(circuit_path, main_component, dir)?
+                    }
                     None => CircomExecutor::new(circuit_path, main_component)?,
                 };
                 Ok(Arc::new(executor))
             }
             Err(e) => {
                 tracing::warn!("Circom not available ({}), using mock executor", e);
-                Ok(Arc::new(MockCircuitExecutor::new(main_component, 10, 2)
-                    .with_framework(Framework::Circom)
-                    .with_circuit_path(circuit_path)))
+                Ok(Arc::new(
+                    MockCircuitExecutor::new(main_component, 10, 2)
+                        .with_framework(Framework::Circom)
+                        .with_circuit_path(circuit_path),
+                ))
             }
         }
     }
@@ -209,9 +209,11 @@ impl ExecutorFactory {
             }
             Err(e) => {
                 tracing::warn!("Nargo not available ({}), using mock executor", e);
-                Ok(Arc::new(MockCircuitExecutor::new(main_component, 10, 2)
-                    .with_framework(Framework::Noir)
-                    .with_circuit_path(circuit_path)))
+                Ok(Arc::new(
+                    MockCircuitExecutor::new(main_component, 10, 2)
+                        .with_framework(Framework::Noir)
+                        .with_circuit_path(circuit_path),
+                ))
             }
         }
     }
@@ -222,8 +224,7 @@ impl ExecutorFactory {
         main_component: &str,
         options: &ExecutorFactoryOptions,
     ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
-        let build_dir =
-            options.resolve_build_dir(Framework::Halo2, circuit_path, main_component);
+        let build_dir = options.resolve_build_dir(Framework::Halo2, circuit_path, main_component);
         let executor = match build_dir {
             Some(dir) => Halo2Executor::new_with_build_dir(circuit_path, main_component, dir)?,
             None => Halo2Executor::new(circuit_path, main_component)?,
@@ -252,16 +253,26 @@ impl ExecutorFactory {
             }
             Err(e) => {
                 tracing::warn!("Cairo not available ({}), using mock executor", e);
-                Ok(Arc::new(MockCircuitExecutor::new(main_component, 10, 2)
-                    .with_framework(Framework::Cairo)
-                    .with_circuit_path(circuit_path)))
+                Ok(Arc::new(
+                    MockCircuitExecutor::new(main_component, 10, 2)
+                        .with_framework(Framework::Cairo)
+                        .with_circuit_path(circuit_path),
+                ))
             }
         }
     }
 
     /// Create a mock executor for testing
-    pub fn create_mock(name: &str, private_inputs: usize, public_inputs: usize) -> Arc<dyn CircuitExecutor> {
-        Arc::new(MockCircuitExecutor::new(name, private_inputs, public_inputs))
+    pub fn create_mock(
+        name: &str,
+        private_inputs: usize,
+        public_inputs: usize,
+    ) -> Arc<dyn CircuitExecutor> {
+        Arc::new(MockCircuitExecutor::new(
+            name,
+            private_inputs,
+            public_inputs,
+        ))
     }
 }
 
@@ -321,7 +332,7 @@ impl CircuitExecutor for CircomExecutor {
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
         use crate::targets::TargetCircuit;
         let start = std::time::Instant::now();
-        
+
         match self.target.execute(inputs) {
             Ok(outputs) => {
                 let coverage = ExecutionCoverage::with_output_hash(&outputs);
@@ -426,8 +437,7 @@ impl NoirExecutor {
     }
 
     pub fn new_with_build_dir(project_path: &str, build_dir: PathBuf) -> anyhow::Result<Self> {
-        let mut target = crate::targets::NoirTarget::new(project_path)?
-            .with_build_dir(build_dir);
+        let mut target = crate::targets::NoirTarget::new(project_path)?.with_build_dir(build_dir);
         target.compile()?;
         Ok(Self { target })
     }
@@ -458,7 +468,7 @@ impl CircuitExecutor for NoirExecutor {
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
         use crate::targets::TargetCircuit;
         let start = std::time::Instant::now();
-        
+
         match self.target.execute(inputs) {
             Ok(outputs) => {
                 let coverage = ExecutionCoverage::with_output_hash(&outputs);
@@ -559,8 +569,7 @@ impl Halo2Executor {
         _main_component: &str,
         build_dir: PathBuf,
     ) -> anyhow::Result<Self> {
-        let mut target = crate::targets::Halo2Target::new(circuit_path)?
-            .with_build_dir(build_dir);
+        let mut target = crate::targets::Halo2Target::new(circuit_path)?.with_build_dir(build_dir);
         target.setup()?;
         Ok(Self { target })
     }
@@ -591,7 +600,7 @@ impl CircuitExecutor for Halo2Executor {
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
         use crate::targets::TargetCircuit;
         let start = std::time::Instant::now();
-        
+
         match self.target.execute(inputs) {
             Ok(outputs) => {
                 let coverage = ExecutionCoverage::with_output_hash(&outputs);
@@ -638,8 +647,8 @@ impl ConstraintInspector for Halo2Executor {
             .map(|(idx, value)| (idx, value.clone()))
             .collect();
 
-        let mut checker = ConstraintChecker::new()
-            .with_unknown_lookup_policy(UnknownLookupPolicy::FailClosed);
+        let mut checker =
+            ConstraintChecker::new().with_unknown_lookup_policy(UnknownLookupPolicy::FailClosed);
         for (id, table) in parsed.lookup_tables {
             checker.add_table(id, table);
         }
@@ -683,8 +692,7 @@ impl CairoExecutor {
     }
 
     pub fn new_with_build_dir(source_path: &str, build_dir: PathBuf) -> anyhow::Result<Self> {
-        let mut target = crate::targets::CairoTarget::new(source_path)?
-            .with_build_dir(build_dir);
+        let mut target = crate::targets::CairoTarget::new(source_path)?.with_build_dir(build_dir);
         target.compile()?;
         Ok(Self { target })
     }
@@ -715,7 +723,7 @@ impl CircuitExecutor for CairoExecutor {
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
         use crate::targets::TargetCircuit;
         let start = std::time::Instant::now();
-        
+
         match self.target.execute(inputs) {
             Ok(outputs) => {
                 let coverage = ExecutionCoverage::with_output_hash(&outputs);
@@ -806,8 +814,7 @@ impl ExecutionCoverage {
         }
         let hash = hasher.finalize();
         let coverage_hash = u64::from_le_bytes([
-            hash[0], hash[1], hash[2], hash[3],
-            hash[4], hash[5], hash[6], hash[7],
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ]);
 
         Self {
@@ -817,9 +824,9 @@ impl ExecutionCoverage {
     }
 
     pub fn with_constraints(satisfied: Vec<usize>, evaluated: Vec<usize>) -> Self {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
-        
+        use std::hash::{Hash, Hasher};
+
         let mut hasher = DefaultHasher::new();
         satisfied.hash(&mut hasher);
         let coverage_hash = hasher.finish();
@@ -843,11 +850,8 @@ mod tests {
 
     #[test]
     fn test_executor_factory_mock() {
-        let executor = ExecutorFactory::create(
-            Framework::Mock,
-            "test.circom",
-            "TestCircuit",
-        ).unwrap();
+        let executor =
+            ExecutorFactory::create(Framework::Mock, "test.circom", "TestCircuit").unwrap();
 
         assert_eq!(executor.name(), "TestCircuit");
         assert_eq!(executor.framework(), Framework::Mock);
@@ -855,10 +859,8 @@ mod tests {
 
     #[test]
     fn test_execution_result() {
-        let result = ExecutionResult::success(
-            vec![FieldElement::one()],
-            ExecutionCoverage::default(),
-        );
+        let result =
+            ExecutionResult::success(vec![FieldElement::one()], ExecutionCoverage::default());
         assert!(result.success);
         assert!(result.error.is_none());
 
@@ -892,10 +894,7 @@ mod tests {
         }
         "#;
 
-        let temp = tempfile::Builder::new()
-            .suffix(".json")
-            .tempfile()
-            .unwrap();
+        let temp = tempfile::Builder::new().suffix(".json").tempfile().unwrap();
         std::fs::write(temp.path(), json).unwrap();
 
         let executor = Halo2Executor::new(temp.path().to_str().unwrap(), "main").unwrap();

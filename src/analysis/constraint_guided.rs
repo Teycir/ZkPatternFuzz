@@ -56,10 +56,8 @@ impl ConstraintSeedGenerator {
             return ConstraintSeedOutput::default();
         }
 
-        let extended: Vec<ExtendedConstraint> = equations
-            .iter()
-            .map(r1cs_equation_to_extended)
-            .collect();
+        let extended: Vec<ExtendedConstraint> =
+            equations.iter().map(r1cs_equation_to_extended).collect();
 
         let (symbolic_constraints, skipped_constraints) =
             extended_to_symbolic(&extended, &HashMap::new());
@@ -71,7 +69,12 @@ impl ConstraintSeedGenerator {
             ..ConstraintSeedStats::default()
         };
 
-        self.generate_from_symbolic(symbolic_constraints, input_wire_indices, expected_len, stats)
+        self.generate_from_symbolic(
+            symbolic_constraints,
+            input_wire_indices,
+            expected_len,
+            stats,
+        )
     }
 
     /// Generate seeds from extended constraints with lookup tables.
@@ -97,7 +100,12 @@ impl ConstraintSeedGenerator {
             ..ConstraintSeedStats::default()
         };
 
-        self.generate_from_symbolic(symbolic_constraints, input_wire_indices, expected_len, stats)
+        self.generate_from_symbolic(
+            symbolic_constraints,
+            input_wire_indices,
+            expected_len,
+            stats,
+        )
     }
 
     fn generate_from_symbolic(
@@ -108,7 +116,10 @@ impl ConstraintSeedGenerator {
         mut stats: ConstraintSeedStats,
     ) -> ConstraintSeedOutput {
         if constraints.is_empty() {
-            return ConstraintSeedOutput { seeds: Vec::new(), stats };
+            return ConstraintSeedOutput {
+                seeds: Vec::new(),
+                stats,
+            };
         }
 
         let mut path = PathCondition::new();
@@ -228,7 +239,12 @@ fn prune_constraints(
     match strategy {
         PruningStrategy::RandomSampling => {
             let step = (constraints.len() / limit).max(1);
-            constraints.iter().step_by(step).take(limit).cloned().collect()
+            constraints
+                .iter()
+                .step_by(step)
+                .take(limit)
+                .cloned()
+                .collect()
         }
         _ => constraints.iter().take(limit).cloned().collect(),
     }

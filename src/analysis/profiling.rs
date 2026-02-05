@@ -193,7 +193,7 @@ impl Profiler {
                         .take(executor.num_public_inputs())
                         .cloned()
                         .collect();
-                    
+
                     let start = Instant::now();
                     let _ = executor.verify(&proof, &public_inputs);
                     start.elapsed().as_micros() as u64
@@ -240,11 +240,8 @@ impl Profiler {
         let verification_stats = TimingStats::from_samples(&verification_times);
 
         // Generate recommendations
-        let recommendations = self.generate_recommendations(
-            &execution_stats,
-            &proving_stats,
-            &verification_stats,
-        );
+        let recommendations =
+            self.generate_recommendations(&execution_stats, &proving_stats, &verification_stats);
 
         PerformanceProfile {
             execution_stats,
@@ -327,8 +324,8 @@ impl Profiler {
 mod tests {
     use super::*;
     use crate::executor::MockCircuitExecutor;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_timing_stats() {

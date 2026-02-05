@@ -82,9 +82,21 @@ impl fmt::Display for DifferentialReport {
         writeln!(f, "─── Statistics ───")?;
         writeln!(f, "  Total Tests:          {}", self.stats.total_tests)?;
         writeln!(f, "  All Backends Agreed:  {}", self.stats.all_agreed)?;
-        writeln!(f, "  Output Mismatches:    {}", self.stats.output_mismatches)?;
-        writeln!(f, "  Execution Mismatches: {}", self.stats.execution_mismatches)?;
-        writeln!(f, "  Coverage Mismatches:  {}", self.stats.coverage_mismatches)?;
+        writeln!(
+            f,
+            "  Output Mismatches:    {}",
+            self.stats.output_mismatches
+        )?;
+        writeln!(
+            f,
+            "  Execution Mismatches: {}",
+            self.stats.execution_mismatches
+        )?;
+        writeln!(
+            f,
+            "  Coverage Mismatches:  {}",
+            self.stats.coverage_mismatches
+        )?;
         writeln!(f)?;
 
         if !self.findings.is_empty() {

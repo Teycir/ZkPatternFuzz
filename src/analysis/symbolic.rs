@@ -31,7 +31,11 @@ pub enum SymbolicValue {
     /// Division (modular inverse)
     Div(Box<SymbolicValue>, Box<SymbolicValue>),
     /// Conditional (if-then-else)
-    Ite(Box<SymbolicConstraint>, Box<SymbolicValue>, Box<SymbolicValue>),
+    Ite(
+        Box<SymbolicConstraint>,
+        Box<SymbolicValue>,
+        Box<SymbolicValue>,
+    ),
     /// Negation (field negation: p - x)
     Neg(Box<SymbolicValue>),
 }
@@ -506,7 +510,12 @@ impl Z3Solver {
     }
 
     /// Add field bounds constraints (0 <= var < modulus)
-    fn add_field_bounds<'a>(&self, ctx: &'a Context, solver: &Solver<'a>, vars: &HashMap<String, ast::Int<'a>>) {
+    fn add_field_bounds<'a>(
+        &self,
+        ctx: &'a Context,
+        solver: &Solver<'a>,
+        vars: &HashMap<String, ast::Int<'a>>,
+    ) {
         let zero = ast::Int::from_i64(ctx, 0);
         let modulus = ast::Int::from_str(ctx, &self.modulus).unwrap();
 
@@ -784,9 +793,7 @@ impl SymbolicExecutor {
             self.generated_tests.push(test_case);
 
             if self.config.solutions_per_path > 1 {
-                let additional = self
-                    .solver
-                    .solve_all(&path, self.config.solutions_per_path);
+                let additional = self.solver.solve_all(&path, self.config.solutions_per_path);
                 for solution in additional.into_iter().skip(1) {
                     let test_case = self.assignments_to_inputs(&solution);
                     self.generated_tests.push(test_case);
@@ -798,7 +805,10 @@ impl SymbolicExecutor {
     }
 
     /// Convert symbol assignments to input vector
-    fn assignments_to_inputs(&self, assignments: &HashMap<String, FieldElement>) -> Vec<FieldElement> {
+    fn assignments_to_inputs(
+        &self,
+        assignments: &HashMap<String, FieldElement>,
+    ) -> Vec<FieldElement> {
         let mut inputs = Vec::with_capacity(self.num_inputs);
         for i in 0..self.num_inputs {
             let key = format!("input_{}", i);
@@ -956,14 +966,19 @@ impl SymbolicFuzzerIntegration {
     }
 
     /// Generate tests targeting a specific vulnerability pattern
-    pub fn generate_vulnerability_tests(&self, pattern: VulnerabilityPattern) -> Vec<Vec<FieldElement>> {
+    pub fn generate_vulnerability_tests(
+        &self,
+        pattern: VulnerabilityPattern,
+    ) -> Vec<Vec<FieldElement>> {
         match pattern {
             VulnerabilityPattern::OverflowBoundary => self.generate_overflow_tests(),
             VulnerabilityPattern::ZeroDivision => self.generate_zero_division_tests(),
             VulnerabilityPattern::BitDecomposition { bits } => {
                 self.generate_bit_decomposition_tests(bits)
             }
-            VulnerabilityPattern::RangeViolation { max } => self.generate_range_violation_tests(max),
+            VulnerabilityPattern::RangeViolation { max } => {
+                self.generate_range_violation_tests(max)
+            }
         }
     }
 
@@ -1000,7 +1015,10 @@ impl SymbolicFuzzerIntegration {
         if bits < 64 {
             let boundary = FieldElement::from_u64(1u64 << bits);
             tests.push(vec![boundary.clone(); self.num_inputs.max(1)]);
-            tests.push(vec![boundary.sub(&FieldElement::one()); self.num_inputs.max(1)]);
+            tests.push(vec![
+                boundary.sub(&FieldElement::one());
+                self.num_inputs.max(1)
+            ]);
 
             let all_bits = FieldElement::from_u64((1u64 << bits) - 1);
             tests.push(vec![all_bits; self.num_inputs.max(1)]);
@@ -1117,7 +1135,7 @@ mod tests {
     fn test_z3_solver_unsatisfiable() {
         // Test using direct Z3 API to ensure unsatisfiability works
         use z3::{Config, Context as Z3Context, SatResult as Z3SatResult, Solver as Z3Solver2};
-        
+
         let mut cfg = Config::new();
         cfg.set_model_generation(true);
         let ctx = Z3Context::new(&cfg);

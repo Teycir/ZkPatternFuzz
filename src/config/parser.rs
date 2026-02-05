@@ -34,17 +34,21 @@ pub struct ValueExpansionError {
 
 impl std::fmt::Display for ValueExpansionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Failed to expand value '{}': {}", self.value, self.reason)
+        write!(
+            f,
+            "Failed to expand value '{}': {}",
+            self.value, self.reason
+        )
     }
 }
 
 impl std::error::Error for ValueExpansionError {}
 
 /// Expand special value placeholders with proper error handling
-/// 
+///
 /// Returns a Result to properly propagate parsing errors instead of
 /// silently returning default values which could hide configuration bugs.
-/// 
+///
 /// # Supported Placeholders
 /// - `0`, `zero`: Zero value
 /// - `1`, `one`: One value
@@ -53,12 +57,15 @@ impl std::error::Error for ValueExpansionError {}
 /// - `(p-1)/2`: Half of modulus minus one
 /// - `0x...`: Hexadecimal value
 /// - Decimal numbers: Parsed as u64
-/// 
+///
 /// # Errors
 /// Returns `ValueExpansionError` if:
 /// - Hex string is invalid
 /// - Decimal parsing fails for non-placeholder values
-pub fn expand_value_placeholder(value: &str, field_modulus: &[u8; 32]) -> Result<Vec<u8>, ValueExpansionError> {
+pub fn expand_value_placeholder(
+    value: &str,
+    field_modulus: &[u8; 32],
+) -> Result<Vec<u8>, ValueExpansionError> {
     use num_bigint::BigUint;
 
     let normalized = value.to_lowercase().replace(' ', "");
@@ -167,7 +174,7 @@ pub fn expand_value_placeholder(value: &str, field_modulus: &[u8; 32]) -> Result
 }
 
 /// Legacy wrapper that logs warnings for invalid values
-/// 
+///
 /// Use this when you need backward compatibility but want visibility into errors.
 /// For new code, prefer `expand_value_placeholder` directly.
 pub fn expand_value_placeholder_with_default(value: &str, field_modulus: &[u8; 32]) -> Vec<u8> {

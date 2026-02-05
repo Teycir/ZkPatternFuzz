@@ -105,30 +105,22 @@ impl CorpusSyncManager {
         let seen = self.seen_hashes.read().unwrap();
 
         let to_share: Vec<SerializableCorpusEntry> = match self.config.strategy {
-            SyncStrategy::Full => {
-                entries.iter().map(SerializableCorpusEntry::from).collect()
-            }
-            SyncStrategy::Incremental => {
-                entries
-                    .iter()
-                    .filter(|e| !seen.contains(&e.coverage_hash))
-                    .map(SerializableCorpusEntry::from)
-                    .collect()
-            }
-            SyncStrategy::InterestingOnly => {
-                entries
-                    .iter()
-                    .filter(|e| e.discovered_new_coverage && !seen.contains(&e.coverage_hash))
-                    .map(SerializableCorpusEntry::from)
-                    .collect()
-            }
-            SyncStrategy::EnergyBased { min_energy } => {
-                entries
-                    .iter()
-                    .filter(|e| e.energy >= min_energy && !seen.contains(&e.coverage_hash))
-                    .map(SerializableCorpusEntry::from)
-                    .collect()
-            }
+            SyncStrategy::Full => entries.iter().map(SerializableCorpusEntry::from).collect(),
+            SyncStrategy::Incremental => entries
+                .iter()
+                .filter(|e| !seen.contains(&e.coverage_hash))
+                .map(SerializableCorpusEntry::from)
+                .collect(),
+            SyncStrategy::InterestingOnly => entries
+                .iter()
+                .filter(|e| e.discovered_new_coverage && !seen.contains(&e.coverage_hash))
+                .map(SerializableCorpusEntry::from)
+                .collect(),
+            SyncStrategy::EnergyBased { min_energy } => entries
+                .iter()
+                .filter(|e| e.energy >= min_energy && !seen.contains(&e.coverage_hash))
+                .map(SerializableCorpusEntry::from)
+                .collect(),
             SyncStrategy::RandomSample { sample_rate } => {
                 use rand::Rng;
                 let mut rng = rand::thread_rng();
@@ -180,7 +172,10 @@ impl CorpusSyncManager {
             // Convert and add to corpus
             if let Some(entry) = serializable.to_corpus_entry() {
                 // Mark as seen
-                self.seen_hashes.write().unwrap().insert(entry.coverage_hash);
+                self.seen_hashes
+                    .write()
+                    .unwrap()
+                    .insert(entry.coverage_hash);
 
                 // Add to corpus (will check for duplicates again internally)
                 if self.corpus.add(entry.clone()) {

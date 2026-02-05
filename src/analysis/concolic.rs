@@ -7,9 +7,7 @@
 //!
 //! This approach is more scalable than pure symbolic execution for large circuits.
 
-use super::symbolic::{
-    PathCondition, SolverResult, SymbolicConstraint, SymbolicValue,
-};
+use super::symbolic::{PathCondition, SolverResult, SymbolicConstraint, SymbolicValue};
 use super::symbolic_enhanced::{ConstraintSimplifier, IncrementalSolver};
 use crate::executor::{CircuitExecutor, ExecutionResult};
 use crate::fuzzer::FieldElement;
@@ -179,7 +177,10 @@ impl ConcolicExecutor {
             }
 
             if self.path_queue.is_empty() {
-                tracing::info!("Concolic exploration complete after {} iterations", iteration);
+                tracing::info!(
+                    "Concolic exploration complete after {} iterations",
+                    iteration
+                );
                 break;
             }
 
@@ -245,10 +246,7 @@ impl ConcolicExecutor {
             let concrete_value = SymbolicValue::concrete(input.clone());
 
             // Add equality constraint (symbolic == concrete)
-            trace.add_branch(
-                SymbolicConstraint::Eq(symbolic_input, concrete_value),
-                true,
-            );
+            trace.add_branch(SymbolicConstraint::Eq(symbolic_input, concrete_value), true);
         }
 
         // TODO: In a real implementation, we would:
@@ -338,7 +336,9 @@ impl ConcolicExecutor {
         };
 
         // Solve for satisfying assignment
-        let result = self.solver.solve_incremental(&PathCondition::new(), &path.constraints);
+        let result = self
+            .solver
+            .solve_incremental(&PathCondition::new(), &path.constraints);
 
         match result {
             SolverResult::Sat(assignments) => {
@@ -362,7 +362,10 @@ impl ConcolicExecutor {
     }
 
     /// Convert symbol assignments to input vector
-    fn assignments_to_inputs(&self, assignments: &HashMap<String, FieldElement>) -> Vec<FieldElement> {
+    fn assignments_to_inputs(
+        &self,
+        assignments: &HashMap<String, FieldElement>,
+    ) -> Vec<FieldElement> {
         let mut inputs = Vec::with_capacity(self.num_inputs);
         for i in 0..self.num_inputs {
             let key = format!("input_{}", i);
@@ -376,8 +379,8 @@ impl ConcolicExecutor {
     }
 
     fn hash_path(&self, path: &PathCondition) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         for constraint in &path.constraints {
@@ -447,9 +450,7 @@ impl ConcolicFuzzerIntegration {
 
     /// Initialize with circuit executor
     pub fn initialize(&mut self, executor: Arc<dyn CircuitExecutor>) {
-        self.executor = Some(
-            ConcolicExecutor::new(executor).with_config(self.config.clone()),
-        );
+        self.executor = Some(ConcolicExecutor::new(executor).with_config(self.config.clone()));
     }
 
     /// Run concolic exploration with seeds

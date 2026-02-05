@@ -8,7 +8,6 @@
 pub mod composition;
 pub mod recursive;
 
-
 use crate::config::Severity;
 use crate::executor::{CircuitExecutor, ExecutionResult};
 use crate::fuzzer::{FieldElement, Finding, ProofOfConcept};
@@ -92,7 +91,7 @@ impl MultiCircuitFuzzer {
             // Pick two circuits
             let idx1 = rng.gen_range(0..circuit_names.len());
             let idx2 = (idx1 + 1) % circuit_names.len();
-            
+
             let circuit1 = &self.circuits[&circuit_names[idx1]];
             let circuit2 = &self.circuits[&circuit_names[idx2]];
 
@@ -249,7 +248,7 @@ impl CircuitChain {
             }
 
             let result = executor.execute_sync(&current_inputs[..executor.num_private_inputs()]);
-            
+
             results.push(ChainStepResult {
                 circuit_name: name.clone(),
                 inputs: current_inputs[..executor.num_private_inputs()].to_vec(),
@@ -302,8 +301,8 @@ pub struct ChainStepResult {
 mod tests {
     use super::*;
     use crate::executor::MockCircuitExecutor;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_multi_circuit_fuzzer_creation() {
@@ -332,7 +331,7 @@ mod tests {
             ..Default::default()
         };
         let mut fuzzer = MultiCircuitFuzzer::new(config);
-        
+
         fuzzer.add_circuit("c1", Arc::new(MockCircuitExecutor::new("c1", 2, 1)));
         fuzzer.add_circuit("c2", Arc::new(MockCircuitExecutor::new("c2", 2, 1)));
 

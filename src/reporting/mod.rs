@@ -15,8 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
-pub use sarif::{SarifBuilder, SarifReport, SarifLevel};
-
+pub use sarif::{SarifBuilder, SarifLevel, SarifReport};
 
 /// Complete fuzzing report
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,10 +92,7 @@ impl FuzzReport {
         // Statistics
         println!("\n{}", "STATISTICS".bright_yellow().bold());
         println!("  Total Findings: {}", self.findings.len());
-        println!(
-            "  Coverage: {:.2}%",
-            self.statistics.coverage_percentage
-        );
+        println!("  Coverage: {:.2}%", self.statistics.coverage_percentage);
 
         // Findings by severity
         if !self.statistics.findings_by_severity.is_empty() {
@@ -133,12 +129,7 @@ impl FuzzReport {
                     Severity::Info => format!("[{}]", finding.severity).white(),
                 };
 
-                println!(
-                    "\n  {}. {} {:?}",
-                    i + 1,
-                    severity_str,
-                    finding.attack_type
-                );
+                println!("\n  {}. {} {:?}", i + 1, severity_str, finding.attack_type);
                 println!("     {}", finding.description);
 
                 if let Some(ref location) = finding.location {
@@ -350,7 +341,8 @@ impl<'de> Deserialize<'de> for Finding {
                     }
                 }
 
-                let attack_type_str = attack_type.ok_or_else(|| de::Error::missing_field("attack_type"))?;
+                let attack_type_str =
+                    attack_type.ok_or_else(|| de::Error::missing_field("attack_type"))?;
                 let parsed_attack_type = match attack_type_str.as_str() {
                     "Underconstrained" => AttackType::Underconstrained,
                     "Soundness" => AttackType::Soundness,
@@ -370,9 +362,18 @@ impl<'de> Deserialize<'de> for Finding {
                     "TimingSideChannel" => AttackType::TimingSideChannel,
                     "CircuitComposition" => AttackType::CircuitComposition,
                     "RecursiveProof" => AttackType::RecursiveProof,
-                    _ => return Err(de::Error::unknown_variant(&attack_type_str, &[
-                        "Underconstrained", "Soundness", "ArithmeticOverflow", "Collision", "Boundary"
-                    ])),
+                    _ => {
+                        return Err(de::Error::unknown_variant(
+                            &attack_type_str,
+                            &[
+                                "Underconstrained",
+                                "Soundness",
+                                "ArithmeticOverflow",
+                                "Collision",
+                                "Boundary",
+                            ],
+                        ))
+                    }
                 };
 
                 let witness_a: Vec<FieldElement> = poc_witness_a
@@ -384,7 +385,8 @@ impl<'de> Deserialize<'de> for Finding {
                 Ok(Finding {
                     attack_type: parsed_attack_type,
                     severity: severity.ok_or_else(|| de::Error::missing_field("severity"))?,
-                    description: description.ok_or_else(|| de::Error::missing_field("description"))?,
+                    description: description
+                        .ok_or_else(|| de::Error::missing_field("description"))?,
                     location: location.unwrap_or(None),
                     poc: ProofOfConcept {
                         witness_a,
@@ -396,7 +398,13 @@ impl<'de> Deserialize<'de> for Finding {
             }
         }
 
-        const FIELDS: &[&str] = &["attack_type", "severity", "description", "location", "poc_witness_a"];
+        const FIELDS: &[&str] = &[
+            "attack_type",
+            "severity",
+            "description",
+            "location",
+            "poc_witness_a",
+        ];
         deserializer.deserialize_struct("Finding", FIELDS, FindingVisitor)
     }
 }
@@ -440,14 +448,18 @@ mod tests {
 
         // Serialize to JSON
         let json = serde_json::to_string(&original).expect("Failed to serialize Finding");
-        
+
         // Deserialize back
-        let deserialized: Finding = serde_json::from_str(&json).expect("Failed to deserialize Finding");
+        let deserialized: Finding =
+            serde_json::from_str(&json).expect("Failed to deserialize Finding");
 
         assert_eq!(deserialized.attack_type, AttackType::Collision);
         assert_eq!(deserialized.severity, Severity::High);
         assert_eq!(deserialized.description, "Test collision finding");
-        assert_eq!(deserialized.location, Some("test_circuit.circom:42".to_string()));
+        assert_eq!(
+            deserialized.location,
+            Some("test_circuit.circom:42".to_string())
+        );
     }
 
     #[test]
@@ -462,7 +474,7 @@ mod tests {
         }"#;
 
         let finding: Finding = serde_json::from_str(json).expect("Failed to deserialize");
-        
+
         assert_eq!(finding.attack_type, AttackType::Soundness);
         assert_eq!(finding.severity, Severity::Critical);
         assert_eq!(finding.description, "Proof forgery detected");

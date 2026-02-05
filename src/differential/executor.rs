@@ -1,7 +1,7 @@
 //! Multi-backend executor wrapper for differential testing
 
 use crate::config::Framework;
-use crate::executor::{CircuitExecutor, ExecutionResult, CircuitInfo};
+use crate::executor::{CircuitExecutor, CircuitInfo, ExecutionResult};
 use crate::fuzzer::FieldElement;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -34,7 +34,10 @@ impl MultiBackendExecutor {
     }
 
     /// Execute on all backends in parallel
-    pub fn execute_all_parallel(&self, inputs: &[FieldElement]) -> HashMap<Framework, ExecutionResult> {
+    pub fn execute_all_parallel(
+        &self,
+        inputs: &[FieldElement],
+    ) -> HashMap<Framework, ExecutionResult> {
         use rayon::prelude::*;
 
         self.backends
@@ -46,7 +49,7 @@ impl MultiBackendExecutor {
     /// Check if all backends agree on the output
     pub fn check_agreement(&self, inputs: &[FieldElement]) -> BackendAgreement {
         let results = self.execute_all(inputs);
-        
+
         let frameworks: Vec<_> = results.keys().cloned().collect();
         if frameworks.len() < 2 {
             return BackendAgreement::SingleBackend;
@@ -58,7 +61,7 @@ impl MultiBackendExecutor {
 
         for framework in &frameworks[1..] {
             let result = &results[framework];
-            
+
             if first.success != result.success {
                 execution_mismatch = true;
                 all_agree = false;
@@ -157,7 +160,7 @@ mod tests {
 
         let inputs = vec![FieldElement::zero(), FieldElement::one()];
         let results = multi.execute_all(&inputs);
-        
+
         assert_eq!(results.len(), 2);
         assert!(results.values().all(|r| r.success));
     }

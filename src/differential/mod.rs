@@ -6,7 +6,6 @@
 pub mod executor;
 pub mod report;
 
-
 use crate::config::Framework;
 use crate::executor::{CircuitExecutor, ExecutionResult};
 use crate::fuzzer::{FieldElement, TestCase};
@@ -216,7 +215,7 @@ impl DifferentialFuzzer {
 
     fn describe_difference(&self, outputs: &HashMap<Framework, ExecutionResult>) -> String {
         let mut desc = String::new();
-        
+
         for (framework, result) in outputs {
             desc.push_str(&format!(
                 "{:?}: success={}, outputs={}\n",
@@ -264,13 +263,13 @@ mod tests {
         // Add identical executors - should agree on everything
         let exec1 = Arc::new(MockCircuitExecutor::new("test", 2, 1));
         let exec2 = Arc::new(MockCircuitExecutor::new("test", 2, 1));
-        
+
         fuzzer.add_executor(Framework::Mock, exec1);
         fuzzer.add_executor(Framework::Circom, exec2);
 
         let inputs = vec![FieldElement::zero(), FieldElement::one()];
         let result = fuzzer.compare_backends(&inputs);
-        
+
         // Same executor configuration should produce same outputs
         assert!(result.is_none() || result.unwrap().disagreeing_backends.is_empty());
     }

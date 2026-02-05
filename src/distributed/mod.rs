@@ -6,16 +6,16 @@
 //! - Centralized coverage tracking
 //! - Fault-tolerant node management
 
-pub mod network;
-pub mod corpus_sync;
 pub mod coordinator;
+pub mod corpus_sync;
+pub mod network;
 
-pub use network::{NetworkConfig, NodeRole, FuzzerNode};
+pub use coordinator::{DistributedCoordinator, NodeStatus, WorkUnit};
 pub use corpus_sync::{CorpusSyncManager, SyncStrategy};
-pub use coordinator::{DistributedCoordinator, WorkUnit, NodeStatus};
+pub use network::{FuzzerNode, NetworkConfig, NodeRole};
 
 use crate::corpus::CorpusEntry;
-use crate::fuzzer::{Finding, FieldElement, TestCase};
+use crate::fuzzer::{FieldElement, Finding, TestCase};
 use std::time::Duration;
 
 /// Unique identifier for a fuzzer node
@@ -34,18 +34,11 @@ pub enum DistributedMessage {
         capabilities: NodeCapabilities,
     },
     /// Heartbeat to indicate node is alive
-    Heartbeat {
-        node_id: NodeId,
-        stats: NodeStats,
-    },
+    Heartbeat { node_id: NodeId, stats: NodeStats },
     /// Request work from coordinator
-    RequestWork {
-        node_id: NodeId,
-    },
+    RequestWork { node_id: NodeId },
     /// Work assignment from coordinator
-    AssignWork {
-        work_unit: WorkUnit,
-    },
+    AssignWork { work_unit: WorkUnit },
     /// Report work completion
     WorkComplete {
         node_id: NodeId,
@@ -57,10 +50,7 @@ pub enum DistributedMessage {
         entries: Vec<SerializableCorpusEntry>,
     },
     /// Report a finding
-    ReportFinding {
-        node_id: NodeId,
-        finding: Finding,
-    },
+    ReportFinding { node_id: NodeId, finding: Finding },
     /// Coverage update
     CoverageUpdate {
         node_id: NodeId,
@@ -146,7 +136,12 @@ pub struct SerializableCorpusEntry {
 impl From<&CorpusEntry> for SerializableCorpusEntry {
     fn from(entry: &CorpusEntry) -> Self {
         Self {
-            inputs: entry.test_case.inputs.iter().map(|fe| fe.to_hex()).collect(),
+            inputs: entry
+                .test_case
+                .inputs
+                .iter()
+                .map(|fe| fe.to_hex())
+                .collect(),
             coverage_hash: entry.coverage_hash,
             discovered_new_coverage: entry.discovered_new_coverage,
             energy: entry.energy,

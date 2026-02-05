@@ -93,29 +93,37 @@
 //! - **Cairo**: STARK programs via stone-prover
 //! - **Mock**: Testing backend for fuzzer development
 
-use super::{Finding, FieldElement, TestCase, TestMetadata, mutate_field_element, bn254_modulus_bytes};
+use super::oracle::{ArithmeticOverflowOracle, BugOracle, UnderconstrainedOracle};
 use super::power_schedule::{PowerSchedule, PowerScheduler, TestCaseMetrics};
-use super::structure_aware::{StructureAwareMutator, Splicer};
-use super::oracle::{BugOracle, UnderconstrainedOracle, ArithmeticOverflowOracle};
-use crate::attacks::{Attack, AttackContext};
+use super::structure_aware::{Splicer, StructureAwareMutator};
+use super::{
+    bn254_modulus_bytes, mutate_field_element, FieldElement, Finding, TestCase, TestMetadata,
+};
 use crate::analysis::complexity::ComplexityAnalyzer;
-use crate::analysis::symbolic::{SymbolicFuzzerIntegration, SymbolicConfig, VulnerabilityPattern};
+use crate::analysis::symbolic::{SymbolicConfig, SymbolicFuzzerIntegration, VulnerabilityPattern};
 use crate::analysis::taint::TaintAnalyzer;
 use crate::analysis::{
     collect_input_wire_indices, ConstraintSeedGenerator, ConstraintSeedOutput,
     EnhancedSymbolicConfig, PruningStrategy,
 };
+use crate::attacks::{Attack, AttackContext};
 use crate::config::*;
-use crate::corpus::{CorpusEntry, SharedCorpus, create_corpus, storage as corpus_storage};
-use crate::executor::{CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions, SharedCoverageTracker, create_coverage_tracker};
+use crate::corpus::{create_corpus, storage as corpus_storage, CorpusEntry, SharedCorpus};
+use crate::executor::{
+    create_coverage_tracker, CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions,
+    SharedCoverageTracker,
+};
 use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
 use crate::reporting::FuzzReport;
 
-use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use std::time::{Duration, Instant};
 
 /// Main fuzzing engine coordinating all security testing activities
@@ -253,7 +261,7 @@ impl FuzzingEngine {
                 solver_timeout_ms: 2000,
                 generate_boundary_tests: true,
                 solutions_per_path: 2,
-            }
+            },
         ));
 
         // Initialize taint analyzer based on circuit info
@@ -275,7 +283,7 @@ impl FuzzingEngine {
 
         // Initialize structure-aware mutator with inferred structures
         let mut structure_mutator = StructureAwareMutator::new(config.campaign.target.framework);
-        
+
         // Infer input structures from circuit source if available
         if let Some(path) = config.campaign.target.circuit_path.to_str() {
             if let Ok(source) = std::fs::read_to_string(path) {
@@ -289,7 +297,7 @@ impl FuzzingEngine {
 
         // Initialize complexity analyzer
         let complexity_analyzer = ComplexityAnalyzer::new();
-        
+
         // Analyze circuit complexity
         let complexity = complexity_analyzer.analyze(&executor);
         tracing::info!(
@@ -298,9 +306,13 @@ impl FuzzingEngine {
             complexity.constraint_density,
             complexity.degrees_of_freedom
         );
-        
+
         for suggestion in &complexity.optimization_suggestions {
-            tracing::info!("Optimization suggestion: {:?} - {}", suggestion.priority, suggestion.description);
+            tracing::info!(
+                "Optimization suggestion: {:?} - {}",
+                suggestion.priority,
+                suggestion.description
+            );
         }
 
         // Initialize bug oracles
@@ -400,23 +412,33 @@ impl FuzzingEngine {
         if let Some(max_paths) = Self::additional_usize(additional, "constraint_guided_max_paths") {
             config.max_paths = max_paths.max(1);
         }
-        if let Some(timeout) = Self::additional_u32(additional, "constraint_guided_solver_timeout_ms") {
+        if let Some(timeout) =
+            Self::additional_u32(additional, "constraint_guided_solver_timeout_ms")
+        {
             config.solver_timeout_ms = timeout;
         }
-        if let Some(solutions) = Self::additional_usize(additional, "constraint_guided_solutions_per_path") {
+        if let Some(solutions) =
+            Self::additional_usize(additional, "constraint_guided_solutions_per_path")
+        {
             config.solutions_per_path = solutions.max(1);
         }
-        if let Some(loop_bound) = Self::additional_usize(additional, "constraint_guided_loop_bound") {
+        if let Some(loop_bound) = Self::additional_usize(additional, "constraint_guided_loop_bound")
+        {
             config.loop_bound = loop_bound.max(1);
         }
-        if let Some(simplify) = Self::additional_bool(additional, "constraint_guided_simplify_constraints") {
+        if let Some(simplify) =
+            Self::additional_bool(additional, "constraint_guided_simplify_constraints")
+        {
             config.simplify_constraints = simplify;
         }
-        if let Some(incremental) = Self::additional_bool(additional, "constraint_guided_incremental_solving") {
+        if let Some(incremental) =
+            Self::additional_bool(additional, "constraint_guided_incremental_solving")
+        {
             config.incremental_solving = incremental;
         }
-        if let Some(strategy) = Self::additional_string(additional, "constraint_guided_pruning_strategy")
-            .or_else(|| Self::additional_string(additional, "constraint_guided_pruning"))
+        if let Some(strategy) =
+            Self::additional_string(additional, "constraint_guided_pruning_strategy")
+                .or_else(|| Self::additional_string(additional, "constraint_guided_pruning"))
         {
             config.pruning_strategy = Self::parse_pruning_strategy(&strategy);
         }
@@ -429,12 +451,18 @@ impl FuzzingEngine {
         match normalized.as_str() {
             "none" | "off" => PruningStrategy::None,
             "depth" | "depth_bounded" | "depthbounded" => PruningStrategy::DepthBounded,
-            "constraint" | "constraint_bounded" | "constraintbounded" => PruningStrategy::ConstraintBounded,
+            "constraint" | "constraint_bounded" | "constraintbounded" => {
+                PruningStrategy::ConstraintBounded
+            }
             "coverage" | "coverage_guided" | "coverageguided" => PruningStrategy::CoverageGuided,
             "random" | "random_sampling" | "randomsampling" => PruningStrategy::RandomSampling,
             "loop" | "loop_bounded" | "loopbounded" => PruningStrategy::LoopBounded,
-            "similarity" | "similarity_based" | "similaritybased" => PruningStrategy::SimilarityBased,
-            "subsumption" | "subsumption_based" | "subsumptionbased" => PruningStrategy::SubsumptionBased,
+            "similarity" | "similarity_based" | "similaritybased" => {
+                PruningStrategy::SimilarityBased
+            }
+            "subsumption" | "subsumption_based" | "subsumptionbased" => {
+                PruningStrategy::SubsumptionBased
+            }
             _ => {
                 tracing::warn!(
                     "Unknown pruning strategy '{}', defaulting to DepthBounded",
@@ -571,8 +599,9 @@ impl FuzzingEngine {
         self.start_time = Some(start_time);
 
         tracing::info!("Starting fuzzing campaign: {}", self.config.campaign.name);
-        tracing::info!("Circuit: {} ({:?})", 
-            self.executor.name(), 
+        tracing::info!(
+            "Circuit: {} ({:?})",
+            self.executor.name(),
             self.executor.framework()
         );
         tracing::info!("Workers: {}", self.workers);
@@ -589,7 +618,10 @@ impl FuzzingEngine {
         if let Some(ref analyzer) = self.taint_analyzer {
             let taint_findings = analyzer.to_findings();
             if !taint_findings.is_empty() {
-                tracing::info!("Taint analysis found {} potential issues", taint_findings.len());
+                tracing::info!(
+                    "Taint analysis found {} potential issues",
+                    taint_findings.len()
+                );
                 for finding in taint_findings {
                     if let Some(p) = progress {
                         p.log_finding(&format!("{:?}", finding.severity), &finding.description);
@@ -604,7 +636,10 @@ impl FuzzingEngine {
 
         // Seed corpus
         self.seed_corpus()?;
-        tracing::info!("Seeded corpus with {} initial test cases", self.corpus.len());
+        tracing::info!(
+            "Seeded corpus with {} initial test cases",
+            self.corpus.len()
+        );
 
         // Initialize simple progress tracker for non-interactive environments
         self.simple_tracker = Some(SimpleProgressTracker::new());
@@ -622,43 +657,58 @@ impl FuzzingEngine {
 
             match attack_config.attack_type {
                 AttackType::Underconstrained => {
-                    self.run_underconstrained_attack(&attack_config.config, progress).await?;
+                    self.run_underconstrained_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::Soundness => {
-                    self.run_soundness_attack(&attack_config.config, progress).await?;
+                    self.run_soundness_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::ArithmeticOverflow => {
-                    self.run_arithmetic_attack(&attack_config.config, progress).await?;
+                    self.run_arithmetic_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::Collision => {
-                    self.run_collision_attack(&attack_config.config, progress).await?;
+                    self.run_collision_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::Boundary => {
-                    self.run_boundary_attack(&attack_config.config, progress).await?;
+                    self.run_boundary_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::VerificationFuzzing => {
-                    self.run_verification_fuzzing_attack(&attack_config.config, progress).await?;
+                    self.run_verification_fuzzing_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::WitnessFuzzing => {
-                    self.run_witness_fuzzing_attack(&attack_config.config, progress).await?;
+                    self.run_witness_fuzzing_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::Differential => {
-                    self.run_differential_attack(&attack_config.config, progress).await?;
+                    self.run_differential_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::InformationLeakage => {
-                    self.run_information_leakage_attack(&attack_config.config, progress).await?;
+                    self.run_information_leakage_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::TimingSideChannel => {
-                    self.run_timing_sidechannel_attack(&attack_config.config, progress).await?;
+                    self.run_timing_sidechannel_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::CircuitComposition => {
-                    self.run_circuit_composition_attack(&attack_config.config, progress).await?;
+                    self.run_circuit_composition_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 AttackType::RecursiveProof => {
-                    self.run_recursive_proof_attack(&attack_config.config, progress).await?;
+                    self.run_recursive_proof_attack(&attack_config.config, progress)
+                        .await?;
                 }
                 _ => {
-                    tracing::warn!("Attack type {:?} not yet implemented", attack_config.attack_type);
+                    tracing::warn!(
+                        "Attack type {:?} not yet implemented",
+                        attack_config.attack_type
+                    );
                 }
             }
 
@@ -687,7 +737,11 @@ impl FuzzingEngine {
         // Export corpus to output directory
         let corpus_dir = self.config.reporting.output_dir.join("corpus");
         match self.export_corpus(&corpus_dir) {
-            Ok(count) => tracing::info!("Exported {} interesting test cases to {:?}", count, corpus_dir),
+            Ok(count) => tracing::info!(
+                "Exported {} interesting test cases to {:?}",
+                count,
+                corpus_dir
+            ),
             Err(e) => tracing::warn!("Failed to export corpus: {}", e),
         }
 
@@ -764,14 +818,20 @@ impl FuzzingEngine {
                 } else {
                     let constraints = inspector.get_constraints();
                     if constraints.is_empty() {
-                        tracing::debug!("Constraint-guided seeds skipped: no constraints available");
+                        tracing::debug!(
+                            "Constraint-guided seeds skipped: no constraints available"
+                        );
                         ConstraintSeedOutput::default()
                     } else {
                         tracing::info!(
                             "Generating constraint-guided seeds from {} R1CS constraints...",
                             constraints.len()
                         );
-                        generator.generate_from_r1cs(&constraints, &input_wire_indices, expected_len)
+                        generator.generate_from_r1cs(
+                            &constraints,
+                            &input_wire_indices,
+                            expected_len,
+                        )
                     }
                 };
 
@@ -804,9 +864,9 @@ impl FuzzingEngine {
         // Generate seeds from symbolic execution
         let symbolic_test_cases = if let Some(ref mut symbolic) = self.symbolic {
             tracing::info!("Generating symbolic execution seeds...");
-            
+
             let mut test_cases = Vec::new();
-            
+
             // Generate initial seeds using symbolic solver
             let symbolic_seeds = symbolic.generate_seeds(20);
             let expected_len = self.config.inputs.len();
@@ -832,9 +892,7 @@ impl FuzzingEngine {
                 let targeted_tests = symbolic.generate_vulnerability_tests(pattern);
                 for inputs in targeted_tests {
                     if inputs.len() >= expected_len {
-                        let truncated: Vec<_> = inputs.into_iter()
-                            .take(expected_len)
-                            .collect();
+                        let truncated: Vec<_> = inputs.into_iter().take(expected_len).collect();
                         test_cases.push(TestCase {
                             inputs: truncated,
                             expected_output: None,
@@ -850,12 +908,12 @@ impl FuzzingEngine {
                 stats.paths_explored,
                 stats.tests_generated
             );
-            
+
             test_cases
         } else {
             Vec::new()
         };
-        
+
         // Add symbolic test cases to corpus
         for test_case in symbolic_test_cases {
             self.add_to_corpus(test_case);
@@ -879,7 +937,8 @@ impl FuzzingEngine {
 
         // Record coverage
         if result.coverage.satisfied_constraints.is_empty() {
-            self.coverage.record_coverage_hash(result.coverage.coverage_hash);
+            self.coverage
+                .record_coverage_hash(result.coverage.coverage_hash);
         } else {
             self.coverage
                 .record_execution(&result.coverage.satisfied_constraints);
@@ -887,9 +946,7 @@ impl FuzzingEngine {
     }
 
     fn create_test_case_with_value(&self, value: FieldElement) -> TestCase {
-        let inputs: Vec<FieldElement> = self.config.inputs.iter()
-            .map(|_| value.clone())
-            .collect();
+        let inputs: Vec<FieldElement> = self.config.inputs.iter().map(|_| value.clone()).collect();
 
         TestCase {
             inputs,
@@ -899,7 +956,10 @@ impl FuzzingEngine {
     }
 
     fn generate_random_test_case(&mut self) -> TestCase {
-        let inputs: Vec<FieldElement> = self.config.inputs.iter()
+        let inputs: Vec<FieldElement> = self
+            .config
+            .inputs
+            .iter()
             .map(|_| FieldElement::random(&mut self.rng))
             .collect();
 
@@ -922,22 +982,27 @@ impl FuzzingEngine {
                 path_frequency: 1,
                 generation: entry.test_case.metadata.generation as u32,
                 depth: entry.test_case.metadata.generation as u32,
-                time_since_finding: self.start_time
+                time_since_finding: self
+                    .start_time
                     .map(|t| t.elapsed())
                     .unwrap_or(Duration::ZERO),
             };
-            
+
             let energy = self.power_scheduler.calculate_energy(&metrics);
-            
+
             // Decide mutation strategy based on energy and randomness
             let mutation_strategy = self.rng.gen_range(0..100);
-            
+
             let mutated_inputs = if mutation_strategy < 40 {
                 // 40%: Structure-aware mutation
-                self.structure_mutator.mutate(&entry.test_case.inputs, &mut self.rng)
+                self.structure_mutator
+                    .mutate(&entry.test_case.inputs, &mut self.rng)
             } else if mutation_strategy < 70 {
                 // 30%: Standard byte-level mutation
-                entry.test_case.inputs.iter()
+                entry
+                    .test_case
+                    .inputs
+                    .iter()
                     .map(|input| {
                         if self.rng.gen::<f64>() < 0.3 {
                             mutate_field_element(input, &mut self.rng)
@@ -950,9 +1015,17 @@ impl FuzzingEngine {
                 // 15%: Splice with another corpus entry
                 if let Some(other) = self.corpus.get_random(&mut self.rng) {
                     if self.rng.gen::<f64>() < 0.5 {
-                        Splicer::splice(&entry.test_case.inputs, &other.test_case.inputs, &mut self.rng)
+                        Splicer::splice(
+                            &entry.test_case.inputs,
+                            &other.test_case.inputs,
+                            &mut self.rng,
+                        )
                     } else {
-                        Splicer::insert(&entry.test_case.inputs, &other.test_case.inputs, &mut self.rng)
+                        Splicer::insert(
+                            &entry.test_case.inputs,
+                            &other.test_case.inputs,
+                            &mut self.rng,
+                        )
                     }
                 } else {
                     entry.test_case.inputs.clone()
@@ -984,7 +1057,7 @@ impl FuzzingEngine {
     }
 
     /// Execute test case and update coverage
-    /// 
+    ///
     /// Note: There's a potential race condition between checking is_new and
     /// adding to corpus. However, the corpus.add() method has its own
     /// duplicate detection which prevents actual duplicates. The worst case
@@ -994,7 +1067,7 @@ impl FuzzingEngine {
         let exec_start = Instant::now();
         let result = self.executor.execute_sync(&test_case.inputs);
         let exec_time = exec_start.elapsed();
-        
+
         self.execution_count.fetch_add(1, Ordering::Relaxed);
 
         // Update average execution time (using exponential moving average with alpha=0.1)
@@ -1019,7 +1092,8 @@ impl FuzzingEngine {
 
         // Track coverage - record_execution is already thread-safe
         let is_new = if result.coverage.satisfied_constraints.is_empty() {
-            self.coverage.record_coverage_hash(result.coverage.coverage_hash)
+            self.coverage
+                .record_coverage_hash(result.coverage.coverage_hash)
         } else {
             self.coverage
                 .record_execution(&result.coverage.satisfied_constraints)
@@ -1055,12 +1129,12 @@ impl FuzzingEngine {
     /// Execute test case, update coverage, and learn patterns (mutable version)
     fn execute_and_learn(&mut self, test_case: &TestCase) -> crate::executor::ExecutionResult {
         let result = self.execute_and_track(test_case);
-        
+
         // Learn mutation patterns from successful executions
         if result.success {
             self.learn_mutation_patterns(test_case, &result);
         }
-        
+
         result
     }
 
@@ -1075,7 +1149,10 @@ impl FuzzingEngine {
             .and_then(|v| v.as_u64())
             .unwrap_or(1000) as usize;
 
-        tracing::info!("Testing {} witness pairs for underconstrained circuits", witness_pairs);
+        tracing::info!(
+            "Testing {} witness pairs for underconstrained circuits",
+            witness_pairs
+        );
         {
             use crate::attacks::UnderconstrainedDetector;
             let tolerance = config.get("tolerance").and_then(|v| v.as_f64());
@@ -1120,7 +1197,7 @@ impl FuzzingEngine {
         };
 
         // Group by output hash to find collisions
-        let mut output_map: std::collections::HashMap<Vec<u8>, Vec<TestCase>> = 
+        let mut output_map: std::collections::HashMap<Vec<u8>, Vec<TestCase>> =
             std::collections::HashMap::new();
 
         for (test_case, result) in results {
@@ -1198,12 +1275,8 @@ impl FuzzingEngine {
             let valid_case = self.generate_test_case();
             let valid_proof = self.executor.prove(&valid_case.inputs)?;
 
-            let valid_public: Vec<FieldElement> = valid_case
-                .inputs
-                .iter()
-                .take(num_public)
-                .cloned()
-                .collect();
+            let valid_public: Vec<FieldElement> =
+                valid_case.inputs.iter().take(num_public).cloned().collect();
 
             // Mutate public inputs only
             let mutated_public: Vec<FieldElement> = valid_public
@@ -1227,7 +1300,8 @@ impl FuzzingEngine {
                 let finding = Finding {
                     attack_type: AttackType::Soundness,
                     severity: Severity::Critical,
-                    description: "Proof verified with mutated inputs - soundness violation!".to_string(),
+                    description: "Proof verified with mutated inputs - soundness violation!"
+                        .to_string(),
                     poc: super::ProofOfConcept {
                         witness_a: valid_case.inputs,
                         witness_b: None,
@@ -1265,12 +1339,14 @@ impl FuzzingEngine {
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect::<Vec<_>>()
             })
-            .unwrap_or_else(|| vec![
-                "0".to_string(),
-                "1".to_string(),
-                "p-1".to_string(),
-                "p".to_string(),
-            ]);
+            .unwrap_or_else(|| {
+                vec![
+                    "0".to_string(),
+                    "1".to_string(),
+                    "p-1".to_string(),
+                    "p".to_string(),
+                ]
+            });
 
         tracing::info!("Testing {} arithmetic edge cases", test_values.len());
         {
@@ -1282,13 +1358,14 @@ impl FuzzingEngine {
         let field_modulus = self.get_field_modulus();
 
         for value in test_values {
-            let expanded = match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    tracing::warn!("Skipping invalid arithmetic test value '{}': {}", value, e);
-                    continue;
-                }
-            };
+            let expanded =
+                match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        tracing::warn!("Skipping invalid arithmetic test value '{}': {}", value, e);
+                        continue;
+                    }
+                };
             let mut fe_bytes = [0u8; 32];
             let start = 32_usize.saturating_sub(expanded.len());
             fe_bytes[start..].copy_from_slice(&expanded[..expanded.len().min(32)]);
@@ -1344,9 +1421,7 @@ impl FuzzingEngine {
         }
 
         // Generate and execute in parallel
-        let test_cases: Vec<TestCase> = (0..samples)
-            .map(|_| self.generate_test_case())
-            .collect();
+        let test_cases: Vec<TestCase> = (0..samples).map(|_| self.generate_test_case()).collect();
 
         let executor = self.executor.clone();
         let results: Vec<_> = if self.workers <= 1 {
@@ -1374,7 +1449,7 @@ impl FuzzingEngine {
             })
         };
 
-        let mut hash_map: std::collections::HashMap<Vec<u8>, TestCase> = 
+        let mut hash_map: std::collections::HashMap<Vec<u8>, TestCase> =
             std::collections::HashMap::new();
 
         for (test_case, result) in results {
@@ -1386,7 +1461,8 @@ impl FuzzingEngine {
                         let finding = Finding {
                             attack_type: AttackType::Collision,
                             severity: Severity::Critical,
-                            description: "Found collision: different inputs produce same output".to_string(),
+                            description: "Found collision: different inputs produce same output"
+                                .to_string(),
                             poc: super::ProofOfConcept {
                                 witness_a: existing.inputs.clone(),
                                 witness_b: Some(test_case.inputs),
@@ -1428,11 +1504,7 @@ impl FuzzingEngine {
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect::<Vec<_>>()
             })
-            .unwrap_or_else(|| vec![
-                "0".to_string(),
-                "1".to_string(),
-                "p-1".to_string(),
-            ]);
+            .unwrap_or_else(|| vec!["0".to_string(), "1".to_string(), "p-1".to_string()]);
 
         tracing::info!("Testing {} boundary values", test_values.len());
         {
@@ -1444,13 +1516,14 @@ impl FuzzingEngine {
         let field_modulus = self.get_field_modulus();
 
         for value in test_values {
-            let expanded = match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    tracing::warn!("Skipping invalid boundary test value '{}': {}", value, e);
-                    continue;
-                }
-            };
+            let expanded =
+                match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        tracing::warn!("Skipping invalid boundary test value '{}': {}", value, e);
+                        continue;
+                    }
+                };
             let mut fe_bytes = [0u8; 32];
             let start = 32_usize.saturating_sub(expanded.len());
             fe_bytes[start..].copy_from_slice(&expanded[..expanded.len().min(32)]);
@@ -1473,7 +1546,7 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::attacks::verification::VerificationFuzzer;
-        
+
         let malleability_tests = config
             .get("malleability_tests")
             .and_then(|v| v.as_u64())
@@ -1493,7 +1566,9 @@ impl FuzzingEngine {
 
         tracing::info!(
             "Running verification fuzzing: malleability={}, malformed={}, edge_cases={}",
-            malleability_tests, malformed_tests, edge_case_tests
+            malleability_tests,
+            malformed_tests,
+            edge_case_tests
         );
 
         let fuzzer = VerificationFuzzer::new()
@@ -1504,7 +1579,7 @@ impl FuzzingEngine {
 
         let mut rng = rand::thread_rng();
         let findings = fuzzer.fuzz(&self.executor, &mut rng);
-        
+
         for finding in findings {
             self.findings.write().unwrap().push(finding.clone());
             if let Some(p) = progress {
@@ -1521,7 +1596,7 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::attacks::witness::WitnessFuzzer;
-        
+
         let determinism_tests = config
             .get("determinism_tests")
             .and_then(|v| v.as_u64())
@@ -1545,7 +1620,9 @@ impl FuzzingEngine {
 
         tracing::info!(
             "Running witness fuzzing: determinism={}, timing={}, stress={}",
-            determinism_tests, timing_tests, stress_tests
+            determinism_tests,
+            timing_tests,
+            stress_tests
         );
 
         let fuzzer = WitnessFuzzer::new()
@@ -1557,7 +1634,7 @@ impl FuzzingEngine {
 
         let mut rng = rand::thread_rng();
         let findings = fuzzer.fuzz(&self.executor, &mut rng);
-        
+
         for finding in findings {
             self.findings.write().unwrap().push(finding.clone());
             if let Some(p) = progress {
@@ -1573,10 +1650,10 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::differential::{DifferentialFuzzer, DifferentialConfig};
         use crate::differential::report::DifferentialReport;
+        use crate::differential::{DifferentialConfig, DifferentialFuzzer};
         use std::collections::{HashMap, HashSet};
-        
+
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
@@ -1595,14 +1672,15 @@ impl FuzzingEngine {
             }
         };
 
-        let backends: Vec<Framework> = if let Some(seq) = config.get("backends").and_then(|v| v.as_sequence()) {
-            seq.iter()
-                .filter_map(|v| v.as_str())
-                .filter_map(parse_framework)
-                .collect()
-        } else {
-            vec![self.config.campaign.target.framework]
-        };
+        let backends: Vec<Framework> =
+            if let Some(seq) = config.get("backends").and_then(|v| v.as_sequence()) {
+                seq.iter()
+                    .filter_map(|v| v.as_str())
+                    .filter_map(parse_framework)
+                    .collect()
+            } else {
+                vec![self.config.campaign.target.framework]
+            };
 
         // Optional per-backend circuit paths
         let mut backend_paths: HashMap<Framework, String> = HashMap::new();
@@ -1643,7 +1721,14 @@ impl FuzzingEngine {
             let circuit_path = backend_paths
                 .get(backend)
                 .map(|s| s.as_str())
-                .unwrap_or_else(|| self.config.campaign.target.circuit_path.to_str().unwrap_or(""));
+                .unwrap_or_else(|| {
+                    self.config
+                        .campaign
+                        .target
+                        .circuit_path
+                        .to_str()
+                        .unwrap_or("")
+                });
 
             match ExecutorFactory::create_with_options(
                 *backend,
@@ -1656,7 +1741,11 @@ impl FuzzingEngine {
                     active_backends.push(*backend);
                 }
                 Err(e) => {
-                    tracing::warn!("Skipping backend {:?} for differential fuzzing: {}", backend, e);
+                    tracing::warn!(
+                        "Skipping backend {:?} for differential fuzzing: {}",
+                        backend,
+                        e
+                    );
                 }
             }
         }
@@ -1671,7 +1760,7 @@ impl FuzzingEngine {
             .collect();
 
         let results = diff_fuzzer.run(&test_cases);
-        
+
         // Create differential report
         let report = DifferentialReport::new(
             &self.config.campaign.name,
@@ -1679,13 +1768,16 @@ impl FuzzingEngine {
             results.clone(),
             diff_fuzzer.stats().clone(),
         );
-        
+
         if report.has_critical_issues() {
-            tracing::warn!("Differential fuzzing found {} critical issues", report.critical_findings().len());
+            tracing::warn!(
+                "Differential fuzzing found {} critical issues",
+                report.critical_findings().len()
+            );
         }
-        
+
         tracing::info!("{}", report.summary());
-        
+
         for result in results {
             let finding = Finding {
                 attack_type: AttackType::Differential,
@@ -1720,15 +1812,18 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::multi_circuit::{MultiCircuitFuzzer, CircuitChain};
         use crate::multi_circuit::composition::{CompositionTester, CompositionType};
-        
+        use crate::multi_circuit::{CircuitChain, MultiCircuitFuzzer};
+
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .unwrap_or(200) as usize;
 
-        tracing::info!("Running circuit composition fuzzing with {} tests", num_tests);
+        tracing::info!(
+            "Running circuit composition fuzzing with {} tests",
+            num_tests
+        );
 
         // Create composition tester for sequential composition
         let mut composition_tester = CompositionTester::new(CompositionType::Sequential);
@@ -1743,30 +1838,34 @@ impl FuzzingEngine {
             let inputs: Vec<FieldElement> = (0..self.executor.num_private_inputs())
                 .map(|_| FieldElement::random(&mut self.rng))
                 .collect();
-            
+
             let chain_result = chain.execute(&inputs);
             if !chain_result.success {
-                tracing::debug!("Chain execution failed at step: {:?}", 
-                    chain_result.steps.last().map(|s| &s.circuit_name));
+                tracing::debug!(
+                    "Chain execution failed at step: {:?}",
+                    chain_result.steps.last().map(|s| &s.circuit_name)
+                );
             }
         }
 
         // Test composition with vulnerability detection
         let vulnerabilities = composition_tester.check_vulnerabilities();
         for vuln in &vulnerabilities {
-            tracing::warn!("Composition vulnerability: {:?} - {}", 
-                vuln.vuln_type, vuln.description);
+            tracing::warn!(
+                "Composition vulnerability: {:?} - {}",
+                vuln.vuln_type,
+                vuln.description
+            );
         }
 
-        let mut multi_fuzzer = MultiCircuitFuzzer::new(
-            crate::multi_circuit::MultiCircuitConfig::default()
-        );
-        
+        let mut multi_fuzzer =
+            MultiCircuitFuzzer::new(crate::multi_circuit::MultiCircuitConfig::default());
+
         multi_fuzzer.add_circuit("main", self.executor.clone());
 
         let mut rng = rand::thread_rng();
         let findings = multi_fuzzer.run(&mut rng);
-        
+
         for finding in findings {
             self.findings.write().unwrap().push(finding.clone());
             if let Some(p) = progress {
@@ -1795,7 +1894,10 @@ impl FuzzingEngine {
             .and_then(|v| v.as_u64())
             .unwrap_or(300) as usize;
 
-        tracing::info!("Running information leakage detection with {} tests", num_tests);
+        tracing::info!(
+            "Running information leakage detection with {} tests",
+            num_tests
+        );
 
         let public_indices;
         let private_indices;
@@ -1804,7 +1906,9 @@ impl FuzzingEngine {
         let inspector = match self.executor.constraint_inspector() {
             Some(inspector) => inspector,
             None => {
-                tracing::warn!("Information leakage attack skipped: constraint inspector unavailable");
+                tracing::warn!(
+                    "Information leakage attack skipped: constraint inspector unavailable"
+                );
                 if let Some(p) = progress {
                     for _ in 0..num_tests {
                         p.inc();
@@ -1875,19 +1979,22 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::analysis::profiling::Profiler;
-        
+
         let num_samples = config
             .get("num_samples")
             .and_then(|v| v.as_u64())
             .unwrap_or(1000) as usize;
 
-        tracing::info!("Running timing side-channel detection with {} samples", num_samples);
+        tracing::info!(
+            "Running timing side-channel detection with {} samples",
+            num_samples
+        );
 
         let profiler = Profiler::new().with_samples(num_samples);
         let mut rng = rand::thread_rng();
-        
+
         let profile = profiler.profile(&self.executor, &mut rng);
-        
+
         if profile.execution_stats.has_timing_variation() {
             let finding = Finding {
                 attack_type: AttackType::TimingSideChannel,
@@ -1925,32 +2032,39 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::multi_circuit::recursive::{RecursiveTester, RecursionResult};
-        
+        use crate::multi_circuit::recursive::{RecursionResult, RecursiveTester};
+
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .unwrap_or(100) as usize;
-        
+
         let max_depth = config
             .get("max_depth")
             .and_then(|v| v.as_u64())
             .unwrap_or(3) as usize;
 
-        tracing::info!("Running recursive proof fuzzing with {} tests, max depth {}", num_tests, max_depth);
+        tracing::info!(
+            "Running recursive proof fuzzing with {} tests, max depth {}",
+            num_tests,
+            max_depth
+        );
 
         let tester = RecursiveTester::new(max_depth).with_verifier(self.executor.clone());
 
         for _ in 0..num_tests {
             let test_case = self.generate_random_test_case();
             let result = tester.test_recursion(&test_case.inputs, max_depth);
-            
+
             match result {
                 RecursionResult::VerificationFailed { depth, error } => {
                     let finding = Finding {
                         attack_type: AttackType::RecursiveProof,
                         severity: Severity::High,
-                        description: format!("Recursive verification failed at depth {}: {}", depth, error),
+                        description: format!(
+                            "Recursive verification failed at depth {}: {}",
+                            depth, error
+                        ),
                         poc: super::ProofOfConcept {
                             witness_a: test_case.inputs.clone(),
                             witness_b: None,
@@ -1959,7 +2073,7 @@ impl FuzzingEngine {
                         },
                         location: None,
                     };
-                    
+
                     self.findings.write().unwrap().push(finding.clone());
                     if let Some(p) = progress {
                         p.log_finding("HIGH", &finding.description);
@@ -2017,7 +2131,7 @@ impl FuzzingEngine {
     }
 
     fn hash_output(&self, output: &[FieldElement]) -> Vec<u8> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         for fe in output {
             hasher.update(fe.0);
@@ -2095,7 +2209,11 @@ impl FuzzingEngine {
         let mut findings = Vec::new();
         for oracle in &self.oracles {
             if let Some(finding) = oracle.check(test_case, outputs) {
-                tracing::warn!("Oracle '{}' detected issue: {}", oracle.name(), finding.description);
+                tracing::warn!(
+                    "Oracle '{}' detected issue: {}",
+                    oracle.name(),
+                    finding.description
+                );
                 findings.push(finding);
             }
         }
@@ -2104,7 +2222,9 @@ impl FuzzingEngine {
 
     /// Update power scheduler with global statistics
     fn update_power_scheduler_globals(&mut self) {
-        let avg_time = self.avg_exec_time.read()
+        let avg_time = self
+            .avg_exec_time
+            .read()
             .map(|t| *t)
             .unwrap_or(Duration::from_micros(100));
         let total_edges = self.coverage.unique_constraints_hit() as u64;
@@ -2123,20 +2243,25 @@ impl FuzzingEngine {
     }
 
     /// Learn patterns from successful executions for structure-aware mutations
-    fn learn_mutation_patterns(&mut self, test_case: &TestCase, result: &crate::executor::ExecutionResult) {
+    fn learn_mutation_patterns(
+        &mut self,
+        test_case: &TestCase,
+        result: &crate::executor::ExecutionResult,
+    ) {
         if result.success && !result.outputs.is_empty() {
             // Learn patterns from inputs that produce interesting outputs
             for (i, input) in test_case.inputs.iter().enumerate() {
                 let pattern_name = format!("input_{}", i);
-                self.structure_mutator.learn_pattern(&pattern_name, vec![input.clone()]);
+                self.structure_mutator
+                    .learn_pattern(&pattern_name, vec![input.clone()]);
             }
         }
     }
 
     /// Run source code analysis to find vulnerability hints
     fn run_source_analysis(&self, progress: Option<&ProgressReporter>) {
-        use crate::targets::{circom_analysis, noir_analysis, halo2_analysis, cairo_analysis};
-        
+        use crate::targets::{cairo_analysis, circom_analysis, halo2_analysis, noir_analysis};
+
         // Try to read the circuit source file
         let source = match std::fs::read_to_string(&self.config.campaign.target.circuit_path) {
             Ok(s) => s,
@@ -2144,30 +2269,36 @@ impl FuzzingEngine {
         };
 
         let hints: Vec<String> = match self.config.campaign.target.framework {
-            Framework::Circom => {
-                circom_analysis::analyze_for_vulnerabilities(&source)
-                    .into_iter()
-                    .map(|h| format!("{:?}: {} at line {}", h.hint_type, h.description, h.line.unwrap_or(0)))
-                    .collect()
-            }
-            Framework::Noir => {
-                noir_analysis::analyze_for_vulnerabilities(&source)
-                    .into_iter()
-                    .map(|h| format!("{:?}: {} at line {}", h.hint_type, h.description, h.line.unwrap_or(0)))
-                    .collect()
-            }
-            Framework::Halo2 => {
-                halo2_analysis::analyze_circuit(&source)
-                    .into_iter()
-                    .map(|h| format!("[{}] {}: {}", h.severity, h.gate_type, h.description))
-                    .collect()
-            }
-            Framework::Cairo => {
-                cairo_analysis::analyze_for_vulnerabilities(&source)
-                    .into_iter()
-                    .map(|h| format!("{:?}: {}", h.issue_type, h.description))
-                    .collect()
-            }
+            Framework::Circom => circom_analysis::analyze_for_vulnerabilities(&source)
+                .into_iter()
+                .map(|h| {
+                    format!(
+                        "{:?}: {} at line {}",
+                        h.hint_type,
+                        h.description,
+                        h.line.unwrap_or(0)
+                    )
+                })
+                .collect(),
+            Framework::Noir => noir_analysis::analyze_for_vulnerabilities(&source)
+                .into_iter()
+                .map(|h| {
+                    format!(
+                        "{:?}: {} at line {}",
+                        h.hint_type,
+                        h.description,
+                        h.line.unwrap_or(0)
+                    )
+                })
+                .collect(),
+            Framework::Halo2 => halo2_analysis::analyze_circuit(&source)
+                .into_iter()
+                .map(|h| format!("[{}] {}: {}", h.severity, h.gate_type, h.description))
+                .collect(),
+            Framework::Cairo => cairo_analysis::analyze_for_vulnerabilities(&source)
+                .into_iter()
+                .map(|h| format!("{:?}: {}", h.issue_type, h.description))
+                .collect(),
             _ => Vec::new(),
         };
 

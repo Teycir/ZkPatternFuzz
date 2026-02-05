@@ -7,8 +7,8 @@
 //! - Constraint density
 //! - Theoretical vs actual complexity
 
-use crate::executor::CircuitExecutor;
 use crate::attacks::CircuitInfo;
+use crate::executor::CircuitExecutor;
 use std::sync::Arc;
 
 /// Complexity metrics for a circuit
@@ -79,7 +79,7 @@ pub struct ComplexityAnalyzer {
 impl Default for ComplexityAnalyzer {
     fn default() -> Self {
         let mut known_optimums = std::collections::HashMap::new();
-        
+
         // Known optimal constraint counts for common operations in BN254
         known_optimums.insert("sha256_per_block".to_string(), 25000);
         known_optimums.insert("poseidon_per_hash".to_string(), 300);
@@ -215,7 +215,9 @@ impl ComplexityAnalyzer {
 
     /// Estimate circuit complexity for common operations
     pub fn estimate_complexity(&self, operation: &str, count: usize) -> Option<usize> {
-        self.known_optimums.get(operation).map(|&per_op| per_op * count)
+        self.known_optimums
+            .get(operation)
+            .map(|&per_op| per_op * count)
     }
 }
 
@@ -261,7 +263,9 @@ impl ConstraintBreakdown {
 
     /// Compute hotspots (top N most expensive)
     pub fn compute_hotspots(&mut self, n: usize) {
-        let mut all: Vec<_> = self.by_operation.iter()
+        let mut all: Vec<_> = self
+            .by_operation
+            .iter()
             .map(|(k, v)| (k.clone(), *v))
             .collect();
         all.sort_by_key(|(_, v)| std::cmp::Reverse(*v));
@@ -297,7 +301,7 @@ mod tests {
 
         let comparison = analyzer.compare_to_optimal("poseidon_per_hash", 350);
         assert!(comparison.is_some());
-        
+
         let comp = comparison.unwrap();
         assert!(comp.overhead_percent > 0.0);
     }

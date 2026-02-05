@@ -73,10 +73,10 @@ pub struct SarifReport {
     /// SARIF schema reference
     #[serde(rename = "$schema")]
     pub schema: String,
-    
+
     /// SARIF version
     pub version: String,
-    
+
     /// Analysis runs (typically one per tool execution)
     pub runs: Vec<SarifRun>,
 }
@@ -87,22 +87,22 @@ pub struct SarifReport {
 pub struct SarifRun {
     /// Tool information
     pub tool: SarifTool,
-    
+
     /// Analysis results (findings)
     pub results: Vec<SarifResult>,
-    
+
     /// Analyzed artifacts (files)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub artifacts: Vec<SarifArtifact>,
-    
+
     /// Invocation details
     #[serde(skip_serializing_if = "Option::is_none")]
     pub invocations: Option<Vec<SarifInvocation>>,
-    
+
     /// Taxonomy references (CWE, etc.)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub taxonomies: Vec<SarifTaxonomy>,
-    
+
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<SarifPropertyBag>,
@@ -114,7 +114,7 @@ pub struct SarifRun {
 pub struct SarifTool {
     /// Driver (the main tool)
     pub driver: SarifToolComponent,
-    
+
     /// Extensions (plugins, additional rules)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub extensions: Vec<SarifToolComponent>,
@@ -126,31 +126,31 @@ pub struct SarifTool {
 pub struct SarifToolComponent {
     /// Tool name
     pub name: String,
-    
+
     /// Tool version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    
+
     /// Semantic version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub semantic_version: Option<String>,
-    
+
     /// Information URI
     #[serde(skip_serializing_if = "Option::is_none")]
     pub information_uri: Option<String>,
-    
+
     /// Rules defined by this tool
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<SarifRule>,
-    
+
     /// Supported taxonomies
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub supported_taxonomies: Vec<SarifToolComponentReference>,
-    
+
     /// Short description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub short_description: Option<SarifMessage>,
-    
+
     /// Full description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub full_description: Option<SarifMessage>,
@@ -171,35 +171,35 @@ pub struct SarifToolComponentReference {
 pub struct SarifRule {
     /// Rule identifier
     pub id: String,
-    
+
     /// Rule name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    
+
     /// Short description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub short_description: Option<SarifMessage>,
-    
+
     /// Full description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub full_description: Option<SarifMessage>,
-    
+
     /// Help text with remediation guidance
     #[serde(skip_serializing_if = "Option::is_none")]
     pub help: Option<SarifMessage>,
-    
+
     /// Help URI
     #[serde(skip_serializing_if = "Option::is_none")]
     pub help_uri: Option<String>,
-    
+
     /// Default configuration
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_configuration: Option<SarifRuleConfiguration>,
-    
+
     /// Relationships to taxonomies (CWE, etc.)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub relationships: Vec<SarifRuleRelationship>,
-    
+
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<SarifPropertyBag>,
@@ -212,11 +212,11 @@ pub struct SarifRuleConfiguration {
     /// Default severity level
     #[serde(skip_serializing_if = "Option::is_none")]
     pub level: Option<SarifLevel>,
-    
+
     /// Enabled by default
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
-    
+
     /// Rank (0-100, higher = more important)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rank: Option<f64>,
@@ -228,7 +228,7 @@ pub struct SarifRuleConfiguration {
 pub struct SarifRuleRelationship {
     /// Target taxonomy reference
     pub target: SarifReportingDescriptorReference,
-    
+
     /// Relationship kinds
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub kinds: Vec<String>,
@@ -239,10 +239,10 @@ pub struct SarifRuleRelationship {
 #[serde(rename_all = "camelCase")]
 pub struct SarifReportingDescriptorReference {
     pub id: String,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<i32>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_component: Option<SarifToolComponentReference>,
 }
@@ -274,11 +274,11 @@ pub struct SarifMessage {
     /// Plain text message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
-    
+
     /// Markdown message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
-    
+
     /// Message ID for localization
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -310,46 +310,46 @@ impl SarifMessage {
 pub struct SarifResult {
     /// Rule ID that produced this result
     pub rule_id: String,
-    
+
     /// Rule index in the rules array
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rule_index: Option<i32>,
-    
+
     /// Result level (error, warning, note)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub level: Option<SarifLevel>,
-    
+
     /// Result kind (pass, fail, open, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
-    
+
     /// Result message
     pub message: SarifMessage,
-    
+
     /// Locations where the issue was found
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub locations: Vec<SarifLocation>,
-    
+
     /// Related locations (context)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub related_locations: Vec<SarifLocation>,
-    
+
     /// Code flows (for complex vulnerabilities)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub code_flows: Vec<SarifCodeFlow>,
-    
+
     /// Fingerprints for deduplication
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fingerprints: Option<HashMap<String, String>>,
-    
+
     /// Partial fingerprints
     #[serde(skip_serializing_if = "Option::is_none")]
     pub partial_fingerprints: Option<HashMap<String, String>>,
-    
+
     /// Fix suggestions
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub fixes: Vec<SarifFix>,
-    
+
     /// Custom properties
     #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<SarifPropertyBag>,
@@ -362,11 +362,11 @@ pub struct SarifLocation {
     /// Physical location (file, line, column)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub physical_location: Option<SarifPhysicalLocation>,
-    
+
     /// Logical location (function, class, namespace)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub logical_locations: Vec<SarifLogicalLocation>,
-    
+
     /// Message describing this location
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<SarifMessage>,
@@ -379,11 +379,11 @@ pub struct SarifPhysicalLocation {
     /// Artifact (file) location
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artifact_location: Option<SarifArtifactLocation>,
-    
+
     /// Region within the artifact
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<SarifRegion>,
-    
+
     /// Context region (surrounding code)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_region: Option<SarifRegion>,
@@ -396,11 +396,11 @@ pub struct SarifArtifactLocation {
     /// URI of the artifact
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
-    
+
     /// URI base ID (for relative URIs)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uri_base_id: Option<String>,
-    
+
     /// Index in artifacts array
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<i32>,
@@ -413,27 +413,27 @@ pub struct SarifRegion {
     /// Starting line (1-based)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_line: Option<i32>,
-    
+
     /// Starting column (1-based)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_column: Option<i32>,
-    
+
     /// Ending line
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_line: Option<i32>,
-    
+
     /// Ending column
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_column: Option<i32>,
-    
+
     /// Character offset
     #[serde(skip_serializing_if = "Option::is_none")]
     pub char_offset: Option<i32>,
-    
+
     /// Character length
     #[serde(skip_serializing_if = "Option::is_none")]
     pub char_length: Option<i32>,
-    
+
     /// Snippet of code
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snippet: Option<SarifArtifactContent>,
@@ -446,7 +446,7 @@ pub struct SarifArtifactContent {
     /// Text content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
-    
+
     /// Rendered content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rendered: Option<SarifRenderedContent>,
@@ -458,7 +458,7 @@ pub struct SarifArtifactContent {
 pub struct SarifRenderedContent {
     /// Text
     pub text: String,
-    
+
     /// Markdown
     #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
@@ -471,15 +471,15 @@ pub struct SarifLogicalLocation {
     /// Logical name (function, class, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    
+
     /// Fully qualified name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fully_qualified_name: Option<String>,
-    
+
     /// Decorated name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decorated_name: Option<String>,
-    
+
     /// Kind (function, class, component, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
@@ -492,7 +492,7 @@ pub struct SarifCodeFlow {
     /// Message describing the flow
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<SarifMessage>,
-    
+
     /// Thread flows
     pub thread_flows: Vec<SarifThreadFlow>,
 }
@@ -504,11 +504,11 @@ pub struct SarifThreadFlow {
     /// Thread ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    
+
     /// Message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<SarifMessage>,
-    
+
     /// Flow locations
     pub locations: Vec<SarifThreadFlowLocation>,
 }
@@ -519,15 +519,15 @@ pub struct SarifThreadFlow {
 pub struct SarifThreadFlowLocation {
     /// Location
     pub location: SarifLocation,
-    
+
     /// Nesting level
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nesting_level: Option<i32>,
-    
+
     /// Step number
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_order: Option<i32>,
-    
+
     /// State at this point
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<HashMap<String, SarifMessage>>,
@@ -539,7 +539,7 @@ pub struct SarifThreadFlowLocation {
 pub struct SarifFix {
     /// Description of the fix
     pub description: SarifMessage,
-    
+
     /// Artifact changes
     pub artifact_changes: Vec<SarifArtifactChange>,
 }
@@ -550,7 +550,7 @@ pub struct SarifFix {
 pub struct SarifArtifactChange {
     /// Artifact location
     pub artifact_location: SarifArtifactLocation,
-    
+
     /// Replacements
     pub replacements: Vec<SarifReplacement>,
 }
@@ -561,7 +561,7 @@ pub struct SarifArtifactChange {
 pub struct SarifReplacement {
     /// Region to delete
     pub deleted_region: SarifRegion,
-    
+
     /// Inserted content
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inserted_content: Option<SarifArtifactContent>,
@@ -573,19 +573,19 @@ pub struct SarifReplacement {
 pub struct SarifArtifact {
     /// Artifact location
     pub location: SarifArtifactLocation,
-    
+
     /// MIME type
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
-    
+
     /// Length in bytes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub length: Option<i64>,
-    
+
     /// Roles (analyzed, modified, etc.)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub roles: Vec<String>,
-    
+
     /// Hashes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hashes: Option<HashMap<String, String>>,
@@ -598,26 +598,26 @@ pub struct SarifInvocation {
     /// Command line
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command_line: Option<String>,
-    
+
     /// Arguments
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub arguments: Vec<String>,
-    
+
     /// Working directory
     #[serde(skip_serializing_if = "Option::is_none")]
     pub working_directory: Option<SarifArtifactLocation>,
-    
+
     /// Start time (ISO 8601)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time_utc: Option<String>,
-    
+
     /// End time
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_time_utc: Option<String>,
-    
+
     /// Execution successful
     pub execution_successful: bool,
-    
+
     /// Exit code
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit_code: Option<i32>,
@@ -629,23 +629,23 @@ pub struct SarifInvocation {
 pub struct SarifTaxonomy {
     /// Taxonomy name
     pub name: String,
-    
+
     /// Version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    
+
     /// Short description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub short_description: Option<SarifMessage>,
-    
+
     /// Taxa (individual items)
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub taxa: Vec<SarifTaxon>,
-    
+
     /// GUID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guid: Option<String>,
-    
+
     /// Information URI
     #[serde(skip_serializing_if = "Option::is_none")]
     pub information_uri: Option<String>,
@@ -657,11 +657,11 @@ pub struct SarifTaxonomy {
 pub struct SarifTaxon {
     /// Taxon ID
     pub id: String,
-    
+
     /// Name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    
+
     /// Short description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub short_description: Option<SarifMessage>,
@@ -756,18 +756,24 @@ impl SarifBuilder {
     /// Build the SARIF report
     pub fn build(self) -> SarifReport {
         let rules = generate_rules();
-        let rule_map: HashMap<String, usize> = rules.iter()
+        let rule_map: HashMap<String, usize> = rules
+            .iter()
             .enumerate()
             .map(|(i, r)| (r.id.clone(), i))
             .collect();
 
-        let results: Vec<SarifResult> = self.findings.iter()
+        let results: Vec<SarifResult> = self
+            .findings
+            .iter()
             .map(|f| finding_to_result(f, &rule_map, self.circuit_path.as_deref()))
             .collect();
 
         let mut artifacts = self.artifacts;
         if let Some(ref path) = self.circuit_path {
-            if !artifacts.iter().any(|a| a.location.uri.as_ref() == Some(path)) {
+            if !artifacts
+                .iter()
+                .any(|a| a.location.uri.as_ref() == Some(path))
+            {
                 artifacts.push(SarifArtifact {
                     location: SarifArtifactLocation {
                         uri: Some(path.clone()),
@@ -839,7 +845,8 @@ impl SarifReport {
 
     /// Get findings by level
     pub fn findings_by_level(&self, level: SarifLevel) -> Vec<&SarifResult> {
-        self.runs.iter()
+        self.runs
+            .iter()
             .flat_map(|r| r.results.iter())
             .filter(|r| r.level == Some(level))
             .collect()
@@ -864,7 +871,7 @@ fn generate_rules() -> Vec<SarifRule> {
         ),
         create_rule(
             AttackType::Soundness,
-            "ZK002", 
+            "ZK002",
             "Soundness Violation",
             "Proof system accepts proofs for invalid statements",
             "A soundness violation allows forging proofs without knowledge of valid \
@@ -1119,7 +1126,7 @@ fn finding_to_result(
     let rule_index = rule_map.get(&rule_id).copied().map(|i| i as i32);
 
     let mut locations = Vec::new();
-    
+
     // Add location if available
     if let Some(ref loc) = finding.location {
         locations.push(parse_location(loc, circuit_path));
@@ -1143,17 +1150,17 @@ fn finding_to_result(
     // Create fingerprint from description
     let mut fingerprints = HashMap::new();
     let fingerprint = sha2::Sha256::digest(finding.description.as_bytes());
-    fingerprints.insert(
-        "primary".to_string(),
-        hex::encode(&fingerprint[..8]),
-    );
+    fingerprints.insert("primary".to_string(), hex::encode(&fingerprint[..8]));
 
     // Add PoC as properties
     let mut properties = SarifPropertyBag::new();
     if !finding.poc.witness_a.is_empty() {
         properties.insert(
             "witness_a",
-            finding.poc.witness_a.iter()
+            finding
+                .poc
+                .witness_a
+                .iter()
                 .map(|fe| fe.to_hex())
                 .collect::<Vec<_>>(),
         );
@@ -1161,9 +1168,7 @@ fn finding_to_result(
     if let Some(ref witness_b) = finding.poc.witness_b {
         properties.insert(
             "witness_b",
-            witness_b.iter()
-                .map(|fe| fe.to_hex())
-                .collect::<Vec<_>>(),
+            witness_b.iter().map(|fe| fe.to_hex()).collect::<Vec<_>>(),
         );
     }
 
@@ -1187,7 +1192,7 @@ fn finding_to_result(
 fn parse_location(loc: &str, default_path: Option<&str>) -> SarifLocation {
     // Try to parse "file:line" or "file:line:column" format
     let parts: Vec<&str> = loc.split(':').collect();
-    
+
     let (file, line, column) = match parts.len() {
         1 => (parts[0], None, None),
         2 => (parts[0], parts[1].parse::<usize>().ok(), None),
@@ -1254,7 +1259,8 @@ fn attack_type_to_rule_id(attack_type: &AttackType) -> String {
         AttackType::WitnessLeakage => "ZK016",
         AttackType::ReplayAttack => "ZK017",
         AttackType::TrustedSetup => "ZK018",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Convert severity to rank (0-100)
@@ -1276,22 +1282,26 @@ fn severity_to_score(severity: Severity) -> String {
         Severity::Medium => "5.0",
         Severity::Low => "3.0",
         Severity::Info => "1.0",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Detect MIME type from file extension
 fn detect_mime_type(path: &str) -> Option<String> {
     let ext = path.rsplit('.').next()?;
-    Some(match ext.to_lowercase().as_str() {
-        "circom" => "text/x-circom",
-        "nr" | "noir" => "text/x-noir",
-        "rs" => "text/x-rust",
-        "cairo" => "text/x-cairo",
-        "json" => "application/json",
-        "yaml" | "yml" => "text/yaml",
-        "toml" => "text/x-toml",
-        _ => "text/plain",
-    }.to_string())
+    Some(
+        match ext.to_lowercase().as_str() {
+            "circom" => "text/x-circom",
+            "nr" | "noir" => "text/x-noir",
+            "rs" => "text/x-rust",
+            "cairo" => "text/x-cairo",
+            "json" => "application/json",
+            "yaml" | "yml" => "text/yaml",
+            "toml" => "text/x-toml",
+            _ => "text/plain",
+        }
+        .to_string(),
+    )
 }
 
 /// Generate CWE taxonomy
@@ -1428,15 +1438,13 @@ mod tests {
 
     #[test]
     fn test_sarif_builder() {
-        let findings = vec![
-            Finding {
-                attack_type: AttackType::Underconstrained,
-                severity: Severity::Critical,
-                description: "Test finding".to_string(),
-                poc: ProofOfConcept::default(),
-                location: Some("test.circom:42".to_string()),
-            },
-        ];
+        let findings = vec![Finding {
+            attack_type: AttackType::Underconstrained,
+            severity: Severity::Critical,
+            description: "Test finding".to_string(),
+            poc: ProofOfConcept::default(),
+            location: Some("test.circom:42".to_string()),
+        }];
 
         let report = SarifBuilder::new("zk-fuzzer", "0.1.0")
             .with_circuit_path("circuits/test.circom")
@@ -1462,7 +1470,10 @@ mod tests {
     fn test_parse_location() {
         let loc = parse_location("test.circom:42:10", None);
         let phys = loc.physical_location.unwrap();
-        assert_eq!(phys.artifact_location.unwrap().uri, Some("test.circom".to_string()));
+        assert_eq!(
+            phys.artifact_location.unwrap().uri,
+            Some("test.circom".to_string())
+        );
         let region = phys.region.unwrap();
         assert_eq!(region.start_line, Some(42));
         assert_eq!(region.start_column, Some(10));
@@ -1470,7 +1481,10 @@ mod tests {
 
     #[test]
     fn test_attack_type_to_rule_id() {
-        assert_eq!(attack_type_to_rule_id(&AttackType::Underconstrained), "ZK001");
+        assert_eq!(
+            attack_type_to_rule_id(&AttackType::Underconstrained),
+            "ZK001"
+        );
         assert_eq!(attack_type_to_rule_id(&AttackType::Collision), "ZK004");
         assert_eq!(attack_type_to_rule_id(&AttackType::Boundary), "ZK005");
     }
@@ -1479,10 +1493,10 @@ mod tests {
     fn test_generate_rules() {
         let rules = generate_rules();
         assert!(rules.len() >= 10);
-        
+
         // All rules should have IDs starting with ZK
         assert!(rules.iter().all(|r| r.id.starts_with("ZK")));
-        
+
         // All rules should have descriptions
         assert!(rules.iter().all(|r| r.short_description.is_some()));
     }
@@ -1491,7 +1505,7 @@ mod tests {
     fn test_sarif_serialization() {
         let report = SarifBuilder::new("test", "1.0.0").build();
         let json = report.to_json().unwrap();
-        
+
         // Should contain required fields
         assert!(json.contains("$schema"));
         assert!(json.contains("version"));
@@ -1500,23 +1514,27 @@ mod tests {
 
     #[test]
     fn test_detect_mime_type() {
-        assert_eq!(detect_mime_type("test.circom"), Some("text/x-circom".to_string()));
+        assert_eq!(
+            detect_mime_type("test.circom"),
+            Some("text/x-circom".to_string())
+        );
         assert_eq!(detect_mime_type("test.nr"), Some("text/x-noir".to_string()));
         assert_eq!(detect_mime_type("test.rs"), Some("text/x-rust".to_string()));
-        assert_eq!(detect_mime_type("test.json"), Some("application/json".to_string()));
+        assert_eq!(
+            detect_mime_type("test.json"),
+            Some("application/json".to_string())
+        );
     }
 
     #[test]
     fn test_hamming_fingerprint() {
-        let findings = vec![
-            Finding {
-                attack_type: AttackType::Collision,
-                severity: Severity::High,
-                description: "Test collision".to_string(),
-                poc: ProofOfConcept::default(),
-                location: None,
-            },
-        ];
+        let findings = vec![Finding {
+            attack_type: AttackType::Collision,
+            severity: Severity::High,
+            description: "Test collision".to_string(),
+            poc: ProofOfConcept::default(),
+            location: None,
+        }];
 
         let report = SarifBuilder::new("test", "1.0.0")
             .add_findings(&findings)

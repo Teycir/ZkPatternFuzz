@@ -6,12 +6,12 @@
 //! - Property extraction from circuits
 //! - Proof obligation generation
 
-pub mod lean;
 pub mod coq;
+pub mod lean;
 pub mod properties;
 
-pub use lean::LeanExporter;
 pub use coq::CoqExporter;
+pub use lean::LeanExporter;
 pub use properties::{CircuitProperty, PropertyExtractor};
 
 use crate::analysis::symbolic::SymbolicConstraint;
@@ -120,7 +120,9 @@ impl Default for FormalConfig {
             output_dir: "./proofs".to_string(),
             generate_skeletons: true,
             include_comments: true,
-            field_modulus: "21888242871839275222246405745257275088548364400416034343698204186575808495617".to_string(),
+            field_modulus:
+                "21888242871839275222246405745257275088548364400416034343698204186575808495617"
+                    .to_string(),
             custom_imports: Vec::new(),
         }
     }
@@ -239,8 +241,8 @@ impl FormalVerificationManager {
 
         // Also write the complete module
         let module_result = self.export_module("Circuit");
-        let module_path = Path::new(&self.config.output_dir)
-            .join(format!("Circuit.{}", module_result.extension));
+        let module_path =
+            Path::new(&self.config.output_dir).join(format!("Circuit.{}", module_result.extension));
         std::fs::write(module_path, &module_result.code)?;
 
         Ok(())

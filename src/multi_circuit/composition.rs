@@ -57,7 +57,7 @@ impl CompositionTester {
             }
 
             let result = circuit.execute_sync(&current);
-            
+
             if !result.success {
                 return Err(CompositionError::StepFailed {
                     step: i,
@@ -87,7 +87,7 @@ impl CompositionTester {
 
         for (i, (circuit, input)) in self.circuits.iter().zip(inputs.iter()).enumerate() {
             let result = circuit.execute_sync(input);
-            
+
             if !result.success {
                 return Err(CompositionError::StepFailed {
                     step: i,
@@ -116,7 +116,10 @@ impl CompositionTester {
             });
         }
 
-        if matches!(self.composition_type, CompositionType::Sequential | CompositionType::Recursive) {
+        if matches!(
+            self.composition_type,
+            CompositionType::Sequential | CompositionType::Recursive
+        ) {
             // Check for type mismatches between circuits
             for i in 0..self.circuits.len().saturating_sub(1) {
                 let current = &self.circuits[i];
@@ -131,7 +134,10 @@ impl CompositionTester {
                         vuln_type: VulnerabilityType::TypeMismatch,
                         description: format!(
                             "Circuit {} outputs {} values but circuit {} expects {} inputs",
-                            i, current_outputs, i + 1, next_inputs
+                            i,
+                            current_outputs,
+                            i + 1,
+                            next_inputs
                         ),
                         circuit_indices: vec![i, i + 1],
                     });
@@ -216,7 +222,7 @@ mod tests {
         let mut tester = CompositionTester::new(CompositionType::Sequential);
         // Mismatched circuits (2 outputs, 5 inputs)
         tester.add_circuit(Arc::new(
-            MockCircuitExecutor::new("c1", 2, 1).with_outputs(2)
+            MockCircuitExecutor::new("c1", 2, 1).with_outputs(2),
         ));
         tester.add_circuit(Arc::new(MockCircuitExecutor::new("c2", 5, 1)));
 

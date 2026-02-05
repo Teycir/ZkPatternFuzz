@@ -20,7 +20,7 @@ pub fn minimize_corpus(entries: &[CorpusEntry]) -> Vec<CorpusEntry> {
         // Find entry that covers the most uncovered hashes
         // In this simple case, each entry has one coverage hash
         // More sophisticated: track individual constraint coverage
-        
+
         if let Some(idx) = remaining
             .iter()
             .enumerate()
@@ -61,8 +61,8 @@ pub fn deduplicate_corpus(entries: &[CorpusEntry]) -> Vec<CorpusEntry> {
 }
 
 fn compute_input_hash(inputs: &[crate::fuzzer::FieldElement]) -> u64 {
-    use std::hash::{Hash, Hasher};
     use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
     let mut hasher = DefaultHasher::new();
     for input in inputs {
@@ -125,12 +125,15 @@ mod tests {
         ];
 
         let minimized = minimize_corpus(&entries);
-        
+
         // Should keep 3 unique coverage hashes
         assert_eq!(minimized.len(), 3);
-        
+
         // Should prefer entries with new coverage
-        let new_cov_count = minimized.iter().filter(|e| e.discovered_new_coverage).count();
+        let new_cov_count = minimized
+            .iter()
+            .filter(|e| e.discovered_new_coverage)
+            .count();
         assert_eq!(new_cov_count, 2);
     }
 
