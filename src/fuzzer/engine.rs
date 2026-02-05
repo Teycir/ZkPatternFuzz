@@ -107,13 +107,14 @@ use crate::analysis::{
 };
 use crate::config::*;
 use crate::corpus::{CorpusEntry, SharedCorpus, create_corpus, storage as corpus_storage};
-use crate::executor::{CircuitExecutor, ExecutorFactory, SharedCoverageTracker, create_coverage_tracker};
+use crate::executor::{CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions, SharedCoverageTracker, create_coverage_tracker};
 use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
 use crate::reporting::FuzzReport;
 
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use rayon::prelude::*;
+use std::path::PathBuf;
 use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 use std::time::{Duration, Instant};
 
@@ -142,6 +143,7 @@ use std::time::{Duration, Instant};
 pub struct FuzzingEngine {
     config: FuzzConfig,
     executor: Arc<dyn CircuitExecutor>,
+    executor_factory_options: ExecutorFactoryOptions,
     corpus: SharedCorpus,
     coverage: SharedCoverageTracker,
     findings: Arc<std::sync::RwLock<Vec<Finding>>>,
@@ -229,11 +231,13 @@ impl FuzzingEngine {
             None => StdRng::from_entropy(),
         };
 
-        // Create executor based on framework
-        let executor = ExecutorFactory::create(
+        // Create executor based on framework (with optional build dir overrides)
+        let executor_factory_options = Self::parse_executor_factory_options(&config);
+        let executor = ExecutorFactory::create_with_options(
             config.campaign.target.framework,
             config.campaign.target.circuit_path.to_str().unwrap_or(""),
             &config.campaign.target.main_component,
+            &executor_factory_options,
         )?;
 
         let num_constraints = executor.num_constraints().max(100);
@@ -308,6 +312,7 @@ impl FuzzingEngine {
         Ok(Self {
             config,
             executor,
+            executor_factory_options,
             corpus,
             coverage,
             findings: Arc::new(std::sync::RwLock::new(Vec::new())),
@@ -352,6 +357,148 @@ impl FuzzingEngine {
         }
         // Default to MMOPT for balanced performance
         PowerSchedule::Mmopt
+    }
+
+    fn parse_executor_factory_options(config: &FuzzConfig) -> ExecutorFactoryOptions {
+        let additional = &config.campaign.parameters.additional;
+        let mut options = ExecutorFactoryOptions::default();
+
+        let base = Self::additional_path(additional, "build_dir_base")
+            .or_else(|| Self::additional_path(additional, "build_dir"));
+        options.build_dir_base = base;
+
+        options.circom_build_dir = Self::additional_path(additional, "circom_build_dir");
+        options.noir_build_dir = Self::additional_path(additional, "noir_build_dir");
+        options.halo2_build_dir = Self::additional_path(additional, "halo2_build_dir");
+        options.cairo_build_dir = Self::additional_path(additional, "cairo_build_dir");
+
+        options
+    }
+
+    fn constraint_guided_config(&self) -> Option<EnhancedSymbolicConfig> {
+        let additional = &self.config.campaign.parameters.additional;
+
+        if let Some(enabled) = Self::additional_bool(additional, "constraint_guided_enabled") {
+            if !enabled {
+                return None;
+            }
+        }
+
+        let mut config = EnhancedSymbolicConfig {
+            max_depth: 200,
+            solver_timeout_ms: 3000,
+            solutions_per_path: 4,
+            pruning_strategy: PruningStrategy::DepthBounded,
+            simplify_constraints: true,
+            incremental_solving: false,
+            ..Default::default()
+        };
+
+        if let Some(max_depth) = Self::additional_usize(additional, "constraint_guided_max_depth") {
+            config.max_depth = max_depth.max(1);
+        }
+        if let Some(max_paths) = Self::additional_usize(additional, "constraint_guided_max_paths") {
+            config.max_paths = max_paths.max(1);
+        }
+        if let Some(timeout) = Self::additional_u32(additional, "constraint_guided_solver_timeout_ms") {
+            config.solver_timeout_ms = timeout;
+        }
+        if let Some(solutions) = Self::additional_usize(additional, "constraint_guided_solutions_per_path") {
+            config.solutions_per_path = solutions.max(1);
+        }
+        if let Some(loop_bound) = Self::additional_usize(additional, "constraint_guided_loop_bound") {
+            config.loop_bound = loop_bound.max(1);
+        }
+        if let Some(simplify) = Self::additional_bool(additional, "constraint_guided_simplify_constraints") {
+            config.simplify_constraints = simplify;
+        }
+        if let Some(incremental) = Self::additional_bool(additional, "constraint_guided_incremental_solving") {
+            config.incremental_solving = incremental;
+        }
+        if let Some(strategy) = Self::additional_string(additional, "constraint_guided_pruning_strategy")
+            .or_else(|| Self::additional_string(additional, "constraint_guided_pruning"))
+        {
+            config.pruning_strategy = Self::parse_pruning_strategy(&strategy);
+        }
+
+        Some(config)
+    }
+
+    fn parse_pruning_strategy(value: &str) -> PruningStrategy {
+        let normalized = value.trim().to_lowercase();
+        match normalized.as_str() {
+            "none" | "off" => PruningStrategy::None,
+            "depth" | "depth_bounded" | "depthbounded" => PruningStrategy::DepthBounded,
+            "constraint" | "constraint_bounded" | "constraintbounded" => PruningStrategy::ConstraintBounded,
+            "coverage" | "coverage_guided" | "coverageguided" => PruningStrategy::CoverageGuided,
+            "random" | "random_sampling" | "randomsampling" => PruningStrategy::RandomSampling,
+            "loop" | "loop_bounded" | "loopbounded" => PruningStrategy::LoopBounded,
+            "similarity" | "similarity_based" | "similaritybased" => PruningStrategy::SimilarityBased,
+            "subsumption" | "subsumption_based" | "subsumptionbased" => PruningStrategy::SubsumptionBased,
+            _ => {
+                tracing::warn!(
+                    "Unknown pruning strategy '{}', defaulting to DepthBounded",
+                    value
+                );
+                PruningStrategy::DepthBounded
+            }
+        }
+    }
+
+    fn additional_bool(
+        additional: &std::collections::HashMap<String, serde_yaml::Value>,
+        key: &str,
+    ) -> Option<bool> {
+        match additional.get(key)? {
+            serde_yaml::Value::Bool(v) => Some(*v),
+            serde_yaml::Value::Number(n) => n.as_i64().map(|v| v != 0),
+            serde_yaml::Value::String(s) => match s.to_lowercase().as_str() {
+                "true" | "yes" | "1" => Some(true),
+                "false" | "no" | "0" => Some(false),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn additional_usize(
+        additional: &std::collections::HashMap<String, serde_yaml::Value>,
+        key: &str,
+    ) -> Option<usize> {
+        match additional.get(key)? {
+            serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
+            serde_yaml::Value::String(s) => s.parse::<usize>().ok(),
+            _ => None,
+        }
+    }
+
+    fn additional_u32(
+        additional: &std::collections::HashMap<String, serde_yaml::Value>,
+        key: &str,
+    ) -> Option<u32> {
+        match additional.get(key)? {
+            serde_yaml::Value::Number(n) => n.as_u64().map(|v| v.min(u32::MAX as u64) as u32),
+            serde_yaml::Value::String(s) => s.parse::<u32>().ok(),
+            _ => None,
+        }
+    }
+
+    fn additional_string(
+        additional: &std::collections::HashMap<String, serde_yaml::Value>,
+        key: &str,
+    ) -> Option<String> {
+        match additional.get(key)? {
+            serde_yaml::Value::String(s) => Some(s.clone()),
+            serde_yaml::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
+    fn additional_path(
+        additional: &std::collections::HashMap<String, serde_yaml::Value>,
+        key: &str,
+    ) -> Option<PathBuf> {
+        Self::additional_string(additional, key).map(PathBuf::from)
     }
 
     /// Execute the complete fuzzing campaign
@@ -588,71 +735,67 @@ impl FuzzingEngine {
 
         // Generate seeds from extracted constraints (R1CS/ACIR/PLONK) when available
         if let Some(inspector) = self.executor.constraint_inspector() {
-            let expected_len = self.config.inputs.len().max(1);
-            let input_wire_indices = collect_input_wire_indices(inspector, expected_len);
-            let mut generator = ConstraintSeedGenerator::new(EnhancedSymbolicConfig {
-                max_depth: 200,
-                solver_timeout_ms: 3000,
-                solutions_per_path: 4,
-                pruning_strategy: PruningStrategy::DepthBounded,
-                simplify_constraints: true,
-                incremental_solving: false,
-                ..Default::default()
-            });
+            if let Some(config) = self.constraint_guided_config() {
+                let expected_len = self.config.inputs.len().max(1);
+                let input_wire_indices = collect_input_wire_indices(inspector, expected_len);
+                let mut generator = ConstraintSeedGenerator::new(config);
 
-            let output = if let Some(parsed) = inspector.get_parsed_constraints() {
-                if !parsed.constraints.is_empty() {
-                    tracing::info!(
-                        "Generating constraint-guided seeds from {} parsed constraints...",
-                        parsed.constraints.len()
-                    );
-                    Some(generator.generate_from_extended(
-                        &parsed.constraints,
-                        &parsed.lookup_tables,
-                        &input_wire_indices,
-                        expected_len,
-                    ))
+                let output = if let Some(parsed) = inspector.get_parsed_constraints() {
+                    if !parsed.constraints.is_empty() {
+                        tracing::info!(
+                            "Generating constraint-guided seeds from {} parsed constraints...",
+                            parsed.constraints.len()
+                        );
+                        Some(generator.generate_from_extended(
+                            &parsed.constraints,
+                            &parsed.lookup_tables,
+                            &input_wire_indices,
+                            expected_len,
+                        ))
+                    } else {
+                        None
+                    }
                 } else {
                     None
-                }
-            } else {
-                None
-            };
+                };
 
-            let output = if let Some(output) = output {
-                output
-            } else {
-                let constraints = inspector.get_constraints();
-                if constraints.is_empty() {
-                    tracing::debug!("Constraint-guided seeds skipped: no constraints available");
-                    ConstraintSeedOutput::default()
+                let output = if let Some(output) = output {
+                    output
                 } else {
+                    let constraints = inspector.get_constraints();
+                    if constraints.is_empty() {
+                        tracing::debug!("Constraint-guided seeds skipped: no constraints available");
+                        ConstraintSeedOutput::default()
+                    } else {
+                        tracing::info!(
+                            "Generating constraint-guided seeds from {} R1CS constraints...",
+                            constraints.len()
+                        );
+                        generator.generate_from_r1cs(&constraints, &input_wire_indices, expected_len)
+                    }
+                };
+
+                if !output.seeds.is_empty() {
                     tracing::info!(
-                        "Generating constraint-guided seeds from {} R1CS constraints...",
-                        constraints.len()
+                        "Constraint-guided seeds: {} solutions ({} symbolic, {} skipped, {} pruned)",
+                        output.stats.solutions,
+                        output.stats.symbolic_constraints,
+                        output.stats.skipped_constraints,
+                        output.stats.pruned_constraints
                     );
-                    generator.generate_from_r1cs(&constraints, &input_wire_indices, expected_len)
-                }
-            };
 
-            if !output.seeds.is_empty() {
-                tracing::info!(
-                    "Constraint-guided seeds: {} solutions ({} symbolic, {} skipped, {} pruned)",
-                    output.stats.solutions,
-                    output.stats.symbolic_constraints,
-                    output.stats.skipped_constraints,
-                    output.stats.pruned_constraints
-                );
-
-                for inputs in output.seeds {
-                    if inputs.len() == expected_len {
-                        self.add_to_corpus(TestCase {
-                            inputs,
-                            expected_output: None,
-                            metadata: TestMetadata::default(),
-                        });
+                    for inputs in output.seeds {
+                        if inputs.len() == expected_len {
+                            self.add_to_corpus(TestCase {
+                                inputs,
+                                expected_output: None,
+                                metadata: TestMetadata::default(),
+                            });
+                        }
                     }
                 }
+            } else {
+                tracing::debug!("Constraint-guided seeds disabled via config");
             }
         } else {
             tracing::debug!("Constraint-guided seeds skipped: constraint inspector unavailable");
@@ -1502,7 +1645,12 @@ impl FuzzingEngine {
                 .map(|s| s.as_str())
                 .unwrap_or_else(|| self.config.campaign.target.circuit_path.to_str().unwrap_or(""));
 
-            match ExecutorFactory::create(*backend, circuit_path, &self.config.campaign.target.main_component) {
+            match ExecutorFactory::create_with_options(
+                *backend,
+                circuit_path,
+                &self.config.campaign.target.main_component,
+                &self.executor_factory_options,
+            ) {
                 Ok(executor) => {
                     diff_fuzzer.add_executor(*backend, executor);
                     active_backends.push(*backend);

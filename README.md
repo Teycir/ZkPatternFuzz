@@ -326,7 +326,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 **Areas Needing Help:**
 - Real backend integration testing (Circom, Noir, Halo2, Cairo)
-- Enhanced symbolic execution (direct constraint extraction from circuits)
 - Additional attack patterns
 - Documentation and examples
 - Performance optimizations
@@ -342,6 +341,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 - [x] Power scheduling algorithms
 - [x] Structure-aware mutations
 - [x] Symbolic execution with Z3
+- [x] Enhanced symbolic execution (constraint extraction from R1CS/ACIR, path pruning)
 - [x] Taint analysis
 - [x] Complexity analysis
 - [x] Parallel execution
@@ -351,7 +351,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 - [x] Boundary value attacks
 
 ### In Progress 🚧
-- [ ] Enhanced symbolic execution (constraint extraction from R1CS/ACIR, path pruning)
 - [ ] Real backend integration testing
 
 

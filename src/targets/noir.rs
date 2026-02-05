@@ -123,7 +123,9 @@ impl NoirTarget {
             .current_dir(&self.project_path)
             .env("HOME", &nargo_home)
             .env("NARGO_HOME", &nargo_home)
-            .env("CARGO_HOME", &cargo_home);
+            .env("CARGO_HOME", &cargo_home)
+            .env("NARGO_TARGET_DIR", &self.build_dir)
+            .env("CARGO_TARGET_DIR", &self.build_dir);
 
         Ok(command)
     }
@@ -150,6 +152,12 @@ impl NoirTarget {
             verification_key: None,
             acir_info: OnceLock::new(),
         })
+    }
+
+    /// Override the build directory for compiled artifacts.
+    pub fn with_build_dir(mut self, build_dir: PathBuf) -> Self {
+        self.build_dir = build_dir;
+        self
     }
 
     /// Check if nargo is available
@@ -382,6 +390,7 @@ impl NoirTarget {
                     || artifact.get("program").is_some()
                     || artifact.get("functions").is_some()
                     || artifact.get("constraints").is_some()
+                    || artifact.get("bytecode").is_some()
                 {
                     return Some(bytes);
                 }

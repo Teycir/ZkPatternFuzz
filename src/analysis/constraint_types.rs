@@ -13,6 +13,13 @@ use std::collections::HashMap;
 
 use super::symbolic::{SymbolicConstraint, SymbolicValue};
 
+#[cfg(feature = "acir-bytecode")]
+use {
+    base64::Engine,
+    flate2::read::GzDecoder,
+    std::io::Read,
+};
+
 const DEFAULT_LOOKUP_ROW_LIMIT: usize = 256;
 
 /// Extended constraint types for different proving systems
@@ -472,10 +479,16 @@ impl ConstraintParser {
         };
 
         if let Some(json) =
-            parse_json_from_text(text, &["opcodes", "constraints", "program", "functions"])
+            parse_json_from_text(text, &["opcodes", "constraints", "program", "functions", "bytecode"])
         {
             if json_has_any_key(&json, &["opcodes", "constraints", "program", "functions", "tables", "lookup_tables"]) {
                 return parse_acir_json(&json);
+            }
+
+            if json.get("bytecode").is_some() {
+                if let Some(decoded) = parse_acir_bytecode(&json) {
+                    return decoded;
+                }
             }
         }
 
@@ -1768,6 +1781,41 @@ fn parse_acir_json(value: &serde_json::Value) -> ParsedConstraintSet {
     }
 
     set
+}
+
+#[cfg(feature = "acir-bytecode")]
+fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet> {
+    let bytecode = value.get("bytecode")?.as_str()?;
+    let raw = base64::engine::general_purpose::STANDARD.decode(bytecode).ok()?;
+    let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
+        let mut decoder = GzDecoder::new(raw.as_slice());
+        let mut decoded = Vec::new();
+        decoder.read_to_end(&mut decoded).ok()?;
+        decoded
+    } else {
+        raw
+    };
+
+    // Attempt to deserialize ACIR bytecode into a Program or Circuit and convert to JSON.
+    // This keeps decoding logic centralized in ACIR crates while reusing existing JSON parsing.
+    if let Ok(program) = bincode::deserialize::<acir::circuit::Program<acir::FieldElement>>(&bytes)
+    {
+        let json = serde_json::to_value(program).ok()?;
+        return Some(parse_acir_json(&json));
+    }
+
+    if let Ok(circuit) = bincode::deserialize::<acir::circuit::Circuit<acir::FieldElement>>(&bytes)
+    {
+        let json = serde_json::to_value(circuit).ok()?;
+        return Some(parse_acir_json(&json));
+    }
+
+    None
+}
+
+#[cfg(not(feature = "acir-bytecode"))]
+fn parse_acir_bytecode(_value: &serde_json::Value) -> Option<ParsedConstraintSet> {
+    None
 }
 
 fn parse_acir_text(content: &str) -> ParsedConstraintSet {

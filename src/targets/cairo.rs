@@ -91,13 +91,12 @@ impl CairoTarget {
             .unwrap_or("unknown")
             .to_string();
 
-        let build_dir = path
-            .parent()
-            .unwrap_or(Path::new("."))
-            .join("build");
-
         // Detect Cairo version from file extension/content
         let cairo_version = Self::detect_version(&path)?;
+        let build_dir = match cairo_version {
+            CairoVersion::Cairo0 => path.parent().unwrap_or(Path::new(".")).join("build"),
+            CairoVersion::Cairo1 => path.parent().unwrap_or(Path::new(".")).join("target"),
+        };
 
         Ok(Self {
             source_path: path,
@@ -109,6 +108,12 @@ impl CairoTarget {
             cairo_version,
             config: CairoConfig::default(),
         })
+    }
+
+    /// Override the build directory for compiled artifacts.
+    pub fn with_build_dir(mut self, build_dir: PathBuf) -> Self {
+        self.build_dir = build_dir;
+        self
     }
 
     /// Create with custom configuration
@@ -241,6 +246,7 @@ impl CairoTarget {
 
         let output = Command::new("scarb")
             .args(["build"])
+            .env("SCARB_TARGET_DIR", &self.build_dir)
             .current_dir(project_dir)
             .output()
             .context("Failed to run scarb build")?;
@@ -251,13 +257,26 @@ impl CairoTarget {
         }
 
         // Find the compiled Sierra file
-        let target_dir = project_dir.join("target").join("dev");
+        let target_dir = self.build_dir.join("dev");
         if let Ok(entries) = std::fs::read_dir(&target_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().map(|e| e == "sierra.json" || e == "casm.json").unwrap_or(false) {
                     self.compiled_path = Some(path);
                     break;
+                }
+            }
+        }
+
+        if self.compiled_path.is_none() {
+            let fallback_dir = project_dir.join("target").join("dev");
+            if let Ok(entries) = std::fs::read_dir(&fallback_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "sierra.json" || e == "casm.json").unwrap_or(false) {
+                        self.compiled_path = Some(path);
+                        break;
+                    }
                 }
             }
         }

@@ -137,6 +137,12 @@ impl Halo2Target {
         })
     }
 
+    /// Override the build directory for compiled artifacts.
+    pub fn with_build_dir(mut self, build_dir: PathBuf) -> Self {
+        self.build_dir = build_dir;
+        self
+    }
+
     /// Create with custom configuration
     pub fn with_config(mut self, config: Halo2Config) -> Self {
         self.config = config;
@@ -147,6 +153,12 @@ impl Halo2Target {
     pub fn with_mock_mode(mut self, enabled: bool) -> Self {
         self.mock_mode = enabled;
         self
+    }
+
+    fn cargo_command(&self) -> Command {
+        let mut command = Command::new("cargo");
+        command.env("CARGO_TARGET_DIR", &self.build_dir);
+        command
     }
 
     /// Load and configure the circuit
@@ -197,7 +209,7 @@ impl Halo2Target {
 
         // Build the project
         tracing::info!("Building Halo2 Rust project...");
-        let output = Command::new("cargo")
+        let output = self.cargo_command()
             .args(["build", "--release"])
             .current_dir(project_dir)
             .output()
@@ -218,7 +230,7 @@ impl Halo2Target {
     /// Get circuit info by running the binary
     fn get_circuit_info_from_binary(&self, project_dir: &Path) -> Halo2Metadata {
         // Try to run with --info flag
-        let output = Command::new("cargo")
+        let output = self.cargo_command()
             .args(["run", "--release", "--", "--info"])
             .current_dir(project_dir)
             .output();
@@ -304,7 +316,7 @@ impl Halo2Target {
     }
 
     fn try_extract_constraints_from_binary(&self, project_dir: &Path) -> Option<ParsedConstraintSet> {
-        let output = Command::new("cargo")
+        let output = self.cargo_command()
             .args(["run", "--release", "--", "--constraints"])
             .current_dir(project_dir)
             .output()
@@ -364,7 +376,7 @@ impl Halo2Target {
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
         
-        let output = Command::new("cargo")
+        let output = self.cargo_command()
             .args(["run", "--release", "--", "--execute", &input_json])
             .current_dir(project_dir)
             .output();
@@ -482,7 +494,7 @@ impl TargetCircuit for Halo2Target {
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
         
-        let output = Command::new("cargo")
+        let output = self.cargo_command()
             .args(["run", "--release", "--", "--prove", &witness_json])
             .current_dir(project_dir)
             .output();
@@ -510,7 +522,7 @@ impl TargetCircuit for Halo2Target {
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
         
-        let output = Command::new("cargo")
+        let output = self.cargo_command()
             .args(["run", "--release", "--", "--verify", &proof_hex, &inputs_json])
             .current_dir(project_dir)
             .output();

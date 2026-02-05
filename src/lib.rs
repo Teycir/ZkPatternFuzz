@@ -232,7 +232,7 @@ pub use config::{
     Input, FuzzStrategy, Framework, Severity, ReportingConfig
 };
 pub use errors::{ZkFuzzerError, Result};
-pub use executor::{CircuitExecutor, ExecutorFactory, MockCircuitExecutor};
+pub use executor::{CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions, MockCircuitExecutor};
 pub use fuzzer::ZkFuzzer;
 pub use reporting::FuzzReport;
 

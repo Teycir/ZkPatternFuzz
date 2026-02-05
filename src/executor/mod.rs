@@ -19,6 +19,99 @@ use crate::analysis::{ConstraintChecker, ConstraintParser, ParsedConstraintSet, 
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use std::sync::{Arc, OnceLock};
+use std::path::{Path, PathBuf};
+
+/// Options for controlling executor creation (e.g., build directory overrides).
+#[derive(Debug, Clone, Default)]
+pub struct ExecutorFactoryOptions {
+    /// Base directory for build artifacts (per-framework subdirs will be created).
+    pub build_dir_base: Option<PathBuf>,
+    /// Explicit build directory for Circom.
+    pub circom_build_dir: Option<PathBuf>,
+    /// Explicit build directory for Noir.
+    pub noir_build_dir: Option<PathBuf>,
+    /// Explicit build directory for Halo2.
+    pub halo2_build_dir: Option<PathBuf>,
+    /// Explicit build directory for Cairo.
+    pub cairo_build_dir: Option<PathBuf>,
+}
+
+impl ExecutorFactoryOptions {
+    fn resolve_build_dir(
+        &self,
+        framework: Framework,
+        circuit_path: &str,
+        main_component: &str,
+    ) -> Option<PathBuf> {
+        let specific = match framework {
+            Framework::Circom => self.circom_build_dir.as_ref(),
+            Framework::Noir => self.noir_build_dir.as_ref(),
+            Framework::Halo2 => self.halo2_build_dir.as_ref(),
+            Framework::Cairo => self.cairo_build_dir.as_ref(),
+            Framework::Mock => None,
+        };
+
+        if let Some(path) = specific {
+            return Some(path.clone());
+        }
+
+        let base = self.build_dir_base.as_ref()?;
+        let mut dir = base.clone();
+        dir.push(framework_dir_name(framework));
+        dir.push(derive_circuit_build_name(circuit_path, main_component));
+        Some(dir)
+    }
+}
+
+fn framework_dir_name(framework: Framework) -> &'static str {
+    match framework {
+        Framework::Circom => "circom",
+        Framework::Noir => "noir",
+        Framework::Halo2 => "halo2",
+        Framework::Cairo => "cairo",
+        Framework::Mock => "mock",
+    }
+}
+
+fn derive_circuit_build_name(circuit_path: &str, main_component: &str) -> String {
+    let path = Path::new(circuit_path);
+    let name = if path.is_dir() {
+        path.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("circuit")
+            .to_string()
+    } else {
+        path.file_stem()
+            .or_else(|| path.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("circuit")
+            .to_string()
+    };
+
+    let mut combined = name;
+    if !main_component.is_empty() && !combined.contains(main_component) {
+        combined = format!("{}_{}", combined, main_component);
+    }
+
+    sanitize_component(&combined)
+}
+
+fn sanitize_component(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+
+    if out.is_empty() {
+        "circuit".to_string()
+    } else {
+        out
+    }
+}
 
 /// Factory for creating circuit executors based on framework type
 pub struct ExecutorFactory;
@@ -30,6 +123,21 @@ impl ExecutorFactory {
         circuit_path: &str,
         main_component: &str,
     ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
+        Self::create_with_options(
+            framework,
+            circuit_path,
+            main_component,
+            &ExecutorFactoryOptions::default(),
+        )
+    }
+
+    /// Create an executor with explicit factory options (e.g., build dir overrides).
+    pub fn create_with_options(
+        framework: Framework,
+        circuit_path: &str,
+        main_component: &str,
+        options: &ExecutorFactoryOptions,
+    ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
         match framework {
             Framework::Mock => Ok(Arc::new(MockCircuitExecutor::new(
                 main_component,
@@ -37,16 +145,16 @@ impl ExecutorFactory {
                 2,  // default public inputs
             ))),
             Framework::Circom => {
-                Self::create_circom_executor(circuit_path, main_component)
+                Self::create_circom_executor(circuit_path, main_component, options)
             }
             Framework::Noir => {
-                Self::create_noir_executor(circuit_path, main_component)
+                Self::create_noir_executor(circuit_path, main_component, options)
             }
             Framework::Halo2 => {
-                Self::create_halo2_executor(circuit_path, main_component)
+                Self::create_halo2_executor(circuit_path, main_component, options)
             }
             Framework::Cairo => {
-                Self::create_cairo_executor(circuit_path, main_component)
+                Self::create_cairo_executor(circuit_path, main_component, options)
             }
         }
     }
@@ -55,6 +163,7 @@ impl ExecutorFactory {
     fn create_circom_executor(
         circuit_path: &str,
         main_component: &str,
+        options: &ExecutorFactoryOptions,
     ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
         use crate::targets::CircomTarget;
 
@@ -62,7 +171,12 @@ impl ExecutorFactory {
         match CircomTarget::check_circom_available() {
             Ok(version) => {
                 tracing::info!("Using Circom backend: {}", version);
-                let executor = CircomExecutor::new(circuit_path, main_component)?;
+                let build_dir =
+                    options.resolve_build_dir(Framework::Circom, circuit_path, main_component);
+                let executor = match build_dir {
+                    Some(dir) => CircomExecutor::new_with_build_dir(circuit_path, main_component, dir)?,
+                    None => CircomExecutor::new(circuit_path, main_component)?,
+                };
                 Ok(Arc::new(executor))
             }
             Err(e) => {
@@ -78,13 +192,19 @@ impl ExecutorFactory {
     fn create_noir_executor(
         circuit_path: &str,
         main_component: &str,
+        options: &ExecutorFactoryOptions,
     ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
         use crate::targets::NoirTarget;
 
         match NoirTarget::check_nargo_available() {
             Ok(version) => {
                 tracing::info!("Using Noir backend: {}", version);
-                let executor = NoirExecutor::new(circuit_path)?;
+                let build_dir =
+                    options.resolve_build_dir(Framework::Noir, circuit_path, main_component);
+                let executor = match build_dir {
+                    Some(dir) => NoirExecutor::new_with_build_dir(circuit_path, dir)?,
+                    None => NoirExecutor::new(circuit_path)?,
+                };
                 Ok(Arc::new(executor))
             }
             Err(e) => {
@@ -100,8 +220,14 @@ impl ExecutorFactory {
     fn create_halo2_executor(
         circuit_path: &str,
         main_component: &str,
+        options: &ExecutorFactoryOptions,
     ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
-        let executor = Halo2Executor::new(circuit_path, main_component)?;
+        let build_dir =
+            options.resolve_build_dir(Framework::Halo2, circuit_path, main_component);
+        let executor = match build_dir {
+            Some(dir) => Halo2Executor::new_with_build_dir(circuit_path, main_component, dir)?,
+            None => Halo2Executor::new(circuit_path, main_component)?,
+        };
         Ok(Arc::new(executor))
     }
 
@@ -109,13 +235,19 @@ impl ExecutorFactory {
     fn create_cairo_executor(
         circuit_path: &str,
         main_component: &str,
+        options: &ExecutorFactoryOptions,
     ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
         use crate::targets::CairoTarget;
 
         match CairoTarget::check_cairo_available() {
             Ok((version, ver_str)) => {
                 tracing::info!("Using Cairo backend ({:?}): {}", version, ver_str);
-                let executor = CairoExecutor::new(circuit_path)?;
+                let build_dir =
+                    options.resolve_build_dir(Framework::Cairo, circuit_path, main_component);
+                let executor = match build_dir {
+                    Some(dir) => CairoExecutor::new_with_build_dir(circuit_path, dir)?,
+                    None => CairoExecutor::new(circuit_path)?,
+                };
                 Ok(Arc::new(executor))
             }
             Err(e) => {
@@ -142,6 +274,20 @@ pub struct CircomExecutor {
 impl CircomExecutor {
     pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
         let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?;
+        target.compile()?;
+        Ok(Self {
+            target,
+            constraints: OnceLock::new(),
+        })
+    }
+
+    pub fn new_with_build_dir(
+        circuit_path: &str,
+        main_component: &str,
+        build_dir: PathBuf,
+    ) -> anyhow::Result<Self> {
+        let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?
+            .with_build_dir(build_dir);
         target.compile()?;
         Ok(Self {
             target,
@@ -278,6 +424,13 @@ impl NoirExecutor {
         target.compile()?;
         Ok(Self { target })
     }
+
+    pub fn new_with_build_dir(project_path: &str, build_dir: PathBuf) -> anyhow::Result<Self> {
+        let mut target = crate::targets::NoirTarget::new(project_path)?
+            .with_build_dir(build_dir);
+        target.compile()?;
+        Ok(Self { target })
+    }
 }
 
 #[async_trait]
@@ -400,6 +553,17 @@ impl Halo2Executor {
         target.setup()?;
         Ok(Self { target })
     }
+
+    pub fn new_with_build_dir(
+        circuit_path: &str,
+        _main_component: &str,
+        build_dir: PathBuf,
+    ) -> anyhow::Result<Self> {
+        let mut target = crate::targets::Halo2Target::new(circuit_path)?
+            .with_build_dir(build_dir);
+        target.setup()?;
+        Ok(Self { target })
+    }
 }
 
 #[async_trait]
@@ -514,6 +678,13 @@ pub struct CairoExecutor {
 impl CairoExecutor {
     pub fn new(source_path: &str) -> anyhow::Result<Self> {
         let mut target = crate::targets::CairoTarget::new(source_path)?;
+        target.compile()?;
+        Ok(Self { target })
+    }
+
+    pub fn new_with_build_dir(source_path: &str, build_dir: PathBuf) -> anyhow::Result<Self> {
+        let mut target = crate::targets::CairoTarget::new(source_path)?
+            .with_build_dir(build_dir);
         target.compile()?;
         Ok(Self { target })
     }
