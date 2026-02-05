@@ -262,10 +262,10 @@ pub use analysis::{
     LookupConstraint, LookupTable, RangeConstraint, RangeMethod,
     PolynomialConstraint, PolynomialTerm, AcirOpcode, BlackBoxOp, MemoryOpType,
     AirConstraint, AirExpression, AirDomain, ConstraintParser, ConstraintChecker,
-    WireRef, SymbolicConversionOptions, ParsedConstraintSet, UnknownLookupPolicy,
-    ConstraintEvaluation,
+    WireRef, ParsedConstraintSet, UnknownLookupPolicy, ConstraintEvaluation,
+    SymbolicConversionOptions, ExtendedConstraintSymbolicExt, ConstraintCheckerSymbolicExt,
     // R1CS binary parsing
-    R1CS, ParsedR1CSConstraint, parse_sym_file,
+    R1CS, ParsedR1CSConstraint, parse_sym_file, R1CSConstraintGuidedExt,
 };
 pub use differential::{DifferentialFuzzer, DifferentialConfig, DifferentialResult};
 pub use distributed::{

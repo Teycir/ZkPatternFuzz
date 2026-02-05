@@ -7,7 +7,8 @@
 use crate::analysis::{
     constraint_types::LinearCombination, ConstraintSimplifier, EnhancedSymbolicConfig,
     ExtendedConstraint, LookupTable, PathCondition, PruningStrategy, R1CSConstraint,
-    SymbolicConstraint, SymbolicConversionOptions, WireRef, Z3Solver,
+    ExtendedConstraintSymbolicExt, SymbolicConstraint, SymbolicConversionOptions, WireRef,
+    Z3Solver,
 };
 use zk_core::{ConstraintEquation, ConstraintInspector};
 use zk_core::FieldElement;

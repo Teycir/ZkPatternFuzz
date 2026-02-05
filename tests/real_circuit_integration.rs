@@ -13,6 +13,7 @@
 use std::path::Path;
 use zk_fuzzer::analysis::{
     R1CS, ConstraintSeedGenerator, EnhancedSymbolicConfig, PruningStrategy,
+    R1CSConstraintGuidedExt,
 };
 
 // ============================================================================
