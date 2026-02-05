@@ -1,0 +1,16 @@
+[package]
+name = "zk-symbolic"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description = "Symbolic and concolic execution for ZK circuits"
+
+[dependencies]
+zk-core = { path = "../zk-core" }
+zk-constraints = { path = "../zk-constraints" }
+anyhow = "1.0"
+num-bigint = "0.4"
+rand = "0.8"
+tracing = "0.1"
+z3 = { version = "0.12", features = ["static-link-z3"] }
+hex = "0.4"
