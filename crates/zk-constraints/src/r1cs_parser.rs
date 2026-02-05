@@ -110,7 +110,7 @@ impl R1CS {
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let file = File::open(path.as_ref())
             .with_context(|| format!("Failed to open R1CS file: {:?}", path.as_ref()))?;
-        let mut reader = BufReader::new(file);
+        let mut reader = BufReader::with_capacity(1 << 20, file);
         Self::parse(&mut reader)
     }
 
@@ -341,19 +341,26 @@ fn read_linear_combination<R: Read>(
 ) -> Result<Vec<(usize, BigUint)>> {
     let num_terms = read_u32_le(reader)? as usize;
     let mut terms = Vec::with_capacity(num_terms);
+    let mut coeff_buf = vec![0u8; field_bytes];
 
     for _ in 0..num_terms {
         let wire_idx = read_u32_le(reader)? as usize;
 
         // Read field element coefficient
-        let mut coeff_bytes = vec![0u8; field_bytes];
-        reader.read_exact(&mut coeff_bytes)?;
-        let coeff = BigUint::from_bytes_le(&coeff_bytes);
-
-        // Skip zero coefficients
-        if coeff != BigUint::from(0u32) {
-            terms.push((wire_idx, coeff));
+        reader.read_exact(&mut coeff_buf)?;
+        let mut nonzero = false;
+        for byte in &coeff_buf {
+            if *byte != 0 {
+                nonzero = true;
+                break;
+            }
         }
+        if !nonzero {
+            continue;
+        }
+
+        let coeff = BigUint::from_bytes_le(&coeff_buf);
+        terms.push((wire_idx, coeff));
     }
 
     Ok(terms)

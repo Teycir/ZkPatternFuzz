@@ -5,8 +5,8 @@
 //! - Support for PSE's halo2 fork (halo2_proofs)
 //! - PLONK-based constraint system
 
-use super::TargetCircuit;
-use crate::analysis::{ConstraintParser, ParsedConstraintSet};
+use crate::TargetCircuit;
+use zk_constraints::{ConstraintParser, ParsedConstraintSet};
 use zk_core::Framework;
 use zk_core::FieldElement;
 use anyhow::{Context, Result};

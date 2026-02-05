@@ -5,7 +5,7 @@
 //! - Execution via cairo-run
 //! - STARK proof generation via stone-prover
 
-use super::TargetCircuit;
+use crate::TargetCircuit;
 use zk_core::Framework;
 use zk_core::FieldElement;
 use anyhow::{Context, Result};

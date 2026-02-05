@@ -10,6 +10,7 @@ members = [
     ".",
     "crates/zk-core",
     "crates/zk-constraints",
+    "crates/zk-backends",
 ]
 
 [dependencies]
@@ -53,6 +54,7 @@ dirs = "5.0"  # For finding home directory
 tempfile = "3.10"
 zk-core = { path = "crates/zk-core" }
 zk-constraints = { path = "crates/zk-constraints" }
+zk-backends = { path = "crates/zk-backends" }
 
 # SMT Solver for symbolic execution
 z3 = { version = "0.12", features = ["static-link-z3"] }

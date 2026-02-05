@@ -1,0 +1,29 @@
+[package]
+name = "zk-backends"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description = "Backend integrations for ZkPatternFuzz"
+
+[dependencies]
+zk-core = { path = "../zk-core" }
+zk-constraints = { path = "../zk-constraints", default-features = true }
+anyhow = "1.0"
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+hex = "0.4"
+num-bigint = "0.4"
+tempfile = "3.10"
+dirs = "5.0"
+tracing = "0.1"
+
+[features]
+default = ["mock", "circom", "noir", "halo2", "cairo"]
+all = ["mock", "circom", "noir", "halo2", "cairo"]
+mock = []
+circom = []
+noir = []
+halo2 = []
+cairo = []

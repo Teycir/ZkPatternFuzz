@@ -5,7 +5,7 @@
 //! - Witness generation via generated WASM
 //! - Proof generation/verification via snarkjs-compatible format
 
-use super::TargetCircuit;
+use crate::TargetCircuit;
 use zk_core::Framework;
 use zk_core::ConstraintEquation;
 use zk_core::FieldElement;
