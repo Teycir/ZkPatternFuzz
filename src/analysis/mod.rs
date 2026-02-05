@@ -37,5 +37,6 @@ pub use constraint_types::{
     LookupConstraint, LookupTable, RangeConstraint, RangeMethod,
     PolynomialConstraint, PolynomialTerm, AcirOpcode, BlackBoxOp, MemoryOpType,
     AirConstraint, AirExpression, AirDomain, ConstraintParser, ConstraintChecker,
-    WireRef, SymbolicConversionOptions,
+    WireRef, SymbolicConversionOptions, ParsedConstraintSet, UnknownLookupPolicy,
+    ConstraintEvaluation,
 };

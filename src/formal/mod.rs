@@ -14,10 +14,8 @@ pub use lean::LeanExporter;
 pub use coq::CoqExporter;
 pub use properties::{CircuitProperty, PropertyExtractor};
 
-use crate::analysis::symbolic::{SymbolicConstraint, SymbolicValue};
+use crate::analysis::symbolic::SymbolicConstraint;
 use crate::executor::ConstraintEquation;
-use crate::fuzzer::FieldElement;
-use std::collections::HashMap;
 use std::path::Path;
 
 /// Target proof system

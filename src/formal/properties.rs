@@ -77,7 +77,7 @@ impl CircuitProperty {
                     SymbolicValue::concrete(FieldElement::max_value()),
                 )]
             }
-            CircuitProperty::Range { signal, min, max } => {
+            CircuitProperty::Range { signal, min: _min, max: _max } => {
                 vec![
                     SymbolicConstraint::Range(
                         SymbolicValue::symbol(signal),
@@ -101,7 +101,7 @@ impl CircuitProperty {
             CircuitProperty::Boolean { signal } => {
                 vec![SymbolicConstraint::Boolean(SymbolicValue::symbol(signal))]
             }
-            CircuitProperty::Range { signal, min, max } => {
+            CircuitProperty::Range { signal, min: _min, max } => {
                 vec![
                     SymbolicConstraint::Range(
                         SymbolicValue::symbol(signal),
@@ -118,18 +118,12 @@ impl CircuitProperty {
 pub struct PropertyExtractor {
     /// Detected boolean signals
     boolean_signals: HashSet<String>,
-    /// Detected range constraints
-    range_signals: HashMap<String, (FieldElement, FieldElement)>,
-    /// Detected non-zero constraints
-    nonzero_signals: HashSet<String>,
 }
 
 impl PropertyExtractor {
     pub fn new() -> Self {
         Self {
             boolean_signals: HashSet::new(),
-            range_signals: HashMap::new(),
-            nonzero_signals: HashSet::new(),
         }
     }
 

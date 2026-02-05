@@ -11,8 +11,9 @@ use super::symbolic::{
     PathCondition, SolverResult, SymbolicConstraint, SymbolicState, SymbolicValue, Z3Solver,
 };
 use crate::fuzzer::FieldElement;
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp::Ordering;
+use z3::ast::Ast;
 use z3::{ast, Config, Context, SatResult, Solver};
 
 /// BN254 scalar field modulus
@@ -76,13 +77,13 @@ impl Ord for PrioritizedPath {
 }
 
 /// Path pruner with configurable strategies
+#[derive(Debug, Clone)]
 pub struct PathPruner {
     strategy: PruningStrategy,
     max_depth: usize,
     max_constraints: usize,
     max_paths: usize,
     loop_bound: usize,
-    similarity_threshold: f64,
     /// Hashes of explored path prefixes for similarity detection
     explored_prefixes: HashSet<u64>,
     /// Coverage bitmap for guided pruning
@@ -97,7 +98,6 @@ impl PathPruner {
             max_constraints: 100,
             max_paths: 10000,
             loop_bound: 10,
-            similarity_threshold: 0.8,
             explored_prefixes: HashSet::new(),
             coverage_bitmap: Vec::new(),
         }
@@ -278,10 +278,6 @@ pub struct ConstraintSimplifier {
     cache: HashMap<u64, SymbolicConstraint>,
     /// Enable constant folding
     fold_constants: bool,
-    /// Enable algebraic simplification
-    algebraic_simplify: bool,
-    /// Enable dead constraint elimination
-    eliminate_dead: bool,
 }
 
 impl ConstraintSimplifier {
@@ -289,8 +285,6 @@ impl ConstraintSimplifier {
         Self {
             cache: HashMap::new(),
             fold_constants: true,
-            algebraic_simplify: true,
-            eliminate_dead: true,
         }
     }
 
@@ -809,7 +803,6 @@ impl IncrementalSolver {
             }
             SymbolicConstraint::True => ast::Bool::from_bool(ctx, true),
             SymbolicConstraint::False => ast::Bool::from_bool(ctx, false),
-            _ => ast::Bool::from_bool(ctx, true),
         }
     }
 

@@ -6,6 +6,7 @@
 //! - PLONK-based constraint system
 
 use super::TargetCircuit;
+use crate::analysis::{ConstraintParser, ParsedConstraintSet};
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use anyhow::{Context, Result};
@@ -13,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 /// Halo2 circuit target
 ///
@@ -38,6 +40,8 @@ pub struct Halo2Target {
     verification_key: Option<Vec<u8>>,
     /// Circuit configuration
     config: Halo2Config,
+    /// Cached PLONK constraints and lookup tables (if available)
+    plonk_constraints: OnceLock<ParsedConstraintSet>,
 }
 
 /// Halo2 circuit metadata
@@ -129,6 +133,7 @@ impl Halo2Target {
             proving_key: None,
             verification_key: None,
             config: Halo2Config::default(),
+            plonk_constraints: OnceLock::new(),
         })
     }
 
@@ -264,7 +269,58 @@ impl Halo2Target {
             num_lookups: spec.get("lookups").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
         });
 
+        let parsed = ConstraintParser::parse_plonk_with_tables(&content);
+        let _ = self.plonk_constraints.set(parsed);
+
         Ok(())
+    }
+
+    /// Load PLONK constraints and lookup tables if available
+    pub fn load_plonk_constraints(&self) -> ParsedConstraintSet {
+        if let Some(existing) = self.plonk_constraints.get() {
+            return existing.clone();
+        }
+
+        if self.circuit_path.extension().map(|e| e == "json").unwrap_or(false) {
+            if let Ok(content) = std::fs::read_to_string(&self.circuit_path) {
+                let parsed = ConstraintParser::parse_plonk_with_tables(&content);
+                let _ = self.plonk_constraints.set(parsed.clone());
+                return parsed;
+            }
+        }
+
+        let project_dir = if self.circuit_path.is_dir() {
+            self.circuit_path.clone()
+        } else {
+            self.circuit_path.parent().unwrap_or(Path::new(".")).to_path_buf()
+        };
+
+        if let Some(parsed) = self.try_extract_constraints_from_binary(&project_dir) {
+            let _ = self.plonk_constraints.set(parsed.clone());
+            return parsed;
+        }
+
+        ParsedConstraintSet::default()
+    }
+
+    fn try_extract_constraints_from_binary(&self, project_dir: &Path) -> Option<ParsedConstraintSet> {
+        let output = Command::new("cargo")
+            .args(["run", "--release", "--", "--constraints"])
+            .current_dir(project_dir)
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let parsed = ConstraintParser::parse_plonk_with_tables(&stdout);
+        if parsed.constraints.is_empty() {
+            None
+        } else {
+            Some(parsed)
+        }
     }
 
     /// Generate keys using the PSE ceremony parameters (for KZG)

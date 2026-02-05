@@ -16,8 +16,7 @@ pub use coordinator::{DistributedCoordinator, WorkUnit, NodeStatus};
 
 use crate::corpus::CorpusEntry;
 use crate::fuzzer::{Finding, FieldElement, TestCase};
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Unique identifier for a fuzzer node
 pub type NodeId = String;
@@ -87,7 +86,9 @@ pub struct NodeCapabilities {
 impl Default for NodeCapabilities {
     fn default() -> Self {
         Self {
-            worker_count: num_cpus::get(),
+            worker_count: std::thread::available_parallelism()
+                .map(|count| count.get())
+                .unwrap_or(1),
             memory_bytes: 8 * 1024 * 1024 * 1024, // 8GB default
             frameworks: vec!["mock".to_string()],
             has_gpu: false,

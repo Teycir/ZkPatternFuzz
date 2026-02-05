@@ -15,6 +15,7 @@ pub use coverage::*;
 pub use crate::attacks::CircuitInfo;
 
 use async_trait::async_trait;
+use crate::analysis::{ConstraintChecker, UnknownLookupPolicy};
 use crate::config::Framework;
 use crate::fuzzer::FieldElement;
 use std::sync::{Arc, OnceLock};
@@ -436,6 +437,59 @@ impl CircuitExecutor for Halo2Executor {
         use crate::targets::TargetCircuit;
         self.target.verify(proof, public_inputs)
     }
+
+    fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
+        Some(self)
+    }
+}
+
+impl ConstraintInspector for Halo2Executor {
+    fn get_constraints(&self) -> Vec<ConstraintEquation> {
+        Vec::new()
+    }
+
+    fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {
+        let parsed = self.target.load_plonk_constraints();
+        if parsed.constraints.is_empty() {
+            return Vec::new();
+        }
+
+        let wire_values: std::collections::HashMap<usize, FieldElement> = witness
+            .iter()
+            .enumerate()
+            .map(|(idx, value)| (idx, value.clone()))
+            .collect();
+
+        let mut checker = ConstraintChecker::new()
+            .with_unknown_lookup_policy(UnknownLookupPolicy::FailClosed);
+        for (id, table) in parsed.lookup_tables {
+            checker.add_table(id, table);
+        }
+
+        parsed
+            .constraints
+            .iter()
+            .enumerate()
+            .map(|(idx, constraint)| {
+                let evaluation = checker.evaluate(constraint, &wire_values);
+                ConstraintResult {
+                    constraint_id: idx,
+                    satisfied: evaluation.satisfied,
+                    lhs_value: evaluation.lhs,
+                    rhs_value: evaluation.rhs,
+                }
+            })
+            .collect()
+    }
+
+    fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
+        let parsed = self.target.load_plonk_constraints();
+        parsed
+            .constraints
+            .iter()
+            .map(|constraint| constraint.wire_dependencies())
+            .collect()
+    }
 }
 
 /// Cairo executor wrapper
@@ -626,5 +680,51 @@ mod tests {
         let failure = ExecutionResult::failure("test error".to_string());
         assert!(!failure.success);
         assert_eq!(failure.error, Some("test error".to_string()));
+    }
+
+    #[test]
+    fn test_halo2_plonk_constraint_checking() {
+        let json = r#"
+        {
+          "name": "test",
+          "k": 4,
+          "advice_columns": 3,
+          "fixed_columns": 0,
+          "instance_columns": 0,
+          "constraints": 2,
+          "private_inputs": 3,
+          "public_inputs": 0,
+          "lookups": 1,
+          "tables": {
+            "0": { "name": "tiny", "num_columns": 1, "entries": [[2], [3]] }
+          },
+          "gates": [
+            { "a": 1, "b": 2, "c": 3, "q_l": "1", "q_r": "1", "q_o": "-1", "q_m": "0", "q_c": "0" }
+          ],
+          "lookups": [
+            { "table_id": 0, "input": 1 }
+          ]
+        }
+        "#;
+
+        let temp = tempfile::Builder::new()
+            .suffix(".json")
+            .tempfile()
+            .unwrap();
+        std::fs::write(temp.path(), json).unwrap();
+
+        let executor = Halo2Executor::new(temp.path().to_str().unwrap(), "main").unwrap();
+        let inspector = executor.constraint_inspector().unwrap();
+
+        let witness = vec![
+            FieldElement::one(),
+            FieldElement::from_u64(2),
+            FieldElement::from_u64(3),
+            FieldElement::from_u64(5),
+        ];
+
+        let results = inspector.check_constraints(&witness);
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.satisfied));
     }
 }

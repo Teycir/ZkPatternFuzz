@@ -253,7 +253,8 @@ pub use analysis::{
     LookupConstraint, LookupTable, RangeConstraint, RangeMethod,
     PolynomialConstraint, PolynomialTerm, AcirOpcode, BlackBoxOp, MemoryOpType,
     AirConstraint, AirExpression, AirDomain, ConstraintParser, ConstraintChecker,
-    WireRef, SymbolicConversionOptions,
+    WireRef, SymbolicConversionOptions, ParsedConstraintSet, UnknownLookupPolicy,
+    ConstraintEvaluation,
 };
 pub use differential::{DifferentialFuzzer, DifferentialConfig, DifferentialResult};
 pub use distributed::{

@@ -3,8 +3,8 @@
 //! Provides TCP-based communication between fuzzer nodes.
 
 use super::{
-    DistributedConfig, DistributedMessage, NodeCapabilities, NodeId, NodeStats,
-    SerializableCorpusEntry, WorkResults, WorkUnitId,
+    DistributedMessage, NodeCapabilities, NodeId, NodeStats, SerializableCorpusEntry, WorkResults,
+    WorkUnitId,
 };
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -193,6 +193,18 @@ impl FuzzerNode {
                 last_heartbeat: std::time::Instant::now(),
                 current_work: None,
             };
+
+            let idle = connection.current_work.is_none();
+            let worker_threads = connection.capabilities.worker_count;
+            let heartbeat_age_ms = connection.last_heartbeat.elapsed().as_millis();
+            let _ = connection.stream.peer_addr();
+            tracing::debug!(
+                "Worker {} registered: threads={}, idle={}, heartbeat_age_ms={}",
+                connection.node_id,
+                worker_threads,
+                idle,
+                heartbeat_age_ms
+            );
 
             workers.write().unwrap().insert(node_id, connection);
         }

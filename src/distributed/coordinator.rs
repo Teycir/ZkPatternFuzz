@@ -77,8 +77,6 @@ impl WorkUnit {
 /// Information about a connected worker
 #[derive(Debug, Clone)]
 struct WorkerInfo {
-    node_id: NodeId,
-    capabilities: NodeCapabilities,
     status: NodeStatus,
     last_heartbeat: Instant,
     stats: NodeStats,
@@ -193,10 +191,8 @@ impl DistributedCoordinator {
     }
 
     /// Register a new worker
-    fn register_worker(&self, node_id: NodeId, capabilities: NodeCapabilities) {
+    fn register_worker(&self, node_id: NodeId, _capabilities: NodeCapabilities) {
         let worker = WorkerInfo {
-            node_id: node_id.clone(),
-            capabilities,
             status: NodeStatus::Idle,
             last_heartbeat: Instant::now(),
             stats: NodeStats::default(),

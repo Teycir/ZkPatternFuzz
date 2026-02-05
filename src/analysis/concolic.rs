@@ -8,9 +8,9 @@
 //! This approach is more scalable than pure symbolic execution for large circuits.
 
 use super::symbolic::{
-    PathCondition, SolverResult, SymbolicConstraint, SymbolicState, SymbolicValue, Z3Solver,
+    PathCondition, SolverResult, SymbolicConstraint, SymbolicValue,
 };
-use super::symbolic_enhanced::{ConstraintSimplifier, EnhancedSymbolicConfig, IncrementalSolver};
+use super::symbolic_enhanced::{ConstraintSimplifier, IncrementalSolver};
 use crate::executor::{CircuitExecutor, ExecutionResult};
 use crate::fuzzer::FieldElement;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -239,7 +239,8 @@ impl ConcolicExecutor {
     /// Build symbolic trace from execution result
     fn build_symbolic_trace(&self, trace: &mut ConcolicTrace, _result: &ExecutionResult) {
         // Create symbolic inputs
-        for (i, input) in trace.inputs.iter().enumerate() {
+        let inputs_snapshot = trace.inputs.clone();
+        for (i, input) in inputs_snapshot.iter().enumerate() {
             let symbolic_input = SymbolicValue::symbol(&format!("input_{}", i));
             let concrete_value = SymbolicValue::concrete(input.clone());
 
@@ -256,7 +257,8 @@ impl ConcolicExecutor {
         // 3. Build constraints from the actual execution path
         //
         // For now, we create synthetic constraints based on input values
-        for (i, input) in trace.inputs.iter().enumerate() {
+        let inputs_snapshot = trace.inputs.clone();
+        for (i, input) in inputs_snapshot.iter().enumerate() {
             let sym = SymbolicValue::symbol(&format!("input_{}", i));
 
             // Add range constraint
@@ -453,6 +455,18 @@ impl ConcolicFuzzerIntegration {
     /// Run concolic exploration with seeds
     pub fn explore(&mut self, seeds: Vec<Vec<FieldElement>>) {
         if let Some(ref mut executor) = self.executor {
+            let expected = self.num_inputs;
+            let seeds = if expected == 0 {
+                seeds
+            } else {
+                seeds
+                    .into_iter()
+                    .filter(|inputs| inputs.len() == expected)
+                    .collect()
+            };
+            if seeds.is_empty() {
+                return;
+            }
             let tests = executor.run(seeds);
             for test in tests {
                 self.pending_tests.push_back(test);

@@ -33,7 +33,7 @@ pub struct TestCase {
 }
 
 /// Field element representation (32 bytes for bn254)
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct FieldElement(pub [u8; 32]);
 
 impl FieldElement {
@@ -122,6 +122,12 @@ impl FieldElement {
         
         let result_bytes = result.to_bytes_be();
         Self::from_bytes(&result_bytes)
+    }
+
+    /// Convert to a decimal string representation
+    pub fn to_decimal_string(&self) -> String {
+        use num_bigint::BigUint;
+        BigUint::from_bytes_be(&self.0).to_str_radix(10)
     }
 
     /// Field multiplication (mod p) - simplified for mock purposes
