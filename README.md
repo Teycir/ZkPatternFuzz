@@ -355,7 +355,6 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 - [ ] Real backend integration testing
 
 ### Planned 📋
-- [ ] Integrate with CI/CD pipelines (GitHub Actions templates)
 - [ ] Distributed fuzzing with corpus sharing
 - [ ] Formal verification integration (Lean/Coq proofs for ZK circuits)
 
