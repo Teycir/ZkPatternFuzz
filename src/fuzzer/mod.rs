@@ -6,6 +6,7 @@ mod oracle;
 mod engine;
 mod power_schedule;
 mod structure_aware;
+pub mod grammar;
 pub mod oracles;
 
 pub use constants::*;

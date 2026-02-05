@@ -212,6 +212,7 @@
 pub mod attacks;
 pub mod config;
 pub mod corpus;
+pub mod cve;
 pub mod errors;
 pub mod executor;
 pub mod fuzzer;

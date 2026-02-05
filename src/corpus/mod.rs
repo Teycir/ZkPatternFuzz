@@ -2,8 +2,14 @@
 //!
 //! Handles storage, persistence, and minimization of test cases.
 
+pub mod deduplication;
 pub mod minimizer;
 pub mod storage;
+
+pub use deduplication::{
+    SemanticDeduplicator, SemanticFingerprint, DeduplicationConfig, 
+    DeduplicationStats, FindingCluster, calculate_confidence, InputPattern,
+};
 
 use crate::fuzzer::{FieldElement, TestCase, TestMetadata};
 use std::collections::HashMap;

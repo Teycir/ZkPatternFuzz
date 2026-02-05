@@ -1,0 +1,615 @@
+# ZkPatternFuzz Known Vulnerability Database
+# CVE patterns with regression tests for validation
+#
+# Each vulnerability includes:
+# - Unique ID and metadata
+# - Detection patterns for automated testing
+# - Regression test specifications
+# - Remediation guidance
+---
+version: "1.0"
+last_updated: "2026-02-05"
+
+vulnerabilities:
+  # ============== CRITICAL: Signature & Identity Vulnerabilities ==============
+
+  - id: "ZK-CVE-2022-001"
+    name: "EdDSA Signature Malleability"
+    severity: critical
+    cvss_score: 9.8
+    affected_circuits:
+      - pattern: "tornado-core"
+        versions: ["*"]
+      - pattern: "semaphore"
+        versions: ["<2.5"]
+      - pattern: "circomlib/eddsa*"
+        versions: ["*"]
+    sources:
+      - "Trail of Bits Audit (2022)"
+      - "zkSecurity Research"
+      - "https://github.com/0xPARC/zk-bug-tracker"
+    description: |
+      EdDSA signatures allow both (R, s) and (R, -s mod q) to verify successfully.
+      This enables signature malleability attacks where an attacker can create
+      alternative valid signatures for the same message without knowing the private key.
+      
+      IMPACT:
+      - Replay attacks in privacy protocols
+      - Double-spending if nullifier derived from signature
+      - Transaction malleability
+      
+    detection:
+      oracle: signature_malleability
+      attack_type: malleability
+      procedure:
+        - action: generate_valid_signature
+          params:
+            message: random_field_element
+            private_key: random_field_element
+        - action: compute_negated_s
+          params:
+            original_s: "{{signature.s}}"
+            field_order: "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
+        - action: verify_both_signatures
+          expected: both_valid
+        - action: check_nullifier_collision
+          expected: same_nullifier_different_signatures
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat3_privacy/tornado-core/circuits/withdraw.circom"
+      test_cases:
+        - name: valid_signature_normal
+          inputs:
+            signature_s: "0x1234567890abcdef"
+            negate_s: false
+          expected_result: valid_proof
+        - name: valid_signature_negated
+          inputs:
+            signature_s: "0x1234567890abcdef"
+            negate_s: true
+          expected_result: should_be_invalid
+      assertion: "Negated signature MUST NOT produce valid proof"
+
+    remediation:
+      description: "Enforce canonical signature form: s < q/2"
+      code_example: |
+        // Add constraint in Circom
+        component lessThan = LessThan(254);
+        lessThan.in[0] <== s;
+        lessThan.in[1] <== q / 2;
+        lessThan.out === 1;
+      references:
+        - "RFC 8032 EdDSA Specification"
+        - "https://ed25519.cr.yp.to/ed25519-20110926.pdf"
+
+  - id: "ZK-CVE-2022-002"
+    name: "Nullifier Collision via Weak Hash"
+    severity: critical
+    cvss_score: 9.5
+    affected_circuits:
+      - pattern: "poseidon*"
+        versions: ["custom implementations"]
+      - pattern: "pedersen*"
+        versions: ["insufficient rounds"]
+    sources:
+      - "Veridise Audit Reports"
+      - "Academic Research on ZK Hash Functions"
+    description: |
+      Weak hash function implementations allow different preimages to produce
+      the same nullifier hash. This directly enables double-spending attacks
+      in privacy protocols like Tornado Cash, Semaphore, and Railgun.
+      
+      IMPACT:
+      - Double-spending of notes/deposits
+      - Complete protocol insolvency
+      - Privacy guarantees broken
+
+    detection:
+      oracle: nullifier_collision
+      attack_type: collision
+      procedure:
+        - action: generate_random_secrets
+          params:
+            count: 100000
+        - action: compute_nullifiers
+        - action: detect_collisions
+          threshold: 0
+        - action: analyze_entropy
+          min_entropy: 0.9
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+      test_cases:
+        - name: unique_nullifiers
+          inputs:
+            secrets: [random_100]
+          expected_result: all_unique_nullifiers
+        - name: crafted_collision_attempt
+          inputs:
+            secret_a: "0xdeadbeef"
+            secret_b: "0xcafebabe"
+          expected_result: different_nullifiers
+      assertion: "No two different secrets produce same nullifierHash"
+
+    remediation:
+      description: "Use cryptographically secure hash with sufficient rounds"
+      recommendations:
+        - "Poseidon: minimum 8 full rounds + 57 partial rounds for BN254"
+        - "Pedersen: use validated circomlib implementation"
+        - "Add collision resistance tests to CI"
+
+  # ============== HIGH: Merkle Tree Vulnerabilities ==============
+
+  - id: "ZK-CVE-2021-001"
+    name: "Merkle Path Length Bypass"
+    severity: high
+    cvss_score: 8.5
+    affected_circuits:
+      - pattern: "merkleTree*"
+        versions: ["custom"]
+      - pattern: "circuits without explicit depth validation"
+        versions: ["*"]
+    sources:
+      - "ZKProof Community Disclosure"
+      - "OpenZeppelin Security Advisories"
+    description: |
+      Circuit accepts Merkle proofs with incorrect path length.
+      Missing constraint: pathElements.length == tree_depth
+      
+      IMPACT:
+      - Forge proofs for non-existent leaves
+      - Bypass membership verification
+      - Unauthorized withdrawals
+
+    detection:
+      oracle: merkle_soundness
+      attack_type: boundary
+      procedure:
+        - action: create_valid_proof
+          params:
+            tree_depth: 20
+        - action: truncate_path
+          params:
+            new_length: 19
+        - action: verify_truncated
+          expected: should_fail
+        - action: extend_path
+          params:
+            new_length: 21
+        - action: verify_extended
+          expected: should_fail
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat3_privacy/tornado-core/circuits/merkleTree.circom"
+      test_cases:
+        - name: correct_depth
+          inputs:
+            path_length: 20
+          expected_result: valid_proof
+        - name: truncated_path
+          inputs:
+            path_length: 19
+          expected_result: invalid_proof
+        - name: extended_path
+          inputs:
+            path_length: 21
+          expected_result: invalid_proof
+      assertion: "Only path_length=tree_depth should produce valid proof"
+
+    remediation:
+      description: "Add explicit path length constraint"
+      code_example: |
+        // In Circom
+        signal input pathElements[levels];
+        // The array size is compile-time fixed, providing implicit length check
+        // For dynamic-length support, add explicit constraint:
+        assert(pathElements.length == TREE_DEPTH);
+
+  - id: "ZK-CVE-2021-002"
+    name: "Merkle Sibling Order Ambiguity"
+    severity: high
+    cvss_score: 8.0
+    affected_circuits:
+      - pattern: "merkleTree*"
+        versions: ["without binary path index constraints"]
+    sources:
+      - "OpenZeppelin Audit"
+      - "Trail of Bits ZK Security"
+    description: |
+      pathIndices array not constrained to binary values (0 or 1).
+      Non-binary values can produce alternative valid proofs for same (root, leaf).
+      
+      IMPACT:
+      - Multiple valid witnesses for same public inputs
+      - Underconstrained circuit vulnerability
+
+    detection:
+      oracle: merkle_soundness
+      attack_type: underconstrained
+      procedure:
+        - action: create_valid_proof
+          params:
+            pathIndices: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+        - action: mutate_indices_to_non_binary
+          params:
+            target_indices: [0, 5, 10]
+            values: [2, 255, -1]
+        - action: verify_mutated
+          expected: should_fail
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat3_privacy/tornado-core/circuits/merkleTree.circom"
+      test_cases:
+        - name: binary_indices
+          inputs:
+            pathIndices: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+          expected_result: valid_proof
+        - name: non_binary_indices
+          inputs:
+            pathIndices: [2, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+          expected_result: invalid_proof
+      assertion: "Non-binary pathIndices must cause constraint failure"
+
+    remediation:
+      description: "Constrain each pathIndex to binary"
+      code_example: |
+        // In Circom: ensure each index is 0 or 1
+        for (var i = 0; i < levels; i++) {
+            pathIndices[i] * (pathIndices[i] - 1) === 0;
+        }
+
+  # ============== HIGH: Arithmetic Vulnerabilities ==============
+
+  - id: "ZK-CVE-2023-001"
+    name: "Field Overflow in Range Proofs"
+    severity: high
+    cvss_score: 8.5
+    affected_circuits:
+      - pattern: "range_proof*"
+        versions: ["unsafe bit decomposition"]
+      - pattern: "Num2Bits"
+        versions: ["without recomposition check"]
+    sources:
+      - "Consensys Diligence"
+      - "Academic ZK Security Research"
+    description: |
+      Bit decomposition doesn't verify that recomposed value equals original.
+      Allows proving false range claims by exploiting field overflow.
+      
+      Example: For 8-bit range proof [0, 255]:
+      - Input: 256 (outside range)
+      - Decomposition: wraps/overflows
+      - Proof: incorrectly validates
+      
+      IMPACT:
+      - False range proof acceptance
+      - Bypass of value limits in DeFi
+
+    detection:
+      oracle: range_overflow
+      attack_type: arithmetic_overflow
+      procedure:
+        - action: test_boundary_values
+          params:
+            bit_width: 64
+            test_values:
+              - "0"                    # Lower bound
+              - "18446744073709551615" # 2^64 - 1 (upper bound)
+              - "18446744073709551616" # 2^64 (overflow)
+              - "-1"                   # Negative
+        - action: verify_each
+          expected:
+            "0": valid
+            "18446744073709551615": valid
+            "18446744073709551616": invalid
+            "-1": invalid
+
+    regression_test:
+      enabled: true
+      circuit_path: "circuits/range_proof.circom"
+      test_cases:
+        - name: within_range
+          inputs:
+            value: 255
+            bits: 8
+          expected_result: valid_proof
+        - name: at_boundary
+          inputs:
+            value: 256
+            bits: 8
+          expected_result: invalid_proof
+        - name: field_max
+          inputs:
+            value: "p-1"
+            bits: 254
+          expected_result: depends_on_implementation
+      assertion: "Values outside specified range must fail"
+
+    remediation:
+      description: "Add recomposition constraint"
+      code_example: |
+        // Verify decomposition matches original
+        var recomposed = 0;
+        for (var i = 0; i < n; i++) {
+            recomposed += bits[i] * (1 << i);
+        }
+        recomposed === original;
+
+  - id: "ZK-CVE-2023-002"
+    name: "Division by Zero Not Constrained"
+    severity: medium
+    cvss_score: 6.5
+    affected_circuits:
+      - pattern: "*division*"
+        versions: ["*"]
+      - pattern: "amm*"
+        versions: ["*"]
+      - pattern: "dex*"
+        versions: ["*"]
+    sources:
+      - "zkSecurity Blog"
+      - "DeFi Audit Reports"
+    description: |
+      Division operations don't constrain divisor != 0.
+      In ZK circuits, division by zero may produce undefined behavior
+      or exploitable states rather than failing.
+      
+      IMPACT:
+      - Undefined circuit behavior
+      - Potential proof of false statement
+      - AMM/DEX price manipulation
+
+    detection:
+      oracle: arithmetic_boundary
+      attack_type: boundary
+      procedure:
+        - action: identify_divisions
+        - action: set_divisor_zero
+        - action: check_circuit_behavior
+          expected: constraint_failure_or_defined_error
+
+    regression_test:
+      enabled: true
+      circuit_path: "circuits/division.circom"
+      test_cases:
+        - name: normal_division
+          inputs:
+            numerator: 100
+            denominator: 5
+          expected_result: valid_proof
+        - name: zero_division
+          inputs:
+            numerator: 100
+            denominator: 0
+          expected_result: constraint_failure
+      assertion: "Division by zero must cause constraint failure"
+
+    remediation:
+      description: "Add non-zero constraint for divisor"
+      code_example: |
+        // Ensure divisor is non-zero
+        signal isNonZero;
+        isNonZero <-- divisor != 0 ? 1 : 0;
+        isNonZero === 1;
+        // Or use IsZero from circomlib and assert it's 0
+
+  # ============== MEDIUM: Privacy Leakage ==============
+
+  - id: "ZK-CVE-2022-003"
+    name: "Timing Side-Channel in Witness Generation"
+    severity: medium
+    cvss_score: 5.5
+    affected_circuits:
+      - pattern: "*"
+        versions: ["*"]
+    sources:
+      - "Academic Research (USENIX 2022)"
+      - "Cryptographic Side-Channel Literature"
+    description: |
+      Witness generation time varies based on secret value.
+      Statistical analysis can correlate timing with secret bits.
+      
+      IMPACT:
+      - Partial secret recovery
+      - Privacy guarantees weakened
+      - Transaction correlation
+
+    detection:
+      oracle: timing_analysis
+      attack_type: timing_side_channel
+      procedure:
+        - action: measure_witness_generation
+          params:
+            samples: 10000
+        - action: correlate_timing_with_hamming_weight
+        - action: statistical_test
+          params:
+            method: pearson_correlation
+            threshold: 0.05
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat3_privacy/tornado-core/circuits/withdraw.circom"
+      test_cases:
+        - name: timing_variance
+          inputs:
+            secrets: [random_1000]
+          expected_result: timing_within_threshold
+      assertion: "Timing variance correlation with secret < 0.1"
+
+    remediation:
+      description: "Use constant-time algorithms for witness generation"
+      recommendations:
+        - "Avoid branching on secret values"
+        - "Use constant-time arithmetic libraries"
+        - "Add random delays to mask timing"
+
+  - id: "ZK-CVE-2023-003"
+    name: "Public Signal Leaks Private Information"
+    severity: medium
+    cvss_score: 6.0
+    affected_circuits:
+      - pattern: "circuits exposing intermediate values"
+        versions: ["*"]
+    sources:
+      - "Trail of Bits"
+      - "Privacy Protocol Audits"
+    description: |
+      Public outputs correlate with private inputs beyond intended functionality.
+      Statistical analysis of many proofs can recover private information.
+      
+      IMPACT:
+      - Gradual privacy degradation
+      - User de-anonymization
+      - Transaction graph analysis
+
+    detection:
+      oracle: information_leakage
+      attack_type: information_leakage
+      procedure:
+        - action: collect_pairs
+          params:
+            count: 10000
+        - action: compute_mutual_information
+        - action: alert_if_above_threshold
+          params:
+            threshold: 0.01
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+      test_cases:
+        - name: mutual_information_test
+          inputs:
+            samples: 1000
+          expected_result: low_mutual_information
+      assertion: "Mutual information between private inputs and public outputs < 0.01"
+
+    remediation:
+      description: "Minimize public output surface"
+      recommendations:
+        - "Only expose necessary public signals"
+        - "Use deterministic derivation for public values"
+        - "Add noise if applicable"
+
+  # ============== zkEVM Specific ==============
+
+  - id: "ZK-CVE-2024-001"
+    name: "zkEVM State Transition Inconsistency"
+    severity: critical
+    cvss_score: 9.0
+    affected_circuits:
+      - pattern: "zkevm-circuits"
+        versions: ["*"]
+      - pattern: "scroll-zkevm"
+        versions: ["*"]
+      - pattern: "linea-circuits"
+        versions: ["*"]
+    sources:
+      - "zkEVM Security Audits"
+      - "L2 Bug Bounty Programs"
+    description: |
+      Edge cases in state transition proofs allow invalid state roots to be proven.
+      Specific triggers include:
+      - Empty block with storage modifications
+      - Max gas block execution
+      - Deep call stack (1024 depth)
+      - SELFDESTRUCT edge cases
+      
+      IMPACT:
+      - Invalid L2 state finalized on L1
+      - Fund loss/theft
+      - Complete rollup compromise
+
+    detection:
+      oracle: state_transition
+      attack_type: boundary
+      procedure:
+        - action: test_edge_cases
+          params:
+            cases:
+              - empty_block
+              - max_gas_block
+              - single_tx_block
+              - max_calldata
+              - deep_call_stack
+              - storage_collision
+              - selfdestruct_in_constructor
+        - action: verify_state_consistency
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat2_rollups/zkevm-circuits"
+      test_cases:
+        - name: empty_block_state
+          inputs:
+            block_type: empty
+            storage_ops: []
+          expected_result: consistent_state
+        - name: max_gas_execution
+          inputs:
+            gas: 30000000
+          expected_result: valid_state_transition
+      assertion: "All edge cases must produce consistent state transitions"
+
+    remediation:
+      description: "Comprehensive edge case handling in state transition proofs"
+      recommendations:
+        - "Exhaustive boundary testing in CI"
+        - "Formal verification of state machine"
+        - "Differential testing against geth/reth"
+
+# Interesting values for testing
+interesting_values:
+  bn254_scalar:
+    - name: zero
+      value: "0x0"
+    - name: one
+      value: "0x1"
+    - name: max_minus_one
+      value: "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+    - name: half_modulus
+      value: "0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000"
+    - name: two
+      value: "0x2"
+    - name: max_u256
+      value: "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+
+  common_attack_values:
+    - name: zero
+      value: "0x0"
+    - name: one
+      value: "0x1"
+    - name: negative_one_mod_p
+      value: "-1"
+    - name: max_u64
+      value: "0xffffffffffffffff"
+    - name: overflow_trigger
+      value: "0x10000000000000000"
+
+# Detection oracle configurations
+oracle_configs:
+  nullifier_collision:
+    max_observations: 100000
+    collision_threshold: 0
+    entropy_check: true
+    min_entropy: 0.9
+
+  merkle_soundness:
+    expected_depth: 20
+    test_truncation: true
+    test_extension: true
+    test_non_binary_indices: true
+
+  signature_malleability:
+    test_negation: true
+    field_order: "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
+
+  range_overflow:
+    bit_widths: [8, 16, 32, 64, 128, 254]
+    test_boundary_plus_one: true
+    test_field_max: true

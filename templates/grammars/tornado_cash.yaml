@@ -1,0 +1,110 @@
+# Tornado Cash Withdrawal Circuit Grammar
+# For use with ZkPatternFuzz grammar-based fuzzing
+---
+name: TornadoCashWithdrawal
+description: |
+  Input grammar for Tornado Cash withdraw.circom circuit.
+  Generates valid and malformed inputs for security testing.
+
+inputs:
+  # Public inputs
+  - name: root
+    type: field
+    description: "Merkle tree root"
+    entropy: high
+    
+  - name: nullifierHash
+    type: nullifier
+    description: "Hash of nullifier, prevents double-spending"
+    derived_from: "hash(nullifier)"
+    entropy: high
+    
+  - name: recipient
+    type: field
+    description: "Withdrawal recipient address"
+    entropy: medium
+    interesting:
+      - "0x0"  # Zero address
+      - "0xdead"  # Common test address
+    
+  - name: relayer
+    type: field
+    description: "Relayer address for meta-transactions"
+    entropy: medium
+    interesting:
+      - "0x0"  # No relayer
+    
+  - name: fee
+    type: field
+    description: "Relayer fee"
+    constraints:
+      - "range: [0, 1000000000000000000]"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0xde0b6b3a7640000"  # 1 ETH in wei
+    
+  - name: refund
+    type: field
+    description: "ETH refund amount"
+    constraints:
+      - "range: [0, 1000000000000000000]"
+    interesting:
+      - "0x0"
+
+  # Private inputs
+  - name: nullifier
+    type: nullifier
+    description: "Secret nullifier preimage"
+    entropy: high
+    
+  - name: secret
+    type: field
+    description: "Secret for commitment"
+    entropy: high
+    
+  - name: pathElements
+    type: array
+    element_type: field
+    length: 20
+    description: "Merkle proof sibling hashes"
+    
+  - name: pathIndices
+    type: array
+    element_type: bool
+    length: 20
+    description: "Merkle proof path directions"
+    constraints:
+      - "binary"
+
+invariants:
+  - "commitment = hash(secret, nullifier)"
+  - "nullifierHash = hash(nullifier)"
+  - "merkle_verify(root, commitment, pathElements, pathIndices) == true"
+  - "Each pathIndices[i] must be 0 or 1"
+
+merkle_config:
+  depth: 20
+  hash_function: pedersen
+
+attack_vectors:
+  - name: nullifier_collision
+    description: "Different secrets producing same nullifier"
+    mutations:
+      - "Keep nullifierHash, change nullifier and secret"
+      
+  - name: merkle_path_bypass
+    description: "Invalid path length accepted"
+    mutations:
+      - "Truncate pathElements to length < 20"
+      - "Extend pathElements to length > 20"
+      
+  - name: non_binary_indices
+    description: "Non-binary pathIndices accepted"
+    mutations:
+      - "Set pathIndices[i] to 2, 255, or -1"
+      
+  - name: signature_malleability
+    description: "EdDSA signature s > q/2"
+    mutations:
+      - "Negate signature s component"

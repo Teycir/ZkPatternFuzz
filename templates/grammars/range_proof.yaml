@@ -1,0 +1,57 @@
+# Range Proof Circuit Grammar
+# For use with ZkPatternFuzz grammar-based fuzzing
+---
+name: RangeProof
+description: |
+  Generic range proof circuit grammar.
+  Proves value is within [0, 2^n) without revealing it.
+
+parameters:
+  bits: 64  # Configurable bit width
+
+inputs:
+  - name: value
+    type: field
+    description: "Secret value to prove is in range"
+    constraints:
+      - "range: [0, 2^bits - 1]"
+    interesting:
+      - "0x0"                    # Lower bound
+      - "0x1"                    # One
+      - "0xffffffffffffffff"     # 2^64 - 1 (upper bound for 64-bit)
+      - "0x10000000000000000"    # 2^64 (overflow for 64-bit)
+      - "0x8000000000000000"     # 2^63 (sign bit for signed interpretation)
+    entropy: medium
+
+  - name: bits
+    type: array
+    element_type: bool
+    length: 64  # Matches parameters.bits
+    description: "Bit decomposition of value"
+    constraints:
+      - "binary"
+      - "sum(bits[i] * 2^i) == value"
+
+invariants:
+  - "value < 2^bits"
+  - "Each bits[i] is 0 or 1"
+  - "Recomposition: sum(bits[i] * 2^i) == value"
+
+attack_vectors:
+  - name: overflow
+    description: "Value >= 2^bits accepted"
+    mutations:
+      - "Set value to 2^bits"
+      - "Set value to 2^bits + 1"
+      - "Set value to field_max"
+      
+  - name: bit_constraint_bypass
+    description: "Non-binary bit values accepted"
+    mutations:
+      - "Set bits[i] to 2"
+      - "Set bits[i] to -1"
+      
+  - name: recomposition_mismatch
+    description: "Bits don't match value"
+    mutations:
+      - "Provide incorrect bit decomposition"

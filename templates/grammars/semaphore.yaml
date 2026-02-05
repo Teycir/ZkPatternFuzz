@@ -1,0 +1,64 @@
+# Semaphore Identity Circuit Grammar
+# For use with ZkPatternFuzz grammar-based fuzzing
+---
+name: SemaphoreIdentity
+description: |
+  Input grammar for Semaphore circuit.
+  Anonymous signaling with identity verification.
+
+inputs:
+  # Private inputs
+  - name: identityNullifier
+    type: nullifier
+    description: "Identity nullifier (private)"
+    entropy: high
+    
+  - name: identityTrapdoor
+    type: field
+    description: "Identity trapdoor (private)"
+    entropy: high
+
+  # Merkle proof
+  - name: treeSiblings
+    type: array
+    element_type: field
+    length: 20
+    description: "Merkle tree sibling nodes"
+    
+  - name: treePathIndices
+    type: array
+    element_type: bool
+    length: 20
+    description: "Merkle tree path indices"
+    constraints:
+      - "binary"
+
+  # Public inputs
+  - name: signalHash
+    type: field
+    description: "Hash of the signal being broadcast"
+    entropy: high
+    
+  - name: externalNullifier
+    type: field
+    description: "External nullifier for scoping"
+    entropy: high
+
+invariants:
+  - "identity_commitment = poseidon(identityNullifier, identityTrapdoor)"
+  - "nullifier_hash = poseidon(externalNullifier, identityNullifier)"
+  - "merkle_root = compute_root(identity_commitment, treeSiblings, treePathIndices)"
+
+merkle_config:
+  depth: 20
+  hash_function: poseidon
+
+attack_vectors:
+  - name: identity_commitment_collision
+    description: "Different trapdoor/nullifier producing same commitment"
+    
+  - name: nullifier_hash_collision
+    description: "Same nullifier hash from different identities"
+    
+  - name: merkle_proof_bypass
+    description: "Invalid Merkle proof accepted"
