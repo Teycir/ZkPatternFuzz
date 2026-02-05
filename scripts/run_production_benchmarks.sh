@@ -57,7 +57,10 @@ mkdir -p "$OUTPUT_DIR"
 
 # Build release binary
 log_section "Building ZkPatternFuzz (release)"
-cargo build --release 2>&1 | tail -5
+if ! cargo build --release 2>&1 | tail -5; then
+    log_error "Failed to build release binary"
+    exit 1
+fi
 
 # Check for zk0d collection
 if [ ! -d "$ZK0D_BASE" ]; then
@@ -90,7 +93,6 @@ run_benchmark() {
     local circuit_path="$2"
     local timeout="$3"
     local attacks="$4"
-    local output_file="$OUTPUT_DIR/${name}_${TIMESTAMP}.json"
     
     log_section "Benchmarking: $name"
     
@@ -141,12 +143,12 @@ reporting:
   include_poc: true
 YAML
         
-        # Run fuzzer
+    # Run fuzzer
         if timeout "$timeout" cargo run --release -- \
             --config "$config_file" \
             --workers 4 \
             --seed 42 \
-            2>&1 | tee "$OUTPUT_DIR/${name}_log.txt"; then
+            > "$OUTPUT_DIR/${name}_log.txt" 2>&1; then
             local status="completed"
         else
             local status="timeout"
@@ -170,7 +172,7 @@ YAML
     
     if [ -f "$OUTPUT_DIR/${name}_log.txt" ]; then
         findings=$(grep -c "Finding:" "$OUTPUT_DIR/${name}_log.txt" 2>/dev/null || echo "0")
-        throughput=$(grep "executions/sec" "$OUTPUT_DIR/${name}_log.txt" | tail -1 | grep -oP '\d+' | head -1 || echo "0")
+        throughput=$(grep "executions/sec" "$OUTPUT_DIR/${name}_log.txt" | tail -1 | awk '{print $1}' || echo "0")
     fi
     
     # Append to results

@@ -49,6 +49,7 @@ vulnerabilities:
         - action: compute_negated_s
           params:
             original_s: "{{signature.s}}"
+            # BN254 scalar field order
             field_order: "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
         - action: verify_both_signatures
           expected: both_valid
@@ -205,8 +206,7 @@ vulnerabilities:
         // In Circom
         signal input pathElements[levels];
         // The array size is compile-time fixed, providing implicit length check
-        // For dynamic-length support, add explicit constraint:
-        assert(pathElements.length == TREE_DEPTH);
+        // Circom enforces array bounds at compile time through fixed-size arrays
 
   - id: "ZK-CVE-2021-002"
     name: "Merkle Sibling Order Ambiguity"
@@ -571,9 +571,9 @@ interesting_values:
     - name: one
       value: "0x1"
     - name: max_minus_one
-      value: "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+      value: "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"  # BN254 field modulus - 1
     - name: half_modulus
-      value: "0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000"
+      value: "0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000"  # (BN254 field modulus - 1) / 2
     - name: two
       value: "0x2"
     - name: max_u256

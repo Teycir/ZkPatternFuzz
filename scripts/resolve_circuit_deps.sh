@@ -100,13 +100,18 @@ install_deps() {
     fi
     
     log_info "[$name] Installing dependencies..."
-    (cd "$dir" && npm install --legacy-peer-deps 2>&1) || {
+    if ! (cd "$dir" && npm install --legacy-peer-deps 2>&1); then
         log_warn "[$name] npm install failed, trying with --force"
-        (cd "$dir" && npm install --force 2>&1) || {
+        if ! (cd "$dir" && npm install --force 2>&1); then
             log_error "[$name] Failed to install dependencies"
             return 1
-        }
-    }
+        fi
+    fi
+    
+    if [ ! -d "$dir/node_modules" ]; then
+        log_error "[$name] node_modules directory not created after install"
+        return 1
+    fi
     
     log_info "[$name] Dependencies installed successfully"
 }

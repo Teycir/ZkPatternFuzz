@@ -823,8 +823,8 @@ impl IncrementalSolver {
     ) -> ast::Int<'a> {
         match value {
             SymbolicValue::Concrete(fe) => {
-                let hex_str = hex::encode(fe.to_bytes());
-                ast::Int::from_str(ctx, &format!("0x{}", hex_str))
+                let dec_str = fe.to_decimal_string();
+                ast::Int::from_str(ctx, &dec_str)
                     .unwrap_or_else(|| ast::Int::from_i64(ctx, 0))
             }
             SymbolicValue::Symbol(name) => {

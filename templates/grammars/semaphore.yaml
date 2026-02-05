@@ -22,13 +22,13 @@ inputs:
   - name: treeSiblings
     type: array
     element_type: field
-    length: 20
+    length: "${merkle_config.depth}"
     description: "Merkle tree sibling nodes"
     
   - name: treePathIndices
     type: array
     element_type: bool
-    length: 20
+    length: "${merkle_config.depth}"  # References merkle_config.depth
     description: "Merkle tree path indices"
     constraints:
       - "binary"

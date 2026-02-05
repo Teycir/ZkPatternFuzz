@@ -68,7 +68,7 @@ attacks:
         - "19"  # Typical tree depth
         - "20"
         - "21"
-        - "2^merkle_levels"
+        - "1048576"  # 2^20
 
 inputs:
   - name: "root"

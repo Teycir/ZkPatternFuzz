@@ -45,7 +45,7 @@ check_prerequisites() {
     fi
     
     NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VERSION" -lt 18 ]; then
+    if [ -z "$NODE_VERSION" ] || [ "$NODE_VERSION" -lt 18 ]; then
         log_warn "Node.js version $NODE_VERSION detected. Recommend v18+"
     fi
     
@@ -88,15 +88,15 @@ compile_circuit() {
     
     # Try to compile with circom
     if command -v circom &> /dev/null; then
-        circom "$circom_path" --r1cs --sym -o "$output_subdir" 2>&1 || {
-            log_warn "Failed to compile $name with global circom"
+        if ! circom "$circom_path" --r1cs --sym -o "$output_subdir" 2>&1 | tee "$output_subdir/compile.log"; then
+            log_warn "Failed to compile $name with global circom (see $output_subdir/compile.log)"
             return 1
-        }
+        fi
     else
-        npx circom "$circom_path" --r1cs --sym -o "$output_subdir" 2>&1 || {
-            log_warn "Failed to compile $name with npx circom"
+        if ! npx circom "$circom_path" --r1cs --sym -o "$output_subdir" 2>&1 | tee "$output_subdir/compile.log"; then
+            log_warn "Failed to compile $name with npx circom (see $output_subdir/compile.log)"
             return 1
-        }
+        fi
     fi
     
     log_info "✓ Compiled $name"
@@ -116,6 +116,7 @@ setup_snarkjs_circuits() {
     
     # Copy pre-compiled circuits
     for circuit_dir in "$snarkjs_test"/*/; do
+        [ -d "$circuit_dir" ] || continue
         local circuit_name=$(basename "$circuit_dir")
         local r1cs_file="$circuit_dir/circuit.r1cs"
         
@@ -154,6 +155,7 @@ setup_tornado_circuits() {
     
     # Compile circuits
     for circuit in "$tornado_dir/circuits"/*.circom; do
+        [ -f "$circuit" ] || continue
         local circuit_name=$(basename "$circuit" .circom)
         compile_circuit "tornado_$circuit_name" "$circuit" || true
     done
@@ -202,6 +204,7 @@ setup_iden3_circuits() {
     
     # Compile main circuits
     for circuit in "$iden3_dir/circuits"/*.circom; do
+        [ -f "$circuit" ] || continue
         local circuit_name=$(basename "$circuit" .circom)
         # Skip template circuits (those with parameters)
         if [[ "$circuit_name" != *"-"* ]]; then
@@ -222,11 +225,10 @@ print_summary() {
         echo ""
         echo "Compiled circuits:"
         for r1cs in "$OUTPUT_DIR"/*/*.r1cs; do
-            if [ -f "$r1cs" ]; then
-                local size=$(stat -c%s "$r1cs" 2>/dev/null || stat -f%z "$r1cs" 2>/dev/null)
-                local name=$(dirname "$r1cs" | xargs basename)
-                printf "  %-30s %10d bytes\n" "$name" "$size"
-            fi
+            [ -f "$r1cs" ] || continue
+            local size=$(stat -c%s "$r1cs" 2>/dev/null || stat -f%z "$r1cs" 2>/dev/null)
+            local name=$(dirname "$r1cs" | xargs basename)
+            printf "  %-30s %10d bytes\n" "$name" "$size"
         done
     else
         log_warn "No circuits compiled"

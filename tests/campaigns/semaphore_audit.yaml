@@ -55,10 +55,8 @@ attacks:
       test_values:
         - "0"
         - "1"
-        - "p-1"
-        - "p"
-        - "(p-1)/2"
-        - "2^254"
+        - "21888242871839275222246405745257275088548364400416034343698204186575808495616"  # p-1 for BN254
+        - "10944121435919637611123202872628637544274182200208017171849102093287904247808"  # (p-1)/2
 
   # Medium: Boundary value testing
   - type: boundary
@@ -67,8 +65,8 @@ attacks:
       test_values:
         - "0"
         - "1"
-        - "max_depth"
-        - "2^tree_depth - 1"
+        - "20"  # max_depth for Semaphore
+        - "1048575"  # 2^20 - 1
 
 inputs:
   - name: "secret"

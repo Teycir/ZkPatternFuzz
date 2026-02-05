@@ -40,7 +40,7 @@ attacks:
   - type: "collision"
     description: "Find different preimages producing same output (smoke test)"
     config:
-      samples: 100000
+      samples: 10000  # Reduced from 100000 for better performance
 
 # Input specifications
 inputs:

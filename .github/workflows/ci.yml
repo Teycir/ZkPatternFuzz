@@ -22,9 +22,14 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
       
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -60,7 +65,12 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
       
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -93,9 +103,14 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
+      
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
       
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -124,7 +139,12 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
       
       - name: Install Z3
         run: |
@@ -150,7 +170,12 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
       
       - name: Install Z3
         run: |
@@ -193,10 +218,8 @@ jobs:
       
       - name: Check for critical findings
         run: |
-          # Check if any critical findings were reported
-          if grep -r "CRITICAL" fuzzing-results/ 2>/dev/null; then
-            echo "::warning::Critical findings detected in nightly fuzzing!"
-          fi
+          [ -d fuzzing-results/ ] && grep -rqm 1 --include="*.json" --include="*.md" "CRITICAL" fuzzing-results/ && \
+            echo "::warning::Critical findings detected in nightly fuzzing!" || true
 
   # Security audit
   security:
@@ -226,7 +249,12 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
       
       - name: Install Z3 (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -254,7 +282,12 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
       
       - name: Install Z3
         run: |

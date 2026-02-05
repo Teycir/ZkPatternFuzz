@@ -14,6 +14,7 @@ pub mod constraint_types;
 pub mod constraint_guided;
 pub mod profiling;
 pub mod r1cs_parser;
+pub mod r1cs_to_smt;
 pub mod symbolic;
 pub mod symbolic_enhanced;
 pub mod concolic;
@@ -39,6 +40,7 @@ pub use concolic::{
 };
 pub use taint::{TaintAnalyzer, TaintFinding};
 pub use r1cs_parser::{R1CS, R1CSConstraint as ParsedR1CSConstraint, parse_sym_file};
+pub use r1cs_to_smt::{generate_constraint_guided_inputs, R1CSToSMT};
 pub use constraint_types::{
     ExtendedConstraint, R1CSConstraint, PlonkGate, CustomGateConstraint,
     LookupConstraint, LookupTable, RangeConstraint, RangeMethod,

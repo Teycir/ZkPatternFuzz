@@ -33,8 +33,11 @@ def load_yaml_with_duplicate_check(file_path):
         constructor
     )
     
-    with open(file_path, 'r') as f:
-        return yaml.load(f, Loader=DuplicateKeyLoader)
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+        if len(content) > 10 * 1024 * 1024:  # 10MB limit
+            raise ValueError("YAML file too large (>10MB)")
+        return yaml.load(content, Loader=DuplicateKeyLoader)
 
 
 def validate_patterns(data):
@@ -63,12 +66,17 @@ def validate_patterns(data):
                 warnings.append(f"Pattern '{pattern_name}' missing description")
             if 'attacks' not in pattern:
                 errors.append(f"Pattern '{pattern_name}' missing attacks list")
-            else:
+            elif isinstance(pattern['attacks'], list):
                 for i, attack in enumerate(pattern['attacks']):
+                    if not isinstance(attack, dict):
+                        errors.append(f"Attack {i} in '{pattern_name}' is not a dictionary")
+                        continue
                     if 'type' not in attack:
                         errors.append(f"Attack {i} in '{pattern_name}' missing type")
                     if 'description' not in attack:
                         warnings.append(f"Attack {i} in '{pattern_name}' missing description")
+            else:
+                errors.append(f"Pattern '{pattern_name}' attacks is not a list")
     
     return errors, warnings
 
@@ -114,16 +122,24 @@ def validate_mutation_strategies(data):
             warnings.append(f"mutation_strategies missing '{strategy_name}'")
         else:
             strategy = strategies[strategy_name]
+            if not isinstance(strategy, dict):
+                errors.append(f"Strategy '{strategy_name}' is not a dictionary")
+                continue
             if 'description' not in strategy:
                 warnings.append(f"Strategy '{strategy_name}' missing description")
             if 'mutations' not in strategy:
                 errors.append(f"Strategy '{strategy_name}' missing mutations list")
-            else:
+            elif isinstance(strategy['mutations'], list):
                 for i, mutation in enumerate(strategy['mutations']):
+                    if not isinstance(mutation, dict):
+                        errors.append(f"Mutation {i} in '{strategy_name}' is not a dictionary")
+                        continue
                     if 'name' not in mutation:
                         errors.append(f"Mutation {i} in '{strategy_name}' missing name")
                     if 'probability' not in mutation:
                         errors.append(f"Mutation {i} in '{strategy_name}' missing probability")
+            else:
+                errors.append(f"Strategy '{strategy_name}' mutations is not a list")
     
     return errors, warnings
 
@@ -135,7 +151,7 @@ def validate_no_misplaced_attacks(data):
     # Check mutation_strategies doesn't have attacks
     if 'mutation_strategies' in data:
         for strategy_name, strategy in data['mutation_strategies'].items():
-            if 'attacks' in strategy:
+            if isinstance(strategy, dict) and 'attacks' in strategy:
                 errors.append(f"mutation_strategies['{strategy_name}'] incorrectly contains 'attacks' - should only have 'mutations'")
     
     # Check interesting_values doesn't have attacks
@@ -188,8 +204,8 @@ def main():
     all_errors.extend(validate_no_misplaced_attacks(data))
     
     # Report results
-    print(f"✅ YAML is well-formed")
-    print(f"✅ Structure validation passed")
+    print("✅ YAML is well-formed")
+    print("✅ Structure validation passed")
     
     if all_warnings:
         print(f"\n⚠️  {len(all_warnings)} Warning(s):")

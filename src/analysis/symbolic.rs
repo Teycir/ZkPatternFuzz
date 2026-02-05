@@ -395,9 +395,8 @@ impl Z3Solver {
     ) -> ast::Int<'a> {
         match value {
             SymbolicValue::Concrete(fe) => {
-                let bytes = fe.to_bytes();
-                let hex_str = hex::encode(bytes);
-                ast::Int::from_str(ctx, &format!("0x{}", hex_str))
+                let dec_str = fe.to_decimal_string();
+                ast::Int::from_str(ctx, &dec_str)
                     .unwrap_or_else(|| ast::Int::from_i64(ctx, 0))
             }
             SymbolicValue::Symbol(name) => {
@@ -596,9 +595,8 @@ impl Z3Solver {
                     let mut blocking_terms = Vec::new();
                     for (name, var) in &vars {
                         if let Some(fe) = assignments.get(name) {
-                            let bytes = fe.to_bytes();
-                            let hex_str = hex::encode(bytes);
-                            if let Some(val) = ast::Int::from_str(&ctx, &format!("0x{}", hex_str)) {
+                            let dec_str = fe.to_decimal_string();
+                            if let Some(val) = ast::Int::from_str(&ctx, &dec_str) {
                                 blocking_terms.push(var._eq(&val).not());
                             }
                         }
