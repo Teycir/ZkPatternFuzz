@@ -7,8 +7,7 @@
 //! (see `FuzzingEngine::run_soundness_attack()`).
 
 use super::{Attack, AttackContext};
-use crate::config::{AttackType, Severity};
-use crate::fuzzer::{Finding, ProofOfConcept};
+use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 
 /// Soundness tester for proof systems
 pub struct SoundnessTester {

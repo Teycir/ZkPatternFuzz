@@ -9,8 +9,8 @@
 
 use super::symbolic::{PathCondition, SolverResult, SymbolicConstraint, SymbolicValue};
 use super::symbolic_enhanced::{ConstraintSimplifier, IncrementalSolver};
-use crate::executor::{CircuitExecutor, ExecutionResult};
-use crate::fuzzer::FieldElement;
+use zk_core::{CircuitExecutor, ExecutionResult};
+use zk_core::FieldElement;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 

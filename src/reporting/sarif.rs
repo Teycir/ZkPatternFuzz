@@ -53,8 +53,8 @@
 //! # }
 //! ```
 
-use crate::config::{AttackType, Severity};
-use crate::fuzzer::Finding;
+use zk_core::{AttackType, Severity};
+use zk_core::Finding;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::HashMap;
@@ -1434,7 +1434,7 @@ fn generate_cwe_taxonomy() -> SarifTaxonomy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fuzzer::ProofOfConcept;
+    use zk_core::ProofOfConcept;
 
     #[test]
     fn test_sarif_builder() {

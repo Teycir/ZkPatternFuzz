@@ -59,7 +59,7 @@ pub fn deduplicate_corpus(entries: &[CorpusEntry]) -> Vec<CorpusEntry> {
     result
 }
 
-fn compute_input_hash(inputs: &[crate::fuzzer::FieldElement]) -> u64 {
+fn compute_input_hash(inputs: &[zk_core::FieldElement]) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -97,7 +97,7 @@ impl MinimizationStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fuzzer::{FieldElement, TestCase, TestMetadata};
+    use zk_core::{FieldElement, TestCase, TestMetadata};
 
     fn create_entry(coverage_hash: u64, new_coverage: bool) -> CorpusEntry {
         let mut entry = CorpusEntry::new(

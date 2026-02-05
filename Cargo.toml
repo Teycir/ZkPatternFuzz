@@ -5,6 +5,12 @@ edition = "2021"
 description = "Zero-Knowledge Proof Security Testing Framework"
 license = "BUSL-1.1"
 
+[workspace]
+members = [
+    ".",
+    "crates/zk-core",
+]
+
 [dependencies]
 # Config & Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -44,6 +50,7 @@ chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 dirs = "5.0"  # For finding home directory
 tempfile = "3.10"
+zk-core = { path = "crates/zk-core" }
 
 # Optional ACIR bytecode decoding
 base64 = { version = "0.22", optional = true }

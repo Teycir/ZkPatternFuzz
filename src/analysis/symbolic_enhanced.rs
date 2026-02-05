@@ -10,7 +10,7 @@
 use super::symbolic::{
     PathCondition, SolverResult, SymbolicConstraint, SymbolicState, SymbolicValue, Z3Solver,
 };
-use crate::fuzzer::FieldElement;
+use zk_core::FieldElement;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use z3::ast::Ast;

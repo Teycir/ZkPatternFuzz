@@ -1,7 +1,7 @@
 //! Reporting for differential fuzzing results
 
 use super::{DifferentialResult, DifferentialSeverity, DifferentialStats};
-use crate::config::Framework;
+use zk_core::Framework;
 use std::fmt;
 
 /// Report of differential fuzzing campaign

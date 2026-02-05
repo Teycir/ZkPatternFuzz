@@ -8,7 +8,7 @@ use z3::ast::{Ast, Bool, Int};
 use z3::{Config, Context, SatResult, Solver};
 
 use super::r1cs_parser::{R1CS, R1CSConstraint};
-use crate::fuzzer::FieldElement;
+use zk_core::FieldElement;
 
 /// BN254 scalar field modulus (decimal string)
 const BN254_MODULUS: &str =

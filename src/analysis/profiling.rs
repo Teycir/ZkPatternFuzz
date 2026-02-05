@@ -6,8 +6,8 @@
 //! - Memory usage patterns
 //! - Worst-case performance inputs
 
-use crate::executor::CircuitExecutor;
-use crate::fuzzer::FieldElement;
+use zk_core::CircuitExecutor;
+use zk_core::FieldElement;
 use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;

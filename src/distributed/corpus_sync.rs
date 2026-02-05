@@ -399,8 +399,8 @@ mod tests {
         let mut manager = GlobalCorpusManager::new();
 
         let entry = CorpusEntry::new(
-            crate::fuzzer::TestCase {
-                inputs: vec![crate::fuzzer::FieldElement::zero()],
+            zk_core::TestCase {
+                inputs: vec![zk_core::FieldElement::zero()],
                 expected_output: None,
                 metadata: Default::default(),
             },

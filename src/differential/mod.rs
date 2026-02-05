@@ -6,9 +6,7 @@
 pub mod executor;
 pub mod report;
 
-use crate::config::Framework;
-use crate::executor::{CircuitExecutor, ExecutionResult};
-use crate::fuzzer::{FieldElement, TestCase};
+use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Framework, TestCase};
 use std::collections::HashMap;
 use std::sync::Arc;
 

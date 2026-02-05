@@ -8,9 +8,9 @@
 pub mod composition;
 pub mod recursive;
 
-use crate::config::Severity;
-use crate::executor::{CircuitExecutor, ExecutionResult};
-use crate::fuzzer::{FieldElement, Finding, ProofOfConcept};
+use zk_core::{
+    AttackType, CircuitExecutor, ExecutionResult, FieldElement, Finding, ProofOfConcept, Severity,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -126,7 +126,7 @@ impl MultiCircuitFuzzer {
             if !result2.success {
                 // Composition caused failure - might be interesting
                 findings.push(Finding {
-                    attack_type: crate::config::AttackType::Boundary,
+                    attack_type: AttackType::Boundary,
                     severity: Severity::Medium,
                     description: format!(
                         "Circuit composition failure: {} -> {} failed when chaining outputs",

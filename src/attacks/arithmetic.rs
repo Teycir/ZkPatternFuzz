@@ -9,8 +9,7 @@
 //! (see `FuzzingEngine::run_arithmetic_attack()`).
 
 use super::{Attack, AttackContext};
-use crate::config::{AttackType, Severity};
-use crate::fuzzer::{Finding, ProofOfConcept};
+use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 
 /// Arithmetic overflow/underflow tester
 pub struct ArithmeticTester {

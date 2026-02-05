@@ -22,8 +22,8 @@ pub use circom::analysis as circom_analysis;
 pub use halo2::analysis as halo2_analysis;
 pub use noir::analysis as noir_analysis;
 
-use crate::config::Framework;
-use crate::fuzzer::FieldElement;
+use zk_core::Framework;
+use zk_core::FieldElement;
 
 /// Common trait for all ZK circuit targets
 pub trait TargetCircuit: Send + Sync {

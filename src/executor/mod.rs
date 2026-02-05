@@ -12,13 +12,10 @@ pub use mock::*;
 pub use traits::*;
 
 // Re-export CircuitInfo for external use
-pub use crate::attacks::CircuitInfo;
+pub use zk_core::CircuitInfo;
 
-use crate::analysis::{
-    ConstraintChecker, ConstraintParser, ParsedConstraintSet, UnknownLookupPolicy,
-};
-use crate::config::Framework;
-use crate::fuzzer::FieldElement;
+use crate::analysis::{ConstraintChecker, UnknownLookupPolicy};
+use zk_core::{FieldElement, Framework};
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -499,16 +496,6 @@ impl ConstraintInspector for NoirExecutor {
         self.target.load_constraints().unwrap_or_default()
     }
 
-    fn get_parsed_constraints(&self) -> Option<ParsedConstraintSet> {
-        if let Some(text) = self.target.load_acir_text() {
-            return Some(ConstraintParser::parse_acir_with_tables(text.as_bytes()));
-        }
-
-        self.target
-            .load_acir_artifact()
-            .map(|bytes| ConstraintParser::parse_acir_with_tables(&bytes))
-    }
-
     fn check_constraints(&self, _witness: &[FieldElement]) -> Vec<ConstraintResult> {
         self.get_constraints()
             .iter()
@@ -631,10 +618,6 @@ impl ConstraintInspector for Halo2Executor {
         Vec::new()
     }
 
-    fn get_parsed_constraints(&self) -> Option<ParsedConstraintSet> {
-        Some(self.target.load_plonk_constraints())
-    }
-
     fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {
         let parsed = self.target.load_plonk_constraints();
         if parsed.constraints.is_empty() {
@@ -742,105 +725,6 @@ impl CircuitExecutor for CairoExecutor {
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
         use crate::targets::TargetCircuit;
         self.target.verify(proof, public_inputs)
-    }
-}
-
-/// Result of circuit execution with coverage information
-#[derive(Debug, Clone)]
-pub struct ExecutionResult {
-    /// Output field elements
-    pub outputs: Vec<FieldElement>,
-    /// Constraint coverage information
-    pub coverage: ExecutionCoverage,
-    /// Execution time in microseconds
-    pub execution_time_us: u64,
-    /// Whether execution succeeded
-    pub success: bool,
-    /// Error message if failed
-    pub error: Option<String>,
-}
-
-impl ExecutionResult {
-    pub fn success(outputs: Vec<FieldElement>, coverage: ExecutionCoverage) -> Self {
-        Self {
-            outputs,
-            coverage,
-            execution_time_us: 0,
-            success: true,
-            error: None,
-        }
-    }
-
-    pub fn failure(error: String) -> Self {
-        Self {
-            outputs: vec![],
-            coverage: ExecutionCoverage::default(),
-            execution_time_us: 0,
-            success: false,
-            error: Some(error),
-        }
-    }
-
-    pub fn with_time(mut self, time_us: u64) -> Self {
-        self.execution_time_us = time_us;
-        self
-    }
-}
-
-/// Coverage information from a single execution
-#[derive(Debug, Clone, Default)]
-pub struct ExecutionCoverage {
-    /// Constraints that were satisfied
-    pub satisfied_constraints: Vec<usize>,
-    /// Constraints that were evaluated (may include unsatisfied)
-    pub evaluated_constraints: Vec<usize>,
-    /// New coverage discovered (constraints hit for first time)
-    pub new_coverage: bool,
-    /// Coverage bitmap for fast comparison
-    pub coverage_hash: u64,
-}
-
-impl ExecutionCoverage {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn with_output_hash(outputs: &[FieldElement]) -> Self {
-        use sha2::{Digest, Sha256};
-
-        let mut hasher = Sha256::new();
-        for fe in outputs {
-            hasher.update(fe.0);
-        }
-        let hash = hasher.finalize();
-        let coverage_hash = u64::from_le_bytes([
-            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
-        ]);
-
-        Self {
-            coverage_hash,
-            ..Default::default()
-        }
-    }
-
-    pub fn with_constraints(satisfied: Vec<usize>, evaluated: Vec<usize>) -> Self {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let mut hasher = DefaultHasher::new();
-        satisfied.hash(&mut hasher);
-        let coverage_hash = hasher.finish();
-
-        Self {
-            satisfied_constraints: satisfied,
-            evaluated_constraints: evaluated,
-            new_coverage: false,
-            coverage_hash,
-        }
-    }
-
-    pub fn mark_new_coverage(&mut self) {
-        self.new_coverage = true;
     }
 }
 

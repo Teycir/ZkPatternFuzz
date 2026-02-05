@@ -7,8 +7,7 @@
 //! - Identity theft in privacy protocols
 
 use super::{Attack, AttackContext, CircuitInfo};
-use crate::config::{AttackType, Severity};
-use crate::fuzzer::{Finding, ProofOfConcept};
+use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 
 /// Detector for underconstrained circuits
 pub struct UnderconstrainedDetector {

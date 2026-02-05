@@ -1,8 +1,6 @@
 //! Multi-backend executor wrapper for differential testing
 
-use crate::config::Framework;
-use crate::executor::{CircuitExecutor, CircuitInfo, ExecutionResult};
-use crate::fuzzer::FieldElement;
+use zk_core::{CircuitExecutor, CircuitInfo, ExecutionResult, FieldElement, Framework};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;

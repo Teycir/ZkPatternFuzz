@@ -7,8 +7,8 @@
 //! - Constraint density
 //! - Theoretical vs actual complexity
 
-use crate::attacks::CircuitInfo;
-use crate::executor::CircuitExecutor;
+use zk_core::CircuitInfo;
+use zk_core::CircuitExecutor;
 use std::sync::Arc;
 
 /// Complexity metrics for a circuit

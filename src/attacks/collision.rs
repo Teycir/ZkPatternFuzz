@@ -29,8 +29,7 @@
 //! ```
 
 use super::{Attack, AttackContext};
-use crate::config::{AttackType, Severity};
-use crate::fuzzer::{FieldElement, Finding, ProofOfConcept};
+use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
 use std::collections::HashMap;
 
 /// Known ZK-friendly hash types for specialized collision testing

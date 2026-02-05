@@ -4,7 +4,7 @@
 //! inputs, rather than treating them as opaque bytes.
 
 use super::FieldElement;
-use crate::config::Framework;
+use zk_core::Framework;
 use rand::Rng;
 use std::collections::HashMap;
 

@@ -227,7 +227,7 @@ pub mod distributed;
 pub mod formal;
 pub mod multi_circuit;
 
-pub use attacks::CircuitInfo;
+pub use zk_core::CircuitInfo;
 pub use config::{
     FuzzConfig, Campaign, Target, Parameters, Attack, AttackType, 
     Input, FuzzStrategy, Framework, Severity, ReportingConfig

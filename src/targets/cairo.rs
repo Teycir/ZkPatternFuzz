@@ -6,8 +6,8 @@
 //! - STARK proof generation via stone-prover
 
 use super::TargetCircuit;
-use crate::config::Framework;
-use crate::fuzzer::FieldElement;
+use zk_core::Framework;
+use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

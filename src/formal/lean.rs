@@ -4,8 +4,8 @@
 
 use super::{ProofExporter, ProofObligation, ProofResult, ProofSystem};
 use crate::analysis::symbolic::{SymbolicConstraint, SymbolicValue};
-use crate::executor::ConstraintEquation;
-use crate::fuzzer::FieldElement;
+use zk_core::ConstraintEquation;
+use zk_core::FieldElement;
 
 /// Lean 4 proof exporter
 pub struct LeanExporter {

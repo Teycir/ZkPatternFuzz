@@ -6,9 +6,9 @@
 //! - Support for Noir's ACIR format
 
 use super::TargetCircuit;
-use crate::config::Framework;
-use crate::executor::ConstraintEquation;
-use crate::fuzzer::FieldElement;
+use zk_core::Framework;
+use zk_core::ConstraintEquation;
+use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

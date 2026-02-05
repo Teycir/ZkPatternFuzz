@@ -6,7 +6,7 @@
 //! - Guide fuzzing with symbolic information
 //! - Automatically generate edge-case test vectors
 
-use crate::fuzzer::FieldElement;
+use zk_core::FieldElement;
 use std::collections::{HashMap, HashSet, VecDeque};
 use z3::ast::Ast;
 use z3::{ast, Config, Context, SatResult, Solver};

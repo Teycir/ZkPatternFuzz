@@ -1,7 +1,7 @@
 //! Test case generator based on grammar DSL
 
 use super::InputGrammar;
-use crate::fuzzer::{FieldElement, TestCase, TestMetadata};
+use zk_core::{FieldElement, TestCase, TestMetadata};
 use rand::Rng;
 
 /// Grammar-based test case generator

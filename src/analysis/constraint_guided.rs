@@ -9,8 +9,8 @@ use crate::analysis::{
     ExtendedConstraint, LookupTable, PathCondition, PruningStrategy, R1CSConstraint,
     SymbolicConstraint, SymbolicConversionOptions, WireRef, Z3Solver,
 };
-use crate::executor::{ConstraintEquation, ConstraintInspector};
-use crate::fuzzer::FieldElement;
+use zk_core::{ConstraintEquation, ConstraintInspector};
+use zk_core::FieldElement;
 use std::collections::{HashMap, HashSet};
 
 /// Stats for constraint-guided seed generation.

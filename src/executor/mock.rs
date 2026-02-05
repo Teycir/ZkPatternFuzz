@@ -7,8 +7,8 @@ use super::{
     CircuitExecutor, CircuitInfo, ConstraintEquation, ConstraintInspector, ConstraintResult,
     ExecutionCoverage, ExecutionResult,
 };
-use crate::config::Framework;
-use crate::fuzzer::FieldElement;
+use zk_core::Framework;
+use zk_core::FieldElement;
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 use std::sync::atomic::{AtomicUsize, Ordering};

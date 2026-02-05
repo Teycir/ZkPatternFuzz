@@ -7,8 +7,8 @@
 
 use super::TargetCircuit;
 use crate::analysis::{ConstraintParser, ParsedConstraintSet};
-use crate::config::Framework;
-use crate::fuzzer::FieldElement;
+use zk_core::Framework;
+use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

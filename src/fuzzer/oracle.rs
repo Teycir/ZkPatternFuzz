@@ -1,7 +1,6 @@
 //! Oracles for detecting bugs and vulnerabilities
 
-use super::{FieldElement, Finding, TestCase};
-use crate::config::{AttackType, Severity};
+use zk_core::{AttackType, FieldElement, Finding, Severity, TestCase};
 
 /// Oracle trait for bug detection
 pub trait BugOracle {

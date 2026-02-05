@@ -18,8 +18,7 @@
 //! }
 //! ```
 
-use crate::config::{AttackType, Severity};
-use crate::fuzzer::{FieldElement, Finding, ProofOfConcept, TestCase};
+use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity, TestCase};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;

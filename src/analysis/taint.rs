@@ -5,9 +5,9 @@
 //! - Improper input segregation
 //! - Privacy violations
 
-use crate::config::Severity;
-use crate::executor::ConstraintEquation;
-use crate::fuzzer::{Finding, ProofOfConcept};
+use zk_core::Severity;
+use zk_core::ConstraintEquation;
+use zk_core::{Finding, ProofOfConcept};
 use std::collections::{HashMap, HashSet};
 
 /// Taint label for tracking data flow
@@ -318,7 +318,7 @@ impl TaintAnalyzer {
         self.analyze()
             .into_iter()
             .map(|tf| Finding {
-                attack_type: crate::config::AttackType::InformationLeakage,
+                attack_type: zk_core::AttackType::InformationLeakage,
                 severity: tf.severity,
                 description: tf.description,
                 poc: ProofOfConcept::default(),

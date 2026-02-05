@@ -10,8 +10,8 @@
 //! - Confidence scoring
 //! - DBSCAN clustering for related findings
 
-use crate::config::{AttackType, Severity};
-use crate::fuzzer::{FieldElement, Finding};
+use zk_core::{AttackType, Severity};
+use zk_core::{FieldElement, Finding};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
@@ -400,7 +400,7 @@ pub fn calculate_confidence(finding: &Finding) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fuzzer::ProofOfConcept;
+    use zk_core::ProofOfConcept;
 
     fn make_finding(attack_type: AttackType, location: &str) -> Finding {
         Finding {

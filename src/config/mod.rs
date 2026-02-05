@@ -7,6 +7,8 @@ pub mod parser;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub use zk_core::{AttackType, Framework, Severity};
+
 /// Main configuration structure for a fuzzing campaign
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FuzzConfig {
@@ -37,17 +39,6 @@ pub struct Target {
     pub framework: Framework,
     pub circuit_path: PathBuf,
     pub main_component: String,
-}
-
-/// Supported ZK frameworks
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
-#[serde(rename_all = "lowercase")]
-pub enum Framework {
-    Circom,
-    Noir,
-    Halo2,
-    Cairo,
-    Mock, // For testing without actual circuits
 }
 
 /// Fuzzing parameters
@@ -95,38 +86,6 @@ pub struct Attack {
     pub description: String,
     #[serde(default)]
     pub config: serde_yaml::Value,
-}
-
-/// Supported attack types
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
-pub enum AttackType {
-    Underconstrained,
-    Soundness,
-    ArithmeticOverflow,
-    ConstraintBypass,
-    TrustedSetup,
-    WitnessLeakage,
-    ReplayAttack,
-    Collision,
-    Boundary,
-    BitDecomposition,
-    Malleability,
-    // New attack types for enhanced fuzzing
-    /// Proof verification fuzzing
-    VerificationFuzzing,
-    /// Witness generation fuzzing
-    WitnessFuzzing,
-    /// Differential testing across backends
-    Differential,
-    /// Information leakage detection
-    InformationLeakage,
-    /// Timing side-channel detection
-    TimingSideChannel,
-    /// Multi-circuit composition testing
-    CircuitComposition,
-    /// Recursive proof testing
-    RecursiveProof,
 }
 
 /// Input specification for fuzzing
@@ -182,29 +141,6 @@ pub struct Oracle {
     pub name: String,
     pub severity: Severity,
     pub description: String,
-}
-
-/// Severity levels for findings
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "lowercase")]
-pub enum Severity {
-    Info,
-    Low,
-    Medium,
-    High,
-    Critical,
-}
-
-impl std::fmt::Display for Severity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Severity::Info => write!(f, "INFO"),
-            Severity::Low => write!(f, "LOW"),
-            Severity::Medium => write!(f, "MEDIUM"),
-            Severity::High => write!(f, "HIGH"),
-            Severity::Critical => write!(f, "CRITICAL"),
-        }
-    }
 }
 
 /// Reporting configuration

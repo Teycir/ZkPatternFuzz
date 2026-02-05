@@ -7,7 +7,7 @@
 //! - Polynomial constraints
 //! - ACIR opcodes
 
-use crate::fuzzer::FieldElement;
+use zk_core::FieldElement;
 use num_bigint::BigUint;
 use std::collections::HashMap;
 

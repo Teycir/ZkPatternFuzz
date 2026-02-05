@@ -1,7 +1,7 @@
 //! Corpus storage and persistence
 
 use super::CorpusEntry;
-use crate::fuzzer::{FieldElement, TestCase, TestMetadata};
+use zk_core::{FieldElement, TestCase, TestMetadata};
 use std::path::Path;
 
 /// Save a single test case to disk

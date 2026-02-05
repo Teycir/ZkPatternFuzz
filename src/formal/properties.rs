@@ -3,8 +3,8 @@
 //! Extracts verifiable properties from ZK circuit constraints.
 
 use crate::analysis::symbolic::{SymbolicConstraint, SymbolicValue};
-use crate::executor::ConstraintEquation;
-use crate::fuzzer::FieldElement;
+use zk_core::ConstraintEquation;
+use zk_core::FieldElement;
 use std::collections::{HashMap, HashSet};
 
 /// Types of circuit properties that can be extracted and verified

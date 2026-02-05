@@ -2,8 +2,8 @@
 //!
 //! Tests circuits that verify other proofs (recursive SNARKs).
 
-use crate::executor::CircuitExecutor;
-use crate::fuzzer::FieldElement;
+use zk_core::CircuitExecutor;
+use zk_core::FieldElement;
 use std::sync::Arc;
 
 /// Recursive proof tester

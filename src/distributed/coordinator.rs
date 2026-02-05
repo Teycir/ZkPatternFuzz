@@ -8,7 +8,7 @@ use super::{
     SerializableCorpusEntry, WorkResults, WorkUnitId,
 };
 use crate::config::FuzzConfig;
-use crate::fuzzer::Finding;
+use zk_core::Finding;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};

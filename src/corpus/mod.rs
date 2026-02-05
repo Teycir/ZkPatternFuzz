@@ -11,7 +11,7 @@ pub use deduplication::{
     DeduplicationStats, FindingCluster, calculate_confidence, InputPattern,
 };
 
-use crate::fuzzer::{FieldElement, TestCase, TestMetadata};
+use zk_core::{FieldElement, TestCase, TestMetadata};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 

@@ -4,8 +4,8 @@
 
 use super::{ProofExporter, ProofObligation, ProofResult, ProofSystem};
 use crate::analysis::symbolic::{SymbolicConstraint, SymbolicValue};
-use crate::executor::ConstraintEquation;
-use crate::fuzzer::FieldElement;
+use zk_core::ConstraintEquation;
+use zk_core::FieldElement;
 
 /// Coq proof exporter
 pub struct CoqExporter {

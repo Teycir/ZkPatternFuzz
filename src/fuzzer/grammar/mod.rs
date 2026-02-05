@@ -30,7 +30,7 @@ pub use parser::GrammarParser;
 pub use generator::GrammarGenerator;
 pub use generator::GenerationStrategy;
 
-use crate::fuzzer::{FieldElement, TestCase, TestMetadata};
+use zk_core::{FieldElement, TestCase, TestMetadata};
 use rand::Rng;
 use std::collections::HashMap;
 

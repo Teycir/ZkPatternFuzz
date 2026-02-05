@@ -96,9 +96,7 @@
 use super::oracle::{ArithmeticOverflowOracle, BugOracle, UnderconstrainedOracle};
 use super::power_schedule::{PowerSchedule, PowerScheduler, TestCaseMetrics};
 use super::structure_aware::{Splicer, StructureAwareMutator};
-use super::{
-    bn254_modulus_bytes, mutate_field_element, FieldElement, Finding, TestCase, TestMetadata,
-};
+use super::{bn254_modulus_bytes, mutate_field_element};
 use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::symbolic::{SymbolicConfig, SymbolicFuzzerIntegration, VulnerabilityPattern};
 use crate::analysis::taint::TaintAnalyzer;
@@ -109,12 +107,10 @@ use crate::analysis::{
 use crate::attacks::{Attack, AttackContext};
 use crate::config::*;
 use crate::corpus::{create_corpus, storage as corpus_storage, CorpusEntry, SharedCorpus};
-use crate::executor::{
-    create_coverage_tracker, CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions,
-    SharedCoverageTracker,
-};
+use crate::executor::{create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions, SharedCoverageTracker};
 use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
 use crate::reporting::FuzzReport;
+use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Finding, TestCase, TestMetadata};
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -794,45 +790,20 @@ impl FuzzingEngine {
                 let input_wire_indices = collect_input_wire_indices(inspector, expected_len);
                 let mut generator = ConstraintSeedGenerator::new(config);
 
-                let output = if let Some(parsed) = inspector.get_parsed_constraints() {
-                    if !parsed.constraints.is_empty() {
-                        tracing::info!(
-                            "Generating constraint-guided seeds from {} parsed constraints...",
-                            parsed.constraints.len()
-                        );
-                        Some(generator.generate_from_extended(
-                            &parsed.constraints,
-                            &parsed.lookup_tables,
-                            &input_wire_indices,
-                            expected_len,
-                        ))
-                    } else {
-                        None
-                    }
+                let constraints = inspector.get_constraints();
+                let output = if constraints.is_empty() {
+                    tracing::debug!("Constraint-guided seeds skipped: no constraints available");
+                    ConstraintSeedOutput::default()
                 } else {
-                    None
-                };
-
-                let output = if let Some(output) = output {
-                    output
-                } else {
-                    let constraints = inspector.get_constraints();
-                    if constraints.is_empty() {
-                        tracing::debug!(
-                            "Constraint-guided seeds skipped: no constraints available"
-                        );
-                        ConstraintSeedOutput::default()
-                    } else {
-                        tracing::info!(
-                            "Generating constraint-guided seeds from {} R1CS constraints...",
-                            constraints.len()
-                        );
-                        generator.generate_from_r1cs(
-                            &constraints,
-                            &input_wire_indices,
-                            expected_len,
-                        )
-                    }
+                    tracing::info!(
+                        "Generating constraint-guided seeds from {} R1CS constraints...",
+                        constraints.len()
+                    );
+                    generator.generate_from_r1cs(
+                        &constraints,
+                        &input_wire_indices,
+                        expected_len,
+                    )
                 };
 
                 if !output.seeds.is_empty() {
@@ -1063,7 +1034,7 @@ impl FuzzingEngine {
     /// duplicate detection which prevents actual duplicates. The worst case
     /// is that we might miss adding a test case that another thread added
     /// first with the same coverage, which is acceptable behavior.
-    fn execute_and_track(&self, test_case: &TestCase) -> crate::executor::ExecutionResult {
+    fn execute_and_track(&self, test_case: &TestCase) -> ExecutionResult {
         let exec_start = Instant::now();
         let result = self.executor.execute_sync(&test_case.inputs);
         let exec_time = exec_start.elapsed();
@@ -1127,7 +1098,7 @@ impl FuzzingEngine {
     }
 
     /// Execute test case, update coverage, and learn patterns (mutable version)
-    fn execute_and_learn(&mut self, test_case: &TestCase) -> crate::executor::ExecutionResult {
+    fn execute_and_learn(&mut self, test_case: &TestCase) -> ExecutionResult {
         let result = self.execute_and_track(test_case);
 
         // Learn mutation patterns from successful executions
@@ -2116,8 +2087,8 @@ impl FuzzingEngine {
         count
     }
 
-    fn get_circuit_info(&self) -> crate::attacks::CircuitInfo {
-        crate::attacks::CircuitInfo {
+    fn get_circuit_info(&self) -> zk_core::CircuitInfo {
+        zk_core::CircuitInfo {
             name: self.config.campaign.target.main_component.clone(),
             num_constraints: self.executor.num_constraints(),
             num_private_inputs: self.executor.num_private_inputs(),
@@ -2170,7 +2141,7 @@ impl FuzzingEngine {
         let mut report = FuzzReport::new(
             self.config.campaign.name.clone(),
             findings,
-            crate::fuzzer::CoverageMap {
+            zk_core::CoverageMap {
                 constraint_hits: std::collections::HashMap::new(),
                 edge_coverage: self.coverage.unique_constraints_hit() as u64,
                 max_coverage: self.executor.num_constraints() as u64,
@@ -2242,7 +2213,7 @@ impl FuzzingEngine {
     fn learn_mutation_patterns(
         &mut self,
         test_case: &TestCase,
-        result: &crate::executor::ExecutionResult,
+        result: &ExecutionResult,
     ) {
         if result.success && !result.outputs.is_empty() {
             // Learn patterns from inputs that produce interesting outputs

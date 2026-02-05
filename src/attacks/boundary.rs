@@ -30,8 +30,8 @@
 //! ```
 
 use super::{Attack, AttackContext};
-use crate::config::{AttackType, Severity};
-use crate::fuzzer::{bn254_modulus_bytes, FieldElement, Finding, ProofOfConcept};
+use crate::fuzzer::bn254_modulus_bytes;
+use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
 use num_bigint::BigUint;
 use std::collections::HashMap;
 

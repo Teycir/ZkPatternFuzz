@@ -6,9 +6,7 @@
 //! - Soundness violations
 
 use super::{Attack, AttackContext};
-use crate::config::{AttackType, Severity};
-use crate::executor::CircuitExecutor;
-use crate::fuzzer::{FieldElement, Finding, ProofOfConcept};
+use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 use rand::Rng;
 use std::sync::Arc;
 
