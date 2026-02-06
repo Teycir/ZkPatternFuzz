@@ -2679,6 +2679,8 @@ impl FuzzingEngine {
     ) -> Vec<Finding> {
         use crate::config::v2::{InvariantOracle, InvariantType};
 
+        use crate::config::v2::parse_invariant_relation;
+
         let input_map = self.input_index_map();
         let mut findings = Vec::new();
 
@@ -2693,12 +2695,17 @@ impl FuzzingEngine {
                 continue;
             }
 
-            let target_indices = self.extract_target_indices(&invariant.relation, &input_map);
+            let ast = parse_invariant_relation(&invariant.relation).ok();
+            let target_indices = if let Some(ast) = ast.as_ref() {
+                self.extract_target_indices_from_ast(ast, &input_map)
+            } else {
+                self.extract_target_indices_from_relation(&invariant.relation, &input_map)
+            };
             if target_indices.is_empty() {
                 continue;
             }
 
-            let violation_value = match self.invariant_violation_value(invariant) {
+            let violation_value = match self.invariant_violation_value(invariant, ast.as_ref()) {
                 Some(value) => value,
                 None => continue,
             };
@@ -2744,7 +2751,7 @@ impl FuzzingEngine {
             .collect()
     }
 
-    fn extract_target_indices(
+    fn extract_target_indices_from_relation(
         &self,
         relation: &str,
         input_map: &std::collections::HashMap<String, usize>,
@@ -2765,7 +2772,7 @@ impl FuzzingEngine {
 
         let mut indices = Vec::new();
         for token in tokens {
-            let key = token.to_lowercase();
+            let key = Self::normalize_input_name(&token).to_lowercase();
             if let Some(idx) = input_map.get(&key) {
                 indices.push(*idx);
             }
@@ -2778,7 +2785,14 @@ impl FuzzingEngine {
     fn invariant_violation_value(
         &self,
         invariant: &crate::config::v2::Invariant,
+        ast: Option<&crate::config::v2::InvariantAST>,
     ) -> Option<FieldElement> {
+        if let Some(ast) = ast {
+            if let Some(value) = self.violation_from_ast(ast, invariant) {
+                return Some(value);
+            }
+        }
+
         let relation = invariant.relation.to_lowercase();
 
         if relation.contains("∈ {0,1}") || relation.contains("binary") {
@@ -2801,6 +2815,65 @@ impl FuzzingEngine {
         }
 
         None
+    }
+
+    fn extract_target_indices_from_ast(
+        &self,
+        ast: &crate::config::v2::InvariantAST,
+        input_map: &std::collections::HashMap<String, usize>,
+    ) -> Vec<usize> {
+        let mut names = Vec::new();
+        self.collect_identifiers(ast, &mut names);
+        let mut indices = Vec::new();
+        for name in names {
+            let key = Self::normalize_input_name(&name).to_lowercase();
+            if let Some(idx) = input_map.get(&key) {
+                indices.push(*idx);
+            }
+        }
+        indices.sort_unstable();
+        indices.dedup();
+        indices
+    }
+
+    fn collect_identifiers(
+        &self,
+        ast: &crate::config::v2::InvariantAST,
+        out: &mut Vec<String>,
+    ) {
+        use crate::config::v2::InvariantAST;
+
+        match ast {
+            InvariantAST::Identifier(name) => out.push(name.clone()),
+            InvariantAST::ArrayAccess(name, _) => out.push(name.clone()),
+            InvariantAST::Call(_, args) => {
+                for arg in args {
+                    out.push(arg.clone());
+                }
+            }
+            InvariantAST::Equals(a, b)
+            | InvariantAST::NotEquals(a, b)
+            | InvariantAST::LessThan(a, b)
+            | InvariantAST::LessThanOrEqual(a, b)
+            | InvariantAST::GreaterThan(a, b)
+            | InvariantAST::GreaterThanOrEqual(a, b)
+            | InvariantAST::InSet(a, b) => {
+                self.collect_identifiers(a, out);
+                self.collect_identifiers(b, out);
+            }
+            InvariantAST::Range { lower, value, upper, .. } => {
+                self.collect_identifiers(lower, out);
+                self.collect_identifiers(value, out);
+                self.collect_identifiers(upper, out);
+            }
+            InvariantAST::ForAll { expr, .. } => self.collect_identifiers(expr, out),
+            InvariantAST::Set(values) => {
+                for value in values {
+                    self.collect_identifiers(value, out);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn extract_bit_length(&self, relation: &str) -> Option<u32> {
@@ -2847,6 +2920,180 @@ impl FuzzingEngine {
         None
     }
 
+    fn normalize_input_name(raw: &str) -> String {
+        raw.trim()
+            .split('[')
+            .next()
+            .unwrap_or(raw)
+            .trim()
+            .to_string()
+    }
+
+    fn violation_from_ast(
+        &self,
+        ast: &crate::config::v2::InvariantAST,
+        invariant: &crate::config::v2::Invariant,
+    ) -> Option<FieldElement> {
+        use crate::config::v2::InvariantAST;
+
+        match ast {
+            InvariantAST::ForAll { expr, .. } => self.violation_from_ast(expr, invariant),
+            InvariantAST::InSet(_, set) => self.violation_from_in_set(set),
+            InvariantAST::Range { lower, upper, inclusive_lower, inclusive_upper, .. } => {
+                self.violation_from_range(lower, upper, *inclusive_lower, *inclusive_upper)
+            }
+            InvariantAST::LessThan(_, rhs) => self.violation_from_comparison(rhs, false, false),
+            InvariantAST::LessThanOrEqual(_, rhs) => self.violation_from_comparison(rhs, false, true),
+            InvariantAST::GreaterThan(_, rhs) => self.violation_from_comparison(rhs, true, false),
+            InvariantAST::GreaterThanOrEqual(_, rhs) => self.violation_from_comparison(rhs, true, true),
+            InvariantAST::Equals(_, rhs) => self.violation_from_not_equal(rhs),
+            InvariantAST::NotEquals(_, rhs) => self.violation_from_equal(rhs),
+            _ => None,
+        }
+    }
+
+    fn violation_from_in_set(
+        &self,
+        set: &crate::config::v2::InvariantAST,
+    ) -> Option<FieldElement> {
+        use crate::config::v2::InvariantAST;
+
+        if let InvariantAST::Set(values) = set {
+            let mut has_zero = false;
+            let mut has_one = false;
+            for value in values {
+                if let Some(num) = self.eval_expr_to_u64(value) {
+                    if num == 0 {
+                        has_zero = true;
+                    } else if num == 1 {
+                        has_one = true;
+                    }
+                }
+            }
+            if has_zero && has_one {
+                return Some(FieldElement::from_u64(2));
+            }
+        }
+
+        None
+    }
+
+    fn violation_from_range(
+        &self,
+        lower: &crate::config::v2::InvariantAST,
+        upper: &crate::config::v2::InvariantAST,
+        inclusive_lower: bool,
+        inclusive_upper: bool,
+    ) -> Option<FieldElement> {
+        if let Some(upper_val) = self.eval_expr_to_u64(upper) {
+            if inclusive_upper {
+                return Some(FieldElement::from_u64(upper_val.saturating_add(1)));
+            }
+            return Some(FieldElement::from_u64(upper_val));
+        }
+
+        if let Some(lower_val) = self.eval_expr_to_u64(lower) {
+            let val = if inclusive_lower {
+                lower_val.saturating_sub(1)
+            } else {
+                lower_val
+            };
+            return Some(FieldElement::from_u64(val));
+        }
+
+        Some(FieldElement::max_value())
+    }
+
+    fn violation_from_comparison(
+        &self,
+        rhs: &crate::config::v2::InvariantAST,
+        is_greater: bool,
+        inclusive: bool,
+    ) -> Option<FieldElement> {
+        if let Some(bound) = self.eval_expr_to_u64(rhs) {
+            if is_greater {
+                let value = if inclusive { bound.saturating_sub(1) } else { bound };
+                return Some(FieldElement::from_u64(value));
+            }
+            let value = if inclusive { bound.saturating_add(1) } else { bound };
+            return Some(FieldElement::from_u64(value));
+        }
+        Some(FieldElement::max_value())
+    }
+
+    fn violation_from_not_equal(
+        &self,
+        rhs: &crate::config::v2::InvariantAST,
+    ) -> Option<FieldElement> {
+        let base = self.eval_expr_to_u64(rhs);
+        match base {
+            Some(value) => Some(FieldElement::from_u64(value.saturating_add(1))),
+            None => Some(FieldElement::max_value()),
+        }
+    }
+
+    fn violation_from_equal(
+        &self,
+        rhs: &crate::config::v2::InvariantAST,
+    ) -> Option<FieldElement> {
+        if let Some(value) = self.eval_expr_to_u64(rhs) {
+            return Some(FieldElement::from_u64(value));
+        }
+        None
+    }
+
+    fn eval_expr_to_u64(&self, expr: &crate::config::v2::InvariantAST) -> Option<u64> {
+        use crate::config::v2::InvariantAST;
+
+        match expr {
+            InvariantAST::Literal(value) => self.parse_u64_literal(value),
+            InvariantAST::Power(base, exp) => {
+                if base.trim() != "2" {
+                    return None;
+                }
+                if let Some(bits) = self.parse_u64_literal(exp) {
+                    if bits <= 63 {
+                        return Some(1u64 << bits);
+                    }
+                }
+                None
+            }
+            InvariantAST::Identifier(name) if name.trim().eq_ignore_ascii_case("bit_length") => {
+                self.config
+                    .campaign
+                    .parameters
+                    .additional
+                    .get("bit_length")
+                    .and_then(|v| v.as_u64())
+            }
+            _ => None,
+        }
+    }
+
+    fn parse_u64_literal(&self, raw: &str) -> Option<u64> {
+        let trimmed = raw.trim().to_lowercase();
+        if trimmed.starts_with("0x") {
+            return u64::from_str_radix(trimmed.trim_start_matches("0x"), 16).ok();
+        }
+        if let Some(expr) = trimmed.strip_prefix("2^") {
+            let expr = expr.trim();
+            if let Some(exp) = expr.strip_suffix("-1").or_else(|| expr.strip_suffix(" - 1")) {
+                if let Ok(bits) = exp.trim().parse::<u32>() {
+                    if bits <= 63 {
+                        return Some((1u64 << bits).saturating_sub(1));
+                    }
+                }
+                return None;
+            }
+            if let Ok(bits) = expr.trim().parse::<u32>() {
+                if bits <= 63 {
+                    return Some(1u64 << bits);
+                }
+            }
+        }
+        trimmed.parse::<u64>().ok()
+    }
+
     fn parse_transform(
         &self,
         transform: &str,
@@ -2875,7 +3122,8 @@ impl FuzzingEngine {
         match name.as_str() {
             "scale_input" => {
                 let (input_name, factor) = Self::parse_two_args(&args)?;
-                let idx = input_map.get(&input_name.to_lowercase())?;
+                let (input_name, _) = Self::parse_transform_target(&input_name);
+                let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
                 let factor = Self::parse_field_element(&factor)?;
                 Some(Transform::ScaleInputs {
                     indices: vec![*idx],
@@ -2884,7 +3132,8 @@ impl FuzzingEngine {
             }
             "add_input" => {
                 let (input_name, value) = Self::parse_two_args(&args)?;
-                let idx = input_map.get(&input_name.to_lowercase())?;
+                let (input_name, _) = Self::parse_transform_target(&input_name);
+                let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
                 let value = Self::parse_field_element(&value)?;
                 Some(Transform::AddToInputs {
                     indices: vec![*idx],
@@ -2893,13 +3142,16 @@ impl FuzzingEngine {
             }
             "negate_input" => {
                 let input_name = args.get(0)?;
-                let idx = input_map.get(&input_name.to_lowercase())?;
+                let (input_name, _) = Self::parse_transform_target(input_name);
+                let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
                 Some(Transform::NegateInputs { indices: vec![*idx] })
             }
             "swap_inputs" => {
                 let (left, right) = Self::parse_two_args(&args)?;
-                let a = input_map.get(&left.to_lowercase())?;
-                let b = input_map.get(&right.to_lowercase())?;
+                let (left, _) = Self::parse_transform_target(&left);
+                let (right, _) = Self::parse_transform_target(&right);
+                let a = input_map.get(&Self::normalize_input_name(&left).to_lowercase())?;
+                let b = input_map.get(&Self::normalize_input_name(&right).to_lowercase())?;
                 Some(Transform::SwapInputs {
                     index_a: *a,
                     index_b: *b,
@@ -2907,7 +3159,8 @@ impl FuzzingEngine {
             }
             "bit_flip" => {
                 let (input_name, bit) = Self::parse_two_args(&args)?;
-                let idx = input_map.get(&input_name.to_lowercase())?;
+                let (input_name, _) = Self::parse_transform_target(&input_name);
+                let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
                 let bit_position = bit.parse::<usize>().ok()?;
                 Some(Transform::BitFlipInput {
                     index: *idx,
@@ -2916,12 +3169,22 @@ impl FuzzingEngine {
             }
             "double_input" => {
                 let input_name = args.get(0)?;
-                let idx = input_map.get(&input_name.to_lowercase())?;
+                let (input_name, _) = Self::parse_transform_target(input_name);
+                let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
                 Some(Transform::DoubleInput { index: *idx })
             }
             "set_input" => {
-                let (input_name, value) = Self::parse_two_args(&args)?;
-                let idx = input_map.get(&input_name.to_lowercase())?;
+                let (input_name, value) = if args.len() == 1 {
+                    if let Some((left, right)) = args[0].split_once('=') {
+                        (left.trim().to_string(), right.trim().to_string())
+                    } else {
+                        Self::parse_two_args(&args)?
+                    }
+                } else {
+                    Self::parse_two_args(&args)?
+                };
+                let (input_name, _) = Self::parse_transform_target(&input_name);
+                let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
                 let value = Self::parse_field_element(&value)?;
                 let mut assignments = std::collections::HashMap::new();
                 assignments.insert(*idx, value);
@@ -2985,20 +3248,54 @@ impl FuzzingEngine {
         Some((args[0].clone(), args[1].clone()))
     }
 
+    fn parse_transform_target(raw: &str) -> (String, Option<usize>) {
+        let trimmed = raw.trim();
+        if let Some(start) = trimmed.find('[') {
+            if trimmed.ends_with(']') {
+                let base = trimmed[..start].trim();
+                let index = trimmed[start + 1..trimmed.len() - 1].trim();
+                let parsed = index.parse::<usize>().ok();
+                return (base.to_string(), parsed);
+            }
+        }
+        (trimmed.to_string(), None)
+    }
+
     fn parse_field_element(raw: &str) -> Option<FieldElement> {
         let trimmed = raw.trim();
-        if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
-            FieldElement::from_hex(trimmed).ok()
-        } else if let Some(exp) = trimmed.strip_prefix("2^") {
-            if let Ok(bits) = exp.trim().parse::<u32>() {
+        let lower = trimmed.to_lowercase();
+
+        if lower == "p-1" || lower == "max" || lower == "max_field" {
+            return Some(FieldElement::max_value());
+        }
+        if lower == "(p-1)/2" {
+            return Some(FieldElement::half_modulus());
+        }
+
+        if lower.starts_with("0x") {
+            return FieldElement::from_hex(trimmed).ok();
+        }
+
+        if let Some(exp) = lower.strip_prefix("2^") {
+            let exp = exp.trim();
+            if let Some(exp) = exp.strip_suffix("-1").or_else(|| exp.strip_suffix(" - 1")) {
+                if let Ok(bits) = exp.trim().parse::<u32>() {
+                    if bits <= 63 {
+                        return Some(FieldElement::from_u64((1u64 << bits).saturating_sub(1)));
+                    }
+                }
+                return Some(FieldElement::max_value());
+            }
+
+            if let Ok(bits) = exp.parse::<u32>() {
                 if bits <= 63 {
                     return Some(FieldElement::from_u64(1u64 << bits));
                 }
             }
-            Some(FieldElement::max_value())
-        } else {
-            trimmed.parse::<u64>().ok().map(FieldElement::from_u64)
+            return Some(FieldElement::max_value());
         }
+
+        trimmed.parse::<u64>().ok().map(FieldElement::from_u64)
     }
 
     fn severity_from_invariant(

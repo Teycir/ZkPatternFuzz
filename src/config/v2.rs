@@ -656,28 +656,50 @@ pub fn parse_invariant_relation(relation: &str) -> Result<InvariantAST, ConfigV2
     // Supports: ==, <, >, <=, >=, ∈, ∀
     let relation = relation.trim();
 
-    if relation.contains("==") {
-        let parts: Vec<&str> = relation.splitn(2, "==").collect();
-        if parts.len() == 2 {
-            return Ok(InvariantAST::Equals(
-                Box::new(parse_expr(parts[0].trim())?),
-                Box::new(parse_expr(parts[1].trim())?),
-            ));
+    if relation.starts_with('∀') || relation.to_lowercase().starts_with("forall") {
+        let trimmed = relation.trim_start_matches('∀').trim();
+        let trimmed = trimmed.strip_prefix("forall").unwrap_or(trimmed).trim();
+        if let Some((binder, body)) = trimmed.split_once(':') {
+            let expr = parse_invariant_relation(body.trim())?;
+            return Ok(InvariantAST::ForAll {
+                binder: binder.trim().to_string(),
+                expr: Box::new(expr),
+            });
         }
     }
 
-    if relation.contains('<') && !relation.contains("<=") {
-        let parts: Vec<&str> = relation.splitn(2, '<').collect();
-        if parts.len() == 2 {
-            return Ok(InvariantAST::LessThan(
-                Box::new(parse_expr(parts[0].trim())?),
-                Box::new(parse_expr(parts[1].trim())?),
-            ));
-        }
+    if let Some(range_ast) = parse_range_chain(relation)? {
+        return Ok(range_ast);
     }
 
-    if relation.starts_with("∀") || relation.starts_with("forall") {
-        return Ok(InvariantAST::ForAll(relation.to_string()));
+    if let Some((left, right)) = split_in_set(relation) {
+        let element = parse_expr(left.trim())?;
+        let set = parse_set(right.trim())?;
+        return Ok(InvariantAST::InSet(Box::new(element), Box::new(set)));
+    }
+
+    if let Some(ast) = parse_binary_op(relation, "==", InvariantAST::Equals)? {
+        return Ok(ast);
+    }
+
+    if let Some(ast) = parse_binary_op(relation, "!=", InvariantAST::NotEquals)? {
+        return Ok(ast);
+    }
+
+    if let Some(ast) = parse_binary_op(relation, "<=", InvariantAST::LessThanOrEqual)? {
+        return Ok(ast);
+    }
+
+    if let Some(ast) = parse_binary_op(relation, ">=", InvariantAST::GreaterThanOrEqual)? {
+        return Ok(ast);
+    }
+
+    if let Some(ast) = parse_binary_op(relation, "<", InvariantAST::LessThan)? {
+        return Ok(ast);
+    }
+
+    if let Some(ast) = parse_binary_op(relation, ">", InvariantAST::GreaterThan)? {
+        return Ok(ast);
     }
 
     // Default to raw expression
@@ -686,6 +708,10 @@ pub fn parse_invariant_relation(relation: &str) -> Result<InvariantAST, ConfigV2
 
 fn parse_expr(expr: &str) -> Result<InvariantAST, ConfigV2Error> {
     let expr = expr.trim();
+
+    if expr.starts_with('{') && expr.ends_with('}') {
+        return parse_set(expr);
+    }
 
     // Function call: name(args)
     if let Some(paren_idx) = expr.find('(') {
@@ -722,20 +748,136 @@ fn parse_expr(expr: &str) -> Result<InvariantAST, ConfigV2Error> {
         }
     }
 
-    // Simple identifier or literal
+    if is_literal(expr) {
+        return Ok(InvariantAST::Literal(expr.to_string()));
+    }
+
+    // Simple identifier
     Ok(InvariantAST::Identifier(expr.to_string()))
+}
+
+fn parse_binary_op<F>(
+    relation: &str,
+    op: &str,
+    make: F,
+) -> Result<Option<InvariantAST>, ConfigV2Error>
+where
+    F: Fn(Box<InvariantAST>, Box<InvariantAST>) -> InvariantAST,
+{
+    if relation.contains(op) {
+        let parts: Vec<&str> = relation.splitn(2, op).collect();
+        if parts.len() == 2 {
+            return Ok(Some(make(
+                Box::new(parse_expr(parts[0].trim())?),
+                Box::new(parse_expr(parts[1].trim())?),
+            )));
+        }
+    }
+    Ok(None)
+}
+
+fn split_in_set(relation: &str) -> Option<(&str, &str)> {
+    if let Some(pos) = relation.find('∈') {
+        let (left, right) = relation.split_at(pos);
+        let right = right.trim_start_matches('∈');
+        return Some((left, right));
+    }
+
+    if let Some(pos) = relation.find(" in ") {
+        let (left, right) = relation.split_at(pos);
+        let right = right.trim_start_matches(" in ");
+        return Some((left, right));
+    }
+
+    None
+}
+
+fn parse_set(expr: &str) -> Result<InvariantAST, ConfigV2Error> {
+    let inner = expr
+        .trim()
+        .trim_start_matches('{')
+        .trim_end_matches('}')
+        .trim();
+    if inner.is_empty() {
+        return Ok(InvariantAST::Set(Vec::new()));
+    }
+    let elements = inner
+        .split(',')
+        .map(|s| parse_expr(s.trim()))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(InvariantAST::Set(elements))
+}
+
+fn parse_range_chain(relation: &str) -> Result<Option<InvariantAST>, ConfigV2Error> {
+    let tokens: Vec<&str> = relation.split_whitespace().collect();
+    if tokens.len() != 5 {
+        return Ok(None);
+    }
+    let op1 = tokens[1];
+    let op2 = tokens[3];
+    let valid_op = |op: &str| matches!(op, "<" | "<=" | ">" | ">=");
+    if !valid_op(op1) || !valid_op(op2) {
+        return Ok(None);
+    }
+
+    let lower = parse_expr(tokens[0].trim())?;
+    let value = parse_expr(tokens[2].trim())?;
+    let upper = parse_expr(tokens[4].trim())?;
+
+    let (inclusive_lower, inclusive_upper) = (op1 == "<=" || op1 == ">=", op2 == "<=" || op2 == ">=");
+
+    Ok(Some(InvariantAST::Range {
+        lower: Box::new(lower),
+        value: Box::new(value),
+        upper: Box::new(upper),
+        inclusive_lower,
+        inclusive_upper,
+    }))
+}
+
+fn is_literal(expr: &str) -> bool {
+    let lower = expr.to_lowercase();
+    if lower.starts_with("0x") {
+        return true;
+    }
+    if lower.chars().all(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    matches!(
+        lower.as_str(),
+        "p"
+            | "p-1"
+            | "max"
+            | "max_field"
+            | "(p-1)/2"
+            | "bit_length"
+    )
 }
 
 /// AST for invariant expressions
 #[derive(Debug, Clone)]
 pub enum InvariantAST {
     Identifier(String),
+    Literal(String),
     Call(String, Vec<String>),
     ArrayAccess(String, String),
     Power(String, String),
+    Set(Vec<InvariantAST>),
     Equals(Box<InvariantAST>, Box<InvariantAST>),
+    NotEquals(Box<InvariantAST>, Box<InvariantAST>),
     LessThan(Box<InvariantAST>, Box<InvariantAST>),
-    ForAll(String),
+    LessThanOrEqual(Box<InvariantAST>, Box<InvariantAST>),
+    GreaterThan(Box<InvariantAST>, Box<InvariantAST>),
+    GreaterThanOrEqual(Box<InvariantAST>, Box<InvariantAST>),
+    InSet(Box<InvariantAST>, Box<InvariantAST>),
+    Range {
+        lower: Box<InvariantAST>,
+        value: Box<InvariantAST>,
+        upper: Box<InvariantAST>,
+        inclusive_lower: bool,
+        inclusive_upper: bool,
+    },
+    ForAll { binder: String, expr: Box<InvariantAST> },
     Raw(String),
 }
 
@@ -770,7 +912,33 @@ mod tests {
     #[test]
     fn test_parse_forall_invariant() {
         let ast = parse_invariant_relation("∀i: path[i] ∈ {0,1}").unwrap();
-        assert!(matches!(ast, InvariantAST::ForAll(_)));
+        match ast {
+            InvariantAST::ForAll { expr, .. } => {
+                assert!(matches!(*expr, InvariantAST::InSet(_, _)));
+            }
+            _ => panic!("Expected ForAll"),
+        }
+    }
+
+    #[test]
+    fn test_parse_range_chain() {
+        let ast = parse_invariant_relation("0 <= value < 2^64").unwrap();
+        match ast {
+            InvariantAST::Range { .. } => {}
+            _ => panic!("Expected Range"),
+        }
+    }
+
+    #[test]
+    fn test_parse_in_set() {
+        let ast = parse_invariant_relation("pathIndices[i] ∈ {0,1}").unwrap();
+        match ast {
+            InvariantAST::InSet(left, right) => {
+                assert!(matches!(*left, InvariantAST::ArrayAccess(_, _)));
+                assert!(matches!(*right, InvariantAST::Set(_)));
+            }
+            _ => panic!("Expected InSet"),
+        }
     }
 
     #[test]
