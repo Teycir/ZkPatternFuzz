@@ -103,6 +103,9 @@ campaign:
 includes:
   - "templates/traits/base.yaml"
   - [additional trait templates based on patterns]
+  # You may add extra YAML overlays for edge cases:
+  # - "campaigns/edge_cases/overflow.yaml"
+  # - "campaigns/edge_cases/degenerate.yaml"
 
 target_traits:
   [detected traits]
@@ -135,6 +138,7 @@ reporting:
 3. **Include edge cases**: Generate comprehensive boundary test values
 4. **Set realistic timeouts**: Based on circuit complexity
 5. **Document reasoning**: Add comments explaining choices
+6. **Use includes**: Prefer chaining YAMLs for complex edge cases
 
 ## Example Analysis
 

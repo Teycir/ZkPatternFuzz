@@ -1,6 +1,6 @@
 # ZkPatternFuzz Capability Matrix
 
-**Generated:** 2024  
+**Generated:** 2026-02-06  
 **Source:** Code review of actual implementation
 
 ---
@@ -10,10 +10,10 @@
 | Category | Implemented | Partial | Missing |
 |----------|-------------|---------|---------|
 | Core Fuzzing | 8 | 0 | 0 |
-| Attack Types | 12 | 2 | 3 |
+| Attack Types | 11 | 5 | 0 |
 | Analysis | 6 | 0 | 2 |
 | Reporting | 4 | 0 | 1 |
-| Scheduling | 3 | 2 | 1 |
+| Scheduling | 3 | 2 | 2 |
 
 ---
 
@@ -46,11 +46,12 @@
 | Differential Testing | ✅ | `src/differential/executor.rs` | Cross-backend comparison |
 | Circuit Composition | ✅ | `src/distributed/mod.rs` | Multi-circuit testing |
 | Bit Decomposition | ✅ | `crates/zk-attacks/src/boundary.rs` | Bit constraint testing |
-| Malleability | ✅ | Pending | Signature malleability |
-| Constraint Bypass | ✅ | Multiple | Constraint evasion |
-| Metamorphic | ❌ | N/A | Transform-based oracles |
-| Spec Inference | ❌ | N/A | Auto-learn properties |
-| Constraint Slice | ❌ | N/A | Dependency cone mutation |
+| Malleability | ✅ | `crates/zk-attacks/src/verification.rs` | Proof malleability checks |
+| Constraint Inference | 🚧 | `src/attacks/constraint_inference.rs` | Pattern-based inference (needs validation) |
+| Constraint Slice | 🚧 | `src/attacks/constraint_slice.rs` | Dependency cone mutation (needs validation) |
+| Metamorphic | 🚧 | `src/attacks/metamorphic.rs` | Transform-based oracles (needs relations) |
+| Spec Inference | 🚧 | `src/attacks/spec_inference.rs` | Auto-learned properties (needs tuning) |
+| Witness Collision | 🚧 | `src/attacks/witness_collision.rs` | Equivalence-class collisions (needs heuristics) |
 
 ---
 
@@ -90,8 +91,8 @@
 | Power Scheduler | ✅ | `crates/zk-fuzzer-core/src/power_schedule.rs` | Energy-based selection |
 | YAML Includes | ❌ | N/A | File composition |
 | Profile System | ❌ | N/A | Reusable configurations |
-| Phased Scheduling | 🚧 | N/A | Time-budgeted phases |
-| Adaptive Scheduler | 🚧 | Partial | Attack-level reallocation |
+| Phased Scheduling | 🚧 | `src/fuzzer/phased_scheduler.rs` | Time-budgeted phases |
+| Adaptive Scheduler | 🚧 | `src/fuzzer/adaptive_attack_scheduler.rs` | Attack-level reallocation |
 
 ---
 

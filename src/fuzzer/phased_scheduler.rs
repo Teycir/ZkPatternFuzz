@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use zk_core::{AttackType, Finding};
+use zk_core::{AttackType, FieldElement, Finding};
 
 /// Phase execution result
 #[derive(Debug, Clone)]
@@ -124,7 +124,7 @@ pub struct PhasedScheduler {
     /// Schedule phases to execute
     phases: Vec<SchedulePhase>,
     /// Shared corpus between phases
-    corpus: Arc<RwLock<Vec<Vec<u8>>>>,
+    corpus: Arc<RwLock<Vec<Vec<FieldElement>>>>,
     /// Phase callback
     callback: Arc<dyn PhaseCallback>,
     /// Current statistics
@@ -183,8 +183,8 @@ impl PhasedScheduler {
         executor: F,
     ) -> anyhow::Result<Vec<PhaseResult>>
     where
-        F: Fn(FuzzConfig, Arc<RwLock<Vec<Vec<u8>>>>) -> Fut + Send + Sync,
-        Fut: std::future::Future<Output = anyhow::Result<PhaseExecutionResult>> + Send,
+        F: Fn(FuzzConfig, Arc<RwLock<Vec<Vec<FieldElement>>>>) -> Fut + Send + Sync,
+        Fut: std::future::Future<Output = anyhow::Result<PhaseExecutionResult>>,
     {
         let mut results = Vec::new();
         let start_time = Instant::now();
@@ -275,6 +275,10 @@ impl PhasedScheduler {
 
         // Set phase timeout
         config.campaign.parameters.timeout_seconds = phase.duration_sec;
+        config.campaign.parameters.additional.insert(
+            "fuzzing_timeout_seconds".to_string(),
+            serde_yaml::Value::Number(phase.duration_sec.into()),
+        );
 
         // Add phase-specific parameters
         config.campaign.parameters.additional.insert(

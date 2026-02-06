@@ -11,11 +11,11 @@ A Zero-Knowledge Proof Security Testing Framework written in Rust.
 
 ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK circuits across multiple backends:
 
-- **Circom** - R1CS-based circuits with snarkjs (✅ fully implemented)
-- **Noir** - ACIR-based circuits with Barretenberg (✅ fully implemented)
-- **Halo2** - PLONK-based circuits with halo2_proofs (✅ fully implemented)
-- **Cairo** - STARK-based programs with stone-prover (✅ fully implemented)
-- **Mock** - Testing backend (✅ fully implemented)
+- **Circom** - R1CS-based circuits with snarkjs (tested)
+- **Noir** - ACIR-based circuits with Nargo/Barretenberg (tested)
+- **Halo2** - PLONK-based circuits with halo2_proofs (tested via halo2-scaffold)
+- **Cairo** - STARK-based programs with cairo-compile/scarb + stone-prover (experimental)
+- **Mock** - In-process testing backend
 
 ## Features
 
@@ -24,11 +24,14 @@ ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK c
 - 🧮 **Arithmetic Analysis** - Test field arithmetic edge cases and overflow conditions
 - 🎯 **Witness Validation** - Verify witness consistency and correctness
 - 🔬 **Symbolic Execution** - SMT-based constraint analysis using Z3
-- 📊 **Coverage Tracking** - Monitor constraint coverage during fuzzing
+- 📊 **Constraint-Level Coverage** - Track satisfied constraints (not just output hashes)
 - 🧪 **Differential Testing** - Compare circuit implementations across backends
 - 📝 **Multiple Report Formats** - JSON, Markdown, SARIF
 - 🎲 **Advanced Fuzzing** - Corpus management, mutation strategies, and minimization
 - 🔄 **Multi-Circuit Testing** - Composition and recursive proof analysis
+- **Semantic Oracles** - Merkle/Nullifier/Range/Commitment checks
+- **Novel Oracles (Experimental)** - Constraint inference, metamorphic, spec inference, constraint slice, witness collision
+- **Attack Plugins** - Dynamic loading of custom attacks
 
 ## Installation
 
@@ -126,6 +129,11 @@ reporting:
 | `verification` | Test proof verification edge cases | ✅ Implemented |
 | `collision` | Find hash/nullifier collisions | ✅ Implemented |
 | `boundary` | Test boundary values | ✅ Implemented |
+| `constraint_inference` | Infer missing constraints from patterns | 🚧 Experimental |
+| `constraint_slice` | Dependency cone mutation | 🚧 Experimental |
+| `metamorphic` | Transform-based oracles | 🚧 Experimental |
+| `spec_inference` | Auto-learn and violate properties | 🚧 Experimental |
+| `witness_collision` | Equivalence-class collision search | 🚧 Experimental |
 
 ### Attack Plugins
 
@@ -363,7 +371,8 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 7. Open a Pull Request
 
 **Areas Needing Help:**
-- Real backend integration testing (Circom, Noir, Halo2, Cairo)
+- Cairo real-circuit integration testing and tooling
+- YAML v2 profiles/invariants/includes
 - Additional attack patterns
 - Documentation and examples
 - Performance optimizations
@@ -389,8 +398,8 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 - [x] Boundary value attacks
 
 ### In Progress 🚧
-- [ ] Real backend integration testing
-
+- [ ] Real-circuit coverage automation (especially Cairo)
+- [ ] YAML v2 profiles/includes/invariants
 
 
 ## References

@@ -124,6 +124,16 @@ impl CoverageTracker {
         self.constraint_hits.read().unwrap().len()
     }
 
+    /// Get the list of constraint IDs that have been hit
+    pub fn constraint_ids(&self) -> Vec<usize> {
+        self.constraint_hits
+            .read()
+            .unwrap()
+            .keys()
+            .copied()
+            .collect()
+    }
+
     /// Get the total number of constraint evaluations
     pub fn total_hits(&self) -> u64 {
         self.constraint_hits.read().unwrap().values().sum()

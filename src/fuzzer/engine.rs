@@ -110,7 +110,7 @@ use crate::corpus::create_corpus;
 use crate::executor::{create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions};
 use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
 use crate::reporting::FuzzReport;
-use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Finding, TestCase, TestMetadata};
+use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Finding, ProofOfConcept, TestCase, TestMetadata};
 use zk_fuzzer_core::engine::FuzzingEngineCore;
 
 use rand::Rng;
@@ -907,8 +907,16 @@ impl FuzzingEngine {
 
         // Phase 0 Fix: Run continuous fuzzing phase after attacks
         let iterations = self.config.campaign.parameters.additional
-            .get("fuzzing_iterations")
+            .get("max_iterations")
             .and_then(|v| v.as_u64())
+            .or_else(|| {
+                self.config
+                    .campaign
+                    .parameters
+                    .additional
+                    .get("fuzzing_iterations")
+                    .and_then(|v| v.as_u64())
+            })
             .unwrap_or(1000);
         
         let timeout = self.config.campaign.parameters.additional
@@ -2179,6 +2187,7 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::attacks::constraint_inference::ConstraintInferenceEngine;
+        use crate::config::v2::InvariantType;
         
         let confidence_threshold = config
             .get("confidence_threshold")
@@ -2194,6 +2203,21 @@ impl FuzzingEngine {
         let findings = engine.run(self.executor.as_ref());
         
         for finding in findings {
+            self.core.findings().write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            }
+        }
+
+        // Enforce v2 invariants (constraint/range/uniqueness) by attempting violations.
+        let invariants: Vec<_> = self
+            .config
+            .get_invariants()
+            .into_iter()
+            .filter(|inv| inv.invariant_type != InvariantType::Metamorphic)
+            .collect();
+        let invariant_findings = self.enforce_invariants(&invariants);
+        for finding in invariant_findings {
             self.core.findings().write().unwrap().push(finding.clone());
             if let Some(p) = progress {
                 p.log_finding(&format!("{:?}", finding.severity), &finding.description);
@@ -2221,7 +2245,11 @@ impl FuzzingEngine {
         
         tracing::info!("Running metamorphic testing with {} base witnesses", num_tests);
         
-        let oracle = MetamorphicOracle::new().with_standard_relations();
+        let mut oracle = MetamorphicOracle::new().with_standard_relations();
+        let invariant_relations = self.build_metamorphic_relations();
+        for relation in invariant_relations {
+            oracle = oracle.with_relation(relation);
+        }
         
         // Generate base witnesses and test metamorphic relations
         for _ in 0..num_tests {
@@ -2476,6 +2504,74 @@ impl FuzzingEngine {
         self.core.export_corpus(output_dir)
     }
 
+    /// Seed corpus with externally supplied inputs (for phased scheduling).
+    /// Returns the number of inputs added.
+    pub fn seed_corpus_from_inputs(&mut self, inputs: &[Vec<FieldElement>]) -> usize {
+        if inputs.is_empty() {
+            return 0;
+        }
+
+        let expected = self.config.inputs.len();
+        let mut added = 0usize;
+
+        for input in inputs {
+            if expected > 0 && input.len() != expected {
+                continue;
+            }
+            let test_case = TestCase {
+                inputs: input.clone(),
+                expected_output: None,
+                metadata: TestMetadata::default(),
+            };
+            self.add_to_corpus(test_case);
+            added += 1;
+        }
+
+        added
+    }
+
+    /// Collect inputs from the current corpus (for phased scheduling).
+    pub fn collect_corpus_inputs(&self, limit: usize) -> Vec<Vec<FieldElement>> {
+        if limit == 0 {
+            return Vec::new();
+        }
+
+        let mut collected = Vec::new();
+        let mut entries = self.core.corpus().interesting_entries();
+        if entries.is_empty() {
+            entries = self.core.corpus().all_entries();
+        }
+
+        for entry in entries {
+            if collected.len() >= limit {
+                break;
+            }
+            collected.push(entry.test_case.inputs);
+        }
+
+        collected
+    }
+
+    /// Number of unique constraints hit so far.
+    pub fn coverage_edges(&self) -> u64 {
+        self.core.coverage().unique_constraints_hit() as u64
+    }
+
+    /// Constraint IDs hit so far.
+    pub fn coverage_constraint_ids(&self) -> Vec<usize> {
+        self.core.coverage().constraint_ids()
+    }
+
+    /// Total constraints in the target circuit.
+    pub fn max_coverage(&self) -> u64 {
+        self.executor.num_constraints() as u64
+    }
+
+    /// Current corpus size.
+    pub fn corpus_len(&self) -> usize {
+        self.core.corpus().len()
+    }
+
     /// Get complexity metrics for the circuit
     pub fn get_complexity_metrics(&self) -> crate::analysis::complexity::ComplexityMetrics {
         self.complexity_analyzer.analyze(&self.executor)
@@ -2533,6 +2629,394 @@ impl FuzzingEngine {
                     p.log_finding("INFO", hint);
                 }
             }
+        }
+    }
+
+    fn build_metamorphic_relations(&self) -> Vec<crate::attacks::metamorphic::MetamorphicRelation> {
+        use crate::attacks::metamorphic::MetamorphicRelation;
+        use crate::config::v2::InvariantType;
+
+        let invariants = self.config.get_invariants();
+        if invariants.is_empty() {
+            return Vec::new();
+        }
+
+        let input_map = self.input_index_map();
+        let mut relations = Vec::new();
+
+        for invariant in invariants {
+            if invariant.invariant_type != InvariantType::Metamorphic {
+                continue;
+            }
+
+            let transform = match invariant.transform.as_deref() {
+                Some(raw) => self.parse_transform(raw, &input_map),
+                None => None,
+            };
+
+            let Some(transform) = transform else {
+                continue;
+            };
+
+            let expected = self.parse_expected_behavior(invariant.expected.as_deref());
+            let severity = self.severity_from_invariant(&invariant);
+
+            let mut relation = MetamorphicRelation::new(&invariant.name, transform, expected)
+                .with_severity(severity);
+            if let Some(desc) = invariant.description.as_deref() {
+                relation = relation.with_description(desc);
+            }
+
+            relations.push(relation);
+        }
+
+        relations
+    }
+
+    fn enforce_invariants(
+        &self,
+        invariants: &[crate::config::v2::Invariant],
+    ) -> Vec<Finding> {
+        use crate::config::v2::{InvariantOracle, InvariantType};
+
+        let input_map = self.input_index_map();
+        let mut findings = Vec::new();
+
+        for invariant in invariants {
+            if matches!(invariant.invariant_type, InvariantType::Metamorphic) {
+                continue;
+            }
+            if matches!(
+                invariant.oracle,
+                InvariantOracle::Custom | InvariantOracle::Differential | InvariantOracle::Symbolic
+            ) {
+                continue;
+            }
+
+            let target_indices = self.extract_target_indices(&invariant.relation, &input_map);
+            if target_indices.is_empty() {
+                continue;
+            }
+
+            let violation_value = match self.invariant_violation_value(invariant) {
+                Some(value) => value,
+                None => continue,
+            };
+
+            let mut witness = vec![FieldElement::zero(); self.config.inputs.len().max(1)];
+            for idx in target_indices {
+                if idx < witness.len() {
+                    witness[idx] = violation_value.clone();
+                }
+            }
+
+            let result = self.executor.execute_sync(&witness);
+            if result.success {
+                let severity = self.severity_from_invariant(invariant);
+                let description = format!(
+                    "Invariant '{}' violated but circuit accepted input.\nRelation: {}",
+                    invariant.name, invariant.relation
+                );
+                findings.push(Finding {
+                    attack_type: AttackType::ConstraintInference,
+                    severity,
+                    description,
+                    poc: ProofOfConcept {
+                        witness_a: witness,
+                        witness_b: None,
+                        public_inputs: vec![],
+                        proof: None,
+                    },
+                    location: None,
+                });
+            }
+        }
+
+        findings
+    }
+
+    fn input_index_map(&self) -> std::collections::HashMap<String, usize> {
+        self.config
+            .inputs
+            .iter()
+            .enumerate()
+            .map(|(idx, input)| (input.name.to_lowercase(), idx))
+            .collect()
+    }
+
+    fn extract_target_indices(
+        &self,
+        relation: &str,
+        input_map: &std::collections::HashMap<String, usize>,
+    ) -> Vec<usize> {
+        let mut tokens = Vec::new();
+        let mut current = String::new();
+        for ch in relation.chars() {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                current.push(ch);
+            } else if !current.is_empty() {
+                tokens.push(current.clone());
+                current.clear();
+            }
+        }
+        if !current.is_empty() {
+            tokens.push(current);
+        }
+
+        let mut indices = Vec::new();
+        for token in tokens {
+            let key = token.to_lowercase();
+            if let Some(idx) = input_map.get(&key) {
+                indices.push(*idx);
+            }
+        }
+        indices.sort_unstable();
+        indices.dedup();
+        indices
+    }
+
+    fn invariant_violation_value(
+        &self,
+        invariant: &crate::config::v2::Invariant,
+    ) -> Option<FieldElement> {
+        let relation = invariant.relation.to_lowercase();
+
+        if relation.contains("∈ {0,1}") || relation.contains("binary") {
+            return Some(FieldElement::from_u64(2));
+        }
+
+        let bit_length = self.extract_bit_length(&relation);
+
+        if matches!(
+            invariant.invariant_type,
+            crate::config::v2::InvariantType::Range
+        ) || relation.contains('<')
+        {
+            if let Some(bits) = bit_length {
+                if bits <= 63 {
+                    return Some(FieldElement::from_u64(1u64 << bits));
+                }
+            }
+            return Some(FieldElement::max_value());
+        }
+
+        None
+    }
+
+    fn extract_bit_length(&self, relation: &str) -> Option<u32> {
+        if let Some(pos) = relation.find("2^") {
+            let suffix = &relation[pos + 2..];
+            let digits: String = suffix.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if !digits.is_empty() {
+                if let Ok(value) = digits.parse::<u32>() {
+                    return Some(value);
+                }
+            } else if suffix.starts_with("bit_length") {
+                if let Some(value) = self
+                    .config
+                    .campaign
+                    .parameters
+                    .additional
+                    .get("bit_length")
+                    .and_then(|v| v.as_u64())
+                {
+                    return Some(value as u32);
+                }
+            }
+        }
+
+        let traits = self.config.get_target_traits();
+        for entry in traits.range_checks {
+            let entry = entry.to_lowercase();
+            if let Some(bits) = entry.strip_prefix("bitlen:") {
+                if let Ok(value) = bits.parse::<u32>() {
+                    return Some(value);
+                }
+            }
+            if entry == "u64" {
+                return Some(64);
+            }
+            if entry == "u32" {
+                return Some(32);
+            }
+            if entry == "u8" {
+                return Some(8);
+            }
+        }
+
+        None
+    }
+
+    fn parse_transform(
+        &self,
+        transform: &str,
+        input_map: &std::collections::HashMap<String, usize>,
+    ) -> Option<crate::attacks::metamorphic::Transform> {
+        use crate::attacks::metamorphic::Transform;
+
+        let raw = transform.trim();
+        if raw.eq_ignore_ascii_case("swap_sibling_order") {
+            let candidate = ["pathindices", "path_indices", "pathindex", "indices"];
+            for name in candidate {
+                if let Some(idx) = input_map.get(name) {
+                    return Some(Transform::BitFlipInput {
+                        index: *idx,
+                        bit_position: 0,
+                    });
+                }
+            }
+        }
+
+        let (name, args) = match Self::parse_call(raw) {
+            Some(call) => call,
+            None => return None,
+        };
+
+        match name.as_str() {
+            "scale_input" => {
+                let (input_name, factor) = Self::parse_two_args(&args)?;
+                let idx = input_map.get(&input_name.to_lowercase())?;
+                let factor = Self::parse_field_element(&factor)?;
+                Some(Transform::ScaleInputs {
+                    indices: vec![*idx],
+                    factor,
+                })
+            }
+            "add_input" => {
+                let (input_name, value) = Self::parse_two_args(&args)?;
+                let idx = input_map.get(&input_name.to_lowercase())?;
+                let value = Self::parse_field_element(&value)?;
+                Some(Transform::AddToInputs {
+                    indices: vec![*idx],
+                    value,
+                })
+            }
+            "negate_input" => {
+                let input_name = args.get(0)?;
+                let idx = input_map.get(&input_name.to_lowercase())?;
+                Some(Transform::NegateInputs { indices: vec![*idx] })
+            }
+            "swap_inputs" => {
+                let (left, right) = Self::parse_two_args(&args)?;
+                let a = input_map.get(&left.to_lowercase())?;
+                let b = input_map.get(&right.to_lowercase())?;
+                Some(Transform::SwapInputs {
+                    index_a: *a,
+                    index_b: *b,
+                })
+            }
+            "bit_flip" => {
+                let (input_name, bit) = Self::parse_two_args(&args)?;
+                let idx = input_map.get(&input_name.to_lowercase())?;
+                let bit_position = bit.parse::<usize>().ok()?;
+                Some(Transform::BitFlipInput {
+                    index: *idx,
+                    bit_position,
+                })
+            }
+            "double_input" => {
+                let input_name = args.get(0)?;
+                let idx = input_map.get(&input_name.to_lowercase())?;
+                Some(Transform::DoubleInput { index: *idx })
+            }
+            "set_input" => {
+                let (input_name, value) = Self::parse_two_args(&args)?;
+                let idx = input_map.get(&input_name.to_lowercase())?;
+                let value = Self::parse_field_element(&value)?;
+                let mut assignments = std::collections::HashMap::new();
+                assignments.insert(*idx, value);
+                Some(Transform::SetInputs { assignments })
+            }
+            _ => None,
+        }
+    }
+
+    fn parse_expected_behavior(
+        &self,
+        expected: Option<&str>,
+    ) -> crate::attacks::metamorphic::ExpectedBehavior {
+        use crate::attacks::metamorphic::ExpectedBehavior;
+
+        let Some(raw) = expected else {
+            return ExpectedBehavior::OutputChanged;
+        };
+        let lower = raw.trim().to_lowercase();
+
+        if lower.contains("output_unchanged") || lower.contains("unchanged") {
+            return ExpectedBehavior::OutputUnchanged;
+        }
+        if lower.contains("output_changes") || lower.contains("output_changed") || lower.contains("changes") {
+            return ExpectedBehavior::OutputChanged;
+        }
+        if let Some(arg) = lower.strip_prefix("output_scaled(").and_then(|s| s.strip_suffix(')')) {
+            if let Some(factor) = Self::parse_field_element(arg) {
+                return ExpectedBehavior::OutputScaled(factor);
+            }
+        }
+        if lower.contains("reject") {
+            return ExpectedBehavior::ShouldReject;
+        }
+        if lower.contains("accept") {
+            return ExpectedBehavior::ShouldAccept;
+        }
+
+        ExpectedBehavior::Custom(raw.to_string())
+    }
+
+    fn parse_call(raw: &str) -> Option<(String, Vec<String>)> {
+        let open = raw.find('(')?;
+        let close = raw.rfind(')')?;
+        if close <= open {
+            return None;
+        }
+        let name = raw[..open].trim().to_lowercase();
+        let args = raw[open + 1..close]
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        Some((name, args))
+    }
+
+    fn parse_two_args(args: &[String]) -> Option<(String, String)> {
+        if args.len() < 2 {
+            return None;
+        }
+        Some((args[0].clone(), args[1].clone()))
+    }
+
+    fn parse_field_element(raw: &str) -> Option<FieldElement> {
+        let trimmed = raw.trim();
+        if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
+            FieldElement::from_hex(trimmed).ok()
+        } else if let Some(exp) = trimmed.strip_prefix("2^") {
+            if let Ok(bits) = exp.trim().parse::<u32>() {
+                if bits <= 63 {
+                    return Some(FieldElement::from_u64(1u64 << bits));
+                }
+            }
+            Some(FieldElement::max_value())
+        } else {
+            trimmed.parse::<u64>().ok().map(FieldElement::from_u64)
+        }
+    }
+
+    fn severity_from_invariant(
+        &self,
+        invariant: &crate::config::v2::Invariant,
+    ) -> Severity {
+        match invariant.severity.as_deref().map(|s| s.to_lowercase()) {
+            Some(ref s) if s == "critical" => Severity::Critical,
+            Some(ref s) if s == "high" => Severity::High,
+            Some(ref s) if s == "medium" => Severity::Medium,
+            Some(ref s) if s == "low" => Severity::Low,
+            Some(ref s) if s == "info" => Severity::Info,
+            _ => match invariant.invariant_type {
+                crate::config::v2::InvariantType::Range => Severity::High,
+                crate::config::v2::InvariantType::Uniqueness => Severity::Critical,
+                crate::config::v2::InvariantType::Metamorphic => Severity::High,
+                _ => Severity::Medium,
+            },
         }
     }
 }

@@ -44,20 +44,20 @@
 
 ## Phase 2: YAML v2 (1-2 weeks)
 
-- [ ] `src/config/v2.rs` - YAML includes, profiles, invariants
-- [ ] `templates/traits/*.yaml` - Merkle/Range/Hash/Nullifier/Signature
-- [ ] `src/config/generator.rs` - Auto-detect patterns
-- [ ] `src/fuzzer/phased_scheduler.rs` - Phased execution
+- [x] `src/config/v2.rs` - YAML includes, profiles, invariants
+- [x] `templates/traits/*.yaml` - Merkle/Range/Hash/Nullifier/Signature
+- [x] `src/config/generator.rs` - Auto-detect patterns
+- [x] `src/fuzzer/phased_scheduler.rs` - Phased execution
 
 ---
 
 ## Phase 3: Reality Check & Observability (1 week)
 
-- [ ] `docs/CAPABILITY_MATRIX.md` - Feature status
-- [ ] Update README.md with actual capabilities
-- [ ] `src/analysis/dependency.rs` - Witness-dependency graph
-- [ ] `src/reporting/coverage_summary.rs` - Enhanced CLI
-- [ ] Update `FuzzStatistics` with new metrics
+- [x] `docs/CAPABILITY_MATRIX.md` - Feature status
+- [x] Update README.md with actual capabilities
+- [x] `src/analysis/dependency.rs` - Witness-dependency graph
+- [x] `src/reporting/coverage_summary.rs` - Enhanced CLI
+- [x] Update `FuzzStatistics` with new metrics
 
 ---
 
@@ -107,8 +107,8 @@
 |-------|--------|-----------|
 | 0. Fix Core | ✅ COMPLETE | - |
 | 1. Backend Coverage | ✅ COMPLETE | - |
-| 2. YAML v2 | PENDING | 1-2 weeks |
-| 3. Reality Check | PENDING | 1 week |
+| 2. YAML v2 | ✅ COMPLETE | - |
+| 3. Reality Check | ✅ COMPLETE | - |
 | 4. Novel Oracles | PARTIAL | 1-2 weeks |
 | 5. AI & Adaptive | PENDING | 1-2 weeks |
 
@@ -141,7 +141,7 @@
 ## Immediate Next Steps
 
 ### Week 1: Validation
-1. Run integration tests on real circuits
+1. [x] Run integration tests on real circuits (Circom/Noir/Halo2)
 2. Execute constraint-inference violations
 3. Enhance metamorphic relations
 

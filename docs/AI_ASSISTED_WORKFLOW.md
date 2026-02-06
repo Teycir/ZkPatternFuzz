@@ -83,6 +83,23 @@ Claude will produce a complete YAML configuration. Review it for:
 - ✅ Reasonable timeout and iteration counts
 - ✅ Relevant invariants
 
+### Step 4b: Chain YAMLs for Edge Cases (v2 Includes)
+
+ZkPatternFuzz supports YAML v2 `includes`, so you can chain multiple templates and
+AI-generated overlays for complex edge cases:
+
+```yaml
+includes:
+  - "templates/traits/base.yaml"
+  - "templates/traits/merkle.yaml"
+  - "templates/traits/hash.yaml"
+  - "campaigns/edge_cases/overflow.yaml"
+  - "campaigns/edge_cases/pathology.yaml"
+```
+
+This lets Opus generate a circuit-specific campaign, while you layer on extra
+templates for uncommon failure modes.
+
 ### Step 5: Save and Validate
 
 Save the YAML to your campaigns directory:
@@ -137,6 +154,12 @@ cp templates/ai_assisted/range_proof.yaml campaigns/my_range.yaml
 # Signature circuits
 cp templates/ai_assisted/signature.yaml campaigns/my_signature.yaml
 ```
+
+## Notes on v2 Features
+
+- `includes` lets you chain N YAML files in order (later files extend/override).
+- `profiles` provide reusable parameter sets (e.g., Merkle depth).
+- `invariants` and `schedule` are supported and loaded by the config resolver.
 
 ---
 

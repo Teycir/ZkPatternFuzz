@@ -38,6 +38,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+use serde_yaml::Value;
 
 use super::{FuzzConfig, ReportingConfig};
 
@@ -421,12 +422,33 @@ impl ConfigResolver {
     }
 
     fn merge_configs(base: FuzzConfig, overlay: FuzzConfig) -> FuzzConfig {
+        let base_campaign = base.campaign.clone();
+        let overlay_campaign = overlay.campaign.clone();
+
+        let mut campaign = if overlay_campaign.name.is_empty() {
+            base_campaign.clone()
+        } else {
+            overlay_campaign.clone()
+        };
+
+        // Merge campaign parameters.additional (preserve v2 metadata from templates).
+        campaign.parameters.additional = Self::merge_additional(
+            base_campaign.parameters.additional,
+            overlay_campaign.parameters.additional,
+        );
+
+        if !overlay_campaign.name.is_empty() {
+            // Overlay explicitly set campaign details; treat as authoritative.
+            campaign.name = overlay_campaign.name;
+            campaign.version = overlay_campaign.version;
+            campaign.target = overlay_campaign.target;
+            campaign.parameters.field = overlay_campaign.parameters.field;
+            campaign.parameters.max_constraints = overlay_campaign.parameters.max_constraints;
+            campaign.parameters.timeout_seconds = overlay_campaign.parameters.timeout_seconds;
+        }
+
         FuzzConfig {
-            campaign: if overlay.campaign.name.is_empty() {
-                base.campaign
-            } else {
-                overlay.campaign
-            },
+            campaign,
             attacks: if overlay.attacks.is_empty() {
                 base.attacks
             } else {
@@ -434,11 +456,7 @@ impl ConfigResolver {
                 merged.extend(overlay.attacks);
                 merged
             },
-            inputs: if overlay.inputs.is_empty() {
-                base.inputs
-            } else {
-                overlay.inputs
-            },
+            inputs: Self::merge_inputs(base.inputs, overlay.inputs),
             mutations: if overlay.mutations.is_empty() {
                 base.mutations
             } else {
@@ -453,8 +471,69 @@ impl ConfigResolver {
                 merged.extend(overlay.oracles);
                 merged
             },
-            reporting: overlay.reporting,
+            reporting: if overlay.reporting == ReportingConfig::default() {
+                base.reporting
+            } else {
+                overlay.reporting
+            },
         }
+    }
+
+    fn merge_inputs(base: Vec<super::Input>, overlay: Vec<super::Input>) -> Vec<super::Input> {
+        if base.is_empty() {
+            return overlay;
+        }
+        if overlay.is_empty() {
+            return base;
+        }
+
+        let mut merged = Vec::with_capacity(base.len() + overlay.len());
+        let mut index_by_name: HashMap<String, usize> = HashMap::new();
+
+        for input in base {
+            index_by_name.insert(input.name.clone(), merged.len());
+            merged.push(input);
+        }
+
+        for input in overlay {
+            if let Some(idx) = index_by_name.get(&input.name).copied() {
+                merged[idx] = input;
+            } else {
+                index_by_name.insert(input.name.clone(), merged.len());
+                merged.push(input);
+            }
+        }
+
+        merged
+    }
+
+    fn merge_additional(
+        mut base: HashMap<String, Value>,
+        overlay: HashMap<String, Value>,
+    ) -> HashMap<String, Value> {
+        for (key, value) in overlay {
+            let merged_value = match (base.get(&key), value) {
+                (Some(Value::Sequence(base_seq)), Value::Sequence(mut overlay_seq))
+                    if key == "v2_invariants" || key == "v2_schedule" =>
+                {
+                    let mut merged = base_seq.clone();
+                    merged.append(&mut overlay_seq);
+                    Value::Sequence(merged)
+                }
+                (Some(Value::Mapping(base_map)), Value::Mapping(overlay_map))
+                    if key == "v2_traits" =>
+                {
+                    let mut merged = base_map.clone();
+                    for (k, v) in overlay_map {
+                        merged.insert(k, v);
+                    }
+                    Value::Mapping(merged)
+                }
+                (_, other) => other,
+            };
+            base.insert(key, merged_value);
+        }
+        base
     }
 
     fn apply_profile(mut config: FuzzConfig, profile: &Profile) -> FuzzConfig {

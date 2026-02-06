@@ -21,6 +21,7 @@ pub mod v2;
 pub use suggester::YamlSuggester;
 
 use serde::{Deserialize, Serialize};
+use anyhow::Context;
 use std::path::PathBuf;
 
 pub use zk_core::{AttackType, Framework, Severity};
@@ -162,7 +163,7 @@ pub struct Oracle {
 }
 
 /// Reporting configuration
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ReportingConfig {
     #[serde(default = "default_output_dir")]
     pub output_dir: PathBuf,
@@ -196,8 +197,8 @@ impl Default for ReportingConfig {
 impl FuzzConfig {
     /// Load configuration from a YAML file
     pub fn from_yaml(path: &str) -> anyhow::Result<Self> {
-        let content = std::fs::read_to_string(path)?;
-        let config: FuzzConfig = serde_yaml::from_str(&content)?;
+        let config = Self::from_yaml_v2(path)
+            .with_context(|| format!("Failed to load config (v2) from {}", path))?;
         config.validate()?;
         Ok(config)
     }
