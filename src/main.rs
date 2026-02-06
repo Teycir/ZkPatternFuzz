@@ -55,6 +55,19 @@ enum Commands {
         #[arg(short, long)]
         timeout: Option<u64>,
     },
+    /// Run an evidence-focused campaign (requires invariants)
+    Evidence {
+        /// Path to campaign YAML file
+        campaign: String,
+
+        /// Number of continuous fuzzing iterations (Phase 0)
+        #[arg(short, long, default_value = "1000")]
+        iterations: u64,
+
+        /// Timeout in seconds for continuous fuzzing phase
+        #[arg(short, long)]
+        timeout: Option<u64>,
+    },
     /// Validate a campaign configuration
     Validate {
         /// Path to campaign YAML file
@@ -99,7 +112,30 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Some(Commands::Run { campaign, iterations, timeout }) => {
-            run_campaign(&campaign, cli.workers, cli.seed, cli.verbose, cli.dry_run, cli.simple_progress, iterations, timeout).await
+            run_campaign(
+                &campaign,
+                cli.workers,
+                cli.seed,
+                cli.verbose,
+                cli.dry_run,
+                cli.simple_progress,
+                iterations,
+                timeout,
+                false,
+            ).await
+        }
+        Some(Commands::Evidence { campaign, iterations, timeout }) => {
+            run_campaign(
+                &campaign,
+                cli.workers,
+                cli.seed,
+                cli.verbose,
+                cli.dry_run,
+                cli.simple_progress,
+                iterations,
+                timeout,
+                true,
+            ).await
         }
         Some(Commands::Validate { campaign }) => {
             validate_campaign(&campaign)
@@ -114,7 +150,17 @@ async fn main() -> anyhow::Result<()> {
             // Default behavior: run with config if provided
             if let Some(config_path) = cli.config {
                 // Use default values for iterations and timeout
-                run_campaign(&config_path, cli.workers, cli.seed, cli.verbose, cli.dry_run, cli.simple_progress, 1000, None).await
+                run_campaign(
+                    &config_path,
+                    cli.workers,
+                    cli.seed,
+                    cli.verbose,
+                    cli.dry_run,
+                    cli.simple_progress,
+                    1000,
+                    None,
+                    false,
+                ).await
             } else {
                 eprintln!("Error: No campaign configuration provided.");
                 eprintln!("Usage: zk-fuzzer --config <path> or zk-fuzzer run <path>");
@@ -134,9 +180,23 @@ async fn run_campaign(
     simple_progress: bool,
     iterations: u64,
     timeout: Option<u64>,
+    require_invariants: bool,
 ) -> anyhow::Result<()> {
     tracing::info!("Loading campaign from: {}", config_path);
     let mut config = FuzzConfig::from_yaml(config_path)?;
+
+    if require_invariants {
+        let invariants = config.get_invariants();
+        if invariants.is_empty() {
+            anyhow::bail!(
+                "Evidence mode requires v2 invariants in the YAML (invariants: ...)."
+            );
+        }
+        config.campaign.parameters.additional.insert(
+            "evidence_mode".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+    }
     
     // Inject CLI fuzzing parameters into config
     config.campaign.parameters.additional.insert(

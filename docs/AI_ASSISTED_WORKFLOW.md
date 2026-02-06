@@ -122,6 +122,28 @@ cargo run --release -- --config campaigns/my_circuit.yaml --workers 4 --seed 42
 
 ---
 
+## Deep Dive (Evidence) Phase
+
+Use this when you have **manual invariants** and want evidence-grade findings.
+This mode will refuse to run if your YAML has no `invariants`.
+
+```bash
+# Evidence-focused run (requires invariants in YAML)
+cargo run --release -- evidence campaigns/my_circuit.yaml \
+  --workers 8 \
+  --seed 42 \
+  --iterations 50000 \
+  --timeout 1800 \
+  --simple-progress
+```
+
+**What changes in Evidence mode:**
+- Requires v2 `invariants` (manual analysis input).
+- Enforces invariants and produces PoCs for any violations.
+- Keeps the existing skimmer flow untouched; this is a deeper pass.
+
+---
+
 ## Template Selection
 
 Based on the circuit type, Claude will include appropriate trait templates:

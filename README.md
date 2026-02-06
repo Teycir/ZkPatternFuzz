@@ -7,6 +7,8 @@
 
 A Zero-Knowledge Proof Security Testing Framework written in Rust.
 
+**AI Pentest Rule (Read First):** `docs/AI_PENTEST_RULES.md`
+
 ## Overview
 
 ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK circuits across multiple backends:

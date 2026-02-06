@@ -2,7 +2,18 @@
 
 Complete guide to all documentation files, ordered by use case and reading level.
 
-## 🚀 Getting Started (Start Here)
+## 🔒 AI Pentest Rule (Read First)
+
+### 0. [AI_PENTEST_RULES.md](AI_PENTEST_RULES.md) - **Required**
+**For:** Any AI agent running pentests  
+**Contains:**
+- Evidence > hints rule
+- Skimmer -> evidence -> deep custom phases
+- Reporting rules and PoC requirements
+
+**Start here if:** You're starting a new pentest session
+
+## 🚀 Getting Started
 
 ### 1. [QUICKSTART_AI.md](QUICKSTART_AI.md) - **5 min read**
 **For:** Anyone wanting to fuzz a circuit immediately  

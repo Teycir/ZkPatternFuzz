@@ -1,9 +1,9 @@
 # ZkPatternFuzz: Remaining Work
 
-**Status:** 100% Complete (All Phases Complete + Real Circuit Validation)  
-**Remaining:** 0 weeks  
-**Priority:** Production Ready  
-**Last Updated:** 2026-02-07
+**Status:** In Progress (Phase 4/5 + 0‑Day Workflow Readiness)  
+**Remaining:** 2-4 weeks  
+**Priority:** 0‑Day Workflow Readiness  
+**Last Updated:** 2026-02-06
 
 ---
 
@@ -68,7 +68,7 @@
 - [x] Basic implementation
 - [x] Execute violation witnesses for confirmation
 - [x] Add Halo2/Cairo label sources
-- [x] Validate on real circuits
+- [ ] Validate on real circuits (zk0d)
 
 ### B. Metamorphic Oracles
 - [x] Basic implementation
@@ -76,7 +76,7 @@
 
 ### C. Constraint Slice
 - [x] Basic implementation
-- [x] Validate on real circuits
+- [ ] Validate on real circuits (zk0d)
 
 ### D. Spec Inference
 - [x] Basic implementation
@@ -85,25 +85,20 @@
 
 ### E. Witness Collision
 - [x] Basic implementation
-- [x] Enhance heuristics
+- [ ] Enhance heuristics (public input scoping by backend)
 
 ### F. Differential
-- [x] Enhance cross-backend detection
+- [ ] Enhance cross-backend detection (coverage/timing mismatch signal tuning)
 
 ---
 
-## Phase 5: AI YAML & Adaptive (1-2 weeks) ✅ COMPLETE
+## Phase 5: AI YAML & Adaptive (1-2 weeks)
 
-- [x] `templates/ai_assisted/*.yaml` - Merkle, Nullifier, Range, Signature templates
-- [x] `docs/CLAUDE_PROMPT.md` - AI prompt for YAML generation
-- [x] `docs/AI_WORKFLOW.md` - AI-assisted workflow documentation
-- [x] `src/fuzzer/adaptive_attack_scheduler.rs` - Dynamic budget reallocation
-- [x] `src/fuzzer/near_miss.rs` - Near-miss detection for mutations
-- [x] `src/config/suggester.rs` - YAML suggestion generation
-- [x] `src/analysis/opus.rs` - Project analyzer for YAML generation
-- [x] `src/fuzzer/adaptive_orchestrator.rs` - Endgame workflow orchestration
-- [x] `tests/adaptive_validation.rs` - Validation tests
-- [x] `tests/real_circuit_validation.rs` - Real circuit validation
+- [ ] `docs/CLAUDE_PROMPT.md` - Opus prompt for manual‑analysis → YAML
+- [ ] `docs/AI_WORKFLOW.md` - Manual analysis → YAML → fuzz loop
+- [ ] `scripts/validate_yaml.*` - YAML validator/sanitizer
+- [ ] `scripts/run_ai_campaign.*` - Batch runner for target list
+- [ ] `docs/TARGETS.md` - zk0d target list with main components
 
 ---
 
@@ -115,10 +110,10 @@
 | 1. Backend Coverage | ✅ COMPLETE | - |
 | 2. YAML v2 | ✅ COMPLETE | - |
 | 3. Reality Check | ✅ COMPLETE | - |
-| 4. Novel Oracles | ✅ COMPLETE (validated) | - |
-| 5. AI & Adaptive | ✅ COMPLETE | - |
+| 4. Novel Oracles | IN PROGRESS | 1-2 weeks |
+| 5. AI & Adaptive | PENDING | 1-2 weeks |
 
-**Total:** COMPLETE
+**Total:** 2-4 weeks
 
 ---
 
@@ -136,33 +131,103 @@
 2. [x] Backends return `satisfied_constraints`
 3. [x] Coverage uses actual constraints (not hashes)
 
-### Phase 4 ✅ PASSED
-1. [x] Constraint inference detects missing constraints
-2. [x] >80% constraint coverage on benchmarks
-3. [x] <60s time-to-bug
-4. [x] <5% false positives
+### Phase 4 (In Progress)
+1. [ ] Constraint inference detects missing constraints
+2. [ ] >80% constraint coverage on benchmarks
+3. [ ] <60s time-to-bug
+4. [ ] <5% false positives
 
-### Phase 5 ✅ PASSED
-1. [x] Opus analyzer generates valid YAML configs
-2. [x] Adaptive scheduler reallocates budget effectively
-3. [x] Near-miss detection guides mutations
-4. [x] Zero-day hints are detected and tracked
-5. [x] Endgame workflow integrates all components
+### Phase 5 (In Progress)
+1. [ ] Manual analysis → YAML flow documented
+2. [ ] YAML validation gate before fuzzing
+3. [ ] Batch runner over zk0d targets
 
 ---
 
-## Immediate Next Steps
+## Immediate Next Steps (Concrete)
 
-### Week 1: Validation ✅ COMPLETE
-1. [x] Run integration tests on real circuits (Circom/Noir/Halo2)
-2. [x] Execute constraint-inference violations
-3. [x] Enhance metamorphic relations
-4. [x] Real circuit validation test suite (constraint_inference_real_circuit.rs)
+### 0-Day Workflow Readiness (Priority)
+1. [ ] Fix constraint slice output mapping (wire -> output index)  
+   DoD: slice comparisons use real output indices, not wire indices; add a focused unit test that would fail under the current mapping.
+2. [ ] Guard constraint inference confirmation for internal-wire constraints  
+   DoD: only mark "confirmed" when mutated wires are public inputs or explicitly labeled outputs; otherwise downgrade to "unconfirmed_internal".
+3. [ ] Backend-aware public input scoping for witness collisions  
+   DoD: use backend metadata to map public inputs; findings include exact public input indices used.
+4. [ ] Claude Opus prompt template for manual-analysis -> YAML  
+   DoD: `docs/CLAUDE_PROMPT.md` with schema, example invariants, example YAML output.
+5. [ ] YAML validator + batch runner for zk0d target list  
+   DoD: validator fails on missing invariants/labels; batch runner executes all targets and writes per-target reports.
 
-### Week 2: Documentation
-1. Write capability matrix
-2. Update README
-3. Add AI-assisted YAML templates
+### Validation on zk0d (Once Ready)
+1. [ ] Run on Tornado withdraw (circom)
+2. [ ] Run on Semaphore (circom)
+3. [ ] Run on Iden3 authV3 (circom)
+4. [ ] Expand to cat2/cat4 targets
+
+### Machine Optimization for the 0-Day Flow (Concrete)
+1. [ ] Use release builds for campaigns  
+   DoD: run `cargo build --release` and execute `./target/release/zk-fuzzer ...` for all zk0d campaigns.
+2. [ ] Set worker count to saturate CPU  
+   DoD: use `--workers <nproc>` on the CLI; verify run logs show the configured worker count.
+3. [ ] Reduce overhead in long runs  
+   DoD: use `--simple-progress` and `--quiet` for batch runs; enable `--verbose` only for triage.
+4. [ ] Bound campaigns deterministically  
+   DoD: always pass `--seed`, `--iterations`, and `--timeout` per campaign; record these in the campaign log.
+5. [ ] Preflight before long runs  
+   DoD: `zk-fuzzer validate <campaign.yaml>` and `--dry-run` succeed before any long campaign.
+
+---
+
+## Evidence + Deep-Custom Fuzz Plan (Step-by-Step)
+
+### Phase 0: Preconditions (Must Pass)
+1. [ ] Circuit compiles (circom/noir/halo2) and runs with baseline inputs  
+   DoD: `zk-fuzzer validate` passes for the campaign.
+2. [ ] Manual invariants written (v2 YAML `invariants:` present)  
+   DoD: at least 3 invariants with explicit target inputs.
+3. [ ] Invariant targets are mapped to input names  
+   DoD: invariants reference actual input names, not generic placeholders.
+
+### Phase 1: Evidence Run (Deterministic)
+1. [ ] Run evidence mode with fixed seed  
+   DoD: `cargo run --release -- evidence <campaign.yaml> --seed 42 --iterations 50000 --timeout 1800 --simple-progress`
+2. [ ] Capture outputs + reports  
+   DoD: `report.json` / `report.md` saved and include violations with PoCs.
+3. [ ] Triage each violation  
+   DoD: reproduce from witness and record “confirmed / needs fix / false alarm”.
+
+### Phase 2: Deep Custom Fuzz (Unexpected Edge Cases)
+1. [ ] Add custom invariants for “bricking” cases  
+   DoD: invariants for zero/nullifier collisions, boundary overflow, path index abuse, malformed signature points.
+2. [ ] Add focused mutations for bricking scenarios  
+   DoD: custom mutators or yaml constraints targeting: all-zero inputs, max field value, non-binary path indices, duplicated roots.
+3. [ ] Run custom fuzz campaign  
+   DoD: `cargo run --release -- evidence <custom.yaml> --seed 1337 --iterations 100000 --timeout 3600`
+4. [ ] Minimize PoCs  
+   DoD: minimal witness saved; reproduction command documented in report.
+
+### Phase 3: Evidence Package (Publishable)
+1. [ ] Bundle PoC artifacts per finding  
+   DoD: witness, repro YAML, circuit path, and invariant violated.
+2. [ ] Write a short root-cause note  
+   DoD: 3-5 bullet explanation of why constraint missed and impact.
+3. [ ] Add “confirmed evidence” entries to validation report  
+   DoD: no hints-only claims in the report.
+
+---
+
+## AI Pentest Rules (Required Reading)
+1. [ ] Follow `docs/AI_PENTEST_RULES.md` for skimmer -> evidence -> deep custom phases  
+   DoD: no hints reported as confirmed; every confirmed finding includes PoC + repro command.
+
+---
+
+## Deep Custom Fuzz Checklist (Ready-to-Run Template)
+1. [ ] Base YAML includes v2 invariants
+2. [ ] Custom YAML includes targeted mutations for edge cases
+3. [ ] Evidence mode enabled
+4. [ ] Deterministic seed and fixed iteration/time budget
+5. [ ] Findings saved + reproduced
 
 ---
 
@@ -192,40 +257,57 @@
 - ✅ JSON/Markdown/SARIF reports
 
 ### Needs Enhancement
-- ✅ Constraint inference (validated on real circuits)
-- ✅ Integration testing on real circuits
+- ⚠️ Constraint inference (needs zk0d validation)
+- ⚠️ Constraint slice (needs zk0d validation)
+- ⚠️ Witness collision (public input scoping by backend)
+- ⚠️ Differential (signal tuning for coverage/timing)
 
 ### Complete ✅
 - ✅ YAML v2 with includes, profiles, invariants
-- ✅ AI-assisted YAML generation (Opus analyzer)
-- ✅ Adaptive scheduler with zero-day heuristics
-- ✅ Endgame workflow orchestration
 
 ---
 
-## Endgame Workflow
+## 0‑Day Workflow (Manual Analysis → YAML → Fuzz)
 
-The adaptive fuzzing flow is now complete:
+This is the intended path to uncover complex vulnerabilities:
 
-1. **Load Project**: `OpusAnalyzer::analyze_project("/path/to/zk/project")`
-2. **Generate YAML**: Opus detects patterns, generates optimized configs
-3. **Run Fuzzing**: `AdaptiveOrchestrator::run_adaptive_campaign()`
-4. **Adapt Budget**: Scheduler reallocates based on effectiveness
-5. **Catch Zero-Days**: Near-miss detection guides toward vulnerabilities
+1. **Manual Analysis**: Identify invariants and likely break paths
+2. **Generate YAML**: Encode invariants, targets, and attack focus (v2)
+3. **Validate YAML**: Sanity‑check inputs, invariants, and schedules
+4. **Run Fuzzer**: Execute against zk0d targets and collect findings
+5. **Triage & Iterate**: Refine invariants and attack focus based on results
 
 ```rust
-use zk_fuzzer::fuzzer::AdaptiveOrchestratorBuilder;
-use std::time::Duration;
+// Intended API surface for the 0‑day flow (not fully wired yet)
+use zk_fuzzer::fuzzer::FuzzingEngine;
+use zk_fuzzer::config::FuzzConfig;
 
-let results = AdaptiveOrchestratorBuilder::new()
-    .workers(4)
-    .max_duration(Duration::from_secs(3600))
-    .zero_day_hunt_mode(true)
-    .build()
-    .run_adaptive_campaign("/path/to/zk/project")
-    .await?;
-
-println!("Confirmed zero-days: {}", results.confirmed_zero_days.len());
+let config = FuzzConfig::from_yaml("generated_campaign.yaml")?;
+let mut engine = FuzzingEngine::new(config, Some(42), 4)?;
+let report = tokio::runtime::Runtime::new()?.block_on(async { engine.run(None).await })?;
 ```
 
-**Focus:** All phases complete. Ready for production use.
+**Focus:** 0‑day workflow readiness over breadth. Build correctness, then scale.
+
+## 0-Day Runbook (Concrete Commands)
+
+1. Produce campaign YAML from manual analysis (using the Claude Opus prompt template once available).
+2. Validate the YAML before any long run:
+
+```bash
+./target/release/zk-fuzzer validate path/to/campaign.yaml
+./target/release/zk-fuzzer --config path/to/campaign.yaml --dry-run
+```
+
+3. Launch a bounded, reproducible fuzzing run:
+
+```bash
+./target/release/zk-fuzzer run path/to/campaign.yaml \
+  --workers 8 \
+  --seed 42 \
+  --iterations 50000 \
+  --timeout 1800 \
+  --simple-progress
+```
+
+4. Triage findings, update the YAML, and re-run with adjusted invariants.
