@@ -14,10 +14,15 @@ pub use traits::*;
 // Re-export CircuitInfo for external use
 pub use zk_core::CircuitInfo;
 
-use crate::analysis::{ConstraintChecker, UnknownLookupPolicy};
-use zk_core::{FieldElement, Framework};
+use crate::analysis::{
+    AcirOpcode, BlackBoxOp, ConstraintChecker, ExtendedConstraint, RangeMethod,
+    UnknownLookupPolicy, WireRef,
+};
+use crate::analysis::constraint_types::LinearCombination;
+use zk_core::{ExecutionCoverage, FieldElement, Framework};
 use zk_fuzzer_core::constants::FieldType;
 use async_trait::async_trait;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
@@ -135,6 +140,348 @@ fn field_modulus_from_name(name: &str) -> [u8; 32] {
         }
     }
     bytes
+}
+
+fn coverage_from_results(results: Vec<ConstraintResult>) -> Option<ExecutionCoverage> {
+    if results.is_empty() {
+        return None;
+    }
+    let mut satisfied = Vec::new();
+    let mut evaluated = Vec::new();
+    for result in results {
+        evaluated.push(result.constraint_id);
+        if result.satisfied {
+            satisfied.push(result.constraint_id);
+        }
+    }
+    Some(ExecutionCoverage::with_constraints(satisfied, evaluated))
+}
+
+fn lc_to_terms(lc: &LinearCombination) -> Vec<(usize, FieldElement)> {
+    lc.terms
+        .iter()
+        .map(|(wire, coeff)| (wire.index, coeff.clone()))
+        .collect()
+}
+
+fn equation_from_deps(id: usize, deps: &[usize], description: &str) -> ConstraintEquation {
+    if deps.is_empty() {
+        return ConstraintEquation {
+            id,
+            a_terms: Vec::new(),
+            b_terms: Vec::new(),
+            c_terms: Vec::new(),
+            description: Some(description.to_string()),
+        };
+    }
+
+    let output = deps[0];
+    let inputs = deps
+        .iter()
+        .skip(1)
+        .map(|idx| (*idx, FieldElement::one()))
+        .collect();
+
+    ConstraintEquation {
+        id,
+        a_terms: inputs,
+        b_terms: Vec::new(),
+        c_terms: vec![(output, FieldElement::one())],
+        description: Some(description.to_string()),
+    }
+}
+
+fn constraint_to_equation(id: usize, constraint: &ExtendedConstraint) -> ConstraintEquation {
+    match constraint {
+        ExtendedConstraint::R1CS(r1cs) => ConstraintEquation {
+            id,
+            a_terms: lc_to_terms(&r1cs.a),
+            b_terms: lc_to_terms(&r1cs.b),
+            c_terms: lc_to_terms(&r1cs.c),
+            description: Some("r1cs".to_string()),
+        },
+        ExtendedConstraint::PlonkGate(gate) => ConstraintEquation {
+            id,
+            a_terms: vec![(gate.a.index, FieldElement::one())],
+            b_terms: vec![(gate.b.index, FieldElement::one())],
+            c_terms: vec![(gate.c.index, FieldElement::one())],
+            description: Some("plonk_gate".to_string()),
+        },
+        ExtendedConstraint::CustomGate(custom) => {
+            let mut deps = Vec::new();
+            for term in &custom.polynomial.terms {
+                for (wire, _) in &term.variables {
+                    deps.push(wire.index);
+                }
+            }
+            deps.sort_unstable();
+            deps.dedup();
+            equation_from_deps(id, &deps, "custom_gate")
+        }
+        ExtendedConstraint::Lookup(lookup) => {
+            ConstraintEquation {
+                id,
+                a_terms: lookup
+                    .additional_inputs
+                    .iter()
+                    .map(|w| (w.index, FieldElement::one()))
+                    .collect(),
+                b_terms: Vec::new(),
+                c_terms: vec![(lookup.input.index, FieldElement::one())],
+                description: Some("lookup".to_string()),
+            }
+        }
+        ExtendedConstraint::Range(range) => {
+            let mut input_terms = Vec::new();
+            if let RangeMethod::BitDecomposition { bit_wires } = &range.method {
+                input_terms.extend(
+                    bit_wires
+                        .iter()
+                        .map(|w| (w.index, FieldElement::one())),
+                );
+            } else {
+                input_terms.push((range.wire.index, FieldElement::one()));
+            }
+
+            ConstraintEquation {
+                id,
+                a_terms: input_terms,
+                b_terms: Vec::new(),
+                c_terms: vec![(range.wire.index, FieldElement::one())],
+                description: Some("range".to_string()),
+            }
+        }
+        ExtendedConstraint::Polynomial(poly) => {
+            let mut deps = Vec::new();
+            for term in &poly.terms {
+                for (wire, _) in &term.variables {
+                    deps.push(wire.index);
+                }
+            }
+            deps.sort_unstable();
+            deps.dedup();
+            equation_from_deps(id, &deps, "polynomial")
+        }
+        ExtendedConstraint::AcirOpcode(op) => match op {
+            AcirOpcode::Arithmetic { a, b, c, .. } => ConstraintEquation {
+                id,
+                a_terms: lc_to_terms(a),
+                b_terms: lc_to_terms(b),
+                c_terms: lc_to_terms(c),
+                description: Some("acir_arithmetic".to_string()),
+            },
+            AcirOpcode::BlackBox(op) => {
+                let mut deps: Vec<usize> = match op {
+                    BlackBoxOp::SHA256 { inputs, outputs }
+                    | BlackBoxOp::Blake2s { inputs, outputs }
+                    | BlackBoxOp::Blake3 { inputs, outputs }
+                    | BlackBoxOp::Keccak256 { inputs, outputs }
+                    | BlackBoxOp::Pedersen { inputs, outputs }
+                    | BlackBoxOp::FixedBaseScalarMul { inputs, outputs }
+                    | BlackBoxOp::RecursiveAggregation { inputs, outputs } => {
+                        inputs.iter().map(|w| w.index).chain(outputs.iter().map(|w| w.index)).collect()
+                    }
+                    BlackBoxOp::SchnorrVerify { inputs, output }
+                    | BlackBoxOp::EcdsaSecp256k1 { inputs, output } => {
+                        inputs.iter().map(|w| w.index).chain(std::iter::once(output.index)).collect()
+                    }
+                    BlackBoxOp::Range { input, .. } => vec![input.index],
+                };
+                deps.sort_unstable();
+                deps.dedup();
+                equation_from_deps(id, &deps, "acir_blackbox")
+            }
+            AcirOpcode::MemoryOp { address, value, .. } => {
+                let deps = vec![address.index, value.index];
+                equation_from_deps(id, &deps, "acir_memory")
+            }
+            AcirOpcode::Brillig { inputs, outputs } => {
+                let deps: Vec<usize> = inputs
+                    .iter()
+                    .map(|w| w.index)
+                    .chain(outputs.iter().map(|w| w.index))
+                    .collect();
+                equation_from_deps(id, &deps, "acir_brillig")
+            }
+            AcirOpcode::Range { input, .. } => {
+                equation_from_deps(id, &[input.index], "acir_range")
+            }
+        },
+        ExtendedConstraint::AirConstraint(_) => ConstraintEquation {
+            id,
+            a_terms: Vec::new(),
+            b_terms: Vec::new(),
+            c_terms: Vec::new(),
+            description: Some("air".to_string()),
+        },
+        ExtendedConstraint::Boolean { wire } => ConstraintEquation {
+            id,
+            a_terms: vec![(wire.index, FieldElement::one())],
+            b_terms: Vec::new(),
+            c_terms: vec![(wire.index, FieldElement::one())],
+            description: Some("boolean".to_string()),
+        },
+        ExtendedConstraint::Equal { a, b } => ConstraintEquation {
+            id,
+            a_terms: vec![(b.index, FieldElement::one())],
+            b_terms: Vec::new(),
+            c_terms: vec![(a.index, FieldElement::one())],
+            description: Some("equal".to_string()),
+        },
+        ExtendedConstraint::Add { a, b, c } => ConstraintEquation {
+            id,
+            a_terms: vec![(a.index, FieldElement::one())],
+            b_terms: vec![(b.index, FieldElement::one())],
+            c_terms: vec![(c.index, FieldElement::one())],
+            description: Some("add".to_string()),
+        },
+        ExtendedConstraint::Mul { a, b, c } => ConstraintEquation {
+            id,
+            a_terms: vec![(a.index, FieldElement::one())],
+            b_terms: vec![(b.index, FieldElement::one())],
+            c_terms: vec![(c.index, FieldElement::one())],
+            description: Some("mul".to_string()),
+        },
+        ExtendedConstraint::Constant { wire, .. } => ConstraintEquation {
+            id,
+            a_terms: Vec::new(),
+            b_terms: Vec::new(),
+            c_terms: vec![(wire.index, FieldElement::one())],
+            description: Some("constant".to_string()),
+        },
+    }
+}
+
+fn insert_wire_label(labels: &mut HashMap<usize, String>, wire: &WireRef) {
+    if let Some(name) = &wire.name {
+        labels.entry(wire.index).or_insert_with(|| name.clone());
+    }
+}
+
+fn collect_labels_from_lc(labels: &mut HashMap<usize, String>, lc: &LinearCombination) {
+    for (wire, _) in &lc.terms {
+        insert_wire_label(labels, wire);
+    }
+}
+
+fn collect_wire_labels_from_constraint(
+    labels: &mut HashMap<usize, String>,
+    constraint: &ExtendedConstraint,
+) {
+    match constraint {
+        ExtendedConstraint::R1CS(r1cs) => {
+            collect_labels_from_lc(labels, &r1cs.a);
+            collect_labels_from_lc(labels, &r1cs.b);
+            collect_labels_from_lc(labels, &r1cs.c);
+        }
+        ExtendedConstraint::PlonkGate(gate) => {
+            insert_wire_label(labels, &gate.a);
+            insert_wire_label(labels, &gate.b);
+            insert_wire_label(labels, &gate.c);
+        }
+        ExtendedConstraint::CustomGate(custom) => {
+            for term in &custom.polynomial.terms {
+                for (wire, _) in &term.variables {
+                    insert_wire_label(labels, wire);
+                }
+            }
+        }
+        ExtendedConstraint::Lookup(lookup) => {
+            insert_wire_label(labels, &lookup.input);
+            for wire in &lookup.additional_inputs {
+                insert_wire_label(labels, wire);
+            }
+        }
+        ExtendedConstraint::Range(range) => {
+            insert_wire_label(labels, &range.wire);
+            if let RangeMethod::BitDecomposition { bit_wires } = &range.method {
+                for wire in bit_wires {
+                    insert_wire_label(labels, wire);
+                }
+            }
+        }
+        ExtendedConstraint::Polynomial(poly) => {
+            for term in &poly.terms {
+                for (wire, _) in &term.variables {
+                    insert_wire_label(labels, wire);
+                }
+            }
+        }
+        ExtendedConstraint::AcirOpcode(op) => match op {
+            AcirOpcode::Arithmetic { a, b, c, .. } => {
+                collect_labels_from_lc(labels, a);
+                collect_labels_from_lc(labels, b);
+                collect_labels_from_lc(labels, c);
+            }
+            AcirOpcode::BlackBox(op) => match op {
+                BlackBoxOp::SHA256 { inputs, outputs }
+                | BlackBoxOp::Blake2s { inputs, outputs }
+                | BlackBoxOp::Blake3 { inputs, outputs }
+                | BlackBoxOp::Keccak256 { inputs, outputs }
+                | BlackBoxOp::Pedersen { inputs, outputs }
+                | BlackBoxOp::FixedBaseScalarMul { inputs, outputs }
+                | BlackBoxOp::RecursiveAggregation { inputs, outputs } => {
+                    for wire in inputs.iter().chain(outputs.iter()) {
+                        insert_wire_label(labels, wire);
+                    }
+                }
+                BlackBoxOp::SchnorrVerify { inputs, output }
+                | BlackBoxOp::EcdsaSecp256k1 { inputs, output } => {
+                    for wire in inputs {
+                        insert_wire_label(labels, wire);
+                    }
+                    insert_wire_label(labels, output);
+                }
+                BlackBoxOp::Range { input, .. } => {
+                    insert_wire_label(labels, input);
+                }
+            },
+            AcirOpcode::MemoryOp { address, value, .. } => {
+                insert_wire_label(labels, address);
+                insert_wire_label(labels, value);
+            }
+            AcirOpcode::Brillig { inputs, outputs } => {
+                for wire in inputs.iter().chain(outputs.iter()) {
+                    insert_wire_label(labels, wire);
+                }
+            }
+            AcirOpcode::Range { input, .. } => {
+                insert_wire_label(labels, input);
+            }
+        },
+        ExtendedConstraint::AirConstraint(_) => {}
+        ExtendedConstraint::Boolean { wire } => insert_wire_label(labels, wire),
+        ExtendedConstraint::Equal { a, b } => {
+            insert_wire_label(labels, a);
+            insert_wire_label(labels, b);
+        }
+        ExtendedConstraint::Add { a, b, c } | ExtendedConstraint::Mul { a, b, c } => {
+            insert_wire_label(labels, a);
+            insert_wire_label(labels, b);
+            insert_wire_label(labels, c);
+        }
+        ExtendedConstraint::Constant { wire, .. } => insert_wire_label(labels, wire),
+    }
+}
+
+fn dependencies_within_inputs(
+    inspector: &dyn ConstraintInspector,
+    input_len: usize,
+) -> bool {
+    let deps = inspector.get_constraint_dependencies();
+    if deps.is_empty() {
+        return false;
+    }
+    let mut max_idx: Option<usize> = None;
+    for group in deps {
+        for idx in group {
+            max_idx = Some(max_idx.map(|m| m.max(idx)).unwrap_or(idx));
+        }
+    }
+    match max_idx {
+        Some(max_idx) => max_idx < input_len,
+        None => false,
+    }
 }
 
 /// Factory for creating circuit executors based on framework type
@@ -352,12 +699,12 @@ impl CircuitExecutor for CircomExecutor {
     }
 
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
-        use crate::targets::TargetCircuit;
         let start = std::time::Instant::now();
-
-        match self.target.execute(inputs) {
-            Ok(outputs) => {
-                let coverage = ExecutionCoverage::with_output_hash(&outputs);
+        match self.target.calculate_witness(inputs) {
+            Ok(witness) => {
+                let outputs = self.target.outputs_from_witness(&witness);
+                let coverage = coverage_from_results(self.check_constraints(&witness))
+                    .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs));
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -475,6 +822,74 @@ impl NoirExecutor {
         target.compile()?;
         Ok(Self { target })
     }
+
+    fn build_witness_from_inputs(&self, inputs: &[FieldElement]) -> Vec<FieldElement> {
+        let public = self.target.public_input_indices();
+        let private = self.target.private_input_indices();
+        let max_idx = public
+            .iter()
+            .chain(private.iter())
+            .copied()
+            .max()
+            .unwrap_or(0);
+        let mut witness = vec![FieldElement::zero(); max_idx.max(1) + 1];
+
+        // Conventional R1CS constant wire.
+        witness[0] = FieldElement::one();
+
+        let mut idx = 0usize;
+        for wire_idx in public.iter().chain(private.iter()) {
+            if idx >= inputs.len() {
+                break;
+            }
+            if *wire_idx < witness.len() {
+                witness[*wire_idx] = inputs[idx].clone();
+            }
+            idx += 1;
+        }
+
+        witness
+    }
+
+    fn build_witness_with_outputs(
+        &self,
+        inputs: &[FieldElement],
+        outputs: &[FieldElement],
+    ) -> Vec<FieldElement> {
+        let public = self.target.public_input_indices();
+        let private = self.target.private_input_indices();
+        let output_indices = self.target.output_signal_indices();
+
+        let max_idx = public
+            .iter()
+            .chain(private.iter())
+            .chain(output_indices.iter())
+            .copied()
+            .max()
+            .unwrap_or(0);
+
+        let mut witness = vec![FieldElement::zero(); max_idx.max(1) + 1];
+        witness[0] = FieldElement::one();
+
+        let mut idx = 0usize;
+        for wire_idx in public.iter().chain(private.iter()) {
+            if idx >= inputs.len() {
+                break;
+            }
+            if *wire_idx < witness.len() {
+                witness[*wire_idx] = inputs[idx].clone();
+            }
+            idx += 1;
+        }
+
+        for (value, wire_idx) in outputs.iter().zip(output_indices.iter()) {
+            if *wire_idx < witness.len() {
+                witness[*wire_idx] = value.clone();
+            }
+        }
+
+        witness
+    }
 }
 
 #[async_trait]
@@ -505,7 +920,9 @@ impl CircuitExecutor for NoirExecutor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = ExecutionCoverage::with_output_hash(&outputs);
+                let witness = self.build_witness_with_outputs(inputs, &outputs);
+                let coverage = coverage_from_results(self.check_constraints(&witness))
+                    .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs));
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -541,16 +958,66 @@ impl ConstraintInspector for NoirExecutor {
         self.target.load_constraints().unwrap_or_default()
     }
 
-    fn check_constraints(&self, _witness: &[FieldElement]) -> Vec<ConstraintResult> {
-        self.get_constraints()
-            .iter()
-            .map(|c| ConstraintResult {
-                constraint_id: c.id,
-                satisfied: true,
-                lhs_value: FieldElement::one(),
-                rhs_value: FieldElement::one(),
-            })
-            .collect()
+    fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {
+        fn eval_linear(
+            terms: &[(usize, FieldElement)],
+            witness: &[FieldElement],
+        ) -> Option<FieldElement> {
+            let mut acc = FieldElement::zero();
+            for (idx, coeff) in terms {
+                let value = witness.get(*idx)?;
+                acc = acc.add(&value.mul(coeff));
+            }
+            Some(acc)
+        }
+
+        let constraints = self.get_constraints();
+        if constraints.is_empty() {
+            return Vec::new();
+        }
+
+        let mut known_indices: HashSet<usize> = self
+            .target
+            .public_input_indices()
+            .into_iter()
+            .chain(self.target.private_input_indices())
+            .chain(self.target.output_signal_indices())
+            .collect();
+        known_indices.insert(0);
+
+        let mut results = Vec::new();
+
+        for constraint in constraints {
+            let deps: HashSet<usize> = constraint
+                .a_terms
+                .iter()
+                .chain(constraint.b_terms.iter())
+                .chain(constraint.c_terms.iter())
+                .map(|(idx, _)| *idx)
+                .collect();
+
+            if !deps.is_subset(&known_indices) {
+                continue;
+            }
+
+            let (Some(a_val), Some(b_val), Some(c_val)) = (
+                eval_linear(&constraint.a_terms, witness),
+                eval_linear(&constraint.b_terms, witness),
+                eval_linear(&constraint.c_terms, witness),
+            ) else {
+                continue;
+            };
+
+            let lhs = a_val.mul(&b_val);
+            results.push(ConstraintResult {
+                constraint_id: constraint.id,
+                satisfied: lhs == c_val,
+                lhs_value: lhs,
+                rhs_value: c_val,
+            });
+        }
+
+        results
     }
 
     fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
@@ -639,7 +1106,8 @@ impl CircuitExecutor for Halo2Executor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = ExecutionCoverage::with_output_hash(&outputs);
+                let coverage = coverage_from_results(self.check_constraints(inputs))
+                    .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs));
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -672,7 +1140,13 @@ impl CircuitExecutor for Halo2Executor {
 
 impl ConstraintInspector for Halo2Executor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
-        Vec::new()
+        let parsed = self.target.load_plonk_constraints();
+        parsed
+            .constraints
+            .iter()
+            .enumerate()
+            .map(|(idx, constraint)| constraint_to_equation(idx, constraint))
+            .collect()
     }
 
     fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {
@@ -693,20 +1167,23 @@ impl ConstraintInspector for Halo2Executor {
             checker.add_table(id, table);
         }
 
-        parsed
-            .constraints
-            .iter()
-            .enumerate()
-            .map(|(idx, constraint)| {
-                let evaluation = checker.evaluate(constraint, &wire_values);
-                ConstraintResult {
-                    constraint_id: idx,
-                    satisfied: evaluation.satisfied,
-                    lhs_value: evaluation.lhs,
-                    rhs_value: evaluation.rhs,
-                }
-            })
-            .collect()
+        let mut results = Vec::new();
+        for (idx, constraint) in parsed.constraints.iter().enumerate() {
+            let deps = constraint.wire_dependencies();
+            if deps.iter().any(|d| *d >= witness.len()) {
+                continue;
+            }
+
+            let evaluation = checker.evaluate(constraint, &wire_values);
+            results.push(ConstraintResult {
+                constraint_id: idx,
+                satisfied: evaluation.satisfied,
+                lhs_value: evaluation.lhs,
+                rhs_value: evaluation.rhs,
+            });
+        }
+
+        results
     }
 
     fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
@@ -716,6 +1193,15 @@ impl ConstraintInspector for Halo2Executor {
             .iter()
             .map(|constraint| constraint.wire_dependencies())
             .collect()
+    }
+
+    fn wire_labels(&self) -> std::collections::HashMap<usize, String> {
+        let parsed = self.target.load_plonk_constraints();
+        let mut labels = HashMap::new();
+        for constraint in &parsed.constraints {
+            collect_wire_labels_from_constraint(&mut labels, constraint);
+        }
+        labels
     }
 }
 
@@ -766,7 +1252,8 @@ impl CircuitExecutor for CairoExecutor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = ExecutionCoverage::with_output_hash(&outputs);
+                let coverage = coverage_from_results(self.check_constraints(inputs))
+                    .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs));
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -782,6 +1269,36 @@ impl CircuitExecutor for CairoExecutor {
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
         use crate::targets::TargetCircuit;
         self.target.verify(proof, public_inputs)
+    }
+}
+
+impl ConstraintInspector for CairoExecutor {
+    fn get_constraints(&self) -> Vec<ConstraintEquation> {
+        Vec::new()
+    }
+
+    fn check_constraints(&self, _witness: &[FieldElement]) -> Vec<ConstraintResult> {
+        Vec::new()
+    }
+
+    fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
+        Vec::new()
+    }
+
+    fn public_input_indices(&self) -> Vec<usize> {
+        (0..self.circuit_info().num_private_inputs).collect()
+    }
+
+    fn private_input_indices(&self) -> Vec<usize> {
+        Vec::new()
+    }
+
+    fn output_indices(&self) -> Vec<usize> {
+        (0..self.circuit_info().num_outputs).collect()
+    }
+
+    fn wire_labels(&self) -> std::collections::HashMap<usize, String> {
+        self.target.wire_labels()
     }
 }
 
@@ -851,5 +1368,46 @@ mod tests {
         let results = inspector.check_constraints(&witness);
         assert_eq!(results.len(), 2);
         assert!(results.iter().all(|r| r.satisfied));
+    }
+
+    #[test]
+    fn test_halo2_execute_sync_records_constraints() {
+        let json = r#"
+        {
+          "name": "test",
+          "k": 4,
+          "advice_columns": 3,
+          "fixed_columns": 0,
+          "instance_columns": 0,
+          "constraints": 2,
+          "private_inputs": 3,
+          "public_inputs": 0,
+          "lookups": 1,
+          "tables": {
+            "0": { "name": "tiny", "num_columns": 1, "entries": [[2], [3]] }
+          },
+          "gates": [
+            { "a": 1, "b": 2, "c": 3, "q_l": "1", "q_r": "1", "q_o": "-1", "q_m": "0", "q_c": "0" }
+          ],
+          "lookups": [
+            { "table_id": 0, "input": 1 }
+          ]
+        }
+        "#;
+
+        let temp = tempfile::Builder::new().suffix(".json").tempfile().unwrap();
+        std::fs::write(temp.path(), json).unwrap();
+
+        let executor = Halo2Executor::new(temp.path().to_str().unwrap(), "main").unwrap();
+        let inputs = vec![
+            FieldElement::one(),
+            FieldElement::from_u64(2),
+            FieldElement::from_u64(3),
+            FieldElement::from_u64(5),
+        ];
+
+        let result = executor.execute_sync(&inputs);
+        assert!(result.success);
+        assert_eq!(result.coverage.satisfied_constraints.len(), 2);
     }
 }

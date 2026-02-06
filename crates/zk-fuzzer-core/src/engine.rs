@@ -230,7 +230,7 @@ impl FuzzingEngineCore {
         test_case: &TestCase,
     ) -> ExecutionResult {
         let exec_start = Instant::now();
-        let result = executor.execute_sync(&test_case.inputs);
+        let mut result = executor.execute_sync(&test_case.inputs);
         let exec_time = exec_start.elapsed();
 
         self.execution_count.fetch_add(1, Ordering::Relaxed);

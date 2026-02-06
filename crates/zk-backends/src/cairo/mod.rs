@@ -10,6 +10,7 @@ use zk_core::Framework;
 use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -539,6 +540,29 @@ impl CairoTarget {
         }"#
         .to_string())
     }
+
+    /// Best-effort wire labels from source function signatures.
+    pub fn wire_labels(&self) -> HashMap<usize, String> {
+        let mut labels = HashMap::new();
+        let source = match std::fs::read_to_string(&self.source_path) {
+            Ok(s) => s,
+            Err(_) => return labels,
+        };
+
+        let functions = analysis::extract_functions(&source);
+        let func = functions
+            .iter()
+            .find(|f| f.name == "main")
+            .or_else(|| functions.first());
+
+        if let Some(func) = func {
+            for (idx, (name, _typ)) in func.args.iter().enumerate() {
+                labels.insert(idx, name.clone());
+            }
+        }
+
+        labels
+    }
 }
 
 impl TargetCircuit for CairoTarget {
@@ -718,10 +742,11 @@ pub mod analysis {
         // func name(arg1: felt, arg2: felt) -> (res: felt)
         let after_func = line.strip_prefix("func ")?;
         let name = after_func.split('(').next()?.trim().to_string();
+        let args = extract_args(after_func);
 
         Some(CairoFunction {
             name,
-            args: vec![],
+            args,
             returns: vec![],
             is_external: false,
         })
@@ -731,13 +756,41 @@ pub mod analysis {
         let is_external = line.contains("#[external");
         let trimmed = line.trim_start_matches("pub ").trim_start_matches("fn ");
         let name = trimmed.split('(').next()?.trim().to_string();
+        let args = extract_args(trimmed);
 
         Some(CairoFunction {
             name,
-            args: vec![],
+            args,
             returns: vec![],
             is_external,
         })
+    }
+
+    fn extract_args(signature: &str) -> Vec<(String, String)> {
+        let mut args = Vec::new();
+        let args_section = match signature.split('(').nth(1).and_then(|s| s.split(')').next()) {
+            Some(section) => section.trim(),
+            None => return args,
+        };
+
+        if args_section.is_empty() {
+            return args;
+        }
+
+        for part in args_section.split(',') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            let mut iter = part.splitn(2, ':');
+            let name = iter.next().unwrap_or("").trim();
+            let typ = iter.next().unwrap_or("").trim();
+            if !name.is_empty() {
+                args.push((name.to_string(), typ.to_string()));
+            }
+        }
+
+        args
     }
 
     /// Cairo function information

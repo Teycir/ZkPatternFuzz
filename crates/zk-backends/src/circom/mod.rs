@@ -761,6 +761,36 @@ impl CircomTarget {
             .unwrap_or_default()
     }
 
+    /// Extract outputs from a full witness using metadata when available.
+    pub fn outputs_from_witness(&self, witness: &[FieldElement]) -> Vec<FieldElement> {
+        if let Some(metadata) = &self.metadata {
+            if !metadata.output_signal_indices.is_empty() {
+                let mut outputs = Vec::new();
+                for idx in &metadata.output_signal_indices {
+                    if let Some(value) = witness.get(*idx) {
+                        outputs.push(value.clone());
+                    }
+                }
+                if !outputs.is_empty() {
+                    return outputs;
+                }
+            }
+
+            let num_public = metadata.num_public_inputs;
+            let num_outputs = metadata.num_outputs.max(1);
+
+            if witness.len() > 1 + num_public + num_outputs {
+                return witness[1..1 + num_outputs].to_vec();
+            }
+        }
+
+        if !witness.is_empty() {
+            vec![witness[witness.len() - 1].clone()]
+        } else {
+            Vec::new()
+        }
+    }
+
     /// Get the field name/prime used by this circuit (e.g., bn128/bn254)
     pub fn field_name(&self) -> &str {
         self.metadata
@@ -817,32 +847,7 @@ impl TargetCircuit for CircomTarget {
         }
 
         let witness = self.calculate_witness(inputs)?;
-
-        if let Some(metadata) = &self.metadata {
-            if !metadata.output_signal_indices.is_empty() {
-                let mut outputs = Vec::new();
-                for idx in &metadata.output_signal_indices {
-                    if let Some(value) = witness.get(*idx) {
-                        outputs.push(value.clone());
-                    }
-                }
-                if !outputs.is_empty() {
-                    return Ok(outputs);
-                }
-            }
-        }
-
-        // Fallback: outputs are typically at the start of the witness after signal 0
-        let num_public = self.num_public_inputs();
-        let num_outputs = self.metadata.as_ref().map(|m| m.num_outputs).unwrap_or(1);
-
-        if witness.len() > 1 + num_public + num_outputs {
-            Ok(witness[1..1 + num_outputs].to_vec())
-        } else if !witness.is_empty() {
-            Ok(vec![witness[witness.len() - 1].clone()])
-        } else {
-            Ok(vec![])
-        }
+        Ok(self.outputs_from_witness(&witness))
     }
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {

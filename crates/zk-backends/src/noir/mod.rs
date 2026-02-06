@@ -835,32 +835,44 @@ fn parse_acir_output(output: &str) -> NoirAcirInfo {
             continue;
         }
         if trimmed.starts_with("ASSERT") {
-            let (output_idx, input_indices) = if let Some((lhs, rhs)) = trimmed.split_once('=') {
-                let lhs_indices = extract_witness_indices(lhs);
-                let rhs_indices = extract_witness_indices(rhs);
-                (lhs_indices.into_iter().next(), rhs_indices)
-            } else {
-                let all_indices = extract_witness_indices(trimmed);
-                if all_indices.len() >= 2 {
-                    (Some(all_indices[0]), all_indices[1..].to_vec())
+            let (output_idx, input_indices, rhs_text) =
+                if let Some((lhs, rhs)) = trimmed.split_once('=') {
+                    let lhs_indices = extract_witness_indices(lhs);
+                    let rhs_indices = extract_witness_indices(rhs);
+                    (lhs_indices.into_iter().next(), rhs_indices, Some(rhs.trim()))
                 } else {
-                    (None, Vec::new())
-                }
-            };
+                    let all_indices = extract_witness_indices(trimmed);
+                    if all_indices.len() >= 2 {
+                        (Some(all_indices[0]), all_indices[1..].to_vec(), None)
+                    } else {
+                        (None, Vec::new(), None)
+                    }
+                };
 
             if let Some(out_idx) = output_idx {
-                let a_terms = input_indices
-                    .into_iter()
-                    .map(|idx| (idx, FieldElement::one()))
-                    .collect();
+                let is_multiplication = rhs_text.map(|rhs| rhs.contains('*')).unwrap_or(false);
+                if is_multiplication && input_indices.len() >= 2 {
+                    constraints.push(ConstraintEquation {
+                        id,
+                        a_terms: vec![(input_indices[0], FieldElement::one())],
+                        b_terms: vec![(input_indices[1], FieldElement::one())],
+                        c_terms: vec![(out_idx, FieldElement::one())],
+                        description: Some("noir acir mul".to_string()),
+                    });
+                } else {
+                    let a_terms = input_indices
+                        .into_iter()
+                        .map(|idx| (idx, FieldElement::one()))
+                        .collect();
 
-                constraints.push(ConstraintEquation {
-                    id,
-                    a_terms,
-                    b_terms: Vec::new(),
-                    c_terms: vec![(out_idx, FieldElement::one())],
-                    description: Some("noir acir".to_string()),
-                });
+                    constraints.push(ConstraintEquation {
+                        id,
+                        a_terms,
+                        b_terms: vec![(0, FieldElement::one())],
+                        c_terms: vec![(out_idx, FieldElement::one())],
+                        description: Some("noir acir".to_string()),
+                    });
+                }
                 id += 1;
             }
         }

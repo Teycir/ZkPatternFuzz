@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 use zk_fuzzer::config::Framework;
-use zk_fuzzer::executor::ExecutorFactory;
+use zk_fuzzer::executor::{CircuitExecutor, ExecutorFactory, CircomExecutor, NoirExecutor};
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CircomTarget, NoirTarget, Halo2Target, CairoTarget, TargetCircuit};
 
@@ -222,6 +222,58 @@ fn test_noir_integration() {
     ]).expect("Noir execution failed");
 
     assert_eq!(outputs.get(0), Some(&FieldElement::from_u64(15)));
+}
+
+/// Validate constraint-level coverage for Circom executor
+#[test]
+fn test_circom_constraint_coverage() {
+    CircomTarget::check_circom_available()
+        .expect("Circom not available. Install with: npm install -g circom");
+    CircomTarget::check_snarkjs_available()
+        .expect("snarkjs not available. Install with: npm install -g snarkjs");
+
+    let circuit_path = circom_test_circuit("multiplier");
+    assert!(circuit_path.exists(), "Missing test circuit at {:?}", circuit_path);
+
+    let executor = CircomExecutor::new(
+        circuit_path.to_str().unwrap(),
+        "Multiplier",
+    ).expect("Failed to create CircomExecutor");
+
+    let result = executor.execute_sync(&[
+        FieldElement::from_u64(3),
+        FieldElement::from_u64(4),
+    ]);
+
+    assert!(result.success, "Circom execution failed");
+    assert!(
+        !result.coverage.satisfied_constraints.is_empty(),
+        "Expected constraint-level coverage for Circom executor"
+    );
+}
+
+/// Validate constraint-level coverage for Noir executor
+#[test]
+fn test_noir_constraint_coverage() {
+    NoirTarget::check_nargo_available()
+        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+
+    let project_path = noir_project_path("multiplier");
+    assert!(project_path.exists(), "Missing Noir project at {:?}", project_path);
+
+    let executor = NoirExecutor::new(project_path.to_str().unwrap())
+        .expect("Failed to create NoirExecutor");
+
+    let result = executor.execute_sync(&[
+        FieldElement::from_u64(3),
+        FieldElement::from_u64(5),
+    ]);
+
+    assert!(result.success, "Noir execution failed");
+    assert!(
+        !result.coverage.satisfied_constraints.is_empty(),
+        "Expected constraint-level coverage for Noir executor"
+    );
 }
 
 /// Integration test for Cairo (only runs if cairo tools are available)
