@@ -2308,13 +2308,36 @@ impl FuzzingEngine {
             .get("samples_per_cone")
             .and_then(|v| v.as_u64())
             .unwrap_or(100) as usize;
+
+        let base_witness_attempts = config
+            .get("base_witness_attempts")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(5) as usize;
         
         tracing::info!("Running constraint slice analysis ({} samples/cone)", samples_per_cone);
         
         let oracle = ConstraintSliceOracle::new().with_samples(samples_per_cone);
         
-        // Generate a base witness
-        let base_witness = self.generate_test_case();
+        // Generate a base witness that successfully executes
+        let mut base_witness = None;
+        let attempts = base_witness_attempts.max(1);
+        for _ in 0..attempts {
+            let candidate = self.generate_test_case();
+            let result = self.executor.execute_sync(&candidate.inputs);
+            if result.success {
+                base_witness = Some(candidate);
+                break;
+            }
+        }
+
+        let Some(base_witness) = base_witness else {
+            tracing::warn!("Constraint slice skipped: no valid base witness after {} attempts", attempts);
+            if let Some(p) = progress {
+                p.log_finding("WARN", "Constraint slice skipped: no valid base witness");
+                p.inc();
+            }
+            return Ok(());
+        };
         
         // Determine output wire indices (prefer inspector-provided outputs)
         let output_wires: Vec<usize> = if let Some(inspector) = self.executor.constraint_inspector() {
@@ -2366,10 +2389,11 @@ impl FuzzingEngine {
         
         let oracle = SpecInferenceOracle::new()
             .with_sample_count(sample_count)
-            .with_confidence_threshold(0.9);
+            .with_confidence_threshold(0.9)
+            .with_wire_labels(self.input_labels());
         
         // Generate initial witnesses
-        let initial_witnesses: Vec<Vec<FieldElement>> = (0..sample_count.min(100))
+        let initial_witnesses: Vec<Vec<FieldElement>> = (0..sample_count.min(250))
             .map(|_| self.generate_test_case().inputs)
             .collect();
         
@@ -2943,6 +2967,15 @@ impl FuzzingEngine {
             .iter()
             .enumerate()
             .map(|(idx, input)| (input.name.to_lowercase(), idx))
+            .collect()
+    }
+
+    fn input_labels(&self) -> std::collections::HashMap<usize, String> {
+        self.config
+            .inputs
+            .iter()
+            .enumerate()
+            .map(|(idx, input)| (idx, input.name.clone()))
             .collect()
     }
 

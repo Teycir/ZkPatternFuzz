@@ -137,6 +137,14 @@ pub struct SpecInferenceOracle {
     confidence_threshold: f64,
     /// Number of violation attempts per spec
     violation_attempts: usize,
+    /// Fraction of samples reserved for validation
+    validation_split: f64,
+    /// Minimum fraction of validation samples that must satisfy the spec
+    validation_threshold: f64,
+    /// Minimum samples required before inferring specs
+    min_samples: usize,
+    /// Optional wire labels (index -> name) to guide inference
+    wire_labels: HashMap<usize, String>,
 }
 
 impl Default for SpecInferenceOracle {
@@ -152,6 +160,10 @@ impl SpecInferenceOracle {
             sample_count: 500,
             confidence_threshold: 0.9,
             violation_attempts: 100,
+            validation_split: 0.2,
+            validation_threshold: 0.98,
+            min_samples: 30,
+            wire_labels: HashMap::new(),
         }
     }
 
@@ -164,6 +176,12 @@ impl SpecInferenceOracle {
     /// Set confidence threshold
     pub fn with_confidence_threshold(mut self, threshold: f64) -> Self {
         self.confidence_threshold = threshold;
+        self
+    }
+
+    /// Provide wire labels to guide inference
+    pub fn with_wire_labels(mut self, labels: HashMap<usize, String>) -> Self {
+        self.wire_labels = labels;
         self
     }
 
@@ -195,27 +213,44 @@ impl SpecInferenceOracle {
     pub fn infer_specs(&self, samples: &[ExecutionSample]) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
 
-        if samples.is_empty() {
+        if samples.is_empty() || samples.len() < self.min_samples {
             return specs;
         }
 
-        let num_inputs = samples[0].inputs.len();
-        let num_outputs = samples[0].outputs.len();
+        let (train_samples, validation_samples) = self.split_samples(samples);
+        if train_samples.is_empty() {
+            return specs;
+        }
+
+        let num_inputs = train_samples[0].inputs.len();
+        let num_outputs = train_samples[0].outputs.len();
 
         // Infer range checks on inputs
-        specs.extend(self.infer_range_checks(samples, num_inputs));
+        specs.extend(self.infer_range_checks(train_samples, num_inputs));
 
         // Infer non-zero constraints
-        specs.extend(self.infer_non_zero(samples, num_inputs + num_outputs));
+        specs.extend(self.infer_non_zero(train_samples, num_inputs + num_outputs));
 
         // Infer constant values
-        specs.extend(self.infer_constants(samples, num_outputs));
+        specs.extend(self.infer_constants(train_samples, num_outputs));
 
         // Infer equalities
-        specs.extend(self.infer_equalities(samples, num_inputs));
+        specs.extend(self.infer_equalities(train_samples, num_inputs));
 
         // Filter by confidence
         specs.retain(|s| s.confidence() >= self.confidence_threshold);
+
+        // Remove specs that cannot be acted upon
+        specs.retain(|s| self.is_actionable(s, num_inputs));
+
+        // Validate on holdout samples to reduce false positives
+        if !validation_samples.is_empty() {
+            specs.retain(|spec| {
+                self.spec_support_ratio(spec, validation_samples, num_inputs)
+                    .map(|ratio| ratio >= self.validation_threshold)
+                    .unwrap_or(false)
+            });
+        }
 
         specs
     }
@@ -223,6 +258,7 @@ impl SpecInferenceOracle {
     /// Infer range checks from samples
     fn infer_range_checks(&self, samples: &[ExecutionSample], num_inputs: usize) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
+        let min_unique = 4usize;
 
         for input_idx in 0..num_inputs {
             let values: Vec<u64> = samples.iter()
@@ -236,6 +272,11 @@ impl SpecInferenceOracle {
 
             let min = *values.iter().min().unwrap();
             let max = *values.iter().max().unwrap();
+            let unique_count = values.iter().copied().collect::<std::collections::HashSet<u64>>().len();
+
+            if unique_count < min_unique {
+                continue;
+            }
 
             // Infer bit length
             let bit_length = if max > 0 {
@@ -247,8 +288,13 @@ impl SpecInferenceOracle {
             // Check if all values fit in power of 2 range
             let expected_max = (1u64 << bit_length) - 1;
             let fits_power_of_2 = max <= expected_max;
+            let coverage_ratio = if expected_max > 0 {
+                (max as f64) / (expected_max as f64)
+            } else {
+                0.0
+            };
 
-            if fits_power_of_2 && bit_length <= 64 {
+            if fits_power_of_2 && bit_length <= 64 && coverage_ratio >= 0.25 {
                 specs.push(InferredSpec::RangeCheck {
                     input_index: input_idx,
                     observed_min: min,
@@ -266,15 +312,36 @@ impl SpecInferenceOracle {
     fn infer_non_zero(&self, samples: &[ExecutionSample], total_wires: usize) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
         let num_inputs = samples.get(0).map(|s| s.inputs.len()).unwrap_or(0);
+        if self.wire_labels.is_empty() {
+            return specs;
+        }
 
         for wire_idx in 0..total_wires.min(num_inputs) {
+            if !self.label_suggests_nonzero(wire_idx) {
+                continue;
+            }
+
+            let values: Vec<u64> = samples.iter()
+                .filter_map(|s| s.inputs.get(wire_idx))
+                .filter_map(|fe| fe.to_u64())
+                .collect();
+            if values.is_empty() {
+                continue;
+            }
+
+            let min = *values.iter().min().unwrap_or(&u64::MAX);
+            if min > 3 {
+                // No evidence of a small-domain input; skip to reduce false positives.
+                continue;
+            }
+
             let all_nonzero = samples.iter().all(|s| {
                 s.inputs.get(wire_idx)
                     .map(|fe| !fe.is_zero())
                     .unwrap_or(true)
             });
 
-            if all_nonzero && samples.len() >= 10 {
+            if all_nonzero && samples.len() >= self.min_samples {
                 specs.push(InferredSpec::NonZero {
                     wire_index: wire_idx,
                     confidence: 1.0 - (1.0 / samples.len() as f64),
@@ -317,6 +384,18 @@ impl SpecInferenceOracle {
     /// Infer equality relations between inputs
     fn infer_equalities(&self, samples: &[ExecutionSample], num_inputs: usize) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
+        let min_unique = 4usize;
+        let max_unique_for_inequality = 16usize;
+
+        let mut unique_counts: Vec<usize> = Vec::with_capacity(num_inputs);
+        for input_idx in 0..num_inputs {
+            let unique = samples.iter()
+                .filter_map(|s| s.inputs.get(input_idx))
+                .cloned()
+                .collect::<std::collections::HashSet<_>>()
+                .len();
+            unique_counts.push(unique);
+        }
 
         for i in 0..num_inputs {
             for j in (i + 1)..num_inputs {
@@ -329,6 +408,9 @@ impl SpecInferenceOracle {
                 });
 
                 if all_equal && samples.len() >= 10 {
+                    if unique_counts[i] < min_unique || unique_counts[j] < min_unique {
+                        continue;
+                    }
                     specs.push(InferredSpec::Equality {
                         wire_a: i,
                         wire_b: j,
@@ -337,6 +419,11 @@ impl SpecInferenceOracle {
                 }
 
                 if all_different && samples.len() >= 10 {
+                    if unique_counts[i] > max_unique_for_inequality
+                        || unique_counts[j] > max_unique_for_inequality
+                    {
+                        continue;
+                    }
                     specs.push(InferredSpec::Inequality {
                         wire_a: i,
                         wire_b: j,
@@ -376,43 +463,183 @@ impl SpecInferenceOracle {
         rng: &mut impl Rng,
     ) -> Option<Vec<FieldElement>> {
         let mut witness = base_witness.to_vec();
+        let mut modified = false;
 
         match spec {
             InferredSpec::RangeCheck { input_index, inferred_bits, .. } => {
                 if *input_index < witness.len() {
                     // Set to a value outside the range
-                    let overflow_value = 1u64.checked_shl(*inferred_bits as u32)
-                        .unwrap_or(u64::MAX);
-                    witness[*input_index] = FieldElement::from_u64(overflow_value + rng.gen_range(1..1000));
+                    let overflow_value = 1u64
+                        .checked_shl(*inferred_bits as u32)
+                        .unwrap_or(u64::MAX)
+                        .saturating_add(rng.gen_range(1..1000));
+                    witness[*input_index] = FieldElement::from_u64(overflow_value);
+                    modified = true;
                 }
             }
             InferredSpec::NonZero { wire_index, .. } => {
                 if *wire_index < witness.len() {
                     witness[*wire_index] = FieldElement::zero();
+                    modified = true;
                 }
             }
             InferredSpec::Equality { wire_a, wire_b, .. } => {
                 if *wire_a < witness.len() && *wire_b < witness.len() {
                     // Make them different
-                    witness[*wire_b] = witness[*wire_a].add(&FieldElement::one());
+                    let mut new_value = witness[*wire_a].add(&FieldElement::one());
+                    if new_value == witness[*wire_b] {
+                        new_value = new_value.add(&FieldElement::one());
+                    }
+                    witness[*wire_b] = new_value;
+                    modified = true;
                 }
             }
             InferredSpec::Inequality { wire_a, wire_b, .. } => {
                 if *wire_a < witness.len() && *wire_b < witness.len() {
                     // Make them equal
-                    witness[*wire_b] = witness[*wire_a].clone();
+                    if witness[*wire_b] != witness[*wire_a] {
+                        witness[*wire_b] = witness[*wire_a].clone();
+                        modified = true;
+                    }
                 }
             }
             InferredSpec::ConstantValue { wire_index, value, .. } => {
                 if *wire_index < witness.len() {
                     // Set to a different value
                     witness[*wire_index] = value.add(&FieldElement::one());
+                    modified = true;
                 }
             }
             _ => return None,
         }
 
-        Some(witness)
+        if modified {
+            Some(witness)
+        } else {
+            None
+        }
+    }
+
+    fn split_samples<'a>(
+        &self,
+        samples: &'a [ExecutionSample],
+    ) -> (&'a [ExecutionSample], &'a [ExecutionSample]) {
+        if samples.len() < self.min_samples {
+            return (samples, &[]);
+        }
+        let mut validation_count = (samples.len() as f64 * self.validation_split) as usize;
+        if validation_count == 0 {
+            validation_count = 1;
+        }
+        if validation_count >= samples.len() {
+            return (&samples[..1], &samples[1..]);
+        }
+        let split_idx = samples.len() - validation_count;
+        (&samples[..split_idx], &samples[split_idx..])
+    }
+
+    fn is_actionable(&self, spec: &InferredSpec, num_inputs: usize) -> bool {
+        match spec {
+            InferredSpec::RangeCheck { input_index, .. } => *input_index < num_inputs,
+            InferredSpec::BitwiseConstraint { input_index, .. } => *input_index < num_inputs,
+            InferredSpec::NonZero { wire_index, .. } => *wire_index < num_inputs,
+            InferredSpec::ConstantValue { wire_index, .. } => *wire_index < num_inputs,
+            InferredSpec::Equality { wire_a, wire_b, .. }
+            | InferredSpec::Inequality { wire_a, wire_b, .. } => {
+                *wire_a < num_inputs && *wire_b < num_inputs
+            }
+            InferredSpec::LinearRelation { input_indices, .. } => {
+                input_indices.iter().all(|idx| *idx < num_inputs)
+            }
+        }
+    }
+
+    fn spec_support_ratio(
+        &self,
+        spec: &InferredSpec,
+        samples: &[ExecutionSample],
+        num_inputs: usize,
+    ) -> Option<f64> {
+        let mut evaluated = 0usize;
+        let mut supported = 0usize;
+        for sample in samples {
+            let Some(holds) = self.spec_holds(spec, sample, num_inputs) else {
+                continue;
+            };
+            evaluated += 1;
+            if holds {
+                supported += 1;
+            }
+        }
+        if evaluated == 0 {
+            None
+        } else {
+            Some(supported as f64 / evaluated as f64)
+        }
+    }
+
+    fn spec_holds(
+        &self,
+        spec: &InferredSpec,
+        sample: &ExecutionSample,
+        num_inputs: usize,
+    ) -> Option<bool> {
+        match spec {
+            InferredSpec::RangeCheck { input_index, inferred_bits, .. } => {
+                let value = sample.inputs.get(*input_index)?.to_u64()?;
+                if *inferred_bits >= 64 {
+                    return Some(false);
+                }
+                let max = (1u64 << *inferred_bits) - 1;
+                Some(value <= max)
+            }
+            InferredSpec::BitwiseConstraint { input_index, bit_length, .. } => {
+                let value = sample.inputs.get(*input_index)?.to_u64()?;
+                if *bit_length >= 64 {
+                    return Some(false);
+                }
+                let max = (1u64 << *bit_length) - 1;
+                Some(value <= max)
+            }
+            InferredSpec::NonZero { wire_index, .. } => {
+                let value = sample.inputs.get(*wire_index)?;
+                Some(!value.is_zero())
+            }
+            InferredSpec::ConstantValue { wire_index, value, .. } => {
+                if *wire_index < num_inputs {
+                    Some(sample.inputs.get(*wire_index)? == value)
+                } else {
+                    let out_idx = wire_index.saturating_sub(num_inputs);
+                    Some(sample.outputs.get(out_idx)? == value)
+                }
+            }
+            InferredSpec::Equality { wire_a, wire_b, .. } => {
+                Some(sample.inputs.get(*wire_a)? == sample.inputs.get(*wire_b)?)
+            }
+            InferredSpec::Inequality { wire_a, wire_b, .. } => {
+                Some(sample.inputs.get(*wire_a)? != sample.inputs.get(*wire_b)?)
+            }
+            InferredSpec::LinearRelation { .. } => None,
+        }
+    }
+
+    fn label_suggests_nonzero(&self, wire_idx: usize) -> bool {
+        let Some(label) = self.wire_labels.get(&wire_idx) else {
+            return false;
+        };
+        let lower = label.to_lowercase();
+        let patterns = [
+            "nullifier",
+            "root",
+            "commit",
+            "hash",
+            "signature",
+            "sig",
+            "pubkey",
+            "publickey",
+            "pk",
+        ];
+        patterns.iter().any(|p| lower.contains(p))
     }
 
     /// Run the full spec inference attack
@@ -490,6 +717,7 @@ pub struct SpecInferenceStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
 
     #[test]
     fn test_inferred_spec_confidence() {
@@ -531,5 +759,19 @@ mod tests {
         if let InferredSpec::RangeCheck { inferred_bits, .. } = &specs[0] {
             assert!(*inferred_bits <= 8);
         }
+    }
+
+    #[test]
+    fn test_constant_output_violation_is_not_actionable() {
+        let oracle = SpecInferenceOracle::new();
+        let spec = InferredSpec::ConstantValue {
+            wire_index: 5,
+            value: FieldElement::one(),
+            confidence: 1.0,
+        };
+        let base = vec![FieldElement::zero(); 2];
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+        let violations = oracle.generate_violations(&spec, &base, &mut rng);
+        assert!(violations.is_empty());
     }
 }

@@ -67,6 +67,7 @@
 - [x] Basic implementation
 - [x] Execute violation witnesses for confirmation
 - [x] Add Halo2/Cairo label sources
+- [ ] Validate on real circuits
 
 ### B. Metamorphic Oracles
 - [x] Basic implementation
@@ -74,12 +75,12 @@
 
 ### C. Constraint Slice
 - [x] Basic implementation
-- [ ] Validate on real circuits
+- [x] Validate on real circuits
 
 ### D. Spec Inference
 - [x] Basic implementation
 - [ ] Remove 100-sample cap
-- [ ] Reduce false positives
+- [x] Reduce false positives
 
 ### E. Witness Collision
 - [x] Basic implementation
