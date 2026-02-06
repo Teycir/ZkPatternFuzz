@@ -53,6 +53,8 @@ pub struct DifferentialConfig {
     pub compare_coverage: bool,
     /// Whether to compare proof generation
     pub compare_proofs: bool,
+    /// Whether to compare execution timing
+    pub compare_timing: bool,
 }
 
 impl Default for DifferentialConfig {
@@ -63,6 +65,7 @@ impl Default for DifferentialConfig {
             timing_tolerance_percent: 50.0,
             compare_coverage: true,
             compare_proofs: false,
+            compare_timing: true,
         }
     }
 }
@@ -134,6 +137,8 @@ impl DifferentialFuzzer {
         // Check for disagreements
         let frameworks: Vec<_> = outputs.keys().cloned().collect();
         let mut disagreements = Vec::new();
+        let mut coverage_mismatches = Vec::new();
+        let mut timing_variations = Vec::new();
         let mut backend_outputs: HashMap<Framework, Vec<FieldElement>> = HashMap::new();
 
         for (framework, result) in &outputs {
@@ -167,18 +172,45 @@ impl DifferentialFuzzer {
                     && r1.coverage.coverage_hash != r2.coverage.coverage_hash
                 {
                     self.stats.coverage_mismatches += 1;
-                    // Don't add to disagreements - coverage differences are less severe
+                    coverage_mismatches.push((f1, f2));
+                }
+
+                // Check timing variation (if enabled)
+                if self.config.compare_timing {
+                    let t1 = r1.execution_time_us;
+                    let t2 = r2.execution_time_us;
+                    let max_t = t1.max(t2);
+                    let min_t = t1.min(t2);
+                    if max_t > 0 {
+                        let diff_pct = ((max_t - min_t) as f64 / max_t as f64) * 100.0;
+                        if diff_pct > self.config.timing_tolerance_percent {
+                            self.stats.timing_variations += 1;
+                            timing_variations.push((f1, f2));
+                        }
+                    }
                 }
             }
         }
 
-        if disagreements.is_empty() {
+        if disagreements.is_empty() && coverage_mismatches.is_empty() && timing_variations.is_empty()
+        {
             self.stats.all_agreed += 1;
             return None;
         }
 
         // Determine severity
-        let severity = self.assess_severity(&outputs, &disagreements);
+        let severity = if !disagreements.is_empty() {
+            self.assess_severity(&outputs, &disagreements)
+        } else if !coverage_mismatches.is_empty() {
+            DifferentialSeverity::CoverageMismatch
+        } else {
+            DifferentialSeverity::TimingVariation
+        };
+
+        if disagreements.is_empty() {
+            disagreements.extend(coverage_mismatches.into_iter());
+            disagreements.extend(timing_variations.into_iter());
+        }
 
         Some(DifferentialResult {
             input: inputs.to_vec(),

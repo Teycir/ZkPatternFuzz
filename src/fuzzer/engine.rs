@@ -1723,6 +1723,7 @@ impl FuzzingEngine {
             compare_coverage: true,
             compare_proofs: false,
             timing_tolerance_percent: 50.0,
+            compare_timing: true,
         });
 
         // Add executors for each backend (skip any that fail to initialize)
@@ -2393,7 +2394,7 @@ impl FuzzingEngine {
             .with_wire_labels(self.input_labels());
         
         // Generate initial witnesses
-        let initial_witnesses: Vec<Vec<FieldElement>> = (0..sample_count.min(250))
+        let initial_witnesses: Vec<Vec<FieldElement>> = (0..sample_count.max(1))
             .map(|_| self.generate_test_case().inputs)
             .collect();
         
@@ -2424,10 +2425,17 @@ impl FuzzingEngine {
             .get("samples")
             .and_then(|v| v.as_u64())
             .unwrap_or(10000) as usize;
+
+        let scope_public_inputs = config
+            .get("scope_public_inputs")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
         
         tracing::info!("Running witness collision detection ({} samples)", samples);
         
-        let detector = WitnessCollisionDetector::new().with_samples(samples);
+        let detector = WitnessCollisionDetector::new()
+            .with_samples(samples)
+            .with_public_input_scope(scope_public_inputs);
         
         // Generate witnesses
         let witnesses: Vec<Vec<FieldElement>> = (0..samples)

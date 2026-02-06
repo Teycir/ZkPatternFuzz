@@ -38,6 +38,8 @@ pub struct WitnessCollision {
     pub witness_a: Vec<FieldElement>,
     /// Second witness
     pub witness_b: Vec<FieldElement>,
+    /// Public inputs associated with the collision
+    pub public_inputs: Vec<FieldElement>,
     /// Shared output hash
     pub output_hash: String,
     /// Actual outputs (same for both)
@@ -118,6 +120,8 @@ pub struct WitnessCollisionDetector {
     sample_count: usize,
     /// Expected equivalence classes
     equivalence_classes: Vec<EquivalenceClass>,
+    /// Scope collisions to matching public inputs
+    scope_public_inputs: bool,
 }
 
 impl Default for WitnessCollisionDetector {
@@ -132,6 +136,7 @@ impl WitnessCollisionDetector {
         Self {
             sample_count: 10000,
             equivalence_classes: Vec::new(),
+            scope_public_inputs: true,
         }
     }
 
@@ -147,11 +152,33 @@ impl WitnessCollisionDetector {
         self
     }
 
+    /// Scope collisions to matching public inputs
+    pub fn with_public_input_scope(mut self, enabled: bool) -> Self {
+        self.scope_public_inputs = enabled;
+        self
+    }
+
     /// Compute hash of outputs
     fn hash_outputs(&self, outputs: &[FieldElement]) -> String {
         let mut hasher = Sha256::new();
         for output in outputs {
             hasher.update(&output.to_bytes());
+        }
+        let result = hasher.finalize();
+        hex::encode(&result[..16])
+    }
+
+    fn hash_outputs_with_public_inputs(
+        &self,
+        outputs: &[FieldElement],
+        public_inputs: &[FieldElement],
+    ) -> String {
+        let mut hasher = Sha256::new();
+        for output in outputs {
+            hasher.update(&output.to_bytes());
+        }
+        for input in public_inputs {
+            hasher.update(&input.to_bytes());
         }
         let result = hasher.finalize();
         hex::encode(&result[..16])
@@ -173,16 +200,36 @@ impl WitnessCollisionDetector {
         executor: &dyn CircuitExecutor,
         witnesses: &[Vec<FieldElement>],
     ) -> Vec<WitnessCollision> {
-        let mut output_map: HashMap<String, (Vec<FieldElement>, Vec<FieldElement>)> = HashMap::new();
+        let mut output_map: HashMap<String, (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>)> =
+            HashMap::new();
         let mut collisions = Vec::new();
+        let num_public = executor.num_public_inputs();
 
         // Execute all witnesses and collect outputs
         for witness in witnesses.iter().take(self.sample_count) {
             let result = executor.execute(witness).await;
             if result.success {
-                let hash = self.hash_outputs(&result.outputs);
+                let public_inputs = if num_public > 0 {
+                    witness
+                        .iter()
+                        .take(num_public.min(witness.len()))
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let hash = if self.scope_public_inputs && !public_inputs.is_empty() {
+                    self.hash_outputs_with_public_inputs(&result.outputs, &public_inputs)
+                } else {
+                    self.hash_outputs(&result.outputs)
+                };
 
-                if let Some((existing_witness, existing_outputs)) = output_map.get(&hash) {
+                if let Some((existing_witness, existing_outputs, existing_public)) =
+                    output_map.get(&hash)
+                {
+                    if existing_witness == witness {
+                        continue;
+                    }
                     // Found a collision!
                     let is_expected = self.is_expected_collision(existing_witness, witness);
                     
@@ -190,13 +237,14 @@ impl WitnessCollisionDetector {
                         collisions.push(WitnessCollision {
                             witness_a: existing_witness.clone(),
                             witness_b: witness.clone(),
+                            public_inputs: existing_public.clone(),
                             output_hash: hash.clone(),
                             outputs: existing_outputs.clone(),
                             is_expected: false,
                         });
                     }
                 } else {
-                    output_map.insert(hash, (witness.clone(), result.outputs));
+                    output_map.insert(hash, (witness.clone(), result.outputs, public_inputs));
                 }
             }
         }
@@ -234,7 +282,7 @@ impl WitnessCollisionDetector {
                     poc: ProofOfConcept {
                         witness_a: c.witness_a.clone(),
                         witness_b: Some(c.witness_b.clone()),
-                        public_inputs: c.outputs.clone(),
+                        public_inputs: c.public_inputs.clone(),
                         proof: None,
                     },
                     location: None,
@@ -384,6 +432,7 @@ mod tests {
         let collision = WitnessCollision {
             witness_a: vec![FieldElement::from_u64(1)],
             witness_b: vec![FieldElement::from_u64(2)],
+            public_inputs: vec![],
             output_hash: "abc123".to_string(),
             outputs: vec![FieldElement::from_u64(42)],
             is_expected: false,
@@ -402,6 +451,7 @@ mod tests {
             WitnessCollision {
                 witness_a: vec![FieldElement::from_u64(1), FieldElement::from_u64(2)],
                 witness_b: vec![FieldElement::from_u64(1), FieldElement::from_u64(3)],
+                public_inputs: vec![],
                 output_hash: "hash1".to_string(),
                 outputs: vec![],
                 is_expected: false,
@@ -409,6 +459,7 @@ mod tests {
             WitnessCollision {
                 witness_a: vec![FieldElement::from_u64(1), FieldElement::from_u64(4)],
                 witness_b: vec![FieldElement::from_u64(1), FieldElement::from_u64(5)],
+                public_inputs: vec![],
                 output_hash: "hash2".to_string(),
                 outputs: vec![],
                 is_expected: false,

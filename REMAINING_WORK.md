@@ -79,15 +79,15 @@
 
 ### D. Spec Inference
 - [x] Basic implementation
-- [ ] Remove 100-sample cap
+- [x] Remove 100-sample cap
 - [x] Reduce false positives
 
 ### E. Witness Collision
 - [x] Basic implementation
-- [ ] Enhance heuristics
+- [x] Enhance heuristics
 
 ### F. Differential
-- [ ] Enhance cross-backend detection
+- [x] Enhance cross-backend detection
 
 ---
 
