@@ -65,6 +65,7 @@ zk-attacks = { path = "crates/zk-attacks" }
 
 # SMT Solver for symbolic execution
 z3 = { version = "0.12", features = ["static-link-z3"] }
+num_cpus = "1.16"
 
 [dev-dependencies]
 

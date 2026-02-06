@@ -9,12 +9,14 @@
 //! - Concolic execution: Mix concrete and symbolic execution for scalability
 //! - R1CS parsing: Direct parsing of Circom-compiled .r1cs files
 //! - Dependency analysis: Witness-dependency graph for coverage guidance
+//! - Opus: Project-level analysis and YAML config generation
 
 pub mod complexity;
 pub mod constraint_symbolic;
 pub mod constraint_types;
 pub mod constraint_guided;
 pub mod dependency;
+pub mod opus;
 pub mod profiling;
 pub mod r1cs_parser;
 pub mod r1cs_to_smt;
@@ -56,4 +58,8 @@ pub use constraint_types::{
 };
 pub use constraint_symbolic::{
     SymbolicConversionOptions, ExtendedConstraintSymbolicExt, ConstraintCheckerSymbolicExt,
+};
+pub use opus::{
+    OpusAnalyzer, OpusConfig, CircuitAnalysisResult, GeneratedConfig,
+    ZeroDayHint, ZeroDayCategory, AttackPriority, InputInfo, ComplexityEstimate,
 };

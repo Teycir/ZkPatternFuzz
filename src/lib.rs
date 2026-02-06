@@ -241,6 +241,14 @@ pub use reporting::{FuzzReport, PoCGenerator, PoCGeneratorConfig, PoCFormat};
 pub use fuzzer::{
     SemanticOracle, OracleConfig, OracleStats, CombinedSemanticOracle,
     NullifierOracle, MerkleOracle, CommitmentOracle, RangeProofOracle,
+    // Adaptive fuzzing
+    AdaptiveScheduler, AdaptiveSchedulerConfig, AdaptiveSchedulerStats,
+    AdaptiveOrchestrator, AdaptiveOrchestratorConfig, AdaptiveOrchestratorBuilder,
+    AdaptiveCampaignResults, ConfirmedZeroDay,
+    // Near-miss detection
+    NearMissDetector, NearMiss, NearMissConfig, NearMissStats,
+    // YAML suggestions
+    YamlSuggestion, SuggestionType,
 };
 
 // Re-export new feature types
@@ -266,6 +274,9 @@ pub use analysis::{
     SymbolicConversionOptions, ExtendedConstraintSymbolicExt, ConstraintCheckerSymbolicExt,
     // R1CS binary parsing
     R1CS, ParsedR1CSConstraint, parse_sym_file, R1CSConstraintGuidedExt,
+    // Opus project analyzer
+    OpusAnalyzer, OpusConfig, CircuitAnalysisResult, GeneratedConfig,
+    ZeroDayHint, ZeroDayCategory, AttackPriority,
 };
 pub use differential::{DifferentialFuzzer, DifferentialConfig, DifferentialResult};
 pub use distributed::{

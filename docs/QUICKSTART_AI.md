@@ -1,165 +1,227 @@
-# Quick Start: AI-Assisted Fuzzing
+# Quickstart: AI-Assisted Adaptive Fuzzing
 
-## One-Command Setup
+This guide shows how to use the **Opus Analyzer** and **Adaptive Orchestrator** to automatically fuzz ZK circuits and catch zero-day vulnerabilities.
 
-### Step 1: Clone ZkPatternFuzz
+## Prerequisites
+
 ```bash
-git clone https://github.com/yourusername/ZkPatternFuzz.git
-cd ZkPatternFuzz
 cargo build --release
 ```
 
-### Step 2: Ask AI to Generate Config
+## Quick Start (3 Steps)
 
-**Prompt for Claude/ChatGPT:**
+### Step 1: Point to Your ZK Project
 
-```
-I have ZkPatternFuzz cloned locally at: /home/user/ZkPatternFuzz
+```rust
+use zk_fuzzer::fuzzer::AdaptiveOrchestratorBuilder;
+use std::time::Duration;
 
-I want to fuzz this circuit:
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let results = AdaptiveOrchestratorBuilder::new()
+        .workers(4)
+        .max_duration(Duration::from_secs(3600))  // 1 hour
+        .zero_day_hunt_mode(true)
+        .build()
+        .run_adaptive_campaign("/path/to/your/zk/project")
+        .await?;
 
-[PASTE YOUR CIRCUIT CODE HERE]
+    // Print results
+    println!("Circuits analyzed: {}", results.circuits_analyzed);
+    println!("Total findings: {}", results.total_findings.len());
+    println!("Confirmed zero-days: {}", results.confirmed_zero_days.len());
 
-Please:
-1. Read the example campaigns in /home/user/ZkPatternFuzz/tests/campaigns/
-2. Read the schema in /home/user/ZkPatternFuzz/docs/AI_ASSISTED_WORKFLOW.md
-3. Generate a complete campaign YAML for my circuit
-4. Tell me the exact command to run
+    for zd in &results.confirmed_zero_days {
+        println!("  [{:?}] in {}: {}", 
+            zd.hint.category, 
+            zd.circuit, 
+            zd.finding.description
+        );
+    }
 
-Framework: [circom/noir/halo2/cairo]
-Circuit path: [path to your circuit file]
-```
-
-### Step 3: Run Fuzzer
-
-AI will give you something like:
-
-```bash
-cd /home/user/ZkPatternFuzz
-cargo run --release -- --config campaign.yaml
-```
-
-### Step 4: Check Results
-
-```bash
-cat reports/report.md
-```
-
-## That's It!
-
-The AI will:
-- ✅ Read ZkPatternFuzz docs and examples
-- ✅ Analyze your circuit
-- ✅ Generate optimized YAML config
-- ✅ Provide exact run command
-
-No manual YAML writing needed!
-
-## Example Session
-
-**You:**
-```
-I have ZkPatternFuzz at ~/ZkPatternFuzz
-
-Fuzz this Circom circuit at ~/circuits/vote.circom:
-
-template Vote() {
-    signal input voter;
-    signal input choice;
-    signal output nullifier;
-    
-    nullifier <== Poseidon([voter, choice]);
+    Ok(())
 }
-
-Generate campaign YAML and run command.
 ```
 
-**AI:**
-```yaml
-# campaign.yaml
-campaign:
-  name: "Vote Circuit Audit"
-  version: "1.0"
-  target:
-    framework: "circom"
-    circuit_path: "~/circuits/vote.circom"
-    main_component: "Vote"
+### Step 2: The System Does Everything
 
-attacks:
-  - type: "underconstrained"
-    description: "Find multiple voters producing same nullifier"
-    config:
-      witness_pairs: 1000
+1. **Opus scans** your project for `.circom`, `.nr`, `.cairo` files
+2. **Detects patterns**: Merkle trees, nullifiers, signatures, hashes
+3. **Identifies zero-day hints**: Missing constraints, range check issues
+4. **Generates optimized YAML** configs for each circuit
+5. **Runs adaptive fuzzing** with dynamic budget reallocation
+6. **Reports confirmed vulnerabilities**
 
-  - type: "collision"
-    description: "Find nullifier collisions"
-    config:
-      samples: 100000
+### Step 3: Review Results
 
-inputs:
-  - name: "voter"
-    type: "field"
-    fuzz_strategy: "random"
+Check the output directory:
 
-  - name: "choice"
-    type: "field"
-    fuzz_strategy: "interesting_values"
-    interesting: ["0x0", "0x1"]
-
-reporting:
-  output_dir: "./reports/vote_audit"
-  formats: ["json", "markdown"]
+```
+./reports/adaptive/
+├── configs/           # Generated YAML configurations
+│   ├── circuit1.yaml
+│   └── circuit2.yaml
+├── circuit1/          # Per-circuit reports
+│   ├── report.json
+│   └── report.md
+└── circuit2/
+    └── ...
 ```
 
-Run with:
+## CLI Usage
+
 ```bash
-cd ~/ZkPatternFuzz
-cargo run --release -- --config campaign.yaml
+# Run adaptive campaign on a project
+cargo run --release -- adaptive \
+    --project /path/to/zk/project \
+    --workers 4 \
+    --duration 3600 \
+    --output ./reports
+
+# Analyze project without fuzzing
+cargo run --release -- analyze \
+    --project /path/to/zk/project \
+    --output ./configs
 ```
 
-**Done!** Check `reports/vote_audit/report.md` for results.
+## What Gets Detected
 
-## Tips
+### Patterns
 
-### For Claude Desktop Users
-Use @-mentions to reference files:
+| Pattern | Attack Priority | Description |
+|---------|-----------------|-------------|
+| Merkle Tree | Collision | Tests for root collisions |
+| Nullifier | Collision | Tests uniqueness |
+| Signature | Soundness | Tests for forgery |
+| Range Check | Overflow | Tests boundaries |
+| Hash Function | Collision | Tests collision resistance |
+
+### Zero-Day Categories
+
+| Category | Confidence | Trigger |
+|----------|------------|---------|
+| Missing Constraint | 70% | `<--` without `<==` |
+| Incorrect Range | 50% | Num2Bits without validation |
+| Bit Decomposition | 60% | Missing binary constraint |
+| Signature Malleability | 60% | Missing S normalization |
+| Nullifier Reuse | 40% | Missing entropy |
+| Hash Misuse | 40% | No domain separation |
+
+## Advanced Configuration
+
+```rust
+use zk_fuzzer::analysis::OpusConfig;
+use zk_fuzzer::fuzzer::adaptive_attack_scheduler::AdaptiveSchedulerConfig;
+
+let config = AdaptiveOrchestratorConfig {
+    opus_config: OpusConfig {
+        max_files: 50,
+        min_zero_day_confidence: 0.3,
+        ..Default::default()
+    },
+    scheduler_config: AdaptiveSchedulerConfig {
+        finding_points: 100.0,
+        critical_finding_points: 200.0,
+        ..Default::default()
+    },
+    workers: 8,
+    max_duration: Duration::from_secs(7200),
+    zero_day_hunt_mode: true,
+    ..Default::default()
+};
+
+let orchestrator = AdaptiveOrchestrator::with_config(config);
 ```
-@ZkPatternFuzz generate config for @my-circuit.circom
+
+## Integration with CI/CD
+
+```yaml
+# .github/workflows/zk-security.yml
+name: ZK Security Audit
+
+on:
+  push:
+    paths:
+      - 'circuits/**'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Adaptive Fuzzing
+        run: |
+          cargo run --release -- adaptive \
+            --project ./circuits \
+            --workers 4 \
+            --duration 1800 \
+            --output ./reports
+      
+      - name: Check for Critical Findings
+        run: |
+          if grep -q '"severity": "Critical"' ./reports/*/report.json; then
+            echo "Critical vulnerabilities found!"
+            exit 1
+          fi
+      
+      - name: Upload Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: ./reports/
 ```
 
-### For API Users
-Include repo path in system prompt:
-```python
-system_prompt = """
-You have access to ZkPatternFuzz at /path/to/repo.
-Read examples from tests/campaigns/ before generating configs.
-"""
-```
+## How It Works
 
-### For Web Interface Users
-1. Upload circuit file
-2. Paste this guide's URL
-3. Ask AI to generate config
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Adaptive Orchestrator                        │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  1. Opus Analyzer                                                   │
+│     ┌─────────┐    ┌─────────────┐    ┌──────────────┐            │
+│     │ Scan    │───▶│ Detect      │───▶│ Generate     │            │
+│     │ Project │    │ Patterns    │    │ YAML Config  │            │
+│     └─────────┘    └─────────────┘    └──────────────┘            │
+│           │              │                    │                    │
+│           ▼              ▼                    ▼                    │
+│     ┌─────────────────────────────────────────────┐               │
+│     │          Zero-Day Hints Detection           │               │
+│     └─────────────────────────────────────────────┘               │
+│                                                                     │
+│  2. Adaptive Fuzzing Loop                                          │
+│     ┌─────────────┐    ┌─────────────┐    ┌───────────────┐       │
+│     │ Run Attack  │───▶│ Check       │───▶│ Reallocate    │       │
+│     │ Phase       │    │ Near-Misses │    │ Budget        │       │
+│     └─────────────┘    └─────────────┘    └───────────────┘       │
+│           │                   │                    │               │
+│           └───────────────────┴────────────────────┘               │
+│                              │                                      │
+│                              ▼                                      │
+│     ┌─────────────────────────────────────────────┐               │
+│     │          Confirmed Zero-Days                │               │
+│     └─────────────────────────────────────────────┘               │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ## Troubleshooting
 
-**AI can't find files?**
-- Use absolute paths: `/home/user/ZkPatternFuzz`
-- Or paste file contents directly
+**No circuits found:**
+- Check that circuit files have correct extensions (`.circom`, `.nr`, `.cairo`)
+- Ensure project path is correct
 
-**Generated YAML has errors?**
-```bash
-# Validate before running
-cargo run -- --config campaign.yaml --dry-run
-```
+**Low coverage:**
+- Increase `max_duration`
+- Enable symbolic execution in config
 
-**Need different attacks?**
-Tell AI: "Focus on soundness and collision attacks only"
+**False positives:**
+- Increase `min_zero_day_confidence` threshold
+- Review and filter YAML suggestions
 
-## Full Documentation
+## Next Steps
 
-See [AI_ASSISTED_WORKFLOW.md](AI_ASSISTED_WORKFLOW.md) for:
-- Complete YAML schema
-- All attack types
-- Advanced automation
-- API integration examples
+1. [Full AI-Assisted Workflow](AI_ASSISTED_WORKFLOW.md)
+2. [Claude Prompt for YAML Generation](CLAUDE_PROMPT.md)
+3. [Capability Matrix](CAPABILITY_MATRIX.md)

@@ -19,12 +19,18 @@
 //!
 //! The [`near_miss`] module detects when oracles are "almost" triggered,
 //! providing feedback for intelligent mutation.
+//!
+//! ## Adaptive Orchestrator
+//!
+//! The [`adaptive_orchestrator`] module implements the endgame workflow for
+//! catching hard-to-detect zero-day vulnerabilities using Opus analysis.
 
 mod constants;
 mod mutators;
 mod oracle;
 mod engine;
 pub mod adaptive_attack_scheduler;
+pub mod adaptive_orchestrator;
 pub mod near_miss;
 pub mod oracle_diversity;
 pub mod phased_scheduler;
@@ -40,6 +46,10 @@ pub use engine::FuzzingEngine;
 pub use adaptive_attack_scheduler::{
     AdaptiveScheduler, AdaptiveSchedulerConfig, AdaptiveSchedulerStats,
     AttackResults, NearMissEvent, YamlSuggestion, SuggestionType,
+};
+pub use adaptive_orchestrator::{
+    AdaptiveOrchestrator, AdaptiveOrchestratorConfig, AdaptiveOrchestratorBuilder,
+    AdaptiveCampaignResults, ConfirmedZeroDay,
 };
 pub use near_miss::{NearMissDetector, NearMiss, NearMissConfig, NearMissStats};
 pub use oracle_diversity::{OracleDiversityTracker, OracleDiversityStats, OracleFire};
