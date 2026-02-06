@@ -1,0 +1,13 @@
+[package]
+name = "zk-attacks-plugin-example"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description = "Example dynamic plugin for zk-attacks"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zk-attacks = { path = "../zk-attacks" }
+zk-core = { path = "../zk-core" }

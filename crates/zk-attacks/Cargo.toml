@@ -12,6 +12,11 @@ anyhow = "1.0"
 rand = "0.8"
 num-bigint = "0.4"
 tracing = "0.1"
+libloading = { version = "0.8", optional = true }
 
 [dev-dependencies]
 zk-backends = { path = "../zk-backends" }
+
+[features]
+default = []
+plugin-loader = ["libloading"]

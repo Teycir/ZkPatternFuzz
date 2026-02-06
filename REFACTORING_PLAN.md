@@ -746,6 +746,24 @@ impl AttackRegistry {
 }
 ```
 
+**Dynamic Plugin Loader (Feature-Gated)**:
+- Feature flag: `attack-plugins` (workspace) → `zk-attacks/plugin-loader`
+- Loader scans `campaign.parameters.attack_plugin_dirs` for shared libraries.
+- Each library must export:
+  ```rust
+  unsafe extern "C" fn zk_attacks_plugins() -> Vec<Box<dyn AttackPlugin>>
+  ```
+- ABI is **not** stable across toolchains; plugins must be built with the same Rust version.
+
+**Example Plugin**:
+```bash
+cargo build -p zk-attacks-plugin-example --release
+```
+Place the built `.so/.dylib/.dll` in a plugin directory and enable:
+```bash
+cargo run --features attack-plugins -- <args>
+```
+
 ---
 
 ### **Phase 8: Extract Remaining Libraries** (Week 6)

@@ -41,17 +41,50 @@ pub trait AttackPlugin: Attack {
     fn metadata(&self) -> AttackMetadata;
 }
 
+/// Result of loading plugins from an external source.
+pub struct LoadedPlugins {
+    plugins: Vec<Box<dyn AttackPlugin>>,
+    #[cfg(feature = "plugin-loader")]
+    libraries: Vec<libloading::Library>,
+}
+
+impl LoadedPlugins {
+    pub fn empty() -> Self {
+        Self {
+            plugins: Vec::new(),
+            #[cfg(feature = "plugin-loader")]
+            libraries: Vec::new(),
+        }
+    }
+
+    pub fn new(plugins: Vec<Box<dyn AttackPlugin>>) -> Self {
+        Self {
+            plugins,
+            #[cfg(feature = "plugin-loader")]
+            libraries: Vec::new(),
+        }
+    }
+
+    #[cfg(feature = "plugin-loader")]
+    pub fn with_libraries(
+        plugins: Vec<Box<dyn AttackPlugin>>,
+        libraries: Vec<libloading::Library>,
+    ) -> Self {
+        Self { plugins, libraries }
+    }
+}
+
 /// Loader interface for external attack plugins.
 pub trait AttackPluginLoader: Send + Sync {
-    fn load(&self) -> Result<Vec<Box<dyn AttackPlugin>>>;
+    fn load(&self) -> Result<LoadedPlugins>;
 }
 
 /// No-op loader (returns no plugins).
 pub struct NoopPluginLoader;
 
 impl AttackPluginLoader for NoopPluginLoader {
-    fn load(&self) -> Result<Vec<Box<dyn AttackPlugin>>> {
-        Ok(Vec::new())
+    fn load(&self) -> Result<LoadedPlugins> {
+        Ok(LoadedPlugins::empty())
     }
 }
 
@@ -70,9 +103,80 @@ impl DynamicLibraryLoader {
     }
 }
 
+#[cfg(not(feature = "plugin-loader"))]
 impl AttackPluginLoader for DynamicLibraryLoader {
-    fn load(&self) -> Result<Vec<Box<dyn AttackPlugin>>> {
-        anyhow::bail!("dynamic plugin loading is not enabled in this build");
+    fn load(&self) -> Result<LoadedPlugins> {
+        anyhow::bail!(
+            "dynamic plugin loading is not enabled in this build (feature: plugin-loader)"
+        );
+    }
+}
+
+#[cfg(feature = "plugin-loader")]
+impl DynamicLibraryLoader {
+    fn collect_library_paths(&self) -> Result<Vec<PathBuf>> {
+        let mut libs = Vec::new();
+
+        for path in &self.paths {
+            if path.is_dir() {
+                for entry in std::fs::read_dir(path)? {
+                    let entry = entry?;
+                    let file_path = entry.path();
+                    if is_dynamic_library(&file_path) {
+                        libs.push(file_path);
+                    }
+                }
+            } else if is_dynamic_library(path) {
+                libs.push(path.clone());
+            }
+        }
+
+        Ok(libs)
+    }
+}
+
+#[cfg(feature = "plugin-loader")]
+fn is_dynamic_library(path: &PathBuf) -> bool {
+    let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    let ext = ext.to_ascii_lowercase();
+    if cfg!(target_os = "windows") {
+        ext == "dll"
+    } else if cfg!(target_os = "macos") {
+        ext == "dylib"
+    } else {
+        ext == "so"
+    }
+}
+
+#[cfg(feature = "plugin-loader")]
+impl AttackPluginLoader for DynamicLibraryLoader {
+    fn load(&self) -> Result<LoadedPlugins> {
+        use libloading::{Library, Symbol};
+
+        type PluginCreate = unsafe fn() -> Vec<Box<dyn AttackPlugin>>;
+
+        let mut libraries = Vec::new();
+        let mut plugins = Vec::new();
+
+        let paths = self.collect_library_paths()?;
+        if paths.is_empty() {
+            return Ok(LoadedPlugins::empty());
+        }
+
+        for path in paths {
+            let lib = unsafe { Library::new(&path) }
+                .map_err(|e| anyhow::anyhow!("Failed to load {:?}: {}", path, e))?;
+            let symbol: Symbol<PluginCreate> = unsafe { lib.get(b"zk_attacks_plugins") }
+                .map_err(|e| anyhow::anyhow!("Missing zk_attacks_plugins in {:?}: {}", path, e))?;
+
+            let mut new_plugins = unsafe { symbol() };
+            plugins.append(&mut new_plugins);
+            libraries.push(lib);
+        }
+
+        Ok(LoadedPlugins::with_libraries(plugins, libraries))
     }
 }
 
@@ -80,12 +184,16 @@ impl AttackPluginLoader for DynamicLibraryLoader {
 #[derive(Default)]
 pub struct AttackRegistry {
     attacks: HashMap<String, Box<dyn AttackPlugin>>,
+    #[cfg(feature = "plugin-loader")]
+    libraries: Vec<libloading::Library>,
 }
 
 impl AttackRegistry {
     pub fn new() -> Self {
         let mut registry = Self {
             attacks: HashMap::new(),
+            #[cfg(feature = "plugin-loader")]
+            libraries: Vec::new(),
         };
         registry.register_default_attacks();
         registry
@@ -94,6 +202,8 @@ impl AttackRegistry {
     pub fn empty() -> Self {
         Self {
             attacks: HashMap::new(),
+            #[cfg(feature = "plugin-loader")]
+            libraries: Vec::new(),
         }
     }
 
@@ -103,10 +213,14 @@ impl AttackRegistry {
     }
 
     pub fn load_from_loader(&mut self, loader: &dyn AttackPluginLoader) -> Result<usize> {
-        let plugins = loader.load()?;
-        let count = plugins.len();
-        for plugin in plugins {
+        let loaded = loader.load()?;
+        let count = loaded.plugins.len();
+        for plugin in loaded.plugins {
             self.register(plugin);
+        }
+        #[cfg(feature = "plugin-loader")]
+        {
+            self.libraries.extend(loaded.libraries);
         }
         Ok(count)
     }

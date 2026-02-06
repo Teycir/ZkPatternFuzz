@@ -127,6 +127,44 @@ reporting:
 | `collision` | Find hash/nullifier collisions | ✅ Implemented |
 | `boundary` | Test boundary values | ✅ Implemented |
 
+### Attack Plugins
+
+Dynamic attack plugins can be loaded at runtime when the `attack-plugins` feature is enabled.
+
+**ABI expectations (important)**:
+- Plugins are Rust `cdylib` crates built with the *same* Rust toolchain and compatible dependency versions.
+- Plugins must export a symbol named `zk_attacks_plugins` with this signature:
+  ```rust
+  unsafe extern "C" fn zk_attacks_plugins() -> Vec<Box<dyn AttackPlugin>>
+  ```
+- Trait object ABI is **not** stable across mismatched toolchains; rebuild plugins when upgrading.
+
+**Build the example plugin**:
+```bash
+cargo build -p zk-attacks-plugin-example --release
+```
+
+**Run with plugins**:
+```bash
+cargo run --features attack-plugins -- <args>
+```
+
+**Config**:
+```yaml
+campaign:
+  parameters:
+    attack_plugin_dirs:
+      - "./plugins"
+
+attacks:
+  - type: boundary
+    plugin: example_plugin
+```
+
+**Notes**:
+- If `plugin` is set, the plugin will run first; if it exists, the built-in attack is skipped.
+- If no plugin is specified or it is missing, the built-in attack runs.
+
 ### Fuzzing Strategies
 
 | Strategy | Description |
