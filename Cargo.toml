@@ -12,6 +12,8 @@ members = [
     "crates/zk-constraints",
     "crates/zk-backends",
     "crates/zk-symbolic",
+    "crates/zk-fuzzer-core",
+    "crates/zk-attacks",
 ]
 
 [dependencies]
@@ -57,6 +59,8 @@ zk-core = { path = "crates/zk-core" }
 zk-constraints = { path = "crates/zk-constraints" }
 zk-backends = { path = "crates/zk-backends" }
 zk-symbolic = { path = "crates/zk-symbolic" }
+zk-fuzzer-core = { path = "crates/zk-fuzzer-core" }
+zk-attacks = { path = "crates/zk-attacks" }
 
 # SMT Solver for symbolic execution
 z3 = { version = "0.12", features = ["static-link-z3"] }

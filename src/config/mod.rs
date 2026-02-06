@@ -85,6 +85,8 @@ pub struct Attack {
     pub attack_type: AttackType,
     pub description: String,
     #[serde(default)]
+    pub plugin: Option<String>,
+    #[serde(default)]
     pub config: serde_yaml::Value,
 }
 

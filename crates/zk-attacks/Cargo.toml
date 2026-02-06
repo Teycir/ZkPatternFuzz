@@ -1,0 +1,17 @@
+[package]
+name = "zk-attacks"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description = "Attack implementations for ZK circuits"
+
+[dependencies]
+zk-core = { path = "../zk-core" }
+zk-fuzzer-core = { path = "../zk-fuzzer-core" }
+anyhow = "1.0"
+rand = "0.8"
+num-bigint = "0.4"
+tracing = "0.1"
+
+[dev-dependencies]
+zk-backends = { path = "../zk-backends" }
