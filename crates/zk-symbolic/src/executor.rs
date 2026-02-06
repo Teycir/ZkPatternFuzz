@@ -49,22 +49,27 @@ impl SymbolicValue {
         SymbolicValue::Concrete(value)
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn add(self, other: SymbolicValue) -> Self {
         SymbolicValue::Add(Box::new(self), Box::new(other))
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn mul(self, other: SymbolicValue) -> Self {
         SymbolicValue::Mul(Box::new(self), Box::new(other))
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn sub(self, other: SymbolicValue) -> Self {
         SymbolicValue::Sub(Box::new(self), Box::new(other))
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn div(self, other: SymbolicValue) -> Self {
         SymbolicValue::Div(Box::new(self), Box::new(other))
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn neg(self) -> Self {
         SymbolicValue::Neg(Box::new(self))
     }

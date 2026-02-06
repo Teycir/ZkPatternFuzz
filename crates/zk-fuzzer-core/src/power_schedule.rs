@@ -3,6 +3,7 @@
 //! Implements AFL-style power schedules to prioritize test cases based on
 //! various heuristics like execution speed, coverage, and novelty.
 
+use std::str::FromStr;
 use std::time::Duration;
 
 /// Power schedule strategies (inspired by AFL)
@@ -27,10 +28,11 @@ pub enum PowerSchedule {
     Mmopt,
 }
 
-impl PowerSchedule {
-    /// Parse from string
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+impl FromStr for PowerSchedule {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "explore" => Self::Explore,
             "exploit" => Self::Exploit,
             "fast" => Self::Fast,
@@ -39,7 +41,7 @@ impl PowerSchedule {
             "quad" => Self::Quad,
             "mmopt" => Self::Mmopt,
             _ => Self::None,
-        }
+        })
     }
 }
 

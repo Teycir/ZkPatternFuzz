@@ -11,7 +11,7 @@ use crate::{
 };
 use anyhow::Result;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use zk_core::Attack;
 
 /// Metadata describing an attack plugin.
@@ -136,7 +136,7 @@ impl DynamicLibraryLoader {
 }
 
 #[cfg(feature = "plugin-loader")]
-fn is_dynamic_library(path: &PathBuf) -> bool {
+fn is_dynamic_library(path: &Path) -> bool {
     let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
         return false;
     };

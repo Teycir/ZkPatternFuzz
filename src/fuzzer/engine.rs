@@ -96,7 +96,7 @@
 use super::oracle::{ArithmeticOverflowOracle, BugOracle, UnderconstrainedOracle};
 use super::power_schedule::{PowerSchedule, PowerScheduler};
 use super::structure_aware::StructureAwareMutator;
-use super::{bn254_modulus_bytes, mutate_field_element};
+use super::mutate_field_element;
 use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::symbolic::{SymbolicConfig, SymbolicFuzzerIntegration, VulnerabilityPattern};
 use crate::analysis::taint::TaintAnalyzer;
@@ -117,7 +117,7 @@ use rand::Rng;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Main fuzzing engine coordinating all security testing activities
 ///
@@ -289,11 +289,14 @@ impl FuzzingEngine {
             );
         }
 
-        // Initialize bug oracles
-        let oracles: Vec<Box<dyn BugOracle>> = vec![
+        // Initialize bug oracles including semantic oracles from config
+        let mut oracles: Vec<Box<dyn BugOracle>> = vec![
             Box::new(UnderconstrainedOracle::new()),
             Box::new(ArithmeticOverflowOracle::new()),
         ];
+        
+        // Phase 0 Fix: Wire semantic oracles from config
+        Self::add_semantic_oracles_from_config(&config, &mut oracles);
 
         let core = FuzzingEngineCore::builder()
             .seed(seed)
@@ -338,11 +341,95 @@ impl FuzzingEngine {
     ///   parameters:
     ///     power_schedule: "MMOPT"
     /// ```
+    /// Phase 0 Fix: Wire semantic oracles from configuration
+    /// 
+    /// Instantiates nullifier/merkle/range/commitment oracles based on config.oracles
+    fn add_semantic_oracles_from_config(config: &FuzzConfig, oracles: &mut Vec<Box<dyn BugOracle>>) {
+        use crate::fuzzer::oracles::{
+            NullifierOracle, MerkleOracle, CommitmentOracle, RangeProofOracle,
+        };
+        use zk_core::OracleConfig;
+        use zk_fuzzer_core::oracle::SemanticOracleAdapter;
+        
+        let oracle_config = OracleConfig::default();
+        
+        for oracle_def in &config.oracles {
+            let name_lower = oracle_def.name.to_lowercase();
+            
+            match name_lower.as_str() {
+                "nullifier" | "nullifier_oracle" => {
+                    tracing::info!("Enabling nullifier oracle from config");
+                    oracles.push(Box::new(SemanticOracleAdapter::new(
+                        Box::new(NullifierOracle::new(oracle_config.clone()))
+                    )));
+                }
+                "merkle" | "merkle_oracle" => {
+                    tracing::info!("Enabling merkle oracle from config");
+                    oracles.push(Box::new(SemanticOracleAdapter::new(
+                        Box::new(MerkleOracle::new(oracle_config.clone()))
+                    )));
+                }
+                "commitment" | "commitment_oracle" => {
+                    tracing::info!("Enabling commitment oracle from config");
+                    oracles.push(Box::new(SemanticOracleAdapter::new(
+                        Box::new(CommitmentOracle::new(oracle_config.clone()))
+                    )));
+                }
+                "range" | "range_oracle" | "range_proof" => {
+                    tracing::info!("Enabling range proof oracle from config");
+                    oracles.push(Box::new(SemanticOracleAdapter::new(
+                        Box::new(RangeProofOracle::new(oracle_config.clone()))
+                    )));
+                }
+                _ => {
+                    tracing::warn!("Unknown oracle type in config: {}", oracle_def.name);
+                }
+            }
+        }
+        
+        // Also check for oracles in campaign parameters (alternative syntax)
+        if let Some(enabled_oracles) = config.campaign.parameters.additional.get("enabled_oracles") {
+            if let Some(seq) = enabled_oracles.as_sequence() {
+                for item in seq {
+                    if let Some(name) = item.as_str() {
+                        match name.to_lowercase().as_str() {
+                            "nullifier" => {
+                                tracing::info!("Enabling nullifier oracle from parameters");
+                                oracles.push(Box::new(SemanticOracleAdapter::new(
+                                    Box::new(NullifierOracle::new(oracle_config.clone()))
+                                )));
+                            }
+                            "merkle" => {
+                                tracing::info!("Enabling merkle oracle from parameters");
+                                oracles.push(Box::new(SemanticOracleAdapter::new(
+                                    Box::new(MerkleOracle::new(oracle_config.clone()))
+                                )));
+                            }
+                            "commitment" => {
+                                tracing::info!("Enabling commitment oracle from parameters");
+                                oracles.push(Box::new(SemanticOracleAdapter::new(
+                                    Box::new(CommitmentOracle::new(oracle_config.clone()))
+                                )));
+                            }
+                            "range" => {
+                                tracing::info!("Enabling range proof oracle from parameters");
+                                oracles.push(Box::new(SemanticOracleAdapter::new(
+                                    Box::new(RangeProofOracle::new(oracle_config.clone()))
+                                )));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     fn parse_power_schedule(config: &FuzzConfig) -> PowerSchedule {
         // Check for power_schedule in campaign parameters
         if let Some(schedule_str) = config.campaign.parameters.additional.get("power_schedule") {
             if let Some(s) = schedule_str.as_str() {
-                return PowerSchedule::from_str(s);
+                return s.parse().unwrap_or(PowerSchedule::Mmopt);
             }
         }
         // Default to MMOPT for balanced performance
@@ -761,6 +848,27 @@ impl FuzzingEngine {
                         self.run_recursive_proof_attack(&attack_config.config, progress)
                             .await?;
                     }
+                    // Phase 4: Novel Oracle Attacks - Now Implemented!
+                    AttackType::ConstraintInference => {
+                        self.run_constraint_inference_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::Metamorphic => {
+                        self.run_metamorphic_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::ConstraintSlice => {
+                        self.run_constraint_slice_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::SpecInference => {
+                        self.run_spec_inference_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::WitnessCollision => {
+                        self.run_witness_collision_attack(&attack_config.config, progress)
+                            .await?;
+                    }
                     _ => {
                         tracing::warn!(
                             "Attack type {:?} not yet implemented",
@@ -790,6 +898,20 @@ impl FuzzingEngine {
         // Finish simple tracker
         if let Some(ref tracker) = self.simple_tracker {
             tracker.finish();
+        }
+
+        // Phase 0 Fix: Run continuous fuzzing phase after attacks
+        let iterations = self.config.campaign.parameters.additional
+            .get("fuzzing_iterations")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1000);
+        
+        let timeout = self.config.campaign.parameters.additional
+            .get("fuzzing_timeout_seconds")
+            .and_then(|v| v.as_u64());
+        
+        if iterations > 0 {
+            self.run_continuous_fuzzing_phase(iterations, timeout, progress).await?;
         }
 
         // Export corpus to output directory
@@ -2009,8 +2131,8 @@ impl FuzzingEngine {
     }
 
     fn get_field_modulus(&self) -> [u8; 32] {
-        // Use centralized field constants
-        bn254_modulus_bytes()
+        // Use executor's field modulus instead of hardcoded BN254
+        self.executor.field_modulus()
     }
 
     fn detect_overflow_indicator(&self, output: &[FieldElement]) -> bool {
@@ -2024,6 +2146,272 @@ impl FuzzingEngine {
         false
     }
 
+    // ========================================================================
+    // Phase 4: Novel Oracle Attack Implementations
+    // ========================================================================
+    
+    async fn run_constraint_inference_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::attacks::constraint_inference::ConstraintInferenceEngine;
+        
+        let confidence_threshold = config
+            .get("confidence_threshold")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.7);
+        
+        tracing::info!("Running constraint inference attack (confidence >= {:.0}%)", confidence_threshold * 100.0);
+        
+        let engine = ConstraintInferenceEngine::new()
+            .with_confidence_threshold(confidence_threshold)
+            .with_generate_violations(true);
+        
+        let findings = engine.run(self.executor.as_ref());
+        
+        for finding in findings {
+            self.core.findings().write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            }
+        }
+        
+        if let Some(p) = progress {
+            p.inc();
+        }
+        
+        Ok(())
+    }
+    
+    async fn run_metamorphic_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::attacks::metamorphic::MetamorphicOracle;
+        
+        let num_tests = config
+            .get("num_tests")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as usize;
+        
+        tracing::info!("Running metamorphic testing with {} base witnesses", num_tests);
+        
+        let oracle = MetamorphicOracle::new().with_standard_relations();
+        
+        // Generate base witnesses and test metamorphic relations
+        for _ in 0..num_tests {
+            let base_witness = self.generate_test_case();
+            let results = oracle.test_all(self.executor.as_ref(), &base_witness.inputs).await;
+            
+            let findings = oracle.to_findings(&results);
+            for finding in findings {
+                self.core.findings().write().unwrap().push(finding.clone());
+                if let Some(p) = progress {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
+            }
+            
+            if let Some(p) = progress {
+                p.inc();
+            }
+        }
+        
+        Ok(())
+    }
+    
+    async fn run_constraint_slice_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::attacks::constraint_slice::ConstraintSliceOracle;
+        
+        let samples_per_cone = config
+            .get("samples_per_cone")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as usize;
+        
+        tracing::info!("Running constraint slice analysis ({} samples/cone)", samples_per_cone);
+        
+        let oracle = ConstraintSliceOracle::new().with_samples(samples_per_cone);
+        
+        // Generate a base witness
+        let base_witness = self.generate_test_case();
+        
+        // Determine output wire indices (simplified: use first few wires after inputs)
+        let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
+        let output_wires: Vec<usize> = (num_inputs..num_inputs + 5).collect();
+        
+        let findings = oracle.run(
+            self.executor.as_ref(),
+            &base_witness.inputs,
+            &output_wires,
+        ).await;
+        
+        for finding in findings {
+            self.core.findings().write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            }
+        }
+        
+        if let Some(p) = progress {
+            p.inc();
+        }
+        
+        Ok(())
+    }
+    
+    async fn run_spec_inference_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::attacks::spec_inference::SpecInferenceOracle;
+        
+        let sample_count = config
+            .get("sample_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(500) as usize;
+        
+        tracing::info!("Running spec inference attack ({} samples)", sample_count);
+        
+        let oracle = SpecInferenceOracle::new()
+            .with_sample_count(sample_count)
+            .with_confidence_threshold(0.9);
+        
+        // Generate initial witnesses
+        let initial_witnesses: Vec<Vec<FieldElement>> = (0..sample_count.min(100))
+            .map(|_| self.generate_test_case().inputs)
+            .collect();
+        
+        let findings = oracle.run(self.executor.as_ref(), &initial_witnesses).await;
+        
+        for finding in findings {
+            self.core.findings().write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            }
+        }
+        
+        if let Some(p) = progress {
+            p.inc();
+        }
+        
+        Ok(())
+    }
+    
+    async fn run_witness_collision_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::attacks::witness_collision::WitnessCollisionDetector;
+        
+        let samples = config
+            .get("samples")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10000) as usize;
+        
+        tracing::info!("Running witness collision detection ({} samples)", samples);
+        
+        let detector = WitnessCollisionDetector::new().with_samples(samples);
+        
+        // Generate witnesses
+        let witnesses: Vec<Vec<FieldElement>> = (0..samples)
+            .map(|_| self.generate_test_case().inputs)
+            .collect();
+        
+        let collisions = detector.run(self.executor.as_ref(), &witnesses).await;
+        let findings = detector.to_findings(&collisions);
+        
+        for finding in findings {
+            self.core.findings().write().unwrap().push(finding.clone());
+            if let Some(p) = progress {
+                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            }
+        }
+        
+        if let Some(p) = progress {
+            p.inc();
+        }
+        
+        Ok(())
+    }
+    
+    // ========================================================================
+    // Phase 0: Continuous Fuzzing Loop
+    // ========================================================================
+    
+    /// Run continuous coverage-guided fuzzing phase
+    /// 
+    /// This is the critical missing piece - after running structured attacks,
+    /// we need to continue fuzzing to explore more of the state space.
+    async fn run_continuous_fuzzing_phase(
+        &mut self,
+        iterations: u64,
+        timeout_seconds: Option<u64>,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        let start = Instant::now();
+        let timeout = timeout_seconds.map(Duration::from_secs);
+        
+        tracing::info!(
+            "Starting continuous fuzzing phase: {} iterations, timeout: {:?}",
+            iterations,
+            timeout
+        );
+        
+        let mut completed = 0u64;
+        
+        while completed < iterations {
+            // Check timeout
+            if let Some(t) = timeout {
+                if start.elapsed() >= t {
+                    tracing::info!("Continuous fuzzing timeout reached after {} iterations", completed);
+                    break;
+                }
+            }
+            
+            // Core fuzzing loop: select_from_corpus → mutate → execute_and_learn
+            let test_case = self.generate_test_case();
+            let result = self.execute_and_learn(&test_case);
+            
+            // Track coverage improvements
+            if result.coverage.new_coverage {
+                tracing::debug!(
+                    "New coverage at iteration {}: {} constraints",
+                    completed,
+                    result.coverage.satisfied_constraints.len()
+                );
+            }
+            
+            completed += 1;
+            
+            if let Some(p) = progress {
+                if completed % 100 == 0 {
+                    p.inc();
+                }
+            }
+            
+            // Update power scheduler periodically
+            if completed % 1000 == 0 {
+                self.update_power_scheduler_globals();
+            }
+        }
+        
+        tracing::info!(
+            "Continuous fuzzing complete: {} iterations in {:.2}s, {} findings",
+            completed,
+            start.elapsed().as_secs_f64(),
+            self.core.findings().read().unwrap().len()
+        );
+        
+        Ok(())
+    }
+    
     fn generate_report(&self, findings: Vec<Finding>, duration: u64) -> FuzzReport {
         let mut report = FuzzReport::new(
             self.config.campaign.name.clone(),

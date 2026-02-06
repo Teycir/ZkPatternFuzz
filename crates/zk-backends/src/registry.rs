@@ -55,6 +55,12 @@ pub struct BackendRegistry {
     providers: HashMap<Framework, Box<dyn BackendProvider>>,
 }
 
+impl Default for BackendRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BackendRegistry {
     pub fn new() -> Self {
         let mut registry = Self {

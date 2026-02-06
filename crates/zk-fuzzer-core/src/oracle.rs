@@ -3,24 +3,67 @@
 use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity, TestCase};
 
 /// Oracle trait for bug detection
-pub trait BugOracle {
+pub trait BugOracle: Send + Sync {
     /// Check if the given test case reveals a bug
-    fn check(&self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding>;
+    /// Uses &mut self to allow stateful oracles that track execution history
+    fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding>;
 
     /// Get the oracle name
     fn name(&self) -> &str;
+    
+    /// Reset the oracle state (optional, for stateful oracles)
+    fn reset(&mut self) {}
+    
+    /// Get statistics about this oracle (optional)
+    fn stats(&self) -> Option<OracleStatistics> {
+        None
+    }
+}
+
+/// Statistics from oracle execution
+#[derive(Debug, Clone, Default)]
+pub struct OracleStatistics {
+    pub executions: u64,
+    pub findings: u64,
+    pub unique_outputs_seen: u64,
 }
 
 /// Oracle for detecting underconstrained circuits
+/// 
+/// This oracle tracks execution history to detect when different witnesses
+/// produce identical outputs - a strong indicator of missing constraints.
+/// 
+/// # Critical Fix (Phase 0)
+/// 
+/// The oracle is now stateful and records each execution's output hash.
+/// The `check()` method uses `&mut self` to allow recording, which is
+/// essential for detecting collisions across multiple executions.
 pub struct UnderconstrainedOracle {
+    /// Maps output hash -> first test case that produced it
     pub output_history: std::collections::HashMap<Vec<u8>, TestCase>,
+    /// Number of collisions detected
+    pub collision_count: u64,
+    /// Optional: fixed public inputs for proper underconstrained testing
+    pub fixed_public_inputs: Option<Vec<FieldElement>>,
 }
 
 impl UnderconstrainedOracle {
     pub fn new() -> Self {
         Self {
             output_history: std::collections::HashMap::new(),
+            collision_count: 0,
+            fixed_public_inputs: None,
         }
+    }
+    
+    /// Create oracle with fixed public inputs for proper underconstrained testing
+    /// 
+    /// When testing for underconstrained circuits, public inputs should be held
+    /// constant while varying private inputs. This ensures we're testing the
+    /// correct hypothesis: "multiple private witnesses for same public inputs".
+    pub fn with_fixed_public_inputs(mut self, public_inputs: Vec<FieldElement>) -> Self {
+        self.fixed_public_inputs = Some(public_inputs);
+        self
     }
 
     fn hash_output(&self, output: &[FieldElement]) -> Vec<u8> {
@@ -31,6 +74,32 @@ impl UnderconstrainedOracle {
         }
         hasher.finalize().to_vec()
     }
+    
+    /// Record an output for future collision detection
+    /// This is the key method that was missing - stateful recording
+    pub fn record_output(&mut self, test_case: TestCase, output: &[FieldElement]) {
+        let output_hash = self.hash_output(output);
+        // Only record if we haven't seen this output before
+        self.output_history.entry(output_hash).or_insert(test_case);
+    }
+    
+    /// Check if a test case matches the fixed public inputs (if set)
+    pub fn matches_fixed_public_inputs(&self, test_case: &TestCase, num_public: usize) -> bool {
+        match &self.fixed_public_inputs {
+            Some(fixed) => {
+                if test_case.inputs.len() < num_public || fixed.len() != num_public {
+                    return false;
+                }
+                test_case.inputs[..num_public] == fixed[..]
+            }
+            None => true, // No fixed inputs, all pass
+        }
+    }
+    
+    /// Get the number of unique outputs seen
+    pub fn unique_outputs(&self) -> usize {
+        self.output_history.len()
+    }
 }
 
 impl Default for UnderconstrainedOracle {
@@ -40,15 +109,21 @@ impl Default for UnderconstrainedOracle {
 }
 
 impl BugOracle for UnderconstrainedOracle {
-    fn check(&self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
+    fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
         let output_hash = self.hash_output(output);
 
+        // Check for collision first
         if let Some(existing) = self.output_history.get(&output_hash) {
             if existing.inputs != test_case.inputs {
+                self.collision_count += 1;
                 return Some(Finding {
                     attack_type: AttackType::Underconstrained,
                     severity: Severity::Critical,
-                    description: "Different witnesses produce identical output".to_string(),
+                    description: format!(
+                        "Different witnesses produce identical output (collision #{}, {} unique outputs seen)",
+                        self.collision_count,
+                        self.output_history.len()
+                    ),
                     poc: ProofOfConcept {
                         witness_a: existing.inputs.clone(),
                         witness_b: Some(test_case.inputs.clone()),
@@ -58,6 +133,9 @@ impl BugOracle for UnderconstrainedOracle {
                     location: None,
                 });
             }
+        } else {
+            // Record this new output - THIS IS THE CRITICAL FIX
+            self.record_output(test_case.clone(), output);
         }
 
         None
@@ -65,6 +143,19 @@ impl BugOracle for UnderconstrainedOracle {
 
     fn name(&self) -> &str {
         "underconstrained_oracle"
+    }
+    
+    fn reset(&mut self) {
+        self.output_history.clear();
+        self.collision_count = 0;
+    }
+    
+    fn stats(&self) -> Option<OracleStatistics> {
+        Some(OracleStatistics {
+            executions: self.output_history.len() as u64,
+            findings: self.collision_count,
+            unique_outputs_seen: self.output_history.len() as u64,
+        })
     }
 }
 
@@ -80,7 +171,7 @@ impl ConstraintCountOracle {
 }
 
 impl BugOracle for ConstraintCountOracle {
-    fn check(&self, _test_case: &TestCase, _output: &[FieldElement]) -> Option<Finding> {
+    fn check(&mut self, _test_case: &TestCase, _output: &[FieldElement]) -> Option<Finding> {
         // In real implementation, this would check actual constraint count
         // against expected count from the circuit
         None
@@ -95,7 +186,7 @@ impl BugOracle for ConstraintCountOracle {
 pub struct ProofForgeryOracle;
 
 impl BugOracle for ProofForgeryOracle {
-    fn check(&self, _test_case: &TestCase, _output: &[FieldElement]) -> Option<Finding> {
+    fn check(&mut self, _test_case: &TestCase, _output: &[FieldElement]) -> Option<Finding> {
         // In real implementation, this would verify that proofs
         // cannot be forged for invalid statements
         None
@@ -132,7 +223,7 @@ impl Default for ArithmeticOverflowOracle {
 }
 
 impl BugOracle for ArithmeticOverflowOracle {
-    fn check(&self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
+    fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
         // Check if any input is >= field modulus
         for input in &test_case.inputs {
             if self.is_overflow(&input.0) {
@@ -195,6 +286,42 @@ impl ArithmeticOverflowOracle {
         let near_zero = value.iter().take(28).all(|&b| b == 0);
         let near_max = value.iter().take(28).all(|&b| b == 0x30); // Rough check for bn254
         near_zero || near_max
+    }
+}
+
+/// Adapter to wrap SemanticOracle as BugOracle
+/// 
+/// This allows semantic oracles to be used with the core engine's oracle system.
+pub struct SemanticOracleAdapter {
+    inner: Box<dyn zk_core::SemanticOracle>,
+}
+
+impl SemanticOracleAdapter {
+    pub fn new(oracle: Box<dyn zk_core::SemanticOracle>) -> Self {
+        Self { inner: oracle }
+    }
+}
+
+impl BugOracle for SemanticOracleAdapter {
+    fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
+        self.inner.check(test_case, output)
+    }
+
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    
+    fn reset(&mut self) {
+        self.inner.reset();
+    }
+    
+    fn stats(&self) -> Option<OracleStatistics> {
+        let inner_stats = self.inner.stats();
+        Some(OracleStatistics {
+            executions: inner_stats.checks,
+            findings: inner_stats.findings,
+            unique_outputs_seen: inner_stats.observations,
+        })
     }
 }
 

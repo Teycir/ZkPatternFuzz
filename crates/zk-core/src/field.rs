@@ -167,4 +167,13 @@ impl FieldElement {
     pub fn to_biguint(&self) -> num_bigint::BigUint {
         num_bigint::BigUint::from_bytes_be(&self.0)
     }
+
+    /// Try to convert to u64 if the value fits
+    pub fn to_u64(&self) -> Option<u64> {
+        use num_bigint::BigUint;
+        use num_traits::ToPrimitive;
+        
+        let big_value = BigUint::from_bytes_be(&self.0);
+        big_value.to_u64()
+    }
 }

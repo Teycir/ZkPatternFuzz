@@ -154,7 +154,7 @@ where
                 break;
             }
 
-            let chunk_size = (current.len() + n - 1) / n;
+            let chunk_size = current.len().div_ceil(n);
             let mut reduced = false;
 
             // Try removing each chunk

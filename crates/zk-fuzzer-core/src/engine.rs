@@ -225,7 +225,7 @@ impl FuzzingEngineCore {
     }
 
     pub fn execute_and_track(
-        &self,
+        &mut self,
         executor: &dyn CircuitExecutor,
         test_case: &TestCase,
     ) -> ExecutionResult {
@@ -301,9 +301,9 @@ impl FuzzingEngineCore {
         corpus_storage::export_interesting_cases(&entries, output_dir)
     }
 
-    fn run_oracles(&self, test_case: &TestCase, outputs: &[FieldElement]) -> Vec<Finding> {
+    fn run_oracles(&mut self, test_case: &TestCase, outputs: &[FieldElement]) -> Vec<Finding> {
         let mut findings = Vec::new();
-        for oracle in &self.oracles {
+        for oracle in &mut self.oracles {
             if let Some(finding) = oracle.check(test_case, outputs) {
                 tracing::warn!(
                     "Oracle '{}' detected issue: {}",
@@ -335,6 +335,12 @@ pub struct FuzzingEngineCoreBuilder {
     power_scheduler: Option<PowerScheduler>,
     structure_mutator: Option<StructureAwareMutator>,
     oracles: Vec<Box<dyn BugOracle>>,
+}
+
+impl Default for FuzzingEngineCoreBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FuzzingEngineCoreBuilder {

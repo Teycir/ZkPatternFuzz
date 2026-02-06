@@ -369,10 +369,8 @@ impl NoirTarget {
         if let Ok(entries) = std::fs::read_dir(&self.build_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().is_some_and(|e| e == "json") {
-                    if seen.insert(path.clone()) {
-                        candidates.push(path);
-                    }
+                if path.extension().is_some_and(|e| e == "json") && seen.insert(path.clone()) {
+                    candidates.push(path);
                 }
             }
         }
@@ -584,6 +582,10 @@ impl NoirTarget {
 
     /// Parse a Noir value to FieldElements
     fn parse_noir_value(&self, value: &serde_json::Value) -> Result<Vec<FieldElement>> {
+        Self::parse_value_internal(value)
+    }
+
+    fn parse_value_internal(value: &serde_json::Value) -> Result<Vec<FieldElement>> {
         match value {
             serde_json::Value::String(s) => Ok(vec![parse_noir_field(s)?]),
             serde_json::Value::Number(n) => {
@@ -593,7 +595,7 @@ impl NoirTarget {
             serde_json::Value::Array(arr) => {
                 let mut results = Vec::new();
                 for item in arr {
-                    results.extend(self.parse_noir_value(item)?);
+                    results.extend(Self::parse_value_internal(item)?);
                 }
                 Ok(results)
             }
@@ -601,7 +603,7 @@ impl NoirTarget {
                 // Struct - flatten fields
                 let mut results = Vec::new();
                 for (_, v) in obj {
-                    results.extend(self.parse_noir_value(v)?);
+                    results.extend(Self::parse_value_internal(v)?);
                 }
                 Ok(results)
             }

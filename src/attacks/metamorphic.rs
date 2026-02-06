@@ -130,7 +130,7 @@ impl Transform {
             Transform::NegateInputs { indices } => {
                 for &i in indices {
                     if i < result.len() {
-                        result[i] = result[i].negate();
+                        result[i] = result[i].neg();
                     }
                 }
             }
@@ -343,7 +343,7 @@ impl MetamorphicOracle {
         &self,
         executor: &dyn CircuitExecutor,
         base_witness: &[FieldElement],
-        base_result: &Result<ExecutionResult, zk_core::CoreResult>,
+        base_result: &ExecutionResult,
         relation: &MetamorphicRelation,
     ) -> MetamorphicTestResult {
         // Apply transform
@@ -372,73 +372,72 @@ impl MetamorphicOracle {
     /// Check if expected behavior was observed
     fn check_expected(
         &self,
-        base: &Result<ExecutionResult, zk_core::CoreResult>,
-        transformed: &Result<ExecutionResult, zk_core::CoreResult>,
+        base: &ExecutionResult,
+        transformed: &ExecutionResult,
         expected: &ExpectedBehavior,
     ) -> (bool, Option<String>) {
         match expected {
             ExpectedBehavior::OutputUnchanged => {
-                match (base, transformed) {
-                    (Ok(b), Ok(t)) => {
-                        if b.outputs == t.outputs {
-                            (true, None)
-                        } else {
-                            (false, Some("Output changed when it should have stayed the same".to_string()))
-                        }
+                if base.success && transformed.success {
+                    if base.outputs == transformed.outputs {
+                        (true, None)
+                    } else {
+                        (false, Some("Output changed when it should have stayed the same".to_string()))
                     }
-                    _ => (false, Some("Execution failed".to_string())),
+                } else {
+                    (false, Some("Execution failed".to_string()))
                 }
             }
             ExpectedBehavior::OutputChanged => {
-                match (base, transformed) {
-                    (Ok(b), Ok(t)) => {
-                        if b.outputs != t.outputs {
-                            (true, None)
-                        } else {
-                            (false, Some("Output unchanged when it should have changed".to_string()))
-                        }
+                if base.success && transformed.success {
+                    if base.outputs != transformed.outputs {
+                        (true, None)
+                    } else {
+                        (false, Some("Output unchanged when it should have changed".to_string()))
                     }
-                    (Ok(_), Err(_)) => (true, None), // Changed to failure is "changed"
-                    _ => (false, Some("Base execution failed".to_string())),
+                } else if base.success && !transformed.success {
+                    (true, None) // Changed to failure is "changed"
+                } else {
+                    (false, Some("Base execution failed".to_string()))
                 }
             }
             ExpectedBehavior::OutputScaled(factor) => {
-                match (base, transformed) {
-                    (Ok(b), Ok(t)) => {
-                        let all_scaled = b.outputs.iter().zip(t.outputs.iter()).all(|(bo, to)| {
-                            bo.mul(factor) == *to
-                        });
-                        if all_scaled {
-                            (true, None)
-                        } else {
-                            (false, Some("Output not scaled as expected".to_string()))
-                        }
+                if base.success && transformed.success {
+                    let all_scaled = base.outputs.iter().zip(transformed.outputs.iter()).all(|(bo, to)| {
+                        bo.mul(factor) == *to
+                    });
+                    if all_scaled {
+                        (true, None)
+                    } else {
+                        (false, Some("Output not scaled as expected".to_string()))
                     }
-                    _ => (false, Some("Execution failed".to_string())),
+                } else {
+                    (false, Some("Execution failed".to_string()))
                 }
             }
             ExpectedBehavior::OutputEquals(expected_outputs) => {
-                match transformed {
-                    Ok(t) => {
-                        if &t.outputs == expected_outputs {
-                            (true, None)
-                        } else {
-                            (false, Some(format!("Output {:?} != expected {:?}", t.outputs, expected_outputs)))
-                        }
+                if transformed.success {
+                    if &transformed.outputs == expected_outputs {
+                        (true, None)
+                    } else {
+                        (false, Some(format!("Output {:?} != expected {:?}", transformed.outputs, expected_outputs)))
                     }
-                    Err(_) => (false, Some("Execution failed".to_string())),
+                } else {
+                    (false, Some("Execution failed".to_string()))
                 }
             }
             ExpectedBehavior::ShouldReject => {
-                match transformed {
-                    Err(_) => (true, None),
-                    Ok(_) => (false, Some("Circuit accepted when it should have rejected".to_string())),
+                if !transformed.success {
+                    (true, None)
+                } else {
+                    (false, Some("Circuit accepted when it should have rejected".to_string()))
                 }
             }
             ExpectedBehavior::ShouldAccept => {
-                match transformed {
-                    Ok(_) => (true, None),
-                    Err(e) => (false, Some(format!("Circuit rejected when it should have accepted: {:?}", e))),
+                if transformed.success {
+                    (true, None)
+                } else {
+                    (false, Some(format!("Circuit rejected when it should have accepted: {:?}", transformed.error)))
                 }
             }
             ExpectedBehavior::Custom(desc) => {

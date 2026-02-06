@@ -182,11 +182,13 @@ fn create_test_config(circuit_path: &PathBuf, component: &str, framework: Framew
             Attack {
                 attack_type: AttackType::Underconstrained,
                 description: "Test underconstrained".to_string(),
+                plugin: None,
                 config: serde_yaml::from_str("witness_pairs: 100").unwrap(),
             },
             Attack {
                 attack_type: AttackType::Boundary,
                 description: "Test boundaries".to_string(),
+                plugin: None,
                 config: Value::Null,
             },
         ],

@@ -62,7 +62,7 @@ impl Default for AdaptiveSchedulerConfig {
 }
 
 /// Results from an attack run
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AttackResults {
     /// Attack type that was run
     pub attack_type: AttackType,
@@ -76,6 +76,19 @@ pub struct AttackResults {
     pub iterations: usize,
     /// Time spent
     pub duration: Duration,
+}
+
+impl AttackResults {
+    pub fn new(attack_type: AttackType) -> Self {
+        Self {
+            attack_type,
+            new_coverage: 0,
+            findings: Vec::new(),
+            near_misses: Vec::new(),
+            iterations: 0,
+            duration: Duration::from_secs(0),
+        }
+    }
 }
 
 /// A near-miss event (oracle almost triggered)

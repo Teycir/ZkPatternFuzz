@@ -456,6 +456,7 @@ impl Default for PoCGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zk_core::{AttackType, Severity, ProofOfConcept, Finding};
 
     fn sample_finding() -> Finding {
         Finding {

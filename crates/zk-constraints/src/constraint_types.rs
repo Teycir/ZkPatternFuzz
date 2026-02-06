@@ -964,7 +964,7 @@ impl ConstraintChecker {
             }
             RangeMethod::Lookup { table_id } => {
                 if let Some(table) = self.lookup_tables.get(table_id) {
-                    table.contains(&[value.clone()])
+                    table.contains(std::slice::from_ref(value))
                 } else {
                     self.check_numeric_range(value, range.bits)
                 }
@@ -1440,7 +1440,7 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                             for row in rows {
                                 let values = row
                                     .split(',')
-                                    .filter_map(|s| parse_field_element_str(s))
+                                    .filter_map(parse_field_element_str)
                                     .collect::<Vec<_>>();
                                 if !values.is_empty() {
                                     table.entries.push(values);
@@ -1543,7 +1543,7 @@ fn parse_acir_json(value: &serde_json::Value) -> ParsedConstraintSet {
                 value
                     .get("functions")
                     .and_then(|v| v.as_array())
-                    .and_then(|arr| arr.get(0))
+                    .and_then(|arr| arr.first())
                     .and_then(|entry| entry.get("opcodes"))
             })
     };
@@ -1601,13 +1601,13 @@ fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet>
 
     // Attempt to deserialize ACIR bytecode into a Program or Circuit and convert to JSON.
     // This keeps decoding logic centralized in ACIR crates while reusing existing JSON parsing.
-    if let Ok(program) = bincode::deserialize::<acir::circuit::Program<acir::FieldElement>>(&bytes)
+    if let Ok(program) = bincode::deserialize::<acir::circuit::Program>(&bytes)
     {
         let json = serde_json::to_value(program).ok()?;
         return Some(parse_acir_json(&json));
     }
 
-    if let Ok(circuit) = bincode::deserialize::<acir::circuit::Circuit<acir::FieldElement>>(&bytes)
+    if let Ok(circuit) = bincode::deserialize::<acir::circuit::Circuit>(&bytes)
     {
         let json = serde_json::to_value(circuit).ok()?;
         return Some(parse_acir_json(&json));
@@ -1644,7 +1644,7 @@ fn parse_acir_text(content: &str) -> ParsedConstraintSet {
             continue;
         }
 
-        if (lower.contains("assert_zero") || lower.contains("assertzero")) && numbers.len() >= 1 {
+        if (lower.contains("assert_zero") || lower.contains("assertzero")) && !numbers.is_empty() {
             set.constraints.push(ExtendedConstraint::Constant {
                 wire: WireRef::new(numbers[0]),
                 value: FieldElement::zero(),
@@ -2082,14 +2082,14 @@ fn parse_acir_opcode_named(name: &str, value: &serde_json::Value) -> Option<Acir
                 "pedersen" => BlackBoxOp::Pedersen { inputs, outputs },
                 "schnorrverify" => BlackBoxOp::SchnorrVerify {
                     inputs,
-                    output: outputs.get(0).cloned().unwrap_or_else(|| WireRef::new(0)),
+                    output: outputs.first().cloned().unwrap_or_else(|| WireRef::new(0)),
                 },
                 "ecdsasecp256k1" => BlackBoxOp::EcdsaSecp256k1 {
                     inputs,
-                    output: outputs.get(0).cloned().unwrap_or_else(|| WireRef::new(0)),
+                    output: outputs.first().cloned().unwrap_or_else(|| WireRef::new(0)),
                 },
                 _ => BlackBoxOp::Range {
-                    input: outputs.get(0).cloned().unwrap_or_else(|| WireRef::new(0)),
+                    input: outputs.first().cloned().unwrap_or_else(|| WireRef::new(0)),
                     bits: 0,
                 },
             };
@@ -2156,7 +2156,7 @@ fn parse_air_expression(value: &serde_json::Value) -> Option<AirExpression> {
     }
 
     if let Some(arr) = value.as_array() {
-        if let Some(op) = arr.get(0).and_then(|v| v.as_str()) {
+        if let Some(op) = arr.first().and_then(|v| v.as_str()) {
             let lower = op.to_lowercase();
             match lower.as_str() {
                 "add" | "sum" if arr.len() >= 3 => {

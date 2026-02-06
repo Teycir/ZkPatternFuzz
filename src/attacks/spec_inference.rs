@@ -179,7 +179,8 @@ impl SpecInferenceOracle {
         for _ in 0..self.sample_count {
             let inputs = input_generator(&mut rng);
             
-            if let Ok(result) = executor.execute(&inputs).await {
+            let result = executor.execute(&inputs).await;
+            if result.success {
                 samples.push(ExecutionSample {
                     inputs,
                     outputs: result.outputs,
@@ -426,7 +427,8 @@ impl SpecInferenceOracle {
         // Collect samples from initial witnesses
         let mut samples = Vec::new();
         for witness in initial_witnesses {
-            if let Ok(result) = executor.execute(witness).await {
+            let result = executor.execute(witness).await;
+            if result.success {
                 samples.push(ExecutionSample {
                     inputs: witness.clone(),
                     outputs: result.outputs,
@@ -450,7 +452,8 @@ impl SpecInferenceOracle {
 
             for violation in violations {
                 // If circuit accepts the violation, we found a bug
-                if let Ok(_result) = executor.execute(&violation).await {
+                let result = executor.execute(&violation).await;
+                if result.success {
                     findings.push(Finding {
                         attack_type: AttackType::SpecInference,
                         severity: Severity::High,

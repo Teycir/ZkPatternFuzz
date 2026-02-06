@@ -35,7 +35,10 @@ struct Cli {
     #[arg(long, global = true)]
     dry_run: bool,
 
-    /// Use simple progress (no
+    /// Use simple progress (no fancy terminal UI)
+    #[arg(long, global = true)]
+    simple_progress: bool,
+}
 
 #[derive(Subcommand)]
 enum Commands {
@@ -43,6 +46,14 @@ enum Commands {
     Run {
         /// Path to campaign YAML file
         campaign: String,
+        
+        /// Number of continuous fuzzing iterations (Phase 0)
+        #[arg(short, long, default_value = "1000")]
+        iterations: u64,
+        
+        /// Timeout in seconds for continuous fuzzing phase
+        #[arg(short, long)]
+        timeout: Option<u64>,
     },
     /// Validate a campaign configuration
     Validate {
@@ -87,8 +98,8 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Some(Commands::Run { campaign }) => {
-            run_campaign(&campaign, cli.workers, cli.seed, cli.verbose, cli.dry_run, cli.simple_progress).await
+        Some(Commands::Run { campaign, iterations, timeout }) => {
+            run_campaign(&campaign, cli.workers, cli.seed, cli.verbose, cli.dry_run, cli.simple_progress, iterations, timeout).await
         }
         Some(Commands::Validate { campaign }) => {
             validate_campaign(&campaign)
@@ -102,7 +113,8 @@ async fn main() -> anyhow::Result<()> {
         None => {
             // Default behavior: run with config if provided
             if let Some(config_path) = cli.config {
-                run_campaign(&config_path, cli.workers, cli.seed, cli.verbose, cli.dry_run, cli.simple_progress).await
+                // Use default values for iterations and timeout
+                run_campaign(&config_path, cli.workers, cli.seed, cli.verbose, cli.dry_run, cli.simple_progress, 1000, None).await
             } else {
                 eprintln!("Error: No campaign configuration provided.");
                 eprintln!("Usage: zk-fuzzer --config <path> or zk-fuzzer run <path>");
@@ -120,9 +132,23 @@ async fn run_campaign(
     verbose: bool,
     dry_run: bool,
     simple_progress: bool,
+    iterations: u64,
+    timeout: Option<u64>,
 ) -> anyhow::Result<()> {
     tracing::info!("Loading campaign from: {}", config_path);
-    let config = FuzzConfig::from_yaml(config_path)?;
+    let mut config = FuzzConfig::from_yaml(config_path)?;
+    
+    // Inject CLI fuzzing parameters into config
+    config.campaign.parameters.additional.insert(
+        "fuzzing_iterations".to_string(),
+        serde_yaml::Value::Number(serde_yaml::Number::from(iterations)),
+    );
+    if let Some(t) = timeout {
+        config.campaign.parameters.additional.insert(
+            "fuzzing_timeout_seconds".to_string(),
+            serde_yaml::Value::Number(serde_yaml::Number::from(t)),
+        );
+    }
 
     // Print banner
     print_banner(&config);

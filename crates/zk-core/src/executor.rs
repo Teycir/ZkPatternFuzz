@@ -174,6 +174,28 @@ pub trait CircuitExecutor: Send + Sync {
     fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
         None
     }
+    
+    /// Get the field modulus for this circuit's arithmetic
+    /// 
+    /// # Phase 0 Fix
+    /// 
+    /// This replaces the hardcoded BN254 modulus with a circuit-specific value.
+    /// Different proving systems use different fields (BN254, BLS12-381, Pallas, etc.)
+    fn field_modulus(&self) -> [u8; 32] {
+        // Default to BN254 scalar field modulus for backwards compatibility
+        // Implementations should override for their specific field
+        let mut modulus = [0u8; 32];
+        let hex = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
+        if let Ok(decoded) = hex::decode(hex) {
+            modulus.copy_from_slice(&decoded);
+        }
+        modulus
+    }
+    
+    /// Get the field prime name (e.g., "bn254", "bls12-381", "pallas")
+    fn field_name(&self) -> &str {
+        "bn254"
+    }
 }
 
 /// Trait for executors that support witness extraction

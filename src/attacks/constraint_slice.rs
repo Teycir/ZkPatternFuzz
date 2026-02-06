@@ -209,8 +209,8 @@ impl ConstraintSlicer {
         let mutation = rng.gen_range(0..5);
         match mutation {
             0 => fe.add(&FieldElement::one()),
-            1 => fe.add(&fe.negate().add(&FieldElement::one()).negate()), // subtract 1
-            2 => fe.negate(),
+            1 => fe.add(&fe.neg().add(&FieldElement::one()).neg()), // subtract 1
+            2 => fe.neg(),
             3 => fe.mul(&FieldElement::from_u64(2)),
             _ => FieldElement::random(rng),
         }
@@ -350,16 +350,17 @@ impl ConstraintSliceOracle {
         let mut findings = Vec::new();
 
         // Get base result
-        let base_result = match executor.execute(base_witness).await {
-            Ok(r) => r,
-            Err(_) => return findings,
-        };
+        let base_result = executor.execute(base_witness).await;
+        if !base_result.success {
+            return findings;
+        }
 
         // Generate and test mutated cases
         let test_cases = slicer.mutate_in_cone(cone, base_witness, self.samples_per_cone, rng);
 
         for case in &test_cases {
-            if let Ok(result) = executor.execute(case).await {
+            let result = executor.execute(case).await;
+            if result.success {
                 // Check for unexpected output changes
                 let unexpected = self.check_unexpected_change(
                     cone,

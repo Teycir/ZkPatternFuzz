@@ -181,7 +181,8 @@ impl WitnessCollisionDetector {
 
         // Execute all witnesses and collect outputs
         for witness in witnesses.iter().take(self.sample_count) {
-            if let Ok(result) = executor.execute(witness).await {
+            let result = executor.execute(witness).await;
+            if result.success {
                 let hash = self.hash_outputs(&result.outputs);
 
                 if let Some((existing_witness, existing_outputs)) = output_map.get(&hash) {

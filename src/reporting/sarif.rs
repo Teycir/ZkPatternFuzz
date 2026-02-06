@@ -1259,6 +1259,11 @@ fn attack_type_to_rule_id(attack_type: &AttackType) -> String {
         AttackType::WitnessLeakage => "ZK016",
         AttackType::ReplayAttack => "ZK017",
         AttackType::TrustedSetup => "ZK018",
+        AttackType::ConstraintInference => "ZK019",
+        AttackType::Metamorphic => "ZK020",
+        AttackType::ConstraintSlice => "ZK021",
+        AttackType::SpecInference => "ZK022",
+        AttackType::WitnessCollision => "ZK023",
     }
     .to_string()
 }
