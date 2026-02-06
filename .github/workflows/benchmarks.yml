@@ -1,0 +1,219 @@
+# ZkPatternFuzz Benchmark Workflow
+#
+# Runs the known-bug benchmark suite on push and PR
+# Tracks time-to-bug metrics over time
+
+name: Benchmarks
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Benchmark mode'
+        required: true
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - full
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-benchmark-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-benchmark-
+            ${{ runner.os }}-cargo-
+
+      - name: Install Z3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libz3-dev z3
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Run benchmark harness tests
+        run: |
+          cargo test --test harness -- --nocapture
+        continue-on-error: true
+
+      - name: Run benchmark script
+        run: |
+          chmod +x scripts/run_benchmarks.sh
+          ./scripts/run_benchmarks.sh --ci --output reports/benchmarks
+        continue-on-error: true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: |
+            reports/benchmarks/*.json
+            reports/benchmarks/*.md
+            reports/benchmarks/*_log.txt
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'reports/benchmarks/scoreboard.json';
+            
+            let comment = '## 🔬 Benchmark Results\n\n';
+            
+            if (fs.existsSync(path)) {
+              const results = JSON.parse(fs.readFileSync(path, 'utf8'));
+              
+              comment += `**Pass Rate:** ${results.summary?.pass_rate || 'N/A'}%\n`;
+              comment += `**Passed:** ${results.summary?.passed || 0}/${results.summary?.total || 0}\n\n`;
+              
+              comment += '| Benchmark | Status |\n|-----------|--------|\n';
+              for (const bench of (results.benchmarks || [])) {
+                const status = bench.status === 'passed' ? '✅' : '❌';
+                comment += `| ${bench.name} | ${status} |\n`;
+              }
+            } else {
+              comment += '⚠️ No benchmark results found.\n';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Check benchmark thresholds
+        run: |
+          if [ -f reports/benchmarks/scoreboard.json ]; then
+            PASS_RATE=$(jq -r '.summary.pass_rate // 0' reports/benchmarks/scoreboard.json)
+            
+            echo "Pass rate: ${PASS_RATE}%"
+            
+            # Require at least 80% pass rate
+            if (( $(echo "$PASS_RATE < 80" | bc -l) )); then
+              echo "::warning::Benchmark pass rate below threshold (80%)"
+            fi
+          fi
+
+  benchmark-history:
+    name: Track Benchmark History
+    runs-on: ubuntu-latest
+    needs: benchmark
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+        continue-on-error: true
+
+      - name: Download current results
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: new-results
+
+      - name: Update history
+        run: |
+          mkdir -p benchmark-history
+          
+          # Add new results with timestamp
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          if [ -f new-results/scoreboard.json ]; then
+            cp new-results/scoreboard.json "benchmark-history/${TIMESTAMP}.json"
+          fi
+          
+          # Keep only last 100 results
+          ls -t benchmark-history/*.json 2>/dev/null | tail -n +101 | xargs -r rm
+          
+          # Generate history summary
+          echo "# Benchmark History" > benchmark-history/README.md
+          echo "" >> benchmark-history/README.md
+          echo "| Date | Pass Rate | Passed | Total |" >> benchmark-history/README.md
+          echo "|------|-----------|--------|-------|" >> benchmark-history/README.md
+          
+          for f in $(ls -t benchmark-history/*.json 2>/dev/null | head -20); do
+            DATE=$(basename "$f" .json)
+            RATE=$(jq -r '.summary.pass_rate // "N/A"' "$f")
+            PASSED=$(jq -r '.summary.passed // 0' "$f")
+            TOTAL=$(jq -r '.summary.total // 0' "$f")
+            echo "| $DATE | ${RATE}% | $PASSED | $TOTAL |" >> benchmark-history/README.md
+          done
+
+      - name: Commit history
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add benchmark-history/
+          git commit -m "Update benchmark history [skip ci]" || true
+          git push || true
+        continue-on-error: true
+
+  compare-benchmarks:
+    name: Compare with Base Branch
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: benchmark
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+
+      - name: Download PR results
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: pr-results
+
+      - name: Compare with base
+        run: |
+          echo "## Benchmark Comparison" > comparison.md
+          echo "" >> comparison.md
+          
+          if [ -f pr-results/scoreboard.json ]; then
+            PR_RATE=$(jq -r '.summary.pass_rate // 0' pr-results/scoreboard.json)
+            echo "PR Pass Rate: ${PR_RATE}%" >> comparison.md
+            
+            # In a real implementation, we'd fetch base branch results
+            # and compare. For now, just report PR results.
+            echo "" >> comparison.md
+            echo "Base branch comparison not yet implemented." >> comparison.md
+          fi
+          
+          cat comparison.md

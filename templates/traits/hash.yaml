@@ -1,0 +1,137 @@
+# Hash Function Trait Template
+# Include this template for circuits using cryptographic hash functions
+#
+# Usage:
+#   includes:
+#     - "templates/traits/hash.yaml"
+---
+target_traits:
+  hash_function: "poseidon"  # Options: poseidon, mimc, pedersen, sha256, keccak
+
+profiles:
+  hash_poseidon:
+    hash_function: "poseidon"
+    rounds: 8
+    rate: 2
+    description: "Poseidon hash (ZK-friendly)"
+
+  hash_mimc:
+    hash_function: "mimc"
+    rounds: 91
+    description: "MiMC hash"
+
+  hash_pedersen:
+    hash_function: "pedersen"
+    description: "Pedersen commitment/hash"
+
+  hash_sha256:
+    hash_function: "sha256"
+    description: "SHA-256 (non-native, expensive)"
+
+# Hash-specific invariants
+invariants:
+  - name: "collision_resistance"
+    invariant_type: constraint
+    relation: "preimage1 != preimage2 => hash(preimage1) != hash(preimage2)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Different inputs must produce different outputs"
+
+  - name: "determinism"
+    invariant_type: constraint
+    relation: "hash(x) == hash(x)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Same input must always produce same output"
+
+  - name: "preimage_hiding"
+    invariant_type: constraint
+    relation: "cannot_derive(preimage, hash(preimage))"
+    oracle: symbolic
+    severity: "critical"
+    description: "Hash output should not leak preimage information"
+
+  - name: "permutation_sensitivity"
+    invariant_type: metamorphic
+    transform: "permute_inputs([0,1] → [1,0])"
+    expected: "output_changes"
+    oracle: differential
+    severity: "critical"
+    description: "Input permutation must change output"
+
+  - name: "avalanche_effect"
+    invariant_type: metamorphic
+    transform: "flip_single_bit(input, 0)"
+    expected: "output_differs_significantly"
+    oracle: differential
+    severity: "high"
+    description: "Single bit flip should change ~50% of output bits"
+
+# Hash-specific attacks
+attacks:
+  - type: "collision"
+    description: "Test for hash collisions"
+    config:
+      samples: 100000
+      birthday_attack: true
+      target_output: "hash_output"
+
+  - type: "underconstrained"
+    description: "Check for missing hash constraints"
+    config:
+      witness_pairs: 2000
+      compare_outputs: true
+
+  - type: "boundary"
+    description: "Test hash with boundary inputs"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "p-1"
+
+# Hash-specific mutations
+mutations:
+  - name: "single_bit_flip"
+    probability: 0.4
+    operations: ["bit_flip"]
+    description: "Flip single bit in preimage"
+
+  - name: "zero_preimage"
+    probability: 0.2
+    use_values: ["zero"]
+    description: "Test with zero preimage"
+
+  - name: "collision_search"
+    probability: 0.3
+    operations: ["random_similar"]
+    description: "Search for similar inputs with same hash"
+
+# Hash-specific inputs
+inputs:
+  - name: "preimage"
+    type: "field"
+    fuzz_strategy: "mutation"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0xdeadbeef"
+
+  - name: "hash_output"
+    type: "field"
+    constraints:
+      - "nonzero"
+    fuzz_strategy: "random"
+
+oracles:
+  - name: "hash_collision"
+    severity: "critical"
+    description: "Two different preimages produce same hash"
+
+  - name: "hash_determinism_failure"
+    severity: "critical"
+    description: "Same preimage produces different hashes"
+
+  - name: "weak_avalanche"
+    severity: "high"
+    description: "Small input change produces small output change"

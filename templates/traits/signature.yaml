@@ -1,0 +1,179 @@
+# Signature Trait Template
+# Include this template for circuits using digital signatures
+#
+# Usage:
+#   includes:
+#     - "templates/traits/signature.yaml"
+---
+target_traits:
+  uses_signature: true
+  curve: "bn254"  # Options: bn254, bls12-381, ed25519, secp256k1
+
+profiles:
+  sig_eddsa:
+    signature_scheme: "eddsa"
+    curve: "bn254"
+    description: "EdDSA signatures on BN254"
+
+  sig_ecdsa:
+    signature_scheme: "ecdsa"
+    curve: "secp256k1"
+    description: "ECDSA signatures on secp256k1"
+
+  sig_schnorr:
+    signature_scheme: "schnorr"
+    curve: "bn254"
+    description: "Schnorr signatures on BN254"
+
+  sig_bls:
+    signature_scheme: "bls"
+    curve: "bls12-381"
+    description: "BLS signatures on BLS12-381"
+
+# Signature-specific invariants
+invariants:
+  - name: "signature_validity"
+    invariant_type: constraint
+    relation: "verify(pubkey, message, signature) == true"
+    oracle: must_hold
+    severity: "critical"
+    description: "Valid signatures must verify"
+
+  - name: "signature_unforgeability"
+    invariant_type: constraint
+    relation: "cannot_forge(signature) without private_key"
+    oracle: symbolic
+    severity: "critical"
+    description: "Cannot forge signature without private key"
+
+  - name: "signature_non_malleability"
+    invariant_type: constraint
+    relation: "canonical(signature)"
+    oracle: must_hold
+    severity: "high"
+    description: "Signature must be in canonical form"
+
+  - name: "message_binding"
+    invariant_type: constraint
+    relation: "signature binds to exactly one message"
+    oracle: must_hold
+    severity: "critical"
+    description: "Signature must be bound to message"
+
+  - name: "pubkey_validation"
+    invariant_type: constraint
+    relation: "on_curve(pubkey) AND in_subgroup(pubkey)"
+    oracle: constraint_check
+    severity: "high"
+    description: "Public key must be valid curve point"
+
+  - name: "message_mutation"
+    invariant_type: metamorphic
+    transform: "mutate_message_bit(0)"
+    expected: "verification_fails"
+    oracle: differential
+    severity: "critical"
+    description: "Mutated message must fail verification"
+
+# Signature-specific attacks
+attacks:
+  - type: "soundness"
+    description: "Test signature forgery resistance"
+    config:
+      forge_attempts: 5000
+      mutation_rate: 0.3
+
+  - type: "underconstrained"
+    description: "Check for missing signature constraints"
+    config:
+      witness_pairs: 1000
+      compare_outputs: true
+
+  - type: "boundary"
+    description: "Test signature with edge case inputs"
+    config:
+      test_values:
+        - "0"           # Zero signature component
+        - "1"           # One
+        - "n-1"         # Group order minus 1
+        - "p-1"         # Field prime minus 1
+
+  - type: "collision"
+    description: "Test for signature/message collisions"
+    config:
+      samples: 10000
+
+# Signature-specific mutations
+mutations:
+  - name: "negate_s"
+    probability: 0.3
+    operations: ["negate"]
+    description: "Negate s component (malleability test)"
+
+  - name: "swap_r_s"
+    probability: 0.2
+    operations: ["swap_fields"]
+    description: "Swap R and S components"
+
+  - name: "zero_component"
+    probability: 0.15
+    use_values: ["zero"]
+    description: "Zero out signature component"
+
+  - name: "reuse_signature"
+    probability: 0.2
+    operations: ["copy_previous"]
+    description: "Reuse signature for different message"
+
+  - name: "modify_pubkey"
+    probability: 0.15
+    operations: ["bit_flip"]
+    description: "Slightly modify public key"
+
+# Signature-specific inputs
+inputs:
+  - name: "pubkey_x"
+    type: "field"
+    constraints:
+      - "nonzero"
+    fuzz_strategy: "random"
+
+  - name: "pubkey_y"
+    type: "field"
+    constraints:
+      - "nonzero"
+    fuzz_strategy: "random"
+
+  - name: "message"
+    type: "field"
+    fuzz_strategy: "mutation"
+
+  - name: "signature_r"
+    type: "field"
+    constraints:
+      - "nonzero"
+    fuzz_strategy: "random"
+
+  - name: "signature_s"
+    type: "field"
+    constraints:
+      - "nonzero"
+      - "in_range:1..n"  # Must be < group order
+    fuzz_strategy: "random"
+
+oracles:
+  - name: "signature_forgery"
+    severity: "critical"
+    description: "Forged signature verified successfully"
+
+  - name: "signature_malleability"
+    severity: "high"
+    description: "Multiple valid signatures for same message"
+
+  - name: "invalid_pubkey_accepted"
+    severity: "high"
+    description: "Off-curve or invalid public key accepted"
+
+  - name: "weak_verification"
+    severity: "critical"
+    description: "Verification accepts invalid signature"

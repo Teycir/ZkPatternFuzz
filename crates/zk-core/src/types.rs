@@ -43,6 +43,17 @@ pub enum AttackType {
     CircuitComposition,
     /// Recursive proof testing
     RecursiveProof,
+    // Phase 4: Novel oracle attack types
+    /// Constraint inference - detect missing constraints
+    ConstraintInference,
+    /// Metamorphic testing - transform-based oracles
+    Metamorphic,
+    /// Constraint slice - dependency cone mutation
+    ConstraintSlice,
+    /// Spec inference - auto-learn properties and violate them
+    SpecInference,
+    /// Enhanced witness collision detection
+    WitnessCollision,
 }
 
 /// Severity levels for findings

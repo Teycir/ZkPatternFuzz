@@ -1,0 +1,146 @@
+# AI-Generated Range Proof Audit Template
+#
+# For circuits implementing range checks and bit decomposition
+# Variables are filled by Claude based on circuit analysis.
+---
+campaign:
+  name: "AI-Generated Range Proof Audit"
+  version: "2.0"
+  target:
+    framework: "{{FRAMEWORK}}"
+    circuit_path: "{{CIRCUIT_PATH}}"
+    main_component: "{{MAIN_COMPONENT}}"
+
+  parameters:
+    field: "{{FIELD_PRIME}}"
+    max_constraints: 50000
+    timeout_seconds: 300
+
+includes:
+  - "templates/traits/base.yaml"
+  - "templates/traits/range.yaml"
+
+profiles:
+  detected:
+    bit_length: "{{BIT_LENGTH}}"
+    field: "{{FIELD_PRIME}}"
+
+active_profile: "detected"
+
+target_traits:
+  range_checks:
+    - "bitlen:{{BIT_LENGTH}}"
+    - "{{RANGE_TYPE}}"  # u8, u32, u64, u128, u256
+
+invariants:
+  - name: "bit_decomposition_roundtrip"
+    invariant_type: constraint
+    relation: "sum(bits[i] * 2^i) == original_value"
+    oracle: must_hold
+    severity: "critical"
+    description: "Bit decomposition must recompose to original"
+
+  - name: "bits_are_binary"
+    invariant_type: constraint
+    relation: "∀i: bits[i] * (1 - bits[i]) == 0"
+    oracle: must_hold
+    severity: "critical"
+    description: "Each bit must be 0 or 1"
+
+  - name: "range_upper_bound"
+    invariant_type: range
+    relation: "value < 2^{{BIT_LENGTH}}"
+    oracle: constraint_check
+    severity: "critical"
+    description: "Value must be within range"
+
+schedule:
+  - phase: "boundary_testing"
+    duration_sec: 120
+    attacks: ["boundary", "arithmetic_overflow"]
+    carry_corpus: true
+
+  - phase: "bit_decomposition"
+    duration_sec: 180
+    attacks: ["underconstrained", "constraint_inference"]
+    early_terminate:
+      on_critical_findings: 3
+    carry_corpus: true
+
+  - phase: "deep_testing"
+    duration_sec: 300
+    attacks: ["soundness"]
+    carry_corpus: true
+
+attacks:
+  - type: "boundary"
+    description: "Test range boundaries"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "2^{{BIT_LENGTH}}-1"
+        - "2^{{BIT_LENGTH}}"
+        - "2^{{BIT_LENGTH}}+1"
+        - "-1"  # Should wrap to p-1
+
+  - type: "arithmetic_overflow"
+    description: "Test overflow conditions"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "p-1"
+        - "2^{{BIT_LENGTH}}"
+        - "p - 2^{{BIT_LENGTH}}"
+
+  - type: "underconstrained"
+    description: "Check for missing recomposition constraint"
+    config:
+      witness_pairs: 2000
+      focus_on:
+        - "bits"
+        - "value"
+
+  - type: "constraint_inference"
+    description: "Detect missing bit decomposition constraints"
+    config:
+      categories:
+        - "bit_decomposition"
+      confidence_threshold: 0.8
+
+inputs:
+  - name: "{{VALUE_INPUT_NAME}}"
+    type: "field"
+    fuzz_strategy: "boundary"
+    interesting:
+      - "0"
+      - "1"
+      - "255"
+      - "256"
+      - "{{MAX_VALUE}}"
+      - "{{MAX_VALUE}}+1"
+
+  - name: "{{BITS_INPUT_NAME}}"
+    type: "array<bool>"
+    length: "{{BIT_LENGTH}}"
+    fuzz_strategy: "mutation"
+
+mutations:
+  - name: "flip_single_bit"
+    probability: 0.3
+    operations: ["bit_flip"]
+
+  - name: "set_all_ones"
+    probability: 0.1
+    operations: ["set_max"]
+
+  - name: "overflow_value"
+    probability: 0.2
+    operations: ["add_power_of_two"]
+
+reporting:
+  output_dir: "./reports/{{CIRCUIT_NAME}}"
+  formats: ["json", "markdown", "sarif"]
+  include_poc: true
+  crash_reproduction: true

@@ -1,0 +1,13 @@
+{
+  "attack_type": "Soundness",
+  "severity": "critical",
+  "description_contains": ["unused", "unconstrained", "witness", "soundness"],
+  "expected_time_seconds": 10,
+  "min_confidence": 0.99,
+  "required_oracles": ["underconstrained", "soundness"],
+  "poc_requirements": {
+    "witness_pair": true,
+    "same_public_inputs": true,
+    "different_private_inputs": true
+  }
+}

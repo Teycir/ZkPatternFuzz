@@ -35,10 +35,7 @@ struct Cli {
     #[arg(long, global = true)]
     dry_run: bool,
 
-    /// Use simple progress (no interactive bars)
-    #[arg(long, global = true)]
-    simple_progress: bool,
-}
+    /// Use simple progress (no
 
 #[derive(Subcommand)]
 enum Commands {

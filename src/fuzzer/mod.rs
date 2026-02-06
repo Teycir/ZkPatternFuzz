@@ -1,9 +1,33 @@
 //! Core fuzzing engine for ZK circuits
+//!
+//! ## Phased Scheduling
+//!
+//! The [`phased_scheduler`] module enables time-budgeted attack phases with
+//! corpus carryover and early termination conditions.
+//!
+//! ## Oracle Diversity
+//!
+//! The [`oracle_diversity`] module tracks which oracle types fire during
+//! fuzzing and measures violation pattern diversity.
+//!
+//! ## Adaptive Scheduling
+//!
+//! The [`adaptive_attack_scheduler`] module dynamically reallocates budget
+//! between attack types based on their effectiveness.
+//!
+//! ## Near-Miss Detection
+//!
+//! The [`near_miss`] module detects when oracles are "almost" triggered,
+//! providing feedback for intelligent mutation.
 
 mod constants;
 mod mutators;
 mod oracle;
 mod engine;
+pub mod adaptive_attack_scheduler;
+pub mod near_miss;
+pub mod oracle_diversity;
+pub mod phased_scheduler;
 mod power_schedule;
 mod structure_aware;
 pub mod grammar;
@@ -13,10 +37,17 @@ pub use constants::*;
 pub use mutators::*;
 pub use oracle::*;
 pub use engine::FuzzingEngine;
+pub use adaptive_attack_scheduler::{
+    AdaptiveScheduler, AdaptiveSchedulerConfig, AdaptiveSchedulerStats,
+    AttackResults, NearMissEvent, YamlSuggestion, SuggestionType,
+};
+pub use near_miss::{NearMissDetector, NearMiss, NearMissConfig, NearMissStats};
+pub use oracle_diversity::{OracleDiversityTracker, OracleDiversityStats, OracleFire};
 pub use oracles::{
     SemanticOracle, OracleConfig, OracleStats, CombinedSemanticOracle,
     NullifierOracle, MerkleOracle, CommitmentOracle, RangeProofOracle,
 };
+pub use phased_scheduler::{PhasedScheduler, PhaseResult, ScheduleBuilder, PhaseExecutionResult};
 pub use zk_core::{CoverageMap, FieldElement, Finding, ProofOfConcept, TestCase, TestMetadata};
 
 use crate::config::*;

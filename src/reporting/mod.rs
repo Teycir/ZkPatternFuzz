@@ -4,7 +4,11 @@
 //! - JSON: Machine-readable format for automation
 //! - Markdown: Human-readable reports for documentation
 //! - SARIF: IDE integration (VS Code, GitHub Code Scanning)
+//! - Coverage Summary: Enhanced CLI coverage view
+//! - PoC Generator: Exploit reproduction scripts
 
+pub mod coverage_summary;
+pub mod poc_generator;
 pub mod sarif;
 
 use crate::config::ReportingConfig;
@@ -16,6 +20,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 
+pub use coverage_summary::{CoverageSummary, CoverageSummaryBuilder, AdditionalMetrics};
+pub use poc_generator::{PoCGenerator, PoCGeneratorConfig, PoCFormat};
 pub use sarif::{SarifBuilder, SarifLevel, SarifReport};
 
 /// Complete fuzzing report
@@ -38,6 +44,42 @@ pub struct FuzzStatistics {
     pub coverage_percentage: f64,
     pub findings_by_severity: HashMap<String, u64>,
     pub findings_by_type: HashMap<String, u64>,
+
+    // Phase 3: Enhanced coverage metrics
+    /// Number of input dependency paths covered
+    #[serde(default)]
+    pub covered_dependency_paths: u64,
+    /// Total number of input dependency paths
+    #[serde(default)]
+    pub total_dependency_paths: u64,
+    /// Dependency path coverage percentage
+    #[serde(default)]
+    pub dependency_coverage_percentage: f64,
+    /// Number of critical uncovered constraint paths
+    #[serde(default)]
+    pub critical_uncovered_paths: u64,
+
+    // Oracle diversity metrics
+    /// Number of oracle types that have fired
+    #[serde(default)]
+    pub oracle_types_fired: u64,
+    /// Total number of registered oracle types
+    #[serde(default)]
+    pub oracle_types_registered: u64,
+    /// Oracle diversity score (0.0 - 1.0)
+    #[serde(default)]
+    pub oracle_diversity_score: f64,
+    /// Number of unique violation patterns
+    #[serde(default)]
+    pub unique_violation_patterns: u64,
+
+    // Throughput metrics
+    /// Executions per second
+    #[serde(default)]
+    pub executions_per_second: f64,
+    /// Corpus size
+    #[serde(default)]
+    pub corpus_size: u64,
 }
 
 impl FuzzReport {

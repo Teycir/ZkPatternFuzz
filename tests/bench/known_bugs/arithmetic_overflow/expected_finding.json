@@ -1,0 +1,12 @@
+{
+  "attack_type": "ArithmeticOverflow",
+  "severity": "critical",
+  "description_contains": ["overflow", "range", "wrap", "underflow"],
+  "expected_time_seconds": 25,
+  "min_confidence": 0.90,
+  "required_oracles": ["arithmetic_overflow", "boundary"],
+  "poc_requirements": {
+    "boundary_values": true,
+    "wrap_around_detected": true
+  }
+}

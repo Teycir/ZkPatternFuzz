@@ -1,8 +1,24 @@
 //! Configuration module for ZK-Fuzzer
 //!
 //! Handles YAML parsing and validation of fuzzing campaigns.
+//!
+//! ## YAML v2 Features
+//!
+//! The v2 schema adds support for:
+//! - **Includes**: Compose configs from multiple files
+//! - **Profiles**: Reusable parameter sets
+//! - **Target Traits**: Circuit-specific patterns (merkle, range, hash, etc.)
+//! - **Invariants**: Explicit constraints for metamorphic testing
+//! - **Schedule**: Phased attack execution with time budgets
+//!
+//! See [`v2`] module for details.
 
+pub mod generator;
 pub mod parser;
+pub mod suggester;
+pub mod v2;
+
+pub use suggester::YamlSuggester;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

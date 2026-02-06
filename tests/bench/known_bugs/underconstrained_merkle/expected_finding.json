@@ -1,0 +1,13 @@
+{
+  "attack_type": "Underconstrained",
+  "severity": "critical",
+  "description_contains": ["pathIndices", "binary", "constrained"],
+  "expected_time_seconds": 30,
+  "min_confidence": 0.95,
+  "required_oracles": ["underconstrained", "boundary"],
+  "poc_requirements": {
+    "witness_pair": true,
+    "different_private_inputs": true,
+    "same_public_outputs": true
+  }
+}

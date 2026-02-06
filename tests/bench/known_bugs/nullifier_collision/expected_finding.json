@@ -1,0 +1,13 @@
+{
+  "attack_type": "Collision",
+  "severity": "critical",
+  "description_contains": ["nullifier", "collision", "double", "spend"],
+  "expected_time_seconds": 15,
+  "min_confidence": 0.98,
+  "required_oracles": ["collision", "nullifier"],
+  "poc_requirements": {
+    "witness_pair": true,
+    "same_nullifier": true,
+    "different_commitment": true
+  }
+}

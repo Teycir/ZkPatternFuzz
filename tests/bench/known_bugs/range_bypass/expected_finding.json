@@ -1,0 +1,12 @@
+{
+  "attack_type": "Underconstrained",
+  "severity": "high",
+  "description_contains": ["range", "bit", "decomposition", "recomposition"],
+  "expected_time_seconds": 20,
+  "min_confidence": 0.90,
+  "required_oracles": ["boundary", "underconstrained"],
+  "poc_requirements": {
+    "witness_pair": true,
+    "value_mismatch": true
+  }
+}

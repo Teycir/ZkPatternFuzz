@@ -8,11 +8,13 @@
 //! - Enhanced symbolic: Incremental solving, constraint simplification, path pruning
 //! - Concolic execution: Mix concrete and symbolic execution for scalability
 //! - R1CS parsing: Direct parsing of Circom-compiled .r1cs files
+//! - Dependency analysis: Witness-dependency graph for coverage guidance
 
 pub mod complexity;
 pub mod constraint_symbolic;
 pub mod constraint_types;
 pub mod constraint_guided;
+pub mod dependency;
 pub mod profiling;
 pub mod r1cs_parser;
 pub mod r1cs_to_smt;
@@ -40,6 +42,7 @@ pub use concolic::{
     ConcolicFuzzerIntegration,
 };
 pub use taint::{TaintAnalyzer, TaintFinding};
+pub use dependency::{DependencyGraph, DependencyAnalyzer, DependencyCoverageStats};
 pub use r1cs_parser::{
     R1CS, R1CSConstraint as ParsedR1CSConstraint, parse_sym_file, R1CSConstraintGuidedExt,
 };

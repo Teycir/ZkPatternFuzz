@@ -1,14 +1,26 @@
 //! Corpus management for test cases
 //!
 //! Handles storage, persistence, and minimization of test cases.
+//!
+//! # Modules
+//!
+//! - [`minimizer`] - Basic corpus minimization (greedy set cover)
+//! - [`delta_debug`] - Delta debugging for test case minimization
+//! - [`deduplication`] - Semantic deduplication of findings
+//! - [`storage`] - Corpus persistence
 
 pub mod deduplication;
+pub mod delta_debug;
 pub mod minimizer;
 pub mod storage;
 
 pub use deduplication::{
     SemanticDeduplicator, SemanticFingerprint, DeduplicationConfig, 
     DeduplicationStats, FindingCluster, calculate_confidence, InputPattern,
+};
+pub use delta_debug::{
+    DeltaDebugger, DeltaDebugConfig, DeltaDebugStats, OracleResult,
+    minimize_test_case, binary_minimize,
 };
 
 use zk_core::{FieldElement, TestCase, TestMetadata};

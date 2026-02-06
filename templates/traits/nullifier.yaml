@@ -1,0 +1,145 @@
+# Nullifier Trait Template
+# Include this template for circuits using nullifier patterns (e.g., Tornado Cash, Semaphore)
+#
+# Usage:
+#   includes:
+#     - "templates/traits/nullifier.yaml"
+---
+target_traits:
+  uses_nullifier: true
+  uses_commitment: true
+
+profiles:
+  nullifier_standard:
+    description: "Standard nullifier pattern (commitment + secret)"
+    commitment_scheme: "pedersen"
+    nullifier_derivation: "hash(secret, commitment)"
+
+  nullifier_semaphore:
+    description: "Semaphore-style nullifier"
+    commitment_scheme: "poseidon"
+    nullifier_derivation: "poseidon(identity_nullifier, external_nullifier)"
+
+  nullifier_tornado:
+    description: "Tornado Cash-style nullifier"
+    commitment_scheme: "pedersen"
+    nullifier_derivation: "pedersen(nullifier_secret)"
+
+# Nullifier-specific invariants
+invariants:
+  - name: "nullifier_uniqueness"
+    invariant_type: uniqueness
+    relation: "∀ spend1, spend2: spend1 != spend2 => nullifier1 != nullifier2"
+    oracle: must_hold
+    severity: "critical"
+    description: "Each spend must produce a unique nullifier"
+
+  - name: "nullifier_determinism"
+    invariant_type: constraint
+    relation: "nullifier(secret, commitment) == nullifier(secret, commitment)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Same inputs must produce same nullifier"
+
+  - name: "nullifier_binding"
+    invariant_type: constraint
+    relation: "nullifier binds to exactly one commitment"
+    oracle: symbolic
+    severity: "critical"
+    description: "Nullifier must be bound to commitment"
+
+  - name: "secret_hiding"
+    invariant_type: constraint
+    relation: "cannot_derive(secret, nullifier)"
+    oracle: symbolic
+    severity: "critical"
+    description: "Nullifier must not leak secret"
+
+  - name: "double_spend_prevention"
+    invariant_type: constraint
+    relation: "used_nullifiers.contains(nullifier) => reject"
+    oracle: must_hold
+    severity: "critical"
+    description: "Cannot reuse nullifier"
+
+# Nullifier-specific attacks
+attacks:
+  - type: "collision"
+    description: "Test for nullifier collisions"
+    config:
+      samples: 100000
+      target_output: "nullifier"
+
+  - type: "underconstrained"
+    description: "Check for missing nullifier constraints"
+    config:
+      witness_pairs: 2000
+      compare_outputs: true
+      focus_on:
+        - "nullifier"
+        - "commitment"
+
+  - type: "soundness"
+    description: "Test nullifier proof soundness"
+    config:
+      forge_attempts: 1000
+      mutation_rate: 0.2
+
+# Nullifier-specific mutations
+mutations:
+  - name: "reuse_nullifier"
+    probability: 0.3
+    operations: ["copy_previous"]
+    description: "Try to reuse a nullifier"
+
+  - name: "swap_secrets"
+    probability: 0.2
+    operations: ["swap_fields"]
+    description: "Swap secret components"
+
+  - name: "zero_secret"
+    probability: 0.15
+    use_values: ["zero"]
+    description: "Try zero secret value"
+
+# Nullifier-specific inputs
+inputs:
+  - name: "secret"
+    type: "field"
+    constraints:
+      - "nonzero"
+    fuzz_strategy: "random"
+
+  - name: "nullifier"
+    type: "field"
+    fuzz_strategy: "mutation"
+
+  - name: "commitment"
+    type: "field"
+    constraints:
+      - "nonzero"
+    fuzz_strategy: "random"
+
+  - name: "external_nullifier"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x1"
+      - "0x42"
+
+oracles:
+  - name: "nullifier_collision"
+    severity: "critical"
+    description: "Two different secrets produce same nullifier (double-spend possible)"
+
+  - name: "nullifier_reuse"
+    severity: "critical"
+    description: "Same nullifier accepted twice"
+
+  - name: "unbound_nullifier"
+    severity: "critical"
+    description: "Nullifier not properly bound to commitment"
+
+  - name: "secret_leakage"
+    severity: "critical"
+    description: "Secret can be derived from nullifier"

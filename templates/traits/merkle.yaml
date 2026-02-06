@@ -1,0 +1,145 @@
+# Merkle Tree Trait Template
+# Include this template for circuits using Merkle tree structures
+#
+# Usage:
+#   includes:
+#     - "templates/traits/merkle.yaml"
+---
+target_traits:
+  uses_merkle: true
+  hash_function: "poseidon"  # Override as needed: mimc, pedersen, sha256
+
+profiles:
+  merkle_shallow:
+    max_depth: 8
+    hash_function: "poseidon"
+    description: "Shallow Merkle tree (max 256 leaves)"
+
+  merkle_default:
+    max_depth: 20
+    hash_function: "poseidon"
+    description: "Standard Merkle tree (max ~1M leaves)"
+
+  merkle_deep:
+    max_depth: 32
+    hash_function: "poseidon"
+    description: "Deep Merkle tree (max ~4B leaves)"
+
+# Merkle-specific invariants
+invariants:
+  - name: "path_binary"
+    invariant_type: constraint
+    relation: "∀i: pathIndices[i] ∈ {0,1}"
+    oracle: must_hold
+    severity: "critical"
+    description: "Path indices must be binary (left=0, right=1)"
+
+  - name: "root_consistency"
+    invariant_type: constraint
+    relation: "root == merkle_hash(leaf, pathElements, pathIndices)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Computed root must match provided root"
+
+  - name: "path_length_bound"
+    invariant_type: constraint
+    relation: "len(pathElements) <= max_depth"
+    oracle: constraint_check
+    severity: "high"
+    description: "Path length must not exceed max depth"
+
+  - name: "path_element_nonzero"
+    invariant_type: constraint
+    relation: "∀i: pathElements[i] != 0 OR is_empty_subtree"
+    oracle: constraint_check
+    severity: "medium"
+    description: "Path elements should be non-zero unless empty subtree"
+
+  - name: "permutation_invariance"
+    invariant_type: metamorphic
+    transform: "swap_sibling_order"
+    expected: "output_changes"
+    oracle: differential
+    severity: "critical"
+    description: "Swapping left/right siblings must change root"
+
+# Merkle-specific attacks
+attacks:
+  - type: "underconstrained"
+    description: "Test for missing Merkle path constraints"
+    config:
+      witness_pairs: 1000
+      compare_outputs: true
+      focus_on:
+        - "pathIndices"
+        - "pathElements"
+
+  - type: "collision"
+    description: "Test for Merkle root collisions"
+    config:
+      samples: 50000
+      target_output: "root"
+
+  - type: "boundary"
+    description: "Test Merkle depth boundaries"
+    config:
+      test_values:
+        - "0"      # Empty tree
+        - "1"      # Single leaf
+        - "2^depth - 1"  # Max leaves
+
+# Merkle-specific mutations
+mutations:
+  - name: "flip_path_index"
+    probability: 0.3
+    operations: ["bit_flip"]
+    description: "Flip individual path indices"
+
+  - name: "swap_path_elements"
+    probability: 0.2
+    operations: ["swap_adjacent"]
+    description: "Swap adjacent path elements"
+
+  - name: "duplicate_leaf"
+    probability: 0.15
+    operations: ["copy_input"]
+    description: "Use same value for leaf and path element"
+
+# Merkle-specific inputs
+inputs:
+  - name: "root"
+    type: "field"
+    constraints:
+      - "nonzero"
+    fuzz_strategy: "random"
+
+  - name: "leaf"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0xdead"
+
+  - name: "pathElements"
+    type: "array<field>"
+    length: 20  # Default depth, override in campaign
+    fuzz_strategy: "mutation"
+
+  - name: "pathIndices"
+    type: "array<bool>"
+    length: 20
+    fuzz_strategy: "exhaustive_if_small"
+
+oracles:
+  - name: "merkle_root_mismatch"
+    severity: "critical"
+    description: "Computed Merkle root doesn't match expected"
+
+  - name: "non_binary_path_index"
+    severity: "critical"
+    description: "Path index is not 0 or 1"
+
+  - name: "merkle_collision"
+    severity: "critical"
+    description: "Different leaves produce same root"

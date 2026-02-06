@@ -1,0 +1,133 @@
+# Base Trait Template
+# Include this template as the foundation for all campaigns
+#
+# Usage:
+#   includes:
+#     - "templates/traits/base.yaml"
+#     - "templates/traits/merkle.yaml"  # Add specific traits
+---
+
+# Default profiles
+profiles:
+  default:
+    field: "bn254"
+    description: "Default BN254 field parameters"
+
+  bls12_381:
+    field: "bls12-381"
+    description: "BLS12-381 field parameters"
+
+# Core invariants that apply to all ZK circuits
+invariants:
+  - name: "constraint_satisfaction"
+    invariant_type: constraint
+    relation: "∀c ∈ constraints: c(witness) == 0"
+    oracle: must_hold
+    severity: "critical"
+    description: "All constraints must be satisfied"
+
+  - name: "witness_consistency"
+    invariant_type: constraint
+    relation: "public_outputs == f(private_inputs)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Public outputs must be correctly computed"
+
+  - name: "field_element_range"
+    invariant_type: range
+    relation: "∀x ∈ witness: 0 <= x < p"
+    oracle: must_hold
+    severity: "critical"
+    description: "All field elements must be in valid range"
+
+  - name: "determinism"
+    invariant_type: metamorphic
+    transform: "identity"
+    expected: "output_unchanged"
+    oracle: must_hold
+    severity: "critical"
+    description: "Same inputs must produce same outputs"
+
+# Default attack schedule
+schedule:
+  - phase: "exploration"
+    duration_sec: 60
+    attacks:
+      - "underconstrained"
+      - "boundary"
+    carry_corpus: true
+    early_terminate:
+      on_critical_findings: 5
+
+  - phase: "deep_testing"
+    duration_sec: 300
+    attacks:
+      - "soundness"
+      - "arithmetic_overflow"
+      - "collision"
+    carry_corpus: true
+
+  - phase: "exhaustive"
+    duration_sec: 600
+    attacks:
+      - "underconstrained"
+      - "soundness"
+      - "collision"
+      - "boundary"
+    carry_corpus: true
+
+# Base mutations
+mutations:
+  - name: "bit_flip"
+    probability: 0.25
+    operations: ["single_bit_flip", "multi_bit_flip"]
+    description: "Flip bits in field elements"
+
+  - name: "arithmetic"
+    probability: 0.2
+    operations: ["add_one", "sub_one", "negate", "double", "halve"]
+    description: "Arithmetic mutations"
+
+  - name: "boundary"
+    probability: 0.2
+    use_values: ["zero", "one", "max_field", "mid_field"]
+    description: "Boundary value injection"
+
+  - name: "havoc"
+    probability: 0.1
+    max_stacked_mutations: 5
+    description: "Random aggressive mutation"
+
+  - name: "splice"
+    probability: 0.15
+    operations: ["crossover"]
+    description: "Combine inputs from corpus"
+
+  - name: "dictionary"
+    probability: 0.1
+    use_values: ["interesting"]
+    description: "Use dictionary values"
+
+# Base oracles
+oracles:
+  - name: "constraint_violation"
+    severity: "critical"
+    description: "Constraint not satisfied"
+
+  - name: "witness_mismatch"
+    severity: "critical"
+    description: "Public output doesn't match computation"
+
+  - name: "crash"
+    severity: "high"
+    description: "Circuit execution crashed"
+
+  - name: "timeout"
+    severity: "medium"
+    description: "Circuit execution timed out"
+
+# Reporting defaults
+reporting:
+  formats: ["json", "markdown", "sarif"]
+  include_poc: true
+  crash_reproduction: true

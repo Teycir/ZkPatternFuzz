@@ -235,7 +235,7 @@ pub use config::{
 pub use errors::{ZkFuzzerError, Result};
 pub use executor::{CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions, MockCircuitExecutor};
 pub use fuzzer::ZkFuzzer;
-pub use reporting::FuzzReport;
+pub use reporting::{FuzzReport, PoCGenerator, PoCGeneratorConfig, PoCFormat};
 
 // Semantic oracles for ZK-specific vulnerability detection
 pub use fuzzer::{

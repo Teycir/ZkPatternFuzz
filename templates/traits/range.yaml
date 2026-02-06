@@ -1,0 +1,147 @@
+# Range Check Trait Template
+# Include this template for circuits with range constraints
+#
+# Usage:
+#   includes:
+#     - "templates/traits/range.yaml"
+---
+target_traits:
+  range_checks:
+    - "u64"
+    - "u32"
+    - "bitlen:252"
+
+profiles:
+  range_u8:
+    bit_length: 8
+    description: "8-bit range checks (0-255)"
+
+  range_u32:
+    bit_length: 32
+    description: "32-bit range checks (0-2^32-1)"
+
+  range_u64:
+    bit_length: 64
+    description: "64-bit range checks (0-2^64-1)"
+
+  range_field:
+    bit_length: 252
+    description: "Full field range (BN254)"
+
+# Range-specific invariants
+invariants:
+  - name: "value_in_range"
+    invariant_type: range
+    relation: "0 <= value < 2^bit_length"
+    oracle: must_hold
+    severity: "critical"
+    description: "Value must be within specified range"
+
+  - name: "bit_decomposition_valid"
+    invariant_type: constraint
+    relation: "∀i: bits[i] ∈ {0,1}"
+    oracle: must_hold
+    severity: "critical"
+    description: "All bits must be binary"
+
+  - name: "bit_reconstruction"
+    invariant_type: constraint
+    relation: "value == Σ bits[i] * 2^i"
+    oracle: constraint_check
+    severity: "critical"
+    description: "Bit decomposition must reconstruct original value"
+
+  - name: "no_overflow_on_add"
+    invariant_type: constraint
+    relation: "a + b < 2^bit_length"
+    oracle: must_hold
+    severity: "high"
+    description: "Addition must not overflow range"
+
+  - name: "scaling_linearity"
+    invariant_type: metamorphic
+    transform: "scale_input(x, 2)"
+    expected: "output_scaled(2)"
+    oracle: differential
+    severity: "high"
+    description: "Scaling input should scale output proportionally"
+
+# Range-specific attacks
+attacks:
+  - type: "boundary"
+    description: "Test range boundaries"
+    config:
+      test_values:
+        - "0"          # Lower bound
+        - "1"          # Just above lower
+        - "2^n - 1"    # Upper bound
+        - "2^n"        # Just above upper (should fail)
+        - "p - 1"      # Field max
+
+  - type: "arithmetic_overflow"
+    description: "Test for overflow in range arithmetic"
+    config:
+      test_values:
+        - "2^63"       # Large value
+        - "2^64 - 1"   # Max u64
+        - "(p-1)/2"    # Mid-field
+
+  - type: "underconstrained"
+    description: "Check for missing range constraints"
+    config:
+      witness_pairs: 1000
+      focus_on:
+        - "bits"
+        - "value"
+
+# Range-specific mutations
+mutations:
+  - name: "boundary_mutation"
+    probability: 0.4
+    use_values:
+      - "zero"
+      - "one"
+      - "max_range"
+      - "max_range_plus_one"
+    description: "Test boundary values"
+
+  - name: "bit_flip_high"
+    probability: 0.3
+    operations: ["flip_high_bit"]
+    description: "Flip high-order bits to exceed range"
+
+  - name: "overflow_add"
+    probability: 0.2
+    operations: ["add_to_overflow"]
+    description: "Add values to cause overflow"
+
+# Range-specific inputs
+inputs:
+  - name: "value"
+    type: "field"
+    constraints:
+      - "range:0..2^64"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0xffffffff"          # 2^32 - 1
+      - "0xffffffffffffffff"  # 2^64 - 1
+
+  - name: "bits"
+    type: "array<bool>"
+    length: 64
+    fuzz_strategy: "mutation"
+
+oracles:
+  - name: "range_violation"
+    severity: "critical"
+    description: "Value exceeds allowed range"
+
+  - name: "invalid_bit_decomposition"
+    severity: "critical"
+    description: "Bit decomposition is invalid (non-binary or wrong reconstruction)"
+
+  - name: "overflow_undetected"
+    severity: "high"
+    description: "Arithmetic overflow not caught by constraints"
