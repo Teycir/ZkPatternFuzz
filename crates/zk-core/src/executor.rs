@@ -237,6 +237,11 @@ pub trait ConstraintInspector: CircuitExecutor {
     fn output_indices(&self) -> Vec<usize> {
         Vec::new()
     }
+
+    /// Get optional wire labels (index -> name) when available
+    fn wire_labels(&self) -> std::collections::HashMap<usize, String> {
+        std::collections::HashMap::new()
+    }
 }
 
 /// Batch executor for parallel execution

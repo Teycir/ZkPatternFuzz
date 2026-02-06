@@ -16,6 +16,7 @@ pub use zk_core::CircuitInfo;
 
 use crate::analysis::{ConstraintChecker, UnknownLookupPolicy};
 use zk_core::{FieldElement, Framework};
+use zk_fuzzer_core::constants::FieldType;
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -110,6 +111,30 @@ fn sanitize_component(raw: &str) -> String {
     } else {
         out
     }
+}
+
+fn field_type_from_name(name: &str) -> FieldType {
+    let normalized = name.trim().to_lowercase().replace('_', "-");
+    match normalized.as_str() {
+        "bn254" | "bn128" | "bn256" | "alt-bn128" | "alt_bn128" => FieldType::Bn254,
+        "bls12-381" | "bls12381" | "bls12_381" => FieldType::Bls12_381,
+        "pasta" | "pallas" | "vesta" => FieldType::Pasta,
+        "goldilocks" => FieldType::Goldilocks,
+        _ => FieldType::Bn254,
+    }
+}
+
+fn field_modulus_from_name(name: &str) -> [u8; 32] {
+    let field_type = field_type_from_name(name);
+    let hex = field_type.modulus_hex();
+    let mut bytes = [0u8; 32];
+    if let Ok(decoded) = hex::decode(hex) {
+        if decoded.len() <= 32 {
+            let start = 32 - decoded.len();
+            bytes[start..].copy_from_slice(&decoded);
+        }
+    }
+    bytes
 }
 
 /// Factory for creating circuit executors based on framework type
@@ -353,6 +378,14 @@ impl CircuitExecutor for CircomExecutor {
     fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
         Some(self)
     }
+
+    fn field_modulus(&self) -> [u8; 32] {
+        field_modulus_from_name(self.target.field_name())
+    }
+
+    fn field_name(&self) -> &str {
+        self.target.field_name()
+    }
 }
 
 impl ConstraintInspector for CircomExecutor {
@@ -418,6 +451,10 @@ impl ConstraintInspector for CircomExecutor {
 
     fn output_indices(&self) -> Vec<usize> {
         self.target.output_signal_indices()
+    }
+
+    fn wire_labels(&self) -> std::collections::HashMap<usize, String> {
+        self.target.wire_labels()
     }
 }
 
@@ -489,6 +526,14 @@ impl CircuitExecutor for NoirExecutor {
     fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
         Some(self)
     }
+
+    fn field_modulus(&self) -> [u8; 32] {
+        field_modulus_from_name(self.target.field_name())
+    }
+
+    fn field_name(&self) -> &str {
+        self.target.field_name()
+    }
 }
 
 impl ConstraintInspector for NoirExecutor {
@@ -536,6 +581,10 @@ impl ConstraintInspector for NoirExecutor {
 
     fn output_indices(&self) -> Vec<usize> {
         self.target.output_signal_indices()
+    }
+
+    fn wire_labels(&self) -> std::collections::HashMap<usize, String> {
+        self.target.wire_labels()
     }
 }
 
@@ -610,6 +659,14 @@ impl CircuitExecutor for Halo2Executor {
 
     fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
         Some(self)
+    }
+
+    fn field_modulus(&self) -> [u8; 32] {
+        field_modulus_from_name(self.target.field_name())
+    }
+
+    fn field_name(&self) -> &str {
+        self.target.field_name()
     }
 }
 

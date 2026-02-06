@@ -11,6 +11,7 @@ use zk_core::ConstraintEquation;
 use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -108,6 +109,44 @@ pub enum Visibility {
 }
 
 impl NoirTarget {
+    /// Get the field name used by this circuit (default Noir field)
+    pub fn field_name(&self) -> &str {
+        // Noir currently uses the native field (typically BN254 in Barretenberg)
+        // Override here if/when project metadata exposes a different field.
+        "bn254"
+    }
+
+    /// Get wire labels for inputs/outputs when available
+    pub fn wire_labels(&self) -> HashMap<usize, String> {
+        let mut labels = HashMap::new();
+
+        let metadata = match &self.metadata {
+            Some(m) => m,
+            None => return labels,
+        };
+
+        let mut public_iter = self.public_input_indices().into_iter();
+        let mut private_iter = self.private_input_indices().into_iter();
+
+        for param in &metadata.abi.parameters {
+            let idx = if param.visibility == Visibility::Public {
+                public_iter.next()
+            } else {
+                private_iter.next()
+            };
+
+            if let Some(wire_idx) = idx {
+                labels.insert(wire_idx, param.name.clone());
+            }
+        }
+
+        for (i, wire_idx) in self.output_signal_indices().into_iter().enumerate() {
+            labels.entry(wire_idx).or_insert_with(|| format!("return_{}", i));
+        }
+
+        labels
+    }
+
     fn nargo_home_dir(&self) -> PathBuf {
         self.build_dir.join("nargo_home")
     }

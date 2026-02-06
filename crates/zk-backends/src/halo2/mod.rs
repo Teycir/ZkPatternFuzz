@@ -109,6 +109,15 @@ pub enum CommitmentScheme {
 }
 
 impl Halo2Target {
+    /// Get the field name used by this circuit configuration
+    pub fn field_name(&self) -> &str {
+        match self.config.field {
+            Halo2Field::Bn254 => "bn254",
+            Halo2Field::Pasta => "pasta",
+            Halo2Field::Bls12_381 => "bls12-381",
+        }
+    }
+
     /// Create a new Halo2 target from a circuit path
     pub fn new(circuit_path: &str) -> Result<Self> {
         let path = PathBuf::from(circuit_path);

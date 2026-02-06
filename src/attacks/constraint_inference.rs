@@ -144,9 +144,9 @@ impl InferenceContext {
     pub fn from_inspector(inspector: &dyn ConstraintInspector, num_wires: usize) -> Self {
         Self {
             constraints: inspector.get_constraints(),
-            wire_labels: HashMap::new(), // TODO: extract from inspector if available
-            num_public_inputs: 0,
-            num_private_inputs: 0,
+            wire_labels: inspector.wire_labels(),
+            num_public_inputs: inspector.num_public_inputs(),
+            num_private_inputs: inspector.num_private_inputs(),
             num_wires,
         }
     }

@@ -45,6 +45,8 @@ pub struct UnderconstrainedOracle {
     pub collision_count: u64,
     /// Optional: fixed public inputs for proper underconstrained testing
     pub fixed_public_inputs: Option<Vec<FieldElement>>,
+    /// Number of public inputs (used to scope collisions to identical public inputs)
+    pub num_public_inputs: Option<usize>,
 }
 
 impl UnderconstrainedOracle {
@@ -53,6 +55,7 @@ impl UnderconstrainedOracle {
             output_history: std::collections::HashMap::new(),
             collision_count: 0,
             fixed_public_inputs: None,
+            num_public_inputs: None,
         }
     }
     
@@ -63,6 +66,13 @@ impl UnderconstrainedOracle {
     /// correct hypothesis: "multiple private witnesses for same public inputs".
     pub fn with_fixed_public_inputs(mut self, public_inputs: Vec<FieldElement>) -> Self {
         self.fixed_public_inputs = Some(public_inputs);
+        self.num_public_inputs = Some(self.fixed_public_inputs.as_ref().map(|v| v.len()).unwrap_or(0));
+        self
+    }
+    
+    /// Configure how many inputs are public (to scope collisions correctly)
+    pub fn with_public_input_count(mut self, num_public: usize) -> Self {
+        self.num_public_inputs = Some(num_public);
         self
     }
 
@@ -75,12 +85,39 @@ impl UnderconstrainedOracle {
         hasher.finalize().to_vec()
     }
     
+    fn hash_inputs(&self, inputs: &[FieldElement]) -> Vec<u8> {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        for fe in inputs {
+            hasher.update(fe.0);
+        }
+        hasher.finalize().to_vec()
+    }
+    
+    fn public_inputs<'a>(&self, test_case: &'a TestCase) -> &'a [FieldElement] {
+        let num_public = self.num_public_inputs.unwrap_or(0);
+        if num_public == 0 || test_case.inputs.is_empty() {
+            &test_case.inputs[..0]
+        } else {
+            let end = num_public.min(test_case.inputs.len());
+            &test_case.inputs[..end]
+        }
+    }
+    
+    fn combined_key(&self, output: &[FieldElement], public_inputs: &[FieldElement]) -> Vec<u8> {
+        let mut key = Vec::with_capacity(64);
+        key.extend_from_slice(&self.hash_output(output));
+        key.extend_from_slice(&self.hash_inputs(public_inputs));
+        key
+    }
+    
     /// Record an output for future collision detection
     /// This is the key method that was missing - stateful recording
     pub fn record_output(&mut self, test_case: TestCase, output: &[FieldElement]) {
-        let output_hash = self.hash_output(output);
-        // Only record if we haven't seen this output before
-        self.output_history.entry(output_hash).or_insert(test_case);
+        let public_inputs = self.public_inputs(&test_case);
+        let key = self.combined_key(output, public_inputs);
+        // Only record if we haven't seen this output for these public inputs before
+        self.output_history.entry(key).or_insert(test_case);
     }
     
     /// Check if a test case matches the fixed public inputs (if set)
@@ -110,10 +147,16 @@ impl Default for UnderconstrainedOracle {
 
 impl BugOracle for UnderconstrainedOracle {
     fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
-        let output_hash = self.hash_output(output);
+        let num_public = self.num_public_inputs.unwrap_or(0);
+        if !self.matches_fixed_public_inputs(test_case, num_public) {
+            return None;
+        }
 
-        // Check for collision first
-        if let Some(existing) = self.output_history.get(&output_hash) {
+        let public_inputs = self.public_inputs(test_case);
+        let key = self.combined_key(output, public_inputs);
+
+        // Check for collision within same public inputs
+        if let Some(existing) = self.output_history.get(&key) {
             if existing.inputs != test_case.inputs {
                 self.collision_count += 1;
                 return Some(Finding {
@@ -204,16 +247,22 @@ pub struct ArithmeticOverflowOracle {
 
 impl ArithmeticOverflowOracle {
     pub fn new() -> Self {
-        // bn254 scalar field modulus
-        let mut modulus = [0u8; 32];
-        let hex = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
-        if let Ok(decoded) = hex::decode(hex) {
-            modulus.copy_from_slice(&decoded);
-        }
-        Self {
-            field_modulus: modulus,
-        }
+        Self::new_with_modulus(default_bn254_modulus())
     }
+    
+    /// Create oracle with an explicit field modulus
+    pub fn new_with_modulus(field_modulus: [u8; 32]) -> Self {
+        Self { field_modulus }
+    }
+}
+
+fn default_bn254_modulus() -> [u8; 32] {
+    let mut modulus = [0u8; 32];
+    let hex = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
+    if let Ok(decoded) = hex::decode(hex) {
+        modulus.copy_from_slice(&decoded);
+    }
+    modulus
 }
 
 impl Default for ArithmeticOverflowOracle {
@@ -331,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_underconstrained_oracle() {
-        let oracle = UnderconstrainedOracle::new();
+        let mut oracle = UnderconstrainedOracle::new();
         let test_case = TestCase {
             inputs: vec![FieldElement::zero()],
             expected_output: None,
@@ -344,8 +393,41 @@ mod tests {
     }
 
     #[test]
+    fn test_underconstrained_oracle_scopes_public_inputs() {
+        let mut oracle = UnderconstrainedOracle::new().with_public_input_count(1);
+        let output = vec![FieldElement::one()];
+
+        let tc_a = TestCase {
+            inputs: vec![FieldElement::from_u64(1), FieldElement::from_u64(10)],
+            expected_output: None,
+            metadata: zk_core::TestMetadata::default(),
+        };
+
+        let tc_b = TestCase {
+            inputs: vec![FieldElement::from_u64(2), FieldElement::from_u64(20)],
+            expected_output: None,
+            metadata: zk_core::TestMetadata::default(),
+        };
+
+        let tc_c = TestCase {
+            inputs: vec![FieldElement::from_u64(1), FieldElement::from_u64(99)],
+            expected_output: None,
+            metadata: zk_core::TestMetadata::default(),
+        };
+
+        // Different public inputs: should not collide
+        assert!(oracle.check(&tc_a, &output).is_none());
+        assert!(oracle.check(&tc_b, &output).is_none());
+
+        // Same public input, different private input: should collide
+        let finding = oracle.check(&tc_c, &output);
+        assert!(finding.is_some());
+        assert_eq!(finding.unwrap().attack_type, AttackType::Underconstrained);
+    }
+
+    #[test]
     fn test_arithmetic_overflow_oracle() {
-        let oracle = ArithmeticOverflowOracle::new();
+        let mut oracle = ArithmeticOverflowOracle::new();
         let test_case = TestCase {
             inputs: vec![FieldElement([0xff; 32])], // Definitely overflow
             expected_output: None,

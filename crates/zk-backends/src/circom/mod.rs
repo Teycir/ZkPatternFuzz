@@ -760,6 +760,25 @@ impl CircomTarget {
             .map(|m| m.output_signal_indices.clone())
             .unwrap_or_default()
     }
+
+    /// Get the field name/prime used by this circuit (e.g., bn128/bn254)
+    pub fn field_name(&self) -> &str {
+        self.metadata
+            .as_ref()
+            .map(|m| m.prime.as_str())
+            .unwrap_or("bn128")
+    }
+
+    /// Get wire labels when available (index -> name)
+    pub fn wire_labels(&self) -> HashMap<usize, String> {
+        let mut labels = HashMap::new();
+        if let Some(metadata) = &self.metadata {
+            for (name, idx) in &metadata.signals {
+                labels.entry(*idx).or_insert_with(|| name.clone());
+            }
+        }
+        labels
+    }
 }
 
 impl TargetCircuit for CircomTarget {

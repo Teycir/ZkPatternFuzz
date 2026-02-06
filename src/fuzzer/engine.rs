@@ -291,8 +291,13 @@ impl FuzzingEngine {
 
         // Initialize bug oracles including semantic oracles from config
         let mut oracles: Vec<Box<dyn BugOracle>> = vec![
-            Box::new(UnderconstrainedOracle::new()),
-            Box::new(ArithmeticOverflowOracle::new()),
+            Box::new(
+                UnderconstrainedOracle::new()
+                    .with_public_input_count(executor.num_public_inputs()),
+            ),
+            Box::new(ArithmeticOverflowOracle::new_with_modulus(
+                executor.field_modulus(),
+            )),
         ];
         
         // Phase 0 Fix: Wire semantic oracles from config
@@ -1138,8 +1143,26 @@ impl FuzzingEngine {
         }
 
         // Generate test cases
+        let num_public = self.executor.num_public_inputs().min(self.config.inputs.len());
+        let fixed_public = if num_public > 0 {
+            let base = self.generate_test_case();
+            let end = num_public.min(base.inputs.len());
+            Some(base.inputs[..end].to_vec())
+        } else {
+            None
+        };
+
         let test_cases: Vec<TestCase> = (0..witness_pairs)
-            .map(|_| self.generate_test_case())
+            .map(|_| {
+                let mut tc = self.generate_test_case();
+                if let Some(ref public_inputs) = fixed_public {
+                    let end = num_public.min(tc.inputs.len());
+                    if end == public_inputs.len() {
+                        tc.inputs[..end].clone_from_slice(public_inputs);
+                    }
+                }
+                tc
+            })
             .collect();
 
         // Execute in parallel and collect outputs
@@ -2240,9 +2263,19 @@ impl FuzzingEngine {
         // Generate a base witness
         let base_witness = self.generate_test_case();
         
-        // Determine output wire indices (simplified: use first few wires after inputs)
-        let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
-        let output_wires: Vec<usize> = (num_inputs..num_inputs + 5).collect();
+        // Determine output wire indices (prefer inspector-provided outputs)
+        let output_wires: Vec<usize> = if let Some(inspector) = self.executor.constraint_inspector() {
+            let outputs = inspector.output_indices();
+            if !outputs.is_empty() {
+                outputs
+            } else {
+                let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
+                (num_inputs..num_inputs + 5).collect()
+            }
+        } else {
+            let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
+            (num_inputs..num_inputs + 5).collect()
+        };
         
         let findings = oracle.run(
             self.executor.as_ref(),
