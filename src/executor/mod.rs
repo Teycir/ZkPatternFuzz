@@ -19,7 +19,7 @@ use crate::analysis::{
     UnknownLookupPolicy, WireRef,
 };
 use crate::analysis::constraint_types::LinearCombination;
-use zk_core::{ExecutionCoverage, FieldElement, Framework};
+use zk_core::{FieldElement, Framework};
 use zk_fuzzer_core::constants::FieldType;
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
@@ -464,25 +464,6 @@ fn collect_wire_labels_from_constraint(
     }
 }
 
-fn dependencies_within_inputs(
-    inspector: &dyn ConstraintInspector,
-    input_len: usize,
-) -> bool {
-    let deps = inspector.get_constraint_dependencies();
-    if deps.is_empty() {
-        return false;
-    }
-    let mut max_idx: Option<usize> = None;
-    for group in deps {
-        for idx in group {
-            max_idx = Some(max_idx.map(|m| m.max(idx)).unwrap_or(idx));
-        }
-    }
-    match max_idx {
-        Some(max_idx) => max_idx < input_len,
-        None => false,
-    }
-}
 
 /// Factory for creating circuit executors based on framework type
 pub struct ExecutorFactory;
@@ -821,34 +802,6 @@ impl NoirExecutor {
         let mut target = crate::targets::NoirTarget::new(project_path)?.with_build_dir(build_dir);
         target.compile()?;
         Ok(Self { target })
-    }
-
-    fn build_witness_from_inputs(&self, inputs: &[FieldElement]) -> Vec<FieldElement> {
-        let public = self.target.public_input_indices();
-        let private = self.target.private_input_indices();
-        let max_idx = public
-            .iter()
-            .chain(private.iter())
-            .copied()
-            .max()
-            .unwrap_or(0);
-        let mut witness = vec![FieldElement::zero(); max_idx.max(1) + 1];
-
-        // Conventional R1CS constant wire.
-        witness[0] = FieldElement::one();
-
-        let mut idx = 0usize;
-        for wire_idx in public.iter().chain(private.iter()) {
-            if idx >= inputs.len() {
-                break;
-            }
-            if *wire_idx < witness.len() {
-                witness[*wire_idx] = inputs[idx].clone();
-            }
-            idx += 1;
-        }
-
-        witness
     }
 
     fn build_witness_with_outputs(

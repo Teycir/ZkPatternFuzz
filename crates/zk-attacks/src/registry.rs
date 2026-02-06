@@ -11,7 +11,9 @@ use crate::{
 };
 use anyhow::Result;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+#[cfg(feature = "plugin-loader")]
+use std::path::Path;
 use zk_core::Attack;
 
 /// Metadata describing an attack plugin.

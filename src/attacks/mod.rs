@@ -23,6 +23,7 @@ pub mod witness_collision;
 
 pub use arithmetic::*;
 pub use boundary::*;
+#[allow(ambiguous_glob_reexports)]
 pub use collision::*;
 pub use constraint_inference::*;
 pub use constraint_slice::*;
@@ -32,6 +33,7 @@ pub use spec_inference::*;
 pub use underconstrained::*;
 pub use verification::*;
 pub use witness::*;
+#[allow(ambiguous_glob_reexports)]
 pub use witness_collision::*;
 
 pub use zk_attacks::{

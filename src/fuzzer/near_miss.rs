@@ -25,7 +25,6 @@
 
 use std::collections::HashMap;
 use zk_core::FieldElement;
-use sha2::{Sha256, Digest};
 
 /// Configuration for near-miss detection
 #[derive(Debug, Clone)]

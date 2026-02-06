@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 use zk_fuzzer::config::Framework;
-use zk_fuzzer::executor::{CircuitExecutor, ExecutorFactory, CircomExecutor, NoirExecutor};
+use zk_fuzzer::executor::{CircuitExecutor, ExecutorFactory, CircomExecutor, NoirExecutor, Halo2Executor};
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CircomTarget, NoirTarget, Halo2Target, CairoTarget, TargetCircuit};
 
@@ -39,6 +39,10 @@ fn halo2_spec_path(name: &str) -> PathBuf {
         .join("tests")
         .join("halo2_specs")
         .join(format!("{}.json", name))
+}
+
+fn halo2_real_repo_path() -> PathBuf {
+    PathBuf::from("/media/elements/Repos/zk0d/cat5_frameworks/halo2-scaffold")
 }
 
 /// Test that all required backends are available
@@ -273,6 +277,45 @@ fn test_noir_constraint_coverage() {
     assert!(
         !result.coverage.satisfied_constraints.is_empty(),
         "Expected constraint-level coverage for Noir executor"
+    );
+}
+
+/// Validate constraint-level coverage for a real Halo2 circuit project.
+/// Requires the halo2-scaffold repo cloned at /media/elements/Repos/zk0d/cat5_frameworks/halo2-scaffold.
+#[test]
+#[ignore]
+fn test_halo2_real_circuit_constraint_coverage() {
+    let repo_path = halo2_real_repo_path();
+    assert!(
+        repo_path.exists(),
+        "Missing halo2-scaffold repo at {:?}",
+        repo_path
+    );
+
+    let cargo_home = std::env::temp_dir().join("zk0d_cargo_home");
+    std::fs::create_dir_all(&cargo_home).expect("Failed to create temp cargo home");
+    std::env::set_var("CARGO_HOME", &cargo_home);
+    std::env::set_var("RUSTUP_HOME", cargo_home.join("rustup"));
+
+    let build_dir = std::env::temp_dir().join("zk0d_halo2_build");
+    let executor = Halo2Executor::new_with_build_dir(
+        repo_path.to_str().unwrap(),
+        "zk0d_mul",
+        build_dir,
+    )
+        .expect("Failed to create Halo2Executor");
+
+    let inputs = vec![
+        FieldElement::from_u64(3),
+        FieldElement::from_u64(5),
+        FieldElement::from_u64(15),
+    ];
+
+    let result = executor.execute_sync(&inputs);
+    assert!(result.success, "Halo2 execution failed");
+    assert!(
+        !result.coverage.satisfied_constraints.is_empty(),
+        "Expected constraint-level coverage for Halo2 executor"
     );
 }
 

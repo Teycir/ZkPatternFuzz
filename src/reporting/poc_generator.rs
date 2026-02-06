@@ -121,7 +121,7 @@ impl PoCGenerator {
         // Write witness A
         writeln!(script, "# Witness A (exploiting input)")?;
         writeln!(script, "cat > input_a.json << 'EOF'")?;
-        writeln!(script, "{}", self.witness_to_json(&finding.poc.witness_a, "witness_a")?)?;
+        writeln!(script, "{}", self.witness_to_json(&finding.poc.witness_a)?)?;
         writeln!(script, "EOF")?;
         writeln!(script, "")?;
 
@@ -129,7 +129,7 @@ impl PoCGenerator {
         if let Some(ref witness_b) = finding.poc.witness_b {
             writeln!(script, "# Witness B (alternative valid witness)")?;
             writeln!(script, "cat > input_b.json << 'EOF'")?;
-            writeln!(script, "{}", self.witness_to_json(witness_b, "witness_b")?)?;
+            writeln!(script, "{}", self.witness_to_json(witness_b)?)?;
             writeln!(script, "EOF")?;
             writeln!(script, "")?;
         }
@@ -401,7 +401,7 @@ impl PoCGenerator {
     }
 
     /// Convert witness to JSON format for circuit input
-    fn witness_to_json(&self, witness: &[FieldElement], name: &str) -> anyhow::Result<String> {
+    fn witness_to_json(&self, witness: &[FieldElement]) -> anyhow::Result<String> {
         let mut json = String::from("{\n");
         for (i, fe) in witness.iter().enumerate() {
             let comma = if i < witness.len() - 1 { "," } else { "" };

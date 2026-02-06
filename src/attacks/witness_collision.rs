@@ -118,8 +118,6 @@ pub struct WitnessCollisionDetector {
     sample_count: usize,
     /// Expected equivalence classes
     equivalence_classes: Vec<EquivalenceClass>,
-    /// Whether to deduplicate similar witnesses
-    deduplicate: bool,
 }
 
 impl Default for WitnessCollisionDetector {
@@ -134,7 +132,6 @@ impl WitnessCollisionDetector {
         Self {
             sample_count: 10000,
             equivalence_classes: Vec::new(),
-            deduplicate: true,
         }
     }
 

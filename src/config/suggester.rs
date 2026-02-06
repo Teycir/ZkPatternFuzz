@@ -17,14 +17,9 @@ use crate::fuzzer::adaptive_attack_scheduler::{AdaptiveScheduler, YamlSuggestion
 use crate::fuzzer::near_miss::NearMiss;
 use crate::reporting::FuzzReport;
 use std::collections::HashMap;
-use zk_core::AttackType;
 
 /// YAML configuration suggester
 pub struct YamlSuggester {
-    /// Minimum score for suggesting budget increase
-    min_score_for_increase: f64,
-    /// Maximum score for suggesting budget decrease
-    max_score_for_decrease: f64,
     /// Whether to include comments in output
     include_comments: bool,
 }
@@ -39,8 +34,6 @@ impl YamlSuggester {
     /// Create a new suggester
     pub fn new() -> Self {
         Self {
-            min_score_for_increase: 75.0,
-            max_score_for_decrease: 10.0,
             include_comments: true,
         }
     }
@@ -147,7 +140,7 @@ impl YamlSuggester {
         original_yaml: &str,
         suggestions: &[YamlSuggestion],
     ) -> anyhow::Result<String> {
-        let mut yaml_value: serde_yaml::Value = serde_yaml::from_str(original_yaml)?;
+        let yaml_value: serde_yaml::Value = serde_yaml::from_str(original_yaml)?;
 
         // Add suggestions as comments at the end
         let mut output = serde_yaml::to_string(&yaml_value)?;
@@ -180,7 +173,7 @@ impl YamlSuggester {
             self.apply_suggestion(&mut yaml_value, suggestion);
         }
 
-        let mut output = serde_yaml::to_string(&yaml_value)?;
+        let output = serde_yaml::to_string(&yaml_value)?;
 
         // Add header
         let header = format!(
@@ -306,7 +299,7 @@ impl SuggestedConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zk_core::{Finding, Severity, ProofOfConcept};
+    use zk_core::{AttackType, Finding, Severity, ProofOfConcept};
 
     #[test]
     fn test_suggester_creation() {

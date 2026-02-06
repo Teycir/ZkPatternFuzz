@@ -64,8 +64,6 @@ pub struct ConstraintSlicer {
     wire_to_constraints: HashMap<usize, Vec<ConstraintId>>,
     /// Constraint-to-wire mapping
     constraint_to_wires: HashMap<ConstraintId, HashSet<usize>>,
-    /// All constraints
-    constraints: Vec<ConstraintEquation>,
     /// Number of public inputs
     num_public_inputs: usize,
     /// Total number of wires
@@ -97,7 +95,6 @@ impl ConstraintSlicer {
             max_depth: 20,
             wire_to_constraints,
             constraint_to_wires,
-            constraints,
             num_public_inputs,
             num_wires,
         }

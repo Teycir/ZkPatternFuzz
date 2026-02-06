@@ -210,7 +210,7 @@ impl FuzzingEngineCore {
     }
 
     pub fn add_to_corpus(&self, executor: &dyn CircuitExecutor, test_case: TestCase) {
-        let mut result = executor.execute_sync(&test_case.inputs);
+        let result = executor.execute_sync(&test_case.inputs);
         let coverage_hash = result.coverage.coverage_hash;
 
         let entry = CorpusEntry::new(test_case, coverage_hash);

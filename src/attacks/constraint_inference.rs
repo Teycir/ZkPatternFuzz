@@ -439,14 +439,11 @@ impl InferenceRule for NullifierUniquenessInference {
 }
 
 /// Range enforcement inference rule
-pub struct RangeEnforcementInference {
-    /// Expected range in bits
-    expected_bits: Option<usize>,
-}
+pub struct RangeEnforcementInference;
 
 impl Default for RangeEnforcementInference {
     fn default() -> Self {
-        Self { expected_bits: None }
+        Self
     }
 }
 
@@ -469,17 +466,6 @@ impl InferenceRule for RangeEnforcementInference {
             .collect();
 
         for wire in range_wires {
-            // Check if there's a LessThan or range constraint
-            let has_range_check = context.constraints.iter().any(|c| {
-                // Simplified: check if wire appears in many constraints (typical of bit decomposition)
-                let count = c.a_terms.iter()
-                    .chain(c.b_terms.iter())
-                    .chain(c.c_terms.iter())
-                    .filter(|(w, _)| *w == wire)
-                    .count();
-                count > 0
-            });
-
             // Heuristic: if wire has "value/amount/balance" but few constraints, likely missing range
             let constraint_count = context.constraints.iter()
                 .filter(|c| {
