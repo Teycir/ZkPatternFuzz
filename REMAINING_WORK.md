@@ -65,12 +65,12 @@
 
 ### A. Constraint Inference
 - [x] Basic implementation
-- [ ] Execute violation witnesses for confirmation
-- [ ] Add Halo2/Cairo label sources
+- [x] Execute violation witnesses for confirmation
+- [x] Add Halo2/Cairo label sources
 
 ### B. Metamorphic Oracles
 - [x] Basic implementation
-- [ ] Circuit-specific relations
+- [x] Circuit-specific relations
 
 ### C. Constraint Slice
 - [x] Basic implementation
@@ -142,8 +142,8 @@
 
 ### Week 1: Validation
 1. [x] Run integration tests on real circuits (Circom/Noir/Halo2)
-2. Execute constraint-inference violations
-3. Enhance metamorphic relations
+2. [x] Execute constraint-inference violations
+3. [x] Enhance metamorphic relations
 
 ### Week 2: Documentation
 1. Write capability matrix
@@ -179,7 +179,6 @@
 
 ### Needs Enhancement
 - ⚠️ Constraint inference (needs validation)
-- ⚠️ Metamorphic relations (generic)
 - ⚠️ Integration testing on real circuits
 
 ### Not Started

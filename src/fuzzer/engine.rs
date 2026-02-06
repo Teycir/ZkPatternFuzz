@@ -110,7 +110,10 @@ use crate::corpus::create_corpus;
 use crate::executor::{create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions};
 use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
 use crate::reporting::FuzzReport;
-use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Finding, ProofOfConcept, TestCase, TestMetadata};
+use zk_core::{
+    CircuitExecutor, ConstraintInspector, ExecutionResult, FieldElement, Finding, ProofOfConcept,
+    TestCase, TestMetadata,
+};
 use zk_fuzzer_core::engine::FuzzingEngineCore;
 
 use rand::Rng;
@@ -2186,22 +2189,44 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::constraint_inference::ConstraintInferenceEngine;
+        use crate::attacks::constraint_inference::{ConstraintInferenceEngine, InferenceContext};
         use crate::config::v2::InvariantType;
         
         let confidence_threshold = config
             .get("confidence_threshold")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.7);
+
+        let confirm_violations = config
+            .get("confirm_violations")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
         
         tracing::info!("Running constraint inference attack (confidence >= {:.0}%)", confidence_threshold * 100.0);
         
         let engine = ConstraintInferenceEngine::new()
             .with_confidence_threshold(confidence_threshold)
             .with_generate_violations(true);
-        
-        let findings = engine.run(self.executor.as_ref());
-        
+
+        let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
+        let num_wires = num_inputs.saturating_add(100);
+        let mut implied = if let Some(inspector) = self.executor.constraint_inspector() {
+            let mut context = InferenceContext::from_inspector(inspector, num_wires);
+            self.merge_config_input_labels(inspector, &mut context.wire_labels);
+            self.merge_output_labels(inspector, &mut context.wire_labels);
+            engine.analyze_with_context(&context)
+        } else {
+            tracing::warn!("No constraint inspector available for constraint inference");
+            Vec::new()
+        };
+
+        if confirm_violations && !implied.is_empty() {
+            let base_inputs = self.generate_test_case().inputs;
+            engine.confirm_violations(self.executor.as_ref(), &base_inputs, &mut implied);
+        }
+
+        let findings = engine.to_findings(&implied);
+
         for finding in findings {
             self.core.findings().write().unwrap().push(finding.clone());
             if let Some(p) = progress {
@@ -2637,13 +2662,9 @@ impl FuzzingEngine {
         use crate::config::v2::InvariantType;
 
         let invariants = self.config.get_invariants();
-        if invariants.is_empty() {
-            return Vec::new();
-        }
-
-        let input_map = self.input_index_map();
         let mut relations = Vec::new();
 
+        let input_map = self.input_index_map();
         for invariant in invariants {
             if invariant.invariant_type != InvariantType::Metamorphic {
                 continue;
@@ -2670,7 +2691,181 @@ impl FuzzingEngine {
             relations.push(relation);
         }
 
+        relations.extend(self.auto_metamorphic_relations());
+
         relations
+    }
+
+    fn auto_metamorphic_relations(&self) -> Vec<crate::attacks::metamorphic::MetamorphicRelation> {
+        use crate::attacks::metamorphic::{ExpectedBehavior, MetamorphicRelation, Transform};
+        let traits = self.config.get_target_traits();
+        if Self::traits_are_empty(&traits) {
+            return Vec::new();
+        }
+
+        let mut relations = Vec::new();
+
+        if traits.uses_merkle {
+            if let Some(idx) = self.find_input_index_by_patterns(&[
+                "pathindices",
+                "path_indices",
+                "pathindex",
+                "path_index",
+            ]) {
+                let mut assignments = std::collections::HashMap::new();
+                assignments.insert(idx, FieldElement::from_u64(2));
+                relations.push(
+                    MetamorphicRelation::new(
+                        "auto_merkle_path_index_binary",
+                        Transform::SetInputs { assignments },
+                        ExpectedBehavior::ShouldReject,
+                    )
+                    .with_severity(Severity::Critical)
+                    .with_description("Merkle path indices should be binary (0/1)"),
+                );
+            }
+
+            if let Some(idx) = self.find_input_index_by_patterns(&["leaf"]) {
+                relations.push(
+                    MetamorphicRelation::new(
+                        "auto_merkle_leaf_flip",
+                        Transform::BitFlipInput {
+                            index: idx,
+                            bit_position: 0,
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::High)
+                    .with_description("Flipping the Merkle leaf should change the root/output"),
+                );
+            }
+
+            if let Some(idx) = self.find_input_index_by_patterns(&["root"]) {
+                relations.push(
+                    MetamorphicRelation::new(
+                        "auto_merkle_root_flip",
+                        Transform::BitFlipInput {
+                            index: idx,
+                            bit_position: 0,
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::High)
+                    .with_description("Changing the root input should change output/verification"),
+                );
+            }
+        }
+
+        if traits.uses_nullifier {
+            if let Some(idx) = self.find_input_index_by_patterns(&["nullifier"]) {
+                relations.push(
+                    MetamorphicRelation::new(
+                        "auto_nullifier_variation",
+                        Transform::AddToInputs {
+                            indices: vec![idx],
+                            value: FieldElement::one(),
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::High)
+                    .with_description("Nullifier changes should affect outputs"),
+                );
+            }
+        }
+
+        if traits.uses_commitment {
+            if let Some(idx) = self.find_input_index_by_patterns(&["commitment", "commit"]) {
+                relations.push(
+                    MetamorphicRelation::new(
+                        "auto_commitment_flip",
+                        Transform::BitFlipInput {
+                            index: idx,
+                            bit_position: 0,
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::High)
+                    .with_description("Commitment mutation should affect outputs"),
+                );
+            }
+        }
+
+        if traits.uses_signature {
+            if let Some(idx) = self.find_signature_input_index() {
+                relations.push(
+                    MetamorphicRelation::new(
+                        "auto_signature_flip",
+                        Transform::BitFlipInput {
+                            index: idx,
+                            bit_position: 0,
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::High)
+                    .with_description("Mutating the signature should change verification outcome"),
+                );
+            }
+        }
+
+        if !traits.range_checks.is_empty() {
+            if let Some(idx) = self.find_input_index_by_patterns(&[
+                "amount",
+                "value",
+                "balance",
+                "quantity",
+                "qty",
+            ]) {
+                let mut assignments = std::collections::HashMap::new();
+                assignments.insert(idx, FieldElement::max_value());
+                relations.push(
+                    MetamorphicRelation::new(
+                        "auto_range_overflow",
+                        Transform::SetInputs { assignments },
+                        ExpectedBehavior::ShouldReject,
+                    )
+                    .with_severity(Severity::High)
+                    .with_description("Range-checked inputs should reject overflow values"),
+                );
+            }
+        }
+
+        relations
+    }
+
+    fn traits_are_empty(traits: &crate::config::v2::TargetTraits) -> bool {
+        !traits.uses_merkle
+            && !traits.uses_nullifier
+            && !traits.uses_commitment
+            && !traits.uses_signature
+            && traits.range_checks.is_empty()
+            && traits.hash_function.is_none()
+            && traits.curve.is_none()
+            && traits.custom.is_empty()
+    }
+
+    fn find_input_index_by_patterns(&self, patterns: &[&str]) -> Option<usize> {
+        let patterns: Vec<String> = patterns.iter().map(|p| p.to_lowercase()).collect();
+        for (idx, input) in self.config.inputs.iter().enumerate() {
+            let name = input.name.to_lowercase();
+            if patterns.iter().any(|p| name.contains(p)) {
+                return Some(idx);
+            }
+        }
+        None
+    }
+
+    fn find_signature_input_index(&self) -> Option<usize> {
+        for (idx, input) in self.config.inputs.iter().enumerate() {
+            let name = input.name.to_lowercase();
+            if name.contains("signature")
+                || name.starts_with("sig")
+                || name.contains("_sig")
+                || name.contains("sig_")
+            {
+                return Some(idx);
+            }
+        }
+        None
     }
 
     fn enforce_invariants(
@@ -2749,6 +2944,37 @@ impl FuzzingEngine {
             .enumerate()
             .map(|(idx, input)| (input.name.to_lowercase(), idx))
             .collect()
+    }
+
+    fn merge_config_input_labels(
+        &self,
+        inspector: &dyn ConstraintInspector,
+        labels: &mut std::collections::HashMap<usize, String>,
+    ) {
+        let mut wire_indices = inspector.public_input_indices();
+        wire_indices.extend(inspector.private_input_indices());
+
+        if wire_indices.is_empty() {
+            wire_indices = (0..self.config.inputs.len()).collect();
+        }
+
+        for (input_idx, input) in self.config.inputs.iter().enumerate() {
+            if let Some(&wire_idx) = wire_indices.get(input_idx) {
+                labels.entry(wire_idx).or_insert_with(|| input.name.clone());
+            }
+        }
+    }
+
+    fn merge_output_labels(
+        &self,
+        inspector: &dyn ConstraintInspector,
+        labels: &mut std::collections::HashMap<usize, String>,
+    ) {
+        for (idx, wire_idx) in inspector.output_indices().iter().enumerate() {
+            labels
+                .entry(*wire_idx)
+                .or_insert_with(|| format!("output_{}", idx));
+        }
     }
 
     fn extract_target_indices_from_relation(

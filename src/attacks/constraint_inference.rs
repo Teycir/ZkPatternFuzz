@@ -111,6 +111,32 @@ pub struct ImpliedConstraint {
     pub suggested_constraint: String,
     /// Violation test case (if generated)
     pub violation_witness: Option<Vec<FieldElement>>,
+    /// Execution confirmation status for the violation witness
+    pub confirmation: ViolationConfirmation,
+}
+
+/// Confirmation status for a violation witness
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViolationConfirmation {
+    /// Not executed/checked yet
+    Unchecked,
+    /// Executed and constraints were satisfied
+    Confirmed,
+    /// Executed and constraints were NOT satisfied or execution failed
+    Rejected,
+    /// Executed but confirmation could not be determined (no constraint checks)
+    Inconclusive,
+}
+
+impl ViolationConfirmation {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Unchecked => "unchecked",
+            Self::Confirmed => "confirmed by execution",
+            Self::Rejected => "rejected by execution",
+            Self::Inconclusive => "inconclusive (no constraint evaluation)",
+        }
+    }
 }
 
 /// Trait for constraint inference rules
@@ -221,6 +247,7 @@ impl InferenceRule for BitDecompositionInference {
                         base_wire
                     ),
                     violation_witness: None,
+                    confirmation: ViolationConfirmation::Unchecked,
                 });
             }
         }
@@ -344,6 +371,7 @@ impl InferenceRule for MerklePathInference {
                     involved_wires: vec![wire],
                     suggested_constraint: format!("wire_{} * (1 - wire_{}) == 0", wire, wire),
                     violation_witness: None,
+                    confirmation: ViolationConfirmation::Unchecked,
                 });
             }
         }
@@ -411,6 +439,7 @@ impl InferenceRule for NullifierUniquenessInference {
                         "nullifier == hash(secret, ...)",
                     ),
                     violation_witness: None,
+                    confirmation: ViolationConfirmation::Unchecked,
                 });
             }
         }
@@ -487,6 +516,7 @@ impl InferenceRule for RangeEnforcementInference {
                     involved_wires: vec![wire],
                     suggested_constraint: format!("0 <= wire_{} < 2^64", wire),
                     violation_witness: None,
+                    confirmation: ViolationConfirmation::Unchecked,
                 });
             }
         }
@@ -595,6 +625,78 @@ impl ConstraintInferenceEngine {
         all_implied
     }
 
+    /// Execute violation witnesses to confirm inferred constraints.
+    ///
+    /// This attempts to run the inferred violation against the executor by
+    /// overlaying the violation values onto a base input vector. Confirmation
+    /// is marked as:
+    /// - Confirmed: execution succeeds and all evaluated constraints are satisfied
+    /// - Rejected: execution fails or evaluated constraints are not all satisfied
+    /// - Inconclusive: execution succeeds but no constraint evaluation is available
+    pub fn confirm_violations(
+        &self,
+        executor: &dyn CircuitExecutor,
+        base_inputs: &[FieldElement],
+        implied: &mut [ImpliedConstraint],
+    ) {
+        let num_inputs = executor.num_public_inputs() + executor.num_private_inputs();
+        if num_inputs == 0 {
+            return;
+        }
+
+        let mut seed_inputs = base_inputs.to_vec();
+        if seed_inputs.len() < num_inputs {
+            seed_inputs.resize(num_inputs, FieldElement::zero());
+        } else if seed_inputs.len() > num_inputs {
+            seed_inputs.truncate(num_inputs);
+        }
+
+        for constraint in implied.iter_mut() {
+            let Some(violation) = constraint.violation_witness.as_ref() else {
+                constraint.confirmation = ViolationConfirmation::Unchecked;
+                continue;
+            };
+
+            let mut candidate_inputs = seed_inputs.clone();
+
+            if constraint.involved_wires.is_empty() {
+                for (idx, value) in violation.iter().enumerate() {
+                    if idx >= candidate_inputs.len() {
+                        break;
+                    }
+                    candidate_inputs[idx] = value.clone();
+                }
+            } else {
+                for &wire in &constraint.involved_wires {
+                    if wire < candidate_inputs.len() && wire < violation.len() {
+                        candidate_inputs[wire] = violation[wire].clone();
+                    }
+                }
+            }
+
+            let result = executor.execute_sync(&candidate_inputs);
+            if !result.success {
+                constraint.confirmation = ViolationConfirmation::Rejected;
+                continue;
+            }
+
+            if result.coverage.evaluated_constraints.is_empty() {
+                constraint.confirmation = ViolationConfirmation::Inconclusive;
+                constraint.violation_witness = Some(candidate_inputs);
+                continue;
+            }
+
+            let all_satisfied = result.coverage.satisfied_constraints.len()
+                == result.coverage.evaluated_constraints.len();
+            if all_satisfied {
+                constraint.confirmation = ViolationConfirmation::Confirmed;
+                constraint.violation_witness = Some(candidate_inputs);
+            } else {
+                constraint.confirmation = ViolationConfirmation::Rejected;
+            }
+        }
+    }
+
     /// Convert implied constraints to findings
     pub fn to_findings(&self, implied: &[ImpliedConstraint]) -> Vec<Finding> {
         implied
@@ -602,12 +704,21 @@ impl ConstraintInferenceEngine {
             .map(|ic| Finding {
                 attack_type: AttackType::ConstraintInference,
                 severity: ic.category.severity(),
-                description: format!(
-                    "{} (confidence: {:.0}%)\nSuggested fix: {}",
-                    ic.description,
-                    ic.confidence * 100.0,
-                    ic.suggested_constraint
-                ),
+                description: {
+                    let mut description = format!(
+                        "{} (confidence: {:.0}%)\nSuggested fix: {}",
+                        ic.description,
+                        ic.confidence * 100.0,
+                        ic.suggested_constraint
+                    );
+                    if ic.confirmation != ViolationConfirmation::Unchecked {
+                        description.push_str(&format!(
+                            "\nViolation check: {}",
+                            ic.confirmation.as_str()
+                        ));
+                    }
+                    description
+                },
                 poc: ProofOfConcept {
                     witness_a: ic.violation_witness.clone().unwrap_or_default(),
                     witness_b: None,
@@ -642,6 +753,9 @@ pub struct ConstraintInferenceStats {
     pub implied_found: usize,
     pub high_confidence: usize,
     pub violations_generated: usize,
+    pub violations_confirmed: usize,
+    pub violations_rejected: usize,
+    pub violations_inconclusive: usize,
 }
 
 impl ConstraintInferenceEngine {
@@ -652,6 +766,18 @@ impl ConstraintInferenceEngine {
             implied_found: implied.len(),
             high_confidence: implied.iter().filter(|c| c.confidence >= 0.8).count(),
             violations_generated: implied.iter().filter(|c| c.violation_witness.is_some()).count(),
+            violations_confirmed: implied
+                .iter()
+                .filter(|c| c.confirmation == ViolationConfirmation::Confirmed)
+                .count(),
+            violations_rejected: implied
+                .iter()
+                .filter(|c| c.confirmation == ViolationConfirmation::Rejected)
+                .count(),
+            violations_inconclusive: implied
+                .iter()
+                .filter(|c| c.confirmation == ViolationConfirmation::Inconclusive)
+                .count(),
         }
     }
 }
@@ -684,6 +810,7 @@ mod tests {
             involved_wires: vec![1, 2, 3],
             suggested_constraint: "sum(bits) == value".to_string(),
             violation_witness: Some(vec![FieldElement::from_u64(1)]),
+            confirmation: ViolationConfirmation::Unchecked,
         };
 
         assert!(implied.violation_witness.is_some());
