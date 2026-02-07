@@ -17,7 +17,7 @@ campaign:
   parameters:
     field: "bn254"
     max_constraints: 100000
-    timeout_seconds: 1800
+    timeout_seconds: 300
     build_dir_base: "./build/zk0d/semaphore"
     # Setup required before running this campaign:
     # Semaphore v4 uses pnpm workspaces. Install dependencies:

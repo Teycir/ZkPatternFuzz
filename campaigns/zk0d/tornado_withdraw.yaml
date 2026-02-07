@@ -9,7 +9,7 @@ campaign:
   parameters:
     field: "bn254"
     max_constraints: 200000
-    timeout_seconds: 1800
+    timeout_seconds: 300
     build_dir_base: "./build/zk0d"
 
 # Evidence-mode attack set

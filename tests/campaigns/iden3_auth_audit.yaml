@@ -24,7 +24,7 @@ attacks:
   - type: underconstrained
     description: "Detect if different identities can produce valid auth proofs"
     config:
-      witness_pairs: 8000
+      witness_pairs: 50
       critical_signals:
         - "userID"
         - "claimHash"

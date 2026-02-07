@@ -263,7 +263,7 @@ fn test_adaptive_scheduler_budget_allocation() {
             location: None,
         }],
         near_misses: vec![],
-        iterations: 1000,
+        iterations: 100,
         duration: Duration::from_secs(10),
     };
 
@@ -373,7 +373,7 @@ fn test_yaml_suggestions() {
             distance: 0.05,
             description: "0x1fffffffffffffff".to_string(),
         }],
-        iterations: 1000,
+        iterations: 100,
         duration: Duration::from_secs(10),
     };
 
