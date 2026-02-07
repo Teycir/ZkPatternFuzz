@@ -64,6 +64,7 @@ fn main() -> anyhow::Result<()> {
     if !root.exists() {
         anyhow::bail!("Root path does not exist: {}", root.display());
     }
+    ensure_single_repo(&root)?;
 
     let extensions: Vec<String> = args
         .extensions
@@ -118,6 +119,17 @@ fn main() -> anyhow::Result<()> {
         args.top
     );
 
+    Ok(())
+}
+
+fn ensure_single_repo(root: &Path) -> anyhow::Result<()> {
+    let git_marker = root.join(".git");
+    if !git_marker.exists() {
+        anyhow::bail!(
+            "Skimmer expects a single repo root (missing .git): {}",
+            root.display()
+        );
+    }
     Ok(())
 }
 
