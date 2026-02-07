@@ -171,20 +171,22 @@ on zk0d circuits. If a task does not support this metric, it is out of scope.
 ### Validation on zk0d (Once Ready)
 1. [ ] Run on Tornado withdraw (circom)
 2. [ ] Run on Semaphore (circom)
-3. [ ] Run on Iden3 authV3 (circom)
+3. [x] Run on Iden3 authV3 (circom)  
+   Result (2026-02-07): evidence run completed, **0 findings**. Reports in `reports/zk0d/iden3_authv3/`.
 4. [ ] Expand to cat2/cat4 targets
 
 ---
 
 ## Discovery Execution (Step-by-Step)
-1. [ ] Run skimmer on zk0d  
+1. [x] Run skimmer on zk0d  
    DoD: `scripts/run_skimmer.sh --root /media/elements/Repos/zk0d --max-files 200` produces `reports/zk0d/skimmer/skimmer_summary.md`.
-2. [ ] Select most promising circuit from skimmer summary  
+2. [x] Select most promising circuit from skimmer summary  
    DoD: pick top candidate with highest hint score + manual review notes.
-3. [ ] Manual invariant analysis for selected circuit  
+3. [x] Manual invariant analysis for selected circuit  
    DoD: 3-10 invariants written in v2 YAML with exact input names.
-4. [ ] Evidence run on selected circuit  
+4. [x] Evidence run on selected circuit  
    DoD: `evidence` mode produces PoCs and reproducible report.
+   Selected: `AuthV3` (Iden3). Evidence: `campaigns/zk0d/iden3_authv3.yaml`, candidates: `campaigns/zk0d/candidate_invariants.yaml`.
 
 ### Machine Optimization for the 0-Day Flow (Concrete)
 1. [ ] Use release builds for campaigns  

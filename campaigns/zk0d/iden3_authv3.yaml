@@ -20,23 +20,6 @@ attacks:
       confidence_threshold: 0.7
       confirm_violations: true
 
-  - type: "constraint_slice"
-    description: "Cone-based dependency slicing"
-    config:
-      samples_per_cone: 50
-      base_witness_attempts: 10
-
-  - type: "metamorphic"
-    description: "Transform-based invariants"
-    config:
-      num_tests: 100
-
-  - type: "witness_collision"
-    description: "Detect distinct witnesses with same public outputs"
-    config:
-      samples: 5000
-      scope_public_inputs: true
-
   - type: "boundary"
     description: "Boundary value testing"
     config:

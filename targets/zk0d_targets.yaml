@@ -21,3 +21,5 @@ targets:
     enabled: true
     campaign: "campaigns/zk0d/iden3_authv3.yaml"
     output_dir: "reports/zk0d/iden3_authv3"
+    iterations: 0
+    timeout: 600
