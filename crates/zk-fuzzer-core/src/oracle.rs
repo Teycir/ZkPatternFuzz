@@ -32,6 +32,27 @@ pub trait BugOracle: Send + Sync {
     fn attack_type(&self) -> Option<AttackType> {
         None
     }
+
+    /// Check using a known constraint count when available.
+    fn check_with_count(&mut self, _test_case: &TestCase, _count: usize) -> Option<Finding> {
+        None
+    }
+
+    /// Whether this oracle requires a constraint count to operate.
+    fn requires_constraint_count(&self) -> bool {
+        false
+    }
+
+    /// Check proof verification outcomes (soundness-focused oracles).
+    fn check_with_verification(
+        &mut self,
+        _original_inputs: &[FieldElement],
+        _mutated_inputs: &[FieldElement],
+        _proof: &[u8],
+        _verified: bool,
+    ) -> Option<Finding> {
+        None
+    }
 }
 
 /// Statistics from oracle execution
@@ -380,6 +401,14 @@ impl BugOracle for ConstraintCountOracle {
         Some(AttackType::Underconstrained)
     }
 
+    fn check_with_count(&mut self, test_case: &TestCase, count: usize) -> Option<Finding> {
+        ConstraintCountOracle::check_with_count(self, test_case, count)
+    }
+
+    fn requires_constraint_count(&self) -> bool {
+        true
+    }
+
     fn reset(&mut self) {
         self.min_count = None;
         self.max_count = None;
@@ -535,6 +564,22 @@ impl BugOracle for ProofForgeryOracle {
 
     fn attack_type(&self) -> Option<AttackType> {
         Some(AttackType::Soundness)
+    }
+
+    fn check_with_verification(
+        &mut self,
+        original_inputs: &[FieldElement],
+        mutated_inputs: &[FieldElement],
+        proof: &[u8],
+        verified: bool,
+    ) -> Option<Finding> {
+        ProofForgeryOracle::check_with_verification(
+            self,
+            original_inputs,
+            mutated_inputs,
+            proof,
+            verified,
+        )
     }
 
     fn reset(&mut self) {

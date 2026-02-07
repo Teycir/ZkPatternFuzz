@@ -28,7 +28,7 @@
 //! ```
 
 use std::collections::HashMap;
-use zk_core::{CircuitExecutor, Finding, Severity, TestCase, FieldElement};
+use zk_core::{AttackType, CircuitExecutor, Finding, Severity, TestCase, FieldElement};
 use super::oracle::BugOracle;
 
 /// Result of validating a finding
@@ -94,6 +94,12 @@ pub struct OracleValidationConfig {
     pub min_mutation_detection_rate: f64,
     /// Whether to skip stateful oracles during differential validation
     pub skip_stateful_oracles: bool,
+    /// Whether to allow cross-attack-type validation using related families
+    pub allow_cross_attack_type: bool,
+    /// Weight assigned to cross-attack-type agreement (0.0 - 1.0)
+    pub cross_attack_weight: f64,
+    /// Whether to reset stateful oracles between validations
+    pub reset_stateful_oracles: bool,
 }
 
 impl Default for OracleValidationConfig {
@@ -103,9 +109,65 @@ impl Default for OracleValidationConfig {
             require_ground_truth: false,
             mutation_test_count: 10,
             min_mutation_detection_rate: 0.7,
-            skip_stateful_oracles: true,
+            skip_stateful_oracles: false,
+            allow_cross_attack_type: true,
+            cross_attack_weight: 0.5,
+            reset_stateful_oracles: true,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AttackFamily {
+    ConstraintIntegrity,
+    Soundness,
+    Range,
+    Leakage,
+    Authorization,
+    Setup,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AttackMatch {
+    Exact,
+    Related,
+}
+
+impl AttackMatch {
+    fn weight(self, cross_weight: f64) -> f64 {
+        match self {
+            AttackMatch::Exact => 1.0,
+            AttackMatch::Related => cross_weight,
+        }
+    }
+}
+
+fn attack_family(attack_type: AttackType) -> AttackFamily {
+    use AttackFamily::*;
+    use AttackType::*;
+
+    match attack_type {
+        Underconstrained
+        | ConstraintInference
+        | ConstraintBypass
+        | ConstraintSlice
+        | WitnessCollision
+        | Metamorphic
+        | SpecInference
+        | Collision => ConstraintIntegrity,
+        Soundness | VerificationFuzzing | Differential | RecursiveProof | CircuitComposition => Soundness,
+        ArithmeticOverflow | Boundary | BitDecomposition => Range,
+        WitnessLeakage | InformationLeakage | TimingSideChannel => Leakage,
+        Malleability | ReplayAttack => Authorization,
+        TrustedSetup => Setup,
+        _ => Other,
+    }
+}
+
+struct ValidationSample<'a> {
+    test_case: &'a TestCase,
+    outputs: &'a [FieldElement],
 }
 
 /// Ground truth test case for oracle validation
@@ -188,6 +250,24 @@ impl OracleValidator {
         self.ground_truth = cases;
         self
     }
+
+    fn attack_match_kind(&self, expected: AttackType, observed: AttackType) -> Option<AttackMatch> {
+        if expected == observed {
+            return Some(AttackMatch::Exact);
+        }
+        if !self.config.allow_cross_attack_type {
+            return None;
+        }
+        let expected_family = attack_family(expected);
+        let observed_family = attack_family(observed);
+        if expected_family == AttackFamily::Other || observed_family == AttackFamily::Other {
+            return None;
+        }
+        if expected_family == observed_family {
+            return Some(AttackMatch::Related);
+        }
+        None
+    }
     
     /// Validate a finding using differential oracle validation
     ///
@@ -196,36 +276,71 @@ impl OracleValidator {
         &mut self,
         finding: &Finding,
         oracles: &mut [Box<dyn BugOracle>],
-        test_case: &TestCase,
-        outputs: &[FieldElement],
+        samples: &[ValidationSample<'_>],
     ) -> ValidationResult {
         if oracles.is_empty() {
             return ValidationResult::valid(vec!["No oracles to compare".to_string()]);
         }
-        
+
         let mut agreeing = Vec::new();
         let mut disagreeing = Vec::new();
         let mut considered = 0usize;
+        let mut considered_weight = 0.0f64;
+        let mut agreeing_weight = 0.0f64;
+        let mut exact_considered = 0usize;
+        let mut related_considered = 0usize;
+        let mut stateful_skipped = 0usize;
         
         for oracle in oracles.iter_mut() {
-            if self.config.skip_stateful_oracles && oracle.is_stateful() {
+            let stateful = oracle.is_stateful();
+            if self.config.skip_stateful_oracles && stateful {
                 continue;
             }
-            if let Some(attack_type) = oracle.attack_type() {
-                if attack_type != finding.attack_type {
-                    continue;
+            if stateful && self.config.reset_stateful_oracles {
+                oracle.reset();
+            }
+
+            let relevance = oracle
+                .attack_type()
+                .and_then(|attack_type| self.attack_match_kind(finding.attack_type, attack_type));
+            let Some(relevance) = relevance else {
+                continue;
+            };
+
+            let oracle_name = oracle.name().to_string();
+            let mut found_similar = false;
+            for sample in samples {
+                let oracle_finding = oracle.check(sample.test_case, sample.outputs);
+                if let Some(oracle_finding) = oracle_finding {
+                    if oracle_finding.severity >= Severity::Low
+                        && self
+                            .attack_match_kind(finding.attack_type, oracle_finding.attack_type)
+                            .is_some()
+                    {
+                        found_similar = true;
+                        break;
+                    }
                 }
             }
-            let oracle_name = oracle.name().to_string();
-            let oracle_finding = oracle.check(test_case, outputs);
+
+            if stateful && samples.len() < 2 && !found_similar {
+                stateful_skipped += 1;
+                continue;
+            }
+
+            let weight = relevance.weight(self.config.cross_attack_weight);
+            if weight <= 0.0 {
+                continue;
+            }
             considered += 1;
-            
-            // Check if this oracle found a similar issue
-            let found_similar = oracle_finding.as_ref().map_or(false, |f| {
-                f.attack_type == finding.attack_type && f.severity >= Severity::Low
-            });
-            
+            considered_weight += weight;
+            match relevance {
+                AttackMatch::Exact => exact_considered += 1,
+                AttackMatch::Related => related_considered += 1,
+            }
+
             if found_similar {
+                agreeing_weight += weight;
                 agreeing.push(oracle_name);
             } else {
                 disagreeing.push(oracle_name);
@@ -243,8 +358,8 @@ impl OracleValidator {
             );
         }
 
-        let agreement_ratio = if total_oracles > 0 {
-            agreeing.len() as f64 / total_oracles as f64
+        let agreement_ratio = if considered_weight > 0.0 {
+            agreeing_weight / considered_weight
         } else {
             1.0
         };
@@ -267,6 +382,19 @@ impl OracleValidator {
                 agreeing.len(),
                 total_oracles,
                 agreement_ratio * 100.0
+            ));
+        }
+
+        if related_considered > 0 {
+            reasons.push(format!(
+                "Cross-attack validation used ({} related, {} exact)",
+                related_considered, exact_considered
+            ));
+        }
+        if stateful_skipped > 0 {
+            reasons.push(format!(
+                "Skipped {} stateful oracle(s) due to insufficient samples",
+                stateful_skipped
             ));
         }
         
@@ -427,28 +555,47 @@ pub fn filter_validated_findings(
     findings
         .into_iter()
         .filter(|finding| {
-            // Create a test case from the finding's PoC
-            let test_case = TestCase {
-                inputs: finding.poc.witness_a.clone(),
-                expected_output: None,
-                metadata: zk_core::TestMetadata::default(),
+            let mut test_cases = Vec::new();
+            let mut outputs = Vec::new();
+
+            let mut push_sample = |inputs: Vec<FieldElement>, label: &str| {
+                let test_case = TestCase {
+                    inputs,
+                    expected_output: None,
+                    metadata: zk_core::TestMetadata::default(),
+                };
+                let exec_result = executor.execute_sync(&test_case.inputs);
+                if !exec_result.success {
+                    tracing::warn!(
+                        "Oracle validation skipped for '{:?}' ({}): execution failed",
+                        finding.attack_type,
+                        label
+                    );
+                    return;
+                }
+                test_cases.push(test_case);
+                outputs.push(exec_result.outputs);
             };
 
-            let exec_result = executor.execute_sync(&test_case.inputs);
-            if !exec_result.success {
-                tracing::warn!(
-                    "Oracle validation skipped for '{:?}': execution failed",
-                    finding.attack_type
-                );
+            push_sample(finding.poc.witness_a.clone(), "witness_a");
+            if let Some(witness_b) = &finding.poc.witness_b {
+                push_sample(witness_b.clone(), "witness_b");
+            }
+
+            if test_cases.is_empty() {
                 return true;
             }
-            
-            let result = validator.validate_differential(
-                finding,
-                oracles,
-                &test_case,
-                &exec_result.outputs,
-            );
+
+            let samples: Vec<ValidationSample<'_>> = test_cases
+                .iter()
+                .zip(outputs.iter())
+                .map(|(test_case, output)| ValidationSample {
+                    test_case,
+                    outputs: output,
+                })
+                .collect();
+
+            let result = validator.validate_differential(finding, oracles, &samples);
             
             if !result.is_valid {
                 tracing::warn!(

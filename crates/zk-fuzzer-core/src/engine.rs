@@ -31,6 +31,7 @@ pub struct FuzzingEngineCore {
     findings: Arc<RwLock<Vec<Finding>>>,
     input_count: usize,
     oracles: Vec<Box<dyn BugOracle>>,
+    constraint_count_cache: Option<usize>,
 }
 
 impl FuzzingEngineCore {
@@ -278,7 +279,31 @@ impl FuzzingEngineCore {
         }
 
         if result.success {
-            let oracle_findings = self.run_oracles(test_case, &result.outputs);
+            let needs_constraint_count = self
+                .oracles
+                .iter()
+                .any(|oracle| oracle.requires_constraint_count());
+            let constraint_count = if needs_constraint_count {
+                if self.constraint_count_cache.is_none() {
+                    let count = if let Some(inspector) = executor.constraint_inspector() {
+                        let constraints = inspector.get_constraints();
+                        if constraints.is_empty() {
+                            executor.num_constraints()
+                        } else {
+                            constraints.len()
+                        }
+                    } else {
+                        executor.num_constraints()
+                    };
+                    self.constraint_count_cache = Some(count);
+                }
+                self.constraint_count_cache
+            } else {
+                None
+            };
+
+            let oracle_findings =
+                self.run_oracles(test_case, &result.outputs, constraint_count);
             if !oracle_findings.is_empty() {
                 let mut findings = self.findings.write().unwrap();
                 findings.extend(oracle_findings);
@@ -302,14 +327,62 @@ impl FuzzingEngineCore {
         result
     }
 
+    pub fn check_proof_forgery(
+        &mut self,
+        original_inputs: &[FieldElement],
+        mutated_inputs: &[FieldElement],
+        proof: &[u8],
+        verified: bool,
+    ) -> Vec<Finding> {
+        let mut findings = Vec::new();
+        for oracle in &mut self.oracles {
+            if let Some(finding) =
+                oracle.check_with_verification(original_inputs, mutated_inputs, proof, verified)
+            {
+                tracing::warn!(
+                    "Oracle '{}' detected issue: {}",
+                    oracle.name(),
+                    finding.description
+                );
+                findings.push(finding);
+            }
+        }
+
+        if !findings.is_empty() {
+            let mut stored = self.findings.write().unwrap();
+            stored.extend(findings.clone());
+        }
+
+        findings
+    }
+
     pub fn export_corpus(&self, output_dir: &std::path::Path) -> anyhow::Result<usize> {
         let entries = self.corpus.all_entries();
         corpus_storage::export_interesting_cases(&entries, output_dir)
     }
 
-    fn run_oracles(&mut self, test_case: &TestCase, outputs: &[FieldElement]) -> Vec<Finding> {
+    fn run_oracles(
+        &mut self,
+        test_case: &TestCase,
+        outputs: &[FieldElement],
+        constraint_count: Option<usize>,
+    ) -> Vec<Finding> {
         let mut findings = Vec::new();
         for oracle in &mut self.oracles {
+            if let Some(count) = constraint_count {
+                if oracle.requires_constraint_count() {
+                    if let Some(finding) = oracle.check_with_count(test_case, count) {
+                        tracing::warn!(
+                            "Oracle '{}' detected issue: {}",
+                            oracle.name(),
+                            finding.description
+                        );
+                        findings.push(finding);
+                    }
+                    continue;
+                }
+            }
+
             if let Some(finding) = oracle.check(test_case, outputs) {
                 tracing::warn!(
                     "Oracle '{}' detected issue: {}",
@@ -317,6 +390,17 @@ impl FuzzingEngineCore {
                     finding.description
                 );
                 findings.push(finding);
+            }
+
+            if let Some(count) = constraint_count {
+                if let Some(finding) = oracle.check_with_count(test_case, count) {
+                    tracing::warn!(
+                        "Oracle '{}' detected issue: {}",
+                        oracle.name(),
+                        finding.description
+                    );
+                    findings.push(finding);
+                }
             }
         }
         findings
@@ -341,6 +425,7 @@ pub struct FuzzingEngineCoreBuilder {
     power_scheduler: Option<PowerScheduler>,
     structure_mutator: Option<StructureAwareMutator>,
     oracles: Vec<Box<dyn BugOracle>>,
+    constraint_count_cache: Option<usize>,
 }
 
 impl Default for FuzzingEngineCoreBuilder {
@@ -359,6 +444,7 @@ impl FuzzingEngineCoreBuilder {
             power_scheduler: None,
             structure_mutator: None,
             oracles: Vec::new(),
+            constraint_count_cache: None,
         }
     }
 
@@ -431,6 +517,7 @@ impl FuzzingEngineCoreBuilder {
             findings: Arc::new(RwLock::new(Vec::new())),
             input_count: input_count.max(1),
             oracles: self.oracles,
+            constraint_count_cache: self.constraint_count_cache,
         })
     }
 }

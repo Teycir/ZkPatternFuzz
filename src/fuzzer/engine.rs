@@ -629,6 +629,21 @@ impl FuzzingEngine {
         {
             config.skip_stateful_oracles = skip_stateful;
         }
+        if let Some(allow_cross) =
+            Self::additional_bool(additional, "oracle_validation_allow_cross_attack")
+        {
+            config.allow_cross_attack_type = allow_cross;
+        }
+        if let Some(weight) =
+            Self::additional_f64(additional, "oracle_validation_cross_attack_weight")
+        {
+            config.cross_attack_weight = weight.clamp(0.0, 1.0);
+        }
+        if let Some(reset_stateful) =
+            Self::additional_bool(additional, "oracle_validation_reset_stateful")
+        {
+            config.reset_stateful_oracles = reset_stateful;
+        }
 
         config
     }
@@ -1871,25 +1886,39 @@ impl FuzzingEngine {
             }
 
             // Try to verify with mutated inputs
-            if self.executor.verify(&valid_proof, &mutated_public)? {
-                let finding = Finding {
-                    attack_type: AttackType::Soundness,
-                    severity: Severity::Critical,
-                    description: "Proof verified with mutated inputs - soundness violation!"
-                        .to_string(),
-                    poc: super::ProofOfConcept {
-                        witness_a: valid_case.inputs,
-                        witness_b: None,
-                        public_inputs: mutated_public,
-                        proof: Some(valid_proof),
-                    },
-                    location: None,
-                };
+            let verified = self.executor.verify(&valid_proof, &mutated_public)?;
+            let oracle_findings = self.core.check_proof_forgery(
+                &valid_case.inputs,
+                &mutated_public,
+                &valid_proof,
+                verified,
+            );
 
-                self.core.findings().write().unwrap().push(finding.clone());
+            if verified {
+                if oracle_findings.is_empty() {
+                    let finding = Finding {
+                        attack_type: AttackType::Soundness,
+                        severity: Severity::Critical,
+                        description: "Proof verified with mutated inputs - soundness violation!"
+                            .to_string(),
+                        poc: super::ProofOfConcept {
+                            witness_a: valid_case.inputs,
+                            witness_b: None,
+                            public_inputs: mutated_public,
+                            proof: Some(valid_proof),
+                        },
+                        location: None,
+                    };
 
-                if let Some(p) = progress {
-                    p.log_finding("CRITICAL", &finding.description);
+                    self.core.findings().write().unwrap().push(finding.clone());
+
+                    if let Some(p) = progress {
+                        p.log_finding("CRITICAL", &finding.description);
+                    }
+                } else if let Some(p) = progress {
+                    for finding in &oracle_findings {
+                        p.log_finding("CRITICAL", &finding.description);
+                    }
                 }
             }
 
