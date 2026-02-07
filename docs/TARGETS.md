@@ -1,6 +1,6 @@
 # zk0d Targets (Discovery Set)
 
-**Single success metric:** discoveries on `/media/elements/Repos/zk0d`
+**Single success metric:** discoveries on `${ZK0D_BASE:-/media/elements/Repos/zk0d}`
 
 This document lists the **target circuits** for evidence runs.  
 The machine-readable list used by the batch runner is in:

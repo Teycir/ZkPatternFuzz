@@ -341,9 +341,11 @@ impl ConfigResolver {
 
         // Read and parse the file
         let content = std::fs::read_to_string(config_path)?;
+        let mut yaml_value: Value = serde_yaml::from_str(&content)?;
+        expand_env_in_value(&mut yaml_value);
 
         // Try parsing as v2 first
-        if let Ok(v2_config) = serde_yaml::from_str::<FuzzConfigV2>(&content) {
+        if let Ok(v2_config) = serde_yaml::from_value::<FuzzConfigV2>(yaml_value.clone()) {
             // Process includes first
             let mut merged = FuzzConfig::default_v2();
 
@@ -387,7 +389,7 @@ impl ConfigResolver {
             Ok(merged)
         } else {
             // Fall back to v1 parsing
-            let config: FuzzConfig = serde_yaml::from_str(&content)?;
+            let config: FuzzConfig = serde_yaml::from_value(yaml_value)?;
             Ok(config)
         }
     }
@@ -577,6 +579,90 @@ impl ConfigResolver {
 
         config
     }
+}
+
+fn expand_env_in_value(value: &mut Value) {
+    match value {
+        Value::String(s) => {
+            *s = expand_env_string(s);
+        }
+        Value::Sequence(items) => {
+            for item in items {
+                expand_env_in_value(item);
+            }
+        }
+        Value::Mapping(map) => {
+            for (key, val) in map.iter_mut() {
+                if let Value::String(key_str) = key {
+                    *key_str = expand_env_string(key_str);
+                }
+                expand_env_in_value(val);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn expand_env_string(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch != '$' {
+            out.push(ch);
+            continue;
+        }
+
+        if matches!(chars.peek(), Some('{')) {
+            let _ = chars.next();
+            let mut name = String::new();
+            while let Some(next) = chars.next() {
+                if next == '}' {
+                    break;
+                }
+                name.push(next);
+            }
+            if name.is_empty() {
+                out.push('$');
+                continue;
+            }
+            let (var_name, default) = if let Some((var, fallback)) = name.split_once(":-") {
+                (var, Some(fallback))
+            } else {
+                (name.as_str(), None)
+            };
+            if let Ok(val) = std::env::var(var_name) {
+                out.push_str(&val);
+            } else if let Some(fallback) = default {
+                out.push_str(fallback);
+            } else {
+                out.push_str(&format!("${{{}}}", name));
+            }
+            continue;
+        }
+
+        let mut name = String::new();
+        while let Some(&next) = chars.peek() {
+            if next.is_ascii_alphanumeric() || next == '_' {
+                name.push(next);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        if name.is_empty() {
+            out.push('$');
+            continue;
+        }
+        if let Ok(val) = std::env::var(&name) {
+            out.push_str(&val);
+        } else {
+            out.push('$');
+            out.push_str(&name);
+        }
+    }
+
+    out
 }
 
 impl FuzzConfig {

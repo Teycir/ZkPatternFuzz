@@ -9,7 +9,7 @@
 //!
 //! # Requirements
 //!
-//! The zk0d repository must be available at /media/elements/Repos/zk0d
+//! The zk0d repository must be available at ${ZK0D_BASE:-/media/elements/Repos/zk0d}
 //! (This is an external read-only test fixture)
 //!
 //! # Running
@@ -18,29 +18,35 @@
 //! cargo test --test zk0d_realistic_tests --features real_circuits -- --ignored
 //! ```
 
-use std::path::PathBuf;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
-const ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+
+fn zk0d_base() -> PathBuf {
+    std::env::var("ZK0D_BASE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_ZK0D_BASE))
+}
 
 /// Check if real circuit test fixtures are available
 fn zk0d_available() -> bool {
-    PathBuf::from(ZK0D_BASE).exists()
+    zk0d_base().exists()
 }
 
 /// Get path to Tornado Cash circuits
 fn tornado_path() -> PathBuf {
-    PathBuf::from(format!("{}/cat3_privacy/tornado-core/circuits", ZK0D_BASE))
+    zk0d_base().join("cat3_privacy/tornado-core/circuits")
 }
 
 /// Get path to Semaphore circuits
 fn semaphore_path() -> PathBuf {
-    PathBuf::from(format!("{}/cat3_privacy/semaphore/packages/circuits/src", ZK0D_BASE))
+    zk0d_base().join("cat3_privacy/semaphore/packages/circuits/src")
 }
 
 /// Get path to Polygon ID circuits
 fn polygon_id_path() -> PathBuf {
-    PathBuf::from(format!("{}/cat3_privacy/circuits/circuits", ZK0D_BASE))
+    zk0d_base().join("cat3_privacy/circuits/circuits")
 }
 
 // ============================================================================
@@ -51,7 +57,7 @@ fn polygon_id_path() -> PathBuf {
 #[ignore = "Requires zk0d repository and circom compiler"]
 fn test_tornado_withdraw_underconstrained_detection() {
     if !zk0d_available() {
-        eprintln!("Skipping: zk0d not available at {}", ZK0D_BASE);
+        eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
         return;
     }
     
@@ -80,7 +86,7 @@ fn test_tornado_withdraw_underconstrained_detection() {
 #[ignore = "Requires zk0d repository and circom compiler"]
 fn test_semaphore_nullifier_oracle() {
     if !zk0d_available() {
-        eprintln!("Skipping: zk0d not available at {}", ZK0D_BASE);
+        eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
         return;
     }
     
@@ -108,7 +114,7 @@ fn test_semaphore_nullifier_oracle() {
 #[ignore = "Requires zk0d repository and circom compiler"]
 fn test_polygon_id_constraint_inference() {
     if !zk0d_available() {
-        eprintln!("Skipping: zk0d not available at {}", ZK0D_BASE);
+        eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
         return;
     }
     

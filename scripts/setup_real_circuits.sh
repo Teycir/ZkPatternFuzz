@@ -2,7 +2,7 @@
 # Setup Real ZK Circuits for Integration Testing
 #
 # This script compiles real-world ZK circuits for testing with ZkPatternFuzz.
-# It uses circuits from the zk0d collection at /media/elements/Repos/zk0d
+# It uses circuits from the zk0d collection at ${ZK0D_BASE:-/media/elements/Repos/zk0d}
 #
 # Prerequisites:
 #   - Node.js v18+ 

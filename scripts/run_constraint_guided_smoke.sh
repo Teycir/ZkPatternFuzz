@@ -33,7 +33,7 @@ Build/run controls:
 
 Examples:
   scripts/run_constraint_guided_smoke.sh --circuit /path/to.circom --inputs 12 --workers 2
-  scripts/run_constraint_guided_smoke.sh --zk0d-root /media/elements/Repos/zk0d --cg-max-depth 30
+  scripts/run_constraint_guided_smoke.sh --zk0d-root ${ZK0D_BASE:-/media/elements/Repos/zk0d} --cg-max-depth 30
 EOF
 }
 

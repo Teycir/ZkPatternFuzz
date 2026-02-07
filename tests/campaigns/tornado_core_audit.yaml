@@ -1,6 +1,6 @@
 # Real-world ZK Fuzzing Campaign: Tornado Cash Core
 # Target: Privacy-preserving mixer protocol
-# Source: /media/elements/Repos/zk0d/cat3_privacy/tornado-core
+# Source: ${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/tornado-core
 
 campaign:
   name: "Tornado Cash Core Security Audit"

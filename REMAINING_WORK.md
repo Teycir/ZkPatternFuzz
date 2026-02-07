@@ -10,7 +10,7 @@
 ## Single Success Metric (Non-Negotiable)
 
 **Only one thing matters:** **discoveries on the provided target set**  
-`/media/elements/Repos/zk0d`
+`${ZK0D_BASE:-/media/elements/Repos/zk0d}`
 
 Every task below must directly improve our ability to produce **evidence-backed findings**
 on zk0d circuits. If a task does not support this metric, it is out of scope.
@@ -165,28 +165,41 @@ on zk0d circuits. If a task does not support this metric, it is out of scope.
    DoD: use backend metadata to map public inputs; findings include exact public input indices used.
 4. [ ] AI prompt template for manual-analysis -> YAML  
    DoD: `docs/CLAUDE_PROMPT.md` with schema, example invariants, example YAML output.
-5. [x] YAML validator + batch runner for zk0d target list  
+5. [x] Circom input inference fallback for wrapper circuits  
+   DoD: when top-level Circom file declares no `signal input`, infer IO order from `.sym` using R1CS counts; witness generation succeeds for repo targets.
+6. [x] YAML validator + batch runner for zk0d target list  
    DoD: validator fails on missing invariants/labels; batch runner executes all targets and writes per-target reports.
 
 ### Validation on zk0d (Once Ready)
-1. [ ] Run on Tornado withdraw (circom)
+1. [ ] Run on Tornado withdraw (circom)  
+   Manual YAML ready: `campaigns/zk0d/tornado_withdraw_repo.yaml` (repo path).  
+   Seed inputs generated: `campaigns/zk0d/tornado_withdraw_seed_inputs.json` (via `scripts/gen_tornado_seed.js` or `src/bin/gen_tornado_seed.rs`).  
+   Seed generators are configurable for other projects (override `--circuit`, `--source-root`, `--extract`, `--input-json`, `--replace`, `--comment-out`).  
+   Next: evidence run on repo circuit.
 2. [ ] Run on Semaphore (circom)
 3. [x] Run on Iden3 authV3 (circom)  
-   Result (2026-02-07): evidence run completed, **0 findings**. Reports in `reports/zk0d/iden3_authv3/`.
+   Result (2026-02-07): repo evidence run completed, **0 findings**.  
+   Reports: `reports/zk0d/iden3_authv3_repo/`  
+   Flow flaw observed: throughput low (384 iterations in 120s, coverage 0.00%). Needs optimization before large budgets.
 4. [ ] Expand to cat2/cat4 targets
 
 ---
 
 ## Discovery Execution (Step-by-Step)
 1. [x] Run skimmer on zk0d  
-   DoD: `scripts/run_skimmer.sh --root /media/elements/Repos/zk0d --max-files 200` produces `reports/zk0d/skimmer/skimmer_summary.md`.
+   DoD: `scripts/run_skimmer.sh --root ${ZK0D_BASE:-/media/elements/Repos/zk0d} --max-files 200` produces:
+   - `reports/zk0d/skimmer/skimmer_summary.md`
+   - `reports/zk0d/skimmer/candidate_invariants.yaml` (stub, manual fill required)  
+   Rule: **skimmer runs on one repo root at a time** (root must contain `.git`).
+   Latest run: `/media/elements/Repos/zk0d/cat3_privacy/tornado-core` (2026-02-07).
 2. [x] Select most promising circuit from skimmer summary  
    DoD: pick top candidate with highest hint score + manual review notes.
 3. [x] Manual invariant analysis for selected circuit  
-   DoD: 3-10 invariants written in v2 YAML with exact input names.
+   DoD: 3-10 invariants written in v2 YAML with exact input names (fill/update `candidate_invariants.yaml`).
 4. [x] Evidence run on selected circuit  
    DoD: `evidence` mode produces PoCs and reproducible report.
-   Selected: `AuthV3` (Iden3). Evidence: `campaigns/zk0d/iden3_authv3.yaml`, candidates: `campaigns/zk0d/candidate_invariants.yaml`.
+   Selected: `AuthV3` (Iden3). Evidence: `campaigns/zk0d/iden3_authv3_repo.yaml` (repo path) + `campaigns/zk0d/iden3_authv3.yaml` (local copy), candidates: `reports/zk0d/skimmer/candidate_invariants.yaml` (stub) + `campaigns/zk0d/candidate_invariants.yaml` (manual).
+   Next up: `Withdraw` (Tornado Core) using `campaigns/zk0d/tornado_withdraw_repo.yaml` once seeds exist.
 
 ### Machine Optimization for the 0-Day Flow (Concrete)
 1. [ ] Use release builds for campaigns  

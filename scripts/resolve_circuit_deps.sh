@@ -1,5 +1,5 @@
 #!/bin/bash
-# Resolve Circuit Dependencies for zk0d Collection
+# Resolve Circuit Dependencies for zk0d Collection (uses ${ZK0D_BASE:-/media/elements/Repos/zk0d})
 #
 # Installs npm dependencies required for circuit compilation.
 # Creates a ready-to-use environment for fuzzing real ZK circuits.

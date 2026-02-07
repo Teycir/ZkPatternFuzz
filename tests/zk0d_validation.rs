@@ -42,24 +42,33 @@
 //! - Missing constraint on claimSubjectProfileNonce range
 //! - Possible claim reuse across different verifiers
 
-use std::path::Path;
+use std::path::PathBuf;
 use zk_fuzzer::analysis::opus::{OpusAnalyzer, OpusConfig, ZeroDayCategory};
 
-const ZK0D_PATH: &str = "/media/elements/Repos/zk0d/cat3_privacy";
+const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+
+fn zk0d_base() -> PathBuf {
+    std::env::var("ZK0D_BASE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_ZK0D_BASE))
+}
 
 fn zk0d_available() -> bool {
-    Path::new(ZK0D_PATH).exists()
+    zk0d_base().join("cat3_privacy").exists()
 }
 
 #[test]
 #[ignore = "Requires zk0d repository - run manually"]
 fn test_tornado_withdraw_invariant_detection() {
     if !zk0d_available() {
-        eprintln!("⚠️  zk0d not found at {}", ZK0D_PATH);
+        eprintln!(
+            "⚠️  zk0d not found at {}",
+            zk0d_base().join("cat3_privacy").display()
+        );
         return;
     }
 
-    let circuit_path = Path::new(ZK0D_PATH).join("tornado-core/circuits/withdraw.circom");
+    let circuit_path = zk0d_base().join("cat3_privacy/tornado-core/circuits/withdraw.circom");
     if !circuit_path.exists() {
         eprintln!("⚠️  Tornado withdraw circuit not found");
         return;
@@ -75,7 +84,9 @@ fn test_tornado_withdraw_invariant_detection() {
         ..Default::default()
     });
 
-    let configs = analyzer.analyze_project(&circuit_path.parent().unwrap()).unwrap();
+    let configs = analyzer
+        .analyze_project(circuit_path.parent().unwrap())
+        .unwrap();
     
     assert!(!configs.is_empty(), "Should analyze at least one circuit");
 

@@ -3,7 +3,7 @@ generated: 2026-02-07
 
 targets:
   - name: "iden3_authv3"
-    circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/authV3.circom"
+    circuit_path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/circuits/authV3.circom"
     main_component: "AuthV3"
     source: "Skimmer top-10 + manual review of auth/authV3.circom and SMTVerifier"
     candidate_invariants:
@@ -31,3 +31,23 @@ targets:
         relation: "authClaimNonRevMtpNoAux == 1 => (authClaimNonRevMtpAuxHi == 0 && authClaimNonRevMtpAuxHv == 0)"
         inputs: ["authClaimNonRevMtpNoAux", "authClaimNonRevMtpAuxHi", "authClaimNonRevMtpAuxHv"]
         rationale: "If no auxiliary node is present, aux hi/hv should be zero; otherwise may allow inconsistent proofs."
+
+  - name: "tornado_withdraw"
+    circuit_path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/tornado-core/circuits/withdraw.circom"
+    main_component: "Withdraw"
+    source: "Skimmer top-10 + manual review of withdraw.circom and merkleTree.circom"
+    candidate_invariants:
+      - name: "path_indices_binary"
+        relation: "forall i: pathIndices[i] in {0,1}"
+        inputs: ["pathIndices"]
+        rationale: "Merkle path selectors must be binary; non-binary breaks left/right selection semantics."
+
+      - name: "nullifier_range"
+        relation: "0 <= nullifier < 2^248"
+        inputs: ["nullifier"]
+        rationale: "Nullifier is decomposed into 248 bits; out-of-range values indicate missing constraints."
+
+      - name: "secret_range"
+        relation: "0 <= secret < 2^248"
+        inputs: ["secret"]
+        rationale: "Secret is decomposed into 248 bits; out-of-range values indicate missing constraints."

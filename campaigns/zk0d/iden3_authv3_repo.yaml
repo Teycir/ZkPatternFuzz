@@ -1,0 +1,824 @@
+---
+campaign:
+  name: "zk0d_iden3_authv3_repo"
+  version: "2.0"
+  target:
+    framework: "circom"
+    circuit_path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/circuits/authV3.circom"
+    main_component: "AuthV3"
+  parameters:
+    field: "bn254"
+    max_constraints: 200000
+    timeout_seconds: 1800
+    build_dir_base: "./build/zk0d"
+    seed_inputs_path: "campaigns/zk0d/iden3_authv3_seed_inputs.json"
+
+# Evidence-mode attack set
+attacks:
+  - type: "constraint_inference"
+    description: "Detect missing constraints with confirmation"
+    config:
+      confidence_threshold: 0.7
+      confirm_violations: true
+
+  - type: "boundary"
+    description: "Boundary value testing"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "p-1"
+
+# Inputs (fully flattened to match circom signal order)
+inputs:
+  - name: "challenge"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistRoot"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "genesisID"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0x2"
+      - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      - "0x100000000000000000000000000000000000000000000000000000000000000"
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+
+  - name: "profileNonce"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0x2"
+      - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      - "0x100000000000000000000000000000000000000000000000000000000000000"
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+
+  - name: "state"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0x2"
+      - "0x3fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      - "0x4000000000000000000000000000000000000000000000000000000000000000"
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+
+  - name: "claimsTreeRoot"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "revTreeRoot"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "rootsTreeRoot"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaim_0"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0x2"
+      - "0x1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      - "0x2000000000000000000000000000000000000000000000000000000000000000"
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+
+  - name: "authClaim_1"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaim_2"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaim_3"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaim_4"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0x2"
+      - "0x1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      - "0x2000000000000000000000000000000000000000000000000000000000000000"
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+
+  - name: "authClaim_5"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaim_6"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaim_7"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_0"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_1"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_2"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_3"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_4"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_5"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_6"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_7"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_8"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_9"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_10"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_11"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_12"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_13"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_14"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_15"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_16"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_17"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_18"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_19"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_20"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_21"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_22"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_23"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_24"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_25"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_26"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_27"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_28"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_29"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_30"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_31"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_32"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_33"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_34"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_35"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_36"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_37"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_38"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimIncMtp_39"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_0"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_1"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_2"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_3"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_4"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_5"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_6"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_7"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_8"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_9"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_10"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_11"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_12"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_13"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_14"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_15"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_16"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_17"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_18"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_19"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_20"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_21"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_22"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_23"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_24"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_25"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_26"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_27"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_28"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_29"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_30"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_31"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_32"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_33"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_34"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_35"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_36"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_37"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_38"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtp_39"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtpNoAux"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0"
+      - "1"
+      - "2"
+
+  - name: "authClaimNonRevMtpAuxHi"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "authClaimNonRevMtpAuxHv"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "challengeSignatureR8x"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0x2"
+      - "0x1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      - "0x2000000000000000000000000000000000000000000000000000000000000000"
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+
+  - name: "challengeSignatureR8y"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0x2"
+      - "0x1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      - "0x2000000000000000000000000000000000000000000000000000000000000000"
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+
+  - name: "challengeSignatureS"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0x2"
+      - "0x1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      - "0x2000000000000000000000000000000000000000000000000000000000000000"
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+
+  - name: "gistMtp_0"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_1"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_2"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_3"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_4"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_5"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_6"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_7"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_8"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_9"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_10"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_11"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_12"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_13"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_14"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_15"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_16"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_17"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_18"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_19"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_20"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_21"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_22"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_23"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_24"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_25"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_26"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_27"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_28"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_29"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_30"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_31"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_32"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_33"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_34"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_35"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_36"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_37"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_38"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_39"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_40"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_41"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_42"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_43"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_44"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_45"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_46"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_47"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_48"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_49"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_50"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_51"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_52"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_53"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_54"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_55"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_56"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_57"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_58"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_59"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_60"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_61"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_62"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtp_63"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtpAuxHi"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtpAuxHv"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "gistMtpNoAux"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0"
+      - "1"
+      - "2"
+
+# Target traits (helps auto metamorphic relations)
+target_traits:
+  uses_merkle: true
+  uses_signature: true
+  hash_function: "poseidon"
+  range_checks: []
+
+# Evidence invariants (manual)
+invariants:
+  - name: "auth_claim_nonrev_noaux_binary"
+    invariant_type: constraint
+    relation: "authClaimNonRevMtpNoAux in {0,1}"
+    oracle: must_hold
+    severity: "critical"
+    description: "Non-revocation aux flag must be binary"
+
+  - name: "gist_noaux_binary"
+    invariant_type: constraint
+    relation: "gistMtpNoAux in {0,1}"
+    oracle: must_hold
+    severity: "critical"
+    description: "On-chain SMT aux flag must be binary"
+
+  - name: "signature_s_range"
+    invariant_type: range
+    relation: "0 <= challengeSignatureS < 2^253"
+    oracle: must_hold
+    severity: "critical"
+    description: "EdDSA S scalar must be within canonical range"
+
+  - name: "genesis_id_range"
+    invariant_type: range
+    relation: "0 <= genesisID < 2^248"
+    oracle: must_hold
+    severity: "high"
+    description: "Genesis ID must fit within 248 bits"
+
+  - name: "state_range"
+    invariant_type: range
+    relation: "0 <= state < 2^254"
+    oracle: must_hold
+    severity: "high"
+    description: "State must fit within 254 bits"
+
+reporting:
+  output_dir: "./reports/zk0d/iden3_authv3_repo"
+  formats:
+    - "json"
+    - "markdown"
+  include_poc: true
+  crash_reproduction: true

@@ -1,7 +1,7 @@
 # ZK0D Real Circuit Validation Results (Preliminary)
 
 **Date**: 2026-02-06  
-**Repository**: `/media/elements/Repos/zk0d/cat3_privacy`  
+**Repository**: `${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy`  
 **Scope**: `test_comprehensive_zk0d_scan` (Opus Analyzer hint scan, no fuzzing)  
 **Circuits Analyzed**: 20  
 **Tooling**: ZkPatternFuzz `OpusAnalyzer` with zero-day hint detectors (heuristic)

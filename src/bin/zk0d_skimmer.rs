@@ -1,14 +1,18 @@
 use clap::Parser;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use zk_fuzzer::analysis::opus::{GeneratedConfig, OpusAnalyzer, OpusConfig};
+use zk_fuzzer::analysis::opus::{GeneratedConfig, OpusAnalyzer, OpusConfig, ZeroDayCategory};
+use zk_fuzzer::targets::circom_analysis;
+
+const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
 
 #[derive(Parser, Debug)]
 #[command(name = "zk0d_skimmer")]
 #[command(about = "Skim zk0d repository for promising circuits (hints only)")]
 struct Args {
     /// Root path to zk0d
-    #[arg(long, default_value = "/media/elements/Repos/zk0d")]
+    #[arg(long, env = "ZK0D_BASE", default_value = "/media/elements/Repos/zk0d")]
     root: String,
 
     /// Maximum circuit files to analyze
@@ -50,11 +54,40 @@ struct SkimEntry {
     hints: Vec<HintSummary>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct HintSummary {
     category: String,
     confidence: f64,
     description: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CandidateInvariant {
+    name: String,
+    category: String,
+    confidence: f64,
+    relation: String,
+    inputs: Vec<String>,
+    rationale: String,
+    status: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CandidateEntry {
+    circuit_name: String,
+    circuit_path: String,
+    hint_score: f64,
+    hints: Vec<HintSummary>,
+    candidate_invariants: Vec<CandidateInvariant>,
+}
+
+#[derive(Debug, Serialize)]
+struct CandidateInvariantsFile {
+    version: u32,
+    generated: String,
+    root: String,
+    note: String,
+    candidates: Vec<CandidateEntry>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -100,10 +133,26 @@ fn main() -> anyhow::Result<()> {
 
     let summary_path = output_dir.join("skimmer_summary.md");
     let json_path = output_dir.join("skimmer_summary.json");
+    let candidate_path = output_dir.join("candidate_invariants.yaml");
+    let root_placeholder = root_placeholder(&root);
 
-    write_summary_markdown(&summary_path, &entries, args.top, &args.root)?;
+    write_summary_markdown(
+        &summary_path,
+        &entries,
+        args.top,
+        &root,
+        root_placeholder.as_deref(),
+    )?;
     let json = serde_json::to_string_pretty(&entries)?;
     std::fs::write(&json_path, json)?;
+    write_candidate_invariants(
+        &candidate_path,
+        &generated,
+        &entries,
+        args.top,
+        &root,
+        root_placeholder.as_deref(),
+    )?;
 
     if args.save_configs {
         let config_dir = Path::new(&args.config_dir);
@@ -114,9 +163,10 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!(
-        "Skimmer complete. Summary: {} (top {} shown)",
+        "Skimmer complete. Summary: {} (top {} shown). Candidates: {}",
         summary_path.display(),
-        args.top
+        args.top,
+        candidate_path.display()
     );
 
     Ok(())
@@ -167,12 +217,16 @@ fn write_summary_markdown(
     path: &Path,
     entries: &[SkimEntry],
     top: usize,
-    root: &str,
+    root: &Path,
+    root_placeholder: Option<&str>,
 ) -> anyhow::Result<()> {
     let mut out = String::new();
     out.push_str("# zk0d Skimmer Summary (Hints Only)\n\n");
     out.push_str("**WARNING:** This is a hint-only scan. No findings are confirmed.\n\n");
-    out.push_str(&format!("Root: `{}`\n\n", root));
+    let root_display = root_placeholder
+        .map(str::to_string)
+        .unwrap_or_else(|| root.display().to_string());
+    out.push_str(&format!("Root: `{}`\n\n", root_display));
 
     let display = entries.iter().take(top);
     for (i, entry) in display.enumerate() {
@@ -182,7 +236,9 @@ fn write_summary_markdown(
             entry.circuit_name,
             entry.hint_score
         ));
-        out.push_str(&format!("Path: `{}`\n\n", entry.circuit_path));
+        let display_path =
+            rewrite_path_with_placeholder(&entry.circuit_path, root, root_placeholder);
+        out.push_str(&format!("Path: `{}`\n\n", display_path));
         if entry.hints.is_empty() {
             out.push_str("- No hints\n\n");
             continue;
@@ -201,4 +257,187 @@ fn write_summary_markdown(
 
     std::fs::write(path, out)?;
     Ok(())
+}
+
+fn write_candidate_invariants(
+    path: &Path,
+    generated: &[GeneratedConfig],
+    entries: &[SkimEntry],
+    top: usize,
+    root: &Path,
+    root_placeholder: Option<&str>,
+) -> anyhow::Result<()> {
+    let mut by_path: HashMap<String, &GeneratedConfig> = HashMap::new();
+    for gen in generated {
+        by_path.insert(gen.circuit_path.display().to_string(), gen);
+    }
+
+    let mut candidates = Vec::new();
+    for entry in entries.iter().take(top) {
+        let Some(gen) = by_path.get(&entry.circuit_path) else {
+            continue;
+        };
+        let input_names = extract_circom_inputs(&gen.circuit_path);
+        let candidate_invariants =
+            candidate_invariants_from_hints(&gen.zero_day_hints, &input_names);
+        let display_path =
+            rewrite_path_with_placeholder(&entry.circuit_path, root, root_placeholder);
+
+        candidates.push(CandidateEntry {
+            circuit_name: entry.circuit_name.clone(),
+            circuit_path: display_path,
+            hint_score: entry.hint_score,
+            hints: entry.hints.clone(),
+            candidate_invariants,
+        });
+    }
+
+    let root_display = root_placeholder
+        .map(str::to_string)
+        .unwrap_or_else(|| root.display().to_string());
+
+    let doc = CandidateInvariantsFile {
+        version: 1,
+        generated: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+        root: root_display,
+        note: "Auto-generated from skimmer hints. Manual review required to fill exact inputs and finalize invariants.".to_string(),
+        candidates,
+    };
+
+    let header = "# Auto-generated candidate invariants (manual review required)\n\
+# Fill in exact inputs and refine relations before evidence runs.\n\n";
+    let yaml = serde_yaml::to_string(&doc)?;
+    std::fs::write(path, format!("{}{}", header, yaml))?;
+    Ok(())
+}
+
+fn extract_circom_inputs(path: &Path) -> Vec<String> {
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    if ext != "circom" {
+        return Vec::new();
+    }
+    let Ok(source) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let signals = circom_analysis::extract_signals(&source);
+    let mut inputs: Vec<String> = signals
+        .into_iter()
+        .filter(|s| matches!(s.direction, circom_analysis::SignalDirection::Input))
+        .map(|s| s.name)
+        .collect();
+    inputs.sort();
+    inputs.dedup();
+    inputs
+}
+
+fn candidate_invariants_from_hints(
+    hints: &[zk_fuzzer::analysis::opus::ZeroDayHint],
+    inputs: &[String],
+) -> Vec<CandidateInvariant> {
+    let mut out = Vec::new();
+    for (idx, hint) in hints.iter().enumerate() {
+        let affected = inputs_for_category(&hint.category, inputs, 4);
+        let primary = affected
+            .get(0)
+            .cloned()
+            .unwrap_or_else(|| "TODO_INPUT".to_string());
+        let relation = relation_for_category(&hint.category, &primary);
+        let name = format!(
+            "{:?}_candidate_{}",
+            hint.category,
+            idx.saturating_add(1)
+        )
+        .to_lowercase();
+        out.push(CandidateInvariant {
+            name,
+            category: format!("{:?}", hint.category),
+            confidence: hint.confidence,
+            relation,
+            inputs: affected,
+            rationale: hint.description.clone(),
+            status: "manual_review_required".to_string(),
+        });
+    }
+    out
+}
+
+fn inputs_for_category(
+    category: &ZeroDayCategory,
+    inputs: &[String],
+    limit: usize,
+) -> Vec<String> {
+    let keywords: &[&str] = match category {
+        ZeroDayCategory::SignatureMalleability => &["sig", "signature", "r8", "s"],
+        ZeroDayCategory::BitDecompositionBypass => &["path", "index", "indices", "bit", "flag"],
+        ZeroDayCategory::IncorrectRangeCheck | ZeroDayCategory::ArithmeticOverflow => &[
+            "amount", "value", "nonce", "balance", "fee", "refund", "timestamp", "index",
+            "slot", "count", "size",
+        ],
+        ZeroDayCategory::HashMisuse => &["hash", "root", "commit", "merkle"],
+        ZeroDayCategory::NullifierReuse => &["nullifier"],
+        _ => &[],
+    };
+
+    let mut matches = Vec::new();
+    if !keywords.is_empty() {
+        for input in inputs {
+            let lower = input.to_lowercase();
+            if keywords.iter().any(|k| lower.contains(k)) {
+                matches.push(input.clone());
+                if matches.len() >= limit {
+                    break;
+                }
+            }
+        }
+    }
+
+    if matches.is_empty() {
+        inputs.iter().take(limit.min(inputs.len())).cloned().collect()
+    } else {
+        matches
+    }
+}
+
+fn relation_for_category(category: &ZeroDayCategory, primary: &str) -> String {
+    match category {
+        ZeroDayCategory::SignatureMalleability => format!("{} < subgroup_order", primary),
+        ZeroDayCategory::BitDecompositionBypass => format!("{} in {{0,1}}", primary),
+        ZeroDayCategory::IncorrectRangeCheck | ZeroDayCategory::ArithmeticOverflow => {
+            format!("0 <= {} < 2^64", primary)
+        }
+        ZeroDayCategory::HashMisuse => format!("domain_sep({})", primary),
+        ZeroDayCategory::NullifierReuse => format!("unique({})", primary),
+        ZeroDayCategory::MissingConstraint => format!("constraint_missing({})", primary),
+        ZeroDayCategory::NonDeterministicWitness => "deterministic_witness(inputs)".to_string(),
+        ZeroDayCategory::TimingLeak => "timing_constant(inputs)".to_string(),
+        ZeroDayCategory::Custom(name) => format!("custom_invariant({})", name),
+    }
+}
+
+fn root_placeholder(root: &Path) -> Option<String> {
+    let root_str = root.to_string_lossy();
+    let env_root = std::env::var("ZK0D_BASE").ok();
+    if root_str == DEFAULT_ZK0D_BASE || env_root.as_deref() == Some(root_str.as_ref()) {
+        Some(format!("${{ZK0D_BASE:-{}}}", DEFAULT_ZK0D_BASE))
+    } else {
+        None
+    }
+}
+
+fn rewrite_path_with_placeholder(path: &str, root: &Path, placeholder: Option<&str>) -> String {
+    let Some(placeholder) = placeholder else {
+        return path.to_string();
+    };
+    let root_str = root.to_string_lossy();
+    let root_str = root_str.trim_end_matches(std::path::MAIN_SEPARATOR);
+    if path.starts_with(root_str) {
+        let suffix = path[root_str.len()..].trim_start_matches(std::path::MAIN_SEPARATOR);
+        if suffix.is_empty() {
+            placeholder.to_string()
+        } else {
+            format!("{}/{}", placeholder.trim_end_matches('/'), suffix)
+        }
+    } else {
+        path.to_string()
+    }
 }

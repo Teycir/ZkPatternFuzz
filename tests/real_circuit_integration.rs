@@ -4,7 +4,7 @@
 //! These tests validate that the R1CS parser and constraint-guided fuzzing
 //! work correctly with actual Circom-compiled circuits.
 //!
-//! External circuit sources (from /media/elements/Repos/zk0d):
+//! External circuit sources (from ${ZK0D_BASE:-/media/elements/Repos/zk0d}):
 //! - snarkjs/test: Basic groth16/plonk test circuits
 //! - tornado-core: Tornado Cash mixer circuits
 //! - semaphore: Privacy-preserving signaling
@@ -20,7 +20,7 @@ use zk_fuzzer::analysis::{
 // Test Circuit Paths (external repository)
 // ============================================================================
 
-const ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
 const COMPILED_SNARKJS_GROTH16_R1CS: &str = "circuits/compiled/snarkjs_groth16/circuit.r1cs";
 const COMPILED_SNARKJS_GROTH16_SYM: &str = "circuits/compiled/snarkjs_groth16/circuit.sym";
 const COMPILED_SNARKJS_PLONK_R1CS: &str = "circuits/compiled/snarkjs_plonk_circuit/circuit.r1cs";
@@ -45,7 +45,11 @@ const GNARK_ISSUE1045_R1CS: &str = "cat5_frameworks/gnark/internal/regression_te
 fn zk0d_base() -> std::path::PathBuf {
     std::env::var("ZK0D_BASE")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| Path::new(ZK0D_BASE).to_path_buf())
+        .unwrap_or_else(|_| Path::new(DEFAULT_ZK0D_BASE).to_path_buf())
+}
+
+fn zk0d_base_display() -> String {
+    zk0d_base().display().to_string()
 }
 
 fn resolve_path(candidates: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
@@ -96,7 +100,10 @@ fn external_circuits_available() -> bool {
 #[test]
 fn test_parse_snarkjs_groth16_circuit() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -143,7 +150,10 @@ fn test_parse_snarkjs_groth16_circuit() {
 #[test]
 fn test_parse_snarkjs_groth16_with_symbols() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -189,7 +199,10 @@ fn test_parse_snarkjs_groth16_with_symbols() {
 #[test]
 fn test_parse_snarkjs_plonk_circuit() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -216,7 +229,10 @@ fn test_parse_snarkjs_plonk_circuit() {
 #[test]
 fn test_parse_snarkjs_basic_circuit() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -241,7 +257,10 @@ fn test_parse_snarkjs_basic_circuit() {
 #[test]
 fn test_parse_risc0_multiplier() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -267,7 +286,10 @@ fn test_parse_risc0_multiplier() {
 #[test]
 fn test_parse_gnark_circuit() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -297,7 +319,10 @@ fn test_parse_gnark_circuit() {
 #[test]
 fn test_input_constraints_extraction() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -336,7 +361,10 @@ fn test_input_constraints_extraction() {
 #[test]
 fn test_extended_constraint_conversion() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -380,7 +408,10 @@ fn test_extended_constraint_conversion() {
 #[test]
 fn test_smt_seed_generation_basic() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -442,7 +473,10 @@ fn test_smt_seed_generation_basic() {
 #[test]
 fn test_smt_seed_generation_via_r1cs_api() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -474,7 +508,10 @@ fn test_smt_seed_generation_via_r1cs_api() {
 #[test]
 fn test_underconstrained_detection() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -512,7 +549,10 @@ fn test_underconstrained_detection() {
 #[test]
 fn test_find_privacy_circuit_sources() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -565,7 +605,10 @@ fn test_find_privacy_circuit_sources() {
 #[test]
 fn test_tornado_cash_source_analysis() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -618,7 +661,10 @@ fn test_tornado_cash_source_analysis() {
 #[test]
 fn test_semaphore_source_analysis() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -655,7 +701,10 @@ fn test_semaphore_source_analysis() {
 #[test]
 fn test_iden3_credential_source_analysis() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -694,7 +743,10 @@ fn test_iden3_credential_source_analysis() {
 #[test]
 fn test_r1cs_parsing_performance() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 
@@ -726,7 +778,10 @@ fn test_r1cs_parsing_performance() {
 #[test]
 fn test_constraint_conversion_performance() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 

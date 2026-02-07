@@ -1,6 +1,6 @@
 # Real-world ZK Fuzzing Campaign: Polygon zkEVM Circuits
 # Target: ZK rollup circuit infrastructure
-# Source: /media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits
+# Source: ${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat2_rollups/zkevm-circuits
 
 campaign:
   name: "Polygon zkEVM Circuit Security Audit"

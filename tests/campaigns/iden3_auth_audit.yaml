@@ -1,6 +1,6 @@
 # Real-world ZK Fuzzing Campaign: Iden3 Auth Circuits
 # Target: Identity verification circuits
-# Source: /media/elements/Repos/zk0d/cat3_privacy/circuits
+# Source: ${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits
 
 campaign:
   name: "Iden3 Authentication Circuit Audit"

@@ -4,7 +4,7 @@ This directory contains fuzzing campaign configurations for testing real-world Z
 
 ## Real-World Test Targets
 
-The campaigns in this directory target circuits from `/media/elements/Repos/zk0d`, organized by category:
+The campaigns in this directory target circuits from `${ZK0D_BASE:-/media/elements/Repos/zk0d}`, organized by category:
 
 ### Privacy Protocols (`cat3_privacy/`)
 | Campaign | Target | Priority |
@@ -78,7 +78,7 @@ inputs:
 
 ## Adding New Campaigns
 
-1. Identify the circuit in `/media/elements/Repos/zk0d/`
+1. Identify the circuit in `${ZK0D_BASE:-/media/elements/Repos/zk0d}/`
 2. Analyze the circuit's inputs and outputs
 3. Create a campaign YAML with appropriate attacks
 4. Test with `validate` command first

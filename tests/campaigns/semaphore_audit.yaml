@@ -1,6 +1,6 @@
 # Real-world ZK Fuzzing Campaign: Semaphore
 # Target: Privacy-preserving identity protocol
-# Source: /media/elements/Repos/zk0d/cat3_privacy/semaphore
+# Source: ${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore
 
 campaign:
   name: "Semaphore Protocol Security Audit"

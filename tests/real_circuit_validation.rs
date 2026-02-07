@@ -3,15 +3,21 @@
 //! These tests validate the adaptive fuzzing system against real-world ZK circuits
 //! from the zk0d repository when available.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use zk_fuzzer::analysis::opus::{OpusAnalyzer, OpusConfig};
 use zk_fuzzer::config::generator::PatternType;
 
-const ZK0D_PATH: &str = "/media/elements/Repos/zk0d";
+const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+
+fn zk0d_base() -> PathBuf {
+    std::env::var("ZK0D_BASE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_ZK0D_BASE))
+}
 
 /// Check if zk0d repository is available
 fn zk0d_available() -> bool {
-    Path::new(ZK0D_PATH).exists()
+    zk0d_base().exists()
 }
 
 /// Test analysis of real privacy circuits
@@ -23,7 +29,7 @@ fn test_real_privacy_circuits() {
         return;
     }
 
-    let privacy_path = Path::new(ZK0D_PATH).join("cat3_privacy/circuits");
+    let privacy_path = zk0d_base().join("cat3_privacy/circuits");
     if !privacy_path.exists() {
         eprintln!("Skipping: privacy circuits not found");
         return;
@@ -62,7 +68,7 @@ fn test_real_noir_circuits() {
         return;
     }
 
-    let aztec_path = Path::new(ZK0D_PATH).join("cat3_privacy/aztec-packages/noir-projects");
+    let aztec_path = zk0d_base().join("cat3_privacy/aztec-packages/noir-projects");
     if !aztec_path.exists() {
         eprintln!("Skipping: Aztec Noir circuits not found");
         return;

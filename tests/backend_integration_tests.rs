@@ -9,6 +9,8 @@ use zk_fuzzer::executor::{CircuitExecutor, ExecutorFactory, CircomExecutor, Noir
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CircomTarget, NoirTarget, Halo2Target, CairoTarget, TargetCircuit};
 
+const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+
 fn repo_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -42,7 +44,12 @@ fn halo2_spec_path(name: &str) -> PathBuf {
 }
 
 fn halo2_real_repo_path() -> PathBuf {
-    PathBuf::from("/media/elements/Repos/zk0d/cat5_frameworks/halo2-scaffold")
+    if let Ok(path) = std::env::var("HALO2_SCAFFOLD_PATH") {
+        return PathBuf::from(path);
+    }
+    let base = std::env::var("ZK0D_BASE")
+        .unwrap_or_else(|_| DEFAULT_ZK0D_BASE.to_string());
+    PathBuf::from(base).join("cat5_frameworks/halo2-scaffold")
 }
 
 /// Test that all required backends are available
@@ -281,7 +288,8 @@ fn test_noir_constraint_coverage() {
 }
 
 /// Validate constraint-level coverage for a real Halo2 circuit project.
-/// Requires the halo2-scaffold repo cloned at /media/elements/Repos/zk0d/cat5_frameworks/halo2-scaffold.
+/// Requires the halo2-scaffold repo cloned at ${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat5_frameworks/halo2-scaffold
+/// (or set HALO2_SCAFFOLD_PATH explicitly).
 #[test]
 #[ignore]
 fn test_halo2_real_circuit_constraint_coverage() {

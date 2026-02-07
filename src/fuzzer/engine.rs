@@ -767,6 +767,11 @@ impl FuzzingEngine {
         // Run source code analysis for vulnerability hints
         self.run_source_analysis(progress);
 
+        // Seed corpus with external inputs if provided
+        if let Err(err) = self.seed_external_inputs_from_config() {
+            tracing::warn!("Failed to load external seed inputs: {}", err);
+        }
+
         // Seed corpus
         self.seed_corpus()?;
         tracing::info!(
@@ -1097,6 +1102,141 @@ impl FuzzingEngine {
         }
 
         Ok(())
+    }
+
+    fn seed_external_inputs_from_config(&mut self) -> anyhow::Result<()> {
+        let path = self
+            .config
+            .campaign
+            .parameters
+            .additional
+            .get("seed_inputs_path")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string());
+
+        let Some(path) = path else {
+            return Ok(());
+        };
+
+        let seeds = self.load_seed_inputs_from_path(&path)?;
+        if seeds.is_empty() {
+            tracing::warn!("External seed inputs were empty: {}", path);
+            return Ok(());
+        }
+
+        let added = self.seed_corpus_from_inputs(&seeds);
+        tracing::info!(
+            "Seeded corpus with {} external inputs from {}",
+            added,
+            path
+        );
+        Ok(())
+    }
+
+    fn load_seed_inputs_from_path(
+        &self,
+        path: &str,
+    ) -> anyhow::Result<Vec<Vec<FieldElement>>> {
+        let raw = std::fs::read_to_string(path)?;
+        let json: serde_json::Value = serde_json::from_str(&raw)?;
+
+        let mut seeds = Vec::new();
+        match json {
+            serde_json::Value::Array(entries) => {
+                for entry in entries {
+                    if let Some(seed) = self.build_seed_from_json(&entry) {
+                        seeds.push(seed);
+                    }
+                }
+            }
+            serde_json::Value::Object(_) => {
+                if let Some(seed) = self.build_seed_from_json(&json) {
+                    seeds.push(seed);
+                }
+            }
+            _ => {
+                anyhow::bail!("seed_inputs_path must be a JSON object or array");
+            }
+        }
+
+        Ok(seeds)
+    }
+
+    fn build_seed_from_json(&self, entry: &serde_json::Value) -> Option<Vec<FieldElement>> {
+        let map = entry.as_object()?;
+        let mut inputs = Vec::with_capacity(self.config.inputs.len());
+        let mut missing = Vec::new();
+
+        for spec in &self.config.inputs {
+            let name = spec.name.as_str();
+            let value = if let Some(v) = map.get(name) {
+                Self::parse_field_value(v)
+            } else if let Some((base, idx)) = Self::split_indexed_name(name) {
+                map.get(base)
+                    .and_then(|v| v.as_array())
+                    .and_then(|arr| arr.get(idx))
+                    .and_then(Self::parse_field_value)
+            } else {
+                None
+            };
+
+            match value {
+                Some(v) => inputs.push(v),
+                None => missing.push(name.to_string()),
+            }
+        }
+
+        if !missing.is_empty() {
+            tracing::warn!(
+                "Skipping external seed: missing {} inputs (e.g. {})",
+                missing.len(),
+                missing.first().cloned().unwrap_or_default()
+            );
+            return None;
+        }
+
+        Some(inputs)
+    }
+
+    fn split_indexed_name(name: &str) -> Option<(&str, usize)> {
+        let (base, idx_str) = name.rsplit_once('_')?;
+        if idx_str.chars().all(|c| c.is_ascii_digit()) {
+            let idx = idx_str.parse::<usize>().ok()?;
+            return Some((base, idx));
+        }
+        None
+    }
+
+    fn parse_field_value(value: &serde_json::Value) -> Option<FieldElement> {
+        match value {
+            serde_json::Value::String(s) => Self::parse_field_string(s),
+            serde_json::Value::Number(n) => Self::parse_field_string(&n.to_string()),
+            serde_json::Value::Bool(b) => {
+                if *b {
+                    Self::parse_field_string("1")
+                } else {
+                    Self::parse_field_string("0")
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn parse_field_string(raw: &str) -> Option<FieldElement> {
+        let trimmed = raw.trim();
+        if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
+            return FieldElement::from_hex(trimmed).ok();
+        }
+
+        let value = num_bigint::BigUint::parse_bytes(trimmed.as_bytes(), 10)?;
+        let bytes = value.to_bytes_be();
+        if bytes.len() > 32 {
+            return None;
+        }
+        let mut buf = [0u8; 32];
+        let start = 32usize.saturating_sub(bytes.len());
+        buf[start..start + bytes.len()].copy_from_slice(&bytes);
+        Some(FieldElement(buf))
     }
 
     fn add_to_corpus(&self, test_case: TestCase) {

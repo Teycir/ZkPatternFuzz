@@ -104,6 +104,47 @@ fn infer_array_size(signals: &HashMap<String, usize>, name: &str) -> Option<usiz
     max_index.map(|idx| idx + 1)
 }
 
+fn infer_io_from_symbols(
+    sym_list: &[(usize, String)],
+    num_outputs: usize,
+    num_public_inputs: usize,
+    num_private_inputs: usize,
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let total = num_outputs
+        .saturating_add(num_public_inputs)
+        .saturating_add(num_private_inputs);
+    if total == 0 {
+        return (Vec::new(), Vec::new(), Vec::new());
+    }
+
+    let mut top_level = Vec::new();
+    for (_, name) in sym_list {
+        let Some(rest) = name.strip_prefix("main.") else {
+            continue;
+        };
+        if rest.contains('.') {
+            continue;
+        }
+        top_level.push(rest.to_string());
+        if top_level.len() >= total {
+            break;
+        }
+    }
+
+    if top_level.is_empty() {
+        return (Vec::new(), Vec::new(), Vec::new());
+    }
+
+    let outputs_end = num_outputs.min(top_level.len());
+    let public_end = outputs_end.saturating_add(num_public_inputs).min(top_level.len());
+
+    let outputs = top_level[..outputs_end].to_vec();
+    let public_inputs = top_level[outputs_end..public_end].to_vec();
+    let private_inputs = top_level[public_end..].to_vec();
+
+    (outputs, public_inputs, private_inputs)
+}
+
 /// Witness calculator using compiled WASM
 struct WitnessCalculator {
     /// Path to the WASM file
@@ -401,10 +442,13 @@ impl CircomTarget {
 
         // Also parse the symbols file for signal names
         let sym_path = self.build_dir.join(format!("{}.sym", basename));
-        let signals = if sym_path.exists() {
-            self.parse_symbols_file(&sym_path)?
+        let (signals, sym_list) = if sym_path.exists() {
+            (
+                self.parse_symbols_file(&sym_path)?,
+                self.parse_symbols_list(&sym_path)?,
+            )
         } else {
-            HashMap::new()
+            (HashMap::new(), Vec::new())
         };
 
         let io_info = self.parse_io_info().unwrap_or_else(|e| {
@@ -412,29 +456,56 @@ impl CircomTarget {
             CircomIoInfo::default()
         });
 
-        let input_names: Vec<String> = io_info
+        let mut input_names: Vec<String> = io_info
             .input_signals
             .iter()
             .map(|s| s.name.clone())
             .collect();
-        let output_names: Vec<String> = io_info
+        let mut output_names: Vec<String> = io_info
             .output_signals
             .iter()
             .map(|s| s.name.clone())
             .collect();
 
-        let public_inputs: Vec<String> = io_info.public_inputs;
+        let mut public_inputs: Vec<String> = io_info.public_inputs;
+        let mut inferred_io: Option<(Vec<String>, Vec<String>, Vec<String>)> = None;
+
+        if input_names.is_empty() && !sym_list.is_empty() {
+            let (out_names, pub_inputs, priv_inputs) = infer_io_from_symbols(
+                &sym_list,
+                num_outputs,
+                num_public_inputs,
+                num_private_inputs,
+            );
+            if !out_names.is_empty() {
+                output_names = out_names;
+            }
+            if !pub_inputs.is_empty() {
+                public_inputs = pub_inputs.clone();
+            }
+            input_names = pub_inputs
+                .iter()
+                .chain(priv_inputs.iter())
+                .cloned()
+                .collect();
+            inferred_io = Some((output_names.clone(), public_inputs.clone(), priv_inputs));
+        }
         let public_set: HashSet<String> = public_inputs.iter().cloned().collect();
 
         let mut ordered_inputs = Vec::new();
-        for name in &public_inputs {
-            if input_names.contains(name) {
-                ordered_inputs.push(name.clone());
+        if let Some((_, pub_inputs, priv_inputs)) = inferred_io {
+            ordered_inputs.extend(pub_inputs);
+            ordered_inputs.extend(priv_inputs);
+        } else {
+            for name in &public_inputs {
+                if input_names.contains(name) {
+                    ordered_inputs.push(name.clone());
+                }
             }
-        }
-        for name in &input_names {
-            if !public_set.contains(name) {
-                ordered_inputs.push(name.clone());
+            for name in &input_names {
+                if !public_set.contains(name) {
+                    ordered_inputs.push(name.clone());
+                }
             }
         }
 
@@ -457,10 +528,17 @@ impl CircomTarget {
             .collect();
 
         let mut input_signal_sizes = HashMap::new();
-        for signal in &io_info.input_signals {
-            let inferred = infer_array_size(&signals, &signal.name);
-            let size = signal.array_size.or(inferred);
-            input_signal_sizes.insert(signal.name.clone(), size);
+        if io_info.input_signals.is_empty() {
+            for name in &ordered_inputs {
+                let inferred = infer_array_size(&signals, name);
+                input_signal_sizes.insert(name.clone(), inferred);
+            }
+        } else {
+            for signal in &io_info.input_signals {
+                let inferred = infer_array_size(&signals, &signal.name);
+                let size = signal.array_size.or(inferred);
+                input_signal_sizes.insert(signal.name.clone(), size);
+            }
         }
 
         self.metadata = Some(CircomMetadata {
@@ -506,6 +584,25 @@ impl CircomTarget {
         }
 
         Ok(signals)
+    }
+
+    fn parse_symbols_list(&self, path: &Path) -> Result<Vec<(usize, String)>> {
+        let file = std::fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        let mut entries = Vec::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 4 {
+                let index: usize = parts[0].parse().unwrap_or(0);
+                let name = parts[3].to_string();
+                entries.push((index, name));
+            }
+        }
+
+        entries.sort_by_key(|(idx, _)| *idx);
+        Ok(entries)
     }
 
     /// Setup proving and verification keys using Groth16
