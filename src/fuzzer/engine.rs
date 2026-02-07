@@ -146,6 +146,7 @@ use std::time::{Duration, Instant};
 /// reached, less interesting test cases are evicted based on coverage contribution.
 pub struct FuzzingEngine {
     config: FuzzConfig,
+    seed: Option<u64>,
     executor: Arc<dyn CircuitExecutor>,
     executor_factory_options: ExecutorFactoryOptions,
     core: FuzzingEngineCore,
@@ -236,6 +237,7 @@ impl FuzzingEngine {
                 max_paths: 100,
                 max_depth: 20,
                 solver_timeout_ms: 2000,
+                random_seed: seed,
                 generate_boundary_tests: true,
                 solutions_per_path: 2,
             },
@@ -321,6 +323,7 @@ impl FuzzingEngine {
 
         Ok(Self {
             config,
+            seed,
             executor,
             executor_factory_options,
             core,
@@ -547,6 +550,7 @@ impl FuzzingEngine {
             pruning_strategy: PruningStrategy::DepthBounded,
             simplify_constraints: true,
             incremental_solving: false,
+            random_seed: self.seed,
             ..Default::default()
         };
 

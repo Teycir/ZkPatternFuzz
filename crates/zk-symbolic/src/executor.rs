@@ -376,6 +376,8 @@ pub struct Z3Solver {
     timeout_ms: u32,
     /// Field modulus string
     modulus: String,
+    /// Optional random seed for deterministic solving
+    random_seed: Option<u64>,
 }
 
 impl Z3Solver {
@@ -383,11 +385,17 @@ impl Z3Solver {
         Self {
             timeout_ms: 5000,
             modulus: BN254_MODULUS.to_string(),
+            random_seed: None,
         }
     }
 
     pub fn with_timeout(mut self, timeout_ms: u32) -> Self {
         self.timeout_ms = timeout_ms;
+        self
+    }
+
+    pub fn with_random_seed(mut self, seed: Option<u64>) -> Self {
+        self.random_seed = seed;
         self
     }
 
@@ -542,6 +550,12 @@ impl Z3Solver {
 
         let mut params = z3::Params::new(&ctx);
         params.set_u32("timeout", self.timeout_ms);
+        if let Some(seed) = self.random_seed {
+            let seed_u32 = (seed % (u32::MAX as u64)) as u32;
+            params.set_u32("random_seed", seed_u32);
+            params.set_u32("smt.random_seed", seed_u32);
+            params.set_u32("sat.random_seed", seed_u32);
+        }
         solver.set_params(&params);
 
         let mut vars: HashMap<String, ast::Int> = HashMap::new();
@@ -579,6 +593,12 @@ impl Z3Solver {
 
         let mut params = z3::Params::new(&ctx);
         params.set_u32("timeout", self.timeout_ms);
+        if let Some(seed) = self.random_seed {
+            let seed_u32 = (seed % (u32::MAX as u64)) as u32;
+            params.set_u32("random_seed", seed_u32);
+            params.set_u32("smt.random_seed", seed_u32);
+            params.set_u32("sat.random_seed", seed_u32);
+        }
         solver.set_params(&params);
 
         let mut vars: HashMap<String, ast::Int> = HashMap::new();
@@ -708,6 +728,8 @@ pub struct SymbolicConfig {
     pub max_depth: usize,
     /// Solver timeout in milliseconds
     pub solver_timeout_ms: u32,
+    /// Optional random seed for deterministic solving
+    pub random_seed: Option<u64>,
     /// Generate boundary test cases
     pub generate_boundary_tests: bool,
     /// Number of solutions per path
@@ -720,6 +742,7 @@ impl Default for SymbolicConfig {
             max_paths: 1000,
             max_depth: 50,
             solver_timeout_ms: 5000,
+            random_seed: None,
             generate_boundary_tests: true,
             solutions_per_path: 3,
         }
@@ -748,7 +771,9 @@ pub struct SymbolicExecutor {
 impl SymbolicExecutor {
     pub fn new(num_inputs: usize) -> Self {
         let config = SymbolicConfig::default();
-        let solver = Z3Solver::new().with_timeout(config.solver_timeout_ms);
+        let solver = Z3Solver::new()
+            .with_timeout(config.solver_timeout_ms)
+            .with_random_seed(config.random_seed);
         let initial_state = SymbolicState::new(num_inputs);
 
         Self {
@@ -763,7 +788,9 @@ impl SymbolicExecutor {
     }
 
     pub fn with_config(mut self, config: SymbolicConfig) -> Self {
-        self.solver = Z3Solver::new().with_timeout(config.solver_timeout_ms);
+        self.solver = Z3Solver::new()
+            .with_timeout(config.solver_timeout_ms)
+            .with_random_seed(config.random_seed);
         self.config = config;
         self
     }

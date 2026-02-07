@@ -143,7 +143,9 @@ impl ConstraintSeedGenerator {
             pruned_path.add_constraint(constraint);
         }
 
-        let solver = Z3Solver::new().with_timeout(self.config.solver_timeout_ms);
+        let solver = Z3Solver::new()
+            .with_timeout(self.config.solver_timeout_ms)
+            .with_random_seed(self.config.random_seed);
         let solutions = if self.config.solutions_per_path <= 1 {
             match solver.solve(&pruned_path) {
                 crate::executor::SolverResult::Sat(assignments) => vec![assignments],

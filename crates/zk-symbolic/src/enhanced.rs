@@ -634,6 +634,7 @@ impl Default for ConstraintSimplifier {
 pub struct IncrementalSolver {
     timeout_ms: u32,
     modulus: String,
+    random_seed: Option<u64>,
     /// Cache of solved path conditions to avoid redundant solving
     solution_cache: HashMap<u64, SolverResult>,
     /// Maximum cache size
@@ -645,6 +646,7 @@ impl IncrementalSolver {
         Self {
             timeout_ms: 5000,
             modulus: BN254_MODULUS.to_string(),
+            random_seed: None,
             solution_cache: HashMap::new(),
             max_cache_size: 10000,
         }
@@ -652,6 +654,11 @@ impl IncrementalSolver {
 
     pub fn with_timeout(mut self, timeout_ms: u32) -> Self {
         self.timeout_ms = timeout_ms;
+        self
+    }
+
+    pub fn with_random_seed(mut self, seed: Option<u64>) -> Self {
+        self.random_seed = seed;
         self
     }
 
@@ -700,6 +707,12 @@ impl IncrementalSolver {
 
         let mut params = z3::Params::new(&ctx);
         params.set_u32("timeout", self.timeout_ms);
+        if let Some(seed) = self.random_seed {
+            let seed_u32 = (seed % (u32::MAX as u64)) as u32;
+            params.set_u32("random_seed", seed_u32);
+            params.set_u32("smt.random_seed", seed_u32);
+            params.set_u32("sat.random_seed", seed_u32);
+        }
         solver.set_params(&params);
 
         let mut vars: HashMap<String, ast::Int> = HashMap::new();
@@ -928,6 +941,8 @@ pub struct EnhancedSymbolicConfig {
     pub max_depth: usize,
     /// Solver timeout in milliseconds
     pub solver_timeout_ms: u32,
+    /// Optional random seed for deterministic solving
+    pub random_seed: Option<u64>,
     /// Path pruning strategy
     pub pruning_strategy: PruningStrategy,
     /// Enable constraint simplification
@@ -946,6 +961,7 @@ impl Default for EnhancedSymbolicConfig {
             max_paths: 1000,
             max_depth: 50,
             solver_timeout_ms: 5000,
+            random_seed: None,
             pruning_strategy: PruningStrategy::CoverageGuided,
             simplify_constraints: true,
             incremental_solving: true,
@@ -999,7 +1015,9 @@ impl EnhancedSymbolicExecutor {
             .with_max_paths(config.max_paths)
             .with_loop_bound(config.loop_bound);
 
-        let solver = IncrementalSolver::new().with_timeout(config.solver_timeout_ms);
+        let solver = IncrementalSolver::new()
+            .with_timeout(config.solver_timeout_ms)
+            .with_random_seed(config.random_seed);
 
         Self {
             worklist: BinaryHeap::from([initial_priority]),
@@ -1064,7 +1082,9 @@ impl EnhancedSymbolicExecutor {
             self.solver
                 .solve_incremental(&PathCondition::new(), &path.constraints)
         } else {
-            let basic_solver = Z3Solver::new().with_timeout(self.config.solver_timeout_ms);
+            let basic_solver = Z3Solver::new()
+                .with_timeout(self.config.solver_timeout_ms)
+                .with_random_seed(self.config.random_seed);
             basic_solver.solve(&path)
         };
 
