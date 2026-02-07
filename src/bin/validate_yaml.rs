@@ -111,7 +111,7 @@ fn collect_identifiers(ast: &InvariantAST, out: &mut Vec<String>) {
         InvariantAST::ArrayAccess(name, _) => out.push(name.clone()),
         InvariantAST::Call(_, args) => {
             for arg in args {
-                collect_identifiers(arg, out);
+                out.push(arg.clone());
             }
         }
         InvariantAST::Equals(a, b)
@@ -136,8 +136,8 @@ fn collect_identifiers(ast: &InvariantAST, out: &mut Vec<String>) {
             }
         }
         InvariantAST::Power(base, exp) => {
-            collect_identifiers(base, out);
-            collect_identifiers(exp, out);
+            out.push(base.clone());
+            out.push(exp.clone());
         }
         InvariantAST::Literal(_) | InvariantAST::Raw(_) => {}
     }

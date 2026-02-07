@@ -2941,7 +2941,7 @@ impl FuzzingEngine {
 
         use crate::config::v2::parse_invariant_relation;
 
-        let input_map = self.input_index_map();
+        let input_ranges = self.input_index_ranges();
         let mut findings = Vec::new();
 
         for invariant in invariants {
@@ -2957,9 +2957,9 @@ impl FuzzingEngine {
 
             let ast = parse_invariant_relation(&invariant.relation).ok();
             let target_indices = if let Some(ast) = ast.as_ref() {
-                self.extract_target_indices_from_ast(ast, &input_map)
+                self.extract_target_indices_from_ast(ast, &input_ranges)
             } else {
-                self.extract_target_indices_from_relation(&invariant.relation, &input_map)
+                self.extract_target_indices_from_relation(&invariant.relation, &input_ranges)
             };
             if target_indices.is_empty() {
                 continue;
@@ -3011,6 +3011,21 @@ impl FuzzingEngine {
             .collect()
     }
 
+    fn input_index_ranges(&self) -> std::collections::HashMap<String, (usize, usize)> {
+        let mut map = std::collections::HashMap::new();
+        let mut offset = 0usize;
+        for input in &self.config.inputs {
+            let len = if input.input_type.starts_with("array") {
+                input.length.unwrap_or(1)
+            } else {
+                1
+            };
+            map.insert(input.name.to_lowercase(), (offset, len));
+            offset = offset.saturating_add(len);
+        }
+        map
+    }
+
     fn input_labels(&self) -> std::collections::HashMap<usize, String> {
         self.config
             .inputs
@@ -3054,7 +3069,7 @@ impl FuzzingEngine {
     fn extract_target_indices_from_relation(
         &self,
         relation: &str,
-        input_map: &std::collections::HashMap<String, usize>,
+        input_ranges: &std::collections::HashMap<String, (usize, usize)>,
     ) -> Vec<usize> {
         let mut tokens = Vec::new();
         let mut current = String::new();
@@ -3073,8 +3088,10 @@ impl FuzzingEngine {
         let mut indices = Vec::new();
         for token in tokens {
             let key = Self::normalize_input_name(&token).to_lowercase();
-            if let Some(idx) = input_map.get(&key) {
-                indices.push(*idx);
+            if let Some((start, len)) = input_ranges.get(&key) {
+                for idx in *start..start.saturating_add(*len) {
+                    indices.push(idx);
+                }
             }
         }
         indices.sort_unstable();
@@ -3120,15 +3137,17 @@ impl FuzzingEngine {
     fn extract_target_indices_from_ast(
         &self,
         ast: &crate::config::v2::InvariantAST,
-        input_map: &std::collections::HashMap<String, usize>,
+        input_ranges: &std::collections::HashMap<String, (usize, usize)>,
     ) -> Vec<usize> {
         let mut names = Vec::new();
         self.collect_identifiers(ast, &mut names);
         let mut indices = Vec::new();
         for name in names {
             let key = Self::normalize_input_name(&name).to_lowercase();
-            if let Some(idx) = input_map.get(&key) {
-                indices.push(*idx);
+            if let Some((start, len)) = input_ranges.get(&key) {
+                for idx in *start..start.saturating_add(*len) {
+                    indices.push(idx);
+                }
             }
         }
         indices.sort_unstable();

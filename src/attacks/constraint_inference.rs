@@ -171,12 +171,32 @@ pub struct InferenceContext {
 impl InferenceContext {
     /// Create context from constraint inspector
     pub fn from_inspector(inspector: &dyn ConstraintInspector, num_wires: usize) -> Self {
+        let constraints = inspector.get_constraints();
+        let labels = inspector.wire_labels();
+        let max_from_constraints = constraints
+            .iter()
+            .flat_map(|c| {
+                c.a_terms
+                    .iter()
+                    .chain(c.b_terms.iter())
+                    .chain(c.c_terms.iter())
+                    .map(|(w, _)| *w)
+            })
+            .max();
+        let max_from_labels = labels.keys().copied().max();
+        let inferred_wires = max_from_constraints
+            .into_iter()
+            .chain(max_from_labels)
+            .max()
+            .map(|max_wire| max_wire.saturating_add(1))
+            .unwrap_or(num_wires);
+
         Self {
-            constraints: inspector.get_constraints(),
-            wire_labels: inspector.wire_labels(),
+            constraints,
+            wire_labels: labels,
             num_public_inputs: inspector.num_public_inputs(),
             num_private_inputs: inspector.num_private_inputs(),
-            num_wires,
+            num_wires: num_wires.max(inferred_wires),
         }
     }
 

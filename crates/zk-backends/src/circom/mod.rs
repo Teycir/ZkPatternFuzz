@@ -218,7 +218,7 @@ impl CircomTarget {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or(&self.main_component)
-            .to_lowercase()
+            .to_string()
     }
 
     /// Create with custom build directory

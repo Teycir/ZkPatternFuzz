@@ -72,10 +72,10 @@ fn main() -> anyhow::Result<()> {
     let bin_path = PathBuf::from("target/release/zk-fuzzer");
     if args.build && !bin_path.exists() {
         let status = Command::new("cargo")
-            .args(["build", "--release"])
+            .args(["build", "--release", "--bin", "zk-fuzzer"])
             .status()?;
         if !status.success() {
-            anyhow::bail!("cargo build --release failed");
+            anyhow::bail!("cargo build --release --bin zk-fuzzer failed");
         }
     }
 
@@ -179,13 +179,34 @@ fn validate_campaign(campaign: &str, output_dir: &str) -> anyhow::Result<()> {
 }
 
 fn write_campaign_override(campaign: &str, output_dir: &str) -> anyhow::Result<PathBuf> {
-    let mut config = FuzzConfig::from_yaml(campaign)?;
-    config.reporting.output_dir = PathBuf::from(output_dir);
+    let raw = std::fs::read_to_string(campaign)?;
+    let mut doc: serde_yaml::Value = serde_yaml::from_str(&raw)?;
 
-    std::fs::create_dir_all(&config.reporting.output_dir)?;
+    let output_dir = PathBuf::from(output_dir);
+    std::fs::create_dir_all(&output_dir)?;
 
-    let path = Path::new(output_dir).join("campaign.yaml");
-    let yaml = serde_yaml::to_string(&config)?;
+    if let Some(map) = doc.as_mapping_mut() {
+        let reporting_key = serde_yaml::Value::String("reporting".to_string());
+        let output_key = serde_yaml::Value::String("output_dir".to_string());
+
+        if let Some(reporting) = map.get_mut(&reporting_key) {
+            if let Some(reporting_map) = reporting.as_mapping_mut() {
+                reporting_map.insert(output_key, serde_yaml::Value::String(output_dir.to_string_lossy().to_string()));
+            }
+        } else {
+            let mut reporting_map = serde_yaml::Mapping::new();
+            reporting_map.insert(
+                output_key,
+                serde_yaml::Value::String(output_dir.to_string_lossy().to_string()),
+            );
+            map.insert(reporting_key, serde_yaml::Value::Mapping(reporting_map));
+        }
+    } else {
+        anyhow::bail!("Campaign YAML is not a mapping");
+    }
+
+    let path = Path::new(&output_dir).join("campaign.yaml");
+    let yaml = serde_yaml::to_string(&doc)?;
     std::fs::write(&path, yaml)?;
     Ok(path)
 }

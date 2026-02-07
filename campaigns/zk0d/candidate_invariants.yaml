@@ -1,0 +1,33 @@
+version: 1
+generated: 2026-02-07
+
+targets:
+  - name: "iden3_authv3"
+    circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/authV3.circom"
+    main_component: "AuthV3"
+    source: "Skimmer top-10 + manual review of auth/authV3.circom and SMTVerifier"
+    candidate_invariants:
+      - name: "auth_claim_nonrev_noaux_binary"
+        relation: "authClaimNonRevMtpNoAux in {0,1}"
+        inputs: ["authClaimNonRevMtpNoAux"]
+        rationale: "SMTVerifier treats isOld0 as boolean; no explicit binary constraint observed. Non-binary could weaken non-revocation proof semantics."
+
+      - name: "gist_noaux_binary"
+        relation: "gistMtpNoAux in {0,1}"
+        inputs: ["gistMtpNoAux"]
+        rationale: "On-chain SMT verifier uses isOld0 as boolean; missing binary constraint would allow invalid inclusion/non-inclusion flags."
+
+      - name: "signature_s_canonical"
+        relation: "0 <= challengeSignatureS < subgroup_order"
+        inputs: ["challengeSignatureS"]
+        rationale: "EdDSA signatures must enforce S canonical range; check for malleability. (May already be enforced by circomlib.)"
+
+      - name: "signature_r8_on_curve"
+        relation: "R8 is on BabyJubJub"
+        inputs: ["challengeSignatureR8x", "challengeSignatureR8y"]
+        rationale: "R8 point should be on curve; missing check can admit invalid signatures."
+
+      - name: "nonrev_aux_zero_when_noaux"
+        relation: "authClaimNonRevMtpNoAux == 1 => (authClaimNonRevMtpAuxHi == 0 && authClaimNonRevMtpAuxHv == 0)"
+        inputs: ["authClaimNonRevMtpNoAux", "authClaimNonRevMtpAuxHi", "authClaimNonRevMtpAuxHv"]
+        rationale: "If no auxiliary node is present, aux hi/hv should be zero; otherwise may allow inconsistent proofs."
