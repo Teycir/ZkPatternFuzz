@@ -605,6 +605,9 @@ impl FuzzingEngine {
         if let Some(ptau_path) = Self::additional_path(additional, "circom_ptau_path") {
             options.circom_ptau_path = Some(ptau_path);
         }
+        if let Some(snarkjs_path) = Self::additional_path(additional, "circom_snarkjs_path") {
+            options.circom_snarkjs_path = Some(snarkjs_path);
+        }
 
         if let Some(value) = additional.get("include_paths") {
             let mut paths = Vec::new();

@@ -21,6 +21,8 @@ campaign:
     strict_backend: true
     mark_fallback: true
     circom_auto_setup_keys: true
+    circom_ptau_path: "/tmp/pot18_final.ptau"
+    circom_snarkjs_path: "/media/elements/Repos/zk0d/cat3_privacy/semaphore/node_modules/snarkjs/build/cli.cjs"
 
 attacks:
   - type: "soundness"

@@ -47,6 +47,8 @@ pub struct ExecutorFactoryOptions {
     pub circom_auto_setup_keys: bool,
     /// Optional path to a powers of tau file for Circom Groth16 setup
     pub circom_ptau_path: Option<PathBuf>,
+    /// Optional path to snarkjs CLI (binary or JS file)
+    pub circom_snarkjs_path: Option<PathBuf>,
     /// If true, fail with an error when real backend tooling is missing
     /// instead of falling back to mock executor silently.
     /// 
@@ -79,6 +81,7 @@ impl Default for ExecutorFactoryOptions {
             circom_include_paths: Vec::new(),
             circom_auto_setup_keys: false,
             circom_ptau_path: None,
+            circom_snarkjs_path: None,
             strict_backend: false,
             mark_fallback: true, // Default to marking fallbacks so warnings are shown
         }
@@ -597,6 +600,9 @@ impl ExecutorFactory {
                         options.circom_include_paths
                     );
                 }
+                if let Some(snarkjs_path) = &options.circom_snarkjs_path {
+                    tracing::info!("Using snarkjs CLI: {:?}", snarkjs_path);
+                }
                 let build_dir =
                     options.resolve_build_dir(Framework::Circom, circuit_path, main_component);
                 let mut executor = CircomExecutor::new_with_options(
@@ -605,6 +611,7 @@ impl ExecutorFactory {
                     build_dir,
                     options.circom_include_paths.clone(),
                     options.circom_ptau_path.clone(),
+                    options.circom_snarkjs_path.clone(),
                 )?;
                 if options.circom_auto_setup_keys {
                     tracing::info!("Auto-generating Circom proving/verification keys");
@@ -779,7 +786,7 @@ pub struct CircomExecutor {
 
 impl CircomExecutor {
     pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
-        Self::new_with_options(circuit_path, main_component, None, Vec::new(), None)
+        Self::new_with_options(circuit_path, main_component, None, Vec::new(), None, None)
     }
 
     pub fn new_with_build_dir(
@@ -787,7 +794,7 @@ impl CircomExecutor {
         main_component: &str,
         build_dir: PathBuf,
     ) -> anyhow::Result<Self> {
-        Self::new_with_options(circuit_path, main_component, Some(build_dir), Vec::new(), None)
+        Self::new_with_options(circuit_path, main_component, Some(build_dir), Vec::new(), None, None)
     }
 
     pub fn new_with_options(
@@ -796,6 +803,7 @@ impl CircomExecutor {
         build_dir: Option<PathBuf>,
         include_paths: Vec<PathBuf>,
         ptau_path: Option<PathBuf>,
+        snarkjs_path: Option<PathBuf>,
     ) -> anyhow::Result<Self> {
         let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?;
         if let Some(dir) = build_dir {
@@ -806,6 +814,9 @@ impl CircomExecutor {
         }
         if let Some(path) = ptau_path {
             target = target.with_ptau_path(path);
+        }
+        if let Some(path) = snarkjs_path {
+            target = target.with_snarkjs_path(path);
         }
         target.compile()?;
         Ok(Self {

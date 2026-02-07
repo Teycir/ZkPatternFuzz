@@ -40,6 +40,8 @@ pub struct CircomTarget {
     include_paths: Vec<PathBuf>,
     /// Optional override path for powers of tau
     ptau_path_override: Option<PathBuf>,
+    /// Optional override path for snarkjs CLI
+    snarkjs_path_override: Option<PathBuf>,
 }
 
 /// Metadata extracted from compiled Circom circuit
@@ -153,6 +155,8 @@ fn infer_io_from_symbols(
 struct WitnessCalculator {
     /// Path to the WASM file
     wasm_path: PathBuf,
+    /// Optional override path for snarkjs CLI
+    snarkjs_path: Option<PathBuf>,
 }
 
 fn create_temp_dir() -> Result<tempfile::TempDir> {
@@ -372,14 +376,40 @@ fn extract_include_path(line: &str) -> Option<(String, char)> {
     Some((rest[..end].to_string(), quote))
 }
 
+fn is_js_cli(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("js") | Some("cjs") | Some("mjs")
+    )
+}
+
+fn snarkjs_command_for(path: Option<&Path>) -> Command {
+    match path {
+        Some(path) if is_js_cli(path) => {
+            let mut cmd = Command::new("node");
+            cmd.arg(path);
+            cmd
+        }
+        Some(path) => Command::new(path),
+        None => {
+            let mut cmd = Command::new("npx");
+            cmd.arg("snarkjs");
+            cmd
+        }
+    }
+}
+
 fn circom_io_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
 impl WitnessCalculator {
-    fn new(wasm_path: PathBuf) -> Self {
-        Self { wasm_path }
+    fn new(wasm_path: PathBuf, snarkjs_path: Option<PathBuf>) -> Self {
+        Self {
+            wasm_path,
+            snarkjs_path,
+        }
     }
 
     /// Calculate witness using node.js and snarkjs
@@ -397,9 +427,8 @@ impl WitnessCalculator {
         std::fs::write(&input_path, &input_json)?;
 
         // Run witness generation using snarkjs
-        let output = Command::new("npx")
+        let output = snarkjs_command_for(self.snarkjs_path.as_deref())
             .args([
-                "snarkjs",
                 "wtns",
                 "calculate",
                 self.wasm_path.to_str().unwrap(),
@@ -415,9 +444,8 @@ impl WitnessCalculator {
         }
 
         // Export witness to JSON for parsing
-        let output = Command::new("npx")
+        let output = snarkjs_command_for(self.snarkjs_path.as_deref())
             .args([
-                "snarkjs",
                 "wtns",
                 "export",
                 "json",
@@ -466,6 +494,7 @@ impl CircomTarget {
             verification_key_path: None,
             include_paths: Vec::new(),
             ptau_path_override: None,
+            snarkjs_path_override: None,
         })
     }
 
@@ -496,6 +525,12 @@ impl CircomTarget {
         self
     }
 
+    /// Override the snarkjs CLI location (binary or JS file)
+    pub fn with_snarkjs_path(mut self, snarkjs_path: PathBuf) -> Self {
+        self.snarkjs_path_override = Some(snarkjs_path);
+        self
+    }
+
     /// Check if circom is available
     pub fn check_circom_available() -> Result<String> {
         let output = Command::new("circom")
@@ -512,8 +547,8 @@ impl CircomTarget {
 
     /// Check if snarkjs is available
     pub fn check_snarkjs_available() -> Result<String> {
-        let output = Command::new("npx")
-            .args(["snarkjs", "--version"])
+        let output = snarkjs_command_for(None)
+            .arg("--version")
             .output()
             .context("snarkjs not found")?;
 
@@ -588,7 +623,10 @@ impl CircomTarget {
             .join(format!("{}.wasm", basename));
 
         if wasm_path.exists() {
-            self.witness_calculator = Some(WitnessCalculator::new(wasm_path));
+            self.witness_calculator = Some(WitnessCalculator::new(
+                wasm_path,
+                self.snarkjs_path_override.clone(),
+            ));
         } else {
             tracing::warn!(
                 "WASM file not found at expected path {:?}, witness calculation may fail",
@@ -636,8 +674,8 @@ impl CircomTarget {
         }
 
         // Use snarkjs to get R1CS info
-        let output = Command::new("npx")
-            .args(["snarkjs", "r1cs", "info", r1cs_path.to_str().unwrap()])
+        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
+            .args(["r1cs", "info", r1cs_path.to_str().unwrap()])
             .output()
             .context("Failed to get R1CS info")?;
 
@@ -856,9 +894,8 @@ impl CircomTarget {
 
         // Generate zkey (proving key)
         tracing::info!("Generating proving key...");
-        let output = Command::new("npx")
+        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
             .args([
-                "snarkjs",
                 "groth16",
                 "setup",
                 r1cs_path.to_str().unwrap(),
@@ -875,9 +912,8 @@ impl CircomTarget {
 
         // Export verification key
         tracing::info!("Exporting verification key...");
-        let output = Command::new("npx")
+        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
             .args([
-                "snarkjs",
                 "zkey",
                 "export",
                 "verificationkey",
@@ -1029,9 +1065,8 @@ impl CircomTarget {
             let temp_dir = create_temp_dir()?;
             let temp_path = temp_dir.path().join("constraints.json");
 
-            let output = Command::new("npx")
+            let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
                 .args([
-                    "snarkjs",
                     "r1cs",
                     "export",
                     "json",
@@ -1214,9 +1249,8 @@ impl TargetCircuit for CircomTarget {
         std::fs::write(&input_path, &input_json)?;
 
         if let Some(calc) = &self.witness_calculator {
-            let output = Command::new("npx")
+            let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
                 .args([
-                    "snarkjs",
                     "wtns",
                     "calculate",
                     calc.wasm_path.to_str().unwrap(),
@@ -1233,9 +1267,8 @@ impl TargetCircuit for CircomTarget {
         }
 
         // Generate proof
-        let output = Command::new("npx")
+        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
             .args([
-                "snarkjs",
                 "groth16",
                 "prove",
                 zkey_path.to_str().unwrap(),
@@ -1280,9 +1313,8 @@ impl TargetCircuit for CircomTarget {
         std::fs::write(&public_path, &public_json)?;
 
         // Verify
-        let output = Command::new("npx")
+        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
             .args([
-                "snarkjs",
                 "groth16",
                 "verify",
                 vkey_path.to_str().unwrap(),
