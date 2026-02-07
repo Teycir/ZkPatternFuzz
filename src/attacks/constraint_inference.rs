@@ -126,6 +126,8 @@ pub enum ViolationConfirmation {
     Rejected,
     /// Executed but confirmation could not be determined (no constraint checks)
     Inconclusive,
+    /// Executed but involves internal wires (cannot be confirmed from inputs)
+    UnconfirmedInternal,
 }
 
 impl ViolationConfirmation {
@@ -135,6 +137,7 @@ impl ViolationConfirmation {
             Self::Confirmed => "confirmed by execution",
             Self::Rejected => "rejected by execution",
             Self::Inconclusive => "inconclusive (no constraint evaluation)",
+            Self::UnconfirmedInternal => "unconfirmed (internal wires involved)",
         }
     }
 }
@@ -638,6 +641,7 @@ impl ConstraintInferenceEngine {
         executor: &dyn CircuitExecutor,
         base_inputs: &[FieldElement],
         implied: &mut [ImpliedConstraint],
+        output_wires: &HashSet<usize>,
     ) {
         let num_inputs = executor.num_public_inputs() + executor.num_private_inputs();
         if num_inputs == 0 {
@@ -674,9 +678,24 @@ impl ConstraintInferenceEngine {
                 }
             }
 
+            let has_internal_wires = constraint
+                .involved_wires
+                .iter()
+                .any(|&wire| wire >= num_inputs && !output_wires.contains(&wire));
+
             let result = executor.execute_sync(&candidate_inputs);
             if !result.success {
-                constraint.confirmation = ViolationConfirmation::Rejected;
+                constraint.confirmation = if has_internal_wires {
+                    ViolationConfirmation::UnconfirmedInternal
+                } else {
+                    ViolationConfirmation::Rejected
+                };
+                continue;
+            }
+
+            if has_internal_wires {
+                constraint.confirmation = ViolationConfirmation::UnconfirmedInternal;
+                constraint.violation_witness = Some(candidate_inputs);
                 continue;
             }
 
@@ -756,6 +775,7 @@ pub struct ConstraintInferenceStats {
     pub violations_confirmed: usize,
     pub violations_rejected: usize,
     pub violations_inconclusive: usize,
+    pub violations_unconfirmed_internal: usize,
 }
 
 impl ConstraintInferenceEngine {
@@ -777,6 +797,10 @@ impl ConstraintInferenceEngine {
             violations_inconclusive: implied
                 .iter()
                 .filter(|c| c.confirmation == ViolationConfirmation::Inconclusive)
+                .count(),
+            violations_unconfirmed_internal: implied
+                .iter()
+                .filter(|c| c.confirmation == ViolationConfirmation::UnconfirmedInternal)
                 .count(),
         }
     }

@@ -34,8 +34,10 @@ pub type ConstraintId = usize;
 /// A cone of constraints affecting a specific output
 #[derive(Debug, Clone)]
 pub struct ConstraintCone {
-    /// Root output index this cone affects
+    /// Output position in the executor outputs vector
     pub output_index: usize,
+    /// Wire index for the output signal
+    pub output_wire: usize,
     /// Constraints in this cone (ordered by distance from output)
     pub constraints: Vec<ConstraintId>,
     /// Input wires that can affect this output
@@ -115,8 +117,8 @@ impl ConstraintSlicer {
         self
     }
 
-    /// Slice to a specific output, building the dependency cone
-    pub fn slice_to_output(&self, output_wire: usize) -> ConstraintCone {
+    /// Slice to a specific output wire, building the dependency cone
+    pub fn slice_to_output(&self, output_wire: usize, output_index: usize) -> ConstraintCone {
         let mut visited_constraints: HashSet<ConstraintId> = HashSet::new();
         let mut visited_wires: HashSet<usize> = HashSet::new();
         let mut affecting_inputs: HashSet<usize> = HashSet::new();
@@ -161,7 +163,8 @@ impl ConstraintSlicer {
         }
 
         ConstraintCone {
-            output_index: output_wire,
+            output_index,
+            output_wire,
             constraints: ordered_constraints,
             affecting_inputs,
             depth: max_depth,
@@ -169,9 +172,10 @@ impl ConstraintSlicer {
     }
 
     /// Slice to all public outputs
-    pub fn slice_all_outputs(&self, output_wires: &[usize]) -> Vec<ConstraintCone> {
-        output_wires.iter()
-            .map(|&w| self.slice_to_output(w))
+    pub fn slice_all_outputs(&self, outputs: &[OutputMapping]) -> Vec<ConstraintCone> {
+        outputs
+            .iter()
+            .map(|m| self.slice_to_output(m.output_wire, m.output_index))
             .collect()
     }
 
@@ -244,6 +248,13 @@ impl ConstraintSlicer {
     }
 }
 
+/// Output mapping between executor outputs and circuit wires.
+#[derive(Debug, Clone, Copy)]
+pub struct OutputMapping {
+    pub output_index: usize,
+    pub output_wire: usize,
+}
+
 /// A constraint that affects multiple outputs (potential information leak)
 #[derive(Debug, Clone)]
 pub struct LeakingConstraint {
@@ -286,7 +297,7 @@ impl ConstraintSliceOracle {
         &self,
         executor: &dyn CircuitExecutor,
         base_witness: &[FieldElement],
-        output_wires: &[usize],
+        outputs: &[OutputMapping],
     ) -> Vec<Finding> {
         let mut findings = Vec::new();
         let mut rng = rand::thread_rng();
@@ -307,7 +318,7 @@ impl ConstraintSliceOracle {
         );
 
         // Build cones for each output
-        let cones = slicer.slice_all_outputs(output_wires);
+        let cones = slicer.slice_all_outputs(outputs);
 
         // Test each cone
         for cone in &cones {
@@ -413,7 +424,10 @@ impl ConstraintSliceOracle {
                         public_inputs: vec![],
                         proof: None,
                     },
-                    location: Some(format!("outputs {} and {}", cone.output_index, i)),
+                    location: Some(format!(
+                        "outputs {} and {} (wire {})",
+                        cone.output_index, i, cone.output_wire
+                    )),
                 });
             }
         }
@@ -434,11 +448,13 @@ pub struct ConstraintSliceStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zk_core::ExecutionCoverage;
 
     #[test]
     fn test_constraint_cone() {
         let cone = ConstraintCone {
             output_index: 0,
+            output_wire: 0,
             constraints: vec![1, 2, 3],
             affecting_inputs: [0, 1, 2].into_iter().collect(),
             depth: 3,
@@ -459,5 +475,42 @@ mod tests {
         };
 
         assert_eq!(leak.affected_outputs.len(), 3);
+    }
+
+    #[test]
+    fn test_output_mapping_uses_output_index_not_wire() {
+        let oracle = ConstraintSliceOracle::new();
+        let cone = ConstraintCone {
+            output_index: 0,
+            output_wire: 50,
+            constraints: vec![],
+            affecting_inputs: HashSet::new(),
+            depth: 0,
+        };
+
+        let base_result = ExecutionResult::success(
+            vec![FieldElement::from_u64(1), FieldElement::from_u64(2)],
+            ExecutionCoverage::default(),
+        );
+        let new_result = ExecutionResult::success(
+            vec![FieldElement::from_u64(1), FieldElement::from_u64(3)],
+            ExecutionCoverage::default(),
+        );
+
+        let base_witness = vec![FieldElement::zero()];
+        let new_witness = vec![FieldElement::one()];
+
+        let finding = oracle.check_unexpected_change(
+            &cone,
+            &base_result,
+            &new_result,
+            &base_witness,
+            &new_witness,
+        );
+
+        assert!(
+            finding.is_some(),
+            "Expected output change detection to use output index, not wire index"
+        );
     }
 }

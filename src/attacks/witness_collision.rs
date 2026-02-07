@@ -40,6 +40,8 @@ pub struct WitnessCollision {
     pub witness_b: Vec<FieldElement>,
     /// Public inputs associated with the collision
     pub public_inputs: Vec<FieldElement>,
+    /// Public input indices used for scoping
+    pub public_input_indices: Vec<usize>,
     /// Shared output hash
     pub output_hash: String,
     /// Actual outputs (same for both)
@@ -122,6 +124,8 @@ pub struct WitnessCollisionDetector {
     equivalence_classes: Vec<EquivalenceClass>,
     /// Scope collisions to matching public inputs
     scope_public_inputs: bool,
+    /// Explicit public input indices (input vector positions)
+    public_input_indices: Option<Vec<usize>>,
 }
 
 impl Default for WitnessCollisionDetector {
@@ -137,6 +141,7 @@ impl WitnessCollisionDetector {
             sample_count: 10000,
             equivalence_classes: Vec::new(),
             scope_public_inputs: true,
+            public_input_indices: None,
         }
     }
 
@@ -155,6 +160,12 @@ impl WitnessCollisionDetector {
     /// Scope collisions to matching public inputs
     pub fn with_public_input_scope(mut self, enabled: bool) -> Self {
         self.scope_public_inputs = enabled;
+        self
+    }
+
+    /// Provide explicit public input indices (input vector positions)
+    pub fn with_public_input_indices(mut self, indices: Vec<usize>) -> Self {
+        self.public_input_indices = Some(indices);
         self
     }
 
@@ -204,16 +215,23 @@ impl WitnessCollisionDetector {
             HashMap::new();
         let mut collisions = Vec::new();
         let num_public = executor.num_public_inputs();
+        let explicit_public_indices = self.public_input_indices.as_ref();
+        let default_public_indices: Vec<usize> = (0..num_public).collect();
 
         // Execute all witnesses and collect outputs
         for witness in witnesses.iter().take(self.sample_count) {
             let result = executor.execute(witness).await;
             if result.success {
-                let public_inputs = if num_public > 0 {
-                    witness
+                let indices_used: Vec<usize> = if let Some(indices) = explicit_public_indices {
+                    indices.clone()
+                } else {
+                    default_public_indices.clone()
+                };
+
+                let public_inputs = if self.scope_public_inputs {
+                    indices_used
                         .iter()
-                        .take(num_public.min(witness.len()))
-                        .cloned()
+                        .filter_map(|&idx| witness.get(idx).cloned())
                         .collect()
                 } else {
                     Vec::new()
@@ -238,6 +256,7 @@ impl WitnessCollisionDetector {
                             witness_a: existing_witness.clone(),
                             witness_b: witness.clone(),
                             public_inputs: existing_public.clone(),
+                            public_input_indices: indices_used.clone(),
                             output_hash: hash.clone(),
                             outputs: existing_outputs.clone(),
                             is_expected: false,
@@ -276,8 +295,8 @@ impl WitnessCollisionDetector {
                     severity: Severity::Critical,
                     description: format!(
                         "Witness collision detected: two distinct witnesses produce identical \
-                         outputs (hash: {}). This indicates missing uniqueness constraints.",
-                        c.output_hash
+                         outputs (hash: {}). Public input indices: {:?}. This indicates missing uniqueness constraints.",
+                        c.output_hash, c.public_input_indices
                     ),
                     poc: ProofOfConcept {
                         witness_a: c.witness_a.clone(),
@@ -433,6 +452,7 @@ mod tests {
             witness_a: vec![FieldElement::from_u64(1)],
             witness_b: vec![FieldElement::from_u64(2)],
             public_inputs: vec![],
+            public_input_indices: vec![],
             output_hash: "abc123".to_string(),
             outputs: vec![FieldElement::from_u64(42)],
             is_expected: false,
@@ -452,6 +472,7 @@ mod tests {
                 witness_a: vec![FieldElement::from_u64(1), FieldElement::from_u64(2)],
                 witness_b: vec![FieldElement::from_u64(1), FieldElement::from_u64(3)],
                 public_inputs: vec![],
+                public_input_indices: vec![],
                 output_hash: "hash1".to_string(),
                 outputs: vec![],
                 is_expected: false,
@@ -460,6 +481,7 @@ mod tests {
                 witness_a: vec![FieldElement::from_u64(1), FieldElement::from_u64(4)],
                 witness_b: vec![FieldElement::from_u64(1), FieldElement::from_u64(5)],
                 public_inputs: vec![],
+                public_input_indices: vec![],
                 output_hash: "hash2".to_string(),
                 outputs: vec![],
                 is_expected: false,

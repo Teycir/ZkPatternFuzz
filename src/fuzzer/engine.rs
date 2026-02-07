@@ -2211,10 +2211,12 @@ impl FuzzingEngine {
 
         let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
         let num_wires = num_inputs.saturating_add(100);
+        let mut output_wires = std::collections::HashSet::new();
         let mut implied = if let Some(inspector) = self.executor.constraint_inspector() {
             let mut context = InferenceContext::from_inspector(inspector, num_wires);
             self.merge_config_input_labels(inspector, &mut context.wire_labels);
             self.merge_output_labels(inspector, &mut context.wire_labels);
+            output_wires.extend(inspector.output_indices());
             engine.analyze_with_context(&context)
         } else {
             tracing::warn!("No constraint inspector available for constraint inference");
@@ -2223,7 +2225,7 @@ impl FuzzingEngine {
 
         if confirm_violations && !implied.is_empty() {
             let base_inputs = self.generate_test_case().inputs;
-            engine.confirm_violations(self.executor.as_ref(), &base_inputs, &mut implied);
+            engine.confirm_violations(self.executor.as_ref(), &base_inputs, &mut implied, &output_wires);
         }
 
         let findings = engine.to_findings(&implied);
@@ -2303,7 +2305,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::constraint_slice::ConstraintSliceOracle;
+        use crate::attacks::constraint_slice::{ConstraintSliceOracle, OutputMapping};
         
         let samples_per_cone = config
             .get("samples_per_cone")
@@ -2341,23 +2343,27 @@ impl FuzzingEngine {
         };
         
         // Determine output wire indices (prefer inspector-provided outputs)
-        let output_wires: Vec<usize> = if let Some(inspector) = self.executor.constraint_inspector() {
-            let outputs = inspector.output_indices();
-            if !outputs.is_empty() {
-                outputs
+        let outputs: Vec<OutputMapping> = if let Some(inspector) = self.executor.constraint_inspector() {
+            let output_wires = inspector.output_indices();
+            if !output_wires.is_empty() {
+                output_wires
+                    .into_iter()
+                    .enumerate()
+                    .map(|(output_index, output_wire)| OutputMapping { output_index, output_wire })
+                    .collect()
             } else {
                 let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
-                (num_inputs..num_inputs + 5).collect()
+                vec![OutputMapping { output_index: 0, output_wire: num_inputs }]
             }
         } else {
             let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
-            (num_inputs..num_inputs + 5).collect()
+            vec![OutputMapping { output_index: 0, output_wire: num_inputs }]
         };
         
         let findings = oracle.run(
             self.executor.as_ref(),
             &base_witness.inputs,
-            &output_wires,
+            &outputs,
         ).await;
         
         for finding in findings {
@@ -2433,9 +2439,36 @@ impl FuzzingEngine {
         
         tracing::info!("Running witness collision detection ({} samples)", samples);
         
-        let detector = WitnessCollisionDetector::new()
+        let mut detector = WitnessCollisionDetector::new()
             .with_samples(samples)
             .with_public_input_scope(scope_public_inputs);
+
+        if scope_public_inputs {
+            let public_input_indices = if let Some(inspector) = self.executor.constraint_inspector() {
+                let public_wires: std::collections::HashSet<_> =
+                    inspector.public_input_indices().into_iter().collect();
+                let mut wire_indices = inspector.public_input_indices();
+                wire_indices.extend(inspector.private_input_indices());
+                if wire_indices.is_empty() {
+                    wire_indices = (0..self.config.inputs.len()).collect();
+                }
+                wire_indices
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(input_idx, wire_idx)| {
+                        if public_wires.contains(&wire_idx) {
+                            Some(input_idx)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            } else {
+                (0..self.executor.num_public_inputs().min(self.config.inputs.len()))
+                    .collect()
+            };
+            detector = detector.with_public_input_indices(public_input_indices);
+        }
         
         // Generate witnesses
         let witnesses: Vec<Vec<FieldElement>> = (0..samples)

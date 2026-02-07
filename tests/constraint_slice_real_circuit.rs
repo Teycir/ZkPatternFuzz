@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use zk_fuzzer::attacks::ConstraintSliceOracle;
+use zk_fuzzer::attacks::{ConstraintSliceOracle, OutputMapping};
 use zk_fuzzer::executor::{CircuitExecutor, CircomExecutor, FieldElement};
 use zk_fuzzer::targets::CircomTarget;
 
@@ -28,25 +28,29 @@ async fn test_constraint_slice_withdraw_real_circuit() {
         .map(|_| FieldElement::random(&mut rng))
         .collect();
 
-    let output_wires: Vec<usize> = executor
+    let outputs: Vec<OutputMapping> = executor
         .constraint_inspector()
         .map(|inspector| {
             let outputs = inspector.output_indices();
             if outputs.is_empty() {
                 let start = executor.num_public_inputs() + executor.num_private_inputs();
-                vec![start]
+                vec![OutputMapping { output_index: 0, output_wire: start }]
             } else {
                 outputs
+                    .into_iter()
+                    .enumerate()
+                    .map(|(output_index, output_wire)| OutputMapping { output_index, output_wire })
+                    .collect()
             }
         })
         .unwrap_or_else(|| {
             let start = executor.num_public_inputs() + executor.num_private_inputs();
-            vec![start]
+            vec![OutputMapping { output_index: 0, output_wire: start }]
         });
 
     let oracle = ConstraintSliceOracle::new().with_samples(5);
     let findings = oracle
-        .run(&executor, &base_inputs, &output_wires)
+        .run(&executor, &base_inputs, &outputs)
         .await;
 
     // Validation: ensure the oracle runs to completion on a real circuit.

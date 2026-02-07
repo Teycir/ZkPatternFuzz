@@ -3,7 +3,17 @@
 **Status:** In Progress (Phase 4/5 + 0‑Day Workflow Readiness)  
 **Remaining:** 2-4 weeks  
 **Priority:** 0‑Day Workflow Readiness  
-**Last Updated:** 2026-02-06
+**Last Updated:** 2026-02-07
+
+---
+
+## Single Success Metric (Non-Negotiable)
+
+**Only one thing matters:** **discoveries on the provided target set**  
+`/media/elements/Repos/zk0d`
+
+Every task below must directly improve our ability to produce **evidence-backed findings**
+on zk0d circuits. If a task does not support this metric, it is out of scope.
 
 ---
 
@@ -147,11 +157,11 @@
 ## Immediate Next Steps (Concrete)
 
 ### 0-Day Workflow Readiness (Priority)
-1. [ ] Fix constraint slice output mapping (wire -> output index)  
+1. [x] Fix constraint slice output mapping (wire -> output index)  
    DoD: slice comparisons use real output indices, not wire indices; add a focused unit test that would fail under the current mapping.
-2. [ ] Guard constraint inference confirmation for internal-wire constraints  
+2. [x] Guard constraint inference confirmation for internal‑wire constraints  
    DoD: only mark "confirmed" when mutated wires are public inputs or explicitly labeled outputs; otherwise downgrade to "unconfirmed_internal".
-3. [ ] Backend-aware public input scoping for witness collisions  
+3. [x] Backend‑aware public input scoping for witness collisions  
    DoD: use backend metadata to map public inputs; findings include exact public input indices used.
 4. [ ] Claude Opus prompt template for manual-analysis -> YAML  
    DoD: `docs/CLAUDE_PROMPT.md` with schema, example invariants, example YAML output.
