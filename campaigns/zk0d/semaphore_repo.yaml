@@ -17,8 +17,8 @@ campaign:
     and generates nullifiers to prevent double-signaling.
   target:
     framework: circom
-    circuit_path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
-    main_component: "Semaphore"
+    circuit_path: "campaigns/zk0d/semaphore_main.circom"
+    main_component: "main"
   parameters:
     field: "bn254"
     max_constraints: 100000
@@ -36,6 +36,10 @@ campaign:
     include_paths:
       - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/node_modules"
       - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/node_modules"
+      - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/node_modules/circomlib/circuits"
+      - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/node_modules/circomlib/circuits"
+      - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/node_modules/@zk-kit/binary-merkle-root.circom/src"
+      - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/node_modules/@zk-kit/binary-merkle-root.circom/src"
 
 # Inputs (based on Semaphore circuit signals)
 inputs:

@@ -18,6 +18,12 @@ pub struct ExecOptions {
     pub noir_build_dir: Option<String>,
     pub halo2_build_dir: Option<String>,
     pub cairo_build_dir: Option<String>,
+    #[serde(default)]
+    pub circom_include_paths: Vec<String>,
+    #[serde(default)]
+    pub circom_auto_setup_keys: bool,
+    #[serde(default)]
+    pub circom_ptau_path: Option<String>,
     pub strict_backend: bool,
     pub mark_fallback: bool,
 }
@@ -30,6 +36,16 @@ impl ExecOptions {
             noir_build_dir: options.noir_build_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
             halo2_build_dir: options.halo2_build_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
             cairo_build_dir: options.cairo_build_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
+            circom_include_paths: options
+                .circom_include_paths
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect(),
+            circom_auto_setup_keys: options.circom_auto_setup_keys,
+            circom_ptau_path: options
+                .circom_ptau_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
             strict_backend: options.strict_backend,
             mark_fallback: options.mark_fallback,
         }
@@ -42,6 +58,13 @@ impl ExecOptions {
         options.noir_build_dir = self.noir_build_dir.as_ref().map(PathBuf::from);
         options.halo2_build_dir = self.halo2_build_dir.as_ref().map(PathBuf::from);
         options.cairo_build_dir = self.cairo_build_dir.as_ref().map(PathBuf::from);
+        options.circom_include_paths = self
+            .circom_include_paths
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+        options.circom_auto_setup_keys = self.circom_auto_setup_keys;
+        options.circom_ptau_path = self.circom_ptau_path.as_ref().map(PathBuf::from);
         options.strict_backend = self.strict_backend;
         options.mark_fallback = self.mark_fallback;
         options

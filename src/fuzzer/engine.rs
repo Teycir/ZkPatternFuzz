@@ -598,6 +598,41 @@ impl FuzzingEngine {
         if let Some(mark_fallback) = Self::additional_bool(additional, "mark_fallback") {
             options.mark_fallback = mark_fallback;
         }
+        if let Some(auto_setup) = Self::additional_bool(additional, "circom_auto_setup_keys") {
+            tracing::info!("Circom auto setup keys: {}", auto_setup);
+            options.circom_auto_setup_keys = auto_setup;
+        }
+        if let Some(ptau_path) = Self::additional_path(additional, "circom_ptau_path") {
+            options.circom_ptau_path = Some(ptau_path);
+        }
+
+        if let Some(value) = additional.get("include_paths") {
+            let mut paths = Vec::new();
+            match value {
+                serde_yaml::Value::Sequence(items) => {
+                    for item in items {
+                        if let Some(s) = item.as_str() {
+                            let trimmed = s.trim();
+                            if !trimmed.is_empty() {
+                                paths.push(std::path::PathBuf::from(trimmed));
+                            }
+                        }
+                    }
+                }
+                serde_yaml::Value::String(s) => {
+                    for part in s.split(',') {
+                        let trimmed = part.trim();
+                        if !trimmed.is_empty() {
+                            paths.push(std::path::PathBuf::from(trimmed));
+                        }
+                    }
+                }
+                _ => {}
+            }
+            if !paths.is_empty() {
+                options.circom_include_paths = paths;
+            }
+        }
 
         options
     }

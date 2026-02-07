@@ -1,0 +1,30 @@
+---
+includes:
+  - "semaphore_repo.yaml"
+
+campaign:
+  name: ""
+  version: "2.0"
+  target:
+    framework: "mock"
+    circuit_path: ""
+    main_component: ""
+  parameters:
+    enabled_oracles:
+      - "constraint_count_oracle"
+      - "proof_forgery_oracle"
+    oracle_validation: true
+    oracle_validation_skip_stateful: false
+    oracle_validation_allow_cross_attack: true
+    oracle_validation_cross_attack_weight: 0.5
+    oracle_validation_reset_stateful: true
+    strict_backend: true
+    mark_fallback: true
+    circom_auto_setup_keys: true
+
+attacks:
+  - type: "soundness"
+    description: "Proof forgery validation (oracle integration smoke test)"
+    config:
+      forge_attempts: 5
+      mutation_rate: 0.25

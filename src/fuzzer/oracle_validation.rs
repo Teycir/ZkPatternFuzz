@@ -144,28 +144,33 @@ impl AttackMatch {
 }
 
 fn attack_family(attack_type: AttackType) -> AttackFamily {
-    use AttackFamily::*;
-    use AttackType::*;
-
     match attack_type {
-        Underconstrained
-        | ConstraintInference
-        | ConstraintBypass
-        | ConstraintSlice
-        | WitnessCollision
-        | Metamorphic
-        | SpecInference
-        | Collision => ConstraintIntegrity,
-        Soundness | VerificationFuzzing | Differential | RecursiveProof | CircuitComposition => Soundness,
-        ArithmeticOverflow | Boundary | BitDecomposition => Range,
-        WitnessLeakage | InformationLeakage | TimingSideChannel => Leakage,
-        Malleability | ReplayAttack => Authorization,
-        TrustedSetup => Setup,
-        _ => Other,
+        AttackType::Underconstrained
+        | AttackType::ConstraintInference
+        | AttackType::ConstraintBypass
+        | AttackType::ConstraintSlice
+        | AttackType::WitnessCollision
+        | AttackType::Metamorphic
+        | AttackType::SpecInference
+        | AttackType::Collision => AttackFamily::ConstraintIntegrity,
+        AttackType::Soundness
+        | AttackType::VerificationFuzzing
+        | AttackType::Differential
+        | AttackType::RecursiveProof
+        | AttackType::CircuitComposition => AttackFamily::Soundness,
+        AttackType::ArithmeticOverflow
+        | AttackType::Boundary
+        | AttackType::BitDecomposition => AttackFamily::Range,
+        AttackType::WitnessLeakage
+        | AttackType::InformationLeakage
+        | AttackType::TimingSideChannel => AttackFamily::Leakage,
+        AttackType::Malleability | AttackType::ReplayAttack => AttackFamily::Authorization,
+        AttackType::TrustedSetup => AttackFamily::Setup,
+        _ => AttackFamily::Other,
     }
 }
 
-struct ValidationSample<'a> {
+pub(crate) struct ValidationSample<'a> {
     test_case: &'a TestCase,
     outputs: &'a [FieldElement],
 }
@@ -272,7 +277,7 @@ impl OracleValidator {
     /// Validate a finding using differential oracle validation
     ///
     /// Runs multiple oracles on the same test case and checks for agreement.
-    pub fn validate_differential(
+    pub(crate) fn validate_differential(
         &mut self,
         finding: &Finding,
         oracles: &mut [Box<dyn BugOracle>],
@@ -282,6 +287,7 @@ impl OracleValidator {
             return ValidationResult::valid(vec!["No oracles to compare".to_string()]);
         }
 
+        let finding_attack = finding.attack_type.clone();
         let mut agreeing = Vec::new();
         let mut disagreeing = Vec::new();
         let mut considered = 0usize;
@@ -302,7 +308,9 @@ impl OracleValidator {
 
             let relevance = oracle
                 .attack_type()
-                .and_then(|attack_type| self.attack_match_kind(finding.attack_type, attack_type));
+                .and_then(|attack_type| {
+                    self.attack_match_kind(finding_attack.clone(), attack_type)
+                });
             let Some(relevance) = relevance else {
                 continue;
             };
@@ -314,7 +322,10 @@ impl OracleValidator {
                 if let Some(oracle_finding) = oracle_finding {
                     if oracle_finding.severity >= Severity::Low
                         && self
-                            .attack_match_kind(finding.attack_type, oracle_finding.attack_type)
+                            .attack_match_kind(
+                                finding_attack.clone(),
+                                oracle_finding.attack_type,
+                            )
                             .is_some()
                     {
                         found_similar = true;

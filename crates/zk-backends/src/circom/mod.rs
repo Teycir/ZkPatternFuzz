@@ -36,6 +36,10 @@ pub struct CircomTarget {
     proving_key_path: Option<PathBuf>,
     /// Verification key path
     verification_key_path: Option<PathBuf>,
+    /// Extra include paths for circom (-l)
+    include_paths: Vec<PathBuf>,
+    /// Optional override path for powers of tau
+    ptau_path_override: Option<PathBuf>,
 }
 
 /// Metadata extracted from compiled Circom circuit
@@ -460,6 +464,8 @@ impl CircomTarget {
             witness_calculator: None,
             proving_key_path: None,
             verification_key_path: None,
+            include_paths: Vec::new(),
+            ptau_path_override: None,
         })
     }
 
@@ -475,6 +481,18 @@ impl CircomTarget {
     /// Create with custom build directory
     pub fn with_build_dir(mut self, build_dir: PathBuf) -> Self {
         self.build_dir = build_dir;
+        self
+    }
+
+    /// Add include paths for circom compilation (-l)
+    pub fn with_include_paths(mut self, include_paths: Vec<PathBuf>) -> Self {
+        self.include_paths = include_paths;
+        self
+    }
+
+    /// Override the powers of tau file location for Groth16 setup
+    pub fn with_ptau_path(mut self, ptau_path: PathBuf) -> Self {
+        self.ptau_path_override = Some(ptau_path);
         self
     }
 
@@ -534,7 +552,11 @@ impl CircomTarget {
         std::fs::create_dir_all(&self.build_dir)?;
 
         // Compile circuit
-        let output = Command::new("circom")
+        let mut cmd = Command::new("circom");
+        for include in &self.include_paths {
+            cmd.arg("-l").arg(include);
+        }
+        let output = cmd
             .args([
                 compile_path.to_str().unwrap(),
                 "--r1cs",
@@ -879,6 +901,12 @@ impl CircomTarget {
 
     /// Find existing powers of tau file or download a small one
     fn find_or_download_ptau(&self) -> Result<PathBuf> {
+        if let Some(path) = &self.ptau_path_override {
+            if path.exists() {
+                return Ok(path.clone());
+            }
+            anyhow::bail!("Configured ptau file not found: {:?}", path);
+        }
         // Check for existing ptau files
         let ptau_dirs = vec![
             self.build_dir.clone(),

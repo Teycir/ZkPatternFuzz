@@ -30,7 +30,9 @@ pub use zk_core::{AttackType, Framework, Severity};
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FuzzConfig {
     pub campaign: Campaign,
+    #[serde(default)]
     pub attacks: Vec<Attack>,
+    #[serde(default)]
     pub inputs: Vec<Input>,
     #[serde(default)]
     pub mutations: Vec<Mutation>,
