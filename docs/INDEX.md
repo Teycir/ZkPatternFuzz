@@ -82,6 +82,14 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+### 5b. [TARGETS.md](TARGETS.md) - **Target List**
+**For:** Running evidence campaigns on zk0d  
+**Contains:**
+- Target set for discovery metric
+- Batch runner usage
+
+---
+
 ## 🏗️ Architecture & Development
 
 ### 6. [ARCHITECTURE.md](../ARCHITECTURE.md) - **45 min read**

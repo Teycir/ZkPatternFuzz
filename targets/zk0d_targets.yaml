@@ -1,0 +1,23 @@
+version: 1
+defaults:
+  workers: 8
+  seed: 42
+  iterations: 50000
+  timeout: 1800
+  mode: evidence
+
+targets:
+  - name: "tornado_withdraw"
+    enabled: false
+    campaign: "campaigns/zk0d/tornado_withdraw.yaml"
+    output_dir: "reports/zk0d/tornado_withdraw"
+
+  - name: "semaphore"
+    enabled: false
+    campaign: "campaigns/zk0d/semaphore.yaml"
+    output_dir: "reports/zk0d/semaphore"
+
+  - name: "iden3_authv3"
+    enabled: false
+    campaign: "campaigns/zk0d/iden3_authv3.yaml"
+    output_dir: "reports/zk0d/iden3_authv3"

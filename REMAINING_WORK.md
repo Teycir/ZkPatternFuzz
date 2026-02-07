@@ -104,11 +104,11 @@ on zk0d circuits. If a task does not support this metric, it is out of scope.
 
 ## Phase 5: AI YAML & Adaptive (1-2 weeks)
 
-- [ ] `docs/CLAUDE_PROMPT.md` - Opus prompt for manual‑analysis → YAML
-- [ ] `docs/AI_WORKFLOW.md` - Manual analysis → YAML → fuzz loop
-- [ ] `scripts/validate_yaml.*` - YAML validator/sanitizer
-- [ ] `scripts/run_ai_campaign.*` - Batch runner for target list
-- [ ] `docs/TARGETS.md` - zk0d target list with main components
+- [x] `docs/CLAUDE_PROMPT.md` - Opus prompt for manual‑analysis → YAML
+- [x] `docs/AI_ASSISTED_WORKFLOW.md` - Manual analysis → YAML → fuzz loop
+- [x] `scripts/validate_yaml.*` - YAML validator/sanitizer
+- [x] `scripts/run_ai_campaign.*` - Batch runner for target list
+- [x] `docs/TARGETS.md` - zk0d target list with main components
 
 ---
 
@@ -121,7 +121,7 @@ on zk0d circuits. If a task does not support this metric, it is out of scope.
 | 2. YAML v2 | ✅ COMPLETE | - |
 | 3. Reality Check | ✅ COMPLETE | - |
 | 4. Novel Oracles | IN PROGRESS | 1-2 weeks |
-| 5. AI & Adaptive | PENDING | 1-2 weeks |
+| 5. AI & Adaptive | ✅ COMPLETE | - |
 
 **Total:** 2-4 weeks
 
@@ -147,10 +147,10 @@ on zk0d circuits. If a task does not support this metric, it is out of scope.
 3. [ ] <60s time-to-bug
 4. [ ] <5% false positives
 
-### Phase 5 (In Progress)
-1. [ ] Manual analysis → YAML flow documented
-2. [ ] YAML validation gate before fuzzing
-3. [ ] Batch runner over zk0d targets
+### Phase 5 ✅ PASSED
+1. [x] Manual analysis → YAML flow documented
+2. [x] YAML validation gate before fuzzing
+3. [x] Batch runner over zk0d targets
 
 ---
 
@@ -163,9 +163,9 @@ on zk0d circuits. If a task does not support this metric, it is out of scope.
    DoD: only mark "confirmed" when mutated wires are public inputs or explicitly labeled outputs; otherwise downgrade to "unconfirmed_internal".
 3. [x] Backend‑aware public input scoping for witness collisions  
    DoD: use backend metadata to map public inputs; findings include exact public input indices used.
-4. [ ] Claude Opus prompt template for manual-analysis -> YAML  
+4. [ ] AI prompt template for manual-analysis -> YAML  
    DoD: `docs/CLAUDE_PROMPT.md` with schema, example invariants, example YAML output.
-5. [ ] YAML validator + batch runner for zk0d target list  
+5. [x] YAML validator + batch runner for zk0d target list  
    DoD: validator fails on missing invariants/labels; batch runner executes all targets and writes per-target reports.
 
 ### Validation on zk0d (Once Ready)
