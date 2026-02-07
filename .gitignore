@@ -42,3 +42,4 @@ circuits
 .npm-cache
 third_party
 build/zk0d/circom/withdraw_Withdraw/withdraw.r1cs
+crates/zk-backends/.z3-trace

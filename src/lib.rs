@@ -277,6 +277,14 @@ pub use analysis::{
     // Opus project analyzer
     OpusAnalyzer, OpusConfig, CircuitAnalysisResult, GeneratedConfig,
     ZeroDayHint, ZeroDayCategory, AttackPriority,
+    // Underconstrained exploit detection (R1CS matrix extraction + alt witness solving)
+    find_alternative_witness, find_multiple_alternatives, AlternativeWitnessResult,
+    AltWitnessSolver, R1CSMatrices, AltWitnessSolverStats,
+    ProofForgeryDetector, ProofForgeryResult, VerificationResult, ForgeryStats,
+    quick_underconstrained_check,
+    UnderconstrainedExploitDetector, UnderconstrainedExploit, ExploitDetectorConfig,
+    ExploitConfidence, WitnessBundle, ProofVerificationBundle, DifferenceAnalysis,
+    ExploitStats, detect_underconstrained, detect_underconstrained_circom,
 };
 pub use differential::{DifferentialFuzzer, DifferentialConfig, DifferentialResult};
 pub use distributed::{

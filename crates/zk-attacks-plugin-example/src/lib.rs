@@ -36,7 +36,10 @@ impl AttackPlugin for ExampleAttack {
 ///
 /// This symbol is discovered by the dynamic loader when the `attack-plugins`
 /// feature is enabled. It must return boxed `AttackPlugin` trait objects.
+///
+/// Note: This uses the Rust ABI, so the plugin must be built with a compatible
+/// Rust toolchain and dependency set.
 #[no_mangle]
-pub unsafe extern "C" fn zk_attacks_plugins() -> Vec<Box<dyn AttackPlugin>> {
+pub unsafe extern "Rust" fn zk_attacks_plugins() -> Vec<Box<dyn AttackPlugin>> {
     vec![Box::new(ExampleAttack::default())]
 }

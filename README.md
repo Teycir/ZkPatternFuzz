@@ -145,7 +145,7 @@ Dynamic attack plugins can be loaded at runtime when the `attack-plugins` featur
 - Plugins are Rust `cdylib` crates built with the *same* Rust toolchain and compatible dependency versions.
 - Plugins must export a symbol named `zk_attacks_plugins` with this signature:
   ```rust
-  unsafe extern "C" fn zk_attacks_plugins() -> Vec<Box<dyn AttackPlugin>>
+  unsafe extern "Rust" fn zk_attacks_plugins() -> Vec<Box<dyn AttackPlugin>>
   ```
 - Trait object ABI is **not** stable across mismatched toolchains; rebuild plugins when upgrading.
 

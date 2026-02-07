@@ -49,6 +49,17 @@ pub use r1cs_parser::{
     R1CS, R1CSConstraint as ParsedR1CSConstraint, parse_sym_file, R1CSConstraintGuidedExt,
 };
 pub use r1cs_to_smt::{generate_constraint_guided_inputs, R1CSToSMT};
+
+// Re-export underconstrained exploit detection
+pub use zk_constraints::{
+    find_alternative_witness, find_multiple_alternatives, AlternativeWitnessResult,
+    AltWitnessSolver, R1CSMatrices, SolverStats as AltWitnessSolverStats,
+    ProofForgeryDetector, ProofForgeryResult, VerificationResult, ForgeryStats,
+    quick_underconstrained_check,
+    UnderconstrainedExploitDetector, UnderconstrainedExploit, ExploitDetectorConfig,
+    ExploitConfidence, WitnessBundle, ProofVerificationBundle, DifferenceAnalysis,
+    ExploitStats, detect_underconstrained, detect_underconstrained_circom,
+};
 pub use constraint_types::{
     ExtendedConstraint, R1CSConstraint, PlonkGate, CustomGateConstraint,
     LookupConstraint, LookupTable, RangeConstraint, RangeMethod,

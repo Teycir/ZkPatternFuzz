@@ -1514,6 +1514,20 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    fn find_test_circuits_dir() -> PathBuf {
+        let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        for _ in 0..6 {
+            let candidate = dir.join("tests").join("circuits");
+            if candidate.exists() {
+                return candidate;
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+        panic!("tests/circuits directory not found from CARGO_MANIFEST_DIR");
+    }
+
     #[test]
     fn test_field_element_conversion() {
         let fe = FieldElement::from_u64(12345);
@@ -1539,14 +1553,9 @@ mod tests {
 
     #[test]
     fn test_constraint_parsing() {
-        let circuit_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("circuits")
-            .join("multiplier.circom");
-        let build_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("circuits")
-            .join("build");
+        let circuits_dir = find_test_circuits_dir();
+        let circuit_path = circuits_dir.join("multiplier.circom");
+        let build_dir = circuits_dir.join("build");
 
         let target = CircomTarget::new(circuit_path.to_str().unwrap(), "Multiplier")
             .unwrap()

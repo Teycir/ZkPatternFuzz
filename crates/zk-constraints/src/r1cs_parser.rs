@@ -419,19 +419,36 @@ fn biguint_to_field_element(n: &BigUint) -> FieldElement {
 // ============================================================================
 
 /// Parse Circom .sym file for wire names
+///
+/// The .sym format is: `wireIdx,labelIdx,componentName.signalName`
+/// We index names by wireIdx so that `wire_name(idx)` returns the
+/// correct signal name for each wire.
 pub fn parse_sym_file<P: AsRef<Path>>(path: P) -> Result<Vec<String>> {
     let content = std::fs::read_to_string(path.as_ref())
         .with_context(|| format!("Failed to read .sym file: {:?}", path.as_ref()))?;
 
-    let mut names = Vec::new();
+    let mut max_idx: usize = 0;
+    let mut entries: Vec<(usize, String)> = Vec::new();
 
     for line in content.lines() {
-        // Format: wireIdx,labelIdx,componentName.signalName
-        let parts: Vec<&str> = line.split(',').collect();
-        if parts.len() >= 3 {
-            let name = parts[2..].join(","); // Handle commas in names
-            names.push(name);
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
         }
+        // Format: wireIdx,labelIdx,componentName.signalName
+        let parts: Vec<&str> = line.splitn(3, ',').collect();
+        if parts.len() >= 3 {
+            if let Ok(wire_idx) = parts[0].parse::<usize>() {
+                let name = parts[2].to_string();
+                max_idx = max_idx.max(wire_idx);
+                entries.push((wire_idx, name));
+            }
+        }
+    }
+
+    let mut names = vec![String::new(); max_idx + 1];
+    for (idx, name) in entries {
+        names[idx] = name;
     }
 
     Ok(names)

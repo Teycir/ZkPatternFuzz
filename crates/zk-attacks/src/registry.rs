@@ -157,7 +157,7 @@ impl AttackPluginLoader for DynamicLibraryLoader {
     fn load(&self) -> Result<LoadedPlugins> {
         use libloading::{Library, Symbol};
 
-        type PluginCreate = unsafe fn() -> Vec<Box<dyn AttackPlugin>>;
+        type PluginCreate = unsafe extern "Rust" fn() -> Vec<Box<dyn AttackPlugin>>;
 
         let mut libraries = Vec::new();
         let mut plugins = Vec::new();

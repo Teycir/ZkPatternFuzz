@@ -1,0 +1,594 @@
+//! Proof Forgery Detection and Verification
+//!
+//! This module provides end-to-end underconstrained exploit detection:
+//! 1. Parse R1CS from compiled circuit
+//! 2. Generate valid witness via circuit execution
+//! 3. Find alternative witness via Z3
+//! 4. Generate proof with alternative witness
+//! 5. Verify forged proof against real verifier
+//!
+//! If step 5 succeeds, the circuit is confirmed underconstrained.
+
+use std::path::Path;
+use std::process::Command;
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+use super::alt_witness_solver::{find_alternative_witness, find_multiple_alternatives, R1CSMatrices};
+use super::r1cs_parser::R1CS;
+use zk_core::FieldElement;
+
+/// Complete proof forgery detection result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProofForgeryResult {
+    /// Whether the circuit is confirmed underconstrained
+    pub is_underconstrained: bool,
+    /// Whether proof forgery was successful
+    pub forgery_verified: bool,
+    /// Original public inputs
+    pub original_public_inputs: Vec<String>,
+    /// Original public outputs
+    pub original_public_outputs: Vec<String>,
+    /// Alternative witness found (private inputs only)
+    pub alternative_private_inputs: Option<Vec<String>>,
+    /// Proof verification result
+    pub verification_result: Option<VerificationResult>,
+    /// Statistics and metadata
+    pub stats: ForgeryStats,
+    /// Error message if any step failed
+    pub error: Option<String>,
+}
+
+/// Verification result from snarkjs/bb
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationResult {
+    /// Verifier used (snarkjs, bb, etc.)
+    pub verifier: String,
+    /// Whether verification passed
+    pub passed: bool,
+    /// Verifier output
+    pub output: String,
+}
+
+/// Statistics for the forgery detection process
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ForgeryStats {
+    /// R1CS parsing time (ms)
+    pub r1cs_parse_time_ms: u64,
+    /// Witness generation time (ms)
+    pub witness_gen_time_ms: u64,
+    /// Z3 solving time (ms)
+    pub z3_solve_time_ms: u64,
+    /// Proof generation time (ms)
+    pub proof_gen_time_ms: u64,
+    /// Verification time (ms)
+    pub verification_time_ms: u64,
+    /// Total time (ms)
+    pub total_time_ms: u64,
+    /// Number of constraints
+    pub num_constraints: usize,
+    /// Number of wires
+    pub num_wires: usize,
+    /// Number of alternative witnesses found
+    pub num_alternatives: usize,
+}
+
+/// Proof forgery detector
+pub struct ProofForgeryDetector {
+    /// R1CS parsed from circuit
+    r1cs: R1CS,
+    /// Build directory for artifacts
+    #[allow(dead_code)]
+    build_dir: String,
+    /// Proving key path (.zkey)
+    zkey_path: Option<String>,
+    /// Verification key path
+    vkey_path: Option<String>,
+    /// WASM path for witness generation
+    wasm_path: Option<String>,
+    /// Solver timeout in milliseconds
+    solver_timeout_ms: u32,
+}
+
+impl ProofForgeryDetector {
+    /// Create detector from R1CS file path
+    pub fn from_r1cs_file(r1cs_path: &str) -> Result<Self> {
+        let r1cs = R1CS::from_file(r1cs_path)?;
+
+        let path = Path::new(r1cs_path);
+        let build_dir = path
+            .parent()
+            .unwrap_or(Path::new("."))
+            .to_string_lossy()
+            .to_string();
+
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("circuit");
+
+        // Look for related artifacts
+        let zkey_path = format!("{}/{}.zkey", build_dir, stem);
+        let vkey_path = format!("{}/{}_vkey.json", build_dir, stem);
+        let wasm_path = format!("{}/{}_js/{}.wasm", build_dir, stem, stem);
+
+        Ok(Self {
+            r1cs,
+            build_dir,
+            zkey_path: if Path::new(&zkey_path).exists() {
+                Some(zkey_path)
+            } else {
+                None
+            },
+            vkey_path: if Path::new(&vkey_path).exists() {
+                Some(vkey_path)
+            } else {
+                None
+            },
+            wasm_path: if Path::new(&wasm_path).exists() {
+                Some(wasm_path)
+            } else {
+                None
+            },
+            solver_timeout_ms: 30000,
+        })
+    }
+
+    /// Create detector from R1CS struct
+    pub fn from_r1cs(r1cs: R1CS, build_dir: &str) -> Self {
+        Self {
+            r1cs,
+            build_dir: build_dir.to_string(),
+            zkey_path: None,
+            vkey_path: None,
+            wasm_path: None,
+            solver_timeout_ms: 30000,
+        }
+    }
+
+    /// Set proving key path
+    pub fn with_zkey(mut self, path: &str) -> Self {
+        self.zkey_path = Some(path.to_string());
+        self
+    }
+
+    /// Set verification key path
+    pub fn with_vkey(mut self, path: &str) -> Self {
+        self.vkey_path = Some(path.to_string());
+        self
+    }
+
+    /// Set WASM path for witness generation
+    pub fn with_wasm(mut self, path: &str) -> Self {
+        self.wasm_path = Some(path.to_string());
+        self
+    }
+
+    /// Set solver timeout
+    pub fn with_timeout(mut self, timeout_ms: u32) -> Self {
+        self.solver_timeout_ms = timeout_ms;
+        self
+    }
+
+    /// Get R1CS matrices for analysis
+    pub fn get_matrices(&self) -> R1CSMatrices {
+        R1CSMatrices::from_r1cs(&self.r1cs)
+    }
+
+    /// Detect if circuit is underconstrained using provided witness
+    pub fn detect_with_witness(&self, witness: &[FieldElement]) -> ProofForgeryResult {
+        let start = std::time::Instant::now();
+        let mut stats = ForgeryStats {
+            num_constraints: self.r1cs.constraints.len(),
+            num_wires: self.r1cs.num_wires,
+            ..Default::default()
+        };
+
+        // Step 1: Find alternative witness
+        let z3_start = std::time::Instant::now();
+        let alt_result = find_alternative_witness(&self.r1cs, witness, self.solver_timeout_ms);
+        stats.z3_solve_time_ms = z3_start.elapsed().as_millis() as u64;
+
+        if !alt_result.found {
+            stats.total_time_ms = start.elapsed().as_millis() as u64;
+            return ProofForgeryResult {
+                is_underconstrained: false,
+                forgery_verified: false,
+                original_public_inputs: self.extract_public_inputs(witness),
+                original_public_outputs: self.extract_public_outputs(witness),
+                alternative_private_inputs: None,
+                verification_result: None,
+                stats,
+                error: None,
+            };
+        }
+
+        stats.num_alternatives = 1;
+
+        let alt_witness = alt_result.alternative_witness.as_ref().unwrap();
+        let alt_private = self.extract_private_inputs(alt_witness);
+
+        // Step 2: If we have proving infrastructure, generate and verify proof
+        let verification_result = if self.zkey_path.is_some() && self.vkey_path.is_some() {
+            match self.verify_forged_proof(alt_witness) {
+                Ok(result) => Some(result),
+                Err(e) => {
+                    stats.total_time_ms = start.elapsed().as_millis() as u64;
+                    return ProofForgeryResult {
+                        is_underconstrained: true, // Still underconstrained even if proof fails
+                        forgery_verified: false,
+                        original_public_inputs: self.extract_public_inputs(witness),
+                        original_public_outputs: self.extract_public_outputs(witness),
+                        alternative_private_inputs: Some(alt_private),
+                        verification_result: None,
+                        stats,
+                        error: Some(format!("Proof verification failed: {}", e)),
+                    };
+                }
+            }
+        } else {
+            None
+        };
+
+        let forgery_verified = verification_result
+            .as_ref()
+            .map(|r| r.passed)
+            .unwrap_or(false);
+
+        stats.total_time_ms = start.elapsed().as_millis() as u64;
+
+        ProofForgeryResult {
+            is_underconstrained: true,
+            forgery_verified,
+            original_public_inputs: self.extract_public_inputs(witness),
+            original_public_outputs: self.extract_public_outputs(witness),
+            alternative_private_inputs: Some(alt_private),
+            verification_result,
+            stats,
+            error: None,
+        }
+    }
+
+    /// Detect with multiple alternative witnesses
+    pub fn detect_multiple(&self, witness: &[FieldElement], max_alternatives: usize) -> Vec<ProofForgeryResult> {
+        let alternatives = find_multiple_alternatives(
+            &self.r1cs,
+            witness,
+            max_alternatives,
+            self.solver_timeout_ms,
+        );
+
+        alternatives
+            .into_iter()
+            .filter(|alt| alt.found)
+            .filter_map(|alt| {
+                alt.alternative_witness
+                    .as_ref()
+                    .map(|w| self.verify_single_alternative(witness, w))
+            })
+            .collect()
+    }
+
+    fn verify_single_alternative(
+        &self,
+        original: &[FieldElement],
+        alternative: &[FieldElement],
+    ) -> ProofForgeryResult {
+        let start = std::time::Instant::now();
+        let mut stats = ForgeryStats {
+            num_constraints: self.r1cs.constraints.len(),
+            num_wires: self.r1cs.num_wires,
+            num_alternatives: 1,
+            ..Default::default()
+        };
+
+        let alt_private = self.extract_private_inputs(alternative);
+
+        let verification_result = if self.zkey_path.is_some() && self.vkey_path.is_some() {
+            self.verify_forged_proof(alternative).ok()
+        } else {
+            None
+        };
+
+        let forgery_verified = verification_result
+            .as_ref()
+            .map(|r| r.passed)
+            .unwrap_or(false);
+
+        stats.total_time_ms = start.elapsed().as_millis() as u64;
+
+        ProofForgeryResult {
+            is_underconstrained: true,
+            forgery_verified,
+            original_public_inputs: self.extract_public_inputs(original),
+            original_public_outputs: self.extract_public_outputs(original),
+            alternative_private_inputs: Some(alt_private),
+            verification_result,
+            stats,
+            error: None,
+        }
+    }
+
+    /// Generate and verify proof using snarkjs
+    fn verify_forged_proof(&self, witness: &[FieldElement]) -> Result<VerificationResult> {
+        let zkey = self
+            .zkey_path
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No proving key available"))?;
+        let vkey = self
+            .vkey_path
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No verification key available"))?;
+
+        // Create temp directory for artifacts
+        let temp_dir = tempfile::tempdir()?;
+        let temp_path = temp_dir.path();
+
+        let witness_path = temp_path.join("witness.json");
+        let proof_path = temp_path.join("proof.json");
+        let public_path = temp_path.join("public.json");
+        let wtns_path = temp_path.join("witness.wtns");
+
+        // Write witness as JSON array
+        let witness_values: Vec<String> = witness
+            .iter()
+            .map(|fe| fe.to_decimal_string())
+            .collect();
+        let witness_json = serde_json::to_string(&witness_values)?;
+        std::fs::write(&witness_path, &witness_json)?;
+
+        // Strategy: prefer importing the full Z3 witness directly.
+        // WASM wtns calculate would recompute the witness from inputs,
+        // erasing the Z3-found degrees of freedom that prove underconstraint.
+        let import_output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "wtns",
+                "import",
+                witness_path.to_str().unwrap(),
+                wtns_path.to_str().unwrap(),
+            ])
+            .output();
+
+        let import_ok = import_output
+            .as_ref()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if !import_ok {
+            // Fallback: if WASM is available, try wtns calculate (may lose freedom)
+            if let Some(wasm) = &self.wasm_path {
+                tracing::warn!(
+                    "wtns import failed, falling back to WASM wtns calculate \
+                     (alternative witness may be recomputed)"
+                );
+                let input_json = self.witness_to_input_json(witness)?;
+                let input_path = temp_path.join("input.json");
+                std::fs::write(&input_path, &input_json)?;
+
+                let output = Command::new("npx")
+                    .args([
+                        "snarkjs",
+                        "wtns",
+                        "calculate",
+                        wasm,
+                        input_path.to_str().unwrap(),
+                        wtns_path.to_str().unwrap(),
+                    ])
+                    .output()
+                    .context("Failed to calculate witness")?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    anyhow::bail!("Witness calculation failed: {}", stderr);
+                }
+            } else {
+                tracing::warn!("Could not generate wtns file, attempting direct proof");
+            }
+        }
+
+        // Generate proof
+        let output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "groth16",
+                "prove",
+                zkey,
+                wtns_path.to_str().unwrap(),
+                proof_path.to_str().unwrap(),
+                public_path.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to generate proof")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Ok(VerificationResult {
+                verifier: "snarkjs".to_string(),
+                passed: false,
+                output: format!("Proof generation failed: {}", stderr),
+            });
+        }
+
+        // Verify proof
+        let output = Command::new("npx")
+            .args([
+                "snarkjs",
+                "groth16",
+                "verify",
+                vkey,
+                public_path.to_str().unwrap(),
+                proof_path.to_str().unwrap(),
+            ])
+            .output()
+            .context("Failed to verify proof")?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let passed = output.status.success() && stdout.contains("OK");
+
+        Ok(VerificationResult {
+            verifier: "snarkjs".to_string(),
+            passed,
+            output: stdout.to_string(),
+        })
+    }
+
+    /// Convert full witness to input JSON for snarkjs
+    fn witness_to_input_json(&self, witness: &[FieldElement]) -> Result<String> {
+        use std::collections::HashMap;
+
+        let mut inputs: HashMap<String, serde_json::Value> = HashMap::new();
+
+        // Get private input indices
+        let private_start = 1 + self.r1cs.num_public_outputs + self.r1cs.num_public_inputs;
+        let private_end = private_start + self.r1cs.num_private_inputs;
+
+        // Also include public inputs
+        let public_start = 1 + self.r1cs.num_public_outputs;
+        let public_end = public_start + self.r1cs.num_public_inputs;
+
+        for (i, idx) in (public_start..public_end).enumerate() {
+            if idx < witness.len() {
+                let name = self
+                    .r1cs
+                    .wire_name(idx)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("pub_in_{}", i));
+                inputs.insert(name, serde_json::json!(witness[idx].to_decimal_string()));
+            }
+        }
+
+        for (i, idx) in (private_start..private_end).enumerate() {
+            if idx < witness.len() {
+                let name = self
+                    .r1cs
+                    .wire_name(idx)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("priv_in_{}", i));
+                inputs.insert(name, serde_json::json!(witness[idx].to_decimal_string()));
+            }
+        }
+
+        Ok(serde_json::to_string(&inputs)?)
+    }
+
+    fn extract_public_inputs(&self, witness: &[FieldElement]) -> Vec<String> {
+        let start = 1 + self.r1cs.num_public_outputs;
+        let end = start + self.r1cs.num_public_inputs;
+        witness[start.min(witness.len())..end.min(witness.len())]
+            .iter()
+            .map(|fe| fe.to_decimal_string())
+            .collect()
+    }
+
+    fn extract_public_outputs(&self, witness: &[FieldElement]) -> Vec<String> {
+        let start = 1;
+        let end = 1 + self.r1cs.num_public_outputs;
+        witness[start.min(witness.len())..end.min(witness.len())]
+            .iter()
+            .map(|fe| fe.to_decimal_string())
+            .collect()
+    }
+
+    fn extract_private_inputs(&self, witness: &[FieldElement]) -> Vec<String> {
+        let start = 1 + self.r1cs.num_public_outputs + self.r1cs.num_public_inputs;
+        let end = start + self.r1cs.num_private_inputs;
+        witness[start.min(witness.len())..end.min(witness.len())]
+            .iter()
+            .map(|fe| fe.to_decimal_string())
+            .collect()
+    }
+}
+
+/// Quick check if a circuit is likely underconstrained
+pub fn quick_underconstrained_check(r1cs: &R1CS) -> bool {
+    // Heuristic: more signals than constraints often indicates underconstraint
+    let total_signals = r1cs.num_wires;
+    let constraints = r1cs.constraints.len();
+
+    if constraints == 0 {
+        return true;
+    }
+
+    // Very rough heuristic
+    let ratio = total_signals as f64 / constraints as f64;
+    ratio > 2.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use num_bigint::BigUint;
+    use super::super::r1cs_parser::R1CSConstraint;
+
+    const BN254_MODULUS: &str =
+        "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+
+    #[test]
+    fn test_proof_forgery_detector() {
+        // Create underconstrained R1CS: a + b = 10
+        let modulus = BigUint::parse_bytes(BN254_MODULUS.as_bytes(), 10).unwrap();
+
+        let constraint = R1CSConstraint {
+            a: vec![(1, BigUint::from(1u32)), (2, BigUint::from(1u32))],
+            b: vec![(0, BigUint::from(1u32))],
+            c: vec![(0, BigUint::from(10u32))],
+        };
+
+        let r1cs = R1CS {
+            field_size: modulus,
+            field_bytes: 32,
+            num_wires: 3,
+            num_public_outputs: 0,
+            num_public_inputs: 0,
+            num_private_inputs: 2,
+            num_labels: 0,
+            constraints: vec![constraint],
+            wire_names: vec!["one".to_string(), "a".to_string(), "b".to_string()],
+            custom_gates_used: false,
+        };
+
+        let detector = ProofForgeryDetector::from_r1cs(r1cs, ".");
+
+        // Original: a=4, b=6
+        let witness = vec![
+            FieldElement::one(),
+            FieldElement::from_u64(4),
+            FieldElement::from_u64(6),
+        ];
+
+        let result = detector.detect_with_witness(&witness);
+
+        assert!(result.is_underconstrained, "Should detect underconstrained");
+        assert!(result.alternative_private_inputs.is_some());
+
+        // Verify alternative also sums to 10
+        if let Some(alt) = &result.alternative_private_inputs {
+            let a: u64 = alt[0].parse().unwrap();
+            let b: u64 = alt[1].parse().unwrap();
+            assert_eq!(a + b, 10);
+        }
+    }
+
+    #[test]
+    fn test_quick_check() {
+        let modulus = BigUint::parse_bytes(BN254_MODULUS.as_bytes(), 10).unwrap();
+
+        // Many signals, few constraints = likely underconstrained
+        let r1cs = R1CS {
+            field_size: modulus,
+            field_bytes: 32,
+            num_wires: 100,
+            num_public_outputs: 1,
+            num_public_inputs: 10,
+            num_private_inputs: 88,
+            num_labels: 0,
+            constraints: vec![], // No constraints!
+            wire_names: vec![],
+            custom_gates_used: false,
+        };
+
+        assert!(quick_underconstrained_check(&r1cs));
+    }
+}

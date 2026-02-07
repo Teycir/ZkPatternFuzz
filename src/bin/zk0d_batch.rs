@@ -27,6 +27,7 @@ struct Args {
 
 #[derive(Debug, Deserialize)]
 struct TargetsFile {
+    #[allow(dead_code)]
     version: u32,
     #[serde(default)]
     defaults: Defaults,
