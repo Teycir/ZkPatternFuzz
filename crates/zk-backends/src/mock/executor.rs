@@ -26,6 +26,16 @@ pub struct MockCircuitExecutor {
     simulate_underconstrained: bool,
     /// Probability of returning same output for different inputs (0.0-1.0)
     collision_probability: f64,
+    /// True if this mock is being used as a fallback for a missing real backend
+    /// 
+    /// # Phase 0 Fix: Silent Mock Fallback Detection
+    /// 
+    /// When this is true, findings from this executor should be treated as
+    /// SYNTHETIC and NOT reported as real vulnerabilities. The engine should
+    /// warn loudly that it's using a mock fallback.
+    is_fallback: bool,
+    /// The original framework that was requested (when this is a fallback)
+    original_framework: Option<Framework>,
 }
 
 impl MockCircuitExecutor {
@@ -41,7 +51,32 @@ impl MockCircuitExecutor {
             execution_count: AtomicUsize::new(0),
             simulate_underconstrained: false,
             collision_probability: 0.0,
+            is_fallback: false,
+            original_framework: None,
         }
+    }
+
+    /// Mark this mock as a fallback for a missing real backend
+    /// 
+    /// # Phase 0 Fix: Silent Mock Fallback Detection
+    /// 
+    /// This should be called when creating a mock executor as a fallback
+    /// for a real backend that isn't available. It enables proper warnings
+    /// and prevents false vulnerability claims.
+    pub fn as_fallback_for(mut self, original_framework: Framework) -> Self {
+        self.is_fallback = true;
+        self.original_framework = Some(original_framework);
+        self
+    }
+
+    /// Check if this mock was created as a fallback for a missing backend
+    pub fn is_fallback(&self) -> bool {
+        self.is_fallback
+    }
+
+    /// Get the original framework that was requested (if this is a fallback)
+    pub fn original_framework(&self) -> Option<Framework> {
+        self.original_framework
     }
 
     /// Set the framework type (for simulating specific backends)
@@ -234,6 +269,23 @@ impl CircuitExecutor for MockCircuitExecutor {
             num_public_inputs: self.num_public_inputs,
             num_outputs: self.num_outputs,
         }
+    }
+
+    /// Check if this is a mock executor
+    fn is_mock(&self) -> bool {
+        true
+    }
+
+    /// Check if this mock was created as a fallback for a missing real backend
+    /// 
+    /// # Phase 0 Fix: Silent Mock Fallback Detection
+    /// 
+    /// Returns true if this mock was created because the requested backend
+    /// (Circom/Noir/Cairo/Halo2) was not available. This is a critical
+    /// indicator that findings are SYNTHETIC and should not be reported
+    /// as real vulnerabilities.
+    fn is_fallback_mock(&self) -> bool {
+        self.is_fallback
     }
 
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {

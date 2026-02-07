@@ -69,7 +69,8 @@
 //!   - type: underconstrained
 //!     config:
 //!       witness_pairs: 1000
-//!       symbolic_execution: true
+//!       public_input_names: ["root", "nullifier"]
+//!       fixed_public_inputs: ["0x0", "0x0"]
 //! ```
 //!
 //! ## Soundness Testing  
@@ -164,7 +165,8 @@
 //!     description: "Find multiple valid witnesses"
 //!     config:
 //!       witness_pairs: 1000
-//!       symbolic_execution: true
+//!       public_input_count: 1
+//!       fixed_public_inputs: ["0x01"]
 //!
 //! inputs:
 //!   - name: "leaf"

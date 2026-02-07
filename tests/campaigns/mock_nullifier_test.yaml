@@ -24,7 +24,6 @@ attacks:
     description: "Check if nullifier computation is fully constrained"
     config:
       witness_pairs: 1000
-      compare_outputs: true
 
   - type: "boundary"
     description: "Test boundary values for nullifier inputs"

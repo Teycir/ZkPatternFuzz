@@ -322,13 +322,18 @@ campaign:
     field: "bn254"
     max_constraints: 100000
     timeout_seconds: 300
+    additional:
+      strict_backend: true
+      mark_fallback: true
 
 attacks:
   - type: underconstrained
     description: "Find inputs that satisfy constraints but produce wrong outputs"
     config:
       witness_pairs: 1000
-      compare_outputs: true
+      # Optional: fix public inputs for consistent checks
+      # public_input_names: ["input1"]
+      # fixed_public_inputs: ["0x01"]
 
   - type: soundness
     description: "Attempt to create valid proofs for false statements"

@@ -80,7 +80,6 @@ attacks:
     description: "Check for missing hash constraints"
     config:
       witness_pairs: 2000
-      compare_outputs: true
 
   - type: "boundary"
     description: "Test hash with boundary inputs"

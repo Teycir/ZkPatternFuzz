@@ -226,6 +226,41 @@ impl FuzzingEngine {
             &executor_factory_options,
         )?;
 
+        // Phase 0 Fix: Detect and warn about mock fallback execution
+        // 
+        // This is critical for preventing false vulnerability claims.
+        // Any findings from mock execution are SYNTHETIC and should not
+        // be reported as real 0-day vulnerabilities.
+        if executor.is_fallback_mock() {
+            tracing::error!(
+                "⚠️  CRITICAL: Using MOCK FALLBACK executor for {:?} backend!",
+                config.campaign.target.framework
+            );
+            tracing::error!(
+                "⚠️  Real backend tooling is not available. All findings will be SYNTHETIC."
+            );
+            tracing::error!(
+                "⚠️  DO NOT report these as real vulnerabilities. Install the required tooling:"
+            );
+            match config.campaign.target.framework {
+                zk_core::Framework::Circom => {
+                    tracing::error!("⚠️    - Install circom: https://docs.circom.io/getting-started/installation/");
+                }
+                zk_core::Framework::Noir => {
+                    tracing::error!("⚠️    - Install nargo: https://noir-lang.org/docs/getting_started/installation/");
+                }
+                zk_core::Framework::Cairo => {
+                    tracing::error!("⚠️    - Install scarb: https://docs.swmansion.com/scarb/download.html");
+                }
+                _ => {}
+            }
+        } else if executor.is_mock() && config.campaign.target.framework != zk_core::Framework::Mock {
+            tracing::warn!(
+                "Using mock executor for {:?} framework. Results may not reflect real circuit behavior.",
+                config.campaign.target.framework
+            );
+        }
+
         let num_constraints = executor.num_constraints().max(100);
         let coverage = create_coverage_tracker(num_constraints);
         let corpus = create_corpus(10000);
@@ -460,7 +495,7 @@ impl FuzzingEngine {
                     let expected = config.campaign.parameters.max_constraints as usize;
                     add_oracle(Box::new(ConstraintCountOracle::new(expected)));
                 }
-                Some(OracleKind::ProofForgery) => add_oracle(Box::new(ProofForgeryOracle)),
+                Some(OracleKind::ProofForgery) => add_oracle(Box::new(ProofForgeryOracle::new())),
                 Some(OracleKind::Underconstrained) | Some(OracleKind::ArithmeticOverflow) => {
                     // These oracles are enabled by default; treat as recognized aliases.
                 }
@@ -494,6 +529,13 @@ impl FuzzingEngine {
         options.noir_build_dir = Self::additional_path(additional, "noir_build_dir");
         options.halo2_build_dir = Self::additional_path(additional, "halo2_build_dir");
         options.cairo_build_dir = Self::additional_path(additional, "cairo_build_dir");
+
+        if let Some(strict_backend) = Self::additional_bool(additional, "strict_backend") {
+            options.strict_backend = strict_backend;
+        }
+        if let Some(mark_fallback) = Self::additional_bool(additional, "mark_fallback") {
+            options.mark_fallback = mark_fallback;
+        }
 
         options
     }
@@ -1307,6 +1349,13 @@ impl FuzzingEngine {
     }
 
     /// Run underconstrained circuit detection with parallel execution
+    /// 
+    /// # Phase 0 Fix: Proper Input Index Mapping
+    /// 
+    /// This attack now uses the executor's constraint inspector to get the
+    /// actual public input indices, rather than assuming the first N inputs
+    /// are public. This fixes false positives/negatives caused by input
+    /// ordering mismatches between config and executor.
     async fn run_underconstrained_attack(
         &mut self,
         config: &serde_yaml::Value,
@@ -1332,23 +1381,45 @@ impl FuzzingEngine {
             self.add_attack_findings(&detector, witness_pairs, progress);
         }
 
-        // Generate test cases
-        let num_public = self.executor.num_public_inputs().min(self.config.inputs.len());
-        let fixed_public = if num_public > 0 {
-            let base = self.generate_test_case();
-            let end = num_public.min(base.inputs.len());
-            Some(base.inputs[..end].to_vec())
-        } else {
+        // Determine public input positions in the test_case.inputs vector
+        let public_input_positions = Self::resolve_public_input_positions(
+            config,
+            &self.config.inputs,
+            self.executor.num_public_inputs(),
+        );
+
+        tracing::debug!(
+            "Using public input positions: {:?} (out of {} total inputs)",
+            public_input_positions,
+            self.config.inputs.len()
+        );
+
+        // Generate fixed public inputs that will be shared across all test cases
+        let fixed_public = if public_input_positions.is_empty() {
             None
+        } else if let Some(fixed) = Self::parse_fixed_public_inputs(config, &public_input_positions)
+        {
+            Some(fixed)
+        } else {
+            let base = self.generate_test_case();
+            let fixed: Vec<(usize, FieldElement)> = public_input_positions
+                .iter()
+                .filter_map(|&pos| {
+                    base.inputs.get(pos).map(|val| (pos, val.clone()))
+                })
+                .collect();
+            Some(fixed)
         };
 
         let test_cases: Vec<TestCase> = (0..witness_pairs)
             .map(|_| {
                 let mut tc = self.generate_test_case();
-                if let Some(ref public_inputs) = fixed_public {
-                    let end = num_public.min(tc.inputs.len());
-                    if end == public_inputs.len() {
-                        tc.inputs[..end].clone_from_slice(public_inputs);
+                // Fix public inputs at their correct positions
+                if let Some(ref fixed) = fixed_public {
+                    for (pos, val) in fixed {
+                        if *pos < tc.inputs.len() {
+                            tc.inputs[*pos] = val.clone();
+                        }
                     }
                 }
                 tc
@@ -1425,6 +1496,163 @@ impl FuzzingEngine {
         }
 
         Ok(())
+    }
+
+    fn resolve_public_input_positions(
+        config: &serde_yaml::Value,
+        inputs: &[Input],
+        default_public_count: usize,
+    ) -> Vec<usize> {
+        use std::collections::{HashMap, HashSet};
+
+        let mut seen = HashSet::new();
+        let mut positions = Vec::new();
+
+        if let Some(names) = config
+            .get("public_input_names")
+            .and_then(|v| v.as_sequence())
+        {
+            let mut name_to_index = HashMap::new();
+            for (idx, input) in inputs.iter().enumerate() {
+                name_to_index.insert(input.name.as_str(), idx);
+            }
+
+            for entry in names {
+                if let Some(name) = entry.as_str() {
+                    if let Some(&idx) = name_to_index.get(name) {
+                        if seen.insert(idx) {
+                            positions.push(idx);
+                        }
+                    } else {
+                        tracing::warn!(
+                            "Unknown public_input_name '{}' in underconstrained attack config",
+                            name
+                        );
+                    }
+                } else {
+                    tracing::warn!(
+                        "Non-string entry in public_input_names for underconstrained attack"
+                    );
+                }
+            }
+
+            if !positions.is_empty() {
+                return positions;
+            }
+            tracing::warn!(
+                "public_input_names provided but none matched config.inputs; falling back to defaults"
+            );
+        }
+
+        if let Some(list) = config
+            .get("public_input_positions")
+            .and_then(|v| v.as_sequence())
+        {
+            for entry in list {
+                let parsed = match entry {
+                    serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
+                    serde_yaml::Value::String(s) => s.parse::<usize>().ok(),
+                    _ => None,
+                };
+                if let Some(idx) = parsed {
+                    if idx < inputs.len() {
+                        if seen.insert(idx) {
+                            positions.push(idx);
+                        }
+                    } else {
+                        tracing::warn!(
+                            "public_input_positions entry {} out of range ({} inputs)",
+                            idx,
+                            inputs.len()
+                        );
+                    }
+                } else {
+                    tracing::warn!(
+                        "Invalid entry in public_input_positions for underconstrained attack"
+                    );
+                }
+            }
+
+            if !positions.is_empty() {
+                return positions;
+            }
+            tracing::warn!(
+                "public_input_positions provided but none were valid; falling back to defaults"
+            );
+        }
+
+        if let Some(count) = config.get("public_input_count").and_then(|v| v.as_u64()) {
+            let capped = count.min(inputs.len() as u64) as usize;
+            if count as usize > inputs.len() {
+                tracing::warn!(
+                    "public_input_count {} exceeds input count {}; capping",
+                    count,
+                    inputs.len()
+                );
+            }
+            return (0..capped).collect();
+        }
+
+        let capped = default_public_count.min(inputs.len());
+        (0..capped).collect()
+    }
+
+    fn parse_fixed_public_inputs(
+        config: &serde_yaml::Value,
+        public_positions: &[usize],
+    ) -> Option<Vec<(usize, FieldElement)>> {
+        let values = config
+            .get("fixed_public_inputs")
+            .and_then(|v| v.as_sequence())?;
+
+        if values.is_empty() {
+            return None;
+        }
+
+        if values.len() != public_positions.len() {
+            tracing::warn!(
+                "fixed_public_inputs length ({}) does not match public input positions ({})",
+                values.len(),
+                public_positions.len()
+            );
+            return None;
+        }
+
+        let mut fixed = Vec::with_capacity(values.len());
+        for (pos, entry) in public_positions.iter().zip(values.iter()) {
+            let raw = match entry {
+                serde_yaml::Value::String(s) => s.clone(),
+                serde_yaml::Value::Number(n) => n.to_string(),
+                serde_yaml::Value::Bool(b) => {
+                    if *b {
+                        "1".to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                }
+                _ => {
+                    tracing::warn!(
+                        "Unsupported fixed_public_inputs entry type for underconstrained attack"
+                    );
+                    return None;
+                }
+            };
+
+            let fe = match Self::parse_field_element(&raw) {
+                Some(value) => value,
+                None => {
+                    tracing::warn!(
+                        "Could not parse fixed_public_inputs value '{}' in underconstrained attack",
+                        raw
+                    );
+                    return None;
+                }
+            };
+
+            fixed.push((*pos, fe));
+        }
+
+        Some(fixed)
     }
 
     async fn run_soundness_attack(

@@ -20,7 +20,6 @@ attacks:
     description: "Find inputs that satisfy constraints but produce wrong outputs"
     config:
       witness_pairs: 500
-      compare_outputs: true
 
   - type: "soundness"
     description: "Attempt to create valid proofs for false statements"

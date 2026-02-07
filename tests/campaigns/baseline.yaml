@@ -27,7 +27,6 @@ attacks:
     description: "Baseline underconstrained detection"
     config:
       witness_pairs: 200
-      compare_outputs: true
 
   - type: "boundary"
     description: "Baseline boundary testing"

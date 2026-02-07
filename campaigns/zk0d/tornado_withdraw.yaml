@@ -1,4 +1,9 @@
 ---
+includes:
+  - "templates/attacks/evidence_core.yaml"
+  - "templates/attacks/evidence_extended.yaml"
+  - "templates/invariants/merkle_path_indices_20.yaml"
+  - "templates/invariants/nullifier_secret_248.yaml"
 campaign:
   name: "zk0d_tornado_withdraw"
   version: "2.0"
@@ -11,39 +16,6 @@ campaign:
     max_constraints: 200000
     timeout_seconds: 300
     build_dir_base: "./build/zk0d"
-
-# Evidence-mode attack set
-attacks:
-  - type: "constraint_inference"
-    description: "Detect missing constraints with confirmation"
-    config:
-      confidence_threshold: 0.7
-      confirm_violations: true
-
-  - type: "constraint_slice"
-    description: "Cone-based dependency slicing"
-    config:
-      samples_per_cone: 10
-      base_witness_attempts: 10
-
-  - type: "metamorphic"
-    description: "Transform-based invariants"
-    config:
-      num_tests: 100
-
-  - type: "witness_collision"
-    description: "Detect distinct witnesses with same public outputs"
-    config:
-      samples: 100
-      scope_public_inputs: true
-
-  - type: "boundary"
-    description: "Boundary value testing"
-    config:
-      test_values:
-        - "0"
-        - "1"
-        - "p-1"
 
 # Inputs (fully flattened to match circom signal order)
 inputs:
@@ -325,161 +297,6 @@ target_traits:
   uses_commitment: true
   hash_function: "pedersen"
   range_checks: ["bitlen:248"]
-
-# Evidence invariants (manual)
-invariants:
-  - name: "nullifier_range"
-    invariant_type: range
-    relation: "0 <= nullifier < 2^248"
-    oracle: must_hold
-    severity: "critical"
-    description: "Nullifier must fit in 248 bits"
-
-  - name: "secret_range"
-    invariant_type: range
-    relation: "0 <= secret < 2^248"
-    oracle: must_hold
-    severity: "critical"
-    description: "Secret must fit in 248 bits"
-  - name: "path_index_binary_0"
-    invariant_type: constraint
-    relation: "pathIndices_0 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_1"
-    invariant_type: constraint
-    relation: "pathIndices_1 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_2"
-    invariant_type: constraint
-    relation: "pathIndices_2 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_3"
-    invariant_type: constraint
-    relation: "pathIndices_3 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_4"
-    invariant_type: constraint
-    relation: "pathIndices_4 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_5"
-    invariant_type: constraint
-    relation: "pathIndices_5 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_6"
-    invariant_type: constraint
-    relation: "pathIndices_6 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_7"
-    invariant_type: constraint
-    relation: "pathIndices_7 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_8"
-    invariant_type: constraint
-    relation: "pathIndices_8 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_9"
-    invariant_type: constraint
-    relation: "pathIndices_9 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_10"
-    invariant_type: constraint
-    relation: "pathIndices_10 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_11"
-    invariant_type: constraint
-    relation: "pathIndices_11 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_12"
-    invariant_type: constraint
-    relation: "pathIndices_12 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_13"
-    invariant_type: constraint
-    relation: "pathIndices_13 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_14"
-    invariant_type: constraint
-    relation: "pathIndices_14 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_15"
-    invariant_type: constraint
-    relation: "pathIndices_15 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_16"
-    invariant_type: constraint
-    relation: "pathIndices_16 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_17"
-    invariant_type: constraint
-    relation: "pathIndices_17 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_18"
-    invariant_type: constraint
-    relation: "pathIndices_18 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
-
-  - name: "path_index_binary_19"
-    invariant_type: constraint
-    relation: "pathIndices_19 in {0,1}"
-    oracle: must_hold
-    severity: "critical"
-    description: "Merkle path index must be binary"
 
 reporting:
   output_dir: "./reports/zk0d/tornado_withdraw"

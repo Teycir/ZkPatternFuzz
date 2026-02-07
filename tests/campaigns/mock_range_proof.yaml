@@ -39,7 +39,6 @@ attacks:
     description: "Check if all bits are properly constrained"
     config:
       witness_pairs: 500
-      compare_outputs: true
 
 inputs:
   - name: "value"

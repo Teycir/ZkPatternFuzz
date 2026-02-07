@@ -1,4 +1,6 @@
 ---
+includes:
+  - "templates/attacks/evidence_core.yaml"
 campaign:
   name: "zk0d_iden3_authv3"
   version: "2.0"
@@ -11,22 +13,6 @@ campaign:
     max_constraints: 200000
     timeout_seconds: 300
     build_dir_base: "./build/zk0d"
-
-# Evidence-mode attack set
-attacks:
-  - type: "constraint_inference"
-    description: "Detect missing constraints with confirmation"
-    config:
-      confidence_threshold: 0.7
-      confirm_violations: true
-
-  - type: "boundary"
-    description: "Boundary value testing"
-    config:
-      test_values:
-        - "0"
-        - "1"
-        - "p-1"
 
 # Inputs (fully flattened to match circom signal order)
 inputs:

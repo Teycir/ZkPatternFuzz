@@ -87,7 +87,6 @@ attacks:
     description: "Check for missing signature constraints"
     config:
       witness_pairs: 1000
-      compare_outputs: true
 
   - type: "boundary"
     description: "Test signature with edge case inputs"

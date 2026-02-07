@@ -1,0 +1,28 @@
+---
+# Shared evidence-mode extended attacks (faster base witness attempts)
+# NOTE: uses a stub campaign to satisfy v2 include parsing.
+campaign:
+  name: ""
+  version: "2.0"
+  target:
+    framework: "mock"
+    circuit_path: ""
+    main_component: ""
+
+attacks:
+  - type: "constraint_slice"
+    description: "Cone-based dependency slicing"
+    config:
+      samples_per_cone: 10
+      base_witness_attempts: 5
+
+  - type: "metamorphic"
+    description: "Transform-based invariants"
+    config:
+      num_tests: 100
+
+  - type: "witness_collision"
+    description: "Detect distinct witnesses with same public outputs"
+    config:
+      samples: 100
+      scope_public_inputs: true

@@ -76,7 +76,8 @@ attacks:
     description: "Find inputs that satisfy constraints but produce wrong outputs"
     config:
       witness_pairs: 1000
-      compare_outputs: true
+      # public_input_names: ["input1"]
+      # fixed_public_inputs: ["0x01"]
 
 inputs:
   - name: "input1"
@@ -258,6 +259,9 @@ attacks:
   - type: underconstrained
     config:
       witness_pairs: 500
+      # Optional: fix public inputs explicitly (recommended when inputs are interleaved)
+      # public_input_names: ["a"]          # or public_input_positions: [0]
+      # fixed_public_inputs: ["0x01"]
   - type: arithmetic_overflow
     config:
       test_values: ["0", "1", "p-1", "p"]
@@ -321,7 +325,7 @@ attacks:
   - type: underconstrained
     config:
       witness_pairs: 1000
-      symbolic_execution: true
+      # public_input_names: ["x"]
 
 inputs:
   - name: "x"
@@ -344,20 +348,21 @@ cargo run --release -- --config noir_campaign.yaml
 
 ## Advanced Techniques
 
-### Symbolic Execution
+### Constraint-Guided Seeding
 
-Enable Z3-based constraint solving for targeted test generation:
+Enable Z3-based constraint solving for targeted seed generation:
 
 ```yaml
-attacks:
-  - type: underconstrained
-    config:
-      symbolic_execution: true
-      z3_timeout: 5000  # milliseconds
-      max_paths: 100
+campaign:
+  parameters:
+    additional:
+      constraint_guided_enabled: true
+      constraint_guided_max_depth: 200
+      constraint_guided_max_paths: 100
+      constraint_guided_solver_timeout_ms: 5000
 ```
 
-This generates inputs that explore specific constraint paths.
+This generates inputs that explore specific constraint paths before fuzzing.
 
 ### Differential Testing
 
@@ -450,6 +455,14 @@ curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
 curl -L https://github.com/starkware-libs/cairo/releases/download/v2.0.0/release-x86_64-unknown-linux-musl.tar.gz | tar xz
 ```
 
+If you want to prevent mock fallback entirely, set:
+```yaml
+campaign:
+  parameters:
+    additional:
+      strict_backend: true
+```
+
 ### Issue: Low Coverage
 
 ```
@@ -465,10 +478,12 @@ Coverage: 15%
          witness_pairs: 5000  # Increase from 1000
    ```
 
-2. Enable symbolic execution:
+2. Enable constraint-guided seeding:
    ```yaml
-   config:
-     symbolic_execution: true
+   campaign:
+     parameters:
+       additional:
+         constraint_guided_enabled: true
    ```
 
 3. Add more input strategies:

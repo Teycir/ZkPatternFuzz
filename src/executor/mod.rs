@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 /// Options for controlling executor creation (e.g., build directory overrides).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ExecutorFactoryOptions {
     /// Base directory for build artifacts (per-framework subdirs will be created).
     pub build_dir_base: Option<PathBuf>,
@@ -39,9 +39,53 @@ pub struct ExecutorFactoryOptions {
     pub halo2_build_dir: Option<PathBuf>,
     /// Explicit build directory for Cairo.
     pub cairo_build_dir: Option<PathBuf>,
+    /// If true, fail with an error when real backend tooling is missing
+    /// instead of falling back to mock executor silently.
+    /// 
+    /// # Phase 0 Fix: Silent Mock Fallback Prevention
+    /// 
+    /// When strict_backend is true and a real backend (Circom/Noir/Cairo) is
+    /// requested but not available, the factory will return an error instead
+    /// of silently falling back to MockCircuitExecutor.
+    /// 
+    /// This prevents synthetic findings from being reported as real vulnerabilities.
+    /// Default is false for backwards compatibility, but evidence-mode campaigns
+    /// should set this to true.
+    pub strict_backend: bool,
+    /// If true, allow mock fallback but mark the executor as a fallback mock
+    /// so the engine can warn appropriately. This is the middle ground between
+    /// strict_backend=true (error) and the old behavior (silent fallback).
+    /// 
+    /// Default is true - fallbacks are allowed but clearly marked.
+    pub mark_fallback: bool,
+}
+
+impl Default for ExecutorFactoryOptions {
+    fn default() -> Self {
+        Self {
+            build_dir_base: None,
+            circom_build_dir: None,
+            noir_build_dir: None,
+            halo2_build_dir: None,
+            cairo_build_dir: None,
+            strict_backend: false,
+            mark_fallback: true, // Default to marking fallbacks so warnings are shown
+        }
+    }
 }
 
 impl ExecutorFactoryOptions {
+    /// Create options with strict backend mode enabled
+    /// 
+    /// In strict mode, the factory will error if a real backend is not available
+    /// instead of falling back to mock execution.
+    pub fn strict() -> Self {
+        Self {
+            strict_backend: true,
+            ..Self::default()
+        }
+    }
+
     fn resolve_build_dir(
         &self,
         framework: Framework,
@@ -528,12 +572,32 @@ impl ExecutorFactory {
                 Ok(Arc::new(executor))
             }
             Err(e) => {
-                tracing::warn!("Circom not available ({}), using mock executor", e);
-                Ok(Arc::new(
-                    MockCircuitExecutor::new(main_component, 10, 2)
-                        .with_framework(Framework::Circom)
-                        .with_circuit_path(circuit_path),
-                ))
+                // Phase 0 Fix: Don't silently fall back to mock
+                if options.strict_backend {
+                    anyhow::bail!(
+                        "Circom backend required but not available: {}. \
+                         Install circom or set strict_backend=false to allow mock fallback. \
+                         WARNING: Mock execution produces SYNTHETIC results that should NOT \
+                         be reported as real vulnerabilities.",
+                        e
+                    );
+                }
+
+                tracing::warn!(
+                    "Circom not available ({}), falling back to mock executor. \
+                     WARNING: Findings will be SYNTHETIC and should not be reported as real vulnerabilities!",
+                    e
+                );
+                
+                let mut mock = MockCircuitExecutor::new(main_component, 10, 2)
+                    .with_framework(Framework::Circom)
+                    .with_circuit_path(circuit_path);
+                
+                if options.mark_fallback {
+                    mock = mock.as_fallback_for(Framework::Circom);
+                }
+                
+                Ok(Arc::new(mock))
             }
         }
     }
@@ -558,12 +622,32 @@ impl ExecutorFactory {
                 Ok(Arc::new(executor))
             }
             Err(e) => {
-                tracing::warn!("Nargo not available ({}), using mock executor", e);
-                Ok(Arc::new(
-                    MockCircuitExecutor::new(main_component, 10, 2)
-                        .with_framework(Framework::Noir)
-                        .with_circuit_path(circuit_path),
-                ))
+                // Phase 0 Fix: Don't silently fall back to mock
+                if options.strict_backend {
+                    anyhow::bail!(
+                        "Noir backend required but not available: {}. \
+                         Install nargo or set strict_backend=false to allow mock fallback. \
+                         WARNING: Mock execution produces SYNTHETIC results that should NOT \
+                         be reported as real vulnerabilities.",
+                        e
+                    );
+                }
+
+                tracing::warn!(
+                    "Nargo not available ({}), falling back to mock executor. \
+                     WARNING: Findings will be SYNTHETIC and should not be reported as real vulnerabilities!",
+                    e
+                );
+                
+                let mut mock = MockCircuitExecutor::new(main_component, 10, 2)
+                    .with_framework(Framework::Noir)
+                    .with_circuit_path(circuit_path);
+                
+                if options.mark_fallback {
+                    mock = mock.as_fallback_for(Framework::Noir);
+                }
+                
+                Ok(Arc::new(mock))
             }
         }
     }
@@ -602,12 +686,32 @@ impl ExecutorFactory {
                 Ok(Arc::new(executor))
             }
             Err(e) => {
-                tracing::warn!("Cairo not available ({}), using mock executor", e);
-                Ok(Arc::new(
-                    MockCircuitExecutor::new(main_component, 10, 2)
-                        .with_framework(Framework::Cairo)
-                        .with_circuit_path(circuit_path),
-                ))
+                // Phase 0 Fix: Don't silently fall back to mock
+                if options.strict_backend {
+                    anyhow::bail!(
+                        "Cairo backend required but not available: {}. \
+                         Install cairo/scarb or set strict_backend=false to allow mock fallback. \
+                         WARNING: Mock execution produces SYNTHETIC results that should NOT \
+                         be reported as real vulnerabilities.",
+                        e
+                    );
+                }
+
+                tracing::warn!(
+                    "Cairo not available ({}), falling back to mock executor. \
+                     WARNING: Findings will be SYNTHETIC and should not be reported as real vulnerabilities!",
+                    e
+                );
+                
+                let mut mock = MockCircuitExecutor::new(main_component, 10, 2)
+                    .with_framework(Framework::Cairo)
+                    .with_circuit_path(circuit_path);
+                
+                if options.mark_fallback {
+                    mock = mock.as_fallback_for(Framework::Cairo);
+                }
+                
+                Ok(Arc::new(mock))
             }
         }
     }

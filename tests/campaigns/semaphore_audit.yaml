@@ -25,7 +25,6 @@ attacks:
     description: "Detect if different identity commitments can produce valid proofs"
     config:
       witness_pairs: 50
-      compare_outputs: true
       focus_signals:
         - "identityCommitment"
         - "nullifierHash"

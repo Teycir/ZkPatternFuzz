@@ -103,12 +103,21 @@ campaign:
     framework: "circom"  # circom | noir | halo2 | mock
     circuit_path: "./circuits/my_circuit.circom"
     main_component: "MyCircuit"
+  parameters:
+    field: "bn254"
+    max_constraints: 100000
+    timeout_seconds: 300
+    additional:
+      strict_backend: true    # fail if real backend tooling is missing
+      mark_fallback: true     # mark mock fallback (default: true)
 
 attacks:
   - type: "underconstrained"
     description: "Find multiple valid witnesses"
     config:
       witness_pairs: 1000
+      public_input_names: ["root", "nullifier"]  # optional
+      fixed_public_inputs: ["0x0", "0x0"]        # optional
 
 inputs:
   - name: "input1"
@@ -136,6 +145,15 @@ reporting:
 | `metamorphic` | Transform-based oracles | 🚧 Experimental |
 | `spec_inference` | Auto-learn and violate properties | 🚧 Experimental |
 | `witness_collision` | Equivalence-class collision search | 🚧 Experimental |
+
+### Underconstrained Attack Options
+
+- `witness_pairs`: number of witness pairs to test (default: 1000)
+- `tolerance`: DOF ratio tolerance for the quick heuristic
+- `public_input_names`: list of input names to treat as public (preferred)
+- `public_input_positions`: list of input indices to treat as public
+- `public_input_count`: number of leading inputs to treat as public (fallback)
+- `fixed_public_inputs`: values to hold constant for public inputs (must match public input list)
 
 ### Attack Plugins
 
@@ -324,16 +342,18 @@ The `tests/campaigns/` directory contains example configurations:
 
 ## Advanced Features
 
-### Symbolic Execution
+### Constraint-Guided Seeding
 
-Use Z3 SMT solver for constraint analysis:
+Use Z3 SMT solver for targeted seed generation:
 
 ```yaml
-attacks:
-  - type: "underconstrained"
-    config:
-      symbolic_execution: true
-      z3_timeout: 60
+campaign:
+  parameters:
+    additional:
+      constraint_guided_enabled: true
+      constraint_guided_max_depth: 200
+      constraint_guided_max_paths: 100
+      constraint_guided_solver_timeout_ms: 60000
 ```
 
 ### Differential Testing

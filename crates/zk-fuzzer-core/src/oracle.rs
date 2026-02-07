@@ -203,40 +203,311 @@ impl BugOracle for UnderconstrainedOracle {
 }
 
 /// Oracle for detecting constraint count mismatches
+/// 
+/// # Phase 0 Fix: Make Oracle Evidence-Producing
+/// 
+/// This oracle is now stateful and tracks the actual constraint count from
+/// executions. It produces findings when:
+/// 1. The actual constraint count differs from expected
+/// 2. The constraint count varies between executions (dynamic constraints)
+/// 
+/// **IMPORTANT**: This oracle requires integration with the executor's
+/// constraint inspector to get actual constraint counts. Without this,
+/// it cannot produce evidence and will log a warning.
 pub struct ConstraintCountOracle {
     pub expected_count: usize,
+    /// Minimum observed constraint count (incremental tracking)
+    min_count: Option<usize>,
+    /// Maximum observed constraint count (incremental tracking)
+    max_count: Option<usize>,
+    /// Last observed constraint count
+    last_count: Option<usize>,
+    /// Whether we've warned about missing constraint inspector
+    warned_no_inspector: bool,
+    /// Number of checks performed
+    check_count: u64,
+    /// Number of findings produced
+    finding_count: u64,
 }
 
 impl ConstraintCountOracle {
     pub fn new(expected_count: usize) -> Self {
-        Self { expected_count }
+        Self {
+            expected_count,
+            min_count: None,
+            max_count: None,
+            last_count: None,
+            warned_no_inspector: false,
+            check_count: 0,
+            finding_count: 0,
+        }
+    }
+
+    /// Record an observed constraint count from execution
+    /// 
+    /// This should be called by the engine with data from the executor's
+    /// constraint inspector.
+    pub fn record_constraint_count(&mut self, count: usize) {
+        self.min_count = Some(self.min_count.map_or(count, |m| m.min(count)));
+        self.max_count = Some(self.max_count.map_or(count, |m| m.max(count)));
+        self.last_count = Some(count);
+    }
+
+    /// Check if constraint count is anomalous
+    /// 
+    /// Returns Some(finding) if:
+    /// - Count differs significantly from expected
+    /// - Count varies between executions (shouldn't happen for static circuits)
+    pub fn check_with_count(&mut self, test_case: &TestCase, count: usize) -> Option<Finding> {
+        self.check_count += 1;
+        
+        // Update incremental min/max tracking
+        self.min_count = Some(self.min_count.map_or(count, |m| m.min(count)));
+        self.max_count = Some(self.max_count.map_or(count, |m| m.max(count)));
+        self.last_count = Some(count);
+
+        // Check if count differs from expected
+        if count != self.expected_count {
+            self.finding_count += 1;
+            return Some(Finding {
+                attack_type: AttackType::Underconstrained, // Constraint count mismatch often indicates underconstrained
+                severity: Severity::High,
+                description: format!(
+                    "Constraint count mismatch: expected {}, observed {}. \
+                     This may indicate missing constraints or dynamic constraint generation.",
+                    self.expected_count, count
+                ),
+                poc: ProofOfConcept {
+                    witness_a: test_case.inputs.clone(),
+                    witness_b: None,
+                    public_inputs: vec![],
+                    proof: None,
+                },
+                location: None,
+            });
+        }
+
+        // Check for variance in observed counts (shouldn't vary for static circuits)
+        if let (Some(min), Some(max)) = (self.min_count, self.max_count) {
+            if min != max {
+                self.finding_count += 1;
+                return Some(Finding {
+                    attack_type: AttackType::Underconstrained,
+                    severity: Severity::Critical,
+                    description: format!(
+                        "Constraint count varies between executions ({} to {}). \
+                         This indicates dynamic constraints which may be exploitable.",
+                        min, max
+                    ),
+                    poc: ProofOfConcept {
+                        witness_a: test_case.inputs.clone(),
+                        witness_b: None,
+                        public_inputs: vec![],
+                        proof: None,
+                    },
+                    location: None,
+                });
+            }
+        }
+
+        None
+    }
+
+    /// Get statistics about this oracle
+    pub fn statistics(&self) -> OracleStatistics {
+        OracleStatistics {
+            executions: self.check_count,
+            findings: self.finding_count,
+            unique_outputs_seen: if self.min_count.is_some() { 
+                (self.max_count.unwrap_or(0) - self.min_count.unwrap_or(0) + 1) as u64 
+            } else { 
+                0 
+            },
+        }
     }
 }
 
 impl BugOracle for ConstraintCountOracle {
     fn check(&mut self, _test_case: &TestCase, _output: &[FieldElement]) -> Option<Finding> {
-        // In real implementation, this would check actual constraint count
-        // against expected count from the circuit
+        // Phase 0 Fix: Log warning that this oracle needs integration
+        // 
+        // The basic check() method cannot produce evidence without constraint
+        // count data from the executor. The engine should call check_with_count()
+        // instead after obtaining the count from the executor's constraint inspector.
+        if !self.warned_no_inspector {
+            tracing::warn!(
+                "ConstraintCountOracle.check() called without constraint count. \
+                 This oracle requires integration with the executor's constraint inspector. \
+                 Use check_with_count() after obtaining constraint count from the executor."
+            );
+            self.warned_no_inspector = true;
+        }
+        self.check_count += 1;
         None
     }
 
     fn name(&self) -> &str {
         "constraint_count_oracle"
     }
+
+    fn reset(&mut self) {
+        self.min_count = None;
+        self.max_count = None;
+        self.last_count = None;
+        self.warned_no_inspector = false;
+        self.check_count = 0;
+        self.finding_count = 0;
+    }
+
+    fn stats(&self) -> Option<OracleStatistics> {
+        Some(self.statistics())
+    }
 }
 
 /// Oracle for detecting proof forgery attempts
-pub struct ProofForgeryOracle;
+/// 
+/// # Phase 0 Fix: Make Oracle Evidence-Producing
+/// 
+/// This oracle is now stateful and tracks proof/verification attempts.
+/// It produces findings when a proof generated for one set of inputs
+/// verifies for a different set of public inputs (soundness violation).
+/// 
+/// **IMPORTANT**: This oracle requires integration with the executor's
+/// prove() and verify() methods to produce evidence. The engine should:
+/// 1. Generate a proof for valid inputs
+/// 2. Attempt to verify with mutated public inputs
+/// 3. Call check_with_verification() with the result
+pub struct ProofForgeryOracle {
+    /// Number of forgery attempts made
+    attempts: u64,
+    /// Number of successful forgeries detected
+    successful_forgeries: u64,
+    /// Whether we've warned about missing integration
+    warned_no_integration: bool,
+    /// Recent proof/input pairs for cross-verification testing
+    proof_history: Vec<(Vec<u8>, Vec<FieldElement>)>,
+    /// Maximum history size
+    max_history: usize,
+}
+
+impl ProofForgeryOracle {
+    pub fn new() -> Self {
+        Self {
+            attempts: 0,
+            successful_forgeries: 0,
+            warned_no_integration: false,
+            proof_history: Vec::new(),
+            max_history: 100,
+        }
+    }
+
+    /// Configure maximum proof history size
+    pub fn with_max_history(mut self, size: usize) -> Self {
+        self.max_history = size;
+        self
+    }
+
+    /// Record a proof for later cross-verification testing
+    pub fn record_proof(&mut self, proof: Vec<u8>, public_inputs: Vec<FieldElement>) {
+        if self.proof_history.len() >= self.max_history {
+            self.proof_history.remove(0);
+        }
+        self.proof_history.push((proof, public_inputs));
+    }
+
+    /// Check if a proof verifies for different public inputs (soundness violation)
+    /// 
+    /// # Arguments
+    /// * `original_inputs` - The inputs the proof was generated for
+    /// * `mutated_inputs` - Different public inputs to verify against
+    /// * `proof` - The proof bytes
+    /// * `verified` - Whether verification succeeded
+    /// 
+    /// # Returns
+    /// Finding if verification succeeded (soundness violation)
+    pub fn check_with_verification(
+        &mut self,
+        original_inputs: &[FieldElement],
+        mutated_inputs: &[FieldElement],
+        proof: &[u8],
+        verified: bool,
+    ) -> Option<Finding> {
+        self.attempts += 1;
+
+        if verified && original_inputs != mutated_inputs {
+            self.successful_forgeries += 1;
+            return Some(Finding {
+                attack_type: AttackType::Soundness,
+                severity: Severity::Critical,
+                description: format!(
+                    "Proof forgery successful! Proof generated for one set of inputs \
+                     verified for different public inputs. This is a critical soundness \
+                     violation (forgery #{}).",
+                    self.successful_forgeries
+                ),
+                poc: ProofOfConcept {
+                    witness_a: original_inputs.to_vec(),
+                    witness_b: Some(mutated_inputs.to_vec()),
+                    public_inputs: mutated_inputs.to_vec(),
+                    proof: Some(proof.to_vec()),
+                },
+                location: None,
+            });
+        }
+
+        None
+    }
+
+    /// Get statistics about this oracle
+    pub fn statistics(&self) -> OracleStatistics {
+        OracleStatistics {
+            executions: self.attempts,
+            findings: self.successful_forgeries,
+            unique_outputs_seen: self.proof_history.len() as u64,
+        }
+    }
+}
+
+impl Default for ProofForgeryOracle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl BugOracle for ProofForgeryOracle {
     fn check(&mut self, _test_case: &TestCase, _output: &[FieldElement]) -> Option<Finding> {
-        // In real implementation, this would verify that proofs
-        // cannot be forged for invalid statements
+        // Phase 0 Fix: Log warning that this oracle needs integration
+        // 
+        // The basic check() method cannot produce evidence without proof/verification
+        // data from the executor. The engine should:
+        // 1. Call executor.prove() to generate a proof
+        // 2. Call executor.verify() with mutated inputs
+        // 3. Call check_with_verification() with the results
+        if !self.warned_no_integration {
+            tracing::warn!(
+                "ProofForgeryOracle.check() called without proof verification data. \
+                 This oracle requires integration with the executor's prove/verify methods. \
+                 Use check_with_verification() after attempting proof forgery."
+            );
+            self.warned_no_integration = true;
+        }
+        self.attempts += 1;
         None
     }
 
     fn name(&self) -> &str {
         "proof_forgery_oracle"
+    }
+
+    fn reset(&mut self) {
+        self.attempts = 0;
+        self.successful_forgeries = 0;
+        self.warned_no_integration = false;
+        self.proof_history.clear();
+    }
+
+    fn stats(&self) -> Option<OracleStatistics> {
+        Some(self.statistics())
     }
 }
 

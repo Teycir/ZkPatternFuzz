@@ -160,7 +160,7 @@ Now analyze the provided circuit and generate the optimal fuzzing configuration.
 
 | Attack Type | Use When | Config Keys |
 |-------------|----------|-------------|
-| `underconstrained` | Always | `witness_pairs`, `compare_outputs`, `focus_on` |
+| `underconstrained` | Always | `witness_pairs`, `tolerance`, `public_input_names`, `public_input_positions`, `public_input_count`, `fixed_public_inputs` |
 | `soundness` | Privacy circuits | `forge_attempts`, `mutation_rate` |
 | `collision` | Hash/Merkle circuits | `samples`, `target_output` |
 | `arithmetic_overflow` | Arithmetic ops | `test_values` |

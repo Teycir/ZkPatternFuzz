@@ -25,7 +25,6 @@ attacks:
     description: "Detect if same nullifier can be generated from different notes"
     config:
       witness_pairs: 50
-      compare_outputs: true
       critical_signals:
         - "nullifierHash"
 

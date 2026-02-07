@@ -1,4 +1,9 @@
 ---
+# Shared attack modules
+includes:
+  - "templates/attacks/evidence_core.yaml"
+  - "templates/attacks/evidence_extended_fast.yaml"
+  - "templates/attacks/underconstrained.yaml"
 # Semaphore v4 Security Audit Campaign
 # Target: Privacy-preserving group membership protocol
 # Source: ${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore
@@ -31,45 +36,6 @@ campaign:
     include_paths:
       - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/node_modules"
       - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/node_modules"
-
-# Evidence-mode attack set
-attacks:
-  - type: "constraint_inference"
-    description: "Detect missing constraints with confirmation"
-    config:
-      confidence_threshold: 0.7
-      confirm_violations: true
-
-  - type: "constraint_slice"
-    description: "Cone-based dependency slicing"
-    config:
-      samples_per_cone: 10
-      base_witness_attempts: 5
-
-  - type: "metamorphic"
-    description: "Transform-based invariants"
-    config:
-      num_tests: 100
-
-  - type: "witness_collision"
-    description: "Detect distinct witnesses with same public outputs"
-    config:
-      samples: 100
-      scope_public_inputs: true
-
-  - type: "boundary"
-    description: "Boundary value testing"
-    config:
-      test_values:
-        - "0"
-        - "1"
-        - "p-1"
-
-  - type: "underconstrained"
-    description: "Detect multiple valid witnesses for same public output"
-    config:
-      witness_pairs: 50
-      compare_outputs: true
 
 # Inputs (based on Semaphore circuit signals)
 inputs:

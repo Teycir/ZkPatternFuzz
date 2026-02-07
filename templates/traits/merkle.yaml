@@ -69,7 +69,6 @@ attacks:
     description: "Test for missing Merkle path constraints"
     config:
       witness_pairs: 1000
-      compare_outputs: true
       focus_on:
         - "pathIndices"
         - "pathElements"

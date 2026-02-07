@@ -1,0 +1,16 @@
+---
+# Range invariants for 64-bit fee/refund
+invariants:
+  - name: "fee_range"
+    invariant_type: range
+    relation: "0 <= fee < 2^64"
+    oracle: must_hold
+    severity: "high"
+    description: "Fee should be 64-bit bounded"
+
+  - name: "refund_range"
+    invariant_type: range
+    relation: "0 <= refund < 2^64"
+    oracle: must_hold
+    severity: "high"
+    description: "Refund should be 64-bit bounded"

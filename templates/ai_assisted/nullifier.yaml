@@ -78,7 +78,6 @@ attacks:
     description: "Check for missing nullifier constraints"
     config:
       witness_pairs: 2000
-      compare_outputs: true
 
   - type: "collision"
     description: "Test for nullifier collisions"
