@@ -971,19 +971,51 @@ pub struct GeneratedConfig {
 impl GeneratedConfig {
     /// Save configuration to file
     pub fn save(&self, output_dir: impl AsRef<Path>) -> anyhow::Result<PathBuf> {
+        self.save_with_rewrite(output_dir, None)
+    }
+
+    /// Save configuration with a custom root placeholder (e.g. ${TARGET_REPO})
+    pub fn save_with_placeholder(
+        &self,
+        output_dir: impl AsRef<Path>,
+        root: impl AsRef<Path>,
+        placeholder: &str,
+    ) -> anyhow::Result<PathBuf> {
+        let placeholder = placeholder.trim();
+        if placeholder.is_empty() {
+            return self.save(output_dir);
+        }
+        self.save_with_rewrite(output_dir, Some((root.as_ref(), placeholder)))
+    }
+
+    fn save_with_rewrite(
+        &self,
+        output_dir: impl AsRef<Path>,
+        rewrite: Option<(&Path, &str)>,
+    ) -> anyhow::Result<PathBuf> {
         let output_dir = output_dir.as_ref();
         std::fs::create_dir_all(output_dir)?;
 
         let filename = format!("{}.yaml", self.circuit_name);
         let path = output_dir.join(&filename);
 
-        let display_path = rewrite_zk0d_path(&self.circuit_path);
-
         let mut config = self.config.clone();
-        if let Some(base) = &mut config.base {
-            let rewritten = rewrite_zk0d_path(&base.campaign.target.circuit_path);
-            base.campaign.target.circuit_path = PathBuf::from(rewritten);
-        }
+        let display_path = if let Some((root, placeholder)) = rewrite {
+            let rewritten = rewrite_path_with_placeholder(&self.circuit_path, root, placeholder);
+            if let Some(base) = &mut config.base {
+                let rewritten_target =
+                    rewrite_path_with_placeholder(&base.campaign.target.circuit_path, root, placeholder);
+                base.campaign.target.circuit_path = PathBuf::from(rewritten_target);
+            }
+            rewritten
+        } else {
+            let rewritten = rewrite_zk0d_path(&self.circuit_path);
+            if let Some(base) = &mut config.base {
+                let rewritten_target = rewrite_zk0d_path(&base.campaign.target.circuit_path);
+                base.campaign.target.circuit_path = PathBuf::from(rewritten_target);
+            }
+            rewritten
+        };
 
         // Serialize with header comment
         let header = format!(
@@ -1016,6 +1048,24 @@ fn rewrite_zk0d_path(path: &Path) -> String {
             placeholder
         } else {
             format!("{}/{}", placeholder, suffix)
+        }
+    } else {
+        path_str.to_string()
+    }
+}
+
+fn rewrite_path_with_placeholder(path: &Path, root: &Path, placeholder: &str) -> String {
+    let path_str = path.to_string_lossy();
+    let root_str = root.to_string_lossy();
+    let root_str = root_str.trim_end_matches(std::path::MAIN_SEPARATOR);
+
+    if path_str.starts_with(root_str) {
+        let suffix = path_str[root_str.len()..].trim_start_matches(std::path::MAIN_SEPARATOR);
+        if suffix.is_empty() {
+            placeholder.to_string()
+        } else {
+            let prefix = placeholder.trim_end_matches('/');
+            format!("{}/{}", prefix, suffix)
         }
     } else {
         path_str.to_string()

@@ -15,6 +15,10 @@ struct Args {
     #[arg(long, env = "ZK0D_BASE", default_value = "/media/elements/Repos/zk0d")]
     root: String,
 
+    /// Override placeholder for root path in generated outputs (e.g. ${TARGET_REPO})
+    #[arg(long)]
+    root_placeholder: Option<String>,
+
     /// Maximum circuit files to analyze
     #[arg(long, default_value_t = 200)]
     max_files: usize,
@@ -134,7 +138,7 @@ fn main() -> anyhow::Result<()> {
     let summary_path = output_dir.join("skimmer_summary.md");
     let json_path = output_dir.join("skimmer_summary.json");
     let candidate_path = output_dir.join("candidate_invariants.yaml");
-    let root_placeholder = root_placeholder(&root);
+    let root_placeholder = root_placeholder(&root, args.root_placeholder.as_deref());
 
     write_summary_markdown(
         &summary_path,
@@ -158,7 +162,11 @@ fn main() -> anyhow::Result<()> {
         let config_dir = Path::new(&args.config_dir);
         std::fs::create_dir_all(config_dir)?;
         for gen in &generated {
-            let _ = gen.save(config_dir)?;
+            let _ = if let Some(placeholder) = root_placeholder.as_deref() {
+                gen.save_with_placeholder(config_dir, &root, placeholder)?
+            } else {
+                gen.save(config_dir)?
+            };
         }
     }
 
@@ -414,7 +422,13 @@ fn relation_for_category(category: &ZeroDayCategory, primary: &str) -> String {
     }
 }
 
-fn root_placeholder(root: &Path) -> Option<String> {
+fn root_placeholder(root: &Path, override_placeholder: Option<&str>) -> Option<String> {
+    if let Some(override_placeholder) = override_placeholder {
+        let trimmed = override_placeholder.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
     let root_str = root.to_string_lossy();
     let env_root = std::env::var("ZK0D_BASE").ok();
     if root_str == DEFAULT_ZK0D_BASE || env_root.as_deref() == Some(root_str.as_ref()) {
