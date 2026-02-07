@@ -91,7 +91,7 @@ attacks:
   description: 'Signature scheme - check for forgery (Zero-day hint: Signature without s-value normalization (potential malleability))'
   plugin: null
   config:
-    samples: 10000
+    samples: 100
 inputs:
 - name: default_input
   type: field

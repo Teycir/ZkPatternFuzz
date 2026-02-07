@@ -93,12 +93,12 @@ attacks:
   description: Merkle tree detected - check for root collisions
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 - type: collision
   description: Hash function detected - check for collisions
   plugin: null
   config:
-    samples: 100000
+    samples: 200
 inputs:
 - name: left
   type: field

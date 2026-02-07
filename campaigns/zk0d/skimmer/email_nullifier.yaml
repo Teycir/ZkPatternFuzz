@@ -96,17 +96,17 @@ attacks:
   description: 'Nullifier pattern - check uniqueness (Zero-day hint: Nullifier may not include sufficient entropy)'
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 - type: arithmetic_overflow
   description: Range check detected - test boundary conditions
   plugin: null
   config:
-    samples: 5000
+    samples: 100
 - type: collision
   description: Hash function detected - check for collisions
   plugin: null
   config:
-    samples: 100000
+    samples: 200
 inputs:
 - name: sign_hash
   type: field

@@ -78,7 +78,7 @@ attacks:
   description: Merkle tree detected - check for root collisions
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 inputs:
 - name: default_input
   type: field

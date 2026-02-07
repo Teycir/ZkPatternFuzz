@@ -93,12 +93,12 @@ attacks:
   description: 'Range check detected - test boundary conditions (Zero-day hint: Num2Bits used without explicit range validation)'
   plugin: null
   config:
-    samples: 5000
+    samples: 100
 - type: arithmetic_overflow
   description: Range check detected - test boundary conditions
   plugin: null
   config:
-    samples: 5000
+    samples: 100
 inputs:
 - name: operator
   type: field

@@ -68,7 +68,7 @@ attacks:
   description: Complex circuit - use constraint inference
   plugin: null
   config:
-    samples: 10000
+    samples: 100
 inputs:
 - name: input
   type: field

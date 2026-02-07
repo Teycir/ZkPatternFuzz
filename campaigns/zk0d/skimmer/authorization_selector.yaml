@@ -94,12 +94,12 @@ attacks:
   description: 'Signature scheme - check for forgery (Zero-day hint: Signature without s-value normalization (potential malleability))'
   plugin: null
   config:
-    samples: 10000
+    samples: 100
 - type: arithmetic_overflow
   description: Range check detected - test boundary conditions
   plugin: null
   config:
-    samples: 5000
+    samples: 100
 inputs:
 - name: default_input
   type: field

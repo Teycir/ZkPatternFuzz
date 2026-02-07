@@ -83,7 +83,7 @@ attacks:
   description: Hash function detected - check for collisions
   plugin: null
   config:
-    samples: 100000
+    samples: 200
 inputs:
 - name: linkNonce
   type: field

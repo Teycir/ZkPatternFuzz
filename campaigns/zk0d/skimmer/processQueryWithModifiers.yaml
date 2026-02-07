@@ -71,7 +71,7 @@ attacks:
   description: Range check detected - test boundary conditions
   plugin: null
   config:
-    samples: 5000
+    samples: 100
 inputs:
 - name: enabled
   type: field

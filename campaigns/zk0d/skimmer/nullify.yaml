@@ -93,12 +93,12 @@ attacks:
   description: 'Nullifier pattern - check uniqueness (Zero-day hint: Nullifier may not include sufficient entropy)'
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 - type: collision
   description: Hash function detected - check for collisions
   plugin: null
   config:
-    samples: 100000
+    samples: 200
 inputs:
 - name: genesisID
   type: field

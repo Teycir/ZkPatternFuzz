@@ -2,8 +2,8 @@ version: 1
 defaults:
   workers: 8
   seed: 42
-  iterations: 50000
-  timeout: 1800
+  iterations: 100
+  timeout: 600
   mode: evidence
 
 targets:

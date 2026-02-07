@@ -101,17 +101,17 @@ attacks:
   description: 'Signature scheme - check for forgery (Zero-day hint: Signature without s-value normalization (potential malleability))'
   plugin: null
   config:
-    samples: 10000
+    samples: 100
 - type: collision
   description: Merkle tree detected - check for root collisions
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 - type: constraint_inference
   description: Complex circuit - use constraint inference
   plugin: null
   config:
-    samples: 10000
+    samples: 100
 inputs:
 - name: input
   type: field

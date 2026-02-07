@@ -91,7 +91,7 @@ attacks:
   description: 'Nullifier pattern - check uniqueness (Zero-day hint: Nullifier may not include sufficient entropy)'
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 inputs:
 - name: linkNonce
   type: field

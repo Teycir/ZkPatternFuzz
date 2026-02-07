@@ -218,8 +218,12 @@ impl WitnessCollisionDetector {
         let explicit_public_indices = self.public_input_indices.as_ref();
         let default_public_indices: Vec<usize> = (0..num_public).collect();
 
+        // Memory safety: cap witness storage at 10k to prevent OOM
+        const MAX_STORED_WITNESSES: usize = 10_000;
+        let safe_sample_count = self.sample_count.min(MAX_STORED_WITNESSES);
+
         // Execute all witnesses and collect outputs
-        for witness in witnesses.iter().take(self.sample_count) {
+        for witness in witnesses.iter().take(safe_sample_count) {
             let result = executor.execute(witness).await;
             if result.success {
                 let indices_used: Vec<usize> = if let Some(indices) = explicit_public_indices {
@@ -277,8 +281,12 @@ impl WitnessCollisionDetector {
         executor: &dyn CircuitExecutor,
         generator: impl Fn(&mut rand::rngs::ThreadRng) -> Vec<FieldElement>,
     ) -> Vec<WitnessCollision> {
+        // Memory safety: cap witness generation at 10k to prevent OOM
+        const MAX_STORED_WITNESSES: usize = 10_000;
+        let safe_sample_count = self.sample_count.min(MAX_STORED_WITNESSES);
+        
         let mut rng = rand::thread_rng();
-        let witnesses: Vec<Vec<FieldElement>> = (0..self.sample_count)
+        let witnesses: Vec<Vec<FieldElement>> = (0..safe_sample_count)
             .map(|_| generator(&mut rng))
             .collect();
 

@@ -1,0 +1,256 @@
+---
+# Semaphore v4 Security Audit Campaign
+# Target: Privacy-preserving group membership protocol
+# Source: ${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore
+
+campaign:
+  name: "zk0d_semaphore_repo"
+  version: "2.0"
+  description: |
+    Semaphore is a zero-knowledge protocol for anonymous signaling.
+    This campaign focuses on the core circuit which proves group membership
+    and generates nullifiers to prevent double-signaling.
+  target:
+    framework: circom
+    circuit_path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+    main_component: "Semaphore"
+  parameters:
+    field: "bn254"
+    max_constraints: 100000
+    timeout_seconds: 1800
+    build_dir_base: "./build/zk0d/semaphore"
+    # Setup required before running this campaign:
+    # Semaphore v4 uses pnpm workspaces. Install dependencies:
+    #   npm install -g pnpm
+    #   cd /media/elements/Repos/zk0d/cat3_privacy/semaphore
+    #   pnpm install
+    # Or use corepack:
+    #   corepack enable
+    #   cd /media/elements/Repos/zk0d/cat3_privacy/semaphore
+    #   yarn install
+    include_paths:
+      - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/node_modules"
+      - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/node_modules"
+
+# Evidence-mode attack set
+attacks:
+  - type: "constraint_inference"
+    description: "Detect missing constraints with confirmation"
+    config:
+      confidence_threshold: 0.7
+      confirm_violations: true
+
+  - type: "constraint_slice"
+    description: "Cone-based dependency slicing"
+    config:
+      samples_per_cone: 10
+      base_witness_attempts: 5
+
+  - type: "metamorphic"
+    description: "Transform-based invariants"
+    config:
+      num_tests: 100
+
+  - type: "witness_collision"
+    description: "Detect distinct witnesses with same public outputs"
+    config:
+      samples: 100
+      scope_public_inputs: true
+
+  - type: "boundary"
+    description: "Boundary value testing"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "p-1"
+
+  - type: "underconstrained"
+    description: "Detect multiple valid witnesses for same public output"
+    config:
+      witness_pairs: 50
+      compare_outputs: true
+
+# Inputs (based on Semaphore circuit signals)
+inputs:
+  - name: "secret"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x00"
+      - "0x01"
+      - "0x02"
+      # Baby Jubjub subgroup order l - 1
+      - "0x60c89ce5c263405370a08b6d0302b0bab3eedb83920ee0a677297dc392126f10"
+      # l (should be rejected)
+      - "0x60c89ce5c263405370a08b6d0302b0bab3eedb83920ee0a677297dc392126f11"
+      # Max field value
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+
+  - name: "merkleProofLength"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0"
+      - "1"
+      - "10"
+      - "20"
+      - "32"
+      - "255"
+
+  - name: "merkleProofIndex"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0"
+      - "1"
+      - "1048575"  # 2^20 - 1
+      - "1048576"  # 2^20
+
+  # Merkle proof siblings (assuming MAX_DEPTH=20)
+  - name: "merkleProofSiblings_0"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_1"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_2"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_3"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_4"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_5"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_6"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_7"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_8"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_9"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_10"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_11"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_12"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_13"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_14"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_15"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_16"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_17"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_18"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "merkleProofSiblings_19"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "message"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "scope"
+    type: "field"
+    fuzz_strategy: "random"
+
+# Target traits (helps auto metamorphic relations)
+target_traits:
+  uses_merkle: true
+  uses_nullifier: true
+  uses_commitment: true
+  uses_eddsa: true
+  hash_function: "poseidon"
+  range_checks: ["secret < subgroup_order"]
+
+# Evidence invariants (manual) - CRITICAL for 0-day discovery
+invariants:
+  - name: "secret_range"
+    invariant_type: range
+    relation: "0 <= secret < 2736030358979909402780800718157159386076813972158567259200215660948447373041"
+    oracle: must_hold
+    severity: "critical"
+    description: "Secret must be less than Baby Jubjub subgroup order l"
+
+  - name: "nullifier_unique"
+    invariant_type: uniqueness
+    relation: "unique(nullifier) for each (scope, secret)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Different (scope, secret) pairs must produce different nullifiers"
+
+  - name: "merkle_length_bounds"
+    invariant_type: range
+    relation: "merkleProofLength <= MAX_DEPTH"
+    oracle: must_hold
+    severity: "high"
+    description: "Merkle proof length must not exceed tree depth"
+
+  - name: "merkle_index_bounds"
+    invariant_type: range
+    relation: "merkleProofIndex < 2^merkleProofLength"
+    oracle: must_hold
+    severity: "high"
+    description: "Merkle proof index must fit within tree size"
+
+  - name: "identity_commitment_deterministic"
+    invariant_type: constraint
+    relation: "identityCommitment = Poseidon(Ax, Ay) where (Ax, Ay) = BabyPbk(secret)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Identity commitment must be deterministically derived from secret"
+
+  - name: "merkle_root_valid"
+    invariant_type: constraint
+    relation: "merkleRoot = BinaryMerkleRoot(commitment, length, index, siblings)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Merkle root must be correctly computed from proof"
+
+reporting:
+  output_dir: "./reports/zk0d/semaphore_repo"
+  formats: ["json", "markdown", "sarif"]
+  include_poc: true
+  crash_reproduction: true

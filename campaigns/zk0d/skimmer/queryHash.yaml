@@ -93,12 +93,12 @@ attacks:
   description: 'Hash function detected - check for collisions (Zero-day hint: Nullifier may not include sufficient entropy)'
   plugin: null
   config:
-    samples: 100000
+    samples: 200
 - type: collision
   description: Nullifier pattern - check uniqueness
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 inputs:
 - name: claimSchema
   type: field

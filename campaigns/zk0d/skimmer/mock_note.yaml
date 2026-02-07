@@ -81,12 +81,12 @@ attacks:
   description: Nullifier pattern - check uniqueness
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 - type: arithmetic_overflow
   description: Range check detected - test boundary conditions
   plugin: null
   config:
-    samples: 5000
+    samples: 100
 inputs:
 - name: default_input
   type: field

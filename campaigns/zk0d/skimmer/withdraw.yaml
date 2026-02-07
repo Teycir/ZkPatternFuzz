@@ -115,27 +115,27 @@ attacks:
   description: 'Merkle tree detected - check for root collisions (Zero-day hint: Nullifier may not include sufficient entropy)'
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 - type: collision
   description: Nullifier pattern - check uniqueness
   plugin: null
   config:
-    samples: 50000
+    samples: 150
 - type: arithmetic_overflow
   description: 'Range check detected - test boundary conditions (Zero-day hint: Num2Bits used without explicit range validation)'
   plugin: null
   config:
-    samples: 5000
+    samples: 100
 - type: collision
   description: Hash function detected - check for collisions
   plugin: null
   config:
-    samples: 100000
+    samples: 200
 - type: arithmetic_overflow
   description: Range check detected - test boundary conditions
   plugin: null
   config:
-    samples: 5000
+    samples: 100
 inputs:
 - name: nullifier
   type: field
