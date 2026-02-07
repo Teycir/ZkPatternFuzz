@@ -817,7 +817,10 @@ fn test_constraint_conversion_performance() {
 #[test]
 fn test_summary_report() {
     if !external_circuits_available() {
-        eprintln!("Skipping: External circuits not available at {}", ZK0D_BASE);
+        eprintln!(
+            "Skipping: External circuits not available at {}",
+            zk0d_base_display()
+        );
         return;
     }
 

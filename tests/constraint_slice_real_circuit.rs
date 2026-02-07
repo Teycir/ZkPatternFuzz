@@ -5,8 +5,9 @@
 use std::path::PathBuf;
 
 use zk_fuzzer::attacks::{ConstraintSliceOracle, OutputMapping};
-use zk_fuzzer::executor::{CircuitExecutor, CircomExecutor, FieldElement};
+use zk_fuzzer::executor::{CircuitExecutor, CircomExecutor};
 use zk_fuzzer::targets::CircomTarget;
+use zk_core::FieldElement;
 
 #[tokio::test]
 #[ignore = "Requires circom + snarkjs (real circuit)"]
@@ -54,5 +55,5 @@ async fn test_constraint_slice_withdraw_real_circuit() {
         .await;
 
     // Validation: ensure the oracle runs to completion on a real circuit.
-    assert!(findings.len() >= 0);
+    let _ = findings;
 }

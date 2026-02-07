@@ -592,10 +592,7 @@ fn expand_env_in_value(value: &mut Value) {
             }
         }
         Value::Mapping(map) => {
-            for (key, val) in map.iter_mut() {
-                if let Value::String(key_str) = key {
-                    *key_str = expand_env_string(key_str);
-                }
+            for (_key, val) in map.iter_mut() {
                 expand_env_in_value(val);
             }
         }

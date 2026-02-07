@@ -9,6 +9,7 @@
 //! Completes Phase 4 requirement: "Validate on real circuits"
 
 use std::path::PathBuf;
+use std::collections::HashSet;
 use zk_fuzzer::attacks::constraint_inference::{
     ConstraintInferenceEngine, ConstraintCategory, ViolationConfirmation,
 };
@@ -93,7 +94,8 @@ async fn test_constraint_inference_range_bypass() {
     ];
 
     println!("\n=== Violation Witness Execution ===");
-    engine.confirm_violations(&executor, &base_inputs, &mut implied);
+    let output_wires = HashSet::new();
+    engine.confirm_violations(&executor, &base_inputs, &mut implied, &output_wires);
 
     let mut confirmed_count = 0;
     let mut rejected_count = 0;
@@ -112,6 +114,10 @@ async fn test_constraint_inference_range_bypass() {
             ViolationConfirmation::Inconclusive => {
                 inconclusive_count += 1;
                 println!("? INCONCLUSIVE: {}", constraint.description);
+            }
+            ViolationConfirmation::UnconfirmedInternal => {
+                inconclusive_count += 1;
+                println!("? UNCONFIRMED (internal): {}", constraint.description);
             }
             ViolationConfirmation::Unchecked => {
                 println!("- UNCHECKED: {}", constraint.description);
@@ -193,7 +199,8 @@ async fn test_constraint_inference_merkle() {
 
     // Execute violations
     let base_inputs = vec![FieldElement::from_u64(1); 10];
-    engine.confirm_violations(&executor, &base_inputs, &mut implied);
+    let output_wires = HashSet::new();
+    engine.confirm_violations(&executor, &base_inputs, &mut implied, &output_wires);
 
     let confirmed = implied.iter()
         .filter(|c| matches!(c.confirmation, ViolationConfirmation::Confirmed))
@@ -301,7 +308,8 @@ async fn test_constraint_inference_comprehensive() {
 
         // Execute violations
         let base_inputs = vec![FieldElement::from_u64(1); 10];
-        engine.confirm_violations(&executor, &base_inputs, &mut implied);
+        let output_wires = HashSet::new();
+        engine.confirm_violations(&executor, &base_inputs, &mut implied, &output_wires);
 
         let confirmed = implied.iter()
             .filter(|c| matches!(c.confirmation, ViolationConfirmation::Confirmed))

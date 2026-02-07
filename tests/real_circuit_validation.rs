@@ -3,7 +3,7 @@
 //! These tests validate the adaptive fuzzing system against real-world ZK circuits
 //! from the zk0d repository when available.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use zk_fuzzer::analysis::opus::{OpusAnalyzer, OpusConfig};
 use zk_fuzzer::config::generator::PatternType;
 
@@ -100,7 +100,7 @@ fn test_real_cairo_circuits() {
         return;
     }
 
-    let stone_path = Path::new(ZK0D_PATH).join("cat2_rollups/stone-prover");
+    let stone_path = zk0d_base().join("cat2_rollups/stone-prover");
     if !stone_path.exists() {
         eprintln!("Skipping: Stone prover not found");
         return;
@@ -131,8 +131,8 @@ fn test_pattern_detection_accuracy() {
     }
 
     // Test nullify.circom specifically
-    let nullify_path = Path::new(ZK0D_PATH)
-        .join("cat3_privacy/circuits/circuits/lib/utils/nullify.circom");
+    let nullify_path =
+        zk0d_base().join("cat3_privacy/circuits/circuits/lib/utils/nullify.circom");
 
     if !nullify_path.exists() {
         eprintln!("Skipping: nullify.circom not found");
@@ -174,7 +174,7 @@ fn test_adaptive_scheduling_real_circuits() {
     use std::time::Duration;
     use zk_core::AttackType;
 
-    let privacy_path = Path::new(ZK0D_PATH).join("cat3_privacy/circuits");
+    let privacy_path = zk0d_base().join("cat3_privacy/circuits");
     if !privacy_path.exists() {
         return;
     }
@@ -238,7 +238,7 @@ fn test_generated_configs_validity() {
         return;
     }
 
-    let privacy_path = Path::new(ZK0D_PATH).join("cat3_privacy/circuits");
+    let privacy_path = zk0d_base().join("cat3_privacy/circuits");
     if !privacy_path.exists() {
         return;
     }

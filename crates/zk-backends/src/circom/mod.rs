@@ -158,6 +158,216 @@ fn create_temp_dir() -> Result<tempfile::TempDir> {
         .context("Failed to create temp directory")
 }
 
+fn maybe_prepare_circom2_source(
+    source: &str,
+    circuit_path: &Path,
+    main_component: &str,
+) -> Result<(PathBuf, Option<tempfile::TempDir>)> {
+    let mut has_pragma = false;
+    let mut pragma_legacy = false;
+    let mut needs_semicolon_fix = false;
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("pragma circom") {
+            has_pragma = true;
+            if trimmed.contains("pragma circom 1") {
+                pragma_legacy = true;
+            }
+        }
+        if (trimmed.contains("===") || trimmed.contains("<==")) && !trimmed.ends_with(';') {
+            needs_semicolon_fix = true;
+        }
+    }
+
+    let has_private_inputs = source.contains("signal private input");
+    let needs_rewrite = has_private_inputs || !has_pragma || pragma_legacy || needs_semicolon_fix;
+
+    if !needs_rewrite {
+        return Ok((circuit_path.to_path_buf(), None));
+    }
+
+    let mut public_inputs = Vec::new();
+    for signal in analysis::extract_signals(source) {
+        if matches!(signal.direction, analysis::SignalDirection::Input) && signal.is_public {
+            public_inputs.push(signal.name);
+        }
+    }
+    public_inputs.sort();
+    public_inputs.dedup();
+
+    let temp_dir = create_temp_dir()?;
+    let mut cache = HashMap::new();
+    let converted_path = convert_circom_file(
+        circuit_path,
+        &temp_dir,
+        &mut cache,
+        main_component,
+        Some(&public_inputs),
+        true,
+    )?;
+
+    tracing::info!(
+        "Using circom2-compat source for {}",
+        circuit_path.display()
+    );
+
+    Ok((converted_path, Some(temp_dir)))
+}
+
+fn convert_circom_file(
+    path: &Path,
+    temp_dir: &tempfile::TempDir,
+    cache: &mut HashMap<PathBuf, PathBuf>,
+    main_component: &str,
+    public_inputs: Option<&[String]>,
+    is_root: bool,
+) -> Result<PathBuf> {
+    if let Some(existing) = cache.get(path) {
+        return Ok(existing.clone());
+    }
+
+    let filename = if is_root {
+        path.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_else(|| main_component)
+            .to_string()
+    } else {
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("circom");
+        let hash = hash_path(path);
+        format!("{stem}_{hash}.circom")
+    };
+
+    let temp_path = temp_dir.path().join(filename);
+    cache.insert(path.to_path_buf(), temp_path.clone());
+
+    let source = std::fs::read_to_string(path)?;
+    let mut out_lines = Vec::new();
+
+    let mut has_pragma = false;
+    for line in source.lines() {
+        if line.trim().starts_with("pragma circom") {
+            has_pragma = true;
+            break;
+        }
+    }
+    if is_root && !has_pragma {
+        out_lines.push("pragma circom 2.0.0;".to_string());
+    }
+
+    let mut main_rewritten = false;
+    let source_dir = path.parent().unwrap_or(Path::new("."));
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if is_root && trimmed.starts_with("pragma circom") {
+            out_lines.push("pragma circom 2.0.0;".to_string());
+            continue;
+        }
+
+        let mut updated = line.replace("signal private input", "signal input");
+        updated = updated.replace("MiMCSponge(2, 1)", "MiMCSponge(2, 220, 1)");
+        updated = updated.replace("MiMCSponge(2,1)", "MiMCSponge(2,220,1)");
+        let mut updated_trimmed = updated.trim_start().to_string();
+
+        if updated_trimmed.starts_with("include ") {
+            if let Some((path_str, quote)) = extract_include_path(&updated_trimmed) {
+                let include_path = Path::new(&path_str);
+                let resolved = if include_path.is_relative() {
+                    source_dir.join(include_path)
+                } else {
+                    include_path.to_path_buf()
+                };
+                let converted = convert_circom_file(
+                    &resolved,
+                    temp_dir,
+                    cache,
+                    main_component,
+                    None,
+                    false,
+                )?;
+                let converted_str = converted.to_string_lossy();
+                let needle = format!("{quote}{path_str}{quote}");
+                let replacement = format!("{quote}{converted_str}{quote}");
+                updated = updated.replace(&needle, &replacement);
+                updated_trimmed = updated.trim_start().to_string();
+            }
+        }
+
+        if is_root
+            && !main_rewritten
+            && updated_trimmed.starts_with("component main")
+            && !updated_trimmed.contains("public")
+        {
+            if let Some(public_inputs) = public_inputs {
+                if !public_inputs.is_empty() {
+                    if let Some((lhs, rhs)) = updated.split_once('=') {
+                        let indent = lhs
+                            .chars()
+                            .take_while(|c| c.is_whitespace())
+                            .collect::<String>();
+                        let rhs_trimmed = rhs.trim().trim_end_matches(';');
+                        let list = public_inputs.join(", ");
+                        updated = format!(
+                            "{indent}component main {{ public [{list}] }} = {rhs_trimmed};"
+                        );
+                        main_rewritten = true;
+                    }
+                }
+            }
+        }
+
+        if needs_semicolon(&updated_trimmed) {
+            updated.push(';');
+        }
+
+        out_lines.push(updated);
+    }
+
+    std::fs::write(&temp_path, out_lines.join("\n"))?;
+
+    Ok(temp_path)
+}
+
+fn needs_semicolon(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("/*") {
+        return false;
+    }
+    if trimmed.ends_with(';') || trimmed.ends_with('{') || trimmed.ends_with('}') {
+        return false;
+    }
+    if trimmed.ends_with('+')
+        || trimmed.ends_with('-')
+        || trimmed.ends_with('*')
+        || trimmed.ends_with('/')
+        || trimmed.ends_with('(')
+        || trimmed.ends_with(',')
+    {
+        return false;
+    }
+    trimmed.contains("===") || trimmed.contains("<==")
+}
+
+fn hash_path(path: &Path) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    path.to_string_lossy().hash(&mut hasher);
+    hasher.finish()
+}
+
+fn extract_include_path(line: &str) -> Option<(String, char)> {
+    let quote = if line.contains('\"') { '\"' } else { '\'' };
+    let start = line.find(quote)? + 1;
+    let rest = &line[start..];
+    let end = rest.find(quote)?;
+    Some((rest[..end].to_string(), quote))
+}
+
 fn circom_io_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -313,13 +523,20 @@ impl CircomTarget {
         let circom_version = Self::check_circom_available()?;
         tracing::debug!("Using circom: {}", circom_version);
 
+        let source = std::fs::read_to_string(&self.circuit_path)?;
+        let (compile_path, _temp_dir) = maybe_prepare_circom2_source(
+            &source,
+            &self.circuit_path,
+            &self.main_component,
+        )?;
+
         // Create build directory
         std::fs::create_dir_all(&self.build_dir)?;
 
         // Compile circuit
         let output = Command::new("circom")
             .args([
-                self.circuit_path.to_str().unwrap(),
+                compile_path.to_str().unwrap(),
                 "--r1cs",
                 "--wasm",
                 "--sym",

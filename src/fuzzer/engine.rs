@@ -1808,6 +1808,42 @@ impl FuzzingEngine {
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .unwrap_or(500) as usize;
+        let compare_coverage = config
+            .get("compare_coverage")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let compare_timing = config
+            .get("compare_timing")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let timing_tolerance_percent = config
+            .get("timing_tolerance_percent")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(50.0);
+        let timing_min_us = config
+            .get("timing_min_us")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(2_000);
+        let timing_abs_threshold_us = config
+            .get("timing_abs_threshold_us")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(5_000);
+        let coverage_min_constraints = config
+            .get("coverage_min_constraints")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(16) as usize;
+        let coverage_jaccard_threshold = config
+            .get("coverage_jaccard_threshold")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.5);
+        let coverage_abs_delta_threshold = config
+            .get("coverage_abs_delta_threshold")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(200) as usize;
+        let coverage_rel_delta_threshold = config
+            .get("coverage_rel_delta_threshold")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.25);
 
         tracing::info!("Running differential fuzzing with {} tests", num_tests);
 
@@ -1860,10 +1896,16 @@ impl FuzzingEngine {
         let mut diff_fuzzer = DifferentialFuzzer::new(DifferentialConfig {
             num_tests,
             backends: selected_backends.clone(),
-            compare_coverage: true,
+            compare_coverage,
             compare_proofs: false,
-            timing_tolerance_percent: 50.0,
-            compare_timing: true,
+            timing_tolerance_percent,
+            timing_min_us,
+            timing_abs_threshold_us,
+            coverage_min_constraints,
+            coverage_jaccard_threshold,
+            coverage_abs_delta_threshold,
+            coverage_rel_delta_threshold,
+            compare_timing,
         });
 
         // Add executors for each backend (skip any that fail to initialize)

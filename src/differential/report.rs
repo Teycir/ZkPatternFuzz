@@ -1,8 +1,8 @@
 //! Reporting for differential fuzzing results
 
 use super::{DifferentialResult, DifferentialSeverity, DifferentialStats};
-use zk_core::Framework;
 use std::fmt;
+use zk_core::Framework;
 
 /// Report of differential fuzzing campaign
 #[derive(Debug, Clone)]

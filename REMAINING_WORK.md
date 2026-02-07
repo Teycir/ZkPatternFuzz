@@ -98,7 +98,8 @@ on zk0d circuits. If a task does not support this metric, it is out of scope.
 - [ ] Enhance heuristics (public input scoping by backend)
 
 ### F. Differential
-- [ ] Enhance cross-backend detection (coverage/timing mismatch signal tuning)
+- [x] Enhance cross-backend detection (coverage/timing mismatch signal tuning)
+  - Added coverage overlap/size thresholds + timing min/absolute thresholds in differential config.
 
 ---
 

@@ -7,7 +7,7 @@ pub mod executor;
 pub mod report;
 
 use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Framework, TestCase};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Result of differential testing between backends
@@ -49,8 +49,20 @@ pub struct DifferentialConfig {
     pub num_tests: usize,
     /// Tolerance for timing comparisons (percentage)
     pub timing_tolerance_percent: f64,
+    /// Minimum timing to consider (microseconds)
+    pub timing_min_us: u64,
+    /// Minimum absolute timing delta to consider (microseconds)
+    pub timing_abs_threshold_us: u64,
     /// Whether to compare coverage patterns
     pub compare_coverage: bool,
+    /// Minimum constraints required to compare coverage
+    pub coverage_min_constraints: usize,
+    /// Jaccard threshold for coverage set overlap
+    pub coverage_jaccard_threshold: f64,
+    /// Absolute delta threshold for coverage size
+    pub coverage_abs_delta_threshold: usize,
+    /// Relative delta threshold for coverage size
+    pub coverage_rel_delta_threshold: f64,
     /// Whether to compare proof generation
     pub compare_proofs: bool,
     /// Whether to compare execution timing
@@ -63,7 +75,13 @@ impl Default for DifferentialConfig {
             backends: vec![Framework::Circom, Framework::Noir],
             num_tests: 1000,
             timing_tolerance_percent: 50.0,
+            timing_min_us: 2_000,
+            timing_abs_threshold_us: 5_000,
             compare_coverage: true,
+            coverage_min_constraints: 16,
+            coverage_jaccard_threshold: 0.5,
+            coverage_abs_delta_threshold: 200,
+            coverage_rel_delta_threshold: 0.25,
             compare_proofs: false,
             compare_timing: true,
         }
@@ -168,26 +186,15 @@ impl DifferentialFuzzer {
                 }
 
                 // Check coverage mismatch (if enabled)
-                if self.config.compare_coverage
-                    && r1.coverage.coverage_hash != r2.coverage.coverage_hash
-                {
+                if self.config.compare_coverage && self.coverage_mismatch(r1, r2) {
                     self.stats.coverage_mismatches += 1;
                     coverage_mismatches.push((f1, f2));
                 }
 
                 // Check timing variation (if enabled)
-                if self.config.compare_timing {
-                    let t1 = r1.execution_time_us;
-                    let t2 = r2.execution_time_us;
-                    let max_t = t1.max(t2);
-                    let min_t = t1.min(t2);
-                    if max_t > 0 {
-                        let diff_pct = ((max_t - min_t) as f64 / max_t as f64) * 100.0;
-                        if diff_pct > self.config.timing_tolerance_percent {
-                            self.stats.timing_variations += 1;
-                            timing_variations.push((f1, f2));
-                        }
-                    }
+                if self.config.compare_timing && self.timing_variation(r1, r2) {
+                    self.stats.timing_variations += 1;
+                    timing_variations.push((f1, f2));
                 }
             }
         }
@@ -258,6 +265,53 @@ impl DifferentialFuzzer {
         desc
     }
 
+    fn coverage_mismatch(&self, r1: &ExecutionResult, r2: &ExecutionResult) -> bool {
+        if !r1.success || !r2.success {
+            return false;
+        }
+        let s1 = &r1.coverage.satisfied_constraints;
+        let s2 = &r2.coverage.satisfied_constraints;
+        if s1.is_empty() || s2.is_empty() {
+            return false;
+        }
+        let min_constraints = self.config.coverage_min_constraints;
+        if s1.len().min(s2.len()) < min_constraints {
+            return false;
+        }
+
+        let (jaccard, abs_delta, rel_delta) = coverage_stats(s1, s2);
+        if jaccard < self.config.coverage_jaccard_threshold {
+            return true;
+        }
+        if abs_delta > self.config.coverage_abs_delta_threshold {
+            return true;
+        }
+        if rel_delta > self.config.coverage_rel_delta_threshold {
+            return true;
+        }
+
+        false
+    }
+
+    fn timing_variation(&self, r1: &ExecutionResult, r2: &ExecutionResult) -> bool {
+        if !r1.success || !r2.success {
+            return false;
+        }
+        let t1 = r1.execution_time_us;
+        let t2 = r2.execution_time_us;
+        let max_t = t1.max(t2);
+        let min_t = t1.min(t2);
+        if max_t < self.config.timing_min_us {
+            return false;
+        }
+        let diff = max_t - min_t;
+        if diff < self.config.timing_abs_threshold_us {
+            return false;
+        }
+        let diff_pct = (diff as f64 / max_t as f64) * 100.0;
+        diff_pct > self.config.timing_tolerance_percent
+    }
+
     /// Get current statistics
     pub fn stats(&self) -> &DifferentialStats {
         &self.stats
@@ -267,6 +321,28 @@ impl DifferentialFuzzer {
     pub fn findings(&self) -> &[DifferentialResult] {
         &self.findings
     }
+}
+
+fn coverage_stats(a: &[usize], b: &[usize]) -> (f64, usize, f64) {
+    let set_a: HashSet<usize> = a.iter().copied().collect();
+    let set_b: HashSet<usize> = b.iter().copied().collect();
+    let len_a = set_a.len();
+    let len_b = set_b.len();
+    let union = set_a.union(&set_b).count();
+    let intersection = set_a.intersection(&set_b).count();
+    let jaccard = if union == 0 {
+        1.0
+    } else {
+        intersection as f64 / union as f64
+    };
+    let abs_delta = if len_a > len_b { len_a - len_b } else { len_b - len_a };
+    let max_len = len_a.max(len_b);
+    let rel_delta = if max_len == 0 {
+        0.0
+    } else {
+        abs_delta as f64 / max_len as f64
+    };
+    (jaccard, abs_delta, rel_delta)
 }
 
 #[cfg(test)]
@@ -302,5 +378,15 @@ mod tests {
 
         // Same executor configuration should produce same outputs
         assert!(result.is_none() || result.unwrap().disagreeing_backends.is_empty());
+    }
+
+    #[test]
+    fn test_coverage_stats_overlap() {
+        let a = vec![1, 2, 3, 4];
+        let b = vec![3, 4, 5, 6];
+        let (jaccard, abs_delta, rel_delta) = coverage_stats(&a, &b);
+        assert!((jaccard - 0.3333).abs() < 0.01);
+        assert_eq!(abs_delta, 0);
+        assert!((rel_delta - 0.0).abs() < 0.001);
     }
 }

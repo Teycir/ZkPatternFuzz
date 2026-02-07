@@ -18,7 +18,6 @@
 //! cargo test --test zk0d_realistic_tests --features real_circuits -- --ignored
 //! ```
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
@@ -166,7 +165,7 @@ async fn test_continuous_fuzzing_realistic_iteration_count() {
     use zk_fuzzer::config::*;
     use zk_fuzzer::fuzzer::FuzzingEngine;
     
-    let mut config = FuzzConfig {
+    let config = FuzzConfig {
         campaign: Campaign {
             name: "Realistic Fuzzing Test".to_string(),
             version: "1.0".to_string(),

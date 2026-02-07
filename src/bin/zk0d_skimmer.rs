@@ -12,8 +12,8 @@ const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
 #[command(about = "Skim zk0d repository for promising circuits (hints only)")]
 struct Args {
     /// Root path to zk0d
-    #[arg(long, env = "ZK0D_BASE", default_value = "/media/elements/Repos/zk0d")]
-    root: String,
+    #[arg(long)]
+    root: Option<String>,
 
     /// Override placeholder for root path in generated outputs (e.g. ${TARGET_REPO})
     #[arg(long)]
@@ -96,7 +96,11 @@ struct CandidateInvariantsFile {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let root = PathBuf::from(&args.root);
+    let root_value = args
+        .root
+        .or_else(|| std::env::var("ZK0D_BASE").ok())
+        .unwrap_or_else(|| DEFAULT_ZK0D_BASE.to_string());
+    let root = PathBuf::from(&root_value);
 
     if !root.exists() {
         anyhow::bail!("Root path does not exist: {}", root.display());

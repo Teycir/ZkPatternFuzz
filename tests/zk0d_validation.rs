@@ -53,8 +53,12 @@ fn zk0d_base() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(DEFAULT_ZK0D_BASE))
 }
 
+fn zk0d_privacy_base() -> PathBuf {
+    zk0d_base().join("cat3_privacy")
+}
+
 fn zk0d_available() -> bool {
-    zk0d_base().join("cat3_privacy").exists()
+    zk0d_privacy_base().exists()
 }
 
 #[test]
@@ -136,7 +140,7 @@ fn test_semaphore_invariant_detection() {
         return;
     }
 
-    let circuit_path = Path::new(ZK0D_PATH).join("semaphore/packages/circuits/src/semaphore.circom");
+    let circuit_path = zk0d_privacy_base().join("semaphore/packages/circuits/src/semaphore.circom");
     if !circuit_path.exists() {
         eprintln!("⚠️  Semaphore circuit not found");
         return;
@@ -187,7 +191,7 @@ fn test_nullify_circuits_edge_cases() {
         return;
     }
 
-    let nullify_path = Path::new(ZK0D_PATH).join("circuits/circuits/lib/utils/nullify.circom");
+    let nullify_path = zk0d_privacy_base().join("circuits/circuits/lib/utils/nullify.circom");
     if !nullify_path.exists() {
         eprintln!("⚠️  Nullify circuit not found");
         return;
@@ -248,7 +252,7 @@ fn test_comprehensive_zk0d_scan() {
         ..Default::default()
     });
 
-    let privacy_path = Path::new(ZK0D_PATH);
+    let privacy_path = zk0d_privacy_base();
     let configs = analyzer.analyze_project(privacy_path).unwrap();
     
     println!("📊 TOTAL CIRCUITS ANALYZED: {}", configs.len());

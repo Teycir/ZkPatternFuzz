@@ -1,9 +1,9 @@
 //! Multi-backend executor wrapper for differential testing
 
-use zk_core::{CircuitExecutor, CircuitInfo, ExecutionResult, FieldElement, Framework};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
+use zk_core::{CircuitExecutor, CircuitInfo, ExecutionResult, FieldElement, Framework};
 
 /// Executor that runs inputs through multiple backends
 pub struct MultiBackendExecutor {

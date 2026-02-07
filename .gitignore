@@ -41,3 +41,4 @@ src/fuzzer/oracles/
 circuits
 .npm-cache
 third_party
+build/zk0d/circom/withdraw_Withdraw/withdraw.r1cs
