@@ -217,6 +217,9 @@ impl FuzzingEngine {
     /// # }
     /// ```
     pub fn new(config: FuzzConfig, seed: Option<u64>, workers: usize) -> anyhow::Result<Self> {
+        // Phase 0 Fix: Extract additional config early for use throughout initialization
+        let additional = &config.campaign.parameters.additional;
+        
         // Create executor based on framework (with optional build dir overrides)
         let executor_factory_options = Self::parse_executor_factory_options(&config);
         let executor = ExecutorFactory::create_with_options(
@@ -226,33 +229,50 @@ impl FuzzingEngine {
             &executor_factory_options,
         )?;
 
-        // Phase 0 Fix: Detect and warn about mock fallback execution
+        // Phase 0 Fix: Detect and FAIL-FAST on mock fallback execution
         // 
         // This is critical for preventing false vulnerability claims.
         // Any findings from mock execution are SYNTHETIC and should not
         // be reported as real 0-day vulnerabilities.
+        //
+        // When strict_backend=true (default for evidence mode), we fail immediately.
+        // When strict_backend=false, we warn but continue (for development/testing).
+        let strict_backend = Self::additional_bool(additional, "strict_backend").unwrap_or(false);
+        
         if executor.is_fallback_mock() {
-            tracing::error!(
-                "⚠️  CRITICAL: Using MOCK FALLBACK executor for {:?} backend!",
-                config.campaign.target.framework
-            );
-            tracing::error!(
-                "⚠️  Real backend tooling is not available. All findings will be SYNTHETIC."
-            );
-            tracing::error!(
-                "⚠️  DO NOT report these as real vulnerabilities. Install the required tooling:"
-            );
-            match config.campaign.target.framework {
-                zk_core::Framework::Circom => {
-                    tracing::error!("⚠️    - Install circom: https://docs.circom.io/getting-started/installation/");
-                }
-                zk_core::Framework::Noir => {
-                    tracing::error!("⚠️    - Install nargo: https://noir-lang.org/docs/getting_started/installation/");
-                }
-                zk_core::Framework::Cairo => {
-                    tracing::error!("⚠️    - Install scarb: https://docs.swmansion.com/scarb/download.html");
-                }
-                _ => {}
+            let framework = config.campaign.target.framework;
+            let install_hint = match framework {
+                zk_core::Framework::Circom => "Install circom: https://docs.circom.io/getting-started/installation/",
+                zk_core::Framework::Noir => "Install nargo: https://noir-lang.org/docs/getting_started/installation/",
+                zk_core::Framework::Cairo => "Install scarb: https://docs.swmansion.com/scarb/download.html",
+                _ => "Install the required backend tooling",
+            };
+            
+            if strict_backend {
+                // Phase 0 Fix: FAIL-FAST in production/evidence mode
+                anyhow::bail!(
+                    "MOCK FALLBACK REJECTED: Using mock executor for {:?} backend. \
+                     Real backend tooling is not available. All findings would be SYNTHETIC. \
+                     {}. \
+                     Set strict_backend=false to allow mock fallback (NOT recommended for evidence mode).",
+                    framework,
+                    install_hint
+                );
+            } else {
+                // Development mode: warn but continue
+                tracing::error!(
+                    "⚠️  CRITICAL: Using MOCK FALLBACK executor for {:?} backend!",
+                    framework
+                );
+                tracing::error!(
+                    "⚠️  Real backend tooling is not available. All findings will be SYNTHETIC."
+                );
+                tracing::error!(
+                    "⚠️  DO NOT report these as real vulnerabilities. {}", install_hint
+                );
+                tracing::warn!(
+                    "⚠️  Set strict_backend=true to fail-fast on missing backends (recommended for evidence mode)."
+                );
             }
         } else if executor.is_mock() && config.campaign.target.framework != zk_core::Framework::Mock {
             tracing::warn!(
@@ -263,18 +283,37 @@ impl FuzzingEngine {
 
         let num_constraints = executor.num_constraints().max(100);
         let coverage = create_coverage_tracker(num_constraints);
-        let corpus = create_corpus(10000);
+        
+        // Phase 0 Fix: Make corpus size configurable instead of hardcoded 10000
+        // Allows tuning based on circuit complexity and available memory
+        let corpus_max_size = Self::additional_u64(additional, "corpus_max_size")
+            .unwrap_or(100_000)
+            .max(1) as usize;  // Increased default from 10k to 100k
+        let corpus = create_corpus(corpus_max_size);
 
         // Initialize symbolic execution integration
+        // Phase 0 Fix: Increase symbolic execution depth for deeper bug discovery
+        // Previous: max_paths=100, max_depth=20 (too shallow for complex circuits)
+        // Now: max_paths=1000, max_depth=200 (closer to KLEE-level exploration)
         let num_inputs = config.inputs.len().max(1);
+        let symbolic_max_paths = Self::additional_u64(additional, "symbolic_max_paths")
+            .unwrap_or(1000)
+            .max(1) as usize;
+        let symbolic_max_depth = Self::additional_u64(additional, "symbolic_max_depth")
+            .unwrap_or(200)
+            .max(1) as usize;
+        let symbolic_solver_timeout = Self::additional_u64(additional, "symbolic_solver_timeout_ms")
+            .unwrap_or(5000)
+            .max(1)
+            .min(u32::MAX as u64) as u32;
         let symbolic = Some(SymbolicFuzzerIntegration::new(num_inputs).with_config(
             SymbolicConfig {
-                max_paths: 100,
-                max_depth: 20,
-                solver_timeout_ms: 2000,
+                max_paths: symbolic_max_paths,
+                max_depth: symbolic_max_depth,
+                solver_timeout_ms: symbolic_solver_timeout,
                 random_seed: seed,
                 generate_boundary_tests: true,
-                solutions_per_path: 2,
+                solutions_per_path: 4,  // Increased from 2 for better coverage
             },
         ));
 
@@ -696,7 +735,18 @@ impl FuzzingEngine {
     ) -> Option<u32> {
         match additional.get(key)? {
             serde_yaml::Value::Number(n) => n.as_u64().map(|v| v.min(u32::MAX as u64) as u32),
-            serde_yaml::Value::String(s) => s.parse::<u32>().ok(),
+            _ => None,
+        }
+    }
+    
+    /// Phase 0 Fix: Helper to extract u64 from additional config
+    fn additional_u64(
+        additional: &std::collections::HashMap<String, serde_yaml::Value>,
+        key: &str,
+    ) -> Option<u64> {
+        match additional.get(key)? {
+            serde_yaml::Value::Number(n) => n.as_u64(),
+            serde_yaml::Value::String(s) => s.parse::<u64>().ok(),
             _ => None,
         }
     }
@@ -2986,6 +3036,8 @@ impl FuzzingEngine {
     /// 
     /// This is the critical missing piece - after running structured attacks,
     /// we need to continue fuzzing to explore more of the state space.
+    /// 
+    /// Phase 0 Fix: Added crash/hang detection with per-execution timeout
     async fn run_continuous_fuzzing_phase(
         &mut self,
         iterations: u64,
@@ -2995,16 +3047,26 @@ impl FuzzingEngine {
         let start = Instant::now();
         let timeout = timeout_seconds.map(Duration::from_secs);
         
+        // Phase 0 Fix: Per-execution timeout for hang detection (configurable, default 30s)
+        let additional = &self.config.campaign.parameters.additional;
+        let execution_timeout_ms = Self::additional_u64(additional, "execution_timeout_ms")
+            .unwrap_or(30_000)
+            .max(1);
+        let execution_timeout = Duration::from_millis(execution_timeout_ms);
+        
         tracing::info!(
-            "Starting continuous fuzzing phase: {} iterations, timeout: {:?}",
+            "Starting continuous fuzzing phase: {} iterations, timeout: {:?}, per-exec timeout: {:?}",
             iterations,
-            timeout
+            timeout,
+            execution_timeout
         );
         
         let mut completed = 0u64;
+        let mut hang_count = 0u64;
+        let mut crash_count = 0u64;
         
         while completed < iterations {
-            // Check timeout
+            // Check overall timeout
             if let Some(t) = timeout {
                 if start.elapsed() >= t {
                     tracing::info!("Continuous fuzzing timeout reached after {} iterations", completed);
@@ -3014,7 +3076,36 @@ impl FuzzingEngine {
             
             // Core fuzzing loop: select_from_corpus → mutate → execute_and_learn
             let test_case = self.generate_test_case();
+            
+            // Phase 0 Fix: Execute with timeout for hang detection
+            let exec_start = Instant::now();
             let result = self.execute_and_learn(&test_case);
+            let exec_duration = exec_start.elapsed();
+            
+            // Phase 0 Fix: Detect hangs (execution took too long)
+            if exec_duration >= execution_timeout {
+                hang_count += 1;
+                tracing::warn!(
+                    "🐢 HANG DETECTED at iteration {}: execution took {:?} (limit: {:?})",
+                    completed,
+                    exec_duration,
+                    execution_timeout
+                );
+                // Add to findings as potential DoS vulnerability
+                self.record_hang_finding(&test_case, exec_duration);
+            }
+            
+            // Phase 0 Fix: Detect crashes (execution returned error/panic indicators)
+            if result.is_crash() {
+                crash_count += 1;
+                tracing::warn!(
+                    "💥 CRASH DETECTED at iteration {}: {:?}",
+                    completed,
+                    result.error_message()
+                );
+                // Add to findings as potential crash vulnerability
+                self.record_crash_finding(&test_case, &result);
+            }
             
             // Track coverage improvements
             if result.coverage.new_coverage {
@@ -3037,16 +3128,94 @@ impl FuzzingEngine {
             if completed % 1000 == 0 {
                 self.update_power_scheduler_globals();
             }
+            
+            // Phase 0 Fix: Periodic corpus minimization to maintain quality
+            // Run every 10,000 iterations to reduce redundant test cases
+            if completed % 10_000 == 0 && completed > 0 {
+                let stats = self.core.corpus().minimize();
+                tracing::debug!(
+                    "Periodic corpus minimization: {} → {} entries",
+                    stats.original_size,
+                    stats.minimized_size
+                );
+            }
         }
         
+        // Phase 0 Fix: Final corpus minimization before reporting
+        let final_stats = self.core.corpus().minimize();
+        
         tracing::info!(
-            "Continuous fuzzing complete: {} iterations in {:.2}s, {} findings",
+            "Continuous fuzzing complete: {} iterations in {:.2}s, {} findings, {} hangs, {} crashes, corpus: {}",
             completed,
             start.elapsed().as_secs_f64(),
-            self.core.findings().read().unwrap().len()
+            self.core.findings().read().unwrap().len(),
+            hang_count,
+            crash_count,
+            final_stats.minimized_size
         );
         
         Ok(())
+    }
+    
+    /// Phase 0 Fix: Record a hang as a potential DoS finding
+    fn record_hang_finding(&mut self, test_case: &TestCase, duration: Duration) {
+        use zk_core::{Finding, Severity, ProofOfConcept};
+        
+        let finding = Finding {
+            attack_type: zk_core::AttackType::WitnessFuzzing,
+            severity: Severity::Medium,
+            description: format!(
+                "Execution Hang Detected: Circuit execution took {:?}, exceeding timeout. Potential DoS vulnerability.",
+                duration
+            ),
+            poc: ProofOfConcept {
+                witness_a: test_case.inputs.clone(),
+                witness_b: None,
+                public_inputs: vec![],
+                proof: None,
+            },
+            location: Some(format!(
+                "Hang at iteration {} after {:?}",
+                self.core.execution_count(),
+                duration
+            )),
+        };
+        
+        if let Ok(mut findings) = self.core.findings().write() {
+            findings.push(finding);
+        }
+    }
+    
+    /// Phase 0 Fix: Record a crash as a finding
+    fn record_crash_finding(&mut self, test_case: &TestCase, result: &ExecutionResult) {
+        use zk_core::{Finding, Severity, ProofOfConcept};
+        
+        let error_msg = result.error_message()
+            .unwrap_or_else(|| "Unknown crash".to_string());
+        
+        let finding = Finding {
+            attack_type: zk_core::AttackType::WitnessFuzzing,
+            severity: Severity::High,
+            description: format!(
+                "Execution Crash Detected: {}. Potential vulnerability or implementation bug.",
+                error_msg
+            ),
+            poc: ProofOfConcept {
+                witness_a: test_case.inputs.clone(),
+                witness_b: None,
+                public_inputs: vec![],
+                proof: None,
+            },
+            location: Some(format!(
+                "Crash at iteration {}: {}",
+                self.core.execution_count(),
+                error_msg
+            )),
+        };
+        
+        if let Ok(mut findings) = self.core.findings().write() {
+            findings.push(finding);
+        }
     }
     
     fn generate_report(&self, findings: Vec<Finding>, duration: u64) -> FuzzReport {

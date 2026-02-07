@@ -192,13 +192,32 @@ fn coverage_from_results(results: Vec<ConstraintResult>) -> Option<ExecutionCove
     }
     let mut satisfied = Vec::new();
     let mut evaluated = Vec::new();
+    let mut value_buckets = Vec::with_capacity(results.len());
     for result in results {
         evaluated.push(result.constraint_id);
         if result.satisfied {
             satisfied.push(result.constraint_id);
         }
+        let lhs_bucket = value_bucket_for(&result.lhs_value.0);
+        let rhs_bucket = value_bucket_for(&result.rhs_value.0);
+        let bucket = lhs_bucket.wrapping_add(rhs_bucket);
+        value_buckets.push((result.constraint_id, bucket));
     }
-    Some(ExecutionCoverage::with_constraints(satisfied, evaluated))
+    let mut coverage = ExecutionCoverage::with_constraints(satisfied, evaluated);
+    coverage.value_buckets = value_buckets;
+    Some(coverage)
+}
+
+fn value_bucket_for(value_bytes: &[u8]) -> u8 {
+    if value_bytes.is_empty() {
+        return 0;
+    }
+    let first_nonzero = value_bytes
+        .iter()
+        .position(|&b| b != 0)
+        .unwrap_or(value_bytes.len());
+    let byte = value_bytes.get(first_nonzero).copied().unwrap_or(0);
+    (first_nonzero as u8).wrapping_add(byte)
 }
 
 fn lc_to_terms(lc: &LinearCombination) -> Vec<(usize, FieldElement)> {

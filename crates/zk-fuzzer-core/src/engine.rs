@@ -216,11 +216,12 @@ impl FuzzingEngineCore {
         let entry = CorpusEntry::new(test_case, coverage_hash);
         self.corpus.add(entry);
 
-        if result.coverage.satisfied_constraints.is_empty() {
+        if result.coverage.satisfied_constraints.is_empty()
+            && result.coverage.evaluated_constraints.is_empty()
+        {
             self.coverage.record_coverage_hash(result.coverage.coverage_hash);
         } else {
-            self.coverage
-                .record_execution(&result.coverage.satisfied_constraints);
+            self.coverage.record_execution(&result.coverage);
         }
     }
 
@@ -253,12 +254,13 @@ impl FuzzingEngineCore {
             }
         }
 
-        let is_new = if result.coverage.satisfied_constraints.is_empty() {
+        let is_new = if result.coverage.satisfied_constraints.is_empty()
+            && result.coverage.evaluated_constraints.is_empty()
+        {
             self.coverage
                 .record_coverage_hash(result.coverage.coverage_hash)
         } else {
-            self.coverage
-                .record_execution(&result.coverage.satisfied_constraints)
+            self.coverage.record_execution(&result.coverage)
         };
 
         if is_new {

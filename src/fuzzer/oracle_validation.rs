@@ -1,0 +1,493 @@
+//! Oracle Validation Framework
+//!
+//! Phase 0 Fix: Provides mechanisms to validate oracles themselves,
+//! reducing false positives from buggy or misconfigured oracles.
+//!
+//! # Validation Strategies
+//!
+//! 1. **Differential Validation**: Run multiple oracles on the same inputs
+//!    and flag disagreements for review.
+//!
+//! 2. **Ground Truth Validation**: Test oracles against known-good and
+//!    known-bad circuits to verify correct detection.
+//!
+//! 3. **Oracle Mutation Testing**: Inject known bugs and verify oracles
+//!    detect them (tests for false negatives).
+//!
+//! # Usage
+//!
+//! ```ignore
+//! let validator = OracleValidator::new()
+//!     .with_differential(vec![oracle1, oracle2])
+//!     .with_ground_truth(known_good_circuits);
+//!
+//! let validation_result = validator.validate(&finding);
+//! if !validation_result.is_valid {
+//!     // Finding may be a false positive
+//! }
+//! ```
+
+use std::collections::HashMap;
+use zk_core::{CircuitExecutor, Finding, Severity, TestCase, FieldElement};
+use super::oracle::BugOracle;
+
+/// Result of validating a finding
+#[derive(Debug, Clone)]
+pub struct ValidationResult {
+    /// Whether the finding passed validation
+    pub is_valid: bool,
+    /// Confidence score (0.0 - 1.0)
+    pub confidence: f64,
+    /// Reasons for the validation decision
+    pub reasons: Vec<String>,
+    /// Oracles that agreed with the finding
+    pub agreeing_oracles: Vec<String>,
+    /// Oracles that disagreed with the finding
+    pub disagreeing_oracles: Vec<String>,
+}
+
+impl ValidationResult {
+    /// Create a valid result with high confidence
+    pub fn valid(reasons: Vec<String>) -> Self {
+        Self {
+            is_valid: true,
+            confidence: 1.0,
+            reasons,
+            agreeing_oracles: vec![],
+            disagreeing_oracles: vec![],
+        }
+    }
+    
+    /// Create an invalid result (likely false positive)
+    pub fn invalid(reasons: Vec<String>) -> Self {
+        Self {
+            is_valid: false,
+            confidence: 0.0,
+            reasons,
+            agreeing_oracles: vec![],
+            disagreeing_oracles: vec![],
+        }
+    }
+    
+    /// Create a result with partial confidence
+    pub fn partial(confidence: f64, reasons: Vec<String>) -> Self {
+        Self {
+            is_valid: confidence >= 0.5,
+            confidence,
+            reasons,
+            agreeing_oracles: vec![],
+            disagreeing_oracles: vec![],
+        }
+    }
+}
+
+/// Configuration for oracle validation
+#[derive(Debug, Clone)]
+pub struct OracleValidationConfig {
+    /// Minimum oracle agreement ratio to consider finding valid
+    pub min_agreement_ratio: f64,
+    /// Whether to require ground truth validation
+    pub require_ground_truth: bool,
+    /// Number of mutation tests to run
+    pub mutation_test_count: usize,
+    /// Minimum mutation detection rate to trust oracle
+    pub min_mutation_detection_rate: f64,
+}
+
+impl Default for OracleValidationConfig {
+    fn default() -> Self {
+        Self {
+            min_agreement_ratio: 0.6,
+            require_ground_truth: false,
+            mutation_test_count: 10,
+            min_mutation_detection_rate: 0.7,
+        }
+    }
+}
+
+/// Ground truth test case for oracle validation
+#[derive(Debug, Clone)]
+pub struct GroundTruthCase {
+    /// Test inputs
+    pub inputs: Vec<FieldElement>,
+    /// Expected finding (None if no bug should be detected)
+    pub expected_bug: Option<ExpectedBug>,
+    /// Description of the test case
+    pub description: String,
+}
+
+/// Expected bug for ground truth validation
+#[derive(Debug, Clone)]
+pub struct ExpectedBug {
+    /// Attack type that should detect this
+    pub attack_type: zk_core::AttackType,
+    /// Minimum severity expected
+    pub min_severity: Severity,
+}
+
+/// Statistics about oracle validation
+#[derive(Debug, Clone, Default)]
+pub struct OracleValidationStats {
+    /// Total findings validated
+    pub total_validated: usize,
+    /// Findings that passed validation
+    pub passed: usize,
+    /// Findings that failed validation (likely false positives)
+    pub failed: usize,
+    /// Findings with partial confidence
+    pub uncertain: usize,
+    /// Oracle agreement statistics
+    pub oracle_agreements: HashMap<String, usize>,
+    /// Oracle disagreement statistics
+    pub oracle_disagreements: HashMap<String, usize>,
+}
+
+impl OracleValidationStats {
+    /// Get false positive rate estimate
+    pub fn estimated_false_positive_rate(&self) -> f64 {
+        if self.total_validated == 0 {
+            return 0.0;
+        }
+        self.failed as f64 / self.total_validated as f64
+    }
+}
+
+/// Oracle validator for reducing false positives
+pub struct OracleValidator {
+    config: OracleValidationConfig,
+    /// Ground truth test cases
+    ground_truth: Vec<GroundTruthCase>,
+    /// Validation statistics
+    stats: OracleValidationStats,
+}
+
+impl OracleValidator {
+    /// Create a new oracle validator with default config
+    pub fn new() -> Self {
+        Self {
+            config: OracleValidationConfig::default(),
+            ground_truth: Vec::new(),
+            stats: OracleValidationStats::default(),
+        }
+    }
+    
+    /// Create with custom configuration
+    pub fn with_config(config: OracleValidationConfig) -> Self {
+        Self {
+            config,
+            ground_truth: Vec::new(),
+            stats: OracleValidationStats::default(),
+        }
+    }
+    
+    /// Add ground truth test cases
+    pub fn with_ground_truth(mut self, cases: Vec<GroundTruthCase>) -> Self {
+        self.ground_truth = cases;
+        self
+    }
+    
+    /// Validate a finding using differential oracle validation
+    ///
+    /// Runs multiple oracles on the same test case and checks for agreement.
+    pub fn validate_differential(
+        &mut self,
+        finding: &Finding,
+        oracles: &mut [Box<dyn BugOracle>],
+        test_case: &TestCase,
+        outputs: &[FieldElement],
+    ) -> ValidationResult {
+        if oracles.is_empty() {
+            return ValidationResult::valid(vec!["No oracles to compare".to_string()]);
+        }
+        
+        let mut agreeing = Vec::new();
+        let mut disagreeing = Vec::new();
+        
+        for oracle in oracles.iter_mut() {
+            let oracle_name = oracle.name().to_string();
+            let oracle_finding = oracle.check(test_case, outputs);
+            
+            // Check if this oracle found a similar issue
+            let found_similar = oracle_finding.as_ref().map_or(false, |f| {
+                f.attack_type == finding.attack_type && f.severity >= Severity::Low
+            });
+            
+            if found_similar {
+                agreeing.push(oracle_name);
+            } else {
+                disagreeing.push(oracle_name);
+            }
+        }
+        
+        let total_oracles = agreeing.len() + disagreeing.len();
+        let agreement_ratio = if total_oracles > 0 {
+            agreeing.len() as f64 / total_oracles as f64
+        } else {
+            1.0
+        };
+        
+        self.stats.total_validated += 1;
+        
+        let mut reasons = Vec::new();
+        let is_valid = agreement_ratio >= self.config.min_agreement_ratio;
+        
+        if is_valid {
+            self.stats.passed += 1;
+            reasons.push(format!(
+                "Oracle agreement: {}/{} ({:.0}%)",
+                agreeing.len(),
+                total_oracles,
+                agreement_ratio * 100.0
+            ));
+        } else {
+            self.stats.failed += 1;
+            reasons.push(format!(
+                "Low oracle agreement: {}/{} ({:.0}%) - possible false positive",
+                agreeing.len(),
+                total_oracles,
+                agreement_ratio * 100.0
+            ));
+        }
+        
+        // Update per-oracle stats
+        for name in &agreeing {
+            *self.stats.oracle_agreements.entry(name.clone()).or_insert(0) += 1;
+        }
+        for name in &disagreeing {
+            *self.stats.oracle_disagreements.entry(name.clone()).or_insert(0) += 1;
+        }
+        
+        ValidationResult {
+            is_valid,
+            confidence: agreement_ratio,
+            reasons,
+            agreeing_oracles: agreeing,
+            disagreeing_oracles: disagreeing,
+        }
+    }
+    
+    /// Validate an oracle against ground truth test cases
+    ///
+    /// Tests the oracle on known-good and known-bad cases to estimate
+    /// its false positive and false negative rates.
+    pub fn validate_against_ground_truth(
+        &self,
+        oracle: &mut dyn BugOracle,
+        executor: &dyn CircuitExecutor,
+    ) -> GroundTruthValidationResult {
+        let mut true_positives = 0;
+        let mut false_positives = 0;
+        let mut true_negatives = 0;
+        let mut false_negatives = 0;
+        
+        for case in &self.ground_truth {
+            let test_case = TestCase {
+                inputs: case.inputs.clone(),
+                expected_output: None,
+                metadata: zk_core::TestMetadata::default(),
+            };
+            
+            let exec_result = executor.execute_sync(&test_case.inputs);
+            let outputs = if exec_result.success {
+                exec_result.outputs
+            } else {
+                vec![FieldElement::zero()]
+            };
+            let finding_result = oracle.check(&test_case, &outputs);
+            
+            let found_bug = finding_result.is_some();
+            let expected_bug = case.expected_bug.is_some();
+            
+            match (found_bug, expected_bug) {
+                (true, true) => true_positives += 1,
+                (true, false) => false_positives += 1,
+                (false, true) => false_negatives += 1,
+                (false, false) => true_negatives += 1,
+            }
+        }
+        
+        GroundTruthValidationResult {
+            oracle_name: oracle.name().to_string(),
+            true_positives,
+            false_positives,
+            true_negatives,
+            false_negatives,
+            total_cases: self.ground_truth.len(),
+        }
+    }
+    
+    /// Get current validation statistics
+    pub fn stats(&self) -> &OracleValidationStats {
+        &self.stats
+    }
+    
+    /// Reset validation statistics
+    pub fn reset_stats(&mut self) {
+        self.stats = OracleValidationStats::default();
+    }
+}
+
+impl Default for OracleValidator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Result of ground truth validation for an oracle
+#[derive(Debug, Clone)]
+pub struct GroundTruthValidationResult {
+    pub oracle_name: String,
+    pub true_positives: usize,
+    pub false_positives: usize,
+    pub true_negatives: usize,
+    pub false_negatives: usize,
+    pub total_cases: usize,
+}
+
+impl GroundTruthValidationResult {
+    /// Calculate precision (true positives / all positives)
+    pub fn precision(&self) -> f64 {
+        let total_positives = self.true_positives + self.false_positives;
+        if total_positives == 0 {
+            return 1.0;
+        }
+        self.true_positives as f64 / total_positives as f64
+    }
+    
+    /// Calculate recall (true positives / all expected positives)
+    pub fn recall(&self) -> f64 {
+        let expected_positives = self.true_positives + self.false_negatives;
+        if expected_positives == 0 {
+            return 1.0;
+        }
+        self.true_positives as f64 / expected_positives as f64
+    }
+    
+    /// Calculate F1 score (harmonic mean of precision and recall)
+    pub fn f1_score(&self) -> f64 {
+        let precision = self.precision();
+        let recall = self.recall();
+        if precision + recall == 0.0 {
+            return 0.0;
+        }
+        2.0 * (precision * recall) / (precision + recall)
+    }
+    
+    /// Check if oracle passes quality threshold
+    pub fn passes_threshold(&self, min_precision: f64, min_recall: f64) -> bool {
+        self.precision() >= min_precision && self.recall() >= min_recall
+    }
+}
+
+impl std::fmt::Display for GroundTruthValidationResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: precision={:.1}%, recall={:.1}%, F1={:.1}% (TP={}, FP={}, TN={}, FN={})",
+            self.oracle_name,
+            self.precision() * 100.0,
+            self.recall() * 100.0,
+            self.f1_score() * 100.0,
+            self.true_positives,
+            self.false_positives,
+            self.true_negatives,
+            self.false_negatives
+        )
+    }
+}
+
+/// Filter findings using oracle validation
+pub fn filter_validated_findings(
+    findings: Vec<Finding>,
+    validator: &mut OracleValidator,
+    oracles: &mut [Box<dyn BugOracle>],
+    executor: &dyn CircuitExecutor,
+) -> Vec<Finding> {
+    findings
+        .into_iter()
+        .filter(|finding| {
+            // Create a test case from the finding's PoC
+            let test_case = TestCase {
+                inputs: finding.poc.witness_a.clone(),
+                expected_output: None,
+                metadata: zk_core::TestMetadata::default(),
+            };
+
+            let exec_result = executor.execute_sync(&test_case.inputs);
+            if !exec_result.success {
+                tracing::warn!(
+                    "Oracle validation skipped for '{:?}': execution failed",
+                    finding.attack_type
+                );
+                return true;
+            }
+            
+            let result = validator.validate_differential(
+                finding,
+                oracles,
+                &test_case,
+                &exec_result.outputs,
+            );
+            
+            if !result.is_valid {
+                tracing::warn!(
+                    "Finding '{:?}' failed oracle validation: {:?}",
+                    finding.attack_type,
+                    result.reasons
+                );
+            }
+            
+            result.is_valid
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_validation_result_creation() {
+        let valid = ValidationResult::valid(vec!["test".to_string()]);
+        assert!(valid.is_valid);
+        assert_eq!(valid.confidence, 1.0);
+        
+        let invalid = ValidationResult::invalid(vec!["test".to_string()]);
+        assert!(!invalid.is_valid);
+        assert_eq!(invalid.confidence, 0.0);
+        
+        let partial = ValidationResult::partial(0.7, vec!["test".to_string()]);
+        assert!(partial.is_valid);
+        assert_eq!(partial.confidence, 0.7);
+    }
+    
+    #[test]
+    fn test_ground_truth_result_metrics() {
+        let result = GroundTruthValidationResult {
+            oracle_name: "test".to_string(),
+            true_positives: 8,
+            false_positives: 2,
+            true_negatives: 85,
+            false_negatives: 5,
+            total_cases: 100,
+        };
+        
+        // Precision = 8 / (8 + 2) = 0.8
+        assert!((result.precision() - 0.8).abs() < 0.01);
+        
+        // Recall = 8 / (8 + 5) = 0.615
+        assert!((result.recall() - 0.615).abs() < 0.01);
+        
+        // F1 = 2 * (0.8 * 0.615) / (0.8 + 0.615) ≈ 0.696
+        assert!((result.f1_score() - 0.696).abs() < 0.01);
+    }
+    
+    #[test]
+    fn test_oracle_validator_stats() {
+        let validator = OracleValidator::new();
+        let stats = validator.stats();
+        
+        assert_eq!(stats.total_validated, 0);
+        assert_eq!(stats.estimated_false_positive_rate(), 0.0);
+    }
+}

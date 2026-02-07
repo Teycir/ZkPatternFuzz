@@ -33,6 +33,7 @@ pub mod adaptive_attack_scheduler;
 pub mod adaptive_orchestrator;
 pub mod near_miss;
 pub mod oracle_diversity;
+pub mod oracle_validation;  // Phase 0 Fix: Oracle validation framework
 pub mod phased_scheduler;
 mod power_schedule;
 mod structure_aware;

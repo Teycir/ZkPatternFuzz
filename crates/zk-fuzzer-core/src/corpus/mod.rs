@@ -261,6 +261,50 @@ impl Corpus {
         }
         Ok(())
     }
+    
+    /// Phase 0 Fix: Minimize corpus to smallest set that maintains coverage
+    /// 
+    /// Uses greedy set cover algorithm to remove redundant test cases.
+    /// Returns statistics about the minimization.
+    pub fn minimize(&self) -> minimizer::MinimizationStats {
+        let mut entries = self.entries.write().unwrap();
+        let original_size = entries.len();
+        
+        if original_size == 0 {
+            return minimizer::MinimizationStats::compute(0, 0);
+        }
+        
+        // First deduplicate, then minimize
+        let deduped = minimizer::deduplicate_corpus(&entries);
+        let minimized = minimizer::minimize_corpus(&deduped);
+        
+        let minimized_size = minimized.len();
+        
+        // Rebuild the corpus with minimized entries
+        let mut index = self.coverage_index.write().unwrap();
+        entries.clear();
+        index.clear();
+        
+        for (i, entry) in minimized.into_iter().enumerate() {
+            index.insert(entry.coverage_hash, i);
+            entries.push(entry);
+        }
+        
+        let stats = minimizer::MinimizationStats::compute(original_size, minimized_size);
+        tracing::info!(
+            "Corpus minimized: {} → {} entries ({:.1}% reduction)",
+            stats.original_size,
+            stats.minimized_size,
+            stats.reduction_percentage
+        );
+        
+        stats
+    }
+    
+    /// Phase 0 Fix: Get max size configuration
+    pub fn max_size(&self) -> usize {
+        self.max_size
+    }
 }
 
 /// Serializable corpus format for persistence

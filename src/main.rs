@@ -196,6 +196,21 @@ async fn run_campaign(
             "evidence_mode".to_string(),
             serde_yaml::Value::Bool(true),
         );
+        if let Some(false) = config
+            .campaign
+            .parameters
+            .additional
+            .get("strict_backend")
+            .and_then(|v| v.as_bool())
+        {
+            anyhow::bail!(
+                "Evidence mode requires strict_backend=true (mock fallback is not allowed)."
+            );
+        }
+        config.campaign.parameters.additional.insert(
+            "strict_backend".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
     }
     
     // Inject CLI fuzzing parameters into config

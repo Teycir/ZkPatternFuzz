@@ -42,6 +42,38 @@ impl ExecutionResult {
         self.execution_time_us = time_us;
         self
     }
+    
+    /// Phase 0 Fix: Check if execution resulted in a crash
+    pub fn is_crash(&self) -> bool {
+        if self.success {
+            return false;
+        }
+        let Some(err) = &self.error else {
+            return false;
+        };
+        let lower = err.to_lowercase();
+        // Heuristic: only treat clear runtime failures as crashes.
+        // Avoid classifying ordinary constraint/witness failures as crashes.
+        let crash_markers = [
+            "panic",
+            "segfault",
+            "segmentation fault",
+            "sigsegv",
+            "sigabrt",
+            "stack overflow",
+            "out of memory",
+            "oom",
+            "core dumped",
+            "illegal instruction",
+            "bus error",
+        ];
+        crash_markers.iter().any(|marker| lower.contains(marker))
+    }
+    
+    /// Phase 0 Fix: Get error message if execution failed
+    pub fn error_message(&self) -> Option<String> {
+        self.error.clone()
+    }
 }
 
 /// Coverage information from a single execution
@@ -55,6 +87,8 @@ pub struct ExecutionCoverage {
     pub new_coverage: bool,
     /// Coverage bitmap for fast comparison
     pub coverage_hash: u64,
+    /// Value buckets observed per constraint (constraint_id, bucket)
+    pub value_buckets: Vec<(usize, u8)>,
 }
 
 impl ExecutionCoverage {
@@ -81,18 +115,25 @@ impl ExecutionCoverage {
     }
 
     pub fn with_constraints(satisfied: Vec<usize>, evaluated: Vec<usize>) -> Self {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
+        use sha2::{Digest, Sha256};
 
-        let mut hasher = DefaultHasher::new();
-        satisfied.hash(&mut hasher);
-        let coverage_hash = hasher.finish();
+        let mut sorted = satisfied.clone();
+        sorted.sort_unstable();
+        let mut hasher = Sha256::new();
+        for constraint in &sorted {
+            hasher.update(constraint.to_le_bytes());
+        }
+        let hash = hasher.finalize();
+        let coverage_hash = u64::from_le_bytes([
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+        ]);
 
         Self {
             satisfied_constraints: satisfied,
             evaluated_constraints: evaluated,
             new_coverage: false,
             coverage_hash,
+            value_buckets: Vec::new(),
         }
     }
 
