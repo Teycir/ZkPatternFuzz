@@ -92,6 +92,8 @@ pub struct OracleValidationConfig {
     pub mutation_test_count: usize,
     /// Minimum mutation detection rate to trust oracle
     pub min_mutation_detection_rate: f64,
+    /// Whether to skip stateful oracles during differential validation
+    pub skip_stateful_oracles: bool,
 }
 
 impl Default for OracleValidationConfig {
@@ -101,6 +103,7 @@ impl Default for OracleValidationConfig {
             require_ground_truth: false,
             mutation_test_count: 10,
             min_mutation_detection_rate: 0.7,
+            skip_stateful_oracles: true,
         }
     }
 }
@@ -202,10 +205,20 @@ impl OracleValidator {
         
         let mut agreeing = Vec::new();
         let mut disagreeing = Vec::new();
+        let mut considered = 0usize;
         
         for oracle in oracles.iter_mut() {
+            if self.config.skip_stateful_oracles && oracle.is_stateful() {
+                continue;
+            }
+            if let Some(attack_type) = oracle.attack_type() {
+                if attack_type != finding.attack_type {
+                    continue;
+                }
+            }
             let oracle_name = oracle.name().to_string();
             let oracle_finding = oracle.check(test_case, outputs);
+            considered += 1;
             
             // Check if this oracle found a similar issue
             let found_similar = oracle_finding.as_ref().map_or(false, |f| {
@@ -220,13 +233,21 @@ impl OracleValidator {
         }
         
         let total_oracles = agreeing.len() + disagreeing.len();
+        self.stats.total_validated += 1;
+
+        if considered == 0 {
+            self.stats.uncertain += 1;
+            return ValidationResult::partial(
+                0.5,
+                vec!["No applicable oracles for validation".to_string()],
+            );
+        }
+
         let agreement_ratio = if total_oracles > 0 {
             agreeing.len() as f64 / total_oracles as f64
         } else {
             1.0
         };
-        
-        self.stats.total_validated += 1;
         
         let mut reasons = Vec::new();
         let is_valid = agreement_ratio >= self.config.min_agreement_ratio;

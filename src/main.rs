@@ -90,6 +90,8 @@ enum Commands {
         #[arg(short, long, default_value = "circom")]
         framework: String,
     },
+    #[command(hide = true)]
+    ExecWorker,
 }
 
 #[tokio::main]
@@ -145,6 +147,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Init { output, framework }) => {
             generate_sample_config(&output, &framework)
+        }
+        Some(Commands::ExecWorker) => {
+            zk_fuzzer::executor::run_exec_worker()
         }
         None => {
             // Default behavior: run with config if provided

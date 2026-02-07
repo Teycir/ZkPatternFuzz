@@ -94,6 +94,7 @@
 //! - **Mock**: Testing backend for fuzzer development
 
 use super::oracle::{ArithmeticOverflowOracle, BugOracle, UnderconstrainedOracle};
+use super::oracle_validation::{filter_validated_findings, OracleValidator, OracleValidationConfig};
 use super::power_schedule::{PowerSchedule, PowerScheduler};
 use super::structure_aware::StructureAwareMutator;
 use super::mutate_field_element;
@@ -107,7 +108,7 @@ use crate::analysis::{
 use crate::attacks::{Attack as AttackTrait, AttackContext, AttackRegistry, DynamicLibraryLoader};
 use crate::config::*;
 use crate::corpus::create_corpus;
-use crate::executor::{create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions};
+use crate::executor::{create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions, IsolatedExecutor};
 use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
 use crate::reporting::FuzzReport;
 use zk_core::{
@@ -222,7 +223,7 @@ impl FuzzingEngine {
         
         // Create executor based on framework (with optional build dir overrides)
         let executor_factory_options = Self::parse_executor_factory_options(&config);
-        let executor = ExecutorFactory::create_with_options(
+        let mut executor = ExecutorFactory::create_with_options(
             config.campaign.target.framework,
             config.campaign.target.circuit_path.to_str().unwrap_or(""),
             &config.campaign.target.main_component,
@@ -278,6 +279,28 @@ impl FuzzingEngine {
             tracing::warn!(
                 "Using mock executor for {:?} framework. Results may not reflect real circuit behavior.",
                 config.campaign.target.framework
+            );
+        }
+
+        let isolate_exec = Self::additional_bool(additional, "per_exec_isolation")
+            .or_else(|| Self::additional_bool(additional, "exec_isolation"))
+            .unwrap_or(false);
+
+        if isolate_exec {
+            let execution_timeout_ms = Self::additional_u64(additional, "execution_timeout_ms")
+                .unwrap_or(30_000)
+                .max(1);
+            executor = Arc::new(IsolatedExecutor::new(
+                executor,
+                config.campaign.target.framework,
+                config.campaign.target.circuit_path.to_string_lossy().to_string(),
+                config.campaign.target.main_component.clone(),
+                executor_factory_options.clone(),
+                execution_timeout_ms,
+            )?);
+            tracing::info!(
+                "Per-exec isolation enabled (timeout {} ms)",
+                execution_timeout_ms
             );
         }
 
@@ -579,6 +602,54 @@ impl FuzzingEngine {
         options
     }
 
+    fn oracle_validation_config(&self) -> OracleValidationConfig {
+        let additional = &self.config.campaign.parameters.additional;
+        let mut config = OracleValidationConfig::default();
+
+        if let Some(ratio) = Self::additional_f64(additional, "oracle_validation_min_agreement_ratio") {
+            config.min_agreement_ratio = ratio.clamp(0.0, 1.0);
+        }
+        if let Some(require_ground_truth) =
+            Self::additional_bool(additional, "oracle_validation_require_ground_truth")
+        {
+            config.require_ground_truth = require_ground_truth;
+        }
+        if let Some(count) =
+            Self::additional_usize(additional, "oracle_validation_mutation_test_count")
+        {
+            config.mutation_test_count = count.max(1);
+        }
+        if let Some(rate) =
+            Self::additional_f64(additional, "oracle_validation_min_mutation_detection_rate")
+        {
+            config.min_mutation_detection_rate = rate.clamp(0.0, 1.0);
+        }
+        if let Some(skip_stateful) =
+            Self::additional_bool(additional, "oracle_validation_skip_stateful")
+        {
+            config.skip_stateful_oracles = skip_stateful;
+        }
+
+        config
+    }
+
+    fn build_validation_oracles(&self) -> Vec<Box<dyn BugOracle>> {
+        let mut oracles: Vec<Box<dyn BugOracle>> = vec![
+            Box::new(
+                UnderconstrainedOracle::new()
+                    .with_public_input_count(self.executor.num_public_inputs()),
+            ),
+            Box::new(ArithmeticOverflowOracle::new_with_modulus(
+                self.executor.field_modulus(),
+            )),
+        ];
+
+        // Reuse semantic oracle configuration for validation
+        Self::add_semantic_oracles_from_config(&self.config, &mut oracles);
+
+        oracles
+    }
+
     fn load_attack_plugins(config: &FuzzConfig, registry: &mut AttackRegistry) {
         let additional = &config.campaign.parameters.additional;
         let Some(value) = additional.get("attack_plugin_dirs") else {
@@ -735,6 +806,17 @@ impl FuzzingEngine {
     ) -> Option<u32> {
         match additional.get(key)? {
             serde_yaml::Value::Number(n) => n.as_u64().map(|v| v.min(u32::MAX as u64) as u32),
+            _ => None,
+        }
+    }
+
+    fn additional_f64(
+        additional: &std::collections::HashMap<String, serde_yaml::Value>,
+        key: &str,
+    ) -> Option<f64> {
+        match additional.get(key)? {
+            serde_yaml::Value::Number(n) => n.as_f64(),
+            serde_yaml::Value::String(s) => s.parse::<f64>().ok(),
             _ => None,
         }
     }
@@ -1079,7 +1161,33 @@ impl FuzzingEngine {
 
         // Generate report
         let elapsed = start_time.elapsed();
-        let findings = self.core.findings().read().unwrap().clone();
+        let mut findings = self.core.findings().read().unwrap().clone();
+
+        let additional = &self.config.campaign.parameters.additional;
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        let oracle_validation_enabled =
+            Self::additional_bool(additional, "oracle_validation").unwrap_or(evidence_mode);
+
+        if oracle_validation_enabled {
+            let validation_config = self.oracle_validation_config();
+            let skip_stateful = validation_config.skip_stateful_oracles;
+            let mut validator = OracleValidator::with_config(validation_config);
+            let mut validation_oracles = self.build_validation_oracles();
+            let before = findings.len();
+            findings = filter_validated_findings(
+                findings,
+                &mut validator,
+                &mut validation_oracles,
+                self.executor.as_ref(),
+            );
+            let after = findings.len();
+            tracing::info!(
+                "Oracle validation complete: {} -> {} findings (skip_stateful={})",
+                before,
+                after,
+                skip_stateful
+            );
+        }
 
         tracing::info!(
             "Fuzzing complete: {} findings in {:.2}s",

@@ -18,6 +18,20 @@ pub trait BugOracle: Send + Sync {
     fn stats(&self) -> Option<OracleStatistics> {
         None
     }
+
+    /// Whether this oracle maintains state across executions
+    ///
+    /// Stateful oracles may not be suitable for single-case validation.
+    fn is_stateful(&self) -> bool {
+        false
+    }
+
+    /// The primary attack type this oracle detects (if known)
+    ///
+    /// Used to select applicable oracles during validation.
+    fn attack_type(&self) -> Option<AttackType> {
+        None
+    }
 }
 
 /// Statistics from oracle execution
@@ -187,6 +201,14 @@ impl BugOracle for UnderconstrainedOracle {
     fn name(&self) -> &str {
         "underconstrained_oracle"
     }
+
+    fn is_stateful(&self) -> bool {
+        true
+    }
+
+    fn attack_type(&self) -> Option<AttackType> {
+        Some(AttackType::Underconstrained)
+    }
     
     fn reset(&mut self) {
         self.output_history.clear();
@@ -350,6 +372,14 @@ impl BugOracle for ConstraintCountOracle {
         "constraint_count_oracle"
     }
 
+    fn is_stateful(&self) -> bool {
+        true
+    }
+
+    fn attack_type(&self) -> Option<AttackType> {
+        Some(AttackType::Underconstrained)
+    }
+
     fn reset(&mut self) {
         self.min_count = None;
         self.max_count = None;
@@ -499,6 +529,14 @@ impl BugOracle for ProofForgeryOracle {
         "proof_forgery_oracle"
     }
 
+    fn is_stateful(&self) -> bool {
+        true
+    }
+
+    fn attack_type(&self) -> Option<AttackType> {
+        Some(AttackType::Soundness)
+    }
+
     fn reset(&mut self) {
         self.attempts = 0;
         self.successful_forgeries = 0;
@@ -586,6 +624,10 @@ impl BugOracle for ArithmeticOverflowOracle {
     fn name(&self) -> &str {
         "arithmetic_overflow_oracle"
     }
+
+    fn attack_type(&self) -> Option<AttackType> {
+        Some(AttackType::ArithmeticOverflow)
+    }
 }
 
 impl ArithmeticOverflowOracle {
@@ -642,6 +684,14 @@ impl BugOracle for SemanticOracleAdapter {
             findings: inner_stats.findings,
             unique_outputs_seen: inner_stats.observations,
         })
+    }
+
+    fn is_stateful(&self) -> bool {
+        true
+    }
+
+    fn attack_type(&self) -> Option<AttackType> {
+        Some(self.inner.attack_type())
     }
 }
 

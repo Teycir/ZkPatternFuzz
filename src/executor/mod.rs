@@ -4,10 +4,12 @@
 //! Separates mock execution from real circuit execution for testing and production use.
 
 mod coverage;
+mod isolated;
 mod mock;
 mod traits;
 
 pub use coverage::*;
+pub use isolated::*;
 pub use mock::*;
 pub use traits::*;
 
