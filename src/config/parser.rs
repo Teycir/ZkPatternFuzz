@@ -54,6 +54,9 @@ impl std::error::Error for ValueExpansionError {}
 /// - `1`, `one`: One value
 /// - `p-1`, `max_field`: Field modulus minus one
 /// - `p`, `field_mod`: Field modulus
+/// - `field_mod-1`, `field_mod+1`: Field modulus with offset
+/// - `max_field-1`, `max_field+1`: Max field element with offset
+/// - Negative decimals like `-1` (interpreted as `p-1`)
 /// - `(p-1)/2`: Half of modulus minus one
 /// - `0x...`: Hexadecimal value
 /// - Decimal numbers: Parsed as u64
@@ -142,12 +145,54 @@ pub fn expand_value_placeholder(
         _ if normalized.starts_with("p+") || normalized.starts_with("p-") => {
             parse_offset(modulus.clone(), &normalized[1..])
         }
+        _ if normalized.starts_with("field_mod+") || normalized.starts_with("field_mod-") => {
+            let offset = &normalized["field_mod".len()..];
+            parse_offset(modulus.clone(), offset)
+        }
         _ if normalized.starts_with("max+") || normalized.starts_with("max-") => {
             if modulus == BigUint::from(0u8) {
                 return Ok(vec![0u8; 32]);
             }
             let base = modulus - BigUint::from(1u8);
             parse_offset(base, &normalized[3..])
+        }
+        _ if normalized.starts_with("max_field+") || normalized.starts_with("max_field-") => {
+            if modulus == BigUint::from(0u8) {
+                return Ok(vec![0u8; 32]);
+            }
+            let base = modulus - BigUint::from(1u8);
+            let offset = &normalized["max_field".len()..];
+            parse_offset(base, offset)
+        }
+        _ if normalized.starts_with('-') => {
+            let digits = &normalized[1..];
+            if digits.is_empty() {
+                return Err(ValueExpansionError {
+                    value: value.to_string(),
+                    reason: "Invalid negative value".to_string(),
+                });
+            }
+            let delta = digits.parse::<u64>().map_err(|e| ValueExpansionError {
+                value: value.to_string(),
+                reason: format!("Invalid decimal: {}", e),
+            })?;
+            if delta == 0 {
+                return Ok(vec![0u8; 32]);
+            }
+            if modulus == BigUint::from(0u8) {
+                return Err(ValueExpansionError {
+                    value: value.to_string(),
+                    reason: "Cannot apply negative offset without modulus".to_string(),
+                });
+            }
+            let delta = BigUint::from(delta);
+            if modulus < delta {
+                return Err(ValueExpansionError {
+                    value: value.to_string(),
+                    reason: "Underflow while applying negative offset".to_string(),
+                });
+            }
+            Ok((modulus.clone() - delta).to_bytes_be())
         }
         _ if value.starts_with("0x") || value.starts_with("0X") => {
             // Hex value - properly propagate errors
@@ -247,5 +292,19 @@ mod tests {
         assert_eq!(BigUint::from_bytes_be(&max_minus), BigUint::from(3u8));
         assert_eq!(BigUint::from_bytes_be(&max_plus), BigUint::from(5u8));
         assert_eq!(BigUint::from_bytes_be(&p_plus), BigUint::from(6u8));
+    }
+
+    #[test]
+    fn test_expand_field_mod_offsets_and_negative() {
+        let mut modulus = [0u8; 32];
+        modulus[31] = 5; // p = 5
+
+        let field_mod_minus = expand_value_placeholder("field_mod-1", &modulus).unwrap();
+        let max_field_minus = expand_value_placeholder("max_field-1", &modulus).unwrap();
+        let neg_one = expand_value_placeholder("-1", &modulus).unwrap();
+
+        assert_eq!(BigUint::from_bytes_be(&field_mod_minus), BigUint::from(4u8));
+        assert_eq!(BigUint::from_bytes_be(&max_field_minus), BigUint::from(3u8));
+        assert_eq!(BigUint::from_bytes_be(&neg_one), BigUint::from(4u8));
     }
 }

@@ -349,85 +349,120 @@ impl FuzzingEngine {
     ///   parameters:
     ///     power_schedule: "MMOPT"
     /// ```
-    /// Phase 0 Fix: Wire semantic oracles from configuration
-    /// 
-    /// Instantiates nullifier/merkle/range/commitment oracles based on config.oracles
+    /// Phase 0 Fix: Wire semantic and auxiliary oracles from configuration
+    ///
+    /// Instantiates nullifier/merkle/range/commitment oracles based on config.oracles,
+    /// and recognizes common alias names used in campaigns.
     fn add_semantic_oracles_from_config(config: &FuzzConfig, oracles: &mut Vec<Box<dyn BugOracle>>) {
+        use crate::fuzzer::oracle::{ConstraintCountOracle, ProofForgeryOracle};
         use crate::fuzzer::oracles::{
-            NullifierOracle, MerkleOracle, CommitmentOracle, RangeProofOracle,
+            CommitmentOracle, MerkleOracle, NullifierOracle, RangeProofOracle,
         };
+        use std::collections::HashSet;
         use zk_core::OracleConfig;
         use zk_fuzzer_core::oracle::SemanticOracleAdapter;
-        
-        let oracle_config = OracleConfig::default();
-        
-        for oracle_def in &config.oracles {
-            let name_lower = oracle_def.name.to_lowercase();
-            
-            match name_lower.as_str() {
-                "nullifier" | "nullifier_oracle" => {
-                    tracing::info!("Enabling nullifier oracle from config");
-                    oracles.push(Box::new(SemanticOracleAdapter::new(
-                        Box::new(NullifierOracle::new(oracle_config.clone()))
-                    )));
+
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+        enum OracleKind {
+            Nullifier,
+            Merkle,
+            Commitment,
+            Range,
+            Underconstrained,
+            ArithmeticOverflow,
+            ConstraintCount,
+            ProofForgery,
+        }
+
+        fn normalize_name(name: &str) -> String {
+            name.chars()
+                .filter(|c| c.is_ascii_alphanumeric())
+                .flat_map(|c| c.to_lowercase())
+                .collect()
+        }
+
+        fn classify(name: &str) -> Option<OracleKind> {
+            let normalized = normalize_name(name);
+            match normalized.as_str() {
+                "nullifier"
+                | "nullifieroracle"
+                | "nullifiercollision"
+                | "nullifiercollisionoracle"
+                | "nullifierreuse"
+                | "determinism" => Some(OracleKind::Nullifier),
+                "merkle"
+                | "merkleoracle"
+                | "merkleproof"
+                | "merklesoundness"
+                | "merklesoundnessoracle" => Some(OracleKind::Merkle),
+                "commitment" | "commitmentoracle" => Some(OracleKind::Commitment),
+                "range"
+                | "rangeoracle"
+                | "rangeproof"
+                | "rangeprooforacle"
+                | "rangebypass"
+                | "bitconstraintbypass" => Some(OracleKind::Range),
+                "underconstrained"
+                | "underconstrainedoracle"
+                | "differentwitnesssameoutput" => Some(OracleKind::Underconstrained),
+                "arithmeticoverflow"
+                | "arithmeticoverfloworacle"
+                | "overflow" => Some(OracleKind::ArithmeticOverflow),
+                "constraintcountmismatch" | "constraintcountoracle" => {
+                    Some(OracleKind::ConstraintCount)
                 }
-                "merkle" | "merkle_oracle" => {
-                    tracing::info!("Enabling merkle oracle from config");
-                    oracles.push(Box::new(SemanticOracleAdapter::new(
-                        Box::new(MerkleOracle::new(oracle_config.clone()))
-                    )));
-                }
-                "commitment" | "commitment_oracle" => {
-                    tracing::info!("Enabling commitment oracle from config");
-                    oracles.push(Box::new(SemanticOracleAdapter::new(
-                        Box::new(CommitmentOracle::new(oracle_config.clone()))
-                    )));
-                }
-                "range" | "range_oracle" | "range_proof" => {
-                    tracing::info!("Enabling range proof oracle from config");
-                    oracles.push(Box::new(SemanticOracleAdapter::new(
-                        Box::new(RangeProofOracle::new(oracle_config.clone()))
-                    )));
-                }
-                _ => {
-                    tracing::warn!("Unknown oracle type in config: {}", oracle_def.name);
-                }
+                "proofforgery" | "proofforgeryoracle" => Some(OracleKind::ProofForgery),
+                _ => None,
             }
         }
-        
-        // Also check for oracles in campaign parameters (alternative syntax)
+
+        let oracle_config = OracleConfig::default();
+        let mut registered: HashSet<String> = oracles.iter().map(|o| o.name().to_string()).collect();
+
+        let mut add_oracle = |oracle: Box<dyn BugOracle>| {
+            let name = oracle.name().to_string();
+            if registered.insert(name) {
+                oracles.push(oracle);
+            }
+        };
+
+        let mut requested: Vec<String> = config.oracles.iter().map(|o| o.name.clone()).collect();
         if let Some(enabled_oracles) = config.campaign.parameters.additional.get("enabled_oracles") {
             if let Some(seq) = enabled_oracles.as_sequence() {
                 for item in seq {
                     if let Some(name) = item.as_str() {
-                        match name.to_lowercase().as_str() {
-                            "nullifier" => {
-                                tracing::info!("Enabling nullifier oracle from parameters");
-                                oracles.push(Box::new(SemanticOracleAdapter::new(
-                                    Box::new(NullifierOracle::new(oracle_config.clone()))
-                                )));
-                            }
-                            "merkle" => {
-                                tracing::info!("Enabling merkle oracle from parameters");
-                                oracles.push(Box::new(SemanticOracleAdapter::new(
-                                    Box::new(MerkleOracle::new(oracle_config.clone()))
-                                )));
-                            }
-                            "commitment" => {
-                                tracing::info!("Enabling commitment oracle from parameters");
-                                oracles.push(Box::new(SemanticOracleAdapter::new(
-                                    Box::new(CommitmentOracle::new(oracle_config.clone()))
-                                )));
-                            }
-                            "range" => {
-                                tracing::info!("Enabling range proof oracle from parameters");
-                                oracles.push(Box::new(SemanticOracleAdapter::new(
-                                    Box::new(RangeProofOracle::new(oracle_config.clone()))
-                                )));
-                            }
-                            _ => {}
-                        }
+                        requested.push(name.to_string());
                     }
+                }
+            }
+        }
+
+        for oracle_name in requested {
+            match classify(&oracle_name) {
+                Some(OracleKind::Nullifier) => add_oracle(Box::new(SemanticOracleAdapter::new(
+                    Box::new(NullifierOracle::new(oracle_config.clone())),
+                ))),
+                Some(OracleKind::Merkle) => add_oracle(Box::new(SemanticOracleAdapter::new(
+                    Box::new(MerkleOracle::new(oracle_config.clone())),
+                ))),
+                Some(OracleKind::Commitment) => add_oracle(Box::new(
+                    SemanticOracleAdapter::new(Box::new(CommitmentOracle::new(
+                        oracle_config.clone(),
+                    ))),
+                )),
+                Some(OracleKind::Range) => add_oracle(Box::new(SemanticOracleAdapter::new(
+                    Box::new(RangeProofOracle::new(oracle_config.clone())),
+                ))),
+                Some(OracleKind::ConstraintCount) => {
+                    let expected = config.campaign.parameters.max_constraints as usize;
+                    add_oracle(Box::new(ConstraintCountOracle::new(expected)));
+                }
+                Some(OracleKind::ProofForgery) => add_oracle(Box::new(ProofForgeryOracle)),
+                Some(OracleKind::Underconstrained) | Some(OracleKind::ArithmeticOverflow) => {
+                    // These oracles are enabled by default; treat as recognized aliases.
+                }
+                None => {
+                    tracing::warn!("Unknown oracle type in config: {}", oracle_name);
                 }
             }
         }
@@ -2296,9 +2331,39 @@ impl FuzzingEngine {
             samples,
             self.config.campaign.parameters.timeout_seconds,
         );
-        let findings = attack.run(&context);
-        let count = findings.len();
+        let mut findings = attack.run(&context);
 
+        let evidence_mode = Self::additional_bool(
+            &self.config.campaign.parameters.additional,
+            "evidence_mode",
+        )
+        .unwrap_or(false);
+
+        if evidence_mode {
+            let before = findings.len();
+            findings.retain(|f| !Self::poc_is_empty(&f.poc));
+            let dropped = before.saturating_sub(findings.len());
+            if dropped > 0 {
+                tracing::info!(
+                    "Evidence mode: dropped {} heuristic findings from {:?}",
+                    dropped,
+                    attack.attack_type()
+                );
+            }
+        } else {
+            for finding in findings.iter_mut() {
+                if Self::poc_is_empty(&finding.poc) {
+                    if !finding.description.starts_with("HINT:") {
+                        finding.description = format!("HINT: {}", finding.description);
+                    }
+                    if finding.severity > Severity::Info {
+                        finding.severity = Severity::Info;
+                    }
+                }
+            }
+        }
+
+        let count = findings.len();
         if count > 0 {
             let findings_store = self.core.findings();
             let mut store = findings_store.write().unwrap();
@@ -2311,6 +2376,13 @@ impl FuzzingEngine {
         }
 
         count
+    }
+
+    fn poc_is_empty(poc: &ProofOfConcept) -> bool {
+        poc.witness_a.is_empty()
+            && poc.witness_b.is_none()
+            && poc.public_inputs.is_empty()
+            && poc.proof.is_none()
     }
 
     fn get_circuit_info(&self) -> zk_core::CircuitInfo {
