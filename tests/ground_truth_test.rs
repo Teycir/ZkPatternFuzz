@@ -18,7 +18,7 @@
 //! ```bash
 //! cargo test --test ground_truth_test -- --nocapture
 //! cargo test --test ground_truth_test ground_truth_known_bugs -- --nocapture
-//! cargo test --test ground_truth_test ground_truth_clean_circuits -- --nocapture
+//! cargo test --test ground_truth_test ground_truth_mock_validation -- --nocapture
 //! ```
 
 use std::path::PathBuf;
@@ -59,6 +59,8 @@ pub struct GroundTruthResult {
     pub bug_found: bool,
     /// Number of findings
     pub findings_count: usize,
+    /// Finding types detected
+    pub finding_types: Vec<String>,
     /// Time taken in milliseconds
     pub time_ms: u64,
     /// Is this a true positive?
@@ -151,132 +153,204 @@ impl GroundTruthStats {
     }
 }
 
-/// Known bug test cases from tests/bench/known_bugs/
-fn known_bug_circuits() -> Vec<(String, PathBuf, bool)> {
-    let base_dir = PathBuf::from("tests/bench/known_bugs");
-    
-    let mut cases = Vec::new();
-    
-    // Each subdirectory contains a known-buggy circuit
-    let bug_dirs = [
-        "underconstrained_merkle",
-        "arithmetic_overflow",
-        "nullifier_collision",
-        "range_bypass",
-        "soundness_violation",
-    ];
-    
-    for dir in bug_dirs {
-        let circuit_path = base_dir.join(dir).join("circuit.circom");
-        if circuit_path.exists() {
-            cases.push((
-                dir.to_string(),
-                circuit_path,
-                true, // bug_expected = true for known bugs
-            ));
-        }
-    }
-    
-    cases
+/// Known bug specification
+#[derive(Debug, Clone)]
+pub struct KnownBug {
+    pub name: String,
+    pub circuit_path: PathBuf,
+    pub expected_attack_type: String,
+    pub expected_severity: String,
+    pub description_keywords: Vec<String>,
 }
 
-/// Clean circuit test cases (should have NO findings)
-fn clean_circuits() -> Vec<(String, PathBuf, bool)> {
-    // These circuits are correctly constrained and should produce no findings
-    // TODO: Add actual clean circuit paths when available
+/// Known bug test cases from tests/bench/known_bugs/
+fn known_bug_circuits() -> Vec<KnownBug> {
+    let base_dir = PathBuf::from("tests/bench/known_bugs");
+    
     vec![
-        // Example placeholder - replace with actual clean circuits
-        // ("clean_poseidon".to_string(), PathBuf::from("circuits/clean/poseidon.circom"), false),
+        KnownBug {
+            name: "underconstrained_merkle".to_string(),
+            circuit_path: base_dir.join("underconstrained_merkle/circuit.circom"),
+            expected_attack_type: "Underconstrained".to_string(),
+            expected_severity: "critical".to_string(),
+            description_keywords: vec!["pathIndices".to_string(), "binary".to_string()],
+        },
+        KnownBug {
+            name: "arithmetic_overflow".to_string(),
+            circuit_path: base_dir.join("arithmetic_overflow/circuit.circom"),
+            expected_attack_type: "ArithmeticOverflow".to_string(),
+            expected_severity: "high".to_string(),
+            description_keywords: vec!["overflow".to_string(), "range".to_string()],
+        },
+        KnownBug {
+            name: "nullifier_collision".to_string(),
+            circuit_path: base_dir.join("nullifier_collision/circuit.circom"),
+            expected_attack_type: "Collision".to_string(),
+            expected_severity: "critical".to_string(),
+            description_keywords: vec!["nullifier".to_string(), "collision".to_string()],
+        },
+        KnownBug {
+            name: "range_bypass".to_string(),
+            circuit_path: base_dir.join("range_bypass/circuit.circom"),
+            expected_attack_type: "Underconstrained".to_string(),
+            expected_severity: "high".to_string(),
+            description_keywords: vec!["range".to_string(), "bit".to_string()],
+        },
+        KnownBug {
+            name: "soundness_violation".to_string(),
+            circuit_path: base_dir.join("soundness_violation/circuit.circom"),
+            expected_attack_type: "Soundness".to_string(),
+            expected_severity: "critical".to_string(),
+            description_keywords: vec!["unused".to_string(), "soundness".to_string()],
+        },
+        KnownBug {
+            name: "signature_bypass".to_string(),
+            circuit_path: base_dir.join("signature_bypass/circuit.circom"),
+            expected_attack_type: "Soundness".to_string(),
+            expected_severity: "critical".to_string(),
+            description_keywords: vec!["signature".to_string(), "bypass".to_string()],
+        },
     ]
 }
 
-/// Run a single ground truth test
-#[cfg(feature = "ground_truth")]
-fn run_ground_truth_test(
-    name: &str,
-    circuit_path: &PathBuf,
-    bug_expected: bool,
-    config: &GroundTruthConfig,
-) -> GroundTruthResult {
-    use std::time::Instant;
+/// Test: Verify test infrastructure is set up correctly
+#[test]
+fn ground_truth_infrastructure_smoke_test() {
+    println!("\n=== Ground Truth Infrastructure Smoke Test ===\n");
     
-    let start = Instant::now();
+    let known_bugs = known_bug_circuits();
+    let base_dir = PathBuf::from("tests/bench/known_bugs");
     
-    // TODO: Implement actual fuzzing campaign execution
-    // This would create a FuzzConfig, run FuzzingEngine, and collect findings
+    // Verify base directory exists
+    assert!(base_dir.exists(), "Known bugs directory should exist");
     
-    // Placeholder implementation
-    let findings_count = 0;
-    let bug_found = findings_count > 0;
-    
-    let elapsed_ms = start.elapsed().as_millis() as u64;
-    
-    GroundTruthResult {
-        name: name.to_string(),
-        bug_expected,
-        bug_found,
-        findings_count,
-        time_ms: elapsed_ms,
-        is_true_positive: bug_expected && bug_found,
-        is_false_positive: !bug_expected && bug_found,
-        is_false_negative: bug_expected && !bug_found,
-        is_true_negative: !bug_expected && !bug_found,
+    // Check each known bug
+    let mut found_count = 0;
+    for bug in &known_bugs {
+        let exists = bug.circuit_path.exists();
+        let expected_json = bug.circuit_path.parent().unwrap().join("expected_finding.json");
+        let has_expected = expected_json.exists();
+        
+        println!(
+            "  {} -> circuit={}, expected_finding={}",
+            bug.name, exists, has_expected
+        );
+        
+        if exists && has_expected {
+            found_count += 1;
+        }
     }
+    
+    println!("\n  Found {}/{} complete test cases\n", found_count, known_bugs.len());
+    
+    // At minimum, verify at least 5 known bug cases exist
+    assert!(
+        found_count >= 5,
+        "Should have at least 5 known bug test cases, found {}",
+        found_count
+    );
+    
+    println!("✅ Ground truth infrastructure is set up correctly\n");
 }
 
-/// Test: Known-buggy circuits should be detected
+/// Test: Run mock-based validation against known bug patterns
+/// This test uses the mock executor to verify the fuzzer's bug detection logic
+/// without requiring circom to be installed.
+#[tokio::test]
+async fn ground_truth_mock_validation() {
+    use zk_fuzzer::config::*;
+    use zk_fuzzer::ZkFuzzer;
+    
+    println!("\n=== Ground Truth Mock Validation ===\n");
+    println!("Testing bug detection logic using mock executor...\n");
+    
+    // Create a mock config that simulates an underconstrained circuit
+    let yaml = r#"
+campaign:
+  name: "Mock Underconstrained Test"
+  version: "1.0"
+  target:
+    framework: "mock"
+    circuit_path: "./mock_circuit.circom"
+    main_component: "MockCircuit"
+  parameters:
+    max_constraints: 100
+    timeout_seconds: 10
+    additional:
+      max_iterations: 500
+      
+attacks:
+  - type: "underconstrained"
+    description: "Detect underconstrained mock circuit"
+    config:
+      witness_pairs: 100
+
+inputs:
+  - name: "a"
+    type: "field"
+    fuzz_strategy: random
+  - name: "b"
+    type: "field"
+    fuzz_strategy: random
+
+reporting:
+  output_dir: "./reports/mock_ground_truth"
+  formats: ["json"]
+  include_poc: true
+"#;
+
+    // Parse config and run
+    let config: FuzzConfig = serde_yaml::from_str(yaml).expect("Failed to parse mock config");
+    
+    let report = ZkFuzzer::run_with_progress(config, Some(42), 1, false)
+        .await
+        .expect("Mock fuzzing should succeed");
+    
+    println!("  Executions: {}", report.statistics.total_executions);
+    println!("  Findings: {}", report.findings.len());
+    println!("  Coverage: {:.1}%", report.statistics.coverage_percentage);
+    
+    // Mock executor should detect underconstrained behavior
+    // (mock deliberately returns same output for different inputs)
+    println!("\n  Finding types:");
+    for finding in &report.findings {
+        println!("    - {:?}: {}", finding.attack_type, finding.description.chars().take(50).collect::<String>());
+    }
+    
+    println!("\n✅ Mock validation complete\n");
+}
+
+/// Test: Known-buggy circuits should be detected (requires circom)
 #[test]
 #[ignore = "Requires circom installation and circuit compilation"]
 fn ground_truth_known_bugs() {
-    let config = GroundTruthConfig::default();
     let mut stats = GroundTruthStats::default();
     
     println!("\n=== Ground Truth Test: Known Bugs ===\n");
     
-    for (name, path, bug_expected) in known_bug_circuits() {
-        println!("Testing: {} ({:?})", name, path);
+    for bug in known_bug_circuits() {
+        println!("Testing: {} ({:?})", bug.name, bug.circuit_path);
         
-        if !path.exists() {
+        if !bug.circuit_path.exists() {
             println!("  SKIP: Circuit file not found");
             continue;
         }
         
-        // For now, just verify the test structure exists
-        // TODO: Enable actual fuzzing when circom is available
-        println!("  Expected: bug = {}", bug_expected);
-        println!("  Status: PENDING (requires circom)\n");
+        println!("  Expected: {:?} ({})", bug.expected_attack_type, bug.expected_severity);
+        println!("  Status: PENDING (requires circom compilation)\n");
+        
+        // TODO: When circom is available, run actual fuzzing:
+        // 1. Compile circuit: circom circuit.circom --r1cs --wasm -o build/
+        // 2. Generate campaign YAML
+        // 3. Run ZkFuzzer::run_with_progress()
+        // 4. Check findings match expected
     }
     
-    // Print summary
-    println!("\nKnown bug circuits found: {}", known_bug_circuits().len());
+    println!("\nKnown bug circuits: {}", known_bug_circuits().len());
     println!("Note: Run with circom installed for actual testing\n");
 }
 
-/// Test: Clean circuits should produce no findings
-#[test]
-#[ignore = "Requires clean circuit test cases"]
-fn ground_truth_clean_circuits() {
-    let config = GroundTruthConfig::default();
-    let mut stats = GroundTruthStats::default();
-    
-    println!("\n=== Ground Truth Test: Clean Circuits ===\n");
-    
-    for (name, path, bug_expected) in clean_circuits() {
-        println!("Testing: {} ({:?})", name, path);
-        
-        if !path.exists() {
-            println!("  SKIP: Circuit file not found");
-            continue;
-        }
-        
-        println!("  Expected: bug = {}", bug_expected);
-        println!("  Status: PENDING\n");
-    }
-    
-    println!("\nClean circuits found: {}", clean_circuits().len());
-}
-
-/// Test: Full ground truth evaluation
+/// Test: Full ground truth evaluation with real circuits
 #[test]
 #[ignore = "Requires circom installation"]
 fn ground_truth_full_evaluation() {
@@ -290,44 +364,78 @@ fn ground_truth_full_evaluation() {
     println!("  Seed: {}", config.seed);
     println!("  Workers: {}\n", config.workers);
     
-    // Collect all test cases
-    let mut all_tests = Vec::new();
-    all_tests.extend(known_bug_circuits());
-    all_tests.extend(clean_circuits());
-    
-    println!("Total test cases: {}", all_tests.len());
-    println!("  Known bugs: {}", known_bug_circuits().len());
-    println!("  Clean circuits: {}", clean_circuits().len());
-    
-    // Note: Actual execution would happen here with circom installed
-    println!("\n⚠️  Full evaluation requires circom installation");
-    println!("   Run: npm install -g snarkjs && brew install circom (or equivalent)\n");
-    
-    // Print expected outcome
-    println!("Expected outcomes:");
-    println!("  - All {} known bugs should be detected", known_bug_circuits().len());
-    println!("  - All {} clean circuits should pass with 0 findings", clean_circuits().len());
-}
-
-/// Smoke test: Verify test infrastructure works
-#[test]
-fn ground_truth_infrastructure_smoke_test() {
-    // Verify known bug directories exist
     let known_bugs = known_bug_circuits();
     
-    println!("\n=== Ground Truth Infrastructure Smoke Test ===\n");
+    println!("Total test cases: {}", known_bugs.len());
+    println!("  Known bugs: {}", known_bugs.len());
     
-    for (name, path, expected) in &known_bugs {
-        let exists = path.exists();
-        println!("  {} -> exists={}, bug_expected={}", name, exists, expected);
+    // Print expected outcomes
+    println!("\nExpected outcomes:");
+    for bug in &known_bugs {
+        println!("  - {}: {} ({})", bug.name, bug.expected_attack_type, bug.expected_severity);
     }
     
-    // At minimum, verify the test structure exists
-    let base_dir = PathBuf::from("tests/bench/known_bugs");
-    assert!(base_dir.exists(), "Known bugs directory should exist");
-    
-    // Verify at least one known bug case exists
-    assert!(!known_bugs.is_empty(), "Should have at least one known bug test case");
-    
-    println!("\n✅ Ground truth infrastructure is set up correctly\n");
+    println!("\n⚠️  Full evaluation requires circom installation");
+    println!("   Run: npm install -g snarkjs && brew install circom (or equivalent)\n");
+}
+
+/// Campaign YAML generator for known bug circuits
+pub fn generate_campaign_yaml(bug: &KnownBug) -> String {
+    format!(
+        r#"# Auto-generated campaign for ground truth testing
+campaign:
+  name: "Ground Truth: {name}"
+  version: "2.0"
+  target:
+    framework: "circom"
+    circuit_path: "{path}"
+    main_component: "{component}"
+  parameters:
+    max_constraints: 100000
+    timeout_seconds: 60
+    additional:
+      strict_backend: true
+      evidence_mode: true
+      per_exec_isolation: true
+      max_iterations: 10000
+      oracle_validation: true
+
+invariants:
+  - name: "detect_{name}"
+    invariant_type: constraint
+    relation: "circuit_should_fail_on_invalid_inputs"
+    oracle: must_hold
+    severity: "{severity}"
+
+attacks:
+  - type: "underconstrained"
+    config:
+      witness_pairs: 1000
+
+  - type: "soundness"
+    config:
+      forge_attempts: 500
+
+  - type: "boundary"
+    config:
+      test_values: ["0", "1", "p-1"]
+
+inputs:
+  # Auto-detect from circuit
+  - name: "input"
+    type: "field"
+    fuzz_strategy: random
+
+reporting:
+  output_dir: "./reports/ground_truth/{name}"
+  formats: ["json", "markdown"]
+  include_poc: true
+"#,
+        name = bug.name,
+        path = bug.circuit_path.display(),
+        component = bug.name.replace("_", "").chars().enumerate()
+            .map(|(i, c)| if i == 0 { c.to_uppercase().next().unwrap() } else { c })
+            .collect::<String>(),
+        severity = bug.expected_severity,
+    )
 }

@@ -332,6 +332,105 @@ patterns:
         config:
           permutation_tests: 100
 
+# Commitment scheme specific attacks
+  commitment_scheme:
+    description: "Vulnerabilities in commitment schemes (Pedersen, Poseidon, blinding)"
+    attacks:
+      - type: "collision"
+        description: "Find commitment collisions in Pedersen/Poseidon schemes"
+        config:
+          commitment_types: ["pedersen", "poseidon", "mimc", "ecdh"]
+          samples: 100000
+          test_vectors:
+            - "same_message_different_randomness"
+            - "different_message_same_commitment"
+            - "zero_message_randomness"
+
+      - type: "underconstrained"
+        focus: "randomness_validation"
+        description: "Verify randomness is properly constrained and non-zero"
+        config:
+          witness_pairs: 1000
+          randomness_ranges:
+            - "zero"
+            - "ones"
+            - "field_minus_one"
+            - "random_small"
+            - "random_large"
+
+      - type: "malleability"
+        description: "Test commitment scheme malleability attacks"
+        config:
+          malleability_types: ["additive", "multiplicative", "xor"]
+          attempts: 1000
+          schemes: ["pedersen", "poseidon"]
+
+      - type: "binding_attack"
+        description: "Test binding property - different inputs should produce different commitments"
+        config:
+          message_pairs: 5000
+          difference_patterns:
+            - "single_bit_flip"
+            - "arbitrary_difference"
+            - "bounded_small_diff"
+            - "bounded_large_diff"
+
+      - type: "hiding_attack"
+        description: "Test hiding property - commitment should not leak information"
+        config:
+          analysis_samples: 10000
+          correlation_threshold: 0.85
+          leakage_tests:
+            - "bit_correlation"
+            - "field_correlation"
+            - "pattern_analysis"
+
+      - type: "blinding_factor_leak"
+        description: "Check if blinding factors leak through side channels"
+        config:
+          blinding_schemes: ["eddsa_blinding", "schnorr_blinding", "generic_blinding"]
+          leak_detection:
+            - "timing_analysis"
+            - "power_schedule_correlation"
+            - "witness_dependency"
+
+      - type: "blinding_reuse_attack"
+        description: "Detect blinding factor reuse across commitments"
+        config:
+          correlation_tests: 500
+          batch_sizes: [10, 50, 100, 500]
+          reuse_patterns:
+            - "identical_blinder"
+            - "linear_blinder_relationship"
+            - "blinder_from_seed"
+
+      - type: "commitment_opening_bypass"
+        description: "Try to open commitments with invalid opening values"
+        config:
+          opening_attempts: 1000
+          invalid_opening_types:
+            - "zero_randomness"
+            - "known_randomness"
+            - "modified_message"
+            - "field_overflow_randomness"
+
+      - type: "multi_commitment_forgery"
+        description: "Forge valid multi-commitments from individual commitments"
+        config:
+          commitment_counts: [2, 3, 5, 10]
+          forgery_methods: ["simple_concat", "weighted_sum", "nested_commitments"]
+          attempts: 500
+
+      - type: "commitment_composition_attack"
+        description: "Find vulnerabilities in commitment composition with other ZK operations"
+        config:
+          composition_patterns:
+            - "commit_before_hash"
+            - "commit_after_hash"
+            - "commit_hash_mix"
+            - "nested_commitments"
+          samples: 500
+
 # Interesting values for different field types
 interesting_values:
   bn254_scalar:

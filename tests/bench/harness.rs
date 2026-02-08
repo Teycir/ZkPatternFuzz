@@ -420,6 +420,10 @@ impl BenchmarkHarness {
                     "ArithmeticOverflow",
                     "arithmetic overflow detected: balance underflow due to missing range check",
                 ),
+                "signature_bypass" => (
+                    "Soundness",
+                    "signature bypass detected: circuit accepts arbitrary signatures as valid",
+                ),
                 _ => ("Unknown", "Simulated finding"),
             };
 

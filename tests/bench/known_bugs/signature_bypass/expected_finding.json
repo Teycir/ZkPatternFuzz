@@ -1,0 +1,13 @@
+{
+  "attack_type": "Soundness",
+  "severity": "critical",
+  "description_contains": ["signature", "bypass", "unconstrained", "valid"],
+  "expected_time_seconds": 15,
+  "min_confidence": 0.95,
+  "required_oracles": ["soundness", "underconstrained"],
+  "poc_requirements": {
+    "witness_pair": true,
+    "same_public_inputs": true,
+    "different_signatures_same_result": true
+  }
+}
