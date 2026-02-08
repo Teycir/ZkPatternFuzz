@@ -47,10 +47,10 @@ invariants:
 
   - name: "merkle_length_bounds"
     invariant_type: range
-    relation: "merkleProofLength <= MAX_DEPTH"
+    relation: "merkleProofLength <= 20"
     oracle: must_hold
     severity: "high"
-    description: "Merkle proof length must not exceed tree depth"
+    description: "Merkle proof length must not exceed tree depth (Semaphore(20))"
 
   - name: "merkle_index_bounds"
     invariant_type: range

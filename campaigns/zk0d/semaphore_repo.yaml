@@ -21,7 +21,8 @@ campaign:
     main_component: "main"
   parameters:
     field: "bn254"
-    max_constraints: 100000
+    # Actual constraint count for Semaphore(20) is 15896
+    max_constraints: 15896
     timeout_seconds: 300
     build_dir_base: "./build/zk0d/semaphore"
     # Setup required before running this campaign:
@@ -194,10 +195,10 @@ invariants:
 
   - name: "merkle_length_bounds"
     invariant_type: range
-    relation: "merkleProofLength <= MAX_DEPTH"
+    relation: "merkleProofLength <= 20"
     oracle: must_hold
     severity: "high"
-    description: "Merkle proof length must not exceed tree depth"
+    description: "Merkle proof length must not exceed tree depth (Semaphore(20))"
 
   - name: "merkle_index_bounds"
     invariant_type: range

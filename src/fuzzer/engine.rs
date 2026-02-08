@@ -515,7 +515,7 @@ impl FuzzingEngine {
             ProofForgery,
         }
 
-        fn classify(name: &str) -> Option<OracleKind> {
+        let classify = |name: &str| -> Option<OracleKind> {
             let normalized = Self::normalize_oracle_name(name);
             match normalized.as_str() {
                 "nullifier"
@@ -548,7 +548,7 @@ impl FuzzingEngine {
                 "proofforgery" | "proofforgeryoracle" => Some(OracleKind::ProofForgery),
                 _ => None,
             }
-        }
+        };
 
         let oracle_config = OracleConfig::default();
         let disabled = Self::disabled_oracle_names(config);
