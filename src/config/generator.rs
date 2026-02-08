@@ -418,7 +418,10 @@ impl ConfigGenerator {
         for pattern in patterns {
             match &pattern.pattern_type {
                 PatternType::MerkleTree | PatternType::HashFunction(_) => {
-                    if !attacks.iter().any(|a| a.attack_type == AttackType::Collision) {
+                    if !attacks
+                        .iter()
+                        .any(|a| a.attack_type == AttackType::Collision)
+                    {
                         attacks.push(Attack {
                             attack_type: AttackType::Collision,
                             description: "Auto-detected: Hash/Merkle collision testing".to_string(),
@@ -428,7 +431,10 @@ impl ConfigGenerator {
                     }
                 }
                 PatternType::RangeCheck | PatternType::BitDecomposition => {
-                    if !attacks.iter().any(|a| a.attack_type == AttackType::ArithmeticOverflow) {
+                    if !attacks
+                        .iter()
+                        .any(|a| a.attack_type == AttackType::ArithmeticOverflow)
+                    {
                         attacks.push(Attack {
                             attack_type: AttackType::ArithmeticOverflow,
                             description: "Auto-detected: Arithmetic overflow testing".to_string(),
@@ -463,7 +469,13 @@ struct MerklePatternMatcher;
 
 impl PatternMatcher for MerklePatternMatcher {
     fn detect(&self, source: &str, _framework: Framework) -> Option<DetectedPattern> {
-        let keywords = ["merkle", "MerkleProof", "merkleRoot", "pathElements", "pathIndices"];
+        let keywords = [
+            "merkle",
+            "MerkleProof",
+            "merkleRoot",
+            "pathElements",
+            "pathIndices",
+        ];
         let mut matches = 0;
         let mut locations = Vec::new();
 
@@ -496,7 +508,14 @@ struct RangePatternMatcher;
 
 impl PatternMatcher for RangePatternMatcher {
     fn detect(&self, source: &str, _framework: Framework) -> Option<DetectedPattern> {
-        let keywords = ["Num2Bits", "range_check", "LessThan", "GreaterThan", "InRange", "bits"];
+        let keywords = [
+            "Num2Bits",
+            "range_check",
+            "LessThan",
+            "GreaterThan",
+            "InRange",
+            "bits",
+        ];
         let mut matches = 0;
         let mut locations = Vec::new();
 
@@ -591,7 +610,14 @@ struct SignaturePatternMatcher;
 
 impl PatternMatcher for SignaturePatternMatcher {
     fn detect(&self, source: &str, _framework: Framework) -> Option<DetectedPattern> {
-        let keywords = ["EdDSA", "ECDSA", "Schnorr", "signature", "verify_signature", "pubkey"];
+        let keywords = [
+            "EdDSA",
+            "ECDSA",
+            "Schnorr",
+            "signature",
+            "verify_signature",
+            "pubkey",
+        ];
         let mut matches = 0;
         let mut locations = Vec::new();
 
@@ -708,7 +734,7 @@ fn parse_circom_input(line: &str) -> Option<Input> {
         if parts.len() >= 3 {
             let name_part = parts.last()?;
             let name = name_part.trim_end_matches(';').trim_end_matches(']');
-            
+
             // Check for array
             let (name, length) = if let Some(bracket) = name.find('[') {
                 let base_name = &name[..bracket];
@@ -784,9 +810,11 @@ mod tests {
 
         let generator = ConfigGenerator::new();
         let patterns = generator.detect_patterns(source, Framework::Circom);
-        
+
         assert!(!patterns.is_empty());
-        assert!(patterns.iter().any(|p| p.pattern_type == PatternType::MerkleTree));
+        assert!(patterns
+            .iter()
+            .any(|p| p.pattern_type == PatternType::MerkleTree));
     }
 
     #[test]
@@ -802,9 +830,9 @@ mod tests {
 
         let generator = ConfigGenerator::new();
         let patterns = generator.detect_patterns(source, Framework::Circom);
-        
-        assert!(patterns.iter().any(|p| 
-            matches!(&p.pattern_type, PatternType::HashFunction(name) if name == "poseidon")
+
+        assert!(patterns.iter().any(
+            |p| matches!(&p.pattern_type, PatternType::HashFunction(name) if name == "poseidon")
         ));
     }
 

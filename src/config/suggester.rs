@@ -13,7 +13,7 @@
 //! let updated_yaml = suggester.apply_suggestions(&original_yaml, &suggestions)?;
 //! ```
 
-use crate::fuzzer::adaptive_attack_scheduler::{AdaptiveScheduler, YamlSuggestion, SuggestionType};
+use crate::fuzzer::adaptive_attack_scheduler::{AdaptiveScheduler, SuggestionType, YamlSuggestion};
 use crate::fuzzer::near_miss::NearMiss;
 use crate::reporting::FuzzReport;
 use std::collections::HashMap;
@@ -81,7 +81,10 @@ impl YamlSuggester {
                     suggestion_type: SuggestionType::IncreaseBudget,
                     key: attack_type.clone(),
                     value: "increase iterations".to_string(),
-                    reason: format!("{} found {} bugs - consider increasing budget", attack_type, count),
+                    reason: format!(
+                        "{} found {} bugs - consider increasing budget",
+                        attack_type, count
+                    ),
                 });
             }
         }
@@ -122,7 +125,7 @@ impl YamlSuggester {
     /// Deduplicate suggestions
     fn deduplicate_suggestions(&self, suggestions: &mut Vec<YamlSuggestion>) {
         let mut seen: HashMap<String, usize> = HashMap::new();
-        
+
         suggestions.retain(|s| {
             let key = format!("{:?}:{}", s.suggestion_type, s.key);
             if seen.contains_key(&key) {
@@ -205,12 +208,16 @@ impl YamlSuggester {
             }
             SuggestionType::IncreaseBudget => {
                 // Add to parameters
-                if let Some(params) = yaml.get_mut("campaign")
+                if let Some(params) = yaml
+                    .get_mut("campaign")
                     .and_then(|c| c.get_mut("parameters"))
                 {
                     if let Some(map) = params.as_mapping_mut() {
                         map.insert(
-                            serde_yaml::Value::String(format!("{}_iterations", suggestion.key.to_lowercase())),
+                            serde_yaml::Value::String(format!(
+                                "{}_iterations",
+                                suggestion.key.to_lowercase()
+                            )),
                             serde_yaml::Value::Number(serde_yaml::Number::from(2000)),
                         );
                     }
@@ -249,9 +256,10 @@ impl YamlSuggester {
                     suggestion_type: SuggestionType::AddInterestingValue,
                     key: "interesting".to_string(),
                     value: value.to_hex(),
-                    reason: nm.suggestion.clone().unwrap_or_else(|| 
-                        format!("Near-miss at distance {:.3}", nm.distance)
-                    ),
+                    reason: nm
+                        .suggestion
+                        .clone()
+                        .unwrap_or_else(|| format!("Near-miss at distance {:.3}", nm.distance)),
                 });
             }
         }
@@ -299,7 +307,7 @@ impl SuggestedConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zk_core::{AttackType, Finding, Severity, ProofOfConcept};
+    use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 
     #[test]
     fn test_suggester_creation() {
@@ -310,7 +318,7 @@ mod tests {
     #[test]
     fn test_suggestions_from_findings() {
         let suggester = YamlSuggester::new();
-        
+
         let report = FuzzReport {
             campaign_name: "test".to_string(),
             timestamp: chrono::Utc::now(),
@@ -343,18 +351,18 @@ mod tests {
         };
 
         let suggestions = suggester.generate_suggestions(&report, None);
-        
+
         // Should suggest increasing budget for Underconstrained
-        assert!(suggestions.iter().any(|s| 
-            s.key.contains("Underconstrained") && 
-            matches!(s.suggestion_type, SuggestionType::IncreaseBudget)
-        ));
+        assert!(suggestions
+            .iter()
+            .any(|s| s.key.contains("Underconstrained")
+                && matches!(s.suggestion_type, SuggestionType::IncreaseBudget)));
     }
 
     #[test]
     fn test_apply_suggestions() {
         let suggester = YamlSuggester::new();
-        
+
         let original = r#"
 campaign:
   name: "Test"
@@ -374,17 +382,15 @@ attacks:
     description: "Test"
 "#;
 
-        let suggestions = vec![
-            YamlSuggestion {
-                suggestion_type: SuggestionType::AddInterestingValue,
-                key: "interesting".to_string(),
-                value: "0xdeadbeef".to_string(),
-                reason: "Near-miss detected".to_string(),
-            },
-        ];
+        let suggestions = vec![YamlSuggestion {
+            suggestion_type: SuggestionType::AddInterestingValue,
+            key: "interesting".to_string(),
+            value: "0xdeadbeef".to_string(),
+            reason: "Near-miss detected".to_string(),
+        }];
 
         let result = suggester.apply_suggestions(original, &suggestions).unwrap();
-        
+
         assert!(result.contains("SUGGESTIONS"));
         assert!(result.contains("Near-miss detected"));
     }

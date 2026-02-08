@@ -133,7 +133,11 @@ impl CoverageSummary {
             writer,
             "├─ {}: {} / {} ({}) {}",
             "Constraints".bright_white(),
-            format!("{:>5}", self.format_number(self.constraint_coverage.covered)).color(constraint_color),
+            format!(
+                "{:>5}",
+                self.format_number(self.constraint_coverage.covered)
+            )
+            .color(constraint_color),
             self.format_number(self.constraint_coverage.total),
             format!("{:>5.1}%", self.constraint_coverage.percentage).color(constraint_color),
             constraint_bar
@@ -249,7 +253,7 @@ impl CoverageSummary {
     /// Print compact one-line summary
     pub fn print_compact(&self) {
         let constraint_pct = format!("{:.1}%", self.constraint_coverage.percentage);
-        
+
         let dep_pct = self
             .dependency_coverage
             .as_ref()
@@ -289,11 +293,7 @@ impl CoverageSummary {
         let filled = ((percentage / 100.0) * width as f64).round() as usize;
         let empty = width.saturating_sub(filled);
 
-        let bar = format!(
-            "[{}{}]",
-            "█".repeat(filled),
-            "░".repeat(empty)
-        );
+        let bar = format!("[{}{}]", "█".repeat(filled), "░".repeat(empty));
 
         let color = self.color_for_percentage(percentage);
         format!("{}", bar.color(color))

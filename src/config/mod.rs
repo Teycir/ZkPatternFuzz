@@ -15,9 +15,11 @@
 
 pub mod generator;
 pub mod parser;
+pub mod readiness;  // Phase 4C: 0-day readiness validation
 pub mod suggester;
 pub mod v2;
 
+pub use readiness::{check_0day_readiness, ReadinessReport, ReadinessWarning, ReadinessLevel};
 pub use suggester::YamlSuggester;
 
 use serde::{Deserialize, Serialize};

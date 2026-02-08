@@ -20,9 +20,9 @@
 //! ```
 
 use crate::config::Framework;
-use zk_core::{FieldElement, Finding};
 use serde::Serialize;
 use std::fmt::Write;
+use zk_core::{FieldElement, Finding};
 
 /// Output format for PoC scripts
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,7 +113,14 @@ impl PoCGenerator {
 
         if self.config.include_setup {
             writeln!(script, "# Setup")?;
-            writeln!(script, "CIRCUIT_PATH=\"{}\"", self.config.circuit_path.as_deref().unwrap_or("./circuit.circom"))?;
+            writeln!(
+                script,
+                "CIRCUIT_PATH=\"{}\"",
+                self.config
+                    .circuit_path
+                    .as_deref()
+                    .unwrap_or("./circuit.circom")
+            )?;
             writeln!(script, "PTAU_PATH=\"./powersOfTau28_hez_final_10.ptau\"")?;
             writeln!(script, "")?;
         }
@@ -141,7 +148,10 @@ impl PoCGenerator {
             writeln!(script, "")?;
 
             writeln!(script, "echo \"Generating proof for Witness A...\"")?;
-            writeln!(script, "snarkjs groth16 setup circuit.r1cs \"$PTAU_PATH\" circuit_0000.zkey")?;
+            writeln!(
+                script,
+                "snarkjs groth16 setup circuit.r1cs \"$PTAU_PATH\" circuit_0000.zkey"
+            )?;
             writeln!(script, "snarkjs groth16 prove circuit_0000.zkey circuit_js/circuit.wasm input_a.json proof_a.json public_a.json")?;
             writeln!(script, "")?;
 
@@ -152,16 +162,31 @@ impl PoCGenerator {
 
                 writeln!(script, "# Verify both proofs produce same public outputs")?;
                 writeln!(script, "echo \"Comparing public outputs...\"")?;
-                writeln!(script, "if diff public_a.json public_b.json > /dev/null; then")?;
+                writeln!(
+                    script,
+                    "if diff public_a.json public_b.json > /dev/null; then"
+                )?;
                 writeln!(script, "    echo \"[VULNERABILITY CONFIRMED] Same public output from different witnesses!\"")?;
-                writeln!(script, "    echo \"This confirms the circuit is underconstrained.\"")?;
+                writeln!(
+                    script,
+                    "    echo \"This confirms the circuit is underconstrained.\""
+                )?;
                 writeln!(script, "else")?;
-                writeln!(script, "    echo \"Public outputs differ (expected if fix applied)\"")?;
+                writeln!(
+                    script,
+                    "    echo \"Public outputs differ (expected if fix applied)\""
+                )?;
                 writeln!(script, "fi")?;
             } else {
                 writeln!(script, "# Verify proof")?;
-                writeln!(script, "snarkjs groth16 verify verification_key.json public_a.json proof_a.json")?;
-                writeln!(script, "echo \"[VULNERABILITY DEMONSTRATED] Proof verified for malicious input\"")?;
+                writeln!(
+                    script,
+                    "snarkjs groth16 verify verification_key.json public_a.json proof_a.json"
+                )?;
+                writeln!(
+                    script,
+                    "echo \"[VULNERABILITY DEMONSTRATED] Proof verified for malicious input\""
+                )?;
             }
         }
 
@@ -189,7 +214,11 @@ impl PoCGenerator {
 
         writeln!(script, "async function exploitDemo() {{")?;
         writeln!(script, "    console.log(\"=== ZkPatternFuzz PoC ===\");")?;
-        writeln!(script, "    console.log(\"Attack: {:?}\");", finding.attack_type)?;
+        writeln!(
+            script,
+            "    console.log(\"Attack: {:?}\");",
+            finding.attack_type
+        )?;
         writeln!(script, "    console.log(\"\");")?;
         writeln!(script, "")?;
 
@@ -197,7 +226,12 @@ impl PoCGenerator {
         writeln!(script, "    // Witness A - Exploiting input")?;
         writeln!(script, "    const witnessA = {{}};")?;
         for (i, fe) in finding.poc.witness_a.iter().enumerate() {
-            writeln!(script, "    witnessA[\"input_{}\"] = \"{}\";", i, fe.to_hex())?;
+            writeln!(
+                script,
+                "    witnessA[\"input_{}\"] = \"{}\";",
+                i,
+                fe.to_hex()
+            )?;
         }
         writeln!(script, "")?;
 
@@ -206,18 +240,29 @@ impl PoCGenerator {
             writeln!(script, "    // Witness B - Alternative valid witness")?;
             writeln!(script, "    const witnessB = {{}};")?;
             for (i, fe) in witness_b.iter().enumerate() {
-                writeln!(script, "    witnessB[\"input_{}\"] = \"{}\";", i, fe.to_hex())?;
+                writeln!(
+                    script,
+                    "    witnessB[\"input_{}\"] = \"{}\";",
+                    i,
+                    fe.to_hex()
+                )?;
             }
             writeln!(script, "")?;
         }
 
-        writeln!(script, "    const circuitWasm = \"{}circuit_js/circuit.wasm\";",
-                 self.config.circuit_path.as_deref().unwrap_or("./"))?;
+        writeln!(
+            script,
+            "    const circuitWasm = \"{}circuit_js/circuit.wasm\";",
+            self.config.circuit_path.as_deref().unwrap_or("./")
+        )?;
         writeln!(script, "    const zkey = \"circuit_0000.zkey\";")?;
         writeln!(script, "")?;
 
         writeln!(script, "    try {{")?;
-        writeln!(script, "        console.log(\"Generating proof for Witness A...\");")?;
+        writeln!(
+            script,
+            "        console.log(\"Generating proof for Witness A...\");"
+        )?;
         writeln!(script, "        const {{ proof: proofA, publicSignals: pubA }} = await snarkjs.groth16.fullProve(")?;
         writeln!(script, "            witnessA, circuitWasm, zkey")?;
         writeln!(script, "        );")?;
@@ -225,23 +270,47 @@ impl PoCGenerator {
         writeln!(script, "")?;
 
         if finding.poc.witness_b.is_some() {
-            writeln!(script, "        console.log(\"Generating proof for Witness B...\");")?;
+            writeln!(
+                script,
+                "        console.log(\"Generating proof for Witness B...\");"
+            )?;
             writeln!(script, "        const {{ proof: proofB, publicSignals: pubB }} = await snarkjs.groth16.fullProve(")?;
             writeln!(script, "            witnessB, circuitWasm, zkey")?;
             writeln!(script, "        );")?;
             writeln!(script, "        console.log(\"Public outputs B:\", pubB);")?;
             writeln!(script, "")?;
-            writeln!(script, "        // Check if outputs match (vulnerability confirmation)")?;
-            writeln!(script, "        if (JSON.stringify(pubA) === JSON.stringify(pubB)) {{")?;
-            writeln!(script, "            console.log(\"\\n[VULNERABILITY CONFIRMED]\");")?;
+            writeln!(
+                script,
+                "        // Check if outputs match (vulnerability confirmation)"
+            )?;
+            writeln!(
+                script,
+                "        if (JSON.stringify(pubA) === JSON.stringify(pubB)) {{"
+            )?;
+            writeln!(
+                script,
+                "            console.log(\"\\n[VULNERABILITY CONFIRMED]\");"
+            )?;
             writeln!(script, "            console.log(\"Different witnesses produce identical public outputs!\");")?;
-            writeln!(script, "            console.log(\"Circuit is underconstrained.\");")?;
+            writeln!(
+                script,
+                "            console.log(\"Circuit is underconstrained.\");"
+            )?;
             writeln!(script, "        }} else {{")?;
-            writeln!(script, "            console.log(\"\\nOutputs differ (vulnerability may be fixed)\");")?;
+            writeln!(
+                script,
+                "            console.log(\"\\nOutputs differ (vulnerability may be fixed)\");"
+            )?;
             writeln!(script, "        }}")?;
         } else {
-            writeln!(script, "        console.log(\"\\n[VULNERABILITY DEMONSTRATED]\");")?;
-            writeln!(script, "        console.log(\"Malicious input accepted by circuit\");")?;
+            writeln!(
+                script,
+                "        console.log(\"\\n[VULNERABILITY DEMONSTRATED]\");"
+            )?;
+            writeln!(
+                script,
+                "        console.log(\"Malicious input accepted by circuit\");"
+            )?;
         }
 
         writeln!(script, "    }} catch (error) {{")?;
@@ -277,7 +346,11 @@ impl PoCGenerator {
         writeln!(script, "        // Witness A - Exploiting input")?;
         writeln!(script, "        let witness_a: Vec<FieldElement> = vec![")?;
         for fe in &finding.poc.witness_a {
-            writeln!(script, "            FieldElement::from_hex(\"{}\").unwrap(),", fe.to_hex())?;
+            writeln!(
+                script,
+                "            FieldElement::from_hex(\"{}\").unwrap(),",
+                fe.to_hex()
+            )?;
         }
         writeln!(script, "        ];")?;
         writeln!(script, "")?;
@@ -286,27 +359,46 @@ impl PoCGenerator {
             writeln!(script, "        // Witness B - Alternative valid witness")?;
             writeln!(script, "        let witness_b: Vec<FieldElement> = vec![")?;
             for fe in witness_b {
-                writeln!(script, "            FieldElement::from_hex(\"{}\").unwrap(),", fe.to_hex())?;
+                writeln!(
+                    script,
+                    "            FieldElement::from_hex(\"{}\").unwrap(),",
+                    fe.to_hex()
+                )?;
             }
             writeln!(script, "        ];")?;
             writeln!(script, "")?;
 
             writeln!(script, "        // Execute both witnesses")?;
-            writeln!(script, "        let output_a = executor.execute(&witness_a).unwrap();")?;
-            writeln!(script, "        let output_b = executor.execute(&witness_b).unwrap();")?;
+            writeln!(
+                script,
+                "        let output_a = executor.execute(&witness_a).unwrap();"
+            )?;
+            writeln!(
+                script,
+                "        let output_b = executor.execute(&witness_b).unwrap();"
+            )?;
             writeln!(script, "")?;
-            writeln!(script, "        // Vulnerability: same output from different inputs")?;
+            writeln!(
+                script,
+                "        // Vulnerability: same output from different inputs"
+            )?;
             writeln!(script, "        assert_eq!(")?;
             writeln!(script, "            output_a.public_outputs,")?;
             writeln!(script, "            output_b.public_outputs,")?;
-            writeln!(script, "            \"[VULNERABILITY CONFIRMED] Underconstrained circuit\"")?;
+            writeln!(
+                script,
+                "            \"[VULNERABILITY CONFIRMED] Underconstrained circuit\""
+            )?;
             writeln!(script, "        );")?;
         } else {
             writeln!(script, "        // Execute malicious witness")?;
             writeln!(script, "        let result = executor.execute(&witness_a);")?;
             writeln!(script, "")?;
             writeln!(script, "        // Vulnerability: malicious input accepted")?;
-            writeln!(script, "        assert!(result.is_ok(), \"[VULNERABILITY CONFIRMED]\");")?;
+            writeln!(
+                script,
+                "        assert!(result.is_ok(), \"[VULNERABILITY CONFIRMED]\");"
+            )?;
         }
 
         writeln!(script, "    }}")?;
@@ -357,15 +449,27 @@ impl PoCGenerator {
         writeln!(script, "")?;
 
         writeln!(script, "    # Write witness files")?;
-        writeln!(script, "    Path(\"input_a.json\").write_text(json.dumps(witness_a))")?;
+        writeln!(
+            script,
+            "    Path(\"input_a.json\").write_text(json.dumps(witness_a))"
+        )?;
         if finding.poc.witness_b.is_some() {
-            writeln!(script, "    Path(\"input_b.json\").write_text(json.dumps(witness_b))")?;
+            writeln!(
+                script,
+                "    Path(\"input_b.json\").write_text(json.dumps(witness_b))"
+            )?;
         }
         writeln!(script, "")?;
 
         writeln!(script, "    print(\"Witness files written. Run:\")")?;
-        writeln!(script, "    print(\"  circom circuit.circom --r1cs --wasm\")")?;
-        writeln!(script, "    print(\"  snarkjs groth16 prove ... input_a.json\")")?;
+        writeln!(
+            script,
+            "    print(\"  circom circuit.circom --r1cs --wasm\")"
+        )?;
+        writeln!(
+            script,
+            "    print(\"  snarkjs groth16 prove ... input_a.json\")"
+        )?;
         writeln!(script, "")?;
 
         writeln!(script, "if __name__ == \"__main__\":")?;
@@ -392,8 +496,17 @@ impl PoCGenerator {
             severity: format!("{:?}", finding.severity),
             description: finding.description.clone(),
             witness_a: finding.poc.witness_a.iter().map(|fe| fe.to_hex()).collect(),
-            witness_b: finding.poc.witness_b.as_ref().map(|w| w.iter().map(|fe| fe.to_hex()).collect()),
-            public_inputs: finding.poc.public_inputs.iter().map(|fe| fe.to_hex()).collect(),
+            witness_b: finding
+                .poc
+                .witness_b
+                .as_ref()
+                .map(|w| w.iter().map(|fe| fe.to_hex()).collect()),
+            public_inputs: finding
+                .poc
+                .public_inputs
+                .iter()
+                .map(|fe| fe.to_hex())
+                .collect(),
             location: finding.location.clone(),
         };
 
@@ -405,7 +518,7 @@ impl PoCGenerator {
         let mut json = String::from("{\n");
         for (i, fe) in witness.iter().enumerate() {
             let comma = if i < witness.len() - 1 { "," } else { "" };
-            writeln!(json, "  \"input_{}\": \"{}\"{}",  i, fe.to_hex(), comma)?;
+            writeln!(json, "  \"input_{}\": \"{}\"{}", i, fe.to_hex(), comma)?;
         }
         json.push_str("}");
         Ok(json)
@@ -429,12 +542,9 @@ impl PoCGenerator {
                 PoCFormat::Json => "json",
             };
 
-            let filename = format!(
-                "poc_{:02}_{:?}.{}",
-                i + 1,
-                finding.attack_type,
-                extension
-            ).to_lowercase().replace(" ", "_");
+            let filename = format!("poc_{:02}_{:?}.{}", i + 1, finding.attack_type, extension)
+                .to_lowercase()
+                .replace(" ", "_");
 
             let script = self.generate(finding, format)?;
             let path = output_dir.join(&filename);
@@ -456,7 +566,7 @@ impl Default for PoCGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zk_core::{AttackType, Severity, ProofOfConcept, Finding};
+    use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 
     fn sample_finding() -> Finding {
         Finding {
@@ -471,7 +581,7 @@ mod tests {
                 ],
                 witness_b: Some(vec![
                     FieldElement::from_u64(1),
-                    FieldElement::from_u64(2),  // Invalid: not 0 or 1
+                    FieldElement::from_u64(2), // Invalid: not 0 or 1
                     FieldElement::from_u64(1),
                 ]),
                 public_inputs: vec![FieldElement::from_u64(12345)],

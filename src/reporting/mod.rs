@@ -8,8 +8,11 @@
 //! - PoC Generator: Exploit reproduction scripts
 
 pub mod coverage_summary;
+pub mod evidence;  // Phase 5: Proof-level evidence bundles
 pub mod poc_generator;
 pub mod sarif;
+
+pub use evidence::{EvidenceBundle, EvidenceGenerator, BackendIdentity, VerificationResult};
 
 use crate::config::ReportingConfig;
 use zk_core::Severity;

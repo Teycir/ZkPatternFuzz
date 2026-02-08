@@ -1,0 +1,77 @@
+---
+# Phase 4B: Quick Triage Campaign Template
+# Fast skimmer for rapid surface coverage (~5 minutes)
+#
+# Purpose: First pass on a new target to identify obvious issues
+# Use Case: When you need to triage or compare multiple targets quickly
+#
+# Limitations:
+# - Low depth; misses multi-step logic bugs
+# - Not suitable for evidence mode
+# - Findings should be validated with deeper campaigns
+
+campaign:
+  name: "{{CIRCUIT_NAME}} Quick Triage"
+  version: "2.0"
+  target:
+    framework: "{{FRAMEWORK}}"  # circom, noir, halo2, cairo
+    circuit_path: "{{PATH_TO_CIRCUIT}}"
+    main_component: "{{MAIN_COMPONENT}}"
+  parameters:
+    field: "bn254"
+    max_constraints: 50000
+    timeout_seconds: 300  # 5 minutes
+    additional:
+      # Fast mode settings
+      strict_backend: false  # Allow fallback for quick testing
+      per_exec_isolation: false  # Faster without isolation
+      execution_timeout_ms: 5000
+
+      # Shallow symbolic execution
+      constraint_guided_enabled: true
+      symbolic_max_paths: 100
+      symbolic_max_depth: 20
+      symbolic_solver_timeout_ms: 1000
+
+      # Small corpus
+      corpus_max_size: 10000
+
+      # Broad oracles
+      enabled_oracles:
+        - "underconstrained_oracle"
+        - "arithmetic_overflow_oracle"
+      oracle_validation: false  # Skip for speed
+
+      # Quick fuzzing
+      fuzzing_iterations: 5000
+
+attacks:
+  - type: "underconstrained"
+    description: "Quick underconstrained check"
+    config:
+      witness_pairs: 500
+
+  - type: "boundary"
+    description: "Fast boundary check"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "p-1"
+
+  - type: "collision"
+    description: "Quick collision check"
+    config:
+      samples: 1000
+
+inputs:
+  - name: "input"
+    type: "field"
+    fuzz_strategy: random
+
+reporting:
+  output_dir: "./reports/triage"
+  formats:
+    - json
+  include_poc: false
+  crash_reproduction: false

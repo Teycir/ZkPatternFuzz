@@ -95,6 +95,43 @@ pub struct TestMetadata {
     pub coverage_bits: u64,
 }
 
+/// Phase 3C: Classification of finding types for proper categorization
+/// 
+/// This enum distinguishes between different classes of findings,
+/// helping to properly categorize and prioritize issues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingClass {
+    /// Oracle detected a semantic bug (highest confidence)
+    OracleViolation,
+    /// YAML invariant was violated by circuit-accepted witness
+    InvariantViolation,
+    /// Executor panicked or returned abnormal exit
+    Crash,
+    /// Execution exceeded timeout (potential DoS)
+    Hang,
+    /// Unconfirmed hint requiring manual review
+    Heuristic,
+}
+
+impl Default for FindingClass {
+    fn default() -> Self {
+        Self::Heuristic
+    }
+}
+
+impl std::fmt::Display for FindingClass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FindingClass::OracleViolation => write!(f, "Oracle Violation"),
+            FindingClass::InvariantViolation => write!(f, "Invariant Violation"),
+            FindingClass::Crash => write!(f, "Crash"),
+            FindingClass::Hang => write!(f, "Hang"),
+            FindingClass::Heuristic => write!(f, "Heuristic"),
+        }
+    }
+}
+
 /// A security finding
 #[derive(Debug, Clone)]
 pub struct Finding {
@@ -103,6 +140,25 @@ pub struct Finding {
     pub description: String,
     pub poc: ProofOfConcept,
     pub location: Option<String>,
+}
+
+impl Finding {
+    /// Phase 3C: Classify this finding based on its characteristics
+    pub fn classify(&self) -> FindingClass {
+        let desc_lower = self.description.to_lowercase();
+        
+        if desc_lower.contains("hang") || desc_lower.contains("timeout") {
+            FindingClass::Hang
+        } else if desc_lower.contains("crash") || desc_lower.contains("panic") {
+            FindingClass::Crash
+        } else if desc_lower.contains("invariant") && desc_lower.contains("violated") {
+            FindingClass::InvariantViolation
+        } else if desc_lower.contains("oracle") || !self.poc.witness_a.is_empty() {
+            FindingClass::OracleViolation
+        } else {
+            FindingClass::Heuristic
+        }
+    }
 }
 
 impl serde::Serialize for Finding {

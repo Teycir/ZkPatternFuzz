@@ -282,9 +282,24 @@ impl FuzzingEngine {
             );
         }
 
-        let isolate_exec = Self::additional_bool(additional, "per_exec_isolation")
+        // Phase 1A: Block explicit mock in evidence mode
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        if evidence_mode && executor.is_mock() {
+            anyhow::bail!(
+                "EVIDENCE MODE REJECTED: Cannot use mock executor in evidence mode. \
+                 All findings would be synthetic. Use a real backend (circom/noir/halo2/cairo)."
+            );
+        }
+
+        // Phase 3A: Enable per_exec_isolation by default in evidence mode for hang safety
+        let mut isolate_exec = Self::additional_bool(additional, "per_exec_isolation")
             .or_else(|| Self::additional_bool(additional, "exec_isolation"))
             .unwrap_or(false);
+
+        if evidence_mode && !isolate_exec {
+            tracing::warn!("Evidence mode: enabling per_exec_isolation for hang safety");
+            isolate_exec = true;
+        }
 
         if isolate_exec {
             let execution_timeout_ms = Self::additional_u64(additional, "execution_timeout_ms")
@@ -3326,6 +3341,11 @@ impl FuzzingEngine {
                 self.record_crash_finding(&test_case, &result);
             }
             
+            // Phase 2A: Check invariants against every accepted witness
+            if result.success {
+                self.check_invariants_against(&test_case, &result);
+            }
+            
             // Track coverage improvements
             if result.coverage.new_coverage {
                 tracing::debug!(
@@ -3432,6 +3452,80 @@ impl FuzzingEngine {
             )),
         };
         
+        if let Ok(mut findings) = self.core.findings().write() {
+            findings.push(finding);
+        }
+    }
+
+    /// Phase 2A: Check invariants against every accepted witness
+    ///
+    /// Unlike the one-shot enforce_invariants(), this is called for every
+    /// successful execution in the fuzzing loop, enabling continuous
+    /// invariant violation detection.
+    fn check_invariants_against(&self, test_case: &TestCase, result: &ExecutionResult) {
+        use crate::fuzzer::invariant_checker::InvariantChecker;
+
+        // Get invariants from config
+        let invariants = self.config.get_invariants();
+        if invariants.is_empty() {
+            return;
+        }
+
+        // Create checker (TODO: cache this in engine state for efficiency)
+        let mut checker = InvariantChecker::new(invariants, &self.config.inputs);
+
+        // Check all invariants
+        let violations = checker.check(
+            &test_case.inputs,
+            &result.outputs,
+            result.success,
+        );
+
+        // Record violations as findings
+        for violation in violations {
+            self.record_invariant_violation(&violation, test_case);
+        }
+    }
+
+    /// Record an invariant violation as a finding
+    fn record_invariant_violation(
+        &self,
+        violation: &crate::fuzzer::invariant_checker::Violation,
+        test_case: &TestCase,
+    ) {
+        use zk_core::{Finding, ProofOfConcept};
+
+        let severity = match violation.severity.to_lowercase().as_str() {
+            "critical" => Severity::Critical,
+            "high" => Severity::High,
+            "medium" => Severity::Medium,
+            "low" => Severity::Low,
+            _ => Severity::Medium,
+        };
+
+        let finding = Finding {
+            attack_type: AttackType::ConstraintInference,
+            severity,
+            description: format!(
+                "Invariant '{}' violated: {}\nRelation: {}\nEvidence: {}",
+                violation.invariant_name,
+                if violation.circuit_accepted {
+                    "Circuit ACCEPTED violating witness"
+                } else {
+                    "Violation detected"
+                },
+                violation.relation,
+                violation.evidence
+            ),
+            poc: ProofOfConcept {
+                witness_a: test_case.inputs.clone(),
+                witness_b: None,
+                public_inputs: vec![],
+                proof: None,
+            },
+            location: Some(format!("Invariant: {}", violation.invariant_name)),
+        };
+
         if let Ok(mut findings) = self.core.findings().write() {
             findings.push(finding);
         }

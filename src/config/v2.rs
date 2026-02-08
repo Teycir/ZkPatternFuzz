@@ -35,10 +35,10 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use serde_yaml::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-use serde_yaml::Value;
 
 use super::{FuzzConfig, ReportingConfig};
 
@@ -370,21 +370,18 @@ impl ConfigResolver {
             }
 
             // Store v2-specific extensions in additional parameters
-            merged
-                .campaign
-                .parameters
-                .additional
-                .insert("v2_invariants".to_string(), serde_yaml::to_value(&v2_config.invariants)?);
-            merged
-                .campaign
-                .parameters
-                .additional
-                .insert("v2_schedule".to_string(), serde_yaml::to_value(&v2_config.schedule)?);
-            merged
-                .campaign
-                .parameters
-                .additional
-                .insert("v2_traits".to_string(), serde_yaml::to_value(&v2_config.target_traits)?);
+            merged.campaign.parameters.additional.insert(
+                "v2_invariants".to_string(),
+                serde_yaml::to_value(&v2_config.invariants)?,
+            );
+            merged.campaign.parameters.additional.insert(
+                "v2_schedule".to_string(),
+                serde_yaml::to_value(&v2_config.schedule)?,
+            );
+            merged.campaign.parameters.additional.insert(
+                "v2_traits".to_string(),
+                serde_yaml::to_value(&v2_config.target_traits)?,
+            );
 
             Ok(merged)
         } else {
@@ -545,27 +542,24 @@ impl ConfigResolver {
 
         // Add profile parameters to additional config
         if let Some(depth) = profile.max_depth {
-            config
-                .campaign
-                .parameters
-                .additional
-                .insert("max_depth".to_string(), serde_yaml::Value::Number(depth.into()));
+            config.campaign.parameters.additional.insert(
+                "max_depth".to_string(),
+                serde_yaml::Value::Number(depth.into()),
+            );
         }
 
         if let Some(ref hash) = profile.hash_function {
-            config
-                .campaign
-                .parameters
-                .additional
-                .insert("hash_function".to_string(), serde_yaml::Value::String(hash.clone()));
+            config.campaign.parameters.additional.insert(
+                "hash_function".to_string(),
+                serde_yaml::Value::String(hash.clone()),
+            );
         }
 
         if let Some(bits) = profile.bit_length {
-            config
-                .campaign
-                .parameters
-                .additional
-                .insert("bit_length".to_string(), serde_yaml::Value::Number(bits.into()));
+            config.campaign.parameters.additional.insert(
+                "bit_length".to_string(),
+                serde_yaml::Value::Number(bits.into()),
+            );
         }
 
         // Merge custom parameters
@@ -728,8 +722,16 @@ impl FuzzConfig {
     /// Check if config uses v2 features
     pub fn is_v2(&self) -> bool {
         self.campaign.version.starts_with("2.")
-            || self.campaign.parameters.additional.contains_key("v2_invariants")
-            || self.campaign.parameters.additional.contains_key("v2_schedule")
+            || self
+                .campaign
+                .parameters
+                .additional
+                .contains_key("v2_invariants")
+            || self
+                .campaign
+                .parameters
+                .additional
+                .contains_key("v2_schedule")
     }
 }
 
@@ -907,7 +909,8 @@ fn parse_range_chain(relation: &str) -> Result<Option<InvariantAST>, ConfigV2Err
     let value = parse_expr(tokens[2].trim())?;
     let upper = parse_expr(tokens[4].trim())?;
 
-    let (inclusive_lower, inclusive_upper) = (op1 == "<=" || op1 == ">=", op2 == "<=" || op2 == ">=");
+    let (inclusive_lower, inclusive_upper) =
+        (op1 == "<=" || op1 == ">=", op2 == "<=" || op2 == ">=");
 
     Ok(Some(InvariantAST::Range {
         lower: Box::new(lower),
@@ -928,12 +931,7 @@ fn is_literal(expr: &str) -> bool {
     }
     matches!(
         lower.as_str(),
-        "p"
-            | "p-1"
-            | "max"
-            | "max_field"
-            | "(p-1)/2"
-            | "bit_length"
+        "p" | "p-1" | "max" | "max_field" | "(p-1)/2" | "bit_length"
     )
 }
 
@@ -960,7 +958,10 @@ pub enum InvariantAST {
         inclusive_lower: bool,
         inclusive_upper: bool,
     },
-    ForAll { binder: String, expr: Box<InvariantAST> },
+    ForAll {
+        binder: String,
+        expr: Box<InvariantAST>,
+    },
     Raw(String),
 }
 

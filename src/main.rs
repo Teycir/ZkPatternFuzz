@@ -38,6 +38,11 @@ struct Cli {
     /// Use simple progress (no fancy terminal UI)
     #[arg(long, global = true)]
     simple_progress: bool,
+
+    /// Require real backend (fail if mock would be used)
+    /// Sets strict_backend=true and rejects framework: "mock"
+    #[arg(long, global = true)]
+    real_only: bool,
 }
 
 #[derive(Subcommand)]
@@ -121,6 +126,7 @@ async fn main() -> anyhow::Result<()> {
                 cli.verbose,
                 cli.dry_run,
                 cli.simple_progress,
+                cli.real_only,
                 iterations,
                 timeout,
                 false,
@@ -134,6 +140,7 @@ async fn main() -> anyhow::Result<()> {
                 cli.verbose,
                 cli.dry_run,
                 cli.simple_progress,
+                cli.real_only || true, // Evidence mode always requires real backend
                 iterations,
                 timeout,
                 true,
@@ -162,6 +169,7 @@ async fn main() -> anyhow::Result<()> {
                     cli.verbose,
                     cli.dry_run,
                     cli.simple_progress,
+                    cli.real_only,
                     1000,
                     None,
                     false,
@@ -183,12 +191,29 @@ async fn run_campaign(
     verbose: bool,
     dry_run: bool,
     simple_progress: bool,
+    real_only: bool,
     iterations: u64,
     timeout: Option<u64>,
     require_invariants: bool,
 ) -> anyhow::Result<()> {
     tracing::info!("Loading campaign from: {}", config_path);
     let mut config = FuzzConfig::from_yaml(config_path)?;
+
+    // Phase 1C: --real-only flag enforcement
+    if real_only {
+        // Reject mock framework at config load time
+        if config.campaign.target.framework == zk_fuzzer::config::Framework::Mock {
+            anyhow::bail!(
+                "REAL-ONLY MODE: Cannot use framework 'mock'. \
+                 Use a real backend (circom/noir/halo2/cairo)."
+            );
+        }
+        // Force strict_backend
+        config.campaign.parameters.additional.insert(
+            "strict_backend".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+    }
 
     if require_invariants {
         let invariants = config.get_invariants();
@@ -285,6 +310,17 @@ fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
             for input in &config.inputs {
                 println!("  - {}: {} ({:?})", input.name, input.input_type, input.fuzz_strategy);
             }
+            
+            // Phase 4C: 0-day readiness check
+            println!();
+            let readiness = zk_fuzzer::config::check_0day_readiness(&config);
+            print!("{}", readiness.format());
+            
+            if !readiness.ready_for_evidence {
+                eprintln!("\n⚠️  Campaign has critical issues - not ready for evidence mode");
+                std::process::exit(1);
+            }
+            
             Ok(())
         }
         Err(e) => {

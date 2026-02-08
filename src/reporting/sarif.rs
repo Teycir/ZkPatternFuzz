@@ -53,12 +53,12 @@
 //! # }
 //! ```
 
-use zk_core::{AttackType, Severity};
-use zk_core::Finding;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::HashMap;
 use std::path::Path;
+use zk_core::Finding;
+use zk_core::{AttackType, Severity};
 
 /// SARIF version constant
 pub const SARIF_VERSION: &str = "2.1.0";
