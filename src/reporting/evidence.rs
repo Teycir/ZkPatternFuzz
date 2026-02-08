@@ -151,16 +151,17 @@ pub struct EvidenceGenerator {
     output_dir: PathBuf,
     /// Campaign configuration
     config: FuzzConfig,
-    /// Path to snarkjs CLI (for Circom) - reserved for future proof generation
-    #[allow(dead_code)]
+    /// Path to snarkjs CLI (for Circom)
     snarkjs_path: Option<PathBuf>,
-    /// Path to ptau file (for Circom setup) - reserved for future proof generation
+    /// Path to ptau file (for Circom setup) - reserved for future trusted setup
     #[allow(dead_code)]
     ptau_path: Option<PathBuf>,
     /// Path to circuit zkey file
     zkey_path: Option<PathBuf>,
     /// Path to verification key
     vkey_path: Option<PathBuf>,
+    /// Path to compiled circuit WASM
+    wasm_path: Option<PathBuf>,
 }
 
 impl EvidenceGenerator {
@@ -178,13 +179,29 @@ impl EvidenceGenerator {
             .and_then(|v| v.as_str())
             .map(PathBuf::from);
 
+        let zkey_path = additional
+            .get("circom_zkey_path")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from);
+
+        let vkey_path = additional
+            .get("circom_vkey_path")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from);
+
+        let wasm_path = additional
+            .get("circom_wasm_path")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from);
+
         Self {
             output_dir,
             config,
             snarkjs_path,
             ptau_path,
-            zkey_path: None,
-            vkey_path: None,
+            zkey_path,
+            vkey_path,
+            wasm_path,
         }
     }
 
@@ -198,6 +215,76 @@ impl EvidenceGenerator {
     pub fn with_vkey(mut self, path: PathBuf) -> Self {
         self.vkey_path = Some(path);
         self
+    }
+
+    /// Set the circuit WASM path
+    pub fn with_wasm(mut self, path: PathBuf) -> Self {
+        self.wasm_path = Some(path);
+        self
+    }
+
+    /// Resolve the snarkjs command to use
+    fn resolve_snarkjs_cmd(&self) -> String {
+        if let Some(ref path) = self.snarkjs_path {
+            if path.exists() {
+                return path.display().to_string();
+            }
+        }
+        // Default to npx snarkjs which handles both global and local installs
+        "npx snarkjs".to_string()
+    }
+
+    /// Auto-discover circuit artifacts from build directory
+    fn discover_circuit_artifacts(&self) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
+        let circuit_path = &self.config.campaign.target.circuit_path;
+        let main_component = &self.config.campaign.target.main_component;
+        
+        // Try to find build directory
+        let build_dir = self.config.campaign.parameters.additional
+            .get("build_dir")
+            .or_else(|| self.config.campaign.parameters.additional.get("circom_build_dir"))
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                // Default: look for build dir next to circuit
+                circuit_path.parent()
+                    .map(|p| p.join("build"))
+                    .unwrap_or_else(|| PathBuf::from("./build"))
+            });
+
+        let component_lower = main_component.to_lowercase();
+        
+        // Discover WASM
+        let wasm = self.wasm_path.clone().or_else(|| {
+            let wasm_dir = build_dir.join(format!("{}_js", component_lower));
+            let wasm_file = wasm_dir.join(format!("{}.wasm", component_lower));
+            if wasm_file.exists() {
+                Some(wasm_file)
+            } else {
+                // Try alternative naming
+                let alt_wasm = build_dir.join(format!("{}.wasm", component_lower));
+                if alt_wasm.exists() { Some(alt_wasm) } else { None }
+            }
+        });
+
+        // Discover zkey
+        let zkey = self.zkey_path.clone().or_else(|| {
+            let zkey_file = build_dir.join(format!("{}.zkey", component_lower));
+            if zkey_file.exists() { Some(zkey_file) } else { None }
+        });
+
+        // Discover vkey
+        let vkey = self.vkey_path.clone().or_else(|| {
+            let vkey_file = build_dir.join("verification_key.json");
+            if vkey_file.exists() { 
+                Some(vkey_file) 
+            } else {
+                let alt_vkey = build_dir.join(format!("{}_vkey.json", component_lower));
+                if alt_vkey.exists() { Some(alt_vkey) } else { None }
+            }
+        });
+
+        (wasm, zkey, vkey)
     }
 
     /// Generate evidence bundle for a finding
@@ -377,34 +464,209 @@ echo "Finding description: {}"
     }
 
     /// Generate Circom proof and verify it
+    /// 
+    /// This shells out to snarkjs to:
+    /// 1. Calculate witness: snarkjs wtns calculate circuit.wasm witness.json witness.wtns
+    /// 2. Generate proof: snarkjs groth16 prove circuit.zkey witness.wtns proof.json public.json
+    /// 3. Verify proof: snarkjs groth16 verify vkey.json public.json proof.json
     fn generate_circom_proof(
         &self,
         finding_dir: &Path,
         _finding: &Finding,
     ) -> anyhow::Result<(PathBuf, PathBuf, VerificationResult)> {
+        use std::process::Command;
+
         let proof_json = finding_dir.join("proof.json");
         let public_json = finding_dir.join("public.json");
-
-        // Check if we have required files
-        let _zkey = match &self.zkey_path {
-            Some(p) if p.exists() => p,
-            _ => {
-                return Err(anyhow::anyhow!("zkey file not available"));
-            }
-        };
-
+        let witness_wtns = finding_dir.join("witness.wtns");
         let witness_json = finding_dir.join("witness.json");
+
         if !witness_json.exists() {
             return Err(anyhow::anyhow!("witness.json not found"));
         }
 
-        // For now, return Skipped since we need actual snarkjs integration
-        // Full implementation would shell out to snarkjs
-        Ok((
-            proof_json,
-            public_json,
-            VerificationResult::Skipped("snarkjs integration pending".to_string()),
-        ))
+        // Auto-discover artifacts if not explicitly set
+        let (wasm_path, zkey_path, vkey_path) = self.discover_circuit_artifacts();
+
+        let wasm = match wasm_path {
+            Some(p) if p.exists() => p,
+            _ => {
+                return Ok((
+                    proof_json,
+                    public_json,
+                    VerificationResult::Skipped("circuit WASM not found - compile circuit first".to_string()),
+                ));
+            }
+        };
+
+        let zkey = match zkey_path {
+            Some(p) if p.exists() => p,
+            _ => {
+                return Ok((
+                    proof_json,
+                    public_json,
+                    VerificationResult::Skipped("zkey not found - run trusted setup first".to_string()),
+                ));
+            }
+        };
+
+        let vkey = match vkey_path {
+            Some(p) if p.exists() => p,
+            _ => {
+                return Ok((
+                    proof_json,
+                    public_json,
+                    VerificationResult::Skipped("verification key not found".to_string()),
+                ));
+            }
+        };
+
+        let snarkjs_cmd = self.resolve_snarkjs_cmd();
+        tracing::info!("Generating proof with snarkjs for finding in {:?}", finding_dir);
+
+        // Step 1: Calculate witness (wasm -> wtns)
+        // snarkjs wtns calculate circuit.wasm witness.json witness.wtns
+        let wtns_result = if snarkjs_cmd.starts_with("npx") {
+            Command::new("npx")
+                .args(["snarkjs", "wtns", "calculate"])
+                .arg(&wasm)
+                .arg(&witness_json)
+                .arg(&witness_wtns)
+                .current_dir(finding_dir)
+                .output()
+        } else {
+            Command::new(&snarkjs_cmd)
+                .args(["wtns", "calculate"])
+                .arg(&wasm)
+                .arg(&witness_json)
+                .arg(&witness_wtns)
+                .current_dir(finding_dir)
+                .output()
+        };
+
+        match wtns_result {
+            Ok(output) if !output.status.success() => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::warn!("Witness calculation failed: {}", stderr);
+                return Ok((
+                    proof_json,
+                    public_json,
+                    VerificationResult::Failed(format!("witness calculation failed: {}", stderr.chars().take(200).collect::<String>())),
+                ));
+            }
+            Err(e) => {
+                return Ok((
+                    proof_json,
+                    public_json,
+                    VerificationResult::Skipped(format!("snarkjs not available: {}", e)),
+                ));
+            }
+            _ => {
+                tracing::debug!("Witness calculated successfully");
+            }
+        }
+
+        // Step 2: Generate proof
+        // snarkjs groth16 prove circuit.zkey witness.wtns proof.json public.json
+        let prove_result = if snarkjs_cmd.starts_with("npx") {
+            Command::new("npx")
+                .args(["snarkjs", "groth16", "prove"])
+                .arg(&zkey)
+                .arg(&witness_wtns)
+                .arg(&proof_json)
+                .arg(&public_json)
+                .current_dir(finding_dir)
+                .output()
+        } else {
+            Command::new(&snarkjs_cmd)
+                .args(["groth16", "prove"])
+                .arg(&zkey)
+                .arg(&witness_wtns)
+                .arg(&proof_json)
+                .arg(&public_json)
+                .current_dir(finding_dir)
+                .output()
+        };
+
+        match prove_result {
+            Ok(output) if !output.status.success() => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::warn!("Proof generation failed: {}", stderr);
+                return Ok((
+                    proof_json,
+                    public_json,
+                    VerificationResult::Failed(format!("proof generation failed: {}", stderr.chars().take(200).collect::<String>())),
+                ));
+            }
+            Err(e) => {
+                return Ok((
+                    proof_json,
+                    public_json,
+                    VerificationResult::Skipped(format!("snarkjs prove failed: {}", e)),
+                ));
+            }
+            _ => {
+                tracing::debug!("Proof generated successfully");
+            }
+        }
+
+        // Step 3: Verify proof
+        // snarkjs groth16 verify vkey.json public.json proof.json
+        let verify_result = if snarkjs_cmd.starts_with("npx") {
+            Command::new("npx")
+                .args(["snarkjs", "groth16", "verify"])
+                .arg(&vkey)
+                .arg(&public_json)
+                .arg(&proof_json)
+                .current_dir(finding_dir)
+                .output()
+        } else {
+            Command::new(&snarkjs_cmd)
+                .args(["groth16", "verify"])
+                .arg(&vkey)
+                .arg(&public_json)
+                .arg(&proof_json)
+                .current_dir(finding_dir)
+                .output()
+        };
+
+        match verify_result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                
+                if output.status.success() {
+                    // Check if snarkjs output indicates success
+                    // snarkjs outputs "OK!" or similar on successful verification
+                    let combined = format!("{}{}", stdout, stderr).to_lowercase();
+                    if combined.contains("ok") || combined.contains("valid") || combined.contains("true") {
+                        tracing::info!("✓ PROOF VERIFIED - CONFIRMED soundness bug!");
+                        Ok((proof_json, public_json, VerificationResult::Passed))
+                    } else {
+                        // Exit code 0 but no explicit OK - treat as passed
+                        tracing::info!("✓ Proof verification succeeded (exit 0)");
+                        Ok((proof_json, public_json, VerificationResult::Passed))
+                    }
+                } else {
+                    // Verification failed - this means the witness is NOT a valid proof
+                    // This is actually the expected behavior for a non-buggy circuit
+                    let reason = if stderr.is_empty() { stdout.to_string() } else { stderr.to_string() };
+                    tracing::info!("✗ Proof verification failed - not a real bug");
+                    Ok((
+                        proof_json,
+                        public_json,
+                        VerificationResult::Failed(format!("proof verification failed: {}", reason.chars().take(200).collect::<String>())),
+                    ))
+                }
+            }
+            Err(e) => {
+                Ok((
+                    proof_json,
+                    public_json,
+                    VerificationResult::Skipped(format!("snarkjs verify failed: {}", e)),
+                ))
+            }
+        }
     }
 
     /// Generate impact description for a finding

@@ -1327,7 +1327,51 @@ impl FuzzingEngine {
             elapsed.as_secs_f64()
         );
 
-        Ok(self.generate_report(findings, elapsed.as_secs()))
+        let mut report = self.generate_report(findings.clone(), elapsed.as_secs());
+
+        // Phase 5B: Generate evidence bundles in evidence mode
+        if evidence_mode && !findings.is_empty() {
+            tracing::info!("Evidence mode: generating proof-level evidence bundles...");
+            
+            let evidence_dir = self.config.reporting.output_dir.join("evidence");
+            let evidence_gen = crate::reporting::EvidenceGenerator::new(
+                self.config.clone(),
+                evidence_dir.clone(),
+            );
+            
+            // Create backend identity from executor
+            let backend_identity = crate::reporting::BackendIdentity::from_framework(
+                self.config.campaign.target.framework,
+                self.executor.is_mock(),
+            );
+            
+            let bundles = evidence_gen.generate_all_bundles(&findings, backend_identity);
+            
+            // Count verification results
+            let confirmed = bundles.iter().filter(|b| b.is_confirmed()).count();
+            let skipped = bundles.iter().filter(|b| matches!(b.verification_result, crate::reporting::VerificationResult::Skipped(_))).count();
+            let failed = bundles.iter().filter(|b| matches!(b.verification_result, crate::reporting::VerificationResult::Failed(_))).count();
+            
+            tracing::info!(
+                "Evidence generation complete: {} confirmed, {} failed, {} skipped out of {} bundles",
+                confirmed,
+                failed,
+                skipped,
+                bundles.len()
+            );
+
+            // Write evidence summary to report
+            if !bundles.is_empty() {
+                let evidence_summary_path = evidence_dir.join("EVIDENCE_SUMMARY.md");
+                if self.write_evidence_summary(&bundles, &evidence_summary_path).is_ok() {
+                    tracing::info!("Evidence summary written to {:?}", evidence_summary_path);
+                    // Update report statistics
+                    report.statistics.unique_crashes = confirmed as u64;
+                }
+            }
+        }
+
+        Ok(report)
     }
 
     /// Seed the corpus with initial interesting values
@@ -3625,6 +3669,52 @@ impl FuzzingEngine {
         report.duration_seconds = duration;
         report.statistics.total_executions = self.core.execution_count();
         report
+    }
+
+    /// Write evidence summary markdown file using format_bundle_markdown()
+    fn write_evidence_summary(
+        &self,
+        bundles: &[crate::reporting::EvidenceBundle],
+        path: &std::path::Path,
+    ) -> anyhow::Result<()> {
+        use crate::reporting::evidence::format_bundle_markdown;
+        use std::fs;
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let mut md = String::new();
+        md.push_str("# Evidence Summary\n\n");
+        md.push_str(&format!("**Campaign:** {}\n", self.config.campaign.name));
+        md.push_str(&format!("**Generated:** {}\n\n", chrono::Utc::now().to_rfc3339()));
+        
+        // Summary statistics
+        let confirmed = bundles.iter().filter(|b| b.is_confirmed()).count();
+        let failed = bundles.iter().filter(|b| matches!(b.verification_result, crate::reporting::VerificationResult::Failed(_))).count();
+        let skipped = bundles.iter().filter(|b| matches!(b.verification_result, crate::reporting::VerificationResult::Skipped(_))).count();
+        
+        md.push_str("## Verification Summary\n\n");
+        md.push_str(&format!("| Status | Count |\n"));
+        md.push_str(&format!("|--------|-------|\n"));
+        md.push_str(&format!("| ✅ CONFIRMED | {} |\n", confirmed));
+        md.push_str(&format!("| ❌ NOT CONFIRMED | {} |\n", failed));
+        md.push_str(&format!("| ⏭ SKIPPED | {} |\n", skipped));
+        md.push_str(&format!("| **TOTAL** | {} |\n\n", bundles.len()));
+
+        if confirmed > 0 {
+            md.push_str("## ⚠️ CONFIRMED VULNERABILITIES\n\n");
+            md.push_str("The following findings have been cryptographically verified. ");
+            md.push_str("The circuit accepts witnesses that violate expected invariants.\n\n");
+        }
+
+        // Write each bundle using format_bundle_markdown
+        for bundle in bundles {
+            md.push_str(&format_bundle_markdown(bundle));
+        }
+
+        fs::write(path, md)?;
+        Ok(())
     }
 
     /// Get current statistics
