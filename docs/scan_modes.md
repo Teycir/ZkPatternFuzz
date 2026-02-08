@@ -1,6 +1,6 @@
 # Scan Modes
 
-This document defines the three scanning modes used in this repo. Read this before starting a new session so the chosen mode, scope, and expected outputs are explicit.
+This document defines the three scanning modes used in this repo. Read this before starting a new session so the chosen mode, scope, and expected outputs are explicit. For measurement and comparisons, also read `docs/scan_metrics.md`.
 
 **Global Constraints**
 - Targets are read-only and must come from `/media/elements/Repos/zk0d`.

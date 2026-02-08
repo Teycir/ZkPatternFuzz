@@ -33,11 +33,26 @@ pub struct ExecOptions {
 impl ExecOptions {
     fn from_factory_options(options: &ExecutorFactoryOptions) -> Self {
         Self {
-            build_dir_base: options.build_dir_base.as_ref().map(|p| p.to_string_lossy().to_string()),
-            circom_build_dir: options.circom_build_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
-            noir_build_dir: options.noir_build_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
-            halo2_build_dir: options.halo2_build_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
-            cairo_build_dir: options.cairo_build_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
+            build_dir_base: options
+                .build_dir_base
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            circom_build_dir: options
+                .circom_build_dir
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            noir_build_dir: options
+                .noir_build_dir
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            halo2_build_dir: options
+                .halo2_build_dir
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            cairo_build_dir: options
+                .cairo_build_dir
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
             circom_include_paths: options
                 .circom_include_paths
                 .iter()
@@ -264,7 +279,10 @@ impl CircuitExecutor for IsolatedExecutor {
 
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
         let request = self.base_request.with_inputs(inputs);
-        match self.run_isolated(&request).and_then(|resp| resp.to_result()) {
+        match self
+            .run_isolated(&request)
+            .and_then(|resp| resp.to_result())
+        {
             Ok(result) => result,
             Err(err) => ExecutionResult::failure(err.to_string()),
         }

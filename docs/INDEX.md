@@ -13,6 +13,24 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 **Start here if:** You're starting a new pentest session
 
+### 0b. [scan_modes.md](scan_modes.md) - **Required**
+**For:** Any AI agent selecting a scan mode  
+**Contains:**
+- Definitions for Mode 1, Mode 2, and Mode 3
+- Scope constraints for targets
+- Switching guidance
+
+**Start here if:** You need to pick a scan mode
+
+### 0c. [scan_metrics.md](scan_metrics.md)
+**For:** Comparing scan modes and maturity levels  
+**Contains:**
+- Metrics formulas and definitions
+- Mode distinction criteria
+- Plain-English summary
+
+**Start here if:** You want to compare modes quantitatively
+
 ## 🚀 Getting Started
 
 ### 1. [QUICKSTART_AI.md](QUICKSTART_AI.md) - **5 min read**
@@ -167,6 +185,12 @@ Complete guide to all documentation files, ordered by use case and reading level
 docs/
 ├── INDEX.md (this file)
 │   └── Navigation hub for all docs
+│
+├── scan_modes.md
+│   └── Definitions for the three scan modes
+│
+├── scan_metrics.md
+│   └── Metrics to compare modes and maturity
 │
 ├── QUICKSTART_AI.md ⭐ START HERE
 │   └── 3-step setup with AI
