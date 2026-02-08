@@ -404,6 +404,10 @@ impl FuzzingEngine {
         
         // Phase 0 Fix: Wire semantic oracles from config
         Self::add_semantic_oracles_from_config(&config, &mut oracles);
+        let disabled = Self::disabled_oracle_names(&config);
+        if !disabled.is_empty() {
+            oracles.retain(|o| !disabled.contains(&Self::normalize_oracle_name(o.name())));
+        }
 
         let core = FuzzingEngineCore::builder()
             .seed(seed)
@@ -449,6 +453,43 @@ impl FuzzingEngine {
     ///   parameters:
     ///     power_schedule: "MMOPT"
     /// ```
+    fn normalize_oracle_name(name: &str) -> String {
+        name.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect()
+    }
+
+    fn disabled_oracle_names(config: &FuzzConfig) -> std::collections::HashSet<String> {
+        use std::collections::HashSet;
+
+        let mut disabled = HashSet::new();
+        let Some(value) = config.campaign.parameters.additional.get("disabled_oracles") else {
+            return disabled;
+        };
+
+        match value {
+            serde_yaml::Value::Sequence(items) => {
+                for item in items {
+                    if let Some(s) = item.as_str() {
+                        disabled.insert(Self::normalize_oracle_name(s));
+                    }
+                }
+            }
+            serde_yaml::Value::String(s) => {
+                for part in s.split(',') {
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        disabled.insert(Self::normalize_oracle_name(trimmed));
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        disabled
+    }
+
     /// Phase 0 Fix: Wire semantic and auxiliary oracles from configuration
     ///
     /// Instantiates nullifier/merkle/range/commitment oracles based on config.oracles,
@@ -474,15 +515,8 @@ impl FuzzingEngine {
             ProofForgery,
         }
 
-        fn normalize_name(name: &str) -> String {
-            name.chars()
-                .filter(|c| c.is_ascii_alphanumeric())
-                .flat_map(|c| c.to_lowercase())
-                .collect()
-        }
-
         fn classify(name: &str) -> Option<OracleKind> {
-            let normalized = normalize_name(name);
+            let normalized = Self::normalize_oracle_name(name);
             match normalized.as_str() {
                 "nullifier"
                 | "nullifieroracle"
@@ -517,6 +551,7 @@ impl FuzzingEngine {
         }
 
         let oracle_config = OracleConfig::default();
+        let disabled = Self::disabled_oracle_names(config);
         let mut registered: HashSet<String> = oracles.iter().map(|o| o.name().to_string()).collect();
 
         let mut add_oracle = |oracle: Box<dyn BugOracle>| {
@@ -538,7 +573,12 @@ impl FuzzingEngine {
         }
 
         for oracle_name in requested {
-            match classify(&oracle_name) {
+            let kind = classify(&oracle_name);
+            if disabled.contains(&Self::normalize_oracle_name(&oracle_name)) {
+                continue;
+            }
+
+            match kind {
                 Some(OracleKind::Nullifier) => add_oracle(Box::new(SemanticOracleAdapter::new(
                     Box::new(NullifierOracle::new(oracle_config.clone())),
                 ))),
@@ -699,6 +739,10 @@ impl FuzzingEngine {
 
         // Reuse semantic oracle configuration for validation
         Self::add_semantic_oracles_from_config(&self.config, &mut oracles);
+        let disabled = Self::disabled_oracle_names(&self.config);
+        if !disabled.is_empty() {
+            oracles.retain(|o| !disabled.contains(&Self::normalize_oracle_name(o.name())));
+        }
 
         oracles
     }

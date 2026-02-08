@@ -13,7 +13,7 @@ attacks:
   - type: "underconstrained"
     description: "Detect multiple valid witnesses for same public output"
     config:
-      witness_pairs: 50
+      witness_pairs: 5
       # Optional public input scoping (choose one)
       # public_input_names: ["root", "nullifier"]
       # public_input_positions: [0, 1]

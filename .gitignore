@@ -43,5 +43,6 @@ circuits
 third_party
 build/zk0d/circom/withdraw_Withdraw/withdraw.r1cs
 crates/zk-backends
-build/zk0d/semaphore/circom/
+build/
 campaigns/zk0d/semaphore_main.circom
+build/zk0d/semaphore/pot14_0000.ptau

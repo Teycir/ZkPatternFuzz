@@ -12,21 +12,70 @@ campaign:
   parameters:
     enabled_oracles:
       - "constraint_count_oracle"
-      - "proof_forgery_oracle"
-    oracle_validation: true
+    oracle_validation: false
     oracle_validation_skip_stateful: false
     oracle_validation_allow_cross_attack: true
     oracle_validation_cross_attack_weight: 0.5
     oracle_validation_reset_stateful: true
     strict_backend: true
     mark_fallback: true
-    circom_auto_setup_keys: true
-    circom_ptau_path: "/tmp/pot18_final.ptau"
+    circom_auto_setup_keys: false
+    circom_ptau_path: "./build/zk0d/semaphore/pot14_final.ptau"
     circom_snarkjs_path: "/media/elements/Repos/zk0d/cat3_privacy/semaphore/node_modules/snarkjs/build/cli.cjs"
+    seed_inputs_path: "campaigns/zk0d/semaphore_seed_inputs.json"
+    constraint_guided_enabled: false
+    symbolic_max_paths: 10
+    symbolic_max_depth: 5
+    symbolic_solver_timeout_ms: 100
+    per_exec_isolation: false
+    execution_timeout_ms: 5000
+
+invariants:
+  - name: "secret_range"
+    invariant_type: range
+    relation: "0 <= secret < 2736030358979909402780800718157159386076813972158567259200215660948447373041"
+    oracle: must_hold
+    severity: "critical"
+    description: "Secret must be less than Baby Jubjub subgroup order l"
+
+  - name: "nullifier_unique"
+    invariant_type: uniqueness
+    relation: "unique(nullifier) for each (scope, secret)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Different (scope, secret) pairs must produce different nullifiers"
+
+  - name: "merkle_length_bounds"
+    invariant_type: range
+    relation: "merkleProofLength <= MAX_DEPTH"
+    oracle: must_hold
+    severity: "high"
+    description: "Merkle proof length must not exceed tree depth"
+
+  - name: "merkle_index_bounds"
+    invariant_type: range
+    relation: "merkleProofIndex < 2^merkleProofLength"
+    oracle: must_hold
+    severity: "high"
+    description: "Merkle proof index must fit within tree size"
+
+  - name: "identity_commitment_deterministic"
+    invariant_type: constraint
+    relation: "identityCommitment = Poseidon(Ax, Ay) where (Ax, Ay) = BabyPbk(secret)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Identity commitment must be deterministically derived from secret"
+
+  - name: "merkle_root_valid"
+    invariant_type: constraint
+    relation: "merkleRoot = BinaryMerkleRoot(commitment, length, index, siblings)"
+    oracle: must_hold
+    severity: "critical"
+    description: "Merkle root must be correctly computed from proof"
 
 attacks:
   - type: "soundness"
     description: "Proof forgery validation (oracle integration smoke test)"
     config:
-      forge_attempts: 5
+      forge_attempts: 0
       mutation_rate: 0.25

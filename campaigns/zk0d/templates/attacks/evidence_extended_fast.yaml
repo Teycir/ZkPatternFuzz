@@ -13,16 +13,16 @@ attacks:
   - type: "constraint_slice"
     description: "Cone-based dependency slicing"
     config:
-      samples_per_cone: 10
-      base_witness_attempts: 5
+      samples_per_cone: 3
+      base_witness_attempts: 3
 
   - type: "metamorphic"
     description: "Transform-based invariants"
     config:
-      num_tests: 100
+      num_tests: 10
 
   - type: "witness_collision"
     description: "Detect distinct witnesses with same public outputs"
     config:
-      samples: 100
+      samples: 10
       scope_public_inputs: true

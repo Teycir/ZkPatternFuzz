@@ -42,7 +42,16 @@ campaign:
       - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/node_modules/@zk-kit/binary-merkle-root.circom/src"
 
 # Inputs (based on Semaphore circuit signals)
+# Order matches Circom signal order: message, scope, secret, merkleProofLength, merkleProofIndex, merkleProofSiblings[0..19]
 inputs:
+  - name: "message"
+    type: "field"
+    fuzz_strategy: "random"
+
+  - name: "scope"
+    type: "field"
+    fuzz_strategy: "random"
+
   - name: "secret"
     type: "field"
     fuzz_strategy: "interesting_values"
@@ -155,14 +164,6 @@ inputs:
     fuzz_strategy: "random"
 
   - name: "merkleProofSiblings_19"
-    type: "field"
-    fuzz_strategy: "random"
-
-  - name: "message"
-    type: "field"
-    fuzz_strategy: "random"
-
-  - name: "scope"
     type: "field"
     fuzz_strategy: "random"
 
