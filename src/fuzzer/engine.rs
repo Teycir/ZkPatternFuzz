@@ -95,6 +95,8 @@
 
 use super::oracle::{ArithmeticOverflowOracle, BugOracle, UnderconstrainedOracle};
 use super::oracle_validation::{filter_validated_findings, OracleValidator, OracleValidationConfig};
+use super::oracle_correlation::{OracleCorrelator, ConfidenceLevel};  // Phase 6A: Cross-oracle correlation
+use super::invariant_checker::InvariantChecker;  // Phase 2: Fuzz-continuous invariant checking
 use super::power_schedule::{PowerSchedule, PowerScheduler};
 use super::structure_aware::StructureAwareMutator;
 use super::mutate_field_element;
@@ -161,6 +163,9 @@ pub struct FuzzingEngine {
     complexity_analyzer: ComplexityAnalyzer,
     /// Simple progress tracker for non-interactive mode
     simple_tracker: Option<SimpleProgressTracker>,
+    /// Phase 2: Cached invariant checker for fuzz-continuous checking
+    /// Maintains state for uniqueness invariants across executions
+    invariant_checker: Option<InvariantChecker>,
 }
 
 impl FuzzingEngine {
@@ -437,6 +442,20 @@ impl FuzzingEngine {
         let mut attack_registry = AttackRegistry::new();
         Self::load_attack_plugins(&config, &mut attack_registry);
 
+        // Phase 2: Initialize invariant checker once (cached for uniqueness tracking)
+        let invariant_checker = {
+            let invariants = config.get_invariants();
+            if invariants.is_empty() {
+                None
+            } else {
+                tracing::info!(
+                    "Initializing fuzz-continuous invariant checker with {} invariants",
+                    invariants.len()
+                );
+                Some(InvariantChecker::new(invariants, &config.inputs))
+            }
+        };
+
         Ok(Self {
             config,
             seed,
@@ -449,6 +468,7 @@ impl FuzzingEngine {
             taint_analyzer,
             complexity_analyzer,
             simple_tracker: None,
+            invariant_checker,
         })
     }
 
@@ -3462,19 +3482,17 @@ impl FuzzingEngine {
     /// Unlike the one-shot enforce_invariants(), this is called for every
     /// successful execution in the fuzzing loop, enabling continuous
     /// invariant violation detection.
-    fn check_invariants_against(&self, test_case: &TestCase, result: &ExecutionResult) {
-        use crate::fuzzer::invariant_checker::InvariantChecker;
-
-        // Get invariants from config
-        let invariants = self.config.get_invariants();
-        if invariants.is_empty() {
+    ///
+    /// IMPORTANT: Uses cached InvariantChecker to maintain uniqueness tracking state
+    /// across executions. Without caching, uniqueness invariants (e.g., nullifier_unique)
+    /// would never detect duplicates because each execution would start with a fresh empty set.
+    fn check_invariants_against(&mut self, test_case: &TestCase, result: &ExecutionResult) {
+        // Use cached checker to maintain uniqueness tracking state
+        let Some(checker) = self.invariant_checker.as_mut() else {
             return;
-        }
+        };
 
-        // Create checker (TODO: cache this in engine state for efficiency)
-        let mut checker = InvariantChecker::new(invariants, &self.config.inputs);
-
-        // Check all invariants
+        // Check all invariants using cached state
         let violations = checker.check(
             &test_case.inputs,
             &result.outputs,
@@ -3532,9 +3550,71 @@ impl FuzzingEngine {
     }
     
     fn generate_report(&self, findings: Vec<Finding>, duration: u64) -> FuzzReport {
+        // Phase 6A: Apply cross-oracle correlation for confidence scoring
+        let additional = &self.config.campaign.parameters.additional;
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        
+        let processed_findings = if evidence_mode && !findings.is_empty() {
+            // In evidence mode, filter to only HIGH+ confidence findings
+            let correlator = OracleCorrelator::new();
+            let correlated = correlator.correlate(&findings);
+            
+            tracing::info!(
+                "Cross-oracle correlation: {} raw findings → {} correlation groups",
+                findings.len(),
+                correlated.len()
+            );
+            
+            // Log confidence breakdown
+            let mut critical_count = 0;
+            let mut high_count = 0;
+            let mut medium_count = 0;
+            let mut low_count = 0;
+            for cf in &correlated {
+                match cf.confidence {
+                    ConfidenceLevel::Critical => critical_count += 1,
+                    ConfidenceLevel::High => high_count += 1,
+                    ConfidenceLevel::Medium => medium_count += 1,
+                    ConfidenceLevel::Low => low_count += 1,
+                }
+            }
+            tracing::info!(
+                "Confidence distribution: CRITICAL={}, HIGH={}, MEDIUM={}, LOW={}",
+                critical_count, high_count, medium_count, low_count
+            );
+            
+            // Filter to only MEDIUM+ confidence in evidence mode
+            let min_confidence = Self::additional_string(additional, "min_evidence_confidence")
+                .map(|s| match s.to_lowercase().as_str() {
+                    "critical" => ConfidenceLevel::Critical,
+                    "high" => ConfidenceLevel::High,
+                    "low" => ConfidenceLevel::Low,
+                    _ => ConfidenceLevel::Medium,
+                })
+                .unwrap_or(ConfidenceLevel::Medium);
+            
+            let filtered: Vec<Finding> = correlated
+                .into_iter()
+                .filter(|cf| cf.confidence >= min_confidence)
+                .map(|cf| cf.primary)
+                .collect();
+            
+            if filtered.len() < findings.len() {
+                tracing::info!(
+                    "Evidence mode: filtered {} low-confidence findings (kept {})",
+                    findings.len() - filtered.len(),
+                    filtered.len()
+                );
+            }
+            
+            filtered
+        } else {
+            findings
+        };
+        
         let mut report = FuzzReport::new(
             self.config.campaign.name.clone(),
-            findings,
+            processed_findings,
             zk_core::CoverageMap {
                 constraint_hits: std::collections::HashMap::new(),
                 edge_coverage: self.core.coverage().unique_constraints_hit() as u64,
