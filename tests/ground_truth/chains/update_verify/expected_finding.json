@@ -1,0 +1,8 @@
+{
+  "expected_outcome": "CONFIRMED",
+  "bug_class": "merkle_root_inconsistency",
+  "violated_assertion": "root_propagation",
+  "description": "The update_root circuit uses pathIndex instead of leaf when computing newRoot, causing the verification to fail on root comparison.",
+  "l_min_expected": 2,
+  "severity": "high"
+}

@@ -129,6 +129,7 @@ impl ConfigGenerator {
             target_traits,
             invariants,
             schedule,
+            chains: Vec::new(), // Mode 3: No auto-generated chains
             base: Some(FuzzConfig {
                 campaign: Campaign {
                     name: format!("Auto-generated: {}", circuit_path.display()),
@@ -145,6 +146,7 @@ impl ConfigGenerator {
                 mutations: vec![],
                 oracles: vec![],
                 reporting: ReportingConfig::default(),
+                chains: vec![],
             }),
         };
 

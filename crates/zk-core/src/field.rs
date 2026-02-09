@@ -1,8 +1,29 @@
 use rand::Rng;
+use serde::{Deserialize, Serialize, Deserializer, Serializer};
 
 /// Field element representation (32 bytes for bn254)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct FieldElement(pub [u8; 32]);
+
+// Custom serde implementation to serialize as hex string
+impl Serialize for FieldElement {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for FieldElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        FieldElement::from_hex(&s).map_err(serde::de::Error::custom)
+    }
+}
 
 impl FieldElement {
     pub fn zero() -> Self {

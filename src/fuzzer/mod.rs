@@ -38,7 +38,7 @@ pub mod oracle_diversity;
 pub mod oracle_validation;  // Phase 0 Fix: Oracle validation framework
 pub mod phased_scheduler;
 mod power_schedule;
-mod structure_aware;
+pub mod structure_aware;
 pub mod grammar;
 pub mod oracles;
 

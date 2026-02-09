@@ -1,0 +1,8 @@
+{
+  "expected_outcome": "CLEAN",
+  "bug_class": null,
+  "violated_assertion": null,
+  "description": "This is a correctly implemented deposit-withdraw chain. No vulnerabilities should be found.",
+  "l_min_expected": null,
+  "severity": null
+}

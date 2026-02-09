@@ -96,6 +96,11 @@ impl ProgressReporter {
         self.main_bar.println(msg);
     }
 
+    /// Log a general message
+    pub fn log_message(&self, message: &str) {
+        self.main_bar.println(message);
+    }
+
     /// Increment execution count
     pub fn inc(&self) {
         self.main_bar.inc(1);

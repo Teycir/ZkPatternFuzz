@@ -1,0 +1,8 @@
+{
+  "expected_outcome": "CONFIRMED",
+  "bug_class": "signature_malleability",
+  "violated_assertion": "signature_validity",
+  "description": "The verify circuit does not check s < p/2, allowing both s and p-s to be valid signatures for the same message.",
+  "l_min_expected": 2,
+  "severity": "critical"
+}

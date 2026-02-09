@@ -1,0 +1,8 @@
+{
+  "expected_outcome": "CONFIRMED",
+  "bug_class": "nullifier_reuse",
+  "violated_assertion": "nullifier_uniqueness",
+  "description": "The deposit circuit's nullifier only depends on nonce, not secret. Different secrets with the same nonce produce identical nullifiers, violating the uniqueness property.",
+  "l_min_expected": 2,
+  "severity": "critical"
+}

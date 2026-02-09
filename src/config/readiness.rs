@@ -128,7 +128,11 @@ impl ReadinessReport {
             }
         }
 
-        if score < 0.0 { 0.0 } else { score }
+        if score < 0.0 {
+            0.0
+        } else {
+            score
+        }
     }
 
     /// Check if the config is ready for evidence mode
@@ -460,10 +464,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     } else if max_iterations < 100_000 {
         warnings.push(ReadinessWarning::medium(
             "Fuzzing",
-            &format!(
-                "max_iterations={} may miss deep bugs",
-                max_iterations
-            ),
+            &format!("max_iterations={} may miss deep bugs", max_iterations),
         ));
     }
 
@@ -484,10 +485,12 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     }
 
     // 15. Check novel oracle attacks are enabled
-    let has_constraint_inference = config
-        .attacks
-        .iter()
-        .any(|a| matches!(a.attack_type, crate::config::AttackType::ConstraintInference));
+    let has_constraint_inference = config.attacks.iter().any(|a| {
+        matches!(
+            a.attack_type,
+            crate::config::AttackType::ConstraintInference
+        )
+    });
     let has_metamorphic = config
         .attacks
         .iter()
@@ -524,7 +527,10 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
 
     // 17. Check public input configuration for underconstrained attacks
     for attack in &config.attacks {
-        if matches!(attack.attack_type, crate::config::AttackType::Underconstrained) {
+        if matches!(
+            attack.attack_type,
+            crate::config::AttackType::Underconstrained
+        ) {
             let has_public_config = attack.config.get("public_input_names").is_some()
                 || attack.config.get("public_input_positions").is_some()
                 || attack.config.get("public_input_count").is_some();
@@ -546,11 +552,8 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     // 18. Check reporting configuration
     if config.reporting.formats.is_empty() {
         warnings.push(
-            ReadinessWarning::low(
-                "Reporting",
-                "No report formats configured",
-            )
-            .with_fix("Add formats: ['json', 'markdown'] to reporting section"),
+            ReadinessWarning::low("Reporting", "No report formats configured")
+                .with_fix("Add formats: ['json', 'markdown'] to reporting section"),
         );
     }
 
@@ -610,10 +613,11 @@ mod tests {
     #[test]
     fn test_evidence_mode_without_validation() {
         let mut config = FuzzConfig::default_v2();
-        config.campaign.parameters.additional.insert(
-            "evidence_mode".to_string(),
-            serde_yaml::Value::Bool(true),
-        );
+        config
+            .campaign
+            .parameters
+            .additional
+            .insert("evidence_mode".to_string(), serde_yaml::Value::Bool(true));
         config.campaign.parameters.additional.insert(
             "oracle_validation".to_string(),
             serde_yaml::Value::Bool(false),

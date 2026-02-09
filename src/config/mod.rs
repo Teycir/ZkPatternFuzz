@@ -21,6 +21,7 @@ pub mod v2;
 
 pub use readiness::{check_0day_readiness, ReadinessReport, ReadinessWarning, ReadinessLevel};
 pub use suggester::YamlSuggester;
+pub use v2::parse_chains;
 
 use serde::{Deserialize, Serialize};
 use anyhow::Context;
@@ -42,6 +43,9 @@ pub struct FuzzConfig {
     pub oracles: Vec<Oracle>,
     #[serde(default)]
     pub reporting: ReportingConfig,
+    /// Mode 3: Multi-step chain specifications
+    #[serde(default)]
+    pub chains: Vec<v2::ChainConfig>,
 }
 
 /// Campaign metadata and target information

@@ -73,6 +73,23 @@ enum Commands {
         #[arg(short, long)]
         timeout: Option<u64>,
     },
+    /// Run multi-step chain fuzzing (Mode 3: Deepest)
+    Chains {
+        /// Path to campaign YAML file with chain definitions
+        campaign: String,
+
+        /// Number of chain fuzzing iterations
+        #[arg(short, long, default_value = "1000")]
+        iterations: u64,
+
+        /// Timeout in seconds for chain fuzzing
+        #[arg(short, long, default_value = "600")]
+        timeout: u64,
+
+        /// Resume from existing chain corpus
+        #[arg(long)]
+        resume: bool,
+    },
     /// Validate a campaign configuration
     Validate {
         /// Path to campaign YAML file
@@ -144,6 +161,19 @@ async fn main() -> anyhow::Result<()> {
                 iterations,
                 timeout,
                 true,
+            ).await
+        }
+        Some(Commands::Chains { campaign, iterations, timeout, resume }) => {
+            run_chain_campaign(
+                &campaign,
+                cli.workers,
+                cli.seed,
+                cli.verbose,
+                cli.dry_run,
+                cli.simple_progress,
+                iterations,
+                timeout,
+                resume,
             ).await
         }
         Some(Commands::Validate { campaign }) => {
@@ -464,4 +494,247 @@ fn truncate_str(s: &str, max_len: usize) -> String {
     } else {
         format!("{}...", &s[..max_len - 3])
     }
+}
+
+/// Run a chain-focused fuzzing campaign (Mode 3: Deepest)
+async fn run_chain_campaign(
+    config_path: &str,
+    workers: usize,
+    seed: Option<u64>,
+    _verbose: bool,
+    dry_run: bool,
+    simple_progress: bool,
+    iterations: u64,
+    timeout: u64,
+    resume: bool,
+) -> anyhow::Result<()> {
+    use colored::*;
+    use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics};
+    use zk_fuzzer::config::parse_chains;
+    use zk_fuzzer::fuzzer::FuzzingEngine;
+    use zk_fuzzer::reporting::FuzzReport;
+
+    tracing::info!("Loading chain campaign from: {}", config_path);
+    let mut config = FuzzConfig::from_yaml(config_path)?;
+
+    // Get chains from config
+    let chains = parse_chains(&config);
+    if chains.is_empty() {
+        anyhow::bail!(
+            "Chain mode requires chains: definitions in the YAML. \
+             See campaigns/templates/deepest_multistep.yaml for examples."
+        );
+    }
+
+    // Force evidence mode settings for chain fuzzing
+    config.campaign.parameters.additional.insert(
+        "evidence_mode".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    config.campaign.parameters.additional.insert(
+        "strict_backend".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    config.campaign.parameters.additional.insert(
+        "chain_budget_seconds".to_string(),
+        serde_yaml::Value::Number(serde_yaml::Number::from(timeout)),
+    );
+    config.campaign.parameters.additional.insert(
+        "chain_iterations".to_string(),
+        serde_yaml::Value::Number(serde_yaml::Number::from(iterations)),
+    );
+
+    // Print chain-specific banner
+    println!();
+    println!("{}", "╔═══════════════════════════════════════════════════════════╗".bright_magenta());
+    println!("{}", "║         ZK-FUZZER v0.1.0 — MODE 3: CHAIN FUZZING          ║".bright_magenta());
+    println!("{}", "║               Multi-Step Deep Bug Discovery               ║".bright_magenta());
+    println!("{}", "╠═══════════════════════════════════════════════════════════╣".bright_magenta());
+    println!("{}  Campaign: {:<45} {}", "║".bright_magenta(), truncate_str(&config.campaign.name, 45).white(), "║".bright_magenta());
+    println!("{}  Chains:   {:<45} {}", "║".bright_magenta(), format!("{} defined", chains.len()).cyan(), "║".bright_magenta());
+    println!("{}  Budget:   {:<45} {}", "║".bright_magenta(), format!("{}s per chain", timeout).yellow(), "║".bright_magenta());
+    println!("{}  Resume:   {:<45} {}", "║".bright_magenta(), if resume { "yes".green() } else { "no".white() }, "║".bright_magenta());
+    println!("{}", "╚═══════════════════════════════════════════════════════════╝".bright_magenta());
+    println!();
+
+    // List chains
+    println!("{}", "CHAINS TO FUZZ:".bright_yellow().bold());
+    for chain in &chains {
+        println!(
+            "  {} {} ({} steps, {} assertions)",
+            "→".bright_cyan(),
+            chain.name.white(),
+            chain.steps.len(),
+            chain.assertions.len()
+        );
+    }
+    println!();
+
+    if dry_run {
+        tracing::info!("Dry run mode - configuration validated successfully");
+        println!("\n✓ Chain configuration is valid");
+        return Ok(());
+    }
+
+    // Create engine directly
+    let mut engine = FuzzingEngine::new(config.clone(), seed, workers)?;
+    
+    // Run chain fuzzing
+    let progress = if simple_progress {
+        None
+    } else {
+        // TODO: Create a progress reporter for chains
+        None
+    };
+
+    let chain_findings: Vec<ChainFinding> = engine.run_chains(&chains, progress.as_ref()).await;
+
+    // Compute metrics
+    let metrics = DepthMetrics::new(chain_findings.clone());
+    let summary = metrics.summary();
+
+    // Print results
+    println!();
+    println!("{}", "═".repeat(60).bright_magenta());
+    println!("{}", "  CHAIN FUZZING RESULTS".bright_white().bold());
+    println!("{}", "═".repeat(60).bright_magenta());
+
+    println!("\n{}", "DEPTH METRICS".bright_yellow().bold());
+    println!("  Total Chain Findings:  {}", summary.total_findings);
+    println!("  Mean L_min (D):        {:.2}", summary.d_mean);
+    println!("  P(L_min >= 2):         {:.1}%", summary.p_deep * 100.0);
+
+    if !summary.depth_distribution.is_empty() {
+        println!("\n{}", "DEPTH DISTRIBUTION".bright_yellow().bold());
+        let mut depths: Vec<_> = summary.depth_distribution.iter().collect();
+        depths.sort_by_key(|(k, _)| *k);
+        for (depth, count) in depths {
+            let bar = "█".repeat((*count).min(30));
+            println!("  L_min={}: {} ({})", depth, bar.bright_cyan(), count);
+        }
+    }
+
+    if !chain_findings.is_empty() {
+        println!("\n{}", "CHAIN FINDINGS".bright_yellow().bold());
+        for (i, finding) in chain_findings.iter().enumerate() {
+            let severity_str = match finding.finding.severity.to_uppercase().as_str() {
+                "CRITICAL" => format!("[{}]", finding.finding.severity).bright_red().bold(),
+                "HIGH" => format!("[{}]", finding.finding.severity).red(),
+                "MEDIUM" => format!("[{}]", finding.finding.severity).yellow(),
+                "LOW" => format!("[{}]", finding.finding.severity).bright_yellow(),
+                _ => format!("[{}]", finding.finding.severity).white(),
+            };
+
+            println!(
+                "\n  {}. {} Chain: {} (L_min: {})",
+                i + 1,
+                severity_str,
+                finding.spec_name.cyan(),
+                finding.l_min.to_string().bright_green()
+            );
+            println!("     {}", finding.finding.description);
+            
+            if let Some(ref assertion) = finding.violated_assertion {
+                println!("     Violated: {}", assertion.bright_red());
+            }
+
+            // Print reproduction command
+            println!("     {}", "Reproduction:".bright_yellow());
+            println!("       cargo run --release -- chains {} --seed {}", 
+                config_path, seed.unwrap_or(42));
+        }
+    } else {
+        println!("\n{}", "  ✓ No chain vulnerabilities found!".bright_green().bold());
+    }
+
+    println!("\n{}", "═".repeat(60).bright_magenta());
+
+    // Save reports
+    let output_dir = std::path::PathBuf::from(&config.reporting.output_dir);
+    std::fs::create_dir_all(&output_dir)?;
+
+    // Save chain findings as JSON
+    let chain_report_path = output_dir.join("chain_report.json");
+    let chain_report = serde_json::json!({
+        "campaign_name": config.campaign.name,
+        "mode": "chain_fuzzing",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "metrics": {
+            "total_findings": summary.total_findings,
+            "d_mean": summary.d_mean,
+            "p_deep": summary.p_deep,
+            "depth_distribution": summary.depth_distribution,
+        },
+        "chain_findings": chain_findings,
+    });
+    std::fs::write(&chain_report_path, serde_json::to_string_pretty(&chain_report)?)?;
+    tracing::info!("Saved chain report to {:?}", chain_report_path);
+
+    // Save chain findings as markdown
+    let chain_md_path = output_dir.join("chain_report.md");
+    let mut md = String::new();
+    md.push_str(&format!("# Chain Fuzzing Report: {}\n\n", config.campaign.name));
+    md.push_str(&format!("**Mode:** Multi-Step Chain Fuzzing (Mode 3)\n"));
+    md.push_str(&format!("**Generated:** {}\n\n", chrono::Utc::now().to_rfc3339()));
+
+    md.push_str("## Depth Metrics\n\n");
+    md.push_str(&format!("| Metric | Value |\n"));
+    md.push_str(&format!("|--------|-------|\n"));
+    md.push_str(&format!("| Total Findings | {} |\n", summary.total_findings));
+    md.push_str(&format!("| Mean L_min (D) | {:.2} |\n", summary.d_mean));
+    md.push_str(&format!("| P(L_min >= 2) | {:.1}% |\n\n", summary.p_deep * 100.0));
+
+    if !chain_findings.is_empty() {
+        md.push_str("## Chain Findings\n\n");
+        for (i, finding) in chain_findings.iter().enumerate() {
+            md.push_str(&format!("### {}. [{}] Chain: {}\n\n", i + 1, finding.finding.severity.to_uppercase(), finding.spec_name));
+            md.push_str(&format!("**L_min:** {}\n\n", finding.l_min));
+            md.push_str(&format!("{}\n\n", finding.finding.description));
+            
+            if let Some(ref assertion) = finding.violated_assertion {
+                md.push_str(&format!("**Violated Assertion:** `{}`\n\n", assertion));
+            }
+
+            // Add trace summary
+            md.push_str("**Trace:**\n\n");
+            for (step_idx, step) in finding.trace.steps.iter().enumerate() {
+                let status = if step.success { "✓" } else { "✗" };
+                md.push_str(&format!("- Step {}: {} `{}` - {}\n", 
+                    step_idx, status, step.circuit_ref,
+                    if step.success { "success" } else { step.error.as_deref().unwrap_or("failed") }
+                ));
+            }
+            md.push_str("\n");
+
+            // Add reproduction
+            md.push_str("**Reproduction:**\n\n");
+            md.push_str(&format!("```bash\ncargo run --release -- chains {} --seed {}\n```\n\n", 
+                config_path, seed.unwrap_or(42)));
+        }
+    }
+
+    std::fs::write(&chain_md_path, md)?;
+    tracing::info!("Saved chain markdown report to {:?}", chain_md_path);
+
+    // Convert chain findings to regular findings for standard report
+    let standard_findings: Vec<_> = chain_findings.iter()
+        .map(|cf| cf.to_finding())
+        .collect();
+
+    // Create standard report with chain findings merged in
+    let mut report = FuzzReport::new(
+        config.campaign.name.clone(),
+        standard_findings,
+        zk_core::CoverageMap::default(),
+        config.reporting.clone(),
+    );
+    report.statistics.total_executions = iterations * chains.len() as u64;
+    report.save_to_files()?;
+
+    // Exit with error code if critical findings
+    if chain_findings.iter().any(|f| f.finding.severity.to_lowercase() == "critical") {
+        std::process::exit(1);
+    }
+
+    Ok(())
 }

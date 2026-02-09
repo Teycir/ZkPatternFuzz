@@ -1,0 +1,58 @@
+# Ground Truth: Sign-then-Verify Chain  
+# Expected: CONFIRMED - signature malleability detected
+# Bug Class: Signature malleability (s vs p-s)
+
+campaign:
+  name: "Ground Truth: Sign-Verify Chain"
+  version: "1.0"
+  target:
+    framework: circom
+    circuit_path: "./tests/ground_truth/chains/sign_verify/"
+    main_component: "Sign"
+
+  parameters:
+    field: "bn254"
+    max_constraints: 10000
+    timeout_seconds: 60
+
+chains:
+  - name: "sign_then_verify_malleable"
+    description: "Sign and verify with malleability vulnerability"
+    steps:
+      - circuit_ref: "sign"
+        input_wiring: fresh
+        label: "Create signature"
+      - circuit_ref: "verify"
+        input_wiring:
+          from_prior_output:
+            step: 0
+            mapping:
+              - [0, 0]   # sign.signatureR → verify.signatureR
+              - [1, 1]   # sign.signatureS → verify.signatureS
+              - [2, 2]   # sign.messageOut → verify.message
+        label: "Verify signature"
+    assertions:
+      - name: "signature_validity"
+        relation: "step[1].out[0] == 1"
+        severity: "critical"
+        description: "Valid signatures must verify successfully"
+      - name: "message_integrity"
+        relation: "step[0].out[2] == step[1].in[2]"
+        severity: "high"
+        description: "Message must be preserved through chain"
+
+inputs:
+  - name: "privateKey"
+    type: "field"
+    fuzz_strategy: random
+  - name: "message"
+    type: "field"
+    fuzz_strategy: random
+  - name: "publicKey"
+    type: "field"
+    fuzz_strategy: random
+
+reporting:
+  output_dir: "./reports/ground_truth/sign_verify"
+  formats:
+    - json

@@ -302,6 +302,7 @@ impl OpusAnalyzer {
             target_traits: self.build_target_traits(&analysis.patterns),
             invariants,
             schedule,
+            chains: Vec::new(),  // Mode 3: No auto-generated chains
             base: Some(FuzzConfig {
                 campaign: Campaign {
                     name: format!("Opus-Generated: {}", circuit_name),
@@ -324,6 +325,7 @@ impl OpusAnalyzer {
                     output_dir: self.config.output_dir.join(&circuit_name),
                     ..Default::default()
                 },
+                chains: vec![],
             }),
         };
 

@@ -166,6 +166,8 @@ pub struct FuzzingEngine {
     /// Phase 2: Cached invariant checker for fuzz-continuous checking
     /// Maintains state for uniqueness invariants across executions
     invariant_checker: Option<InvariantChecker>,
+    /// Mode 3: Reusable thread pool for parallel execution (avoids per-attack allocation)
+    thread_pool: Option<rayon::ThreadPool>,
 }
 
 impl FuzzingEngine {
@@ -456,6 +458,16 @@ impl FuzzingEngine {
             }
         };
 
+        // Mode 3: Build reusable thread pool for chain fuzzing
+        let thread_pool = if workers > 1 {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(workers)
+                .build()
+                .ok()
+        } else {
+            None
+        };
+
         Ok(Self {
             config,
             seed,
@@ -469,6 +481,7 @@ impl FuzzingEngine {
             complexity_analyzer,
             simple_tracker: None,
             invariant_checker,
+            thread_pool,
         })
     }
 
@@ -1760,41 +1773,53 @@ impl FuzzingEngine {
             })
             .collect();
 
-        // Execute in parallel and collect outputs
+        // Execute in parallel and collect results with indices
+        // Mode 3 optimization: collect only (index, result) to avoid cloning TestCase
         let executor = self.executor.clone();
-        let results: Vec<_> = if self.workers <= 1 {
+        let indexed_results: Vec<(usize, ExecutionResult)> = if self.workers <= 1 {
             test_cases
                 .iter()
-                .map(|tc| {
+                .enumerate()
+                .map(|(i, tc)| {
                     let result = executor.execute_sync(&tc.inputs);
-                    (tc.clone(), result)
+                    (i, result)
                 })
                 .collect()
-        } else {
-            let pool = rayon::ThreadPoolBuilder::new()
-                .num_threads(self.workers)
-                .build()
-                .map_err(|e| anyhow::anyhow!("Failed to build thread pool: {}", e))?;
-
+        } else if let Some(ref pool) = self.thread_pool {
+            // Mode 3: Reuse cached thread pool instead of creating new one per attack
             pool.install(|| {
                 test_cases
                     .par_iter()
-                    .map(|tc| {
+                    .enumerate()
+                    .map(|(i, tc)| {
                         let result = executor.execute_sync(&tc.inputs);
-                        (tc.clone(), result)
+                        (i, result)
                     })
                     .collect()
             })
+        } else {
+            // Fallback: sequential execution
+            test_cases
+                .iter()
+                .enumerate()
+                .map(|(i, tc)| {
+                    let result = executor.execute_sync(&tc.inputs);
+                    (i, result)
+                })
+                .collect()
         };
 
         // Group by output hash to find collisions
-        let mut output_map: std::collections::HashMap<Vec<u8>, Vec<TestCase>> =
-            std::collections::HashMap::new();
+        // Mode 3: Pre-size HashMap to avoid rehashing
+        // Use indices to reference test_cases, only clone when adding to collision set
+        let num_pairs = test_cases.len();
+        let mut output_map: std::collections::HashMap<Vec<u8>, Vec<usize>> =
+            std::collections::HashMap::with_capacity(num_pairs / 2);
 
-        for (test_case, result) in results {
+        for (idx, result) in indexed_results {
             if result.success {
                 let output_hash = self.hash_output(&result.outputs);
-                output_map.entry(output_hash).or_default().push(test_case);
+                output_map.entry(output_hash).or_default().push(idx);
             }
 
             if let Some(p) = progress {
@@ -1803,8 +1828,13 @@ impl FuzzingEngine {
         }
 
         // Check for collisions
-        for (_hash, witnesses) in output_map {
-            if witnesses.len() > 1 && self.witnesses_are_different(&witnesses) {
+        for (_hash, witness_indices) in output_map {
+            // Collect TestCases for indices that produced same output
+            let witnesses: Vec<&TestCase> = witness_indices.iter()
+                .filter_map(|&idx| test_cases.get(idx))
+                .collect();
+            
+            if witnesses.len() > 1 && self.witnesses_are_different_refs(&witnesses) {
                 let finding = Finding {
                     attack_type: AttackType::Underconstrained,
                     severity: Severity::Critical,
@@ -2189,39 +2219,51 @@ impl FuzzingEngine {
         let test_cases: Vec<TestCase> = (0..samples).map(|_| self.generate_test_case()).collect();
 
         let executor = self.executor.clone();
-        let results: Vec<_> = if self.workers <= 1 {
+        let indexed_results: Vec<(usize, ExecutionResult)> = if self.workers <= 1 {
             test_cases
                 .iter()
-                .map(|tc| {
+                .enumerate()
+                .map(|(i, tc)| {
                     let result = executor.execute_sync(&tc.inputs);
-                    (tc.clone(), result)
+                    (i, result)
                 })
                 .collect()
-        } else {
-            let pool = rayon::ThreadPoolBuilder::new()
-                .num_threads(self.workers)
-                .build()
-                .map_err(|e| anyhow::anyhow!("Failed to build thread pool: {}", e))?;
-
+        } else if let Some(ref pool) = self.thread_pool {
+            // Mode 3: Reuse cached thread pool instead of creating new one per attack
             pool.install(|| {
                 test_cases
                     .par_iter()
-                    .map(|tc| {
+                    .enumerate()
+                    .map(|(i, tc)| {
                         let result = executor.execute_sync(&tc.inputs);
-                        (tc.clone(), result)
+                        (i, result)
                     })
                     .collect()
             })
+        } else {
+            // Fallback: sequential execution
+            test_cases
+                .iter()
+                .enumerate()
+                .map(|(i, tc)| {
+                    let result = executor.execute_sync(&tc.inputs);
+                    (i, result)
+                })
+                .collect()
         };
 
-        let mut hash_map: std::collections::HashMap<Vec<u8>, TestCase> =
-            std::collections::HashMap::new();
+        // Mode 3: Pre-size HashMap to avoid rehashing
+        // Store indices to avoid cloning TestCase
+        let mut hash_map: std::collections::HashMap<Vec<u8>, usize> =
+            std::collections::HashMap::with_capacity(test_cases.len());
 
-        for (test_case, result) in results {
+        for (idx, result) in indexed_results {
             if result.success {
                 let output_hash = self.hash_output(&result.outputs);
 
-                if let Some(existing) = hash_map.get(&output_hash) {
+                if let Some(&existing_idx) = hash_map.get(&output_hash) {
+                    let existing = &test_cases[existing_idx];
+                    let test_case = &test_cases[idx];
                     if existing.inputs != test_case.inputs {
                         let finding = Finding {
                             attack_type: AttackType::Collision,
@@ -2230,7 +2272,7 @@ impl FuzzingEngine {
                                 .to_string(),
                             poc: super::ProofOfConcept {
                                 witness_a: existing.inputs.clone(),
-                                witness_b: Some(test_case.inputs),
+                                witness_b: Some(test_case.inputs.clone()),
                                 public_inputs: vec![],
                                 proof: None,
                             },
@@ -2244,7 +2286,7 @@ impl FuzzingEngine {
                         }
                     }
                 } else {
-                    hash_map.insert(output_hash, test_case);
+                    hash_map.insert(output_hash, idx);
                 }
             }
 
@@ -2984,7 +3026,8 @@ impl FuzzingEngine {
         hasher.finalize().to_vec()
     }
 
-    fn witnesses_are_different(&self, witnesses: &[TestCase]) -> bool {
+    /// Check if witnesses have different inputs (Mode 3 optimized: takes references)
+    fn witnesses_are_different_refs(&self, witnesses: &[&TestCase]) -> bool {
         if witnesses.len() < 2 {
             return false;
         }
@@ -4772,5 +4815,302 @@ impl FuzzingEngine {
                 _ => Severity::Medium,
             },
         }
+    }
+
+    // ========================================================================
+    // Mode 3: Multi-Step Chain Fuzzing
+    // ========================================================================
+
+    /// Run multi-step chain fuzzing (Mode 3: Deepest)
+    ///
+    /// Executes chain specifications to find vulnerabilities that only
+    /// manifest through specific sequences of circuit operations.
+    pub async fn run_chains(
+        &mut self,
+        chains: &[crate::chain_fuzzer::ChainSpec],
+        progress: Option<&ProgressReporter>,
+    ) -> Vec<crate::chain_fuzzer::ChainFinding> {
+        use crate::chain_fuzzer::{
+            ChainRunner, ChainMutator, ChainShrinker, ChainScheduler,
+            CrossStepInvariantChecker, DepthMetrics, ChainFinding,
+            ChainCorpus,
+        };
+        use rand::SeedableRng;
+        use rand_chacha::ChaCha8Rng;
+        use std::time::{Duration, Instant};
+
+        if chains.is_empty() {
+            tracing::info!("No chain specifications provided");
+            return Vec::new();
+        }
+
+        tracing::info!("Starting Mode 3 chain fuzzing with {} chains", chains.len());
+
+        // Get chain fuzzing budget from config
+        let additional = &self.config.campaign.parameters.additional;
+        let chain_budget_secs = Self::additional_u64(additional, "chain_budget_seconds")
+            .unwrap_or(300);
+        let chain_iterations = Self::additional_u64(additional, "chain_iterations")
+            .unwrap_or(1000) as usize;
+
+        // Build executor map from circuit configurations
+        let mut executors = std::collections::HashMap::new();
+        
+        // Collect all circuit_refs and their path configurations from chains
+        let circuit_configs = self.collect_circuit_configs(chains);
+        
+        // Load an executor for each unique circuit_ref
+        for (circuit_ref, path_config) in &circuit_configs {
+            let executor = match path_config {
+                Some(config) => {
+                    // Load the circuit from the specified path
+                    let framework = config.framework.unwrap_or(self.config.campaign.target.framework);
+                    let main_component = config.main_component.clone()
+                        .unwrap_or_else(|| circuit_ref.clone());
+                    
+                    match crate::executor::ExecutorFactory::create_with_options(
+                        framework,
+                        config.path.to_str().unwrap_or(""),
+                        &main_component,
+                        &self.executor_factory_options,
+                    ) {
+                        Ok(exec) => exec,
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to load executor for circuit '{}' at {:?}: {}. Using primary executor.",
+                                circuit_ref, config.path, e
+                            );
+                            self.executor.clone()
+                        }
+                    }
+                }
+                None => {
+                    if std::path::Path::new(circuit_ref).exists() {
+                        match crate::executor::ExecutorFactory::create_with_options(
+                            self.config.campaign.target.framework,
+                            circuit_ref,
+                            circuit_ref,
+                            &self.executor_factory_options,
+                        ) {
+                            Ok(exec) => exec,
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to load circuit '{}' from path: {}. Falling back to primary executor.",
+                                    circuit_ref, e
+                                );
+                                self.executor.clone()
+                            }
+                        }
+                    } else {
+                        tracing::warn!(
+                            "No circuit path configured for '{}' and no file found at that path. \
+                             Using primary executor. Add a 'circuits' mapping in your chain config \
+                             to load distinct circuits per step.",
+                            circuit_ref
+                        );
+                        self.executor.clone()
+                    }
+                }
+            };
+            executors.insert(circuit_ref.clone(), executor);
+        }
+
+        let runner = ChainRunner::new(executors)
+            .with_timeout(Duration::from_secs(30));
+        let mutator = ChainMutator::new();
+
+        // Initialize scheduler with budget
+        let scheduler = ChainScheduler::new(
+            chains.to_vec(),
+            Duration::from_secs(chain_budget_secs),
+        );
+
+        // Initialize corpus for persistence
+        let output_dir = self.config.reporting.output_dir.clone();
+        let corpus_path = std::path::PathBuf::from(&output_dir).join("chain_corpus.json");
+        let mut corpus = ChainCorpus::load(&corpus_path).unwrap_or_else(|_| {
+            ChainCorpus::with_storage(&corpus_path)
+        });
+
+        let mut all_findings = Vec::new();
+        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.unwrap_or(42));
+
+        // Run chains according to schedule
+        let allocations = scheduler.allocate();
+
+        for allocation in &allocations {
+            let chain = &allocation.spec;
+            let chain_budget = allocation.budget;
+            let chain_start = Instant::now();
+
+            if let Some(p) = progress {
+                p.log_message(&format!("Chain: {} (budget: {:?})", chain.name, chain_budget));
+            }
+
+            // Build checker for this chain's assertions
+            let checker = CrossStepInvariantChecker::from_spec(chain);
+
+            // Initial inputs (empty - will be generated fresh)
+            let mut current_inputs = std::collections::HashMap::new();
+            let mut iterations = 0;
+
+            while chain_start.elapsed() < chain_budget && iterations < chain_iterations {
+                // Execute chain
+                let result = runner.execute(chain, &current_inputs, &mut rng);
+
+                if result.completed {
+                    // Check for violations
+                    let violations = checker.check(&result.trace);
+
+                    for violation in violations {
+                        // Found a violation - shrink to get L_min
+                        let shrinker = ChainShrinker::new(
+                            ChainRunner::new(runner.executors.clone()),
+                            CrossStepInvariantChecker::from_spec(chain),
+                        ).with_seed(self.seed.unwrap_or(42));
+
+                        let shrink_result = shrinker.minimize(chain, &current_inputs, &violation);
+
+                        // Create finding
+                        let finding = Finding {
+                            attack_type: AttackType::CircuitComposition,
+                            severity: match violation.severity.to_lowercase().as_str() {
+                                "critical" => Severity::Critical,
+                                "high" => Severity::High,
+                                "medium" => Severity::Medium,
+                                "low" => Severity::Low,
+                                _ => Severity::High,
+                            },
+                            description: format!(
+                                "[Chain: {} | L_min: {}] {}: {}",
+                                chain.name, shrink_result.l_min,
+                                violation.assertion_name, violation.description
+                            ),
+                            poc: ProofOfConcept {
+                                witness_a: result.trace.steps.first()
+                                    .map(|s| s.inputs.clone())
+                                    .unwrap_or_default(),
+                                witness_b: result.trace.steps.get(1)
+                                    .map(|s| s.inputs.clone()),
+                                public_inputs: vec![],
+                                proof: None,
+                            },
+                            location: Some(format!("chain:{}", chain.name)),
+                        };
+
+                        let chain_finding = ChainFinding::new(
+                            finding,
+                            chain.len(),
+                            shrink_result.l_min,
+                            result.trace.clone(),
+                            &chain.name,
+                        ).with_violated_assertion(&violation.assertion_name);
+
+                        all_findings.push(chain_finding);
+
+                        if let Some(p) = progress {
+                            p.log_finding(
+                                &violation.severity.to_uppercase(),
+                                &format!("Chain violation: {} (L_min={})", 
+                                    violation.assertion_name, shrink_result.l_min),
+                            );
+                        }
+                    }
+
+                    // Add to corpus with coverage bits computed from step traces
+                    let coverage_bits = Self::compute_chain_coverage_bits(&result.trace);
+                    corpus.add(crate::chain_fuzzer::ChainCorpusEntry::new(
+                        &chain.name,
+                        current_inputs.clone(),
+                        coverage_bits,
+                        result.trace.depth(),
+                    ));
+                }
+
+                // Mutate for next iteration
+                let (mutated, _) = mutator.mutate_inputs(chain, &current_inputs, &mut rng);
+                current_inputs = mutated;
+                iterations += 1;
+
+                if let Some(p) = progress {
+                    p.inc();
+                }
+            }
+
+            tracing::info!(
+                "Chain {} completed: {} iterations, {} findings",
+                chain.name, iterations, 
+                all_findings.iter().filter(|f| f.spec_name == chain.name).count()
+            );
+        }
+
+        // Save corpus
+        if let Err(e) = corpus.save() {
+            tracing::warn!("Failed to save chain corpus: {}", e);
+        }
+
+        // Compute and log metrics
+        let metrics = DepthMetrics::new(all_findings.clone());
+        let summary = metrics.summary();
+        tracing::info!(
+            "Chain fuzzing complete: {} findings, D={:.2}, P_deep={:.2}%",
+            summary.total_findings, summary.d_mean, summary.p_deep * 100.0
+        );
+
+        all_findings
+    }
+
+    /// Collect circuit configurations from all chain specs
+    /// Returns a map of circuit_ref -> optional path configuration
+    fn collect_circuit_configs(
+        &self,
+        chains: &[crate::chain_fuzzer::ChainSpec],
+    ) -> std::collections::HashMap<String, Option<crate::config::v2::CircuitPathConfig>> {
+        use std::collections::HashMap;
+        
+        let mut circuit_configs: HashMap<String, Option<crate::config::v2::CircuitPathConfig>> = HashMap::new();
+        
+        // First, collect all unique circuit_refs from chains
+        for chain in chains {
+            for step in &chain.steps {
+                circuit_configs.entry(step.circuit_ref.clone()).or_insert(None);
+            }
+        }
+        
+        // Then, look up path configurations from the config's chains
+        for chain_config in &self.config.chains {
+            for (ref_name, path_config) in &chain_config.circuits {
+                if circuit_configs.contains_key(ref_name) {
+                    circuit_configs.insert(ref_name.clone(), Some(path_config.clone()));
+                }
+            }
+        }
+        
+        circuit_configs
+    }
+
+    /// Compute coverage bits from a chain trace
+    /// Combines coverage from all steps into a single u64 hash
+    fn compute_chain_coverage_bits(trace: &crate::chain_fuzzer::ChainTrace) -> u64 {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+        
+        let mut hasher = DefaultHasher::new();
+        
+        for step in &trace.steps {
+            // Hash the constraints hit in each step
+            let mut constraints: Vec<_> = step.constraints_hit.iter().copied().collect();
+            constraints.sort_unstable();
+            
+            for constraint_id in constraints {
+                constraint_id.hash(&mut hasher);
+            }
+            
+            // Also factor in step success and circuit ref
+            step.success.hash(&mut hasher);
+            step.circuit_ref.hash(&mut hasher);
+        }
+        
+        hasher.finish()
     }
 }

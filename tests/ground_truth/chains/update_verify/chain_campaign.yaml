@@ -1,0 +1,57 @@
+# Ground Truth: Update-then-Verify Chain
+# Expected: CONFIRMED - root_propagation assertion should be violated
+# Bug Class: Inconsistent Merkle root propagation
+
+campaign:
+  name: "Ground Truth: Update-Verify Chain"
+  version: "1.0"
+  target:
+    framework: circom
+    circuit_path: "./tests/ground_truth/chains/update_verify/"
+    main_component: "UpdateRoot"
+
+  parameters:
+    field: "bn254"
+    max_constraints: 10000
+    timeout_seconds: 60
+
+chains:
+  - name: "update_then_verify_buggy"
+    description: "Update Merkle root then verify - root mismatch"
+    steps:
+      - circuit_ref: "update_root"
+        input_wiring: fresh
+        label: "Update Merkle tree"
+      - circuit_ref: "verify_root"
+        input_wiring:
+          from_prior_output:
+            step: 0
+            mapping:
+              - [1, 0]   # update.newRoot → verify.root
+              - [0, 1]   # update.leafOut → verify.leaf
+        label: "Verify updated root"
+    assertions:
+      - name: "root_propagation"
+        relation: "step[0].out[1] == step[1].in[0]"
+        severity: "high"
+        description: "Updated root must match verification input"
+      - name: "leaf_consistency"
+        relation: "step[0].out[0] == step[1].in[1]"
+        severity: "high"
+        description: "Leaf must be consistently passed"
+
+inputs:
+  - name: "leaf"
+    type: "field"
+    fuzz_strategy: random
+  - name: "oldRoot"
+    type: "field"
+    fuzz_strategy: random
+  - name: "pathIndex"
+    type: "field"
+    fuzz_strategy: binary
+
+reporting:
+  output_dir: "./reports/ground_truth/update_verify"
+  formats:
+    - json

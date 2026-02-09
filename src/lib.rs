@@ -224,6 +224,7 @@ pub mod targets;
 
 // New feature modules
 pub mod analysis;
+pub mod chain_fuzzer;  // Mode 3: Multi-step chain fuzzing
 pub mod differential;
 pub mod distributed;
 pub mod formal;
@@ -298,3 +299,12 @@ pub use formal::{
     LeanExporter, CoqExporter, CircuitProperty, PropertyExtractor,
 };
 pub use multi_circuit::{MultiCircuitFuzzer, MultiCircuitConfig, CircuitChain};
+
+// Mode 3: Chain fuzzing for multi-step vulnerabilities
+pub use chain_fuzzer::{
+    ChainSpec, StepSpec, InputWiring, CrossStepAssertion,
+    ChainTrace, StepTrace, ChainFinding, ChainRunResult,
+    ChainRunner, CrossStepInvariantChecker, CrossStepViolation,
+    ChainMutator, ChainShrinker, DepthMetrics, ChainScheduler,
+    ChainCorpus, ChainCorpusEntry,
+};

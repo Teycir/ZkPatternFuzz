@@ -97,9 +97,105 @@ pub struct FuzzConfigV2 {
     #[serde(default)]
     pub schedule: Vec<SchedulePhase>,
 
+    /// Mode 3: Multi-step chain specifications
+    #[serde(default)]
+    pub chains: Vec<ChainConfig>,
+
     /// Base v1 configuration (merged after includes)
     #[serde(flatten)]
     pub base: Option<FuzzConfig>,
+}
+
+// ============================================================================
+// Mode 3: Chain Configuration Types
+// ============================================================================
+
+/// Configuration for a multi-step chain scenario
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ChainConfig {
+    /// Unique name for this chain
+    pub name: String,
+    /// Optional description
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Ordered sequence of steps
+    pub steps: Vec<StepConfig>,
+    /// Cross-step assertions to check
+    #[serde(default)]
+    pub assertions: Vec<AssertionConfig>,
+    /// Circuit path mappings: circuit_ref -> circuit_path
+    /// Required for multi-circuit chains. Each unique circuit_ref in steps
+    /// must have a corresponding entry here with the actual file path.
+    #[serde(default)]
+    pub circuits: HashMap<String, CircuitPathConfig>,
+}
+
+/// Configuration for a circuit path in multi-circuit chains
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CircuitPathConfig {
+    /// Path to the circuit file
+    pub path: std::path::PathBuf,
+    /// Main component name (defaults to circuit_ref if not specified)
+    #[serde(default)]
+    pub main_component: Option<String>,
+    /// Framework override (defaults to campaign framework)
+    #[serde(default)]
+    pub framework: Option<zk_core::Framework>,
+}
+
+/// Configuration for a single step in a chain
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct StepConfig {
+    /// Reference to the circuit (name or path)
+    pub circuit_ref: String,
+    /// How to wire inputs for this step
+    #[serde(default)]
+    pub input_wiring: InputWiringConfig,
+    /// Optional label for debugging
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+/// Configuration for input wiring
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum InputWiringConfig {
+    /// Generate fresh random inputs
+    #[default]
+    Fresh,
+    /// Use outputs from a prior step
+    FromPriorOutput {
+        /// Index of the prior step
+        step: usize,
+        /// Mapping of (output_index, input_index)
+        mapping: Vec<[usize; 2]>,
+    },
+    /// Mix of prior outputs and fresh inputs
+    Mixed {
+        /// (step, output_index, input_index) for prior outputs
+        prior: Vec<[usize; 3]>,
+        /// Indices for fresh random values
+        fresh_indices: Vec<usize>,
+    },
+}
+
+/// Configuration for a cross-step assertion
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AssertionConfig {
+    /// Unique name for this assertion
+    pub name: String,
+    /// Relation expression (e.g., "step[0].out[0] == step[1].in[2]")
+    pub relation: String,
+    /// Severity if violated
+    #[serde(default = "default_assertion_severity")]
+    pub severity: String,
+    /// Optional description
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+fn default_assertion_severity() -> String {
+    "high".to_string()
 }
 
 /// Reusable configuration profile
@@ -475,6 +571,7 @@ impl ConfigResolver {
             } else {
                 overlay.reporting
             },
+            chains: Vec::new(), // Mode 3: chains are merged separately
         }
     }
 
@@ -675,6 +772,7 @@ impl FuzzConfig {
             mutations: Vec::new(),
             oracles: Vec::new(),
             reporting: ReportingConfig::default(),
+            chains: Vec::new(),
         }
     }
 
@@ -963,6 +1061,99 @@ pub enum InvariantAST {
         expr: Box<InvariantAST>,
     },
     Raw(String),
+}
+
+// ============================================================================
+// Mode 3: Chain Config to Runtime Type Conversion
+// ============================================================================
+
+impl ChainConfig {
+    /// Convert to runtime ChainSpec type
+    pub fn to_chain_spec(&self) -> crate::chain_fuzzer::ChainSpec {
+        let steps: Vec<crate::chain_fuzzer::StepSpec> =
+            self.steps.iter().map(|s| s.to_step_spec()).collect();
+
+        let assertions: Vec<crate::chain_fuzzer::CrossStepAssertion> = self
+            .assertions
+            .iter()
+            .map(|a| a.to_cross_step_assertion())
+            .collect();
+
+        let mut spec = crate::chain_fuzzer::ChainSpec::new(&self.name, steps);
+        for assertion in assertions {
+            spec = spec.with_assertion(assertion);
+        }
+        if let Some(desc) = &self.description {
+            spec = spec.with_description(desc);
+        }
+        spec
+    }
+}
+
+impl StepConfig {
+    /// Convert to runtime StepSpec type
+    pub fn to_step_spec(&self) -> crate::chain_fuzzer::StepSpec {
+        let wiring = self.input_wiring.to_input_wiring();
+        let mut spec = match wiring {
+            crate::chain_fuzzer::InputWiring::Fresh => {
+                crate::chain_fuzzer::StepSpec::fresh(&self.circuit_ref)
+            }
+            crate::chain_fuzzer::InputWiring::FromPriorOutput { step, mapping } => {
+                crate::chain_fuzzer::StepSpec::from_prior(&self.circuit_ref, step, mapping)
+            }
+            _ => {
+                let mut s = crate::chain_fuzzer::StepSpec::fresh(&self.circuit_ref);
+                s.input_wiring = wiring;
+                s
+            }
+        };
+        if let Some(label) = &self.label {
+            spec = spec.with_label(label);
+        }
+        spec
+    }
+}
+
+impl InputWiringConfig {
+    /// Convert to runtime InputWiring type
+    pub fn to_input_wiring(&self) -> crate::chain_fuzzer::InputWiring {
+        match self {
+            InputWiringConfig::Fresh => crate::chain_fuzzer::InputWiring::Fresh,
+            InputWiringConfig::FromPriorOutput { step, mapping } => {
+                crate::chain_fuzzer::InputWiring::FromPriorOutput {
+                    step: *step,
+                    mapping: mapping.iter().map(|m| (m[0], m[1])).collect(),
+                }
+            }
+            InputWiringConfig::Mixed {
+                prior,
+                fresh_indices,
+            } => crate::chain_fuzzer::InputWiring::Mixed {
+                prior: prior.iter().map(|p| (p[0], p[1], p[2])).collect(),
+                fresh_indices: fresh_indices.clone(),
+            },
+        }
+    }
+}
+
+impl AssertionConfig {
+    /// Convert to runtime CrossStepAssertion type
+    pub fn to_cross_step_assertion(&self) -> crate::chain_fuzzer::CrossStepAssertion {
+        let mut assertion =
+            crate::chain_fuzzer::CrossStepAssertion::new(&self.name, &self.relation);
+        assertion = assertion.with_severity(&self.severity);
+        assertion
+    }
+}
+
+/// Parse chain configurations from a FuzzConfigV2
+pub fn parse_chains_v2(config: &FuzzConfigV2) -> Vec<crate::chain_fuzzer::ChainSpec> {
+    config.chains.iter().map(|c| c.to_chain_spec()).collect()
+}
+
+/// Parse chain configurations from a FuzzConfig
+pub fn parse_chains(config: &super::FuzzConfig) -> Vec<crate::chain_fuzzer::ChainSpec> {
+    config.chains.iter().map(|c| c.to_chain_spec()).collect()
 }
 
 #[cfg(test)]

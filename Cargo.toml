@@ -49,6 +49,8 @@ indicatif = "0.17"
 thiserror = "1.0"
 anyhow = "1.0"
 rand = "0.8"
+rand_chacha = "0.3"
+regex = "1.10"
 hex = "0.4"
 num-bigint = "0.4"
 sha2 = "0.10"
@@ -68,6 +70,11 @@ z3 = { version = "0.12", features = ["static-link-z3"] }
 num_cpus = "1.16"
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "chain_benchmark"
+harness = false
 
 [features]
 default = []
