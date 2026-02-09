@@ -1,0 +1,292 @@
+# zkEVM Audit Campaign Template
+# Phase 3: Milestone 3.2 - zkEVM-Specific Attacks
+#
+# Use this template for auditing zkEVM implementations like:
+# - Polygon zkEVM
+# - Scroll zkEVM
+# - zkSync Era
+# - Taiko zkEVM
+#
+# Usage:
+#   cargo run -- run campaigns/templates/zkevm_audit.yaml --profile standard
+#   cargo run -- evidence campaigns/templates/zkevm_audit.yaml --profile deep
+
+campaign:
+  name: "zkEVM Security Audit"
+  version: "1.0"
+  target:
+    # Update these for your specific zkEVM implementation
+    framework: circom  # or halo2 for some zkEVMs
+    circuit_path: "./circuits/zkevm_main.circom"
+    main_component: "StateTransition"
+
+  parameters:
+    field: bn254  # Most zkEVMs use BN254/BLS12-381
+    max_constraints: 10000000  # zkEVM circuits are large
+    timeout_seconds: 3600     # 1 hour for complex circuits
+    additional:
+      strict_backend: true
+      evidence_mode: true
+      mark_fallback: true
+      # zkEVM-specific settings
+      opcode_coverage: true
+      state_transition_checks: true
+
+# Attack vectors for zkEVM auditing
+attacks:
+  # Core zkEVM-specific attacks
+  - type: zkevm_state_transition
+    description: "Test EVM state transition edge cases"
+    config:
+      state_transition_tests: 1000
+      test_empty_tx: true
+      test_max_gas: true
+      test_zero_value: true
+      test_self_transfer: true
+
+  - type: zkevm_opcode_boundary
+    description: "Test opcodes at boundary conditions"
+    config:
+      opcode_boundary_tests: 200
+      # Focus on high-risk opcodes
+      target_opcodes:
+        # Arithmetic (division/modulo edge cases)
+        - DIV
+        - SDIV
+        - MOD
+        - SMOD
+        - ADDMOD
+        - MULMOD
+        - EXP
+        # Signed operations
+        - SLT
+        - SGT
+        - SAR
+        - SIGNEXTEND
+        # Call opcodes (reentrancy, gas forwarding)
+        - CALL
+        - CALLCODE
+        - DELEGATECALL
+        - STATICCALL
+        # Create opcodes (address computation)
+        - CREATE
+        - CREATE2
+
+  - type: zkevm_memory_expansion
+    description: "Test memory expansion cost calculations"
+    config:
+      memory_expansion_tests: 500
+      max_memory_offset: 33554432  # 32MB
+      test_word_boundaries: true
+      test_off_by_one: true
+
+  - type: zkevm_storage_proof
+    description: "Test storage proof verification"
+    config:
+      storage_proof_tests: 300
+      test_invalid_proofs: true
+      test_replay_attacks: true
+
+  # Standard ZK attacks (also applicable)
+  - type: underconstrained
+    description: "Find underconstrained signals in zkEVM circuits"
+    config:
+      witness_pairs: 5000
+      focus_signals:
+        - opcode
+        - stack_depth
+        - memory_size
+        - gas_remaining
+
+  - type: soundness
+    description: "Test proof soundness"
+    config:
+      forge_attempts: 2000
+      mutation_rate: 0.15
+
+  - type: collision
+    description: "Detect output collisions"
+    config:
+      samples: 10000
+
+  - type: arithmetic_overflow
+    description: "Test field arithmetic edge cases"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "p-1"
+        - "2^256-1"  # Max U256 (EVM word size)
+
+# Input specifications for zkEVM circuits
+inputs:
+  # Transaction inputs
+  - name: "tx_type"
+    type: "u8"
+    fuzz_strategy: interesting_values
+    interesting:
+      - "0"   # Legacy
+      - "1"   # EIP-2930
+      - "2"   # EIP-1559
+
+  - name: "tx_nonce"
+    type: "field"
+    fuzz_strategy: interesting_values
+    interesting:
+      - "0"
+      - "1"
+      - "0xffffffffffffffff"  # Max u64
+
+  - name: "tx_gas_limit"
+    type: "field"
+    fuzz_strategy: interesting_values
+    interesting:
+      - "21000"       # Base transfer gas
+      - "0"
+      - "30000000"    # Block gas limit
+      - "0xffffffffffffffff"
+
+  - name: "tx_gas_price"
+    type: "field"
+    fuzz_strategy: random
+    constraints:
+      - "nonzero"
+
+  - name: "tx_value"
+    type: "field"
+    fuzz_strategy: interesting_values
+    interesting:
+      - "0"
+      - "1"
+      - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+
+  - name: "tx_to"
+    type: "address"
+    fuzz_strategy: interesting_values
+    interesting:
+      - "0x0"                                      # Contract creation
+      - "0x0000000000000000000000000000000000000001"  # Precompile range
+      - "0x0000000000000000000000000000000000000009"
+      - "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+  - name: "tx_data"
+    type: "bytes"
+    fuzz_strategy: mutation
+    length: 1024
+
+  # Stack inputs (for opcode testing)
+  - name: "stack_operand_a"
+    type: "u256"
+    fuzz_strategy: interesting_values
+    interesting:
+      - "0"
+      - "1"
+      - "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # INT256_MAX
+      - "0x8000000000000000000000000000000000000000000000000000000000000000"  # INT256_MIN
+      - "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"  # U256_MAX
+
+  - name: "stack_operand_b"
+    type: "u256"
+    fuzz_strategy: random
+
+  - name: "memory_offset"
+    type: "field"
+    fuzz_strategy: interesting_values
+    interesting:
+      - "0"
+      - "32"
+      - "31"    # Off-by-one
+      - "33"    # Off-by-one
+      - "0xffff"
+      - "0xffffff"
+
+  - name: "storage_slot"
+    type: "u256"
+    fuzz_strategy: random
+
+# Invariants for evidence mode
+invariants:
+  - name: "state_root_consistency"
+    description: "State root must match post-execution state"
+    relation: "post_state_root == computed_root"
+    inputs: ["pre_state_root", "transactions"]
+    severity: critical
+
+  - name: "gas_accounting"
+    description: "Gas consumed must match expected EVM gas"
+    relation: "gas_used <= gas_limit"
+    inputs: ["gas_limit", "gas_used"]
+    severity: high
+
+  - name: "nonce_increment"
+    description: "Sender nonce must increment by 1 per tx"
+    relation: "post_nonce == pre_nonce + 1"
+    inputs: ["sender", "pre_nonce", "post_nonce"]
+    severity: high
+
+  - name: "balance_conservation"
+    description: "Total balance must be conserved"
+    relation: "sum(pre_balances) == sum(post_balances) + fees_burned"
+    inputs: ["pre_balances", "post_balances", "gas_used", "base_fee"]
+    severity: critical
+
+  - name: "stack_bounds"
+    description: "Stack depth must stay within [0, 1024]"
+    relation: "stack_depth >= 0 AND stack_depth <= 1024"
+    inputs: ["opcode", "stack_depth"]
+    severity: high
+
+  - name: "memory_word_alignment"
+    description: "Memory expansion respects word alignment"
+    relation: "memory_size % 32 == 0"
+    inputs: ["memory_size"]
+    severity: medium
+
+  - name: "call_depth_limit"
+    description: "Call depth must not exceed 1024"
+    relation: "call_depth <= 1024"
+    inputs: ["call_depth"]
+    severity: high
+
+# Reporting configuration
+reporting:
+  output_dir: "./reports/zkevm_audit"
+  formats:
+    - json
+    - markdown
+    - sarif  # For CI integration
+  include_poc: true
+  crash_reproduction: true
+  severity_threshold: low  # Report all findings for audits
+
+# Advanced: Multi-step chain testing for zkEVM
+chains:
+  - name: "deposit_withdraw_sequence"
+    description: "Test L1->L2 deposit followed by L2->L1 withdrawal"
+    steps:
+      - circuit: "bridge_deposit.circom"
+        outputs: [deposit_hash, l2_balance]
+      - circuit: "state_transition.circom"
+        inputs_from_step: 0
+        outputs: [state_root, tx_hash]
+      - circuit: "bridge_withdraw.circom"
+        inputs_from_step: 1
+        outputs: [withdrawal_proof]
+    assertions:
+      - "withdraw.amount <= deposit.amount"
+      - "withdraw.recipient == deposit.sender"
+
+  - name: "batch_sequencing"
+    description: "Test batch of transactions in sequence"
+    steps:
+      - circuit: "tx_execution.circom"
+        outputs: [post_state_1, gas_used_1]
+      - circuit: "tx_execution.circom"
+        inputs_from_step: 0
+        outputs: [post_state_2, gas_used_2]
+      - circuit: "batch_proof.circom"
+        inputs_from_step: [0, 1]
+        outputs: [batch_root]
+    assertions:
+      - "batch.cumulative_gas == gas_used_1 + gas_used_2"
+      - "batch.tx_count == 2"

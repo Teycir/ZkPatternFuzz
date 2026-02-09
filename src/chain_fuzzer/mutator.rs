@@ -529,8 +529,12 @@ mod tests {
     fn test_boundary_injection() {
         let mutator = ChainMutator::new()
             .with_weights(MutationWeights {
+                single_step_tweak: 0.0,
+                cascade_mutation: 0.0,
+                step_reorder: 0.0,
+                step_duplication: 0.0,
                 boundary_injection: 1.0,
-                ..Default::default()
+                bit_flip: 0.0,
             });
 
         let spec = ChainSpec::new("test_chain", vec![

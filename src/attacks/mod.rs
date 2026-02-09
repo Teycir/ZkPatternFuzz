@@ -12,6 +12,11 @@
 //!
 //! - [`mev`]: MEV extraction detection (ordering, sandwich, arbitrage)
 //! - [`front_running`]: Front-running vulnerability detection
+//!
+//! ## zkEVM-Specific Attacks (Phase 3: Milestone 3.2)
+//!
+//! - [`zkevm`]: zkEVM state transition, opcode boundary, memory expansion,
+//!   and storage proof attacks for L2 rollup security testing
 
 pub mod arithmetic;
 pub mod boundary;
@@ -27,6 +32,7 @@ pub mod underconstrained;
 pub mod verification;
 pub mod witness;
 pub mod witness_collision;
+pub mod zkevm;  // Phase 3: zkEVM-specific attacks
 
 pub use arithmetic::*;
 pub use boundary::*;
@@ -44,6 +50,7 @@ pub use verification::*;
 pub use witness::*;
 #[allow(ambiguous_glob_reexports)]
 pub use witness_collision::*;
+pub use zkevm::*;
 
 pub use zk_attacks::{
     Attack, AttackContext, AttackMetadata, AttackPlugin, AttackPluginLoader, AttackRegistry,
