@@ -26,8 +26,7 @@
 
 use std::collections::HashMap;
 use zk_core::{
-    AttackType, CircuitExecutor, ExecutionResult, FieldElement, Finding, 
-    ProofOfConcept, Severity,
+    AttackType, CircuitExecutor, ExecutionResult, FieldElement, Finding, ProofOfConcept, Severity,
 };
 
 /// Expected behavior after transformation
@@ -68,27 +67,17 @@ pub enum Transform {
         value: FieldElement,
     },
     /// Negate specific inputs (multiply by -1 in field)
-    NegateInputs {
-        indices: Vec<usize>,
-    },
+    NegateInputs { indices: Vec<usize> },
     /// Swap two inputs
-    SwapInputs {
-        index_a: usize,
-        index_b: usize,
-    },
+    SwapInputs { index_a: usize, index_b: usize },
     /// Set inputs to specific values
     SetInputs {
         assignments: HashMap<usize, FieldElement>,
     },
     /// Bit flip at specific position
-    BitFlipInput {
-        index: usize,
-        bit_position: usize,
-    },
+    BitFlipInput { index: usize, bit_position: usize },
     /// Double an input value
-    DoubleInput {
-        index: usize,
-    },
+    DoubleInput { index: usize },
     /// Identity (no change, for testing)
     Identity,
     /// Chain multiple transforms
@@ -101,7 +90,10 @@ impl Transform {
         let mut result = witness.to_vec();
 
         match self {
-            Transform::PermuteInputs { from_indices, to_indices } => {
+            Transform::PermuteInputs {
+                from_indices,
+                to_indices,
+            } => {
                 assert_eq!(from_indices.len(), to_indices.len());
                 let temp: Vec<FieldElement> = from_indices
                     .iter()
@@ -146,7 +138,10 @@ impl Transform {
                     }
                 }
             }
-            Transform::BitFlipInput { index, bit_position } => {
+            Transform::BitFlipInput {
+                index,
+                bit_position,
+            } => {
                 if *index < result.len() {
                     let mut bytes = result[*index].to_bytes();
                     let byte_idx = bit_position / 8;
@@ -194,7 +189,10 @@ impl Transform {
             Transform::SetInputs { assignments } => {
                 format!("set {} input values", assignments.len())
             }
-            Transform::BitFlipInput { index, bit_position } => {
+            Transform::BitFlipInput {
+                index,
+                bit_position,
+            } => {
                 format!("flip bit {} of input {}", bit_position, index)
             }
             Transform::DoubleInput { index } => {
@@ -278,37 +276,52 @@ impl MetamorphicOracle {
     /// Add standard ZK relations
     pub fn with_standard_relations(mut self) -> Self {
         // Permutation invariance (should change output for Merkle)
-        self.relations.push(MetamorphicRelation::new(
-            "permutation_sensitivity",
-            Transform::SwapInputs { index_a: 0, index_b: 1 },
-            ExpectedBehavior::OutputChanged,
-        ).with_severity(Severity::Critical)
-         .with_description("Swapping inputs should change output for most circuits"));
+        self.relations.push(
+            MetamorphicRelation::new(
+                "permutation_sensitivity",
+                Transform::SwapInputs {
+                    index_a: 0,
+                    index_b: 1,
+                },
+                ExpectedBehavior::OutputChanged,
+            )
+            .with_severity(Severity::Critical)
+            .with_description("Swapping inputs should change output for most circuits"),
+        );
 
         // Scaling (for linear circuits)
-        self.relations.push(MetamorphicRelation::new(
-            "scaling_check",
-            Transform::ScaleInputs {
-                indices: vec![0],
-                factor: FieldElement::from_u64(2),
-            },
-            ExpectedBehavior::OutputChanged,
-        ).with_severity(Severity::Medium));
+        self.relations.push(
+            MetamorphicRelation::new(
+                "scaling_check",
+                Transform::ScaleInputs {
+                    indices: vec![0],
+                    factor: FieldElement::from_u64(2),
+                },
+                ExpectedBehavior::OutputChanged,
+            )
+            .with_severity(Severity::Medium),
+        );
 
         // Identity should preserve
-        self.relations.push(MetamorphicRelation::new(
-            "identity_preservation",
-            Transform::Identity,
-            ExpectedBehavior::OutputUnchanged,
-        ).with_severity(Severity::Critical)
-         .with_description("Same input should produce same output"));
+        self.relations.push(
+            MetamorphicRelation::new(
+                "identity_preservation",
+                Transform::Identity,
+                ExpectedBehavior::OutputUnchanged,
+            )
+            .with_severity(Severity::Critical)
+            .with_description("Same input should produce same output"),
+        );
 
         // Negation (should change for most circuits)
-        self.relations.push(MetamorphicRelation::new(
-            "negation_sensitivity",
-            Transform::NegateInputs { indices: vec![0] },
-            ExpectedBehavior::OutputChanged,
-        ).with_severity(Severity::High));
+        self.relations.push(
+            MetamorphicRelation::new(
+                "negation_sensitivity",
+                Transform::NegateInputs { indices: vec![0] },
+                ExpectedBehavior::OutputChanged,
+            )
+            .with_severity(Severity::High),
+        );
 
         self
     }
@@ -331,7 +344,9 @@ impl MetamorphicOracle {
         let base_result = executor.execute(base_witness).await;
 
         for relation in &self.relations {
-            let result = self.test_relation(executor, base_witness, &base_result, relation).await;
+            let result = self
+                .test_relation(executor, base_witness, &base_result, relation)
+                .await;
             results.push(result);
         }
 
@@ -353,11 +368,8 @@ impl MetamorphicOracle {
         let transformed_result = executor.execute(&transformed_witness).await;
 
         // Check expected behavior
-        let (passed, violation_reason) = self.check_expected(
-            base_result,
-            &transformed_result,
-            &relation.expected,
-        );
+        let (passed, violation_reason) =
+            self.check_expected(base_result, &transformed_result, &relation.expected);
 
         MetamorphicTestResult {
             relation_name: relation.name.clone(),
@@ -382,7 +394,10 @@ impl MetamorphicOracle {
                     if base.outputs == transformed.outputs {
                         (true, None)
                     } else {
-                        (false, Some("Output changed when it should have stayed the same".to_string()))
+                        (
+                            false,
+                            Some("Output changed when it should have stayed the same".to_string()),
+                        )
                     }
                 } else {
                     (false, Some("Execution failed".to_string()))
@@ -393,7 +408,10 @@ impl MetamorphicOracle {
                     if base.outputs != transformed.outputs {
                         (true, None)
                     } else {
-                        (false, Some("Output unchanged when it should have changed".to_string()))
+                        (
+                            false,
+                            Some("Output unchanged when it should have changed".to_string()),
+                        )
                     }
                 } else if base.success && !transformed.success {
                     (true, None) // Changed to failure is "changed"
@@ -403,9 +421,11 @@ impl MetamorphicOracle {
             }
             ExpectedBehavior::OutputScaled(factor) => {
                 if base.success && transformed.success {
-                    let all_scaled = base.outputs.iter().zip(transformed.outputs.iter()).all(|(bo, to)| {
-                        bo.mul(factor) == *to
-                    });
+                    let all_scaled = base
+                        .outputs
+                        .iter()
+                        .zip(transformed.outputs.iter())
+                        .all(|(bo, to)| bo.mul(factor) == *to);
                     if all_scaled {
                         (true, None)
                     } else {
@@ -420,7 +440,13 @@ impl MetamorphicOracle {
                     if &transformed.outputs == expected_outputs {
                         (true, None)
                     } else {
-                        (false, Some(format!("Output {:?} != expected {:?}", transformed.outputs, expected_outputs)))
+                        (
+                            false,
+                            Some(format!(
+                                "Output {:?} != expected {:?}",
+                                transformed.outputs, expected_outputs
+                            )),
+                        )
                     }
                 } else {
                     (false, Some("Execution failed".to_string()))
@@ -430,14 +456,23 @@ impl MetamorphicOracle {
                 if !transformed.success {
                     (true, None)
                 } else {
-                    (false, Some("Circuit accepted when it should have rejected".to_string()))
+                    (
+                        false,
+                        Some("Circuit accepted when it should have rejected".to_string()),
+                    )
                 }
             }
             ExpectedBehavior::ShouldAccept => {
                 if transformed.success {
                     (true, None)
                 } else {
-                    (false, Some(format!("Circuit rejected when it should have accepted: {:?}", transformed.error)))
+                    (
+                        false,
+                        Some(format!(
+                            "Circuit rejected when it should have accepted: {:?}",
+                            transformed.error
+                        )),
+                    )
                 }
             }
             ExpectedBehavior::Custom(desc) => {
@@ -499,7 +534,8 @@ impl MetamorphicOracle {
             relations_tested: results.len(),
             relations_passed: results.iter().filter(|r| r.passed).count(),
             relations_failed: results.iter().filter(|r| !r.passed).count(),
-            critical_failures: results.iter()
+            critical_failures: results
+                .iter()
                 .filter(|r| !r.passed && r.severity == Severity::Critical)
                 .count(),
         }
@@ -530,8 +566,12 @@ mod tests {
             FieldElement::from_u64(3),
         ];
 
-        let result = Transform::SwapInputs { index_a: 0, index_b: 2 }.apply(&witness);
-        
+        let result = Transform::SwapInputs {
+            index_a: 0,
+            index_b: 2,
+        }
+        .apply(&witness);
+
         assert_eq!(result[0], FieldElement::from_u64(3));
         assert_eq!(result[1], FieldElement::from_u64(2));
         assert_eq!(result[2], FieldElement::from_u64(1));
@@ -541,24 +581,24 @@ mod tests {
     fn test_transform_negate() {
         let witness = vec![FieldElement::from_u64(42)];
         let result = Transform::NegateInputs { indices: vec![0] }.apply(&witness);
-        
+
         assert_ne!(result[0], witness[0]);
     }
 
     #[test]
     fn test_transform_chain() {
-        let witness = vec![
-            FieldElement::from_u64(1),
-            FieldElement::from_u64(2),
-        ];
+        let witness = vec![FieldElement::from_u64(1), FieldElement::from_u64(2)];
 
         let chain = Transform::Chain(vec![
-            Transform::SwapInputs { index_a: 0, index_b: 1 },
+            Transform::SwapInputs {
+                index_a: 0,
+                index_b: 1,
+            },
             Transform::DoubleInput { index: 0 },
         ]);
 
         let result = chain.apply(&witness);
-        
+
         // After swap: [2, 1], after double index 0: [4, 1]
         assert_eq!(result[0], FieldElement::from_u64(4));
         assert_eq!(result[1], FieldElement::from_u64(1));
@@ -577,7 +617,10 @@ mod tests {
     fn test_metamorphic_relation() {
         let relation = MetamorphicRelation::new(
             "test_swap",
-            Transform::SwapInputs { index_a: 0, index_b: 1 },
+            Transform::SwapInputs {
+                index_a: 0,
+                index_b: 1,
+            },
             ExpectedBehavior::OutputChanged,
         )
         .with_severity(Severity::Critical)

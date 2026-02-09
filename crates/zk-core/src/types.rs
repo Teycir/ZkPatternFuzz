@@ -54,6 +54,15 @@ pub enum AttackType {
     SpecInference,
     /// Enhanced witness collision detection
     WitnessCollision,
+    // Phase 3: DeFi and Protocol attack types
+    /// MEV extraction detection (ordering, sandwich, arbitrage)
+    Mev,
+    /// Front-running vulnerability detection
+    FrontRunning,
+    /// zkEVM-specific attack detection
+    ZkEvm,
+    /// Batch verification bypass attacks (Phase 3.3)
+    BatchVerification,
 }
 
 /// Severity levels for findings
@@ -334,7 +343,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
 }
 
 /// Proof of concept for reproducing a finding
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProofOfConcept {
     pub witness_a: Vec<FieldElement>,
     pub witness_b: Option<Vec<FieldElement>>,

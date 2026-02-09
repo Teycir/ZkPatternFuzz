@@ -21,12 +21,12 @@
 //! let test_cases = slicer.mutate_in_cone(&cone, base_witness);
 //! ```
 
+use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 use zk_core::{
-    AttackType, CircuitExecutor, ConstraintEquation, ConstraintInspector,
-    ExecutionResult, FieldElement, Finding, ProofOfConcept, Severity,
+    AttackType, CircuitExecutor, ConstraintEquation, ConstraintInspector, ExecutionResult,
+    FieldElement, Finding, ProofOfConcept, Severity,
 };
-use rand::Rng;
 
 /// Unique constraint identifier
 pub type ConstraintId = usize;
@@ -80,14 +80,14 @@ impl ConstraintSlicer {
         num_wires: usize,
     ) -> Self {
         let constraints = inspector.get_constraints();
-        
+
         let mut wire_to_constraints: HashMap<usize, Vec<ConstraintId>> = HashMap::new();
         let mut constraint_to_wires: HashMap<ConstraintId, HashSet<usize>> = HashMap::new();
 
         for (idx, constraint) in constraints.iter().enumerate() {
             let wires = Self::extract_wires(constraint);
             constraint_to_wires.insert(idx, wires.clone());
-            
+
             for wire in wires {
                 wire_to_constraints.entry(wire).or_default().push(idx);
             }
@@ -104,7 +104,9 @@ impl ConstraintSlicer {
 
     /// Extract all wire indices from a constraint
     fn extract_wires(constraint: &ConstraintEquation) -> HashSet<usize> {
-        constraint.a_terms.iter()
+        constraint
+            .a_terms
+            .iter()
             .chain(constraint.b_terms.iter())
             .chain(constraint.c_terms.iter())
             .map(|(w, _)| *w)
@@ -123,7 +125,7 @@ impl ConstraintSlicer {
         let mut visited_wires: HashSet<usize> = HashSet::new();
         let mut affecting_inputs: HashSet<usize> = HashSet::new();
         let mut ordered_constraints: Vec<ConstraintId> = Vec::new();
-        
+
         // BFS from output wire
         let mut queue: VecDeque<(usize, usize)> = VecDeque::new(); // (wire, depth)
         queue.push_back((output_wire, 0));
@@ -225,7 +227,10 @@ impl ConstraintSlicer {
         let mut expected_cones: HashMap<ConstraintId, HashSet<usize>> = HashMap::new();
         for (cone_idx, cone) in cones.iter().enumerate() {
             for &constraint_id in &cone.constraints {
-                expected_cones.entry(constraint_id).or_default().insert(cone_idx);
+                expected_cones
+                    .entry(constraint_id)
+                    .or_default()
+                    .insert(cone_idx);
             }
         }
 
@@ -322,7 +327,9 @@ impl ConstraintSliceOracle {
 
         // Test each cone
         for cone in &cones {
-            let cone_findings = self.test_cone(executor, &slicer, cone, base_witness, &mut rng).await;
+            let cone_findings = self
+                .test_cone(executor, &slicer, cone, base_witness, &mut rng)
+                .await;
             findings.extend(cone_findings);
         }
 
@@ -333,10 +340,7 @@ impl ConstraintSliceOracle {
                 findings.push(Finding {
                     attack_type: AttackType::ConstraintSlice,
                     severity: Severity::Medium,
-                    description: format!(
-                        "Potential information leak: {}",
-                        leak.description
-                    ),
+                    description: format!("Potential information leak: {}", leak.description),
                     poc: ProofOfConcept::default(),
                     location: Some(format!("constraint_{}", leak.constraint_id)),
                 });
@@ -370,13 +374,8 @@ impl ConstraintSliceOracle {
             let result = executor.execute(case).await;
             if result.success {
                 // Check for unexpected output changes
-                let unexpected = self.check_unexpected_change(
-                    cone,
-                    &base_result,
-                    &result,
-                    base_witness,
-                    case,
-                );
+                let unexpected =
+                    self.check_unexpected_change(cone, &base_result, &result, base_witness, case);
 
                 if let Some(finding) = unexpected {
                     findings.push(finding);
@@ -404,7 +403,9 @@ impl ConstraintSliceOracle {
         }
 
         // Check if outputs outside this cone changed
-        for (i, (base_out, new_out)) in base_result.outputs.iter()
+        for (i, (base_out, new_out)) in base_result
+            .outputs
+            .iter()
             .zip(new_result.outputs.iter())
             .enumerate()
         {

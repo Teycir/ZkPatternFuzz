@@ -17,8 +17,14 @@
 //!
 //! - [`zkevm`]: zkEVM state transition, opcode boundary, memory expansion,
 //!   and storage proof attacks for L2 rollup security testing
+//!
+//! ## Batch Verification Attacks (Phase 3: Milestone 3.3)
+//!
+//! - [`batch_verification`]: Batch mixing, aggregation forgery, cross-circuit
+//!   batch analysis, and randomness reuse detection for batch verifiers
 
 pub mod arithmetic;
+pub mod batch_verification;  // Phase 3: Batch verification bypass attacks
 pub mod boundary;
 pub mod collision;
 pub mod constraint_inference;
@@ -35,6 +41,7 @@ pub mod witness_collision;
 pub mod zkevm;  // Phase 3: zkEVM-specific attacks
 
 pub use arithmetic::*;
+pub use batch_verification::*;
 pub use boundary::*;
 #[allow(ambiguous_glob_reexports)]
 pub use collision::*;

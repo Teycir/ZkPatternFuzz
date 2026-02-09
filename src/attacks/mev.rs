@@ -186,14 +186,19 @@ impl MevAttack {
         let baseline_outputs = baseline_result.outputs;
 
         // Test different orderings
-        for _ in 0..self.config.ordering_permutations.min(factorial(input_count)) {
+        for _ in 0..self
+            .config
+            .ordering_permutations
+            .min(factorial(input_count))
+        {
             let permuted = self.permute_inputs(base_inputs);
             let permuted_result = executor.execute_sync(&permuted);
 
             if permuted_result.success {
                 // Check if outputs differ significantly
-                let difference = self.output_difference(&baseline_outputs, &permuted_result.outputs);
-                
+                let difference =
+                    self.output_difference(&baseline_outputs, &permuted_result.outputs);
+
                 if difference > self.config.profit_threshold {
                     self.findings.push(MevTestResult {
                         vulnerability_type: MevVulnerabilityType::OrderingDependency,
@@ -205,9 +210,9 @@ impl MevAttack {
                         ),
                         profit_potential: Some(difference),
                         witness: permuted,
-                        context: [
-                            ("difference".to_string(), format!("{:.4}", difference)),
-                        ].into_iter().collect(),
+                        context: [("difference".to_string(), format!("{:.4}", difference))]
+                            .into_iter()
+                            .collect(),
                     });
                     break; // Found one, don't spam
                 }
@@ -266,14 +271,17 @@ impl MevAttack {
                         attacker_profit * 100.0
                     ),
                     profit_potential: Some(attacker_profit),
-                    witness: front_run.into_iter()
+                    witness: front_run
+                        .into_iter()
                         .chain(victim_inputs.iter().cloned())
                         .chain(back_run)
                         .collect(),
                     context: [
                         ("profit".to_string(), format!("{:.4}", attacker_profit)),
                         ("attack_type".to_string(), "sandwich".to_string()),
-                    ].into_iter().collect(),
+                    ]
+                    .into_iter()
+                    .collect(),
                 });
                 break;
             }
@@ -324,7 +332,7 @@ impl MevAttack {
         if unique_outputs < 5 && unique_outputs > 0 {
             // Low output entropy might indicate information leakage
             let leakage_ratio = 50.0 / unique_outputs as f64;
-            
+
             if leakage_ratio > 5.0 {
                 self.findings.push(MevTestResult {
                     vulnerability_type: MevVulnerabilityType::StateLeakage,
@@ -339,7 +347,9 @@ impl MevAttack {
                     context: [
                         ("unique_outputs".to_string(), unique_outputs.to_string()),
                         ("leakage_ratio".to_string(), format!("{:.1}", leakage_ratio)),
-                    ].into_iter().collect(),
+                    ]
+                    .into_iter()
+                    .collect(),
                 });
             }
         }
@@ -351,20 +361,20 @@ impl MevAttack {
     fn permute_inputs(&mut self, inputs: &[FieldElement]) -> Vec<FieldElement> {
         let mut permuted: Vec<FieldElement> = inputs.to_vec();
         let n = permuted.len();
-        
+
         // Fisher-Yates shuffle
         for i in (1..n).rev() {
             let j = self.rng.gen_range(0..=i);
             permuted.swap(i, j);
         }
-        
+
         permuted
     }
 
     /// Generate front-run transaction inputs
     fn generate_front_run(&mut self, victim_inputs: &[FieldElement]) -> Vec<FieldElement> {
         let mut front_run = victim_inputs.to_vec();
-        
+
         // Modify some inputs to be slightly different (front-running strategy)
         for input in front_run.iter_mut() {
             if self.rng.gen_bool(0.3) {
@@ -372,21 +382,21 @@ impl MevAttack {
                 *input = input.add(&FieldElement::from_u64(self.rng.gen_range(1..100)));
             }
         }
-        
+
         front_run
     }
 
     /// Generate back-run transaction inputs
     fn generate_back_run(&mut self, victim_inputs: &[FieldElement]) -> Vec<FieldElement> {
         let mut back_run = victim_inputs.to_vec();
-        
+
         // Modify inputs for back-running (opposite direction)
         for input in back_run.iter_mut() {
             if self.rng.gen_bool(0.3) {
                 *input = input.sub(&FieldElement::from_u64(self.rng.gen_range(1..100)));
             }
         }
-        
+
         back_run
     }
 
@@ -422,21 +432,15 @@ impl MevAttack {
     ) -> f64 {
         // Simplified profit calculation
         // Real implementation would need circuit-specific logic
-        
+
         if front_outputs.is_empty() || back_outputs.is_empty() {
             return 0.0;
         }
 
         // Assume first output is "value" being traded
-        let front_val = front_outputs.first()
-            .and_then(|f| f.to_u64())
-            .unwrap_or(0) as f64;
-        let back_val = back_outputs.first()
-            .and_then(|f| f.to_u64())
-            .unwrap_or(0) as f64;
-        let victim_val = victim_outputs.first()
-            .and_then(|f| f.to_u64())
-            .unwrap_or(0) as f64;
+        let front_val = front_outputs.first().and_then(|f| f.to_u64()).unwrap_or(0) as f64;
+        let back_val = back_outputs.first().and_then(|f| f.to_u64()).unwrap_or(0) as f64;
+        let victim_val = victim_outputs.first().and_then(|f| f.to_u64()).unwrap_or(0) as f64;
 
         if victim_val == 0.0 {
             return 0.0;
@@ -448,8 +452,8 @@ impl MevAttack {
 
     /// Hash outputs for pattern detection
     fn hash_outputs(&self, outputs: &[FieldElement]) -> String {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         for output in outputs {
@@ -515,7 +519,7 @@ impl PriceImpactAnalyzer {
 
         // Check for excessive price impact
         let max_impact = self.samples.iter().map(|(_, i)| *i).fold(0.0, f64::max);
-        
+
         if max_impact > self.max_slippage {
             return Some(MevTestResult {
                 vulnerability_type: MevVulnerabilityType::PriceManipulation,
@@ -530,7 +534,9 @@ impl PriceImpactAnalyzer {
                 context: [
                     ("max_impact".to_string(), format!("{:.4}", max_impact)),
                     ("samples".to_string(), self.samples.len().to_string()),
-                ].into_iter().collect(),
+                ]
+                .into_iter()
+                .collect(),
             });
         }
 
@@ -553,7 +559,10 @@ impl ArbitrageDetector {
 
     /// Record a price observation from a circuit
     pub fn record_price(&mut self, circuit_id: &str, price: f64) {
-        self.prices.entry(circuit_id.to_string()).or_default().push(price);
+        self.prices
+            .entry(circuit_id.to_string())
+            .or_default()
+            .push(price);
     }
 
     /// Detect arbitrage opportunities
@@ -566,13 +575,15 @@ impl ArbitrageDetector {
                 let id_a = circuit_ids[i];
                 let id_b = circuit_ids[j];
 
-                if let (Some(prices_a), Some(prices_b)) = (self.prices.get(id_a), self.prices.get(id_b)) {
+                if let (Some(prices_a), Some(prices_b)) =
+                    (self.prices.get(id_a), self.prices.get(id_b))
+                {
                     // Compare average prices
                     let avg_a: f64 = prices_a.iter().sum::<f64>() / prices_a.len() as f64;
                     let avg_b: f64 = prices_b.iter().sum::<f64>() / prices_b.len() as f64;
 
                     let diff = (avg_a - avg_b).abs() / avg_a.max(avg_b);
-                    
+
                     if diff > min_profit {
                         findings.push(MevTestResult {
                             vulnerability_type: MevVulnerabilityType::Arbitrage,
@@ -587,7 +598,9 @@ impl ArbitrageDetector {
                                 ("circuit_a".to_string(), id_a.clone()),
                                 ("circuit_b".to_string(), id_b.clone()),
                                 ("price_diff".to_string(), format!("{:.4}", diff)),
-                            ].into_iter().collect(),
+                            ]
+                            .into_iter()
+                            .collect(),
                         });
                     }
                 }
@@ -628,10 +641,7 @@ mod tests {
             MevVulnerabilityType::OrderingDependency.severity(),
             Severity::High
         );
-        assert_eq!(
-            MevVulnerabilityType::Arbitrage.severity(),
-            Severity::Medium
-        );
+        assert_eq!(MevVulnerabilityType::Arbitrage.severity(), Severity::Medium);
     }
 
     #[test]

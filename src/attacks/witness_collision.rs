@@ -25,11 +25,9 @@
 //! let collisions = detector.run(&executor, &witnesses).await?;
 //! ```
 
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use sha2::{Sha256, Digest};
-use zk_core::{
-    AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity,
-};
+use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 
 /// A collision between two witnesses
 #[derive(Debug, Clone)]
@@ -102,12 +100,14 @@ impl EquivalenceClass {
                     return false;
                 }
                 // Find the ratio from first non-zero pair
-                let ratio = a.iter().zip(b.iter())
+                let ratio = a
+                    .iter()
+                    .zip(b.iter())
                     .find(|(va, vb)| !va.is_zero() && !vb.is_zero())
                     .map(|(va, vb)| {
                         // This is a simplified check
-                        va.to_bytes() == vb.to_bytes() || 
-                        va.mul(&FieldElement::from_u64(2)).to_bytes() == vb.to_bytes()
+                        va.to_bytes() == vb.to_bytes()
+                            || va.mul(&FieldElement::from_u64(2)).to_bytes() == vb.to_bytes()
                     });
                 ratio.unwrap_or(false)
             }
@@ -211,8 +211,10 @@ impl WitnessCollisionDetector {
         executor: &dyn CircuitExecutor,
         witnesses: &[Vec<FieldElement>],
     ) -> Vec<WitnessCollision> {
-        let mut output_map: HashMap<String, (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>)> =
-            HashMap::new();
+        let mut output_map: HashMap<
+            String,
+            (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>),
+        > = HashMap::new();
         let mut collisions = Vec::new();
         let num_public = executor.num_public_inputs();
         let explicit_public_indices = self.public_input_indices.as_ref();
@@ -254,7 +256,7 @@ impl WitnessCollisionDetector {
                     }
                     // Found a collision!
                     let is_expected = self.is_expected_collision(existing_witness, witness);
-                    
+
                     if !is_expected {
                         collisions.push(WitnessCollision {
                             witness_a: existing_witness.clone(),
@@ -284,7 +286,7 @@ impl WitnessCollisionDetector {
         // Memory safety: cap witness generation at 10k to prevent OOM
         const MAX_STORED_WITNESSES: usize = 10_000;
         let safe_sample_count = self.sample_count.min(MAX_STORED_WITNESSES);
-        
+
         let mut rng = rand::thread_rng();
         let witnesses: Vec<Vec<FieldElement>> = (0..safe_sample_count)
             .map(|_| generator(&mut rng))
@@ -328,7 +330,9 @@ impl WitnessCollisionDetector {
 
         // Find which indices tend to differ in collisions
         for collision in collisions {
-            for (i, (a, b)) in collision.witness_a.iter()
+            for (i, (a, b)) in collision
+                .witness_a
+                .iter()
                 .zip(collision.witness_b.iter())
                 .enumerate()
             {
@@ -356,7 +360,9 @@ pub struct CollisionAnalysis {
 impl CollisionAnalysis {
     /// Get the most commonly differing indices
     pub fn most_differing_indices(&self, top_n: usize) -> Vec<(usize, usize)> {
-        let mut sorted: Vec<_> = self.differing_indices.iter()
+        let mut sorted: Vec<_> = self
+            .differing_indices
+            .iter()
             .map(|(&i, &c)| (i, c))
             .collect();
         sorted.sort_by(|a, b| b.1.cmp(&a.1));
@@ -377,7 +383,11 @@ pub struct WitnessCollisionStats {
 
 impl WitnessCollisionDetector {
     /// Compute statistics
-    pub fn stats(&self, collisions: &[WitnessCollision], witnesses_tested: usize) -> WitnessCollisionStats {
+    pub fn stats(
+        &self,
+        collisions: &[WitnessCollision],
+        witnesses_tested: usize,
+    ) -> WitnessCollisionStats {
         let unexpected = collisions.iter().filter(|c| !c.is_expected).count();
         WitnessCollisionStats {
             witnesses_tested,
@@ -453,8 +463,7 @@ mod tests {
 
     #[test]
     fn test_collision_detection() {
-        let detector = WitnessCollisionDetector::new()
-            .with_samples(1000);
+        let detector = WitnessCollisionDetector::new().with_samples(1000);
 
         let collision = WitnessCollision {
             witness_a: vec![FieldElement::from_u64(1)],

@@ -1264,6 +1264,10 @@ fn attack_type_to_rule_id(attack_type: &AttackType) -> String {
         AttackType::ConstraintSlice => "ZK021",
         AttackType::SpecInference => "ZK022",
         AttackType::WitnessCollision => "ZK023",
+        AttackType::Mev => "ZK024",
+        AttackType::FrontRunning => "ZK025",
+        AttackType::ZkEvm => "ZK026",
+        AttackType::BatchVerification => "ZK027",
     }
     .to_string()
 }

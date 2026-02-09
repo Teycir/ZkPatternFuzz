@@ -24,11 +24,9 @@
 //! }
 //! ```
 
-use std::collections::HashMap;
-use zk_core::{
-    AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity,
-};
 use rand::Rng;
+use std::collections::HashMap;
+use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 
 /// Types of specifications that can be inferred
 #[derive(Debug, Clone)]
@@ -62,10 +60,7 @@ pub enum InferredSpec {
         confidence: f64,
     },
     /// Non-zero: value is never zero
-    NonZero {
-        wire_index: usize,
-        confidence: f64,
-    },
+    NonZero { wire_index: usize, confidence: f64 },
     /// Equality: two wires always have same value
     Equality {
         wire_a: usize,
@@ -97,16 +92,40 @@ impl InferredSpec {
     /// Get description of the spec
     pub fn description(&self) -> String {
         match self {
-            InferredSpec::LinearRelation { input_indices, output_index, .. } => {
-                format!("Linear relation from inputs {:?} to output {}", input_indices, output_index)
+            InferredSpec::LinearRelation {
+                input_indices,
+                output_index,
+                ..
+            } => {
+                format!(
+                    "Linear relation from inputs {:?} to output {}",
+                    input_indices, output_index
+                )
             }
-            InferredSpec::RangeCheck { input_index, observed_min, observed_max, .. } => {
-                format!("Range check on input {}: {} to {}", input_index, observed_min, observed_max)
+            InferredSpec::RangeCheck {
+                input_index,
+                observed_min,
+                observed_max,
+                ..
+            } => {
+                format!(
+                    "Range check on input {}: {} to {}",
+                    input_index, observed_min, observed_max
+                )
             }
-            InferredSpec::BitwiseConstraint { input_index, bit_length, .. } => {
-                format!("Bitwise constraint on input {}: {} bits", input_index, bit_length)
+            InferredSpec::BitwiseConstraint {
+                input_index,
+                bit_length,
+                ..
+            } => {
+                format!(
+                    "Bitwise constraint on input {}: {} bits",
+                    input_index, bit_length
+                )
             }
-            InferredSpec::ConstantValue { wire_index, value, .. } => {
+            InferredSpec::ConstantValue {
+                wire_index, value, ..
+            } => {
                 format!("Constant value at wire {}: {}", wire_index, value.to_hex())
             }
             InferredSpec::NonZero { wire_index, .. } => {
@@ -196,7 +215,7 @@ impl SpecInferenceOracle {
 
         for _ in 0..self.sample_count {
             let inputs = input_generator(&mut rng);
-            
+
             let result = executor.execute(&inputs).await;
             if result.success {
                 samples.push(ExecutionSample {
@@ -256,12 +275,17 @@ impl SpecInferenceOracle {
     }
 
     /// Infer range checks from samples
-    fn infer_range_checks(&self, samples: &[ExecutionSample], num_inputs: usize) -> Vec<InferredSpec> {
+    fn infer_range_checks(
+        &self,
+        samples: &[ExecutionSample],
+        num_inputs: usize,
+    ) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
         let min_unique = 4usize;
 
         for input_idx in 0..num_inputs {
-            let values: Vec<u64> = samples.iter()
+            let values: Vec<u64> = samples
+                .iter()
                 .filter_map(|s| s.inputs.get(input_idx))
                 .filter_map(|fe| fe.to_u64())
                 .collect();
@@ -272,7 +296,11 @@ impl SpecInferenceOracle {
 
             let min = *values.iter().min().unwrap();
             let max = *values.iter().max().unwrap();
-            let unique_count = values.iter().copied().collect::<std::collections::HashSet<u64>>().len();
+            let unique_count = values
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<u64>>()
+                .len();
 
             if unique_count < min_unique {
                 continue;
@@ -321,7 +349,8 @@ impl SpecInferenceOracle {
                 continue;
             }
 
-            let values: Vec<u64> = samples.iter()
+            let values: Vec<u64> = samples
+                .iter()
                 .filter_map(|s| s.inputs.get(wire_idx))
                 .filter_map(|fe| fe.to_u64())
                 .collect();
@@ -336,7 +365,8 @@ impl SpecInferenceOracle {
             }
 
             let all_nonzero = samples.iter().all(|s| {
-                s.inputs.get(wire_idx)
+                s.inputs
+                    .get(wire_idx)
                     .map(|fe| !fe.is_zero())
                     .unwrap_or(true)
             });
@@ -353,17 +383,23 @@ impl SpecInferenceOracle {
     }
 
     /// Infer constant outputs
-    fn infer_constants(&self, samples: &[ExecutionSample], num_outputs: usize) -> Vec<InferredSpec> {
+    fn infer_constants(
+        &self,
+        samples: &[ExecutionSample],
+        num_outputs: usize,
+    ) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
 
         for output_idx in 0..num_outputs {
-            let first_value = samples.first()
+            let first_value = samples
+                .first()
                 .and_then(|s| s.outputs.get(output_idx))
                 .cloned();
 
             if let Some(ref expected) = first_value {
                 let all_same = samples.iter().all(|s| {
-                    s.outputs.get(output_idx)
+                    s.outputs
+                        .get(output_idx)
                         .map(|v| v == expected)
                         .unwrap_or(false)
                 });
@@ -382,14 +418,19 @@ impl SpecInferenceOracle {
     }
 
     /// Infer equality relations between inputs
-    fn infer_equalities(&self, samples: &[ExecutionSample], num_inputs: usize) -> Vec<InferredSpec> {
+    fn infer_equalities(
+        &self,
+        samples: &[ExecutionSample],
+        num_inputs: usize,
+    ) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
         let min_unique = 4usize;
         let max_unique_for_inequality = 16usize;
 
         let mut unique_counts: Vec<usize> = Vec::with_capacity(num_inputs);
         for input_idx in 0..num_inputs {
-            let unique = samples.iter()
+            let unique = samples
+                .iter()
                 .filter_map(|s| s.inputs.get(input_idx))
                 .cloned()
                 .collect::<std::collections::HashSet<_>>()
@@ -399,13 +440,9 @@ impl SpecInferenceOracle {
 
         for i in 0..num_inputs {
             for j in (i + 1)..num_inputs {
-                let all_equal = samples.iter().all(|s| {
-                    s.inputs.get(i) == s.inputs.get(j)
-                });
+                let all_equal = samples.iter().all(|s| s.inputs.get(i) == s.inputs.get(j));
 
-                let all_different = samples.iter().all(|s| {
-                    s.inputs.get(i) != s.inputs.get(j)
-                });
+                let all_different = samples.iter().all(|s| s.inputs.get(i) != s.inputs.get(j));
 
                 if all_equal && samples.len() >= 10 {
                     if unique_counts[i] < min_unique || unique_counts[j] < min_unique {
@@ -466,7 +503,11 @@ impl SpecInferenceOracle {
         let mut modified = false;
 
         match spec {
-            InferredSpec::RangeCheck { input_index, inferred_bits, .. } => {
+            InferredSpec::RangeCheck {
+                input_index,
+                inferred_bits,
+                ..
+            } => {
                 if *input_index < witness.len() {
                     // Set to a value outside the range
                     let overflow_value = 1u64
@@ -503,7 +544,9 @@ impl SpecInferenceOracle {
                     }
                 }
             }
-            InferredSpec::ConstantValue { wire_index, value, .. } => {
+            InferredSpec::ConstantValue {
+                wire_index, value, ..
+            } => {
                 if *wire_index < witness.len() {
                     // Set to a different value
                     witness[*wire_index] = value.add(&FieldElement::one());
@@ -585,7 +628,11 @@ impl SpecInferenceOracle {
         num_inputs: usize,
     ) -> Option<bool> {
         match spec {
-            InferredSpec::RangeCheck { input_index, inferred_bits, .. } => {
+            InferredSpec::RangeCheck {
+                input_index,
+                inferred_bits,
+                ..
+            } => {
                 let value = sample.inputs.get(*input_index)?.to_u64()?;
                 if *inferred_bits >= 64 {
                     return Some(false);
@@ -593,7 +640,11 @@ impl SpecInferenceOracle {
                 let max = (1u64 << *inferred_bits) - 1;
                 Some(value <= max)
             }
-            InferredSpec::BitwiseConstraint { input_index, bit_length, .. } => {
+            InferredSpec::BitwiseConstraint {
+                input_index,
+                bit_length,
+                ..
+            } => {
                 let value = sample.inputs.get(*input_index)?.to_u64()?;
                 if *bit_length >= 64 {
                     return Some(false);
@@ -605,7 +656,9 @@ impl SpecInferenceOracle {
                 let value = sample.inputs.get(*wire_index)?;
                 Some(!value.is_zero())
             }
-            InferredSpec::ConstantValue { wire_index, value, .. } => {
+            InferredSpec::ConstantValue {
+                wire_index, value, ..
+            } => {
                 if *wire_index < num_inputs {
                     Some(sample.inputs.get(*wire_index)? == value)
                 } else {

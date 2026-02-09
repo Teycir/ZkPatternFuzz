@@ -27,8 +27,8 @@
 
 use std::collections::{HashMap, HashSet};
 use zk_core::{
-    AttackType, CircuitExecutor, ConstraintEquation, ConstraintInspector, 
-    FieldElement, Finding, ProofOfConcept, Severity,
+    AttackType, CircuitExecutor, ConstraintEquation, ConstraintInspector, FieldElement, Finding,
+    ProofOfConcept, Severity,
 };
 
 /// Categories of constraints that can be inferred
@@ -151,7 +151,11 @@ pub trait InferenceRule: Send + Sync {
     fn infer(&self, context: &InferenceContext) -> Vec<ImpliedConstraint>;
 
     /// Generate a witness that violates the missing constraint
-    fn generate_violation(&self, implied: &ImpliedConstraint, num_wires: usize) -> Option<Vec<FieldElement>>;
+    fn generate_violation(
+        &self,
+        implied: &ImpliedConstraint,
+        num_wires: usize,
+    ) -> Option<Vec<FieldElement>>;
 }
 
 /// Context for constraint inference
@@ -213,7 +217,9 @@ impl InferenceContext {
     pub fn has_constraint_on(&self, wires: &[usize]) -> bool {
         let wire_set: HashSet<_> = wires.iter().collect();
         self.constraints.iter().any(|c| {
-            let constraint_wires: HashSet<_> = c.a_terms.iter()
+            let constraint_wires: HashSet<_> = c
+                .a_terms
+                .iter()
                 .chain(c.b_terms.iter())
                 .chain(c.c_terms.iter())
                 .map(|(w, _)| w)
@@ -263,7 +269,9 @@ impl InferenceRule for BitDecompositionInference {
                         bit_wires.len()
                     ),
                     confidence: 0.85,
-                    involved_wires: std::iter::once(base_wire).chain(bit_wires.iter().copied()).collect(),
+                    involved_wires: std::iter::once(base_wire)
+                        .chain(bit_wires.iter().copied())
+                        .collect(),
                     suggested_constraint: format!(
                         "sum(bits[i] * 2^i for i in 0..{}) == wire_{}",
                         bit_wires.len(),
@@ -278,7 +286,11 @@ impl InferenceRule for BitDecompositionInference {
         implied
     }
 
-    fn generate_violation(&self, implied: &ImpliedConstraint, num_wires: usize) -> Option<Vec<FieldElement>> {
+    fn generate_violation(
+        &self,
+        implied: &ImpliedConstraint,
+        num_wires: usize,
+    ) -> Option<Vec<FieldElement>> {
         if implied.involved_wires.is_empty() {
             return None;
         }
@@ -337,7 +349,12 @@ impl BitDecompositionInference {
         None
     }
 
-    fn check_recomposition(&self, context: &InferenceContext, base_wire: usize, bit_wires: &[usize]) -> bool {
+    fn check_recomposition(
+        &self,
+        context: &InferenceContext,
+        base_wire: usize,
+        bit_wires: &[usize],
+    ) -> bool {
         // Look for constraint: sum(bits[i] * 2^i) == base
         // This would involve base_wire and all bit_wires in a single constraint
         let all_wires: HashSet<usize> = std::iter::once(base_wire)
@@ -346,7 +363,7 @@ impl BitDecompositionInference {
 
         context.constraints.iter().any(|c| {
             let constraint_wires: HashSet<usize> = c.c_terms.iter().map(|(w, _)| *w).collect();
-            
+
             // Check if this constraint involves the base wire and at least half the bits
             let overlap: usize = all_wires.intersection(&constraint_wires).count();
             overlap >= all_wires.len() / 2
@@ -370,7 +387,8 @@ impl InferenceRule for MerklePathInference {
         let path_index = context.find_wires_by_label("pathIndex");
         let indices = context.find_wires_by_label("index");
 
-        let all_indices: Vec<usize> = path_indices.into_iter()
+        let all_indices: Vec<usize> = path_indices
+            .into_iter()
             .chain(path_index)
             .chain(indices)
             .collect();
@@ -402,7 +420,11 @@ impl InferenceRule for MerklePathInference {
         implied
     }
 
-    fn generate_violation(&self, implied: &ImpliedConstraint, num_wires: usize) -> Option<Vec<FieldElement>> {
+    fn generate_violation(
+        &self,
+        implied: &ImpliedConstraint,
+        num_wires: usize,
+    ) -> Option<Vec<FieldElement>> {
         if implied.involved_wires.is_empty() {
             return None;
         }
@@ -437,15 +459,17 @@ impl InferenceRule for NullifierUniquenessInference {
 
         // Check if nullifier is tied to unique input
         let secret_wires = context.find_wires_by_label("secret");
-        
+
         for null_wire in nullifier_wires {
             let has_binding = context.constraints.iter().any(|c| {
-                let wires: HashSet<usize> = c.a_terms.iter()
+                let wires: HashSet<usize> = c
+                    .a_terms
+                    .iter()
                     .chain(c.b_terms.iter())
                     .chain(c.c_terms.iter())
                     .map(|(w, _)| *w)
                     .collect();
-                
+
                 wires.contains(&null_wire) && secret_wires.iter().any(|s| wires.contains(s))
             });
 
@@ -457,7 +481,9 @@ impl InferenceRule for NullifierUniquenessInference {
                         null_wire
                     ),
                     confidence: 0.75,
-                    involved_wires: std::iter::once(null_wire).chain(secret_wires.iter().copied()).collect(),
+                    involved_wires: std::iter::once(null_wire)
+                        .chain(secret_wires.iter().copied())
+                        .collect(),
                     suggested_constraint: "nullifier == hash(secret, ...)".to_string(),
                     violation_witness: None,
                     confirmation: ViolationConfirmation::Unchecked,
@@ -468,7 +494,11 @@ impl InferenceRule for NullifierUniquenessInference {
         implied
     }
 
-    fn generate_violation(&self, implied: &ImpliedConstraint, num_wires: usize) -> Option<Vec<FieldElement>> {
+    fn generate_violation(
+        &self,
+        implied: &ImpliedConstraint,
+        num_wires: usize,
+    ) -> Option<Vec<FieldElement>> {
         if implied.involved_wires.len() < 2 {
             return None;
         }
@@ -510,16 +540,20 @@ impl InferenceRule for RangeEnforcementInference {
         let amount_wires = context.find_wires_by_label("amount");
         let balance_wires = context.find_wires_by_label("balance");
 
-        let range_wires: Vec<usize> = value_wires.into_iter()
+        let range_wires: Vec<usize> = value_wires
+            .into_iter()
             .chain(amount_wires)
             .chain(balance_wires)
             .collect();
 
         for wire in range_wires {
             // Heuristic: if wire has "value/amount/balance" but few constraints, likely missing range
-            let constraint_count = context.constraints.iter()
+            let constraint_count = context
+                .constraints
+                .iter()
                 .filter(|c| {
-                    c.a_terms.iter()
+                    c.a_terms
+                        .iter()
                         .chain(c.b_terms.iter())
                         .chain(c.c_terms.iter())
                         .any(|(w, _)| *w == wire)
@@ -545,7 +579,11 @@ impl InferenceRule for RangeEnforcementInference {
         implied
     }
 
-    fn generate_violation(&self, implied: &ImpliedConstraint, num_wires: usize) -> Option<Vec<FieldElement>> {
+    fn generate_violation(
+        &self,
+        implied: &ImpliedConstraint,
+        num_wires: usize,
+    ) -> Option<Vec<FieldElement>> {
         if implied.involved_wires.is_empty() {
             return None;
         }
@@ -615,7 +653,11 @@ impl ConstraintInferenceEngine {
     }
 
     /// Analyze circuit and find missing constraints
-    pub fn analyze(&self, inspector: &dyn ConstraintInspector, num_wires: usize) -> Vec<ImpliedConstraint> {
+    pub fn analyze(
+        &self,
+        inspector: &dyn ConstraintInspector,
+        num_wires: usize,
+    ) -> Vec<ImpliedConstraint> {
         let context = InferenceContext::from_inspector(inspector, num_wires);
         self.analyze_with_context(&context)
     }
@@ -630,7 +672,8 @@ impl ConstraintInferenceEngine {
             // Generate violations if enabled
             if self.generate_violations {
                 for constraint in &mut implied {
-                    constraint.violation_witness = rule.generate_violation(constraint, context.num_wires);
+                    constraint.violation_witness =
+                        rule.generate_violation(constraint, context.num_wires);
                 }
             }
 
@@ -749,10 +792,8 @@ impl ConstraintInferenceEngine {
                         ic.suggested_constraint
                     );
                     if ic.confirmation != ViolationConfirmation::Unchecked {
-                        description.push_str(&format!(
-                            "\nViolation check: {}",
-                            ic.confirmation.as_str()
-                        ));
+                        description
+                            .push_str(&format!("\nViolation check: {}", ic.confirmation.as_str()));
                     }
                     description
                 },
@@ -803,7 +844,10 @@ impl ConstraintInferenceEngine {
             categories_checked: self.rules.len(),
             implied_found: implied.len(),
             high_confidence: implied.iter().filter(|c| c.confidence >= 0.8).count(),
-            violations_generated: implied.iter().filter(|c| c.violation_witness.is_some()).count(),
+            violations_generated: implied
+                .iter()
+                .filter(|c| c.violation_witness.is_some())
+                .count(),
             violations_confirmed: implied
                 .iter()
                 .filter(|c| c.confirmation == ViolationConfirmation::Confirmed)

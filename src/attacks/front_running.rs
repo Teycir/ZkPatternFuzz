@@ -136,7 +136,10 @@ impl FrontRunningResult {
                 public_inputs: vec![],
                 proof: None,
             },
-            location: Some(format!("front_running:{}", self.vulnerability_type.as_str())),
+            location: Some(format!(
+                "front_running:{}",
+                self.vulnerability_type.as_str()
+            )),
         }
     }
 }
@@ -201,7 +204,7 @@ impl FrontRunningAttack {
 
         for _ in 0..self.config.leakage_tests {
             let mut inputs = base_inputs.to_vec();
-            
+
             // Vary only private inputs
             for i in num_public..inputs.len().min(num_public + num_private) {
                 inputs[i] = FieldElement::random(&mut self.rng);
@@ -217,10 +220,15 @@ impl FrontRunningAttack {
 
         // Calculate output entropy
         let total = output_buckets.values().sum::<usize>() as f64;
-        let entropy: f64 = output_buckets.values()
+        let entropy: f64 = output_buckets
+            .values()
             .map(|&count| {
                 let p = count as f64 / total;
-                if p > 0.0 { -p * p.log2() } else { 0.0 }
+                if p > 0.0 {
+                    -p * p.log2()
+                } else {
+                    0.0
+                }
             })
             .sum();
 
@@ -237,9 +245,14 @@ impl FrontRunningAttack {
                 witness: base_inputs.to_vec(),
                 context: [
                     ("entropy".to_string(), format!("{:.4}", entropy)),
-                    ("unique_outputs".to_string(), output_buckets.len().to_string()),
+                    (
+                        "unique_outputs".to_string(),
+                        output_buckets.len().to_string(),
+                    ),
                     ("samples".to_string(), self.config.leakage_tests.to_string()),
-                ].into_iter().collect(),
+                ]
+                .into_iter()
+                .collect(),
                 measured_entropy: Some(entropy),
             });
         }
@@ -276,9 +289,8 @@ impl FrontRunningAttack {
         }
 
         // If inputs cluster strongly, outputs might be predictable
-        let ratio = (high_inputs as f64 / (low_inputs.max(1) as f64)).max(
-            low_inputs as f64 / (high_inputs.max(1) as f64)
-        );
+        let ratio = (high_inputs as f64 / (low_inputs.max(1) as f64))
+            .max(low_inputs as f64 / (high_inputs.max(1) as f64));
 
         if ratio > 5.0 {
             self.findings.push(FrontRunningResult {
@@ -294,7 +306,9 @@ impl FrontRunningAttack {
                     ("high_inputs".to_string(), high_inputs.to_string()),
                     ("low_inputs".to_string(), low_inputs.to_string()),
                     ("clustering_ratio".to_string(), format!("{:.2}", ratio)),
-                ].into_iter().collect(),
+                ]
+                .into_iter()
+                .collect(),
                 measured_entropy: None,
             });
         }
@@ -313,7 +327,7 @@ impl FrontRunningAttack {
 
         for _ in 0..self.config.commitment_tests {
             let mut inputs = base_inputs.to_vec();
-            
+
             // Vary inputs randomly
             for input in inputs.iter_mut() {
                 if self.rng.gen_bool(0.3) {
@@ -324,10 +338,12 @@ impl FrontRunningAttack {
             let result = executor.execute_sync(&inputs);
             if result.success {
                 // First output is typically the commitment
-                let commitment_key = result.outputs.first()
+                let commitment_key = result
+                    .outputs
+                    .first()
                     .map(|f| f.to_hex())
                     .unwrap_or_default();
-                
+
                 commitment_map
                     .entry(commitment_key)
                     .or_default()
@@ -341,7 +357,7 @@ impl FrontRunningAttack {
                 // Found multiple inputs producing same commitment
                 let first = &input_sets[0];
                 let second = &input_sets[1];
-                
+
                 if first != second {
                     self.findings.push(FrontRunningResult {
                         vulnerability_type: FrontRunningVulnerability::CommitmentBypass,
@@ -356,7 +372,9 @@ impl FrontRunningAttack {
                         context: [
                             ("commitment".to_string(), commitment.clone()),
                             ("collision_count".to_string(), input_sets.len().to_string()),
-                        ].into_iter().collect(),
+                        ]
+                        .into_iter()
+                        .collect(),
                         measured_entropy: None,
                     });
                     break; // One finding is enough
@@ -382,7 +400,7 @@ impl FrontRunningAttack {
         for _ in 0..20 {
             let inputs_a = base_inputs.to_vec();
             let mut inputs_b = inputs_a.clone();
-            
+
             // Make small modification
             if let Some(input) = inputs_b.first_mut() {
                 *input = input.add(&FieldElement::from_u64(1));
@@ -392,13 +410,17 @@ impl FrontRunningAttack {
             let result_b = executor.execute_sync(&inputs_b);
 
             if result_a.success && result_b.success {
-                let output_a = result_a.outputs.first()
+                let output_a = result_a
+                    .outputs
+                    .first()
                     .and_then(|f| f.to_u64())
                     .unwrap_or(0);
-                let output_b = result_b.outputs.first()
+                let output_b = result_b
+                    .outputs
+                    .first()
                     .and_then(|f| f.to_u64())
                     .unwrap_or(0);
-                
+
                 let diff = (output_a as i128 - output_b as i128).unsigned_abs();
                 similar_pairs.push(diff);
             }
@@ -406,7 +428,8 @@ impl FrontRunningAttack {
 
         if similar_pairs.len() >= 10 {
             // Check if outputs are too similar for similar inputs
-            let avg_diff: f64 = similar_pairs.iter().sum::<u128>() as f64 / similar_pairs.len() as f64;
+            let avg_diff: f64 =
+                similar_pairs.iter().sum::<u128>() as f64 / similar_pairs.len() as f64;
             let max_expected_diff = u64::MAX as f64 * 0.001; // 0.1% of field
 
             if avg_diff < max_expected_diff {
@@ -422,7 +445,9 @@ impl FrontRunningAttack {
                     context: [
                         ("avg_output_diff".to_string(), format!("{:.0}", avg_diff)),
                         ("samples".to_string(), similar_pairs.len().to_string()),
-                    ].into_iter().collect(),
+                    ]
+                    .into_iter()
+                    .collect(),
                     measured_entropy: None,
                 });
             }
@@ -446,7 +471,7 @@ impl FrontRunningAttack {
         // Simulate "time" passing by varying a potential timestamp input
         for time_offset in 0..10 {
             let mut inputs = base_inputs.to_vec();
-            
+
             // Assume last input might be a timestamp
             if let Some(last) = inputs.last_mut() {
                 *last = FieldElement::from_u64(time_offset * 100);
@@ -475,11 +500,15 @@ impl FrontRunningAttack {
                     vulnerability_type: FrontRunningVulnerability::DelayAttack,
                     description: "Circuit outputs appear time-sensitive. If transaction \
                          timing affects outcomes, attackers may profit by strategically \
-                         delaying or accelerating transaction inclusion.".to_string(),
+                         delaying or accelerating transaction inclusion."
+                        .to_string(),
                     witness: base_inputs.to_vec(),
-                    context: [
-                        ("time_samples".to_string(), outputs_over_time.len().to_string()),
-                    ].into_iter().collect(),
+                    context: [(
+                        "time_samples".to_string(),
+                        outputs_over_time.len().to_string(),
+                    )]
+                    .into_iter()
+                    .collect(),
                     measured_entropy: None,
                 });
             }
@@ -490,8 +519,8 @@ impl FrontRunningAttack {
 
     /// Hash outputs for comparison
     fn hash_outputs(&self, outputs: &[FieldElement]) -> String {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         for output in outputs {
@@ -529,12 +558,28 @@ impl StateLeakageAnalyzer {
         }
 
         // Calculate mutual information between inputs and outputs
-        let unique_inputs: HashSet<String> = self.observations.iter()
-            .map(|(inputs, _)| inputs.iter().map(|f| f.to_hex()).collect::<Vec<_>>().join(","))
+        let unique_inputs: HashSet<String> = self
+            .observations
+            .iter()
+            .map(|(inputs, _)| {
+                inputs
+                    .iter()
+                    .map(|f| f.to_hex())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
             .collect();
 
-        let unique_outputs: HashSet<String> = self.observations.iter()
-            .map(|(_, outputs)| outputs.iter().map(|f| f.to_hex()).collect::<Vec<_>>().join(","))
+        let unique_outputs: HashSet<String> = self
+            .observations
+            .iter()
+            .map(|(_, outputs)| {
+                outputs
+                    .iter()
+                    .map(|f| f.to_hex())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
             .collect();
 
         let input_entropy = (unique_inputs.len() as f64).log2();
@@ -552,9 +597,17 @@ impl StateLeakageAnalyzer {
                 witness: vec![],
                 context: [
                     ("input_entropy".to_string(), format!("{:.4}", input_entropy)),
-                    ("output_entropy".to_string(), format!("{:.4}", output_entropy)),
-                    ("leakage_ratio".to_string(), format!("{:.4}", output_entropy / input_entropy)),
-                ].into_iter().collect(),
+                    (
+                        "output_entropy".to_string(),
+                        format!("{:.4}", output_entropy),
+                    ),
+                    (
+                        "leakage_ratio".to_string(),
+                        format!("{:.4}", output_entropy / input_entropy),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
                 measured_entropy: Some(output_entropy),
             });
         }
