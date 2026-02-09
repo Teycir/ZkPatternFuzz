@@ -244,6 +244,7 @@ fn create_test_config(circuit_path: &PathBuf, component: &str, framework: Framew
         mutations: vec![],
         oracles: vec![],
         reporting: ReportingConfig::default(),
+        chains: vec![],
     }
 }
 

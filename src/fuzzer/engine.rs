@@ -1758,20 +1758,19 @@ impl FuzzingEngine {
             Some(fixed)
         };
 
-        let test_cases: Vec<TestCase> = (0..witness_pairs)
-            .map(|_| {
-                let mut tc = self.generate_test_case();
-                // Fix public inputs at their correct positions
-                if let Some(ref fixed) = fixed_public {
-                    for (pos, val) in fixed {
-                        if *pos < tc.inputs.len() {
-                            tc.inputs[*pos] = val.clone();
-                        }
+        let mut test_cases = Vec::with_capacity(witness_pairs);
+        for _ in 0..witness_pairs {
+            let mut tc = self.generate_test_case();
+            // Fix public inputs at their correct positions
+            if let Some(ref fixed) = fixed_public {
+                for (pos, val) in fixed {
+                    if *pos < tc.inputs.len() {
+                        tc.inputs[*pos] = val.clone();
                     }
                 }
-                tc
-            })
-            .collect();
+            }
+            test_cases.push(tc);
+        }
 
         // Execute in parallel and collect results with indices
         // Mode 3 optimization: collect only (index, result) to avoid cloning TestCase
@@ -2216,7 +2215,10 @@ impl FuzzingEngine {
         }
 
         // Generate and execute in parallel
-        let test_cases: Vec<TestCase> = (0..samples).map(|_| self.generate_test_case()).collect();
+        let mut test_cases = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            test_cases.push(self.generate_test_case());
+        }
 
         let executor = self.executor.clone();
         let indexed_results: Vec<(usize, ExecutionResult)> = if self.workers <= 1 {
@@ -2387,10 +2389,16 @@ impl FuzzingEngine {
         let mut rng = rand::thread_rng();
         let findings = fuzzer.fuzz(&self.executor, &mut rng);
 
-        for finding in findings {
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !findings.is_empty() {
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                for finding in &findings {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
             }
         }
 
@@ -2442,10 +2450,16 @@ impl FuzzingEngine {
         let mut rng = rand::thread_rng();
         let findings = fuzzer.fuzz(&self.executor, &mut rng);
 
-        for finding in findings {
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !findings.is_empty() {
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                for finding in &findings {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
             }
         }
 
@@ -2605,9 +2619,10 @@ impl FuzzingEngine {
             return Ok(());
         }
 
-        let test_cases: Vec<_> = (0..num_tests)
-            .map(|_| self.generate_random_test_case())
-            .collect();
+        let mut test_cases = Vec::with_capacity(num_tests);
+        for _ in 0..num_tests {
+            test_cases.push(self.generate_random_test_case());
+        }
 
         let results = diff_fuzzer.run(&test_cases);
 
@@ -2628,23 +2643,31 @@ impl FuzzingEngine {
 
         tracing::info!("{}", report.summary());
 
-        for result in results {
-            let finding = Finding {
-                attack_type: AttackType::Differential,
-                severity: Severity::Medium,
-                description: format!("Differential discrepancy: {:?}", result.severity),
-                poc: super::ProofOfConcept {
-                    witness_a: result.input.clone(),
-                    witness_b: None,
-                    public_inputs: vec![],
-                    proof: None,
-                },
-                location: None,
-            };
-
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !results.is_empty() {
+            let findings: Vec<Finding> = results
+                .into_iter()
+                .map(|result| Finding {
+                    attack_type: AttackType::Differential,
+                    severity: Severity::Medium,
+                    description: format!("Differential discrepancy: {:?}", result.severity),
+                    poc: super::ProofOfConcept {
+                        witness_a: result.input,
+                        witness_b: None,
+                        public_inputs: vec![],
+                        proof: None,
+                    },
+                    location: None,
+                })
+                .collect();
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding("MEDIUM", &finding.description);
+                for finding in &findings {
+                    p.log_finding("MEDIUM", &finding.description);
+                }
             }
         }
 
@@ -2719,10 +2742,16 @@ impl FuzzingEngine {
         let mut rng = rand::thread_rng();
         let findings = multi_fuzzer.run(&mut rng);
 
-        for finding in findings {
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !findings.is_empty() {
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                for finding in &findings {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
             }
         }
 
@@ -2806,10 +2835,16 @@ impl FuzzingEngine {
         analyzer.propagate_constraints(&constraints);
 
         let findings = analyzer.to_findings();
-        for finding in findings {
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !findings.is_empty() {
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                for finding in &findings {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
             }
         }
 
@@ -3106,11 +3141,16 @@ impl FuzzingEngine {
         }
 
         let findings = engine.to_findings(&implied);
-
-        for finding in findings {
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !findings.is_empty() {
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                for finding in &findings {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
             }
         }
 
@@ -3122,10 +3162,16 @@ impl FuzzingEngine {
             .filter(|inv| inv.invariant_type != InvariantType::Metamorphic)
             .collect();
         let invariant_findings = self.enforce_invariants(&invariants);
-        for finding in invariant_findings {
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !invariant_findings.is_empty() {
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(invariant_findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                for finding in &invariant_findings {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
             }
         }
         
@@ -3162,10 +3208,16 @@ impl FuzzingEngine {
             let results = oracle.test_all(self.executor.as_ref(), &base_witness.inputs).await;
             
             let findings = oracle.to_findings(&results);
-            for finding in findings {
-                self.core.findings().write().unwrap().push(finding.clone());
+            if !findings.is_empty() {
+                {
+                    let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                    store.extend(findings.iter().cloned());
+                }
                 if let Some(p) = progress {
-                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                    for finding in &findings {
+                        p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                    }
                 }
             }
             
@@ -3243,10 +3295,16 @@ impl FuzzingEngine {
             &outputs,
         ).await;
         
-        for finding in findings {
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !findings.is_empty() {
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                for finding in &findings {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
             }
         }
         
@@ -3277,16 +3335,23 @@ impl FuzzingEngine {
             .with_wire_labels(self.input_labels());
         
         // Generate initial witnesses
-        let initial_witnesses: Vec<Vec<FieldElement>> = (0..sample_count.max(1))
-            .map(|_| self.generate_test_case().inputs)
-            .collect();
+        let mut initial_witnesses = Vec::with_capacity(sample_count.max(1));
+        for _ in 0..sample_count.max(1) {
+            initial_witnesses.push(self.generate_test_case().inputs);
+        }
         
         let findings = oracle.run(self.executor.as_ref(), &initial_witnesses).await;
         
-        for finding in findings {
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !findings.is_empty() {
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                for finding in &findings {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
             }
         }
         
@@ -3348,17 +3413,24 @@ impl FuzzingEngine {
         }
         
         // Generate witnesses
-        let witnesses: Vec<Vec<FieldElement>> = (0..samples)
-            .map(|_| self.generate_test_case().inputs)
-            .collect();
+        let mut witnesses = Vec::with_capacity(samples);
+        for _ in 0..samples {
+            witnesses.push(self.generate_test_case().inputs);
+        }
         
         let collisions = detector.run(self.executor.as_ref(), &witnesses).await;
         let findings = detector.to_findings(&collisions);
         
-        for finding in findings {
-            self.core.findings().write().unwrap().push(finding.clone());
+        if !findings.is_empty() {
+            {
+                let findings_store = self.core.findings();
+                let mut store = findings_store.write().unwrap();
+                store.extend(findings.iter().cloned());
+            }
             if let Some(p) = progress {
-                p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                for finding in &findings {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
             }
         }
         

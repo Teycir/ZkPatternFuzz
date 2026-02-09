@@ -22,7 +22,6 @@
 //! ```
 
 use std::path::PathBuf;
-use std::collections::HashMap;
 
 /// Test configuration for ground truth evaluation
 #[derive(Debug, Clone)]
@@ -324,8 +323,6 @@ reporting:
 #[test]
 #[ignore = "Requires circom installation and circuit compilation"]
 fn ground_truth_known_bugs() {
-    let mut stats = GroundTruthStats::default();
-    
     println!("\n=== Ground Truth Test: Known Bugs ===\n");
     
     for bug in known_bug_circuits() {
@@ -355,7 +352,6 @@ fn ground_truth_known_bugs() {
 #[ignore = "Requires circom installation"]
 fn ground_truth_full_evaluation() {
     let config = GroundTruthConfig::default();
-    let mut stats = GroundTruthStats::default();
     
     println!("\n=== Full Ground Truth Evaluation ===\n");
     println!("Configuration:");

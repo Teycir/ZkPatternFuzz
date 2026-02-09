@@ -211,6 +211,7 @@ async fn test_continuous_fuzzing_realistic_iteration_count() {
         mutations: vec![],
         oracles: vec![],
         reporting: ReportingConfig::default(),
+        chains: vec![],
     };
     
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
@@ -288,6 +289,7 @@ async fn test_all_five_novel_attacks_dispatch() {
             mutations: vec![],
             oracles: vec![],
             reporting: ReportingConfig::default(),
+            chains: vec![],
         };
         
         let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();

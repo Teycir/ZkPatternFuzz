@@ -256,7 +256,7 @@ impl ChainShrinker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chain_fuzzer::types::{CrossStepAssertion, StepSpec, StepTrace};
+    use crate::chain_fuzzer::types::StepSpec;
     use crate::executor::MockCircuitExecutor;
     use std::sync::Arc;
 

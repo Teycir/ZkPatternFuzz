@@ -62,6 +62,7 @@ fn create_test_config() -> FuzzConfig {
         mutations: vec![],
         oracles: vec![],
         reporting: ReportingConfig::default(),
+        chains: vec![],
     }
 }
 

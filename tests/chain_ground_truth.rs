@@ -6,11 +6,11 @@
 //!
 //! Run with: `cargo test --test chain_ground_truth`
 
-use std::collections::HashMap;
 use std::path::Path;
 
 /// Ground truth test case definition
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ChainGroundTruth {
     /// Name of the test case
     name: &'static str,
@@ -68,6 +68,7 @@ fn ground_truth_cases() -> Vec<ChainGroundTruth> {
 
 /// Result of running a ground truth test
 #[derive(Debug)]
+#[allow(dead_code)]
 struct GroundTruthResult {
     name: String,
     passed: bool,
