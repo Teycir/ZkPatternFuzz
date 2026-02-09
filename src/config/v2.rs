@@ -479,6 +479,9 @@ impl ConfigResolver {
                 serde_yaml::to_value(&v2_config.target_traits)?,
             );
 
+            // Merge chains defined in this v2 config (overrides included chains by name)
+            merged.chains = Self::merge_chains(merged.chains, v2_config.chains);
+
             Ok(merged)
         } else {
             // Fall back to v1 parsing
@@ -571,7 +574,7 @@ impl ConfigResolver {
             } else {
                 overlay.reporting
             },
-            chains: Vec::new(), // Mode 3: chains are merged separately
+            chains: Self::merge_chains(base.chains, overlay.chains),
         }
     }
 
@@ -597,6 +600,34 @@ impl ConfigResolver {
             } else {
                 index_by_name.insert(input.name.clone(), merged.len());
                 merged.push(input);
+            }
+        }
+
+        merged
+    }
+
+    fn merge_chains(base: Vec<ChainConfig>, overlay: Vec<ChainConfig>) -> Vec<ChainConfig> {
+        if base.is_empty() {
+            return overlay;
+        }
+        if overlay.is_empty() {
+            return base;
+        }
+
+        let mut merged = Vec::with_capacity(base.len() + overlay.len());
+        let mut index_by_name: HashMap<String, usize> = HashMap::new();
+
+        for chain in base {
+            index_by_name.insert(chain.name.clone(), merged.len());
+            merged.push(chain);
+        }
+
+        for chain in overlay {
+            if let Some(idx) = index_by_name.get(&chain.name).copied() {
+                merged[idx] = chain;
+            } else {
+                index_by_name.insert(chain.name.clone(), merged.len());
+                merged.push(chain);
             }
         }
 

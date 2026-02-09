@@ -104,7 +104,7 @@ impl ChainRunner {
                 step_index,
                 &step.input_wiring,
                 &step.circuit_ref,
-                executor.num_private_inputs(),
+                executor.num_private_inputs() + executor.num_public_inputs(),
                 &trace,
                 initial_inputs,
                 rng,

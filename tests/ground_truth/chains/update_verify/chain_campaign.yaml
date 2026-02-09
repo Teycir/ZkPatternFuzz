@@ -49,7 +49,9 @@ inputs:
     fuzz_strategy: random
   - name: "pathIndex"
     type: "field"
-    fuzz_strategy: binary
+    fuzz_strategy: random
+    constraints:
+      - "binary"
 
 reporting:
   output_dir: "./reports/ground_truth/update_verify"

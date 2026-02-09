@@ -223,13 +223,15 @@ impl FuzzConfig {
             );
         }
 
-        // Validate attack configs
-        if self.attacks.is_empty() {
+        let has_chains = !self.chains.is_empty();
+
+        // Validate attack configs (chain-only campaigns may omit attacks)
+        if self.attacks.is_empty() && !has_chains {
             anyhow::bail!("At least one attack must be specified");
         }
 
-        // Validate inputs
-        if self.inputs.is_empty() {
+        // Validate inputs (chain-only campaigns may omit inputs)
+        if self.inputs.is_empty() && !has_chains {
             anyhow::bail!("At least one input must be specified");
         }
 

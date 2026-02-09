@@ -5004,6 +5004,20 @@ impl FuzzingEngine {
         let mut all_findings = Vec::new();
         let mut rng = ChaCha8Rng::seed_from_u64(self.seed.unwrap_or(42));
 
+        // Optional seed inputs for chain fuzzing (reuse evidence seed inputs if provided)
+        let seed_inputs_path = Self::additional_string(&self.config.campaign.parameters.additional, "seed_inputs_path");
+        let seed_inputs = match seed_inputs_path {
+            Some(path) => match self.load_seed_inputs_from_path(&path) {
+                Ok(seeds) => seeds,
+                Err(e) => {
+                    tracing::warn!("Failed to load chain seed inputs from {}: {}", path, e);
+                    Vec::new()
+                }
+            },
+            None => Vec::new(),
+        };
+        let mut seed_index: usize = 0;
+
         // Run chains according to schedule
         let allocations = scheduler.allocate();
 
@@ -5016,8 +5030,27 @@ impl FuzzingEngine {
                 p.log_message(&format!("Chain: {} (budget: {:?})", chain.name, chain_budget));
             }
 
-            // Initial inputs (empty - will be generated fresh)
+            // Initial inputs (seeded if available; otherwise generated fresh)
             let mut current_inputs = std::collections::HashMap::new();
+            if !seed_inputs.is_empty() {
+                if let Some(first_step) = chain.steps.first() {
+                    if let Some(executor) = runner.executors.get(&first_step.circuit_ref) {
+                        let expected = executor.num_private_inputs() + executor.num_public_inputs();
+                        let seed = &seed_inputs[seed_index % seed_inputs.len()];
+                        if seed.len() >= expected {
+                            current_inputs.insert(first_step.circuit_ref.clone(), seed[..expected].to_vec());
+                        } else {
+                            tracing::warn!(
+                                "Seed input too short for circuit '{}': expected {}, got {}",
+                                first_step.circuit_ref,
+                                expected,
+                                seed.len()
+                            );
+                        }
+                    }
+                }
+                seed_index = seed_index.wrapping_add(1);
+            }
             let mut iterations = 0;
             let mut current_spec: Option<crate::chain_fuzzer::ChainSpec> = None;
 

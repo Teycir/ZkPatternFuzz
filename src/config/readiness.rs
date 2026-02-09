@@ -425,15 +425,16 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
 
     // 12. Check circuit path exists
     if config.campaign.target.framework != Framework::Mock
-        && !config.campaign.target.circuit_path.exists() {
-            warnings.push(ReadinessWarning::critical(
-                "Target",
-                &format!(
-                    "Circuit file not found: {:?}",
-                    config.campaign.target.circuit_path
-                ),
-            ));
-        }
+        && !config.campaign.target.circuit_path.exists()
+    {
+        warnings.push(ReadinessWarning::critical(
+            "Target",
+            &format!(
+                "Circuit file not found: {:?}",
+                config.campaign.target.circuit_path
+            ),
+        ));
+    }
 
     // 13. Check fuzzing iterations (CRITICAL for 0-day discovery)
     let max_iterations = additional

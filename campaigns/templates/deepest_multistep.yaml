@@ -212,7 +212,7 @@ inputs:
   - name: "pathIndices"
     type: "field[]"
     length: 32
-    fuzz_strategy: binary
+    fuzz_strategy: random
     constraints:
       - "binary"
 

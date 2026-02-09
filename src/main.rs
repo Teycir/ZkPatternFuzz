@@ -53,7 +53,7 @@ enum Commands {
         campaign: String,
         
         /// Number of continuous fuzzing iterations (Phase 0)
-        #[arg(short, long, default_value = "1000")]
+        #[arg(short, long, default_value = "100000")]
         iterations: u64,
         
         /// Timeout in seconds for continuous fuzzing phase
@@ -66,7 +66,7 @@ enum Commands {
         campaign: String,
 
         /// Number of continuous fuzzing iterations (Phase 0)
-        #[arg(short, long, default_value = "1000")]
+        #[arg(short, long, default_value = "100000")]
         iterations: u64,
 
         /// Timeout in seconds for continuous fuzzing phase
@@ -79,7 +79,7 @@ enum Commands {
         campaign: String,
 
         /// Number of chain fuzzing iterations
-        #[arg(short, long, default_value = "1000")]
+        #[arg(short, long, default_value = "100000")]
         iterations: u64,
 
         /// Timeout in seconds for chain fuzzing
