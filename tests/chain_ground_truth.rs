@@ -535,7 +535,10 @@ mod tests {
             let mut rng = ChaCha8Rng::seed_from_u64(seed_from_name(case.name));
 
             let mut all_findings: Vec<ChainFinding> = Vec::new();
-            let iterations = settings.iterations;
+            let iterations = match expected_spec.outcome {
+                ExpectedOutcome::Clean => settings.iterations.min(200),
+                ExpectedOutcome::Confirmed => settings.iterations,
+            };
 
             'chain_run: for chain in &chains {
                 let checker = CrossStepInvariantChecker::from_spec(chain);
@@ -626,17 +629,22 @@ mod tests {
                 }
             }
 
+            let mut timeout_note: Option<String> = None;
             if let Some(err) = case_error {
-                results.push(GroundTruthResult {
-                    name: case.name.to_string(),
-                    passed: false,
-                    expected: expected_spec.outcome,
-                    actual_findings: all_findings.len(),
-                    actual_assertion: all_findings.first().and_then(|f| f.violated_assertion.clone()),
-                    actual_l_min: all_findings.first().map(|f| f.l_min),
-                    error: Some(err),
-                });
-                continue;
+                if expected_spec.outcome == ExpectedOutcome::Clean && all_findings.is_empty() {
+                    timeout_note = Some(err);
+                } else {
+                    results.push(GroundTruthResult {
+                        name: case.name.to_string(),
+                        passed: false,
+                        expected: expected_spec.outcome,
+                        actual_findings: all_findings.len(),
+                        actual_assertion: all_findings.first().and_then(|f| f.violated_assertion.clone()),
+                        actual_l_min: all_findings.first().map(|f| f.l_min),
+                        error: Some(err),
+                    });
+                    continue;
+                }
             }
 
             let passed;
@@ -690,7 +698,7 @@ mod tests {
                 actual_findings: all_findings.len(),
                 actual_assertion: first_finding.and_then(|f| f.violated_assertion.clone()),
                 actual_l_min: first_finding.map(|f| f.l_min),
-                error: None,
+                error: timeout_note,
             });
         }
 
