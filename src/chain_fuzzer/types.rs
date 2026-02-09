@@ -87,6 +87,57 @@ impl ChainSpec {
             description: self.description.clone(),
         })
     }
+
+    /// Create a version with steps at positions i and j swapped.
+    /// Also updates InputWiring references so that any reference to step i
+    /// becomes j and vice versa. Returns None if either index is out of
+    /// bounds or i == j.
+    pub fn swap_steps(&self, i: usize, j: usize) -> Option<Self> {
+        if i >= self.steps.len() || j >= self.steps.len() || i == j {
+            return None;
+        }
+
+        let mut steps = self.steps.clone();
+        steps.swap(i, j);
+
+        for step in steps.iter_mut() {
+            step.input_wiring = step.input_wiring.adjust_after_swap(i, j);
+        }
+
+        Some(Self {
+            name: format!("{}_swap_{}_{}", self.name, i, j),
+            steps,
+            assertions: self.assertions.clone(),
+            description: self.description.clone(),
+        })
+    }
+
+    /// Insert a copy of the step at `index` immediately after it (for
+    /// re-entrancy testing). The duplicate gets Fresh wiring. Wiring
+    /// references in subsequent steps that point to indices > index are
+    /// incremented by 1. Returns None if index is out of bounds.
+    pub fn duplicate_step(&self, index: usize) -> Option<Self> {
+        if index >= self.steps.len() {
+            return None;
+        }
+
+        let mut steps = self.steps.clone();
+
+        let mut dup = steps[index].clone();
+        dup.input_wiring = InputWiring::Fresh;
+        steps.insert(index + 1, dup);
+
+        for step in steps.iter_mut().skip(index + 2) {
+            step.input_wiring = step.input_wiring.adjust_after_insertion(index);
+        }
+
+        Some(Self {
+            name: format!("{}_dup_{}", self.name, index),
+            steps,
+            assertions: self.assertions.clone(),
+            description: self.description.clone(),
+        })
+    }
 }
 
 /// Specification for a single step in a chain
@@ -214,6 +265,84 @@ impl InputWiring {
                     fresh_indices: fresh_indices.clone(),
                 }
             }
+        }
+    }
+
+    /// Adjust step references after swapping steps at positions i and j
+    pub fn adjust_after_swap(&self, i: usize, j: usize) -> Self {
+        match self {
+            InputWiring::Fresh => InputWiring::Fresh,
+            InputWiring::FromPriorOutput { step, mapping } => {
+                let new_step = if *step == i {
+                    j
+                } else if *step == j {
+                    i
+                } else {
+                    *step
+                };
+                InputWiring::FromPriorOutput {
+                    step: new_step,
+                    mapping: mapping.clone(),
+                }
+            }
+            InputWiring::Mixed { prior, fresh_indices } => {
+                let adjusted_prior: Vec<_> = prior
+                    .iter()
+                    .map(|(s, out_idx, in_idx)| {
+                        let new_s = if *s == i {
+                            j
+                        } else if *s == j {
+                            i
+                        } else {
+                            *s
+                        };
+                        (new_s, *out_idx, *in_idx)
+                    })
+                    .collect();
+                InputWiring::Mixed {
+                    prior: adjusted_prior,
+                    fresh_indices: fresh_indices.clone(),
+                }
+            }
+            InputWiring::Constant { values, fresh_indices } => InputWiring::Constant {
+                values: values.clone(),
+                fresh_indices: fresh_indices.clone(),
+            },
+        }
+    }
+
+    /// Adjust step references after a new step has been inserted at `inserted_at`
+    pub fn adjust_after_insertion(&self, inserted_at: usize) -> Self {
+        match self {
+            InputWiring::Fresh => InputWiring::Fresh,
+            InputWiring::FromPriorOutput { step, mapping } => {
+                let new_step = if *step > inserted_at {
+                    step + 1
+                } else {
+                    *step
+                };
+                InputWiring::FromPriorOutput {
+                    step: new_step,
+                    mapping: mapping.clone(),
+                }
+            }
+            InputWiring::Mixed { prior, fresh_indices } => {
+                let adjusted_prior: Vec<_> = prior
+                    .iter()
+                    .map(|(s, out_idx, in_idx)| {
+                        let new_s = if *s > inserted_at { s + 1 } else { *s };
+                        (new_s, *out_idx, *in_idx)
+                    })
+                    .collect();
+                InputWiring::Mixed {
+                    prior: adjusted_prior,
+                    fresh_indices: fresh_indices.clone(),
+                }
+            }
+            InputWiring::Constant { values, fresh_indices } => InputWiring::Constant {
+                values: values.clone(),
+                fresh_indices: fresh_indices.clone(),
+            },
         }
     }
 
@@ -641,5 +770,48 @@ mod tests {
         
         let equal = CrossStepAssertion::equal("root_consistent", 0, 1, 1, 0);
         assert!(equal.relation.contains("step[0].out[1] == step[1].in[0]"));
+    }
+
+    #[test]
+    fn test_chain_spec_swap_steps() {
+        let spec = ChainSpec::new("test_chain", vec![
+            StepSpec::fresh("circuit_a"),
+            StepSpec::fresh("circuit_b"),
+            StepSpec::from_prior("circuit_c", 0, vec![(0, 0)]),
+        ]);
+
+        let swapped = spec.swap_steps(0, 1).unwrap();
+        assert_eq!(swapped.steps.len(), 3);
+        assert_eq!(swapped.steps[0].circuit_ref, "circuit_b");
+        assert_eq!(swapped.steps[1].circuit_ref, "circuit_a");
+
+        match &swapped.steps[2].input_wiring {
+            InputWiring::FromPriorOutput { step, .. } => assert_eq!(*step, 1),
+            other => panic!("expected FromPriorOutput, got {:?}", other),
+        }
+
+        assert!(spec.swap_steps(0, 5).is_none());
+        assert!(spec.swap_steps(0, 0).is_none());
+    }
+
+    #[test]
+    fn test_chain_spec_duplicate_step() {
+        let spec = ChainSpec::new("test_chain", vec![
+            StepSpec::fresh("circuit_a"),
+            StepSpec::from_prior("circuit_b", 0, vec![(0, 0)]),
+        ]);
+
+        let duped = spec.duplicate_step(0).unwrap();
+        assert_eq!(duped.steps.len(), 3);
+        assert_eq!(duped.steps[0].circuit_ref, "circuit_a");
+        assert_eq!(duped.steps[1].circuit_ref, "circuit_a");
+        assert_eq!(duped.steps[1].input_wiring, InputWiring::Fresh);
+
+        match &duped.steps[2].input_wiring {
+            InputWiring::FromPriorOutput { step, .. } => assert_eq!(*step, 0),
+            other => panic!("expected FromPriorOutput, got {:?}", other),
+        }
+
+        assert!(spec.duplicate_step(5).is_none());
     }
 }

@@ -63,6 +63,17 @@ pub enum MutationType {
     BitFlip { step_index: usize, input_index: usize, bit: usize },
 }
 
+/// Result of a chain mutation (may include a modified spec)
+#[derive(Debug, Clone)]
+pub struct ChainMutation {
+    /// Mutated inputs
+    pub inputs: HashMap<String, Vec<FieldElement>>,
+    /// Type of mutation applied
+    pub mutation_type: MutationType,
+    /// Modified chain spec (None if only inputs changed)
+    pub spec: Option<ChainSpec>,
+}
+
 impl ChainMutator {
     /// Create a new chain mutator
     pub fn new() -> Self {
@@ -111,6 +122,24 @@ impl ChainMutator {
             3 => self.step_duplication(spec, prior_inputs, rng),
             4 => self.boundary_injection(spec, prior_inputs, rng),
             _ => self.bit_flip(spec, prior_inputs, rng),
+        }
+    }
+
+    /// Mutate a chain, potentially modifying the spec as well as inputs
+    pub fn mutate(
+        &self,
+        spec: &ChainSpec,
+        prior_inputs: &HashMap<String, Vec<FieldElement>>,
+        rng: &mut impl Rng,
+    ) -> ChainMutation {
+        let strategy = self.select_strategy(rng);
+        match strategy {
+            0 => { let (inputs, mt) = self.single_step_tweak(spec, prior_inputs, rng); ChainMutation { inputs, mutation_type: mt, spec: None } }
+            1 => { let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng); ChainMutation { inputs, mutation_type: mt, spec: None } }
+            2 => self.step_reorder_real(spec, prior_inputs, rng),
+            3 => self.step_duplication_real(spec, prior_inputs, rng),
+            4 => { let (inputs, mt) = self.boundary_injection(spec, prior_inputs, rng); ChainMutation { inputs, mutation_type: mt, spec: None } }
+            _ => { let (inputs, mt) = self.bit_flip(spec, prior_inputs, rng); ChainMutation { inputs, mutation_type: mt, spec: None } }
         }
     }
 
@@ -259,6 +288,71 @@ impl ChainMutator {
         // Duplicate the inputs for this step's circuit
         let (result, _) = self.cascade_mutation(spec, prior_inputs, rng);
         (result, MutationType::StepDuplication { step_index })
+    }
+
+    /// Strategy 3 (real): Step reorder returning ChainMutation with modified spec
+    fn step_reorder_real(
+        &self,
+        spec: &ChainSpec,
+        prior_inputs: &HashMap<String, Vec<FieldElement>>,
+        rng: &mut impl Rng,
+    ) -> ChainMutation {
+        if spec.steps.len() < 2 {
+            let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng);
+            return ChainMutation { inputs, mutation_type: mt, spec: None };
+        }
+
+        let n = spec.steps.len();
+        for _ in 0..10 {
+            let from = rng.gen_range(0..n);
+            let to = rng.gen_range(0..n);
+            if from == to {
+                continue;
+            }
+
+            let deps_from = spec.steps[from].input_wiring.dependent_steps();
+            let deps_to = spec.steps[to].input_wiring.dependent_steps();
+
+            if deps_from.contains(&to) || deps_to.contains(&from) {
+                continue;
+            }
+
+            if let Some(swapped) = spec.swap_steps(from, to) {
+                return ChainMutation {
+                    inputs: prior_inputs.clone(),
+                    mutation_type: MutationType::StepReorder { from, to },
+                    spec: Some(swapped),
+                };
+            }
+        }
+
+        let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng);
+        ChainMutation { inputs, mutation_type: mt, spec: None }
+    }
+
+    /// Strategy 4 (real): Step duplication returning ChainMutation with modified spec
+    fn step_duplication_real(
+        &self,
+        spec: &ChainSpec,
+        prior_inputs: &HashMap<String, Vec<FieldElement>>,
+        rng: &mut impl Rng,
+    ) -> ChainMutation {
+        if spec.steps.is_empty() {
+            let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng);
+            return ChainMutation { inputs, mutation_type: mt, spec: None };
+        }
+
+        let step_index = rng.gen_range(0..spec.steps.len());
+        if let Some(duplicated) = spec.duplicate_step(step_index) {
+            ChainMutation {
+                inputs: prior_inputs.clone(),
+                mutation_type: MutationType::StepDuplication { step_index },
+                spec: Some(duplicated),
+            }
+        } else {
+            let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng);
+            ChainMutation { inputs, mutation_type: mt, spec: None }
+        }
     }
 
     /// Strategy 5: Boundary value injection
@@ -460,5 +554,35 @@ mod tests {
             *fe == FieldElement::half_modulus()
         });
         assert!(is_boundary);
+    }
+
+    #[test]
+    fn test_mutate_with_spec() {
+        let mutator = ChainMutator::new()
+            .with_weights(MutationWeights {
+                single_step_tweak: 0.0,
+                cascade_mutation: 0.0,
+                step_reorder: 0.0,
+                step_duplication: 1.0,
+                boundary_injection: 0.0,
+                bit_flip: 0.0,
+            });
+
+        let spec = ChainSpec::new("test_chain", vec![
+            StepSpec::fresh("circuit_a"),
+            StepSpec::fresh("circuit_b"),
+        ]);
+
+        let mut initial_inputs = HashMap::new();
+        initial_inputs.insert("circuit_a".to_string(), vec![FieldElement::one()]);
+        initial_inputs.insert("circuit_b".to_string(), vec![FieldElement::from_u64(42)]);
+
+        let mut rng = rand::thread_rng();
+        let result = mutator.mutate(&spec, &initial_inputs, &mut rng);
+
+        assert!(result.spec.is_some(), "step_duplication should produce a modified spec");
+        let new_spec = result.spec.unwrap();
+        assert_eq!(new_spec.steps.len(), spec.steps.len() + 1);
+        assert!(matches!(result.mutation_type, MutationType::StepDuplication { .. }));
     }
 }

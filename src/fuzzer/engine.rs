@@ -5019,31 +5019,35 @@ impl FuzzingEngine {
                 p.log_message(&format!("Chain: {} (budget: {:?})", chain.name, chain_budget));
             }
 
-            // Build checker for this chain's assertions
-            let checker = CrossStepInvariantChecker::from_spec(chain);
-
             // Initial inputs (empty - will be generated fresh)
             let mut current_inputs = std::collections::HashMap::new();
             let mut iterations = 0;
+            let mut current_spec: Option<crate::chain_fuzzer::ChainSpec> = None;
 
             while chain_start.elapsed() < chain_budget && iterations < chain_iterations {
+                let spec_to_use = current_spec.as_ref().unwrap_or(chain);
+
                 // Execute chain
-                let result = runner.execute(chain, &current_inputs, &mut rng);
+                let result = runner.execute(spec_to_use, &current_inputs, &mut rng);
 
                 if result.completed {
-                    // Check for violations
-                    let violations = checker.check(&result.trace);
+                    // Rebuild checker if spec was mutated
+                    let active_checker = if current_spec.is_some() {
+                        CrossStepInvariantChecker::from_spec(spec_to_use)
+                    } else {
+                        CrossStepInvariantChecker::from_spec(chain)
+                    };
+
+                    let violations = active_checker.check(&result.trace);
 
                     for violation in violations {
-                        // Found a violation - shrink to get L_min
                         let shrinker = ChainShrinker::new(
                             ChainRunner::new(runner.executors.clone()),
-                            CrossStepInvariantChecker::from_spec(chain),
+                            CrossStepInvariantChecker::from_spec(spec_to_use),
                         ).with_seed(self.seed.unwrap_or(42));
 
-                        let shrink_result = shrinker.minimize(chain, &current_inputs, &violation);
+                        let shrink_result = shrinker.minimize(spec_to_use, &current_inputs, &violation);
 
-                        // Create finding
                         let finding = Finding {
                             attack_type: AttackType::CircuitComposition,
                             severity: match violation.severity.to_lowercase().as_str() {
@@ -5072,7 +5076,7 @@ impl FuzzingEngine {
 
                         let chain_finding = ChainFinding::new(
                             finding,
-                            chain.len(),
+                            spec_to_use.len(),
                             shrink_result.l_min,
                             result.trace.clone(),
                             &chain.name,
@@ -5089,7 +5093,6 @@ impl FuzzingEngine {
                         }
                     }
 
-                    // Add to corpus with coverage bits computed from step traces
                     let coverage_bits = Self::compute_chain_coverage_bits(&result.trace);
                     corpus.add(crate::chain_fuzzer::ChainCorpusEntry::new(
                         &chain.name,
@@ -5099,9 +5102,10 @@ impl FuzzingEngine {
                     ));
                 }
 
-                // Mutate for next iteration
-                let (mutated, _) = mutator.mutate_inputs(chain, &current_inputs, &mut rng);
-                current_inputs = mutated;
+                // Mutate for next iteration (may produce a modified spec)
+                let mutation = mutator.mutate(spec_to_use, &current_inputs, &mut rng);
+                current_inputs = mutation.inputs;
+                current_spec = mutation.spec;
                 iterations += 1;
 
                 if let Some(p) = progress {
