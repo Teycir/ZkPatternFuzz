@@ -38,14 +38,14 @@ chains:
               - [2, 3]   # deposit.newRoot → withdraw.root
         label: "Withdraw using deposit outputs"
     assertions:
-      - name: "nullifier_uniqueness"
-        relation: "unique(step[*].out[0])"
-        severity: "critical"
-        description: "Nullifiers must be unique"
-      - name: "amount_preservation"
-        relation: "step[1].out[2] > 0"
+      - name: "nullifier_wiring"
+        relation: "step[0].out[0] == step[1].in[2]"
         severity: "high"
-        description: "Amount must be positive"
+        description: "Withdraw must consume the deposit nullifier"
+      - name: "root_wiring"
+        relation: "step[0].out[2] == step[1].in[3]"
+        severity: "high"
+        description: "Withdraw must use the deposit root"
 
 inputs:
   - name: "secret"

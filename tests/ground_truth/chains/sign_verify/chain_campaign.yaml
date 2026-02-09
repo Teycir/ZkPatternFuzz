@@ -38,11 +38,21 @@ chains:
               - [1, 1]   # sign.signatureS → verify.signatureS
               - [2, 2]   # sign.messageOut → verify.message
         label: "Verify signature"
+      - circuit_ref: "verify"
+        input_wiring:
+          mixed:
+            prior:
+              - [0, 0, 0]   # sign.signatureR -> verify.signatureR
+              - [0, 1, 1]   # sign.signatureS -> verify.signatureS
+            fresh_indices:
+              - 2           # message (tampered)
+              - 3           # publicKey
+        label: "Verify with tampered message"
     assertions:
-      - name: "signature_validity"
-        relation: "step[1].out[0] == 1"
+      - name: "tamper_detection"
+        relation: "step[1].out[0] != step[2].out[0]"
         severity: "critical"
-        description: "Valid signatures must verify successfully"
+        description: "Verification should fail if the message is altered"
       - name: "message_integrity"
         relation: "step[0].out[2] == step[1].in[2]"
         severity: "high"

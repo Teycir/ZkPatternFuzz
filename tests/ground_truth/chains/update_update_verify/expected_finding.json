@@ -1,0 +1,8 @@
+{
+  "expected_outcome": "CONFIRMED",
+  "bug_class": "merkle_root_inconsistency_chain",
+  "violated_assertion": "root_divergence_expected",
+  "description": "Two updates with different leaves should yield different roots, but the buggy update_root circuit ignores the leaf and produces identical roots.",
+  "l_min_expected": 3,
+  "severity": "high"
+}

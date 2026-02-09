@@ -1,0 +1,8 @@
+{
+  "expected_outcome": "CONFIRMED",
+  "bug_class": "nullifier_reuse_chain",
+  "violated_assertion": "withdraw_nullifier_uniqueness",
+  "description": "Two consecutive withdrawals reuse the same nullifier because the withdraw circuit passes the nullifier through unchanged.",
+  "l_min_expected": 3,
+  "severity": "critical"
+}

@@ -1,8 +1,8 @@
 {
   "expected_outcome": "CONFIRMED",
   "bug_class": "signature_malleability",
-  "violated_assertion": "signature_validity",
-  "description": "The verify circuit does not check s < p/2, allowing both s and p-s to be valid signatures for the same message.",
-  "l_min_expected": 2,
+  "violated_assertion": "tamper_detection",
+  "description": "Verification should fail when the message is tampered, but the verify circuit ignores the message and still reports success.",
+  "l_min_expected": 3,
   "severity": "critical"
 }

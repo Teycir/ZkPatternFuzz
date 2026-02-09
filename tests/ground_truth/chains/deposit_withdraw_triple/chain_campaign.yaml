@@ -1,0 +1,68 @@
+# Ground Truth: Deposit-Withdraw-Withdraw Chain
+# Expected: CONFIRMED - withdraw_nullifier_uniqueness assertion should be violated
+# Bug Class: Nullifier reuse across repeated withdrawals
+
+campaign:
+  name: "Ground Truth: Deposit-Withdraw-Withdraw Chain"
+  version: "1.0"
+  target:
+    framework: circom
+    circuit_path: "./tests/ground_truth/chains/deposit_withdraw/deposit.circom"
+    main_component: "Deposit"
+
+  parameters:
+    field: "bn254"
+    max_constraints: 10000
+    timeout_seconds: 60
+
+chains:
+  - name: "deposit_withdraw_withdraw_reuse"
+    description: "Deposit followed by two withdrawals that reuse the same nullifier"
+    circuits:
+      deposit:
+        path: "./tests/ground_truth/chains/deposit_withdraw/deposit.circom"
+        main_component: "Deposit"
+      withdraw:
+        path: "./tests/ground_truth/chains/deposit_withdraw/withdraw.circom"
+        main_component: "Withdraw"
+    steps:
+      - circuit_ref: "deposit"
+        input_wiring: fresh
+        label: "Make deposit"
+      - circuit_ref: "withdraw"
+        input_wiring:
+          from_prior_output:
+            step: 0
+            mapping:
+              - [0, 2]   # deposit.nullifier -> withdraw.nullifierIn
+              - [2, 3]   # deposit.newRoot -> withdraw.root
+        label: "Withdraw using deposit outputs"
+      - circuit_ref: "withdraw"
+        input_wiring:
+          from_prior_output:
+            step: 1
+            mapping:
+              - [0, 2]   # withdraw.nullifierOut -> withdraw.nullifierIn
+              - [1, 3]   # withdraw.newRoot -> withdraw.root
+        label: "Second withdrawal reusing prior nullifier"
+    assertions:
+      - name: "withdraw_nullifier_uniqueness"
+        relation: "step[1].out[0] != step[2].out[0]"
+        severity: "critical"
+        description: "Repeated withdrawals must not reuse the same nullifier"
+
+inputs:
+  - name: "secret"
+    type: "field"
+    fuzz_strategy: random
+  - name: "amount"
+    type: "field"
+    fuzz_strategy: random
+  - name: "nonce"
+    type: "field"
+    fuzz_strategy: random
+
+reporting:
+  output_dir: "./reports/ground_truth/deposit_withdraw_triple"
+  formats:
+    - json

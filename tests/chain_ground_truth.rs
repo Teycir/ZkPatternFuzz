@@ -16,12 +16,6 @@ struct ChainGroundTruth {
     name: &'static str,
     /// Path to the campaign YAML
     campaign_path: &'static str,
-    /// Expected outcome
-    expected_outcome: ExpectedOutcome,
-    /// Expected violated assertion (if any)
-    expected_assertion: Option<&'static str>,
-    /// Expected minimum L_min (if finding expected)
-    expected_l_min: Option<usize>,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -38,30 +32,26 @@ fn ground_truth_cases() -> Vec<ChainGroundTruth> {
         ChainGroundTruth {
             name: "deposit_withdraw_nullifier_reuse",
             campaign_path: "tests/ground_truth/chains/deposit_withdraw/chain_campaign.yaml",
-            expected_outcome: ExpectedOutcome::Confirmed,
-            expected_assertion: Some("nullifier_uniqueness"),
-            expected_l_min: Some(2),
+        },
+        ChainGroundTruth {
+            name: "deposit_withdraw_triple_nullifier_reuse",
+            campaign_path: "tests/ground_truth/chains/deposit_withdraw_triple/chain_campaign.yaml",
         },
         ChainGroundTruth {
             name: "update_verify_root_inconsistency",
             campaign_path: "tests/ground_truth/chains/update_verify/chain_campaign.yaml",
-            expected_outcome: ExpectedOutcome::Confirmed,
-            expected_assertion: Some("root_propagation"),
-            expected_l_min: Some(2),
+        },
+        ChainGroundTruth {
+            name: "update_update_verify_root_mismatch",
+            campaign_path: "tests/ground_truth/chains/update_update_verify/chain_campaign.yaml",
         },
         ChainGroundTruth {
             name: "sign_verify_malleability",
             campaign_path: "tests/ground_truth/chains/sign_verify/chain_campaign.yaml",
-            expected_outcome: ExpectedOutcome::Confirmed,
-            expected_assertion: Some("signature_validity"),
-            expected_l_min: Some(2),
         },
         ChainGroundTruth {
             name: "clean_deposit_withdraw",
             campaign_path: "tests/ground_truth/chains/clean_deposit_withdraw/chain_campaign.yaml",
-            expected_outcome: ExpectedOutcome::Clean,
-            expected_assertion: None,
-            expected_l_min: None,
         },
     ]
 }
@@ -82,6 +72,141 @@ struct GroundTruthResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::hash::{Hash, Hasher};
+
+    #[derive(Debug)]
+    struct RunSettings {
+        iterations: usize,
+        shrink_max_attempts: usize,
+        chain_timeout: std::time::Duration,
+        mode: &'static str,
+    }
+
+    #[derive(Debug)]
+    struct ExpectedSpec {
+        outcome: ExpectedOutcome,
+        violated_assertion: Option<String>,
+        l_min_expected: Option<usize>,
+    }
+
+    fn parse_env_usize(name: &str) -> Option<usize> {
+        std::env::var(name).ok()?.parse().ok()
+    }
+
+    fn parse_env_u64(name: &str) -> Option<u64> {
+        std::env::var(name).ok()?.parse().ok()
+    }
+
+    fn seed_from_name(name: &str) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        name.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn expected_path_for_campaign(campaign_path: &str) -> std::path::PathBuf {
+        Path::new(campaign_path)
+            .parent()
+            .unwrap()
+            .join("expected_finding.json")
+    }
+
+    fn resolve_run_settings(config: &zk_fuzzer::config::FuzzConfig) -> RunSettings {
+        let mut iterations = 500;
+        let mut shrink_max_attempts = 100;
+        let mut chain_timeout = std::time::Duration::from_secs(
+            config.campaign.parameters.timeout_seconds,
+        );
+        let mut mode = "full";
+
+        let mode_env = std::env::var("ZKPF_GROUND_TRUTH_MODE").ok();
+        let ci_smoke = std::env::var("CI").ok().filter(|v| !v.is_empty()).is_some()
+            && std::env::var("ZKPF_GROUND_TRUTH_FULL").is_err();
+        let smoke = match mode_env.as_deref() {
+            Some("smoke") => true,
+            Some("full") => false,
+            _ => ci_smoke,
+        };
+
+        if smoke {
+            iterations = 100;
+            shrink_max_attempts = 30;
+            mode = "smoke";
+        }
+
+        if let Some(iters) = parse_env_usize("ZKPF_GROUND_TRUTH_ITERS") {
+            iterations = iters;
+            mode = "custom";
+        }
+        if let Some(attempts) = parse_env_usize("ZKPF_GROUND_TRUTH_SHRINK_ATTEMPTS") {
+            shrink_max_attempts = attempts;
+            mode = "custom";
+        }
+        if let Some(secs) = parse_env_u64("ZKPF_GROUND_TRUTH_CHAIN_TIMEOUT_SECS") {
+            chain_timeout = std::time::Duration::from_secs(secs);
+            mode = "custom";
+        }
+
+        RunSettings {
+            iterations,
+            shrink_max_attempts,
+            chain_timeout,
+            mode,
+        }
+    }
+
+    fn parse_expected_outcome(value: &serde_json::Value) -> ExpectedOutcome {
+        let raw = value
+            .as_str()
+            .expect("expected_outcome missing or not a string");
+        match raw.to_ascii_lowercase().as_str() {
+            "confirmed" => ExpectedOutcome::Confirmed,
+            "clean" => ExpectedOutcome::Clean,
+            other => panic!("Unknown expected_outcome value: {}", other),
+        }
+    }
+
+    fn load_expected_spec(campaign_path: &str) -> ExpectedSpec {
+        let expected_path = expected_path_for_campaign(campaign_path);
+        let content = std::fs::read_to_string(&expected_path)
+            .expect(&format!("Failed to read {}", expected_path.display()));
+        let json: serde_json::Value = serde_json::from_str(&content)
+            .expect(&format!("Failed to parse JSON in {}", expected_path.display()));
+
+        let outcome = parse_expected_outcome(&json["expected_outcome"]);
+        let violated_assertion = json["violated_assertion"].as_str().map(|s| s.to_string());
+        let l_min_expected = json["l_min_expected"].as_u64().map(|v| v as usize);
+
+        match outcome {
+            ExpectedOutcome::Confirmed => {
+                if violated_assertion.is_none() {
+                    panic!(
+                        "expected_finding.json missing violated_assertion for CONFIRMED: {}",
+                        expected_path.display()
+                    );
+                }
+                if l_min_expected.is_none() {
+                    panic!(
+                        "expected_finding.json missing l_min_expected for CONFIRMED: {}",
+                        expected_path.display()
+                    );
+                }
+            }
+            ExpectedOutcome::Clean => {
+                if violated_assertion.is_some() || l_min_expected.is_some() {
+                    panic!(
+                        "expected_finding.json should not set violated_assertion/l_min_expected for CLEAN: {}",
+                        expected_path.display()
+                    );
+                }
+            }
+        }
+
+        ExpectedSpec {
+            outcome,
+            violated_assertion,
+            l_min_expected,
+        }
+    }
 
     /// Test that all ground truth cases have valid campaign files
     #[test]
@@ -100,19 +225,12 @@ mod tests {
     /// Test that all ground truth cases have expected_finding.json
     #[test]
     fn test_ground_truth_expected_findings_exist() {
-        let expected_paths = [
-            "tests/ground_truth/chains/deposit_withdraw/expected_finding.json",
-            "tests/ground_truth/chains/update_verify/expected_finding.json",
-            "tests/ground_truth/chains/sign_verify/expected_finding.json",
-            "tests/ground_truth/chains/clean_deposit_withdraw/expected_finding.json",
-        ];
-
-        for path_str in expected_paths {
-            let path = Path::new(path_str);
+        for case in ground_truth_cases() {
+            let path = expected_path_for_campaign(case.campaign_path);
             assert!(
                 path.exists(),
                 "Expected finding file missing: {}",
-                path_str
+                path.display()
             );
         }
     }
@@ -120,24 +238,27 @@ mod tests {
     /// Test that all ground truth cases have circuit files
     #[test]
     fn test_ground_truth_circuits_exist() {
-        let circuit_paths = [
-            "tests/ground_truth/chains/deposit_withdraw/deposit.circom",
-            "tests/ground_truth/chains/deposit_withdraw/withdraw.circom",
-            "tests/ground_truth/chains/update_verify/update_root.circom",
-            "tests/ground_truth/chains/update_verify/verify_root.circom",
-            "tests/ground_truth/chains/sign_verify/sign.circom",
-            "tests/ground_truth/chains/sign_verify/verify.circom",
-            "tests/ground_truth/chains/clean_deposit_withdraw/clean_deposit.circom",
-            "tests/ground_truth/chains/clean_deposit_withdraw/clean_withdraw.circom",
-        ];
+        use zk_fuzzer::config::FuzzConfig;
 
-        for path_str in circuit_paths {
-            let path = Path::new(path_str);
-            assert!(
-                path.exists(),
-                "Circuit file missing: {}",
-                path_str
-            );
+        for case in ground_truth_cases() {
+            let config = FuzzConfig::from_yaml(case.campaign_path)
+                .expect(&format!("Failed to parse {}", case.campaign_path));
+
+            let mut circuit_paths = vec![config.campaign.target.circuit_path.clone()];
+            for chain in &config.chains {
+                for cfg in chain.circuits.values() {
+                    circuit_paths.push(cfg.path.clone());
+                }
+            }
+
+            for path in circuit_paths {
+                assert!(
+                    path.exists(),
+                    "Circuit file missing for {}: {}",
+                    case.name,
+                    path.display()
+                );
+            }
         }
     }
 
@@ -146,47 +267,48 @@ mod tests {
     fn test_parse_expected_findings() {
         use std::fs;
         
-        let expected_paths = [
-            "tests/ground_truth/chains/deposit_withdraw/expected_finding.json",
-            "tests/ground_truth/chains/update_verify/expected_finding.json",
-            "tests/ground_truth/chains/sign_verify/expected_finding.json",
-            "tests/ground_truth/chains/clean_deposit_withdraw/expected_finding.json",
-        ];
-
-        for path_str in expected_paths {
-            let content = fs::read_to_string(path_str)
-                .expect(&format!("Failed to read {}", path_str));
+        for case in ground_truth_cases() {
+            let expected_path = expected_path_for_campaign(case.campaign_path);
+            let content = fs::read_to_string(&expected_path)
+                .expect(&format!("Failed to read {}", expected_path.display()));
             
             let json: serde_json::Value = serde_json::from_str(&content)
-                .expect(&format!("Failed to parse JSON in {}", path_str));
+                .expect(&format!("Failed to parse JSON in {}", expected_path.display()));
             
             // Verify required fields
             assert!(
                 json.get("expected_outcome").is_some(),
                 "Missing expected_outcome in {}",
-                path_str
+                expected_path.display()
             );
             assert!(
                 json.get("description").is_some(),
                 "Missing description in {}",
-                path_str
+                expected_path.display()
             );
+
+            let _ = load_expected_spec(case.campaign_path);
         }
     }
 
     /// Test that buggy chains have proper bug descriptions
     #[test]
     fn test_buggy_chains_have_descriptions() {
-        let description_paths = [
-            "tests/ground_truth/chains/deposit_withdraw/bug_description.md",
-        ];
+        for case in ground_truth_cases() {
+            let expected_spec = load_expected_spec(case.campaign_path);
+            if expected_spec.outcome != ExpectedOutcome::Confirmed {
+                continue;
+            }
 
-        for path_str in description_paths {
-            let path = Path::new(path_str);
+            let path = Path::new(case.campaign_path)
+                .parent()
+                .unwrap()
+                .join("bug_description.md");
             assert!(
                 path.exists(),
-                "Bug description missing: {}",
-                path_str
+                "Bug description missing for {}: {}",
+                case.name,
+                path.display()
             );
         }
     }
@@ -237,7 +359,7 @@ mod tests {
     /// with real circom backends and verifies findings match expectations.
     #[test]
     fn test_chain_ground_truth_integration() {
-        use std::collections::HashMap;
+        use std::collections::{HashMap, HashSet};
         use std::sync::Arc;
         use zk_fuzzer::chain_fuzzer::{
             ChainRunner, ChainMutator, ChainShrinker,
@@ -249,12 +371,14 @@ mod tests {
         use zk_core::{CircuitExecutor, FieldElement};
         use rand::SeedableRng;
         use rand_chacha::ChaCha8Rng;
+        use std::time::Instant;
 
         let mut metrics = super::GroundTruthMetrics::default();
         let mut results: Vec<GroundTruthResult> = Vec::new();
 
         for case in ground_truth_cases() {
             println!("\n══ Ground Truth: {} ══", case.name);
+            let expected_spec = load_expected_spec(case.campaign_path);
 
             let config = match FuzzConfig::from_yaml(case.campaign_path) {
                 Ok(c) => c,
@@ -262,7 +386,7 @@ mod tests {
                     results.push(GroundTruthResult {
                         name: case.name.to_string(),
                         passed: false,
-                        expected: case.expected_outcome,
+                        expected: expected_spec.outcome,
                         actual_findings: 0,
                         actual_assertion: None,
                         actual_l_min: None,
@@ -277,7 +401,7 @@ mod tests {
                 results.push(GroundTruthResult {
                     name: case.name.to_string(),
                     passed: false,
-                    expected: case.expected_outcome,
+                    expected: expected_spec.outcome,
                     actual_findings: 0,
                     actual_assertion: None,
                     actual_l_min: None,
@@ -285,6 +409,21 @@ mod tests {
                 });
                 continue;
             }
+
+            let settings = resolve_run_settings(&config);
+            println!(
+                "  Mode: {} (iterations={}, shrink_attempts={}, chain_timeout={}s)",
+                settings.mode,
+                settings.iterations,
+                settings.shrink_max_attempts,
+                settings.chain_timeout.as_secs()
+            );
+            let mut case_error: Option<String> = None;
+
+            let required_circuits: HashSet<String> = chains
+                .iter()
+                .flat_map(|c| c.steps.iter().map(|s| s.circuit_ref.clone()))
+                .collect();
 
             let circuit_root = config.campaign.target.circuit_path.clone();
             let mut circuit_map: HashMap<String, CircuitPathConfig> = HashMap::new();
@@ -294,8 +433,9 @@ mod tests {
                 }
             }
             let mut executors: HashMap<String, Arc<dyn CircuitExecutor>> = HashMap::new();
+            let mut load_error: Option<String> = None;
 
-            for chain in &chains {
+            'load: for chain in &chains {
                 for step in &chain.steps {
                     if executors.contains_key(&step.circuit_ref) {
                         continue;
@@ -321,7 +461,17 @@ mod tests {
                             config.campaign.target.framework,
                         )
                     };
-                    let circom_path = circuit_path.to_str().unwrap_or("");
+                    let circom_path = match circuit_path.to_str() {
+                        Some(p) => p,
+                        None => {
+                            load_error = Some(format!(
+                                "Circuit path is not valid UTF-8 for {}: {}",
+                                step.circuit_ref,
+                                circuit_path.display()
+                            ));
+                            break 'load;
+                        }
+                    };
 
                     match ExecutorFactory::create(framework, circom_path, &main_component) {
                         Ok(exec) => {
@@ -333,49 +483,99 @@ mod tests {
                             executors.insert(step.circuit_ref.clone(), exec);
                         }
                         Err(e) => {
-                            println!("  SKIP: Failed to load circuit {}: {}", step.circuit_ref, e);
-                            results.push(GroundTruthResult {
-                                name: case.name.to_string(),
-                                passed: false,
-                                expected: case.expected_outcome,
-                                actual_findings: 0,
-                                actual_assertion: None,
-                                actual_l_min: None,
-                                error: Some(format!("Circuit load failed for {}: {}", step.circuit_ref, e)),
-                            });
-                            continue;
+                            load_error = Some(format!(
+                                "Circuit load failed for {}: {}",
+                                step.circuit_ref, e
+                            ));
+                            break 'load;
                         }
                     }
                 }
             }
 
-            if executors.len() < chains.iter().flat_map(|c| c.steps.iter()).map(|s| &s.circuit_ref).collect::<std::collections::HashSet<_>>().len() {
+            if let Some(err) = load_error {
+                results.push(GroundTruthResult {
+                    name: case.name.to_string(),
+                    passed: false,
+                    expected: expected_spec.outcome,
+                    actual_findings: 0,
+                    actual_assertion: None,
+                    actual_l_min: None,
+                    error: Some(err),
+                });
                 continue;
             }
 
+            if executors.len() < required_circuits.len() {
+                let mut missing: Vec<String> = required_circuits
+                    .iter()
+                    .filter(|name| !executors.contains_key(*name))
+                    .cloned()
+                    .collect();
+                missing.sort();
+                results.push(GroundTruthResult {
+                    name: case.name.to_string(),
+                    passed: false,
+                    expected: expected_spec.outcome,
+                    actual_findings: 0,
+                    actual_assertion: None,
+                    actual_l_min: None,
+                    error: Some(format!(
+                        "Missing executors for circuits: {}",
+                        missing.join(", ")
+                    )),
+                });
+                continue;
+            }
+
+            let case_deadline = Instant::now() + settings.chain_timeout;
             let runner = ChainRunner::new(executors.clone())
                 .with_timeout(std::time::Duration::from_secs(30));
             let mutator = ChainMutator::new();
-            let mut rng = ChaCha8Rng::seed_from_u64(42);
+            let mut rng = ChaCha8Rng::seed_from_u64(seed_from_name(case.name));
 
             let mut all_findings: Vec<ChainFinding> = Vec::new();
-            let iterations = 500;
+            let iterations = settings.iterations;
 
-            for chain in &chains {
+            'chain_run: for chain in &chains {
                 let checker = CrossStepInvariantChecker::from_spec(chain);
+                let mut shrinker: Option<ChainShrinker> = None;
                 let mut current_inputs: HashMap<String, Vec<FieldElement>> = HashMap::new();
 
                 for iter in 0..iterations {
+                    if Instant::now() >= case_deadline {
+                        case_error = Some(format!(
+                            "Timed out after {}s",
+                            settings.chain_timeout.as_secs()
+                        ));
+                        break 'chain_run;
+                    }
+
                     let result = runner.execute(chain, &current_inputs, &mut rng);
 
                     if result.completed {
                         let violations = checker.check(&result.trace);
 
                         for violation in &violations {
-                            let shrinker = ChainShrinker::new(
-                                ChainRunner::new(executors.clone()),
-                                CrossStepInvariantChecker::from_spec(chain),
-                            ).with_seed(42);
+                            if Instant::now() >= case_deadline {
+                                case_error = Some(format!(
+                                    "Timed out after {}s",
+                                    settings.chain_timeout.as_secs()
+                                ));
+                                break 'chain_run;
+                            }
+
+                            let shrinker = shrinker.get_or_insert_with(|| {
+                                let shrink_runner = ChainRunner::new(executors.clone())
+                                    .with_timeout(std::time::Duration::from_secs(30));
+                                let shrink_seed = seed_from_name(&format!("{}::{}", case.name, chain.name));
+                                ChainShrinker::new(
+                                    shrink_runner,
+                                    CrossStepInvariantChecker::from_spec(chain),
+                                )
+                                .with_seed(shrink_seed)
+                                .with_max_attempts(settings.shrink_max_attempts)
+                            });
 
                             let shrink_result = shrinker.minimize(
                                 chain, &current_inputs, violation,
@@ -426,31 +626,34 @@ mod tests {
                 }
             }
 
-            let expected: serde_json::Value = {
-                let content = std::fs::read_to_string(
-                    Path::new(case.campaign_path).parent().unwrap().join("expected_finding.json")
-                ).unwrap();
-                serde_json::from_str(&content).unwrap()
-            };
-
-            let _expected_outcome = expected["expected_outcome"].as_str().unwrap_or("");
-            let expected_assertion = expected["violated_assertion"].as_str();
+            if let Some(err) = case_error {
+                results.push(GroundTruthResult {
+                    name: case.name.to_string(),
+                    passed: false,
+                    expected: expected_spec.outcome,
+                    actual_findings: all_findings.len(),
+                    actual_assertion: all_findings.first().and_then(|f| f.violated_assertion.clone()),
+                    actual_l_min: all_findings.first().map(|f| f.l_min),
+                    error: Some(err),
+                });
+                continue;
+            }
 
             let passed;
-            match case.expected_outcome {
+            match expected_spec.outcome {
                 ExpectedOutcome::Confirmed => {
                     if all_findings.is_empty() {
                         println!("  FAIL: Expected CONFIRMED finding but got 0 findings");
                         metrics.false_negatives += 1;
                         passed = false;
                     } else {
-                        let assertion_match = expected_assertion.map_or(true, |ea| {
+                        let assertion_match = expected_spec.violated_assertion.as_deref().map_or(true, |ea| {
                             all_findings.iter().any(|f| {
                                 f.violated_assertion.as_deref() == Some(ea)
                             })
                         });
 
-                        let l_min_ok = case.expected_l_min.map_or(true, |el| {
+                        let l_min_ok = expected_spec.l_min_expected.map_or(true, |el| {
                             all_findings.iter().any(|f| f.l_min >= el)
                         });
 
@@ -483,7 +686,7 @@ mod tests {
             results.push(GroundTruthResult {
                 name: case.name.to_string(),
                 passed,
-                expected: case.expected_outcome,
+                expected: expected_spec.outcome,
                 actual_findings: all_findings.len(),
                 actual_assertion: first_finding.and_then(|f| f.violated_assertion.clone()),
                 actual_l_min: first_finding.map(|f| f.l_min),

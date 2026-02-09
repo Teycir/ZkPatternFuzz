@@ -1,0 +1,75 @@
+# Ground Truth: Update-Update-Verify Chain
+# Expected: CONFIRMED - root_divergence_expected assertion should be violated
+# Bug Class: Root update ignores leaf, causing repeated roots
+
+campaign:
+  name: "Ground Truth: Update-Update-Verify Chain"
+  version: "1.0"
+  target:
+    framework: circom
+    circuit_path: "./tests/ground_truth/chains/update_verify/update_root.circom"
+    main_component: "UpdateRoot"
+
+  parameters:
+    field: "bn254"
+    max_constraints: 10000
+    timeout_seconds: 60
+
+chains:
+  - name: "update_update_verify_root_mismatch"
+    description: "Two updates with different leaves should yield different roots"
+    circuits:
+      update_root:
+        path: "./tests/ground_truth/chains/update_verify/update_root.circom"
+        main_component: "UpdateRoot"
+      verify_root:
+        path: "./tests/ground_truth/chains/update_verify/verify_root.circom"
+        main_component: "VerifyRoot"
+    steps:
+      - circuit_ref: "update_root"
+        input_wiring:
+          constant:
+            values:
+              0: "0x01"   # leaf
+              1: "0x10"   # oldRoot
+              2: "0x01"   # pathIndex (binary)
+        label: "First update"
+      - circuit_ref: "update_root"
+        input_wiring:
+          constant:
+            values:
+              0: "0x02"   # leaf
+              1: "0x10"   # oldRoot (same as step 0)
+              2: "0x01"   # pathIndex (same as step 0)
+        label: "Second update with different leaf"
+      - circuit_ref: "verify_root"
+        input_wiring:
+          from_prior_output:
+            step: 1
+            mapping:
+              - [1, 0]   # update.newRoot -> verify.root
+              - [0, 1]   # update.leafOut -> verify.leaf
+        label: "Verify second update root"
+    assertions:
+      - name: "root_divergence_expected"
+        relation: "step[0].out[1] != step[2].in[0]"
+        severity: "high"
+        description: "Different leaves with the same path should yield different roots"
+
+inputs:
+  - name: "leaf"
+    type: "field"
+    fuzz_strategy: random
+  - name: "oldRoot"
+    type: "field"
+    fuzz_strategy: random
+  - name: "pathIndex"
+    type: "field"
+    fuzz_strategy: random
+    constraints:
+      - "binary"
+
+reporting:
+  output_dir: "./reports/ground_truth/update_update_verify"
+  formats:
+    - json

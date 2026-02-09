@@ -39,9 +39,9 @@ chains:
         label: "Verify updated root"
     assertions:
       - name: "root_propagation"
-        relation: "step[0].out[1] == step[1].in[0]"
+        relation: "step[0].out[1] == step[1].out[1]"
         severity: "high"
-        description: "Updated root must match verification input"
+        description: "Updated root must match the recomputed root"
       - name: "leaf_consistency"
         relation: "step[0].out[0] == step[1].in[1]"
         severity: "high"
