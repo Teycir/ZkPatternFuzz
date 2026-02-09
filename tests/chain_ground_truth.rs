@@ -246,7 +246,7 @@ mod tests {
         use zk_fuzzer::config::{FuzzConfig, parse_chains};
         use zk_fuzzer::config::v2::CircuitPathConfig;
         use zk_fuzzer::executor::ExecutorFactory;
-        use zk_core::{CircuitExecutor, FieldElement, Framework};
+        use zk_core::{CircuitExecutor, FieldElement};
         use rand::SeedableRng;
         use rand_chacha::ChaCha8Rng;
 
