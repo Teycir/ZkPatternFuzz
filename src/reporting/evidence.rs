@@ -314,23 +314,69 @@ impl EvidenceGenerator {
         // Generate impact description
         bundle.impact_description = self.generate_impact_description(finding);
 
-        // Try to generate proof (for Circom)
-        if self.config.campaign.target.framework == Framework::Circom {
-            match self.generate_circom_proof(&finding_dir, finding) {
-                Ok((proof_json, public_json, verification)) => {
-                    bundle.proof_json = Some(proof_json);
-                    bundle.public_json = Some(public_json);
-                    bundle.verification_result = verification;
-                }
-                Err(e) => {
-                    bundle.verification_result = VerificationResult::Skipped(e.to_string());
+        // Try to generate proof based on framework
+        match self.config.campaign.target.framework {
+            Framework::Circom => {
+                match self.generate_circom_proof(&finding_dir, finding) {
+                    Ok((proof_json, public_json, verification)) => {
+                        bundle.proof_json = Some(proof_json);
+                        bundle.public_json = Some(public_json);
+                        bundle.verification_result = verification;
+                    }
+                    Err(e) => {
+                        bundle.verification_result = VerificationResult::Skipped(e.to_string());
+                    }
                 }
             }
-        } else {
-            bundle.verification_result = VerificationResult::Skipped(format!(
-                "Proof generation not yet implemented for {:?}",
-                self.config.campaign.target.framework
-            ));
+            Framework::Noir => {
+                let project_path = self.config.campaign.target.circuit_path.parent()
+                    .unwrap_or(Path::new("."));
+                match super::evidence_noir::generate_noir_proof(&finding_dir, finding, project_path) {
+                    Ok((proof_path, verification)) => {
+                        bundle.proof_json = Some(proof_path);
+                        bundle.verification_result = verification;
+                    }
+                    Err(e) => {
+                        bundle.verification_result = VerificationResult::Skipped(e.to_string());
+                    }
+                }
+            }
+            Framework::Halo2 => {
+                let circuit_spec = self.config.campaign.parameters.additional
+                    .get("halo2_circuit_spec")
+                    .and_then(|v| v.as_str())
+                    .map(std::path::PathBuf::from);
+                match super::evidence_halo2::generate_halo2_proof(
+                    &finding_dir, 
+                    finding, 
+                    circuit_spec.as_deref()
+                ) {
+                    Ok((proof_path, verification)) => {
+                        bundle.proof_json = Some(proof_path);
+                        bundle.verification_result = verification;
+                    }
+                    Err(e) => {
+                        bundle.verification_result = VerificationResult::Skipped(e.to_string());
+                    }
+                }
+            }
+            Framework::Cairo => {
+                let program_path = &self.config.campaign.target.circuit_path;
+                match super::evidence_cairo::generate_cairo_proof(&finding_dir, finding, program_path) {
+                    Ok((proof_path, verification)) => {
+                        bundle.proof_json = Some(proof_path);
+                        bundle.verification_result = verification;
+                    }
+                    Err(e) => {
+                        bundle.verification_result = VerificationResult::Skipped(e.to_string());
+                    }
+                }
+            }
+            Framework::Mock => {
+                bundle.verification_result = VerificationResult::Skipped(
+                    "Mock framework does not support proof generation".to_string()
+                );
+            }
         }
 
         // Write bundle metadata

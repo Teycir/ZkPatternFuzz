@@ -15,10 +15,12 @@
 
 pub mod generator;
 pub mod parser;
+pub mod profiles;  // Phase 0: Embedded configuration profiles
 pub mod readiness;  // Phase 4C: 0-day readiness validation
 pub mod suggester;
 pub mod v2;
 
+pub use profiles::{ProfileName, EmbeddedProfile, apply_profile};
 pub use readiness::{check_0day_readiness, ReadinessReport, ReadinessWarning, ReadinessLevel};
 pub use suggester::YamlSuggester;
 pub use v2::parse_chains;

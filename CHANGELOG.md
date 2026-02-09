@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 3.1: MEV & Front-Running Attacks** (`src/attacks/mev.rs`, `src/attacks/front_running.rs`)
+  - MEV attack detection: ordering dependency, sandwich attacks, state leakage
+  - Front-running detection: information leakage, commitment bypass, delay attacks
+  - Price impact analyzer for DEX circuits
+  - Arbitrage detector for cross-circuit opportunities
+  - State leakage analyzer for privacy circuits
+  - DeFi audit campaign template (`campaigns/templates/defi_audit.yaml`)
+  - Comprehensive documentation (`docs/DEFI_ATTACK_GUIDE.md`)
+- **Phase 2.4: Automated Triage System** (`src/reporting/triage.rs`)
+  - Confidence-based ranking of findings (0.0-1.0)
+  - Cross-oracle validation bonus (multiple oracles agree = higher confidence)
+  - Picus formal verification bonus
+  - Reproduction success tracking and bonus
+  - Code coverage correlation
+  - Finding deduplication
+  - Priority ranking system
+  - High/Medium/Low confidence classification
+  - Evidence mode filtering (auto-filter low-confidence findings)
+  - JSON and Markdown report generation
+  - See `docs/TRIAGE_SYSTEM.md` for complete documentation
 - Comprehensive architecture documentation (ARCHITECTURE.md)
 - Enhanced API documentation with examples
 - Module-level documentation improvements

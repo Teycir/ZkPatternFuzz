@@ -9,10 +9,17 @@
 
 pub mod coverage_summary;
 pub mod evidence;  // Phase 5: Proof-level evidence bundles
+pub mod evidence_noir;   // Phase 0: Noir proof generation
+pub mod evidence_halo2;  // Phase 0: Halo2 proof generation
+pub mod evidence_cairo;  // Phase 0: Cairo proof generation
 pub mod poc_generator;
 pub mod sarif;
+pub mod triage;  // Phase 2: Automated triage system
 
 pub use evidence::{EvidenceBundle, EvidenceGenerator, BackendIdentity, VerificationResult};
+pub use evidence_noir::generate_noir_proof;
+pub use evidence_halo2::generate_halo2_proof;
+pub use evidence_cairo::generate_cairo_proof;
 
 use crate::config::ReportingConfig;
 use zk_core::Severity;
@@ -26,6 +33,10 @@ use std::fs;
 pub use coverage_summary::{CoverageSummary, CoverageSummaryBuilder, AdditionalMetrics};
 pub use poc_generator::{PoCGenerator, PoCGeneratorConfig, PoCFormat};
 pub use sarif::{SarifBuilder, SarifLevel, SarifReport};
+pub use triage::{
+    TriagePipeline, TriageConfig, TriageReport, TriagedFinding,
+    ConfidenceLevel, ConfidenceBreakdown, TriageStatistics, VerificationStatus,
+};
 
 /// Complete fuzzing report
 #[derive(Debug, Clone, Serialize, Deserialize)]

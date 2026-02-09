@@ -7,13 +7,20 @@
 //! - [`constraint_slice`]: Dependency cone mutation and leak detection
 //! - [`spec_inference`]: Auto-learn and violate circuit properties
 //! - [`witness_collision`]: Enhanced collision detection with equivalence classes
+//!
+//! ## DeFi/MEV Attacks (Phase 3)
+//!
+//! - [`mev`]: MEV extraction detection (ordering, sandwich, arbitrage)
+//! - [`front_running`]: Front-running vulnerability detection
 
 pub mod arithmetic;
 pub mod boundary;
 pub mod collision;
 pub mod constraint_inference;
 pub mod constraint_slice;
+pub mod front_running;  // Phase 3: Front-running attacks
 pub mod metamorphic;
+pub mod mev;  // Phase 3: MEV attacks
 pub mod soundness;
 pub mod spec_inference;
 pub mod underconstrained;
@@ -27,7 +34,9 @@ pub use boundary::*;
 pub use collision::*;
 pub use constraint_inference::*;
 pub use constraint_slice::*;
+pub use front_running::*;
 pub use metamorphic::*;
+pub use mev::*;
 pub use soundness::*;
 pub use spec_inference::*;
 pub use underconstrained::*;

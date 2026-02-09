@@ -498,6 +498,8 @@ vulnerabilities:
 
   # ============== zkEVM Specific ==============
 
+  # ============== NEW: zkEVM & L2 Vulnerabilities (Phase 1 Expansion) ==============
+
   - id: "ZK-CVE-2024-001"
     name: "zkEVM State Transition Inconsistency"
     severity: critical
@@ -562,6 +564,366 @@ vulnerabilities:
         - "Exhaustive boundary testing in CI"
         - "Formal verification of state machine"
         - "Differential testing against geth/reth"
+
+  - id: "ZK-CVE-2024-002"
+    name: "zkEVM Opcode Boundary Overflow"
+    severity: critical
+    cvss_score: 9.2
+    affected_circuits:
+      - pattern: "zkevm-circuits"
+        versions: ["*"]
+      - pattern: "polygon-zkevm"
+        versions: ["*"]
+    sources:
+      - "Polygon zkEVM Bug Bounty"
+      - "L2Beat Security Research"
+    description: |
+      Arithmetic opcodes (ADD, MUL, SUB) have edge cases at uint256 boundaries
+      that are not fully constrained in the ZK circuit. Specifically:
+      - MAX_UINT256 + 1 wrap handling
+      - Underflow in SUB with zero
+      - MUL overflow flag computation
+      
+      IMPACT:
+      - Incorrect execution proofs
+      - Token balance manipulation
+      - Bridge exploit potential
+
+    detection:
+      oracle: opcode_boundary
+      attack_type: arithmetic_overflow
+      procedure:
+        - action: test_opcode_boundaries
+          params:
+            opcodes: [ADD, SUB, MUL, DIV, MOD, EXP]
+            values: [0, 1, MAX_UINT256, MAX_UINT256-1]
+        - action: verify_correct_behavior
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat2_rollups/zkevm-circuits"
+      test_cases:
+        - name: add_overflow
+          inputs:
+            a: "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            b: "0x1"
+          expected_result: wrap_to_zero
+        - name: sub_underflow
+          inputs:
+            a: "0x0"
+            b: "0x1"
+          expected_result: wrap_to_max
+      assertion: "All opcode boundary cases must match EVM semantics"
+
+    remediation:
+      description: "Complete opcode boundary coverage"
+      recommendations:
+        - "Differential fuzzing against reference EVM"
+        - "Comprehensive boundary test suite"
+
+  - id: "ZK-CVE-2024-003"
+    name: "Memory Expansion Gas Undercount"
+    severity: high
+    cvss_score: 7.8
+    affected_circuits:
+      - pattern: "zkevm-circuits"
+        versions: ["*"]
+    sources:
+      - "Scroll Security Audit"
+    description: |
+      Memory expansion gas calculation in ZK circuits doesn't match EVM exactly.
+      Large memory allocations may have incorrect gas accounting, leading to:
+      - Out-of-gas attacks with more computation than gas paid
+      - Denial of service by underpaying for memory
+      
+      IMPACT:
+      - Gas griefing attacks
+      - Sequencer DOS
+      - Economic attacks on L2
+
+    detection:
+      oracle: gas_accounting
+      attack_type: boundary
+      procedure:
+        - action: test_memory_expansion
+          params:
+            sizes: [32, 256, 1024, 4096, 32768, 262144]
+        - action: compare_gas_calculation
+          expected: match_evm
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat2_rollups/zkevm-circuits"
+      test_cases:
+        - name: small_memory
+          inputs:
+            size: 32
+          expected_result: correct_gas
+        - name: large_memory
+          inputs:
+            size: 262144
+          expected_result: correct_gas
+      assertion: "Memory expansion gas must match EVM specification"
+
+    remediation:
+      description: "Fix memory gas calculation formula"
+
+  # ============== DeFi ZK Vulnerabilities ==============
+
+  - id: "ZK-CVE-2024-004"
+    name: "AMM Price Oracle Manipulation in ZK"
+    severity: high
+    cvss_score: 8.0
+    affected_circuits:
+      - pattern: "zkamm*"
+        versions: ["*"]
+      - pattern: "zk-swap*"
+        versions: ["*"]
+    sources:
+      - "DeFi Security Research"
+      - "zkSync Audit Reports"
+    description: |
+      ZK AMM circuits use on-chain price data that can be manipulated within
+      the same transaction. Flash loan attacks can:
+      - Manipulate reserves before proof generation
+      - Exploit stale price checks
+      - Bypass slippage constraints
+      
+      IMPACT:
+      - Price manipulation attacks
+      - Liquidity pool drainage
+      - Sandwich attack amplification
+
+    detection:
+      oracle: price_manipulation
+      attack_type: soundness
+      procedure:
+        - action: simulate_flash_loan
+        - action: manipulate_reserves
+        - action: verify_price_bounds
+          expected: price_deviation_detected
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat4_defi/zkamm"
+      test_cases:
+        - name: normal_swap
+          inputs:
+            reserve_a: 1000000
+            reserve_b: 1000000
+            amount_in: 1000
+          expected_result: valid_swap
+        - name: manipulated_reserves
+          inputs:
+            reserve_a: 100
+            reserve_b: 10000000
+          expected_result: slippage_protection_triggered
+      assertion: "Price manipulation must be detected"
+
+    remediation:
+      description: "Use TWAP oracles and manipulation-resistant price sources"
+
+  - id: "ZK-CVE-2024-005"
+    name: "Batch Verification Aggregate Forgery"
+    severity: critical
+    cvss_score: 9.5
+    affected_circuits:
+      - pattern: "batch-verifier*"
+        versions: ["*"]
+      - pattern: "groth16-aggregator*"
+        versions: ["*"]
+    sources:
+      - "Academic Research on Proof Aggregation"
+      - "Nebra Labs Security Audit"
+    description: |
+      Batch proof verification allows mixing valid and invalid proofs
+      in a way that the aggregate still verifies. Specific issues:
+      - Pairing accumulator overflow
+      - Invalid proof masking by valid proofs
+      - Cross-circuit batch mixing
+      
+      IMPACT:
+      - Invalid proofs pass verification
+      - Bridge withdrawals with fake proofs
+      - Complete proof system bypass
+
+    detection:
+      oracle: batch_soundness
+      attack_type: soundness
+      procedure:
+        - action: create_batch
+          params:
+            valid_proofs: 5
+            invalid_proofs: 1
+        - action: aggregate
+        - action: verify_aggregate
+          expected: should_fail
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat2_rollups/batch-verifier"
+      test_cases:
+        - name: all_valid
+          inputs:
+            proofs: [valid, valid, valid]
+          expected_result: batch_valid
+        - name: one_invalid
+          inputs:
+            proofs: [valid, invalid, valid]
+          expected_result: batch_invalid
+      assertion: "Any invalid proof must cause batch rejection"
+
+    remediation:
+      description: "Proper accumulator design with independent verification"
+
+  - id: "ZK-CVE-2024-006"
+    name: "Recursive SNARK Base Case Bypass"
+    severity: critical
+    cvss_score: 9.0
+    affected_circuits:
+      - pattern: "nova*"
+        versions: ["*"]
+      - pattern: "supernova*"
+        versions: ["*"]
+      - pattern: "halo2-recursion*"
+        versions: ["*"]
+    sources:
+      - "Recursive SNARK Research"
+      - "Protocol Labs Security"
+    description: |
+      Recursive proof systems may not properly validate the base case,
+      allowing proofs to be "bootstrapped" from invalid initial states.
+      
+      IMPACT:
+      - Forge any recursive proof
+      - IVC chain manipulation
+      - Complete proof system compromise
+
+    detection:
+      oracle: recursive_soundness
+      attack_type: soundness
+      procedure:
+        - action: test_base_case
+          params:
+            invalid_initial_state: true
+        - action: fold_n_times
+          params:
+            n: 10
+        - action: verify_final
+          expected: should_fail
+
+    regression_test:
+      enabled: true
+      circuit_path: "recursive/nova"
+      test_cases:
+        - name: valid_base_case
+          inputs:
+            initial_state: valid
+          expected_result: valid_ivc
+        - name: invalid_base_case
+          inputs:
+            initial_state: invalid
+          expected_result: ivc_fails_early
+      assertion: "Invalid base case must be rejected"
+
+    remediation:
+      description: "Explicit base case verification in recursive verifier"
+
+  - id: "ZK-CVE-2024-007"
+    name: "Front-Running via Proof Precomputation"
+    severity: high
+    cvss_score: 7.5
+    affected_circuits:
+      - pattern: "privacy-pool*"
+        versions: ["*"]
+      - pattern: "zkp-mixer*"
+        versions: ["*"]
+    sources:
+      - "MEV Research"
+      - "Flashbots Forum"
+    description: |
+      ZK proof precomputation allows attackers to front-run transactions
+      by computing proofs in advance based on mempool observation.
+      
+      IMPACT:
+      - Front-running attacks on ZK transactions
+      - MEV extraction from privacy protocols
+      - Reduced privacy guarantees
+
+    detection:
+      oracle: ordering_dependency
+      attack_type: front_running
+      procedure:
+        - action: observe_pending_tx
+        - action: compute_competing_proof
+        - action: submit_before_victim
+          expected: should_be_prevented
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat3_privacy/zkp-mixer"
+      test_cases:
+        - name: precomputed_proof
+          inputs:
+            commitment: known
+            nullifier: precomputed
+          expected_result: prevented_by_commit_reveal
+      assertion: "Precomputed proofs should not enable front-running"
+
+    remediation:
+      description: "Use commit-reveal schemes or encrypted mempool"
+
+  - id: "ZK-CVE-2024-008"
+    name: "Storage Proof Manipulation"
+    severity: high
+    cvss_score: 8.5
+    affected_circuits:
+      - pattern: "storage-proof*"
+        versions: ["*"]
+      - pattern: "state-verifier*"
+        versions: ["*"]
+    sources:
+      - "Bridge Security Research"
+      - "Cross-chain Protocol Audits"
+    description: |
+      ZK storage proofs may be vulnerable to:
+      - Stale state root attacks
+      - MPT proof forgery
+      - Account proof manipulation
+      
+      IMPACT:
+      - Fake withdrawal proofs
+      - Cross-chain message forgery
+      - Bridge fund theft
+
+    detection:
+      oracle: storage_soundness
+      attack_type: soundness
+      procedure:
+        - action: create_stale_proof
+          params:
+            age_blocks: 100
+        - action: verify_freshness
+          expected: should_reject
+        - action: test_mpt_forgery
+          expected: should_fail
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat2_rollups/storage-proof"
+      test_cases:
+        - name: fresh_proof
+          inputs:
+            block_age: 1
+          expected_result: valid
+        - name: stale_proof
+          inputs:
+            block_age: 256
+          expected_result: rejected
+      assertion: "Stale storage proofs must be rejected"
+
+    remediation:
+      description: "Enforce freshness constraints on storage proofs"
 
 # Interesting values for testing
 interesting_values:

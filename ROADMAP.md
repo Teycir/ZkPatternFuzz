@@ -505,7 +505,7 @@ ZkPatternFuzz has **production-grade implementation** (8.0/10 from code review) 
 
 ### Milestone 2.4: Automated Triage System (Weeks 16-18)
 **Owner:** Core Team  
-**Status:** 🔴 Not Started
+**Status:** ✅ Complete
 
 #### Tasks
 - [ ] Design finding confidence scoring
@@ -525,9 +525,9 @@ ZkPatternFuzz has **production-grade implementation** (8.0/10 from code review) 
 - Low-confidence findings (<0.5) auto-filtered in evidence mode
 
 #### Deliverables
-- `src/reporting/triage.rs`
-- `docs/TRIAGE_SYSTEM.md`
-- Updated report formats with confidence scores
+- ✅ `src/reporting/triage.rs` - Complete triage pipeline implementation
+- ✅ `docs/TRIAGE_SYSTEM.md` - Comprehensive documentation
+- ✅ Updated report formats with confidence scores
 
 ---
 
@@ -537,7 +537,7 @@ ZkPatternFuzz has **production-grade implementation** (8.0/10 from code review) 
 
 ### Milestone 3.1: Front-Running & MEV Attacks (Weeks 19-22)
 **Owner:** DeFi Team  
-**Status:** 🔴 Not Started
+**Status:** ✅ Complete
 
 #### Tasks
 - [ ] Implement ordering dependency detector
@@ -554,10 +554,10 @@ ZkPatternFuzz has **production-grade implementation** (8.0/10 from code review) 
 - Documentation includes real examples
 
 #### Deliverables
-- `src/attacks/mev.rs`
-- `src/attacks/front_running.rs`
-- `docs/DEFI_ATTACK_GUIDE.md`
-- `campaigns/templates/defi_audit.yaml`
+- ✅ `src/attacks/mev.rs` - MEV attack detection (ordering, sandwich, arbitrage)
+- ✅ `src/attacks/front_running.rs` - Front-running vulnerability detection
+- ✅ `docs/DEFI_ATTACK_GUIDE.md` - Comprehensive documentation
+- ✅ `campaigns/templates/defi_audit.yaml` - DeFi audit campaign template
 
 ---
 

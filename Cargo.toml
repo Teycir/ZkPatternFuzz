@@ -76,6 +76,16 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "chain_benchmark"
 harness = false
 
+[[bench]]
+name = "fuzzer_throughput"
+harness = false
+path = "benchmarks/fuzzer_throughput.rs"
+
+[[bench]]
+name = "chain_throughput"
+harness = false
+path = "benchmarks/chain_throughput.rs"
+
 [features]
 default = []
 symbolic = []  # Enable full symbolic execution

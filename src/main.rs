@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use zk_fuzzer::config::FuzzConfig;
+use zk_fuzzer::config::{FuzzConfig, ProfileName, apply_profile};
 use zk_fuzzer::fuzzer::ZkFuzzer;
 
 #[derive(Parser)]
@@ -43,6 +43,13 @@ struct Cli {
     /// Sets strict_backend=true and rejects framework: "mock"
     #[arg(long, global = true)]
     real_only: bool,
+
+    /// Configuration profile (quick, standard, deep)
+    /// Quick: 10K iterations, fast exploration
+    /// Standard: 100K iterations, balanced fuzzing (default for evidence)
+    /// Deep: 1M iterations, thorough analysis
+    #[arg(long, global = true)]
+    profile: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -59,6 +66,14 @@ enum Commands {
         /// Timeout in seconds for continuous fuzzing phase
         #[arg(short, long)]
         timeout: Option<u64>,
+
+        /// Resume from existing corpus (loads from reports/<campaign>/corpus/)
+        #[arg(long)]
+        resume: bool,
+
+        /// Custom corpus directory for resume (default: reports/<campaign>/corpus/)
+        #[arg(long)]
+        corpus_dir: Option<String>,
     },
     /// Run an evidence-focused campaign (requires invariants)
     Evidence {
@@ -72,6 +87,14 @@ enum Commands {
         /// Timeout in seconds for continuous fuzzing phase
         #[arg(short, long)]
         timeout: Option<u64>,
+
+        /// Resume from existing corpus (loads from reports/<campaign>/corpus/)
+        #[arg(long)]
+        resume: bool,
+
+        /// Custom corpus directory for resume (default: reports/<campaign>/corpus/)
+        #[arg(long)]
+        corpus_dir: Option<String>,
     },
     /// Run multi-step chain fuzzing (Mode 3: Deepest)
     Chains {
@@ -135,7 +158,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Some(Commands::Run { campaign, iterations, timeout }) => {
+        Some(Commands::Run { campaign, iterations, timeout, resume, corpus_dir }) => {
             run_campaign(
                 &campaign,
                 cli.workers,
@@ -147,9 +170,12 @@ async fn main() -> anyhow::Result<()> {
                 iterations,
                 timeout,
                 false,
+                resume,
+                corpus_dir,
+                cli.profile.as_deref(),
             ).await
         }
-        Some(Commands::Evidence { campaign, iterations, timeout }) => {
+        Some(Commands::Evidence { campaign, iterations, timeout, resume, corpus_dir }) => {
             run_campaign(
                 &campaign,
                 cli.workers,
@@ -161,6 +187,9 @@ async fn main() -> anyhow::Result<()> {
                 iterations,
                 timeout,
                 true,
+                resume,
+                corpus_dir,
+                cli.profile.as_deref(),
             ).await
         }
         Some(Commands::Chains { campaign, iterations, timeout, resume }) => {
@@ -203,6 +232,9 @@ async fn main() -> anyhow::Result<()> {
                     1000,
                     None,
                     false,
+                    false, // resume
+                    None,  // corpus_dir
+                    cli.profile.as_deref(),
                 ).await
             } else {
                 eprintln!("Error: No campaign configuration provided.");
@@ -225,9 +257,19 @@ async fn run_campaign(
     iterations: u64,
     timeout: Option<u64>,
     require_invariants: bool,
+    resume: bool,
+    corpus_dir: Option<String>,
+    profile: Option<&str>,
 ) -> anyhow::Result<()> {
     tracing::info!("Loading campaign from: {}", config_path);
     let mut config = FuzzConfig::from_yaml(config_path)?;
+
+    // Apply profile if specified
+    if let Some(profile_name) = profile {
+        let parsed_profile: ProfileName = profile_name.parse()
+            .map_err(|e: String| anyhow::anyhow!(e))?;
+        apply_profile(&mut config, parsed_profile);
+    }
 
     // Phase 1C: --real-only flag enforcement
     if real_only {
@@ -288,6 +330,27 @@ async fn run_campaign(
     // Print banner
     print_banner(&config);
 
+    // Handle resume mode
+    if resume {
+        let corpus_path = if let Some(ref dir) = corpus_dir {
+            std::path::PathBuf::from(dir)
+        } else {
+            config.reporting.output_dir.join("corpus")
+        };
+        
+        if corpus_path.exists() {
+            tracing::info!("Resume mode: loading corpus from {:?}", corpus_path);
+            config.campaign.parameters.additional.insert(
+                "resume_corpus_dir".to_string(),
+                serde_yaml::Value::String(corpus_path.display().to_string()),
+            );
+            println!("📂 Resuming from corpus: {}", corpus_path.display());
+        } else {
+            tracing::warn!("Resume requested but corpus directory not found: {:?}", corpus_path);
+            println!("⚠️  Corpus directory not found, starting fresh: {}", corpus_path.display());
+        }
+    }
+
     if dry_run {
         tracing::info!("Dry run mode - configuration validated successfully");
         println!("\n✓ Configuration is valid");
@@ -295,6 +358,12 @@ async fn run_campaign(
         println!("  Target: {:?}", config.campaign.target.framework);
         println!("  Attacks: {}", config.attacks.len());
         println!("  Inputs: {}", config.inputs.len());
+        if resume {
+            println!("  Resume: enabled");
+        }
+        if let Some(ref p) = profile {
+            println!("  Profile: {}", p);
+        }
         return Ok(());
     }
 
