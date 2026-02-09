@@ -244,6 +244,7 @@ mod tests {
             CrossStepInvariantChecker, ChainFinding,
         };
         use zk_fuzzer::config::{FuzzConfig, parse_chains};
+        use zk_fuzzer::config::v2::CircuitPathConfig;
         use zk_fuzzer::executor::ExecutorFactory;
         use zk_core::{CircuitExecutor, FieldElement, Framework};
         use rand::SeedableRng;
@@ -285,7 +286,13 @@ mod tests {
                 continue;
             }
 
-            let circuit_dir = config.campaign.target.circuit_path.clone();
+            let circuit_root = config.campaign.target.circuit_path.clone();
+            let mut circuit_map: HashMap<String, CircuitPathConfig> = HashMap::new();
+            for chain_cfg in &config.chains {
+                for (name, cfg) in &chain_cfg.circuits {
+                    circuit_map.entry(name.clone()).or_insert_with(|| cfg.clone());
+                }
+            }
             let mut executors: HashMap<String, Arc<dyn CircuitExecutor>> = HashMap::new();
 
             for chain in &chains {
@@ -293,10 +300,30 @@ mod tests {
                     if executors.contains_key(&step.circuit_ref) {
                         continue;
                     }
-                    let circom_file = circuit_dir.join(format!("{}.circom", step.circuit_ref));
-                    let circom_path = circom_file.to_str().unwrap_or("");
+                    let (circuit_path, main_component, framework) = if let Some(cfg) = circuit_map.get(&step.circuit_ref) {
+                        let framework = cfg.framework.unwrap_or(config.campaign.target.framework);
+                        let main_component = cfg
+                            .main_component
+                            .as_deref()
+                            .unwrap_or(&step.circuit_ref)
+                            .to_string();
+                        (cfg.path.clone(), main_component, framework)
+                    } else {
+                        let root = if circuit_root.is_dir() {
+                            circuit_root.clone()
+                        } else {
+                            circuit_root.parent().unwrap_or(&circuit_root).to_path_buf()
+                        };
+                        let fallback_path = root.join(format!("{}.circom", step.circuit_ref));
+                        (
+                            fallback_path,
+                            config.campaign.target.main_component.clone(),
+                            config.campaign.target.framework,
+                        )
+                    };
+                    let circom_path = circuit_path.to_str().unwrap_or("");
 
-                    match ExecutorFactory::create(Framework::Circom, circom_path, &step.circuit_ref) {
+                    match ExecutorFactory::create(framework, circom_path, &main_component) {
                         Ok(exec) => {
                             println!("  Loaded circuit: {} ({} inputs, {} constraints)",
                                 step.circuit_ref,

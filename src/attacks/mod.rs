@@ -22,6 +22,11 @@
 //!
 //! - [`batch_verification`]: Batch mixing, aggregation forgery, cross-circuit
 //!   batch analysis, and randomness reuse detection for batch verifiers
+//!
+//! ## Recursive SNARK Attacks (Phase 3: Milestone 3.4)
+//!
+//! - [`recursive`]: Base case bypass, accumulator overflow, VK substitution,
+//!   and folding attacks for recursive proof systems (Nova, Supernova, Halo2)
 
 pub mod arithmetic;
 pub mod batch_verification;  // Phase 3: Batch verification bypass attacks
@@ -32,6 +37,7 @@ pub mod constraint_slice;
 pub mod front_running;  // Phase 3: Front-running attacks
 pub mod metamorphic;
 pub mod mev;  // Phase 3: MEV attacks
+pub mod recursive;  // Phase 3: Recursive SNARK attacks
 pub mod soundness;
 pub mod spec_inference;
 pub mod underconstrained;
@@ -50,6 +56,7 @@ pub use constraint_slice::*;
 pub use front_running::*;
 pub use metamorphic::*;
 pub use mev::*;
+pub use recursive::*;
 pub use soundness::*;
 pub use spec_inference::*;
 pub use underconstrained::*;

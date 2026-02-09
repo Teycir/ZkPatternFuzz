@@ -12,6 +12,7 @@ use zk_fuzzer::config::{AttackType, FuzzConfig};
 use zk_fuzzer::fuzzer::FuzzingEngine;
 
 /// Known-safe circuit categories for testing false positives
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct SafeCircuitTest {
     name: String,

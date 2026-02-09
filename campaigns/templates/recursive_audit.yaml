@@ -1,0 +1,342 @@
+# ZkPatternFuzz Campaign: Recursive SNARK Audit
+# Template for testing recursive proof systems (Nova, Supernova, Halo2 recursive)
+#
+# Phase 3: Milestone 3.4 - Recursive SNARK Attacks
+#
+# Usage:
+#   cargo run --release -- run campaigns/templates/recursive_audit.yaml --profile deep
+#   cargo run --release -- evidence campaigns/templates/recursive_audit.yaml --iterations 100000
+
+campaign:
+  name: "Recursive SNARK Security Audit"
+  version: "1.0"
+  target:
+    # Update these paths for your specific recursive circuit
+    framework: halo2
+    circuit_path: "./circuits/recursive/ivc_circuit.rs"
+    main_component: "RecursiveCircuit"
+  
+  parameters:
+    field: "bn254"  # or "pasta" for Halo2/Nova
+    max_constraints: 1000000
+    timeout_seconds: 3600
+    additional:
+      strict_backend: true
+      evidence_mode: true
+      max_iterations: 100000
+      
+      # Recursive-specific parameters
+      max_recursion_depth: 10
+      verify_base_case: true
+      check_accumulator_binding: true
+
+# ============================================================================
+# Attack Configuration
+# ============================================================================
+
+attacks:
+  # Core recursive attack
+  - type: recursive
+    description: "Comprehensive recursive SNARK vulnerability detection"
+    config:
+      max_recursion_depth: 10
+      
+      # Test counts (adjust based on time budget)
+      base_case_tests: 500
+      accumulator_overflow_tests: 1000
+      vk_substitution_tests: 500
+      folding_attack_tests: 1000
+      
+      # Detection toggles
+      detect_base_case_bypass: true
+      detect_accumulator_overflow: true
+      detect_vk_substitution: true
+      detect_folding_attacks: true
+      
+      # Systems to test (uncomment applicable ones)
+      recursive_systems:
+        - nova
+        - supernova
+        - halo2_recursive
+        # - sangria
+        # - protostar
+      
+      # Bit widths for overflow testing
+      accumulator_bit_widths: [64, 128, 254, 256]
+      
+      timeout_ms: 60000
+      seed: 42
+
+  # Soundness testing for recursive steps
+  - type: soundness
+    description: "Verify recursive step transitions"
+    config:
+      forge_attempts: 5000
+      mutation_rate: 0.15
+      target_recursive_steps: true
+
+  # Underconstrained detection in recursive circuits
+  - type: underconstrained
+    description: "Find underconstrained signals in recursive circuit"
+    config:
+      witness_pairs: 10000
+      check_accumulator_constraints: true
+
+  # Arithmetic overflow in accumulator operations
+  - type: arithmetic_overflow
+    description: "Test field arithmetic in accumulator computations"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "p-1"
+        - "p"
+        - "2^64-1"
+        - "2^128-1"
+        - "2^254-1"
+
+  # Boundary testing for recursion limits
+  - type: boundary
+    description: "Test recursion depth boundaries"
+    config:
+      depth_values:
+        - 0
+        - 1
+        - 10
+        - 100
+        - 1000
+      check_depth_overflow: true
+
+# ============================================================================
+# Input Specification
+# ============================================================================
+
+inputs:
+  # Base case inputs
+  - name: "base_case_witness"
+    type: "field_array"
+    length: 8
+    fuzz_strategy: random
+    constraints:
+      - "valid_base_case"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0xFFFFFFFFFFFFFFFF"
+
+  # Recursive step inputs
+  - name: "step_witness"
+    type: "field_array"
+    length: 8
+    fuzz_strategy: mutation
+    constraints:
+      - "valid_step_transition"
+
+  # Accumulator inputs (for folding schemes)
+  - name: "accumulator_instance"
+    type: "field_array"
+    length: 16
+    fuzz_strategy: interesting_values
+    interesting:
+      - "0x0"  # Zero accumulator
+      - "0x1"  # Unit accumulator
+      - "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"  # Max field
+
+  # Folding challenge (for Nova/Supernova)
+  - name: "folding_challenge"
+    type: "field"
+    fuzz_strategy: symbolic
+    constraints:
+      - "nonzero"  # Zero challenge is invalid
+
+  # Verification key hash
+  - name: "vk_hash"
+    type: "bytes32"
+    fuzz_strategy: mutation
+    constraints:
+      - "consistent_across_steps"
+
+  # Recursion depth counter
+  - name: "depth_counter"
+    type: "u64"
+    fuzz_strategy: boundary
+    constraints:
+      - "less_than_max_depth"
+    interesting:
+      - "0"
+      - "1"
+      - "10"
+      - "18446744073709551615"  # u64::MAX
+
+# ============================================================================
+# Invariants for Evidence Mode
+# ============================================================================
+
+invariants:
+  # Base case verification
+  - name: "base_case_verified"
+    relation: "step_index == 0 => is_base_case == true"
+    oracle: "must_hold"
+    description: "Base case must be verified at step 0"
+
+  # Accumulator consistency
+  - name: "accumulator_counter_monotonic"
+    relation: "acc_counter[i+1] == acc_counter[i] + 1"
+    oracle: "must_hold"
+    description: "Accumulator counter must increment by 1 each step"
+
+  # VK consistency
+  - name: "vk_consistent"
+    relation: "vk_hash[i] == vk_hash[0] for all i"
+    oracle: "must_hold"
+    description: "Verification key must be consistent across all steps"
+
+  # Folding soundness
+  - name: "folding_dimensions_match"
+    relation: "instance[i].len() == instance[0].len()"
+    oracle: "must_hold"
+    description: "All folded instances must have same dimensions"
+
+  # Error term validity (Nova)
+  - name: "error_term_propagates"
+    relation: "error_term != None => error_term_next != None"
+    oracle: "should_hold"
+    description: "Error term should propagate through folding"
+
+  # Depth limit
+  - name: "depth_within_limit"
+    relation: "depth_counter < max_recursion_depth"
+    oracle: "must_hold"
+    description: "Recursion depth must stay within configured limit"
+
+# ============================================================================
+# Mutations
+# ============================================================================
+
+mutations:
+  - name: "base_case_skip"
+    probability: 0.1
+    operations:
+      - "set_step_index_to_nonzero"
+      - "claim_base_case_false"
+    description: "Attempt to skip base case verification"
+
+  - name: "accumulator_manipulation"
+    probability: 0.15
+    operations:
+      - "randomize_accumulator"
+      - "zero_error_term"
+      - "overflow_counter"
+    description: "Manipulate accumulator state"
+
+  - name: "vk_substitution"
+    probability: 0.1
+    operations:
+      - "replace_vk_hash"
+      - "zero_vk_hash"
+    description: "Substitute verification key"
+
+  - name: "folding_corruption"
+    probability: 0.2
+    operations:
+      - "change_instance_dimension"
+      - "zero_challenge"
+      - "duplicate_instance"
+    description: "Corrupt folding operation"
+
+  - name: "depth_manipulation"
+    probability: 0.1
+    operations:
+      - "set_depth_max"
+      - "set_depth_overflow"
+    description: "Manipulate recursion depth"
+
+# ============================================================================
+# Oracles
+# ============================================================================
+
+oracles:
+  - name: "base_case_oracle"
+    severity: critical
+    description: "Detects base case bypass vulnerabilities"
+
+  - name: "accumulator_oracle"
+    severity: high
+    description: "Detects accumulator manipulation vulnerabilities"
+
+  - name: "vk_oracle"
+    severity: critical
+    description: "Detects verification key substitution"
+
+  - name: "folding_oracle"
+    severity: high
+    description: "Detects folding scheme vulnerabilities"
+
+  - name: "soundness_oracle"
+    severity: critical
+    description: "Detects general soundness violations in recursion"
+
+# ============================================================================
+# Reporting
+# ============================================================================
+
+reporting:
+  output_dir: "./reports/recursive_audit"
+  formats:
+    - json
+    - markdown
+    - sarif
+  include_poc: true
+  crash_reproduction: true
+  
+  # Additional recursive-specific reports
+  additional:
+    include_recursion_trace: true
+    include_accumulator_state: true
+    include_step_by_step: true
+
+# ============================================================================
+# Schedule (Phased Execution)
+# ============================================================================
+
+schedule:
+  - phase: "base_case_analysis"
+    duration_sec: 300
+    attacks:
+      - recursive
+    focus:
+      - base_case_bypass
+      - base_case_commitment
+
+  - phase: "accumulator_testing"
+    duration_sec: 600
+    attacks:
+      - recursive
+      - arithmetic_overflow
+    focus:
+      - accumulator_overflow
+      - accumulator_forgery
+
+  - phase: "vk_analysis"
+    duration_sec: 300
+    attacks:
+      - recursive
+    focus:
+      - vk_substitution
+      - vk_collision
+
+  - phase: "folding_attacks"
+    duration_sec: 900
+    attacks:
+      - recursive
+      - soundness
+    focus:
+      - folding_mismatch
+      - relaxed_instance
+      - cross_fold
+
+  - phase: "comprehensive"
+    duration_sec: 1800
+    attacks:
+      - all
+    description: "Full attack coverage for missed vulnerabilities"

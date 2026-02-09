@@ -294,14 +294,14 @@ fn test_result_without_opcode() {
 
 #[test]
 fn test_price_impact_analyzer_creation() {
-    let analyzer = ZkEvmPriceAnalyzer::new(0.05);
+    let _analyzer = ZkEvmPriceAnalyzer::new(0.05);
     // Just verify it constructs without panic
     assert!(true);
 }
 
 #[test]
 fn test_call_vulnerability_detector_creation() {
-    let detector = ZkEvmCallDetector::new(10);
+    let _detector = ZkEvmCallDetector::new(10);
     // Just verify it constructs without panic
     assert!(true);
 }

@@ -292,7 +292,6 @@ mod tests {
         let metrics = analyzer.analyze(&executor);
 
         assert!(metrics.signal_count > 0);
-        assert!(metrics.r1cs_constraints >= 0); // Mock may have 0
     }
 
     #[test]
