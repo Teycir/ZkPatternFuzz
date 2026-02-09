@@ -173,7 +173,7 @@ impl WitnessCollisionDetector {
     fn hash_outputs(&self, outputs: &[FieldElement]) -> String {
         let mut hasher = Sha256::new();
         for output in outputs {
-            hasher.update(&output.to_bytes());
+            hasher.update(output.to_bytes());
         }
         let result = hasher.finalize();
         hex::encode(&result[..16])
@@ -186,10 +186,10 @@ impl WitnessCollisionDetector {
     ) -> String {
         let mut hasher = Sha256::new();
         for output in outputs {
-            hasher.update(&output.to_bytes());
+            hasher.update(output.to_bytes());
         }
         for input in public_inputs {
-            hasher.update(&input.to_bytes());
+            hasher.update(input.to_bytes());
         }
         let result = hasher.finalize();
         hex::encode(&result[..16])

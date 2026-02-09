@@ -128,11 +128,11 @@ impl YamlSuggester {
 
         suggestions.retain(|s| {
             let key = format!("{:?}:{}", s.suggestion_type, s.key);
-            if seen.contains_key(&key) {
-                false
-            } else {
-                seen.insert(key, 1);
+            if let std::collections::hash_map::Entry::Vacant(e) = seen.entry(key) {
+                e.insert(1);
                 true
+            } else {
+                false
             }
         });
     }

@@ -3537,19 +3537,19 @@ impl FuzzingEngine {
             completed += 1;
             
             if let Some(p) = progress {
-                if completed % 100 == 0 {
+                if completed.is_multiple_of(100) {
                     p.inc();
                 }
             }
             
             // Update power scheduler periodically
-            if completed % 1000 == 0 {
+            if completed.is_multiple_of(1000) {
                 self.update_power_scheduler_globals();
             }
             
             // Phase 0 Fix: Periodic corpus minimization to maintain quality
             // Run every 10,000 iterations to reduce redundant test cases
-            if completed % 10_000 == 0 && completed > 0 {
+            if completed.is_multiple_of(10_000) && completed > 0 {
                 let stats = self.core.corpus().minimize();
                 tracing::debug!(
                     "Periodic corpus minimization: {} → {} entries",
@@ -3810,8 +3810,8 @@ impl FuzzingEngine {
         let skipped = bundles.iter().filter(|b| matches!(b.verification_result, crate::reporting::VerificationResult::Skipped(_))).count();
         
         md.push_str("## Verification Summary\n\n");
-        md.push_str(&format!("| Status | Count |\n"));
-        md.push_str(&format!("|--------|-------|\n"));
+        md.push_str("| Status | Count |\n");
+        md.push_str("|--------|-------|\n");
         md.push_str(&format!("| ✅ CONFIRMED | {} |\n", confirmed));
         md.push_str(&format!("| ❌ NOT CONFIRMED | {} |\n", failed));
         md.push_str(&format!("| ⏭ SKIPPED | {} |\n", skipped));
@@ -4686,10 +4686,7 @@ impl FuzzingEngine {
             }
         }
 
-        let (name, args) = match Self::parse_call(raw) {
-            Some(call) => call,
-            None => return None,
-        };
+        let (name, args) = Self::parse_call(raw)?;
 
         match name.as_str() {
             "scale_input" => {
@@ -4713,7 +4710,7 @@ impl FuzzingEngine {
                 })
             }
             "negate_input" => {
-                let input_name = args.get(0)?;
+                let input_name = args.first()?;
                 let (input_name, _) = Self::parse_transform_target(input_name);
                 let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
                 Some(Transform::NegateInputs { indices: vec![*idx] })
@@ -4740,7 +4737,7 @@ impl FuzzingEngine {
                 })
             }
             "double_input" => {
-                let input_name = args.get(0)?;
+                let input_name = args.first()?;
                 let (input_name, _) = Self::parse_transform_target(input_name);
                 let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
                 Some(Transform::DoubleInput { index: *idx })

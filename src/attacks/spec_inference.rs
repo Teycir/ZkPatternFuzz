@@ -311,7 +311,7 @@ impl SpecInferenceOracle {
     /// Infer non-zero constraints
     fn infer_non_zero(&self, samples: &[ExecutionSample], total_wires: usize) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
-        let num_inputs = samples.get(0).map(|s| s.inputs.len()).unwrap_or(0);
+        let num_inputs = samples.first().map(|s| s.inputs.len()).unwrap_or(0);
         if self.wire_labels.is_empty() {
             return specs;
         }
@@ -357,7 +357,7 @@ impl SpecInferenceOracle {
         let mut specs = Vec::new();
 
         for output_idx in 0..num_outputs {
-            let first_value = samples.get(0)
+            let first_value = samples.first()
                 .and_then(|s| s.outputs.get(output_idx))
                 .cloned();
 

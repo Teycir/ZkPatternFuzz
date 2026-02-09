@@ -186,8 +186,8 @@ impl DepthMetricsSummary {
         let mut output = String::new();
         
         output.push_str("## Multi-Step Depth Metrics\n\n");
-        output.push_str(&format!("| Metric | Value |\n"));
-        output.push_str(&format!("|--------|-------|\n"));
+        output.push_str("| Metric | Value |\n");
+        output.push_str("|--------|-------|\n");
         output.push_str(&format!("| Total Findings | {} |\n", self.total_findings));
         output.push_str(&format!("| D (mean L_min) | {:.2} |\n", self.d_mean));
         output.push_str(&format!("| D std | {:.2} |\n", self.d_std));

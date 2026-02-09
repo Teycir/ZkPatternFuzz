@@ -520,7 +520,7 @@ fn read_sym_map(sym_path: &Path) -> Result<HashMap<String, usize>> {
             continue;
         }
         let primary = parts.get(1).and_then(|v| v.trim().parse::<isize>().ok());
-        let fallback = parts.get(0).and_then(|v| v.trim().parse::<isize>().ok());
+        let fallback = parts.first().and_then(|v| v.trim().parse::<isize>().ok());
         let chosen = match primary {
             Some(value) if value >= 0 => Some(value as usize),
             _ => fallback.and_then(|v| if v >= 0 { Some(v as usize) } else { None }),

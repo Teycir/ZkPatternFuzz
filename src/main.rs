@@ -674,12 +674,12 @@ async fn run_chain_campaign(
     let chain_md_path = output_dir.join("chain_report.md");
     let mut md = String::new();
     md.push_str(&format!("# Chain Fuzzing Report: {}\n\n", config.campaign.name));
-    md.push_str(&format!("**Mode:** Multi-Step Chain Fuzzing (Mode 3)\n"));
+    md.push_str("**Mode:** Multi-Step Chain Fuzzing (Mode 3)\n");
     md.push_str(&format!("**Generated:** {}\n\n", chrono::Utc::now().to_rfc3339()));
 
     md.push_str("## Depth Metrics\n\n");
-    md.push_str(&format!("| Metric | Value |\n"));
-    md.push_str(&format!("|--------|-------|\n"));
+    md.push_str("| Metric | Value |\n");
+    md.push_str("|--------|-------|\n");
     md.push_str(&format!("| Total Findings | {} |\n", summary.total_findings));
     md.push_str(&format!("| Mean L_min (D) | {:.2} |\n", summary.d_mean));
     md.push_str(&format!("| P(L_min >= 2) | {:.1}% |\n\n", summary.p_deep * 100.0));
@@ -704,7 +704,7 @@ async fn run_chain_campaign(
                     if step.success { "success" } else { step.error.as_deref().unwrap_or("failed") }
                 ));
             }
-            md.push_str("\n");
+            md.push('\n');
 
             // Add reproduction
             md.push_str("**Reproduction:**\n\n");

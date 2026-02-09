@@ -195,7 +195,7 @@ impl OracleCorrelator {
     fn compute_witness_hash(&self, witness: &[FieldElement]) -> String {
         let mut hasher = Sha256::new();
         for fe in witness {
-            hasher.update(&fe.0);
+            hasher.update(fe.0);
         }
         hex::encode(&hasher.finalize()[..16])
     }
@@ -303,7 +303,7 @@ impl CorrelationReport {
             let count = self.findings_by_confidence.get(&level).unwrap_or(&0);
             md.push_str(&format!("| {} | {} |\n", level.as_str(), count));
         }
-        md.push_str("\n");
+        md.push('\n');
 
         if !self.high_confidence_findings.is_empty() {
             md.push_str("## High Confidence Findings\n\n");

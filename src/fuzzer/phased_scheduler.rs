@@ -261,17 +261,13 @@ impl PhasedScheduler {
         let mut config = base_config.clone();
 
         // Filter attacks to only those in this phase
-        config.attacks = config
-            .attacks
-            .into_iter()
-            .filter(|a| {
+        config.attacks.retain(|a| {
                 let attack_name = format!("{:?}", a.attack_type).to_lowercase();
                 phase.attacks.iter().any(|p| {
                     p.to_lowercase() == attack_name || 
                     p.to_lowercase() == attack_name.replace("_", "")
                 })
-            })
-            .collect();
+            });
 
         // Set phase timeout
         config.campaign.parameters.timeout_seconds = phase.duration_sec;

@@ -704,7 +704,7 @@ fn expand_env_string(input: &str) -> String {
         if matches!(chars.peek(), Some('{')) {
             let _ = chars.next();
             let mut name = String::new();
-            while let Some(next) = chars.next() {
+            for next in chars.by_ref() {
                 if next == '}' {
                     break;
                 }

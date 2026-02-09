@@ -264,7 +264,7 @@ fn write_summary_markdown(
                 h.description
             ));
         }
-        out.push_str("\n");
+        out.push('\n');
     }
 
     std::fs::write(path, out)?;
@@ -349,8 +349,7 @@ fn candidate_invariants_from_hints(
     let mut out = Vec::new();
     for (idx, hint) in hints.iter().enumerate() {
         let affected = inputs_for_category(&hint.category, inputs, 4);
-        let primary = affected
-            .get(0)
+        let primary = affected.first()
             .cloned()
             .unwrap_or_else(|| "TODO_INPUT".to_string());
         let relation = relation_for_category(&hint.category, &primary);

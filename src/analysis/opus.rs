@@ -1091,34 +1091,31 @@ impl ZeroDayDetector for MissingConstraintDetector {
     fn detect(&self, source: &str, framework: Framework, _patterns: &[DetectedPattern]) -> Vec<ZeroDayHint> {
         let mut hints = Vec::new();
 
-        match framework {
-            Framework::Circom => {
-                // Check for signals that are assigned but not constrained
-                let signal_assignments: HashSet<&str> = source
-                    .lines()
-                    .filter_map(|l| {
-                        if l.contains("<--") && !l.contains("<==") {
-                            Some(l.trim())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+        if framework == Framework::Circom {
+            // Check for signals that are assigned but not constrained
+            let signal_assignments: HashSet<&str> = source
+                .lines()
+                .filter_map(|l| {
+                    if l.contains("<--") && !l.contains("<==") {
+                        Some(l.trim())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
-                if !signal_assignments.is_empty() {
-                    hints.push(ZeroDayHint {
-                        category: ZeroDayCategory::MissingConstraint,
-                        confidence: 0.7,
-                        description: format!(
-                            "Found {} signal assignments without constraints (<-- instead of <==)",
-                            signal_assignments.len()
-                        ),
-                        locations: vec![],
-                        mutation_focus: Some("assigned_but_unconstrained".to_string()),
-                    });
-                }
+            if !signal_assignments.is_empty() {
+                hints.push(ZeroDayHint {
+                    category: ZeroDayCategory::MissingConstraint,
+                    confidence: 0.7,
+                    description: format!(
+                        "Found {} signal assignments without constraints (<-- instead of <==)",
+                        signal_assignments.len()
+                    ),
+                    locations: vec![],
+                    mutation_focus: Some("assigned_but_unconstrained".to_string()),
+                });
             }
-            _ => {}
         }
 
         hints

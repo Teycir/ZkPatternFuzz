@@ -458,9 +458,7 @@ impl InferenceRule for NullifierUniquenessInference {
                     ),
                     confidence: 0.75,
                     involved_wires: std::iter::once(null_wire).chain(secret_wires.iter().copied()).collect(),
-                    suggested_constraint: format!(
-                        "nullifier == hash(secret, ...)",
-                    ),
+                    suggested_constraint: "nullifier == hash(secret, ...)".to_string(),
                     violation_witness: None,
                     confirmation: ViolationConfirmation::Unchecked,
                 });
@@ -584,7 +582,7 @@ impl ConstraintInferenceEngine {
                 Box::new(BitDecompositionInference::default()),
                 Box::new(MerklePathInference),
                 Box::new(NullifierUniquenessInference),
-                Box::new(RangeEnforcementInference::default()),
+                Box::new(RangeEnforcementInference),
             ],
             confidence_threshold: 0.7,
             generate_violations: true,

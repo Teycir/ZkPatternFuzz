@@ -144,15 +144,9 @@ impl ReadinessReport {
     pub fn format(&self) -> String {
         let mut output = String::new();
 
-        output.push_str(&format!(
-            "\n╔══════════════════════════════════════════════════════════════╗\n"
-        ));
-        output.push_str(&format!(
-            "║                   0-DAY READINESS REPORT                     ║\n"
-        ));
-        output.push_str(&format!(
-            "╠══════════════════════════════════════════════════════════════╣\n"
-        ));
+        output.push_str("\n╔══════════════════════════════════════════════════════════════╗\n");
+        output.push_str("║                   0-DAY READINESS REPORT                     ║\n");
+        output.push_str("╠══════════════════════════════════════════════════════════════╣\n");
         output.push_str(&format!(
             "║  Score: {:.1}/10.0  {}                              ║\n",
             self.score,
@@ -162,9 +156,7 @@ impl ReadinessReport {
                 "❌"
             }
         ));
-        output.push_str(&format!(
-            "╚══════════════════════════════════════════════════════════════╝\n"
-        ));
+        output.push_str("╚══════════════════════════════════════════════════════════════╝\n");
 
         if self.warnings.is_empty() {
             output.push_str("\n  ✅ No issues detected. Campaign is 0-day ready!\n");
@@ -432,8 +424,8 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     }
 
     // 12. Check circuit path exists
-    if config.campaign.target.framework != Framework::Mock {
-        if !config.campaign.target.circuit_path.exists() {
+    if config.campaign.target.framework != Framework::Mock
+        && !config.campaign.target.circuit_path.exists() {
             warnings.push(ReadinessWarning::critical(
                 "Target",
                 &format!(
@@ -442,7 +434,6 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
                 ),
             ));
         }
-    }
 
     // 13. Check fuzzing iterations (CRITICAL for 0-day discovery)
     let max_iterations = additional

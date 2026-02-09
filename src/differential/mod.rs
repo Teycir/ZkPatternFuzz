@@ -215,8 +215,8 @@ impl DifferentialFuzzer {
         };
 
         if disagreements.is_empty() {
-            disagreements.extend(coverage_mismatches.into_iter());
-            disagreements.extend(timing_variations.into_iter());
+            disagreements.extend(coverage_mismatches);
+            disagreements.extend(timing_variations);
         }
 
         Some(DifferentialResult {
@@ -335,7 +335,7 @@ fn coverage_stats(a: &[usize], b: &[usize]) -> (f64, usize, f64) {
     } else {
         intersection as f64 / union as f64
     };
-    let abs_delta = if len_a > len_b { len_a - len_b } else { len_b - len_a };
+    let abs_delta = len_a.abs_diff(len_b);
     let max_len = len_a.max(len_b);
     let rel_delta = if max_len == 0 {
         0.0

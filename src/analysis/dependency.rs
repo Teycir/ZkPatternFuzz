@@ -189,7 +189,7 @@ impl DependencyGraph {
         let mut covered_input_paths = 0;
         let mut total_input_paths = 0;
 
-        for (_input_id, constraints) in &self.input_influences {
+        for constraints in self.input_influences.values() {
             total_input_paths += constraints.len();
             for constraint in constraints {
                 if coverage.constraint_hits.contains_key(constraint) {
@@ -420,7 +420,7 @@ impl DependencyAnalyzer {
         }
 
         // Create edges between constraints that share wires
-        for (_, constraint_ids) in &wire_to_constraints {
+        for constraint_ids in wire_to_constraints.values() {
             for i in 0..constraint_ids.len() {
                 for j in i + 1..constraint_ids.len() {
                     let c1 = constraint_ids[i];

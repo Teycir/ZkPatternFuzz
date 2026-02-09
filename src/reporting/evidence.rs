@@ -348,7 +348,7 @@ impl EvidenceGenerator {
         hasher.update(format!("{:?}", finding.attack_type));
         hasher.update(&finding.description);
         for fe in &finding.poc.witness_a {
-            hasher.update(&fe.0);
+            hasher.update(fe.0);
         }
 
         let hash = hasher.finalize();

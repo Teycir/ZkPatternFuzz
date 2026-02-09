@@ -353,7 +353,7 @@ impl DistributedCoordinator {
                 .unwrap_or(1000) as usize;
 
             let unit_size = self.config.work_unit_size;
-            let num_units = (iterations + unit_size - 1) / unit_size;
+            let num_units = iterations.div_ceil(unit_size);
 
             for i in 0..num_units {
                 let unit_iterations = if i == num_units - 1 {

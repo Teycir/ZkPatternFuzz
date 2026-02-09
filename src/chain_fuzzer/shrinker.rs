@@ -21,6 +21,8 @@ pub struct ChainShrinker {
     max_attempts: usize,
     /// Seed for deterministic shrinking
     seed: u64,
+    /// Budget allocation: [prefix%, dropout%, input%]
+    strategy_budgets: [f32; 3],
 }
 
 /// Result of chain shrinking
@@ -38,6 +40,10 @@ pub struct ShrinkResult {
     pub trace: ChainTrace,
     /// Number of shrinking attempts made
     pub attempts: usize,
+    /// Reduction ratio (l_min / original_length)
+    pub reduction_ratio: f32,
+    /// Number of unique violations found during shrinking
+    pub variant_violations: usize,
 }
 
 impl ChainShrinker {
@@ -51,6 +57,7 @@ impl ChainShrinker {
             checker,
             max_attempts: 100,
             seed: 42,
+            strategy_budgets: [0.4, 0.4, 0.2], // 40% prefix, 40% dropout, 20% input
         }
     }
 
@@ -83,66 +90,75 @@ impl ChainShrinker {
         inputs: &HashMap<String, Vec<FieldElement>>,
         target_violation: &CrossStepViolation,
     ) -> ShrinkResult {
+        let original_len = spec.len();
         let mut best_spec = spec.clone();
         let mut best_inputs = inputs.clone();
         let mut best_l_min = spec.len();
         let mut best_trace = ChainTrace::new(&spec.name);
         let mut total_attempts = 0;
+        let mut variant_violations = 0;
 
-        // Strategy 1: Prefix truncation
-        // Try removing trailing steps
-        for length in (1..spec.len()).rev() {
-            if total_attempts >= self.max_attempts {
-                break;
-            }
+        let budget_1 = (self.max_attempts as f32 * self.strategy_budgets[0]) as usize;
+        let budget_2 = (self.max_attempts as f32 * self.strategy_budgets[1]) as usize;
+        let _budget_3 = (self.max_attempts as f32 * self.strategy_budgets[2]) as usize;
 
-            let truncated = spec.truncate(length);
-            if let Some((trace, _violation)) = self.try_reproduce(&truncated, inputs, target_violation) {
-                if length < best_l_min {
-                    best_spec = truncated;
-                    best_l_min = length;
-                    best_trace = trace;
+        // Strategy 1: Binary search for minimal length
+        let mut low = 1;
+        let mut high = spec.len();
+
+        while low <= high && total_attempts < budget_1 {
+            let mid = (low + high) / 2;
+            let truncated = spec.truncate(mid);
+            
+            if let Some((trace, violation)) = self.try_reproduce(&truncated, inputs, target_violation, total_attempts) {
+                if !self.violations_equivalent(&violation, target_violation) {
+                    variant_violations += 1;
                 }
+                best_spec = truncated;
+                best_l_min = mid;
+                best_trace = trace;
+                high = mid - 1;
+            } else {
+                low = mid + 1;
             }
             total_attempts += 1;
         }
 
-        // Strategy 2: Step dropout (delta-debug style)
-        // Try removing individual intermediate steps
-        if best_l_min > 2 {
-            let mut current_spec = best_spec.clone();
-            let mut changed = true;
+        // Strategy 2: Delta-debug step removal
+        if best_l_min > 2 && total_attempts < budget_1 + budget_2 {
+            let mut current_indices: Vec<usize> = (0..best_spec.len()).collect();
+            let mut chunk_size = current_indices.len() / 2;
 
-            while changed && total_attempts < self.max_attempts {
-                changed = false;
+            while chunk_size > 0 && total_attempts < budget_1 + budget_2 {
+                let mut i = 0;
+                while i < current_indices.len() && total_attempts < budget_1 + budget_2 {
+                    let end = (i + chunk_size).min(current_indices.len());
+                    let mut test_indices = current_indices.clone();
+                    test_indices.drain(i..end);
 
-                for i in (1..current_spec.len() - 1).rev() {
-                    if total_attempts >= self.max_attempts {
-                        break;
-                    }
-
-                    if let Some(reduced) = current_spec.without_step(i) {
-                        if reduced.len() < best_l_min {
-                            if let Some((trace, _)) = self.try_reproduce(&reduced, &best_inputs, target_violation) {
-                                best_spec = reduced.clone();
-                                current_spec = reduced;
-                                best_l_min = current_spec.len();
-                                best_trace = trace;
-                                changed = true;
-                                break;
-                            }
+                    let test_spec = self.build_spec_from_indices(&best_spec, &test_indices);
+                    
+                    if let Some((trace, violation)) = self.try_reproduce(&test_spec, &best_inputs, target_violation, total_attempts) {
+                        if !self.violations_equivalent(&violation, target_violation) {
+                            variant_violations += 1;
                         }
+                        current_indices = test_indices;
+                        best_spec = test_spec;
+                        best_l_min = current_indices.len();
+                        best_trace = trace;
+                    } else {
+                        i += chunk_size;
                     }
                     total_attempts += 1;
                 }
+                chunk_size /= 2;
             }
         }
 
         // Strategy 3: Input minimization
-        // Try replacing non-wired inputs with zeros
         if total_attempts < self.max_attempts {
-            let minimized_inputs = self.minimize_inputs(&best_spec, &best_inputs, target_violation);
-            if self.try_reproduce(&best_spec, &minimized_inputs, target_violation).is_some() {
+            let minimized_inputs = self.minimize_inputs(&best_spec, &best_inputs, target_violation, &mut total_attempts);
+            if self.try_reproduce(&best_spec, &minimized_inputs, target_violation, total_attempts).is_some() {
                 best_inputs = minimized_inputs;
             }
         }
@@ -154,6 +170,8 @@ impl ChainShrinker {
             violation: target_violation.clone(),
             trace: best_trace,
             attempts: total_attempts,
+            reduction_ratio: best_l_min as f32 / original_len as f32,
+            variant_violations,
         }
     }
 
@@ -163,8 +181,11 @@ impl ChainShrinker {
         spec: &ChainSpec,
         inputs: &HashMap<String, Vec<FieldElement>>,
         target_violation: &CrossStepViolation,
+        attempt_num: usize,
     ) -> Option<(ChainTrace, CrossStepViolation)> {
-        let mut rng = ChaCha8Rng::seed_from_u64(self.seed);
+        // FIX #1: Derive unique seed per attempt to explore different paths
+        let attempt_seed = self.seed.wrapping_add(attempt_num as u64);
+        let mut rng = ChaCha8Rng::seed_from_u64(attempt_seed);
         let result = self.runner.execute(spec, inputs, &mut rng);
 
         if !result.completed {
@@ -181,17 +202,12 @@ impl ChainShrinker {
 
     /// Check if two violations are equivalent
     fn violations_equivalent(&self, a: &CrossStepViolation, b: &CrossStepViolation) -> bool {
-        // Same assertion name is the primary check
-        if a.assertion_name != b.assertion_name {
+        // FIX #2: Enhanced equivalence check for bug variants
+        if a.assertion_name != b.assertion_name || a.relation != b.relation {
             return false;
         }
-
-        // Same type of relation
-        if a.relation != b.relation {
-            return false;
-        }
-
-        true
+        // Accept if step count matches (catches relocated bugs)
+        a.step_indices.len() == b.step_indices.len()
     }
 
     /// Try to minimize inputs by replacing non-essential values with zeros
@@ -200,44 +216,54 @@ impl ChainShrinker {
         spec: &ChainSpec,
         inputs: &HashMap<String, Vec<FieldElement>>,
         target_violation: &CrossStepViolation,
+        attempt_counter: &mut usize,
     ) -> HashMap<String, Vec<FieldElement>> {
         let mut minimized = inputs.clone();
 
-        // Collect circuit refs that need minimization
-        let fresh_circuits: Vec<String> = spec.steps.iter()
-            .filter(|step| matches!(step.input_wiring, InputWiring::Fresh))
-            .map(|step| step.circuit_ref.clone())
-            .collect();
+        // FIX #5: Minimize all input types, not just Fresh
+        for step in spec.steps.iter() {
+            let circuit_ref = &step.circuit_ref;
+            let input_count = minimized.get(circuit_ref).map(|v| v.len()).unwrap_or(0);
 
-        for circuit_ref in fresh_circuits {
-            // Get the number of inputs for this circuit
-            let input_count = minimized.get(&circuit_ref)
-                .map(|v| v.len())
-                .unwrap_or(0);
+            let minimizable_indices: Vec<usize> = match &step.input_wiring {
+                InputWiring::Fresh => (0..input_count).collect(),
+                InputWiring::Mixed { fresh_indices, .. } => fresh_indices.clone(),
+                InputWiring::Constant { fresh_indices, .. } => fresh_indices.clone(),
+                InputWiring::FromPriorOutput { .. } => vec![],
+            };
 
-            for i in 0..input_count {
-                // Try replacing with zero - save original first
-                let original = minimized.get(&circuit_ref)
+            for i in minimizable_indices {
+                let original = minimized.get(circuit_ref)
                     .and_then(|v| v.get(i))
                     .cloned()
                     .unwrap_or_else(FieldElement::zero);
 
-                // Set to zero
-                if let Some(step_inputs) = minimized.get_mut(&circuit_ref) {
-                    step_inputs[i] = FieldElement::zero();
-                }
-
-                // Check if violation still reproduces with this change
-                if self.try_reproduce(spec, &minimized, target_violation).is_none() {
-                    // Didn't work, restore original
-                    if let Some(step_inputs) = minimized.get_mut(&circuit_ref) {
-                        step_inputs[i] = original;
+                if let Some(step_inputs) = minimized.get_mut(circuit_ref) {
+                    if i < step_inputs.len() {
+                        step_inputs[i] = FieldElement::zero();
                     }
                 }
+                
+                if self.try_reproduce(spec, &minimized, target_violation, *attempt_counter).is_none() {
+                    if let Some(step_inputs) = minimized.get_mut(circuit_ref) {
+                        if i < step_inputs.len() {
+                            step_inputs[i] = original;
+                        }
+                    }
+                }
+                *attempt_counter += 1;
             }
         }
 
         minimized
+    }
+
+    /// Build a spec from selected step indices
+    fn build_spec_from_indices(&self, spec: &ChainSpec, indices: &[usize]) -> ChainSpec {
+        let steps = indices.iter()
+            .filter_map(|&i| spec.steps.get(i).cloned())
+            .collect();
+        ChainSpec::new(&spec.name, steps)
     }
 
     /// Compute L_min for a given chain and violation

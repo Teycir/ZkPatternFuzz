@@ -638,7 +638,7 @@ impl InvariantChecker {
         let mut hasher = Sha256::new();
         for &idx in indices {
             if let Some(fe) = inputs.get(idx) {
-                hasher.update(&fe.0);
+                hasher.update(fe.0);
             }
         }
         hasher.finalize().to_vec()
