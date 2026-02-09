@@ -80,10 +80,15 @@ impl ChainSpec {
             step.input_wiring = step.input_wiring.adjust_after_removal(index, i);
         }
         
+        // Remap assertion step indices - filter out assertions that become invalid
+        let assertions: Vec<_> = self.assertions.iter()
+            .filter_map(|a| a.remap_after_removal(index))
+            .collect();
+        
         Some(Self {
             name: format!("{}_without_{}", self.name, index),
             steps,
-            assertions: self.assertions.clone(),
+            assertions,
             description: self.description.clone(),
         })
     }
@@ -104,10 +109,15 @@ impl ChainSpec {
             step.input_wiring = step.input_wiring.adjust_after_swap(i, j);
         }
 
+        // Remap assertion step indices
+        let assertions: Vec<_> = self.assertions.iter()
+            .map(|a| a.remap_after_swap(i, j))
+            .collect();
+
         Some(Self {
             name: format!("{}_swap_{}_{}", self.name, i, j),
             steps,
-            assertions: self.assertions.clone(),
+            assertions,
             description: self.description.clone(),
         })
     }
@@ -131,10 +141,15 @@ impl ChainSpec {
             step.input_wiring = step.input_wiring.adjust_after_insertion(index);
         }
 
+        // Remap assertion step indices (increment indices > index)
+        let assertions: Vec<_> = self.assertions.iter()
+            .map(|a| a.remap_after_insertion(index))
+            .collect();
+
         Some(Self {
             name: format!("{}_dup_{}", self.name, index),
             steps,
-            assertions: self.assertions.clone(),
+            assertions,
             description: self.description.clone(),
         })
     }
@@ -414,6 +429,108 @@ impl CrossStepAssertion {
             format!("step[{}].out[{}] == step[{}].in[{}]", step_a, out_idx, step_b, in_idx),
         )
     }
+
+    /// Remap step indices after a step has been removed.
+    /// Returns None if the assertion references the removed step and becomes invalid.
+    pub fn remap_after_removal(&self, removed_index: usize) -> Option<Self> {
+        let new_relation = remap_step_indices_in_relation(&self.relation, |idx| {
+            if idx == removed_index {
+                None // Step was removed, assertion is invalid
+            } else if idx > removed_index {
+                Some(idx - 1) // Decrement indices after removed step
+            } else {
+                Some(idx)
+            }
+        })?;
+        
+        Some(Self {
+            name: self.name.clone(),
+            relation: new_relation,
+            severity: self.severity.clone(),
+            description: self.description.clone(),
+        })
+    }
+
+    /// Remap step indices after steps at positions i and j have been swapped.
+    pub fn remap_after_swap(&self, i: usize, j: usize) -> Self {
+        let new_relation = remap_step_indices_in_relation(&self.relation, |idx| {
+            if idx == i {
+                Some(j)
+            } else if idx == j {
+                Some(i)
+            } else {
+                Some(idx)
+            }
+        }).unwrap_or_else(|| self.relation.clone());
+        
+        Self {
+            name: self.name.clone(),
+            relation: new_relation,
+            severity: self.severity.clone(),
+            description: self.description.clone(),
+        }
+    }
+
+    /// Remap step indices after a step has been inserted (duplicated) at position.
+    /// All indices > position are incremented by 1.
+    pub fn remap_after_insertion(&self, inserted_at: usize) -> Self {
+        let new_relation = remap_step_indices_in_relation(&self.relation, |idx| {
+            if idx > inserted_at {
+                Some(idx + 1)
+            } else {
+                Some(idx)
+            }
+        }).unwrap_or_else(|| self.relation.clone());
+        
+        Self {
+            name: self.name.clone(),
+            relation: new_relation,
+            severity: self.severity.clone(),
+            description: self.description.clone(),
+        }
+    }
+}
+
+/// Helper function to remap step indices in a relation string.
+/// The mapper function takes an index and returns the new index, or None if the index is invalid.
+fn remap_step_indices_in_relation<F>(relation: &str, mapper: F) -> Option<String>
+where
+    F: Fn(usize) -> Option<usize>,
+{
+    use regex::Regex;
+    
+    // Match step[N] where N is a number (not *)
+    let re = Regex::new(r"step\s*\[\s*(\d+)\s*\]").ok()?;
+    
+    let mut result = String::new();
+    let mut last_end = 0;
+    let mut all_valid = true;
+    
+    for caps in re.captures_iter(relation) {
+        let full_match = caps.get(0)?;
+        let idx_str = caps.get(1)?.as_str();
+        let idx: usize = idx_str.parse().ok()?;
+        
+        // Apply the mapper
+        match mapper(idx) {
+            Some(new_idx) => {
+                result.push_str(&relation[last_end..full_match.start()]);
+                result.push_str(&format!("step[{}]", new_idx));
+                last_end = full_match.end();
+            }
+            None => {
+                all_valid = false;
+                break;
+            }
+        }
+    }
+    
+    if !all_valid {
+        return None;
+    }
+    
+    result.push_str(&relation[last_end..]);
+    Some(result)
 }
 
 /// Runtime trace of a chain execution
@@ -659,30 +776,68 @@ impl ChainFinding {
             _ => Severity::Info,
         };
 
-        // Extract first step's inputs as witness_a
+        // CRITICAL FIX: Capture all L_min steps, not just first 2
+        // This enables reproduction of deep chain bugs (L_min >= 3)
         let witness_a = self.trace.steps.first()
             .map(|s| s.inputs.clone())
             .unwrap_or_default();
 
-        // Extract second step's inputs as witness_b (if exists)
+        // For L_min > 2, we need to capture all step inputs
+        // Use witness_b for step 2, and embed remaining steps in description
         let witness_b = self.trace.steps.get(1)
             .map(|s| s.inputs.clone());
+
+        // Capture all step inputs as hex strings for complete reproducibility
+        let all_step_inputs: Vec<String> = self.trace.steps.iter()
+            .enumerate()
+            .map(|(i, step)| {
+                let inputs_hex: Vec<String> = step.inputs.iter()
+                    .map(|fe| fe.to_hex())
+                    .collect();
+                format!("step[{}]: [{}]", i, inputs_hex.join(", "))
+            })
+            .collect();
+
+        // Build a more complete description with all inputs for reproducibility
+        let full_description = if self.l_min > 2 {
+            format!(
+                "[Chain: {} | L_min: {} | Steps: {}] {}\n\nFull witness (all {} steps):\n{}",
+                self.spec_name, self.l_min, self.chain_length, self.finding.description,
+                self.trace.steps.len(),
+                all_step_inputs.join("\n")
+            )
+        } else {
+            format!(
+                "[Chain: {} | L_min: {}] {}",
+                self.spec_name, self.l_min, self.finding.description
+            )
+        };
+
+        // Collect public inputs from all steps for completeness
+        let all_public_inputs: Vec<FieldElement> = self.trace.steps.iter()
+            .flat_map(|step| step.outputs.iter().cloned())
+            .take(10) // Limit to avoid huge PoCs
+            .collect();
 
         Finding {
             attack_type: AttackType::CircuitComposition, // Use composition type for chain findings
             severity,
-            description: format!(
-                "[Chain: {} | L_min: {}] {}",
-                self.spec_name, self.l_min, self.finding.description
-            ),
+            description: full_description,
             poc: ProofOfConcept {
                 witness_a,
                 witness_b,
-                public_inputs: vec![],
+                public_inputs: all_public_inputs,
                 proof: None,
             },
             location: self.finding.location.clone(),
         }
+    }
+
+    /// Get all step inputs as a vector for complete PoC reproduction
+    pub fn all_step_inputs(&self) -> Vec<Vec<FieldElement>> {
+        self.trace.steps.iter()
+            .map(|step| step.inputs.clone())
+            .collect()
     }
 
     /// Check if this is a deep finding (L_min >= 2)
@@ -813,5 +968,91 @@ mod tests {
         }
 
         assert!(spec.duplicate_step(5).is_none());
+    }
+
+    #[test]
+    fn test_assertion_remap_after_removal() {
+        // Test remapping assertion when step is removed
+        let assertion = CrossStepAssertion::equal("test", 0, 0, 2, 0);
+        
+        // Remove step 1 - indices 0 stays 0, index 2 becomes 1
+        let remapped = assertion.remap_after_removal(1).unwrap();
+        assert!(remapped.relation.contains("step[0]"));
+        assert!(remapped.relation.contains("step[1]"));
+        assert!(!remapped.relation.contains("step[2]"));
+        
+        // Remove step 0 - assertion should become invalid (references removed step)
+        let invalid = assertion.remap_after_removal(0);
+        assert!(invalid.is_none());
+    }
+
+    #[test]
+    fn test_assertion_remap_after_swap() {
+        // Test remapping assertion when steps are swapped
+        let assertion = CrossStepAssertion::equal("test", 0, 0, 2, 0);
+        
+        // Swap steps 0 and 2 - indices should swap
+        let remapped = assertion.remap_after_swap(0, 2);
+        assert!(remapped.relation.contains("step[2].out[0] == step[0].in[0]"));
+    }
+
+    #[test]
+    fn test_assertion_remap_after_insertion() {
+        // Test remapping assertion when step is inserted
+        let assertion = CrossStepAssertion::equal("test", 0, 0, 2, 0);
+        
+        // Insert step at 1 - index 0 stays 0, index 2 becomes 3
+        let remapped = assertion.remap_after_insertion(1);
+        assert!(remapped.relation.contains("step[0]"));
+        assert!(remapped.relation.contains("step[3]"));
+        assert!(!remapped.relation.contains("step[2]"));
+    }
+
+    #[test]
+    fn test_chain_with_assertions_without_step() {
+        // Test that assertions are properly remapped when removing a step
+        let spec = ChainSpec::new("test_chain", vec![
+            StepSpec::fresh("circuit_a"),
+            StepSpec::fresh("circuit_b"),
+            StepSpec::fresh("circuit_c"),
+        ])
+        .with_assertion(CrossStepAssertion::equal("ab_check", 0, 0, 1, 0))
+        .with_assertion(CrossStepAssertion::equal("bc_check", 1, 0, 2, 0));
+
+        // Remove step 1 - first assertion should be removed (refs step 1)
+        // Second assertion refs both 1 and 2, so should be removed
+        let reduced = spec.without_step(1).unwrap();
+        assert_eq!(reduced.assertions.len(), 0);
+    }
+
+    #[test]
+    fn test_chain_with_assertions_swap_steps() {
+        let spec = ChainSpec::new("test_chain", vec![
+            StepSpec::fresh("circuit_a"),
+            StepSpec::fresh("circuit_b"),
+            StepSpec::fresh("circuit_c"),
+        ])
+        .with_assertion(CrossStepAssertion::equal("ac_check", 0, 0, 2, 0));
+
+        // Swap 0 and 1 - assertion indices should update: 0->1, 2 stays 2
+        let swapped = spec.swap_steps(0, 1).unwrap();
+        assert_eq!(swapped.assertions.len(), 1);
+        assert!(swapped.assertions[0].relation.contains("step[1]"));
+        assert!(swapped.assertions[0].relation.contains("step[2]"));
+    }
+
+    #[test]
+    fn test_chain_with_assertions_duplicate_step() {
+        let spec = ChainSpec::new("test_chain", vec![
+            StepSpec::fresh("circuit_a"),
+            StepSpec::fresh("circuit_b"),
+        ])
+        .with_assertion(CrossStepAssertion::equal("ab_check", 0, 0, 1, 0));
+
+        // Duplicate step 0 - assertion indices: 0 stays 0, 1 becomes 2
+        let duped = spec.duplicate_step(0).unwrap();
+        assert_eq!(duped.assertions.len(), 1);
+        assert!(duped.assertions[0].relation.contains("step[0]"));
+        assert!(duped.assertions[0].relation.contains("step[2]"));
     }
 }

@@ -620,7 +620,6 @@ impl Default for ArbitrageDetector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::MockCircuitExecutor;
 
     #[test]
     fn test_mev_config_default() {

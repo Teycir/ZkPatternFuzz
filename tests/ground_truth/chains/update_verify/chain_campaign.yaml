@@ -7,7 +7,7 @@ campaign:
   version: "1.0"
   target:
     framework: circom
-    circuit_path: "./tests/ground_truth/chains/update_verify/"
+    circuit_path: "./tests/ground_truth/chains/update_verify/update_root.circom"
     main_component: "UpdateRoot"
 
   parameters:
@@ -18,6 +18,13 @@ campaign:
 chains:
   - name: "update_then_verify_buggy"
     description: "Update Merkle root then verify - root mismatch"
+    circuits:
+      update_root:
+        path: "./tests/ground_truth/chains/update_verify/update_root.circom"
+        main_component: "UpdateRoot"
+      verify_root:
+        path: "./tests/ground_truth/chains/update_verify/verify_root.circom"
+        main_component: "VerifyRoot"
     steps:
       - circuit_ref: "update_root"
         input_wiring: fresh

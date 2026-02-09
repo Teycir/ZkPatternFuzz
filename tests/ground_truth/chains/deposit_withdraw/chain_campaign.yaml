@@ -7,7 +7,7 @@ campaign:
   version: "1.0"
   target:
     framework: circom
-    circuit_path: "./tests/ground_truth/chains/deposit_withdraw/"
+    circuit_path: "./tests/ground_truth/chains/deposit_withdraw/deposit.circom"
     main_component: "Deposit"
 
   parameters:
@@ -18,6 +18,13 @@ campaign:
 chains:
   - name: "deposit_then_withdraw_buggy"
     description: "Deposit and withdraw with nullifier reuse vulnerability"
+    circuits:
+      deposit:
+        path: "./tests/ground_truth/chains/deposit_withdraw/deposit.circom"
+        main_component: "Deposit"
+      withdraw:
+        path: "./tests/ground_truth/chains/deposit_withdraw/withdraw.circom"
+        main_component: "Withdraw"
     steps:
       - circuit_ref: "deposit"
         input_wiring: fresh

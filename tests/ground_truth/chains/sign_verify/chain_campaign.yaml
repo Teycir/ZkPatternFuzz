@@ -7,7 +7,7 @@ campaign:
   version: "1.0"
   target:
     framework: circom
-    circuit_path: "./tests/ground_truth/chains/sign_verify/"
+    circuit_path: "./tests/ground_truth/chains/sign_verify/sign.circom"
     main_component: "Sign"
 
   parameters:
@@ -18,6 +18,13 @@ campaign:
 chains:
   - name: "sign_then_verify_malleable"
     description: "Sign and verify with malleability vulnerability"
+    circuits:
+      sign:
+        path: "./tests/ground_truth/chains/sign_verify/sign.circom"
+        main_component: "Sign"
+      verify:
+        path: "./tests/ground_truth/chains/sign_verify/verify.circom"
+        main_component: "Verify"
     steps:
       - circuit_ref: "sign"
         input_wiring: fresh

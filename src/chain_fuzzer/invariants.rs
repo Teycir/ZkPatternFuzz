@@ -3,7 +3,7 @@
 //! Evaluates cross-step assertions over completed chain traces to detect
 //! violations that span multiple circuit executions.
 
-use super::types::{ChainSpec, ChainTrace, CrossStepAssertion};
+use super::types::{ChainSpec, ChainTrace, CrossStepAssertion, StepTrace};
 use regex::Regex;
 use std::collections::HashSet;
 use zk_core::FieldElement;
@@ -285,29 +285,109 @@ impl CrossStepInvariantChecker {
         step_b: &StepRef,
         field_b: &FieldRef,
     ) -> Option<CrossStepViolation> {
-        let value_a = self.get_field_value(trace, step_a, field_a)?;
-        let value_b = self.get_field_value(trace, step_b, field_b)?;
+        // MEDIUM PRIORITY FIX: Handle StepRef::All for equality checks
+        // When step[*] is used, we check all pairs of steps for the relation
+        match (step_a, step_b) {
+            (StepRef::All, StepRef::All) => {
+                // Check all pairs: step[i].field_a == step[j].field_b for all i, j
+                for (i, step_i) in trace.steps.iter().enumerate() {
+                    for (j, step_j) in trace.steps.iter().enumerate() {
+                        if i == j { continue; }
+                        let val_a = self.get_field_from_step(step_i, field_a);
+                        let val_b = self.get_field_from_step(step_j, field_b);
+                        if let (Some(a), Some(b)) = (val_a, val_b) {
+                            if a != b {
+                                return Some(CrossStepViolation::new(
+                                    &assertion.original.name,
+                                    &assertion.original.relation,
+                                    vec![i, j],
+                                    vec![a.clone(), b.clone()],
+                                    &assertion.original.severity,
+                                ).with_description(format!(
+                                    "Expected step[{}].{} == step[{}].{}, but {} != {}",
+                                    i, self.field_ref_name(field_a),
+                                    j, self.field_ref_name(field_b),
+                                    a.to_hex(), b.to_hex(),
+                                )));
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            (StepRef::All, StepRef::Specific(j)) => {
+                // Check all steps against specific step j
+                let val_b = self.get_field_value(trace, step_b, field_b)?;
+                for (i, step_i) in trace.steps.iter().enumerate() {
+                    if let Some(val_a) = self.get_field_from_step(step_i, field_a) {
+                        if val_a != val_b {
+                            return Some(CrossStepViolation::new(
+                                &assertion.original.name,
+                                &assertion.original.relation,
+                                vec![i, *j],
+                                vec![val_a.clone(), val_b.clone()],
+                                &assertion.original.severity,
+                            ).with_description(format!(
+                                "Expected step[{}].{} == step[{}].{}, but {} != {}",
+                                i, self.field_ref_name(field_a),
+                                j, self.field_ref_name(field_b),
+                                val_a.to_hex(), val_b.to_hex(),
+                            )));
+                        }
+                    }
+                }
+                None
+            }
+            (StepRef::Specific(i), StepRef::All) => {
+                // Check specific step i against all steps
+                let val_a = self.get_field_value(trace, step_a, field_a)?;
+                for (j, step_j) in trace.steps.iter().enumerate() {
+                    if let Some(val_b) = self.get_field_from_step(step_j, field_b) {
+                        if val_a != val_b {
+                            return Some(CrossStepViolation::new(
+                                &assertion.original.name,
+                                &assertion.original.relation,
+                                vec![*i, j],
+                                vec![val_a.clone(), val_b.clone()],
+                                &assertion.original.severity,
+                            ).with_description(format!(
+                                "Expected step[{}].{} == step[{}].{}, but {} != {}",
+                                i, self.field_ref_name(field_a),
+                                j, self.field_ref_name(field_b),
+                                val_a.to_hex(), val_b.to_hex(),
+                            )));
+                        }
+                    }
+                }
+                None
+            }
+            (StepRef::Specific(_), StepRef::Specific(_)) => {
+                // Original behavior for specific steps
+                let value_a = self.get_field_value(trace, step_a, field_a)?;
+                let value_b = self.get_field_value(trace, step_b, field_b)?;
 
-        if value_a != value_b {
-            let step_indices = vec![
-                self.step_ref_to_index(step_a).unwrap_or(0),
-                self.step_ref_to_index(step_b).unwrap_or(0),
-            ];
-            Some(CrossStepViolation::new(
-                &assertion.original.name,
-                &assertion.original.relation,
-                step_indices,
-                vec![value_a.clone(), value_b.clone()],
-                &assertion.original.severity,
-            ).with_description(format!(
-                "Expected {} == {}, but got {} != {}",
-                self.describe_field_ref(step_a, field_a),
-                self.describe_field_ref(step_b, field_b),
-                value_a.to_hex(),
-                value_b.to_hex(),
-            )))
-        } else {
-            None
+                if value_a != value_b {
+                    let step_indices = vec![
+                        self.step_ref_to_index(step_a).unwrap_or(0),
+                        self.step_ref_to_index(step_b).unwrap_or(0),
+                    ];
+                    Some(CrossStepViolation::new(
+                        &assertion.original.name,
+                        &assertion.original.relation,
+                        step_indices,
+                        vec![value_a.clone(), value_b.clone()],
+                        &assertion.original.severity,
+                    ).with_description(format!(
+                        "Expected {} == {}, but got {} != {}",
+                        self.describe_field_ref(step_a, field_a),
+                        self.describe_field_ref(step_b, field_b),
+                        value_a.to_hex(),
+                        value_b.to_hex(),
+                    )))
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -320,28 +400,105 @@ impl CrossStepInvariantChecker {
         step_b: &StepRef,
         field_b: &FieldRef,
     ) -> Option<CrossStepViolation> {
-        let value_a = self.get_field_value(trace, step_a, field_a)?;
-        let value_b = self.get_field_value(trace, step_b, field_b)?;
+        // MEDIUM PRIORITY FIX: Handle StepRef::All for inequality checks
+        match (step_a, step_b) {
+            (StepRef::All, StepRef::All) => {
+                // Check all pairs: step[i].field_a != step[j].field_b
+                for (i, step_i) in trace.steps.iter().enumerate() {
+                    for (j, step_j) in trace.steps.iter().enumerate() {
+                        if i == j { continue; }
+                        let val_a = self.get_field_from_step(step_i, field_a);
+                        let val_b = self.get_field_from_step(step_j, field_b);
+                        if let (Some(a), Some(b)) = (val_a, val_b) {
+                            if a == b {
+                                return Some(CrossStepViolation::new(
+                                    &assertion.original.name,
+                                    &assertion.original.relation,
+                                    vec![i, j],
+                                    vec![a.clone()],
+                                    &assertion.original.severity,
+                                ).with_description(format!(
+                                    "Expected step[{}].{} != step[{}].{}, but values are equal: {}",
+                                    i, self.field_ref_name(field_a),
+                                    j, self.field_ref_name(field_b),
+                                    a.to_hex(),
+                                )));
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            (StepRef::All, StepRef::Specific(j)) => {
+                let val_b = self.get_field_value(trace, step_b, field_b)?;
+                for (i, step_i) in trace.steps.iter().enumerate() {
+                    if let Some(val_a) = self.get_field_from_step(step_i, field_a) {
+                        if val_a == val_b {
+                            return Some(CrossStepViolation::new(
+                                &assertion.original.name,
+                                &assertion.original.relation,
+                                vec![i, *j],
+                                vec![val_a.clone()],
+                                &assertion.original.severity,
+                            ).with_description(format!(
+                                "Expected step[{}].{} != step[{}].{}, but values are equal: {}",
+                                i, self.field_ref_name(field_a),
+                                j, self.field_ref_name(field_b),
+                                val_a.to_hex(),
+                            )));
+                        }
+                    }
+                }
+                None
+            }
+            (StepRef::Specific(i), StepRef::All) => {
+                let val_a = self.get_field_value(trace, step_a, field_a)?;
+                for (j, step_j) in trace.steps.iter().enumerate() {
+                    if let Some(val_b) = self.get_field_from_step(step_j, field_b) {
+                        if val_a == val_b {
+                            return Some(CrossStepViolation::new(
+                                &assertion.original.name,
+                                &assertion.original.relation,
+                                vec![*i, j],
+                                vec![val_a.clone()],
+                                &assertion.original.severity,
+                            ).with_description(format!(
+                                "Expected step[{}].{} != step[{}].{}, but values are equal: {}",
+                                i, self.field_ref_name(field_a),
+                                j, self.field_ref_name(field_b),
+                                val_a.to_hex(),
+                            )));
+                        }
+                    }
+                }
+                None
+            }
+            (StepRef::Specific(_), StepRef::Specific(_)) => {
+                // Original behavior for specific steps
+                let value_a = self.get_field_value(trace, step_a, field_a)?;
+                let value_b = self.get_field_value(trace, step_b, field_b)?;
 
-        if value_a == value_b {
-            let step_indices = vec![
-                self.step_ref_to_index(step_a).unwrap_or(0),
-                self.step_ref_to_index(step_b).unwrap_or(0),
-            ];
-            Some(CrossStepViolation::new(
-                &assertion.original.name,
-                &assertion.original.relation,
-                step_indices,
-                vec![value_a.clone()],
-                &assertion.original.severity,
-            ).with_description(format!(
-                "Expected {} != {}, but values are equal: {}",
-                self.describe_field_ref(step_a, field_a),
-                self.describe_field_ref(step_b, field_b),
-                value_a.to_hex(),
-            )))
-        } else {
-            None
+                if value_a == value_b {
+                    let step_indices = vec![
+                        self.step_ref_to_index(step_a).unwrap_or(0),
+                        self.step_ref_to_index(step_b).unwrap_or(0),
+                    ];
+                    Some(CrossStepViolation::new(
+                        &assertion.original.name,
+                        &assertion.original.relation,
+                        step_indices,
+                        vec![value_a.clone()],
+                        &assertion.original.severity,
+                    ).with_description(format!(
+                        "Expected {} != {}, but values are equal: {}",
+                        self.describe_field_ref(step_a, field_a),
+                        self.describe_field_ref(step_b, field_b),
+                        value_a.to_hex(),
+                    )))
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -450,6 +607,22 @@ impl CrossStepInvariantChecker {
             FieldRef::Input(idx) => format!(".in[{}]", idx),
         };
         format!("{}{}", step_str, field_str)
+    }
+
+    /// Get a field value directly from a StepTrace (for StepRef::All iteration)
+    fn get_field_from_step(&self, step: &StepTrace, field_ref: &FieldRef) -> Option<FieldElement> {
+        match field_ref {
+            FieldRef::Output(idx) => step.outputs.get(*idx).cloned(),
+            FieldRef::Input(idx) => step.inputs.get(*idx).cloned(),
+        }
+    }
+
+    /// Get the field reference name (e.g., "out[0]" or "in[1]")
+    fn field_ref_name(&self, field_ref: &FieldRef) -> String {
+        match field_ref {
+            FieldRef::Output(idx) => format!("out[{}]", idx),
+            FieldRef::Input(idx) => format!("in[{}]", idx),
+        }
     }
 }
 

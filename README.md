@@ -24,6 +24,7 @@ ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK c
 ## Features
 
 ### Core Attack Detection
+
 - 🔍 **Underconstrained Detection** - Finds circuits accepting multiple witnesses for same public inputs via parallel execution and output collision analysis
 - 🛡️ **Soundness Testing** - Proof forgery attempts through public input mutation with cryptographic verification
 - 🧮 **Arithmetic Analysis** - Field boundary testing (0, 1, p-1, p) with overflow detection
@@ -33,6 +34,7 @@ ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK c
 - 🔄 **Witness Fuzzing** - Determinism, timing variation, and stress testing
 
 ### Advanced Analysis
+
 - 🔬 **Symbolic Execution** - Z3-based constraint solving with path pruning (max_depth: 200, max_paths: 1000)
 - 📊 **Constraint-Level Coverage** - Tracks satisfied R1CS/ACIR/PLONK constraints, not just output hashes
 - 🧪 **Differential Testing** - Cross-backend comparison (Circom vs Noir vs Halo2) with timing/coverage analysis

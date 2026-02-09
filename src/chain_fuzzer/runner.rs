@@ -99,6 +99,28 @@ impl ChainRunner {
                 }
             };
 
+            // HIGH PRIORITY FIX: Validate expected_inputs/outputs if specified
+            let actual_inputs = executor.num_private_inputs() + executor.num_public_inputs();
+            if let Some(expected) = step.expected_inputs {
+                if actual_inputs != expected {
+                    tracing::warn!(
+                        "Step {} circuit '{}' has {} inputs, but expected {}",
+                        step_index, step.circuit_ref, actual_inputs, expected
+                    );
+                    let step_trace = StepTrace::failure(
+                        step_index,
+                        &step.circuit_ref,
+                        vec![],
+                        format!(
+                            "Wiring validation failed: expected {} inputs, circuit has {}",
+                            expected, actual_inputs
+                        ),
+                    );
+                    trace.add_step(step_trace);
+                    return ChainRunResult::failure(trace, step_index);
+                }
+            }
+
             // Resolve inputs for this step
             let inputs = self.resolve_inputs(
                 step_index,
@@ -184,6 +206,9 @@ impl ChainRunner {
 
             InputWiring::FromPriorOutput { step, mapping } => {
                 let mut inputs = vec![FieldElement::zero(); expected_count];
+                // Track which indices have been explicitly mapped (even if value is zero)
+                let mapped_indices: std::collections::HashSet<_> = 
+                    mapping.iter().map(|(_, in_idx)| *in_idx).collect();
 
                 // Get outputs from the prior step
                 if let Some(prior_outputs) = trace.step_outputs(*step) {
@@ -197,10 +222,10 @@ impl ChainRunner {
                 }
 
                 // Fill unmapped inputs with random values
-                let mapped_indices: std::collections::HashSet<_> = 
-                    mapping.iter().map(|(_, in_idx)| *in_idx).collect();
+                // CRITICAL FIX: Only fill indices that weren't in the mapping
+                // (zero is a valid output value and should not be overwritten)
                 for i in 0..inputs.len() {
-                    if !mapped_indices.contains(&i) && inputs[i] == FieldElement::zero() {
+                    if !mapped_indices.contains(&i) {
                         inputs[i] = FieldElement::random(rng);
                     }
                 }
@@ -210,6 +235,8 @@ impl ChainRunner {
 
             InputWiring::Mixed { prior, fresh_indices } => {
                 let mut inputs = vec![FieldElement::zero(); expected_count];
+                // Track which indices have been explicitly set (even if value is zero)
+                let mut set_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
                 // Fill in values from prior steps
                 for (step, out_idx, in_idx) in prior {
@@ -217,6 +244,7 @@ impl ChainRunner {
                         if let Some(output) = prior_outputs.get(*out_idx) {
                             if *in_idx < inputs.len() {
                                 inputs[*in_idx] = output.clone();
+                                set_indices.insert(*in_idx);
                             }
                         }
                     }
@@ -226,12 +254,14 @@ impl ChainRunner {
                 for idx in fresh_indices {
                     if *idx < inputs.len() {
                         inputs[*idx] = FieldElement::random(rng);
+                        set_indices.insert(*idx);
                     }
                 }
 
-                // Fill any remaining zeros with random
+                // CRITICAL FIX: Fill any remaining unset indices with random
+                // (only those that were not in prior mapping or fresh_indices)
                 for i in 0..inputs.len() {
-                    if inputs[i] == FieldElement::zero() {
+                    if !set_indices.contains(&i) {
                         inputs[i] = FieldElement::random(rng);
                     }
                 }
@@ -241,12 +271,15 @@ impl ChainRunner {
 
             InputWiring::Constant { values, fresh_indices } => {
                 let mut inputs = vec![FieldElement::zero(); expected_count];
+                // Track which indices have been explicitly set (even if value is zero)
+                let mut set_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
                 // Fill in constant values
                 for (idx, hex_value) in values {
                     if *idx < inputs.len() {
                         if let Ok(fe) = FieldElement::from_hex(hex_value) {
                             inputs[*idx] = fe;
+                            set_indices.insert(*idx);
                         }
                     }
                 }
@@ -255,12 +288,14 @@ impl ChainRunner {
                 for idx in fresh_indices {
                     if *idx < inputs.len() {
                         inputs[*idx] = FieldElement::random(rng);
+                        set_indices.insert(*idx);
                     }
                 }
 
-                // Fill any remaining zeros with random
+                // CRITICAL FIX: Fill any remaining unset indices with random
+                // (only those that were not in constants or fresh_indices)
                 for i in 0..inputs.len() {
-                    if inputs[i] == FieldElement::zero() {
+                    if !set_indices.contains(&i) {
                         inputs[i] = FieldElement::random(rng);
                     }
                 }

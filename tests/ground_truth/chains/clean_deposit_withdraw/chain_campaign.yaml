@@ -7,7 +7,7 @@ campaign:
   version: "1.0"
   target:
     framework: circom
-    circuit_path: "./tests/ground_truth/chains/clean_deposit_withdraw/"
+    circuit_path: "./tests/ground_truth/chains/clean_deposit_withdraw/clean_deposit.circom"
     main_component: "CleanDeposit"
 
   parameters:
@@ -18,6 +18,13 @@ campaign:
 chains:
   - name: "clean_deposit_withdraw"
     description: "Correctly implemented deposit and withdraw"
+    circuits:
+      clean_deposit:
+        path: "./tests/ground_truth/chains/clean_deposit_withdraw/clean_deposit.circom"
+        main_component: "CleanDeposit"
+      clean_withdraw:
+        path: "./tests/ground_truth/chains/clean_deposit_withdraw/clean_withdraw.circom"
+        main_component: "CleanWithdraw"
     steps:
       - circuit_ref: "clean_deposit"
         input_wiring: fresh

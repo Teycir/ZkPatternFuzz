@@ -369,7 +369,7 @@ impl BatchVerificationFinding {
 
         Finding {
             attack_type: AttackType::BatchVerification,
-            severity: self.severity.clone(),
+            severity: self.severity,
             description: self.description.clone(),
             poc,
             location: Some(format!(

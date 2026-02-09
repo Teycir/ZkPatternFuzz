@@ -4921,6 +4921,9 @@ impl FuzzingEngine {
             .unwrap_or(300);
         let chain_iterations = Self::additional_u64(additional, "chain_iterations")
             .unwrap_or(1000) as usize;
+        
+        // CRITICAL FIX: Check strict_backend for chain circuit loading
+        let strict_backend = Self::additional_bool(additional, "strict_backend").unwrap_or(false);
 
         // Build executor map from circuit configurations
         let mut executors = std::collections::HashMap::new();
@@ -4945,6 +4948,16 @@ impl FuzzingEngine {
                     ) {
                         Ok(exec) => exec,
                         Err(e) => {
+                            // CRITICAL FIX: Fail in strict_backend mode instead of silent fallback
+                            if strict_backend {
+                                tracing::error!(
+                                    "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' at {:?} failed to load: {}. \
+                                     In strict_backend mode, we cannot fall back to primary executor. \
+                                     All findings would be against the wrong circuit.",
+                                    circuit_ref, config.path, e
+                                );
+                                return Vec::new(); // Return empty findings - chain fuzzing cannot proceed
+                            }
                             tracing::warn!(
                                 "Failed to load executor for circuit '{}' at {:?}: {}. Using primary executor.",
                                 circuit_ref, config.path, e
@@ -4963,6 +4976,15 @@ impl FuzzingEngine {
                         ) {
                             Ok(exec) => exec,
                             Err(e) => {
+                                // CRITICAL FIX: Fail in strict_backend mode instead of silent fallback
+                                if strict_backend {
+                                    tracing::error!(
+                                        "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' failed to load: {}. \
+                                         In strict_backend mode, we cannot fall back to primary executor.",
+                                        circuit_ref, e
+                                    );
+                                    return Vec::new();
+                                }
                                 tracing::warn!(
                                     "Failed to load circuit '{}' from path: {}. Falling back to primary executor.",
                                     circuit_ref, e
@@ -4971,6 +4993,16 @@ impl FuzzingEngine {
                             }
                         }
                     } else {
+                        // CRITICAL FIX: Fail in strict_backend mode instead of silent fallback
+                        if strict_backend {
+                            tracing::error!(
+                                "CHAIN CIRCUIT MISSING: No circuit path configured for '{}' and no file found. \
+                                 In strict_backend mode, we cannot fall back to primary executor. \
+                                 Add a 'circuits' mapping in your chain config to specify circuit paths.",
+                                circuit_ref
+                            );
+                            return Vec::new();
+                        }
                         tracing::warn!(
                             "No circuit path configured for '{}' and no file found at that path. \
                              Using primary executor. Add a 'circuits' mapping in your chain config \

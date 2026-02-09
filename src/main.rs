@@ -183,7 +183,7 @@ async fn main() -> anyhow::Result<()> {
                 cli.verbose,
                 cli.dry_run,
                 cli.simple_progress,
-                cli.real_only || true, // Evidence mode always requires real backend
+                true, // Evidence mode always requires real backend
                 iterations,
                 timeout,
                 true,
