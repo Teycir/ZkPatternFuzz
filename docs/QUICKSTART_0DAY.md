@@ -8,6 +8,7 @@ This guide walks you through finding vulnerabilities in ZK circuits using ZkPatt
 2. **Circom compiler** (2.0+)
 3. **snarkjs** (npm install -g snarkjs)
 4. **Z3 solver** (apt install z3)
+5. **Picus** (optional, for formal verification) - See [VERIDISE_INTEGRATION.md](../VERIDISE_INTEGRATION.md)
 
 ## Quick Start (5 Minutes)
 
@@ -65,7 +66,7 @@ Check `reports/zk0d/<target>/`:
 - `report.md` - Human-readable summary
 - `corpus/` - Interesting test cases
 
-## Complete Workflow
+## Complete Workflow (Updated with Picus)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -81,10 +82,16 @@ Check `reports/zk0d/<target>/`:
 │  3. EVIDENCE     ─────────────>  Bounded deterministic fuzz  │
 │     ./scripts/zeroday_workflow.sh evidence <yaml>            │
 │                                                              │
-│  4. TRIAGE       ─────────────>  Confirm/Reject each finding │
-│     Reproduce PoCs, verify invariant violations              │
+│  4. VERIFY       ─────────────>  Formal proof (Picus)        │
+│     ./scripts/zeroday_workflow.sh verify <circuit.circom>    │
+│     (OPTIONAL: Eliminates false positives for under-         │
+│      constraint bugs. Recommended for critical findings.)    │
 │                                                              │
-│  5. DEEP         ─────────────>  Edge-case hunting           │
+│  5. TRIAGE       ─────────────>  Confirm/Reject each finding │
+│     Reproduce PoCs, verify invariant violations              │
+│     Cross-reference Picus results (if run)                   │
+│                                                              │
+│  6. DEEP         ─────────────>  Edge-case hunting           │
 │     ./scripts/zeroday_workflow.sh deep <yaml>                │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
@@ -134,14 +141,29 @@ FINDINGS BY TYPE
   --timeout 1800
 ```
 
-## Classification Rules
+## Classification Rules (Updated with Picus)
 
 | Status | Criteria |
 |--------|----------|
+| **FORMALLY CONFIRMED** | Picus outputs `unsafe` + counterexample (zero false positives ✅) |
 | **CONFIRMED** | Invariant violated + Circuit accepts witness + Reproduction succeeds |
-| **NOT CONFIRMED** | Hint only / No reproduction / Internal wires only |
+| **LIKELY** | ZkPatternFuzz finding + Picus `unknown` (timeout/inconclusive) |
+| **NOT CONFIRMED** | Hint only / No reproduction / Picus returns `safe` |
 
 **IMPORTANT:** Never report hints as confirmed findings. See [AI_PENTEST_RULES.md](AI_PENTEST_RULES.md).
+
+### Using Picus for Verification
+
+```bash
+# After running evidence mode, verify critical under-constraint findings
+./scripts/zeroday_workflow.sh verify circuits/suspicious_merkle.circom \
+  --timeout 300000  # 5 minutes
+  
+# Check result
+# - unsafe: FORMALLY CONFIRMED ✅
+# - safe: Likely false positive ❌
+# - unknown: Increase timeout or manual review
+```
 
 ## Available Campaigns
 
