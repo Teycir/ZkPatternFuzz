@@ -28,7 +28,7 @@ attacks:
   - type: "underconstrained"
     description: "Check for missing constraints in withdraw path"
     config:
-      witness_pairs: 500000
+      witness_pairs: 5000000
       public_input_names:
         - "root"
         - "nullifierHash"
