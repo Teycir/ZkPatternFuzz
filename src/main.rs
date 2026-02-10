@@ -44,7 +44,7 @@ struct Cli {
     #[arg(long, global = true)]
     real_only: bool,
 
-    /// Configuration profile (quick, standard, deep)
+    /// Configuration profile (quick, standard, deep, perf)
     /// Quick: 10K iterations, fast exploration
     /// Standard: 100K iterations, balanced fuzzing (default for evidence)
     /// Deep: 1M iterations, thorough analysis
@@ -370,7 +370,7 @@ async fn run_campaign(
     // Run with new engine if not using simple progress
     let report = if simple_progress {
         let mut fuzzer = ZkFuzzer::new(config, seed);
-        fuzzer.run().await?
+        fuzzer.run_with_workers(workers).await?
     } else {
         ZkFuzzer::run_with_progress(config, seed, workers, verbose).await?
     };

@@ -42,10 +42,10 @@ pub struct NearMissConfig {
 impl Default for NearMissConfig {
     fn default() -> Self {
         Self {
-            range_threshold: 0.05,        // Within 5% of boundary
-            collision_threshold: 0.9,      // 90% similar bits
-            invariant_threshold: 0.01,     // Within 1% of violation
-            constraint_threshold: 0.001,   // Very close to zero
+            range_threshold: 0.05,       // Within 5% of boundary
+            collision_threshold: 0.9,    // 90% similar bits
+            invariant_threshold: 0.01,   // Within 1% of violation
+            constraint_threshold: 0.001, // Very close to zero
         }
     }
 }
@@ -75,19 +75,24 @@ impl NearMiss {
     pub fn to_event(&self) -> super::adaptive_attack_scheduler::NearMissEvent {
         super::adaptive_attack_scheduler::NearMissEvent {
             event_type: match &self.miss_type {
-                NearMissType::AlmostOutOfRange { .. } => 
-                    super::adaptive_attack_scheduler::NearMissType::AlmostOutOfRange,
-                NearMissType::AlmostCollision { .. } =>
-                    super::adaptive_attack_scheduler::NearMissType::AlmostCollision,
-                NearMissType::AlmostInvariantViolation { .. } =>
-                    super::adaptive_attack_scheduler::NearMissType::AlmostInvariantViolation,
-                NearMissType::AlmostConstraintBypass =>
-                    super::adaptive_attack_scheduler::NearMissType::AlmostConstraintBypass,
+                NearMissType::AlmostOutOfRange { .. } => {
+                    super::adaptive_attack_scheduler::NearMissType::AlmostOutOfRange
+                }
+                NearMissType::AlmostCollision { .. } => {
+                    super::adaptive_attack_scheduler::NearMissType::AlmostCollision
+                }
+                NearMissType::AlmostInvariantViolation { .. } => {
+                    super::adaptive_attack_scheduler::NearMissType::AlmostInvariantViolation
+                }
+                NearMissType::AlmostConstraintBypass => {
+                    super::adaptive_attack_scheduler::NearMissType::AlmostConstraintBypass
+                }
             },
             distance: self.distance,
-            description: self.suggestion.clone().unwrap_or_else(|| 
-                format!("{:?}", self.miss_type)
-            ),
+            description: self
+                .suggestion
+                .clone()
+                .unwrap_or_else(|| format!("{:?}", self.miss_type)),
         }
     }
 }
@@ -167,7 +172,8 @@ impl NearMissDetector {
 
     /// Add a range constraint
     pub fn with_range_constraint(mut self, constraint: RangeConstraint) -> Self {
-        self.range_constraints.insert(constraint.wire_index, constraint);
+        self.range_constraints
+            .insert(constraint.wire_index, constraint);
         self
     }
 
@@ -194,7 +200,7 @@ impl NearMissDetector {
         for invariant in &self.invariants {
             let expected = witness.get(invariant.expected_wire);
             let actual = witness.get(invariant.actual_wire);
-            
+
             if let (Some(exp), Some(act)) = (expected, actual) {
                 if let Some(nm) = self.check_invariant_near_miss(exp, act, &invariant.name) {
                     near_misses.push(nm);
@@ -206,7 +212,11 @@ impl NearMissDetector {
     }
 
     /// Check for range near-miss
-    fn check_range_near_miss(&self, value: &FieldElement, constraint: &RangeConstraint) -> Option<NearMiss> {
+    fn check_range_near_miss(
+        &self,
+        value: &FieldElement,
+        constraint: &RangeConstraint,
+    ) -> Option<NearMiss> {
         // Check against bit length
         if let Some(bit_length) = constraint.bit_length {
             let max_value = if bit_length < 64 {
@@ -304,7 +314,8 @@ impl NearMissDetector {
 
         // XOR and count differing bits
         let total_bits = a_bytes.len() * 8;
-        let differing_bits: usize = a_bytes.iter()
+        let differing_bits: usize = a_bytes
+            .iter()
             .zip(b_bytes.iter())
             .map(|(x, y)| (x ^ y).count_ones() as usize)
             .sum();
@@ -319,7 +330,8 @@ impl NearMissDetector {
         }
 
         let total_bits = hash_a.len() * 8;
-        let matching_bits: usize = hash_a.iter()
+        let matching_bits: usize = hash_a
+            .iter()
             .zip(hash_b.iter())
             .map(|(a, b)| (!(a ^ b)).count_ones() as usize)
             .sum();
@@ -363,10 +375,7 @@ impl NearMissDetector {
                     distance,
                     location: None,
                     value: Some(result.clone()),
-                    suggestion: Some(format!(
-                        "Constraint evaluation is {:.6} (should be 0)",
-                        val
-                    )),
+                    suggestion: Some(format!("Constraint evaluation is {:.6} (should be 0)", val)),
                 });
             }
         }
@@ -412,13 +421,12 @@ mod tests {
 
     #[test]
     fn test_range_near_miss() {
-        let detector = NearMissDetector::new()
-            .with_range_constraint(RangeConstraint {
-                wire_index: 0,
-                min_value: None,
-                max_value: None,
-                bit_length: Some(8),
-            });
+        let detector = NearMissDetector::new().with_range_constraint(RangeConstraint {
+            wire_index: 0,
+            min_value: None,
+            max_value: None,
+            bit_length: Some(8),
+        });
 
         // Value close to max (255)
         let witness = vec![FieldElement::from_u64(250)];
@@ -430,11 +438,10 @@ mod tests {
 
     #[test]
     fn test_collision_near_miss() {
-        let detector = NearMissDetector::new()
-            .with_config(NearMissConfig {
-                collision_threshold: 0.9,
-                ..Default::default()
-            });
+        let detector = NearMissDetector::new().with_config(NearMissConfig {
+            collision_threshold: 0.9,
+            ..Default::default()
+        });
 
         // Two hashes that differ by only a few bits
         let hash_a = vec![0xFF; 32];

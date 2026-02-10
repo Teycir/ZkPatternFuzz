@@ -49,6 +49,10 @@ pub struct ExecutorFactoryOptions {
     pub circom_ptau_path: Option<PathBuf>,
     /// Optional path to snarkjs CLI (binary or JS file)
     pub circom_snarkjs_path: Option<PathBuf>,
+    /// If true, reuse existing Circom build artifacts (r1cs/wasm) when present
+    /// instead of recompiling on every executor creation. This is critical
+    /// for per-exec isolation performance.
+    pub circom_skip_compile_if_artifacts: bool,
     /// If true, fail with an error when real backend tooling is missing
     /// instead of falling back to mock executor silently.
     /// 
@@ -82,6 +86,7 @@ impl Default for ExecutorFactoryOptions {
             circom_auto_setup_keys: false,
             circom_ptau_path: None,
             circom_snarkjs_path: None,
+            circom_skip_compile_if_artifacts: false,
             strict_backend: false,
             mark_fallback: true, // Default to marking fallbacks so warnings are shown
         }
@@ -612,6 +617,7 @@ impl ExecutorFactory {
                     options.circom_include_paths.clone(),
                     options.circom_ptau_path.clone(),
                     options.circom_snarkjs_path.clone(),
+                    options.circom_skip_compile_if_artifacts,
                 )?;
                 if options.circom_auto_setup_keys {
                     tracing::info!("Auto-generating Circom proving/verification keys");
@@ -786,7 +792,7 @@ pub struct CircomExecutor {
 
 impl CircomExecutor {
     pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
-        Self::new_with_options(circuit_path, main_component, None, Vec::new(), None, None)
+        Self::new_with_options(circuit_path, main_component, None, Vec::new(), None, None, false)
     }
 
     pub fn new_with_build_dir(
@@ -794,7 +800,15 @@ impl CircomExecutor {
         main_component: &str,
         build_dir: PathBuf,
     ) -> anyhow::Result<Self> {
-        Self::new_with_options(circuit_path, main_component, Some(build_dir), Vec::new(), None, None)
+        Self::new_with_options(
+            circuit_path,
+            main_component,
+            Some(build_dir),
+            Vec::new(),
+            None,
+            None,
+            false,
+        )
     }
 
     pub fn new_with_options(
@@ -804,8 +818,10 @@ impl CircomExecutor {
         include_paths: Vec<PathBuf>,
         ptau_path: Option<PathBuf>,
         snarkjs_path: Option<PathBuf>,
+        skip_compile_if_artifacts: bool,
     ) -> anyhow::Result<Self> {
-        let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?;
+        let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?
+            .with_skip_compile_if_artifacts(skip_compile_if_artifacts);
         if let Some(dir) = build_dir {
             target = target.with_build_dir(dir);
         }

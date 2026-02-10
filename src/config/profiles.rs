@@ -10,18 +10,20 @@
 //! cargo run -- run campaign.yaml --profile quick    # Fast exploration
 //! cargo run -- run campaign.yaml --profile standard # Balanced fuzzing
 //! cargo run -- evidence campaign.yaml --profile deep # Deep analysis
+//! cargo run -- run campaign.yaml --profile perf     # Throughput-first long runs
 //! ```
 //!
 //! # Profile Comparison
 //!
-//! | Setting                  | Quick    | Standard  | Deep       |
-//! |--------------------------|----------|-----------|------------|
-//! | max_iterations           | 10,000   | 100,000   | 1,000,000  |
-//! | strict_backend           | false    | true      | true       |
-//! | evidence_mode            | false    | true      | true       |
-//! | per_exec_isolation       | false    | false     | true       |
-//! | symbolic_max_depth       | 50       | 200       | 1,000      |
-//! | constraint_guided        | false    | true      | true       |
+//! | Setting                  | Quick    | Standard  | Deep       | Perf      |
+//! |--------------------------|----------|-----------|------------|-----------|
+//! | max_iterations           | 10,000   | 100,000   | 1,000,000  | 500,000   |
+//! | strict_backend           | false    | true      | true       | true      |
+//! | evidence_mode            | false    | true      | true       | false     |
+//! | per_exec_isolation       | false    | false     | true       | false     |
+//! | symbolic_enabled         | true     | true      | true       | false     |
+//! | symbolic_max_depth       | 50       | 200       | 1,000      | 20        |
+//! | constraint_guided        | false    | true      | true       | false     |
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -35,6 +37,8 @@ pub enum ProfileName {
     Standard,
     /// Deep analysis for critical targets (1M iterations)
     Deep,
+    /// Performance-first long-run profile (500K iterations)
+    Perf,
 }
 
 impl std::str::FromStr for ProfileName {
@@ -45,8 +49,9 @@ impl std::str::FromStr for ProfileName {
             "quick" | "fast" | "triage" => Ok(ProfileName::Quick),
             "standard" | "default" | "balanced" => Ok(ProfileName::Standard),
             "deep" | "thorough" | "comprehensive" => Ok(ProfileName::Deep),
+            "perf" | "performance" | "throughput" => Ok(ProfileName::Perf),
             _ => Err(format!(
-                "Unknown profile '{}'. Available: quick, standard, deep",
+                "Unknown profile '{}'. Available: quick, standard, deep, perf",
                 s
             )),
         }
@@ -59,6 +64,7 @@ impl std::fmt::Display for ProfileName {
             ProfileName::Quick => write!(f, "quick"),
             ProfileName::Standard => write!(f, "standard"),
             ProfileName::Deep => write!(f, "deep"),
+            ProfileName::Perf => write!(f, "perf"),
         }
     }
 }
@@ -82,6 +88,8 @@ pub struct EmbeddedProfile {
     pub attacks: Vec<String>,
     /// Enable constraint-guided fuzzing
     pub constraint_guided_enabled: bool,
+    /// Enable symbolic execution seeding
+    pub symbolic_enabled: bool,
     /// Maximum symbolic execution depth
     pub symbolic_max_depth: u32,
     /// Timeout per circuit execution (seconds)
@@ -114,6 +122,7 @@ impl EmbeddedProfile {
                 "underconstrained".to_string(),
             ],
             constraint_guided_enabled: false,
+            symbolic_enabled: true,
             symbolic_max_depth: 50,
             timeout_per_execution: 5,
             oracle_validation: false,
@@ -139,6 +148,7 @@ impl EmbeddedProfile {
                 "witness_validation".to_string(),
             ],
             constraint_guided_enabled: true,
+            symbolic_enabled: true,
             symbolic_max_depth: 200,
             timeout_per_execution: 30,
             oracle_validation: true,
@@ -157,10 +167,33 @@ impl EmbeddedProfile {
             per_exec_isolation: true,
             attacks: vec!["all".to_string()],
             constraint_guided_enabled: true,
+            symbolic_enabled: true,
             symbolic_max_depth: 1_000,
             timeout_per_execution: 60,
             oracle_validation: true,
             cross_oracle_correlation: true,
+        }
+    }
+
+    /// Perf profile: Throughput-first long runs (reduced seeding cost)
+    pub fn perf() -> Self {
+        Self {
+            name: "perf".to_string(),
+            description: "Performance-first long runs (500K iterations)".to_string(),
+            max_iterations: 500_000,
+            strict_backend: true,
+            evidence_mode: false,
+            per_exec_isolation: false,
+            attacks: vec![
+                "underconstrained".to_string(),
+                "boundary".to_string(),
+            ],
+            constraint_guided_enabled: false,
+            symbolic_enabled: false,
+            symbolic_max_depth: 20,
+            timeout_per_execution: 10,
+            oracle_validation: false,
+            cross_oracle_correlation: false,
         }
     }
 
@@ -170,6 +203,7 @@ impl EmbeddedProfile {
             ProfileName::Quick => Self::quick(),
             ProfileName::Standard => Self::standard(),
             ProfileName::Deep => Self::deep(),
+            ProfileName::Perf => Self::perf(),
         }
     }
 
@@ -196,6 +230,10 @@ impl EmbeddedProfile {
         params.insert(
             "constraint_guided_enabled".to_string(),
             serde_yaml::Value::Bool(self.constraint_guided_enabled),
+        );
+        params.insert(
+            "symbolic_enabled".to_string(),
+            serde_yaml::Value::Bool(self.symbolic_enabled),
         );
         params.insert(
             "symbolic_max_depth".to_string(),
@@ -229,24 +267,25 @@ impl EmbeddedProfile {
 
     /// Get list of all available profiles
     pub fn list_all() -> Vec<Self> {
-        vec![Self::quick(), Self::standard(), Self::deep()]
+        vec![Self::quick(), Self::standard(), Self::deep(), Self::perf()]
     }
 
     /// Print profile comparison table
     pub fn print_comparison() {
         println!("Available Profiles:");
         println!();
-        println!("| Setting                  | Quick    | Standard  | Deep       |");
-        println!("|--------------------------|----------|-----------|------------|");
-        println!("| max_iterations           | 10,000   | 100,000   | 1,000,000  |");
-        println!("| strict_backend           | false    | true      | true       |");
-        println!("| evidence_mode            | false    | true      | true       |");
-        println!("| per_exec_isolation       | false    | false     | true       |");
-        println!("| symbolic_max_depth       | 50       | 200       | 1,000      |");
-        println!("| constraint_guided        | false    | true      | true       |");
-        println!("| oracle_validation        | false    | true      | true       |");
+        println!("| Setting                  | Quick    | Standard  | Deep       | Perf      |");
+        println!("|--------------------------|----------|-----------|------------|-----------|");
+        println!("| max_iterations           | 10,000   | 100,000   | 1,000,000  | 500,000   |");
+        println!("| strict_backend           | false    | true      | true       | true      |");
+        println!("| evidence_mode            | false    | true      | true       | false     |");
+        println!("| per_exec_isolation       | false    | false     | true       | false     |");
+        println!("| symbolic_enabled         | true     | true      | true       | false     |");
+        println!("| symbolic_max_depth       | 50       | 200       | 1,000      | 20        |");
+        println!("| constraint_guided        | false    | true      | true       | false     |");
+        println!("| oracle_validation        | false    | true      | true       | false     |");
         println!();
-        println!("Usage: cargo run -- run campaign.yaml --profile <quick|standard|deep>");
+        println!("Usage: cargo run -- run campaign.yaml --profile <quick|standard|deep|perf>");
     }
 }
 
@@ -276,10 +315,15 @@ mod tests {
             ProfileName::Standard
         );
         assert_eq!("deep".parse::<ProfileName>().unwrap(), ProfileName::Deep);
+        assert_eq!("perf".parse::<ProfileName>().unwrap(), ProfileName::Perf);
         assert_eq!("fast".parse::<ProfileName>().unwrap(), ProfileName::Quick);
         assert_eq!(
             "thorough".parse::<ProfileName>().unwrap(),
             ProfileName::Deep
+        );
+        assert_eq!(
+            "performance".parse::<ProfileName>().unwrap(),
+            ProfileName::Perf
         );
     }
 
@@ -288,6 +332,7 @@ mod tests {
         assert_eq!(EmbeddedProfile::quick().max_iterations, 10_000);
         assert_eq!(EmbeddedProfile::standard().max_iterations, 100_000);
         assert_eq!(EmbeddedProfile::deep().max_iterations, 1_000_000);
+        assert_eq!(EmbeddedProfile::perf().max_iterations, 500_000);
     }
 
     #[test]
@@ -295,6 +340,7 @@ mod tests {
         assert!(!EmbeddedProfile::quick().strict_backend);
         assert!(EmbeddedProfile::standard().strict_backend);
         assert!(EmbeddedProfile::deep().strict_backend);
+        assert!(EmbeddedProfile::perf().strict_backend);
     }
 
     #[test]
@@ -308,6 +354,10 @@ mod tests {
         );
         assert_eq!(
             params.get("strict_backend").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            params.get("symbolic_enabled").and_then(|v| v.as_bool()),
             Some(true)
         );
     }

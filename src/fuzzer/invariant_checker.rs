@@ -29,10 +29,12 @@
 //! - **Constraint**: `y = Poseidon(a, b)` - requires output comparison
 //! - **Inequality**: `index < 2^length` - checked per-execution
 
-use crate::config::v2::{Invariant, InvariantType, InvariantOracle, parse_invariant_relation, InvariantAST};
+use crate::config::v2::{
+    parse_invariant_relation, Invariant, InvariantAST, InvariantOracle, InvariantType,
+};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use zk_core::FieldElement;
-use sha2::{Sha256, Digest};
 
 /// A violation of an invariant detected during fuzzing
 #[derive(Debug, Clone)]
@@ -95,10 +97,7 @@ pub struct InvariantChecker {
 
 impl InvariantChecker {
     /// Create a new invariant checker from v2 invariants and input configuration
-    pub fn new(
-        invariants: Vec<Invariant>,
-        inputs: &[crate::config::Input],
-    ) -> Self {
+    pub fn new(invariants: Vec<Invariant>, inputs: &[crate::config::Input]) -> Self {
         let mut input_map = HashMap::new();
         let mut offset = 0usize;
         for input in inputs {
@@ -164,7 +163,10 @@ impl InvariantChecker {
             relation: invariant.relation.clone(),
             ast,
             invariant_type: invariant.invariant_type.clone(),
-            severity: invariant.severity.clone().unwrap_or_else(|| "medium".to_string()),
+            severity: invariant
+                .severity
+                .clone()
+                .unwrap_or_else(|| "medium".to_string()),
             input_indices,
             range_bounds,
             uniqueness_key_indices,
@@ -349,7 +351,8 @@ impl InvariantChecker {
         // Clone the invariants to avoid borrow issues with uniqueness tracking
         let invariants: Vec<_> = self.invariants.clone();
         for invariant in &invariants {
-            if let Some(violation) = self.check_single(invariant, inputs, outputs, circuit_accepted) {
+            if let Some(violation) = self.check_single(invariant, inputs, outputs, circuit_accepted)
+            {
                 violations.push(violation);
             }
         }
@@ -368,7 +371,9 @@ impl InvariantChecker {
         match invariant.invariant_type {
             InvariantType::Range => self.check_range(invariant, inputs, circuit_accepted),
             InvariantType::Uniqueness => self.check_uniqueness(invariant, inputs, circuit_accepted),
-            InvariantType::Constraint => self.check_constraint(invariant, inputs, outputs, circuit_accepted),
+            InvariantType::Constraint => {
+                self.check_constraint(invariant, inputs, outputs, circuit_accepted)
+            }
             InvariantType::Custom | InvariantType::Metamorphic => None,
         }
     }
@@ -457,7 +462,7 @@ impl InvariantChecker {
 
         // Compute key hash from key indices
         let key_hash = self.compute_hash(&invariant.uniqueness_key_indices, inputs);
-        
+
         // Compute value hash from value indices
         let value_hash = self.compute_hash(&invariant.uniqueness_value_indices, inputs);
 
@@ -520,13 +525,9 @@ impl InvariantChecker {
 
         // If we have an AST, try to evaluate it
         if let Some(ast) = &invariant.ast {
-            if let Some(violation) = self.evaluate_constraint_ast(
-                ast,
-                invariant,
-                inputs,
-                outputs,
-                circuit_accepted,
-            ) {
+            if let Some(violation) =
+                self.evaluate_constraint_ast(ast, invariant, inputs, outputs, circuit_accepted)
+            {
                 return Some(violation);
             }
         }

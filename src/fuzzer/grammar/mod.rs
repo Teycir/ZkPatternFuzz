@@ -22,17 +22,17 @@
 //!     length: 20
 //! ```
 
+mod generator;
 mod parser;
 mod types;
-mod generator;
 
-pub use parser::GrammarParser;
-pub use generator::GrammarGenerator;
 pub use generator::GenerationStrategy;
+pub use generator::GrammarGenerator;
+pub use parser::GrammarParser;
 
-use zk_core::{FieldElement, TestCase, TestMetadata};
 use rand::Rng;
 use std::collections::HashMap;
+use zk_core::{FieldElement, TestCase, TestMetadata};
 
 /// Complete input grammar specification
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -204,14 +204,9 @@ impl InputGrammar {
                     .collect()
             }
             InputType::MerklePath => {
-                let depth = self
-                    .merkle_config
-                    .as_ref()
-                    .map(|c| c.depth)
-                    .unwrap_or(20);
+                let depth = self.merkle_config.as_ref().map(|c| c.depth).unwrap_or(20);
                 // Generate path elements
-                let path_elements: Vec<_> =
-                    (0..depth).map(|_| FieldElement::random(rng)).collect();
+                let path_elements: Vec<_> = (0..depth).map(|_| FieldElement::random(rng)).collect();
                 // Generate path indices (binary)
                 let path_indices: Vec<_> = (0..depth)
                     .map(|_| {
@@ -253,10 +248,7 @@ impl InputGrammar {
                 let mut bytes = vec![0u8; len];
                 rng.fill(&mut bytes[..]);
                 // Pack into field elements (32 bytes each)
-                bytes
-                    .chunks(32)
-                    .map(FieldElement::from_bytes)
-                    .collect()
+                bytes.chunks(32).map(FieldElement::from_bytes).collect()
             }
         }
     }
@@ -660,7 +652,7 @@ inputs:
         let mut rng = rand::thread_rng();
 
         let original = grammar.generate(&mut rng);
-        
+
         // Try multiple mutations - at least one should differ
         let mut any_different = false;
         for _ in 0..10 {
@@ -672,9 +664,12 @@ inputs:
                 break;
             }
         }
-        
+
         // At least one mutation should have produced a different result
-        assert!(any_different, "After 10 attempts, mutation should produce different output");
+        assert!(
+            any_different,
+            "After 10 attempts, mutation should produce different output"
+        );
     }
 
     #[test]

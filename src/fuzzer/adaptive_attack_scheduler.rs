@@ -161,8 +161,10 @@ impl AdaptiveScheduler {
     pub fn initialize(&mut self, attack_types: &[AttackType]) {
         let initial_score = 100.0 / attack_types.len() as f64;
         for attack_type in attack_types {
-            self.attack_scores.insert(attack_type.clone(), initial_score);
-            self.iterations_without_progress.insert(attack_type.clone(), 0);
+            self.attack_scores
+                .insert(attack_type.clone(), initial_score);
+            self.iterations_without_progress
+                .insert(attack_type.clone(), 0);
             self.findings_per_attack.insert(attack_type.clone(), 0);
         }
     }
@@ -175,10 +177,12 @@ impl AdaptiveScheduler {
         // Coverage gain
         if results.new_coverage > 0 {
             score_delta += self.config.coverage_gain_points * results.new_coverage as f64;
-            self.iterations_without_progress.insert(attack_type.clone(), 0);
+            self.iterations_without_progress
+                .insert(attack_type.clone(), 0);
         } else {
             // Decay
-            let stale_iters = self.iterations_without_progress
+            let stale_iters = self
+                .iterations_without_progress
                 .entry(attack_type.clone())
                 .or_insert(0);
             *stale_iters += results.iterations;
@@ -188,7 +192,8 @@ impl AdaptiveScheduler {
         // Near-miss bonus
         for near_miss in &results.near_misses {
             // Closer near-misses get more points
-            let proximity_bonus = (1.0 - near_miss.distance.min(1.0)) * self.config.near_miss_points;
+            let proximity_bonus =
+                (1.0 - near_miss.distance.min(1.0)) * self.config.near_miss_points;
             score_delta += proximity_bonus;
             self.near_misses.push(near_miss.clone());
         }
@@ -203,10 +208,16 @@ impl AdaptiveScheduler {
             score_delta += points;
         }
 
-        *self.findings_per_attack.entry(attack_type.clone()).or_insert(0) += results.findings.len();
+        *self
+            .findings_per_attack
+            .entry(attack_type.clone())
+            .or_insert(0) += results.findings.len();
 
         // Apply update with learning rate
-        let current_score = self.attack_scores.entry(attack_type.clone()).or_insert(10.0);
+        let current_score = self
+            .attack_scores
+            .entry(attack_type.clone())
+            .or_insert(10.0);
         *current_score = (*current_score + self.config.learning_rate * score_delta).max(1.0);
 
         // Record history
@@ -287,15 +298,18 @@ impl AdaptiveScheduler {
         // Suggest budget increases for high-scoring attacks
         if let Some(best) = self.best_attack() {
             if let Some(&score) = self.attack_scores.get(&best) {
-                let avg_score: f64 = self.attack_scores.values().sum::<f64>() 
+                let avg_score: f64 = self.attack_scores.values().sum::<f64>()
                     / self.attack_scores.len().max(1) as f64;
-                
+
                 if score > avg_score * 2.0 {
                     suggestions.push(YamlSuggestion {
                         suggestion_type: SuggestionType::IncreaseBudget,
                         key: format!("{:?}", best),
                         value: "2x".to_string(),
-                        reason: format!("Attack {:?} has high effectiveness (score: {:.1})", best, score),
+                        reason: format!(
+                            "Attack {:?} has high effectiveness (score: {:.1})",
+                            best, score
+                        ),
                     });
                 }
             }
@@ -303,12 +317,22 @@ impl AdaptiveScheduler {
 
         // Suggest removing low-performing attacks
         for (attack_type, &score) in &self.attack_scores {
-            if score < 5.0 && self.findings_per_attack.get(attack_type).copied().unwrap_or(0) == 0 {
+            if score < 5.0
+                && self
+                    .findings_per_attack
+                    .get(attack_type)
+                    .copied()
+                    .unwrap_or(0)
+                    == 0
+            {
                 suggestions.push(YamlSuggestion {
                     suggestion_type: SuggestionType::DecreaseBudget,
                     key: format!("{:?}", attack_type),
                     value: "remove or reduce".to_string(),
-                    reason: format!("Attack {:?} has low effectiveness (score: {:.1}, 0 findings)", attack_type, score),
+                    reason: format!(
+                        "Attack {:?} has low effectiveness (score: {:.1}, 0 findings)",
+                        attack_type, score
+                    ),
                 });
             }
         }
@@ -400,7 +424,10 @@ mod tests {
         let mut scheduler = AdaptiveScheduler::new();
         scheduler.initialize(&[AttackType::Underconstrained]);
 
-        let initial_score = *scheduler.attack_scores.get(&AttackType::Underconstrained).unwrap();
+        let initial_score = *scheduler
+            .attack_scores
+            .get(&AttackType::Underconstrained)
+            .unwrap();
 
         let results = AttackResults {
             attack_type: AttackType::Underconstrained,
@@ -419,7 +446,10 @@ mod tests {
 
         scheduler.update_scores(&results);
 
-        let new_score = *scheduler.attack_scores.get(&AttackType::Underconstrained).unwrap();
+        let new_score = *scheduler
+            .attack_scores
+            .get(&AttackType::Underconstrained)
+            .unwrap();
         assert!(new_score > initial_score);
     }
 

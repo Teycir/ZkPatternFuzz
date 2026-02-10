@@ -61,10 +61,10 @@ pub struct PhasedSchedulerStats {
 pub trait PhaseCallback: Send + Sync {
     /// Called when a phase starts
     fn on_phase_start(&self, phase: &SchedulePhase, phase_index: usize);
-    
+
     /// Called when a phase completes
     fn on_phase_complete(&self, result: &PhaseResult, phase_index: usize);
-    
+
     /// Called periodically during phase execution
     fn on_phase_progress(&self, phase_name: &str, elapsed: Duration, coverage: f64);
 }
@@ -102,7 +102,10 @@ impl PhaseCallback for LoggingPhaseCallback {
             result.coverage_percentage,
             result.duration,
             if result.early_terminated {
-                format!(" [early: {}]", result.termination_reason.as_deref().unwrap_or("unknown"))
+                format!(
+                    " [early: {}]",
+                    result.termination_reason.as_deref().unwrap_or("unknown")
+                )
             } else {
                 String::new()
             }
@@ -262,12 +265,11 @@ impl PhasedScheduler {
 
         // Filter attacks to only those in this phase
         config.attacks.retain(|a| {
-                let attack_name = format!("{:?}", a.attack_type).to_lowercase();
-                phase.attacks.iter().any(|p| {
-                    p.to_lowercase() == attack_name || 
-                    p.to_lowercase() == attack_name.replace("_", "")
-                })
-            });
+            let attack_name = format!("{:?}", a.attack_type).to_lowercase();
+            phase.attacks.iter().any(|p| {
+                p.to_lowercase() == attack_name || p.to_lowercase() == attack_name.replace("_", "")
+            })
+        });
 
         // Set phase timeout
         config.campaign.parameters.timeout_seconds = phase.duration_sec;
@@ -372,11 +374,7 @@ impl EarlyTerminationChecker {
     }
 
     /// Update with current state and check for termination
-    pub fn check(
-        &mut self,
-        coverage: f64,
-        new_critical_findings: usize,
-    ) -> Option<String> {
+    pub fn check(&mut self, coverage: f64, new_critical_findings: usize) -> Option<String> {
         // Update tracking
         self.critical_findings += new_critical_findings;
 
@@ -407,10 +405,7 @@ impl EarlyTerminationChecker {
                 self.last_coverage = coverage;
                 self.last_coverage_time = Instant::now();
             } else if self.last_coverage_time.elapsed().as_secs() >= stale_sec {
-                return Some(format!(
-                    "Coverage stale for {} seconds",
-                    stale_sec
-                ));
+                return Some(format!("Coverage stale for {} seconds", stale_sec));
             }
         }
 
@@ -512,10 +507,7 @@ mod tests {
             PhasedScheduler::parse_attack_type("arithmetic_overflow"),
             Some(AttackType::ArithmeticOverflow)
         );
-        assert_eq!(
-            PhasedScheduler::parse_attack_type("unknown"),
-            None
-        );
+        assert_eq!(PhasedScheduler::parse_attack_type("unknown"), None);
     }
 
     #[test]

@@ -93,13 +93,15 @@
 //! - **Cairo**: STARK programs via stone-prover
 //! - **Mock**: Testing backend for fuzzer development
 
+use super::invariant_checker::InvariantChecker; // Phase 2: Fuzz-continuous invariant checking
+use super::mutate_field_element;
 use super::oracle::{ArithmeticOverflowOracle, BugOracle, UnderconstrainedOracle};
-use super::oracle_validation::{filter_validated_findings, OracleValidator, OracleValidationConfig};
-use super::oracle_correlation::{OracleCorrelator, ConfidenceLevel};  // Phase 6A: Cross-oracle correlation
-use super::invariant_checker::InvariantChecker;  // Phase 2: Fuzz-continuous invariant checking
+use super::oracle_correlation::{ConfidenceLevel, OracleCorrelator}; // Phase 6A: Cross-oracle correlation
+use super::oracle_validation::{
+    filter_validated_findings, OracleValidationConfig, OracleValidator,
+};
 use super::power_schedule::{PowerSchedule, PowerScheduler};
 use super::structure_aware::StructureAwareMutator;
-use super::mutate_field_element;
 use crate::analysis::complexity::ComplexityAnalyzer;
 use crate::analysis::symbolic::{SymbolicConfig, SymbolicFuzzerIntegration, VulnerabilityPattern};
 use crate::analysis::taint::TaintAnalyzer;
@@ -109,8 +111,10 @@ use crate::analysis::{
 };
 use crate::attacks::{Attack as AttackTrait, AttackContext, AttackRegistry, DynamicLibraryLoader};
 use crate::config::*;
-use crate::corpus::create_corpus;
-use crate::executor::{create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions, IsolatedExecutor};
+use crate::corpus::{create_corpus, minimizer};
+use crate::executor::{
+    create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions, IsolatedExecutor,
+};
 use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
 use crate::reporting::FuzzReport;
 use zk_core::{
@@ -227,7 +231,7 @@ impl FuzzingEngine {
     pub fn new(config: FuzzConfig, seed: Option<u64>, workers: usize) -> anyhow::Result<Self> {
         // Phase 0 Fix: Extract additional config early for use throughout initialization
         let additional = &config.campaign.parameters.additional;
-        
+
         // Create executor based on framework (with optional build dir overrides)
         let executor_factory_options = Self::parse_executor_factory_options(&config);
         let mut executor = ExecutorFactory::create_with_options(
@@ -238,7 +242,7 @@ impl FuzzingEngine {
         )?;
 
         // Phase 0 Fix: Detect and FAIL-FAST on mock fallback execution
-        // 
+        //
         // This is critical for preventing false vulnerability claims.
         // Any findings from mock execution are SYNTHETIC and should not
         // be reported as real 0-day vulnerabilities.
@@ -246,16 +250,22 @@ impl FuzzingEngine {
         // When strict_backend=true (default for evidence mode), we fail immediately.
         // When strict_backend=false, we warn but continue (for development/testing).
         let strict_backend = Self::additional_bool(additional, "strict_backend").unwrap_or(false);
-        
+
         if executor.is_fallback_mock() {
             let framework = config.campaign.target.framework;
             let install_hint = match framework {
-                zk_core::Framework::Circom => "Install circom: https://docs.circom.io/getting-started/installation/",
-                zk_core::Framework::Noir => "Install nargo: https://noir-lang.org/docs/getting_started/installation/",
-                zk_core::Framework::Cairo => "Install scarb: https://docs.swmansion.com/scarb/download.html",
+                zk_core::Framework::Circom => {
+                    "Install circom: https://docs.circom.io/getting-started/installation/"
+                }
+                zk_core::Framework::Noir => {
+                    "Install nargo: https://noir-lang.org/docs/getting_started/installation/"
+                }
+                zk_core::Framework::Cairo => {
+                    "Install scarb: https://docs.swmansion.com/scarb/download.html"
+                }
                 _ => "Install the required backend tooling",
             };
-            
+
             if strict_backend {
                 // Phase 0 Fix: FAIL-FAST in production/evidence mode
                 anyhow::bail!(
@@ -276,13 +286,15 @@ impl FuzzingEngine {
                     "⚠️  Real backend tooling is not available. All findings will be SYNTHETIC."
                 );
                 tracing::error!(
-                    "⚠️  DO NOT report these as real vulnerabilities. {}", install_hint
+                    "⚠️  DO NOT report these as real vulnerabilities. {}",
+                    install_hint
                 );
                 tracing::warn!(
                     "⚠️  Set strict_backend=true to fail-fast on missing backends (recommended for evidence mode)."
                 );
             }
-        } else if executor.is_mock() && config.campaign.target.framework != zk_core::Framework::Mock {
+        } else if executor.is_mock() && config.campaign.target.framework != zk_core::Framework::Mock
+        {
             tracing::warn!(
                 "Using mock executor for {:?} framework. Results may not reflect real circuit behavior.",
                 config.campaign.target.framework
@@ -303,19 +315,37 @@ impl FuzzingEngine {
             .or_else(|| Self::additional_bool(additional, "exec_isolation"))
             .unwrap_or(false);
 
+        let allow_no_isolation =
+            Self::additional_bool(additional, "evidence_allow_no_isolation").unwrap_or(false);
+
         if evidence_mode && !isolate_exec {
-            tracing::warn!("Evidence mode: enabling per_exec_isolation for hang safety");
-            isolate_exec = true;
+            if allow_no_isolation {
+                tracing::warn!(
+                    "Evidence mode: per_exec_isolation disabled by user; runs may hang \
+                     and long fuzzing sessions are less protected."
+                );
+            } else {
+                tracing::warn!("Evidence mode: enabling per_exec_isolation for hang safety");
+                isolate_exec = true;
+            }
         }
 
         if isolate_exec {
             let execution_timeout_ms = Self::additional_u64(additional, "execution_timeout_ms")
+                .or_else(|| {
+                    Self::additional_u64(additional, "timeout_per_execution").map(|v| v * 1000)
+                })
                 .unwrap_or(30_000)
                 .max(1);
             executor = Arc::new(IsolatedExecutor::new(
                 executor,
                 config.campaign.target.framework,
-                config.campaign.target.circuit_path.to_string_lossy().to_string(),
+                config
+                    .campaign
+                    .target
+                    .circuit_path
+                    .to_string_lossy()
+                    .to_string(),
                 config.campaign.target.main_component.clone(),
                 executor_factory_options.clone(),
                 execution_timeout_ms,
@@ -328,12 +358,12 @@ impl FuzzingEngine {
 
         let num_constraints = executor.num_constraints().max(100);
         let coverage = create_coverage_tracker(num_constraints);
-        
+
         // Phase 0 Fix: Make corpus size configurable instead of hardcoded 10000
         // Allows tuning based on circuit complexity and available memory
         let corpus_max_size = Self::additional_u64(additional, "corpus_max_size")
             .unwrap_or(100_000)
-            .max(1) as usize;  // Increased default from 10k to 100k
+            .max(1) as usize; // Increased default from 10k to 100k
         let corpus = create_corpus(corpus_max_size);
 
         // Initialize symbolic execution integration
@@ -341,26 +371,34 @@ impl FuzzingEngine {
         // Previous: max_paths=100, max_depth=20 (too shallow for complex circuits)
         // Now: max_paths=1000, max_depth=200 (closer to KLEE-level exploration)
         let num_inputs = config.inputs.len().max(1);
-        let symbolic_max_paths = Self::additional_u64(additional, "symbolic_max_paths")
-            .unwrap_or(1000)
-            .max(1) as usize;
-        let symbolic_max_depth = Self::additional_u64(additional, "symbolic_max_depth")
-            .unwrap_or(200)
-            .max(1) as usize;
-        let symbolic_solver_timeout = Self::additional_u64(additional, "symbolic_solver_timeout_ms")
-            .unwrap_or(5000)
-            .max(1)
-            .min(u32::MAX as u64) as u32;
-        let symbolic = Some(SymbolicFuzzerIntegration::new(num_inputs).with_config(
-            SymbolicConfig {
-                max_paths: symbolic_max_paths,
-                max_depth: symbolic_max_depth,
-                solver_timeout_ms: symbolic_solver_timeout,
-                random_seed: seed,
-                generate_boundary_tests: true,
-                solutions_per_path: 4,  // Increased from 2 for better coverage
-            },
-        ));
+        let symbolic_enabled =
+            Self::additional_bool(additional, "symbolic_enabled").unwrap_or(true);
+        let symbolic = if symbolic_enabled {
+            let symbolic_max_paths = Self::additional_u64(additional, "symbolic_max_paths")
+                .unwrap_or(1000)
+                .max(1) as usize;
+            let symbolic_max_depth = Self::additional_u64(additional, "symbolic_max_depth")
+                .unwrap_or(200)
+                .max(1) as usize;
+            let symbolic_solver_timeout =
+                Self::additional_u64(additional, "symbolic_solver_timeout_ms")
+                    .unwrap_or(5000)
+                    .max(1)
+                    .min(u32::MAX as u64) as u32;
+            Some(
+                SymbolicFuzzerIntegration::new(num_inputs).with_config(SymbolicConfig {
+                    max_paths: symbolic_max_paths,
+                    max_depth: symbolic_max_depth,
+                    solver_timeout_ms: symbolic_solver_timeout,
+                    random_seed: seed,
+                    generate_boundary_tests: true,
+                    solutions_per_path: 4, // Increased from 2 for better coverage
+                }),
+            )
+        } else {
+            tracing::info!("Symbolic seeding disabled by config");
+            None
+        };
 
         // Initialize taint analyzer based on circuit info
         let taint_analyzer = {
@@ -416,14 +454,13 @@ impl FuzzingEngine {
         // Initialize bug oracles including semantic oracles from config
         let mut oracles: Vec<Box<dyn BugOracle>> = vec![
             Box::new(
-                UnderconstrainedOracle::new()
-                    .with_public_input_count(executor.num_public_inputs()),
+                UnderconstrainedOracle::new().with_public_input_count(executor.num_public_inputs()),
             ),
             Box::new(ArithmeticOverflowOracle::new_with_modulus(
                 executor.field_modulus(),
             )),
         ];
-        
+
         // Phase 0 Fix: Wire semantic oracles from config
         Self::add_semantic_oracles_from_config(&config, &mut oracles);
         let disabled = Self::disabled_oracle_names(&config);
@@ -542,7 +579,10 @@ impl FuzzingEngine {
     ///
     /// Instantiates nullifier/merkle/range/commitment oracles based on config.oracles,
     /// and recognizes common alias names used in campaigns.
-    fn add_semantic_oracles_from_config(config: &FuzzConfig, oracles: &mut Vec<Box<dyn BugOracle>>) {
+    fn add_semantic_oracles_from_config(
+        config: &FuzzConfig,
+        oracles: &mut Vec<Box<dyn BugOracle>>,
+    ) {
         use crate::fuzzer::oracle::{ConstraintCountOracle, ProofForgeryOracle};
         use crate::fuzzer::oracles::{
             CommitmentOracle, MerkleOracle, NullifierOracle, RangeProofOracle,
@@ -584,12 +624,12 @@ impl FuzzingEngine {
                 | "rangeprooforacle"
                 | "rangebypass"
                 | "bitconstraintbypass" => Some(OracleKind::Range),
-                "underconstrained"
-                | "underconstrainedoracle"
-                | "differentwitnesssameoutput" => Some(OracleKind::Underconstrained),
-                "arithmeticoverflow"
-                | "arithmeticoverfloworacle"
-                | "overflow" => Some(OracleKind::ArithmeticOverflow),
+                "underconstrained" | "underconstrainedoracle" | "differentwitnesssameoutput" => {
+                    Some(OracleKind::Underconstrained)
+                }
+                "arithmeticoverflow" | "arithmeticoverfloworacle" | "overflow" => {
+                    Some(OracleKind::ArithmeticOverflow)
+                }
                 "constraintcountmismatch" | "constraintcountoracle" => {
                     Some(OracleKind::ConstraintCount)
                 }
@@ -600,7 +640,8 @@ impl FuzzingEngine {
 
         let oracle_config = OracleConfig::default();
         let disabled = Self::disabled_oracle_names(config);
-        let mut registered: HashSet<String> = oracles.iter().map(|o| o.name().to_string()).collect();
+        let mut registered: HashSet<String> =
+            oracles.iter().map(|o| o.name().to_string()).collect();
 
         let mut add_oracle = |oracle: Box<dyn BugOracle>| {
             let name = oracle.name().to_string();
@@ -610,7 +651,8 @@ impl FuzzingEngine {
         };
 
         let mut requested: Vec<String> = config.oracles.iter().map(|o| o.name.clone()).collect();
-        if let Some(enabled_oracles) = config.campaign.parameters.additional.get("enabled_oracles") {
+        if let Some(enabled_oracles) = config.campaign.parameters.additional.get("enabled_oracles")
+        {
             if let Some(seq) = enabled_oracles.as_sequence() {
                 for item in seq {
                     if let Some(name) = item.as_str() {
@@ -633,11 +675,9 @@ impl FuzzingEngine {
                 Some(OracleKind::Merkle) => add_oracle(Box::new(SemanticOracleAdapter::new(
                     Box::new(MerkleOracle::new(oracle_config.clone())),
                 ))),
-                Some(OracleKind::Commitment) => add_oracle(Box::new(
-                    SemanticOracleAdapter::new(Box::new(CommitmentOracle::new(
-                        oracle_config.clone(),
-                    ))),
-                )),
+                Some(OracleKind::Commitment) => add_oracle(Box::new(SemanticOracleAdapter::new(
+                    Box::new(CommitmentOracle::new(oracle_config.clone())),
+                ))),
                 Some(OracleKind::Range) => add_oracle(Box::new(SemanticOracleAdapter::new(
                     Box::new(RangeProofOracle::new(oracle_config.clone())),
                 ))),
@@ -655,7 +695,7 @@ impl FuzzingEngine {
             }
         }
     }
-    
+
     fn parse_power_schedule(config: &FuzzConfig) -> PowerSchedule {
         // Check for power_schedule in campaign parameters
         if let Some(schedule_str) = config.campaign.parameters.additional.get("power_schedule") {
@@ -696,6 +736,11 @@ impl FuzzingEngine {
         if let Some(snarkjs_path) = Self::additional_path(additional, "circom_snarkjs_path") {
             options.circom_snarkjs_path = Some(snarkjs_path);
         }
+        if let Some(skip_compile) =
+            Self::additional_bool(additional, "circom_skip_compile_if_artifacts")
+        {
+            options.circom_skip_compile_if_artifacts = skip_compile;
+        }
 
         if let Some(value) = additional.get("include_paths") {
             let mut paths = Vec::new();
@@ -732,7 +777,9 @@ impl FuzzingEngine {
         let additional = &self.config.campaign.parameters.additional;
         let mut config = OracleValidationConfig::default();
 
-        if let Some(ratio) = Self::additional_f64(additional, "oracle_validation_min_agreement_ratio") {
+        if let Some(ratio) =
+            Self::additional_f64(additional, "oracle_validation_min_agreement_ratio")
+        {
             config.min_agreement_ratio = ratio.clamp(0.0, 1.0);
         }
         if let Some(require_ground_truth) =
@@ -965,7 +1012,7 @@ impl FuzzingEngine {
             _ => None,
         }
     }
-    
+
     /// Phase 0 Fix: Helper to extract u64 from additional config
     fn additional_u64(
         additional: &std::collections::HashMap<String, serde_yaml::Value>,
@@ -1272,7 +1319,11 @@ impl FuzzingEngine {
         }
 
         // Phase 0 Fix: Run continuous fuzzing phase after attacks
-        let iterations = self.config.campaign.parameters.additional
+        let iterations = self
+            .config
+            .campaign
+            .parameters
+            .additional
             .get("max_iterations")
             .and_then(|v| v.as_u64())
             .or_else(|| {
@@ -1284,13 +1335,18 @@ impl FuzzingEngine {
                     .and_then(|v| v.as_u64())
             })
             .unwrap_or(1000);
-        
-        let timeout = self.config.campaign.parameters.additional
+
+        let timeout = self
+            .config
+            .campaign
+            .parameters
+            .additional
             .get("fuzzing_timeout_seconds")
             .and_then(|v| v.as_u64());
-        
+
         if iterations > 0 {
-            self.run_continuous_fuzzing_phase(iterations, timeout, progress).await?;
+            self.run_continuous_fuzzing_phase(iterations, timeout, progress)
+                .await?;
         }
 
         // Export corpus to output directory
@@ -1345,26 +1401,40 @@ impl FuzzingEngine {
         // Phase 5B: Generate evidence bundles in evidence mode
         if evidence_mode && !findings.is_empty() {
             tracing::info!("Evidence mode: generating proof-level evidence bundles...");
-            
+
             let evidence_dir = self.config.reporting.output_dir.join("evidence");
-            let evidence_gen = crate::reporting::EvidenceGenerator::new(
-                self.config.clone(),
-                evidence_dir.clone(),
-            );
-            
+            let evidence_gen =
+                crate::reporting::EvidenceGenerator::new(self.config.clone(), evidence_dir.clone());
+
             // Create backend identity from executor
             let backend_identity = crate::reporting::BackendIdentity::from_framework(
                 self.config.campaign.target.framework,
                 self.executor.is_mock(),
             );
-            
+
             let bundles = evidence_gen.generate_all_bundles(&findings, backend_identity);
-            
+
             // Count verification results
             let confirmed = bundles.iter().filter(|b| b.is_confirmed()).count();
-            let skipped = bundles.iter().filter(|b| matches!(b.verification_result, crate::reporting::VerificationResult::Skipped(_))).count();
-            let failed = bundles.iter().filter(|b| matches!(b.verification_result, crate::reporting::VerificationResult::Failed(_))).count();
-            
+            let skipped = bundles
+                .iter()
+                .filter(|b| {
+                    matches!(
+                        b.verification_result,
+                        crate::reporting::VerificationResult::Skipped(_)
+                    )
+                })
+                .count();
+            let failed = bundles
+                .iter()
+                .filter(|b| {
+                    matches!(
+                        b.verification_result,
+                        crate::reporting::VerificationResult::Failed(_)
+                    )
+                })
+                .count();
+
             tracing::info!(
                 "Evidence generation complete: {} confirmed, {} failed, {} skipped out of {} bundles",
                 confirmed,
@@ -1376,7 +1446,10 @@ impl FuzzingEngine {
             // Write evidence summary to report
             if !bundles.is_empty() {
                 let evidence_summary_path = evidence_dir.join("EVIDENCE_SUMMARY.md");
-                if self.write_evidence_summary(&bundles, &evidence_summary_path).is_ok() {
+                if self
+                    .write_evidence_summary(&bundles, &evidence_summary_path)
+                    .is_ok()
+                {
                     tracing::info!("Evidence summary written to {:?}", evidence_summary_path);
                     // Update report statistics
                     report.statistics.unique_crashes = confirmed as u64;
@@ -1432,11 +1505,7 @@ impl FuzzingEngine {
                         "Generating constraint-guided seeds from {} R1CS constraints...",
                         constraints.len()
                     );
-                    generator.generate_from_r1cs(
-                        &constraints,
-                        &input_wire_indices,
-                        expected_len,
-                    )
+                    generator.generate_from_r1cs(&constraints, &input_wire_indices, expected_len)
                 };
 
                 if !output.seeds.is_empty() {
@@ -1553,18 +1622,11 @@ impl FuzzingEngine {
         }
 
         let added = self.seed_corpus_from_inputs(&seeds);
-        tracing::info!(
-            "Seeded corpus with {} external inputs from {}",
-            added,
-            path
-        );
+        tracing::info!("Seeded corpus with {} external inputs from {}", added, path);
         Ok(())
     }
 
-    fn load_seed_inputs_from_path(
-        &self,
-        path: &str,
-    ) -> anyhow::Result<Vec<Vec<FieldElement>>> {
+    fn load_seed_inputs_from_path(&self, path: &str) -> anyhow::Result<Vec<Vec<FieldElement>>> {
         let raw = std::fs::read_to_string(path)?;
         let json: serde_json::Value = serde_json::from_str(&raw)?;
 
@@ -1692,13 +1754,14 @@ impl FuzzingEngine {
     /// first with the same coverage, which is acceptable behavior.
     /// Execute test case, update coverage, and learn patterns (mutable version)
     fn execute_and_learn(&mut self, test_case: &TestCase) -> ExecutionResult {
-        self.core.execute_and_learn(self.executor.as_ref(), test_case)
+        self.core
+            .execute_and_learn(self.executor.as_ref(), test_case)
     }
 
     /// Run underconstrained circuit detection with parallel execution
-    /// 
+    ///
     /// # Phase 0 Fix: Proper Input Index Mapping
-    /// 
+    ///
     /// This attack now uses the executor's constraint inspector to get the
     /// actual public input indices, rather than assuming the first N inputs
     /// are public. This fixes false positives/negatives caused by input
@@ -1751,9 +1814,7 @@ impl FuzzingEngine {
             let base = self.generate_test_case();
             let fixed: Vec<(usize, FieldElement)> = public_input_positions
                 .iter()
-                .filter_map(|&pos| {
-                    base.inputs.get(pos).map(|val| (pos, val.clone()))
-                })
+                .filter_map(|&pos| base.inputs.get(pos).map(|val| (pos, val.clone())))
                 .collect();
             Some(fixed)
         };
@@ -1829,10 +1890,11 @@ impl FuzzingEngine {
         // Check for collisions
         for (_hash, witness_indices) in output_map {
             // Collect TestCases for indices that produced same output
-            let witnesses: Vec<&TestCase> = witness_indices.iter()
+            let witnesses: Vec<&TestCase> = witness_indices
+                .iter()
                 .filter_map(|&idx| test_cases.get(idx))
                 .collect();
-            
+
             if witnesses.len() > 1 && self.witnesses_are_different_refs(&witnesses) {
                 let finding = Finding {
                     attack_type: AttackType::Underconstrained,
@@ -2990,11 +3052,9 @@ impl FuzzingEngine {
         );
         let mut findings = attack.run(&context);
 
-        let evidence_mode = Self::additional_bool(
-            &self.config.campaign.parameters.additional,
-            "evidence_mode",
-        )
-        .unwrap_or(false);
+        let evidence_mode =
+            Self::additional_bool(&self.config.campaign.parameters.additional, "evidence_mode")
+                .unwrap_or(false);
 
         if evidence_mode {
             let before = findings.len();
@@ -3096,7 +3156,7 @@ impl FuzzingEngine {
     // ========================================================================
     // Phase 4: Novel Oracle Attack Implementations
     // ========================================================================
-    
+
     async fn run_constraint_inference_attack(
         &mut self,
         config: &serde_yaml::Value,
@@ -3104,7 +3164,7 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::attacks::constraint_inference::{ConstraintInferenceEngine, InferenceContext};
         use crate::config::v2::InvariantType;
-        
+
         let confidence_threshold = config
             .get("confidence_threshold")
             .and_then(|v| v.as_f64())
@@ -3114,9 +3174,12 @@ impl FuzzingEngine {
             .get("confirm_violations")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
-        
-        tracing::info!("Running constraint inference attack (confidence >= {:.0}%)", confidence_threshold * 100.0);
-        
+
+        tracing::info!(
+            "Running constraint inference attack (confidence >= {:.0}%)",
+            confidence_threshold * 100.0
+        );
+
         let engine = ConstraintInferenceEngine::new()
             .with_confidence_threshold(confidence_threshold)
             .with_generate_violations(true);
@@ -3137,7 +3200,12 @@ impl FuzzingEngine {
 
         if confirm_violations && !implied.is_empty() {
             let base_inputs = self.generate_test_case().inputs;
-            engine.confirm_violations(self.executor.as_ref(), &base_inputs, &mut implied, &output_wires);
+            engine.confirm_violations(
+                self.executor.as_ref(),
+                &base_inputs,
+                &mut implied,
+                &output_wires,
+            );
         }
 
         let findings = engine.to_findings(&implied);
@@ -3174,44 +3242,49 @@ impl FuzzingEngine {
                 }
             }
         }
-        
+
         if let Some(p) = progress {
             p.inc();
         }
-        
+
         Ok(())
     }
-    
+
     async fn run_metamorphic_attack(
         &mut self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::attacks::metamorphic::MetamorphicOracle;
-        
+
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .unwrap_or(100) as usize;
-        
-        tracing::info!("Running metamorphic testing with {} base witnesses", num_tests);
-        
+
+        tracing::info!(
+            "Running metamorphic testing with {} base witnesses",
+            num_tests
+        );
+
         let mut oracle = MetamorphicOracle::new().with_standard_relations();
         let invariant_relations = self.build_metamorphic_relations();
         for relation in invariant_relations {
             oracle = oracle.with_relation(relation);
         }
-        
+
         // Generate base witnesses and test metamorphic relations
         for _ in 0..num_tests {
             let base_witness = self.generate_test_case();
-            let results = oracle.test_all(self.executor.as_ref(), &base_witness.inputs).await;
-            
+            let results = oracle
+                .test_all(self.executor.as_ref(), &base_witness.inputs)
+                .await;
+
             let findings = oracle.to_findings(&results);
             if !findings.is_empty() {
                 {
                     let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
+                    let mut store = findings_store.write().unwrap();
                     store.extend(findings.iter().cloned());
                 }
                 if let Some(p) = progress {
@@ -3220,22 +3293,22 @@ impl FuzzingEngine {
                     }
                 }
             }
-            
+
             if let Some(p) = progress {
                 p.inc();
             }
         }
-        
+
         Ok(())
     }
-    
+
     async fn run_constraint_slice_attack(
         &mut self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::attacks::constraint_slice::{ConstraintSliceOracle, OutputMapping};
-        
+
         let samples_per_cone = config
             .get("samples_per_cone")
             .and_then(|v| v.as_u64())
@@ -3245,11 +3318,14 @@ impl FuzzingEngine {
             .get("base_witness_attempts")
             .and_then(|v| v.as_u64())
             .unwrap_or(5) as usize;
-        
-        tracing::info!("Running constraint slice analysis ({} samples/cone)", samples_per_cone);
-        
+
+        tracing::info!(
+            "Running constraint slice analysis ({} samples/cone)",
+            samples_per_cone
+        );
+
         let oracle = ConstraintSliceOracle::new().with_samples(samples_per_cone);
-        
+
         // Generate a base witness that successfully executes
         let mut base_witness = None;
         let attempts = base_witness_attempts.max(1);
@@ -3270,31 +3346,41 @@ impl FuzzingEngine {
             }
             return Ok(());
         };
-        
+
         // Determine output wire indices (prefer inspector-provided outputs)
-        let outputs: Vec<OutputMapping> = if let Some(inspector) = self.executor.constraint_inspector() {
+        let outputs: Vec<OutputMapping> = if let Some(inspector) =
+            self.executor.constraint_inspector()
+        {
             let output_wires = inspector.output_indices();
             if !output_wires.is_empty() {
                 output_wires
                     .into_iter()
                     .enumerate()
-                    .map(|(output_index, output_wire)| OutputMapping { output_index, output_wire })
+                    .map(|(output_index, output_wire)| OutputMapping {
+                        output_index,
+                        output_wire,
+                    })
                     .collect()
             } else {
-                let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
-                vec![OutputMapping { output_index: 0, output_wire: num_inputs }]
+                let num_inputs =
+                    self.executor.num_public_inputs() + self.executor.num_private_inputs();
+                vec![OutputMapping {
+                    output_index: 0,
+                    output_wire: num_inputs,
+                }]
             }
         } else {
             let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
-            vec![OutputMapping { output_index: 0, output_wire: num_inputs }]
+            vec![OutputMapping {
+                output_index: 0,
+                output_wire: num_inputs,
+            }]
         };
-        
-        let findings = oracle.run(
-            self.executor.as_ref(),
-            &base_witness.inputs,
-            &outputs,
-        ).await;
-        
+
+        let findings = oracle
+            .run(self.executor.as_ref(), &base_witness.inputs, &outputs)
+            .await;
+
         if !findings.is_empty() {
             {
                 let findings_store = self.core.findings();
@@ -3307,41 +3393,41 @@ impl FuzzingEngine {
                 }
             }
         }
-        
+
         if let Some(p) = progress {
             p.inc();
         }
-        
+
         Ok(())
     }
-    
+
     async fn run_spec_inference_attack(
         &mut self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::attacks::spec_inference::SpecInferenceOracle;
-        
+
         let sample_count = config
             .get("sample_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(500) as usize;
-        
+
         tracing::info!("Running spec inference attack ({} samples)", sample_count);
-        
+
         let oracle = SpecInferenceOracle::new()
             .with_sample_count(sample_count)
             .with_confidence_threshold(0.9)
             .with_wire_labels(self.input_labels());
-        
+
         // Generate initial witnesses
         let mut initial_witnesses = Vec::with_capacity(sample_count.max(1));
         for _ in 0..sample_count.max(1) {
             initial_witnesses.push(self.generate_test_case().inputs);
         }
-        
+
         let findings = oracle.run(self.executor.as_ref(), &initial_witnesses).await;
-        
+
         if !findings.is_empty() {
             {
                 let findings_store = self.core.findings();
@@ -3354,21 +3440,21 @@ impl FuzzingEngine {
                 }
             }
         }
-        
+
         if let Some(p) = progress {
             p.inc();
         }
-        
+
         Ok(())
     }
-    
+
     async fn run_witness_collision_attack(
         &mut self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         use crate::attacks::witness_collision::WitnessCollisionDetector;
-        
+
         let samples = config
             .get("samples")
             .and_then(|v| v.as_u64())
@@ -3378,15 +3464,16 @@ impl FuzzingEngine {
             .get("scope_public_inputs")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
-        
+
         tracing::info!("Running witness collision detection ({} samples)", samples);
-        
+
         let mut detector = WitnessCollisionDetector::new()
             .with_samples(samples)
             .with_public_input_scope(scope_public_inputs);
 
         if scope_public_inputs {
-            let public_input_indices = if let Some(inspector) = self.executor.constraint_inspector() {
+            let public_input_indices = if let Some(inspector) = self.executor.constraint_inspector()
+            {
                 let public_wires: std::collections::HashSet<_> =
                     inspector.public_input_indices().into_iter().collect();
                 let mut wire_indices = inspector.public_input_indices();
@@ -3406,21 +3493,24 @@ impl FuzzingEngine {
                     })
                     .collect()
             } else {
-                (0..self.executor.num_public_inputs().min(self.config.inputs.len()))
+                (0..self
+                    .executor
+                    .num_public_inputs()
+                    .min(self.config.inputs.len()))
                     .collect()
             };
             detector = detector.with_public_input_indices(public_input_indices);
         }
-        
+
         // Generate witnesses
         let mut witnesses = Vec::with_capacity(samples);
         for _ in 0..samples {
             witnesses.push(self.generate_test_case().inputs);
         }
-        
+
         let collisions = detector.run(self.executor.as_ref(), &witnesses).await;
         let findings = detector.to_findings(&collisions);
-        
+
         if !findings.is_empty() {
             {
                 let findings_store = self.core.findings();
@@ -3433,23 +3523,23 @@ impl FuzzingEngine {
                 }
             }
         }
-        
+
         if let Some(p) = progress {
             p.inc();
         }
-        
+
         Ok(())
     }
-    
+
     // ========================================================================
     // Phase 0: Continuous Fuzzing Loop
     // ========================================================================
-    
+
     /// Run continuous coverage-guided fuzzing phase
-    /// 
+    ///
     /// This is the critical missing piece - after running structured attacks,
     /// we need to continue fuzzing to explore more of the state space.
-    /// 
+    ///
     /// Phase 0 Fix: Added crash/hang detection with per-execution timeout
     async fn run_continuous_fuzzing_phase(
         &mut self,
@@ -3459,42 +3549,55 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         let start = Instant::now();
         let timeout = timeout_seconds.map(Duration::from_secs);
-        
+
         // Phase 0 Fix: Per-execution timeout for hang detection (configurable, default 30s)
         let additional = &self.config.campaign.parameters.additional;
         let execution_timeout_ms = Self::additional_u64(additional, "execution_timeout_ms")
+            .or_else(|| Self::additional_u64(additional, "timeout_per_execution").map(|v| v * 1000))
             .unwrap_or(30_000)
             .max(1);
+
+        let minimize_enabled =
+            Self::additional_bool(additional, "corpus_minimize_enabled").unwrap_or(true);
+        let minimize_interval = Self::additional_u64(additional, "corpus_minimize_interval")
+            .unwrap_or(10_000)
+            .max(1);
+        let minimize_min_size = Self::additional_u64(additional, "corpus_minimize_min_size")
+            .unwrap_or(1_000)
+            .max(1) as usize;
         let execution_timeout = Duration::from_millis(execution_timeout_ms);
-        
+
         tracing::info!(
             "Starting continuous fuzzing phase: {} iterations, timeout: {:?}, per-exec timeout: {:?}",
             iterations,
             timeout,
             execution_timeout
         );
-        
+
         let mut completed = 0u64;
         let mut hang_count = 0u64;
         let mut crash_count = 0u64;
-        
+
         while completed < iterations {
             // Check overall timeout
             if let Some(t) = timeout {
                 if start.elapsed() >= t {
-                    tracing::info!("Continuous fuzzing timeout reached after {} iterations", completed);
+                    tracing::info!(
+                        "Continuous fuzzing timeout reached after {} iterations",
+                        completed
+                    );
                     break;
                 }
             }
-            
+
             // Core fuzzing loop: select_from_corpus → mutate → execute_and_learn
             let test_case = self.generate_test_case();
-            
+
             // Phase 0 Fix: Execute with timeout for hang detection
             let exec_start = Instant::now();
             let result = self.execute_and_learn(&test_case);
             let exec_duration = exec_start.elapsed();
-            
+
             // Phase 0 Fix: Detect hangs (execution took too long)
             if exec_duration >= execution_timeout {
                 hang_count += 1;
@@ -3507,7 +3610,7 @@ impl FuzzingEngine {
                 // Add to findings as potential DoS vulnerability
                 self.record_hang_finding(&test_case, exec_duration);
             }
-            
+
             // Phase 0 Fix: Detect crashes (execution returned error/panic indicators)
             if result.is_crash() {
                 crash_count += 1;
@@ -3519,12 +3622,12 @@ impl FuzzingEngine {
                 // Add to findings as potential crash vulnerability
                 self.record_crash_finding(&test_case, &result);
             }
-            
+
             // Phase 2A: Check invariants against every accepted witness
             if result.success {
                 self.check_invariants_against(&test_case, &result);
             }
-            
+
             // Track coverage improvements
             if result.coverage.new_coverage {
                 tracing::debug!(
@@ -3533,23 +3636,27 @@ impl FuzzingEngine {
                     result.coverage.satisfied_constraints.len()
                 );
             }
-            
+
             completed += 1;
-            
+
             if let Some(p) = progress {
                 if completed.is_multiple_of(100) {
                     p.inc();
                 }
             }
-            
+
             // Update power scheduler periodically
             if completed.is_multiple_of(1000) {
                 self.update_power_scheduler_globals();
             }
-            
+
             // Phase 0 Fix: Periodic corpus minimization to maintain quality
             // Run every 10,000 iterations to reduce redundant test cases
-            if completed.is_multiple_of(10_000) && completed > 0 {
+            if minimize_enabled
+                && completed.is_multiple_of(minimize_interval)
+                && completed > 0
+                && self.core.corpus().len() >= minimize_min_size
+            {
                 let stats = self.core.corpus().minimize();
                 tracing::debug!(
                     "Periodic corpus minimization: {} → {} entries",
@@ -3558,10 +3665,15 @@ impl FuzzingEngine {
                 );
             }
         }
-        
+
         // Phase 0 Fix: Final corpus minimization before reporting
-        let final_stats = self.core.corpus().minimize();
-        
+        let final_stats = if minimize_enabled {
+            self.core.corpus().minimize()
+        } else {
+            let size = self.core.corpus().len();
+            minimizer::MinimizationStats::compute(size, size)
+        };
+
         tracing::info!(
             "Continuous fuzzing complete: {} iterations in {:.2}s, {} findings, {} hangs, {} crashes, corpus: {}",
             completed,
@@ -3571,14 +3683,14 @@ impl FuzzingEngine {
             crash_count,
             final_stats.minimized_size
         );
-        
+
         Ok(())
     }
-    
+
     /// Phase 0 Fix: Record a hang as a potential DoS finding
     fn record_hang_finding(&mut self, test_case: &TestCase, duration: Duration) {
-        use zk_core::{Finding, Severity, ProofOfConcept};
-        
+        use zk_core::{Finding, ProofOfConcept, Severity};
+
         let finding = Finding {
             attack_type: zk_core::AttackType::WitnessFuzzing,
             severity: Severity::Medium,
@@ -3598,19 +3710,20 @@ impl FuzzingEngine {
                 duration
             )),
         };
-        
+
         if let Ok(mut findings) = self.core.findings().write() {
             findings.push(finding);
         }
     }
-    
+
     /// Phase 0 Fix: Record a crash as a finding
     fn record_crash_finding(&mut self, test_case: &TestCase, result: &ExecutionResult) {
-        use zk_core::{Finding, Severity, ProofOfConcept};
-        
-        let error_msg = result.error_message()
+        use zk_core::{Finding, ProofOfConcept, Severity};
+
+        let error_msg = result
+            .error_message()
             .unwrap_or_else(|| "Unknown crash".to_string());
-        
+
         let finding = Finding {
             attack_type: zk_core::AttackType::WitnessFuzzing,
             severity: Severity::High,
@@ -3630,7 +3743,7 @@ impl FuzzingEngine {
                 error_msg
             )),
         };
-        
+
         if let Ok(mut findings) = self.core.findings().write() {
             findings.push(finding);
         }
@@ -3652,11 +3765,7 @@ impl FuzzingEngine {
         };
 
         // Check all invariants using cached state
-        let violations = checker.check(
-            &test_case.inputs,
-            &result.outputs,
-            result.success,
-        );
+        let violations = checker.check(&test_case.inputs, &result.outputs, result.success);
 
         // Record violations as findings
         for violation in violations {
@@ -3707,23 +3816,23 @@ impl FuzzingEngine {
             findings.push(finding);
         }
     }
-    
+
     fn generate_report(&self, findings: Vec<Finding>, duration: u64) -> FuzzReport {
         // Phase 6A: Apply cross-oracle correlation for confidence scoring
         let additional = &self.config.campaign.parameters.additional;
         let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
-        
+
         let processed_findings = if evidence_mode && !findings.is_empty() {
             // In evidence mode, filter to only HIGH+ confidence findings
             let correlator = OracleCorrelator::new();
             let correlated = correlator.correlate(&findings);
-            
+
             tracing::info!(
                 "Cross-oracle correlation: {} raw findings → {} correlation groups",
                 findings.len(),
                 correlated.len()
             );
-            
+
             // Log confidence breakdown
             let mut critical_count = 0;
             let mut high_count = 0;
@@ -3739,9 +3848,12 @@ impl FuzzingEngine {
             }
             tracing::info!(
                 "Confidence distribution: CRITICAL={}, HIGH={}, MEDIUM={}, LOW={}",
-                critical_count, high_count, medium_count, low_count
+                critical_count,
+                high_count,
+                medium_count,
+                low_count
             );
-            
+
             // Filter to only MEDIUM+ confidence in evidence mode
             let min_confidence = Self::additional_string(additional, "min_evidence_confidence")
                 .map(|s| match s.to_lowercase().as_str() {
@@ -3751,13 +3863,13 @@ impl FuzzingEngine {
                     _ => ConfidenceLevel::Medium,
                 })
                 .unwrap_or(ConfidenceLevel::Medium);
-            
+
             let filtered: Vec<Finding> = correlated
                 .into_iter()
                 .filter(|cf| cf.confidence >= min_confidence)
                 .map(|cf| cf.primary)
                 .collect();
-            
+
             if filtered.len() < findings.len() {
                 tracing::info!(
                     "Evidence mode: filtered {} low-confidence findings (kept {})",
@@ -3765,12 +3877,12 @@ impl FuzzingEngine {
                     filtered.len()
                 );
             }
-            
+
             filtered
         } else {
             findings
         };
-        
+
         let mut report = FuzzReport::new(
             self.config.campaign.name.clone(),
             processed_findings,
@@ -3802,13 +3914,32 @@ impl FuzzingEngine {
         let mut md = String::new();
         md.push_str("# Evidence Summary\n\n");
         md.push_str(&format!("**Campaign:** {}\n", self.config.campaign.name));
-        md.push_str(&format!("**Generated:** {}\n\n", chrono::Utc::now().to_rfc3339()));
-        
+        md.push_str(&format!(
+            "**Generated:** {}\n\n",
+            chrono::Utc::now().to_rfc3339()
+        ));
+
         // Summary statistics
         let confirmed = bundles.iter().filter(|b| b.is_confirmed()).count();
-        let failed = bundles.iter().filter(|b| matches!(b.verification_result, crate::reporting::VerificationResult::Failed(_))).count();
-        let skipped = bundles.iter().filter(|b| matches!(b.verification_result, crate::reporting::VerificationResult::Skipped(_))).count();
-        
+        let failed = bundles
+            .iter()
+            .filter(|b| {
+                matches!(
+                    b.verification_result,
+                    crate::reporting::VerificationResult::Failed(_)
+                )
+            })
+            .count();
+        let skipped = bundles
+            .iter()
+            .filter(|b| {
+                matches!(
+                    b.verification_result,
+                    crate::reporting::VerificationResult::Skipped(_)
+                )
+            })
+            .count();
+
         md.push_str("## Verification Summary\n\n");
         md.push_str("| Status | Count |\n");
         md.push_str("|--------|-------|\n");
@@ -4126,13 +4257,9 @@ impl FuzzingEngine {
         }
 
         if !traits.range_checks.is_empty() {
-            if let Some(idx) = self.find_input_index_by_patterns(&[
-                "amount",
-                "value",
-                "balance",
-                "quantity",
-                "qty",
-            ]) {
+            if let Some(idx) = self
+                .find_input_index_by_patterns(&["amount", "value", "balance", "quantity", "qty"])
+            {
                 let mut assignments = std::collections::HashMap::new();
                 assignments.insert(idx, FieldElement::max_value());
                 relations.push(
@@ -4186,10 +4313,7 @@ impl FuzzingEngine {
         None
     }
 
-    fn enforce_invariants(
-        &self,
-        invariants: &[crate::config::v2::Invariant],
-    ) -> Vec<Finding> {
+    fn enforce_invariants(&self, invariants: &[crate::config::v2::Invariant]) -> Vec<Finding> {
         use crate::config::v2::{InvariantOracle, InvariantType};
 
         use crate::config::v2::parse_invariant_relation;
@@ -4408,11 +4532,7 @@ impl FuzzingEngine {
         indices
     }
 
-    fn collect_identifiers(
-        &self,
-        ast: &crate::config::v2::InvariantAST,
-        out: &mut Vec<String>,
-    ) {
+    fn collect_identifiers(&self, ast: &crate::config::v2::InvariantAST, out: &mut Vec<String>) {
         use crate::config::v2::InvariantAST;
 
         match ast {
@@ -4433,7 +4553,12 @@ impl FuzzingEngine {
                 self.collect_identifiers(a, out);
                 self.collect_identifiers(b, out);
             }
-            InvariantAST::Range { lower, value, upper, .. } => {
+            InvariantAST::Range {
+                lower,
+                value,
+                upper,
+                ..
+            } => {
                 self.collect_identifiers(lower, out);
                 self.collect_identifiers(value, out);
                 self.collect_identifiers(upper, out);
@@ -4511,23 +4636,28 @@ impl FuzzingEngine {
         match ast {
             InvariantAST::ForAll { expr, .. } => self.violation_from_ast(expr, invariant),
             InvariantAST::InSet(_, set) => self.violation_from_in_set(set),
-            InvariantAST::Range { lower, upper, inclusive_lower, inclusive_upper, .. } => {
-                self.violation_from_range(lower, upper, *inclusive_lower, *inclusive_upper)
-            }
+            InvariantAST::Range {
+                lower,
+                upper,
+                inclusive_lower,
+                inclusive_upper,
+                ..
+            } => self.violation_from_range(lower, upper, *inclusive_lower, *inclusive_upper),
             InvariantAST::LessThan(_, rhs) => self.violation_from_comparison(rhs, false, false),
-            InvariantAST::LessThanOrEqual(_, rhs) => self.violation_from_comparison(rhs, false, true),
+            InvariantAST::LessThanOrEqual(_, rhs) => {
+                self.violation_from_comparison(rhs, false, true)
+            }
             InvariantAST::GreaterThan(_, rhs) => self.violation_from_comparison(rhs, true, false),
-            InvariantAST::GreaterThanOrEqual(_, rhs) => self.violation_from_comparison(rhs, true, true),
+            InvariantAST::GreaterThanOrEqual(_, rhs) => {
+                self.violation_from_comparison(rhs, true, true)
+            }
             InvariantAST::Equals(_, rhs) => self.violation_from_not_equal(rhs),
             InvariantAST::NotEquals(_, rhs) => self.violation_from_equal(rhs),
             _ => None,
         }
     }
 
-    fn violation_from_in_set(
-        &self,
-        set: &crate::config::v2::InvariantAST,
-    ) -> Option<FieldElement> {
+    fn violation_from_in_set(&self, set: &crate::config::v2::InvariantAST) -> Option<FieldElement> {
         use crate::config::v2::InvariantAST;
 
         if let InvariantAST::Set(values) = set {
@@ -4584,10 +4714,18 @@ impl FuzzingEngine {
     ) -> Option<FieldElement> {
         if let Some(bound) = self.eval_expr_to_u64(rhs) {
             if is_greater {
-                let value = if inclusive { bound.saturating_sub(1) } else { bound };
+                let value = if inclusive {
+                    bound.saturating_sub(1)
+                } else {
+                    bound
+                };
                 return Some(FieldElement::from_u64(value));
             }
-            let value = if inclusive { bound.saturating_add(1) } else { bound };
+            let value = if inclusive {
+                bound.saturating_add(1)
+            } else {
+                bound
+            };
             return Some(FieldElement::from_u64(value));
         }
         Some(FieldElement::max_value())
@@ -4604,10 +4742,7 @@ impl FuzzingEngine {
         }
     }
 
-    fn violation_from_equal(
-        &self,
-        rhs: &crate::config::v2::InvariantAST,
-    ) -> Option<FieldElement> {
+    fn violation_from_equal(&self, rhs: &crate::config::v2::InvariantAST) -> Option<FieldElement> {
         if let Some(value) = self.eval_expr_to_u64(rhs) {
             return Some(FieldElement::from_u64(value));
         }
@@ -4649,7 +4784,10 @@ impl FuzzingEngine {
         }
         if let Some(expr) = trimmed.strip_prefix("2^") {
             let expr = expr.trim();
-            if let Some(exp) = expr.strip_suffix("-1").or_else(|| expr.strip_suffix(" - 1")) {
+            if let Some(exp) = expr
+                .strip_suffix("-1")
+                .or_else(|| expr.strip_suffix(" - 1"))
+            {
                 if let Ok(bits) = exp.trim().parse::<u32>() {
                     if bits <= 63 {
                         return Some((1u64 << bits).saturating_sub(1));
@@ -4713,7 +4851,9 @@ impl FuzzingEngine {
                 let input_name = args.first()?;
                 let (input_name, _) = Self::parse_transform_target(input_name);
                 let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
-                Some(Transform::NegateInputs { indices: vec![*idx] })
+                Some(Transform::NegateInputs {
+                    indices: vec![*idx],
+                })
             }
             "swap_inputs" => {
                 let (left, right) = Self::parse_two_args(&args)?;
@@ -4777,10 +4917,16 @@ impl FuzzingEngine {
         if lower.contains("output_unchanged") || lower.contains("unchanged") {
             return ExpectedBehavior::OutputUnchanged;
         }
-        if lower.contains("output_changes") || lower.contains("output_changed") || lower.contains("changes") {
+        if lower.contains("output_changes")
+            || lower.contains("output_changed")
+            || lower.contains("changes")
+        {
             return ExpectedBehavior::OutputChanged;
         }
-        if let Some(arg) = lower.strip_prefix("output_scaled(").and_then(|s| s.strip_suffix(')')) {
+        if let Some(arg) = lower
+            .strip_prefix("output_scaled(")
+            .and_then(|s| s.strip_suffix(')'))
+        {
             if let Some(factor) = Self::parse_field_element(arg) {
                 return ExpectedBehavior::OutputScaled(factor);
             }
@@ -4867,10 +5013,7 @@ impl FuzzingEngine {
         trimmed.parse::<u64>().ok().map(FieldElement::from_u64)
     }
 
-    fn severity_from_invariant(
-        &self,
-        invariant: &crate::config::v2::Invariant,
-    ) -> Severity {
+    fn severity_from_invariant(&self, invariant: &crate::config::v2::Invariant) -> Severity {
         match invariant.severity.as_deref().map(|s| s.to_lowercase()) {
             Some(ref s) if s == "critical" => Severity::Critical,
             Some(ref s) if s == "high" => Severity::High,
@@ -4900,9 +5043,8 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
     ) -> Vec<crate::chain_fuzzer::ChainFinding> {
         use crate::chain_fuzzer::{
-            ChainRunner, ChainMutator, ChainShrinker, ChainScheduler,
-            CrossStepInvariantChecker, DepthMetrics, ChainFinding,
-            ChainCorpus,
+            ChainCorpus, ChainFinding, ChainMutator, ChainRunner, ChainScheduler, ChainShrinker,
+            CrossStepInvariantChecker, DepthMetrics,
         };
         use rand::SeedableRng;
         use rand_chacha::ChaCha8Rng;
@@ -4917,29 +5059,33 @@ impl FuzzingEngine {
 
         // Get chain fuzzing budget from config
         let additional = &self.config.campaign.parameters.additional;
-        let chain_budget_secs = Self::additional_u64(additional, "chain_budget_seconds")
-            .unwrap_or(300);
-        let chain_iterations = Self::additional_u64(additional, "chain_iterations")
-            .unwrap_or(1000) as usize;
-        
+        let chain_budget_secs =
+            Self::additional_u64(additional, "chain_budget_seconds").unwrap_or(300);
+        let chain_iterations =
+            Self::additional_u64(additional, "chain_iterations").unwrap_or(1000) as usize;
+
         // CRITICAL FIX: Check strict_backend for chain circuit loading
         let strict_backend = Self::additional_bool(additional, "strict_backend").unwrap_or(false);
 
         // Build executor map from circuit configurations
         let mut executors = std::collections::HashMap::new();
-        
+
         // Collect all circuit_refs and their path configurations from chains
         let circuit_configs = self.collect_circuit_configs(chains);
-        
+
         // Load an executor for each unique circuit_ref
         for (circuit_ref, path_config) in &circuit_configs {
             let executor = match path_config {
                 Some(config) => {
                     // Load the circuit from the specified path
-                    let framework = config.framework.unwrap_or(self.config.campaign.target.framework);
-                    let main_component = config.main_component.clone()
+                    let framework = config
+                        .framework
+                        .unwrap_or(self.config.campaign.target.framework);
+                    let main_component = config
+                        .main_component
+                        .clone()
                         .unwrap_or_else(|| circuit_ref.clone());
-                    
+
                     match crate::executor::ExecutorFactory::create_with_options(
                         framework,
                         config.path.to_str().unwrap_or(""),
@@ -5016,28 +5162,27 @@ impl FuzzingEngine {
             executors.insert(circuit_ref.clone(), executor);
         }
 
-        let runner = ChainRunner::new(executors)
-            .with_timeout(Duration::from_secs(30));
+        let runner = ChainRunner::new(executors).with_timeout(Duration::from_secs(30));
         let mutator = ChainMutator::new();
 
         // Initialize scheduler with budget
-        let scheduler = ChainScheduler::new(
-            chains.to_vec(),
-            Duration::from_secs(chain_budget_secs),
-        );
+        let scheduler =
+            ChainScheduler::new(chains.to_vec(), Duration::from_secs(chain_budget_secs));
 
         // Initialize corpus for persistence
         let output_dir = self.config.reporting.output_dir.clone();
         let corpus_path = std::path::PathBuf::from(&output_dir).join("chain_corpus.json");
-        let mut corpus = ChainCorpus::load(&corpus_path).unwrap_or_else(|_| {
-            ChainCorpus::with_storage(&corpus_path)
-        });
+        let mut corpus = ChainCorpus::load(&corpus_path)
+            .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
 
         let mut all_findings = Vec::new();
         let mut rng = ChaCha8Rng::seed_from_u64(self.seed.unwrap_or(42));
 
         // Optional seed inputs for chain fuzzing (reuse evidence seed inputs if provided)
-        let seed_inputs_path = Self::additional_string(&self.config.campaign.parameters.additional, "seed_inputs_path");
+        let seed_inputs_path = Self::additional_string(
+            &self.config.campaign.parameters.additional,
+            "seed_inputs_path",
+        );
         let seed_inputs = match seed_inputs_path {
             Some(path) => match self.load_seed_inputs_from_path(&path) {
                 Ok(seeds) => seeds,
@@ -5059,7 +5204,10 @@ impl FuzzingEngine {
             let chain_start = Instant::now();
 
             if let Some(p) = progress {
-                p.log_message(&format!("Chain: {} (budget: {:?})", chain.name, chain_budget));
+                p.log_message(&format!(
+                    "Chain: {} (budget: {:?})",
+                    chain.name, chain_budget
+                ));
             }
 
             // Initial inputs (seeded if available; otherwise generated fresh)
@@ -5070,7 +5218,8 @@ impl FuzzingEngine {
                         let expected = executor.num_private_inputs() + executor.num_public_inputs();
                         let seed = &seed_inputs[seed_index % seed_inputs.len()];
                         if seed.len() >= expected {
-                            current_inputs.insert(first_step.circuit_ref.clone(), seed[..expected].to_vec());
+                            current_inputs
+                                .insert(first_step.circuit_ref.clone(), seed[..expected].to_vec());
                         } else {
                             tracing::warn!(
                                 "Seed input too short for circuit '{}': expected {}, got {}",
@@ -5106,9 +5255,11 @@ impl FuzzingEngine {
                         let shrinker = ChainShrinker::new(
                             ChainRunner::new(runner.executors.clone()),
                             CrossStepInvariantChecker::from_spec(spec_to_use),
-                        ).with_seed(self.seed.unwrap_or(42));
+                        )
+                        .with_seed(self.seed.unwrap_or(42));
 
-                        let shrink_result = shrinker.minimize(spec_to_use, &current_inputs, &violation);
+                        let shrink_result =
+                            shrinker.minimize(spec_to_use, &current_inputs, &violation);
 
                         let finding = Finding {
                             attack_type: AttackType::CircuitComposition,
@@ -5121,15 +5272,19 @@ impl FuzzingEngine {
                             },
                             description: format!(
                                 "[Chain: {} | L_min: {}] {}: {}",
-                                chain.name, shrink_result.l_min,
-                                violation.assertion_name, violation.description
+                                chain.name,
+                                shrink_result.l_min,
+                                violation.assertion_name,
+                                violation.description
                             ),
                             poc: ProofOfConcept {
-                                witness_a: result.trace.steps.first()
+                                witness_a: result
+                                    .trace
+                                    .steps
+                                    .first()
                                     .map(|s| s.inputs.clone())
                                     .unwrap_or_default(),
-                                witness_b: result.trace.steps.get(1)
-                                    .map(|s| s.inputs.clone()),
+                                witness_b: result.trace.steps.get(1).map(|s| s.inputs.clone()),
                                 public_inputs: vec![],
                                 proof: None,
                             },
@@ -5142,15 +5297,18 @@ impl FuzzingEngine {
                             shrink_result.l_min,
                             result.trace.clone(),
                             &chain.name,
-                        ).with_violated_assertion(&violation.assertion_name);
+                        )
+                        .with_violated_assertion(&violation.assertion_name);
 
                         all_findings.push(chain_finding);
 
                         if let Some(p) = progress {
                             p.log_finding(
                                 &violation.severity.to_uppercase(),
-                                &format!("Chain violation: {} (L_min={})", 
-                                    violation.assertion_name, shrink_result.l_min),
+                                &format!(
+                                    "Chain violation: {} (L_min={})",
+                                    violation.assertion_name, shrink_result.l_min
+                                ),
                             );
                         }
                     }
@@ -5177,8 +5335,12 @@ impl FuzzingEngine {
 
             tracing::info!(
                 "Chain {} completed: {} iterations, {} findings",
-                chain.name, iterations, 
-                all_findings.iter().filter(|f| f.spec_name == chain.name).count()
+                chain.name,
+                iterations,
+                all_findings
+                    .iter()
+                    .filter(|f| f.spec_name == chain.name)
+                    .count()
             );
         }
 
@@ -5192,7 +5354,9 @@ impl FuzzingEngine {
         let summary = metrics.summary();
         tracing::info!(
             "Chain fuzzing complete: {} findings, D={:.2}, P_deep={:.2}%",
-            summary.total_findings, summary.d_mean, summary.p_deep * 100.0
+            summary.total_findings,
+            summary.d_mean,
+            summary.p_deep * 100.0
         );
 
         all_findings
@@ -5205,16 +5369,19 @@ impl FuzzingEngine {
         chains: &[crate::chain_fuzzer::ChainSpec],
     ) -> std::collections::HashMap<String, Option<crate::config::v2::CircuitPathConfig>> {
         use std::collections::HashMap;
-        
-        let mut circuit_configs: HashMap<String, Option<crate::config::v2::CircuitPathConfig>> = HashMap::new();
-        
+
+        let mut circuit_configs: HashMap<String, Option<crate::config::v2::CircuitPathConfig>> =
+            HashMap::new();
+
         // First, collect all unique circuit_refs from chains
         for chain in chains {
             for step in &chain.steps {
-                circuit_configs.entry(step.circuit_ref.clone()).or_insert(None);
+                circuit_configs
+                    .entry(step.circuit_ref.clone())
+                    .or_insert(None);
             }
         }
-        
+
         // Then, look up path configurations from the config's chains
         for chain_config in &self.config.chains {
             for (ref_name, path_config) in &chain_config.circuits {
@@ -5223,32 +5390,32 @@ impl FuzzingEngine {
                 }
             }
         }
-        
+
         circuit_configs
     }
 
     /// Compute coverage bits from a chain trace
     /// Combines coverage from all steps into a single u64 hash
     fn compute_chain_coverage_bits(trace: &crate::chain_fuzzer::ChainTrace) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
-        
+        use std::hash::{Hash, Hasher};
+
         let mut hasher = DefaultHasher::new();
-        
+
         for step in &trace.steps {
             // Hash the constraints hit in each step
             let mut constraints: Vec<_> = step.constraints_hit.iter().copied().collect();
             constraints.sort_unstable();
-            
+
             for constraint_id in constraints {
                 constraint_id.hash(&mut hasher);
             }
-            
+
             // Also factor in step success and circuit ref
             step.success.hash(&mut hasher);
             step.circuit_ref.hash(&mut hasher);
         }
-        
+
         hasher.finish()
     }
 }

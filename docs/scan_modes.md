@@ -71,3 +71,9 @@ Limits
 - Start with Fast Skimmer to find candidate surfaces.
 - Escalate to YAML Deeper Searcher for targeted evidence.
 - Use YAML Deepest Searcher when multi-step logic or protocol-level invariants are likely.
+
+**Skimmer-First Rule**
+- Always run a **short Fast Skimmer** before Mode 2 or Mode 3 to validate wiring, inputs, and basic constraints.
+- Goal: catch misconfigurations early and avoid wasted deep runs.
+- Suggested budget: 5–10 minutes per target, low iterations, broad oracles.
+- Exception: skip only if the user explicitly requests it in writing.

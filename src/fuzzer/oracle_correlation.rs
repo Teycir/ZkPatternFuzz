@@ -14,9 +14,9 @@
 //! | 2+           | Independent oracles  | HIGH       |
 //! | 2+           | With invariant violation | CRITICAL |
 
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use zk_core::{Finding, Severity, FieldElement};
-use sha2::{Sha256, Digest};
+use zk_core::{FieldElement, Finding, Severity};
 
 /// Confidence level for correlated findings
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -147,9 +147,9 @@ impl OracleCorrelator {
             let oracle_count = oracle_names.len();
 
             // Check for invariant violations
-            let has_invariant_violation = group_findings.iter().any(|f| {
-                f.description.to_lowercase().contains("invariant")
-            });
+            let has_invariant_violation = group_findings
+                .iter()
+                .any(|f| f.description.to_lowercase().contains("invariant"));
 
             // Compute confidence
             let confidence = self.compute_confidence(oracle_count, has_invariant_violation);
@@ -181,11 +181,9 @@ impl OracleCorrelator {
         }
 
         // Sort by confidence (highest first), then by severity
-        correlated.sort_by(|a, b| {
-            match b.confidence.cmp(&a.confidence) {
-                std::cmp::Ordering::Equal => b.combined_severity.cmp(&a.combined_severity),
-                other => other,
-            }
+        correlated.sort_by(|a, b| match b.confidence.cmp(&a.confidence) {
+            std::cmp::Ordering::Equal => b.combined_severity.cmp(&a.combined_severity),
+            other => other,
         });
 
         correlated
@@ -249,7 +247,10 @@ impl OracleCorrelator {
         ]
         .into_iter()
         .map(|level| {
-            let count = correlated.iter().filter(|cf| cf.confidence == level).count();
+            let count = correlated
+                .iter()
+                .filter(|cf| cf.confidence == level)
+                .count();
             (level, count)
         })
         .collect();
@@ -307,7 +308,9 @@ impl CorrelationReport {
 
         if !self.high_confidence_findings.is_empty() {
             md.push_str("## High Confidence Findings\n\n");
-            for (i, group) in self.correlated_groups.iter()
+            for (i, group) in self
+                .correlated_groups
+                .iter()
                 .filter(|g| g.confidence >= ConfidenceLevel::High)
                 .enumerate()
             {
@@ -317,8 +320,14 @@ impl CorrelationReport {
                     group.primary.attack_type,
                     group.confidence.as_str()
                 ));
-                md.push_str(&format!("**Oracles**: {}\n\n", group.oracle_names.join(", ")));
-                md.push_str(&format!("**Description**: {}\n\n", group.primary.description));
+                md.push_str(&format!(
+                    "**Oracles**: {}\n\n",
+                    group.oracle_names.join(", ")
+                ));
+                md.push_str(&format!(
+                    "**Description**: {}\n\n",
+                    group.primary.description
+                ));
                 if group.has_invariant_violation {
                     md.push_str("⚠️ **Includes invariant violation**\n\n");
                 }
@@ -334,7 +343,11 @@ mod tests {
     use super::*;
     use zk_core::{AttackType, ProofOfConcept};
 
-    fn make_finding(attack_type: AttackType, severity: Severity, witness: Vec<FieldElement>) -> Finding {
+    fn make_finding(
+        attack_type: AttackType,
+        severity: Severity,
+        witness: Vec<FieldElement>,
+    ) -> Finding {
         Finding {
             attack_type,
             severity,
@@ -352,10 +365,12 @@ mod tests {
     #[test]
     fn test_single_oracle_low_confidence() {
         let correlator = OracleCorrelator::new();
-        
-        let findings = vec![
-            make_finding(AttackType::Soundness, Severity::High, vec![FieldElement::one()]),
-        ];
+
+        let findings = vec![make_finding(
+            AttackType::Soundness,
+            Severity::High,
+            vec![FieldElement::one()],
+        )];
 
         let correlated = correlator.correlate(&findings);
         assert_eq!(correlated.len(), 1);
@@ -365,11 +380,15 @@ mod tests {
     #[test]
     fn test_multiple_oracles_high_confidence() {
         let correlator = OracleCorrelator::new();
-        
+
         let witness = vec![FieldElement::one()];
         let findings = vec![
             make_finding(AttackType::Soundness, Severity::High, witness.clone()),
-            make_finding(AttackType::Underconstrained, Severity::Critical, witness.clone()),
+            make_finding(
+                AttackType::Underconstrained,
+                Severity::Critical,
+                witness.clone(),
+            ),
         ];
 
         let correlated = correlator.correlate(&findings);

@@ -137,7 +137,7 @@ impl OracleDiversityTracker {
     /// Create tracker with standard ZK oracles pre-registered
     pub fn with_standard_oracles() -> Self {
         let mut tracker = Self::new();
-        
+
         // Register standard oracle types
         let oracles = [
             "underconstrained",
@@ -304,7 +304,8 @@ impl OracleDiversityTracker {
         }
 
         // Component 1: Oracle coverage (40%)
-        let oracle_coverage = self.fired_oracles.len() as f64 / self.registered_oracles.len() as f64;
+        let oracle_coverage =
+            self.fired_oracles.len() as f64 / self.registered_oracles.len() as f64;
 
         // Component 2: Pattern diversity (30%)
         // Normalize by expected number of patterns

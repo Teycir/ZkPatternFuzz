@@ -17,12 +17,14 @@
 //! let results = orchestrator.run_adaptive_campaign("/path/to/zk/project").await?;
 //! ```
 
-use crate::analysis::opus::{GeneratedConfig, OpusAnalyzer, OpusConfig, ZeroDayCategory, ZeroDayHint};
+use crate::analysis::opus::{
+    GeneratedConfig, OpusAnalyzer, OpusConfig, ZeroDayCategory, ZeroDayHint,
+};
 use crate::config::suggester::YamlSuggester;
 use crate::fuzzer::adaptive_attack_scheduler::{
     AdaptiveScheduler, AdaptiveSchedulerConfig, AttackResults, YamlSuggestion,
 };
-use crate::fuzzer::near_miss::{NearMissDetector, NearMissConfig, RangeConstraint};
+use crate::fuzzer::near_miss::{NearMissConfig, NearMissDetector, RangeConstraint};
 use crate::fuzzer::FuzzingEngine;
 use crate::reporting::FuzzReport;
 use std::collections::HashMap;
@@ -88,7 +90,8 @@ pub struct AdaptiveCampaignResults {
     /// YAML suggestions generated
     pub yaml_suggestions: Vec<YamlSuggestion>,
     /// Adaptive scheduler statistics
-    pub scheduler_stats: HashMap<String, crate::fuzzer::adaptive_attack_scheduler::AdaptiveSchedulerStats>,
+    pub scheduler_stats:
+        HashMap<String, crate::fuzzer::adaptive_attack_scheduler::AdaptiveSchedulerStats>,
     /// Total campaign duration
     pub duration: Duration,
     /// Circuits analyzed
@@ -155,7 +158,10 @@ impl AdaptiveOrchestrator {
         let project_path = project_path.as_ref();
         self.start_time = Some(Instant::now());
 
-        tracing::info!("Starting adaptive fuzzing campaign for: {}", project_path.display());
+        tracing::info!(
+            "Starting adaptive fuzzing campaign for: {}",
+            project_path.display()
+        );
         tracing::info!("Max duration: {:?}", self.config.max_duration);
         tracing::info!("Workers: {}", self.config.workers);
         tracing::info!("Zero-day hunt mode: {}", self.config.zero_day_hunt_mode);
@@ -214,15 +220,17 @@ impl AdaptiveOrchestrator {
             }
 
             tracing::info!("Fuzzing circuit: {}", gen_config.circuit_name);
-            tracing::info!("Zero-day hints for this circuit: {}", gen_config.zero_day_hints.len());
+            tracing::info!(
+                "Zero-day hints for this circuit: {}",
+                gen_config.zero_day_hints.len()
+            );
 
             match self.fuzz_circuit(gen_config, budget_per_circuit).await {
                 Ok((report, scheduler)) => {
                     // Track findings
-                    results.findings_by_circuit.insert(
-                        gen_config.circuit_name.clone(),
-                        report.findings.clone(),
-                    );
+                    results
+                        .findings_by_circuit
+                        .insert(gen_config.circuit_name.clone(), report.findings.clone());
                     results.total_findings.extend(report.findings.clone());
 
                     // Check for confirmed zero-days
@@ -234,16 +242,19 @@ impl AdaptiveOrchestrator {
                     results.confirmed_zero_days.extend(confirmed);
 
                     // Get YAML suggestions
-                    let suggestions = self.suggester.generate_suggestions(&report, Some(&scheduler));
+                    let suggestions = self
+                        .suggester
+                        .generate_suggestions(&report, Some(&scheduler));
                     results.yaml_suggestions.extend(suggestions);
 
                     // Store stats
-                    results.scheduler_stats.insert(
-                        gen_config.circuit_name.clone(),
-                        scheduler.stats(),
-                    );
+                    results
+                        .scheduler_stats
+                        .insert(gen_config.circuit_name.clone(), scheduler.stats());
 
-                    results.circuit_reports.insert(gen_config.circuit_name.clone(), report);
+                    results
+                        .circuit_reports
+                        .insert(gen_config.circuit_name.clone(), report);
                     results.circuits_analyzed += 1;
                 }
                 Err(e) => {
@@ -280,9 +291,11 @@ impl AdaptiveOrchestrator {
         budget: Duration,
     ) -> anyhow::Result<(FuzzReport, AdaptiveScheduler)> {
         // Convert v2 config to base config
-        let base_config = gen_config.config.base.clone().ok_or_else(|| {
-            anyhow::anyhow!("Generated config has no base configuration")
-        })?;
+        let base_config = gen_config
+            .config
+            .base
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Generated config has no base configuration"))?;
 
         // Initialize adaptive scheduler
         let mut scheduler = AdaptiveScheduler::with_config(self.config.scheduler_config.clone());
@@ -297,12 +310,15 @@ impl AdaptiveOrchestrator {
         scheduler.initialize(&attack_types);
 
         // Initialize near-miss detector with zero-day hints
-        let mut near_miss_detector = NearMissDetector::new()
-            .with_config(self.config.near_miss_config.clone());
+        let mut near_miss_detector =
+            NearMissDetector::new().with_config(self.config.near_miss_config.clone());
 
         // Add range constraints from zero-day hints
         for (idx, hint) in gen_config.zero_day_hints.iter().enumerate() {
-            if matches!(hint.category, ZeroDayCategory::IncorrectRangeCheck | ZeroDayCategory::ArithmeticOverflow) {
+            if matches!(
+                hint.category,
+                ZeroDayCategory::IncorrectRangeCheck | ZeroDayCategory::ArithmeticOverflow
+            ) {
                 near_miss_detector = near_miss_detector.with_range_constraint(RangeConstraint {
                     wire_index: idx,
                     min_value: None,
@@ -366,9 +382,16 @@ impl AdaptiveOrchestrator {
 
             // Check for early termination on critical findings
             if let Some(ref report) = accumulated_report {
-                let critical_count = report.findings.iter().filter(|f| f.severity == Severity::Critical).count();
+                let critical_count = report
+                    .findings
+                    .iter()
+                    .filter(|f| f.severity == Severity::Critical)
+                    .count();
                 if critical_count >= 3 {
-                    tracing::info!("Found {} critical findings, early terminating", critical_count);
+                    tracing::info!(
+                        "Found {} critical findings, early terminating",
+                        critical_count
+                    );
                     break;
                 }
             }
@@ -379,12 +402,14 @@ impl AdaptiveOrchestrator {
             }
         }
 
-        let report = accumulated_report.unwrap_or_else(|| FuzzReport::new(
-            gen_config.circuit_name.clone(),
-            vec![],
-            zk_core::CoverageMap::default(),
-            base_config.reporting.clone(),
-        ));
+        let report = accumulated_report.unwrap_or_else(|| {
+            FuzzReport::new(
+                gen_config.circuit_name.clone(),
+                vec![],
+                zk_core::CoverageMap::default(),
+                base_config.reporting.clone(),
+            )
+        });
 
         Ok((report, scheduler))
     }
@@ -400,18 +425,26 @@ impl AdaptiveOrchestrator {
 
         for hint in hints {
             // Match hint category to finding attack types
-            let matching_finding = findings.iter().find(|f| {
-                match (&hint.category, &f.attack_type) {
-                    (ZeroDayCategory::MissingConstraint, AttackType::Underconstrained) => true,
-                    (ZeroDayCategory::IncorrectRangeCheck, AttackType::ArithmeticOverflow) => true,
-                    (ZeroDayCategory::SignatureMalleability, AttackType::Soundness) => true,
-                    (ZeroDayCategory::NullifierReuse, AttackType::Collision) => true,
-                    (ZeroDayCategory::HashMisuse, AttackType::Collision) => true,
-                    (ZeroDayCategory::BitDecompositionBypass, AttackType::ArithmeticOverflow) => true,
-                    (ZeroDayCategory::ArithmeticOverflow, AttackType::ArithmeticOverflow) => true,
-                    _ => false,
-                }
-            });
+            let matching_finding =
+                findings
+                    .iter()
+                    .find(|f| match (&hint.category, &f.attack_type) {
+                        (ZeroDayCategory::MissingConstraint, AttackType::Underconstrained) => true,
+                        (ZeroDayCategory::IncorrectRangeCheck, AttackType::ArithmeticOverflow) => {
+                            true
+                        }
+                        (ZeroDayCategory::SignatureMalleability, AttackType::Soundness) => true,
+                        (ZeroDayCategory::NullifierReuse, AttackType::Collision) => true,
+                        (ZeroDayCategory::HashMisuse, AttackType::Collision) => true,
+                        (
+                            ZeroDayCategory::BitDecompositionBypass,
+                            AttackType::ArithmeticOverflow,
+                        ) => true,
+                        (ZeroDayCategory::ArithmeticOverflow, AttackType::ArithmeticOverflow) => {
+                            true
+                        }
+                        _ => false,
+                    });
 
             if let Some(finding) = matching_finding {
                 confirmed.push(ConfirmedZeroDay {

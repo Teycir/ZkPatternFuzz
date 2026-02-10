@@ -1,8 +1,8 @@
 //! Test case generator based on grammar DSL
 
 use super::InputGrammar;
-use zk_core::{FieldElement, TestCase, TestMetadata};
 use rand::Rng;
+use zk_core::{FieldElement, TestCase, TestMetadata};
 
 /// Grammar-based test case generator
 pub struct GrammarGenerator {
@@ -168,8 +168,8 @@ pub enum GenerationStrategy {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::standard;
+    use super::*;
 
     #[test]
     fn test_generator_strategies() {
@@ -191,7 +191,10 @@ mod tests {
         assert!(zeros.inputs.iter().all(|fe| fe.is_zero()));
 
         let max = gen.generate_with_strategy(GenerationStrategy::AllMax, &mut rng);
-        assert!(max.inputs.iter().all(|fe| fe.0 == FieldElement::max_value().0));
+        assert!(max
+            .inputs
+            .iter()
+            .all(|fe| fe.0 == FieldElement::max_value().0));
     }
 
     #[test]

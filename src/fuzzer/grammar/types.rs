@@ -3,7 +3,7 @@
 // Re-export main types from parent module
 // Additional type utilities can be added here
 
-use super::{InputType, EntropyLevel};
+use super::{EntropyLevel, InputType};
 
 impl InputType {
     /// Get human-readable description

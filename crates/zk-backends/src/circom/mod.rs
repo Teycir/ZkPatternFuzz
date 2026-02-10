@@ -42,6 +42,8 @@ pub struct CircomTarget {
     ptau_path_override: Option<PathBuf>,
     /// Optional override path for snarkjs CLI
     snarkjs_path_override: Option<PathBuf>,
+    /// If true, reuse existing build artifacts instead of recompiling
+    skip_compile_if_artifacts: bool,
 }
 
 /// Metadata extracted from compiled Circom circuit
@@ -561,6 +563,7 @@ impl CircomTarget {
             include_paths: Vec::new(),
             ptau_path_override: None,
             snarkjs_path_override: None,
+            skip_compile_if_artifacts: false,
         })
     }
 
@@ -576,6 +579,12 @@ impl CircomTarget {
     /// Create with custom build directory
     pub fn with_build_dir(mut self, build_dir: PathBuf) -> Self {
         self.build_dir = build_dir;
+        self
+    }
+
+    /// Reuse existing build artifacts (r1cs/wasm) when present
+    pub fn with_skip_compile_if_artifacts(mut self, skip: bool) -> Self {
+        self.skip_compile_if_artifacts = skip;
         self
     }
 
@@ -634,6 +643,27 @@ impl CircomTarget {
             return Ok(());
         }
 
+        let basename = self.output_basename();
+        let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
+        let wasm_path = self
+            .build_dir
+            .join(format!("{}_js", basename))
+            .join(format!("{}.wasm", basename));
+
+        if self.skip_compile_if_artifacts && r1cs_path.exists() && wasm_path.exists() {
+            tracing::info!(
+                "Skipping circom compile; using existing artifacts in {:?}",
+                self.build_dir
+            );
+            self.parse_r1cs_info()?;
+            self.witness_calculator = Some(WitnessCalculator::new(
+                wasm_path,
+                self.snarkjs_path_override.clone(),
+            ));
+            self.compiled = true;
+            return Ok(());
+        }
+
         let _guard = circom_io_lock().lock().unwrap();
 
         tracing::info!("Compiling Circom circuit: {:?}", self.circuit_path);
@@ -682,7 +712,6 @@ impl CircomTarget {
 
         // Setup witness calculator
         // circom outputs: {basename}_js/{basename}.wasm
-        let basename = self.output_basename();
         let wasm_path = self
             .build_dir
             .join(format!("{}_js", basename))

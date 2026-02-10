@@ -122,11 +122,16 @@ impl ZkFuzzer {
 
     /// Run the fuzzing campaign
     pub async fn run(&mut self) -> anyhow::Result<FuzzReport> {
+        self.run_with_workers(1).await
+    }
+
+    /// Run the fuzzing campaign without progress UI, honoring worker count
+    pub async fn run_with_workers(&mut self, workers: usize) -> anyhow::Result<FuzzReport> {
         if !self.config.get_schedule().is_empty() {
-            return Self::run_with_schedule(self.config.clone(), self.seed, 1).await;
+            return Self::run_with_schedule(self.config.clone(), self.seed, workers).await;
         }
 
-        let mut engine = FuzzingEngine::new(self.config.clone(), self.seed, 1)?;
+        let mut engine = FuzzingEngine::new(self.config.clone(), self.seed, workers)?;
         engine.run(None).await
     }
 
