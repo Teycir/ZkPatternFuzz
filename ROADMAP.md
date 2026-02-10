@@ -48,6 +48,17 @@ ZkPatternFuzz has **production-grade implementation** (8.0/10 from code review) 
 
 ## 📊 Current State Assessment
 
+### Critical Correctness Issues (From Dual Review - MUST FIX FIRST)
+- ❌ **UnderconstrainedAttack hashes all outputs + failed executions** → False positives
+- ❌ **Evidence confidence model inconsistent** → Drops valid single-oracle findings
+- ❌ **Oracle correlation inflates confidence** → False sense of validation
+- ❌ **Constraint inference uses naive statistics** → Circular reasoning, uniqueness FPs
+- ❌ **Metamorphic relations domain-inappropriate** → Never trigger or false positive
+- ❌ **Process isolation underspecified** → Crash risk in production
+- ❌ **Concurrency model undocumented** → Race conditions, bottlenecks
+
+**Impact:** These bugs cause false positives/negatives that would damage credibility in bug bounties/audits. **MUST fix in Week 1 before any 0-day attempts.**
+
 ### Strengths (Keep & Enhance)
 - ✅ **Circom proof generation FULLY IMPLEMENTED** (evidence.rs verified)
 - ✅ **Automated triage system** (6-factor confidence scoring, deduplication, priority ranking)
@@ -100,7 +111,182 @@ ZkPatternFuzz has **production-grade implementation** (8.0/10 from code review) 
 
 **Based on:** Deep code analysis revealing Mode 3 exists but isn't wired, defaults are wrong, and --resume is missing
 
-### Milestone 0.1: Mode 3 Multi-Step Fuzzing Integration (Weeks 1-3) 🔥
+### Critical Issues from Dual Review Analysis
+
+**Both reviews identified these HIGH priority correctness bugs:**
+
+1. **UnderconstrainedAttack Logic Flaw** (CRITICAL - Both Reviews)
+   - **Issue:** Hashes all outputs instead of only public interface, conflates hash collisions with structural underconstrainedness
+   - **Issue:** No check for `result.success` before hashing, failed executions contribute to false positives
+   - **Location:** `attacks/underconstrained.rs`, pseudocode lines 419-431
+   - **Fix:** Hash only `(public_inputs, public_outputs)` AND filter `result.success == true`
+
+2. **Evidence Confidence Model Inconsistency** (HIGH - Spec Review)
+   - **Issue:** Workflow says "MEDIUM: 1 oracle + validation" but `OracleValidator::validate` defaults to `cross_oracle_threshold = 2`, dropping single-oracle findings
+   - **Location:** Pseudocode lines 768-819
+   - **Fix:** Align thresholds or document that single-oracle findings require explicit override
+
+3. **Oracle Independence in Confidence Scoring** (HIGH - First Review)
+   - **Issue:** Correlated oracles (e.g., UnderconstrainedOracle + NullifierOracle) inflate confidence scores
+   - **Fix:** Weight oracle agreements by independence, require cross-group agreement
+
+4. **UnderconstrainedOracle Unbounded State** (MEDIUM - Both Reviews)
+   - **Issue:** HashMap grows without bounds, no concurrency strategy for multi-worker access
+   - **Location:** Pseudocode lines 612-621
+   - **Fix:** Add bloom filter for first-pass, implement lock-free concurrent access or per-worker state
+
+5. **Constraint Inference Statistical Weakness** (HIGH - First Review)
+   - **Issue:** Naive confidence thresholds, circular reasoning from biased input generation, uniqueness check always triggers
+   - **Fix:** Bayesian inference with proper priors, remove uniqueness inference
+
+6. **Metamorphic Relations Domain Mismatch** (MEDIUM - First Review)
+   - **Issue:** Generic linear relations (scale, negate) don't apply to nonlinear ZK circuits (hashes, Merkle trees)
+   - **Fix:** Make circuit-type-aware (hash avalanche, Merkle leaf sensitivity, signature binding)
+
+7. **Process Isolation Underspecified** (MEDIUM - Both Reviews)
+   - **Issue:** "subprocess or thread" means crash isolation not guaranteed, thread crash kills fuzzer
+   - **Location:** Pseudocode lines 368-375
+   - **Fix:** Mandate subprocess isolation for real backends (C/C++ dependencies), document performance tradeoff
+
+8. **Coverage Percentage Integer Division** (MEDIUM - Spec Review)
+   - **Issue:** Integer division may report 0% until full coverage
+   - **Location:** Pseudocode lines 831-839
+   - **Fix:** Cast to float before division
+
+9. **Differential Testing Translation Gap** (MEDIUM - Both Reviews)
+   - **Issue:** Assumes same circuit runs on multiple backends without defining translation/normalization
+   - **Location:** Pseudocode lines 1103-1116
+   - **Fix:** Document translation layer or limit to hand-ported circuits
+
+10. **Concurrency Model Underspecified** (MEDIUM - Both Reviews)
+    - **Issue:** No specification for corpus/coverage/oracle sharing across workers
+    - **Location:** Pseudocode lines 386-391, 827-866
+    - **Fix:** Document lock-free shared memory maps for coverage, per-worker corpus queues with periodic merging
+
+### Milestone 0.0: Correctness Fixes from Dual Review (Week 1) 🔥🔥
+**Owner:** Core Team  
+**Status:** 🔴 **BLOCKING - Must Fix Before Any 0-Day Attempts**  
+**Priority:** P0 - Correctness bugs cause false positives/negatives
+
+#### Tasks
+- [ ] **Fix UnderconstrainedAttack (CRITICAL)**
+  ```rust
+  // BEFORE (WRONG):
+  let output_hash = hash(result.outputs);
+  
+  // AFTER (CORRECT):
+  if !result.success { continue; }  // Skip failed executions
+  let public_hash = hash((public_inputs, public_outputs));
+  ```
+  - Filter failed executions before hashing
+  - Hash only public interface, not all outputs
+  - Add test: failed execution doesn't trigger collision
+  - Add test: private input change with same public interface triggers detection
+
+- [ ] **Fix Evidence Confidence Thresholds (HIGH)**
+  ```rust
+  // Align validator defaults with documented behavior
+  cross_oracle_threshold: 1,  // Allow single oracle + validation
+  min_confidence: Low,         // Filter in report generation, not validation
+  ```
+  - Add test: single-oracle reproducible finding passes validation
+  - Document confidence model clearly in code comments
+
+- [ ] **Implement Oracle Independence Weighting (HIGH)**
+  ```rust
+  enum OracleGroup { Structural, Semantic, Behavioral }
+  fn calculate_confidence(oracles: &[Oracle]) -> Confidence {
+      let groups = count_distinct_groups(oracles);
+      match groups {
+          3 => Critical, 2 => High, 1 => Medium, _ => Low
+      }
+  }
+  ```
+  - Group oracles by independence
+  - Require cross-group agreement for high confidence
+  - Add test: correlated oracles don't inflate confidence
+
+- [ ] **Fix UnderconstrainedOracle Concurrency (MEDIUM)**
+  ```rust
+  // Use lock-free data structure or per-worker state
+  use crossbeam::queue::SegQueue;
+  witnesses: Arc<DashMap<Key, Vec<Witness>>>,  // Concurrent HashMap
+  ```
+  - Add bloom filter for first-pass collision detection
+  - Implement eviction policy (LRU, max 100K entries)
+  - Add concurrency test: multi-worker oracle updates
+
+- [ ] **Fix Constraint Inference Statistics (HIGH)**
+  ```rust
+  fn infer_binary_constraint(obs: &[Field], field_size: BigUint) -> f64 {
+      let all_binary = obs.iter().all(|&x| x == 0 || x == 1);
+      if !all_binary { return 0.0; }
+      // Bayesian: P(all binary | random) = (2/p)^n ≈ 0 for large p,n
+      1.0 - (2.0 / field_size.to_f64()).powi(obs.len() as i32)
+  }
+  ```
+  - Remove uniqueness inference (always triggers false positives)
+  - Add Bayesian priors based on field size
+  - Add test: biased input generation doesn't cause circular inference
+
+- [ ] **Make Metamorphic Relations Circuit-Aware (MEDIUM)**
+  ```rust
+  fn get_relations(circuit_type: CircuitType) -> Vec<Relation> {
+      match circuit_type {
+          Hash => vec![avalanche_property()],
+          Merkle => vec![leaf_sensitivity()],
+          Signature => vec![message_binding()],
+          _ => vec![]  // Don't apply generic linear relations
+      }
+  }
+  ```
+  - Remove generic scale/negate transforms
+  - Add circuit-type detection from config
+  - Add test: hash circuit triggers avalanche check
+
+- [ ] **Mandate Subprocess Isolation (MEDIUM)**
+  ```rust
+  // Remove thread option for real backends
+  if !executor.is_mock() {
+      executor = SubprocessIsolatedExecutor::new(executor);
+  }
+  ```
+  - Document performance impact (2-10x slower)
+  - Add config option for isolation strategy (dev vs production)
+  - Add test: backend crash doesn't kill fuzzer
+
+- [ ] **Fix Coverage Percentage Calculation (LOW)**
+  ```rust
+  let coverage_pct = (satisfied as f64 / total as f64) * 100.0;
+  ```
+
+- [ ] **Document Concurrency Model (MEDIUM)**
+  - Add `docs/CONCURRENCY_MODEL.md`
+  - Specify lock-free coverage sharing strategy
+  - Specify per-worker corpus with periodic merging
+  - Add architecture diagram
+
+#### Success Criteria
+- [ ] All 9 correctness bugs fixed
+- [ ] 15+ new tests covering edge cases
+- [ ] No false positives on known-safe circuits
+- [ ] Concurrency model documented and tested
+
+#### Deliverables
+- Updated `src/attacks/underconstrained.rs`
+- Updated `src/reporting/evidence.rs`
+- Updated `src/fuzzer/oracle.rs`
+- Updated `src/attacks/constraint_inference.rs`
+- Updated `src/attacks/metamorphic.rs`
+- New `src/executor/isolation.rs`
+- New `docs/CONCURRENCY_MODEL.md`
+- 15+ new tests in `tests/correctness/`
+
+**Effort:** 5-7 days (MUST complete before any other work)
+
+---
+
+### Milestone 0.1: Mode 3 Multi-Step Fuzzing Integration (Weeks 2-4) 🔥
 **Owner:** Core Team  
 **Status:** 🔴 **CRITICAL - Biggest Gap**  
 **Priority:** P0 - Blocks protocol-level 0-day discovery
@@ -256,7 +442,7 @@ ZkPatternFuzz has **production-grade implementation** (8.0/10 from code review) 
 - ✅ **Evidence mode enforced** - No silent fallback to wrong circuits
 - 🔄 **YAML integration in progress** - Runtime works, needs config layer
 
-**Effort:** 1 week of bug fixes ✅ COMPLETE + 2-3 weeks for YAML wiring (remaining)
+**Effort:** 2-3 weeks for YAML wiring (bug fixes moved to Milestone 0.0)
 
 **Bottom Line:** ~~Chain fuzzing (Mode 3) currently cannot reliably detect deep protocol bugs.~~ **FIXED!** All blocking correctness bugs resolved. Chain fuzzing runtime is now production-ready. Remaining work is YAML integration for user-facing configuration.
 
@@ -450,11 +636,11 @@ ZkPatternFuzz has **production-grade implementation** (8.0/10 from code review) 
 
 ---
 
-### Phase 0 Summary: 3-4 Weeks to 9/10 Fitness
+### Phase 0 Summary: 4 Weeks to 9/10 Fitness
 
-**Timeline from Code Review:**
-- Week 1: Mode 3 wiring starts + --resume flag → **8.2/10**
-- Week 2-3: Mode 3 complete, config profiles → **8.8/10**  
+**Timeline from Dual Review Analysis:**
+- Week 1: **Correctness fixes (Milestone 0.0)** → **8.5/10** (eliminates false positives/negatives)
+- Week 2-3: Mode 3 wiring, --resume flag, config profiles → **8.8/10**  
 - Week 4: Multi-backend proof gen + ground truth → **9.0/10**
 
 **Impact:**
@@ -503,7 +689,13 @@ ZkPatternFuzz has **production-grade implementation** (8.0/10 from code review) 
 
 ### Milestone 1.2: False Positive Analysis (Weeks 3-4)
 **Owner:** Quality Team  
-**Status:** 🔴 Not Started
+**Status:** 🟡 Partially Complete (Milestone 0.0 fixes major FP sources)
+
+**Note:** Milestone 0.0 correctness fixes address major false positive sources:
+- UnderconstrainedAttack no longer triggers on failed executions
+- Constraint inference no longer triggers on uniqueness (always false positive)
+- Metamorphic relations no longer apply generic transforms to nonlinear circuits
+- Oracle independence weighting prevents correlated oracle inflation
 
 #### Tasks
 - [ ] Run fuzzer on 10 known-safe circuits
