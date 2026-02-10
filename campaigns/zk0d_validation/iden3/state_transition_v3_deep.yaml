@@ -157,7 +157,7 @@ mutations:
     max_stacked_mutations: 3
 
 reporting:
-  output_dir: "./reports/zk0d_validation/iden3/state_transition_v3"
+  output_dir: "./reports/zk0d_validation/iden3/state_transition_v3_deep"
   formats: ["json", "markdown"]
   include_poc: true
   crash_reproduction: true

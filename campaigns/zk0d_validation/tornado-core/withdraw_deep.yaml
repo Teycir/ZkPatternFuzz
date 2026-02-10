@@ -128,7 +128,7 @@ mutations:
     max_stacked_mutations: 3
 
 reporting:
-  output_dir: "./reports/zk0d_validation/tornado-core/withdraw"
+  output_dir: "./reports/zk0d_validation/tornado-core/withdraw_deep"
   formats: ["json", "markdown"]
   include_poc: true
   crash_reproduction: true

@@ -1136,6 +1136,18 @@ impl FuzzingEngine {
         let start_time = Instant::now();
         self.core.set_start_time(start_time);
 
+        let additional = &self.config.campaign.parameters.additional;
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        let mode_label = if evidence_mode { "evidence" } else { "run" };
+
+        tracing::warn!(
+            "MILESTONE start mode={} target={} circuit={} output_dir={}",
+            mode_label,
+            self.config.campaign.name,
+            self.config.campaign.target.circuit_path.display(),
+            self.config.reporting.output_dir.display()
+        );
+
         tracing::info!("Starting fuzzing campaign: {}", self.config.campaign.name);
         tracing::info!(
             "Circuit: {} ({:?})",
@@ -1183,6 +1195,11 @@ impl FuzzingEngine {
             "Seeded corpus with {} initial test cases",
             self.core.corpus().len()
         );
+        tracing::warn!(
+            "MILESTONE seeded_corpus target={} count={}",
+            self.config.campaign.name,
+            self.core.corpus().len()
+        );
 
         // Initialize simple progress tracker for non-interactive environments
         self.simple_tracker = Some(SimpleProgressTracker::new());
@@ -1192,6 +1209,11 @@ impl FuzzingEngine {
 
         // Run attacks
         for attack_config in &self.config.attacks.clone() {
+            tracing::warn!(
+                "MILESTONE attack_start target={} type={:?}",
+                self.config.campaign.name,
+                attack_config.attack_type
+            );
             if let Some(p) = progress {
                 p.log_attack_start(&format!("{:?}", attack_config.attack_type));
             }
@@ -1302,6 +1324,13 @@ impl FuzzingEngine {
             if let Some(p) = progress {
                 p.log_attack_complete(&format!("{:?}", attack_config.attack_type), new_findings);
             }
+            tracing::warn!(
+                "MILESTONE attack_complete target={} type={:?} new_findings={} total_findings={}",
+                self.config.campaign.name,
+                attack_config.attack_type,
+                new_findings,
+                findings_after
+            );
 
             // Update power scheduler with current stats after each attack
             self.update_power_scheduler_globals();
@@ -1345,8 +1374,18 @@ impl FuzzingEngine {
             .and_then(|v| v.as_u64());
 
         if iterations > 0 {
+            tracing::warn!(
+                "MILESTONE continuous_start target={} iterations={} timeout={:?}",
+                self.config.campaign.name,
+                iterations,
+                timeout
+            );
             self.run_continuous_fuzzing_phase(iterations, timeout, progress)
                 .await?;
+            tracing::warn!(
+                "MILESTONE continuous_complete target={}",
+                self.config.campaign.name
+            );
         }
 
         // Export corpus to output directory
@@ -1392,6 +1431,13 @@ impl FuzzingEngine {
 
         tracing::info!(
             "Fuzzing complete: {} findings in {:.2}s",
+            findings.len(),
+            elapsed.as_secs_f64()
+        );
+        tracing::warn!(
+            "MILESTONE complete mode={} target={} findings={} duration_s={:.2}",
+            mode_label,
+            self.config.campaign.name,
             findings.len(),
             elapsed.as_secs_f64()
         );
