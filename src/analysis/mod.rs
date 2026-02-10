@@ -6,6 +6,8 @@
 //! - Constraint complexity: Analyze circuit complexity metrics
 //! - Symbolic execution: Generate targeted inputs with Z3 integration
 //! - Enhanced symbolic: Incremental solving, constraint simplification, path pruning
+//! - Symbolic V2: Path explosion mitigation, caching, prioritization (Phase 4)
+//! - Targeted symbolic: Bug-directed and differential execution (Phase 4.3)
 //! - Concolic execution: Mix concrete and symbolic execution for scalability
 //! - R1CS parsing: Direct parsing of Circom-compiled .r1cs files
 //! - Dependency analysis: Witness-dependency graph for coverage guidance
@@ -36,6 +38,21 @@ pub use symbolic_enhanced::{
     EnhancedSymbolicExecutor, EnhancedSymbolicConfig, EnhancedSymbolicStats,
     ConstraintSimplifier, IncrementalSolver, PathPruner, PruningStrategy,
 };
+
+// Phase 4: Symbolic V2 with path explosion mitigation
+pub use zk_symbolic::symbolic_v2::{
+    SymbolicV2Executor, SymbolicV2Config, SymbolicV2Stats,
+    PathMerger, MergeStrategy, MergedState, MergedValue,
+    ConstraintCache, PathPriority, VulnerabilityTargetPattern, ConstraintPattern,
+};
+
+// Phase 4.3: Targeted symbolic execution
+pub use zk_symbolic::targeted::{
+    BugDirectedExecutor, BugDirectedConfig, BugDirectedStats,
+    VulnerabilityTarget, DirectedFinding,
+    DifferentialExecutor, DifferentialConfig, DifferentialStats, CircuitDifference,
+};
+
 pub use constraint_guided::{
     ConstraintSeedGenerator, ConstraintSeedOutput, ConstraintSeedStats, collect_input_wire_indices,
 };

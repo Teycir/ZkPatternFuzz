@@ -24,6 +24,11 @@
 //!
 //! The [`adaptive_orchestrator`] module implements the endgame workflow for
 //! catching hard-to-detect zero-day vulnerabilities using Opus analysis.
+//!
+//! ## Performance Optimizations (Phase 4.4)
+//!
+//! The [`constraint_cache`] module provides thread-safe constraint evaluation caching.
+//! The [`async_pipeline`] module provides async execution pipeline for high throughput.
 
 mod constants;
 mod mutators;
@@ -31,6 +36,8 @@ mod oracle;
 mod engine;
 pub mod adaptive_attack_scheduler;
 pub mod adaptive_orchestrator;
+pub mod async_pipeline;  // Phase 4.4: Async execution pipeline
+pub mod constraint_cache;  // Phase 4.4: Constraint evaluation caching
 pub mod invariant_checker;  // Phase 2: Fuzz-continuous invariant checking
 pub mod near_miss;
 pub mod oracle_correlation;  // Phase 6A: Cross-oracle correlation

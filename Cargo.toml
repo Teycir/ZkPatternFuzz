@@ -68,6 +68,7 @@ zk-attacks = { path = "crates/zk-attacks" }
 # SMT Solver for symbolic execution
 z3 = { version = "0.12", features = ["static-link-z3"] }
 num_cpus = "1.16"
+crossbeam = "0.8.4"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

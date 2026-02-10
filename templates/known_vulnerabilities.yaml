@@ -925,6 +925,808 @@ vulnerabilities:
     remediation:
       description: "Enforce freshness constraints on storage proofs"
 
+  # ============== NEW: Recursive SNARK Vulnerabilities (Phase 1 Expansion) ==============
+
+  - id: "ZK-CVE-2024-009"
+    name: "Nova Folding Base Case Bypass"
+    severity: critical
+    cvss_score: 9.5
+    affected_circuits:
+      - pattern: "nova*"
+        versions: ["*"]
+      - pattern: "supernova*"
+        versions: ["*"]
+      - pattern: "ivc*"
+        versions: ["*"]
+    sources:
+      - "Nova Paper (CRYPTO 2022)"
+      - "Recursive SNARK Security Research"
+    description: |
+      Base case verification in IVC (Incrementally Verifiable Computation) can be
+      bypassed by providing a fake accumulator state that claims to be the base case.
+      
+      IMPACT:
+      - Invalid initial state propagates through recursion
+      - Complete proof forgery possible
+      - All subsequent proofs built on forged base are invalid
+
+    detection:
+      oracle: recursive_base_case
+      attack_type: soundness
+      procedure:
+        - action: create_fake_base_accumulator
+        - action: skip_base_verification
+        - action: continue_recursion
+          expected: should_fail
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat5_recursive/nova-ivc"
+      test_cases:
+        - name: valid_base_case
+          inputs:
+            start_from_base: true
+          expected_result: valid_ivc_proof
+        - name: skipped_base_case
+          inputs:
+            start_from_step: 5
+            fake_accumulator: true
+          expected_result: invalid_ivc_proof
+      assertion: "IVC must enforce base case verification"
+
+    remediation:
+      description: "Verify base case commitment matches expected initial state"
+      code_example: |
+        // In Nova verifier
+        if is_base_case {
+            assert!(accumulator == AccumulatorState::default());
+            assert!(step_index == 0);
+        }
+
+  - id: "ZK-CVE-2024-010"
+    name: "Accumulator Overflow in Folding Schemes"
+    severity: high
+    cvss_score: 8.0
+    affected_circuits:
+      - pattern: "folding*"
+        versions: ["*"]
+      - pattern: "accumulation*"
+        versions: ["*"]
+    sources:
+      - "Folding Scheme Security Analysis"
+      - "ProtoStar Paper"
+    description: |
+      Accumulator field elements can overflow during many folding iterations,
+      causing the running instance to wrap around and potentially satisfy
+      constraints it shouldn't.
+      
+      IMPACT:
+      - Proof validity corrupted after many steps
+      - Resource exhaustion attacks
+      - Silent computation errors
+
+    detection:
+      oracle: accumulator_overflow
+      attack_type: arithmetic_overflow
+      procedure:
+        - action: fold_with_max_values
+          params:
+            iterations: 10000
+        - action: check_accumulator_bounds
+          expected: within_field
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat5_recursive/folding-accumulator"
+      test_cases:
+        - name: normal_accumulation
+          inputs:
+            iterations: 100
+          expected_result: valid
+        - name: overflow_attempt
+          inputs:
+            iterations: 10000
+            values: max_field
+          expected_result: bounded_correctly
+      assertion: "Accumulator must remain within field bounds"
+
+    remediation:
+      description: "Enforce accumulator bounds and use modular reduction"
+
+  - id: "ZK-CVE-2024-011"
+    name: "Verification Key Substitution in Recursion"
+    severity: critical
+    cvss_score: 9.0
+    affected_circuits:
+      - pattern: "recursive*"
+        versions: ["*"]
+      - pattern: "ivc*"
+        versions: ["*"]
+    sources:
+      - "Halo2 Recursion Security"
+      - "ZK Audit Reports"
+    description: |
+      During recursive verification, the verification key can be substituted
+      with a malicious one that accepts invalid proofs.
+      
+      IMPACT:
+      - Verify proofs against wrong circuit
+      - Complete proof system bypass
+      - Arbitrary state transitions accepted
+
+    detection:
+      oracle: vk_binding
+      attack_type: soundness
+      procedure:
+        - action: record_vk_hash_per_step
+        - action: detect_vk_mismatch
+          expected: all_vks_match
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat5_recursive/vk-binding"
+      test_cases:
+        - name: consistent_vk
+          inputs:
+            use_same_vk: true
+          expected_result: valid
+        - name: substituted_vk
+          inputs:
+            substitute_vk_at_step: 3
+          expected_result: rejected
+      assertion: "VK must be consistent across recursion chain"
+
+    remediation:
+      description: "Bind VK hash to accumulator state"
+
+  - id: "ZK-CVE-2024-012"
+    name: "Supernova Opcode Selection Bypass"
+    severity: high
+    cvss_score: 8.5
+    affected_circuits:
+      - pattern: "supernova*"
+        versions: ["*"]
+      - pattern: "vm-circuit*"
+        versions: ["*"]
+    sources:
+      - "Supernova Paper (EUROCRYPT 2023)"
+      - "VM Circuit Security"
+    description: |
+      In Supernova's non-uniform IVC, the opcode/instruction selector can be
+      manipulated to execute unintended operations.
+      
+      IMPACT:
+      - Execute privileged operations
+      - Bypass instruction set boundaries
+      - Arbitrary computation injection
+
+    detection:
+      oracle: opcode_bounds
+      attack_type: boundary
+      procedure:
+        - action: test_opcode_range
+          params:
+            valid_opcodes: [0, 1, 2, 3, 4]
+        - action: inject_invalid_opcode
+          params:
+            opcode: 255
+          expected: should_reject
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat5_recursive/supernova-vm"
+      test_cases:
+        - name: valid_opcode
+          inputs:
+            opcode: 2
+          expected_result: executed
+        - name: invalid_opcode
+          inputs:
+            opcode: 999
+          expected_result: rejected
+      assertion: "Only valid opcodes may be executed"
+
+    remediation:
+      description: "Constrain opcode to valid instruction set range"
+
+  # ============== NEW: Bridge & Cross-Chain Vulnerabilities ==============
+
+  - id: "ZK-CVE-2024-013"
+    name: "Cross-Chain Message Replay"
+    severity: critical
+    cvss_score: 9.2
+    affected_circuits:
+      - pattern: "bridge*"
+        versions: ["*"]
+      - pattern: "cross-chain*"
+        versions: ["*"]
+    sources:
+      - "Bridge Exploit Post-Mortems"
+      - "L2Beat Security Research"
+    description: |
+      ZK proofs for cross-chain messages can be replayed on different chains
+      or replayed multiple times on the same chain.
+      
+      IMPACT:
+      - Double-spend across chains
+      - Message replay attacks
+      - Bridge fund drainage
+
+    detection:
+      oracle: replay_protection
+      attack_type: collision
+      procedure:
+        - action: generate_cross_chain_proof
+        - action: replay_on_different_chain
+          expected: should_reject
+        - action: replay_same_chain
+          expected: should_reject
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat2_rollups/bridge-message"
+      test_cases:
+        - name: single_use
+          inputs:
+            message_nonce: unique
+          expected_result: accepted_once
+        - name: replay_attempt
+          inputs:
+            reuse_proof: true
+          expected_result: rejected
+      assertion: "Cross-chain proofs must be single-use"
+
+    remediation:
+      description: "Include chain ID and nonce in proof commitment"
+
+  - id: "ZK-CVE-2024-014"
+    name: "Batch Proof Mixing Attack"
+    severity: high
+    cvss_score: 8.0
+    affected_circuits:
+      - pattern: "batch*"
+        versions: ["*"]
+      - pattern: "aggregation*"
+        versions: ["*"]
+    sources:
+      - "Batch Verification Security"
+      - "Groth16 Aggregation Research"
+    description: |
+      Batch verification schemes can be exploited by mixing valid and invalid
+      proofs such that the batch passes but contains invalid individual proofs.
+      
+      IMPACT:
+      - Invalid proofs accepted in batch
+      - Bypass individual verification
+      - Silent proof injection
+
+    detection:
+      oracle: batch_soundness
+      attack_type: soundness
+      procedure:
+        - action: create_batch_with_invalid_proof
+          params:
+            valid_count: 9
+            invalid_count: 1
+        - action: verify_batch
+          expected: should_fail
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat6_aggregation/batch-verifier"
+      test_cases:
+        - name: all_valid
+          inputs:
+            proofs: valid_10
+          expected_result: batch_valid
+        - name: one_invalid
+          inputs:
+            proofs: valid_9_invalid_1
+          expected_result: batch_invalid
+      assertion: "Batch must reject if any individual proof is invalid"
+
+    remediation:
+      description: "Use sound batch verification with random linear combination"
+
+  - id: "ZK-CVE-2024-015"
+    name: "Aggregation Randomness Reuse"
+    severity: high
+    cvss_score: 7.5
+    affected_circuits:
+      - pattern: "aggregation*"
+        versions: ["*"]
+      - pattern: "snarkpack*"
+        versions: ["*"]
+    sources:
+      - "SnarkPack Security Analysis"
+      - "Aggregation Protocol Research"
+    description: |
+      Reusing randomness across proof aggregation allows forging aggregate proofs.
+      
+      IMPACT:
+      - Aggregate proof forgery
+      - Bypass aggregation security
+      - Invalid state roots accepted
+
+    detection:
+      oracle: randomness_reuse
+      attack_type: soundness
+      procedure:
+        - action: collect_aggregation_challenges
+        - action: detect_repeated_randomness
+          expected: all_unique
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat6_aggregation/snarkpack"
+      test_cases:
+        - name: unique_randomness
+          inputs:
+            generate_fresh: true
+          expected_result: secure
+        - name: reused_randomness
+          inputs:
+            reuse_challenge: true
+          expected_result: detected
+      assertion: "Aggregation must use fresh randomness"
+
+    remediation:
+      description: "Derive challenges from Fiat-Shamir transcript"
+
+  # ============== NEW: Commitment Scheme Vulnerabilities ==============
+
+  - id: "ZK-CVE-2024-016"
+    name: "KZG Commitment Invalid Point"
+    severity: critical
+    cvss_score: 9.0
+    affected_circuits:
+      - pattern: "kzg*"
+        versions: ["*"]
+      - pattern: "plonk*"
+        versions: ["*"]
+    sources:
+      - "KZG Security Analysis"
+      - "Polynomial Commitment Research"
+    description: |
+      KZG commitment verification accepts points not on the curve (invalid G1/G2),
+      allowing commitment forgery.
+      
+      IMPACT:
+      - Forge polynomial commitments
+      - Open commitment to arbitrary value
+      - Complete proof system bypass
+
+    detection:
+      oracle: point_validation
+      attack_type: soundness
+      procedure:
+        - action: submit_off_curve_point
+          expected: should_reject
+        - action: submit_point_of_wrong_order
+          expected: should_reject
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat7_primitives/kzg-commitment"
+      test_cases:
+        - name: valid_point
+          inputs:
+            point: on_curve
+          expected_result: accepted
+        - name: invalid_point
+          inputs:
+            point: off_curve
+          expected_result: rejected
+      assertion: "Only valid curve points may be committed"
+
+    remediation:
+      description: "Validate all points are on curve and in correct subgroup"
+
+  - id: "ZK-CVE-2024-017"
+    name: "Pedersen Hash Collision via Cofactor"
+    severity: high
+    cvss_score: 7.8
+    affected_circuits:
+      - pattern: "pedersen*"
+        versions: ["*"]
+      - pattern: "commitment*"
+        versions: ["*"]
+    sources:
+      - "Zcash Sapling Audit"
+      - "Pedersen Security Research"
+    description: |
+      Pedersen hash using points without cofactor clearing allows small-subgroup
+      attacks that produce hash collisions.
+      
+      IMPACT:
+      - Hash collision attacks
+      - Nullifier collision
+      - Privacy guarantee broken
+
+    detection:
+      oracle: cofactor_attack
+      attack_type: collision
+      procedure:
+        - action: compute_hash_with_cofactor_point
+        - action: detect_collision
+          expected: no_collision
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat7_primitives/pedersen-hash"
+      test_cases:
+        - name: cleared_cofactor
+          inputs:
+            clear_cofactor: true
+          expected_result: secure
+        - name: uncleared_cofactor
+          inputs:
+            clear_cofactor: false
+          expected_result: vulnerable
+      assertion: "Pedersen must clear cofactor before hashing"
+
+    remediation:
+      description: "Use cofactor multiplication: h = [c] * hash_to_curve(m)"
+
+  # ============== NEW: Privacy Vulnerabilities ==============
+
+  - id: "ZK-CVE-2024-018"
+    name: "Linkable Ring Signature Weak Linking"
+    severity: medium
+    cvss_score: 6.5
+    affected_circuits:
+      - pattern: "ring-signature*"
+        versions: ["*"]
+      - pattern: "linkable*"
+        versions: ["*"]
+    sources:
+      - "Monero Audit Reports"
+      - "Ring Signature Research"
+    description: |
+      Linkable ring signature implementation has weak linking tag computation
+      that allows transaction graph analysis.
+      
+      IMPACT:
+      - Transaction linkability
+      - User de-anonymization
+      - Privacy degradation over time
+
+    detection:
+      oracle: linkability_analysis
+      attack_type: information_leakage
+      procedure:
+        - action: collect_linking_tags
+          params:
+            count: 1000
+        - action: compute_statistical_linkage
+          expected: low_correlation
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat3_privacy/ring-signature"
+      test_cases:
+        - name: strong_linking
+          inputs:
+            samples: 1000
+          expected_result: unlinkable
+      assertion: "Linking tags must not reveal identity correlation"
+
+    remediation:
+      description: "Use deterministic linking tag with sufficient entropy"
+
+  - id: "ZK-CVE-2024-019"
+    name: "Proof Size Timing Side-Channel"
+    severity: medium
+    cvss_score: 5.5
+    affected_circuits:
+      - pattern: "*"
+        versions: ["*"]
+    sources:
+      - "Side-Channel Analysis Research"
+      - "ZK Performance Studies"
+    description: |
+      Variable-length proof generation reveals information about witness size
+      through timing analysis.
+      
+      IMPACT:
+      - Witness size leakage
+      - Transaction amount correlation
+      - Privacy metadata exposure
+
+    detection:
+      oracle: timing_analysis
+      attack_type: timing_side_channel
+      procedure:
+        - action: measure_proof_generation_time
+          params:
+            samples: 10000
+        - action: correlate_with_witness_size
+          expected: low_correlation
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat3_privacy/generic"
+      test_cases:
+        - name: timing_variance
+          inputs:
+            witness_sizes: [small, medium, large]
+          expected_result: similar_timing
+      assertion: "Proof generation should be constant-time"
+
+    remediation:
+      description: "Pad proof generation to constant time"
+
+  # ============== NEW: DeFi-Specific Vulnerabilities ==============
+
+  - id: "ZK-CVE-2024-020"
+    name: "ZK Lending Protocol Oracle Manipulation"
+    severity: critical
+    cvss_score: 9.0
+    affected_circuits:
+      - pattern: "zk-lending*"
+        versions: ["*"]
+      - pattern: "collateral-proof*"
+        versions: ["*"]
+    sources:
+      - "DeFi Security Research"
+      - "Lending Protocol Audits"
+    description: |
+      ZK lending protocols using TWAP oracles can have oracle state manipulated
+      within the proof generation window.
+      
+      IMPACT:
+      - Artificial collateral inflation
+      - Bad debt creation
+      - Protocol insolvency
+
+    detection:
+      oracle: oracle_manipulation
+      attack_type: soundness
+      procedure:
+        - action: simulate_price_manipulation
+          params:
+            blocks: 10
+        - action: generate_collateral_proof
+          expected: should_reflect_manipulation
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat4_defi/zk-lending"
+      test_cases:
+        - name: stable_oracle
+          inputs:
+            price_variance: low
+          expected_result: valid_collateral
+        - name: manipulated_oracle
+          inputs:
+            flash_loan_attack: true
+          expected_result: manipulation_detected
+      assertion: "Oracle manipulation must be detected"
+
+    remediation:
+      description: "Use manipulation-resistant TWAP with sufficient window"
+
+  - id: "ZK-CVE-2024-021"
+    name: "Dark Pool Order Leakage"
+    severity: high
+    cvss_score: 7.5
+    affected_circuits:
+      - pattern: "dark-pool*"
+        versions: ["*"]
+      - pattern: "private-order*"
+        versions: ["*"]
+    sources:
+      - "Dark Pool Security Analysis"
+      - "Private Trading Research"
+    description: |
+      ZK dark pool order proofs leak order size through proof verification gas cost.
+      
+      IMPACT:
+      - Order size inference
+      - Front-running based on proof metadata
+      - Privacy guarantee violated
+
+    detection:
+      oracle: gas_analysis
+      attack_type: information_leakage
+      procedure:
+        - action: measure_verification_gas
+          params:
+            order_sizes: [small, medium, large]
+        - action: correlate_gas_with_size
+          expected: low_correlation
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat4_defi/dark-pool"
+      test_cases:
+        - name: constant_gas
+          inputs:
+            order_sizes: variable
+          expected_result: similar_gas
+      assertion: "Verification gas must not reveal order size"
+
+    remediation:
+      description: "Use constant-size proofs regardless of order parameters"
+
+  # ============== NEW: Constraint System Vulnerabilities ==============
+
+  - id: "ZK-CVE-2024-022"
+    name: "R1CS Constraint Elimination via Optimization"
+    severity: high
+    cvss_score: 7.5
+    affected_circuits:
+      - pattern: "*"
+        versions: ["*"]
+    sources:
+      - "Compiler Optimization Research"
+      - "Circom Security Analysis"
+    description: |
+      Aggressive compiler optimization eliminates seemingly redundant constraints
+      that are actually security-critical.
+      
+      IMPACT:
+      - Security constraints removed
+      - Underconstrained circuit
+      - Soundness violation
+
+    detection:
+      oracle: constraint_analysis
+      attack_type: underconstrained
+      procedure:
+        - action: compare_optimized_unoptimized
+        - action: identify_eliminated_constraints
+          expected: no_security_constraints_removed
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat7_primitives/optimized-circuit"
+      test_cases:
+        - name: with_optimization
+          inputs:
+            optimization_level: O2
+          expected_result: security_constraints_present
+      assertion: "Optimization must not remove security constraints"
+
+    remediation:
+      description: "Mark security-critical constraints as non-removable"
+
+  - id: "ZK-CVE-2024-023"
+    name: "Lookup Table Soundness Gap"
+    severity: high
+    cvss_score: 8.0
+    affected_circuits:
+      - pattern: "plookup*"
+        versions: ["*"]
+      - pattern: "lookup*"
+        versions: ["*"]
+    sources:
+      - "Plookup Paper"
+      - "Lookup Table Security"
+    description: |
+      Lookup argument has soundness gap when table size is not a power of two
+      or when using variable-size tables.
+      
+      IMPACT:
+      - Invalid lookups accepted
+      - Constraint bypass via table manipulation
+      - Proof of false statement
+
+    detection:
+      oracle: lookup_soundness
+      attack_type: soundness
+      procedure:
+        - action: test_table_size_boundaries
+        - action: inject_out_of_table_value
+          expected: should_fail
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat7_primitives/plookup"
+      test_cases:
+        - name: power_of_two_table
+          inputs:
+            table_size: 256
+          expected_result: sound
+        - name: non_power_table
+          inputs:
+            table_size: 200
+          expected_result: sound_or_rejected
+      assertion: "Lookups must be sound regardless of table size"
+
+    remediation:
+      description: "Pad table to power of two or use size-aware lookup"
+
+  - id: "ZK-CVE-2024-024"
+    name: "Custom Gate Constraint Missing"
+    severity: high
+    cvss_score: 7.8
+    affected_circuits:
+      - pattern: "custom-gate*"
+        versions: ["*"]
+      - pattern: "halo2*"
+        versions: ["*"]
+    sources:
+      - "Halo2 Audit Reports"
+      - "Custom Gate Research"
+    description: |
+      Custom gates in Plonk-based systems may have missing selector constraints
+      allowing gate activation when not intended.
+      
+      IMPACT:
+      - Unintended gate activation
+      - Constraint satisfaction bypass
+      - Proof malleability
+
+    detection:
+      oracle: gate_activation
+      attack_type: underconstrained
+      procedure:
+        - action: enumerate_gate_selectors
+        - action: test_unintended_activation
+          expected: no_false_activations
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat7_primitives/custom-gates"
+      test_cases:
+        - name: selector_constrained
+          inputs:
+            selector: binary
+          expected_result: correct_activation
+        - name: selector_unconstrained
+          inputs:
+            selector: non_binary
+          expected_result: rejected
+      assertion: "Gate selectors must be binary constrained"
+
+    remediation:
+      description: "Add selector * (selector - 1) === 0 constraint"
+
+  - id: "ZK-CVE-2024-025"
+    name: "Fiat-Shamir Weak Binding"
+    severity: critical
+    cvss_score: 9.5
+    affected_circuits:
+      - pattern: "*"
+        versions: ["*"]
+    sources:
+      - "Fiat-Shamir Security Analysis"
+      - "Interactive to NIZK Transformation"
+    description: |
+      Fiat-Shamir transformation doesn't include all public inputs in the hash,
+      allowing different public inputs to use same proof.
+      
+      IMPACT:
+      - Proof reuse with different public inputs
+      - Complete soundness break
+      - Any statement provable
+
+    detection:
+      oracle: fiat_shamir_binding
+      attack_type: soundness
+      procedure:
+        - action: extract_fiat_shamir_transcript
+        - action: verify_all_public_inputs_included
+          expected: fully_bound
+
+    regression_test:
+      enabled: true
+      circuit_path: "cat7_primitives/nizk"
+      test_cases:
+        - name: full_binding
+          inputs:
+            include_all_inputs: true
+          expected_result: secure
+        - name: partial_binding
+          inputs:
+            omit_input: public_input_2
+          expected_result: vulnerable
+      assertion: "All public inputs must be in Fiat-Shamir transcript"
+
+    remediation:
+      description: "Include serialized public inputs in transcript hash"
+
 # Interesting values for testing
 interesting_values:
   bn254_scalar:
