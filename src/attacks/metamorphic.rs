@@ -12,14 +12,26 @@
 //! - Scaling inputs should scale outputs proportionally
 //! - Negating signature S component should fail verification
 //!
+//! # Phase 0 Fix: Circuit-Type-Aware Relations
+//!
+//! Generic linear relations (scale, negate) don't apply to nonlinear ZK circuits
+//! like hashes and Merkle trees. This module now supports circuit-type detection
+//! to apply only semantically appropriate metamorphic relations:
+//!
+//! - **Hash circuits**: Avalanche property (small input change → large output change)
+//! - **Merkle circuits**: Leaf sensitivity, path order matters
+//! - **Signature circuits**: Message binding, S component sensitivity
+//! - **Range/Arithmetic**: Scaling, boundary testing
+//!
 //! # Example
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::metamorphic::{MetamorphicOracle, Transform};
+//! use zk_fuzzer::attacks::metamorphic::{MetamorphicOracle, CircuitType};
 //!
+//! // Circuit-type-aware oracle (Phase 0 fix)
 //! let oracle = MetamorphicOracle::new()
-//!     .with_transform(Transform::PermutInputs(vec![0, 1, 2], vec![2, 0, 1]))
-//!     .with_expected(ExpectedBehavior::OutputUnchanged);
+//!     .with_circuit_type(CircuitType::Hash)
+//!     .with_circuit_aware_relations();
 //!
 //! let result = oracle.test(&executor, &witness)?;
 //! ```
@@ -28,6 +40,76 @@ use std::collections::HashMap;
 use zk_core::{
     AttackType, CircuitExecutor, ExecutionResult, FieldElement, Finding, ProofOfConcept, Severity,
 };
+
+/// Circuit type for selecting appropriate metamorphic relations
+///
+/// # Phase 0 Fix
+///
+/// Generic linear relations (scale, negate) cause false positives on nonlinear
+/// circuits. This enum enables circuit-type-aware relation selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CircuitType {
+    /// Hash circuits (Poseidon, MiMC, Pedersen) - nonlinear, avalanche property
+    Hash,
+    /// Merkle tree circuits - path ordering, leaf sensitivity
+    Merkle,
+    /// Signature circuits (EdDSA, ECDSA) - message binding, point validation
+    Signature,
+    /// Range proof circuits - boundary testing, scaling
+    Range,
+    /// Arithmetic/Linear circuits - scaling, additive properties
+    Arithmetic,
+    /// Nullifier circuits - uniqueness, non-replayability
+    Nullifier,
+    /// Commitment circuits - binding, hiding properties
+    Commitment,
+    /// Unknown/General - use only identity and permutation tests
+    Unknown,
+}
+
+impl CircuitType {
+    /// Detect circuit type from circuit name or labels
+    pub fn detect_from_name(name: &str) -> Self {
+        let name_lower = name.to_lowercase();
+
+        if name_lower.contains("hash")
+            || name_lower.contains("poseidon")
+            || name_lower.contains("mimc")
+            || name_lower.contains("pedersen")
+        {
+            CircuitType::Hash
+        } else if name_lower.contains("merkle") || name_lower.contains("tree") {
+            CircuitType::Merkle
+        } else if name_lower.contains("sig")
+            || name_lower.contains("eddsa")
+            || name_lower.contains("ecdsa")
+            || name_lower.contains("schnorr")
+        {
+            CircuitType::Signature
+        } else if name_lower.contains("range")
+            || name_lower.contains("bound")
+            || name_lower.contains("bit")
+        {
+            CircuitType::Range
+        } else if name_lower.contains("nullifier") || name_lower.contains("nullify") {
+            CircuitType::Nullifier
+        } else if name_lower.contains("commit") || name_lower.contains("hiding") {
+            CircuitType::Commitment
+        } else if name_lower.contains("add")
+            || name_lower.contains("mul")
+            || name_lower.contains("linear")
+        {
+            CircuitType::Arithmetic
+        } else {
+            CircuitType::Unknown
+        }
+    }
+
+    /// Check if linear transforms (scale, negate) are appropriate for this circuit type
+    pub fn supports_linear_transforms(&self) -> bool {
+        matches!(self, CircuitType::Arithmetic | CircuitType::Range)
+    }
+}
 
 /// Expected behavior after transformation
 #[derive(Debug, Clone, PartialEq)]
@@ -250,6 +332,8 @@ impl MetamorphicRelation {
 pub struct MetamorphicOracle {
     relations: Vec<MetamorphicRelation>,
     tolerance: f64,
+    /// Phase 0 Fix: Circuit type for appropriate relation selection
+    circuit_type: Option<CircuitType>,
 }
 
 impl Default for MetamorphicOracle {
@@ -264,7 +348,20 @@ impl MetamorphicOracle {
         Self {
             relations: Vec::new(),
             tolerance: 0.0001,
+            circuit_type: None,
         }
+    }
+
+    /// Set circuit type for appropriate relation selection (Phase 0 fix)
+    pub fn with_circuit_type(mut self, circuit_type: CircuitType) -> Self {
+        self.circuit_type = Some(circuit_type);
+        self
+    }
+
+    /// Detect and set circuit type from name
+    pub fn with_circuit_type_from_name(mut self, name: &str) -> Self {
+        self.circuit_type = Some(CircuitType::detect_from_name(name));
+        self
     }
 
     /// Add a metamorphic relation
@@ -273,7 +370,176 @@ impl MetamorphicOracle {
         self
     }
 
-    /// Add standard ZK relations
+    /// Add circuit-type-aware relations (Phase 0 fix)
+    ///
+    /// Only adds relations that are semantically appropriate for the circuit type,
+    /// avoiding false positives from applying linear transforms to nonlinear circuits.
+    pub fn with_circuit_aware_relations(mut self) -> Self {
+        let circuit_type = self.circuit_type.unwrap_or(CircuitType::Unknown);
+
+        // Universal: Identity should always preserve output
+        self.relations.push(
+            MetamorphicRelation::new(
+                "identity_preservation",
+                Transform::Identity,
+                ExpectedBehavior::OutputUnchanged,
+            )
+            .with_severity(Severity::Critical)
+            .with_description("Same input should produce same output"),
+        );
+
+        // Add circuit-type-specific relations
+        match circuit_type {
+            CircuitType::Hash => {
+                // Hash: Avalanche property - any bit flip should change output significantly
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "hash_avalanche",
+                        Transform::BitFlipInput {
+                            index: 0,
+                            bit_position: 0,
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::Critical)
+                    .with_description("Hash avalanche: single bit flip should change output"),
+                );
+            }
+            CircuitType::Merkle => {
+                // Merkle: Leaf order matters
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "merkle_leaf_sensitivity",
+                        Transform::SwapInputs {
+                            index_a: 0,
+                            index_b: 1,
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::Critical)
+                    .with_description("Swapping Merkle leaves should change root"),
+                );
+                // Merkle: Path indices must be binary (bit flip should reject)
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "merkle_path_binary",
+                        Transform::SetInputs {
+                            assignments: [(0, FieldElement::from_u64(2))].into_iter().collect(),
+                        },
+                        ExpectedBehavior::ShouldReject,
+                    )
+                    .with_severity(Severity::High)
+                    .with_description("Non-binary path index should be rejected"),
+                );
+            }
+            CircuitType::Signature => {
+                // Signature: Message binding - changing message should fail
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "signature_message_binding",
+                        Transform::BitFlipInput {
+                            index: 0,
+                            bit_position: 0,
+                        },
+                        ExpectedBehavior::ShouldReject,
+                    )
+                    .with_severity(Severity::Critical)
+                    .with_description("Signature should not verify with modified message"),
+                );
+            }
+            CircuitType::Range | CircuitType::Arithmetic => {
+                // Only apply linear transforms to linear/range circuits
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "scaling_sensitivity",
+                        Transform::ScaleInputs {
+                            indices: vec![0],
+                            factor: FieldElement::from_u64(2),
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::Medium)
+                    .with_description("Scaling input should change output"),
+                );
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "negation_sensitivity",
+                        Transform::NegateInputs { indices: vec![0] },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::High)
+                    .with_description("Negating input should change output"),
+                );
+            }
+            CircuitType::Nullifier => {
+                // Nullifier: Same inputs should produce same nullifier
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "nullifier_determinism",
+                        Transform::Identity,
+                        ExpectedBehavior::OutputUnchanged,
+                    )
+                    .with_severity(Severity::Critical)
+                    .with_description("Same inputs should produce same nullifier"),
+                );
+                // Any change should produce different nullifier
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "nullifier_uniqueness",
+                        Transform::BitFlipInput {
+                            index: 0,
+                            bit_position: 0,
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::Critical)
+                    .with_description("Different inputs should produce different nullifier"),
+                );
+            }
+            CircuitType::Commitment => {
+                // Commitment: Binding property - same value + randomness = same commitment
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "commitment_binding",
+                        Transform::Identity,
+                        ExpectedBehavior::OutputUnchanged,
+                    )
+                    .with_severity(Severity::Critical)
+                    .with_description("Same inputs should produce same commitment"),
+                );
+            }
+            CircuitType::Unknown => {
+                // For unknown circuits, only test basic properties
+                // Don't add scale/negate as they cause false positives on nonlinear circuits
+                self.relations.push(
+                    MetamorphicRelation::new(
+                        "basic_sensitivity",
+                        Transform::SwapInputs {
+                            index_a: 0,
+                            index_b: 1,
+                        },
+                        ExpectedBehavior::OutputChanged,
+                    )
+                    .with_severity(Severity::Medium)
+                    .with_description("Swapping inputs should generally change output"),
+                );
+            }
+        }
+
+        self
+    }
+
+    /// Add standard ZK relations (legacy behavior - use with_circuit_aware_relations instead)
+    ///
+    /// # Warning
+    ///
+    /// This method applies generic linear transforms that may cause false positives
+    /// on nonlinear circuits (hashes, Merkle trees). Consider using
+    /// `with_circuit_aware_relations()` instead for better accuracy.
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use with_circuit_aware_relations() for better accuracy on nonlinear circuits"
+    )]
     pub fn with_standard_relations(mut self) -> Self {
         // Permutation invariance (should change output for Merkle)
         self.relations.push(
@@ -290,6 +556,7 @@ impl MetamorphicOracle {
         );
 
         // Scaling (for linear circuits)
+        // Phase 0 Note: This causes false positives on hash/Merkle circuits
         self.relations.push(
             MetamorphicRelation::new(
                 "scaling_check",
@@ -314,6 +581,7 @@ impl MetamorphicOracle {
         );
 
         // Negation (should change for most circuits)
+        // Phase 0 Note: This causes false positives on hash/Merkle circuits
         self.relations.push(
             MetamorphicRelation::new(
                 "negation_sensitivity",

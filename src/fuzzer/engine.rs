@@ -111,7 +111,7 @@ use crate::analysis::{
 };
 use crate::attacks::{Attack as AttackTrait, AttackContext, AttackRegistry, DynamicLibraryLoader};
 use crate::config::*;
-use crate::corpus::{create_corpus, minimizer};
+use crate::corpus::{create_corpus, minimizer, storage as corpus_storage};
 use crate::executor::{
     create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions, IsolatedExecutor,
 };
@@ -1189,6 +1189,17 @@ impl FuzzingEngine {
             tracing::warn!("Failed to load external seed inputs: {}", err);
         }
 
+        // Phase 0: Load resume corpus if --resume was specified
+        match self.maybe_load_resume_corpus() {
+            Ok(count) if count > 0 => {
+                tracing::info!("Resumed from {} previous test cases", count);
+            }
+            Err(err) => {
+                tracing::warn!("Failed to load resume corpus: {}", err);
+            }
+            _ => {}
+        }
+
         // Seed corpus
         self.seed_corpus()?;
         tracing::info!(
@@ -1784,6 +1795,68 @@ impl FuzzingEngine {
         let start = 32usize.saturating_sub(bytes.len());
         buf[start..start + bytes.len()].copy_from_slice(&bytes);
         Some(FieldElement(buf))
+    }
+
+    /// Load corpus from a previous run for resumption (Phase 0: Milestone 0.2)
+    ///
+    /// This enables long-running campaigns to be interrupted and resumed without
+    /// losing accumulated coverage. The corpus is loaded from disk and merged
+    /// with the current (empty) corpus.
+    ///
+    /// # Arguments
+    ///
+    /// * `corpus_dir` - Path to the corpus directory from a previous run
+    ///
+    /// # Returns
+    ///
+    /// Number of test cases loaded from the corpus directory
+    fn load_resume_corpus(&mut self, corpus_dir: &std::path::Path) -> anyhow::Result<usize> {
+        if !corpus_dir.exists() {
+            tracing::warn!("Resume corpus directory does not exist: {:?}", corpus_dir);
+            return Ok(0);
+        }
+
+        tracing::info!("Loading resume corpus from {:?}", corpus_dir);
+
+        // Load corpus entries from disk
+        let entries = corpus_storage::load_corpus_from_dir(corpus_dir)?;
+        
+        if entries.is_empty() {
+            tracing::info!("Resume corpus directory is empty");
+            return Ok(0);
+        }
+
+        // Add each entry to the current corpus
+        let mut added = 0;
+        for entry in entries {
+            // Add to corpus (deduplication handled internally)
+            self.add_to_corpus(entry.test_case);
+            added += 1;
+        }
+
+        tracing::info!(
+            "Resumed from corpus: {} test cases loaded from {:?}",
+            added,
+            corpus_dir
+        );
+
+        Ok(added)
+    }
+
+    /// Check for and load resume corpus from config if --resume was specified
+    fn maybe_load_resume_corpus(&mut self) -> anyhow::Result<usize> {
+        let additional = &self.config.campaign.parameters.additional;
+        
+        // Check if resume_corpus_dir was set by CLI
+        let resume_dir = additional
+            .get("resume_corpus_dir")
+            .and_then(|v| v.as_str())
+            .map(std::path::PathBuf::from);
+
+        match resume_dir {
+            Some(dir) => self.load_resume_corpus(&dir),
+            None => Ok(0),
+        }
     }
 
     fn add_to_corpus(&self, test_case: TestCase) {

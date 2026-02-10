@@ -5,18 +5,92 @@
 //! 2. Reduce false positives (single oracle with no corroboration)
 //! 3. Identify patterns that individual oracles might miss
 //!
-//! # Confidence Scoring
+//! # Confidence Scoring (Phase 0 Fix: Oracle Independence Weighting)
 //!
-//! | Oracle Count | Corroboration         | Confidence |
-//! |--------------|----------------------|------------|
-//! | 1            | None                 | LOW        |
-//! | 1            | Same witness, diff oracle | MEDIUM |
-//! | 2+           | Independent oracles  | HIGH       |
-//! | 2+           | With invariant violation | CRITICAL |
+//! Oracles are grouped by independence to prevent correlated oracles from
+//! inflating confidence scores. Only cross-group agreement counts for HIGH confidence.
+//!
+//! | Oracle Groups | Corroboration              | Confidence |
+//! |---------------|---------------------------|------------|
+//! | 1             | None                      | LOW        |
+//! | 1             | With invariant violation  | MEDIUM     |
+//! | 2+            | Cross-group agreement     | HIGH       |
+//! | 3             | All groups + invariant    | CRITICAL   |
+//!
+//! # Oracle Groups
+//!
+//! - **Structural**: Analyze constraint structure (Underconstrained, ConstraintInference, WitnessCollision)
+//! - **Semantic**: Analyze circuit semantics (Soundness, Metamorphic, SpecInference)  
+//! - **Behavioral**: Analyze runtime behavior (ArithmeticOverflow, Boundary, Malleability)
 
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use zk_core::{FieldElement, Finding, Severity};
+use std::collections::{HashMap, HashSet};
+use zk_core::{AttackType, FieldElement, Finding, Severity};
+
+/// Oracle independence groups to prevent correlated oracles from inflating confidence.
+///
+/// Oracles within the same group often detect related issues and their agreement
+/// should not count as independent confirmation. Only cross-group agreement
+/// provides strong evidence of a real vulnerability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OracleGroup {
+    /// Structural analysis oracles - analyze constraint structure
+    /// Examples: Underconstrained, ConstraintInference, WitnessCollision, ConstraintSlice
+    Structural,
+    /// Semantic analysis oracles - analyze circuit semantics and logic
+    /// Examples: Soundness, Metamorphic, SpecInference, Differential
+    Semantic,
+    /// Behavioral analysis oracles - analyze runtime behavior
+    /// Examples: ArithmeticOverflow, Boundary, Malleability, ReplayAttack
+    Behavioral,
+}
+
+impl OracleGroup {
+    /// Classify an attack type into its oracle group
+    pub fn from_attack_type(attack_type: AttackType) -> Self {
+        match attack_type {
+            // Structural group - constraint structure analysis
+            AttackType::Underconstrained
+            | AttackType::ConstraintInference
+            | AttackType::ConstraintBypass
+            | AttackType::ConstraintSlice
+            | AttackType::WitnessCollision
+            | AttackType::Collision => OracleGroup::Structural,
+
+            // Semantic group - circuit semantics and logic
+            AttackType::Soundness
+            | AttackType::Metamorphic
+            | AttackType::SpecInference
+            | AttackType::Differential
+            | AttackType::VerificationFuzzing
+            | AttackType::RecursiveProof
+            | AttackType::CircuitComposition
+            | AttackType::TrustedSetup => OracleGroup::Semantic,
+
+            // Behavioral group - runtime behavior analysis
+            AttackType::ArithmeticOverflow
+            | AttackType::Boundary
+            | AttackType::BitDecomposition
+            | AttackType::Malleability
+            | AttackType::ReplayAttack
+            | AttackType::WitnessLeakage
+            | AttackType::InformationLeakage
+            | AttackType::TimingSideChannel => OracleGroup::Behavioral,
+
+            // Default to Behavioral for unknown attack types
+            _ => OracleGroup::Behavioral,
+        }
+    }
+
+    /// Get all oracle groups
+    pub fn all() -> [OracleGroup; 3] {
+        [
+            OracleGroup::Structural,
+            OracleGroup::Semantic,
+            OracleGroup::Behavioral,
+        ]
+    }
+}
 
 /// Confidence level for correlated findings
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -49,10 +123,14 @@ pub struct CorrelatedFinding {
     pub primary: Finding,
     /// Additional findings that corroborate
     pub corroborating: Vec<Finding>,
-    /// Number of independent oracles that agree
+    /// Number of independent oracles that agree (deprecated, use independent_group_count)
     pub oracle_count: usize,
+    /// Number of independent oracle GROUPS that agree (Phase 0 fix)
+    pub independent_group_count: usize,
     /// Names of oracles that fired
     pub oracle_names: Vec<String>,
+    /// Oracle groups represented in this correlation
+    pub oracle_groups: Vec<OracleGroup>,
     /// Computed confidence level
     pub confidence: ConfidenceLevel,
     /// Combined severity (max of all findings)
@@ -79,10 +157,13 @@ impl CorrelatedFinding {
 
 /// Oracle correlation engine
 pub struct OracleCorrelator {
-    /// Minimum oracle count for HIGH confidence
+    /// Minimum independent oracle GROUP count for HIGH confidence (Phase 0 fix)
+    /// Now counts distinct groups, not just oracles, to prevent correlated oracle inflation
     high_confidence_threshold: usize,
     /// Whether invariant violations boost confidence
     invariant_boost: bool,
+    /// Whether to use oracle independence weighting (Phase 0 fix)
+    use_independence_weighting: bool,
 }
 
 impl Default for OracleCorrelator {
@@ -96,10 +177,11 @@ impl OracleCorrelator {
         Self {
             high_confidence_threshold: 2,
             invariant_boost: true,
+            use_independence_weighting: true, // Phase 0: Enable by default
         }
     }
 
-    /// Set the threshold for HIGH confidence
+    /// Set the threshold for HIGH confidence (minimum independent groups)
     pub fn with_high_threshold(mut self, threshold: usize) -> Self {
         self.high_confidence_threshold = threshold.max(2);
         self
@@ -111,10 +193,37 @@ impl OracleCorrelator {
         self
     }
 
+    /// Disable oracle independence weighting (for backward compatibility)
+    pub fn without_independence_weighting(mut self) -> Self {
+        self.use_independence_weighting = false;
+        self
+    }
+
+    /// Count distinct oracle groups from findings
+    fn count_independent_groups(&self, findings: &[&Finding]) -> (usize, Vec<OracleGroup>) {
+        let groups: HashSet<OracleGroup> = findings
+            .iter()
+            .map(|f| OracleGroup::from_attack_type(f.attack_type.clone()))
+            .collect();
+        let group_vec: Vec<OracleGroup> = groups.into_iter().collect();
+        (group_vec.len(), group_vec)
+    }
+
     /// Correlate findings from multiple oracles
     ///
     /// Groups findings by witness similarity and scores confidence based on
-    /// how many independent oracles confirm each finding.
+    /// how many INDEPENDENT oracle GROUPS confirm each finding.
+    ///
+    /// # Phase 0 Fix: Oracle Independence Weighting
+    ///
+    /// Previously, any 2+ oracles would give HIGH confidence. This caused
+    /// correlated oracles (e.g., UnderconstrainedOracle + NullifierOracle,
+    /// both in the Structural group) to inflate confidence scores.
+    ///
+    /// Now, confidence is based on cross-GROUP agreement:
+    /// - 1 group: LOW (or MEDIUM with invariant)
+    /// - 2 groups: HIGH  
+    /// - 3 groups: CRITICAL (with invariant boost)
     pub fn correlate(&self, findings: &[Finding]) -> Vec<CorrelatedFinding> {
         if findings.is_empty() {
             return Vec::new();
@@ -146,13 +255,22 @@ impl OracleCorrelator {
 
             let oracle_count = oracle_names.len();
 
+            // Phase 0 Fix: Count independent oracle GROUPS, not just oracles
+            let (independent_group_count, oracle_groups) =
+                self.count_independent_groups(&group_findings);
+
             // Check for invariant violations
             let has_invariant_violation = group_findings
                 .iter()
                 .any(|f| f.description.to_lowercase().contains("invariant"));
 
-            // Compute confidence
-            let confidence = self.compute_confidence(oracle_count, has_invariant_violation);
+            // Compute confidence using independence weighting
+            let confidence = if self.use_independence_weighting {
+                self.compute_confidence_with_groups(independent_group_count, has_invariant_violation)
+            } else {
+                // Legacy behavior for backward compatibility
+                self.compute_confidence(oracle_count, has_invariant_violation)
+            };
 
             // Compute combined severity (max)
             let combined_severity = group_findings
@@ -172,7 +290,9 @@ impl OracleCorrelator {
                 primary,
                 corroborating,
                 oracle_count,
+                independent_group_count,
                 oracle_names,
+                oracle_groups,
                 confidence,
                 combined_severity,
                 witness_hash,
@@ -198,7 +318,7 @@ impl OracleCorrelator {
         hex::encode(&hasher.finalize()[..16])
     }
 
-    /// Compute confidence level based on oracle count and invariant status
+    /// Compute confidence level based on oracle count and invariant status (legacy)
     fn compute_confidence(&self, oracle_count: usize, has_invariant: bool) -> ConfidenceLevel {
         if oracle_count >= self.high_confidence_threshold {
             if has_invariant && self.invariant_boost {
@@ -210,6 +330,46 @@ impl OracleCorrelator {
             ConfidenceLevel::Medium
         } else {
             ConfidenceLevel::Low
+        }
+    }
+
+    /// Compute confidence level based on independent oracle GROUPS (Phase 0 fix)
+    ///
+    /// This prevents correlated oracles from inflating confidence scores.
+    /// Only cross-group agreement provides strong evidence.
+    ///
+    /// # Confidence Levels
+    ///
+    /// - 3 groups + invariant: CRITICAL (all groups agree + invariant violation)
+    /// - 2+ groups: HIGH (cross-group agreement)
+    /// - 1 group + invariant: MEDIUM (single group but with invariant)
+    /// - 1 group alone: LOW (needs corroboration from different group)
+    fn compute_confidence_with_groups(
+        &self,
+        group_count: usize,
+        has_invariant: bool,
+    ) -> ConfidenceLevel {
+        match group_count {
+            // All 3 groups agree - very strong evidence
+            3 => {
+                if has_invariant && self.invariant_boost {
+                    ConfidenceLevel::Critical
+                } else {
+                    ConfidenceLevel::High
+                }
+            }
+            // 2 groups agree - cross-group corroboration
+            2 => ConfidenceLevel::High,
+            // Single group - needs more evidence
+            1 => {
+                if has_invariant && self.invariant_boost {
+                    ConfidenceLevel::Medium
+                } else {
+                    ConfidenceLevel::Low
+                }
+            }
+            // No oracles (shouldn't happen)
+            _ => ConfidenceLevel::Low,
         }
     }
 
@@ -362,6 +522,25 @@ mod tests {
         }
     }
 
+    fn make_invariant_finding(
+        attack_type: AttackType,
+        severity: Severity,
+        witness: Vec<FieldElement>,
+    ) -> Finding {
+        Finding {
+            attack_type,
+            severity,
+            description: "Invariant violation detected".to_string(),
+            poc: ProofOfConcept {
+                witness_a: witness,
+                witness_b: None,
+                public_inputs: vec![],
+                proof: None,
+            },
+            location: None,
+        }
+    }
+
     #[test]
     fn test_single_oracle_low_confidence() {
         let correlator = OracleCorrelator::new();
@@ -378,12 +557,43 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_oracles_high_confidence() {
+    fn test_multiple_oracles_same_group_low_confidence() {
+        // Phase 0 Fix: Correlated oracles in same group should NOT inflate confidence
+        let correlator = OracleCorrelator::new();
+
+        let witness = vec![FieldElement::one()];
+        // Both are in the Structural group
+        let findings = vec![
+            make_finding(
+                AttackType::Underconstrained,
+                Severity::Critical,
+                witness.clone(),
+            ),
+            make_finding(
+                AttackType::WitnessCollision,
+                Severity::High,
+                witness.clone(),
+            ),
+        ];
+
+        let correlated = correlator.correlate(&findings);
+        assert_eq!(correlated.len(), 1);
+        // With independence weighting, same-group oracles = LOW confidence
+        assert_eq!(correlated[0].confidence, ConfidenceLevel::Low);
+        assert_eq!(correlated[0].oracle_count, 2); // 2 oracles...
+        assert_eq!(correlated[0].independent_group_count, 1); // ...but only 1 group
+    }
+
+    #[test]
+    fn test_cross_group_oracles_high_confidence() {
+        // Phase 0 Fix: Cross-group agreement = HIGH confidence
         let correlator = OracleCorrelator::new();
 
         let witness = vec![FieldElement::one()];
         let findings = vec![
+            // Semantic group
             make_finding(AttackType::Soundness, Severity::High, witness.clone()),
+            // Structural group
             make_finding(
                 AttackType::Underconstrained,
                 Severity::Critical,
@@ -394,6 +604,107 @@ mod tests {
         let correlated = correlator.correlate(&findings);
         assert_eq!(correlated.len(), 1);
         assert_eq!(correlated[0].confidence, ConfidenceLevel::High);
-        assert_eq!(correlated[0].oracle_count, 2);
+        assert_eq!(correlated[0].independent_group_count, 2);
+    }
+
+    #[test]
+    fn test_all_groups_with_invariant_critical() {
+        // All 3 groups + invariant = CRITICAL
+        let correlator = OracleCorrelator::new();
+
+        let witness = vec![FieldElement::one()];
+        let findings = vec![
+            // Semantic group
+            make_finding(AttackType::Soundness, Severity::High, witness.clone()),
+            // Structural group
+            make_finding(
+                AttackType::Underconstrained,
+                Severity::Critical,
+                witness.clone(),
+            ),
+            // Behavioral group + invariant
+            make_invariant_finding(
+                AttackType::ArithmeticOverflow,
+                Severity::High,
+                witness.clone(),
+            ),
+        ];
+
+        let correlated = correlator.correlate(&findings);
+        assert_eq!(correlated.len(), 1);
+        assert_eq!(correlated[0].confidence, ConfidenceLevel::Critical);
+        assert_eq!(correlated[0].independent_group_count, 3);
+    }
+
+    #[test]
+    fn test_single_group_with_invariant_medium() {
+        // Single group + invariant = MEDIUM
+        let correlator = OracleCorrelator::new();
+
+        let witness = vec![FieldElement::one()];
+        let findings = vec![make_invariant_finding(
+            AttackType::Underconstrained,
+            Severity::Critical,
+            witness.clone(),
+        )];
+
+        let correlated = correlator.correlate(&findings);
+        assert_eq!(correlated.len(), 1);
+        assert_eq!(correlated[0].confidence, ConfidenceLevel::Medium);
+    }
+
+    #[test]
+    fn test_oracle_group_classification() {
+        // Test that attack types are correctly classified
+        assert_eq!(
+            OracleGroup::from_attack_type(AttackType::Underconstrained),
+            OracleGroup::Structural
+        );
+        assert_eq!(
+            OracleGroup::from_attack_type(AttackType::WitnessCollision),
+            OracleGroup::Structural
+        );
+        assert_eq!(
+            OracleGroup::from_attack_type(AttackType::Soundness),
+            OracleGroup::Semantic
+        );
+        assert_eq!(
+            OracleGroup::from_attack_type(AttackType::Metamorphic),
+            OracleGroup::Semantic
+        );
+        assert_eq!(
+            OracleGroup::from_attack_type(AttackType::ArithmeticOverflow),
+            OracleGroup::Behavioral
+        );
+        assert_eq!(
+            OracleGroup::from_attack_type(AttackType::Boundary),
+            OracleGroup::Behavioral
+        );
+    }
+
+    #[test]
+    fn test_legacy_behavior_without_independence() {
+        // Verify backward compatibility when independence weighting is disabled
+        let correlator = OracleCorrelator::new().without_independence_weighting();
+
+        let witness = vec![FieldElement::one()];
+        // Both in same Structural group
+        let findings = vec![
+            make_finding(
+                AttackType::Underconstrained,
+                Severity::Critical,
+                witness.clone(),
+            ),
+            make_finding(
+                AttackType::WitnessCollision,
+                Severity::High,
+                witness.clone(),
+            ),
+        ];
+
+        let correlated = correlator.correlate(&findings);
+        assert_eq!(correlated.len(), 1);
+        // Legacy: 2 oracles = HIGH (ignores group independence)
+        assert_eq!(correlated[0].confidence, ConfidenceLevel::High);
     }
 }

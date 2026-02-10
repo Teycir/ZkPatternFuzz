@@ -82,9 +82,22 @@ impl ValidationResult {
 }
 
 /// Configuration for oracle validation
+///
+/// # Phase 0 Fix: Evidence Confidence Thresholds
+///
+/// The default configuration now allows single-oracle findings to pass validation
+/// when they are reproducible, aligning with the documented confidence model:
+/// - MEDIUM confidence: 1 oracle + successful validation/reproduction
+/// - HIGH confidence: 2+ independent oracle groups agree
+/// - CRITICAL confidence: all groups + invariant violation
+///
+/// Previously, `cross_oracle_threshold` defaulted to 2, which would drop valid
+/// single-oracle findings. This has been fixed by lowering `min_agreement_ratio`
+/// and adding `allow_single_oracle_with_reproduction`.
 #[derive(Debug, Clone)]
 pub struct OracleValidationConfig {
     /// Minimum oracle agreement ratio to consider finding valid
+    /// Phase 0 Fix: Lowered from 0.6 to 0.5 to allow single-oracle findings
     pub min_agreement_ratio: f64,
     /// Whether to require ground truth validation
     pub require_ground_truth: bool,
@@ -100,12 +113,23 @@ pub struct OracleValidationConfig {
     pub cross_attack_weight: f64,
     /// Whether to reset stateful oracles between validations
     pub reset_stateful_oracles: bool,
+    /// Phase 0 Fix: Allow single-oracle findings if reproduction succeeds
+    /// When true, a single oracle can produce a valid finding if the
+    /// reproduction step succeeds (witness executes and produces expected output)
+    pub allow_single_oracle_with_reproduction: bool,
+    /// Minimum confidence level for filtering in reports (not validation)
+    /// Phase 0 Fix: Filtering should happen at report generation, not validation
+    pub min_confidence_for_report: ConfidenceLevel,
 }
+
+/// Re-export ConfidenceLevel for use in config
+pub use super::oracle_correlation::ConfidenceLevel;
 
 impl Default for OracleValidationConfig {
     fn default() -> Self {
         Self {
-            min_agreement_ratio: 0.6,
+            // Phase 0 Fix: Allow single oracle findings to pass validation
+            min_agreement_ratio: 0.5,
             require_ground_truth: false,
             mutation_test_count: 10,
             min_mutation_detection_rate: 0.7,
@@ -113,6 +137,46 @@ impl Default for OracleValidationConfig {
             allow_cross_attack_type: true,
             cross_attack_weight: 0.5,
             reset_stateful_oracles: true,
+            // Phase 0 Fix: Single-oracle reproducible findings are valid
+            allow_single_oracle_with_reproduction: true,
+            // Phase 0 Fix: Filter at report level, not validation level
+            min_confidence_for_report: ConfidenceLevel::Low,
+        }
+    }
+}
+
+impl OracleValidationConfig {
+    /// Create a strict config that requires cross-oracle confirmation
+    /// Use this for high-stakes audits where false positives are costly
+    pub fn strict() -> Self {
+        Self {
+            min_agreement_ratio: 0.7,
+            require_ground_truth: true,
+            mutation_test_count: 20,
+            min_mutation_detection_rate: 0.8,
+            skip_stateful_oracles: false,
+            allow_cross_attack_type: true,
+            cross_attack_weight: 0.5,
+            reset_stateful_oracles: true,
+            allow_single_oracle_with_reproduction: false,
+            min_confidence_for_report: ConfidenceLevel::Medium,
+        }
+    }
+
+    /// Create a permissive config for exploratory fuzzing
+    /// Use this when you want to see all potential findings
+    pub fn permissive() -> Self {
+        Self {
+            min_agreement_ratio: 0.3,
+            require_ground_truth: false,
+            mutation_test_count: 5,
+            min_mutation_detection_rate: 0.5,
+            skip_stateful_oracles: false,
+            allow_cross_attack_type: true,
+            cross_attack_weight: 0.7,
+            reset_stateful_oracles: true,
+            allow_single_oracle_with_reproduction: true,
+            min_confidence_for_report: ConfidenceLevel::Low,
         }
     }
 }
