@@ -1,0 +1,1348 @@
+================================================================================
+                    ZKPATTERNFUZZ - DETAILED PSEUDOCODE
+                  For Deep Analysis by Anthropic Opus
+================================================================================
+
+OVERVIEW:
+---------
+ZkPatternFuzz is a Zero-Knowledge Proof Security Testing Framework written in Rust.
+It performs coverage-guided fuzzing, symbolic execution, and specialized attacks
+on ZK circuits (Circom, Noir, Halo2, Cairo) to detect vulnerabilities.
+
+TABLE OF CONTENTS:
+1. MAIN ENTRY & CLI
+2. CONFIGURATION SYSTEM
+3. FUZZING ENGINE CORE
+4. EXECUTOR ARCHITECTURE
+5. ATTACK IMPLEMENTATIONS
+6. ORACLE SYSTEM
+7. EVIDENCE MODE WORKFLOW
+8. COVERAGE & CORPUS MANAGEMENT
+9. REPORTING SYSTEM
+10. BACKEND INTEGRATIONS
+
+================================================================================
+1. MAIN ENTRY & CLI
+================================================================================
+
+PROGRAM: zk-fuzzer
+
+STRUCTURE Cli:
+    - command: Subcommand enum
+    - config: Optional<String> (YAML path)
+    - workers: usize (default: 4)
+    - seed: Optional<u64>
+    - verbose: bool
+    - quiet: bool
+    - dry_run: bool
+    - simple_progress: bool
+    - real_only: bool (strict_backend enforcement)
+    - profile: Optional<String> (quick/standard/deep/perf)
+
+ENUM Commands:
+    Run {
+        campaign: String,
+        iterations: u64 (default: 100000),
+        timeout: Optional<u64>,
+        resume: bool,
+        corpus_dir: Optional<String>
+    }
+    Evidence {  // Evidence mode - requires invariants
+        campaign: String,
+        iterations: u64,
+        timeout: Optional<u64>,
+        resume: bool,
+        corpus_dir: Optional<String>
+    }
+    Chains {  // Multi-step chain fuzzing
+        campaign: String,
+        iterations: u64 (default: 100000),
+        timeout: u64 (default: 600),
+        resume: bool
+    }
+    Validate { campaign: String }
+    Minimize { corpus_dir: String, output: Optional<String> }
+    Init { output: String, framework: String }
+    ExecWorker (hidden)
+
+FUNCTION main():
+    1. Parse CLI arguments
+    2. Kill existing zk-fuzzer instances (except current PID)
+    3. Initialize logging with appropriate level (WARN/INFO/DEBUG)
+    4. DISPATCH based on command:
+       
+       CASE Run:
+           CALL run_campaign(
+               config_path, workers, seed, verbose, dry_run,
+               simple_progress, real_only, iterations, timeout,
+               require_invariants=false, resume, corpus_dir, profile
+           )
+       
+       CASE Evidence:
+           CALL run_campaign(
+               config_path, workers, seed, verbose, dry_run,
+               simple_progress, real_only=true, iterations, timeout,
+               require_invariants=TRUE, resume, corpus_dir, profile
+           )
+       
+       CASE Chains:
+           CALL run_chain_campaign(
+               campaign, workers, seed, verbose, dry_run,
+               simple_progress, iterations, timeout, resume
+           )
+       
+       CASE Validate:
+           CALL validate_campaign(campaign)
+       
+       CASE Minimize:
+           CALL minimize_corpus(corpus_dir, output)
+       
+       CASE Init:
+           CALL generate_sample_config(output, framework)
+       
+       DEFAULT (no command but --config provided):
+           CALL run_campaign with default iterations=1000
+
+FUNCTION run_campaign(..., require_invariants: bool, ...):
+    1. LOAD config from YAML
+    2. APPLY profile if specified (quick/standard/deep modify iterations/timeouts)
+    3. ENFORCE real_only mode:
+       - IF framework == Mock AND real_only:
+           FAIL with error "REAL-ONLY MODE: Cannot use mock framework"
+       - SET strict_backend = true
+    4. ENFORCE evidence mode:
+       - IF require_invariants:
+           - CHECK invariants exist in config
+           - IF empty: FAIL "Evidence mode requires v2 invariants"
+           - SET evidence_mode = true
+           - ENFORCE strict_backend = true
+    5. INJECT CLI parameters into config (iterations, timeout)
+    6. PRINT banner with campaign info
+    7. HANDLE resume mode (load corpus if exists)
+    8. IF dry_run:
+           PRINT validation success, RETURN
+    9. EXECUTE fuzzing:
+       - IF simple_progress:
+           CREATE ZkFuzzer, CALL run_with_workers(workers)
+       - ELSE:
+           CALL ZkFuzzer::run_with_progress(...)
+    10. PRINT summary, SAVE reports
+    11. EXIT with error code 1 if critical findings exist
+
+================================================================================
+2. CONFIGURATION SYSTEM
+================================================================================
+
+STRUCTURE FuzzConfig:
+    - campaign: Campaign
+    - attacks: Vec<Attack>
+    - inputs: Vec<Input>
+    - reporting: ReportingConfig
+    - invariants: Optional<Vec<Invariant>>  // v2 YAML
+
+STRUCTURE Campaign:
+    - name: String
+    - version: String
+    - target: Target
+    - parameters: Parameters
+
+STRUCTURE Target:
+    - framework: Framework enum (Circom/Noir/Halo2/Cairo/Mock)
+    - circuit_path: PathBuf
+    - main_component: String
+
+STRUCTURE Parameters:
+    - field: String (e.g., "bn254")
+    - max_constraints: u64
+    - timeout_seconds: u64
+    - additional: Map<String, Value>  // Extensible config
+
+STRUCTURE Attack:
+    - attack_type: AttackType enum
+    - description: String
+    - config: Map<String, Value>
+
+ENUM AttackType:
+    Underconstrained
+    Soundness
+    ArithmeticOverflow
+    WitnessValidation
+    Verification
+    Collision
+    Boundary
+    Differential
+    CircuitComposition
+    RecursiveProof
+    InformationLeakage
+    TimingSidechannel
+    ConstraintInference  // Phase 4
+    ConstraintSlice      // Phase 4
+    Metamorphic          // Phase 4
+    SpecInference        // Phase 4
+    WitnessCollision     // Phase 4
+
+STRUCTURE Input:
+    - name: String
+    - input_type: String ("field", "field[]", etc.)
+    - fuzz_strategy: FuzzStrategy enum (Random/InterestingValues/Mutation/ExhaustiveIfSmall)
+    - length: Optional<usize> (for arrays)
+
+STRUCTURE Invariant (v2 YAML):
+    - name: String
+    - description: String
+    - expression: String (can reference inputs/outputs)
+    - severity: Severity enum (Critical/High/Medium/Low)
+    - violation_action: ViolationAction enum (Report/Stop/Ignore)
+
+FUNCTION FuzzConfig::from_yaml(path):
+    1. READ file contents
+    2. PARSE YAML using serde
+    3. VALIDATE structure (campaign, attacks, inputs present)
+    4. CHECK 0-day readiness
+    5. RETURN config or error
+
+FUNCTION check_0day_readiness(config) -> ReadinessReport:
+    CHECKS:
+    - Has real backend? (not mock)
+    - Has invariants defined?
+    - Has semantic oracles configured?
+    - Has timeout configured?
+    - Has output directory configured?
+    RETURN report with ready_for_evidence flag
+
+================================================================================
+3. FUZZING ENGINE CORE
+================================================================================
+
+STRUCTURE FuzzingEngine:
+    - config: FuzzConfig
+    - seed: Optional<u64>
+    - executor: Arc<dyn CircuitExecutor>
+    - core: FuzzingEngineCore
+    - attack_registry: AttackRegistry
+    - workers: usize
+    - symbolic: Optional<SymbolicFuzzerIntegration>
+    - taint_analyzer: Optional<TaintAnalyzer>
+    - complexity_analyzer: ComplexityAnalyzer
+    - invariant_checker: Optional<InvariantChecker>
+    - thread_pool: Optional<rayon::ThreadPool>
+
+FUNCTION FuzzingEngine::new(config, seed, workers):
+    1. EXTRACT additional config parameters
+    2. CREATE executor via ExecutorFactory
+    3. DETECT mock fallback:
+       - IF executor.is_fallback_mock():
+           IF strict_backend: FAIL with "MOCK FALLBACK REJECTED"
+           ELSE: WARN about synthetic results
+    4. ENFORCE evidence mode checks:
+       - IF evidence_mode AND executor.is_mock():
+           FAIL "EVIDENCE MODE REJECTED: Cannot use mock executor"
+    5. CONFIGURE per-exec isolation (evidence mode default: enabled)
+       - IF isolate_exec: WRAP executor with IsolatedExecutor
+    6. CREATE coverage tracker (size = num_constraints)
+    7. CREATE corpus with max_size (default: 100,000)
+    8. INITIALIZE symbolic execution:
+       - max_paths: 1000 (default)
+       - max_depth: 200 (default)
+       - solver_timeout_ms: 5000
+    9. INITIALIZE taint analyzer from circuit info
+    10. PARSE power schedule (MMOPT/FAST/EXPLORE/etc.)
+    11. INITIALIZE structure-aware mutator
+    12. ANALYZE circuit complexity
+    13. INITIALIZE bug oracles:
+        - UnderconstrainedOracle
+        - ArithmeticOverflowOracle
+        - Semantic oracles (from config: nullifier/merkle/range/commitment)
+    14. BUILD FuzzingEngineCore
+    15. LOAD attack plugins
+    16. INITIALIZE invariant checker (if invariants exist)
+    17. BUILD thread pool for parallel execution
+    18. RETURN configured engine
+
+FUNCTION FuzzingEngine::run_with_workers(workers) -> FuzzReport:
+    1. INITIALIZE statistics
+    2. SEED initial corpus:
+       - Generate boundary value test cases
+       - Generate random test cases
+       - IF symbolic enabled: Generate constraint-guided seeds
+    3. FOR each attack in attack_registry:
+       - CALL attack.run(&mut context)
+    4. MAIN FUZZING LOOP (until timeout or iteration limit):
+       
+       WHILE iterations < max_iterations AND elapsed < timeout:
+           // Select test case
+           test_case = power_scheduler.select_from_corpus()
+           
+           // Mutate
+           mutated = structure_mutator.mutate(test_case)
+           
+           // Execute
+           result = executor.execute(mutated)
+           
+           // Track coverage
+           new_coverage = coverage_tracker.update(result.satisfied_constraints)
+           
+           // Check oracles
+           FOR each oracle in oracles:
+               finding = oracle.check(mutated, result)
+               IF finding.is_some():
+                   findings.push(finding)
+           
+           // Check invariants (Phase 2)
+           IF invariant_checker.is_some():
+               violations = invariant_checker.check(result)
+               FOR violation in violations:
+                   findings.push(Finding::from(violation))
+           
+           // Update corpus if new coverage
+           IF new_coverage:
+               corpus.add(mutated, result.satisfied_constraints)
+           
+           // Update statistics
+           stats.executions += 1
+           stats.coverage_percentage = coverage_tracker.percentage()
+    5. MINIMIZE corpus
+    6. GENERATE report
+    7. RETURN FuzzReport
+
+FUNCTION FuzzingEngine::run_with_progress(config, seed, workers, verbose) -> FuzzReport:
+    1. CREATE progress reporter (fancy UI or simple)
+    2. CREATE fuzzer engine
+    3. RUN fuzzing with progress callbacks
+    4. RETURN report
+
+================================================================================
+4. EXECUTOR ARCHITECTURE
+================================================================================
+
+TRAIT CircuitExecutor:
+    - execute(test_case: TestCase) -> ExecutionResult
+    - num_constraints() -> usize
+    - num_public_inputs() -> usize
+    - field_modulus() -> FieldElement
+    - circuit_info() -> CircuitInfo
+    - is_mock() -> bool
+    - is_fallback_mock() -> bool
+
+STRUCTURE ExecutorFactory:
+    - Creates backend-specific executors
+
+FUNCTION ExecutorFactory::create_with_options(framework, circuit_path, component, options):
+    MATCH framework:
+        Circom -> CREATE CircomExecutor
+        Noir   -> CREATE NoirExecutor
+        Halo2  -> CREATE Halo2Executor
+        Cairo  -> CREATE CairoExecutor
+        Mock   -> CREATE MockCircuitExecutor
+
+STRUCTURE CircomExecutor:
+    - circuit_path: PathBuf
+    - r1cs_constraints: Vec<R1CSConstraint>
+    - witness_generator: WitnessGenerator
+    
+    FUNCTION execute(test_case):
+        1. GENERATE witness using snarkjs/circom
+        2. CHECK constraints (A * B = C)
+        3. RETURN ExecutionResult { success, outputs, satisfied_constraints }
+
+STRUCTURE NoirExecutor:
+    - circuit_path: PathBuf
+    - acir_bytecode: Vec<u8>
+    - barretenberg_backend: Barretenberg
+    
+    FUNCTION execute(test_case):
+        1. EXECUTE ACIR bytecode via Barretenberg
+        2. TRACK satisfied ACIR opcodes
+        3. RETURN ExecutionResult
+
+STRUCTURE Halo2Executor:
+    - circuit_path: PathBuf
+    - plonk_gates: Vec<PlonkGate>
+    - halo2_proofs_backend: Halo2Backend
+    
+    FUNCTION execute(test_case):
+        1. EXECUTE PLONK circuit
+        2. TRACK gate coverage
+        3. RETURN ExecutionResult
+
+STRUCTURE IsolatedExecutor (wrapper):
+    - inner: Arc<dyn CircuitExecutor>
+    - timeout_ms: u64
+    
+    FUNCTION execute(test_case):
+        1. SPAWN subprocess or thread
+        2. EXECUTE inner.execute(test_case) with timeout
+        3. IF timeout: KILL process, RETURN timeout error
+        4. RETURN result
+
+================================================================================
+5. ATTACK IMPLEMENTATIONS
+================================================================================
+
+TRAIT Attack:
+    - run(context: &mut AttackContext) -> Vec<Finding>
+    - metadata() -> AttackMetadata
+
+STRUCTURE AttackContext:
+    - executor: Arc<dyn CircuitExecutor>
+    - config: AttackConfig
+    - corpus: Corpus
+    - coverage: CoverageTracker
+    - findings: Vec<Finding>
+
+ATTACK: UnderconstrainedAttack
+--------------------------------
+GOAL: Find circuits accepting multiple valid witnesses for same public inputs
+
+FUNCTION run(context):
+    1. EXTRACT config:
+       - witness_pairs: u64 (default: 1000)
+       - public_input_names: Vec<String> (identify public inputs)
+       - fixed_public_inputs: Optional<Vec<String>> (fix values)
+    
+    2. DETERMINE public input indices:
+       - Use constraint inspector to map names to indices
+       - FALLBACK: public_input_count leading inputs
+    
+    3. GENERATE witness pairs:
+       FOR _ in 0..witness_pairs:
+           IF fixed_public_inputs provided:
+               public_values = parse(fixed_public_inputs)
+           ELSE:
+               public_values = generate_random_public_inputs()
+           
+           witness1 = generate_witness_with_public(public_values)
+           witness2 = generate_witness_with_public(public_values)  // Different private
+           
+           PAIRS.push((witness1, witness2, public_values))
+    
+    4. EXECUTE in parallel using Rayon:
+       results = PAIRS.par_iter().map(|(w1, w2, pub)| {
+           out1 = executor.execute(w1)
+           out2 = executor.execute(w2)
+           hash1 = sha256(out1.outputs)
+           hash2 = sha256(out2.outputs)
+           ((hash1, hash2), (w1, w2, pub))
+       }).collect()
+    
+    5. DETECT collisions:
+       FOR each pair in results:
+           IF hash1 == hash2 AND w1 != w2:
+               // Collision found!
+               finding = Finding::new(
+                   severity: Critical,
+                   attack_type: Underconstrained,
+                   description: "Different witnesses produce identical output",
+                   witnesses: (w1, w2),
+                   public_inputs: pub
+               )
+               findings.push(finding)
+    
+    6. RETURN findings
+
+ATTACK: ArithmeticOverflowAttack
+---------------------------------
+GOAL: Test field arithmetic edge cases (0, 1, p-1, p)
+
+FUNCTION run(context):
+    1. GET field modulus p
+    2. DEFINE boundary values: [0, 1, p-1, p]
+    3. GENERATE test cases:
+       FOR each input:
+           FOR each boundary_value:
+               test_case = set_input_to_value(input, boundary_value)
+               result = executor.execute(test_case)
+               
+               IF result.success AND should_fail(boundary_value):
+                   findings.push(Finding::new(
+                       severity: High,
+                       description: "Circuit accepts boundary value without proper check"
+                   ))
+    4. RETURN findings
+
+ATTACK: ConstraintInferenceAttack (Phase 4 - Novel)
+----------------------------------------------------
+GOAL: Infer missing constraints by learning patterns from valid executions
+
+FUNCTION run(context):
+    1. CONFIGURE:
+       - sample_count: 500
+       - confidence_threshold: 0.7 (70%)
+    
+    2. LEARN PHASE:
+       observations = []
+       FOR _ in 0..sample_count:
+           witness = generate_valid_witness()
+           result = executor.execute(witness)
+           IF result.success:
+               observations.push((witness, result.outputs))
+    
+    3. INFER CONSTRAINTS:
+       patterns = analyze_patterns(observations)
+       implied_constraints = []
+       
+       FOR each input:
+           // Check if binary (always 0 or 1)
+           IF all_values_in(observations, input, {0, 1}):
+               implied_constraints.push(BinaryConstraint(input))
+           
+           // Check range (always < 2^64)
+           IF all_values_lt(observations, input, 2^64):
+               implied_constraints.push(RangeConstraint(input, max=2^64))
+           
+           // Check uniqueness
+           IF all_values_unique(observations, input):
+               implied_constraints.push(UniquenessConstraint(input))
+    
+    4. VALIDATE PHASE:
+       FOR constraint in implied_constraints:
+           violation = generate_violation(constraint)
+           result = executor.execute(violation)
+           
+           IF result.success:
+               findings.push(Finding::new(
+                   severity: Critical,
+                   attack_type: ConstraintInference,
+                   description: "Circuit accepts violation of inferred constraint",
+                   inferred_constraint: constraint,
+                   violating_witness: violation,
+                   confidence: confidence_threshold
+               ))
+    
+    5. RETURN findings
+
+ATTACK: MetamorphicAttack (Phase 4 - Novel)
+--------------------------------------------
+GOAL: Detect logic bugs via transform-based metamorphic relations
+
+FUNCTION run(context):
+    1. DEFINE metamorphic relations:
+       relations = [
+           // Relation: Scaling input by constant should scale output proportionally
+           MetamorphicRelation {
+               name: "scale_proportionality",
+               transform: ScaleInput { factor: 2 },
+               expected: OutputScaled { factor: 2 }
+           },
+           
+           // Relation: Bit flip in input should change output
+           MetamorphicRelation {
+               name: "bit_flip_sensitivity",
+               transform: BitFlip { bit: 0 },
+               expected: OutputChanged
+           },
+           
+           // Relation: Swapping inputs should change output (if non-commutative)
+           MetamorphicRelation {
+               name: "input_order_dependency",
+               transform: SwapInputs(0, 1),
+               expected: OutputChanged
+           }
+       ]
+    
+    2. TEST EACH RELATION:
+       FOR relation in relations:
+           FOR _ in 0..100:  // 100 base witnesses
+               base_witness = generate_valid_witness()
+               base_output = executor.execute(base_witness)
+               
+               transformed_witness = relation.transform.apply(base_witness)
+               transformed_output = executor.execute(transformed_witness)
+               
+               IF NOT relation.expected.check(base_output, transformed_output):
+                   findings.push(Finding::new(
+                       severity: High,
+                       attack_type: Metamorphic,
+                       description: "Metamorphic relation violated",
+                       relation_name: relation.name,
+                       base_witness: base_witness,
+                       transformed_witness: transformed_witness
+                   ))
+    
+    3. RETURN findings
+
+ATTACK: CollisionAttack
+------------------------
+GOAL: Find hash/nullifier collisions
+
+FUNCTION run(context):
+    1. CONFIGURE:
+       - sample_count: 10000
+       - target_output_indices: [0]  // Usually first output is hash/nullifier
+    
+    2. GENERATE samples in parallel:
+       samples = (0..sample_count).into_par_iter().map(|_| {
+           witness = generate_random_witness()
+           result = executor.execute(witness)
+           outputs = target_output_indices.map(|i| result.outputs[i])
+           output_hash = sha256(outputs)
+           (output_hash, witness, outputs)
+       }).collect()
+    
+    3. GROUP by output_hash:
+       collisions = group_by_hash(samples)
+       
+       FOR (hash, group) in collisions:
+           IF group.len() > 1:
+               witnesses = group.map(|(_, w, _)| w)
+               IF witnesses_are_different(witnesses):
+                   findings.push(Finding::new(
+                       severity: Critical,
+                       attack_type: Collision,
+                       description: "Hash collision found",
+                       collision_hash: hash,
+                       colliding_witnesses: witnesses
+                   ))
+    
+    4. RETURN findings
+
+================================================================================
+6. ORACLE SYSTEM
+================================================================================
+
+TRAIT BugOracle:
+    - name() -> &str
+    - check(test_case, execution_result) -> Optional<Finding>
+    - configure(config: Map<String, Value>)
+
+ORACLE: UnderconstrainedOracle
+-------------------------------
+DETECTS: Circuits accepting multiple witnesses for same public inputs
+
+FUNCTION check(test_case, result):
+    1. TRACK all executions in internal HashMap
+    2. KEY = (output_hash, public_input_hash)
+    3. VALUE = Vec<Witness>
+    
+    4. INSERT current execution into map
+    
+    5. IF map[key].len() > 1:
+           witnesses = map[key]
+           IF witnesses_have_different_private_inputs(witnesses):
+               RETURN Finding::new(
+                   severity: Critical,
+                   description: "Underconstrained: Multiple witnesses produce same output"
+               )
+    
+    6. RETURN None
+
+ORACLE: ArithmeticOverflowOracle
+---------------------------------
+DETECTS: Arithmetic at field boundaries
+
+FUNCTION check(test_case, result):
+    1. CHECK if any input is at boundary:
+       - 0 (zero)
+       - 1 (identity)
+       - p-1 (max field value)
+       - p (field modulus - overflow)
+    
+    2. IF boundary value accepted without proper constraint:
+           RETURN Finding::new(
+               severity: High,
+               description: "Arithmetic overflow risk: boundary value accepted"
+           )
+    
+    3. RETURN None
+
+ORACLE: NullifierOracle (Semantic)
+-----------------------------------
+DETECTS: Nullifier reuse and determinism issues
+
+FUNCTION check(test_case, result):
+    1. IDENTIFY nullifier input (by name pattern: "nullifier", "nf", etc.)
+    
+    2. CHECKS:
+       a) UNIQUENESS: Track all nullifiers seen
+          IF nullifier seen before with different witness:
+              RETURN Finding::new("Nullifier reuse detected")
+       
+       b) DETERMINISM: Same inputs should produce same nullifier
+          IF deterministic_check_fails:
+              RETURN Finding::new("Nullifier non-deterministic")
+       
+       c) RANGE: Nullifier should be in valid field range
+          IF nullifier > field_modulus:
+              RETURN Finding::new("Nullifier out of range")
+    
+    3. RETURN None
+
+ORACLE: MerkleOracle (Semantic)
+--------------------------------
+DETECTS: Merkle path validation issues
+
+FUNCTION check(test_case, result):
+    1. IDENTIFY Merkle-related inputs:
+       - leaf: FieldElement
+       - pathElements: Vec<FieldElement>
+       - pathIndices: Vec<u8> (0 or 1)
+    
+    2. CHECKS:
+       a) PATH INDICES BINARY:
+          IF any pathIndices[i] NOT IN {0, 1}:
+              RETURN Finding::new("Non-binary path index accepted")
+       
+       b) PATH LENGTH:
+          IF pathElements.len() != expected_depth:
+              RETURN Finding::new("Merkle path length mismatch")
+       
+       c) ROOT COMPUTATION:
+          computed_root = compute_merkle_root(leaf, pathElements, pathIndices)
+          IF computed_root != claimed_root:
+              RETURN Finding::new("Invalid Merkle proof accepted")
+    
+    3. RETURN None
+
+ORACLE: RangeProofOracle (Semantic)
+------------------------------------
+DETECTS: Range check bypasses
+
+FUNCTION check(test_case, result):
+    1. IDENTIFY range-checked inputs (by naming convention)
+    
+    2. CHECKS:
+       a) UPPER BOUND:
+          IF input > claimed_upper_bound AND accepted:
+              RETURN Finding::new("Upper bound check bypassed")
+       
+       b) LOWER BOUND:
+          IF input < claimed_lower_bound AND accepted:
+              RETURN Finding::new("Lower bound check bypassed")
+       
+       c) BITWIDTH:
+          IF input requires more bits than claimed AND accepted:
+              RETURN Finding::new("Bit-width check bypassed")
+    
+    3. RETURN None
+
+ORACLE: ProofForgeryOracle
+---------------------------
+DETECTS: Proof malleability and forgery attempts
+
+FUNCTION check(test_case, result):
+    1. IF proof generation succeeds:
+       a) MUTATE proof slightly (flip random bit)
+       b) ATTEMPT verification with mutated proof
+       c) IF verification succeeds:
+           RETURN Finding::new("Proof malleability: Mutated proof accepted")
+    
+    2. ATTEMPT verification with wrong public inputs:
+       IF verification succeeds with mismatched public inputs:
+           RETURN Finding::new("Verification bypass: Wrong public inputs accepted")
+    
+    3. RETURN None
+
+================================================================================
+7. EVIDENCE MODE WORKFLOW
+================================================================================
+
+EVIDENCE MODE ensures all findings are cryptographically verified, not heuristics.
+
+FUNCTION run_evidence_mode(config):
+    REQUIREMENTS:
+    - strict_backend = true (no mock fallback)
+    - invariants defined in YAML (v2)
+    - per_exec_isolation enabled (default)
+    - oracle_validation enabled
+    
+    WORKFLOW:
+    1. VALIDATE CONFIG:
+       - Check invariants exist
+       - Check real backend available
+       - Check evidence_mode flag
+    
+    2. INITIALIZE:
+       - Create fuzzing engine with evidence settings
+       - Initialize OracleValidator
+       - Initialize OracleCorrelator
+    
+    3. RUN fuzzing campaign with invariant checking
+    
+    4. FOR each finding:
+       a) VALIDATE with fresh oracle:
+          - Re-execute with same witness
+          - Confirm finding reproducible
+       
+       b) CROSS-CORRELATE with other oracles:
+          - Check if multiple oracles agree
+          - Assign confidence score:
+            * CRITICAL: 3+ oracles agree + proof generated
+            * HIGH: 2+ oracles agree
+            * MEDIUM: 1 oracle + validation passes
+            * LOW: Heuristic only
+       
+       c) FILTER by confidence:
+          - Drop LOW confidence findings
+          - Keep MEDIUM+ for report
+    
+    5. GENERATE evidence bundle per finding:
+       - invariant name + relation
+       - witness inputs (JSON)
+       - reproduction command
+       - proof-of-concept (if applicable)
+       - confidence level
+    
+    6. RETURN report with evidence bundles
+
+STRUCTURE OracleValidationConfig:
+    - min_confidence: ConfidenceLevel (default: Medium)
+    - require_reproduction: bool (default: true)
+    - cross_oracle_threshold: usize (default: 2)
+    - max_validation_attempts: usize (default: 3)
+
+FUNCTION OracleValidator::validate(finding) -> ValidationResult:
+    1. ATTEMPT reproduction (max 3 times):
+       FOR attempt in 0..max_validation_attempts:
+           result = re_execute(finding.witness)
+           IF result matches original:
+               reproducible = true
+               BREAK
+    
+    2. IF NOT reproducible:
+       RETURN ValidationResult::Invalid("Not reproducible")
+    
+    3. CROSS-VALIDATE with different oracles:
+       agreement_count = 1  // Original oracle
+       
+       FOR oracle in all_oracles:
+           IF oracle != finding.source_oracle:
+               check_result = oracle.check(finding.witness, result)
+               IF check_result.is_some():
+                   agreement_count += 1
+       
+       IF agreement_count >= cross_oracle_threshold:
+           confidence = ConfidenceLevel::from_count(agreement_count)
+       ELSE:
+           confidence = ConfidenceLevel::Low
+    
+    4. IF confidence < min_confidence:
+       RETURN ValidationResult::Filtered("Confidence too low")
+    
+    5. RETURN ValidationResult::Valid(confidence)
+
+================================================================================
+8. COVERAGE & CORPUS MANAGEMENT
+================================================================================
+
+STRUCTURE CoverageTracker:
+    - satisfied_constraints: BitVec (one bit per constraint)
+    - num_constraints: usize
+    
+    FUNCTION update(new_satisfied) -> bool:
+        // Returns true if new coverage achieved
+        old_count = satisfied_constraints.count_ones()
+        satisfied_constraints |= new_satisfied
+        new_count = satisfied_constraints.count_ones()
+        RETURN new_count > old_count
+    
+    FUNCTION percentage() -> f64:
+        RETURN (satisfied_constraints.count_ones() / num_constraints) * 100.0
+
+STRUCTURE Corpus:
+    - entries: Vec<CorpusEntry>
+    - max_size: usize
+    - coverage_map: CoverageMap
+    
+    STRUCTURE CorpusEntry:
+        - test_case: TestCase
+        - coverage: BitVec
+        - energy: u64 (for power scheduling)
+        - execution_time: Duration
+        - found_at: Timestamp
+
+FUNCTION Corpus::add(test_case, coverage) -> bool:
+    1. IF is_new_coverage(coverage):
+           entry = CorpusEntry {
+               test_case: minimize(test_case),
+               coverage: coverage,
+               energy: calculate_initial_energy(),
+               execution_time: measure_execution_time(test_case),
+               found_at: now()
+           }
+           
+           IF entries.len() >= max_size:
+               evict_least_valuable()  // Remove low-energy entries
+           
+           entries.push(entry)
+           RETURN true
+    
+    2. RETURN false
+
+STRUCTURE PowerScheduler:
+    - schedule: PowerSchedule enum (FAST/COE/EXPLORE/MMOPT/RARE/SEEK)
+    - base_energy: u64
+    
+    FUNCTION select_from_corpus(corpus) -> TestCase:
+        MATCH schedule:
+            FAST -> select_fastest(corpus)
+            COE  -> select_cut_off_exponential(corpus)
+            EXPLORE -> select_max_coverage(corpus)
+            MMOPT -> select_min_max_optimal(corpus)  // Default
+            RARE -> select_rare_constraints(corpus)
+            SEEK -> select_active_seeking(corpus)
+
+FUNCTION minimize(test_case) -> TestCase:
+    // Remove redundant inputs while preserving coverage
+    minimized = test_case.clone()
+    
+    FOR each input in test_case:
+        reduced = remove_or_reduce(input)
+        IF execute(reduced) achieves same coverage:
+            minimized = reduced
+    
+    RETURN minimized
+
+FUNCTION StructureAwareMutator:
+    UNDERSTANDS ZK-specific structures:
+    - Merkle paths: [leaf, pathElements[20], pathIndices[20]]
+    - Signatures: [r, s, v, msg]
+    - Nullifiers: 32-byte field elements
+    - Range proofs: [value, proof]
+    
+    MUTATION STRATEGIES:
+    1. Bit flips: Flip random bits in field elements
+    2. Byte swaps: Swap adjacent bytes
+    3. Arithmetic: Add/subtract small values
+    4. Interesting values: Replace with 0, 1, -1, max
+    5. Crossover: Combine two test cases
+    6. Dictionary: Use known values from circuit
+
+================================================================================
+9. REPORTING SYSTEM
+================================================================================
+
+STRUCTURE FuzzReport:
+    - campaign_name: String
+    - start_time: Timestamp
+    - end_time: Timestamp
+    - findings: Vec<Finding>
+    - statistics: FuzzingStats
+    - coverage: CoverageReport
+    - config: FuzzConfig
+
+STRUCTURE Finding:
+    - severity: Severity enum (Critical/High/Medium/Low/Info)
+    - attack_type: AttackType
+    - description: String
+    - location: Optional<SourceLocation>
+    - witness: TestCase
+    - public_inputs: Vec<FieldElement>
+    - private_inputs: Vec<FieldElement>
+    - outputs: Vec<FieldElement>
+    - confidence: ConfidenceLevel
+    - evidence: EvidenceBundle
+    - reproduction: ReproductionInfo
+
+STRUCTURE EvidenceBundle:
+    - invariant_violated: String
+    - witness_hash: String (SHA256)
+    - proof_data: Optional<ProofData>
+    - oracle_correlation: Vec<String>  // Which oracles confirmed
+
+FUNCTION FuzzReport::save_to_files():
+    1. CREATE output directory (from config.reporting.output_dir)
+    
+    2. FOR each format in config.reporting.formats:
+       MATCH format:
+           "json" -> save_json(report)
+           "markdown" -> save_markdown(report)
+           "sarif" -> save_sarif(report)
+    
+    3. FOR each finding:
+       SAVE PoC bundle to reports/<finding_id>/:
+           - witness.json
+           - reproduction.yaml
+           - notes.md
+
+FUNCTION save_markdown(report) -> String:
+    TEMPLATE:
+    ```markdown
+    # Fuzzing Report: {campaign_name}
+    
+    ## Executive Summary
+    - Duration: {duration}
+    - Executions: {total_executions}
+    - Coverage: {coverage_percentage}%
+    - Findings: {findings.len()} total
+      - Critical: {critical_count}
+      - High: {high_count}
+      - Medium: {medium_count}
+    
+    ## Critical Findings
+    
+    ### Finding 1: {title}
+    **Severity:** {severity}
+    **Type:** {attack_type}
+    **Confidence:** {confidence}
+    
+    **Description:**
+    {description}
+    
+    **Reproduction:**
+    ```bash
+    {reproduction_command}
+    ```
+    
+    **Witness:**
+    ```json
+    {witness_json}
+    ```
+    
+    ## Recommendations
+    1. ...
+    2. ...
+    ```
+
+================================================================================
+10. BACKEND INTEGRATIONS
+================================================================================
+
+CIRCOM BACKEND (Groth16 / R1CS)
+--------------------------------
+TOOLS: circom, snarkjs
+CONSTRAINT SYSTEM: R1CS (Rank-1 Constraint System)
+FORM: A * B = C over finite field
+
+INTEGRATION:
+1. COMPILE: circom circuit.circom --r1cs --wasm --sym
+2. LOAD: Parse .r1cs file (binary format)
+   - Header: field size, prime, num_constraints, num_variables
+   - Constraints: List of (A, B, C) linear combinations
+3. WITNESS GENERATION: snarkjs calculatewitness
+4. EXECUTION: Check A(w) * B(w) = C(w) for witness w
+
+NOIR BACKEND (Barretenberg / ACIR)
+-----------------------------------
+TOOLS: nargo, Barretenberg
+CONSTRAINT SYSTEM: ACIR (Abstract Circuit Intermediate Representation)
+
+INTEGRATION:
+1. COMPILE: nargo compile
+2. LOAD: Parse ACIR bytecode
+   - Opcodes: Arithmetic, BlackBox, Memory, etc.
+   - BlackBox functions: Pedersen, Schnorr, ECDSA, etc.
+3. EXECUTION: Execute via Barretenberg WASM/Native backend
+4. TRACK: Which opcodes were satisfied
+
+HALO2 BACKEND (PLONK)
+---------------------
+TOOLS: halo2_proofs, halo2curves
+CONSTRAINT SYSTEM: PLONK (Permutations over Lagrange-bases for Oecumenical Noninteractive arguments of Knowledge)
+
+INTEGRATION:
+1. LOAD: Rust circuit definition or compiled gates
+2. EXECUTION: Run proving/verification key generation
+3. TRACK: Gate satisfaction (custom gates, lookups, etc.)
+
+CAIRO BACKEND (STARK)
+---------------------
+TOOLS: scarb, cairo-compile, stone-prover
+CONSTRAINT SYSTEM: AIR (Algebraic Intermediate Representation)
+
+INTEGRATION:
+1. COMPILE: scarb build or cairo-compile
+2. EXECUTE: Run Cairo program
+3. PROVE: stone-prover for STARK proof generation
+
+MOCK BACKEND (Testing)
+----------------------
+PURPOSE: Fuzzer development without real ZK tooling
+BEHAVIOR: Simulates circuit execution with configurable constraints
+WARNING: Results are SYNTHETIC - do not report as real vulnerabilities
+
+================================================================================
+11. ADVANCED FEATURES
+================================================================================
+
+SYMBOLIC EXECUTION (Z3 Integration)
+------------------------------------
+PURPOSE: Generate inputs that satisfy specific constraint paths
+
+FUNCTION SymbolicExecutor::execute(circuit, max_depth, max_paths):
+    1. EXTRACT constraints from circuit (R1CS/ACIR/PLONK)
+    2. CONVERT to Z3 SMT formulas:
+       FOR (A, B, C) in R1CS:
+           solver.assert(A * B == C)
+    3. EXPLORE paths:
+       WHILE paths < max_paths AND depth < max_depth:
+           // Add path condition
+           solver.push()
+           solver.assert(current_path_condition)
+           
+           // Solve
+           IF solver.check() == SAT:
+               model = solver.get_model()
+               witness = extract_witness(model)
+               
+               // Verify with real executor
+               result = executor.execute(witness)
+               IF result.success:
+                   ADD to corpus
+           
+           solver.pop()
+           SELECT next path condition (depth-first or breadth-first)
+
+TAINT ANALYSIS
+--------------
+PURPOSE: Track information flow from private inputs to public outputs
+
+FUNCTION TaintAnalyzer::analyze(execution_trace):
+    1. INITIALIZE: Mark all private inputs as TAINTED
+    2. PROPAGATE through constraints:
+       IF constraint uses tainted input:
+           Mark output as tainted
+    3. DETECT leaks:
+       IF public output is tainted:
+           // Potential information leakage
+           REPORT finding with taint path
+
+DIFFERENTIAL TESTING
+--------------------
+PURPOSE: Compare same circuit across different backends
+
+FUNCTION DifferentialFuzzer::run(circuit, backends):
+    FOR test_case in corpus:
+        results = []
+        FOR backend in backends:
+            executor = create_executor(backend, circuit)
+            result = executor.execute(test_case)
+            results.push((backend, result))
+        
+        // Compare results
+        IF outputs_differ(results):
+            REPORT "Backend discrepancy"
+        
+        IF timing_diverges(results, threshold=0.5):
+            REPORT "Timing side-channel"
+        
+        IF coverage_diverges(results, jaccard_threshold=0.5):
+            REPORT "Semantic difference"
+
+MULTI-STEP CHAIN FUZZING (Mode 3)
+----------------------------------
+PURPOSE: Find bugs across multiple circuit invocations (protocol-level)
+
+EXAMPLE: deposit -> withdraw -> nullifier_check
+
+STRUCTURE ChainSpec:
+    - name: String
+    - steps: Vec<StepSpec>
+    - assertions: Vec<CrossStepAssertion>
+
+FUNCTION ChainRunner::execute(chain, inputs) -> ChainTrace:
+    1. INITIALIZE state from inputs
+    
+    2. FOR each step in chain.steps:
+       - EXECUTE circuit with current state
+       - UPDATE state with outputs
+       - RECORD step trace
+    
+    3. CHECK cross-step assertions:
+       FOR assertion in chain.assertions:
+           IF NOT assertion.check(trace):
+               VIOLATION found!
+               
+               // Minimize to L_min
+               minimized = minimize_chain(chain, violation)
+               
+               REPORT ChainFinding {
+                   chain_name: chain.name,
+                   l_min: minimized.length,
+                   violation: assertion.name,
+                   trace: minimized.trace
+               }
+
+ADAPTIVE ORCHESTRATOR
+----------------------
+PURPOSE: Automatically prioritize attacks based on circuit characteristics
+
+FUNCTION AdaptiveOrchestrator::run(circuit_info):
+    1. ANALYZE circuit:
+       - Has Merkle operations? -> Enable MerkleOracle
+       - Has nullifiers? -> Enable NullifierOracle
+       - High constraint density? -> Prioritize UnderconstrainedAttack
+       - Many arithmetic operations? -> Prioritize ArithmeticOverflowAttack
+    
+    2. SCHEDULE attacks by priority:
+       priority_queue = [
+           (attack, priority_score) for attack in all_attacks
+       ]
+       priority_queue.sort_by_priority()
+    
+    3. EXECUTE attacks in priority order
+    
+    4. ADAPT based on findings:
+       IF nullifier finding found:
+           INCREASE priority of related attacks
+       
+       IF no coverage progress:
+           SWITCH to different mutation strategy
+
+================================================================================
+12. CLI COMMAND REFERENCE
+================================================================================
+
+BASIC USAGE:
+    cargo run --release -- --config campaign.yaml
+
+COMMANDS:
+    zk-fuzzer run <campaign.yaml> [OPTIONS]
+        --iterations <N>      Number of iterations (default: 100000)
+        --timeout <SECONDS>   Timeout for fuzzing
+        --resume              Resume from existing corpus
+        --corpus-dir <PATH>   Custom corpus directory
+    
+    zk-fuzzer evidence <campaign.yaml> [OPTIONS]
+        // Evidence mode - requires invariants, strict backend
+    
+    zk-fuzzer chains <campaign.yaml> [OPTIONS]
+        // Multi-step chain fuzzing
+    
+    zk-fuzzer validate <campaign.yaml>
+        // Validate configuration
+    
+    zk-fuzzer minimize <corpus_dir> [--output <dir>]
+        // Minimize corpus size
+    
+    zk-fuzzer init --output <file> --framework <circom|noir|halo2>
+        // Generate sample campaign
+
+GLOBAL OPTIONS:
+    -w, --workers <N>       Parallel workers (default: 4)
+    -s, --seed <N>          RNG seed for reproducibility
+    -v, --verbose           Debug output
+    --real-only             Require real backend (no mock)
+    --profile <NAME>        quick/standard/deep/perf
+
+================================================================================
+13. YAML CONFIGURATION EXAMPLES
+================================================================================
+
+BASIC CAMPAIGN:
+```yaml
+campaign:
+  name: "Merkle Tree Audit"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/merkle.circom"
+    main_component: "MerkleTree"
+  parameters:
+    field: "bn254"
+    max_constraints: 100000
+    timeout_seconds: 300
+
+attacks:
+  - type: "underconstrained"
+    description: "Find multiple valid witnesses"
+    config:
+      witness_pairs: 5000
+      public_input_names: ["root", "nullifier"]
+  
+  - type: "boundary"
+    description: "Test field boundaries"
+
+inputs:
+  - name: "leaf"
+    type: "field"
+    fuzz_strategy: "random"
+  
+  - name: "pathElements"
+    type: "field[]"
+    length: 20
+    fuzz_strategy: "interesting_values"
+  
+  - name: "pathIndices"
+    type: "field[]"
+    length: 20
+    fuzz_strategy: "random"
+
+reporting:
+  output_dir: "./reports"
+  formats: ["json", "markdown"]
+```
+
+EVIDENCE MODE (v2 with invariants):
+```yaml
+campaign:
+  name: "Evidence Audit"
+  version: "2.0"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/secure.circom"
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      oracle_validation: true
+
+invariants:  # v2 YAML
+  - name: "nullifier_unique"
+    description: "Nullifier must be unique across all executions"
+    expression: "forall(prev, nullifier != prev.nullifier)"
+    severity: "Critical"
+    violation_action: "Report"
+  
+  - name: "merkle_path_valid"
+    description: "Merkle proof must be valid"
+    expression: "verify_merkle(leaf, pathElements, pathIndices) == root"
+    severity: "Critical"
+    violation_action: "Report"
+
+attacks:
+  - type: "underconstrained"
+  - type: "constraint_inference"
+  - type: "metamorphic"
+```
+
+================================================================================
+14. ARCHITECTURE SUMMARY
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         CLI (main.rs)                                   │
+│  - Parse arguments, dispatch commands                                   │
+└─────────────────────────────────┬───────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Configuration (config/)                              │
+│  - YAML parsing, validation, profile application                        │
+└─────────────────────────────────┬───────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Fuzzing Engine (fuzzer/engine.rs)                    │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐   │
+│  │   Corpus     │ │   Coverage   │ │   Oracles    │ │   Scheduler  │   │
+│  │  Management  │ │   Tracking   │ │  (Bug Detect)│ │  (Power/Adaptive)│
+│  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘   │
+└─────────────────────────────────┬───────────────────────────────────────┘
+                                  │
+              ┌───────────────────┼───────────────────┐
+              ▼                   ▼                   ▼
+    ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+    │   Circom     │     │    Noir      │     │    Halo2     │
+    │  Executor    │     │   Executor   │     │   Executor   │
+    │  (snarkjs)   │     │ (Barretenberg)│     │(halo2_proofs)│
+    └──────────────┘     └──────────────┘     └──────────────┘
+              │                   │                   │
+              └───────────────────┼───────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Attacks (attacks/)                                 │
+│  - Underconstrained, Soundness, Arithmetic, Collision, ...              │
+│  - Constraint Inference, Metamorphic, Spec Inference (Phase 4)          │
+└─────────────────────────────────┬───────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Reporting (reporting/)                               │
+│  - JSON, Markdown, SARIF output                                         │
+│  - PoC generation, evidence bundles                                     │
+└─────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                        END OF PSEUDOCODE
+================================================================================
