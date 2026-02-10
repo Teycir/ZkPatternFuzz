@@ -143,6 +143,31 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    // Get current process PID to exclude from kill
+    let current_pid = std::process::id();
+    
+    // Kill any existing zk-fuzzer instances EXCEPT this one
+    let pgrep_output = std::process::Command::new("pgrep")
+        .args(&["-f", "zk-fuzzer"])
+        .output();
+    
+    if let Ok(output) = pgrep_output {
+        if output.status.success() {
+            let pids = String::from_utf8_lossy(&output.stdout);
+            for pid_str in pids.lines() {
+                if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                    if pid != current_pid {
+                        let _ = std::process::Command::new("kill")
+                            .args(&["-9", &pid.to_string()])
+                            .output();
+                    }
+                }
+            }
+            eprintln!("Killed existing zk-fuzzer instances (excluding PID {})", current_pid);
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+    }
+
     // Initialize logging
     let log_level = if cli.quiet {
         tracing::Level::WARN
@@ -155,6 +180,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_max_level(log_level)
         .with_target(false)
+        .with_ansi(false)
         .init();
 
     match cli.command {

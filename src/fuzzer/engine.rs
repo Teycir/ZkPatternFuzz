@@ -1290,8 +1290,19 @@ impl FuzzingEngine {
                     }
                     // Phase 4: Novel Oracle Attacks - Now Implemented!
                     AttackType::ConstraintInference => {
-                        self.run_constraint_inference_attack(&attack_config.config, progress)
-                            .await?;
+                        match self.run_constraint_inference_attack(&attack_config.config, progress).await {
+                            Ok(_) => {
+                                tracing::info!("✓ Constraint inference attack completed successfully");
+                            },
+                            Err(e) => {
+                                tracing::error!("✗ Constraint inference attack FAILED: {}", e);
+                                tracing::error!("Error details: {:?}", e);
+                                if let Some(p) = progress {
+                                    p.log_finding("ERROR", &format!("Constraint inference failed: {}", e));
+                                }
+                                return Err(e);
+                            }
+                        }
                     }
                     AttackType::Metamorphic => {
                         self.run_metamorphic_attack(&attack_config.config, progress)
@@ -3233,29 +3244,72 @@ impl FuzzingEngine {
         let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
         let num_wires = num_inputs.saturating_add(100);
         let mut output_wires = std::collections::HashSet::new();
+        
+        tracing::debug!("Analyzing constraints for inference...");
         let mut implied = if let Some(inspector) = self.executor.constraint_inspector() {
             let mut context = InferenceContext::from_inspector(inspector, num_wires);
             self.merge_config_input_labels(inspector, &mut context.wire_labels);
             self.merge_output_labels(inspector, &mut context.wire_labels);
             output_wires.extend(inspector.output_indices());
-            engine.analyze_with_context(&context)
+            
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                engine.analyze_with_context(&context)
+            })) {
+                Ok(result) => {
+                    tracing::info!("Found {} implied constraints", result.len());
+                    result
+                },
+                Err(e) => {
+                    tracing::error!("FATAL: Constraint analysis panicked: {:?}", e);
+                    anyhow::bail!("Constraint analysis panicked during execution");
+                }
+            }
         } else {
-            tracing::warn!("No constraint inspector available for constraint inference");
-            Vec::new()
+            tracing::error!("FATAL: No constraint inspector available for constraint inference");
+            anyhow::bail!("Constraint inspector not available");
         };
 
         if confirm_violations && !implied.is_empty() {
+            tracing::info!("Confirming {} inferred violations...", implied.len());
             let base_inputs = self.generate_test_case().inputs;
-            engine.confirm_violations(
-                self.executor.as_ref(),
-                &base_inputs,
-                &mut implied,
-                &output_wires,
-            );
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                engine.confirm_violations(
+                    self.executor.as_ref(),
+                    &base_inputs,
+                    &mut implied,
+                    &output_wires,
+                );
+            })) {
+                Ok(_) => {
+                    tracing::info!("✓ Violation confirmation completed successfully");
+                },
+                Err(e) => {
+                    tracing::error!("FATAL: Violation confirmation panicked: {:?}", e);
+                    anyhow::bail!("Violation confirmation panicked during execution");
+                }
+            }
         }
 
-        let findings = engine.to_findings(&implied);
+        // Filter to only confirmed violations (eliminate false positives)
+        use crate::attacks::constraint_inference::ViolationConfirmation;
+        let before_filter = implied.len();
+        implied.retain(|c| c.confirmation == ViolationConfirmation::Confirmed);
+        tracing::info!("Filtered {} -> {} violations (keeping only Confirmed, rejecting false positives)", 
+            before_filter, implied.len());
+
+        tracing::debug!("Converting implied constraints to findings...");
+        let findings = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            engine.to_findings(&implied)
+        })) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::error!("FATAL: Finding conversion panicked: {:?}", e);
+                anyhow::bail!("Finding conversion panicked during execution");
+            }
+        };
+
         if !findings.is_empty() {
+            tracing::info!("Generated {} findings from constraint inference", findings.len());
             {
                 let findings_store = self.core.findings();
                 let mut store = findings_store.write().unwrap();
@@ -3269,14 +3323,26 @@ impl FuzzingEngine {
         }
 
         // Enforce v2 invariants (constraint/range/uniqueness) by attempting violations.
+        tracing::debug!("Enforcing v2 invariants...");
         let invariants: Vec<_> = self
             .config
             .get_invariants()
             .into_iter()
             .filter(|inv| inv.invariant_type != InvariantType::Metamorphic)
             .collect();
-        let invariant_findings = self.enforce_invariants(&invariants);
+        
+        let invariant_findings = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.enforce_invariants(&invariants)
+        })) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::error!("FATAL: Invariant enforcement panicked: {:?}", e);
+                anyhow::bail!("Invariant enforcement panicked during execution");
+            }
+        };
+
         if !invariant_findings.is_empty() {
+            tracing::info!("Generated {} findings from invariant enforcement", invariant_findings.len());
             {
                 let findings_store = self.core.findings();
                 let mut store = findings_store.write().unwrap();
@@ -3289,6 +3355,7 @@ impl FuzzingEngine {
             }
         }
 
+        tracing::info!("Constraint inference attack completed");
         if let Some(p) = progress {
             p.inc();
         }
