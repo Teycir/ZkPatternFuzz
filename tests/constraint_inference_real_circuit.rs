@@ -9,7 +9,7 @@
 //! Completes Phase 4 requirement: "Validate on real circuits"
 
 use std::path::PathBuf;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use zk_fuzzer::attacks::constraint_inference::{
     ConstraintInferenceEngine, ConstraintCategory, ViolationConfirmation,
 };
@@ -20,7 +20,7 @@ use zk_core::FieldElement;
 /// Test constraint inference on the range_bypass circuit
 /// This circuit has a known bug: bit decomposition without recomposition check
 #[tokio::test]
-#[ignore = "Requires circom + snarkjs"]
+// Requires circom + snarkjs
 async fn test_constraint_inference_range_bypass() {
     // Check prerequisites
     if CircomTarget::check_circom_available().is_err() {
@@ -88,10 +88,26 @@ async fn test_constraint_inference_range_bypass() {
     println!("Detected bit decomposition issue: {}", has_bit_decomp);
 
     // Generate and execute violation witnesses
-    let base_inputs = vec![
-        FieldElement::from_u64(42),  // value
-        FieldElement::zero(),        // Start of bits array
-    ];
+    let num_inputs = executor.num_public_inputs() + executor.num_private_inputs();
+    let mut base_inputs = vec![FieldElement::zero(); num_inputs];
+    let labels = inspector.wire_labels();
+    let mut ordered_inputs = inspector.public_input_indices();
+    ordered_inputs.extend(inspector.private_input_indices());
+    let wire_to_input: HashMap<usize, usize> = ordered_inputs
+        .into_iter()
+        .enumerate()
+        .map(|(idx, wire)| (wire, idx))
+        .collect();
+    if let Some((&wire, _)) = labels.iter().find(|(_, name)| name.ends_with(".value") || *name == "value") {
+        if let Some(&input_idx) = wire_to_input.get(&wire) {
+            base_inputs[input_idx] = FieldElement::from_u64(42);
+        }
+    }
+    if let Some((&wire, _)) = labels.iter().find(|(_, name)| name.ends_with(".inRange") || *name == "inRange") {
+        if let Some(&input_idx) = wire_to_input.get(&wire) {
+            base_inputs[input_idx] = FieldElement::from_u64(1);
+        }
+    }
 
     println!("\n=== Violation Witness Execution ===");
     let output_wires = HashSet::new();
@@ -143,7 +159,7 @@ async fn test_constraint_inference_range_bypass() {
 /// Test constraint inference on the underconstrained_merkle circuit
 /// This circuit has known missing constraints for Merkle path validation
 #[tokio::test]
-#[ignore = "Requires circom + snarkjs"]
+// Requires circom + snarkjs
 async fn test_constraint_inference_merkle() {
     if CircomTarget::check_circom_available().is_err()
         || CircomTarget::check_snarkjs_available().is_err()
@@ -249,7 +265,7 @@ fn test_constraint_inference_to_findings() {
 
 /// Comprehensive validation: detect, execute, and verify on multiple circuits
 #[tokio::test]
-#[ignore = "Requires circom + snarkjs and multiple test circuits"]
+// Requires circom + snarkjs and multiple test circuits
 async fn test_constraint_inference_comprehensive() {
     if CircomTarget::check_circom_available().is_err()
         || CircomTarget::check_snarkjs_available().is_err()

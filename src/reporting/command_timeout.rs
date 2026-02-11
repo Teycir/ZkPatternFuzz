@@ -16,13 +16,29 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<
 
     match child.wait_timeout(timeout)? {
         Some(status) => {
-            let stdout = child.stdout.take()
-                .map(|mut s| { let mut buf = Vec::new(); let _ = s.read_to_end(&mut buf); buf })
+            let stdout = child
+                .stdout
+                .take()
+                .map(|mut s| {
+                    let mut buf = Vec::new();
+                    let _ = s.read_to_end(&mut buf);
+                    buf
+                })
                 .unwrap_or_default();
-            let stderr = child.stderr.take()
-                .map(|mut s| { let mut buf = Vec::new(); let _ = s.read_to_end(&mut buf); buf })
+            let stderr = child
+                .stderr
+                .take()
+                .map(|mut s| {
+                    let mut buf = Vec::new();
+                    let _ = s.read_to_end(&mut buf);
+                    buf
+                })
                 .unwrap_or_default();
-            Ok(Output { status, stdout, stderr })
+            Ok(Output {
+                status,
+                stdout,
+                stderr,
+            })
         }
         None => {
             child.kill()?;

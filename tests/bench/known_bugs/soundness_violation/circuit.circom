@@ -8,10 +8,10 @@ template SoundnessViolation() {
     signal input x;
     signal input y;
     signal input unused;  // BUG: Unused signal creates soundness issue
-    signal output sum;
+    signal input sum;
     
     // Main computation
-    sum <== x + y;
+    sum === x + y;
     
     // BUG: 'unused' signal is never constrained
     // This means prover can set it to any value

@@ -10,7 +10,7 @@ template UnderconstrainedMerkle(levels) {
     signal input leaf;
     signal input pathElements[levels];
     signal input pathIndices[levels];  // BUG: Not constrained to be 0 or 1
-    signal output root;
+    signal input root;
 
     signal intermediate[levels + 1];
     intermediate[0] <== leaf;
@@ -33,7 +33,7 @@ template UnderconstrainedMerkle(levels) {
         intermediate[i + 1] <== hashers[i].out;
     }
 
-    root <== intermediate[levels];
+    root === intermediate[levels];
 }
 
 component main {public [root]} = UnderconstrainedMerkle(20);

@@ -10,17 +10,17 @@ use zk_fuzzer::targets::CircomTarget;
 use zk_core::FieldElement;
 
 #[tokio::test]
-#[ignore = "Requires circom + snarkjs (real circuit)"]
+// Requires circom + snarkjs (real circuit)
 async fn test_constraint_slice_withdraw_real_circuit() {
     CircomTarget::check_circom_available()
         .expect("Circom not available. Install with: npm install -g circom");
     CircomTarget::check_snarkjs_available()
         .expect("snarkjs not available. Install with: npm install -g snarkjs");
 
-    let circuit_path = PathBuf::from("circuits/withdraw.circom");
+    let circuit_path = PathBuf::from("tests/bench/known_bugs/range_bypass/circuit.circom");
     assert!(circuit_path.exists(), "Missing circuit at {:?}", circuit_path);
 
-    let executor = CircomExecutor::new(circuit_path.to_str().unwrap(), "Withdraw")
+    let executor = CircomExecutor::new(circuit_path.to_str().unwrap(), "RangeBypass")
         .expect("Failed to create CircomExecutor");
 
     let input_count = executor.num_public_inputs() + executor.num_private_inputs();

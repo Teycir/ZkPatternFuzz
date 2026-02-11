@@ -87,9 +87,7 @@ pub fn generate_cairo_proof(
     if !has_cairo_run && !has_scarb {
         return Ok((
             proof_path,
-            VerificationResult::Skipped(
-                "Neither cairo-run nor scarb found in PATH".to_string(),
-            ),
+            VerificationResult::Skipped("Neither cairo-run nor scarb found in PATH".to_string()),
         ));
     }
 
@@ -202,10 +200,7 @@ pub fn generate_cairo_proof(
             if trace_path.exists() {
                 return Ok((
                     proof_path,
-                    VerificationResult::Skipped(format!(
-                        "Trace generated but proof failed: {}",
-                        e
-                    )),
+                    VerificationResult::Skipped(format!("Trace generated but proof failed: {}", e)),
                 ));
             }
             return Ok((
@@ -250,10 +245,7 @@ pub fn generate_cairo_proof(
 }
 
 /// Convert witness.json to Cairo input format
-fn convert_witness_to_cairo_input(
-    witness_json: &Path,
-    input_path: &Path,
-) -> anyhow::Result<()> {
+fn convert_witness_to_cairo_input(witness_json: &Path, input_path: &Path) -> anyhow::Result<()> {
     let json_content = std::fs::read_to_string(witness_json)?;
     let witness: serde_json::Value = serde_json::from_str(&json_content)?;
 

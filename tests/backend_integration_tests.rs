@@ -362,7 +362,6 @@ fn test_noir_constraint_coverage() {
 /// Requires the halo2-scaffold repo cloned at ${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat5_frameworks/halo2-scaffold
 /// (or set HALO2_SCAFFOLD_PATH explicitly).
 #[test]
-#[ignore]
 fn test_halo2_real_circuit_constraint_coverage() {
     if !require_real_backends("test_halo2_real_circuit_constraint_coverage") {
         return;

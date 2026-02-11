@@ -21,12 +21,12 @@ use std::time::Duration;
 use zk_core::Finding;
 
 /// Generate Noir proof for a finding
-/// 
+///
 /// # Arguments
 /// * `finding_dir` - Directory containing witness.json
 /// * `finding` - The finding to generate proof for
 /// * `project_path` - Path to the Noir project (contains Nargo.toml)
-/// 
+///
 /// # Returns
 /// Tuple of (proof_path, verification_result)
 pub fn generate_noir_proof(
@@ -70,11 +70,9 @@ pub fn generate_noir_proof(
 
     // Step 3: Generate proof
     tracing::info!("Generating Noir proof for finding in {:?}", finding_dir);
-    
+
     let prove_result = super::command_timeout::run_with_timeout(
-        Command::new("nargo")
-            .arg("prove")
-            .current_dir(project_path),
+        Command::new("nargo").arg("prove").current_dir(project_path),
         timeout,
     );
 
@@ -139,15 +137,12 @@ pub fn generate_noir_proof(
 }
 
 /// Convert witness.json to Noir's Prover.toml format
-fn convert_witness_to_prover_toml(
-    witness_json: &Path,
-    prover_toml: &Path,
-) -> anyhow::Result<()> {
+fn convert_witness_to_prover_toml(witness_json: &Path, prover_toml: &Path) -> anyhow::Result<()> {
     let json_content = std::fs::read_to_string(witness_json)?;
     let witness: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&json_content)?;
 
     let mut toml_content = String::new();
-    
+
     for (key, value) in witness {
         match value {
             serde_json::Value::String(s) => {
@@ -230,7 +225,10 @@ echo "========================================"
         std::fs::set_permissions(path, perms)?;
     }
 
-    Ok(format!("cd {} && ./repro.sh", path.parent().unwrap().display()))
+    Ok(format!(
+        "cd {} && ./repro.sh",
+        path.parent().unwrap().display()
+    ))
 }
 
 #[cfg(test)]

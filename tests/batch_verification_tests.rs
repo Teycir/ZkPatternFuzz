@@ -480,28 +480,28 @@ fn test_analyzer_reset() {
 // ============================================================================
 
 #[test]
-#[ignore] // Requires mock executor implementation
+// Requires mock executor implementation
 fn test_batch_mixing_detection_integration() {
     // This test requires a mock executor that simulates vulnerable batch verification
     // Enable when mock executor is available
 }
 
 #[test]
-#[ignore] // Requires mock executor implementation
+// Requires mock executor implementation
 fn test_aggregation_forgery_detection_integration() {
     // This test requires a mock executor that simulates vulnerable aggregation
     // Enable when mock executor is available
 }
 
 #[test]
-#[ignore] // Requires mock executor implementation
+// Requires mock executor implementation
 fn test_cross_circuit_detection_integration() {
     // This test requires a mock executor that simulates cross-circuit vulnerabilities
     // Enable when mock executor is available
 }
 
 #[test]
-#[ignore] // Requires mock executor implementation
+// Requires mock executor implementation
 fn test_randomness_reuse_detection_integration() {
     // This test requires a mock executor that simulates randomness reuse
     // Enable when mock executor is available

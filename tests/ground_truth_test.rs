@@ -321,7 +321,7 @@ reporting:
 
 /// Test: Known-buggy circuits should be detected (requires circom)
 #[test]
-#[ignore = "Requires circom installation and circuit compilation"]
+// Requires circom installation and circuit compilation
 fn ground_truth_known_bugs() {
     println!("\n=== Ground Truth Test: Known Bugs ===\n");
     
@@ -349,7 +349,7 @@ fn ground_truth_known_bugs() {
 
 /// Test: Full ground truth evaluation with real circuits
 #[test]
-#[ignore = "Requires circom installation"]
+// Requires circom installation
 fn ground_truth_full_evaluation() {
     let config = GroundTruthConfig::default();
     

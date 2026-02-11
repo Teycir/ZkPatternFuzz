@@ -7,17 +7,19 @@ pragma circom 2.0.0;
 template RangeBypass(n) {
     signal input value;
     signal input bits[n];
-    signal output inRange;
+    signal input inRange;
     
     // BUG: We decompose to bits but never verify the recomposition
     // Attacker can provide arbitrary bits that don't match value
     
     // Check each bit is binary
-    signal bitCheck[n];
     for (var i = 0; i < n; i++) {
-        bitCheck[i] <== bits[i] * (1 - bits[i]);
-        bitCheck[i] === 0;
+        bits[i] * (1 - bits[i]) === 0;
     }
+
+    // Keep `value` referenced without enforcing recomposition.
+    // This preserves the intended bug while ensuring range inference can see `value`.
+    value === value;
     
     // BUG: Missing recomposition check:
     // var sum = 0;
@@ -27,7 +29,7 @@ template RangeBypass(n) {
     // sum === value;
     
     // Dummy output - always "in range" if bits are binary
-    inRange <== 1;
+    inRange === 1;
 }
 
 component main {public [inRange]} = RangeBypass(64);

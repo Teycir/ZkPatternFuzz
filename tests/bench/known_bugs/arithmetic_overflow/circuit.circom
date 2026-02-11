@@ -7,14 +7,14 @@ pragma circom 2.0.0;
 template ArithmeticOverflow() {
     signal input balance;
     signal input amount;
-    signal output newBalance;
-    signal output success;
+    signal input newBalance;
+    signal input success;
     
     // BUG: No range check on balance or amount
     // If amount > balance, subtraction wraps around to huge positive number
     // due to field arithmetic (modular arithmetic)
     
-    newBalance <== balance - amount;
+    newBalance === balance - amount;
     
     // This check is useless - newBalance is always "positive" in field
     // because fields don't have negative numbers
@@ -22,7 +22,7 @@ template ArithmeticOverflow() {
     isNonNegative <-- (newBalance < 21888242871839275222246405745257275088548364400416034343698204186575808495617 / 2) ? 1 : 0;
     // BUG: Above uses <-- not <== and never constrains isNonNegative
     
-    success <== 1;  // Always succeeds!
+    success === 1;  // Always succeeds!
     
     // CORRECT would be:
     // 1. Range check: balance < 2^64

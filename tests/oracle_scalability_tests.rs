@@ -525,7 +525,7 @@ fn test_performance_1m_test_cases() {
 }
 
 #[test]
-#[ignore] // Run with --ignored for extended testing
+// Run with --ignored for extended testing
 fn test_memory_stability_extended() {
     let config = OracleStateConfig {
         max_entries: 100_000,

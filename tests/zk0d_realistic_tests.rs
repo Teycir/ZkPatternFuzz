@@ -53,7 +53,7 @@ fn polygon_id_path() -> PathBuf {
 // ============================================================================
 
 #[test]
-#[ignore = "Requires zk0d repository and circom compiler"]
+// Requires zk0d repository and circom compiler
 fn test_tornado_withdraw_underconstrained_detection() {
     if !zk0d_available() {
         eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
@@ -82,7 +82,7 @@ fn test_tornado_withdraw_underconstrained_detection() {
 // ============================================================================
 
 #[test]
-#[ignore = "Requires zk0d repository and circom compiler"]
+// Requires zk0d repository and circom compiler
 fn test_semaphore_nullifier_oracle() {
     if !zk0d_available() {
         eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
@@ -110,7 +110,7 @@ fn test_semaphore_nullifier_oracle() {
 // ============================================================================
 
 #[test]
-#[ignore = "Requires zk0d repository and circom compiler"]
+// Requires zk0d repository and circom compiler
 fn test_polygon_id_constraint_inference() {
     if !zk0d_available() {
         eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());

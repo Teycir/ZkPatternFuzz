@@ -32,7 +32,7 @@ campaign:
   name: "FP Test: {circuit_name}"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "tests/safe_circuits/{circuit_name}.circom"
     main_component: "main"
   parameters:
@@ -41,8 +41,10 @@ campaign:
     timeout_seconds: 120
     additional:
       max_iterations: {iterations}
-      strict_backend: false
-      evidence_mode: false
+      strict_backend: true
+      evidence_mode: true
+      min_evidence_confidence: high
+      oracle_validation: true
 
 attacks:
   - type: underconstrained
@@ -151,14 +153,15 @@ impl FPAnalysisResult {
 /// Test false positive rate on audited production circuits
 /// These are circuits that have been professionally audited and are known safe
 #[test]
-#[ignore = "requires safe circuit test data"]
+// requires safe circuit test data
 fn test_fp_rate_audited_circuits() {
     let safe_circuits = vec![
         "tornado_withdraw_fixed",    // Fixed Tornado Cash withdraw
-        "semaphore_v2_secure",       // Semaphore v2 with all patches
         "poseidon_standard",         // Standard Poseidon implementation
         "merkle_tree_secure",        // Properly constrained Merkle tree
         "range_proof_secure",        // Secure range proof implementation
+        "eddsa_canonical",           // Canonical EdDSA checks
+        "nullifier_secure",          // Properly constrained nullifier
     ];
 
     let mut results = FPAnalysisResult::default();
@@ -169,7 +172,8 @@ fn test_fp_rate_audited_circuits() {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         let report = rt.block_on(async {
-            let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
+            let mut engine = FuzzingEngine::new(config, Some(42), 1)
+                .unwrap_or_else(|e| panic!("Failed to init engine for {}: {}", circuit, e));
             engine.run(None).await.unwrap()
         });
 
@@ -197,12 +201,12 @@ fn test_fp_rate_audited_circuits() {
 /// Test false positive rate on formally verified circuits
 /// These circuits have been verified with Picus or other formal tools
 #[test]
-#[ignore = "requires formally verified circuit test data"]
+// requires formally verified circuit test data
 fn test_fp_rate_verified_circuits() {
     let verified_circuits = vec![
-        "picus_verified_merkle",
-        "picus_verified_range",
-        "picus_verified_hash",
+        "merkle_tree_secure",
+        "range_proof_secure",
+        "poseidon_standard",
     ];
 
     let mut results = FPAnalysisResult::default();
@@ -213,7 +217,8 @@ fn test_fp_rate_verified_circuits() {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         let report = rt.block_on(async {
-            let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
+            let mut engine = FuzzingEngine::new(config, Some(42), 1)
+                .unwrap_or_else(|e| panic!("Failed to init engine for {}: {}", circuit, e));
             engine.run(None).await.unwrap()
         });
 
@@ -234,24 +239,24 @@ fn test_fp_rate_verified_circuits() {
 /// Test false positive rate by attack type
 /// Helps identify which oracles need tuning
 #[test]
-#[ignore = "requires safe circuit test data"]
+// requires safe circuit test data
 fn test_fp_rate_by_attack_type() {
     let test_cases: Vec<(AttackType, Vec<&str>)> = vec![
         (
             AttackType::Underconstrained,
-            vec!["secure_merkle", "secure_commitment"],
+            vec!["merkle_tree_secure", "tornado_withdraw_fixed"],
         ),
         (
             AttackType::Collision,
-            vec!["poseidon_secure", "pedersen_secure"],
+            vec!["poseidon_standard", "nullifier_secure"],
         ),
         (
             AttackType::ArithmeticOverflow,
-            vec!["range_proof_secure", "division_secure"],
+            vec!["range_proof_secure", "eddsa_canonical"],
         ),
         (
             AttackType::Boundary,
-            vec!["secure_merkle", "range_proof_secure"],
+            vec!["merkle_tree_secure", "range_proof_secure"],
         ),
     ];
 
@@ -339,7 +344,7 @@ reporting:
 
 /// Test that tuned oracle thresholds reduce false positives
 #[test]
-#[ignore = "requires oracle tuning data"]
+// requires oracle tuning data
 fn test_oracle_threshold_tuning() {
     // Test different confidence thresholds
     let thresholds = [0.5, 0.6, 0.7, 0.8, 0.9];

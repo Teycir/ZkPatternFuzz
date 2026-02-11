@@ -311,26 +311,26 @@ fn test_call_vulnerability_detector_creation() {
 // ============================================================================
 
 #[test]
-#[ignore = "requires CircuitExecutor mock implementation"]
+// requires CircuitExecutor mock implementation
 fn test_full_attack_run() {
     // This test would require a proper mock executor
     // Left as placeholder for future integration tests
 }
 
 #[test]
-#[ignore = "requires CircuitExecutor mock implementation"]
+// requires CircuitExecutor mock implementation
 fn test_state_transition_detection() {
     // This test would require a proper mock executor
 }
 
 #[test]
-#[ignore = "requires CircuitExecutor mock implementation"]
+// requires CircuitExecutor mock implementation
 fn test_opcode_boundary_detection() {
     // This test would require a proper mock executor
 }
 
 #[test]
-#[ignore = "requires CircuitExecutor mock implementation"]
+// requires CircuitExecutor mock implementation
 fn test_storage_proof_bypass_detection() {
     // This test would require a proper mock executor
 }

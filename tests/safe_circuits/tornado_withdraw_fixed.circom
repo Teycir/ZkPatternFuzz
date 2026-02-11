@@ -6,7 +6,38 @@ pragma circom 2.1.0;
 
 include "circomlib/circuits/poseidon.circom";
 include "circomlib/circuits/bitify.circom";
-include "circomlib/circuits/merkleTree.circom";
+include "circomlib/circuits/mux1.circom";
+
+// Local Merkle checker to avoid external merkleTree dependency.
+template MerkleTreeChecker(levels) {
+    signal input leaf;
+    signal input root;
+    signal input pathElements[levels];
+    signal input pathIndices[levels];
+
+    signal hashes[levels + 1];
+    hashes[0] <== leaf;
+
+    component hashers[levels];
+    component mux[levels];
+
+    for (var i = 0; i < levels; i++) {
+        // Select left/right based on path index.
+        mux[i] = MultiMux1(2);
+        mux[i].c[0][0] <== hashes[i];
+        mux[i].c[0][1] <== pathElements[i];
+        mux[i].c[1][0] <== pathElements[i];
+        mux[i].c[1][1] <== hashes[i];
+        mux[i].s <== pathIndices[i];
+
+        hashers[i] = Poseidon(2);
+        hashers[i].inputs[0] <== mux[i].out[0];
+        hashers[i].inputs[1] <== mux[i].out[1];
+        hashes[i + 1] <== hashers[i].out;
+    }
+
+    root === hashes[levels];
+}
 
 template Withdraw(levels) {
     // Public inputs
@@ -41,7 +72,8 @@ template Withdraw(levels) {
     for (var i = 0; i < levels; i++) {
         indexBits[i] = Num2Bits(1);
         indexBits[i].in <== pathIndices[i];
-        pathIndices[i] * (pathIndices[i] - 1) === 0; // Explicit binary constraint
+        // Explicit binary constraint
+        pathIndices[i] * (pathIndices[i] - 1) === 0;
     }
 
     // Verify Merkle proof

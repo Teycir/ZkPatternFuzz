@@ -460,7 +460,7 @@ fn test_halo2_analyzer_split_accumulator() {
 // ============================================================================
 
 #[test]
-#[ignore = "requires mock backend setup"]
+// requires mock backend setup
 fn test_recursive_attack_full_run() {
     use zk_fuzzer::executor::MockCircuitExecutor;
 
@@ -489,7 +489,7 @@ fn test_recursive_attack_full_run() {
 }
 
 #[test]
-#[ignore = "requires mock backend setup"]
+// requires mock backend setup
 fn test_base_case_bypass_detection() {
     use zk_fuzzer::executor::MockCircuitExecutor;
 
@@ -521,7 +521,7 @@ fn test_base_case_bypass_detection() {
 }
 
 #[test]
-#[ignore = "requires mock backend setup"]
+// requires mock backend setup
 fn test_folding_attack_detection() {
     use zk_fuzzer::executor::MockCircuitExecutor;
 

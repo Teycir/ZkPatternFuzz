@@ -22,7 +22,7 @@ fn zk0d_available() -> bool {
 
 /// Test analysis of real privacy circuits
 #[test]
-#[ignore = "Requires zk0d repository"]
+// Requires zk0d repository
 fn test_real_privacy_circuits() {
     if !zk0d_available() {
         eprintln!("Skipping: zk0d repository not available");
@@ -61,7 +61,7 @@ fn test_real_privacy_circuits() {
 
 /// Test analysis of real Noir circuits (Aztec)
 #[test]
-#[ignore = "Requires zk0d repository"]
+// Requires zk0d repository
 fn test_real_noir_circuits() {
     if !zk0d_available() {
         eprintln!("Skipping: zk0d repository not available");
@@ -93,7 +93,7 @@ fn test_real_noir_circuits() {
 
 /// Test analysis of real Cairo circuits (StarkWare)
 #[test]
-#[ignore = "Requires zk0d repository"]
+// Requires zk0d repository
 fn test_real_cairo_circuits() {
     if !zk0d_available() {
         eprintln!("Skipping: zk0d repository not available");
@@ -124,7 +124,7 @@ fn test_real_cairo_circuits() {
 
 /// Comprehensive pattern detection on real circuits
 #[test]
-#[ignore = "Requires zk0d repository"]
+// Requires zk0d repository
 fn test_pattern_detection_accuracy() {
     if !zk0d_available() {
         return;
@@ -164,7 +164,7 @@ fn test_pattern_detection_accuracy() {
 
 /// Test adaptive scheduling with real circuit complexity
 #[test]
-#[ignore = "Requires zk0d repository"]
+// Requires zk0d repository
 fn test_adaptive_scheduling_real_circuits() {
     if !zk0d_available() {
         return;
@@ -232,7 +232,7 @@ fn test_adaptive_scheduling_real_circuits() {
 
 /// Generate YAML configs for all circuits and verify they're valid
 #[test]
-#[ignore = "Requires zk0d repository"]
+// Requires zk0d repository
 fn test_generated_configs_validity() {
     if !zk0d_available() {
         return;

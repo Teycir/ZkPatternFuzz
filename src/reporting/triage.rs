@@ -127,7 +127,10 @@ pub enum VerificationStatus {
 
 impl VerificationStatus {
     pub fn is_verified(&self) -> bool {
-        !matches!(self, VerificationStatus::NotVerified | VerificationStatus::VerificationFailed(_))
+        !matches!(
+            self,
+            VerificationStatus::NotVerified | VerificationStatus::VerificationFailed(_)
+        )
     }
 }
 
@@ -259,7 +262,10 @@ impl ConfidenceBreakdown {
         }
 
         // Picus verification bonus
-        if matches!(finding.verification_status, VerificationStatus::PicusVerified) {
+        if matches!(
+            finding.verification_status,
+            VerificationStatus::PicusVerified
+        ) {
             breakdown.picus_bonus = config.picus_verification_weight;
         }
 
@@ -376,18 +382,25 @@ impl TriagePipeline {
     }
 
     /// Add a finding with oracle information
-    pub fn add_finding_with_oracle(&mut self, finding: Finding, oracle_name: &str) -> Option<usize> {
+    pub fn add_finding_with_oracle(
+        &mut self,
+        finding: Finding,
+        oracle_name: &str,
+    ) -> Option<usize> {
         let idx = self.add_finding(finding)?;
-        
+
         // Track oracle
-        *self.oracle_counts.entry(oracle_name.to_string()).or_insert(0) += 1;
-        
+        *self
+            .oracle_counts
+            .entry(oracle_name.to_string())
+            .or_insert(0) += 1;
+
         // Add oracle to finding
         if let Some(triaged) = self.findings.get_mut(idx) {
             triaged.add_detecting_oracle(oracle_name.to_string());
             triaged.recalculate_confidence(&self.config);
         }
-        
+
         Some(idx)
     }
 
@@ -425,8 +438,8 @@ impl TriagePipeline {
 
     /// Compute deduplication hash for a finding
     fn compute_finding_hash(&self, finding: &Finding) -> String {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
         format!("{:?}", finding.attack_type).hash(&mut hasher);
@@ -487,7 +500,11 @@ impl TriagePipeline {
         };
 
         let avg_confidence = if total_findings > 0 {
-            self.findings.iter().map(|f| f.confidence_score).sum::<f64>() / total_findings as f64
+            self.findings
+                .iter()
+                .map(|f| f.confidence_score)
+                .sum::<f64>()
+                / total_findings as f64
         } else {
             0.0
         };
@@ -498,13 +515,19 @@ impl TriagePipeline {
             low_confidence: low,
             statistics: TriageStatistics {
                 total_findings,
-                high_confidence_count: self.findings.iter()
+                high_confidence_count: self
+                    .findings
+                    .iter()
                     .filter(|f| f.confidence_level == ConfidenceLevel::High)
                     .count(),
-                medium_confidence_count: self.findings.iter()
+                medium_confidence_count: self
+                    .findings
+                    .iter()
                     .filter(|f| f.confidence_level == ConfidenceLevel::Medium)
                     .count(),
-                low_confidence_count: self.findings.iter()
+                low_confidence_count: self
+                    .findings
+                    .iter()
                     .filter(|f| f.confidence_level == ConfidenceLevel::Low)
                     .count(),
                 filtered_count,
@@ -551,11 +574,13 @@ pub struct TriageReport {
 impl TriageReport {
     /// Get all findings sorted by priority
     pub fn all_findings_by_priority(&self) -> Vec<&TriagedFinding> {
-        let mut all: Vec<&TriagedFinding> = self.high_confidence.iter()
+        let mut all: Vec<&TriagedFinding> = self
+            .high_confidence
+            .iter()
             .chain(self.medium_confidence.iter())
             .chain(self.low_confidence.iter())
             .collect();
-        
+
         all.sort_by_key(|f| f.priority_rank);
         all
     }
@@ -585,12 +610,30 @@ impl TriageReport {
         md.push_str("## Summary\n\n");
         md.push_str(&format!("| Metric | Value |\n"));
         md.push_str(&format!("|--------|-------|\n"));
-        md.push_str(&format!("| Total Findings | {} |\n", self.statistics.total_findings));
-        md.push_str(&format!("| High Confidence | {} |\n", self.statistics.high_confidence_count));
-        md.push_str(&format!("| Medium Confidence | {} |\n", self.statistics.medium_confidence_count));
-        md.push_str(&format!("| Low Confidence | {} |\n", self.statistics.low_confidence_count));
-        md.push_str(&format!("| Average Confidence | {:.2} |\n", self.statistics.average_confidence));
-        md.push_str(&format!("| Oracle Diversity | {} |\n\n", self.statistics.oracle_diversity));
+        md.push_str(&format!(
+            "| Total Findings | {} |\n",
+            self.statistics.total_findings
+        ));
+        md.push_str(&format!(
+            "| High Confidence | {} |\n",
+            self.statistics.high_confidence_count
+        ));
+        md.push_str(&format!(
+            "| Medium Confidence | {} |\n",
+            self.statistics.medium_confidence_count
+        ));
+        md.push_str(&format!(
+            "| Low Confidence | {} |\n",
+            self.statistics.low_confidence_count
+        ));
+        md.push_str(&format!(
+            "| Average Confidence | {:.2} |\n",
+            self.statistics.average_confidence
+        ));
+        md.push_str(&format!(
+            "| Oracle Diversity | {} |\n\n",
+            self.statistics.oracle_diversity
+        ));
 
         // High confidence findings
         if !self.high_confidence.is_empty() {
@@ -726,7 +769,9 @@ mod tests {
             Severity::Critical,
             "Nullifier collision detected by multiple oracles",
         );
-        let idx = pipeline.add_finding_with_oracle(finding, "NullifierOracle").unwrap();
+        let idx = pipeline
+            .add_finding_with_oracle(finding, "NullifierOracle")
+            .unwrap();
 
         // Add more oracles
         pipeline.add_oracle_to_finding(idx, "CollisionOracle");
@@ -750,9 +795,9 @@ mod tests {
         let idx = pipeline.add_finding(finding).unwrap();
 
         let score_before = pipeline.findings[idx].confidence_score;
-        
+
         pipeline.mark_picus_verified(idx);
-        
+
         let score_after = pipeline.findings[idx].confidence_score;
         assert!(score_after > score_before);
     }
@@ -770,15 +815,15 @@ mod tests {
         let idx = pipeline.add_finding(finding).unwrap();
 
         let score_before = pipeline.findings[idx].confidence_score;
-        
+
         // Record successful reproductions
         pipeline.record_reproduction(idx, true);
         pipeline.record_reproduction(idx, true);
         pipeline.record_reproduction(idx, false); // One failure
-        
+
         let score_after = pipeline.findings[idx].confidence_score;
         assert!(score_after > score_before);
-        
+
         let triaged = &pipeline.findings[idx];
         assert_eq!(triaged.reproduction_attempts, 3);
         assert_eq!(triaged.reproduction_successes, 2);
@@ -808,7 +853,7 @@ mod tests {
 
         assert!(idx1.is_some());
         assert!(idx2.is_none()); // Should be deduplicated
-        
+
         assert_eq!(pipeline.findings.len(), 1);
     }
 
@@ -858,7 +903,7 @@ mod tests {
         );
         critical_finding.poc.witness_b = Some(vec![FieldElement::from_u64(2)]);
         pipeline.add_finding(critical_finding);
-        
+
         // Info finding with minimal evidence
         pipeline.add_finding(make_finding(
             AttackType::Boundary,
@@ -867,11 +912,13 @@ mod tests {
         ));
 
         let evidence_findings = pipeline.evidence_mode_findings();
-        
+
         // At least critical finding should be included
-        assert!(!evidence_findings.is_empty(), 
-            "Evidence findings should not be empty. Total findings: {}", 
-            pipeline.findings.len());
+        assert!(
+            !evidence_findings.is_empty(),
+            "Evidence findings should not be empty. Total findings: {}",
+            pipeline.findings.len()
+        );
         for f in evidence_findings {
             assert!(f.confidence_score >= 0.4);
         }
@@ -889,7 +936,7 @@ mod tests {
             "High confidence critical finding",
         );
         critical.poc.witness_b = Some(vec![FieldElement::from_u64(2)]);
-        
+
         pipeline.add_finding(critical);
         pipeline.add_finding(make_finding(
             AttackType::Boundary,
@@ -898,7 +945,7 @@ mod tests {
         ));
 
         let report = pipeline.generate_report();
-        
+
         assert_eq!(report.statistics.total_findings, 2);
         assert!(!report.high_confidence.is_empty() || !report.medium_confidence.is_empty());
     }

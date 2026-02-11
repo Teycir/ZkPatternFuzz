@@ -39,7 +39,8 @@ template EdDSACanonical() {
     // For production, use full comparison against q/2
     signal sHighBit;
     sHighBit <== sBits.out[253];
-    sHighBit === 0;  // High bit must be 0 for canonical form
+    // High bit must be 0 for canonical form
+    sHighBit === 0;
 
     // EdDSA verification equation: [8]R + [8][S]G = [8][H(R,A,M)]A
     // (Actual verification would use EdDSA verify gadget)

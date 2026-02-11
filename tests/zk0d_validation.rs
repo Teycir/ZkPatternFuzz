@@ -62,7 +62,7 @@ fn zk0d_available() -> bool {
 }
 
 #[test]
-#[ignore = "Requires zk0d repository - run manually"]
+// Requires zk0d repository - run manually
 fn test_tornado_withdraw_invariant_detection() {
     if !zk0d_available() {
         eprintln!(
@@ -133,7 +133,7 @@ fn test_tornado_withdraw_invariant_detection() {
 }
 
 #[test]
-#[ignore = "Requires zk0d repository - run manually"]
+// Requires zk0d repository - run manually
 fn test_semaphore_invariant_detection() {
     if !zk0d_available() {
         eprintln!("⚠️  zk0d not found");
@@ -184,7 +184,7 @@ fn test_semaphore_invariant_detection() {
 }
 
 #[test]
-#[ignore = "Requires zk0d repository - run manually"]
+// Requires zk0d repository - run manually
 fn test_nullify_circuits_edge_cases() {
     if !zk0d_available() {
         eprintln!("⚠️  zk0d not found");
@@ -235,7 +235,7 @@ fn test_nullify_circuits_edge_cases() {
 }
 
 #[test]
-#[ignore = "Requires zk0d repository and circom - comprehensive test"]
+// Requires zk0d repository and circom - comprehensive test
 fn test_comprehensive_zk0d_scan() {
     if !zk0d_available() {
         eprintln!("⚠️  zk0d not found");

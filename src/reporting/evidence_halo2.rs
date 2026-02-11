@@ -91,7 +91,10 @@ pub fn generate_halo2_proof(
         "note": "Halo2 verification requires running the Rust circuit code with MockProver"
     });
 
-    std::fs::write(&proof_path, serde_json::to_string_pretty(&verification_result)?)?;
+    std::fs::write(
+        &proof_path,
+        serde_json::to_string_pretty(&verification_result)?,
+    )?;
 
     // Generate verification script
     let verify_script = finding_dir.join("verify_halo2.rs");

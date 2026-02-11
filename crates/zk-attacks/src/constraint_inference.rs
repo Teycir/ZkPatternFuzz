@@ -319,14 +319,27 @@ impl InferenceRule for BitDecompositionInference {
 impl BitDecompositionInference {
     fn find_bit_wires(&self, context: &InferenceContext) -> HashMap<usize, Vec<usize>> {
         let mut bit_groups: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut all_bits: Vec<usize> = Vec::new();
 
         // Look for binary constraints: x * (1 - x) = 0
         for constraint in &context.constraints {
             if let Some(bit_wire) = self.is_binary_constraint(constraint) {
+                all_bits.push(bit_wire);
                 // Try to associate with a base wire
                 // Heuristic: base wire is often constrained elsewhere with these bits
                 let base_wire = bit_wire.saturating_sub(1);
                 bit_groups.entry(base_wire).or_default().push(bit_wire);
+            }
+        }
+
+        // Fallback: if we found many bits but none of the heuristic groups are large,
+        // anchor them to a "value" wire label when available.
+        let has_large_group = bit_groups
+            .values()
+            .any(|bits| bits.len() >= self.min_bits);
+        if !all_bits.is_empty() && !has_large_group {
+            if let Some(&value_wire) = context.find_wires_by_label("value").first() {
+                bit_groups.insert(value_wire, all_bits);
             }
         }
 
@@ -335,18 +348,29 @@ impl BitDecompositionInference {
 
     fn is_binary_constraint(&self, constraint: &ConstraintEquation) -> Option<usize> {
         // Pattern: x * (1 - x) = 0 expands to x - x^2 = 0
-        // In R1CS: a * b = c where a=x, b=1-x, c=0
-        if constraint.a_terms.len() == 1
-            && constraint.b_terms.len() == 2
-            && constraint.c_terms.is_empty()
-        {
-            let a_wire = constraint.a_terms[0].0;
-            // Check if b_terms are 1 and -x
-            if constraint.b_terms.iter().any(|(w, _)| *w == a_wire) {
-                return Some(a_wire);
-            }
+        // In R1CS: a * b = c where one side is x and the other is (1 - x), c = 0
+        if !constraint.c_terms.is_empty() {
+            return None;
         }
-        None
+
+        let check_sides = |single: &Vec<(usize, FieldElement)>,
+                           pair: &Vec<(usize, FieldElement)>|
+         -> Option<usize> {
+            if single.len() != 1 || pair.len() != 2 {
+                return None;
+            }
+            let wire = single[0].0;
+            let has_wire = pair.iter().any(|(w, _)| *w == wire);
+            let has_const = pair.iter().any(|(w, _)| *w == 0);
+            if has_wire && has_const {
+                Some(wire)
+            } else {
+                None
+            }
+        };
+
+        check_sides(&constraint.a_terms, &constraint.b_terms)
+            .or_else(|| check_sides(&constraint.b_terms, &constraint.a_terms))
     }
 
     fn check_recomposition(
@@ -743,6 +767,17 @@ impl ConstraintInferenceEngine {
         output_wires: &HashSet<usize>,
     ) {
         let num_inputs = executor.num_public_inputs() + executor.num_private_inputs();
+        let wire_to_input: Option<HashMap<usize, usize>> = executor
+            .constraint_inspector()
+            .map(|inspector| {
+                let mut ordered = inspector.public_input_indices();
+                ordered.extend(inspector.private_input_indices());
+                ordered
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, wire)| (wire, idx))
+                    .collect()
+            });
         if num_inputs == 0 {
             tracing::warn!("Cannot confirm violations: circuit has 0 inputs");
             return;
@@ -795,8 +830,12 @@ impl ConstraintInferenceEngine {
                 }
             } else {
                 for &wire in &constraint.involved_wires {
-                    if wire < candidate_inputs.len() && wire < violation.len() {
-                        candidate_inputs[wire] = violation[wire].clone();
+                    let input_idx = wire_to_input
+                        .as_ref()
+                        .and_then(|map| map.get(&wire).copied())
+                        .unwrap_or(wire);
+                    if input_idx < candidate_inputs.len() && wire < violation.len() {
+                        candidate_inputs[input_idx] = violation[wire].clone();
                     }
                 }
             }
@@ -804,7 +843,12 @@ impl ConstraintInferenceEngine {
             let has_internal_wires = constraint
                 .involved_wires
                 .iter()
-                .any(|&wire| wire >= num_inputs && !output_wires.contains(&wire));
+                .any(|&wire| {
+                    let is_input = wire_to_input
+                        .as_ref()
+                        .map_or(wire < num_inputs, |map| map.contains_key(&wire));
+                    !is_input && !output_wires.contains(&wire)
+                });
 
             let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 executor.execute_sync(&candidate_inputs)

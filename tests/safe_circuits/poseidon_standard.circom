@@ -61,7 +61,8 @@ template PoseidonSponge(inputLen, outputLen) {
     
     // Additional outputs would require more squeezing
     for (var i = 1; i < outputLen; i++) {
-        outputs[i] <== 0; // Placeholder
+        // Placeholder
+        outputs[i] <== 0;
     }
 }
 

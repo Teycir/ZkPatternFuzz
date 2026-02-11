@@ -794,8 +794,40 @@ pub struct CircomExecutor {
 }
 
 impl CircomExecutor {
+    fn default_include_paths() -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+
+        if let Ok(raw) = std::env::var("CIRCOM_INCLUDE_PATHS") {
+            let separator = if cfg!(windows) { ';' } else { ':' };
+            for entry in raw.split(separator) {
+                let entry = entry.trim();
+                if !entry.is_empty() {
+                    paths.push(PathBuf::from(entry));
+                }
+            }
+        }
+
+        for candidate in ["third_party", "third_party/node_modules", "node_modules"] {
+            let base = PathBuf::from(candidate);
+            if base.join("circomlib").exists() {
+                paths.push(base);
+            }
+        }
+
+        paths
+    }
+
     pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
-        Self::new_with_options(circuit_path, main_component, None, Vec::new(), None, None, false)
+        let include_paths = Self::default_include_paths();
+        Self::new_with_options(
+            circuit_path,
+            main_component,
+            None,
+            include_paths,
+            None,
+            None,
+            false,
+        )
     }
 
     pub fn new_with_build_dir(
@@ -818,11 +850,15 @@ impl CircomExecutor {
         circuit_path: &str,
         main_component: &str,
         build_dir: Option<PathBuf>,
-        include_paths: Vec<PathBuf>,
+        mut include_paths: Vec<PathBuf>,
         ptau_path: Option<PathBuf>,
         snarkjs_path: Option<PathBuf>,
         skip_compile_if_artifacts: bool,
     ) -> anyhow::Result<Self> {
+        if include_paths.is_empty() {
+            include_paths = Self::default_include_paths();
+        }
+
         let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?
             .with_skip_compile_if_artifacts(skip_compile_if_artifacts);
         if let Some(dir) = build_dir {

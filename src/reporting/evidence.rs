@@ -238,22 +238,33 @@ impl EvidenceGenerator {
     fn discover_circuit_artifacts(&self) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
         let circuit_path = &self.config.campaign.target.circuit_path;
         let main_component = &self.config.campaign.target.main_component;
-        
+
         // Try to find build directory
-        let build_dir = self.config.campaign.parameters.additional
+        let build_dir = self
+            .config
+            .campaign
+            .parameters
+            .additional
             .get("build_dir")
-            .or_else(|| self.config.campaign.parameters.additional.get("circom_build_dir"))
+            .or_else(|| {
+                self.config
+                    .campaign
+                    .parameters
+                    .additional
+                    .get("circom_build_dir")
+            })
             .and_then(|v| v.as_str())
             .map(PathBuf::from)
             .unwrap_or_else(|| {
                 // Default: look for build dir next to circuit
-                circuit_path.parent()
+                circuit_path
+                    .parent()
                     .map(|p| p.join("build"))
                     .unwrap_or_else(|| PathBuf::from("./build"))
             });
 
         let component_lower = main_component.to_lowercase();
-        
+
         // Discover WASM
         let wasm = self.wasm_path.clone().or_else(|| {
             let wasm_dir = build_dir.join(format!("{}_js", component_lower));
@@ -263,24 +274,36 @@ impl EvidenceGenerator {
             } else {
                 // Try alternative naming
                 let alt_wasm = build_dir.join(format!("{}.wasm", component_lower));
-                if alt_wasm.exists() { Some(alt_wasm) } else { None }
+                if alt_wasm.exists() {
+                    Some(alt_wasm)
+                } else {
+                    None
+                }
             }
         });
 
         // Discover zkey
         let zkey = self.zkey_path.clone().or_else(|| {
             let zkey_file = build_dir.join(format!("{}.zkey", component_lower));
-            if zkey_file.exists() { Some(zkey_file) } else { None }
+            if zkey_file.exists() {
+                Some(zkey_file)
+            } else {
+                None
+            }
         });
 
         // Discover vkey
         let vkey = self.vkey_path.clone().or_else(|| {
             let vkey_file = build_dir.join("verification_key.json");
-            if vkey_file.exists() { 
-                Some(vkey_file) 
+            if vkey_file.exists() {
+                Some(vkey_file)
             } else {
                 let alt_vkey = build_dir.join(format!("{}_vkey.json", component_lower));
-                if alt_vkey.exists() { Some(alt_vkey) } else { None }
+                if alt_vkey.exists() {
+                    Some(alt_vkey)
+                } else {
+                    None
+                }
             }
         });
 
@@ -316,22 +339,26 @@ impl EvidenceGenerator {
 
         // Try to generate proof based on framework
         match self.config.campaign.target.framework {
-            Framework::Circom => {
-                match self.generate_circom_proof(&finding_dir, finding) {
-                    Ok((proof_json, public_json, verification)) => {
-                        bundle.proof_json = Some(proof_json);
-                        bundle.public_json = Some(public_json);
-                        bundle.verification_result = verification;
-                    }
-                    Err(e) => {
-                        bundle.verification_result = VerificationResult::Skipped(e.to_string());
-                    }
+            Framework::Circom => match self.generate_circom_proof(&finding_dir, finding) {
+                Ok((proof_json, public_json, verification)) => {
+                    bundle.proof_json = Some(proof_json);
+                    bundle.public_json = Some(public_json);
+                    bundle.verification_result = verification;
                 }
-            }
+                Err(e) => {
+                    bundle.verification_result = VerificationResult::Skipped(e.to_string());
+                }
+            },
             Framework::Noir => {
-                let project_path = self.config.campaign.target.circuit_path.parent()
+                let project_path = self
+                    .config
+                    .campaign
+                    .target
+                    .circuit_path
+                    .parent()
                     .unwrap_or(Path::new("."));
-                match super::evidence_noir::generate_noir_proof(&finding_dir, finding, project_path) {
+                match super::evidence_noir::generate_noir_proof(&finding_dir, finding, project_path)
+                {
                     Ok((proof_path, verification)) => {
                         bundle.proof_json = Some(proof_path);
                         bundle.verification_result = verification;
@@ -342,14 +369,18 @@ impl EvidenceGenerator {
                 }
             }
             Framework::Halo2 => {
-                let circuit_spec = self.config.campaign.parameters.additional
+                let circuit_spec = self
+                    .config
+                    .campaign
+                    .parameters
+                    .additional
                     .get("halo2_circuit_spec")
                     .and_then(|v| v.as_str())
                     .map(std::path::PathBuf::from);
                 match super::evidence_halo2::generate_halo2_proof(
-                    &finding_dir, 
-                    finding, 
-                    circuit_spec.as_deref()
+                    &finding_dir,
+                    finding,
+                    circuit_spec.as_deref(),
                 ) {
                     Ok((proof_path, verification)) => {
                         bundle.proof_json = Some(proof_path);
@@ -362,7 +393,11 @@ impl EvidenceGenerator {
             }
             Framework::Cairo => {
                 let program_path = &self.config.campaign.target.circuit_path;
-                match super::evidence_cairo::generate_cairo_proof(&finding_dir, finding, program_path) {
+                match super::evidence_cairo::generate_cairo_proof(
+                    &finding_dir,
+                    finding,
+                    program_path,
+                ) {
                     Ok((proof_path, verification)) => {
                         bundle.proof_json = Some(proof_path);
                         bundle.verification_result = verification;
@@ -374,7 +409,7 @@ impl EvidenceGenerator {
             }
             Framework::Mock => {
                 bundle.verification_result = VerificationResult::Skipped(
-                    "Mock framework does not support proof generation".to_string()
+                    "Mock framework does not support proof generation".to_string(),
                 );
             }
         }
@@ -510,7 +545,7 @@ echo "Finding description: {}"
     }
 
     /// Generate Circom proof and verify it
-    /// 
+    ///
     /// This shells out to snarkjs to:
     /// 1. Calculate witness: snarkjs wtns calculate circuit.wasm witness.json witness.wtns
     /// 2. Generate proof: snarkjs groth16 prove circuit.zkey witness.wtns proof.json public.json
@@ -542,7 +577,9 @@ echo "Finding description: {}"
                 return Ok((
                     proof_json,
                     public_json,
-                    VerificationResult::Skipped("circuit WASM not found - compile circuit first".to_string()),
+                    VerificationResult::Skipped(
+                        "circuit WASM not found - compile circuit first".to_string(),
+                    ),
                 ));
             }
         };
@@ -553,7 +590,9 @@ echo "Finding description: {}"
                 return Ok((
                     proof_json,
                     public_json,
-                    VerificationResult::Skipped("zkey not found - run trusted setup first".to_string()),
+                    VerificationResult::Skipped(
+                        "zkey not found - run trusted setup first".to_string(),
+                    ),
                 ));
             }
         };
@@ -570,14 +609,17 @@ echo "Finding description: {}"
         };
 
         let snarkjs_cmd = self.resolve_snarkjs_cmd();
-        tracing::info!("Generating proof with snarkjs for finding in {:?}", finding_dir);
+        tracing::info!(
+            "Generating proof with snarkjs for finding in {:?}",
+            finding_dir
+        );
 
         // Step 1: Calculate witness (wasm -> wtns)
         // snarkjs wtns calculate circuit.wasm witness.json witness.wtns
         let wtns_result = if snarkjs_cmd.starts_with("npx") {
             super::command_timeout::run_with_timeout(
                 Command::new("npx")
-                    .args(["--yes", "snarkjs", "wtns", "calculate"])  // --yes prevents prompts
+                    .args(["--yes", "snarkjs", "wtns", "calculate"]) // --yes prevents prompts
                     .arg(&wasm)
                     .arg(&witness_json)
                     .arg(&witness_wtns)
@@ -603,7 +645,10 @@ echo "Finding description: {}"
                 return Ok((
                     proof_json,
                     public_json,
-                    VerificationResult::Failed(format!("witness calculation failed: {}", stderr.chars().take(200).collect::<String>())),
+                    VerificationResult::Failed(format!(
+                        "witness calculation failed: {}",
+                        stderr.chars().take(200).collect::<String>()
+                    )),
                 ));
             }
             Err(e) => {
@@ -651,7 +696,10 @@ echo "Finding description: {}"
                 return Ok((
                     proof_json,
                     public_json,
-                    VerificationResult::Failed(format!("proof generation failed: {}", stderr.chars().take(200).collect::<String>())),
+                    VerificationResult::Failed(format!(
+                        "proof generation failed: {}",
+                        stderr.chars().take(200).collect::<String>()
+                    )),
                 ));
             }
             Err(e) => {
@@ -694,12 +742,15 @@ echo "Finding description: {}"
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                
+
                 if output.status.success() {
                     // Check if snarkjs output indicates success
                     // snarkjs outputs "OK!" or similar on successful verification
                     let combined = format!("{}{}", stdout, stderr).to_lowercase();
-                    if combined.contains("ok") || combined.contains("valid") || combined.contains("true") {
+                    if combined.contains("ok")
+                        || combined.contains("valid")
+                        || combined.contains("true")
+                    {
                         tracing::info!("✓ PROOF VERIFIED - CONFIRMED soundness bug!");
                         Ok((proof_json, public_json, VerificationResult::Passed))
                     } else {
@@ -710,22 +761,27 @@ echo "Finding description: {}"
                 } else {
                     // Verification failed - this means the witness is NOT a valid proof
                     // This is actually the expected behavior for a non-buggy circuit
-                    let reason = if stderr.is_empty() { stdout.to_string() } else { stderr.to_string() };
+                    let reason = if stderr.is_empty() {
+                        stdout.to_string()
+                    } else {
+                        stderr.to_string()
+                    };
                     tracing::info!("✗ Proof verification failed - not a real bug");
                     Ok((
                         proof_json,
                         public_json,
-                        VerificationResult::Failed(format!("proof verification failed: {}", reason.chars().take(200).collect::<String>())),
+                        VerificationResult::Failed(format!(
+                            "proof verification failed: {}",
+                            reason.chars().take(200).collect::<String>()
+                        )),
                     ))
                 }
             }
-            Err(e) => {
-                Ok((
-                    proof_json,
-                    public_json,
-                    VerificationResult::Skipped(format!("snarkjs verify failed: {}", e)),
-                ))
-            }
+            Err(e) => Ok((
+                proof_json,
+                public_json,
+                VerificationResult::Skipped(format!("snarkjs verify failed: {}", e)),
+            )),
         }
     }
 
