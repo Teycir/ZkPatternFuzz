@@ -320,8 +320,15 @@ impl ResourceMonitor {
     #[cfg(unix)]
     pub fn get_usage(&self, pid: u32) -> ResourceUsage {
         // Get system page size and clock ticks per second
-        let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) as u64 };
-        let clock_ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) as u64 };
+        let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+        let page_size = if page_size <= 0 { 4096 } else { page_size as u64 };
+
+        let clock_ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+        let clock_ticks_per_sec = if clock_ticks_per_sec <= 0 {
+            100
+        } else {
+            clock_ticks_per_sec as u64
+        };
         
         let statm_path = format!("/proc/{}/statm", pid);
         let stat_path = format!("/proc/{}/stat", pid);

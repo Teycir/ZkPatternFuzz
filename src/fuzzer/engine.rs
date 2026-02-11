@@ -5299,9 +5299,21 @@ impl FuzzingEngine {
                         .clone()
                         .unwrap_or_else(|| circuit_ref.clone());
 
+                    let circuit_path = match config.path.to_str() {
+                        Some(path) => path,
+                        None => {
+                            tracing::error!(
+                                "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' path contains invalid UTF-8: {:?}",
+                                circuit_ref,
+                                config.path
+                            );
+                            return Vec::new();
+                        }
+                    };
+
                     match crate::executor::ExecutorFactory::create_with_options(
                         framework,
-                        config.path.to_str().unwrap_or(""),
+                        circuit_path,
                         &main_component,
                         &self.executor_factory_options,
                     ) {

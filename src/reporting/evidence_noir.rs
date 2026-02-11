@@ -17,6 +17,7 @@
 use super::evidence::VerificationResult;
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
 use zk_core::Finding;
 
 /// Generate Noir proof for a finding
@@ -33,6 +34,7 @@ pub fn generate_noir_proof(
     _finding: &Finding,
     project_path: &Path,
 ) -> anyhow::Result<(std::path::PathBuf, VerificationResult)> {
+    let timeout = Duration::from_secs(120);
     let proof_path = finding_dir.join("proof.bin");
     let prover_toml = project_path.join("Prover.toml");
     let witness_json = finding_dir.join("witness.json");
@@ -53,11 +55,13 @@ pub fn generate_noir_proof(
     }
 
     // Step 2: Check for nargo
-    let nargo_check = Command::new("nargo")
-        .arg("--version")
-        .output();
+    let nargo_check = super::command_timeout::run_with_timeout(
+        Command::new("nargo").arg("--version"),
+        Duration::from_secs(10),
+    );
 
-    if nargo_check.is_err() {
+    let nargo_ok = matches!(nargo_check, Ok(output) if output.status.success());
+    if !nargo_ok {
         return Ok((
             proof_path,
             VerificationResult::Skipped("nargo not found in PATH".to_string()),
@@ -67,10 +71,12 @@ pub fn generate_noir_proof(
     // Step 3: Generate proof
     tracing::info!("Generating Noir proof for finding in {:?}", finding_dir);
     
-    let prove_result = Command::new("nargo")
-        .arg("prove")
-        .current_dir(project_path)
-        .output();
+    let prove_result = super::command_timeout::run_with_timeout(
+        Command::new("nargo")
+            .arg("prove")
+            .current_dir(project_path),
+        timeout,
+    );
 
     match prove_result {
         Ok(output) if !output.status.success() => {
@@ -102,10 +108,12 @@ pub fn generate_noir_proof(
     }
 
     // Step 4: Verify proof
-    let verify_result = Command::new("nargo")
-        .arg("verify")
-        .current_dir(project_path)
-        .output();
+    let verify_result = super::command_timeout::run_with_timeout(
+        Command::new("nargo")
+            .arg("verify")
+            .current_dir(project_path),
+        timeout,
+    );
 
     match verify_result {
         Ok(output) if output.status.success() => {

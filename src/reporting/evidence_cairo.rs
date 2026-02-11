@@ -17,6 +17,7 @@
 use super::evidence::VerificationResult;
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
 use zk_core::Finding;
 
 /// Generate Cairo proof for a finding
@@ -33,6 +34,7 @@ pub fn generate_cairo_proof(
     _finding: &Finding,
     program_path: &Path,
 ) -> anyhow::Result<(std::path::PathBuf, VerificationResult)> {
+    let timeout = Duration::from_secs(300);
     let proof_path = finding_dir.join("cairo_proof.json");
     let trace_path = finding_dir.join("trace.bin");
     let memory_path = finding_dir.join("memory.bin");
@@ -67,8 +69,20 @@ pub fn generate_cairo_proof(
     }
 
     // Check for cairo-run (Cairo 0) or scarb (Cairo 1)
-    let has_cairo_run = Command::new("cairo-run").arg("--version").output().is_ok();
-    let has_scarb = Command::new("scarb").arg("--version").output().is_ok();
+    let has_cairo_run = matches!(
+        super::command_timeout::run_with_timeout(
+            Command::new("cairo-run").arg("--version"),
+            Duration::from_secs(10),
+        ),
+        Ok(output) if output.status.success()
+    );
+    let has_scarb = matches!(
+        super::command_timeout::run_with_timeout(
+            Command::new("scarb").arg("--version"),
+            Duration::from_secs(10),
+        ),
+        Ok(output) if output.status.success()
+    );
 
     if !has_cairo_run && !has_scarb {
         return Ok((
@@ -83,22 +97,24 @@ pub fn generate_cairo_proof(
 
     // Step 1: Run Cairo program to generate trace
     let run_result = if has_cairo_run {
-        Command::new("cairo-run")
-            .args([
-                "--program",
-                &program_path.display().to_string(),
-                "--print_output",
-                "--trace_file",
-                &trace_path.display().to_string(),
-                "--memory_file",
-                &memory_path.display().to_string(),
-                "--air_public_input",
-                &air_public_input.display().to_string(),
-                "--air_private_input",
-                &air_private_input.display().to_string(),
-            ])
-            .current_dir(finding_dir)
-            .output()
+        super::command_timeout::run_with_timeout(
+            Command::new("cairo-run")
+                .args([
+                    "--program",
+                    &program_path.display().to_string(),
+                    "--print_output",
+                    "--trace_file",
+                    &trace_path.display().to_string(),
+                    "--memory_file",
+                    &memory_path.display().to_string(),
+                    "--air_public_input",
+                    &air_public_input.display().to_string(),
+                    "--air_private_input",
+                    &air_private_input.display().to_string(),
+                ])
+                .current_dir(finding_dir),
+            timeout,
+        )
     } else {
         // For Scarb-based projects, we need a different approach
         return Ok((
@@ -133,10 +149,13 @@ pub fn generate_cairo_proof(
     }
 
     // Step 2: Generate STARK proof using stone-prover (if available)
-    let has_stone_prover = Command::new("cpu_air_prover")
-        .arg("--version")
-        .output()
-        .is_ok();
+    let has_stone_prover = matches!(
+        super::command_timeout::run_with_timeout(
+            Command::new("cpu_air_prover").arg("--version"),
+            Duration::from_secs(10),
+        ),
+        Ok(output) if output.status.success()
+    );
 
     if !has_stone_prover {
         return Ok((
@@ -149,19 +168,21 @@ pub fn generate_cairo_proof(
     }
 
     // Generate proof
-    let prove_result = Command::new("cpu_air_prover")
-        .args([
-            "--out_file",
-            &proof_path.display().to_string(),
-            "--public_input_file",
-            &air_public_input.display().to_string(),
-            "--private_input_file",
-            &air_private_input.display().to_string(),
-            "--prover_config_file",
-            "cpu_air_prover_config.json", // Default config
-        ])
-        .current_dir(finding_dir)
-        .output();
+    let prove_result = super::command_timeout::run_with_timeout(
+        Command::new("cpu_air_prover")
+            .args([
+                "--out_file",
+                &proof_path.display().to_string(),
+                "--public_input_file",
+                &air_public_input.display().to_string(),
+                "--private_input_file",
+                &air_private_input.display().to_string(),
+                "--prover_config_file",
+                "cpu_air_prover_config.json", // Default config
+            ])
+            .current_dir(finding_dir),
+        timeout,
+    );
 
     match prove_result {
         Ok(output) if !output.status.success() => {
@@ -198,13 +219,12 @@ pub fn generate_cairo_proof(
     }
 
     // Step 3: Verify proof
-    let verify_result = Command::new("cpu_air_verifier")
-        .args([
-            "--in_file",
-            &proof_path.display().to_string(),
-        ])
-        .current_dir(finding_dir)
-        .output();
+    let verify_result = super::command_timeout::run_with_timeout(
+        Command::new("cpu_air_verifier")
+            .args(["--in_file", &proof_path.display().to_string()])
+            .current_dir(finding_dir),
+        timeout,
+    );
 
     match verify_result {
         Ok(output) if output.status.success() => {

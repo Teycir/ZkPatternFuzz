@@ -145,6 +145,7 @@ impl FuzzerNode {
         let workers = Arc::clone(&self.workers);
         let running = Arc::clone(&self.running);
         let read_timeout = self.config.read_timeout;
+        let max_message_size = self.config.max_message_size;
 
         thread::spawn(move || {
             while *running.read().unwrap() {
@@ -155,8 +156,9 @@ impl FuzzerNode {
 
                         // Handle registration in separate thread
                         let workers = Arc::clone(&workers);
+                        let max_message_size = max_message_size;
                         thread::spawn(move || {
-                            Self::handle_worker_connection(stream, workers);
+                            Self::handle_worker_connection(stream, workers, max_message_size);
                         });
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -176,13 +178,14 @@ impl FuzzerNode {
     fn handle_worker_connection(
         mut stream: TcpStream,
         workers: Arc<RwLock<HashMap<NodeId, WorkerConnection>>>,
+        max_message_size: usize,
     ) {
         // Read registration message
         if let Some(DistributedMessage::Register {
             node_id,
             role: _,
             capabilities,
-        }) = Self::read_message(&mut stream)
+        }) = Self::read_message(&mut stream, max_message_size)
         {
             tracing::info!(
                 "Worker {} registered with {} threads",
@@ -252,14 +255,13 @@ impl FuzzerNode {
     }
 
     /// Read a message from a stream
-    fn read_message(stream: &mut TcpStream) -> Option<DistributedMessage> {
+    fn read_message(stream: &mut TcpStream, max_message_size: usize) -> Option<DistributedMessage> {
         let mut len_buf = [0u8; 4];
         stream.read_exact(&mut len_buf).ok()?;
         let len = u32::from_le_bytes(len_buf) as usize;
 
         // Enforce max_message_size before allocation
-        const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100MB
-        if len > MAX_MESSAGE_SIZE {
+        if len > max_message_size {
             tracing::warn!("Rejecting oversized message: {} bytes", len);
             return None;
         }

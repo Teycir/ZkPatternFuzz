@@ -1,35 +1,80 @@
 //! Timeout wrapper for external commands
 
-use std::process::{Command, Output};
+use std::io::Read;
+use std::process::{Command, Output, Stdio};
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
-/// Execute a command with timeout using wait-timeout pattern
+/// Execute a command with timeout without relying on PID-based kills.
 pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<Output> {
     let mut child = cmd
-        .stdin(std::process::Stdio::null()) // Prevent interactive prompts
+        .stdin(Stdio::null()) // Prevent interactive prompts
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()?;
 
-    // Simple timeout using thread + kill
-    let child_id = child.id();
-    let timeout_handle = std::thread::spawn(move || {
-        std::thread::sleep(timeout);
-        // Kill if still running
-        #[cfg(unix)]
-        {
-            let _ = std::process::Command::new("kill")
-                .args(["-9", &child_id.to_string()])
-                .output();
-        }
-        #[cfg(windows)]
-        {
-            let _ = std::process::Command::new("taskkill")
-                .args(["/F", "/PID", &child_id.to_string()])
-                .output();
+    let (result_tx, result_rx) = mpsc::channel();
+    let (kill_tx, kill_rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        let mut stdout_reader = child.stdout.take().map(|mut out| {
+            thread::spawn(move || {
+                let mut buf = Vec::new();
+                let _ = out.read_to_end(&mut buf);
+                buf
+            })
+        });
+        let mut stderr_reader = child.stderr.take().map(|mut err| {
+            thread::spawn(move || {
+                let mut buf = Vec::new();
+                let _ = err.read_to_end(&mut buf);
+                buf
+            })
+        });
+
+        loop {
+            if kill_rx.try_recv().is_ok() {
+                let _ = child.kill();
+            }
+
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    let stdout = stdout_reader
+                        .take()
+                        .map(|h| h.join().unwrap_or_default())
+                        .unwrap_or_default();
+                    let stderr = stderr_reader
+                        .take()
+                        .map(|h| h.join().unwrap_or_default())
+                        .unwrap_or_default();
+                    let _ = result_tx.send(Ok(Output {
+                        status,
+                        stdout,
+                        stderr,
+                    }));
+                    return;
+                }
+                Ok(None) => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(err) => {
+                    let _ = result_tx.send(Err(err.into()));
+                    return;
+                }
+            }
         }
     });
 
-    let output = child.wait_with_output()?;
-    drop(timeout_handle); // Best effort cancel
-
-    Ok(output)
+    match result_rx.recv_timeout(timeout) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            let _ = kill_tx.send(());
+            let _ = result_rx.recv_timeout(Duration::from_secs(5));
+            anyhow::bail!("Command timed out after {:?}", timeout);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            anyhow::bail!("Command execution failed: worker disconnected");
+        }
+    }
 }
