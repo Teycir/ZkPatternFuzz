@@ -8,7 +8,9 @@
 
 use super::{Attack, AttackContext};
 use crate::registry::{AttackMetadata, AttackPlugin};
-use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
 
 /// Soundness tester for proof systems
 pub struct SoundnessTester {
@@ -60,19 +62,130 @@ impl Attack for SoundnessTester {
     fn run(&self, context: &AttackContext) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        // Check for circuits that might be vulnerable to soundness attacks
-        if context.circuit_info.degrees_of_freedom() > 0 {
+        let dof = context.circuit_info.degrees_of_freedom();
+        if dof > 0 {
             findings.push(Finding {
                 attack_type: AttackType::Soundness,
                 severity: Severity::High,
                 description: format!(
                     "Circuit '{}' has positive degrees of freedom ({}) - may be vulnerable to soundness attacks",
-                    context.circuit_info.name,
-                    context.circuit_info.degrees_of_freedom()
+                    context.circuit_info.name, dof
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
             });
+        }
+
+        let Some(executor) = context.executor.as_ref() else {
+            return findings;
+        };
+
+        if executor.is_mock() {
+            tracing::debug!(
+                "SoundnessTester: skipping proof forgery on mock executor '{}'",
+                executor.name()
+            );
+            return findings;
+        }
+
+        let mut rng = StdRng::seed_from_u64(42);
+        let valid_inputs: Vec<FieldElement> = (0..executor.num_private_inputs())
+            .map(|_| FieldElement::random(&mut rng))
+            .collect();
+
+        let valid_proof = match executor.prove(&valid_inputs) {
+            Ok(proof) => proof,
+            Err(e) => {
+                tracing::warn!("SoundnessTester: failed to generate valid proof: {}", e);
+                return findings;
+            }
+        };
+
+        let public_inputs: Vec<FieldElement> = valid_inputs
+            .iter()
+            .take(executor.num_public_inputs())
+            .cloned()
+            .collect();
+
+        if valid_proof.is_empty() {
+            return findings;
+        }
+
+        let attempts = self.forge_attempts.max(1);
+        let proof_attempts = attempts / 2;
+        let input_attempts = attempts - proof_attempts;
+
+        // Attempt 1: mutate proof bytes and check if verification still passes.
+        for _ in 0..proof_attempts {
+            let mutated = mutate_proof_bytes(&valid_proof, self.mutation_rate, &mut rng);
+            if mutated == valid_proof {
+                continue;
+            }
+
+            match executor.verify(&mutated, &public_inputs) {
+                Ok(true) => {
+                    findings.push(Finding {
+                        attack_type: AttackType::Soundness,
+                        severity: Severity::High,
+                        description: format!(
+                            "Proof malleability: mutated proof verified for '{}' ({} -> {} bytes)",
+                            context.circuit_info.name,
+                            valid_proof.len(),
+                            mutated.len()
+                        ),
+                        poc: ProofOfConcept {
+                            witness_a: valid_inputs.clone(),
+                            witness_b: None,
+                            public_inputs: public_inputs.clone(),
+                            proof: Some(mutated),
+                        },
+                        location: None,
+                    });
+                    break;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::debug!("SoundnessTester: verifier error on mutated proof: {}", e);
+                }
+            }
+        }
+
+        // Attempt 2: keep proof fixed, mutate public inputs (should fail verification).
+        for _ in 0..input_attempts {
+            let mut forged_inputs = public_inputs.clone();
+            if forged_inputs.is_empty() {
+                break;
+            }
+            let idx = rng.gen_range(0..forged_inputs.len());
+            let mut mutated = forged_inputs[idx].to_bytes();
+            let byte_idx = rng.gen_range(0..mutated.len());
+            mutated[byte_idx] ^= 1u8 << rng.gen_range(0..8);
+            forged_inputs[idx] = FieldElement(mutated);
+
+            match executor.verify(&valid_proof, &forged_inputs) {
+                Ok(true) => {
+                    findings.push(Finding {
+                        attack_type: AttackType::Soundness,
+                        severity: Severity::Critical,
+                        description: format!(
+                            "Soundness failure: proof verified with forged public inputs in '{}'",
+                            context.circuit_info.name
+                        ),
+                        poc: ProofOfConcept {
+                            witness_a: valid_inputs.clone(),
+                            witness_b: None,
+                            public_inputs: forged_inputs,
+                            proof: Some(valid_proof.clone()),
+                        },
+                        location: None,
+                    });
+                    break;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::debug!("SoundnessTester: verifier error on forged inputs: {}", e);
+                }
+            }
         }
 
         findings
@@ -95,4 +208,20 @@ impl AttackPlugin for SoundnessTester {
             "0.1.0",
         )
     }
+}
+
+fn mutate_proof_bytes(proof: &[u8], mutation_rate: f64, rng: &mut impl Rng) -> Vec<u8> {
+    let mut mutated = proof.to_vec();
+    for byte in &mut mutated {
+        if rng.gen::<f64>() < mutation_rate {
+            *byte ^= 1u8 << rng.gen_range(0..8);
+        }
+    }
+
+    if mutated == proof && !mutated.is_empty() {
+        let idx = rng.gen_range(0..mutated.len());
+        mutated[idx] ^= 0x01;
+    }
+
+    mutated
 }

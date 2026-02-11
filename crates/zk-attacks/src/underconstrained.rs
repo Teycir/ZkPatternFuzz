@@ -8,7 +8,8 @@
 
 use super::{Attack, AttackContext, CircuitInfo};
 use crate::registry::{AttackMetadata, AttackPlugin};
-use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
+use zk_core::{AttackType, ConstraintInspector, Finding, ProofOfConcept, Severity};
+use std::collections::{HashMap, HashSet};
 
 /// Detector for underconstrained circuits
 pub struct UnderconstrainedDetector {
@@ -85,28 +86,172 @@ impl UnderconstrainedDetector {
     /// Check for unused signals
     ///
     /// Uses `samples` to limit the analysis scope for large circuits
-    pub fn unused_signal_analysis(&self, _circuit_info: &CircuitInfo) -> Vec<Finding> {
-        // In real implementation, this would analyze the constraint system
-        // to find signals that are declared but never constrained.
-        // The `samples` parameter would limit how many signals to analyze
-        // for very large circuits.
-        tracing::debug!("Unused signal analysis with {} sample limit", self.samples);
-        vec![]
+    pub fn unused_signal_analysis(
+        &self,
+        circuit_info: &CircuitInfo,
+        inspector: Option<&dyn ConstraintInspector>,
+    ) -> Vec<Finding> {
+        let Some(inspector) = inspector else {
+            tracing::debug!("Unused signal analysis skipped: no constraint inspector available");
+            return Vec::new();
+        };
+
+        let mut used: HashSet<usize> = HashSet::new();
+        for deps in inspector.get_constraint_dependencies() {
+            for idx in deps {
+                used.insert(idx);
+            }
+        }
+
+        let labels = inspector.wire_labels();
+        let mut findings = Vec::new();
+
+        let mut candidates = Vec::new();
+        for idx in inspector.public_input_indices() {
+            candidates.push(("public input", idx));
+        }
+        for idx in inspector.private_input_indices() {
+            candidates.push(("private input", idx));
+        }
+        for idx in inspector.output_indices() {
+            candidates.push(("output", idx));
+        }
+
+        for (kind, idx) in candidates {
+            if used.contains(&idx) {
+                continue;
+            }
+
+            let label = labels
+                .get(&idx)
+                .cloned()
+                .unwrap_or_else(|| format!("signal_{}", idx));
+            let severity = match kind {
+                "private input" => Severity::High,
+                "public input" => Severity::Medium,
+                _ => Severity::Low,
+            };
+
+            findings.push(Finding {
+                attack_type: AttackType::Underconstrained,
+                severity,
+                description: format!(
+                    "Unused {} '{}' (index {}) in circuit '{}' - no constraints reference it",
+                    kind, label, idx, circuit_info.name
+                ),
+                poc: ProofOfConcept::default(),
+                location: None,
+            });
+
+            if findings.len() >= self.samples {
+                break;
+            }
+        }
+
+        findings
     }
 
     /// Check for weak constraints
     ///
     /// Uses `samples` to limit the number of constraint evaluations
-    pub fn weak_constraint_analysis(&self, _circuit_info: &CircuitInfo) -> Vec<Finding> {
-        // In real implementation, this would look for constraints that
-        // don't sufficiently limit the witness space.
-        // The `samples` parameter controls how many random evaluations
-        // to perform per constraint.
-        tracing::debug!(
-            "Weak constraint analysis with {} samples per constraint",
-            self.samples
-        );
-        vec![]
+    pub fn weak_constraint_analysis(
+        &self,
+        circuit_info: &CircuitInfo,
+        inspector: Option<&dyn ConstraintInspector>,
+    ) -> Vec<Finding> {
+        let Some(inspector) = inspector else {
+            tracing::debug!("Weak constraint analysis skipped: no constraint inspector available");
+            return Vec::new();
+        };
+
+        let deps_list = inspector.get_constraint_dependencies();
+        if deps_list.is_empty() {
+            return Vec::new();
+        }
+
+        let private_indices = inspector.private_input_indices();
+        if private_indices.is_empty() {
+            return Vec::new();
+        }
+
+        let private_set: HashSet<usize> = private_indices.iter().copied().collect();
+        let mut counts: HashMap<usize, usize> = HashMap::new();
+        let mut total_counts = 0usize;
+        let mut findings = Vec::new();
+
+        for (id, deps) in deps_list.iter().enumerate() {
+            let mut unique: HashSet<usize> = HashSet::new();
+            for idx in deps {
+                if private_set.contains(idx) {
+                    unique.insert(*idx);
+                }
+            }
+
+            if deps.is_empty() {
+                findings.push(Finding {
+                    attack_type: AttackType::Underconstrained,
+                    severity: Severity::Low,
+                    description: format!(
+                        "Constraint {} in '{}' has no signal dependencies (likely ineffective)",
+                        id, circuit_info.name
+                    ),
+                    poc: ProofOfConcept::default(),
+                    location: None,
+                });
+            }
+
+            for idx in unique {
+                *counts.entry(idx).or_insert(0) += 1;
+                total_counts = total_counts.saturating_add(1);
+            }
+        }
+
+        if total_counts == 0 {
+            return findings;
+        }
+
+        let avg = total_counts as f64 / private_indices.len() as f64;
+        let mut threshold = (avg * 0.25).floor() as usize;
+        if threshold < 1 {
+            threshold = 1;
+        }
+
+        let labels = inspector.wire_labels();
+
+        for idx in private_indices {
+            let count = counts.get(&idx).copied().unwrap_or(0);
+            if count == 0 || count > threshold {
+                continue;
+            }
+
+            let label = labels
+                .get(&idx)
+                .cloned()
+                .unwrap_or_else(|| format!("signal_{}", idx));
+            let severity = if count <= 1 {
+                Severity::Medium
+            } else {
+                Severity::Low
+            };
+
+            findings.push(Finding {
+                attack_type: AttackType::Underconstrained,
+                severity,
+                description: format!(
+                    "Private input '{}' (index {}) participates in only {} constraint(s) \
+                     in '{}' (avg {:.2}); may be weakly constrained",
+                    label, idx, count, circuit_info.name, avg
+                ),
+                poc: ProofOfConcept::default(),
+                location: None,
+            });
+
+            if findings.len() >= self.samples {
+                break;
+            }
+        }
+
+        findings
     }
 }
 
@@ -125,11 +270,16 @@ impl Attack for UnderconstrainedDetector {
             findings.push(finding);
         }
 
+        let inspector = context
+            .executor
+            .as_ref()
+            .and_then(|exec| exec.constraint_inspector());
+
         // Unused signal analysis
-        findings.extend(self.unused_signal_analysis(&context.circuit_info));
+        findings.extend(self.unused_signal_analysis(&context.circuit_info, inspector));
 
         // Weak constraint analysis
-        findings.extend(self.weak_constraint_analysis(&context.circuit_info));
+        findings.extend(self.weak_constraint_analysis(&context.circuit_info, inspector));
 
         findings
     }

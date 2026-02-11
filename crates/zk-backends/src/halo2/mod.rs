@@ -399,11 +399,9 @@ impl Halo2Target {
         // 2. Synthesize the circuit
         // 3. Generate proving and verification keys
 
-        // Placeholder for now
-        self.proving_key = Some(vec![]);
-        self.verification_key = Some(vec![]);
-
-        Ok(())
+        anyhow::bail!(
+            "Halo2 key generation not implemented. Enable mock_mode or provide a circuit binary that handles keygen."
+        )
     }
 
     /// Execute circuit with mock or real execution
@@ -442,8 +440,9 @@ impl Halo2Target {
             }
         }
 
-        // Fall back to mock execution
-        self.mock_execute(inputs)
+        anyhow::bail!(
+            "Halo2 execution failed. Provide a circuit binary that supports --execute or enable mock_mode."
+        )
     }
 
     /// Mock execution for testing
@@ -568,8 +567,9 @@ impl TargetCircuit for Halo2Target {
             }
         }
 
-        // Fall back to mock
-        self.mock_prove(witness)
+        anyhow::bail!(
+            "Halo2 prove failed. Provide a circuit binary that supports --prove or enable mock_mode."
+        )
     }
 
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
@@ -605,8 +605,9 @@ impl TargetCircuit for Halo2Target {
             return Ok(output.status.success());
         }
 
-        // Fall back to mock
-        self.mock_verify(proof, public_inputs)
+        anyhow::bail!(
+            "Halo2 verify failed. Provide a circuit binary that supports --verify or enable mock_mode."
+        )
     }
 }
 

@@ -18,7 +18,10 @@
 //! }
 //! ```
 
-use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity, TestCase};
+use crate::executor::ExecutorFactory;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+use zk_core::{AttackType, FieldElement, Finding, Framework, ProofOfConcept, Severity, TestCase};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -270,19 +273,102 @@ impl RegressionTest {
 
     /// Run regression test (placeholder for actual implementation)
     pub fn run(&self) -> RegressionTestResult {
-        // This would be implemented with actual circuit execution
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut test_results = Vec::new();
+        let mut passed_all = true;
+
+        let path = Path::new(&self.circuit_path);
+        if !path.exists() {
+            return RegressionTestResult {
+                cve_id: self.cve_id.clone(),
+                passed: false,
+                test_results: self
+                    .test_cases
+                    .iter()
+                    .map(|tc| TestCaseResult {
+                        name: tc.name.clone(),
+                        passed: false,
+                        message: Some(format!("Circuit path not found: {}", self.circuit_path)),
+                    })
+                    .collect(),
+            };
+        }
+
+        let source = std::fs::read_to_string(path).unwrap_or_default();
+        let framework = detect_framework(path);
+        let main_component = detect_main_component(&source, framework);
+
+        let executor = match ExecutorFactory::create(framework, &self.circuit_path, &main_component)
+        {
+            Ok(exec) => exec,
+            Err(e) => {
+                return RegressionTestResult {
+                    cve_id: self.cve_id.clone(),
+                    passed: false,
+                    test_results: self
+                        .test_cases
+                        .iter()
+                        .map(|tc| TestCaseResult {
+                            name: tc.name.clone(),
+                            passed: false,
+                            message: Some(format!("Executor creation failed: {}", e)),
+                        })
+                        .collect(),
+                };
+            }
+        };
+
+        let input_specs = parse_inputs_from_source(&source, framework);
+        let total_inputs = executor.num_private_inputs() + executor.num_public_inputs();
+        let field_modulus = executor.field_modulus();
+
+        for tc in &self.test_cases {
+            let inputs = match build_inputs_for_test(
+                tc,
+                &input_specs,
+                total_inputs,
+                &field_modulus,
+                &mut rng,
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    passed_all = false;
+                    test_results.push(TestCaseResult {
+                        name: tc.name.clone(),
+                        passed: false,
+                        message: Some(e),
+                    });
+                    continue;
+                }
+            };
+
+            let result = executor.execute_sync(&inputs);
+            let passed = result.success == tc.expected_valid;
+            if !passed {
+                passed_all = false;
+            }
+
+            let message = if passed {
+                None
+            } else {
+                Some(format!(
+                    "Expected {} but execution {}",
+                    if tc.expected_valid { "valid" } else { "invalid" },
+                    if result.success { "succeeded" } else { "failed" }
+                ))
+            };
+
+            test_results.push(TestCaseResult {
+                name: tc.name.clone(),
+                passed,
+                message,
+            });
+        }
+
         RegressionTestResult {
             cve_id: self.cve_id.clone(),
-            passed: true, // Placeholder
-            test_results: self
-                .test_cases
-                .iter()
-                .map(|tc| TestCaseResult {
-                    name: tc.name.clone(),
-                    passed: true, // Placeholder
-                    message: None,
-                })
-                .collect(),
+            passed: passed_all,
+            test_results,
         }
     }
 }
@@ -309,6 +395,252 @@ pub struct TestCaseResult {
     pub name: String,
     pub passed: bool,
     pub message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct InputSpec {
+    name: String,
+    length: Option<usize>,
+}
+
+fn detect_framework(path: &Path) -> Framework {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("circom") => Framework::Circom,
+        Some("nr") => Framework::Noir,
+        Some("cairo") => Framework::Cairo,
+        Some("rs") => Framework::Halo2,
+        _ => Framework::Mock,
+    }
+}
+
+fn detect_main_component(source: &str, framework: Framework) -> String {
+    match framework {
+        Framework::Circom => {
+            for line in source.lines() {
+                if line.contains("component main") {
+                    if let Some(start) = line.find('=') {
+                        let rest = &line[start + 1..];
+                        if let Some(end) = rest.find('(') {
+                            return rest[..end].trim().to_string();
+                        }
+                    }
+                }
+            }
+            for line in source.lines() {
+                if line.trim().starts_with("template ") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        return parts[1].trim_end_matches('(').to_string();
+                    }
+                }
+            }
+        }
+        Framework::Noir => {
+            for line in source.lines() {
+                if line.contains("fn main") {
+                    return "main".to_string();
+                }
+            }
+        }
+        _ => {}
+    }
+    "Main".to_string()
+}
+
+fn parse_inputs_from_source(source: &str, framework: Framework) -> Vec<InputSpec> {
+    let mut inputs = Vec::new();
+    match framework {
+        Framework::Circom => {
+            for line in source.lines() {
+                if let Some(spec) = parse_circom_input(line) {
+                    inputs.push(spec);
+                }
+            }
+        }
+        Framework::Noir => {
+            for line in source.lines() {
+                if let Some(specs) = parse_noir_inputs(line) {
+                    inputs.extend(specs);
+                }
+            }
+        }
+        _ => {}
+    }
+    inputs
+}
+
+fn parse_circom_input(line: &str) -> Option<InputSpec> {
+    let line = line.trim();
+    if line.starts_with("signal input") || line.starts_with("signal private input") {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 3 {
+            let name_part = parts.last()?;
+            let name = name_part.trim_end_matches(';').trim_end_matches(']');
+
+            let (name, length) = if let Some(bracket) = name.find('[') {
+                let base_name = &name[..bracket];
+                let len_str = &name[bracket + 1..];
+                let len = len_str.trim_end_matches(']').parse::<usize>().ok();
+                (base_name.to_string(), len)
+            } else {
+                (name.to_string(), None)
+            };
+
+            return Some(InputSpec { name, length });
+        }
+    }
+    None
+}
+
+fn parse_noir_inputs(line: &str) -> Option<Vec<InputSpec>> {
+    let line = line.trim();
+    if line.contains("fn main") || line.contains("fn ") {
+        if let Some(start) = line.find('(') {
+            if let Some(end) = line.find(')') {
+                let params = &line[start + 1..end];
+                let mut specs = Vec::new();
+                for param in params.split(',') {
+                    let param = param.trim();
+                    if param.is_empty() {
+                        continue;
+                    }
+                    let parts: Vec<&str> = param.split(':').collect();
+                    if parts.len() == 2 {
+                        specs.push(InputSpec {
+                            name: parts[0].trim().to_string(),
+                            length: None,
+                        });
+                    }
+                }
+                if !specs.is_empty() {
+                    return Some(specs);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn build_inputs_for_test(
+    tc: &GeneratedTestCase,
+    input_specs: &[InputSpec],
+    total_inputs: usize,
+    field_modulus: &[u8; 32],
+    rng: &mut impl Rng,
+) -> Result<Vec<FieldElement>, String> {
+    if total_inputs == 0 {
+        return Err("Executor reports zero inputs".to_string());
+    }
+
+    let mut key_map: HashMap<String, &serde_yaml::Value> = HashMap::new();
+    for (k, v) in &tc.inputs {
+        key_map.insert(k.to_lowercase(), v);
+    }
+
+    let mut inputs = Vec::new();
+
+    if !input_specs.is_empty() {
+        for spec in input_specs {
+            let key = spec.name.to_lowercase();
+            let value = key_map.get(&key);
+            let mut elements = match value {
+                Some(v) => parse_yaml_value(v, field_modulus, rng, spec.length)?,
+                None => vec![FieldElement::zero(); spec.length.unwrap_or(1)],
+            };
+
+            if let Some(len) = spec.length {
+                if elements.len() < len {
+                    elements.extend(std::iter::repeat(FieldElement::zero()).take(len - elements.len()));
+                } else if elements.len() > len {
+                    elements.truncate(len);
+                }
+            }
+
+            inputs.extend(elements);
+        }
+    } else {
+        let mut keys: Vec<String> = tc.inputs.keys().map(|k| k.to_string()).collect();
+        keys.sort();
+        for key in keys {
+            if let Some(value) = tc.inputs.get(&key) {
+                let mut elements = parse_yaml_value(value, field_modulus, rng, None)?;
+                inputs.append(&mut elements);
+            }
+        }
+    }
+
+    if inputs.len() < total_inputs {
+        inputs.extend(std::iter::repeat(FieldElement::zero()).take(total_inputs - inputs.len()));
+    } else if inputs.len() > total_inputs {
+        inputs.truncate(total_inputs);
+    }
+
+    Ok(inputs)
+}
+
+fn parse_yaml_value(
+    value: &serde_yaml::Value,
+    field_modulus: &[u8; 32],
+    rng: &mut impl Rng,
+    expected_len: Option<usize>,
+) -> Result<Vec<FieldElement>, String> {
+    match value {
+        serde_yaml::Value::Number(n) => {
+            let num = n.as_u64().unwrap_or(0);
+            Ok(vec![FieldElement::from_u64(num)])
+        }
+        serde_yaml::Value::Bool(b) => Ok(vec![if *b {
+            FieldElement::one()
+        } else {
+            FieldElement::zero()
+        }]),
+        serde_yaml::Value::String(s) => parse_value_string(s, field_modulus, rng, expected_len),
+        serde_yaml::Value::Sequence(seq) => {
+            let mut out = Vec::new();
+            for item in seq {
+                let mut expanded = parse_yaml_value(item, field_modulus, rng, None)?;
+                out.append(&mut expanded);
+            }
+            Ok(out)
+        }
+        _ => Err("Unsupported YAML value type for inputs".to_string()),
+    }
+}
+
+fn parse_value_string(
+    raw: &str,
+    field_modulus: &[u8; 32],
+    rng: &mut impl Rng,
+    expected_len: Option<usize>,
+) -> Result<Vec<FieldElement>, String> {
+    let value = raw.trim();
+    if value == "random_field_element" {
+        return Ok(vec![FieldElement::random(rng)]);
+    }
+    if let Some(rest) = value.strip_prefix("random_") {
+        if let Ok(count) = rest.parse::<usize>() {
+            let mut out = Vec::with_capacity(count);
+            for _ in 0..count {
+                out.push(FieldElement::random(rng));
+            }
+            return Ok(out);
+        }
+    }
+
+    let bytes = crate::config::parser::expand_value_placeholder(value, field_modulus)
+        .map_err(|e| e.to_string())?;
+    let fe = FieldElement::from_bytes(&bytes);
+
+    if let Some(len) = expected_len {
+        if len > 1 {
+            let mut out = Vec::with_capacity(len);
+            out.push(fe.clone());
+            out.extend(std::iter::repeat(FieldElement::zero()).take(len - 1));
+            return Ok(out);
+        }
+    }
+
+    Ok(vec![fe])
 }
 
 /// CVE-aware oracle that checks for known vulnerability patterns

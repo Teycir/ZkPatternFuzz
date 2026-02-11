@@ -656,14 +656,13 @@ impl NoirTarget {
             self.compile()?;
         }
 
-        tracing::info!("Generating Noir proving/verification keys...");
+        tracing::warn!(
+            "Noir backend does not expose explicit key generation; \
+             nargo prove/verify handles keys internally. setup_keys is a no-op."
+        );
 
-        // Use nargo to generate keys (if using nargo prove/verify flow)
-        // Or use bb directly for more control
-
-        // For now, we'll use the nargo prove flow which handles keys internally
-        self.proving_key = Some(vec![]); // Placeholder
-        self.verification_key = Some(vec![]);
+        self.proving_key = None;
+        self.verification_key = None;
 
         Ok(())
     }

@@ -3206,7 +3206,9 @@ impl FuzzingEngine {
             self.get_circuit_info(),
             samples,
             self.config.campaign.parameters.timeout_seconds,
-        );
+        )
+        .with_executor(self.executor.clone())
+        .with_input_ranges(self.input_index_ranges());
         let mut findings = attack.run(&context);
 
         let evidence_mode =

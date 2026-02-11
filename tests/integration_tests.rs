@@ -47,17 +47,17 @@ fn test_underconstrained_detector() {
     let detector = UnderconstrainedDetector::new(100);
 
     // Test with underconstrained circuit info
-    let context = AttackContext {
-        circuit_info: CircuitInfo {
+    let context = AttackContext::new(
+        CircuitInfo {
             name: "test".to_string(),
             num_constraints: 5,
             num_private_inputs: 10,
             num_public_inputs: 2,
             num_outputs: 1,
         },
-        samples: 100,
-        timeout_seconds: 60,
-    };
+        100,
+        60,
+    );
 
     let findings = detector.run(&context);
     assert!(!findings.is_empty(), "Should detect underconstrained circuit");
@@ -68,17 +68,17 @@ fn test_underconstrained_detector() {
 fn test_underconstrained_detector_no_false_positive() {
     let detector = UnderconstrainedDetector::new(100);
 
-    let context = AttackContext {
-        circuit_info: CircuitInfo {
+    let context = AttackContext::new(
+        CircuitInfo {
             name: "test".to_string(),
             num_constraints: 20,
             num_private_inputs: 10,
             num_public_inputs: 2,
             num_outputs: 1,
         },
-        samples: 100,
-        timeout_seconds: 60,
-    };
+        100,
+        60,
+    );
 
     let findings = detector.run(&context);
     

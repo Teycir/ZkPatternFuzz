@@ -1,4 +1,6 @@
-use crate::{AttackType, CircuitInfo, FieldElement, Finding, TestCase};
+use crate::{AttackType, CircuitExecutor, CircuitInfo, FieldElement, Finding, TestCase};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Trait for attack implementations
 pub trait Attack: Send + Sync {
@@ -17,6 +19,8 @@ pub struct AttackContext {
     pub circuit_info: CircuitInfo,
     pub samples: usize,
     pub timeout_seconds: u64,
+    pub executor: Option<Arc<dyn CircuitExecutor>>,
+    pub input_ranges: Option<HashMap<String, (usize, usize)>>,
 }
 
 impl AttackContext {
@@ -26,7 +30,24 @@ impl AttackContext {
             circuit_info,
             samples,
             timeout_seconds,
+            executor: None,
+            input_ranges: None,
         }
+    }
+
+    /// Attach an executor for attacks that need real circuit execution.
+    pub fn with_executor(mut self, executor: Arc<dyn CircuitExecutor>) -> Self {
+        self.executor = Some(executor);
+        self
+    }
+
+    /// Provide input name -> (offset, length) mapping for attacks that need it.
+    pub fn with_input_ranges(
+        mut self,
+        input_ranges: HashMap<String, (usize, usize)>,
+    ) -> Self {
+        self.input_ranges = Some(input_ranges);
+        self
     }
 
     /// Get the circuit name

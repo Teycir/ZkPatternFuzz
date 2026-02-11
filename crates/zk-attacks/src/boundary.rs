@@ -31,6 +31,8 @@
 
 use super::{Attack, AttackContext};
 use crate::registry::{AttackMetadata, AttackPlugin};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use zk_fuzzer_core::constants::bn254_modulus_bytes;
 use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
 use num_bigint::BigUint;
@@ -650,6 +652,67 @@ impl BoundaryTester {
 impl Attack for BoundaryTester {
     fn run(&self, context: &AttackContext) -> Vec<Finding> {
         let mut findings = Vec::new();
+
+        if let (Some(executor), Some(input_ranges)) =
+            (context.executor.as_ref(), context.input_ranges.as_ref())
+        {
+            if !executor.is_mock() && !self.ranges.is_empty() {
+                let total_inputs = executor.num_private_inputs() + executor.num_public_inputs();
+                if total_inputs > 0 {
+                    let mut rng = StdRng::seed_from_u64(42);
+                    let base_inputs: Vec<FieldElement> = (0..total_inputs)
+                        .map(|_| FieldElement::random(&mut rng))
+                        .collect();
+
+                    for range in &self.ranges {
+                        let key = range.name.to_lowercase();
+                        let Some((offset, len)) = input_ranges.get(&key) else {
+                            continue;
+                        };
+
+                        for idx in *offset..(*offset + *len) {
+                            if idx >= base_inputs.len() {
+                                break;
+                            }
+                            let accepts_value = |value: &FieldElement| -> bool {
+                                let mut inputs = base_inputs.clone();
+                                inputs[idx] = value.clone();
+                                executor.execute_sync(&inputs).success
+                            };
+
+                            let vulnerabilities = self.check_range_enforcement(accepts_value, range);
+                            for vuln in vulnerabilities {
+                                let mut witness = base_inputs.clone();
+                                witness[idx] = vuln.test_value.clone();
+                                findings.push(Finding {
+                                    attack_type: AttackType::Boundary,
+                                    severity: vuln.severity,
+                                    description: format!(
+                                        "{} (input '{}', index {})",
+                                        vuln.description, range.name, idx
+                                    ),
+                                    poc: ProofOfConcept {
+                                        witness_a: witness,
+                                        witness_b: None,
+                                        public_inputs: vec![],
+                                        proof: None,
+                                    },
+                                    location: None,
+                                });
+                            }
+
+                            if findings.len() >= self.samples {
+                                break;
+                            }
+                        }
+
+                        if findings.len() >= self.samples {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
         // Check for circuits that might have boundary issues
         if context.circuit_info.num_constraints < context.circuit_info.num_private_inputs {
