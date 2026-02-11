@@ -139,6 +139,7 @@ campaign:
     additional:
       strict_backend: true    # fail if real backend tooling is missing
       mark_fallback: true     # mark mock fallback (default: true)
+      kill_on_timeout: true   # kill process on timeout (default: true)
 
 attacks:
   - type: "underconstrained"
@@ -220,6 +221,7 @@ campaign:
       min_evidence_confidence: "high"  # Filter to HIGH+ confidence (critical/high/medium/low)
       per_exec_isolation: true         # Isolate each execution (hang/crash safety)
       execution_timeout_ms: 30000      # Per-execution timeout (default: 30s)
+      kill_on_timeout: true            # Kill process on timeout (default: true)
 ```
 
 **Evidence Mode Features:**

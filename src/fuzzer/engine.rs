@@ -337,7 +337,11 @@ impl FuzzingEngine {
                 })
                 .unwrap_or(30_000)
                 .max(1);
-            executor = Arc::new(IsolatedExecutor::new(
+            
+            let kill_on_timeout = Self::additional_bool(additional, "kill_on_timeout")
+                .unwrap_or(true);
+            
+            let mut isolated_executor = IsolatedExecutor::new(
                 executor,
                 config.campaign.target.framework,
                 config
@@ -349,10 +353,22 @@ impl FuzzingEngine {
                 config.campaign.target.main_component.clone(),
                 executor_factory_options.clone(),
                 execution_timeout_ms,
-            )?);
+            )?;
+            
+            // Configure kill_on_timeout if specified
+            if !kill_on_timeout {
+                use crate::executor::IsolationConfig;
+                let mut isolation_config = IsolationConfig::default();
+                isolation_config.timeout_ms = execution_timeout_ms;
+                isolation_config.kill_on_timeout = false;
+                isolated_executor = isolated_executor.with_config(isolation_config);
+            }
+            
+            executor = Arc::new(isolated_executor);
             tracing::info!(
-                "Per-exec isolation enabled (timeout {} ms)",
-                execution_timeout_ms
+                "Per-exec isolation enabled (timeout {} ms, kill_on_timeout: {})",
+                execution_timeout_ms,
+                kill_on_timeout
             );
         }
 

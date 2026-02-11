@@ -416,8 +416,6 @@ where
 pub struct OracleStateManager {
     /// Output history (hash -> test case)
     output_history: BoundedStateMap<Vec<u8>, TestCase>,
-    /// Configuration
-    config: OracleStateConfig,
     /// Collision count
     collision_count: AtomicU64,
 }
@@ -426,9 +424,8 @@ impl OracleStateManager {
     /// Create a new oracle state manager
     pub fn new(config: OracleStateConfig) -> Self {
         Self {
-            output_history: BoundedStateMap::new(config.clone()),
+            output_history: BoundedStateMap::new(config),
             collision_count: AtomicU64::new(0),
-            config,
         }
     }
 

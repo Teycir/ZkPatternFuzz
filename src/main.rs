@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use zk_fuzzer::config::{FuzzConfig, ProfileName, apply_profile};
 use zk_fuzzer::fuzzer::ZkFuzzer;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "zk-fuzzer")]
@@ -50,6 +51,10 @@ struct Cli {
     /// Deep: 1M iterations, thorough analysis
     #[arg(long, global = true)]
     profile: Option<String>,
+
+    /// Kill other zk-fuzzer instances on startup (use with caution)
+    #[arg(long, global = true)]
+    kill_existing: bool,
 }
 
 #[derive(Subcommand)]
@@ -139,14 +144,10 @@ enum Commands {
     ExecWorker,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-
-    // Get current process PID to exclude from kill
+/// Kill existing zk-fuzzer instances with graceful shutdown
+async fn kill_existing_instances() {
     let current_pid = std::process::id();
     
-    // Kill any existing zk-fuzzer instances EXCEPT this one
     let pgrep_output = std::process::Command::new("pgrep")
         .args(&["-f", "zk-fuzzer"])
         .output();
@@ -157,15 +158,108 @@ async fn main() -> anyhow::Result<()> {
             for pid_str in pids.lines() {
                 if let Ok(pid) = pid_str.trim().parse::<u32>() {
                     if pid != current_pid {
+                        // Try graceful shutdown first (SIGTERM)
+                        let _ = std::process::Command::new("kill")
+                            .args(&["-15", &pid.to_string()])
+                            .output();
+                    }
+                }
+            }
+            
+            // Wait for graceful shutdown
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            
+            // Force kill any remaining processes (SIGKILL)
+            for pid_str in pids.lines() {
+                if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                    if pid != current_pid {
                         let _ = std::process::Command::new("kill")
                             .args(&["-9", &pid.to_string()])
                             .output();
                     }
                 }
             }
-            eprintln!("Killed existing zk-fuzzer instances (excluding PID {})", current_pid);
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            
+            eprintln!("Terminated existing zk-fuzzer instances (excluding PID {})", current_pid);
         }
+    }
+}
+
+/// Get PID file path
+fn get_pid_file() -> PathBuf {
+    std::env::temp_dir().join("zk-fuzzer.pid")
+}
+
+/// Create PID lockfile
+fn create_pid_file() -> anyhow::Result<()> {
+    let pid_file = get_pid_file();
+    let current_pid = std::process::id();
+    
+    // Check if another instance is running
+    if pid_file.exists() {
+        if let Ok(existing_pid) = std::fs::read_to_string(&pid_file) {
+            if let Ok(pid) = existing_pid.trim().parse::<u32>() {
+                // Check if process is still running
+                let check = std::process::Command::new("kill")
+                    .args(&["-0", &pid.to_string()])
+                    .output();
+                
+                if check.is_ok() && check.unwrap().status.success() {
+                    eprintln!("⚠️  Another zk-fuzzer instance is already running (PID: {})", pid);
+                    eprintln!("   Use --kill-existing to terminate it, or wait for it to finish.");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+    
+    // Write our PID
+    std::fs::write(&pid_file, current_pid.to_string())?;
+    Ok(())
+}
+
+/// Remove PID lockfile
+fn remove_pid_file() {
+    let pid_file = get_pid_file();
+    let _ = std::fs::remove_file(pid_file);
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    // Only kill existing instances if explicitly requested
+    if cli.kill_existing {
+        kill_existing_instances().await;
+    }
+
+    // Create PID lockfile (unless running exec-worker subcommand)
+    let use_pid_file = !matches!(cli.command, Some(Commands::ExecWorker));
+    if use_pid_file {
+        create_pid_file()?;
+    }
+
+    // Run the command and ensure cleanup
+    let result = run_cli_command(cli).await;
+    
+    // Cleanup PID file
+    if use_pid_file {
+        remove_pid_file();
+    }
+    
+    result
+}
+
+async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
+
+    // Create PID lockfile (unless running exec-worker subcommand)
+    if !matches!(cli.command, Some(Commands::ExecWorker)) {
+        create_pid_file()?;
+        
+        // Ensure PID file is removed on exit
+        let _guard = scopeguard::guard((), |_| {
+            remove_pid_file();
+        });
     }
 
     // Initialize logging

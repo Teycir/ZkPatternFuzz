@@ -233,6 +233,8 @@ pub struct IsolationConfig {
     pub enable_telemetry: bool,
     /// Kill process on memory limit exceeded
     pub kill_on_oom: bool,
+    /// Kill process on timeout
+    pub kill_on_timeout: bool,
 }
 
 impl Default for IsolationConfig {
@@ -244,6 +246,7 @@ impl Default for IsolationConfig {
             max_retries: 3,         // Retry up to 3 times on crash
             enable_telemetry: true, // Track crash statistics
             kill_on_oom: true,      // Kill on OOM
+            kill_on_timeout: true,  // Kill on timeout by default
         }
     }
 }
@@ -520,8 +523,10 @@ impl IsolatedExecutor {
             }
 
             if start.elapsed() >= timeout {
-                let _ = child.kill();
-                let _ = child.wait();
+                if self.config.kill_on_timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
                 let _ = std::fs::remove_file(&response_path);
                 anyhow::bail!("Execution timeout after {} ms", self.config.timeout_ms);
             }
