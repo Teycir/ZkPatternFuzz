@@ -47,8 +47,8 @@ use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept
 
 // Import real batch verifier from executor module (Phase 5: Milestone 5.1)
 use crate::executor::batch_verifier::{
-    BatchVerifier, BatchVerifierConfig, SerializedProof, PublicInputs, 
-    AggregationMethod as RealAggregationMethod, ProofSystem,
+    AggregationMethod as RealAggregationMethod, BatchVerifier, BatchVerifierConfig, ProofSystem,
+    PublicInputs, SerializedProof,
 };
 
 // ============================================================================
@@ -1010,7 +1010,8 @@ impl BatchVerificationAttack {
         };
 
         // Try to use real batch verification if executor supports prove/verify
-        if let Some(result) = self.try_real_batch_verification(executor, batch_inputs, real_method) {
+        if let Some(result) = self.try_real_batch_verification(executor, batch_inputs, real_method)
+        {
             return result;
         }
 
@@ -1028,7 +1029,7 @@ impl BatchVerificationAttack {
         // Generate proofs for each input
         let mut proofs = Vec::with_capacity(batch_inputs.len());
         let mut public_inputs = Vec::with_capacity(batch_inputs.len());
-        
+
         for inputs in batch_inputs {
             // Execute circuit to get witness
             let result = executor.execute_sync(inputs);
@@ -1068,14 +1069,12 @@ impl BatchVerificationAttack {
             verification_timeout_ms: self.config.timeout_ms,
             ..Default::default()
         };
-        
+
         let verifier = BatchVerifier::with_config(config);
-        
+
         // Perform batch verification
         match verifier.verify_batch(&proofs, &public_inputs, method) {
-            Ok(result) => {
-                Some((result.batch_passed, Some(result.individual_results)))
-            }
+            Ok(result) => Some((result.batch_passed, Some(result.individual_results))),
             Err(_) => {
                 // If batch verification fails, return None to fall back
                 None

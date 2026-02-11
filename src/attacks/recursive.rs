@@ -156,7 +156,10 @@ impl RecursiveSystem {
     }
 
     pub fn uses_folding(&self) -> bool {
-        matches!(self, Self::Nova | Self::Supernova | Self::Sangria | Self::ProtoStar)
+        matches!(
+            self,
+            Self::Nova | Self::Supernova | Self::Sangria | Self::ProtoStar
+        )
     }
 
     pub fn uses_accumulation(&self) -> bool {
@@ -215,17 +218,17 @@ impl RecursiveVulnerabilityType {
             Self::BaseCaseBypass => Severity::Critical,
             Self::AccumulatorForgery => Severity::Critical,
             Self::VKSubstitution => Severity::Critical,
-            
+
             // High: Can manipulate recursive state
             Self::FoldingMismatch => Severity::High,
             Self::InvalidStateTransition => Severity::High,
             Self::RelaxedInstanceManipulation => Severity::High,
-            
+
             // Medium: Can exploit edge cases
             Self::AccumulatorOverflow => Severity::Medium,
             Self::DepthLimitBypass => Severity::Medium,
             Self::RunningInstanceCorruption => Severity::Medium,
-            
+
             // Low: Potential issues
             Self::CrossCircuitRecursion => Severity::Low,
         }
@@ -298,7 +301,7 @@ impl AccumulatorState {
             let scaled = new_instance[i].mul(r);
             new_running_acc.push(self.running_acc[i].add(&scaled));
         }
-        
+
         Self {
             instance: new_instance.to_vec(),
             running_acc: new_running_acc,
@@ -377,7 +380,10 @@ impl RecursiveAttack {
         executor: &E,
         base_inputs: &[FieldElement],
     ) -> anyhow::Result<()> {
-        tracing::debug!("Testing base case bypass ({} tests)", self.config.base_case_tests);
+        tracing::debug!(
+            "Testing base case bypass ({} tests)",
+            self.config.base_case_tests
+        );
 
         for test_idx in 0..self.config.base_case_tests {
             // Strategy 1: Skip base case entirely
@@ -396,14 +402,18 @@ impl RecursiveAttack {
 
             // Strategy 3: Base case depth manipulation
             if test_idx % 4 == 2 {
-                if let Some(finding) = self.test_base_case_depth_manipulation(executor, base_inputs)? {
+                if let Some(finding) =
+                    self.test_base_case_depth_manipulation(executor, base_inputs)?
+                {
                     self.findings.push(finding);
                 }
             }
 
             // Strategy 4: Base case commitment forgery
             if test_idx % 4 == 3 {
-                if let Some(finding) = self.test_base_case_commitment_forgery(executor, base_inputs)? {
+                if let Some(finding) =
+                    self.test_base_case_commitment_forgery(executor, base_inputs)?
+                {
                     self.findings.push(finding);
                 }
             }
@@ -419,11 +429,14 @@ impl RecursiveAttack {
     ) -> anyhow::Result<Option<Finding>> {
         // Create a recursive chain starting from step 1 (skipping base case)
         let mut steps = Vec::new();
-        
+
         // Generate "fake" base case accumulator
         let fake_acc = AccumulatorState {
             instance: base_inputs.to_vec(),
-            running_acc: base_inputs.iter().map(|_| self.random_field_element()).collect(),
+            running_acc: base_inputs
+                .iter()
+                .map(|_| self.random_field_element())
+                .collect(),
             error_term: Some(self.random_field_element()),
             counter: 0,
         };
@@ -433,7 +446,7 @@ impl RecursiveAttack {
             let step_inputs: Vec<FieldElement> = (0..base_inputs.len())
                 .map(|_| self.random_field_element())
                 .collect();
-            
+
             steps.push(RecursiveStep {
                 step_index: i,
                 public_inputs: step_inputs.clone(),
@@ -446,7 +459,7 @@ impl RecursiveAttack {
 
         // Check if recursion accepts skipped base case
         let accepts_skip = self.simulate_recursive_verification(executor, &steps)?;
-        
+
         if accepts_skip {
             return Ok(Some(self.create_finding(
                 RecursiveVulnerabilityType::BaseCaseBypass,
@@ -488,7 +501,7 @@ impl RecursiveAttack {
                 let step_inputs: Vec<FieldElement> = (0..base_inputs.len())
                     .map(|_| self.random_field_element())
                     .collect();
-                
+
                 steps.push(RecursiveStep {
                     step_index: i,
                     public_inputs: step_inputs.clone(),
@@ -535,7 +548,7 @@ impl RecursiveAttack {
         let pattern_key = format!("depth_manip_{}", manipulated_step.step_index);
         if !self.tested_patterns.contains(&pattern_key) {
             self.tested_patterns.insert(pattern_key);
-            
+
             // Heuristic: check if accumulator counter doesn't match step index
             if manipulated_step.is_base_case && manipulated_step.step_index > 0 {
                 // This is a potential vulnerability signature
@@ -553,7 +566,7 @@ impl RecursiveAttack {
     ) -> anyhow::Result<Option<Finding>> {
         // Test if base case commitment can be forged
         let forged_commitment: Vec<u8> = (0..32).map(|_| self.rng.gen()).collect();
-        
+
         let forged_step = RecursiveStep {
             step_index: 0,
             public_inputs: base_inputs.to_vec(),
@@ -608,11 +621,9 @@ impl RecursiveAttack {
                 }
 
                 // Test overflow through many iterations
-                if let Some(finding) = self.test_accumulator_iteration_overflow(
-                    executor,
-                    base_inputs,
-                    bit_width,
-                )? {
+                if let Some(finding) =
+                    self.test_accumulator_iteration_overflow(executor, base_inputs, bit_width)?
+                {
                     self.findings.push(finding);
                 }
             }
@@ -635,14 +646,12 @@ impl RecursiveAttack {
             FieldElement::from_u64((1u64 << bit_width.min(63)) - 1)
         };
 
-        let boundary_inputs: Vec<FieldElement> = base_inputs
-            .iter()
-            .map(|_| max_value.clone())
-            .collect();
+        let boundary_inputs: Vec<FieldElement> =
+            base_inputs.iter().map(|_| max_value.clone()).collect();
 
         // Simulate accumulation with boundary values
         let mut acc = AccumulatorState::new_base_case(base_inputs.len());
-        
+
         for i in 0..10 {
             let r = self.random_field_element();
             acc = acc.fold_with(&boundary_inputs, &r);
@@ -650,8 +659,8 @@ impl RecursiveAttack {
             // Check for overflow indicators
             let has_overflow = acc.running_acc.iter().any(|v| {
                 // Simplified overflow check: value wrapped around
-                v.to_bytes().iter().take(4).all(|&b| b == 0) && 
-                v.to_bytes().iter().skip(4).any(|&b| b != 0)
+                v.to_bytes().iter().take(4).all(|&b| b == 0)
+                    && v.to_bytes().iter().skip(4).any(|&b| b != 0)
             });
 
             if has_overflow {
@@ -751,11 +760,11 @@ impl RecursiveAttack {
     ) -> anyhow::Result<Option<Finding>> {
         // Create steps with different verification keys
         let mut steps = Vec::new();
-        
+
         for i in 0..3 {
             let mut vk_hash = [0u8; 32];
             self.rng.fill(&mut vk_hash);
-            
+
             steps.push(RecursiveStep {
                 step_index: i,
                 public_inputs: base_inputs.to_vec(),
@@ -768,7 +777,7 @@ impl RecursiveAttack {
 
         // Check if all VK hashes are the same (they shouldn't differ in valid chain)
         let vk_hashes: HashSet<[u8; 32]> = steps.iter().map(|s| s.vk_hash).collect();
-        
+
         if vk_hashes.len() > 1 {
             // This is expected to be invalid, but if accepted, it's a vulnerability
             let pattern_key = "vk_mismatch_accepted";
@@ -812,7 +821,7 @@ impl RecursiveAttack {
         // Test VK hash collision (simplified: same prefix different suffix)
         let mut vk1 = [0u8; 32];
         let mut vk2 = [0u8; 32];
-        
+
         self.rng.fill(&mut vk1[..16]);
         vk2[..16].copy_from_slice(&vk1[..16]);
         self.rng.fill(&mut vk1[16..]);
@@ -850,44 +859,36 @@ impl RecursiveAttack {
             for test_idx in 0..self.config.folding_attack_tests / 4 {
                 // Strategy 1: Incompatible instance folding
                 if test_idx % 4 == 0 {
-                    if let Some(finding) = self.test_incompatible_folding(
-                        executor,
-                        base_inputs,
-                        *system,
-                    )? {
+                    if let Some(finding) =
+                        self.test_incompatible_folding(executor, base_inputs, *system)?
+                    {
                         self.findings.push(finding);
                     }
                 }
 
                 // Strategy 2: Relaxation error manipulation
                 if test_idx % 4 == 1 {
-                    if let Some(finding) = self.test_relaxation_error_manipulation(
-                        executor,
-                        base_inputs,
-                        *system,
-                    )? {
+                    if let Some(finding) =
+                        self.test_relaxation_error_manipulation(executor, base_inputs, *system)?
+                    {
                         self.findings.push(finding);
                     }
                 }
 
                 // Strategy 3: Challenge manipulation
                 if test_idx % 4 == 2 {
-                    if let Some(finding) = self.test_challenge_manipulation(
-                        executor,
-                        base_inputs,
-                        *system,
-                    )? {
+                    if let Some(finding) =
+                        self.test_challenge_manipulation(executor, base_inputs, *system)?
+                    {
                         self.findings.push(finding);
                     }
                 }
 
                 // Strategy 4: Cross-fold instance mixing
                 if test_idx % 4 == 3 {
-                    if let Some(finding) = self.test_cross_fold_mixing(
-                        executor,
-                        base_inputs,
-                        *system,
-                    )? {
+                    if let Some(finding) =
+                        self.test_cross_fold_mixing(executor, base_inputs, *system)?
+                    {
                         self.findings.push(finding);
                     }
                 }
@@ -910,10 +911,10 @@ impl RecursiveAttack {
 
         let acc = AccumulatorState::new_base_case(base_inputs.len());
         let r = self.random_field_element();
-        
+
         // In a proper implementation, this should fail
         let folded = acc.fold_with(&instance2, &r);
-        
+
         // Check if dimensions are inconsistent
         if folded.running_acc.len() != base_inputs.len() {
             return Ok(Some(self.create_finding(
@@ -943,10 +944,10 @@ impl RecursiveAttack {
         }
 
         let mut acc = AccumulatorState::new_base_case(base_inputs.len());
-        
+
         // Inject non-zero error term
         acc.error_term = Some(self.random_field_element());
-        
+
         // Fold with the manipulated error
         let r = self.random_field_element();
         let new_instance = base_inputs.to_vec();
@@ -972,7 +973,7 @@ impl RecursiveAttack {
     ) -> anyhow::Result<Option<Finding>> {
         // Test if folding challenge can be predicted/manipulated
         let acc = AccumulatorState::new_base_case(base_inputs.len());
-        
+
         // Try folding with zero challenge (should be rejected)
         let zero_challenge = FieldElement::zero();
         let instance = base_inputs.to_vec();
@@ -1005,10 +1006,10 @@ impl RecursiveAttack {
 
         let acc1 = AccumulatorState::new_base_case(base_inputs.len());
         let r = self.random_field_element();
-        
+
         // Fold circuit1 instance
         let folded1 = acc1.fold_with(&circuit1_instance, &r);
-        
+
         // Then fold circuit2 instance (should fail for different circuits)
         let folded2 = folded1.fold_with(&circuit2_instance, &r);
 
@@ -1062,7 +1063,10 @@ impl RecursiveAttack {
         let witness_a: Vec<FieldElement> = if steps.is_empty() {
             vec![FieldElement::zero()]
         } else {
-            steps.first().map(|s| s.public_inputs.clone()).unwrap_or_default()
+            steps
+                .first()
+                .map(|s| s.public_inputs.clone())
+                .unwrap_or_default()
         };
 
         Finding {
@@ -1112,7 +1116,7 @@ impl NovaAnalyzer {
         // In Nova, the relaxed R1CS is: A * z ∘ B * z = u * (C * z) + E
         // where u is a scalar and E is the error term
         // If u or E can be manipulated, the constraint can be satisfied incorrectly
-        
+
         // Simplified check: error term should be zero for satisfied constraint
         !error_term.is_zero()
     }
@@ -1210,7 +1214,7 @@ mod tests {
     #[test]
     fn test_recursive_attack_config_default() {
         let config = RecursiveAttackConfig::default();
-        
+
         assert_eq!(config.max_recursion_depth, 10);
         assert!(config.detect_base_case_bypass);
         assert!(config.detect_accumulator_overflow);
@@ -1260,7 +1264,7 @@ mod tests {
             mock_field_element(3),
         ];
         let r = mock_field_element(5);
-        
+
         let folded = acc.fold_with(&new_instance, &r);
         assert_eq!(folded.counter, 1);
     }
@@ -1272,11 +1276,11 @@ mod tests {
 
         let instance = vec![mock_field_element(1)];
         let witness = vec![mock_field_element(2)];
-        
+
         // Non-zero error term indicates vulnerability
         let non_zero_error = mock_field_element(1);
         assert!(analyzer.check_relaxed_r1cs_vulnerability(&instance, &witness, &non_zero_error));
-        
+
         // Zero error term is valid
         let zero_error = FieldElement::zero();
         assert!(!analyzer.check_relaxed_r1cs_vulnerability(&instance, &witness, &zero_error));
@@ -1288,7 +1292,7 @@ mod tests {
         let analyzer = SupernovaAnalyzer::new(config);
 
         let valid_opcodes = vec![0, 1, 2, 3];
-        
+
         assert!(!analyzer.check_opcode_selection_vulnerability(0, &valid_opcodes));
         assert!(!analyzer.check_opcode_selection_vulnerability(3, &valid_opcodes));
         assert!(analyzer.check_opcode_selection_vulnerability(4, &valid_opcodes));
@@ -1313,7 +1317,7 @@ mod tests {
     #[test]
     fn test_recursive_step_creation() {
         let inputs = vec![mock_field_element(1), mock_field_element(2)];
-        
+
         let step = RecursiveStep {
             step_index: 0,
             public_inputs: inputs.clone(),
@@ -1338,14 +1342,16 @@ mod tests {
             RecursiveVulnerabilityType::FoldingMismatch.as_str(),
             "folding_mismatch"
         );
-        assert!(!RecursiveVulnerabilityType::BaseCaseBypass.description().is_empty());
+        assert!(!RecursiveVulnerabilityType::BaseCaseBypass
+            .description()
+            .is_empty());
     }
 
     #[test]
     fn test_recursive_attack_creation() {
         let config = RecursiveAttackConfig::default();
         let attack = RecursiveAttack::new(config);
-        
+
         assert!(attack.findings.is_empty());
         assert!(attack.tested_patterns.is_empty());
     }

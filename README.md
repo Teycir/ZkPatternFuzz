@@ -32,6 +32,8 @@ ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK c
 - 📏 **Boundary Testing** - Systematic edge case exploration at field boundaries
 - ✅ **Verification Fuzzing** - Proof malleability and malformed proof testing
 - 🔄 **Witness Fuzzing** - Determinism, timing variation, and stress testing
+- 💰 **MEV & Front-Running** - Ordering dependency, sandwich attacks, state leakage detection for DeFi circuits
+- 🎯 **Automated Triage** - Confidence-based ranking with cross-oracle validation and deduplication
 
 ### Advanced Analysis
 
@@ -63,6 +65,7 @@ ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK c
 - 💾 **Corpus Persistence** - Automatic export/import with coverage-guided selection
 - 🎯 **Constraint-Guided Seeding** - Generates inputs from R1CS/ACIR constraints using Z3
 - 🔐 **Evidence Mode** - Strict backend verification, oracle validation, cross-oracle correlation
+- 🏆 **Automated Triage** - Confidence scoring (0.0-1.0), cross-oracle validation, deduplication, priority ranking
 
 ## Installation
 
@@ -185,6 +188,8 @@ reporting:
 | `metamorphic` | Transform-based oracles | Scale/negate/swap/bit-flip transforms, 100 base witnesses | ✅ Production |
 | `spec_inference` | Auto-learn and violate properties | 500 samples, 90% confidence, wire label inference | ✅ Production |
 | `witness_collision` | Equivalence-class collision search | 10K samples, public input scoping, SHA256 keying | ✅ Production |
+| `mev` | MEV attack detection | Ordering dependency, sandwich attacks, price impact analysis | ✅ Production |
+| `front_running` | Front-running detection | Information leakage, commitment bypass, delay attacks | ✅ Production |
 
 ### Underconstrained Attack Options
 
@@ -530,10 +535,11 @@ for _ in 0..1000 {
 - **<10% false positive rate** in evidence mode
 
 **Current Capabilities:**
-- 15 production attack types
+- 17 production attack types (including MEV and front-running)
 - 5 novel oracles (constraint inference, metamorphic, etc.)
 - 4 backend integrations (Circom, Noir, Halo2, Cairo)
 - Evidence mode with cryptographic proof generation
+- Automated triage system with confidence-based ranking
 
 ## Project Structure
 
@@ -608,6 +614,8 @@ ZkPatternFuzz/
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into internal design and extension points
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+- **[TRIAGE_SYSTEM.md](docs/TRIAGE_SYSTEM.md)** - Automated triage and confidence scoring
+- **[DEFI_ATTACK_GUIDE.md](docs/DEFI_ATTACK_GUIDE.md)** - MEV and front-running attack detection
 - **[API Documentation](https://docs.rs/zk-fuzzer)** - Generated from source code
 
 ## Development
@@ -821,6 +829,21 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
   - [x] Concurrency model validation (stress tests, 32+ workers)
   - [x] Differential testing translation layer (50+ circuit patterns)
   - [x] Oracle state management (bloom filters, LRU eviction, bounded memory)
+- [x] **Phase 3.1 DeFi Security** (COMPLETE - Feb 2026):
+  - [x] MEV attack detection (ordering dependency, sandwich attacks, state leakage)
+  - [x] Front-running detection (information leakage, commitment bypass, delay attacks)
+  - [x] Price impact analyzer for DEX circuits
+  - [x] Arbitrage detector for cross-circuit opportunities
+  - [x] DeFi audit campaign templates
+- [x] **Phase 2.4 Automated Triage** (COMPLETE - Feb 2026):
+  - [x] Confidence-based ranking (0.0-1.0 scoring)
+  - [x] Cross-oracle validation bonus
+  - [x] Formal verification integration (Picus bonus)
+  - [x] Reproduction success tracking
+  - [x] Code coverage correlation
+  - [x] Finding deduplication
+  - [x] Priority ranking system (High/Medium/Low)
+  - [x] Evidence mode filtering
 
 ### In Progress 🚧
 - [ ] Real-circuit coverage automation (Cairo real-circuit testing)

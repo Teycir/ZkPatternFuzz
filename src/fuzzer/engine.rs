@@ -2077,7 +2077,66 @@ impl FuzzingEngine {
             }
         }
 
+        self.run_frozen_wire_detector(config, progress);
+
         Ok(())
+    }
+
+    fn run_frozen_wire_detector(
+        &self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) {
+        use crate::attacks::FrozenWireDetector;
+        use std::collections::HashSet;
+
+        let section = config.get("frozen_wire");
+        let enabled = section
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !enabled {
+            return;
+        }
+
+        let min_samples = section
+            .and_then(|v| v.get("min_samples"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as usize;
+
+        let mut constants = HashSet::new();
+        if let Some(list) = section
+            .and_then(|v| v.get("known_constants"))
+            .and_then(|v| v.as_sequence())
+        {
+            for entry in list {
+                let parsed = match entry {
+                    serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
+                    serde_yaml::Value::String(s) => s.parse::<usize>().ok(),
+                    _ => None,
+                };
+                if let Some(idx) = parsed {
+                    constants.insert(idx);
+                }
+            }
+        }
+
+        let witnesses = self.collect_corpus_inputs(min_samples.max(1));
+        if witnesses.is_empty() {
+            tracing::warn!("Frozen wire detector skipped: no corpus witnesses available");
+            return;
+        }
+
+        let detector = if constants.is_empty() {
+            FrozenWireDetector::new().with_min_samples(min_samples)
+        } else {
+            FrozenWireDetector::new()
+                .with_min_samples(min_samples)
+                .with_known_constants(constants)
+        };
+
+        let findings = detector.run(self.executor.as_ref(), &witnesses);
+        self.record_custom_findings(findings, AttackType::Underconstrained, progress);
     }
 
     fn resolve_public_input_positions(
@@ -2264,79 +2323,275 @@ impl FuzzingEngine {
         let num_public = self.executor.num_public_inputs();
         if num_public == 0 {
             tracing::warn!("Soundness attack skipped: circuit has no public inputs to mutate");
-            return Ok(());
-        }
+        } else {
+            for _ in 0..forge_attempts {
+                let valid_case = self.generate_test_case();
+                let valid_proof = self.executor.prove(&valid_case.inputs)?;
 
-        for _ in 0..forge_attempts {
-            let valid_case = self.generate_test_case();
-            let valid_proof = self.executor.prove(&valid_case.inputs)?;
+                let valid_public: Vec<FieldElement> =
+                    valid_case.inputs.iter().take(num_public).cloned().collect();
 
-            let valid_public: Vec<FieldElement> =
-                valid_case.inputs.iter().take(num_public).cloned().collect();
+                // Mutate public inputs only
+                let mutated_public: Vec<FieldElement> = {
+                    let rng = self.core.rng_mut();
+                    valid_public
+                        .iter()
+                        .map(|input| {
+                            if rng.gen::<f64>() < mutation_rate {
+                                mutate_field_element(input, rng)
+                            } else {
+                                input.clone()
+                            }
+                        })
+                        .collect()
+                };
 
-            // Mutate public inputs only
-            let mutated_public: Vec<FieldElement> = {
-                let rng = self.core.rng_mut();
-                valid_public
-                    .iter()
-                    .map(|input| {
-                        if rng.gen::<f64>() < mutation_rate {
-                            mutate_field_element(input, rng)
-                        } else {
-                            input.clone()
+                // Skip if mutation didn't change public inputs
+                if mutated_public == valid_public {
+                    continue;
+                }
+
+                // Try to verify with mutated inputs
+                let verified = self.executor.verify(&valid_proof, &mutated_public)?;
+                let oracle_findings = self.core.check_proof_forgery(
+                    &valid_case.inputs,
+                    &mutated_public,
+                    &valid_proof,
+                    verified,
+                );
+
+                if verified {
+                    if oracle_findings.is_empty() {
+                        let finding = Finding {
+                            attack_type: AttackType::Soundness,
+                            severity: Severity::Critical,
+                            description: "Proof verified with mutated inputs - soundness violation!"
+                                .to_string(),
+                            poc: super::ProofOfConcept {
+                                witness_a: valid_case.inputs,
+                                witness_b: None,
+                                public_inputs: mutated_public,
+                                proof: Some(valid_proof),
+                            },
+                            location: None,
+                        };
+
+                        self.core.findings().write().unwrap().push(finding.clone());
+
+                        if let Some(p) = progress {
+                            p.log_finding("CRITICAL", &finding.description);
                         }
-                    })
-                    .collect()
-            };
-
-            // Skip if mutation didn't change public inputs
-            if mutated_public == valid_public {
-                continue;
-            }
-
-            // Try to verify with mutated inputs
-            let verified = self.executor.verify(&valid_proof, &mutated_public)?;
-            let oracle_findings = self.core.check_proof_forgery(
-                &valid_case.inputs,
-                &mutated_public,
-                &valid_proof,
-                verified,
-            );
-
-            if verified {
-                if oracle_findings.is_empty() {
-                    let finding = Finding {
-                        attack_type: AttackType::Soundness,
-                        severity: Severity::Critical,
-                        description: "Proof verified with mutated inputs - soundness violation!"
-                            .to_string(),
-                        poc: super::ProofOfConcept {
-                            witness_a: valid_case.inputs,
-                            witness_b: None,
-                            public_inputs: mutated_public,
-                            proof: Some(valid_proof),
-                        },
-                        location: None,
-                    };
-
-                    self.core.findings().write().unwrap().push(finding.clone());
-
-                    if let Some(p) = progress {
-                        p.log_finding("CRITICAL", &finding.description);
-                    }
-                } else if let Some(p) = progress {
-                    for finding in &oracle_findings {
-                        p.log_finding("CRITICAL", &finding.description);
+                    } else if let Some(p) = progress {
+                        for finding in &oracle_findings {
+                            p.log_finding("CRITICAL", &finding.description);
+                        }
                     }
                 }
-            }
 
-            if let Some(p) = progress {
-                p.inc();
+                if let Some(p) = progress {
+                    p.inc();
+                }
             }
         }
 
+        self.run_proof_malleability_attack(config, progress);
+        self.run_determinism_check(config, progress);
+        self.run_setup_poisoning_attack(config, progress);
+
         Ok(())
+    }
+
+    fn run_proof_malleability_attack(
+        &self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) {
+        use crate::attacks::ProofMalleabilityScanner;
+
+        let section = config.get("proof_malleability");
+        let enabled = section
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !enabled {
+            return;
+        }
+
+        let proof_samples = section
+            .and_then(|v| v.get("proof_samples"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10) as usize;
+        let random_mutations = section
+            .and_then(|v| v.get("random_mutations"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as usize;
+        let structured_mutations = section
+            .and_then(|v| v.get("structured_mutations"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        let witnesses = self.collect_corpus_inputs(proof_samples.max(1));
+        if witnesses.is_empty() {
+            tracing::warn!("Proof malleability scanner skipped: no corpus witnesses available");
+            return;
+        }
+
+        let scanner = ProofMalleabilityScanner::new()
+            .with_proof_samples(proof_samples)
+            .with_random_mutations(random_mutations)
+            .with_structured_mutations(structured_mutations);
+
+        let findings = scanner.run(self.executor.as_ref(), &witnesses);
+        self.record_custom_findings(findings, AttackType::Soundness, progress);
+    }
+
+    fn run_determinism_check(
+        &self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) {
+        use crate::attacks::DeterminismOracle;
+
+        let section = config.get("determinism");
+        let enabled = section
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !enabled {
+            return;
+        }
+
+        let repetitions = section
+            .and_then(|v| v.get("repetitions"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(5) as usize;
+        let sample_count = section
+            .and_then(|v| v.get("sample_count"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(50) as usize;
+
+        let witnesses = self.collect_corpus_inputs(sample_count.max(1));
+        if witnesses.is_empty() {
+            tracing::warn!("Determinism oracle skipped: no corpus witnesses available");
+            return;
+        }
+
+        let oracle = DeterminismOracle::new()
+            .with_repetitions(repetitions)
+            .with_sample_count(sample_count);
+
+        let findings = oracle.run(self.executor.as_ref(), &witnesses);
+        self.record_custom_findings(findings, AttackType::Soundness, progress);
+    }
+
+    fn run_setup_poisoning_attack(
+        &self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) {
+        use crate::attacks::SetupPoisoningDetector;
+        use std::path::PathBuf;
+
+        let section = config.get("trusted_setup_test");
+        let enabled = section
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !enabled {
+            return;
+        }
+
+        let attempts = section
+            .and_then(|v| v.get("attempts"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10) as usize;
+        if attempts == 0 {
+            return;
+        }
+
+        let ptau_a = section.and_then(|v| v.get("ptau_file_a")).and_then(|v| v.as_str());
+        let ptau_b = section.and_then(|v| v.get("ptau_file_b")).and_then(|v| v.as_str());
+
+        let Some(ptau_a) = ptau_a else {
+            tracing::warn!("Trusted setup test skipped: missing ptau_file_a");
+            return;
+        };
+        let Some(ptau_b) = ptau_b else {
+            tracing::warn!("Trusted setup test skipped: missing ptau_file_b");
+            return;
+        };
+        if ptau_a == ptau_b {
+            tracing::warn!("Trusted setup test skipped: ptau_file_a == ptau_file_b");
+            return;
+        }
+
+        if !std::path::Path::new(ptau_a).exists() {
+            tracing::warn!("Trusted setup test skipped: ptau_file_a not found ({})", ptau_a);
+            return;
+        }
+        if !std::path::Path::new(ptau_b).exists() {
+            tracing::warn!("Trusted setup test skipped: ptau_file_b not found ({})", ptau_b);
+            return;
+        }
+
+        let circuit_path = self
+            .config
+            .campaign
+            .target
+            .circuit_path
+            .to_str()
+            .unwrap_or("");
+        if circuit_path.is_empty() {
+            tracing::warn!("Trusted setup test skipped: invalid circuit path");
+            return;
+        }
+
+        let backend = self.config.campaign.target.framework;
+        let main_component = &self.config.campaign.target.main_component;
+
+        let mut options_a = self.executor_factory_options.clone();
+        options_a.circom_ptau_path = Some(PathBuf::from(ptau_a));
+        options_a.circom_auto_setup_keys = true;
+
+        let mut options_b = self.executor_factory_options.clone();
+        options_b.circom_ptau_path = Some(PathBuf::from(ptau_b));
+        options_b.circom_auto_setup_keys = true;
+
+        let executor_a = match ExecutorFactory::create_with_options(
+            backend,
+            circuit_path,
+            main_component,
+            &options_a,
+        ) {
+            Ok(exec) => exec,
+            Err(e) => {
+                tracing::warn!("Trusted setup test skipped: failed to create executor A ({})", e);
+                return;
+            }
+        };
+
+        let executor_b = match ExecutorFactory::create_with_options(
+            backend,
+            circuit_path,
+            main_component,
+            &options_b,
+        ) {
+            Ok(exec) => exec,
+            Err(e) => {
+                tracing::warn!("Trusted setup test skipped: failed to create executor B ({})", e);
+                return;
+            }
+        };
+
+        let witnesses = self.collect_corpus_inputs(attempts.max(1));
+        if witnesses.is_empty() {
+            tracing::warn!("Trusted setup test skipped: no corpus witnesses available");
+            return;
+        }
+
+        let detector = SetupPoisoningDetector::new().with_attempts(attempts);
+        let findings = detector.run(executor_a.as_ref(), executor_b.as_ref(), &witnesses);
+        self.record_custom_findings(findings, AttackType::Soundness, progress);
     }
 
     async fn run_arithmetic_attack(
@@ -2516,7 +2771,68 @@ impl FuzzingEngine {
             }
         }
 
+        self.run_nullifier_replay_attack(config, progress);
+
         Ok(())
+    }
+
+    fn run_nullifier_replay_attack(
+        &self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) {
+        use crate::attacks::NullifierReplayScanner;
+
+        let section = config.get("nullifier_replay");
+        let enabled = section
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !enabled {
+            return;
+        }
+
+        let replay_attempts = section
+            .and_then(|v| v.get("replay_attempts"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(50) as usize;
+        let base_samples = section
+            .and_then(|v| v.get("base_samples"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10) as usize;
+
+        let mut scanner = NullifierReplayScanner::new()
+            .with_replay_attempts(replay_attempts)
+            .with_base_samples(base_samples);
+
+        if let Some(list) = section
+            .and_then(|v| v.get("nullifier_indices"))
+            .and_then(|v| v.as_sequence())
+        {
+            let mut indices = Vec::new();
+            for entry in list {
+                let parsed = match entry {
+                    serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
+                    serde_yaml::Value::String(s) => s.parse::<usize>().ok(),
+                    _ => None,
+                };
+                if let Some(idx) = parsed {
+                    indices.push(idx);
+                }
+            }
+            if !indices.is_empty() {
+                scanner = scanner.with_nullifier_indices(indices);
+            }
+        }
+
+        let witnesses = self.collect_corpus_inputs(base_samples.max(1));
+        if witnesses.is_empty() {
+            tracing::warn!("Nullifier replay scanner skipped: no corpus witnesses available");
+            return;
+        }
+
+        let findings = scanner.run(self.executor.as_ref(), &witnesses);
+        self.record_custom_findings(findings, AttackType::Collision, progress);
     }
 
     async fn run_boundary_attack(
@@ -2565,7 +2881,58 @@ impl FuzzingEngine {
             }
         }
 
+        self.run_canonicalization_attack(config, progress);
+
         Ok(())
+    }
+
+    fn run_canonicalization_attack(
+        &self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) {
+        use crate::attacks::CanonicalizationChecker;
+
+        let section = config.get("canonicalization");
+        let enabled = section
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !enabled {
+            return;
+        }
+
+        let sample_count = section
+            .and_then(|v| v.get("sample_count"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20) as usize;
+        let test_field_wrap = section
+            .and_then(|v| v.get("test_field_wrap"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let test_additive_inverse = section
+            .and_then(|v| v.get("test_additive_inverse"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let test_negative_zero = section
+            .and_then(|v| v.get("test_negative_zero"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        let witnesses = self.collect_corpus_inputs(sample_count.max(1));
+        if witnesses.is_empty() {
+            tracing::warn!("Canonicalization checker skipped: no corpus witnesses available");
+            return;
+        }
+
+        let checker = CanonicalizationChecker::new()
+            .with_sample_count(sample_count)
+            .with_field_wrap(test_field_wrap)
+            .with_additive_inverse(test_additive_inverse)
+            .with_negative_zero(test_negative_zero);
+
+        let findings = checker.run(self.executor.as_ref(), &witnesses);
+        self.record_custom_findings(findings, AttackType::Boundary, progress);
     }
 
     async fn run_verification_fuzzing_attack(
@@ -2735,6 +3102,20 @@ impl FuzzingEngine {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.25);
 
+        let cross_backend_section = config.get("cross_backend");
+        let cross_backend_enabled = cross_backend_section
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let cross_backend_samples = cross_backend_section
+            .and_then(|v| v.get("sample_count"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as usize;
+        let cross_backend_tolerance_bits = cross_backend_section
+            .and_then(|v| v.get("tolerance_bits"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+
         tracing::info!("Running differential fuzzing with {} tests", num_tests);
 
         let parse_framework = |name: &str| -> Option<Framework> {
@@ -2800,6 +3181,7 @@ impl FuzzingEngine {
 
         // Add executors for each backend (skip any that fail to initialize)
         let mut active_backends = Vec::new();
+        let mut cross_backend_execs: Vec<Arc<dyn CircuitExecutor>> = Vec::new();
         for backend in &selected_backends {
             let circuit_path = backend_paths
                 .get(backend)
@@ -2820,6 +3202,9 @@ impl FuzzingEngine {
                 &self.executor_factory_options,
             ) {
                 Ok(executor) => {
+                    if cross_backend_enabled && cross_backend_execs.len() < 2 {
+                        cross_backend_execs.push(executor.clone());
+                    }
                     diff_fuzzer.add_executor(*backend, executor);
                     active_backends.push(*backend);
                 }
@@ -2836,6 +3221,22 @@ impl FuzzingEngine {
         if active_backends.len() < 2 {
             tracing::warn!("Differential fuzzing skipped: fewer than two active backends");
             return Ok(());
+        }
+
+        if cross_backend_enabled {
+            if cross_backend_execs.len() >= 2 {
+                self.run_cross_backend_differential(
+                    cross_backend_execs[0].clone(),
+                    cross_backend_execs[1].clone(),
+                    cross_backend_samples,
+                    cross_backend_tolerance_bits,
+                    progress,
+                );
+            } else {
+                tracing::warn!(
+                    "Cross-backend differential skipped: fewer than two active executors"
+                );
+            }
         }
 
         let mut test_cases = Vec::with_capacity(num_tests);
@@ -2897,6 +3298,34 @@ impl FuzzingEngine {
         }
 
         Ok(())
+    }
+
+    fn run_cross_backend_differential(
+        &self,
+        executor_a: Arc<dyn CircuitExecutor>,
+        executor_b: Arc<dyn CircuitExecutor>,
+        sample_count: usize,
+        tolerance_bits: usize,
+        progress: Option<&ProgressReporter>,
+    ) {
+        use crate::attacks::CrossBackendDifferential;
+
+        if sample_count == 0 {
+            return;
+        }
+
+        let witnesses = self.collect_corpus_inputs(sample_count.max(1));
+        if witnesses.is_empty() {
+            tracing::warn!("Cross-backend differential skipped: no corpus witnesses available");
+            return;
+        }
+
+        let oracle = CrossBackendDifferential::new()
+            .with_sample_count(sample_count)
+            .with_tolerance_bits(tolerance_bits);
+
+        let findings = oracle.run(executor_a.as_ref(), executor_b.as_ref(), &witnesses);
+        self.record_custom_findings(findings, AttackType::Differential, progress);
     }
 
     async fn run_circuit_composition_attack(
@@ -3224,6 +3653,55 @@ impl FuzzingEngine {
                     "Evidence mode: dropped {} heuristic findings from {:?}",
                     dropped,
                     attack.attack_type()
+                );
+            }
+        } else {
+            for finding in findings.iter_mut() {
+                if Self::poc_is_empty(&finding.poc) {
+                    if !finding.description.starts_with("HINT:") {
+                        finding.description = format!("HINT: {}", finding.description);
+                    }
+                    if finding.severity > Severity::Info {
+                        finding.severity = Severity::Info;
+                    }
+                }
+            }
+        }
+
+        let count = findings.len();
+        if count > 0 {
+            let findings_store = self.core.findings();
+            let mut store = findings_store.write().unwrap();
+            for finding in findings {
+                if let Some(p) = progress {
+                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                }
+                store.push(finding);
+            }
+        }
+
+        count
+    }
+
+    fn record_custom_findings(
+        &self,
+        mut findings: Vec<Finding>,
+        attack_type: AttackType,
+        progress: Option<&ProgressReporter>,
+    ) -> usize {
+        let evidence_mode =
+            Self::additional_bool(&self.config.campaign.parameters.additional, "evidence_mode")
+                .unwrap_or(false);
+
+        if evidence_mode {
+            let before = findings.len();
+            findings.retain(|f| !Self::poc_is_empty(&f.poc));
+            let dropped = before.saturating_sub(findings.len());
+            if dropped > 0 {
+                tracing::info!(
+                    "Evidence mode: dropped {} heuristic findings from {:?}",
+                    dropped,
+                    attack_type
                 );
             }
         } else {
@@ -5407,7 +5885,10 @@ impl FuzzingEngine {
             .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
 
         let mut all_findings = Vec::new();
-        let mut rng = ChaCha8Rng::seed_from_u64(self.seed.unwrap_or(42));
+        let mut rng = match self.seed {
+            Some(s) => ChaCha8Rng::seed_from_u64(s),
+            None => ChaCha8Rng::from_entropy(),
+        };
 
         // Optional seed inputs for chain fuzzing (reuse evidence seed inputs if provided)
         let seed_inputs_path = Self::additional_string(

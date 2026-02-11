@@ -94,6 +94,66 @@ reporting:
   include_poc: true
 ```
 
+### Optional: New Scanner Configs (2026-02)
+
+These scanners are opt-in and live under the parent attack's `config` section.
+
+```yaml
+attacks:
+  - type: soundness
+    description: "Proof malleability + determinism + trusted setup"
+    config:
+      proof_malleability:
+        enabled: true
+        proof_samples: 10
+        random_mutations: 100
+        structured_mutations: true
+      determinism:
+        enabled: true
+        repetitions: 5
+        sample_count: 50
+      trusted_setup_test:
+        enabled: true
+        attempts: 10
+        ptau_file_a: "pot12_original.ptau"
+        ptau_file_b: "pot12_alternative.ptau"
+
+  - type: underconstrained
+    description: "Frozen wire detector"
+    config:
+      frozen_wire:
+        enabled: true
+        min_samples: 100
+        known_constants: [0]
+
+  - type: collision
+    description: "Nullifier replay"
+    config:
+      nullifier_replay:
+        enabled: true
+        replay_attempts: 50
+        base_samples: 10
+
+  - type: boundary
+    description: "Input canonicalization"
+    config:
+      canonicalization:
+        enabled: true
+        sample_count: 20
+        test_field_wrap: true
+        test_negative_zero: true
+        test_additive_inverse: false
+
+  - type: differential
+    description: "Cross-backend differential"
+    config:
+      backends: ["circom", "noir"]
+      cross_backend:
+        enabled: true
+        sample_count: 100
+        tolerance_bits: 0
+```
+
 ### Step 2: Run Your First Campaign
 
 ```bash

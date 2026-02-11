@@ -164,10 +164,10 @@ pub struct TestTransaction {
 pub trait ReferenceEvm: Send + Sync {
     /// Execute a transaction and return the trace
     fn execute(&self, tx: &TestTransaction, state: &EvmState) -> anyhow::Result<ExecutionTrace>;
-    
+
     /// Get the EVM implementation name
     fn name(&self) -> &str;
-    
+
     /// Check if the EVM is available
     fn is_available(&self) -> bool;
 }
@@ -444,7 +444,7 @@ impl ZkEvmDifferentialTester {
         if self.config.compare_gas {
             let gas_diff = (zkevm.gas_used as f64 - reference.gas_used as f64).abs();
             let tolerance = reference.gas_used as f64 * self.config.gas_tolerance_percent / 100.0;
-            
+
             if gas_diff > tolerance {
                 differences.push(StateDifference {
                     description: format!(
@@ -470,10 +470,8 @@ impl ZkEvmDifferentialTester {
 
         // Compare storage changes
         if self.config.compare_storage {
-            let storage_diffs = self.compare_storage_changes(
-                &zkevm.storage_changes,
-                &reference.storage_changes,
-            );
+            let storage_diffs =
+                self.compare_storage_changes(&zkevm.storage_changes, &reference.storage_changes);
             differences.extend(storage_diffs);
         }
 
@@ -526,11 +524,7 @@ impl ZkEvmDifferentialTester {
                             description: "Storage slot exists only in zkEVM".to_string(),
                             zkevm_value: hex::encode(val),
                             reference_value: String::new(),
-                            location: Some(format!(
-                                "{}:{}",
-                                hex::encode(addr),
-                                hex::encode(slot)
-                            )),
+                            location: Some(format!("{}:{}", hex::encode(addr), hex::encode(slot))),
                         });
                     }
                 }
@@ -540,11 +534,7 @@ impl ZkEvmDifferentialTester {
                             description: "Storage slot exists only in reference".to_string(),
                             zkevm_value: String::new(),
                             reference_value: hex::encode(val),
-                            location: Some(format!(
-                                "{}:{}",
-                                hex::encode(addr),
-                                hex::encode(slot)
-                            )),
+                            location: Some(format!("{}:{}", hex::encode(addr), hex::encode(slot))),
                         });
                     }
                 }
@@ -581,8 +571,18 @@ impl ZkEvmDifferentialTester {
             if z.topics != r.topics {
                 differences.push(StateDifference {
                     description: format!("Log {} topics differ", i),
-                    zkevm_value: z.topics.iter().map(hex::encode).collect::<Vec<_>>().join(","),
-                    reference_value: r.topics.iter().map(hex::encode).collect::<Vec<_>>().join(","),
+                    zkevm_value: z
+                        .topics
+                        .iter()
+                        .map(hex::encode)
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    reference_value: r
+                        .topics
+                        .iter()
+                        .map(hex::encode)
+                        .collect::<Vec<_>>()
+                        .join(","),
                     location: Some(format!("log_{}", i)),
                 });
             }
@@ -632,12 +632,16 @@ impl ZkEvmDifferentialTester {
                 return MismatchType::LogsMismatch;
             }
         }
-        
+
         MismatchType::AccountMismatch
     }
 
     /// Classify severity based on mismatch type
-    fn classify_severity(&self, mismatch_type: &MismatchType, _differences: &[StateDifference]) -> Severity {
+    fn classify_severity(
+        &self,
+        mismatch_type: &MismatchType,
+        _differences: &[StateDifference],
+    ) -> Severity {
         match mismatch_type {
             MismatchType::OutcomeMismatch => Severity::Critical,
             MismatchType::StateRootMismatch => Severity::Critical,
@@ -776,61 +780,61 @@ impl PrecompileTestGenerator {
     /// Generate edge case tests for ECRECOVER
     pub fn ecrecover_edge_cases(&self) -> Vec<TestTransaction> {
         let mut tests = vec![];
-        
+
         // Test with invalid signature (v = 0)
         tests.push(self.make_precompile_call(precompiles::ECRECOVER, vec![0u8; 128]));
-        
+
         // Test with max r value
         let mut max_r = vec![0u8; 128];
         max_r[32..64].fill(0xff);
         tests.push(self.make_precompile_call(precompiles::ECRECOVER, max_r));
-        
+
         // Test with max s value
         let mut max_s = vec![0u8; 128];
         max_s[64..96].fill(0xff);
         tests.push(self.make_precompile_call(precompiles::ECRECOVER, max_s));
-        
+
         tests
     }
 
     /// Generate edge case tests for MODEXP
     pub fn modexp_edge_cases(&self) -> Vec<TestTransaction> {
         let mut tests = vec![];
-        
+
         // Zero exponent
         let zero_exp = vec![
             0, 0, 0, 0, 0, 0, 0, 32, // base length
-            0, 0, 0, 0, 0, 0, 0, 0,  // exp length (0)
+            0, 0, 0, 0, 0, 0, 0, 0, // exp length (0)
             0, 0, 0, 0, 0, 0, 0, 32, // mod length
         ];
         tests.push(self.make_precompile_call(precompiles::MODEXP, zero_exp));
-        
+
         // Very large base length
         let large_base = vec![
             0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, // base length (huge)
-            0, 0, 0, 0, 0, 0, 0, 1,             // exp length
-            0, 0, 0, 0, 0, 0, 0, 32,            // mod length
+            0, 0, 0, 0, 0, 0, 0, 1, // exp length
+            0, 0, 0, 0, 0, 0, 0, 32, // mod length
         ];
         tests.push(self.make_precompile_call(precompiles::MODEXP, large_base));
-        
+
         tests
     }
 
     /// Generate edge case tests for ECPAIRING
     pub fn ecpairing_edge_cases(&self) -> Vec<TestTransaction> {
         let mut tests = vec![];
-        
+
         // Empty input
         tests.push(self.make_precompile_call(precompiles::ECPAIRING, vec![]));
-        
+
         // Invalid point (not on curve)
         let invalid_point = vec![1u8; 192];
         tests.push(self.make_precompile_call(precompiles::ECPAIRING, invalid_point));
-        
+
         // Point at infinity
         let infinity = vec![0u8; 192];
         tests.push(self.make_precompile_call(precompiles::ECPAIRING, infinity));
-        
+
         tests
     }
 
@@ -873,7 +877,10 @@ mod tests {
             reference_value: "false".to_string(),
             location: None,
         }];
-        assert_eq!(tester.classify_mismatch(&outcome_diff), MismatchType::OutcomeMismatch);
+        assert_eq!(
+            tester.classify_mismatch(&outcome_diff),
+            MismatchType::OutcomeMismatch
+        );
 
         let storage_diff = vec![StateDifference {
             description: "Storage slot value differs".to_string(),
@@ -881,7 +888,10 @@ mod tests {
             reference_value: "0x02".to_string(),
             location: Some("addr:slot".to_string()),
         }];
-        assert_eq!(tester.classify_mismatch(&storage_diff), MismatchType::StorageMismatch);
+        assert_eq!(
+            tester.classify_mismatch(&storage_diff),
+            MismatchType::StorageMismatch
+        );
     }
 
     #[test]

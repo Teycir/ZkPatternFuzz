@@ -58,6 +58,7 @@ chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 dirs = "5.0"  # For finding home directory
 tempfile = "3.10"
+wait-timeout = "0.2"  # Clean timeout handling for child processes
 zk-core = { path = "crates/zk-core" }
 zk-constraints = { path = "crates/zk-constraints" }
 zk-backends = { path = "crates/zk-backends" }

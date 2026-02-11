@@ -61,6 +61,12 @@ impl FieldElement {
         Self(bytes)
     }
 
+    /// Deprecated: Use from_u64() instead for clarity
+    #[deprecated(since = "0.2.0", note = "Use from_u64() instead for explicit type conversion")]
+    pub fn from(value: u64) -> Self {
+        Self::from_u64(value)
+    }
+
     /// Create from raw bytes (big-endian, padded to 32 bytes)
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut result = [0u8; 32];

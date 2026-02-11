@@ -35,10 +35,17 @@ pub mod boundary;
 pub mod collision;
 pub mod constraint_inference;
 pub mod constraint_slice;
+pub mod canonicalization;
+pub mod cross_backend;
+pub mod determinism;
 pub mod front_running;  // Phase 3: Front-running attacks
+pub mod frozen_wire;
 pub mod metamorphic;
 pub mod mev;  // Phase 3: MEV attacks
+pub mod nullifier_replay;
+pub mod proof_malleability;
 pub mod recursive;  // Phase 3: Recursive SNARK attacks
+pub mod setup_poisoning;
 pub mod soundness;
 pub mod spec_inference;
 pub mod underconstrained;
@@ -51,14 +58,21 @@ pub mod zkevm_differential;  // Phase 5: zkEVM differential testing with referen
 pub use arithmetic::*;
 pub use batch_verification::*;
 pub use boundary::*;
+pub use canonicalization::*;
 #[allow(ambiguous_glob_reexports)]
 pub use collision::*;
 pub use constraint_inference::*;
 pub use constraint_slice::*;
+pub use cross_backend::*;
+pub use determinism::*;
 pub use front_running::*;
+pub use frozen_wire::*;
 pub use metamorphic::*;
 pub use mev::*;
+pub use nullifier_replay::*;
+pub use proof_malleability::*;
 pub use recursive::*;
+pub use setup_poisoning::*;
 pub use soundness::*;
 pub use spec_inference::*;
 pub use underconstrained::*;

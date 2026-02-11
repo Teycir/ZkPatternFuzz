@@ -451,12 +451,13 @@ impl InferenceRule for NullifierUniquenessInference {
         let mut implied = Vec::new();
 
         // Find nullifier wires - only match exact "nullifier" or "nullifierHash" at input level
-        let nullifier_wires: Vec<usize> = context.wire_labels
+        let nullifier_wires: Vec<usize> = context
+            .wire_labels
             .iter()
             .filter(|(idx, label)| {
                 let label_lower = label.to_lowercase();
                 // Only match exact nullifier inputs, not intermediate wires
-                (label_lower == "nullifier" || label_lower == "nullifierhash") 
+                (label_lower == "nullifier" || label_lower == "nullifierhash")
                     && **idx < context.num_public_inputs + context.num_private_inputs
             })
             .map(|(idx, _)| *idx)
@@ -466,7 +467,10 @@ impl InferenceRule for NullifierUniquenessInference {
             return implied;
         }
 
-        tracing::debug!("Found {} nullifier input wires to check", nullifier_wires.len());
+        tracing::debug!(
+            "Found {} nullifier input wires to check",
+            nullifier_wires.len()
+        );
 
         // Check if nullifier is tied to unique input
         let secret_wires = context.find_wires_by_label("secret");
@@ -491,7 +495,7 @@ impl InferenceRule for NullifierUniquenessInference {
                         "Nullifier wire {} is not constrained by secret inputs",
                         null_wire
                     ),
-                    confidence: 0.85,  // Higher confidence since we're being strict
+                    confidence: 0.85, // Higher confidence since we're being strict
                     involved_wires: std::iter::once(null_wire)
                         .chain(secret_wires.iter().copied())
                         .collect(),
@@ -630,7 +634,7 @@ impl ConstraintInferenceEngine {
             rules: vec![
                 Box::new(BitDecompositionInference::default()),
                 Box::new(MerklePathInference),
-                Box::new(NullifierUniquenessInference),  // Re-enabled with strict filtering
+                Box::new(NullifierUniquenessInference), // Re-enabled with strict filtering
                 Box::new(RangeEnforcementInference),
             ],
             confidence_threshold: 0.7,
@@ -677,11 +681,19 @@ impl ConstraintInferenceEngine {
     pub fn analyze_with_context(&self, context: &InferenceContext) -> Vec<ImpliedConstraint> {
         let mut all_implied: Vec<ImpliedConstraint> = Vec::new();
 
-        tracing::info!("Analyzing {} constraints with {} rules", context.constraints.len(), self.rules.len());
-        
+        tracing::info!(
+            "Analyzing {} constraints with {} rules",
+            context.constraints.len(),
+            self.rules.len()
+        );
+
         for rule in &self.rules {
             let mut implied = rule.infer(context);
-            tracing::info!("Rule {:?} found {} implied constraints", rule.category(), implied.len());
+            tracing::info!(
+                "Rule {:?} found {} implied constraints",
+                rule.category(),
+                implied.len()
+            );
 
             // Generate violations if enabled
             if self.generate_violations {
@@ -697,14 +709,21 @@ impl ConstraintInferenceEngine {
         // Filter by confidence threshold
         let before_filter = all_implied.len();
         all_implied.retain(|c| c.confidence >= self.confidence_threshold);
-        tracing::info!("Filtered {} -> {} constraints by confidence threshold {}", 
-            before_filter, all_implied.len(), self.confidence_threshold);
+        tracing::info!(
+            "Filtered {} -> {} constraints by confidence threshold {}",
+            before_filter,
+            all_implied.len(),
+            self.confidence_threshold
+        );
 
         // Sort by confidence descending
         all_implied.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
 
         // Only keep confirmed violations after execution
-        tracing::info!("Returning {} high-confidence implied constraints for confirmation", all_implied.len());
+        tracing::info!(
+            "Returning {} high-confidence implied constraints for confirmation",
+            all_implied.len()
+        );
         all_implied
     }
 
@@ -729,7 +748,11 @@ impl ConstraintInferenceEngine {
             return;
         }
 
-        tracing::info!("Circuit has {} inputs, base_inputs has {} elements", num_inputs, base_inputs.len());
+        tracing::info!(
+            "Circuit has {} inputs, base_inputs has {} elements",
+            num_inputs,
+            base_inputs.len()
+        );
         let mut seed_inputs = base_inputs.to_vec();
         if seed_inputs.len() < num_inputs {
             seed_inputs.resize(num_inputs, FieldElement::zero());
@@ -738,7 +761,11 @@ impl ConstraintInferenceEngine {
         }
 
         let total = implied.len();
-        tracing::info!("Confirming {} violations with {} output wires", total, output_wires.len());
+        tracing::info!(
+            "Confirming {} violations with {} output wires",
+            total,
+            output_wires.len()
+        );
         for (idx, constraint) in implied.iter_mut().enumerate() {
             let Some(violation) = constraint.violation_witness.as_ref() else {
                 constraint.confirmation = ViolationConfirmation::Unchecked;
@@ -746,7 +773,11 @@ impl ConstraintInferenceEngine {
             };
 
             if idx % 1 == 0 {
-                tracing::info!("Confirming violation {}/{} - executing circuit...", idx + 1, total);
+                tracing::info!(
+                    "Confirming violation {}/{} - executing circuit...",
+                    idx + 1,
+                    total
+                );
                 // Force flush to show progress immediately
                 use std::io::Write;
                 let _ = std::io::stdout().flush();

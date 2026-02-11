@@ -84,22 +84,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 4. [AI_ASSISTED_WORKFLOW.md](AI_ASSISTED_WORKFLOW.md) - **20 min read**
-**For:** Using AI to generate optimal fuzzing configurations  
-**Contains:**
-- Complete YAML schema reference
-- All attack types explained
-- Input type specifications
-- Fuzzing strategies
-- Real example (Merkle tree)
-- Automation scripts (Bash/Python)
-- Troubleshooting guide
-
-**Start here if:** You want to understand all configuration options
-
----
-
-### 5. [TUTORIAL.md](TUTORIAL.md) - **30 min read**
+### 4. [TUTORIAL.md](TUTORIAL.md) - **30 min read**
 **For:** Step-by-step learning with hands-on examples  
 **Contains:**
 - Detailed walkthrough
@@ -112,7 +97,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5b. [TARGETS.md](TARGETS.md) - **Target List**
+### 5. [TARGETS.md](TARGETS.md) - **Target List**
 **For:** Running evidence campaigns on zk0d  
 **Contains:**
 - Target set for discovery metric
@@ -170,8 +155,8 @@ Complete guide to all documentation files, ordered by use case and reading level
 4. Execute: `cargo run -- --config campaign.yaml`
 
 ### I want to understand all options
-1. Read: [AI_ASSISTED_WORKFLOW.md](AI_ASSISTED_WORKFLOW.md) (20 min)
-2. Reference: YAML schema section
+1. Read: [TUTORIAL.md](TUTORIAL.md) (30 min)
+2. Reference: Example campaigns in `tests/campaigns/`
 3. Customize: Attack types and strategies
 
 ### I want to learn by example
@@ -210,12 +195,6 @@ docs/
 ├── VULNERABILITIES.md
 │   └── 7 critical vulnerability classes
 │
-├── AI_ASSISTED_WORKFLOW.md
-│   ├── Complete YAML schema
-│   ├── Attack types reference
-│   ├── Real examples
-│   └── Automation scripts
-│
 ├── TUTORIAL.md
 │   ├── Hands-on examples
 │   ├── Best practices
@@ -241,15 +220,13 @@ docs/
 
 **Using the Tool**
 - [QUICKSTART_AI.md](QUICKSTART_AI.md) - Fastest way to start
-- [AI_ASSISTED_WORKFLOW.md](AI_ASSISTED_WORKFLOW.md) - All configuration options
 - [TUTORIAL.md](TUTORIAL.md) - Detailed walkthrough
 
 **YAML Configuration**
-- [AI_ASSISTED_WORKFLOW.md](AI_ASSISTED_WORKFLOW.md) - Complete schema
 - [tests/campaigns/](../tests/campaigns/) - Real examples
 
 **Attack Types**
-- [AI_ASSISTED_WORKFLOW.md](AI_ASSISTED_WORKFLOW.md) - Attack types table
+- [README.md](../README.md) - Attack type summary
 - [src/attacks/](../src/attacks/) - Implementation details
 
 **Development**
@@ -258,7 +235,6 @@ docs/
 - [src/](../src/) - Source code
 
 **Troubleshooting**
-- [AI_ASSISTED_WORKFLOW.md](AI_ASSISTED_WORKFLOW.md) - Troubleshooting section
 - [TUTORIAL.md](TUTORIAL.md) - Common issues
 
 ---
@@ -281,8 +257,6 @@ Done!
 README.md
     ↓
 QUICKSTART_AI.md
-    ↓
-AI_ASSISTED_WORKFLOW.md
     ↓
 TUTORIAL.md
     ↓
@@ -351,7 +325,7 @@ Modify for your circuits
 ## 🆘 Getting Help
 
 1. **Quick question?** → Check [QUICKSTART_AI.md](QUICKSTART_AI.md)
-2. **Configuration issue?** → See [AI_ASSISTED_WORKFLOW.md](AI_ASSISTED_WORKFLOW.md) troubleshooting
+2. **Configuration issue?** → Read [TUTORIAL.md](TUTORIAL.md)
 3. **Want to learn?** → Read [TUTORIAL.md](TUTORIAL.md)
 4. **Found a bug?** → Open GitHub issue with circuit + YAML
 5. **Want to contribute?** → Read [CONTRIBUTING.md](../CONTRIBUTING.md)
@@ -363,7 +337,6 @@ Modify for your circuits
 | Document | Last Updated | Status |
 |----------|--------------|--------|
 | QUICKSTART_AI.md | 2025-01-XX | ✅ Current |
-| AI_ASSISTED_WORKFLOW.md | 2025-01-XX | ✅ Current |
 | TUTORIAL.md | 2025-01-XX | ✅ Current |
 | README.md | 2025-01-XX | ✅ Current |
 | ARCHITECTURE.md | 2025-01-XX | ✅ Current |
