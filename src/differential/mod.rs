@@ -5,6 +5,7 @@
 
 pub mod executor;
 pub mod report;
+pub mod translator;
 
 use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Framework, TestCase};
 use std::collections::{HashMap, HashSet};
