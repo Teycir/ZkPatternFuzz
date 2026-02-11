@@ -3453,7 +3453,7 @@ impl FuzzingEngine {
             num_tests
         );
 
-        let mut oracle = MetamorphicOracle::new().with_standard_relations();
+        let mut oracle = MetamorphicOracle::new().with_circuit_aware_relations();
         let invariant_relations = self.build_metamorphic_relations();
         for relation in invariant_relations {
             oracle = oracle.with_relation(relation);
@@ -5349,7 +5349,11 @@ impl FuzzingEngine {
         }
 
         let runner = ChainRunner::new(executors).with_timeout(Duration::from_secs(30));
-        let mutator = ChainMutator::new();
+        
+        // Phase 5 Fix (Milestone 5.3): Use framework-aware chain mutator
+        // Previously used ChainMutator::new() which defaults to Framework::Mock,
+        // causing reduced mutation validity for real circuits.
+        let mutator = ChainMutator::new_with_framework(self.config.campaign.target.framework);
 
         // Initialize scheduler with budget
         let scheduler =

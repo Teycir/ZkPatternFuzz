@@ -45,6 +45,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 
+// Import real batch verifier from executor module (Phase 5: Milestone 5.1)
+use crate::executor::batch_verifier::{
+    BatchVerifier, BatchVerifierConfig, SerializedProof, PublicInputs, 
+    AggregationMethod as RealAggregationMethod, ProofSystem,
+};
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -976,25 +982,120 @@ impl BatchVerificationAttack {
     }
 
     // ========================================================================
-    // Batch Verification Execution
+    // Batch Verification Execution (Phase 5: Milestone 5.1 - Real Crypto)
     // ========================================================================
 
+    /// Execute real cryptographic batch verification using the BatchVerifier
+    ///
+    /// # Phase 5 Update
+    ///
+    /// This method now uses the real `BatchVerifier` from `executor::batch_verifier`
+    /// instead of heuristic simulation. This provides:
+    /// - Actual cryptographic verification of proofs
+    /// - Proper detection of batch bypass vulnerabilities
+    /// - Evidence-grade findings for bug bounties and audits
     fn execute_batch_verification<E: CircuitExecutor>(
         &self,
-        _executor: &E,
+        executor: &E,
         batch_inputs: &[Vec<FieldElement>],
-        _method: AggregationMethod,
+        method: AggregationMethod,
     ) -> (bool, Option<Vec<bool>>) {
-        // Simplified batch verification simulation
-        // In a real implementation, this would use the executor asynchronously
-        // For now, we simulate based on input characteristics
+        // Convert to real aggregation method
+        let real_method = match method {
+            AggregationMethod::NaiveBatch => RealAggregationMethod::NaiveBatch,
+            AggregationMethod::SnarkPack => RealAggregationMethod::SnarkPack,
+            AggregationMethod::Groth16Aggregation => RealAggregationMethod::Groth16Aggregation,
+            AggregationMethod::PlonkAggregation => RealAggregationMethod::PlonkAggregation,
+            AggregationMethod::Halo2Aggregation => RealAggregationMethod::Halo2Accumulation,
+        };
+
+        // Try to use real batch verification if executor supports prove/verify
+        if let Some(result) = self.try_real_batch_verification(executor, batch_inputs, real_method) {
+            return result;
+        }
+
+        // Fallback to execution-based verification for executors without prove/verify
+        self.execute_based_batch_verification(executor, batch_inputs)
+    }
+
+    /// Attempt real cryptographic batch verification
+    fn try_real_batch_verification<E: CircuitExecutor>(
+        &self,
+        executor: &E,
+        batch_inputs: &[Vec<FieldElement>],
+        method: RealAggregationMethod,
+    ) -> Option<(bool, Option<Vec<bool>>)> {
+        // Generate proofs for each input
+        let mut proofs = Vec::with_capacity(batch_inputs.len());
+        let mut public_inputs = Vec::with_capacity(batch_inputs.len());
+        
+        for inputs in batch_inputs {
+            // Execute circuit to get witness
+            let result = executor.execute_sync(inputs);
+            if !result.success {
+                // If execution fails, this input is invalid
+                proofs.push(SerializedProof {
+                    data: vec![], // Empty proof for failed execution
+                    proof_system: self.detect_proof_system(executor),
+                    circuit_id: executor.name().to_string(),
+                });
+                public_inputs.push(PublicInputs::new(inputs.clone()));
+                continue;
+            }
+
+            // Try to generate proof
+            match executor.prove(inputs) {
+                Ok(proof_data) => {
+                    proofs.push(SerializedProof {
+                        data: proof_data,
+                        proof_system: self.detect_proof_system(executor),
+                        circuit_id: executor.name().to_string(),
+                    });
+                    public_inputs.push(PublicInputs::new(inputs.clone()));
+                }
+                Err(_) => {
+                    // If proving fails, return None to fall back to execution-based
+                    return None;
+                }
+            }
+        }
+
+        // Create batch verifier with executor
+        // Note: We need to convert the executor reference to Arc
+        // This is a limitation - in production, the executor should be passed as Arc
+        let config = BatchVerifierConfig {
+            max_batch_size: batch_inputs.len().max(256),
+            verification_timeout_ms: self.config.timeout_ms,
+            ..Default::default()
+        };
+        
+        let verifier = BatchVerifier::with_config(config);
+        
+        // Perform batch verification
+        match verifier.verify_batch(&proofs, &public_inputs, method) {
+            Ok(result) => {
+                Some((result.batch_passed, Some(result.individual_results)))
+            }
+            Err(_) => {
+                // If batch verification fails, return None to fall back
+                None
+            }
+        }
+    }
+
+    /// Execution-based batch verification (fallback when proving not available)
+    fn execute_based_batch_verification<E: CircuitExecutor>(
+        &self,
+        executor: &E,
+        batch_inputs: &[Vec<FieldElement>],
+    ) -> (bool, Option<Vec<bool>>) {
         let mut all_passed = true;
         let mut individual_results = Vec::with_capacity(batch_inputs.len());
 
         for inputs in batch_inputs {
-            // Simulate verification - all-zero inputs are typically invalid
-            let is_all_zero = inputs.iter().all(|x| *x == FieldElement::zero());
-            let passed = !is_all_zero && !inputs.is_empty();
+            // Use actual execution to verify
+            let result = executor.execute_sync(inputs);
+            let passed = result.success;
             individual_results.push(passed);
             if !passed {
                 all_passed = false;
@@ -1002,6 +1103,17 @@ impl BatchVerificationAttack {
         }
 
         (all_passed, Some(individual_results))
+    }
+
+    /// Detect the proof system based on executor framework
+    fn detect_proof_system<E: CircuitExecutor>(&self, executor: &E) -> ProofSystem {
+        match executor.framework() {
+            zk_core::Framework::Circom => ProofSystem::Groth16,
+            zk_core::Framework::Noir => ProofSystem::Plonk,
+            zk_core::Framework::Halo2 => ProofSystem::Halo2,
+            zk_core::Framework::Cairo => ProofSystem::Groth16, // Cairo uses STARK but we map to closest
+            zk_core::Framework::Mock => ProofSystem::Groth16,
+        }
     }
 
     /// Get all findings

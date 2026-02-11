@@ -169,8 +169,6 @@ pub struct BugDirectedExecutor {
     solver: Z3Solver,
     /// Simplifier
     simplifier: ConstraintSimplifier,
-    /// Pruner
-    pruner: PathPruner,
     /// Configuration
     config: BugDirectedConfig,
     /// Findings
@@ -185,7 +183,6 @@ pub struct BugDirectedExecutor {
 struct PrioritizedDirectedState {
     state: SymbolicState,
     relevance_score: f64,
-    matched_patterns: Vec<String>,
 }
 
 impl PartialEq for PrioritizedDirectedState {
@@ -223,7 +220,7 @@ impl BugDirectedExecutor {
         } else {
             PruningStrategy::None
         };
-        let pruner = PathPruner::new(pruning_strategy)
+        let _pruner = PathPruner::new(pruning_strategy)
             .with_max_depth(config.max_depth)
             .with_max_paths(config.max_paths);
 
@@ -233,14 +230,12 @@ impl BugDirectedExecutor {
         worklist.push(PrioritizedDirectedState {
             state: initial_state,
             relevance_score: 1.0,
-            matched_patterns: Vec::new(),
         });
 
         Self {
             worklist,
             solver,
             simplifier: ConstraintSimplifier::new(),
-            pruner,
             config,
             findings: Vec::new(),
             num_inputs,
@@ -249,7 +244,7 @@ impl BugDirectedExecutor {
     }
 
     /// Compute relevance score for a state relative to target vulnerabilities
-    fn compute_relevance(&self, state: &SymbolicState) -> (f64, Vec<String>) {
+    fn compute_relevance(&self, state: &SymbolicState) -> f64 {
         let mut total_score = 0.0;
         let mut matched = Vec::new();
 
@@ -280,7 +275,7 @@ impl BugDirectedExecutor {
         // Penalize deep paths
         total_score -= state.depth as f64 * 0.02;
 
-        (total_score.max(0.0), matched)
+        total_score.max(0.0)
     }
 
     /// Check if state should be pruned based on relevance
@@ -302,8 +297,27 @@ impl BugDirectedExecutor {
     }
 
     /// Process a state and check for vulnerabilities
-    fn process_state(&mut self, state: SymbolicState, matched_patterns: Vec<String>) {
+    fn process_state(&mut self, state: SymbolicState) {
         self.stats.paths_explored += 1;
+
+        // Check if state matches any patterns
+        let mut matched_patterns = Vec::new();
+        for target in &self.config.targets {
+            let patterns = target.constraint_patterns();
+            for pattern in patterns {
+                for constraint in &state.path_condition.constraints {
+                    let constraint_str = format!("{:?}", constraint);
+                    if constraint_str.to_lowercase().contains(&pattern.to_lowercase()) {
+                        matched_patterns.push(pattern.clone());
+                    }
+                }
+                for name in state.named_signals.keys() {
+                    if name.to_lowercase().contains(&pattern.to_lowercase()) {
+                        matched_patterns.push(format!("signal:{}", name));
+                    }
+                }
+            }
+        }
 
         // If patterns matched, try to generate witness
         if !matched_patterns.is_empty() {
@@ -393,7 +407,7 @@ impl BugDirectedExecutor {
                 break;
             }
 
-            let (relevance, matched) = self.compute_relevance(&prioritized.state);
+            let relevance = self.compute_relevance(&prioritized.state);
 
             // Check pruning
             if self.should_prune(&prioritized.state, relevance) {
@@ -401,7 +415,7 @@ impl BugDirectedExecutor {
                 continue;
             }
 
-            self.process_state(prioritized.state, matched);
+            self.process_state(prioritized.state);
         }
 
         self.stats.execution_time_ms = start.elapsed().as_millis() as u64;
@@ -410,11 +424,10 @@ impl BugDirectedExecutor {
 
     /// Add a state to explore
     pub fn add_state(&mut self, state: SymbolicState) {
-        let (relevance, matched) = self.compute_relevance(&state);
+        let relevance = self.compute_relevance(&state);
         self.worklist.push(PrioritizedDirectedState {
             state,
             relevance_score: relevance,
-            matched_patterns: matched,
         });
     }
 
@@ -438,7 +451,6 @@ impl BugDirectedExecutor {
         self.worklist.push(PrioritizedDirectedState {
             state: initial_state,
             relevance_score: 1.0,
-            matched_patterns: Vec::new(),
         });
     }
 }
@@ -512,8 +524,6 @@ pub struct DifferentialExecutor {
     constraints_b: Vec<SymbolicConstraint>,
     /// Solver
     solver: Z3Solver,
-    /// Configuration
-    config: DifferentialConfig,
     /// Found differences
     differences: Vec<CircuitDifference>,
     /// Number of inputs
@@ -548,7 +558,6 @@ impl DifferentialExecutor {
             constraints_a,
             constraints_b,
             solver,
-            config,
             differences: Vec::new(),
             num_inputs,
             stats: DifferentialStats::default(),

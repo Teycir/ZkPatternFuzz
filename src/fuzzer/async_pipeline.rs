@@ -114,8 +114,6 @@ pub struct PipelineStats {
 
 /// Async pipeline for test case processing
 pub struct AsyncPipeline {
-    /// Configuration
-    config: PipelineConfig,
     /// Statistics
     stats: Arc<tokio::sync::RwLock<PipelineStats>>,
     /// Running flag
@@ -123,9 +121,8 @@ pub struct AsyncPipeline {
 }
 
 impl AsyncPipeline {
-    pub fn new(config: PipelineConfig) -> Self {
+    pub fn new(_config: PipelineConfig) -> Self {
         Self {
-            config,
             stats: Arc::new(tokio::sync::RwLock::new(PipelineStats::default())),
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
@@ -365,14 +362,11 @@ where
 }
 
 /// Simple batch executor for synchronous use
-pub struct BatchExecutor {
-    batch_size: usize,
-    timeout: Duration,
-}
+pub struct BatchExecutor;
 
 impl BatchExecutor {
-    pub fn new(batch_size: usize, timeout: Duration) -> Self {
-        Self { batch_size, timeout }
+    pub fn new(_batch_size: usize, _timeout: Duration) -> Self {
+        Self
     }
 
     /// Execute a batch of test cases synchronously
@@ -407,7 +401,7 @@ impl BatchExecutor {
         let results: Vec<_> = inputs
             .into_par_iter()
             .enumerate()
-            .map(|(i, input)| {
+            .map(|(_i, input)| {
                 let result = executor(input);
                 result
             })

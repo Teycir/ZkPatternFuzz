@@ -304,7 +304,6 @@ pub struct ConstraintCache {
 struct CachedSolution {
     result: SolverResult,
     timestamp: Instant,
-    constraint_hash: u64,
 }
 
 impl ConstraintCache {
@@ -374,7 +373,6 @@ impl ConstraintCache {
                     CachedSolution {
                         result,
                         timestamp: Instant::now(),
-                        constraint_hash: hash,
                     },
                 );
             }
@@ -984,24 +982,7 @@ impl SymbolicV2Executor {
         self.completed_paths.push(path);
     }
 
-    /// Compute adaptive timeout based on constraint complexity
-    fn compute_adaptive_timeout(&self, path: &PathCondition) -> u32 {
-        let base = self.config.solver_timeout_ms;
-        let complexity = path.constraints.len();
-        
-        // Scale timeout with complexity
-        let scaled = if complexity < 10 {
-            base
-        } else if complexity < 50 {
-            base * 2
-        } else if complexity < 100 {
-            base * 3
-        } else {
-            base * 4
-        };
 
-        scaled.min(self.config.max_adaptive_timeout_ms)
-    }
 
     /// Convert assignments to input vector
     fn assignments_to_inputs(

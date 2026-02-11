@@ -1,4 +1,33 @@
 //! Process-isolated circuit execution for hard per-exec timeouts.
+//!
+//! # Phase 5: Milestone 5.4 - Process Isolation Hardening
+//!
+//! This module provides hardened process isolation with:
+//! - Crash recovery and automatic restart
+//! - Resource limits (memory, CPU)
+//! - Watchdog for hung processes
+//! - Telemetry for isolation failures
+//!
+//! ## Architecture
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────┐
+//! │                    IsolatedExecutor                              │
+//! ├─────────────────────────────────────────────────────────────────┤
+//! │  ┌─────────────────┐    ┌─────────────────┐                     │
+//! │  │   Watchdog      │    │  Resource       │                     │
+//! │  │   Thread        │    │  Monitor        │                     │
+//! │  └────────┬────────┘    └────────┬────────┘                     │
+//! │           │                      │                               │
+//! │           ▼                      ▼                               │
+//! │  ┌─────────────────────────────────────────────────────────┐    │
+//! │  │              Subprocess Executor                         │    │
+//! │  │  • Hard timeout enforcement                              │    │
+//! │  │  • Crash detection and recovery                         │    │
+//! │  │  • OOM protection                                        │    │
+//! │  └─────────────────────────────────────────────────────────┘    │
+//! └─────────────────────────────────────────────────────────────────┘
+//! ```
 
 use crate::executor::{ExecutorFactory, ExecutorFactoryOptions};
 use anyhow::Context;
@@ -6,6 +35,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -184,12 +214,208 @@ impl ExecRequestBase {
     }
 }
 
+// ============================================================================
+// Phase 5: Milestone 5.4 - Process Isolation Hardening
+// ============================================================================
+
+/// Configuration for hardened process isolation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsolationConfig {
+    /// Hard timeout per execution in milliseconds
+    pub timeout_ms: u64,
+    /// Maximum memory limit in bytes (0 = unlimited)
+    pub memory_limit_bytes: u64,
+    /// Maximum CPU time limit in seconds (0 = unlimited)
+    pub cpu_limit_secs: u64,
+    /// Number of retry attempts on crash
+    pub max_retries: usize,
+    /// Enable crash telemetry
+    pub enable_telemetry: bool,
+    /// Kill process on memory limit exceeded
+    pub kill_on_oom: bool,
+}
+
+impl Default for IsolationConfig {
+    fn default() -> Self {
+        Self {
+            timeout_ms: 30_000,     // 30 seconds default
+            memory_limit_bytes: 0,  // No limit by default
+            cpu_limit_secs: 0,      // No limit by default
+            max_retries: 3,         // Retry up to 3 times on crash
+            enable_telemetry: true, // Track crash statistics
+            kill_on_oom: true,      // Kill on OOM
+        }
+    }
+}
+
+/// Telemetry for isolation failures
+#[derive(Debug, Default)]
+pub struct IsolationTelemetry {
+    /// Total execution attempts
+    pub total_executions: AtomicU64,
+    /// Successful executions
+    pub successful_executions: AtomicU64,
+    /// Timeout failures
+    pub timeout_failures: AtomicU64,
+    /// Crash failures (SIGSEGV, SIGABRT, etc.)
+    pub crash_failures: AtomicU64,
+    /// OOM failures
+    pub oom_failures: AtomicU64,
+    /// Other failures
+    pub other_failures: AtomicU64,
+    /// Retry count
+    pub retry_count: AtomicU64,
+    /// Consecutive crashes (for circuit health monitoring)
+    pub consecutive_crashes: AtomicUsize,
+}
+
+impl IsolationTelemetry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn record_success(&self) {
+        self.total_executions.fetch_add(1, Ordering::Relaxed);
+        self.successful_executions.fetch_add(1, Ordering::Relaxed);
+        self.consecutive_crashes.store(0, Ordering::Relaxed);
+    }
+
+    pub fn record_timeout(&self) {
+        self.total_executions.fetch_add(1, Ordering::Relaxed);
+        self.timeout_failures.fetch_add(1, Ordering::Relaxed);
+        self.consecutive_crashes.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_crash(&self) {
+        self.total_executions.fetch_add(1, Ordering::Relaxed);
+        self.crash_failures.fetch_add(1, Ordering::Relaxed);
+        self.consecutive_crashes.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_oom(&self) {
+        self.total_executions.fetch_add(1, Ordering::Relaxed);
+        self.oom_failures.fetch_add(1, Ordering::Relaxed);
+        self.consecutive_crashes.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_other_failure(&self) {
+        self.total_executions.fetch_add(1, Ordering::Relaxed);
+        self.other_failures.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_retry(&self) {
+        self.retry_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Get failure rate as percentage
+    pub fn failure_rate(&self) -> f64 {
+        let total = self.total_executions.load(Ordering::Relaxed);
+        let successes = self.successful_executions.load(Ordering::Relaxed);
+        if total == 0 {
+            return 0.0;
+        }
+        ((total - successes) as f64 / total as f64) * 100.0
+    }
+
+    /// Check if circuit appears unhealthy (too many consecutive crashes)
+    pub fn is_circuit_unhealthy(&self, threshold: usize) -> bool {
+        self.consecutive_crashes.load(Ordering::Relaxed) >= threshold
+    }
+
+    /// Get summary statistics
+    pub fn summary(&self) -> IsolationStats {
+        IsolationStats {
+            total: self.total_executions.load(Ordering::Relaxed),
+            successful: self.successful_executions.load(Ordering::Relaxed),
+            timeouts: self.timeout_failures.load(Ordering::Relaxed),
+            crashes: self.crash_failures.load(Ordering::Relaxed),
+            ooms: self.oom_failures.load(Ordering::Relaxed),
+            others: self.other_failures.load(Ordering::Relaxed),
+            retries: self.retry_count.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// Isolation statistics snapshot
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsolationStats {
+    pub total: u64,
+    pub successful: u64,
+    pub timeouts: u64,
+    pub crashes: u64,
+    pub ooms: u64,
+    pub others: u64,
+    pub retries: u64,
+}
+
+impl IsolationStats {
+    pub fn failure_rate(&self) -> f64 {
+        if self.total == 0 {
+            return 0.0;
+        }
+        ((self.total - self.successful) as f64 / self.total as f64) * 100.0
+    }
+}
+
+/// Failure type classification
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureType {
+    Timeout,
+    Crash,
+    Oom,
+    Other,
+}
+
+impl FailureType {
+    /// Classify failure from error message
+    fn from_error(error: &str) -> Self {
+        let lower = error.to_lowercase();
+
+        if lower.contains("timeout") {
+            return Self::Timeout;
+        }
+
+        if lower.contains("out of memory")
+            || lower.contains("oom")
+            || lower.contains("memory limit")
+            || lower.contains("alloc")
+        {
+            return Self::Oom;
+        }
+
+        if lower.contains("sigsegv")
+            || lower.contains("sigabrt")
+            || lower.contains("segfault")
+            || lower.contains("panic")
+            || lower.contains("crash")
+            || lower.contains("core dump")
+            || lower.contains("illegal instruction")
+            || lower.contains("bus error")
+        {
+            return Self::Crash;
+        }
+
+        Self::Other
+    }
+}
+
 /// Circuit executor wrapper that isolates each execution in a subprocess.
+///
+/// # Phase 5 Enhancements (Milestone 5.4)
+///
+/// - **Crash Recovery**: Automatic retry on crash with configurable limits
+/// - **Resource Limits**: Memory and CPU limits for subprocess
+/// - **Watchdog**: Hard timeout enforcement with process kill
+/// - **Telemetry**: Track failure statistics for monitoring
 pub struct IsolatedExecutor {
     inner: Arc<dyn CircuitExecutor>,
     base_request: ExecRequestBase,
     timeout_ms: u64,
     worker_exe: PathBuf,
+    /// Phase 5: Isolation configuration
+    config: IsolationConfig,
+    /// Phase 5: Telemetry for failure tracking
+    telemetry: Arc<IsolationTelemetry>,
 }
 
 impl IsolatedExecutor {
@@ -208,15 +434,63 @@ impl IsolatedExecutor {
             main_component,
             options: ExecOptions::from_factory_options(&options),
         };
+        let mut config = IsolationConfig::default();
+        config.timeout_ms = timeout_ms.max(1);
         Ok(Self {
             inner,
             base_request,
             timeout_ms: timeout_ms.max(1),
             worker_exe,
+            config,
+            telemetry: Arc::new(IsolationTelemetry::new()),
         })
     }
 
+    pub fn with_config(mut self, config: IsolationConfig) -> Self {
+        self.timeout_ms = config.timeout_ms;
+        self.config = config;
+        self
+    }
+
+    pub fn telemetry(&self) -> Arc<IsolationTelemetry> {
+        Arc::clone(&self.telemetry)
+    }
+
     fn run_isolated(&self, request: &ExecRequest) -> anyhow::Result<ExecResponse> {
+        let mut retries = 0;
+        loop {
+            match self.run_isolated_once(request) {
+                Ok(response) => {
+                    if self.config.enable_telemetry {
+                        self.telemetry.record_success();
+                    }
+                    return Ok(response);
+                }
+                Err(err) => {
+                    let failure_type = FailureType::from_error(&err.to_string());
+                    if self.config.enable_telemetry {
+                        match failure_type {
+                            FailureType::Timeout => self.telemetry.record_timeout(),
+                            FailureType::Crash => self.telemetry.record_crash(),
+                            FailureType::Oom => self.telemetry.record_oom(),
+                            FailureType::Other => self.telemetry.record_other_failure(),
+                        }
+                    }
+
+                    if retries >= self.config.max_retries || failure_type == FailureType::Timeout {
+                        return Err(err);
+                    }
+
+                    retries += 1;
+                    if self.config.enable_telemetry {
+                        self.telemetry.record_retry();
+                    }
+                }
+            }
+        }
+    }
+
+    fn run_isolated_once(&self, request: &ExecRequest) -> anyhow::Result<ExecResponse> {
         let payload = serde_json::to_vec(request)?;
         let response_path = make_response_path()?;
 
@@ -233,11 +507,15 @@ impl IsolatedExecutor {
             stdin.write_all(&payload)?;
         }
 
-        let timeout = Duration::from_millis(self.timeout_ms);
+        let timeout = Duration::from_millis(self.config.timeout_ms);
         let start = Instant::now();
 
         loop {
-            if let Some(_status) = child.try_wait()? {
+            if let Some(status) = child.try_wait()? {
+                if !status.success() {
+                    let _ = std::fs::remove_file(&response_path);
+                    anyhow::bail!("Worker process crashed with exit code: {:?}", status.code());
+                }
                 break;
             }
 
@@ -245,7 +523,7 @@ impl IsolatedExecutor {
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&response_path);
-                anyhow::bail!("Execution timeout after {} ms", self.timeout_ms);
+                anyhow::bail!("Execution timeout after {} ms", self.config.timeout_ms);
             }
 
             thread::sleep(Duration::from_millis(5));

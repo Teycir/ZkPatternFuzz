@@ -76,6 +76,9 @@ pub struct ChainMutation {
 
 impl ChainMutator {
     /// Create a new chain mutator
+    ///
+    /// Note: This uses Mock framework by default. For production use,
+    /// prefer `new_with_framework()` to ensure framework-aware mutations.
     pub fn new() -> Self {
         Self {
             field_mutator: StructureAwareMutator::new(zk_core::Framework::Mock),
@@ -83,9 +86,41 @@ impl ChainMutator {
         }
     }
 
+    /// Create a new chain mutator with a specific framework (Phase 5: Milestone 5.3)
+    ///
+    /// This is the preferred constructor for production use. It ensures that
+    /// mutations are framework-aware, producing valid test cases for the
+    /// actual circuit backend (Circom, Noir, Halo2, Cairo).
+    ///
+    /// # Arguments
+    ///
+    /// * `framework` - The ZK framework being used (Circom, Noir, Halo2, Cairo)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use zk_core::Framework;
+    /// let mutator = ChainMutator::new_with_framework(Framework::Circom);
+    /// ```
+    pub fn new_with_framework(framework: zk_core::Framework) -> Self {
+        Self {
+            field_mutator: StructureAwareMutator::new(framework),
+            strategy_weights: MutationWeights::default(),
+        }
+    }
+
     /// Create with custom weights
     pub fn with_weights(mut self, weights: MutationWeights) -> Self {
         self.strategy_weights = weights;
+        self
+    }
+
+    /// Set the framework for framework-aware mutations (Phase 5: Milestone 5.3)
+    ///
+    /// Call this method to update the mutator to use the correct framework
+    /// for generating valid mutations. This replaces the internal field mutator.
+    pub fn with_framework(mut self, framework: zk_core::Framework) -> Self {
+        self.field_mutator = StructureAwareMutator::new(framework);
         self
     }
 

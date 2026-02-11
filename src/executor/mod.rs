@@ -3,11 +3,13 @@
 //! Provides a unified interface for executing ZK circuits across different backends.
 //! Separates mock execution from real circuit execution for testing and production use.
 
+pub mod batch_verifier;
 mod coverage;
 mod isolated;
 mod mock;
 mod traits;
 
+pub use batch_verifier::*;
 pub use coverage::*;
 pub use isolated::*;
 pub use mock::*;

@@ -10,7 +10,7 @@
 //! Expected 2-3x reduction in contention overhead compared to RwLock-based
 //! corpus management.
 
-use zk_core::{TestCase, TestMetadata};
+use zk_core::TestCase;
 use crossbeam::queue::SegQueue;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;

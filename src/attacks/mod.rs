@@ -17,6 +17,7 @@
 //!
 //! - [`zkevm`]: zkEVM state transition, opcode boundary, memory expansion,
 //!   and storage proof attacks for L2 rollup security testing
+//! - [`zkevm_differential`]: Differential testing with reference EVM (Phase 5)
 //!
 //! ## Batch Verification Attacks (Phase 3: Milestone 3.3)
 //!
@@ -45,6 +46,7 @@ pub mod verification;
 pub mod witness;
 pub mod witness_collision;
 pub mod zkevm;  // Phase 3: zkEVM-specific attacks
+pub mod zkevm_differential;  // Phase 5: zkEVM differential testing with reference EVM
 
 pub use arithmetic::*;
 pub use batch_verification::*;
@@ -65,6 +67,7 @@ pub use witness::*;
 #[allow(ambiguous_glob_reexports)]
 pub use witness_collision::*;
 pub use zkevm::*;
+pub use zkevm_differential::*;
 
 pub use zk_attacks::{
     Attack, AttackContext, AttackMetadata, AttackPlugin, AttackPluginLoader, AttackRegistry,
