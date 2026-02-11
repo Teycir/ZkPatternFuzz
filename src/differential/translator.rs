@@ -141,7 +141,8 @@ pub enum CircuitPattern {
 impl CircuitPattern {
     /// Parse pattern from Circom template name
     pub fn from_circom_template(name: &str) -> Self {
-        match name.to_lowercase().as_str() {
+        let lower = name.to_lowercase();
+        match lower.as_str() {
             // Arithmetic
             "add" | "adder" => CircuitPattern::Add,
             "mul" | "multiplier" => CircuitPattern::Mul,
@@ -177,16 +178,16 @@ impl CircuitPattern {
             // Default
             _ => {
                 // Try to parse parameterized patterns
-                if name.starts_with("num2bits") {
+                if lower.starts_with("num2bits") {
                     let bits = parse_num_from_name(name).unwrap_or(254);
                     CircuitPattern::Num2Bits { num_bits: bits }
-                } else if name.starts_with("bits2num") {
+                } else if lower.starts_with("bits2num") {
                     let bits = parse_num_from_name(name).unwrap_or(254);
                     CircuitPattern::Bits2Num { num_bits: bits }
-                } else if name.starts_with("rangecheck") || name.starts_with("range_check") {
+                } else if lower.starts_with("rangecheck") || lower.starts_with("range_check") {
                     let bits = parse_num_from_name(name).unwrap_or(32);
                     CircuitPattern::RangeCheck { num_bits: bits }
-                } else if name.starts_with("merkle") {
+                } else if lower.starts_with("merkle") {
                     let levels = parse_num_from_name(name).unwrap_or(20);
                     CircuitPattern::MerkleProof { levels }
                 } else {
@@ -232,11 +233,18 @@ impl CircuitPattern {
 }
 
 fn parse_num_from_name(name: &str) -> Option<usize> {
-    name.chars()
-        .filter(|c| c.is_ascii_digit())
-        .collect::<String>()
-        .parse()
-        .ok()
+    let digits_rev: String = name
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+
+    if digits_rev.is_empty() {
+        return None;
+    }
+
+    let digits: String = digits_rev.chars().rev().collect();
+    digits.parse().ok()
 }
 
 // ============================================================================
@@ -305,6 +313,8 @@ impl CircuitTranslator {
         self.add_pattern(CircuitPattern::Mul, TargetFramework::Noir, "a * b");
         self.add_pattern(CircuitPattern::Sub, TargetFramework::Noir, "a - b");
         self.add_pattern(CircuitPattern::Div, TargetFramework::Noir, "a / b");
+        self.add_pattern(CircuitPattern::Mod, TargetFramework::Noir, "a % b");
+        self.add_pattern(CircuitPattern::Pow, TargetFramework::Noir, "a.pow(b)");
         self.add_pattern(CircuitPattern::And, TargetFramework::Noir, "a & b");
         self.add_pattern(CircuitPattern::Or, TargetFramework::Noir, "a | b");
         self.add_pattern(CircuitPattern::Xor, TargetFramework::Noir, "a ^ b");
@@ -314,6 +324,7 @@ impl CircuitTranslator {
         self.add_pattern(CircuitPattern::Equal, TargetFramework::Noir, "a == b");
         self.add_pattern(CircuitPattern::LessOrEqual, TargetFramework::Noir, "a <= b");
         self.add_pattern(CircuitPattern::GreaterOrEqual, TargetFramework::Noir, "a >= b");
+        self.add_pattern(CircuitPattern::IsZero, TargetFramework::Noir, "a == 0");
         self.add_pattern(
             CircuitPattern::Poseidon { inputs: 2 },
             TargetFramework::Noir,
@@ -367,29 +378,32 @@ impl CircuitTranslator {
         let mut translated = Vec::new();
         let mut unsupported = Vec::new();
         let mut warnings = Vec::new();
-        let mut total_complexity = 0;
+        let mut total_complexity: usize = 0;
 
         for pattern in patterns {
-            let complexity = pattern.complexity();
-            total_complexity += complexity;
-
-            if total_complexity > self.config.max_complexity {
-                warnings.push(format!(
-                    "Complexity limit reached at pattern {:?}",
-                    pattern
-                ));
-                if self.config.strict_mode {
-                    return Err(anyhow!(
-                        "Translation complexity {} exceeds limit {}",
-                        total_complexity,
-                        self.config.max_complexity
-                    ));
-                }
-                break;
-            }
-
             match self.translate_pattern(pattern) {
-                Ok(translation) => translated.push(translation),
+                Ok(translation) => {
+                    let complexity = pattern.complexity();
+                    let new_total = total_complexity.saturating_add(complexity);
+
+                    if new_total > self.config.max_complexity {
+                        warnings.push(format!(
+                            "Complexity limit reached at pattern {:?}",
+                            pattern
+                        ));
+                        if self.config.strict_mode {
+                            return Err(anyhow!(
+                                "Translation complexity {} exceeds limit {}",
+                                new_total,
+                                self.config.max_complexity
+                            ));
+                        }
+                        break;
+                    }
+
+                    total_complexity = new_total;
+                    translated.push(translation);
+                }
                 Err(e) => {
                     let msg = format!("{:?}: {}", pattern, e);
                     if self.config.strict_mode {

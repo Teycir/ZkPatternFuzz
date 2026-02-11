@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use zk_core::{FieldElement, Framework};
 use zk_fuzzer::chain_fuzzer::mutator::{ChainMutator, MutationWeights};
-use zk_fuzzer::chain_fuzzer::types::{ChainSpec, StepSpec, InputWiring};
+use zk_fuzzer::chain_fuzzer::types::{ChainSpec, StepSpec};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
@@ -20,7 +20,7 @@ fn test_framework_aware_mutator_circom() {
     
     let spec = create_test_chain_spec();
     let mut prior_inputs = HashMap::new();
-    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from(100u64)]);
+    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(100u64)]);
     
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     
@@ -47,7 +47,7 @@ fn test_framework_aware_mutator_noir() {
     
     let spec = create_test_chain_spec();
     let mut prior_inputs = HashMap::new();
-    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from(100u64)]);
+    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(100u64)]);
     
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     
@@ -64,7 +64,7 @@ fn test_framework_aware_mutator_halo2() {
     
     let spec = create_test_chain_spec();
     let mut prior_inputs = HashMap::new();
-    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from(100u64)]);
+    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(100u64)]);
     
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     
@@ -81,7 +81,7 @@ fn test_framework_aware_mutator_cairo() {
     
     let spec = create_test_chain_spec();
     let mut prior_inputs = HashMap::new();
-    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from(100u64)]);
+    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(100u64)]);
     
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     
@@ -103,7 +103,7 @@ fn test_mock_vs_circom_mutation_differences() {
     
     let spec = create_test_chain_spec();
     let mut prior_inputs = HashMap::new();
-    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from(100u64)]);
+    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(100u64)]);
     
     // Use same seed for both
     let mut mock_rng = ChaCha8Rng::seed_from_u64(42);
@@ -185,7 +185,7 @@ fn test_single_step_chain() {
     ]);
     
     let mut prior_inputs = HashMap::new();
-    prior_inputs.insert("only_circuit".to_string(), vec![FieldElement::from(42u64)]);
+    prior_inputs.insert("only_circuit".to_string(), vec![FieldElement::from_u64(42u64)]);
     
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     
@@ -204,9 +204,9 @@ fn test_chained_wirings() {
     ]);
     
     let mut prior_inputs = HashMap::new();
-    prior_inputs.insert("step1".to_string(), vec![FieldElement::from(1u64)]);
-    prior_inputs.insert("step2".to_string(), vec![FieldElement::from(2u64)]);
-    prior_inputs.insert("step3".to_string(), vec![FieldElement::from(3u64)]);
+    prior_inputs.insert("step1".to_string(), vec![FieldElement::from_u64(1u64)]);
+    prior_inputs.insert("step2".to_string(), vec![FieldElement::from_u64(2u64)]);
+    prior_inputs.insert("step3".to_string(), vec![FieldElement::from_u64(3u64)]);
     
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     
@@ -234,7 +234,7 @@ fn test_boundary_injection_with_framework() {
     
     let spec = create_test_chain_spec();
     let mut prior_inputs = HashMap::new();
-    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from(100u64)]);
+    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(100u64)]);
     
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     
@@ -283,8 +283,8 @@ fn test_mutation_validity_rate() {
     
     let spec = create_test_chain_spec();
     let mut prior_inputs = HashMap::new();
-    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from(100u64)]);
-    prior_inputs.insert("circuit_b".to_string(), vec![FieldElement::from(200u64)]);
+    prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(100u64)]);
+    prior_inputs.insert("circuit_b".to_string(), vec![FieldElement::from_u64(200u64)]);
     
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     

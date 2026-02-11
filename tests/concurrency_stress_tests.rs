@@ -438,11 +438,13 @@ fn test_no_data_corruption_under_contention() {
             while start.elapsed() < Duration::from_secs(STRESS_DURATION_SECS) {
                 if let Some(tc) = q.pop() {
                     if tc.inputs.len() >= 2 {
-                        let id = tc.inputs[0].to_u64();
-                        let magic = tc.inputs[1].to_u64();
-                        let expected_magic = id ^ 0xDEADBEEF;
-                        if magic != expected_magic {
-                            cd.fetch_add(1, Ordering::Relaxed);
+                        if let (Some(id), Some(magic)) =
+                            (tc.inputs[0].to_u64(), tc.inputs[1].to_u64())
+                        {
+                            let expected_magic = id ^ 0xDEADBEEF;
+                            if magic != expected_magic {
+                                cd.fetch_add(1, Ordering::Relaxed);
+                            }
                         }
                     }
                 } else {

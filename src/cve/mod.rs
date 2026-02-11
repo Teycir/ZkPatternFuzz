@@ -214,7 +214,7 @@ fn default_true() -> bool {
 pub struct TestCaseConfig {
     pub name: String,
     #[serde(default)]
-    pub inputs: HashMap<String, serde_yaml::Value>,
+    pub inputs: serde_yaml::Mapping,
     pub expected_result: String,
 }
 
@@ -254,11 +254,22 @@ impl RegressionTest {
             .regression_test
             .test_cases
             .iter()
-            .map(|tc| GeneratedTestCase {
-                name: tc.name.clone(),
-                inputs: tc.inputs.clone(),
-                expected_valid: tc.expected_result.contains("valid")
-                    && !tc.expected_result.contains("invalid"),
+            .map(|tc| {
+                let mut ordered_inputs = Vec::new();
+                for (key, value) in &tc.inputs {
+                    if let serde_yaml::Value::String(name) = key {
+                        ordered_inputs.push((name.clone(), value.clone()));
+                    }
+                }
+
+                let expected_valid = expected_result_to_validity(&tc.expected_result);
+
+                GeneratedTestCase {
+                    name: tc.name.clone(),
+                    inputs: ordered_inputs,
+                    expected_result: tc.expected_result.clone(),
+                    expected_valid,
+                }
             })
             .collect();
 
@@ -343,20 +354,45 @@ impl RegressionTest {
             };
 
             let result = executor.execute_sync(&inputs);
-            let passed = result.success == tc.expected_valid;
+
+            let (passed, message) = match tc.expected_valid {
+                Some(expected) => {
+                    let passed = result.success == expected;
+                    let message = if passed {
+                        None
+                    } else {
+                        Some(format!(
+                            "Expected {} but execution {}",
+                            if expected { "valid" } else { "invalid" },
+                            if result.success { "succeeded" } else { "failed" }
+                        ))
+                    };
+                    (passed, message)
+                }
+                None => {
+                    if result.success {
+                        (
+                            true,
+                            Some(format!(
+                                "Expected result '{}' not evaluated; checked execution success only",
+                                tc.expected_result
+                            )),
+                        )
+                    } else {
+                        (
+                            false,
+                            Some(format!(
+                                "Execution failed; expected result '{}' is not evaluated",
+                                tc.expected_result
+                            )),
+                        )
+                    }
+                }
+            };
+
             if !passed {
                 passed_all = false;
             }
-
-            let message = if passed {
-                None
-            } else {
-                Some(format!(
-                    "Expected {} but execution {}",
-                    if tc.expected_valid { "valid" } else { "invalid" },
-                    if result.success { "succeeded" } else { "failed" }
-                ))
-            };
 
             test_results.push(TestCaseResult {
                 name: tc.name.clone(),
@@ -377,8 +413,9 @@ impl RegressionTest {
 #[derive(Debug, Clone)]
 pub struct GeneratedTestCase {
     pub name: String,
-    pub inputs: HashMap<String, serde_yaml::Value>,
-    pub expected_valid: bool,
+    pub inputs: Vec<(String, serde_yaml::Value)>,
+    pub expected_result: String,
+    pub expected_valid: Option<bool>,
 }
 
 /// Result of running a regression test
@@ -401,6 +438,7 @@ pub struct TestCaseResult {
 struct InputSpec {
     name: String,
     length: Option<usize>,
+    is_array: bool,
 }
 
 fn detect_framework(path: &Path) -> Framework {
@@ -447,6 +485,38 @@ fn detect_main_component(source: &str, framework: Framework) -> String {
     "Main".to_string()
 }
 
+fn expected_result_to_validity(expected: &str) -> Option<bool> {
+    let normalized = expected.trim().to_lowercase();
+
+    let invalid_markers = [
+        "invalid",
+        "should_be_invalid",
+        "should_fail",
+        "reject",
+        "rejected",
+        "fail",
+        "failure",
+    ];
+    let valid_markers = [
+        "valid",
+        "should_be_valid",
+        "should_pass",
+        "accept",
+        "accepted",
+        "success",
+        "valid_proof",
+    ];
+
+    if invalid_markers.iter().any(|m| normalized.contains(m)) {
+        return Some(false);
+    }
+    if valid_markers.iter().any(|m| normalized.contains(m)) {
+        return Some(true);
+    }
+
+    None
+}
+
 fn parse_inputs_from_source(source: &str, framework: Framework) -> Vec<InputSpec> {
     let mut inputs = Vec::new();
     match framework {
@@ -486,7 +556,11 @@ fn parse_circom_input(line: &str) -> Option<InputSpec> {
                 (name.to_string(), None)
             };
 
-            return Some(InputSpec { name, length });
+            return Some(InputSpec {
+                name,
+                length,
+                is_array: name_part.contains('['),
+            });
         }
     }
     None
@@ -509,6 +583,7 @@ fn parse_noir_inputs(line: &str) -> Option<Vec<InputSpec>> {
                         specs.push(InputSpec {
                             name: parts[0].trim().to_string(),
                             length: None,
+                            is_array: false,
                         });
                     }
                 }
@@ -533,39 +608,72 @@ fn build_inputs_for_test(
     }
 
     let mut key_map: HashMap<String, &serde_yaml::Value> = HashMap::new();
+    let mut indexed_map: HashMap<String, std::collections::BTreeMap<usize, &serde_yaml::Value>> =
+        HashMap::new();
     for (k, v) in &tc.inputs {
-        key_map.insert(k.to_lowercase(), v);
+        let lower = k.to_lowercase();
+        if let Some((base, idx)) = parse_indexed_name(&lower) {
+            indexed_map.entry(base).or_default().insert(idx, v);
+            continue;
+        }
+        key_map.insert(lower, v);
     }
 
     let mut inputs = Vec::new();
 
     if !input_specs.is_empty() {
         for spec in input_specs {
+            if inputs.len() >= total_inputs {
+                break;
+            }
+
             let key = spec.name.to_lowercase();
-            let value = key_map.get(&key);
+            let synthesized = indexed_map.get(&key).map(build_indexed_sequence);
+            let value = key_map
+                .get(&key)
+                .copied()
+                .or_else(|| synthesized.as_ref());
+
+            let inferred_len = spec.length.or_else(|| {
+                if spec.is_array {
+                    value.and_then(infer_length_from_value)
+                } else {
+                    None
+                }
+            });
+
             let mut elements = match value {
-                Some(v) => parse_yaml_value(v, field_modulus, rng, spec.length)?,
-                None => vec![FieldElement::zero(); spec.length.unwrap_or(1)],
+                Some(v) => parse_yaml_value(v, field_modulus, rng, inferred_len)?,
+                None => vec![FieldElement::zero(); inferred_len.unwrap_or(1)],
             };
 
-            if let Some(len) = spec.length {
+            if let Some(len) = inferred_len {
                 if elements.len() < len {
-                    elements.extend(std::iter::repeat(FieldElement::zero()).take(len - elements.len()));
+                    elements
+                        .extend(std::iter::repeat(FieldElement::zero()).take(len - elements.len()));
                 } else if elements.len() > len {
                     elements.truncate(len);
                 }
             }
 
+            let remaining = total_inputs.saturating_sub(inputs.len());
+            if elements.len() > remaining {
+                elements.truncate(remaining);
+            }
+
             inputs.extend(elements);
         }
     } else {
-        let mut keys: Vec<String> = tc.inputs.keys().map(|k| k.to_string()).collect();
-        keys.sort();
-        for key in keys {
-            if let Some(value) = tc.inputs.get(&key) {
-                let mut elements = parse_yaml_value(value, field_modulus, rng, None)?;
-                inputs.append(&mut elements);
+        for (_key, value) in &tc.inputs {
+            if inputs.len() >= total_inputs {
+                break;
             }
+            let mut elements = parse_yaml_value(value, field_modulus, rng, None)?;
+            let remaining = total_inputs.saturating_sub(inputs.len());
+            if elements.len() > remaining {
+                elements.truncate(remaining);
+            }
+            inputs.append(&mut elements);
         }
     }
 
@@ -576,6 +684,53 @@ fn build_inputs_for_test(
     }
 
     Ok(inputs)
+}
+
+fn parse_indexed_name(name: &str) -> Option<(String, usize)> {
+    if let Some(start) = name.rfind('[') {
+        if let Some(end) = name.rfind(']') {
+            let base = name[..start].to_string();
+            let idx = name[start + 1..end].parse::<usize>().ok()?;
+            return Some((base, idx));
+        }
+    }
+    if let Some(dot) = name.rfind('.') {
+        let (base, idx_str) = name.split_at(dot);
+        let idx = idx_str.trim_start_matches('.').parse::<usize>().ok()?;
+        return Some((base.to_string(), idx));
+    }
+    None
+}
+
+fn build_indexed_sequence(
+    values: &std::collections::BTreeMap<usize, &serde_yaml::Value>,
+) -> serde_yaml::Value {
+    let max = values.keys().max().copied().unwrap_or(0);
+    let mut seq = Vec::with_capacity(max + 1);
+    for idx in 0..=max {
+        if let Some(value) = values.get(&idx) {
+            seq.push((*value).clone());
+        } else {
+            seq.push(serde_yaml::Value::Number(serde_yaml::Number::from(0)));
+        }
+    }
+    serde_yaml::Value::Sequence(seq)
+}
+
+fn infer_length_from_value(value: &serde_yaml::Value) -> Option<usize> {
+    match value {
+        serde_yaml::Value::Sequence(seq) => Some(seq.len()),
+        serde_yaml::Value::String(s) => {
+            let value = s.trim();
+            if let Some(rest) = value.strip_prefix("random_") {
+                if let Ok(count) = rest.parse::<usize>() {
+                    return Some(count);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
 }
 
 fn parse_yaml_value(

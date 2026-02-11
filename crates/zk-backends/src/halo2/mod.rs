@@ -278,6 +278,10 @@ impl Halo2Target {
 
     /// Setup from a JSON circuit specification
     fn setup_from_json(&mut self) -> Result<()> {
+        // JSON specs provide constraint metadata but not executable circuits.
+        // Use mock execution for deterministic outputs in tests and analysis.
+        self.mock_mode = true;
+
         let content = std::fs::read_to_string(&self.circuit_path)?;
         let spec: serde_json::Value = serde_json::from_str(&content)?;
 

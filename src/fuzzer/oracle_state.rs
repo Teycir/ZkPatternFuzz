@@ -610,7 +610,7 @@ mod tests {
         let filter = BloomFilter::new(100_000, 7);
 
         // Add some items
-        for i in 0..1000 {
+        for i in 0u64..1000 {
             filter.add(&i.to_le_bytes());
         }
 
@@ -633,7 +633,7 @@ mod tests {
         let map: BoundedStateMap<Vec<u8>, u64> = BoundedStateMap::new(config);
 
         // Insert some entries
-        for i in 0..50 {
+        for i in 0u64..50 {
             let key = i.to_le_bytes().to_vec();
             map.insert(key, i, 8);
         }
@@ -659,7 +659,7 @@ mod tests {
         let map: BoundedStateMap<Vec<u8>, u64> = BoundedStateMap::new(config);
 
         // Insert more than max
-        for i in 0..100 {
+        for i in 0u64..100 {
             let key = i.to_le_bytes().to_vec();
             map.insert(key, i, 8);
         }

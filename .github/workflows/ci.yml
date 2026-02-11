@@ -94,6 +94,57 @@ jobs:
       - name: Run doc tests
         run: cargo test --doc --all-features
 
+  # Real backend integration tests (Circom, snarkjs, Noir)
+  real-backend-tests:
+    name: Real Backend Tests
+    runs-on: ubuntu-latest
+    needs: check
+    env:
+      ZKFUZZ_REAL_BACKENDS: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Z3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libz3-dev z3
+
+      - name: Install Circom and snarkjs
+        run: npm install -g circom snarkjs
+
+      - name: Install Noir (nargo)
+        run: |
+          curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
+          echo "$HOME/.noirup/bin" >> $GITHUB_PATH
+          noirup -y || noirup --yes || noirup
+
+      - name: Run real backend integration tests
+        run: cargo test --test backend_integration_tests --all-features --verbose
+
   # Coverage reporting
   coverage:
     name: Code Coverage

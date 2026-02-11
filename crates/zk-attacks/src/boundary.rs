@@ -701,12 +701,12 @@ impl Attack for BoundaryTester {
                                 });
                             }
 
-                            if findings.len() >= self.samples {
+                            if findings.len() >= context.samples {
                                 break;
                             }
                         }
 
-                        if findings.len() >= self.samples {
+                        if findings.len() >= context.samples {
                             break;
                         }
                     }

@@ -96,8 +96,14 @@ impl UnderconstrainedDetector {
             return Vec::new();
         };
 
+        let deps_list = inspector.get_constraint_dependencies();
+        if deps_list.is_empty() {
+            tracing::debug!("Unused signal analysis skipped: no constraints available");
+            return Vec::new();
+        }
+
         let mut used: HashSet<usize> = HashSet::new();
-        for deps in inspector.get_constraint_dependencies() {
+        for deps in deps_list {
             for idx in deps {
                 used.insert(idx);
             }

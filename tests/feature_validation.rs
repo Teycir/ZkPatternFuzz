@@ -7,8 +7,6 @@
 //!
 //! Run with: `cargo test feature_validation --release -- --nocapture`
 
-use std::collections::HashMap;
-
 // ============================================================================
 // Constraint Inference Validation (Milestone 2.1)
 // ============================================================================
@@ -30,7 +28,11 @@ fn test_constraint_inference_precision() {
 
     // Test cases: (circuit_type, expected_constraints, tolerance)
     let test_cases = vec![
-        ("range_proof", vec!["value < 2^64", "bits are binary"], 0.8),
+        (
+            "range_proof",
+            vec!["value < 2^64", "bits are binary", "recomposition correct"],
+            0.8,
+        ),
         ("merkle_tree", vec!["path_idx is binary", "hash_consistency"], 0.75),
         ("nullifier", vec!["hash_binding", "uniqueness"], 0.7),
         ("signature", vec!["curve_point", "scalar_range"], 0.7),
@@ -170,12 +172,14 @@ fn test_metamorphic_relations_coverage() {
     let mut valid_relations = 0;
     for relation in &relations {
         let status = if relation.validation_rate >= 0.80 { "✓" } else { "⚠" };
+        let short_desc: String = relation.description.chars().take(28).collect();
         println!(
-            "{} {:<23} {:>15.0}% {:>20}",
+            "{} {:<23} {:>15.0}% {:>20}  {}",
             status,
             relation.name,
             relation.validation_rate * 100.0,
-            relation.applicable_to.join(", ").chars().take(18).collect::<String>()
+            relation.applicable_to.join(", ").chars().take(18).collect::<String>(),
+            short_desc
         );
         
         if relation.validation_rate >= 0.80 {
@@ -434,6 +438,8 @@ mod unit_tests {
     fn test_constraint_inference_result_default() {
         let result = ConstraintInferenceResult::default();
         assert_eq!(result.total_inferences, 0);
+        assert_eq!(result.correct_inferences, 0);
+        assert_eq!(result.false_positive_inferences, 0);
         assert_eq!(result.precision, 0.0);
     }
 

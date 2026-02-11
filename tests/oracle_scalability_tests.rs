@@ -40,13 +40,13 @@ fn test_bloom_filter_accuracy() {
     let filter = BloomFilter::new(1_000_000, 7);
 
     // Add 10,000 items
-    for i in 0..10_000 {
+    for i in 0u64..10_000 {
         filter.add(&i.to_le_bytes());
     }
 
     // Check false positive rate
     let mut false_positives = 0;
-    for i in 10_000..20_000 {
+    for i in 10_000u64..20_000 {
         if filter.might_contain(&i.to_le_bytes()) {
             false_positives += 1;
         }
@@ -67,7 +67,7 @@ fn test_bloom_filter_high_load() {
 
     // Add 1 million items
     let start = Instant::now();
-    for i in 0..1_000_000 {
+    for i in 0u64..1_000_000 {
         filter.add(&i.to_le_bytes());
     }
     let add_time = start.elapsed();
@@ -81,7 +81,7 @@ fn test_bloom_filter_high_load() {
     // Check lookup performance
     let start = Instant::now();
     let mut hits = 0;
-    for i in 0..1_000_000 {
+    for i in 0u64..1_000_000 {
         if filter.might_contain(&i.to_le_bytes()) {
             hits += 1;
         }

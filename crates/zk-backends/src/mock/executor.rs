@@ -3,6 +3,7 @@
 //! Provides a mock implementation of CircuitExecutor that simulates
 //! circuit execution without requiring actual ZK backends.
 
+use crate::TargetCircuit;
 use zk_core::{
     CircuitExecutor, CircuitInfo, ConstraintEquation, ConstraintInspector, ConstraintResult,
     ExecutionCoverage, ExecutionResult, FieldElement, Framework,
@@ -351,6 +352,50 @@ impl CircuitExecutor for MockCircuitExecutor {
 
     fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
         Some(self)
+    }
+}
+
+impl TargetCircuit for MockCircuitExecutor {
+    fn framework(&self) -> Framework {
+        self.framework
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn num_constraints(&self) -> usize {
+        self.num_constraints
+    }
+
+    fn num_private_inputs(&self) -> usize {
+        self.num_private_inputs
+    }
+
+    fn num_public_inputs(&self) -> usize {
+        self.num_public_inputs
+    }
+
+    fn execute(&self, inputs: &[FieldElement]) -> anyhow::Result<Vec<FieldElement>> {
+        let result = self.execute_sync(inputs);
+        if result.success {
+            Ok(result.outputs)
+        } else {
+            anyhow::bail!(
+                "{}",
+                result
+                    .error
+                    .unwrap_or_else(|| "Mock execution failed".to_string())
+            )
+        }
+    }
+
+    fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
+        <Self as CircuitExecutor>::prove(self, witness)
+    }
+
+    fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
+        <Self as CircuitExecutor>::verify(self, proof, public_inputs)
     }
 }
 

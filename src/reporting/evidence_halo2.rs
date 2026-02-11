@@ -20,7 +20,7 @@
 
 use super::evidence::VerificationResult;
 use std::path::Path;
-use zk_core::Finding;
+use zk_core::{FieldElement, Finding};
 
 /// Generate Halo2 proof verification for a finding
 ///
@@ -70,6 +70,18 @@ pub fn generate_halo2_proof(
     let witness: serde_json::Map<String, serde_json::Value> =
         serde_json::from_str(&witness_content)?;
 
+    if let Ok((proof_bytes, verified)) = try_halo2_prove_and_verify(spec_path, &witness) {
+        std::fs::write(&proof_path, &proof_bytes)?;
+        return Ok((
+            proof_path,
+            if verified {
+                VerificationResult::Passed
+            } else {
+                VerificationResult::Failed("Halo2 proof verification failed".to_string())
+            },
+        ));
+    }
+
     // Create verification result JSON
     let verification_result = serde_json::json!({
         "circuit_spec": spec_path.display().to_string(),
@@ -91,6 +103,77 @@ pub fn generate_halo2_proof(
             "Halo2 requires Rust compilation. Run verify_halo2.rs to verify.".to_string(),
         ),
     ))
+}
+
+fn try_halo2_prove_and_verify(
+    spec_path: &Path,
+    witness: &serde_json::Map<String, serde_json::Value>,
+) -> anyhow::Result<(Vec<u8>, bool)> {
+    use crate::targets::Halo2Target;
+    use crate::targets::TargetCircuit;
+
+    let mut target = Halo2Target::new(spec_path.to_str().unwrap_or_default())?;
+    target.setup()?;
+
+    let inputs = parse_witness_inputs(witness)?;
+    let public_len = target.num_public_inputs();
+    let public_inputs = inputs.iter().take(public_len).cloned().collect::<Vec<_>>();
+
+    let proof = target.prove(&inputs)?;
+    let verified = target.verify(&proof, &public_inputs)?;
+    Ok((proof, verified))
+}
+
+fn parse_witness_inputs(
+    witness: &serde_json::Map<String, serde_json::Value>,
+) -> anyhow::Result<Vec<FieldElement>> {
+    let mut keys: Vec<&String> = witness.keys().collect();
+    keys.sort();
+
+    let mut inputs = Vec::new();
+    for key in keys {
+        if let Some(value) = witness.get(key) {
+            flatten_json_value(value, &mut inputs)?;
+        }
+    }
+    Ok(inputs)
+}
+
+fn flatten_json_value(
+    value: &serde_json::Value,
+    out: &mut Vec<FieldElement>,
+) -> anyhow::Result<()> {
+    match value {
+        serde_json::Value::String(s) => {
+            if let Ok(fe) = FieldElement::from_hex(s) {
+                out.push(fe);
+            } else if let Ok(num) = s.parse::<u64>() {
+                out.push(FieldElement::from_u64(num));
+            } else {
+                anyhow::bail!("Unsupported witness string value: {}", s);
+            }
+        }
+        serde_json::Value::Number(n) => {
+            let num = n.as_u64().unwrap_or(0);
+            out.push(FieldElement::from_u64(num));
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                flatten_json_value(item, out)?;
+            }
+        }
+        serde_json::Value::Object(obj) => {
+            let mut keys: Vec<&String> = obj.keys().collect();
+            keys.sort();
+            for key in keys {
+                if let Some(value) = obj.get(key) {
+                    flatten_json_value(value, out)?;
+                }
+            }
+        }
+        _ => anyhow::bail!("Unsupported witness value type"),
+    }
+    Ok(())
 }
 
 /// Generate a Rust script for Halo2 verification

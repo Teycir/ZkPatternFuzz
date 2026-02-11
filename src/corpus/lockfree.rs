@@ -371,6 +371,7 @@ pub fn create_shared_corpus(coverage_bits: usize) -> SharedLockFreeCorpus {
 mod tests {
     use super::*;
     use zk_core::FieldElement;
+    use zk_core::TestMetadata;
 
     fn make_test_case(inputs: Vec<u64>) -> TestCase {
         TestCase {
@@ -467,7 +468,7 @@ mod tests {
             corpus.add(tc, i * 12345 + 100); // Different hashes
         }
         
-        let (high, mid, low) = corpus.queue_sizes();
+        let (high, _mid, _low) = corpus.queue_sizes();
         // New coverage goes to high priority
         assert!(high > 0);
     }

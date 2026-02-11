@@ -466,8 +466,6 @@ fn test_supported_patterns_halo2() {
 
 #[test]
 fn test_50_plus_common_patterns_translatable() {
-    let translator = CircuitTranslator::new(TargetFramework::Noir);
-
     // Test that we can translate 50+ common circuit patterns
     let patterns = vec![
         // Arithmetic (6)

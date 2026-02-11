@@ -49,11 +49,11 @@ impl CircuitExecutor for MockBatchTestExecutor {
 
     fn circuit_info(&self) -> CircuitInfo {
         CircuitInfo {
+            name: "mock_batch_test".to_string(),
             num_constraints: 1000,
             num_private_inputs: 3,
             num_public_inputs: 2,
             num_outputs: 1,
-            constraint_density: 0.5,
         }
     }
 
@@ -101,7 +101,7 @@ fn test_real_batch_verification_all_valid() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..5)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier
@@ -131,7 +131,7 @@ fn test_real_batch_verification_with_invalid_proofs() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..5)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier
@@ -176,8 +176,8 @@ fn test_real_batch_mismatched_lengths() {
     }];
     
     let public_inputs = vec![
-        PublicInputs::new(vec![FieldElement::from(1u64)]),
-        PublicInputs::new(vec![FieldElement::from(2u64)]),
+        PublicInputs::new(vec![FieldElement::from_u64(1u64)]),
+        PublicInputs::new(vec![FieldElement::from_u64(2u64)]),
     ];
 
     let result = verifier.verify_batch(&proofs, &public_inputs, AggregationMethod::NaiveBatch);
@@ -203,7 +203,7 @@ fn test_groth16_batch_aggregation() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..3)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier
@@ -229,7 +229,7 @@ fn test_snarkpack_batch_aggregation() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..4)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier
@@ -255,7 +255,7 @@ fn test_plonk_batch_aggregation() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..3)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier
@@ -281,7 +281,7 @@ fn test_halo2_accumulation() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..3)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier
@@ -317,7 +317,7 @@ fn test_batch_size_limit() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..10)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier.verify_batch(&proofs, &public_inputs, AggregationMethod::NaiveBatch);
@@ -339,7 +339,7 @@ fn test_batch_verification_no_executor() {
         circuit_id: "test".to_string(),
     }];
     
-    let public_inputs = vec![PublicInputs::new(vec![FieldElement::from(1u64)])];
+    let public_inputs = vec![PublicInputs::new(vec![FieldElement::from_u64(1u64)])];
 
     let result = verifier.verify_batch(&proofs, &public_inputs, AggregationMethod::NaiveBatch);
     assert!(result.is_err(), "Should error when no executor configured");
@@ -364,15 +364,15 @@ fn test_verification_time_recorded() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..3)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier
         .verify_batch(&proofs, &public_inputs, AggregationMethod::NaiveBatch)
         .expect("Batch verification should succeed");
 
-    // Verification time should be recorded (may be 0 if very fast, but field should exist)
-    assert!(result.verification_time_us >= 0);
+    assert!(result.batch_passed);
+    assert_eq!(result.method, AggregationMethod::NaiveBatch);
 }
 
 // ============================================================================
@@ -394,7 +394,7 @@ fn test_diagnostics_populated() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..5)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier
@@ -423,7 +423,7 @@ fn test_single_proof_batch() {
         circuit_id: "test".to_string(),
     }];
     
-    let public_inputs = vec![PublicInputs::new(vec![FieldElement::from(42u64)])];
+    let public_inputs = vec![PublicInputs::new(vec![FieldElement::from_u64(42u64)])];
 
     let result = verifier
         .verify_batch(&proofs, &public_inputs, AggregationMethod::NaiveBatch)
@@ -448,7 +448,7 @@ fn test_all_proofs_invalid() {
         .collect();
 
     let public_inputs: Vec<PublicInputs> = (0..3)
-        .map(|i| PublicInputs::new(vec![FieldElement::from(i as u64)]))
+        .map(|i| PublicInputs::new(vec![FieldElement::from_u64(i as u64)]))
         .collect();
 
     let result = verifier

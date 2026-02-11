@@ -875,7 +875,7 @@ mod tests {
     #[test]
     fn test_oracle_creation() {
         let oracle = MetamorphicOracle::new()
-            .with_standard_relations()
+            .with_circuit_aware_relations()
             .with_tolerance(0.001);
 
         assert!(!oracle.relations.is_empty());

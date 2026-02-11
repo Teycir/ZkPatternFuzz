@@ -38,7 +38,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use zk_core::{CircuitExecutor, ExecutionCoverage, ExecutionResult, FieldElement, Framework};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

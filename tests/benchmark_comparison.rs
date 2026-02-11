@@ -8,7 +8,6 @@
 //! Run with: `cargo test benchmark_comparison --release -- --nocapture`
 
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
 
 /// Throughput benchmark results
 #[derive(Debug, Default)]
@@ -60,18 +59,20 @@ fn test_throughput_small_circuits() {
         let duration = start.elapsed();
         let execs_per_sec = executions as f64 / duration.as_secs_f64();
 
-        results.push(ThroughputResult {
+        let result = ThroughputResult {
             tool: "ZkPatternFuzz".into(),
             circuit_size: size,
             executions,
             duration_ms: duration.as_millis() as u64,
             execs_per_second: execs_per_sec,
-        });
+        };
 
         println!(
-            "  Circuit size: {:>6} constraints | {:>8.1} execs/sec | {:>5}ms total",
-            size, execs_per_sec, duration.as_millis()
+            "  {:<12} Circuit size: {:>6} | {:>8.1} execs/sec | {:>5}ms total",
+            result.tool, result.circuit_size, result.execs_per_second, result.duration_ms
         );
+
+        results.push(result);
     }
 
     // Verify throughput meets minimum threshold

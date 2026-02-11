@@ -23,6 +23,7 @@ use crate::analysis::{
     UnknownLookupPolicy, WireRef,
 };
 use crate::analysis::constraint_types::LinearCombination;
+use crate::targets::TargetCircuit;
 use zk_core::{FieldElement, Framework};
 use zk_fuzzer_core::constants::FieldType;
 use async_trait::async_trait;
@@ -866,7 +867,7 @@ impl CircuitExecutor for CircomExecutor {
             num_constraints: self.target.num_constraints(),
             num_private_inputs: self.target.num_private_inputs(),
             num_public_inputs: self.target.num_public_inputs(),
-            num_outputs: 1,
+            num_outputs: self.target.num_public_inputs().max(1),
         }
     }
 
@@ -1054,7 +1055,7 @@ impl CircuitExecutor for NoirExecutor {
             num_constraints: self.target.num_constraints(),
             num_private_inputs: self.target.num_private_inputs(),
             num_public_inputs: self.target.num_public_inputs(),
-            num_outputs: 1,
+            num_outputs: self.target.num_public_inputs().max(1),
         }
     }
 
@@ -1339,6 +1340,16 @@ impl ConstraintInspector for Halo2Executor {
             .collect()
     }
 
+    fn public_input_indices(&self) -> Vec<usize> {
+        (0..self.target.num_public_inputs()).collect()
+    }
+
+    fn private_input_indices(&self) -> Vec<usize> {
+        let start = self.target.num_public_inputs();
+        let end = start + self.target.num_private_inputs();
+        (start..end).collect()
+    }
+
     fn wire_labels(&self) -> std::collections::HashMap<usize, String> {
         let parsed = self.target.load_plonk_constraints();
         let mut labels = HashMap::new();
@@ -1414,6 +1425,10 @@ impl CircuitExecutor for CairoExecutor {
         use crate::targets::TargetCircuit;
         self.target.verify(proof, public_inputs)
     }
+
+    fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
+        Some(self)
+    }
 }
 
 impl ConstraintInspector for CairoExecutor {
@@ -1430,15 +1445,17 @@ impl ConstraintInspector for CairoExecutor {
     }
 
     fn public_input_indices(&self) -> Vec<usize> {
-        (0..self.circuit_info().num_private_inputs).collect()
-    }
-
-    fn private_input_indices(&self) -> Vec<usize> {
         Vec::new()
     }
 
+    fn private_input_indices(&self) -> Vec<usize> {
+        (0..self.target.num_private_inputs()).collect()
+    }
+
     fn output_indices(&self) -> Vec<usize> {
-        (0..self.circuit_info().num_outputs).collect()
+        let start = self.target.num_private_inputs();
+        let end = start + self.target.num_public_inputs();
+        (start..end).collect()
     }
 
     fn wire_labels(&self) -> std::collections::HashMap<usize, String> {

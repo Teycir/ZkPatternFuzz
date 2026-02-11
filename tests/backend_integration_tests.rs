@@ -5,11 +5,33 @@
 
 use std::path::PathBuf;
 use zk_fuzzer::config::Framework;
-use zk_fuzzer::executor::{CircuitExecutor, ExecutorFactory, CircomExecutor, NoirExecutor, Halo2Executor};
+use zk_fuzzer::executor::{
+    CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions, CircomExecutor, NoirExecutor,
+    Halo2Executor,
+};
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CircomTarget, NoirTarget, Halo2Target, CairoTarget, TargetCircuit};
 
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+
+fn real_backend_tests_enabled() -> bool {
+    match std::env::var("ZKFUZZ_REAL_BACKENDS") {
+        Ok(value) => matches!(value.as_str(), "1" | "true" | "yes"),
+        Err(_) => false,
+    }
+}
+
+fn require_real_backends(test_name: &str) -> bool {
+    if real_backend_tests_enabled() {
+        true
+    } else {
+        eprintln!(
+            "skipping {} (set ZKFUZZ_REAL_BACKENDS=1 to enable real-backend tests)",
+            test_name
+        );
+        false
+    }
+}
 
 fn repo_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -55,6 +77,9 @@ fn halo2_real_repo_path() -> PathBuf {
 /// Test that all required backends are available
 #[test]
 fn test_backend_availability() {
+    if !require_real_backends("test_backend_availability") {
+        return;
+    }
     let circom_version = CircomTarget::check_circom_available()
         .expect("Circom not available. Install with: npm install -g circom");
     let snarkjs_version = CircomTarget::check_snarkjs_available()
@@ -192,6 +217,9 @@ fn test_cairo_analysis() {
 /// Integration test for Circom (only runs if circom is available)
 #[test]
 fn test_circom_integration() {
+    if !require_real_backends("test_circom_integration") {
+        return;
+    }
     CircomTarget::check_circom_available()
         .expect("Circom not available. Install with: npm install -g circom");
     CircomTarget::check_snarkjs_available()
@@ -217,6 +245,9 @@ fn test_circom_integration() {
 /// Integration test for Noir (only runs if nargo is available)
 #[test]
 fn test_noir_integration() {
+    if !require_real_backends("test_noir_integration") {
+        return;
+    }
     NoirTarget::check_nargo_available()
         .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
 
@@ -235,9 +266,46 @@ fn test_noir_integration() {
     assert_eq!(outputs.get(0), Some(&FieldElement::from_u64(15)));
 }
 
+/// Integration test for ExecutorFactory using real backends
+#[test]
+fn test_executor_factory_real_backends() {
+    if !require_real_backends("test_executor_factory_real_backends") {
+        return;
+    }
+
+    let options = ExecutorFactoryOptions::strict();
+
+    let circom_path = circom_test_circuit("multiplier");
+    assert!(circom_path.exists(), "Missing test circuit at {:?}", circom_path);
+    let circom_exec = ExecutorFactory::create_with_options(
+        Framework::Circom,
+        circom_path.to_str().unwrap(),
+        "Multiplier",
+        &options,
+    )
+    .expect("Failed to create Circom executor via factory");
+    assert_eq!(circom_exec.framework(), Framework::Circom);
+    assert!(!circom_exec.is_mock(), "Circom executor should not be mock");
+
+    let noir_path = noir_project_path("multiplier");
+    assert!(noir_path.exists(), "Missing Noir project at {:?}", noir_path);
+    let noir_exec = ExecutorFactory::create_with_options(
+        Framework::Noir,
+        noir_path.to_str().unwrap(),
+        "main",
+        &options,
+    )
+    .expect("Failed to create Noir executor via factory");
+    assert_eq!(noir_exec.framework(), Framework::Noir);
+    assert!(!noir_exec.is_mock(), "Noir executor should not be mock");
+}
+
 /// Validate constraint-level coverage for Circom executor
 #[test]
 fn test_circom_constraint_coverage() {
+    if !require_real_backends("test_circom_constraint_coverage") {
+        return;
+    }
     CircomTarget::check_circom_available()
         .expect("Circom not available. Install with: npm install -g circom");
     CircomTarget::check_snarkjs_available()
@@ -266,6 +334,9 @@ fn test_circom_constraint_coverage() {
 /// Validate constraint-level coverage for Noir executor
 #[test]
 fn test_noir_constraint_coverage() {
+    if !require_real_backends("test_noir_constraint_coverage") {
+        return;
+    }
     NoirTarget::check_nargo_available()
         .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
 
@@ -293,6 +364,9 @@ fn test_noir_constraint_coverage() {
 #[test]
 #[ignore]
 fn test_halo2_real_circuit_constraint_coverage() {
+    if !require_real_backends("test_halo2_real_circuit_constraint_coverage") {
+        return;
+    }
     let repo_path = halo2_real_repo_path();
     assert!(
         repo_path.exists(),
@@ -330,6 +404,9 @@ fn test_halo2_real_circuit_constraint_coverage() {
 /// Integration test for Cairo (only runs if cairo tools are available)
 #[test]
 fn test_cairo_integration() {
+    if !require_real_backends("test_cairo_integration") {
+        return;
+    }
     CairoTarget::check_cairo_available()
         .expect("Cairo not available. Ensure cairo-compile and cairo-run are on PATH");
 
@@ -347,6 +424,9 @@ fn test_cairo_integration() {
 /// Integration test for Halo2 JSON spec loading/execution
 #[test]
 fn test_halo2_json_integration() {
+    if !require_real_backends("test_halo2_json_integration") {
+        return;
+    }
     let spec_path = halo2_spec_path("minimal");
     assert!(spec_path.exists(), "Missing Halo2 spec at {:?}", spec_path);
 
