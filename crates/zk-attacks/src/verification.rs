@@ -7,9 +7,9 @@
 
 use super::{Attack, AttackContext};
 use crate::registry::{AttackMetadata, AttackPlugin};
-use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 use rand::Rng;
 use std::sync::Arc;
+use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 
 /// Proof verification fuzzer
 pub struct VerificationFuzzer {
@@ -374,20 +374,16 @@ impl Attack for VerificationFuzzer {
 
 impl AttackPlugin for VerificationFuzzer {
     fn metadata(&self) -> AttackMetadata {
-        AttackMetadata::new(
-            "verification_fuzzing",
-            self.description(),
-            "0.1.0",
-        )
+        AttackMetadata::new("verification_fuzzing", self.description(), "0.1.0")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zk_backends::MockCircuitExecutor;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use zk_backends::MockCircuitExecutor;
 
     #[test]
     fn test_verification_fuzzer_creation() {

@@ -32,8 +32,8 @@ use super::{Attack, AttackContext};
 use crate::registry::{AttackMetadata, AttackPlugin};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
 use std::collections::HashMap;
+use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
 
 /// Known ZK-friendly hash types for specialized collision testing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -561,11 +561,7 @@ fn outputs_to_bytes(outputs: &[FieldElement]) -> Vec<u8> {
 
 impl AttackPlugin for CollisionDetector {
     fn metadata(&self) -> AttackMetadata {
-        AttackMetadata::new(
-            "collision",
-            self.description(),
-            "0.1.0",
-        )
+        AttackMetadata::new("collision", self.description(), "0.1.0")
     }
 }
 

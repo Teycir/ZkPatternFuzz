@@ -92,10 +92,6 @@ impl Attack for ArithmeticTester {
 
 impl AttackPlugin for ArithmeticTester {
     fn metadata(&self) -> AttackMetadata {
-        AttackMetadata::new(
-            "arithmetic",
-            self.description(),
-            "0.1.0",
-        )
+        AttackMetadata::new("arithmetic", self.description(), "0.1.0")
     }
 }

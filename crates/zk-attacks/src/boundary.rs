@@ -31,12 +31,12 @@
 
 use super::{Attack, AttackContext};
 use crate::registry::{AttackMetadata, AttackPlugin};
+use num_bigint::BigUint;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use zk_fuzzer_core::constants::bn254_modulus_bytes;
-use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
-use num_bigint::BigUint;
 use std::collections::HashMap;
+use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
+use zk_fuzzer_core::constants::bn254_modulus_bytes;
 
 /// Boundary value categories for organized testing
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -680,7 +680,8 @@ impl Attack for BoundaryTester {
                                 executor.execute_sync(&inputs).success
                             };
 
-                            let vulnerabilities = self.check_range_enforcement(accepts_value, range);
+                            let vulnerabilities =
+                                self.check_range_enforcement(accepts_value, range);
                             for vuln in vulnerabilities {
                                 let mut witness = base_inputs.clone();
                                 witness[idx] = vuln.test_value.clone();
@@ -776,11 +777,7 @@ impl Attack for BoundaryTester {
 
 impl AttackPlugin for BoundaryTester {
     fn metadata(&self) -> AttackMetadata {
-        AttackMetadata::new(
-            "boundary",
-            self.description(),
-            "0.1.0",
-        )
+        AttackMetadata::new("boundary", self.description(), "0.1.0")
     }
 }
 

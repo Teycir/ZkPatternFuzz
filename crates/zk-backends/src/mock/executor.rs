@@ -419,10 +419,10 @@ mod tests {
     fn test_mock_executor_basic() {
         let executor = MockCircuitExecutor::new("test", 5, 2);
 
-        assert_eq!(executor.name(), "test");
-        assert_eq!(executor.num_private_inputs(), 5);
-        assert_eq!(executor.num_public_inputs(), 2);
-        assert_eq!(executor.framework(), Framework::Mock);
+        assert_eq!(TargetCircuit::name(&executor), "test");
+        assert_eq!(TargetCircuit::num_private_inputs(&executor), 5);
+        assert_eq!(TargetCircuit::num_public_inputs(&executor), 2);
+        assert_eq!(TargetCircuit::framework(&executor), Framework::Mock);
     }
 
     #[test]
@@ -464,11 +464,11 @@ mod tests {
         let executor = MockCircuitExecutor::new("test", 2, 1);
         let witness = vec![FieldElement::one()];
 
-        let proof = executor.prove(&witness).unwrap();
+        let proof = CircuitExecutor::prove(&executor, &witness).unwrap();
         assert_eq!(proof.len(), 256);
 
         let public_inputs = vec![FieldElement::one()];
-        let verified = executor.verify(&proof, &public_inputs).unwrap();
+        let verified = CircuitExecutor::verify(&executor, &proof, &public_inputs).unwrap();
         assert!(verified);
     }
 }

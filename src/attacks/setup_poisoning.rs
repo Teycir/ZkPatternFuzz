@@ -49,8 +49,7 @@ impl SetupPoisoningDetector {
                 continue;
             }
 
-            let public_inputs: Vec<FieldElement> =
-                witness[..info.num_public_inputs].to_vec();
+            let public_inputs: Vec<FieldElement> = witness[..info.num_public_inputs].to_vec();
 
             match executor_b.verify(&proof_a, &public_inputs) {
                 Ok(true) => {

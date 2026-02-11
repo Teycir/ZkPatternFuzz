@@ -8,8 +8,8 @@
 
 use super::{Attack, AttackContext, CircuitInfo};
 use crate::registry::{AttackMetadata, AttackPlugin};
-use zk_core::{AttackType, ConstraintInspector, Finding, ProofOfConcept, Severity};
 use std::collections::{HashMap, HashSet};
+use zk_core::{AttackType, ConstraintInspector, Finding, ProofOfConcept, Severity};
 
 /// Detector for underconstrained circuits
 pub struct UnderconstrainedDetector {
@@ -301,11 +301,7 @@ impl Attack for UnderconstrainedDetector {
 
 impl AttackPlugin for UnderconstrainedDetector {
     fn metadata(&self) -> AttackMetadata {
-        AttackMetadata::new(
-            "underconstrained",
-            self.description(),
-            "0.1.0",
-        )
+        AttackMetadata::new("underconstrained", self.description(), "0.1.0")
     }
 }
 

@@ -184,10 +184,7 @@ impl EmbeddedProfile {
             strict_backend: true,
             evidence_mode: false,
             per_exec_isolation: false,
-            attacks: vec![
-                "underconstrained".to_string(),
-                "boundary".to_string(),
-            ],
+            attacks: vec!["underconstrained".to_string(), "boundary".to_string()],
             constraint_guided_enabled: false,
             symbolic_enabled: false,
             symbolic_max_depth: 20,

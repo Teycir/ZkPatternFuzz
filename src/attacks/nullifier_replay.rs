@@ -21,7 +21,10 @@ impl NullifierHeuristic {
             for c in &constraints {
                 if let Some(desc) = &c.description {
                     let lower = desc.to_lowercase();
-                    if lower.contains("nullifier") || lower.contains("serial") || lower.contains("nonce") {
+                    if lower.contains("nullifier")
+                        || lower.contains("serial")
+                        || lower.contains("nonce")
+                    {
                         for (wire, _) in &c.a_terms {
                             candidates.push(*wire);
                         }
@@ -38,7 +41,10 @@ impl NullifierHeuristic {
             let labels = inspector.wire_labels();
             for (wire, label) in labels {
                 let lower = label.to_lowercase();
-                if lower.contains("nullifier") || lower.contains("serial") || lower.contains("nonce") {
+                if lower.contains("nullifier")
+                    || lower.contains("serial")
+                    || lower.contains("nonce")
+                {
                     candidates.push(wire);
                 }
             }

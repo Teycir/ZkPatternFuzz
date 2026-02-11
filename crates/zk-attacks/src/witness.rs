@@ -7,10 +7,10 @@
 
 use super::{Attack, AttackContext};
 use crate::registry::{AttackMetadata, AttackPlugin};
-use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 use rand::Rng;
 use std::sync::Arc;
 use std::time::Instant;
+use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 
 /// Witness generation fuzzer
 pub struct WitnessFuzzer {
@@ -353,20 +353,16 @@ impl Attack for WitnessFuzzer {
 
 impl AttackPlugin for WitnessFuzzer {
     fn metadata(&self) -> AttackMetadata {
-        AttackMetadata::new(
-            "witness_fuzzing",
-            self.description(),
-            "0.1.0",
-        )
+        AttackMetadata::new("witness_fuzzing", self.description(), "0.1.0")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zk_backends::MockCircuitExecutor;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use zk_backends::MockCircuitExecutor;
 
     #[test]
     fn test_witness_fuzzer_creation() {

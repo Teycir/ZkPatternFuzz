@@ -222,6 +222,6 @@ jobs:
 
 ## Next Steps
 
-1. [Full AI-Assisted Workflow](AI_ASSISTED_WORKFLOW.md)
+1. [Tutorial](TUTORIAL.md)
 2. [Claude Prompt for YAML Generation](CLAUDE_PROMPT.md)
 3. [Capability Matrix](CAPABILITY_MATRIX.md)

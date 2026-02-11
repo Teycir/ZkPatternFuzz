@@ -1180,7 +1180,11 @@ mod tests {
 
     #[test]
     fn test_path_priority() {
-        let state = SymbolicState::new(3);
+        let mut state = SymbolicState::new(3);
+        state
+            .path_condition
+            .add_constraint(SymbolicConstraint::Boolean(SymbolicValue::symbol("x")));
+        state.set_signal_by_name("output", SymbolicValue::symbol("output"));
         let coverage: Vec<bool> = vec![false; 100];
         let patterns = vec![VulnerabilityTargetPattern::underconstrained()];
 

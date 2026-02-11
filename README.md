@@ -32,6 +32,13 @@ ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK c
 - 📏 **Boundary Testing** - Systematic edge case exploration at field boundaries
 - ✅ **Verification Fuzzing** - Proof malleability and malformed proof testing
 - 🔄 **Witness Fuzzing** - Determinism, timing variation, and stress testing
+- 🧪 **Proof Malleability Scanner** - Mutated proofs that still verify (opt-in under `soundness`)
+- 🎲 **Determinism Oracle** - Re-executes identical witnesses to detect non-determinism (opt-in under `soundness`)
+- 🧊 **Frozen Wire Detector** - Output wires stuck at constant values (opt-in under `underconstrained`)
+- ♻️ **Nullifier Replay Scanner** - Same nullifier with different private inputs (opt-in under `collision`)
+- 🧷 **Input Canonicalization Checker** - x vs x+p, negative zero handling (opt-in under `boundary`)
+- ☣️ **Trusted Setup Poisoning Detector** - Cross-setup verification checks (opt-in under `soundness`)
+- 🔀 **Cross-Backend Differential Oracle** - Strict output comparison across backends (opt-in under `differential`)
 - 💰 **MEV & Front-Running** - Ordering dependency, sandwich attacks, state leakage detection for DeFi circuits
 - 🎯 **Automated Triage** - Confidence-based ranking with cross-oracle validation and deduplication
 
@@ -172,13 +179,13 @@ reporting:
 | Attack Type | Description | Implementation Details | Status |
 |-------------|-------------|------------------------|--------|
 | `underconstrained` | Find circuits allowing multiple valid witnesses | Parallel execution, output collision detection, public input scoping | ✅ Production |
-| `soundness` | Attempt to forge proofs | Public input mutation, cryptographic verification | ✅ Production |
+| `soundness` | Attempt to forge proofs | Public input mutation, cryptographic verification, optional proof malleability/determinism/setup checks | ✅ Production |
 | `arithmetic_overflow` | Test field arithmetic edge cases | Boundary values (0, 1, p-1, p), overflow indicators | ✅ Production |
-| `witness_validation` | Verify witness consistency | Determinism (100 tests), timing analysis (500 tests), stress testing (1000 tests) | ✅ Production |
-| `verification` | Test proof verification edge cases | Malleability (1000 tests), malformed proofs (1000 tests), edge cases (500 tests) | ✅ Production |
-| `collision` | Find hash/nullifier collisions | Parallel witness generation (10K samples), SHA256 output hashing | ✅ Production |
-| `boundary` | Test boundary values | Field modulus boundaries, interesting values from config | ✅ Production |
-| `differential` | Cross-backend comparison | Timing tolerance (50%), coverage Jaccard (0.5), output comparison | ✅ Production |
+| `witness_fuzzing` | Verify witness consistency | Determinism (100 tests), timing analysis (500 tests), stress testing (1000 tests) | ✅ Production |
+| `verification_fuzzing` | Test proof verification edge cases | Malleability (1000 tests), malformed proofs (1000 tests), edge cases (500 tests) | ✅ Production |
+| `collision` | Find hash/nullifier collisions | Parallel witness generation (10K samples), SHA256 output hashing, optional nullifier replay | ✅ Production |
+| `boundary` | Test boundary values | Field modulus boundaries, optional canonicalization checks | ✅ Production |
+| `differential` | Cross-backend comparison | Timing tolerance (50%), coverage Jaccard (0.5), output comparison, optional strict cross-backend oracle | ✅ Production |
 | `circuit_composition` | Multi-circuit chain analysis | Sequential composition, state propagation, chain execution | ✅ Production |
 | `recursive_proof` | Recursive verification testing | Max depth 3, verification at each level | ✅ Production |
 | `information_leakage` | Taint analysis | Private→public flow tracking via constraint propagation | ✅ Production |
@@ -199,6 +206,66 @@ reporting:
 - `public_input_positions`: list of input indices to treat as public (alternative)
 - `public_input_count`: number of leading inputs to treat as public (fallback)
 - `fixed_public_inputs`: values to hold constant for public inputs (must match public input list)
+
+### Optional Scanner Configs (Opt-In)
+
+These scanners live under the parent attack's `config` section.
+
+```yaml
+attacks:
+  - type: soundness
+    description: "Proof malleability + determinism + trusted setup"
+    config:
+      proof_malleability:
+        enabled: true
+        proof_samples: 10
+        random_mutations: 100
+        structured_mutations: true
+      determinism:
+        enabled: true
+        repetitions: 5
+        sample_count: 50
+      trusted_setup_test:
+        enabled: true
+        attempts: 10
+        ptau_file_a: "pot12_original.ptau"
+        ptau_file_b: "pot12_alternative.ptau"
+
+  - type: underconstrained
+    description: "Frozen wire detector"
+    config:
+      frozen_wire:
+        enabled: true
+        min_samples: 100
+        known_constants: [0]
+
+  - type: collision
+    description: "Nullifier replay"
+    config:
+      nullifier_replay:
+        enabled: true
+        replay_attempts: 50
+        base_samples: 10
+
+  - type: boundary
+    description: "Input canonicalization"
+    config:
+      canonicalization:
+        enabled: true
+        sample_count: 20
+        test_field_wrap: true
+        test_negative_zero: true
+        test_additive_inverse: false
+
+  - type: differential
+    description: "Cross-backend differential"
+    config:
+      backends: ["circom", "noir"]
+      cross_backend:
+        enabled: true
+        sample_count: 100
+        tolerance_bits: 0
+```
 
 **How it works:**
 1. Generates N witness pairs with identical public inputs (fixed or randomly chosen)

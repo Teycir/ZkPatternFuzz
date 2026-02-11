@@ -19,7 +19,10 @@ pub enum ProofMutation {
     /// Zero out a 32-byte chunk
     ZeroChunk { offset: usize },
     /// Duplicate first proof element over second
-    DuplicateElement { src_offset: usize, dst_offset: usize },
+    DuplicateElement {
+        src_offset: usize,
+        dst_offset: usize,
+    },
     /// Add 1 to a scalar field element
     ScalarIncrement { offset: usize },
     /// Truncate proof by N bytes
@@ -100,8 +103,7 @@ impl ProofMalleabilityScanner {
             };
 
             // Step 2: Extract public inputs from witness
-            let public_inputs: Vec<FieldElement> =
-                witness[..info.num_public_inputs].to_vec();
+            let public_inputs: Vec<FieldElement> = witness[..info.num_public_inputs].to_vec();
 
             // Step 3: Verify the original proof passes
             match executor.verify(&proof, &public_inputs) {
@@ -235,16 +237,10 @@ impl ProofMalleabilityScanner {
                 if offset_a + 32 <= mutated.len() && offset_b + 32 <= mutated.len() {
                     let (a, b) = if offset_a < offset_b {
                         let (left, right) = mutated.split_at_mut(*offset_b);
-                        (
-                            &mut left[*offset_a..*offset_a + 32],
-                            &mut right[..32],
-                        )
+                        (&mut left[*offset_a..*offset_a + 32], &mut right[..32])
                     } else {
                         let (left, right) = mutated.split_at_mut(*offset_a);
-                        (
-                            &mut right[..32],
-                            &mut left[*offset_b..*offset_b + 32],
-                        )
+                        (&mut right[..32], &mut left[*offset_b..*offset_b + 32])
                     };
                     a.swap_with_slice(b);
                 }

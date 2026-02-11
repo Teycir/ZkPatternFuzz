@@ -40,7 +40,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use super::{FuzzConfig, ReportingConfig};
+use super::{AdditionalConfig, FuzzConfig, ReportingConfig};
 
 /// Errors that can occur during v2 config processing
 #[derive(Debug, Error)]
@@ -759,12 +759,12 @@ impl ConfigResolver {
         merged
     }
 
-    fn merge_additional(
-        mut base: HashMap<String, Value>,
-        overlay: HashMap<String, Value>,
-    ) -> HashMap<String, Value> {
-        for (key, value) in overlay {
-            let merged_value = match (base.get(&key), value) {
+    fn merge_additional(mut base: AdditionalConfig, overlay: AdditionalConfig) -> AdditionalConfig {
+        let overlay_map = overlay.extra().clone();
+        let base_map = base.extra_mut();
+
+        for (key, value) in overlay_map {
+            let merged_value = match (base_map.get(&key), value) {
                 (Some(Value::Sequence(base_seq)), Value::Sequence(mut overlay_seq))
                     if key == "v2_invariants" || key == "v2_schedule" =>
                 {
@@ -783,8 +783,9 @@ impl ConfigResolver {
                 }
                 (_, other) => other,
             };
-            base.insert(key, merged_value);
+            base_map.insert(key, merged_value);
         }
+
         base
     }
 

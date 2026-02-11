@@ -1,19 +1,15 @@
 //! Attack registry and plugin scaffolding.
 
 use crate::{
-    arithmetic::ArithmeticTester,
-    boundary::BoundaryTester,
-    collision::CollisionDetector,
-    soundness::SoundnessTester,
-    underconstrained::UnderconstrainedDetector,
-    verification::VerificationFuzzer,
-    witness::WitnessFuzzer,
+    arithmetic::ArithmeticTester, boundary::BoundaryTester, collision::CollisionDetector,
+    soundness::SoundnessTester, underconstrained::UnderconstrainedDetector,
+    verification::VerificationFuzzer, witness::WitnessFuzzer,
 };
 use anyhow::Result;
 use std::collections::HashMap;
-use std::path::PathBuf;
 #[cfg(feature = "plugin-loader")]
 use std::path::Path;
+use std::path::PathBuf;
 use zk_core::Attack;
 
 /// Metadata describing an attack plugin.
@@ -157,7 +153,7 @@ impl AttackPluginLoader for DynamicLibraryLoader {
     fn load(&self) -> Result<LoadedPlugins> {
         use libloading::{Library, Symbol};
 
-        type PluginCreate = unsafe extern "Rust" fn() -> Vec<Box<dyn AttackPlugin>>;
+        type PluginCreate = unsafe fn() -> Vec<Box<dyn AttackPlugin>>;
 
         let mut libraries = Vec::new();
         let mut plugins = Vec::new();

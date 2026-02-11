@@ -60,11 +60,26 @@ Specialized vulnerability detectors implementing the `Attack` trait.
 
 | Attack | Detection Method | Complexity |
 |--------|------------------|------------|
-| Underconstrained | Witness pair comparison | O(n²) |
-| Soundness | Proof forgery attempts | O(n) |
-| Arithmetic | Boundary value testing | O(1) |
-| Witness | Consistency checking | O(n) |
-| Verification | Malformed proof testing | O(n) |
+| Underconstrained | Witness pair comparison + output collision checks | O(n²) |
+| Soundness | Proof forgery attempts + verifier checks | O(n) |
+| ArithmeticOverflow | Boundary value testing | O(1) |
+| Boundary | Edge-case inputs around field modulus | O(1) |
+| Collision | Output collision search | O(n) |
+| VerificationFuzzing | Malformed/mutated proof testing | O(n) |
+| WitnessFuzzing | Determinism + timing + stress checks | O(n) |
+| Differential | Cross-backend comparison | O(n) |
+| ConstraintInference | Pattern-driven missing constraint detection | O(n) |
+| Metamorphic | Transform-based oracles | O(n) |
+| ConstraintSlice | Dependency cone mutation | O(n) |
+| SpecInference | Auto-learned property violations | O(n) |
+| WitnessCollision | Equivalence-class collision search | O(n) |
+
+**Opt-In Scanners (config subsections):**
+- `soundness`: `proof_malleability`, `determinism`, `trusted_setup_test`
+- `underconstrained`: `frozen_wire`
+- `collision`: `nullifier_replay`
+- `boundary`: `canonicalization`
+- `differential`: `cross_backend`
 
 **Extension Point:**
 ```rust

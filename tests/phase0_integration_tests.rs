@@ -11,7 +11,6 @@
 //! Tests use the mock backend for unit testing and can optionally
 //! test against real Circom circuits when available.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use zk_fuzzer::config::*;
 use zk_fuzzer::executor::{CircuitExecutor, MockCircuitExecutor};
@@ -33,7 +32,7 @@ fn create_test_config() -> FuzzConfig {
                 field: "bn254".to_string(),
                 max_constraints: 1000,
                 timeout_seconds: 60,
-                additional: HashMap::new(),
+                additional: AdditionalConfig::default(),
             },
         },
         attacks: vec![

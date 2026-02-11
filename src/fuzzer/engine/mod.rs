@@ -1,0 +1,1044 @@
+//! Core fuzzing engine with coverage-guided execution
+//!
+//! This module implements the main fuzzing engine that orchestrates zero-knowledge
+//! circuit security testing through intelligent test case generation, execution,
+//! coverage tracking, and vulnerability detection.
+//!
+//! # Architecture
+//!
+//! The fuzzing engine combines multiple advanced techniques:
+//!
+//! - **Coverage-Guided Fuzzing**: Tracks constraint coverage to guide input generation
+//!   toward unexplored code paths
+//! - **Power Scheduling**: Prioritizes interesting test cases using energy-based selection
+//!   (FAST, COE, EXPLORE, MMOPT, RARE, SEEK)
+//! - **Structure-Aware Mutation**: Understands ZK-specific data structures (Merkle paths,
+//!   signatures, nullifiers) for intelligent mutations
+//! - **Symbolic Execution**: Uses Z3 SMT solver to generate inputs that satisfy specific
+//!   constraint paths
+//! - **Taint Analysis**: Tracks information flow to detect potential leaks
+//! - **Bug Oracles**: Specialized detectors for underconstrained circuits, arithmetic
+//!   overflows, and other ZK-specific vulnerabilities
+//!
+//! # Workflow
+//!
+//! 1. **Initialization**: Load circuit, analyze complexity, seed initial corpus
+//! 2. **Test Case Selection**: Power scheduler picks interesting inputs from corpus
+//! 3. **Mutation**: Structure-aware mutator generates new test cases
+//! 4. **Execution**: Run circuit with mutated inputs, track coverage
+//! 5. **Oracle Checking**: Detect bugs using specialized oracles
+//! 6. **Corpus Update**: Add interesting cases that increase coverage
+//! 7. **Repeat**: Continue until timeout or iteration limit
+//!
+//! # Example
+//!
+//! ```rust
+//! use zk_fuzzer::fuzzer::FuzzingEngine;
+//! use zk_fuzzer::config::FuzzConfig;
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! # let config_yaml = r#"
+//! # campaign:
+//! #   name: "Doc Engine Campaign"
+//! #   version: "1.0"
+//! #   target:
+//! #     framework: "mock"
+//! #     circuit_path: "./circuits/mock.circom"
+//! #     main_component: "MockCircuit"
+//! #
+//! # attacks:
+//! #   - type: "boundary"
+//! #     description: "Quick boundary check"
+//! #     config:
+//! #       test_values: ["0", "1"]
+//! #
+//! # inputs:
+//! #   - name: "a"
+//! #     type: "field"
+//! #     fuzz_strategy: "random"
+//! # "#;
+//! # let temp = tempfile::NamedTempFile::new()?;
+//! # std::fs::write(temp.path(), config_yaml)?;
+//! # let config_path = temp.path().to_path_buf();
+//! // Load campaign configuration
+//! let config = FuzzConfig::from_yaml(config_path.to_str().unwrap())?;
+//!
+//! // Create fuzzing engine with 1 worker and deterministic seed
+//! let mut engine = FuzzingEngine::new(config, Some(42), 1)?;
+//!
+//! // Run fuzzing campaign
+//! let report = tokio::runtime::Runtime::new()?.block_on(async { engine.run(None).await })?;
+//!
+//! // Check results
+//! println!("Found {} vulnerabilities", report.findings.len());
+//! println!("Coverage: {:.1}%", report.statistics.coverage_percentage);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Performance
+//!
+//! The engine supports parallel execution across multiple workers. Each worker:
+//! - Maintains its own RNG for deterministic reproduction
+//! - Shares corpus and coverage data via lock-free structures
+//! - Reports findings to a central collector
+//!
+//! Typical throughput: 100-10,000 executions/second depending on circuit complexity.
+//!
+//! # Supported Backends
+//!
+//! - **Circom**: R1CS circuits via snarkjs
+//! - **Noir**: ACIR circuits via Barretenberg  
+//! - **Halo2**: PLONK circuits via halo2_proofs
+//! - **Cairo**: STARK programs via stone-prover
+//! - **Mock**: Testing backend for fuzzer development
+
+mod attack_runner;
+mod chain_runner;
+mod config_helpers;
+mod continuous_fuzzer;
+mod corpus_manager;
+mod invariant_enforcer;
+mod metamorphic_helpers;
+mod report_generator;
+
+mod prelude {
+    pub(super) use crate::fuzzer::invariant_checker::InvariantChecker; // Phase 2: Fuzz-continuous invariant checking
+    pub(super) use crate::fuzzer::mutate_field_element;
+    pub(super) use crate::fuzzer::oracle::{ArithmeticOverflowOracle, BugOracle, UnderconstrainedOracle};
+    pub(super) use crate::fuzzer::oracle_correlation::{ConfidenceLevel, OracleCorrelator}; // Phase 6A: Cross-oracle correlation
+    pub(super) use crate::fuzzer::oracle_validation::{
+        filter_validated_findings, OracleValidationConfig, OracleValidator,
+    };
+    pub(super) use crate::fuzzer::power_schedule::{PowerSchedule, PowerScheduler};
+    pub(super) use crate::fuzzer::structure_aware::StructureAwareMutator;
+    pub(super) use crate::analysis::complexity::ComplexityAnalyzer;
+    pub(super) use crate::analysis::symbolic::{
+        SymbolicConfig, SymbolicFuzzerIntegration, VulnerabilityPattern,
+    };
+    pub(super) use crate::analysis::taint::TaintAnalyzer;
+    pub(super) use crate::analysis::{
+        collect_input_wire_indices, ConstraintSeedGenerator, ConstraintSeedOutput,
+        EnhancedSymbolicConfig, PruningStrategy,
+    };
+    pub(super) use crate::attacks::{
+        Attack as AttackTrait, AttackContext, AttackRegistry, DynamicLibraryLoader,
+    };
+    pub(super) use crate::config::*;
+    pub(super) use crate::corpus::{create_corpus, minimizer, storage as corpus_storage};
+    pub(super) use crate::executor::{
+        create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions, IsolatedExecutor,
+    };
+    pub(super) use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
+    pub(super) use crate::reporting::FuzzReport;
+    pub(super) use rand::Rng;
+    pub(super) use rayon::prelude::*;
+    pub(super) use std::path::PathBuf;
+    pub(super) use std::sync::Arc;
+    pub(super) use std::time::{Duration, Instant};
+    pub(super) use zk_core::{
+        CircuitExecutor, ConstraintInspector, ExecutionResult, FieldElement, Finding,
+        ProofOfConcept, TestCase, TestMetadata,
+    };
+    pub(super) use zk_fuzzer_core::engine::FuzzingEngineCore;
+}
+
+use prelude::*;
+
+/// Main fuzzing engine coordinating all security testing activities
+///
+/// The `FuzzingEngine` is the central component that orchestrates the entire
+/// fuzzing campaign. It manages:
+///
+/// - Circuit execution through backend-specific executors
+/// - Test case corpus with automatic minimization
+/// - Coverage tracking for constraint exploration
+/// - Multiple bug detection oracles
+/// - Parallel worker coordination
+/// - Progress reporting and statistics
+///
+/// # Thread Safety
+///
+/// The engine uses `Arc` and `RwLock` for safe concurrent access to shared state.
+/// Multiple workers can execute test cases in parallel while safely updating
+/// the corpus, coverage map, and findings list.
+///
+/// # Memory Management
+///
+/// The corpus is bounded to prevent unbounded memory growth. When the limit is
+/// reached, less interesting test cases are evicted based on coverage contribution.
+pub struct FuzzingEngine {
+    config: FuzzConfig,
+    seed: Option<u64>,
+    executor: Arc<dyn CircuitExecutor>,
+    executor_factory_options: ExecutorFactoryOptions,
+    core: FuzzingEngineCore,
+    attack_registry: AttackRegistry,
+    workers: usize,
+    /// Symbolic execution integration for guided test generation
+    symbolic: Option<SymbolicFuzzerIntegration>,
+    /// Taint analyzer for information flow tracking
+    taint_analyzer: Option<TaintAnalyzer>,
+    /// Complexity analyzer for circuit analysis
+    complexity_analyzer: ComplexityAnalyzer,
+    /// Simple progress tracker for non-interactive mode
+    simple_tracker: Option<SimpleProgressTracker>,
+    /// Phase 2: Cached invariant checker for fuzz-continuous checking
+    /// Maintains state for uniqueness invariants across executions
+    invariant_checker: Option<InvariantChecker>,
+    /// Mode 3: Reusable thread pool for parallel execution (avoids per-attack allocation)
+    thread_pool: Option<rayon::ThreadPool>,
+}
+
+impl FuzzingEngine {
+    /// Create a new fuzzing engine from configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Campaign configuration loaded from YAML
+    /// * `seed` - Optional RNG seed for deterministic fuzzing (use for reproduction)
+    /// * `workers` - Number of parallel workers (typically CPU count)
+    ///
+    /// # Returns
+    ///
+    /// Returns a configured engine ready to run, or an error if:
+    /// - Circuit backend is not available (e.g., circom not installed)
+    /// - Circuit compilation fails
+    /// - Configuration is invalid
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zk_fuzzer::config::FuzzConfig;
+    /// use zk_fuzzer::fuzzer::FuzzingEngine;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// # let config_yaml = r#"
+    /// # campaign:
+    /// #   name: "Doc Engine New"
+    /// #   version: "1.0"
+    /// #   target:
+    /// #     framework: "mock"
+    /// #     circuit_path: "./circuits/mock.circom"
+    /// #     main_component: "MockCircuit"
+    /// #
+    /// # attacks:
+    /// #   - type: "boundary"
+    /// #     description: "Quick boundary check"
+    /// #     config:
+    /// #       test_values: ["0", "1"]
+    /// #
+    /// # inputs:
+    /// #   - name: "a"
+    /// #     type: "field"
+    /// #     fuzz_strategy: "random"
+    /// # "#;
+    /// # let temp = tempfile::NamedTempFile::new()?;
+    /// # std::fs::write(temp.path(), config_yaml)?;
+    /// # let config = FuzzConfig::from_yaml(temp.path().to_str().unwrap())?;
+    /// // Deterministic fuzzing with 4 workers
+    /// let _engine = FuzzingEngine::new(config.clone(), Some(12345), 4)?;
+    ///
+    /// // Non-deterministic with 8 workers
+    /// let _engine = FuzzingEngine::new(config, None, 8)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(config: FuzzConfig, seed: Option<u64>, workers: usize) -> anyhow::Result<Self> {
+        // Phase 0 Fix: Extract additional config early for use throughout initialization
+        let additional = &config.campaign.parameters.additional;
+
+        // Create executor based on framework (with optional build dir overrides)
+        let executor_factory_options = Self::parse_executor_factory_options(&config);
+        let circuit_path_str = config
+            .campaign
+            .target
+            .circuit_path
+            .to_str()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Circuit path contains invalid UTF-8: {:?}",
+                    config.campaign.target.circuit_path
+                )
+            })?;
+        let mut executor = ExecutorFactory::create_with_options(
+            config.campaign.target.framework,
+            circuit_path_str,
+            &config.campaign.target.main_component,
+            &executor_factory_options,
+        )?;
+
+        // Phase 0 Fix: Detect and FAIL-FAST on mock fallback execution
+        //
+        // This is critical for preventing false vulnerability claims.
+        // Any findings from mock execution are SYNTHETIC and should not
+        // be reported as real 0-day vulnerabilities.
+        //
+        // When strict_backend=true (default for evidence mode), we fail immediately.
+        // When strict_backend=false, we warn but continue (for development/testing).
+        let strict_backend = Self::additional_bool(additional, "strict_backend").unwrap_or(false);
+
+        if executor.is_fallback_mock() {
+            let framework = config.campaign.target.framework;
+            let install_hint = match framework {
+                zk_core::Framework::Circom => {
+                    "Install circom: https://docs.circom.io/getting-started/installation/"
+                }
+                zk_core::Framework::Noir => {
+                    "Install nargo: https://noir-lang.org/docs/getting_started/installation/"
+                }
+                zk_core::Framework::Cairo => {
+                    "Install scarb: https://docs.swmansion.com/scarb/download.html"
+                }
+                _ => "Install the required backend tooling",
+            };
+
+            if strict_backend {
+                // Phase 0 Fix: FAIL-FAST in production/evidence mode
+                anyhow::bail!(
+                    "MOCK FALLBACK REJECTED: Using mock executor for {:?} backend. \
+                     Real backend tooling is not available. All findings would be SYNTHETIC. \
+                     {}. \
+                     Set strict_backend=false to allow mock fallback (NOT recommended for evidence mode).",
+                    framework,
+                    install_hint
+                );
+            } else {
+                // Development mode: warn but continue
+                tracing::error!(
+                    "⚠️  CRITICAL: Using MOCK FALLBACK executor for {:?} backend!",
+                    framework
+                );
+                tracing::error!(
+                    "⚠️  Real backend tooling is not available. All findings will be SYNTHETIC."
+                );
+                tracing::error!(
+                    "⚠️  DO NOT report these as real vulnerabilities. {}",
+                    install_hint
+                );
+                tracing::warn!(
+                    "⚠️  Set strict_backend=true to fail-fast on missing backends (recommended for evidence mode)."
+                );
+            }
+        } else if executor.is_mock() && config.campaign.target.framework != zk_core::Framework::Mock
+        {
+            tracing::warn!(
+                "Using mock executor for {:?} framework. Results may not reflect real circuit behavior.",
+                config.campaign.target.framework
+            );
+        }
+
+        // Phase 1A: Block explicit mock in evidence mode
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        if evidence_mode && executor.is_mock() {
+            anyhow::bail!(
+                "EVIDENCE MODE REJECTED: Cannot use mock executor in evidence mode. \
+                 All findings would be synthetic. Use a real backend (circom/noir/halo2/cairo)."
+            );
+        }
+
+        // Phase 3A: Enable per_exec_isolation by default in evidence mode for hang safety
+        let mut isolate_exec = Self::additional_bool(additional, "per_exec_isolation")
+            .or_else(|| Self::additional_bool(additional, "exec_isolation"))
+            .unwrap_or(false);
+
+        let allow_no_isolation =
+            Self::additional_bool(additional, "evidence_allow_no_isolation").unwrap_or(false);
+
+        if evidence_mode && !isolate_exec {
+            if allow_no_isolation {
+                tracing::warn!(
+                    "Evidence mode: per_exec_isolation disabled by user; runs may hang \
+                     and long fuzzing sessions are less protected."
+                );
+            } else {
+                tracing::warn!("Evidence mode: enabling per_exec_isolation for hang safety");
+                isolate_exec = true;
+            }
+        }
+
+        if isolate_exec {
+            let execution_timeout_ms = Self::additional_u64(additional, "execution_timeout_ms")
+                .or_else(|| {
+                    Self::additional_u64(additional, "timeout_per_execution").map(|v| v * 1000)
+                })
+                .unwrap_or(30_000)
+                .max(1);
+            
+            let kill_on_timeout = Self::additional_bool(additional, "kill_on_timeout")
+                .unwrap_or(true);
+            
+            let mut isolated_executor = IsolatedExecutor::new(
+                executor,
+                config.campaign.target.framework,
+                config
+                    .campaign
+                    .target
+                    .circuit_path
+                    .to_string_lossy()
+                    .to_string(),
+                config.campaign.target.main_component.clone(),
+                executor_factory_options.clone(),
+                execution_timeout_ms,
+            )?;
+            
+            // Configure kill_on_timeout if specified
+            if !kill_on_timeout {
+                use crate::executor::IsolationConfig;
+                let mut isolation_config = IsolationConfig::default();
+                isolation_config.timeout_ms = execution_timeout_ms;
+                isolation_config.kill_on_timeout = false;
+                isolated_executor = isolated_executor.with_config(isolation_config);
+            }
+            
+            executor = Arc::new(isolated_executor);
+            tracing::info!(
+                "Per-exec isolation enabled (timeout {} ms, kill_on_timeout: {})",
+                execution_timeout_ms,
+                kill_on_timeout
+            );
+        }
+
+        let num_constraints = executor.num_constraints().max(100);
+        let coverage = create_coverage_tracker(num_constraints);
+
+        // Phase 0 Fix: Make corpus size configurable instead of hardcoded 10000
+        // Allows tuning based on circuit complexity and available memory
+        let corpus_max_size = Self::additional_u64(additional, "corpus_max_size")
+            .unwrap_or(100_000)
+            .max(1) as usize; // Increased default from 10k to 100k
+        let corpus = create_corpus(corpus_max_size);
+
+        // Initialize symbolic execution integration
+        // Phase 0 Fix: Increase symbolic execution depth for deeper bug discovery
+        // Previous: max_paths=100, max_depth=20 (too shallow for complex circuits)
+        // Now: max_paths=1000, max_depth=200 (closer to KLEE-level exploration)
+        let num_inputs = config.inputs.len().max(1);
+        let symbolic_enabled =
+            Self::additional_bool(additional, "symbolic_enabled").unwrap_or(true);
+        let symbolic = if symbolic_enabled {
+            let symbolic_max_paths = Self::additional_u64(additional, "symbolic_max_paths")
+                .unwrap_or(1000)
+                .max(1) as usize;
+            let symbolic_max_depth = Self::additional_u64(additional, "symbolic_max_depth")
+                .unwrap_or(200)
+                .max(1) as usize;
+            let symbolic_solver_timeout =
+                Self::additional_u64(additional, "symbolic_solver_timeout_ms")
+                    .unwrap_or(5000)
+                    .max(1)
+                    .min(u32::MAX as u64) as u32;
+            Some(
+                SymbolicFuzzerIntegration::new(num_inputs).with_config(SymbolicConfig {
+                    max_paths: symbolic_max_paths,
+                    max_depth: symbolic_max_depth,
+                    solver_timeout_ms: symbolic_solver_timeout,
+                    random_seed: seed,
+                    generate_boundary_tests: true,
+                    solutions_per_path: 4, // Increased from 2 for better coverage
+                }),
+            )
+        } else {
+            tracing::info!("Symbolic seeding disabled by config");
+            None
+        };
+
+        // Initialize taint analyzer based on circuit info
+        let taint_analyzer = {
+            let circuit_info = executor.circuit_info();
+            let mut analyzer = TaintAnalyzer::new(
+                circuit_info.num_public_inputs,
+                circuit_info.num_private_inputs,
+            );
+            analyzer.initialize_inputs();
+            Some(analyzer)
+        };
+
+        // Initialize power scheduler based on config (support all variants)
+        let schedule = Self::parse_power_schedule(&config);
+        let power_scheduler = PowerScheduler::new(schedule)
+            .with_base_energy(100)
+            .with_schedule(schedule);
+
+        // Initialize structure-aware mutator with inferred structures
+        let mut structure_mutator = StructureAwareMutator::new(config.campaign.target.framework);
+
+        // Infer input structures from circuit source if available
+        if let Some(path) = config.campaign.target.circuit_path.to_str() {
+            if let Ok(source) = std::fs::read_to_string(path) {
+                let structures = StructureAwareMutator::infer_structure_from_source(
+                    &source,
+                    config.campaign.target.framework,
+                );
+                structure_mutator = structure_mutator.with_structures(structures);
+            }
+        }
+
+        // Initialize complexity analyzer
+        let complexity_analyzer = ComplexityAnalyzer::new();
+
+        // Analyze circuit complexity
+        let complexity = complexity_analyzer.analyze(&executor);
+        tracing::info!(
+            "Circuit complexity: {} constraints, density: {:.2}, DOF: {}",
+            complexity.r1cs_constraints,
+            complexity.constraint_density,
+            complexity.degrees_of_freedom
+        );
+
+        for suggestion in &complexity.optimization_suggestions {
+            tracing::info!(
+                "Optimization suggestion: {:?} - {}",
+                suggestion.priority,
+                suggestion.description
+            );
+        }
+
+        // Initialize bug oracles including semantic oracles from config
+        let mut oracles: Vec<Box<dyn BugOracle>> = vec![
+            Box::new(
+                UnderconstrainedOracle::new().with_public_input_count(executor.num_public_inputs()),
+            ),
+            Box::new(ArithmeticOverflowOracle::new_with_modulus(
+                executor.field_modulus(),
+            )),
+        ];
+
+        // Phase 0 Fix: Wire semantic oracles from config
+        Self::add_semantic_oracles_from_config(&config, &mut oracles);
+        let disabled = Self::disabled_oracle_names(&config);
+        if !disabled.is_empty() {
+            oracles.retain(|o| !disabled.contains(&Self::normalize_oracle_name(o.name())));
+        }
+
+        let core = FuzzingEngineCore::builder()
+            .seed(seed)
+            .input_count(config.inputs.len())
+            .corpus(corpus)
+            .coverage(coverage)
+            .power_scheduler(power_scheduler)
+            .structure_mutator(structure_mutator)
+            .oracles(oracles)
+            .build()?;
+
+        let mut attack_registry = AttackRegistry::new();
+        Self::load_attack_plugins(&config, &mut attack_registry);
+
+        // Phase 2: Initialize invariant checker once (cached for uniqueness tracking)
+        let invariant_checker = {
+            let invariants = config.get_invariants();
+            if invariants.is_empty() {
+                None
+            } else {
+                tracing::info!(
+                    "Initializing fuzz-continuous invariant checker with {} invariants",
+                    invariants.len()
+                );
+                Some(InvariantChecker::new(invariants, &config.inputs))
+            }
+        };
+
+        // Mode 3: Build reusable thread pool for chain fuzzing
+        let thread_pool = if workers > 1 {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(workers)
+                .build()
+                .ok()
+        } else {
+            None
+        };
+
+        Ok(Self {
+            config,
+            seed,
+            executor,
+            executor_factory_options,
+            core,
+            attack_registry,
+            workers,
+            symbolic,
+            taint_analyzer,
+            complexity_analyzer,
+            simple_tracker: None,
+            invariant_checker,
+            thread_pool,
+        })
+    }
+
+    /// Parse power schedule strategy from configuration
+    ///
+    /// Power schedules determine how energy is assigned to test cases:
+    /// - **FAST**: Favor fast-executing test cases
+    /// - **COE**: Cut-Off Exponential - balance speed and coverage
+    /// - **EXPLORE**: Prioritize unexplored paths
+    /// - **MMOPT**: Min-Max Optimal - balanced approach (default)
+    /// - **RARE**: Focus on rare edge cases
+    /// - **SEEK**: Actively seek new coverage
+    ///
+    /// Specified in campaign YAML as:
+    /// ```yaml
+    /// campaign:
+    ///   parameters:
+    ///     power_schedule: "MMOPT"
+    /// ```
+    /// Execute the complete fuzzing campaign
+    ///
+    /// This is the main entry point that runs the entire fuzzing workflow:
+    /// 1. Analyzes circuit complexity and structure
+    /// 2. Performs static analysis (taint, source code patterns)
+    /// 3. Seeds initial corpus with interesting values
+    /// 4. Executes configured attacks (underconstrained, soundness, etc.)
+    /// 5. Runs coverage-guided fuzzing loop
+    /// 6. Generates comprehensive report
+    ///
+    /// # Arguments
+    ///
+    /// * `progress` - Optional progress reporter for interactive display
+    ///
+    /// # Returns
+    ///
+    /// Returns a `FuzzReport` containing:
+    /// - All discovered vulnerabilities with severity ratings
+    /// - Proof-of-concept test cases for reproduction
+    /// - Coverage statistics and execution metrics
+    /// - Recommendations for fixing issues
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use zk_fuzzer::config::FuzzConfig;
+    /// use zk_fuzzer::fuzzer::FuzzingEngine;
+    /// use zk_fuzzer::progress::ProgressReporter;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// # let config_yaml = r#"
+    /// # campaign:
+    /// #   name: "Doc Engine Run"
+    /// #   version: "1.0"
+    /// #   target:
+    /// #     framework: "mock"
+    /// #     circuit_path: "./circuits/mock.circom"
+    /// #     main_component: "MockCircuit"
+    /// #
+    /// # attacks:
+    /// #   - type: "boundary"
+    /// #     description: "Quick boundary check"
+    /// #     config:
+    /// #       test_values: ["0", "1"]
+    /// #
+    /// # inputs:
+    /// #   - name: "a"
+    /// #     type: "field"
+    /// #     fuzz_strategy: "random"
+    /// # "#;
+    /// # let temp = tempfile::NamedTempFile::new()?;
+    /// # std::fs::write(temp.path(), config_yaml)?;
+    /// # let config = FuzzConfig::from_yaml(temp.path().to_str().unwrap())?;
+    /// let mut engine = FuzzingEngine::new(config, Some(12345), 1)?;
+    ///
+    /// let rt = tokio::runtime::Runtime::new()?;
+    /// // Run with progress reporting
+    /// let reporter = ProgressReporter::new("Doc Engine Run", 10, false);
+    /// let _report = rt.block_on(async { engine.run(Some(&reporter)).await })?;
+    ///
+    /// // Run without progress (CI/CD mode)
+    /// // let _report = rt.block_on(async { engine.run(None).await })?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn run(&mut self, progress: Option<&ProgressReporter>) -> anyhow::Result<FuzzReport> {
+        let start_time = Instant::now();
+        self.core.set_start_time(start_time);
+
+        let additional = &self.config.campaign.parameters.additional;
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        let mode_label = if evidence_mode { "evidence" } else { "run" };
+
+        tracing::warn!(
+            "MILESTONE start mode={} target={} circuit={} output_dir={}",
+            mode_label,
+            self.config.campaign.name,
+            self.config.campaign.target.circuit_path.display(),
+            self.config.reporting.output_dir.display()
+        );
+
+        tracing::info!("Starting fuzzing campaign: {}", self.config.campaign.name);
+        tracing::info!(
+            "Circuit: {} ({:?})",
+            self.executor.name(),
+            self.executor.framework()
+        );
+        tracing::info!("Workers: {}", self.workers);
+
+        // Check for underconstrained circuit
+        if self.executor.is_likely_underconstrained() {
+            tracing::warn!(
+                "Circuit appears underconstrained (DOF = {})",
+                self.executor.circuit_info().degrees_of_freedom()
+            );
+        }
+
+        // Run taint analysis before fuzzing
+        if let Some(ref analyzer) = self.taint_analyzer {
+            let taint_findings = analyzer.to_findings();
+            if !taint_findings.is_empty() {
+                tracing::info!(
+                    "Taint analysis found {} potential issues",
+                    taint_findings.len()
+                );
+                for finding in taint_findings {
+                    if let Some(p) = progress {
+                        p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                    }
+                    self.core.findings().write().unwrap().push(finding);
+                }
+            }
+        }
+
+        // Run source code analysis for vulnerability hints
+        self.run_source_analysis(progress);
+
+        // Seed corpus with external inputs if provided
+        if let Err(err) = self.seed_external_inputs_from_config() {
+            tracing::warn!("Failed to load external seed inputs: {}", err);
+        }
+
+        // Phase 0: Load resume corpus if --resume was specified
+        match self.maybe_load_resume_corpus() {
+            Ok(count) if count > 0 => {
+                tracing::info!("Resumed from {} previous test cases", count);
+            }
+            Err(err) => {
+                tracing::warn!("Failed to load resume corpus: {}", err);
+            }
+            _ => {}
+        }
+
+        // Seed corpus
+        self.seed_corpus()?;
+        tracing::info!(
+            "Seeded corpus with {} initial test cases",
+            self.core.corpus().len()
+        );
+        tracing::warn!(
+            "MILESTONE seeded_corpus target={} count={}",
+            self.config.campaign.name,
+            self.core.corpus().len()
+        );
+
+        // Initialize simple progress tracker for non-interactive environments
+        self.simple_tracker = Some(SimpleProgressTracker::new());
+
+        // Update power scheduler with initial global stats
+        self.update_power_scheduler_globals();
+
+        // Run attacks
+        for attack_config in &self.config.attacks.clone() {
+            tracing::warn!(
+                "MILESTONE attack_start target={} type={:?}",
+                self.config.campaign.name,
+                attack_config.attack_type
+            );
+            if let Some(p) = progress {
+                p.log_attack_start(&format!("{:?}", attack_config.attack_type));
+            }
+
+            let findings_before = self.core.findings().read().unwrap().len();
+            let (plugin_name, plugin_explicit) = Self::resolve_attack_plugin(attack_config);
+            let mut plugin_ran = false;
+
+            if let Some(name) = plugin_name.as_deref() {
+                let lookup = name.trim();
+                let plugin = self
+                    .attack_registry
+                    .get(lookup)
+                    .or_else(|| self.attack_registry.get(&lookup.to_lowercase()));
+
+                if let Some(plugin) = plugin {
+                    let samples = Self::attack_samples(&attack_config.config);
+                    self.add_attack_findings(plugin, samples, progress);
+                    plugin_ran = true;
+                } else {
+                    tracing::warn!("Attack plugin '{}' not found in registry", lookup);
+                }
+            }
+
+            if !(plugin_ran && plugin_explicit) {
+                match attack_config.attack_type {
+                    AttackType::Underconstrained => {
+                        self.run_underconstrained_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::Soundness => {
+                        self.run_soundness_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::ArithmeticOverflow => {
+                        self.run_arithmetic_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::Collision => {
+                        self.run_collision_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::Boundary => {
+                        self.run_boundary_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::VerificationFuzzing => {
+                        self.run_verification_fuzzing_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::WitnessFuzzing => {
+                        self.run_witness_fuzzing_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::Differential => {
+                        self.run_differential_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::InformationLeakage => {
+                        self.run_information_leakage_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::TimingSideChannel => {
+                        self.run_timing_sidechannel_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::CircuitComposition => {
+                        self.run_circuit_composition_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::RecursiveProof => {
+                        self.run_recursive_proof_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    // Phase 4: Novel Oracle Attacks - Now Implemented!
+                    AttackType::ConstraintInference => {
+                        match self.run_constraint_inference_attack(&attack_config.config, progress).await {
+                            Ok(_) => {
+                                tracing::info!("✓ Constraint inference attack completed successfully");
+                            },
+                            Err(e) => {
+                                tracing::error!("✗ Constraint inference attack FAILED: {}", e);
+                                tracing::error!("Error details: {:?}", e);
+                                if let Some(p) = progress {
+                                    p.log_finding("ERROR", &format!("Constraint inference failed: {}", e));
+                                }
+                                return Err(e);
+                            }
+                        }
+                    }
+                    AttackType::Metamorphic => {
+                        self.run_metamorphic_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::ConstraintSlice => {
+                        self.run_constraint_slice_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::SpecInference => {
+                        self.run_spec_inference_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    AttackType::WitnessCollision => {
+                        self.run_witness_collision_attack(&attack_config.config, progress)
+                            .await?;
+                    }
+                    _ => {
+                        tracing::warn!(
+                            "Attack type {:?} not yet implemented",
+                            attack_config.attack_type
+                        );
+                    }
+                }
+            }
+
+            let findings_after = self.core.findings().read().unwrap().len();
+            let new_findings = findings_after - findings_before;
+
+            if let Some(p) = progress {
+                p.log_attack_complete(&format!("{:?}", attack_config.attack_type), new_findings);
+            }
+            tracing::warn!(
+                "MILESTONE attack_complete target={} type={:?} new_findings={} total_findings={}",
+                self.config.campaign.name,
+                attack_config.attack_type,
+                new_findings,
+                findings_after
+            );
+
+            // Update power scheduler with current stats after each attack
+            self.update_power_scheduler_globals();
+
+            // Update simple tracker
+            let current_stats = self.stats();
+            if let Some(ref mut tracker) = self.simple_tracker {
+                tracker.update(current_stats);
+            }
+        }
+
+        // Finish simple tracker
+        if let Some(ref tracker) = self.simple_tracker {
+            tracker.finish();
+        }
+
+        // Phase 0 Fix: Run continuous fuzzing phase after attacks
+        let iterations = self
+            .config
+            .campaign
+            .parameters
+            .additional
+            .get("max_iterations")
+            .and_then(|v| v.as_u64())
+            .or_else(|| {
+                self.config
+                    .campaign
+                    .parameters
+                    .additional
+                    .get("fuzzing_iterations")
+                    .and_then(|v| v.as_u64())
+            })
+            .unwrap_or(1000);
+
+        let timeout = self
+            .config
+            .campaign
+            .parameters
+            .additional
+            .get("fuzzing_timeout_seconds")
+            .and_then(|v| v.as_u64());
+
+        if iterations > 0 {
+            tracing::warn!(
+                "MILESTONE continuous_start target={} iterations={} timeout={:?}",
+                self.config.campaign.name,
+                iterations,
+                timeout
+            );
+            self.run_continuous_fuzzing_phase(iterations, timeout, progress)
+                .await?;
+            tracing::warn!(
+                "MILESTONE continuous_complete target={}",
+                self.config.campaign.name
+            );
+        }
+
+        // Export corpus to output directory
+        let corpus_dir = self.config.reporting.output_dir.join("corpus");
+        match self.export_corpus(&corpus_dir) {
+            Ok(count) => tracing::info!(
+                "Exported {} interesting test cases to {:?}",
+                count,
+                corpus_dir
+            ),
+            Err(e) => tracing::warn!("Failed to export corpus: {}", e),
+        }
+
+        // Generate report
+        let elapsed = start_time.elapsed();
+        let mut findings = self.core.findings().read().unwrap().clone();
+
+        let additional = &self.config.campaign.parameters.additional;
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        let oracle_validation_enabled =
+            Self::additional_bool(additional, "oracle_validation").unwrap_or(evidence_mode);
+
+        if oracle_validation_enabled {
+            let validation_config = self.oracle_validation_config();
+            let skip_stateful = validation_config.skip_stateful_oracles;
+            let mut validator = OracleValidator::with_config(validation_config);
+            let mut validation_oracles = self.build_validation_oracles();
+            let before = findings.len();
+            findings = filter_validated_findings(
+                findings,
+                &mut validator,
+                &mut validation_oracles,
+                self.executor.as_ref(),
+            );
+            let after = findings.len();
+            tracing::info!(
+                "Oracle validation complete: {} -> {} findings (skip_stateful={})",
+                before,
+                after,
+                skip_stateful
+            );
+        }
+
+        tracing::info!(
+            "Fuzzing complete: {} findings in {:.2}s",
+            findings.len(),
+            elapsed.as_secs_f64()
+        );
+        tracing::warn!(
+            "MILESTONE complete mode={} target={} findings={} duration_s={:.2}",
+            mode_label,
+            self.config.campaign.name,
+            findings.len(),
+            elapsed.as_secs_f64()
+        );
+
+        let mut report = self.generate_report(findings.clone(), elapsed.as_secs());
+
+        // Phase 5B: Generate evidence bundles in evidence mode
+        if evidence_mode && !findings.is_empty() {
+            tracing::info!("Evidence mode: generating proof-level evidence bundles...");
+
+            let evidence_dir = self.config.reporting.output_dir.join("evidence");
+            let evidence_gen =
+                crate::reporting::EvidenceGenerator::new(self.config.clone(), evidence_dir.clone());
+
+            // Create backend identity from executor
+            let backend_identity = crate::reporting::BackendIdentity::from_framework(
+                self.config.campaign.target.framework,
+                self.executor.is_mock(),
+            );
+
+            let bundles = evidence_gen.generate_all_bundles(&findings, backend_identity);
+
+            // Count verification results
+            let confirmed = bundles.iter().filter(|b| b.is_confirmed()).count();
+            let skipped = bundles
+                .iter()
+                .filter(|b| {
+                    matches!(
+                        b.verification_result,
+                        crate::reporting::VerificationResult::Skipped(_)
+                    )
+                })
+                .count();
+            let failed = bundles
+                .iter()
+                .filter(|b| {
+                    matches!(
+                        b.verification_result,
+                        crate::reporting::VerificationResult::Failed(_)
+                    )
+                })
+                .count();
+
+            tracing::info!(
+                "Evidence generation complete: {} confirmed, {} failed, {} skipped out of {} bundles",
+                confirmed,
+                failed,
+                skipped,
+                bundles.len()
+            );
+
+            // Write evidence summary to report
+            if !bundles.is_empty() {
+                let evidence_summary_path = evidence_dir.join("EVIDENCE_SUMMARY.md");
+                if self
+                    .write_evidence_summary(&bundles, &evidence_summary_path)
+                    .is_ok()
+                {
+                    tracing::info!("Evidence summary written to {:?}", evidence_summary_path);
+                    // Update report statistics
+                    report.statistics.unique_crashes = confirmed as u64;
+                }
+            }
+        }
+
+        Ok(report)
+    }
+}

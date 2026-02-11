@@ -19,11 +19,13 @@ pub mod profiles;  // Phase 0: Embedded configuration profiles
 pub mod readiness;  // Phase 4C: 0-day readiness validation
 pub mod suggester;
 pub mod v2;
+pub mod additional;
 
 pub use profiles::{ProfileName, EmbeddedProfile, apply_profile};
 pub use readiness::{check_0day_readiness, ReadinessReport, ReadinessWarning, ReadinessLevel};
 pub use suggester::YamlSuggester;
 pub use v2::parse_chains;
+pub use additional::AdditionalConfig;
 
 use serde::{Deserialize, Serialize};
 use anyhow::Context;
@@ -79,7 +81,7 @@ pub struct Parameters {
     pub timeout_seconds: u64,
     /// Additional configuration options
     #[serde(default, flatten)]
-    pub additional: std::collections::HashMap<String, serde_yaml::Value>,
+    pub additional: AdditionalConfig,
 }
 
 fn default_field() -> String {
@@ -100,7 +102,7 @@ impl Default for Parameters {
             field: default_field(),
             max_constraints: default_max_constraints(),
             timeout_seconds: default_timeout(),
-            additional: std::collections::HashMap::new(),
+            additional: AdditionalConfig::default(),
         }
     }
 }

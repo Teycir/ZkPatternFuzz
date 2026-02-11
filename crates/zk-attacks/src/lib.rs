@@ -9,13 +9,20 @@
 //! - Verification and witness attacks
 
 pub mod arithmetic;
+pub mod batch_verifier;
+pub mod batch_verification;
 pub mod boundary;
 pub mod collision;
+pub mod constraint_inference;
+pub mod metamorphic;
+pub mod recursive;
 pub mod registry;
 pub mod soundness;
 pub mod underconstrained;
 pub mod verification;
 pub mod witness;
+pub mod zkevm;
+pub mod zkevm_differential;
 
 pub use arithmetic::ArithmeticTester;
 pub use boundary::{

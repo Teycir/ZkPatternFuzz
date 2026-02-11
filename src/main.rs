@@ -683,11 +683,12 @@ fn truncate_str(s: &str, max_len: usize) -> String {
 }
 
 /// Run a chain-focused fuzzing campaign (Mode 3: Deepest)
+#[allow(unused_variables)]
 async fn run_chain_campaign(
     config_path: &str,
     workers: usize,
     seed: Option<u64>,
-    _verbose: bool,
+    verbose: bool,
     dry_run: bool,
     simple_progress: bool,
     iterations: u64,

@@ -202,11 +202,7 @@ impl Attack for SoundnessTester {
 
 impl AttackPlugin for SoundnessTester {
     fn metadata(&self) -> AttackMetadata {
-        AttackMetadata::new(
-            "soundness",
-            self.description(),
-            "0.1.0",
-        )
+        AttackMetadata::new("soundness", self.description(), "0.1.0")
     }
 }
 
