@@ -114,6 +114,11 @@ Options:
   -w, --workers <WORKERS>  Number of parallel workers [default: 4]
   -s, --seed <SEED>        Seed for reproducibility
   -v, --verbose            Verbose output
+      --quiet              Minimal output
+      --simple-progress    Use simple progress output (no terminal UI)
+      --real-only          Fail if a real backend is unavailable (no mock fallback)
+      --profile <PROFILE>  Apply profile (quick | standard | deep | perf)
+      --kill-existing      Kill other zk-fuzzer instances on startup (use with caution)
       --dry-run            Validate config without executing
   -h, --help               Print help
 ```

@@ -57,6 +57,18 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+### 2b. [BEST_USE_CASES.md](BEST_USE_CASES.md) - **5 min read**
+**For:** Choosing the right targets and workflows  
+**Contains:**
+- Ideal target characteristics
+- Recommended workflows by mode
+- High-value use cases
+- When ZkPatternFuzz is less effective
+
+**Start here if:** You want to pick the most effective use cases quickly
+
+---
+
 ## 📚 Detailed Guides
 
 ### 3. [VULNERABILITIES.md](VULNERABILITIES.md) - **15 min read**

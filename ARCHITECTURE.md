@@ -200,6 +200,28 @@ Framework-specific integrations.
 - Uses stone-prover for STARK proofs
 - Tracks execution steps
 
+### 11. Process Isolation & Command Timeouts
+
+Hardened execution and evidence tooling to avoid hangs and crashes.
+
+**Components:**
+- `IsolatedExecutor` (`src/executor/isolated.rs`): runs backends in a subprocess with hard per-exec timeouts.
+- `command_timeout` (`src/reporting/command_timeout.rs`): wrapper used by proof generation to time out external tools.
+
+**Behavior:**
+- Evidence mode prefers per-exec isolation for hang safety.
+- Proof generation for Circom/Noir/Cairo uses timeouts to avoid indefinite stalls.
+
+### 12. Distributed Fuzzing (`src/distributed/`)
+
+Optional local-only coordinator/worker mode.
+
+**Defaults:**
+- Binds to `127.0.0.1` by default (local only).
+- Enforces a maximum message size to avoid memory exhaustion.
+
+**Note:** Remote/distributed use is not enabled by default.
+
 ## Data Flow
 
 ### Fuzzing Loop
