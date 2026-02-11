@@ -319,7 +319,10 @@ impl ResourceMonitor {
     /// Get resource usage for a process (platform-specific)
     #[cfg(unix)]
     pub fn get_usage(&self, pid: u32) -> ResourceUsage {
-        // On Unix, we can read from /proc/{pid}/stat and /proc/{pid}/statm
+        // Get system page size and clock ticks per second
+        let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) as u64 };
+        let clock_ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) as u64 };
+        
         let statm_path = format!("/proc/{}/statm", pid);
         let stat_path = format!("/proc/{}/stat", pid);
 
@@ -328,7 +331,7 @@ impl ResourceMonitor {
             .and_then(|content| {
                 let parts: Vec<&str> = content.split_whitespace().collect();
                 // First field is total program size in pages
-                parts.first()?.parse::<u64>().ok().map(|pages| pages * 4096)
+                parts.first()?.parse::<u64>().ok().map(|pages| pages * page_size)
             })
             .unwrap_or(0);
 
@@ -339,8 +342,8 @@ impl ResourceMonitor {
                 // Fields 14 and 15 are utime and stime in clock ticks
                 let utime = parts.get(13).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
                 let stime = parts.get(14).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
-                // Convert clock ticks to milliseconds (assuming 100 Hz)
-                let cpu_ms = (utime + stime) * 10;
+                // Convert clock ticks to milliseconds
+                let cpu_ms = ((utime + stime) * 1000) / clock_ticks_per_sec;
                 (cpu_ms, true)
             })
             .unwrap_or((0, false));

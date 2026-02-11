@@ -234,9 +234,20 @@ impl FuzzingEngine {
 
         // Create executor based on framework (with optional build dir overrides)
         let executor_factory_options = Self::parse_executor_factory_options(&config);
+        let circuit_path_str = config
+            .campaign
+            .target
+            .circuit_path
+            .to_str()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Circuit path contains invalid UTF-8: {:?}",
+                    config.campaign.target.circuit_path
+                )
+            })?;
         let mut executor = ExecutorFactory::create_with_options(
             config.campaign.target.framework,
-            config.campaign.target.circuit_path.to_str().unwrap_or(""),
+            circuit_path_str,
             &config.campaign.target.main_component,
             &executor_factory_options,
         )?;

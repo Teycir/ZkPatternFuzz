@@ -24,16 +24,23 @@ pub fn save_test_case(entry: &CorpusEntry, dir: &Path, index: usize) -> anyhow::
 pub fn load_test_case(path: &Path) -> anyhow::Result<CorpusEntry> {
     let data: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path)?)?;
 
-    let inputs: Vec<FieldElement> = data["inputs"]
+    let input_array = data["inputs"]
         .as_array()
-        .ok_or_else(|| anyhow::anyhow!("Invalid inputs"))?
-        .iter()
-        .filter_map(|v| v.as_str())
-        .filter_map(|hex| FieldElement::from_hex(hex).ok())
-        .collect();
+        .ok_or_else(|| anyhow::anyhow!("Invalid inputs array"))?;
 
-    let coverage_hash = data["coverage_hash"].as_u64().unwrap_or(0);
+    let mut inputs = Vec::with_capacity(input_array.len());
+    for (i, v) in input_array.iter().enumerate() {
+        let hex = v.as_str()
+            .ok_or_else(|| anyhow::anyhow!("Input {} is not a string", i))?;
+        let fe = FieldElement::from_hex(hex)
+            .map_err(|e| anyhow::anyhow!("Invalid hex at input {}: {}", i, e))?;
+        inputs.push(fe);
+    }
+
+    let coverage_hash = data["coverage_hash"].as_u64()
+        .ok_or_else(|| anyhow::anyhow!("Missing or invalid coverage_hash"))?;
     let discovered_new_coverage = data["discovered_new_coverage"].as_bool().unwrap_or(false);
+    let execution_count = data["execution_count"].as_u64().unwrap_or(0) as usize;
 
     let test_case = TestCase {
         inputs,
@@ -45,6 +52,7 @@ pub fn load_test_case(path: &Path) -> anyhow::Result<CorpusEntry> {
     if discovered_new_coverage {
         entry = entry.with_new_coverage();
     }
+    entry.execution_count = execution_count as u64;
 
     Ok(entry)
 }

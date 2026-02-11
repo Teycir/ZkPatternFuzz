@@ -604,12 +604,12 @@ fn resolve_worker_exe() -> anyhow::Result<PathBuf> {
 }
 
 fn make_response_path() -> anyhow::Result<PathBuf> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_else(|_| Duration::from_secs(0));
-    let pid = std::process::id();
-    let filename = format!("zkf_exec_response_{}_{}.json", pid, now.as_nanos());
-    Ok(std::env::temp_dir().join(filename))
+    let temp_file = tempfile::Builder::new()
+        .prefix("zkf_exec_response_")
+        .suffix(".json")
+        .tempfile()?;
+    let (_, path) = temp_file.keep()?;
+    Ok(path)
 }
 
 /// Entry point for the isolated exec worker subprocess.

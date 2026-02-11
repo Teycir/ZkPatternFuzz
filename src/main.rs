@@ -251,17 +251,6 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
-
-    // Create PID lockfile (unless running exec-worker subcommand)
-    if !matches!(cli.command, Some(Commands::ExecWorker)) {
-        create_pid_file()?;
-        
-        // Ensure PID file is removed on exit
-        let _guard = scopeguard::guard((), |_| {
-            remove_pid_file();
-        });
-    }
-
     // Initialize logging
     let log_level = if cli.quiet {
         tracing::Level::WARN
@@ -582,6 +571,14 @@ fn minimize_corpus(corpus_dir: &str, output: Option<&str>) -> anyhow::Result<()>
 }
 
 fn generate_sample_config(output: &str, framework: &str) -> anyhow::Result<()> {
+    let (circuit_path, main_component) = match framework {
+        "circom" => ("./circuits/example.circom", "Main"),
+        "noir" => ("./circuits/example", "main"),
+        "halo2" => ("./circuits/example.rs", "ExampleCircuit"),
+        "cairo" => ("./circuits/example.cairo", "main"),
+        _ => ("./circuits/example.circom", "Main"),
+    };
+    
     let sample = format!(r#"# ZK-Fuzzer Campaign Configuration
 # Generated sample for {} framework
 
@@ -590,8 +587,8 @@ campaign:
   version: "1.0"
   target:
     framework: "{}"
-    circuit_path: "./circuits/example.circom"
-    main_component: "Main"
+    circuit_path: "{}"
+    main_component: "{}"
 
   parameters:
     field: "bn254"
@@ -652,7 +649,7 @@ reporting:
     - markdown
   include_poc: true
   crash_reproduction: true
-"#, framework, framework, framework);
+"#, framework, framework, framework, circuit_path, main_component);
 
     std::fs::write(output, sample)?;
     println!("Generated sample configuration: {}", output);

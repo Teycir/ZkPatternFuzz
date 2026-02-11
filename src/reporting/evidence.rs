@@ -521,7 +521,9 @@ echo "Finding description: {}"
         _finding: &Finding,
     ) -> anyhow::Result<(PathBuf, PathBuf, VerificationResult)> {
         use std::process::Command;
+        use std::time::Duration;
 
+        let timeout = Duration::from_secs(120); // 2 minute timeout per command
         let proof_json = finding_dir.join("proof.json");
         let public_json = finding_dir.join("public.json");
         let witness_wtns = finding_dir.join("witness.wtns");
@@ -573,21 +575,25 @@ echo "Finding description: {}"
         // Step 1: Calculate witness (wasm -> wtns)
         // snarkjs wtns calculate circuit.wasm witness.json witness.wtns
         let wtns_result = if snarkjs_cmd.starts_with("npx") {
-            Command::new("npx")
-                .args(["snarkjs", "wtns", "calculate"])
-                .arg(&wasm)
-                .arg(&witness_json)
-                .arg(&witness_wtns)
-                .current_dir(finding_dir)
-                .output()
+            super::command_timeout::run_with_timeout(
+                Command::new("npx")
+                    .args(["--yes", "snarkjs", "wtns", "calculate"])  // --yes prevents prompts
+                    .arg(&wasm)
+                    .arg(&witness_json)
+                    .arg(&witness_wtns)
+                    .current_dir(finding_dir),
+                timeout,
+            )
         } else {
-            Command::new(&snarkjs_cmd)
-                .args(["wtns", "calculate"])
-                .arg(&wasm)
-                .arg(&witness_json)
-                .arg(&witness_wtns)
-                .current_dir(finding_dir)
-                .output()
+            super::command_timeout::run_with_timeout(
+                Command::new(&snarkjs_cmd)
+                    .args(["wtns", "calculate"])
+                    .arg(&wasm)
+                    .arg(&witness_json)
+                    .arg(&witness_wtns)
+                    .current_dir(finding_dir),
+                timeout,
+            )
         };
 
         match wtns_result {
@@ -615,23 +621,27 @@ echo "Finding description: {}"
         // Step 2: Generate proof
         // snarkjs groth16 prove circuit.zkey witness.wtns proof.json public.json
         let prove_result = if snarkjs_cmd.starts_with("npx") {
-            Command::new("npx")
-                .args(["snarkjs", "groth16", "prove"])
-                .arg(&zkey)
-                .arg(&witness_wtns)
-                .arg(&proof_json)
-                .arg(&public_json)
-                .current_dir(finding_dir)
-                .output()
+            super::command_timeout::run_with_timeout(
+                Command::new("npx")
+                    .args(["--yes", "snarkjs", "groth16", "prove"])
+                    .arg(&zkey)
+                    .arg(&witness_wtns)
+                    .arg(&proof_json)
+                    .arg(&public_json)
+                    .current_dir(finding_dir),
+                timeout,
+            )
         } else {
-            Command::new(&snarkjs_cmd)
-                .args(["groth16", "prove"])
-                .arg(&zkey)
-                .arg(&witness_wtns)
-                .arg(&proof_json)
-                .arg(&public_json)
-                .current_dir(finding_dir)
-                .output()
+            super::command_timeout::run_with_timeout(
+                Command::new(&snarkjs_cmd)
+                    .args(["groth16", "prove"])
+                    .arg(&zkey)
+                    .arg(&witness_wtns)
+                    .arg(&proof_json)
+                    .arg(&public_json)
+                    .current_dir(finding_dir),
+                timeout,
+            )
         };
 
         match prove_result {
@@ -659,21 +669,25 @@ echo "Finding description: {}"
         // Step 3: Verify proof
         // snarkjs groth16 verify vkey.json public.json proof.json
         let verify_result = if snarkjs_cmd.starts_with("npx") {
-            Command::new("npx")
-                .args(["snarkjs", "groth16", "verify"])
-                .arg(&vkey)
-                .arg(&public_json)
-                .arg(&proof_json)
-                .current_dir(finding_dir)
-                .output()
+            super::command_timeout::run_with_timeout(
+                Command::new("npx")
+                    .args(["--yes", "snarkjs", "groth16", "verify"])
+                    .arg(&vkey)
+                    .arg(&public_json)
+                    .arg(&proof_json)
+                    .current_dir(finding_dir),
+                timeout,
+            )
         } else {
-            Command::new(&snarkjs_cmd)
-                .args(["groth16", "verify"])
-                .arg(&vkey)
-                .arg(&public_json)
-                .arg(&proof_json)
-                .current_dir(finding_dir)
-                .output()
+            super::command_timeout::run_with_timeout(
+                Command::new(&snarkjs_cmd)
+                    .args(["groth16", "verify"])
+                    .arg(&vkey)
+                    .arg(&public_json)
+                    .arg(&proof_json)
+                    .current_dir(finding_dir),
+                timeout,
+            )
         };
 
         match verify_result {

@@ -7,6 +7,8 @@
 //! - Coverage Summary: Enhanced CLI coverage view
 //! - PoC Generator: Exploit reproduction scripts
 
+mod command_timeout;  // Timeout wrapper for external commands
+
 pub mod coverage_summary;
 pub mod evidence;  // Phase 5: Proof-level evidence bundles
 pub mod evidence_noir;   // Phase 0: Noir proof generation

@@ -46,7 +46,7 @@ pub struct NetworkConfig {
 impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
-            bind_addr: "0.0.0.0".to_string(),
+            bind_addr: "127.0.0.1".to_string(), // Secure default: localhost only
             port: 9527,
             connect_timeout: Duration::from_secs(10),
             read_timeout: Duration::from_secs(30),
@@ -256,6 +256,13 @@ impl FuzzerNode {
         let mut len_buf = [0u8; 4];
         stream.read_exact(&mut len_buf).ok()?;
         let len = u32::from_le_bytes(len_buf) as usize;
+
+        // Enforce max_message_size before allocation
+        const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100MB
+        if len > MAX_MESSAGE_SIZE {
+            tracing::warn!("Rejecting oversized message: {} bytes", len);
+            return None;
+        }
 
         let mut data = vec![0u8; len];
         stream.read_exact(&mut data).ok()?;

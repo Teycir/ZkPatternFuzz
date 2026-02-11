@@ -134,7 +134,7 @@ fn main() -> anyhow::Result<()> {
         .map(entry_from_generated)
         .collect();
 
-    entries.sort_by(|a, b| b.hint_score.partial_cmp(&a.hint_score).unwrap());
+    entries.sort_by(|a, b| b.hint_score.total_cmp(&a.hint_score));
 
     let output_dir = Path::new(&args.output_dir);
     std::fs::create_dir_all(output_dir)?;

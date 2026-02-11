@@ -164,7 +164,7 @@ impl ConfigGenerator {
         }
 
         // Sort by confidence descending
-        patterns.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+        patterns.sort_by(|a, b| b.confidence.total_cmp(&a.confidence));
 
         patterns
     }

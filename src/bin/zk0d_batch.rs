@@ -107,7 +107,7 @@ fn main() -> anyhow::Result<()> {
         });
 
         if !args.skip_validate {
-            validate_campaign(&target.campaign, &output_dir)?;
+            validate_campaign(&target.campaign, &output_dir, &mode)?;
         }
 
         let campaign_path = write_campaign_override(&target.campaign, &output_dir)?;
@@ -161,14 +161,18 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn validate_campaign(campaign: &str, output_dir: &str) -> anyhow::Result<()> {
+fn validate_campaign(campaign: &str, output_dir: &str, mode: &str) -> anyhow::Result<()> {
     let config = FuzzConfig::from_yaml(campaign)?;
-    let invariants = config.get_invariants();
-    if invariants.is_empty() {
-        anyhow::bail!(
-            "Campaign '{}' missing invariants (required for evidence mode)",
-            campaign
-        );
+    
+    // Only require invariants in evidence mode
+    if mode == "evidence" {
+        let invariants = config.get_invariants();
+        if invariants.is_empty() {
+            anyhow::bail!(
+                "Campaign '{}' missing invariants (required for evidence mode)",
+                campaign
+            );
+        }
     }
 
     // Ensure output_dir is not empty
