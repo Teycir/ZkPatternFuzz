@@ -238,23 +238,31 @@ impl EvidenceGenerator {
     fn discover_circuit_artifacts(&self) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
         let circuit_path = &self.config.campaign.target.circuit_path;
         let main_component = &self.config.campaign.target.main_component;
+        let additional = &self.config.campaign.parameters.additional;
+
+        // Circom emits artifacts using the *circuit file stem* (not the main component name).
+        // Example: circom foo-bar.circom -o build => build/foo-bar_js/foo-bar.wasm
+        let circuit_stem = circuit_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_else(|| main_component.as_str());
 
         // Try to find build directory
-        let build_dir = self
-            .config
-            .campaign
-            .parameters
-            .additional
-            .get("build_dir")
-            .or_else(|| {
-                self.config
-                    .campaign
-                    .parameters
-                    .additional
-                    .get("circom_build_dir")
-            })
+        let build_dir = additional
+            .get("circom_build_dir")
+            .or_else(|| additional.get("build_dir"))
             .and_then(|v| v.as_str())
             .map(PathBuf::from)
+            .or_else(|| {
+                // If the campaign is using build_dir_base, mirror ExecutorFactoryOptions behavior:
+                //   <base>/<framework_dir_name>/<derived_build_name>
+                additional.get("build_dir_base").and_then(|v| v.as_str()).map(|s| {
+                    let mut dir = PathBuf::from(s);
+                    dir.push("circom");
+                    dir.push(Self::derive_circom_build_name(circuit_path, main_component));
+                    dir
+                })
+            })
             .unwrap_or_else(|| {
                 // Default: look for build dir next to circuit
                 circuit_path
@@ -263,17 +271,15 @@ impl EvidenceGenerator {
                     .unwrap_or_else(|| PathBuf::from("./build"))
             });
 
-        let component_lower = main_component.to_lowercase();
-
         // Discover WASM
         let wasm = self.wasm_path.clone().or_else(|| {
-            let wasm_dir = build_dir.join(format!("{}_js", component_lower));
-            let wasm_file = wasm_dir.join(format!("{}.wasm", component_lower));
+            let wasm_dir = build_dir.join(format!("{}_js", circuit_stem));
+            let wasm_file = wasm_dir.join(format!("{}.wasm", circuit_stem));
             if wasm_file.exists() {
                 Some(wasm_file)
             } else {
                 // Try alternative naming
-                let alt_wasm = build_dir.join(format!("{}.wasm", component_lower));
+                let alt_wasm = build_dir.join(format!("{}.wasm", circuit_stem));
                 if alt_wasm.exists() {
                     Some(alt_wasm)
                 } else {
@@ -284,7 +290,7 @@ impl EvidenceGenerator {
 
         // Discover zkey
         let zkey = self.zkey_path.clone().or_else(|| {
-            let zkey_file = build_dir.join(format!("{}.zkey", component_lower));
+            let zkey_file = build_dir.join(format!("{}.zkey", circuit_stem));
             if zkey_file.exists() {
                 Some(zkey_file)
             } else {
@@ -298,7 +304,7 @@ impl EvidenceGenerator {
             if vkey_file.exists() {
                 Some(vkey_file)
             } else {
-                let alt_vkey = build_dir.join(format!("{}_vkey.json", component_lower));
+                let alt_vkey = build_dir.join(format!("{}_vkey.json", circuit_stem));
                 if alt_vkey.exists() {
                     Some(alt_vkey)
                 } else {
@@ -457,6 +463,14 @@ impl EvidenceGenerator {
     fn generate_repro_script(&self, path: &Path, finding: &Finding) -> anyhow::Result<String> {
         let circuit_path = self.config.campaign.target.circuit_path.display();
         let main_component = &self.config.campaign.target.main_component;
+        let circuit_stem = self
+            .config
+            .campaign
+            .target
+            .circuit_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_else(|| main_component.as_str());
 
         let script = match self.config.campaign.target.framework {
             Framework::Circom => {
@@ -468,6 +482,7 @@ set -e
 
 CIRCUIT_PATH="{}"
 MAIN_COMPONENT="{}"
+CIRCUIT_STEM="{}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
 
@@ -479,13 +494,13 @@ mkdir -p "$BUILD_DIR"
 circom "$CIRCUIT_PATH" --r1cs --wasm --sym -o "$BUILD_DIR"
 
 # Step 2: Generate witness
-cd "$BUILD_DIR/{}_js"
-node generate_witness.js {}.wasm "$SCRIPT_DIR/witness.json" witness.wtns
+cd "$BUILD_DIR/${{CIRCUIT_STEM}}_js"
+node generate_witness.js "${{CIRCUIT_STEM}}.wasm" "$SCRIPT_DIR/witness.json" witness.wtns
 echo "✓ Witness generated"
 
 # Step 3: Generate proof (if zkey available)
-if [ -f "$BUILD_DIR/{}.zkey" ]; then
-    snarkjs groth16 prove "$BUILD_DIR/{}.zkey" witness.wtns proof.json public.json
+if [ -f "$BUILD_DIR/${{CIRCUIT_STEM}}.zkey" ]; then
+    snarkjs groth16 prove "$BUILD_DIR/${{CIRCUIT_STEM}}.zkey" witness.wtns proof.json public.json
     echo "✓ Proof generated"
     
     # Step 4: Verify proof
@@ -503,11 +518,8 @@ fi
                     finding.attack_type,
                     circuit_path,
                     main_component,
+                    circuit_stem,
                     finding.description.chars().take(50).collect::<String>(),
-                    main_component.to_lowercase(),
-                    main_component.to_lowercase(),
-                    main_component.to_lowercase(),
-                    main_component.to_lowercase(),
                 )
             }
             _ => {
@@ -543,6 +555,44 @@ echo "Finding description: {}"
             path.parent().unwrap().display()
         ))
     }
+
+fn derive_circom_build_name(circuit_path: &Path, main_component: &str) -> String {
+    // Keep this in sync with executor/mod.rs::derive_circuit_build_name.
+    let name = if circuit_path.is_dir() {
+        circuit_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("circuit")
+            .to_string()
+    } else {
+        circuit_path
+            .file_stem()
+            .or_else(|| circuit_path.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("circuit")
+            .to_string()
+    };
+
+    let mut combined = name;
+    if !main_component.is_empty() && !combined.contains(main_component) {
+        combined = format!("{}_{}", combined, main_component);
+    }
+
+    Self::sanitize_component(&combined)
+}
+
+fn sanitize_component(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+
+    if out.is_empty() { "circuit".to_string() } else { out }
+}
 
     /// Generate Circom proof and verify it
     ///

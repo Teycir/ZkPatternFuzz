@@ -1,0 +1,27 @@
+---
+includes:
+  - "iden3_authv3_repo.yaml"
+
+campaign:
+  name: "zk0d_iden3_authv3_repo_smoke"
+  version: "2.0"
+  parameters:
+    timeout_seconds: 120
+    additional:
+      strict_backend: true
+      mark_fallback: true
+      per_exec_isolation: true
+      execution_timeout_ms: 2000
+      constraint_guided_enabled: false
+      symbolic_max_paths: 0
+      symbolic_max_depth: 0
+      symbolic_solver_timeout_ms: 500
+      oracle_validation: true
+
+reporting:
+  output_dir: "./reports/zk0d/iden3_authv3_repo_smoke"
+  formats:
+    - "json"
+    - "markdown"
+  include_poc: true
+  crash_reproduction: true

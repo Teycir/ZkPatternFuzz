@@ -1,0 +1,97 @@
+---
+campaign:
+  name: "zk0d_claimutils_getclaimheader_evidence"
+  version: "2.0"
+  target:
+    framework: "circom"
+    circuit_path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/test/circuits/utils/claimUtils_getClaimHeader.circom"
+    main_component: "main"
+  parameters:
+    field: "bn254"
+    max_constraints: 20000
+    timeout_seconds: 300
+    additional:
+      strict_backend: true
+      mark_fallback: true
+      per_exec_isolation: true
+      execution_timeout_ms: 30000
+      oracle_validation: true
+      constraint_guided_enabled: true
+      symbolic_max_paths: 200
+      symbolic_max_depth: 80
+      symbolic_solver_timeout_ms: 3000
+      include_paths:
+        - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/node_modules"
+        - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/circuits"
+
+invariants:
+  - name: "claim0_field_range"
+    invariant_type: range
+    relation: "0 <= claim_0 < 2^253"
+    oracle: must_hold
+    severity: "high"
+    description: "Primary claim limb should remain in-field."
+  - name: "claim_schema_not_trivial"
+    invariant_type: constraint
+    relation: "claim_0 != 0"
+    oracle: must_hold
+    severity: "medium"
+    description: "Avoid all-zero header limb to stress header parsing logic."
+
+attacks:
+  - type: "soundness"
+    description: "Attempt to satisfy constraints with malformed claim limbs"
+    config:
+      forge_attempts: 500
+      mutation_rate: 0.2
+  - type: "underconstrained"
+    description: "Detect multiple witnesses accepted for same semantics"
+    config:
+      witness_pairs: 1500
+  - type: "boundary"
+    description: "Boundary values for claim limbs"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "2"
+        - "p-1"
+
+inputs:
+  - name: "claim_0"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0x0"
+      - "0x1"
+      - "0x2"
+      - "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"
+  - name: "claim_1"
+    type: "field"
+    fuzz_strategy: "random"
+  - name: "claim_2"
+    type: "field"
+    fuzz_strategy: "random"
+  - name: "claim_3"
+    type: "field"
+    fuzz_strategy: "random"
+  - name: "claim_4"
+    type: "field"
+    fuzz_strategy: "random"
+  - name: "claim_5"
+    type: "field"
+    fuzz_strategy: "random"
+  - name: "claim_6"
+    type: "field"
+    fuzz_strategy: "random"
+  - name: "claim_7"
+    type: "field"
+    fuzz_strategy: "random"
+
+reporting:
+  output_dir: "./reports/zk0d/skimmer/claimutils_getclaimheader_evidence"
+  formats:
+    - "json"
+    - "markdown"
+  include_poc: true
+  crash_reproduction: true

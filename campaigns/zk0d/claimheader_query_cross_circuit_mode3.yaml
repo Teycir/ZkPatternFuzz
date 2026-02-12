@@ -1,0 +1,110 @@
+---
+includes:
+  - "templates/attacks/evidence_core.yaml"
+
+campaign:
+  name: "zk0d_claimheader_query_cross_circuit_mode3"
+  version: "2.0"
+  target:
+    framework: "circom"
+    circuit_path: "./targets/zk0d/wrappers/claimUtils_getClaimHeader_wrapper.circom"
+    main_component: "getClaimHeader"
+  parameters:
+    field: "bn254"
+    max_constraints: 260000
+    timeout_seconds: 300
+    build_dir_base: "./build/zk0d"
+    strict_backend: true
+    evidence_mode: true
+    chain_budget_seconds: 600
+    chain_iterations: 5000
+
+chains:
+  - name: "claimheader_to_query_chain"
+    description: "Wire claim header schema output into query claimSchema input, then feed query userID forward."
+    circuits:
+      claim_header:
+        path: "./targets/zk0d/wrappers/claimUtils_getClaimHeader_wrapper.circom"
+        main_component: "getClaimHeader"
+        framework: "circom"
+      query_v3:
+        path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/circuits/credentialAtomicQueryV3-16-16-64.circom"
+        main_component: "main"
+        framework: "circom"
+    steps:
+      - circuit_ref: "claim_header"
+        input_wiring: fresh
+        label: "Extract claim header"
+      - circuit_ref: "query_v3"
+        input_wiring:
+          from_prior_output:
+            step: 0
+            mapping:
+              - [0, 31] # schema -> claimSchema
+        label: "Run query with chained schema"
+      - circuit_ref: "query_v3"
+        input_wiring:
+          from_prior_output:
+            step: 1
+            mapping:
+              - [1, 2] # userID -> userGenesisID
+        label: "Replay query with chained userID"
+    assertions:
+      - name: "schema_wired_to_query"
+        relation: "step[0].out[0] == step[1].in[31]"
+        severity: "critical"
+        description: "Claim header schema must be injected as query claimSchema."
+      - name: "userid_wired_forward"
+        relation: "step[1].out[1] == step[2].in[2]"
+        severity: "critical"
+        description: "First query userID must be injected as second query userGenesisID."
+      - name: "step1_exec_success"
+        relation: "step[1].success == true"
+        severity: "high"
+        description: "First query step must execute successfully."
+      - name: "step2_exec_success"
+        relation: "step[2].success == true"
+        severity: "high"
+        description: "Second query step must execute successfully."
+
+inputs:
+  - name: "claim_0"
+    type: "field"
+    fuzz_strategy: "random"
+  - name: "proofType"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0"
+      - "1"
+      - "2"
+      - "3"
+  - name: "isRevocationChecked"
+    type: "field"
+    fuzz_strategy: "interesting_values"
+    interesting:
+      - "0"
+      - "1"
+      - "2"
+
+invariants:
+  - name: "proof_type_allowed"
+    invariant_type: "range"
+    relation: "proofType in {1,2}"
+    oracle: "must_hold"
+    severity: "high"
+    description: "Only signature (1) or MTP (2) proof types are valid."
+  - name: "revocation_flag_binary"
+    invariant_type: "range"
+    relation: "isRevocationChecked in {0,1}"
+    oracle: "must_hold"
+    severity: "high"
+    description: "Revocation flag must be binary."
+
+reporting:
+  output_dir: "./reports/zk0d/claimheader_query_cross_circuit_mode3"
+  formats:
+    - "json"
+    - "markdown"
+  include_poc: true
+  crash_reproduction: true
