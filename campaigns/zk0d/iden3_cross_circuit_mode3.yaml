@@ -60,6 +60,20 @@ chains:
         severity: "critical"
         description: "Step 2 userGenesisID must be sourced from previous query userID."
 
+invariants:
+  - name: "proof_type_allowed"
+    invariant_type: range
+    relation: "proofType in {1,2}"
+    oracle: must_hold
+    severity: "high"
+    description: "Only signature (1) or MTP (2) proof types are valid."
+  - name: "nullifier_session_nonzero"
+    invariant_type: range
+    relation: "0 <= nullifierSessionID"
+    oracle: must_hold
+    severity: "medium"
+    description: "Session id should remain a valid field element."
+
 reporting:
   output_dir: "./reports/zk0d/iden3_cross_circuit_mode3"
   formats:

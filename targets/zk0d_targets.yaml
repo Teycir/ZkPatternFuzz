@@ -2,24 +2,21 @@ version: 1
 defaults:
   workers: 8
   seed: 42
-  iterations: 100
-  timeout: 600
+  iterations: 50000
+  timeout: 1800
   mode: evidence
 
 targets:
-  - name: "tornado_withdraw"
-    enabled: false
-    campaign: "campaigns/zk0d/tornado_withdraw.yaml"
-    output_dir: "reports/zk0d/tornado_withdraw"
-
-  - name: "semaphore"
-    enabled: false
-    campaign: "campaigns/zk0d/semaphore.yaml"
-    output_dir: "reports/zk0d/semaphore"
-
-  - name: "iden3_authv3"
+  - name: "iden3_authv3_mode2"
     enabled: true
-    campaign: "campaigns/zk0d/iden3_authv3.yaml"
-    output_dir: "reports/zk0d/iden3_authv3"
-    iterations: 0
-    timeout: 600
+    campaign: "campaigns/zk0d/iden3_authv3_repo.yaml"
+    output_dir: "reports/zk0d/iden3_authv3_repo"
+    mode: evidence
+
+  - name: "iden3_cross_circuit_mode3"
+    enabled: true
+    campaign: "campaigns/zk0d/iden3_cross_circuit_mode3.yaml"
+    output_dir: "reports/zk0d/iden3_cross_circuit_mode3"
+    mode: chains
+    iterations: 20000
+    timeout: 1800
