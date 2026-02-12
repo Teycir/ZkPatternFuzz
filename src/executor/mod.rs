@@ -173,7 +173,23 @@ fn derive_circuit_build_name(circuit_path: &str, main_component: &str) -> String
         combined = format!("{}_{}", combined, main_component);
     }
 
-    sanitize_component(&combined)
+    // Include a short hash of the full path + main component so two different circuits with the
+    // same filename (in different directories) never collide in `build_dir_base/`.
+    let hash = short_stable_hash(circuit_path, main_component);
+    sanitize_component(&format!("{}__{}", combined, hash))
+}
+
+fn short_stable_hash(circuit_path: &str, main_component: &str) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(circuit_path.as_bytes());
+    hasher.update(b"|");
+    hasher.update(main_component.as_bytes());
+    let digest = hasher.finalize();
+
+    // 6 bytes => 12 hex chars, enough to avoid practical collisions while keeping paths short.
+    hex::encode(&digest[..6])
 }
 
 fn sanitize_component(raw: &str) -> String {

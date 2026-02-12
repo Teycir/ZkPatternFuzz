@@ -221,6 +221,7 @@ pub mod fuzzer;
 pub mod progress;
 pub mod reporting;
 pub mod targets;
+pub mod util;
 
 // New feature modules
 pub mod analysis;

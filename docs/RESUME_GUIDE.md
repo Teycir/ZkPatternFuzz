@@ -176,18 +176,22 @@ STATISTICS
    cargo run -- run campaign.yaml --resume --seed 42
    ```
 
-2. **Backup valuable corpora**: Before major changes:
+2. **Avoid concurrent writers**: Do not run two `zk-fuzzer` processes that write to the same
+   `reporting.output_dir`/corpus at the same time. The CLI enforces an output-dir lock and will
+   fail-fast if the directory is already in use.
+
+3. **Backup valuable corpora**: Before major changes:
    ```bash
    cp -r reports/corpus reports/corpus_backup_$(date +%Y%m%d)
    ```
 
-3. **Minimize periodically**: Keep corpus lean:
+4. **Minimize periodically**: Keep corpus lean:
    ```bash
    cargo run -- minimize ./reports/corpus -o ./reports/corpus_clean
    mv ./reports/corpus_clean ./reports/corpus
    ```
 
-4. **Version control corpora**: For important campaigns:
+5. **Version control corpora**: For important campaigns:
    ```bash
    git add reports/corpus/*.json
    git commit -m "Corpus checkpoint after 500K iterations"

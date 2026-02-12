@@ -578,7 +578,15 @@ fn derive_circom_build_name(circuit_path: &Path, main_component: &str) -> String
         combined = format!("{}_{}", combined, main_component);
     }
 
-    Self::sanitize_component(&combined)
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(circuit_path.to_string_lossy().as_bytes());
+    hasher.update(b"|");
+    hasher.update(main_component.as_bytes());
+    let digest = hasher.finalize();
+    let hash = hex::encode(&digest[..6]);
+
+    Self::sanitize_component(&format!("{}__{}", combined, hash))
 }
 
 fn sanitize_component(raw: &str) -> String {

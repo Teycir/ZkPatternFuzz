@@ -19,6 +19,9 @@ tempfile = "3.10"
 dirs = "5.0"
 tracing = "0.1"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [features]
 default = ["mock", "circom", "noir", "halo2", "cairo"]
 all = ["mock", "circom", "noir", "halo2", "cairo"]

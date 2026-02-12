@@ -12,7 +12,8 @@ use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader};
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -83,6 +84,53 @@ struct CircomIoInfo {
     input_signals: Vec<analysis::SignalInfo>,
     output_signals: Vec<analysis::SignalInfo>,
     public_inputs: Vec<String>,
+}
+
+#[derive(Debug)]
+struct BuildDirLock {
+    #[allow(dead_code)]
+    path: PathBuf,
+    file: File,
+}
+
+impl BuildDirLock {
+    fn acquire(build_dir: &Path) -> Result<Self> {
+        std::fs::create_dir_all(build_dir)?;
+        let path = build_dir.join(".zkfuzz_build.lock");
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&path)
+            .with_context(|| format!("Failed to open build lock file: {}", path.display()))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+            if rc != 0 {
+                return Err(std::io::Error::last_os_error())
+                    .with_context(|| format!("Failed to lock build dir: {}", build_dir.display()));
+            }
+        }
+
+        // Helpful metadata for humans. Not required for correctness.
+        let _ = file.set_len(0);
+        let _ = writeln!(file, "pid={}", std::process::id());
+        let _ = file.sync_all();
+
+        Ok(Self { path, file })
+    }
+}
+
+impl Drop for BuildDirLock {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let _ = unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) };
+        }
+    }
 }
 
 fn map_signal_index(signals: &HashMap<String, usize>, name: &str) -> Option<usize> {
@@ -643,6 +691,14 @@ impl CircomTarget {
             return Ok(());
         }
 
+        // Ensure build dir exists and prevent cross-process artifact races/collisions.
+        // This allows running multiple zk-fuzzer processes in parallel as long as they
+        // do not intentionally share the same build dir for different circuits.
+        let _build_lock = BuildDirLock::acquire(&self.build_dir)?;
+
+        // In-process IO lock to avoid concurrent circom/snarkjs calls stepping on each other.
+        let _guard = circom_io_lock().lock().unwrap();
+
         let basename = self.output_basename();
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         let wasm_path = self
@@ -664,8 +720,6 @@ impl CircomTarget {
             return Ok(());
         }
 
-        let _guard = circom_io_lock().lock().unwrap();
-
         tracing::info!("Compiling Circom circuit: {:?}", self.circuit_path);
 
         // Check circom is available
@@ -678,9 +732,6 @@ impl CircomTarget {
             &self.circuit_path,
             &self.main_component,
         )?;
-
-        // Create build directory
-        std::fs::create_dir_all(&self.build_dir)?;
 
         // Compile circuit
         let mut cmd = Command::new("circom");
@@ -984,6 +1035,8 @@ impl CircomTarget {
 
     /// Setup proving and verification keys using Groth16
     pub fn setup_keys(&mut self) -> Result<()> {
+        // Prevent cross-process writes to the same build dir (zkey/vkey/ptau).
+        let _build_lock = BuildDirLock::acquire(&self.build_dir)?;
         let _guard = circom_io_lock().lock().unwrap();
         let basename = self.output_basename();
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));

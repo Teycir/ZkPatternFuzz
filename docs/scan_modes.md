@@ -77,3 +77,13 @@ Limits
 - Goal: catch misconfigurations early and avoid wasted deep runs.
 - Suggested budget: 5–10 minutes per target, low iterations, broad oracles.
 - Exception: skip only if the user explicitly requests it in writing.
+
+## Parallel Execution
+
+Mode 2 (evidence) and Mode 3 (chains) may be run **in parallel** as separate `zk-fuzzer` processes
+to reduce wall-clock time.
+
+Rules:
+- Use distinct `reporting.output_dir` per process (reports/corpus files must not be shared).
+- Do not use `--kill-existing` when parallelizing.
+- Keep the total `--workers` across processes within CPU limits.

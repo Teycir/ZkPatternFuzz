@@ -436,6 +436,30 @@ async fn run_campaign(
         );
     }
 
+    // Prevent multi-process collisions on the same output dir (reports/corpus/report.json, etc.).
+    // Skip in --dry-run since no files are written.
+    let _output_lock = if dry_run {
+        None
+    } else {
+        let output_dir = config.reporting.output_dir.clone();
+        Some(match zk_fuzzer::util::file_lock::lock_dir_exclusive(
+            &output_dir,
+            ".zkfuzz.lock",
+            zk_fuzzer::util::file_lock::LockMode::NonBlocking,
+        ) {
+            Ok(lock) => lock,
+            Err(err) => {
+                anyhow::bail!(
+                    "Output directory is already in use (locked): {}. \
+                     Choose a different `reporting.output_dir` (or wait for the other run to finish). \
+                     Error: {:#}",
+                    output_dir.display(),
+                    err
+                );
+            }
+        })
+    };
+
     // Print banner
     print_banner(&config);
 
@@ -703,6 +727,30 @@ async fn run_chain_campaign(
 
     tracing::info!("Loading chain campaign from: {}", config_path);
     let mut config = FuzzConfig::from_yaml(config_path)?;
+
+    // Prevent multi-process collisions on the same output dir (chain_corpus.json, reports, etc.).
+    // Skip in --dry-run since no files are written.
+    let _output_lock = if dry_run {
+        None
+    } else {
+        let output_dir = config.reporting.output_dir.clone();
+        Some(match zk_fuzzer::util::file_lock::lock_dir_exclusive(
+            &output_dir,
+            ".zkfuzz.lock",
+            zk_fuzzer::util::file_lock::LockMode::NonBlocking,
+        ) {
+            Ok(lock) => lock,
+            Err(err) => {
+                anyhow::bail!(
+                    "Output directory is already in use (locked): {}. \
+                     Choose a different `reporting.output_dir` (or wait for the other run to finish). \
+                     Error: {:#}",
+                    output_dir.display(),
+                    err
+                );
+            }
+        })
+    };
 
     // Get chains from config
     let chains = parse_chains(&config);
