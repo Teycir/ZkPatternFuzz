@@ -58,6 +58,8 @@ pub struct ExecOptions {
     pub circom_snarkjs_path: Option<String>,
     #[serde(default)]
     pub circom_skip_compile_if_artifacts: bool,
+    #[serde(default)]
+    pub circom_skip_constraint_check: bool,
     pub strict_backend: bool,
     pub mark_fallback: bool,
 }
@@ -100,6 +102,7 @@ impl ExecOptions {
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
             circom_skip_compile_if_artifacts: options.circom_skip_compile_if_artifacts,
+            circom_skip_constraint_check: options.circom_skip_constraint_check,
             strict_backend: options.strict_backend,
             mark_fallback: options.mark_fallback,
         }
@@ -121,6 +124,7 @@ impl ExecOptions {
         options.circom_ptau_path = self.circom_ptau_path.as_ref().map(PathBuf::from);
         options.circom_snarkjs_path = self.circom_snarkjs_path.as_ref().map(PathBuf::from);
         options.circom_skip_compile_if_artifacts = self.circom_skip_compile_if_artifacts;
+        options.circom_skip_constraint_check = self.circom_skip_constraint_check;
         options.strict_backend = self.strict_backend;
         options.mark_fallback = self.mark_fallback;
         options

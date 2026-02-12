@@ -56,6 +56,14 @@ pub struct ExecutorFactoryOptions {
     /// instead of recompiling on every executor creation. This is critical
     /// for per-exec isolation performance.
     pub circom_skip_compile_if_artifacts: bool,
+    /// If true, skip per-execution full constraint evaluation for Circom targets.
+    ///
+    /// This can dramatically improve throughput on large circuits, at the cost of:
+    /// - no constraint-level coverage metrics
+    /// - weaker signal for constraint-driven attacks/oracles
+    ///
+    /// Evidence-mode campaigns that only need outputs/invariants may enable this.
+    pub circom_skip_constraint_check: bool,
     /// If true, fail with an error when real backend tooling is missing
     /// instead of falling back to mock executor silently.
     /// 
@@ -90,6 +98,7 @@ impl Default for ExecutorFactoryOptions {
             circom_ptau_path: None,
             circom_snarkjs_path: None,
             circom_skip_compile_if_artifacts: false,
+            circom_skip_constraint_check: false,
             strict_backend: false,
             mark_fallback: true, // Default to marking fallbacks so warnings are shown
         }
@@ -621,6 +630,7 @@ impl ExecutorFactory {
                     options.circom_ptau_path.clone(),
                     options.circom_snarkjs_path.clone(),
                     options.circom_skip_compile_if_artifacts,
+                    options.circom_skip_constraint_check,
                 )?;
                 if options.circom_auto_setup_keys {
                     tracing::info!("Auto-generating Circom proving/verification keys");
@@ -791,6 +801,7 @@ impl ExecutorFactory {
 pub struct CircomExecutor {
     target: crate::targets::CircomTarget,
     constraints: OnceLock<Vec<ConstraintEquation>>,
+    skip_constraint_check: bool,
 }
 
 impl CircomExecutor {
@@ -827,6 +838,7 @@ impl CircomExecutor {
             None,
             None,
             false,
+            false,
         )
     }
 
@@ -843,6 +855,7 @@ impl CircomExecutor {
             None,
             None,
             false,
+            false,
         )
     }
 
@@ -854,6 +867,7 @@ impl CircomExecutor {
         ptau_path: Option<PathBuf>,
         snarkjs_path: Option<PathBuf>,
         skip_compile_if_artifacts: bool,
+        skip_constraint_check: bool,
     ) -> anyhow::Result<Self> {
         if include_paths.is_empty() {
             include_paths = Self::default_include_paths();
@@ -877,6 +891,7 @@ impl CircomExecutor {
         Ok(Self {
             target,
             constraints: OnceLock::new(),
+            skip_constraint_check,
         })
     }
 
@@ -912,8 +927,12 @@ impl CircuitExecutor for CircomExecutor {
         match self.target.calculate_witness(inputs) {
             Ok(witness) => {
                 let outputs = self.target.outputs_from_witness(&witness);
-                let coverage = coverage_from_results(self.check_constraints(&witness))
-                    .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs));
+                let coverage = if self.skip_constraint_check {
+                    ExecutionCoverage::with_output_hash(&outputs)
+                } else {
+                    coverage_from_results(self.check_constraints(&witness))
+                        .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs))
+                };
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }

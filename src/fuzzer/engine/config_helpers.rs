@@ -205,6 +205,11 @@ impl FuzzingEngine {
         {
             options.circom_skip_compile_if_artifacts = skip_compile;
         }
+        if let Some(skip_check) =
+            Self::additional_bool(additional, "circom_skip_constraint_check")
+        {
+            options.circom_skip_constraint_check = skip_check;
+        }
 
         if let Some(value) = additional.get("include_paths") {
             let mut paths = Vec::new();
