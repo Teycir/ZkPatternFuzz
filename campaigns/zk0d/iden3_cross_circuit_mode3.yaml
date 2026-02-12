@@ -1,0 +1,69 @@
+---
+includes:
+  - "templates/attacks/evidence_core.yaml"
+
+campaign:
+  name: "zk0d_iden3_cross_circuit_mode3"
+  version: "2.0"
+  target:
+    framework: "circom"
+    circuit_path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/circuits/authV3-8-32.circom"
+    main_component: "AuthV3"
+  parameters:
+    field: "bn254"
+    max_constraints: 220000
+    timeout_seconds: 300
+    build_dir_base: "./build/zk0d"
+    additional:
+      strict_backend: true
+      evidence_mode: true
+      chain_budget_seconds: 1800
+      chain_iterations: 100000
+
+chains:
+  - name: "auth_to_query_cross_circuit"
+    description: "Cross-circuit chain: auth userID feeds into credential query userGenesisID."
+    circuits:
+      authv3:
+        path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/circuits/authV3-8-32.circom"
+        main_component: "AuthV3"
+        framework: "circom"
+      queryv3:
+        path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/circuits/credentialAtomicQueryV3-16-16-64.circom"
+        main_component: "main"
+        framework: "circom"
+    steps:
+      - circuit_ref: "authv3"
+        input_wiring: fresh
+        label: "Auth seed"
+      - circuit_ref: "queryv3"
+        input_wiring:
+          from_prior_output:
+            step: 0
+            mapping:
+              - [0, 2]  # auth.userID -> query.userGenesisID
+        label: "Query with auth userID"
+      - circuit_ref: "queryv3"
+        input_wiring:
+          from_prior_output:
+            step: 1
+            mapping:
+              - [1, 2]  # query.userID -> next query.userGenesisID
+        label: "Query replay with prior query userID"
+    assertions:
+      - name: "auth_userid_wired_to_query"
+        relation: "step[0].out[0] == step[1].in[2]"
+        severity: "critical"
+        description: "Step 1 userGenesisID must be sourced from auth userID."
+      - name: "query_userid_rewired"
+        relation: "step[1].out[1] == step[2].in[2]"
+        severity: "critical"
+        description: "Step 2 userGenesisID must be sourced from previous query userID."
+
+reporting:
+  output_dir: "./reports/zk0d/iden3_cross_circuit_mode3"
+  formats:
+    - "json"
+    - "markdown"
+  include_poc: true
+  crash_reproduction: true

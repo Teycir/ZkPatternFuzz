@@ -18,11 +18,12 @@ campaign:
     max_constraints: 200000
     timeout_seconds: 300
     build_dir_base: "./build/zk0d"
-    strict_backend: true
-    evidence_mode: true
-    # Production-level budget (AFL-style: high iterations + long wall-clock)
-    chain_budget_seconds: 3600
-    chain_iterations: 200000
+    additional:
+      strict_backend: true
+      evidence_mode: true
+      # Production-level budget (AFL-style: high iterations + long wall-clock)
+      chain_budget_seconds: 3600
+      chain_iterations: 200000
 
 # Mode 3 chain: wire userID output into genesisID/profileNonce/challenge across steps
 chains:
@@ -35,27 +36,30 @@ chains:
         framework: "circom"
     steps:
       - circuit_ref: "authv3"
-        input_wiring: !fresh
+        input_wiring: fresh
         label: "Seed auth"
       - circuit_ref: "authv3"
-        input_wiring: !from_prior_output
-          step: 0
-          mapping:
-            - [0, 2]  # userID -> genesisID
-            - [0, 3]  # userID -> profileNonce
+        input_wiring:
+          from_prior_output:
+            step: 0
+            mapping:
+              - [0, 2]  # userID -> genesisID
+              - [0, 3]  # userID -> profileNonce
         label: "Reuse userID as identity inputs"
       - circuit_ref: "authv3"
-        input_wiring: !from_prior_output
-          step: 1
-          mapping:
-            - [0, 0]  # userID -> challenge
-            - [0, 2]  # userID -> genesisID
+        input_wiring:
+          from_prior_output:
+            step: 1
+            mapping:
+              - [0, 0]  # userID -> challenge
+              - [0, 2]  # userID -> genesisID
         label: "Reuse userID as challenge + genesisID"
       - circuit_ref: "authv3"
-        input_wiring: !from_prior_output
-          step: 2
-          mapping:
-            - [0, 2]  # userID -> genesisID
+        input_wiring:
+          from_prior_output:
+            step: 2
+            mapping:
+              - [0, 2]  # userID -> genesisID
         label: "Propagate again"
     assertions:
       - name: "wire_0_to_1_genesis"
