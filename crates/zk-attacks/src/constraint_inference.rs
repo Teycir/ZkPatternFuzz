@@ -334,9 +334,7 @@ impl BitDecompositionInference {
 
         // Fallback: if we found many bits but none of the heuristic groups are large,
         // anchor them to a "value" wire label when available.
-        let has_large_group = bit_groups
-            .values()
-            .any(|bits| bits.len() >= self.min_bits);
+        let has_large_group = bit_groups.values().any(|bits| bits.len() >= self.min_bits);
         if !all_bits.is_empty() && !has_large_group {
             if let Some(&value_wire) = context.find_wires_by_label("value").first() {
                 bit_groups.insert(value_wire, all_bits);
@@ -778,9 +776,8 @@ impl ConstraintInferenceEngine {
         output_wires: &HashSet<usize>,
     ) {
         let num_inputs = executor.num_public_inputs() + executor.num_private_inputs();
-        let wire_to_input: Option<HashMap<usize, usize>> = executor
-            .constraint_inspector()
-            .map(|inspector| {
+        let wire_to_input: Option<HashMap<usize, usize>> =
+            executor.constraint_inspector().map(|inspector| {
                 let mut ordered = inspector.public_input_indices();
                 ordered.extend(inspector.private_input_indices());
                 ordered
@@ -818,7 +815,7 @@ impl ConstraintInferenceEngine {
                 continue;
             };
 
-            if idx % 1 == 0 {
+            if idx % 10 == 0 {
                 tracing::info!(
                     "Confirming violation {}/{} - executing circuit...",
                     idx + 1,
@@ -869,15 +866,12 @@ impl ConstraintInferenceEngine {
                 }
             }
 
-            let has_internal_wires = constraint
-                .involved_wires
-                .iter()
-                .any(|&wire| {
-                    let is_input = wire_to_input
-                        .as_ref()
-                        .map_or(wire < num_inputs, |map| map.contains_key(&wire));
-                    !is_input && !output_wires.contains(&wire)
-                });
+            let has_internal_wires = constraint.involved_wires.iter().any(|&wire| {
+                let is_input = wire_to_input
+                    .as_ref()
+                    .map_or(wire < num_inputs, |map| map.contains_key(&wire));
+                !is_input && !output_wires.contains(&wire)
+            });
 
             let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 executor.execute_sync(&candidate_inputs)

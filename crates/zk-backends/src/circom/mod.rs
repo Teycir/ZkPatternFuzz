@@ -6,9 +6,6 @@
 //! - Proof generation/verification via snarkjs-compatible format
 
 use crate::TargetCircuit;
-use zk_core::Framework;
-use zk_core::ConstraintEquation;
-use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -18,6 +15,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, OnceLock};
 use tempfile::Builder;
+use zk_core::ConstraintEquation;
+use zk_core::FieldElement;
+use zk_core::Framework;
 
 fn circom_external_command_timeout() -> std::time::Duration {
     // Default chosen to prevent pathological hangs without being too aggressive for large circuits.
@@ -173,6 +173,7 @@ impl BuildDirLock {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(&path)
             .with_context(|| format!("Failed to open build lock file: {}", path.display()))?;
 
@@ -278,7 +279,9 @@ fn infer_io_from_symbols(
     }
 
     let outputs_end = num_outputs.min(top_level.len());
-    let public_end = outputs_end.saturating_add(num_public_inputs).min(top_level.len());
+    let public_end = outputs_end
+        .saturating_add(num_public_inputs)
+        .min(top_level.len());
 
     let outputs = top_level[..outputs_end].to_vec();
     let public_inputs = top_level[outputs_end..public_end].to_vec();
@@ -355,10 +358,7 @@ fn maybe_prepare_circom2_source(
         true,
     )?;
 
-    tracing::info!(
-        "Using circom2-compat source for {}",
-        circuit_path.display()
-    );
+    tracing::info!("Using circom2-compat source for {}", circuit_path.display());
 
     Ok((converted_path, Some(temp_dir)))
 }
@@ -429,14 +429,8 @@ fn convert_circom_file(
                 } else {
                     include_path.to_path_buf()
                 };
-                let converted = convert_circom_file(
-                    &resolved,
-                    temp_dir,
-                    cache,
-                    main_component,
-                    None,
-                    false,
-                )?;
+                let converted =
+                    convert_circom_file(&resolved, temp_dir, cache, main_component, None, false)?;
                 let converted_str = converted.to_string_lossy();
                 let needle = format!("{quote}{path_str}{quote}");
                 let replacement = format!("{quote}{converted_str}{quote}");
@@ -580,9 +574,7 @@ impl WitnessCalculator {
             let witness_calculator_path = wasm_dir.join("witness_calculator.js");
             if witness_calculator_path.exists() {
                 let script_path = temp_path.join("calc_witness.js");
-                let input_js = serde_json::to_string(
-                    input_path.to_str().unwrap_or_default()
-                )?;
+                let input_js = serde_json::to_string(input_path.to_str().unwrap_or_default())?;
                 // Use absolute paths since the script runs from a temp dir (relative paths
                 // would be resolved relative to that temp dir and fail).
                 let wasm_abs = std::fs::canonicalize(&self.wasm_path)
@@ -590,15 +582,9 @@ impl WitnessCalculator {
                 let wc_abs = std::fs::canonicalize(&witness_calculator_path)
                     .unwrap_or_else(|_| witness_calculator_path.clone());
 
-                let wasm_js = serde_json::to_string(
-                    wasm_abs.to_str().unwrap_or_default()
-                )?;
-                let wc_js = serde_json::to_string(
-                    wc_abs.to_str().unwrap_or_default()
-                )?;
-                let out_js = serde_json::to_string(
-                    witness_json_path.to_str().unwrap_or_default()
-                )?;
+                let wasm_js = serde_json::to_string(wasm_abs.to_str().unwrap_or_default())?;
+                let wc_js = serde_json::to_string(wc_abs.to_str().unwrap_or_default())?;
+                let out_js = serde_json::to_string(witness_json_path.to_str().unwrap_or_default())?;
                 let sanity = if self.sanity_check { 1 } else { 0 };
 
                 let script = format!(
@@ -902,11 +888,8 @@ impl CircomTarget {
         tracing::debug!("Using circom: {}", circom_version);
 
         let source = std::fs::read_to_string(&self.circuit_path)?;
-        let (compile_path, _temp_dir) = maybe_prepare_circom2_source(
-            &source,
-            &self.circuit_path,
-            &self.main_component,
-        )?;
+        let (compile_path, _temp_dir) =
+            maybe_prepare_circom2_source(&source, &self.circuit_path, &self.main_component)?;
 
         // Compile circuit
         let mut cmd = Command::new("circom");
@@ -1077,8 +1060,8 @@ impl CircomTarget {
                 num_public_inputs,
                 num_private_inputs,
             );
-            let sym_counts_match = sym_public.len() == num_public_inputs
-                && sym_private.len() == num_private_inputs;
+            let sym_counts_match =
+                sym_public.len() == num_public_inputs && sym_private.len() == num_private_inputs;
 
             if sym_counts_match || input_names.is_empty() {
                 if !sym_outputs.is_empty() {

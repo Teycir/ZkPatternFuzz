@@ -12,18 +12,16 @@
 //! - 5x reduction in solver time
 //! - Support for circuits with 1M+ constraints
 
+use crate::enhanced::{ConstraintSimplifier, PathPruner, PruningStrategy};
 use crate::executor::{
     PathCondition, SolverResult, SymbolicConstraint, SymbolicState, SymbolicValue, Z3Solver,
 };
-use crate::enhanced::{
-    ConstraintSimplifier, PathPruner, PruningStrategy,
-};
-use zk_core::FieldElement;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
+use zk_core::FieldElement;
 
 // ============================================================================
 // Path Merging
@@ -362,7 +360,7 @@ impl ConstraintCache {
             }
             _ => {
                 let mut solutions = self.solutions.write().unwrap();
-                
+
                 // Evict if over capacity
                 if solutions.len() >= self.max_size {
                     self.evict_oldest(&mut solutions);
@@ -389,7 +387,7 @@ impl ConstraintCache {
             .collect();
         let mut sorted_entries = entries;
         sorted_entries.sort_by_key(|(_, elapsed)| std::cmp::Reverse(*elapsed));
-        
+
         for (hash, _) in sorted_entries.into_iter().take(evict_count) {
             solutions.remove(&hash);
         }
@@ -409,7 +407,7 @@ impl ConstraintCache {
     /// Try to find a cached solution for a subproblem
     pub fn get_subproblem(&self, constraints: &[SymbolicConstraint]) -> Option<SolverResult> {
         let hash = self.hash_constraints(constraints);
-        
+
         if self.unsat_cache.read().unwrap().contains(&hash) {
             self.hits.fetch_add(1, AtomicOrdering::Relaxed);
             return Some(SolverResult::Unsat);
@@ -602,7 +600,11 @@ impl VulnerabilityTargetPattern {
         Self {
             name: "range_violation".to_string(),
             constraint_patterns: vec![ConstraintPattern::RangeCheck],
-            signal_patterns: vec!["age".to_string(), "amount".to_string(), "balance".to_string()],
+            signal_patterns: vec![
+                "age".to_string(),
+                "amount".to_string(),
+                "balance".to_string(),
+            ],
             priority_boost: 2.0,
         }
     }
@@ -655,7 +657,8 @@ impl VulnerabilityTargetPattern {
             ConstraintPattern::HashLike => {
                 // Heuristic: many nested operations
                 let constraint_str = format!("{:?}", constraint);
-                constraint_str.matches("Add").count() > 5 || constraint_str.matches("Mul").count() > 5
+                constraint_str.matches("Add").count() > 5
+                    || constraint_str.matches("Mul").count() > 5
             }
         }
     }
@@ -879,7 +882,10 @@ impl SymbolicV2Executor {
     pub fn next_state(&mut self) -> Option<SymbolicState> {
         while let Some(prioritized) = self.worklist.pop() {
             // Check if we should prune
-            if self.pruner.should_prune(&prioritized.state, self.stats.paths_explored as usize) {
+            if self
+                .pruner
+                .should_prune(&prioritized.state, self.stats.paths_explored as usize)
+            {
                 self.stats.paths_pruned += 1;
                 continue;
             }
@@ -894,7 +900,7 @@ impl SymbolicV2Executor {
         }
 
         // Flush any remaining pending merges
-        for state in self.merger.flush_all() {
+        if let Some(state) = self.merger.flush_all().into_iter().next() {
             return Some(state);
         }
 
@@ -981,8 +987,6 @@ impl SymbolicV2Executor {
 
         self.completed_paths.push(path);
     }
-
-
 
     /// Convert assignments to input vector
     fn assignments_to_inputs(
@@ -1103,7 +1107,8 @@ impl SymbolicV2Executor {
         match self.solver.solve(&path) {
             SolverResult::Sat(assignments) => {
                 if self.config.enable_caching {
-                    self.cache.insert(&pc, SolverResult::Sat(assignments.clone()));
+                    self.cache
+                        .insert(&pc, SolverResult::Sat(assignments.clone()));
                 }
                 Some(self.assignments_to_inputs(&assignments))
             }
@@ -1196,7 +1201,7 @@ mod tests {
     #[test]
     fn test_symbolic_v2_config_defaults() {
         let config = SymbolicV2Config::default();
-        
+
         // Verify 10x path increase
         assert_eq!(config.max_paths, 10_000);
         // Verify 20x depth increase
@@ -1220,7 +1225,7 @@ mod tests {
     #[test]
     fn test_vuln_patterns() {
         let state = SymbolicState::new(3);
-        
+
         let pattern = VulnerabilityTargetPattern::nullifier_reuse();
         let score = pattern.match_score(&state);
         assert!(score >= 0.0);
