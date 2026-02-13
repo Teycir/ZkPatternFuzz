@@ -405,7 +405,19 @@ impl FuzzingEngine {
         } else {
             for _ in 0..forge_attempts {
                 let valid_case = self.generate_test_case();
-                let valid_proof = self.executor.prove(&valid_case.inputs)?;
+                let valid_proof = match self.executor.prove(&valid_case.inputs) {
+                    Ok(proof) => proof,
+                    Err(err) => {
+                        tracing::debug!(
+                            "Skipping soundness attempt: failed to generate proof for witness: {}",
+                            err
+                        );
+                        if let Some(p) = progress {
+                            p.inc();
+                        }
+                        continue;
+                    }
+                };
 
                 let valid_public: Vec<FieldElement> =
                     valid_case.inputs.iter().take(num_public).cloned().collect();
@@ -427,6 +439,9 @@ impl FuzzingEngine {
 
                 // Skip if mutation didn't change public inputs
                 if mutated_public == valid_public {
+                    if let Some(p) = progress {
+                        p.inc();
+                    }
                     continue;
                 }
 
