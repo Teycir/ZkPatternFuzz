@@ -683,7 +683,7 @@ impl DifferentialFinding {
                     .map(|d| d.description.as_str())
                     .unwrap_or("unknown difference")
             ),
-            severity: self.severity.clone(),
+            severity: self.severity,
             poc: zk_core::ProofOfConcept {
                 witness_a: vec![],
                 witness_b: None,

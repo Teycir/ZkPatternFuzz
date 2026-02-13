@@ -77,12 +77,21 @@ impl FuzzingEngine {
 
         for invariant in invariants {
             if matches!(invariant.invariant_type, InvariantType::Metamorphic) {
+                tracing::debug!(
+                    "Skipping metamorphic invariant '{}' in direct enforcement pass",
+                    invariant.name
+                );
                 continue;
             }
             if matches!(
                 invariant.oracle,
                 InvariantOracle::Custom | InvariantOracle::Differential | InvariantOracle::Symbolic
             ) {
+                tracing::debug!(
+                    "Skipping {:?} oracle invariant '{}' in direct enforcement pass",
+                    invariant.oracle,
+                    invariant.name
+                );
                 continue;
             }
 

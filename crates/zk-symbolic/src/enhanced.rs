@@ -86,6 +86,8 @@ pub struct PathPruner {
     loop_bound: usize,
     /// Hashes of explored path prefixes for similarity detection
     explored_prefixes: HashSet<u64>,
+    /// Canonicalized constraint-hash sets for subsumption pruning.
+    explored_constraint_sets: Vec<HashSet<u64>>,
     /// Coverage bitmap for guided pruning
     coverage_bitmap: Vec<bool>,
 }
@@ -99,6 +101,7 @@ impl PathPruner {
             max_paths: 10000,
             loop_bound: 10,
             explored_prefixes: HashSet::new(),
+            explored_constraint_sets: Vec::new(),
             coverage_bitmap: Vec::new(),
         }
     }
@@ -231,9 +234,34 @@ impl PathPruner {
     }
 
     /// Check if path is subsumed by already explored paths
-    fn is_subsumed(&self, _state: &SymbolicState) -> bool {
-        // TODO: Implement proper constraint subsumption checking
-        // For now, use hash-based approximation
+    fn is_subsumed(&mut self, state: &SymbolicState) -> bool {
+        // Approximate subsumption using canonicalized constraint-hash sets:
+        // if any previously explored set is a subset of the current set,
+        // the current path is more constrained and can be pruned.
+        let current: HashSet<u64> = state
+            .path_condition
+            .constraints
+            .iter()
+            .map(|c| self.hash_constraint(c))
+            .collect();
+
+        if current.is_empty() {
+            return false;
+        }
+
+        if self
+            .explored_constraint_sets
+            .iter()
+            .any(|seen| seen.is_subset(&current))
+        {
+            return true;
+        }
+
+        if self.explored_constraint_sets.len() >= self.max_paths {
+            let evict = self.explored_constraint_sets.len() + 1 - self.max_paths;
+            self.explored_constraint_sets.drain(0..evict);
+        }
+        self.explored_constraint_sets.push(current);
         false
     }
 
@@ -639,6 +667,8 @@ pub struct IncrementalSolver {
     solution_cache: HashMap<u64, SolverResult>,
     /// Maximum cache size
     max_cache_size: usize,
+    /// Number of cache hits observed.
+    cache_hits: usize,
 }
 
 impl IncrementalSolver {
@@ -649,6 +679,7 @@ impl IncrementalSolver {
             random_seed: None,
             solution_cache: HashMap::new(),
             max_cache_size: 10000,
+            cache_hits: 0,
         }
     }
 
@@ -676,6 +707,7 @@ impl IncrementalSolver {
 
         let cache_key = self.hash_path(&full_path);
         if let Some(cached) = self.solution_cache.get(&cache_key) {
+            self.cache_hits = self.cache_hits.saturating_add(1);
             return cached.clone();
         }
 
@@ -919,6 +951,11 @@ impl IncrementalSolver {
     /// Clear the solution cache
     pub fn clear_cache(&mut self) {
         self.solution_cache.clear();
+        self.cache_hits = 0;
+    }
+
+    pub fn cache_hits(&self) -> usize {
+        self.cache_hits
     }
 }
 
@@ -1127,7 +1164,7 @@ impl EnhancedSymbolicExecutor {
                 .saturating_sub(self.completed_paths.len()),
             tests_generated: self.generated_tests.len(),
             pending_paths: self.worklist.len(),
-            cache_hits: 0, // TODO: Track in solver
+            cache_hits: self.solver.cache_hits(),
         }
     }
 
@@ -1197,5 +1234,44 @@ mod tests {
         let executor = EnhancedSymbolicExecutor::new(5);
         assert_eq!(executor.num_inputs, 5);
         assert!(!executor.worklist.is_empty());
+    }
+
+    #[test]
+    fn test_path_pruner_subsumption_based() {
+        let mut pruner = PathPruner::new(PruningStrategy::SubsumptionBased);
+
+        let mut base_state = SymbolicState::new(1);
+        base_state.path_condition.add_constraint(SymbolicConstraint::Eq(
+            SymbolicValue::symbol("x"),
+            SymbolicValue::concrete(FieldElement::one()),
+        ));
+        assert!(!pruner.should_prune(&base_state, 0));
+
+        let mut stricter_state = SymbolicState::new(1);
+        stricter_state.path_condition.add_constraint(SymbolicConstraint::Eq(
+            SymbolicValue::symbol("x"),
+            SymbolicValue::concrete(FieldElement::one()),
+        ));
+        stricter_state.path_condition.add_constraint(SymbolicConstraint::Neq(
+            SymbolicValue::symbol("x"),
+            SymbolicValue::concrete(FieldElement::zero()),
+        ));
+        assert!(pruner.should_prune(&stricter_state, 1));
+    }
+
+    #[test]
+    fn test_incremental_solver_cache_hits() {
+        let mut solver = IncrementalSolver::new();
+        let base_path = PathCondition::new();
+        let constraints = vec![SymbolicConstraint::Eq(
+            SymbolicValue::symbol("input_0"),
+            SymbolicValue::concrete(FieldElement::zero()),
+        )];
+
+        let _ = solver.solve_incremental(&base_path, &constraints);
+        assert_eq!(solver.cache_hits(), 0);
+
+        let _ = solver.solve_incremental(&base_path, &constraints);
+        assert_eq!(solver.cache_hits(), 1);
     }
 }

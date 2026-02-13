@@ -237,7 +237,10 @@ impl ConcolicExecutor {
     }
 
     /// Build symbolic trace from execution result
-    fn build_symbolic_trace(&self, trace: &mut ConcolicTrace, _result: &ExecutionResult) {
+    fn build_symbolic_trace(&self, trace: &mut ConcolicTrace, result: &ExecutionResult) {
+        // Stable identifier for this concrete execution path.
+        trace.path_condition.path_id = result.coverage.coverage_hash;
+
         // Create symbolic inputs
         let inputs_snapshot = trace.inputs.clone();
         for (i, input) in inputs_snapshot.iter().enumerate() {
@@ -248,12 +251,10 @@ impl ConcolicExecutor {
             trace.add_branch(SymbolicConstraint::Eq(symbolic_input, concrete_value), true);
         }
 
-        // TODO: In a real implementation, we would:
-        // 1. Instrument the circuit execution to track constraints
-        // 2. Record which branches were taken/not taken
-        // 3. Build constraints from the actual execution path
-        //
-        // For now, we create synthetic constraints based on input values
+        // Heuristic approximation:
+        // generate lightweight branch predicates from concrete inputs so
+        // path negation can still explore nearby alternatives without full
+        // backend-level branch instrumentation.
         let inputs_snapshot = trace.inputs.clone();
         for (i, input) in inputs_snapshot.iter().enumerate() {
             let sym = SymbolicValue::symbol(&format!("input_{}", i));

@@ -307,7 +307,7 @@ impl InferenceRule for BitDecompositionInference {
 
         for (i, &bit_wire) in bit_wires.iter().enumerate() {
             if bit_wire < num_wires {
-                let bit_value = (different_value >> i) & 1;
+                let bit_value = different_value.checked_shr(i as u32).unwrap_or(0) & 1;
                 witness[bit_wire] = FieldElement::from_u64(bit_value);
             }
         }
@@ -380,17 +380,28 @@ impl BitDecompositionInference {
         bit_wires: &[usize],
     ) -> bool {
         // Look for constraint: sum(bits[i] * 2^i) == base
-        // This would involve base_wire and all bit_wires in a single constraint
-        let all_wires: HashSet<usize> = std::iter::once(base_wire)
-            .chain(bit_wires.iter().copied())
-            .collect();
-
+        // Require the base wire and a strong majority of candidate bit wires.
         context.constraints.iter().any(|c| {
-            let constraint_wires: HashSet<usize> = c.c_terms.iter().map(|(w, _)| *w).collect();
+            let constraint_wires: HashSet<usize> = c
+                .a_terms
+                .iter()
+                .chain(c.b_terms.iter())
+                .chain(c.c_terms.iter())
+                .map(|(w, _)| *w)
+                .collect();
+            if !constraint_wires.contains(&base_wire) {
+                return false;
+            }
 
-            // Check if this constraint involves the base wire and at least half the bits
-            let overlap: usize = all_wires.intersection(&constraint_wires).count();
-            overlap >= all_wires.len() / 2
+            let bit_overlap = bit_wires
+                .iter()
+                .filter(|&&wire| constraint_wires.contains(&wire))
+                .count();
+            let min_required = bit_wires
+                .len()
+                .saturating_sub(bit_wires.len() / 4)
+                .max(self.min_bits.min(bit_wires.len()));
+            bit_overlap >= min_required
         })
     }
 }
@@ -822,13 +833,23 @@ impl ConstraintInferenceEngine {
             let mut candidate_inputs = seed_inputs.clone();
 
             if constraint.involved_wires.is_empty() {
-                for (idx, value) in violation.iter().enumerate() {
-                    if idx >= candidate_inputs.len() {
-                        break;
-                    }
-                    candidate_inputs[idx] = value.clone();
+                let copy_len = violation.len().min(candidate_inputs.len());
+                for (dst, src) in candidate_inputs
+                    .iter_mut()
+                    .zip(violation.iter())
+                    .take(copy_len)
+                {
+                    *dst = src.clone();
+                }
+                if violation.len() > candidate_inputs.len() {
+                    tracing::warn!(
+                        "Violation witness (len={}) exceeds circuit inputs (len={}); truncating overlay",
+                        violation.len(),
+                        candidate_inputs.len()
+                    );
                 }
             } else {
+                let mut skipped_wires = 0usize;
                 for &wire in &constraint.involved_wires {
                     let input_idx = wire_to_input
                         .as_ref()
@@ -836,7 +857,15 @@ impl ConstraintInferenceEngine {
                         .unwrap_or(wire);
                     if input_idx < candidate_inputs.len() && wire < violation.len() {
                         candidate_inputs[input_idx] = violation[wire].clone();
+                    } else {
+                        skipped_wires = skipped_wires.saturating_add(1);
                     }
+                }
+                if skipped_wires > 0 {
+                    tracing::debug!(
+                        "Skipped {} involved wires while overlaying violation witness",
+                        skipped_wires
+                    );
                 }
             }
 
