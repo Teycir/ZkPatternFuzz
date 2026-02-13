@@ -64,6 +64,12 @@ pub struct ExecutorFactoryOptions {
     ///
     /// Evidence-mode campaigns that only need outputs/invariants may enable this.
     pub circom_skip_constraint_check: bool,
+    /// If true, Circom witness generation enforces internal constraint sanity checks.
+    ///
+    /// This ensures `ExecutionResult.success` means the witness satisfied circuit constraints,
+    /// even when `circom_skip_constraint_check` is enabled to skip expensive host-side
+    /// per-constraint coverage evaluation.
+    pub circom_witness_sanity_check: bool,
     /// If true, fail with an error when real backend tooling is missing
     /// instead of falling back to mock executor silently.
     /// 
@@ -99,6 +105,7 @@ impl Default for ExecutorFactoryOptions {
             circom_snarkjs_path: None,
             circom_skip_compile_if_artifacts: false,
             circom_skip_constraint_check: false,
+            circom_witness_sanity_check: true,
             strict_backend: false,
             mark_fallback: true, // Default to marking fallbacks so warnings are shown
         }
@@ -647,6 +654,7 @@ impl ExecutorFactory {
                     options.circom_snarkjs_path.clone(),
                     options.circom_skip_compile_if_artifacts,
                     options.circom_skip_constraint_check,
+                    options.circom_witness_sanity_check,
                 )?;
                 if options.circom_auto_setup_keys {
                     tracing::info!("Auto-generating Circom proving/verification keys");
@@ -855,6 +863,7 @@ impl CircomExecutor {
             None,
             false,
             false,
+            true,
         )
     }
 
@@ -872,6 +881,7 @@ impl CircomExecutor {
             None,
             false,
             false,
+            true,
         )
     }
 
@@ -884,13 +894,15 @@ impl CircomExecutor {
         snarkjs_path: Option<PathBuf>,
         skip_compile_if_artifacts: bool,
         skip_constraint_check: bool,
+        witness_sanity_check: bool,
     ) -> anyhow::Result<Self> {
         if include_paths.is_empty() {
             include_paths = Self::default_include_paths();
         }
 
         let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?
-            .with_skip_compile_if_artifacts(skip_compile_if_artifacts);
+            .with_skip_compile_if_artifacts(skip_compile_if_artifacts)
+            .with_witness_sanity_check(witness_sanity_check);
         if let Some(dir) = build_dir {
             target = target.with_build_dir(dir);
         }

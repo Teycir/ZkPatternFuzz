@@ -210,6 +210,11 @@ impl FuzzingEngine {
         {
             options.circom_skip_constraint_check = skip_check;
         }
+        if let Some(sanity_check) =
+            Self::additional_bool(additional, "circom_witness_sanity_check")
+        {
+            options.circom_witness_sanity_check = sanity_check;
+        }
 
         if let Some(value) = additional.get("include_paths") {
             let mut paths = Vec::new();

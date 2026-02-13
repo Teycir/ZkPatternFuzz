@@ -315,6 +315,79 @@ impl FuzzingEngine {
             }
         };
 
+        // Optional per-circuit mutation index mask.
+        //
+        // When provided, only the listed indices are allowed to remain mutated for that circuit.
+        // All other indices are reset back to the baseline seed inputs (if available). This helps
+        // keep deep chains executable by preserving known-good structure while mutating specific
+        // "safe" knobs.
+        //
+        // YAML shape (campaign.parameters.additional via flatten):
+        //
+        //   chain_mutate_indices:
+        //     nullify: [4]
+        //
+        // For the nullify wrapper this means mutate only `nullifierSessionID`, while keeping
+        // genesis/profile/schema/verifier pinned to seed.
+        let chain_mutate_indices_by_ref: std::collections::HashMap<String, std::collections::HashSet<usize>> = {
+            use std::collections::{HashMap, HashSet};
+
+            match additional.get("chain_mutate_indices") {
+                Some(serde_yaml::Value::Mapping(map)) => {
+                    let mut out: HashMap<String, HashSet<usize>> = HashMap::new();
+                    for (k, v) in map {
+                        let Some(circuit_ref) = k.as_str() else {
+                            tracing::warn!(
+                                "chain_mutate_indices has a non-string key; skipping: {:?}",
+                                k
+                            );
+                            continue;
+                        };
+                        let Some(seq) = v.as_sequence() else {
+                            tracing::warn!(
+                                "chain_mutate_indices[{}] must be a list of indices; skipping",
+                                circuit_ref
+                            );
+                            continue;
+                        };
+
+                        let mut indices = HashSet::new();
+                        for item in seq {
+                            match item.as_u64() {
+                                Some(i) => {
+                                    indices.insert(i as usize);
+                                }
+                                None => {
+                                    tracing::warn!(
+                                        "chain_mutate_indices[{}] contains non-integer entry; skipping entry",
+                                        circuit_ref
+                                    );
+                                }
+                            }
+                        }
+
+                        if !indices.is_empty() {
+                            tracing::info!(
+                                "Loaded chain mutation mask for '{}': {:?}",
+                                circuit_ref,
+                                indices
+                            );
+                            out.insert(circuit_ref.to_string(), indices);
+                        }
+                    }
+                    out
+                }
+                Some(other) => {
+                    tracing::warn!(
+                        "chain_mutate_indices must be a mapping of circuit_ref -> [indices]; got {:?}",
+                        other
+                    );
+                    HashMap::new()
+                }
+                None => HashMap::new(),
+            }
+        };
+
         // Optional seed inputs for chain fuzzing (reuse evidence seed inputs if provided)
         let seed_inputs_path = Self::additional_string(
             &self.config.campaign.parameters.additional,
@@ -483,6 +556,25 @@ impl FuzzingEngine {
                 // Mutate for next iteration (may produce a modified spec)
                 let mutation = mutator.mutate(spec_to_use, &current_inputs, &mut rng);
                 current_inputs = mutation.inputs;
+
+                // Apply optional mutation masks to keep specified circuits near a valid baseline.
+                if !chain_mutate_indices_by_ref.is_empty() {
+                    for (circuit_ref, allowed_indices) in &chain_mutate_indices_by_ref {
+                        let Some(inputs) = current_inputs.get_mut(circuit_ref) else {
+                            continue;
+                        };
+                        let Some(seed) = chain_seed_inputs_by_ref.get(circuit_ref) else {
+                            continue;
+                        };
+
+                        for idx in 0..inputs.len() {
+                            if !allowed_indices.contains(&idx) && idx < seed.len() {
+                                inputs[idx] = seed[idx].clone();
+                            }
+                        }
+                    }
+                }
+
                 current_spec = mutation.spec;
                 iterations += 1;
 

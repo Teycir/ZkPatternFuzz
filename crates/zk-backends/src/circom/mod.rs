@@ -107,6 +107,16 @@ pub struct CircomTarget {
     snarkjs_path_override: Option<PathBuf>,
     /// If true, reuse existing build artifacts instead of recompiling
     skip_compile_if_artifacts: bool,
+    /// If true, enable witness "sanity check" when generating witnesses.
+    ///
+    /// This makes witness generation fail-fast when constraints are not satisfied,
+    /// matching the semantics expected by fuzzing engines that treat a successful
+    /// execution as "the circuit accepted the witness".
+    ///
+    /// Implemented via the circom-generated witness_calculator.js API:
+    ///   calculateWitness(input, sanityCheck)
+    /// where sanityCheck=1 enforces constraints.
+    witness_sanity_check: bool,
 }
 
 /// Metadata extracted from compiled Circom circuit
@@ -281,8 +291,12 @@ fn infer_io_from_symbols(
 struct WitnessCalculator {
     /// Path to the WASM file
     wasm_path: PathBuf,
+    /// Path to the R1CS file (needed for snarkjs witness checks on fallback)
+    r1cs_path: PathBuf,
     /// Optional override path for snarkjs CLI
     snarkjs_path: Option<PathBuf>,
+    /// If true, ask the witness calculator to verify constraints while building the witness.
+    sanity_check: bool,
 }
 
 fn create_temp_dir() -> Result<tempfile::TempDir> {
@@ -531,10 +545,17 @@ fn circom_io_lock() -> &'static Mutex<()> {
 }
 
 impl WitnessCalculator {
-    fn new(wasm_path: PathBuf, snarkjs_path: Option<PathBuf>) -> Self {
+    fn new(
+        wasm_path: PathBuf,
+        r1cs_path: PathBuf,
+        snarkjs_path: Option<PathBuf>,
+        sanity_check: bool,
+    ) -> Self {
         Self {
             wasm_path,
+            r1cs_path,
             snarkjs_path,
+            sanity_check,
         }
     }
 
@@ -578,6 +599,7 @@ impl WitnessCalculator {
                 let out_js = serde_json::to_string(
                     witness_json_path.to_str().unwrap_or_default()
                 )?;
+                let sanity = if self.sanity_check { 1 } else { 0 };
 
                 let script = format!(
                     "const wc = require({wc_js});\n\
@@ -585,7 +607,7 @@ const fs = require('fs');\n\
 const input = JSON.parse(fs.readFileSync({input_js}, 'utf8'));\n\
 const wasm = fs.readFileSync({wasm_js});\n\
 wc(wasm).then(async (calc) => {{\n\
-  const witness = await calc.calculateWitness(input, 0);\n\
+  const witness = await calc.calculateWitness(input, {sanity});\n\
   const witnessStr = witness.map((v) => v.toString());\n\
   fs.writeFileSync({out_js}, JSON.stringify(witnessStr));\n\
 }}).catch((err) => {{\n\
@@ -674,6 +696,33 @@ wc(wasm).then(async (calc) => {{\n\
             anyhow::bail!("Witness calculation failed: {}", stderr);
         }
 
+        // If we are operating in "sanity check" mode, verify the witness satisfies the R1CS
+        // constraints. This is only used on the snarkjs fallback path; the primary path uses
+        // witness_calculator.js with `calculateWitness(..., 1)` which checks constraints itself.
+        if self.sanity_check {
+            if !self.r1cs_path.exists() {
+                anyhow::bail!(
+                    "Witness sanity check enabled, but R1CS file not found: {}",
+                    self.r1cs_path.display()
+                );
+            }
+            let output = {
+                let mut cmd = snarkjs_command_for(self.snarkjs_path.as_deref());
+                cmd.args([
+                    "wtns",
+                    "check",
+                    self.r1cs_path.to_str().unwrap(),
+                    witness_path.to_str().unwrap(),
+                ]);
+                run_with_timeout(&mut cmd, cmd_timeout)
+            }
+            .context("Failed to run snarkjs witness check")?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!("Witness sanity check failed: {}", stderr);
+            }
+        }
+
         // Export witness to JSON for parsing
         let output = {
             let mut cmd = snarkjs_command_for(self.snarkjs_path.as_deref());
@@ -729,6 +778,7 @@ impl CircomTarget {
             ptau_path_override: None,
             snarkjs_path_override: None,
             skip_compile_if_artifacts: false,
+            witness_sanity_check: false,
         })
     }
 
@@ -750,6 +800,12 @@ impl CircomTarget {
     /// Reuse existing build artifacts (r1cs/wasm) when present
     pub fn with_skip_compile_if_artifacts(mut self, skip: bool) -> Self {
         self.skip_compile_if_artifacts = skip;
+        self
+    }
+
+    /// Enable/disable witness sanity checks (constraint checking during witness generation).
+    pub fn with_witness_sanity_check(mut self, enabled: bool) -> Self {
+        self.witness_sanity_check = enabled;
         self
     }
 
@@ -831,7 +887,9 @@ impl CircomTarget {
             self.parse_r1cs_info()?;
             self.witness_calculator = Some(WitnessCalculator::new(
                 wasm_path,
+                r1cs_path,
                 self.snarkjs_path_override.clone(),
+                self.witness_sanity_check,
             ));
             self.compiled = true;
             return Ok(());
@@ -888,7 +946,9 @@ impl CircomTarget {
         if wasm_path.exists() {
             self.witness_calculator = Some(WitnessCalculator::new(
                 wasm_path,
+                r1cs_path,
                 self.snarkjs_path_override.clone(),
+                self.witness_sanity_check,
             ));
         } else {
             tracing::warn!(

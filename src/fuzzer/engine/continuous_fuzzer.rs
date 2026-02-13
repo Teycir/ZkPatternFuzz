@@ -38,6 +38,10 @@ impl FuzzingEngine {
         let mut completed = 0u64;
         let mut hang_count = 0u64;
         let mut crash_count = 0u64;
+        let mut accepted_count = 0u64;
+        let mut failed_count = 0u64;
+        let mut sample_errors: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         while completed < iterations {
             // Check overall timeout
@@ -86,7 +90,15 @@ impl FuzzingEngine {
 
             // Phase 2A: Check invariants against every accepted witness
             if result.success {
+                accepted_count += 1;
                 self.check_invariants_against(&test_case, &result);
+            } else {
+                failed_count += 1;
+                if sample_errors.len() < 3 {
+                    if let Some(err) = result.error_message() {
+                        sample_errors.insert(err);
+                    }
+                }
             }
 
             // Track coverage improvements
@@ -136,14 +148,23 @@ impl FuzzingEngine {
         };
 
         tracing::info!(
-            "Continuous fuzzing complete: {} iterations in {:.2}s, {} findings, {} hangs, {} crashes, corpus: {}",
+            "Continuous fuzzing complete: {} iterations in {:.2}s, {} findings, {} hangs, {} crashes, accepted={}, failed={}, corpus: {}",
             completed,
             start.elapsed().as_secs_f64(),
             self.core.findings().read().unwrap().len(),
             hang_count,
             crash_count,
+            accepted_count,
+            failed_count,
             final_stats.minimized_size
         );
+
+        if accepted_count == 0 && failed_count > 0 && !sample_errors.is_empty() {
+            tracing::warn!(
+                "Continuous fuzzing accepted 0 witnesses; sample execution errors: {:?}",
+                sample_errors
+            );
+        }
 
         Ok(())
     }
