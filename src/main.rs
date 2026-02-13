@@ -573,9 +573,10 @@ campaign:
     field: "bn254"
     max_constraints: 100000
     timeout_seconds: 300
-    additional:
-      strict_backend: true
-      mark_fallback: true
+    # NOTE: campaign.parameters is a flattened key/value map.
+    # Do NOT nest under `additional:` (legacy templates used that shape).
+    strict_backend: true
+    mark_fallback: true
 
 attacks:
   - type: underconstrained

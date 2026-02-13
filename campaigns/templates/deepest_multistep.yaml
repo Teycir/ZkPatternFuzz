@@ -21,12 +21,13 @@ campaign:
     field: "bn254"
     max_constraints: 100000
     timeout_seconds: 1800
-    additional:
-      strict_backend: true
-      evidence_mode: true
-      # Mode 3 specific settings
-      chain_budget_seconds: 600
-      chain_iterations: 5000
+    # NOTE: campaign.parameters is a flattened key/value map.
+    # Do NOT nest under `additional:` (legacy templates used that shape).
+    strict_backend: true
+    evidence_mode: true
+    # Mode 3 specific settings
+    chain_budget_seconds: 600
+    chain_iterations: 5000
 
 # =============================================================================
 # Chain Specifications (Mode 3)

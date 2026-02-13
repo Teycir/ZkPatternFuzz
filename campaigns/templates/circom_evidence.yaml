@@ -18,40 +18,42 @@ campaign:
     field: "bn254"
     max_constraints: 100000
     timeout_seconds: 1800
-    additional:
-      # Backend settings - DO NOT CHANGE for evidence mode
-      strict_backend: true
-      mark_fallback: true
-      per_exec_isolation: true
-      execution_timeout_ms: 30000
+    # NOTE: campaign.parameters is a flattened key/value map.
+    # Do NOT nest under `additional:` (legacy templates used that shape).
 
-      # Symbolic execution
-      constraint_guided_enabled: true
-      symbolic_max_paths: 1000
-      symbolic_max_depth: 200
-      symbolic_solver_timeout_ms: 5000
+    # Backend settings - DO NOT CHANGE for evidence mode
+    strict_backend: true
+    mark_fallback: true
+    per_exec_isolation: true
+    execution_timeout_ms: 30000
 
-      # Corpus
-      corpus_max_size: 100000
+    # Symbolic execution
+    constraint_guided_enabled: true
+    symbolic_max_paths: 1000
+    symbolic_max_depth: 200
+    symbolic_solver_timeout_ms: 5000
 
-      # Oracles - customize based on circuit type
-      enabled_oracles:
-        - "underconstrained_oracle"
-        - "constraint_inference_oracle"
-        # Add these for specific circuit types:
-        # - "nullifier_oracle"      # For privacy circuits
-        # - "merkle_oracle"         # For Merkle tree circuits
-        # - "range_oracle"          # For range proof circuits
-        # - "commitment_oracle"     # For commitment schemes
-      oracle_validation: true
+    # Corpus
+    corpus_max_size: 100000
 
-      # Circom-specific
-      circom_auto_setup_keys: true
-      # circom_ptau_path: "./path/to/ptau"  # Optional: provide for proof generation
-      include_paths: []  # Add node_modules paths if needed
+    # Oracles - customize based on circuit type
+    enabled_oracles:
+      - "underconstrained_oracle"
+      - "constraint_inference_oracle"
+      # Add these for specific circuit types:
+      # - "nullifier_oracle"      # For privacy circuits
+      # - "merkle_oracle"         # For Merkle tree circuits
+      # - "range_oracle"          # For range proof circuits
+      # - "commitment_oracle"     # For commitment schemes
+    oracle_validation: true
 
-      # Fuzzing
-      fuzzing_iterations: 50000
+    # Circom-specific
+    circom_auto_setup_keys: true
+    # circom_ptau_path: "./path/to/ptau"  # Optional: provide for proof generation
+    include_paths: []  # Add node_modules paths if needed
+
+    # Fuzzing
+    fuzzing_iterations: 50000
 
 invariants:
   # REQUIRED: Add at least one invariant for evidence mode

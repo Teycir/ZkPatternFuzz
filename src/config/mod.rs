@@ -209,8 +209,17 @@ impl Default for ReportingConfig {
 impl FuzzConfig {
     /// Load configuration from a YAML file
     pub fn from_yaml(path: &str) -> anyhow::Result<Self> {
-        let config = Self::from_yaml_v2(path)
+        let mut config = Self::from_yaml_v2(path)
             .with_context(|| format!("Failed to load config (v2) from {}", path))?;
+        // Backward-compat: hoist legacy `campaign.parameters.additional: { ... }` into the
+        // flattened `parameters` key/value map so older templates don't silently no-op.
+        if config.campaign.parameters.additional.hoist_legacy_additional() {
+            tracing::warn!(
+                "Legacy YAML detected: `campaign.parameters.additional:` is deprecated; \
+                 hoisting keys into `campaign.parameters` for compatibility. \
+                 Please update the YAML to place keys directly under `parameters:`."
+            );
+        }
         config.validate()?;
         Ok(config)
     }

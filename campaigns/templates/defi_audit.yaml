@@ -23,16 +23,17 @@ campaign:
     field: bn254
     max_constraints: 500000
     timeout_seconds: 600
-    additional:
-      strict_backend: true
-      evidence_mode: true
-      # MEV attack configuration
-      mev_ordering_permutations: 100
-      mev_sandwich_attempts: 50
-      mev_profit_threshold: 0.01
-      # Front-running configuration
-      front_running_leakage_tests: 100
-      front_running_entropy_threshold: 3.0
+    # NOTE: campaign.parameters is a flattened key/value map.
+    # Do NOT nest under `additional:` (legacy templates used that shape).
+    strict_backend: true
+    evidence_mode: true
+    # MEV attack configuration
+    mev_ordering_permutations: 100
+    mev_sandwich_attempts: 50
+    mev_profit_threshold: 0.01
+    # Front-running configuration
+    front_running_leakage_tests: 100
+    front_running_entropy_threshold: 3.0
 
 # =============================================================================
 # Attack Vectors

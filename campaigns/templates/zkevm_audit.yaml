@@ -24,13 +24,14 @@ campaign:
     field: bn254  # Most zkEVMs use BN254/BLS12-381
     max_constraints: 10000000  # zkEVM circuits are large
     timeout_seconds: 3600     # 1 hour for complex circuits
-    additional:
-      strict_backend: true
-      evidence_mode: true
-      mark_fallback: true
-      # zkEVM-specific settings
-      opcode_coverage: true
-      state_transition_checks: true
+    # NOTE: campaign.parameters is a flattened key/value map.
+    # Do NOT nest under `additional:` (legacy templates used that shape).
+    strict_backend: true
+    evidence_mode: true
+    mark_fallback: true
+    # zkEVM-specific settings
+    opcode_coverage: true
+    state_transition_checks: true
 
 # Attack vectors for zkEVM auditing
 attacks:

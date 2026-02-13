@@ -21,29 +21,31 @@ campaign:
     field: "bn254"
     max_constraints: 50000
     timeout_seconds: 300  # 5 minutes
-    additional:
-      # Fast mode settings
-      strict_backend: false  # Allow fallback for quick testing
-      per_exec_isolation: false  # Faster without isolation
-      execution_timeout_ms: 5000
+    # NOTE: campaign.parameters is a flattened key/value map.
+    # Do NOT nest under `additional:` (legacy templates used that shape).
 
-      # Shallow symbolic execution
-      constraint_guided_enabled: true
-      symbolic_max_paths: 100
-      symbolic_max_depth: 20
-      symbolic_solver_timeout_ms: 1000
+    # Fast mode settings
+    strict_backend: false  # Allow fallback for quick testing
+    per_exec_isolation: false  # Faster without isolation
+    execution_timeout_ms: 5000
 
-      # Small corpus
-      corpus_max_size: 10000
+    # Shallow symbolic execution
+    constraint_guided_enabled: true
+    symbolic_max_paths: 100
+    symbolic_max_depth: 20
+    symbolic_solver_timeout_ms: 1000
 
-      # Broad oracles
-      enabled_oracles:
-        - "underconstrained_oracle"
-        - "arithmetic_overflow_oracle"
-      oracle_validation: false  # Skip for speed
+    # Small corpus
+    corpus_max_size: 10000
 
-      # Quick fuzzing
-      fuzzing_iterations: 5000
+    # Broad oracles
+    enabled_oracles:
+      - "underconstrained_oracle"
+      - "arithmetic_overflow_oracle"
+    oracle_validation: false  # Skip for speed
+
+    # Quick fuzzing
+    fuzzing_iterations: 5000
 
 attacks:
   - type: "underconstrained"

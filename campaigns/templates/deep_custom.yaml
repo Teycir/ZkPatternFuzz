@@ -22,35 +22,37 @@ campaign:
     field: "bn254"
     max_constraints: 200000
     timeout_seconds: 3600  # 1 hour
-    additional:
-      # Production settings
-      strict_backend: true
-      per_exec_isolation: true
-      execution_timeout_ms: 60000  # 1 minute per execution
+    # NOTE: campaign.parameters is a flattened key/value map.
+    # Do NOT nest under `additional:` (legacy templates used that shape).
 
-      # Deep symbolic execution
-      constraint_guided_enabled: true
-      symbolic_max_paths: 5000
-      symbolic_max_depth: 500
-      symbolic_solver_timeout_ms: 10000
+    # Production settings
+    strict_backend: true
+    per_exec_isolation: true
+    execution_timeout_ms: 60000  # 1 minute per execution
 
-      # Large corpus
-      corpus_max_size: 500000
+    # Deep symbolic execution
+    constraint_guided_enabled: true
+    symbolic_max_paths: 5000
+    symbolic_max_depth: 500
+    symbolic_solver_timeout_ms: 10000
 
-      # All relevant oracles
-      enabled_oracles:
-        - "underconstrained_oracle"
-        - "arithmetic_overflow_oracle"
-        - "nullifier_oracle"
-        - "merkle_oracle"
-        - "range_oracle"
-        - "commitment_oracle"
-        - "constraint_inference_oracle"
-      oracle_validation: true
-      oracle_validation_skip_stateful: false
+    # Large corpus
+    corpus_max_size: 500000
 
-      # Thorough fuzzing
-      fuzzing_iterations: 200000
+    # All relevant oracles
+    enabled_oracles:
+      - "underconstrained_oracle"
+      - "arithmetic_overflow_oracle"
+      - "nullifier_oracle"
+      - "merkle_oracle"
+      - "range_oracle"
+      - "commitment_oracle"
+      - "constraint_inference_oracle"
+    oracle_validation: true
+    oracle_validation_skip_stateful: false
+
+    # Thorough fuzzing
+    fuzzing_iterations: 200000
 
 invariants:
   # Edge case invariants targeting bricking/unusual behavior

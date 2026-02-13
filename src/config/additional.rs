@@ -14,6 +14,43 @@ pub struct AdditionalConfig {
 }
 
 impl AdditionalConfig {
+    /// Backward-compatibility shim.
+    ///
+    /// Older templates/configs used:
+    /// ```yaml
+    /// campaign:
+    ///   parameters:
+    ///     additional:
+    ///       strict_backend: true
+    /// ```
+    ///
+    /// Because `Parameters.additional` is `#[serde(flatten)]`, that shape ends up as a single
+    /// key `"additional"` in the map and the engine silently ignores the nested keys.
+    ///
+    /// This helper hoists `"additional": { ... }` into the top-level map so both formats work.
+    /// If a key exists both at top-level and inside the legacy `additional` map, the top-level
+    /// value wins (explicit override).
+    pub fn hoist_legacy_additional(&mut self) -> bool {
+        let Some(legacy) = self.extra.remove("additional") else {
+            return false;
+        };
+
+        let serde_yaml::Value::Mapping(map) = legacy else {
+            // Not the legacy map shape; restore and do nothing.
+            self.extra.insert("additional".to_string(), legacy);
+            return false;
+        };
+
+        for (k, v) in map {
+            let serde_yaml::Value::String(key) = k else {
+                continue;
+            };
+            self.extra.entry(key).or_insert(v);
+        }
+
+        true
+    }
+
     pub fn extra(&self) -> &HashMap<String, serde_yaml::Value> {
         &self.extra
     }
@@ -90,5 +127,37 @@ impl Deref for AdditionalConfig {
 impl DerefMut for AdditionalConfig {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.extra
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hoists_legacy_additional_mapping() {
+        let mut cfg = AdditionalConfig::default();
+
+        // Top-level key should win over legacy nested key.
+        cfg.extra.insert(
+            "strict_backend".to_string(),
+            serde_yaml::Value::Bool(false),
+        );
+
+        let mut legacy = serde_yaml::Mapping::new();
+        legacy.insert(
+            serde_yaml::Value::String("strict_backend".to_string()),
+            serde_yaml::Value::Bool(true),
+        );
+        legacy.insert(
+            serde_yaml::Value::String("per_exec_isolation".to_string()),
+            serde_yaml::Value::Bool(true),
+        );
+        cfg.extra.insert("additional".to_string(), serde_yaml::Value::Mapping(legacy));
+
+        assert!(cfg.hoist_legacy_additional());
+        assert_eq!(cfg.get_bool("strict_backend"), Some(false));
+        assert_eq!(cfg.get_bool("per_exec_isolation"), Some(true));
+        assert!(!cfg.extra.contains_key("additional"));
     }
 }

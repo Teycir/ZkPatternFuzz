@@ -20,15 +20,16 @@ campaign:
     field: "bn254"  # or "pasta" for Halo2/Nova
     max_constraints: 1000000
     timeout_seconds: 3600
-    additional:
-      strict_backend: true
-      evidence_mode: true
-      max_iterations: 100000
-      
-      # Recursive-specific parameters
-      max_recursion_depth: 10
-      verify_base_case: true
-      check_accumulator_binding: true
+    # NOTE: campaign.parameters is a flattened key/value map.
+    # Do NOT nest under `additional:` (legacy templates used that shape).
+    strict_backend: true
+    evidence_mode: true
+    max_iterations: 100000
+
+    # Recursive-specific parameters
+    max_recursion_depth: 10
+    verify_base_case: true
+    check_accumulator_binding: true
 
 # ============================================================================
 # Attack Configuration
