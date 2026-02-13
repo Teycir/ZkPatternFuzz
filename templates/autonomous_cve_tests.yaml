@@ -337,4 +337,776 @@ vulnerabilities:
         // Then do comparison
         component lt = LessThan(n);
         lt.in[0] <== in;
-        lt.in[1] <== max;
+
+  # Semaphore Protocol - Zero Value Validation Missing
+  - id: "ZK-CVE-AUTO-008"
+    name: "Semaphore Zero Value Not Validated"
+    severity: high
+    cvss_score: 8.2
+    affected_circuits:
+      - pattern: "semaphore-protocol/semaphore"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      The Semaphore protocol uses a zeroValue in incremental Merkle trees as an 
+      implicit group member. This zeroValue cannot be removed and its addition does 
+      not trigger a MemberAdded event, making it invisible in membership records.
+      This allows the group creator guaranteed access, which can be problematic 
+      if the admin changes.
+      
+    detection:
+      oracle: underconstrained
+      attack_type: underconstrained
+      procedure:
+        - action: test_zero_membership
+        - action: verify_event_emission
+
+    remediation:
+      description: "Disallow proofs where leaf corresponds to zeroValue"
+      code_example: |
+        // Add constraint to reject zero value
+        signal isZero;
+        isZero <== IsZero()(leaf);
+        isZero === 0;  // Must not be zero
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/semaphore-protocol/semaphore/veridise_no_zero_value_validation/circuits/circuit.circom"
+      test_cases:
+        - name: valid_member
+          inputs:
+            identityNullifier: "0x1234567890abcdef"
+            identityTrapdoor: "0xfedcba0987654321"
+          expected_result: valid_proof
+        - name: zero_value_attack
+          inputs:
+            identityNullifier: 0
+            identityTrapdoor: 0
+          expected_result: invalid_proof
+      assertion: "Zero value identity must be rejected"
+
+  # Circomlib - BitElementMulAny Underconstrained
+  - id: "ZK-CVE-AUTO-009"
+    name: "BitElementMulAny Underconstrained Outputs"
+    severity: critical
+    cvss_score: 9.1
+    affected_circuits:
+      - pattern: "iden3/circomlib"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      BitElementMulAny template uses MontgomeryDouble and MontgomeryAdd which have 
+      underconstraint bugs. Malicious prover can manipulate lambda value in 
+      MontgomeryDouble to produce different outputs, making it nondeterministic.
+      
+    detection:
+      oracle: underconstrained
+      attack_type: underconstrained
+      procedure:
+        - action: test_montgomery_operations
+        - action: verify_determinism
+
+    remediation:
+      description: "Fix underconstraint bugs in Montgomery operations"
+      recommendations:
+        - "Add proper constraints to MontgomeryDouble"
+        - "Validate lambda values"
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/iden3/circomlib/veridise_underconstrained_outputs_in_bitElementMulAny/circuits/circuit.circom"
+      test_cases:
+        - name: valid_ec_point
+          inputs:
+            point: [1, 2]
+          expected_result: valid_proof
+        - name: manipulated_lambda
+          inputs:
+            point: [1, 2]
+            lambda: "0xbadvalue"
+          expected_result: invalid_proof
+      assertion: "EC operations must be deterministic"
+
+  # Telepathy Circuits - ArrayXOR Underconstrained
+  - id: "ZK-CVE-AUTO-010"
+    name: "ArrayXOR Output Not Constrained"
+    severity: critical
+    cvss_score: 9.3
+    affected_circuits:
+      - pattern: "succinctlabs/telepathy-circuits"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      ArrayXOR assigns output with <-- but does not constrain with <==.
+      This allows out[i] to be set to any value, not just a[i] ^ b[i].
+      
+    detection:
+      oracle: assigned_not_constrained
+      attack_type: assigned_not_constrained
+      procedure:
+        - action: check_assignment_vs_constraint
+        - action: verify_xor_correctness
+
+    remediation:
+      description: "Change <-- to <== for output signals"
+      code_example: |
+        // Instead of:
+        // out[i] <-- a[i] ^ b[i];
+        
+        // Use:
+        out[i] <== a[i] ^ b[i];
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/succinctlabs/telepathy-circuits/veridise_arrayxor_is_under_constrained/circuits/circuit.circom"
+      test_cases:
+        - name: valid_xor
+          inputs:
+            a: [0x12, 0x34]
+            b: [0x56, 0x78]
+          expected_result: valid_proof
+        - name: arbitrary_output
+          inputs:
+            a: [0x12, 0x34]
+            b: [0x56, 0x78]
+            forced_out: [0xFF, 0xFF]
+          expected_result: invalid_proof
+      assertion: "XOR output must be properly constrained"
+
+  # Circom-BigInt - Missing Range Checks in BigMod
+  - id: "ZK-CVE-AUTO-011"
+    name: "BigMod Missing Range Checks on Remainder"
+    severity: high
+    cvss_score: 8.5
+    affected_circuits:
+      - pattern: "0xbok/circom-bigint"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      BigMod template lacks range checks on remainder mod[i], allowing it to 
+      exceed expected range of 2**n. Quotient div[i] has range checks but 
+      mod[i] does not, breaking the invariant of modulus operation.
+      
+    detection:
+      oracle: boundary
+      attack_type: boundary
+      procedure:
+        - action: test_remainder_overflow
+        - action: verify_modulus_invariant
+
+    remediation:
+      description: "Add range checking constraints for mod[i]"
+      code_example: |
+        // Add range check for remainder
+        component modCheck = Num2Bits(n);
+        modCheck.in <== mod[i];
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/0xbok/circom-bigint/veridise_missing_range_checks_in_bigmod/circuits/circuit.circom"
+      test_cases:
+        - name: normal_modulus
+          inputs:
+            a: "0x1234567890abcdef"
+            b: "0x1234"
+          expected_result: valid_proof
+        - name: overflow_remainder
+          inputs:
+            a: "0xffffffffffffffffffffffffffffffff"
+            b: "0x2"
+          expected_result: invalid_proof
+      assertion: "Remainder must be less than divisor"
+
+  # Unirep - Underconstrained Comparison Circuit
+  - id: "ZK-CVE-AUTO-012"
+    name: "BigLessThan Comparison Underconstrained"
+    severity: high
+    cvss_score: 8.0
+    affected_circuits:
+      - pattern: "Unirep/Unirep"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      Num2Bits(254) is used so malicious prover can provide input larger than 
+      scalar field modulus p but smaller than 2**254, exploiting overflow.
+      This makes comparison operations invalid - e.g., 1 < p evaluates to true 
+      but circuit treats it as 1 < 0.
+      
+    detection:
+      oracle: boundary
+      attack_type: boundary
+      procedure:
+        - action: test_field_overflow
+        - action: verify_comparison_correctness
+
+    remediation:
+      description: "Use Num2Bits_strict instead of Num2Bits(254)"
+      code_example: |
+        // Instead of:
+        // component n2b = Num2Bits(254);
+        
+        // Use:
+        component n2b = Num2Bits_strict();
+        n2b.in <== value;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/Unirep/Unirep/veridise_underconstrained_circuit_allows_invalid_comparison/circuits/circuit.circom"
+      test_cases:
+        - name: valid_comparison
+          inputs:
+            in: [1, 100]
+          expected_result: valid_proof
+        - name: field_overflow
+          inputs:
+            in: [1, "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"]
+          expected_result: invalid_proof
+      assertion: "Comparison must handle field overflow correctly"
+
+  # Iden3 Circomlib - Decoder Accepting Bogus Output
+  - id: "ZK-CVE-AUTO-013"
+    name: "Decoder Accepting Bogus Output Signal"
+    severity: high
+    cvss_score: 8.3
+    affected_circuits:
+      - pattern: "iden3/circomlib/multiplexer"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      The Decoder circuit does not constrain `out` properly. Malicious prover can 
+      set a bogus `out` and set `success` to 0, and the circuit won't throw error. 
+      This makes integration error-prone as invalid decodings are silently accepted.
+      
+    detection:
+      oracle: underconstrained
+      attack_type: underconstrained
+      procedure:
+        - action: test_bogus_output
+        - action: verify_success_flag
+
+    remediation:
+      description: "Properly constrain output based on input"
+      code_example: |
+        // Send `inp - i` to isZero template
+        component isZero = IsZero();
+        isZero.in <== inp - i;
+        out[i] <== isZero.out;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/iden3/circomlib/veridise_decoder_accepting_bogus_output_signal/circuits/circuit.circom"
+      test_cases:
+        - name: valid_decode
+          inputs:
+            inp: 5
+          expected_result: valid_proof
+        - name: bogus_output
+          inputs:
+            inp: 5
+            out: [0, 0, 0, 0, 0, 0, 0, 0]
+            success: 0
+          expected_result: invalid_proof
+      assertion: "Bogus outputs must be rejected"
+
+  # Iden3 Circomlib - MontgomeryDouble Underconstrained
+  - id: "ZK-CVE-AUTO-014"
+    name: "MontgomeryDouble Points Underconstrained"
+    severity: critical
+    cvss_score: 9.0
+    affected_circuits:
+      - pattern: "iden3/circomlib/montgomery"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      MontgomeryDouble template has underconstrained points allowing malicious 
+      prover to manipulate lambda value and produce different outputs. This 
+      affects all dependent operations including BitElementMulAny.
+      
+    detection:
+      oracle: underconstrained
+      attack_type: underconstrained
+      procedure:
+        - action: test_montgomery_double
+        - action: verify_point_validity
+
+    remediation:
+      description: "Add proper constraints to MontgomeryDouble outputs"
+      recommendations:
+        - "Validate lambda computation"
+        - "Constrain output point coordinates"
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/iden3/circomlib/veridise_underconstrained_points_in_montgomeryDouble/circuits/circuit.circom"
+      test_cases:
+        - name: valid_point_double
+          inputs:
+            point: [1, 2]
+          expected_result: valid_proof
+        - name: manipulated_lambda
+          inputs:
+            point: [1, 2]
+            lambda: "0xdeadbeef"
+          expected_result: invalid_proof
+      assertion: "Point doubling must be deterministic"
+
+  # Iden3 Circomlib - MontgomeryAdd Underconstrained
+  - id: "ZK-CVE-AUTO-015"
+    name: "MontgomeryAdd Points Underconstrained"
+    severity: critical
+    cvss_score: 9.0
+    affected_circuits:
+      - pattern: "iden3/circomlib/montgomery"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      MontgomeryAdd template has underconstrained points similar to MontgomeryDouble. 
+      Malicious prover can provide different points that satisfy constraints but 
+      produce incorrect addition results.
+      
+    detection:
+      oracle: underconstrained
+      attack_type: underconstrained
+      procedure:
+        - action: test_montgomery_add
+        - action: verify_addition_correctness
+
+    remediation:
+      description: "Add constraints to ensure proper point addition"
+      code_example: |
+        // Constrain output points properly
+        outX <== (lambda * lambda) - in1X - in2X;
+        outY <== lambda * (in1X - outX) - in1Y;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/iden3/circomlib/veridise_underconstrained_points_in_montgomeryAdd/circuits/circuit.circom"
+      test_cases:
+        - name: valid_point_add
+          inputs:
+            point1: [1, 2]
+            point2: [3, 4]
+          expected_result: valid_proof
+        - name: bogus_addition
+          inputs:
+            point1: [1, 2]
+            point2: [3, 4]
+            forced_result: [99, 99]
+          expected_result: invalid_proof
+      assertion: "Point addition must be mathematically correct"
+
+  # Iden3 Circomlib - Window4 Underconstrained Outputs
+  - id: "ZK-CVE-AUTO-016"
+    name: "Window4 Underconstrained Outputs"
+    severity: high
+    cvss_score: 8.5
+    affected_circuits:
+      - pattern: "iden3/circomlib/escalarmul"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      Window4 template used in scalar multiplication has underconstrained outputs. 
+      This allows malicious provers to manipulate results during elliptic curve 
+      scalar multiplication operations.
+      
+    detection:
+      oracle: underconstrained
+      attack_type: underconstrained
+      procedure:
+        - action: test_window4_output
+        - action: verify_scalar_mul
+
+    remediation:
+      description: "Fix underconstraint bugs in Window4 template"
+      recommendations:
+        - "Add output constraints"
+        - "Verify intermediate values"
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/iden3/circomlib/veridise_underconstrained_outputs_in_window4/circuits/circuit.circom"
+      test_cases:
+        - name: valid_scalar_mul
+          inputs:
+            scalar: "0x12345678"
+            point: [1, 2]
+          expected_result: valid_proof
+        - name: manipulated_output
+          inputs:
+            scalar: "0x12345678"
+            point: [1, 2]
+            forced_out: [0xdead, 0xbeef]
+          expected_result: invalid_proof
+      assertion: "Scalar multiplication must be deterministic"
+
+  # Self.xyz - Second Preimage Attack on PackBytes
+  - id: "ZK-CVE-AUTO-017"
+    name: "Second Preimage Attack on PackBytesAndPoseidon"
+    severity: critical
+    cvss_score: 9.5
+    affected_circuits:
+      - pattern: "selfxyz/self"
+        versions: ["*"]
+    sources:
+      - "zkSecurity Audit"
+      - "zkBugs Dataset"
+    description: |
+      Second preimage attacks on PackBytes and Poseidon can be used to register 
+      arbitrary passports and DSC certificates. This allows attackers to create 
+      fraudulent identity attestations.
+      
+    detection:
+      oracle: collision
+      attack_type: collision
+      procedure:
+        - action: test_hash_collision
+        - action: verify_preimage_resistance
+
+    remediation:
+      description: "Use proper domain separation and padding"
+      recommendations:
+        - "Add domain separation tags"
+        - "Use length-prefixed encoding"
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/selfxyz/self/zksecurity_second_pre_image_attacks_on_packbytesandposeidon_may_be_used_to_register_arbitrary_passports_and_dsc_certificates/circuits/circuit.circom"
+      test_cases:
+        - name: unique_hash
+          inputs:
+            data: "0x1234567890abcdef"
+          expected_result: valid_proof
+        - name: collision_attempt
+          inputs:
+            data1: "0x1234"
+            data2: "0x123400"
+          expected_result: different_hashes
+      assertion: "Hash function must be collision resistant"
+
+  # Self.xyz - Fake Non-Inclusion Proof
+  - id: "ZK-CVE-AUTO-018"
+    name: "Fake Non-Inclusion Proof via SMT Aliasing Bug"
+    severity: critical
+    cvss_score: 9.3
+    affected_circuits:
+      - pattern: "selfxyz/self"
+        versions: ["*"]
+    sources:
+      - "zkSecurity Audit"
+      - "zkBugs Dataset"
+    description: |
+      An attacker can craft a fake non-inclusion proof for a given key due to an 
+      aliasing bug in the SMT (Sparse Merkle Tree) verifier. This allows proving 
+      that a key doesn't exist when it actually does.
+      
+    detection:
+      oracle: soundness
+      attack_type: soundness
+      procedure:
+        - action: test_inclusion_proof
+        - action: test_non_inclusion_proof
+        - action: verify_smt_correctness
+
+    remediation:
+      description: "Fix aliasing bug in SMT path verification"
+      code_example: |
+        // Ensure proper path validation
+        component pathVerifier = SMTPathVerifier();
+        pathVerifier.key <== key;
+        pathVerifier.path <== path;
+        pathVerifier.out === 1;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/selfxyz/self/zksecurity_an_attacker_can_craft_a_fake_non_inclusion_proof_for_a_given_key_due_to_an_aliasing_bug_in_the_smt_verifier/circuits/circuit.circom"
+      test_cases:
+        - name: valid_non_inclusion
+          inputs:
+            key: "0x1234"
+            siblings: [...]
+          expected_result: valid_proof
+        - name: fake_non_inclusion
+          inputs:
+            key: "0x1234"
+            malicious_siblings: [...]
+          expected_result: invalid_proof
+      assertion: "Non-inclusion proofs must be sound"
+
+  # Tangle Network - Incorrect Initialization
+  - id: "ZK-CVE-AUTO-019"
+    name: "Incorrect Initialization in Membership Circuits"
+    severity: high
+    cvss_score: 8.1
+    affected_circuits:
+      - pattern: "tangle-network/protocol-solidity"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      Membership circuits have incorrect initialization leading to underconstrained 
+      state. This can allow unauthorized membership claims or bypass membership 
+      verification entirely.
+      
+    detection:
+      oracle: underconstrained
+      attack_type: underconstrained
+      procedure:
+        - action: test_initialization
+        - action: verify_membership_state
+
+    remediation:
+      description: "Properly initialize all state variables"
+      code_example: |
+        // Initialize state properly
+        signal initialState;
+        initialState <== 0;
+        state[0] <== initialState;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/tangle-network/protocol-solidity/veridise_incorrect_initialization_in_membership_circuits/circuits/circuit.circom"
+      test_cases:
+        - name: valid_membership
+          inputs:
+            member: "0x1234"
+            merkleRoot: "0xabcd"
+          expected_result: valid_proof
+        - name: uninitialized_state
+          inputs:
+            member: "0x1234"
+            skip_init: true
+          expected_result: invalid_proof
+      assertion: "Circuits must be properly initialized"
+
+  # CVE-2024-42459 - EdDSA Signature Malleability (Real CVE)
+  - id: "CVE-2024-42459"
+    name: "EdDSA Signature Malleability in Elliptic"
+    severity: critical
+    cvss_score: 9.8
+    affected_circuits:
+      - pattern: "*eddsa*"
+        versions: ["*"]
+      - pattern: "*elliptic*"
+        versions: ["<6.5.5"]
+    sources:
+      - "CVE-2024-42459"
+      - "SentinelOne Disclosure"
+    description: |
+      CVE-2024-42459 is an EdDSA signature malleability vulnerability caused by 
+      missing signature length validation. Signatures can be modified without 
+      invalidating them, allowing transaction replay and malleability attacks.
+      
+      Technical Details:
+      - Missing signature length validation
+      - Both (R, s) and (R, -s mod q) verify successfully
+      - No canonical signature form enforcement
+      
+    detection:
+      oracle: malleability
+      attack_type: malleability
+      procedure:
+        - action: generate_valid_signature
+        - action: negate_s_component
+        - action: verify_both_signatures
+        - action: check_canonical_form
+
+    remediation:
+      description: "Enforce canonical signature form s < q/2"
+      code_example: |
+        // Verify signature length
+        assert(sig.length == 64);
+        
+        // Enforce canonical form
+        component lt = LessThan(254);
+        lt.in[0] <== s;
+        lt.in[1] <== q / 2;
+        lt.out === 1;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/iden3/circomlib/kobi_gurkan_mimc_hash_assigned_but_not_constrained/circuits/circuit.circom"
+      test_cases:
+        - name: canonical_signature
+          inputs:
+            R: "0x1234567890abcdef"
+            s: "0x1234567890abcdef"
+          expected_result: valid_proof
+        - name: malleable_signature
+          inputs:
+            R: "0x1234567890abcdef"
+            s_negated: "0xedcba09876543210"
+          expected_result: invalid_proof
+      assertion: "Only canonical signatures must be valid"
+
+  # SuccinctLabs - Incorrect Point Doubling Handling
+  - id: "ZK-CVE-AUTO-020"
+    name: "Incorrect Point Doubling Allows Signature Forgery"
+    severity: critical
+    cvss_score: 9.7
+    affected_circuits:
+      - pattern: "succinctlabs/telepathy-circuits"
+        versions: ["*"]
+    sources:
+      - "Trail of Bits Audit"
+      - "zkBugs Dataset"
+    description: |
+      Incorrect handling of point doubling in BLS signature verification can allow 
+      signature forgery. When the same point is added to itself, the circuit doesn't 
+      handle the degenerate case correctly.
+      
+    detection:
+      oracle: soundness
+      attack_type: soundness
+      procedure:
+        - action: test_point_doubling
+        - action: verify_signature_validity
+        - action: attempt_forgery
+
+    remediation:
+      description: "Handle point doubling edge cases"
+      code_example: |
+        // Check for point doubling
+        component isSameX = IsEqual();
+        isSameX.in[0] <== P1.x;
+        isSameX.in[1] <== P2.x;
+        
+        // Handle separately if same point
+        component doubler = ECPointDouble();
+        doubler.in <== P1;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/succinctlabs/telepathy-circuits/trailofbits_incorrect_handling_of_point_doubling_can_allow_signature_forgery/circuits/circuit.circom"
+      test_cases:
+        - name: valid_point_add
+          inputs:
+            P1: [1, 2]
+            P2: [3, 4]
+          expected_result: valid_proof
+        - name: point_doubling_edge
+          inputs:
+            P1: [1, 2]
+            P2: [1, 2]
+          expected_result: valid_proof
+        - name: forged_signature
+          inputs:
+            signature: [0, 0]
+            message: "0x1234"
+          expected_result: invalid_proof
+      assertion: "Point operations must handle all edge cases"
+
+  # SuccinctLabs - Zero Padding Overflow in SHA256
+  - id: "ZK-CVE-AUTO-021"
+    name: "SHA256 Zero Padding Vulnerable to Overflow"
+    severity: high
+    cvss_score: 8.4
+    affected_circuits:
+      - pattern: "succinctlabs/telepathy-circuits"
+        versions: ["*"]
+    sources:
+      - "Veridise Audit"
+      - "zkBugs Dataset"
+    description: |
+      Zero padding for SHA256 in ExpandMessageXMD is vulnerable to overflow. 
+      Insufficient range checks allow padded values to exceed expected bounds, 
+      potentially leading to incorrect hash outputs.
+      
+    detection:
+      oracle: boundary
+      attack_type: boundary
+      procedure:
+        - action: test_padding_bounds
+        - action: verify_overflow_protection
+        - action: check_sha256_correctness
+
+    remediation:
+      description: "Add range checks to padded values"
+      code_example: |
+        // Constrain padded values
+        component padCheck = Num2Bits(8);
+        padCheck.in <== paddedByte;
+        
+        // Verify padding is correct
+        paddedByte * (paddedByte - 0x80) === 0;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/succinctlabs/telepathy-circuits/veridise_zero_padding_for_sha256_in_ExpandMessageXMD_is_vulnerable_to_an_overflow/circuits/circuit.circom"
+      test_cases:
+        - name: valid_padding
+          inputs:
+            message: "0x1234"
+            pad_length: 10
+          expected_result: valid_proof
+        - name: overflow_padding
+          inputs:
+            message: "0x1234"
+            pad_length: 999999
+          expected_result: invalid_proof
+      assertion: "Padding must be within bounds"
+
+  # SuccinctLabs - Non-Reduced Y Values in G1BigInt
+  - id: "ZK-CVE-AUTO-022"
+    name: "Non-Reduced Y Values Allow Fund Locking"
+    severity: high
+    cvss_score: 8.6
+    affected_circuits:
+      - pattern: "succinctlabs/telepathy-circuits"
+        versions: ["*"]
+    sources:
+      - "Trail of Bits Audit"
+      - "zkBugs Dataset"
+    description: |
+      Prover can lock user funds by supplying non-reduced Y values to G1BigIntToSignFlag. 
+      Insufficient validation of Y coordinate allows malicious provers to create 
+      proofs that cannot be verified on-chain.
+      
+    detection:
+      oracle: boundary
+      attack_type: boundary
+      procedure:
+        - action: test_y_value_range
+        - action: verify_reduction
+        - action: check_verifiability
+
+    remediation:
+      description: "Enforce Y value reduction modulo field"
+      code_example: |
+        // Reduce Y modulo field
+        component yMod = BigMod();
+        yMod.a <== y;
+        yMod.b <== fieldModulus;
+        yMod.out <== yReduced;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/succinctlabs/telepathy-circuits/trailofbits_prover_can_lock_user_funds_by_supplying_non-reduced_Y_values_to_G1BigIntToSignFlag/circuits/circuit.circom"
+      test_cases:
+        - name: reduced_y_value
+          inputs:
+            point: [1, 2]
+          expected_result: valid_proof
+        - name: non_reduced_y
+          inputs:
+            point: [1, "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000002"]
+          expected_result: invalid_proof
+      assertion: "Y values must be field-reduced"

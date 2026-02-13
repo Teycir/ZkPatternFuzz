@@ -47,3 +47,4 @@ build/
 campaigns/zk0d/semaphore_main.circom
 build/zk0d/semaphore/pot14_0000.ptau
 .npm-cache
+targets/zkbugs
