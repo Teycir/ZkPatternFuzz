@@ -565,6 +565,10 @@ impl CairoTarget {
     }
 }
 
+/// Starkware field prime P = 2^251 + 17·2^192 + 1 as 32-byte big-endian.
+const STARK252_MODULUS_HEX: &str =
+    "0800000000000011000000000000000000000000000000000000000000000001";
+
 impl TargetCircuit for CairoTarget {
     fn framework(&self) -> Framework {
         Framework::Cairo
@@ -572,6 +576,19 @@ impl TargetCircuit for CairoTarget {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn field_modulus(&self) -> [u8; 32] {
+        let mut modulus = [0u8; 32];
+        if let Ok(decoded) = hex::decode(STARK252_MODULUS_HEX) {
+            let start = 32usize.saturating_sub(decoded.len());
+            modulus[start..].copy_from_slice(&decoded[..decoded.len().min(32)]);
+        }
+        modulus
+    }
+
+    fn field_name(&self) -> &str {
+        "stark252"
     }
 
     fn num_constraints(&self) -> usize {

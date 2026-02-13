@@ -23,7 +23,7 @@ campaign:
   name: "Chain Test"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Test"
   parameters:
@@ -77,7 +77,7 @@ campaign:
   name: "Wiring Test"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Test"
   parameters:
@@ -151,7 +151,7 @@ campaign:
   name: "Multi-Circuit Test"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./default.circom"
     main_component: "Default"
   parameters:
@@ -208,7 +208,7 @@ campaign:
   name: "Assertion Test"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Test"
   parameters:
@@ -278,7 +278,7 @@ campaign:
   name: "Schedule Test"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Test"
   parameters:
@@ -336,7 +336,7 @@ campaign:
   name: "Empty Chains"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Test"
   parameters:
@@ -415,7 +415,7 @@ reporting:
         use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics, ChainTrace, StepTrace};
         use zk_fuzzer::chain_fuzzer::types::ChainFindingCore;
 
-        // Create mock chain findings with different L_min values
+        // Create fixture chain findings with different L_min values
         let findings = vec![
             ChainFinding {
                 finding: ChainFindingCore {
@@ -545,7 +545,7 @@ campaign:
   name: "Valid Chain"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Test"
   parameters:

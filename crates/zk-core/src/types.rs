@@ -10,7 +10,6 @@ pub enum Framework {
     Noir,
     Halo2,
     Cairo,
-    Mock, // For testing without actual circuits
 }
 
 /// Supported attack types

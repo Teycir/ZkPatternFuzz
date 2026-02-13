@@ -8,7 +8,7 @@ use super::{
     SerializableCorpusEntry, WorkResults, WorkUnitId,
 };
 use crate::config::FuzzConfig;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use zk_core::Finding;
@@ -452,7 +452,11 @@ impl DistributedCoordinator {
         }
     }
 
-    /// Reassign work from a failed node
+    /// Reassign work from a failed / timed-out node.
+    ///
+    /// Any work units that were assigned to `node_id` are removed from the
+    /// active-work map and pushed back onto the front of the work queue with
+    /// elevated priority so they are picked up next.
     fn reassign_work_from_node(&self, node_id: &str) {
         let mut active = self.active_work.write().unwrap();
         let to_reassign: Vec<WorkUnitId> = active
@@ -461,11 +465,48 @@ impl DistributedCoordinator {
             .map(|(id, _)| *id)
             .collect();
 
-        for work_id in to_reassign {
-            active.remove(&work_id);
-            // TODO: Re-queue the work unit (need to store work units somewhere)
-            tracing::warn!("Work unit {} from {} needs reassignment", work_id, node_id);
+        if to_reassign.is_empty() {
+            return;
         }
+
+        // Collect the completed set so we don't re-queue already-finished work.
+        let completed: HashSet<WorkUnitId> = self
+            .completed_work
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect();
+
+        let mut queue = self.work_queue.write().unwrap();
+
+        for work_id in &to_reassign {
+            active.remove(work_id);
+
+            if completed.contains(work_id) {
+                tracing::debug!(
+                    "Work unit {} from {} already completed, skipping requeue",
+                    work_id,
+                    node_id
+                );
+                continue;
+            }
+
+            // Re-create a minimal work unit and push to front of queue.
+            let requeued = WorkUnit::new(*work_id, "requeued", 0)
+                .with_priority(i32::MAX); // highest priority
+            queue.push_front(requeued);
+
+            tracing::warn!(
+                "Re-queued work unit {} (was assigned to disconnected node {})",
+                work_id,
+                node_id
+            );
+        }
+
+        // Update stats
+        let mut stats = self.stats.write().unwrap();
+        stats.requeued_work_units += to_reassign.len();
     }
 
     /// Get cluster statistics

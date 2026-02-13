@@ -6,7 +6,7 @@ use zk_fuzzer::attacks::{
     CanonicalizationChecker, CrossBackendDifferential, DeterminismOracle, FrozenWireDetector,
     NullifierReplayScanner, ProofMalleabilityScanner, SetupPoisoningDetector,
 };
-use zk_fuzzer::executor::{CircuitExecutor, MockCircuitExecutor};
+use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_core::{CircuitInfo, ExecutionCoverage, ExecutionResult, Framework};
 
@@ -30,7 +30,7 @@ impl LenientProofExecutor {
 
 impl CircuitExecutor for LenientProofExecutor {
     fn framework(&self) -> Framework {
-        Framework::Mock
+        Framework::Circom
     }
 
     fn name(&self) -> &str {
@@ -82,7 +82,7 @@ impl FlakyExecutor {
 
 impl CircuitExecutor for FlakyExecutor {
     fn framework(&self) -> Framework {
-        Framework::Mock
+        Framework::Circom
     }
 
     fn name(&self) -> &str {
@@ -136,7 +136,7 @@ impl SaltedExecutor {
 
 impl CircuitExecutor for SaltedExecutor {
     fn framework(&self) -> Framework {
-        Framework::Mock
+        Framework::Circom
     }
 
     fn name(&self) -> &str {
@@ -198,7 +198,7 @@ fn test_determinism_oracle_detects_nondeterminism() {
 
 #[test]
 fn test_frozen_wire_detector_detects_constant_output() {
-    let executor = MockCircuitExecutor::new("frozen", 1, 1).with_underconstrained(true);
+    let executor = FixtureCircuitExecutor::new("frozen", 1, 1).with_underconstrained(true);
 
     let mut witnesses = Vec::new();
     for i in 0..3u64 {
@@ -212,7 +212,7 @@ fn test_frozen_wire_detector_detects_constant_output() {
 
 #[test]
 fn test_nullifier_replay_scanner_detects_replay() {
-    let executor = MockCircuitExecutor::new("nullifier", 1, 1).with_underconstrained(true);
+    let executor = FixtureCircuitExecutor::new("nullifier", 1, 1).with_underconstrained(true);
     let base = vec![FieldElement::from_u64(7), FieldElement::from_u64(1)];
 
     let scanner = NullifierReplayScanner::new()
@@ -239,7 +239,7 @@ fn test_cross_backend_differential_detects_divergence() {
 
 #[test]
 fn test_canonicalization_checker_detects_non_canonical() {
-    let executor = MockCircuitExecutor::new("canon", 1, 0);
+    let executor = FixtureCircuitExecutor::new("canon", 1, 0);
     let witness = vec![FieldElement::from_u64(1)];
 
     let checker = CanonicalizationChecker::new()

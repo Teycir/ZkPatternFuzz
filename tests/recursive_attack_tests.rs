@@ -456,13 +456,13 @@ fn test_halo2_analyzer_split_accumulator() {
 }
 
 // ============================================================================
-// Integration Tests (Ignored - Require Mock Backend)
+// Integration Tests (Ignored - Require Fixture Backend)
 // ============================================================================
 
 #[test]
-// requires mock backend setup
+// requires fixture backend setup
 fn test_recursive_attack_full_run() {
-    use zk_fuzzer::executor::MockCircuitExecutor;
+    use zk_fuzzer::executor::FixtureCircuitExecutor;
 
     let config = RecursiveAttackConfig {
         max_recursion_depth: 5,
@@ -474,7 +474,7 @@ fn test_recursive_attack_full_run() {
     };
 
     let mut attack = RecursiveAttack::new(config);
-    let executor = MockCircuitExecutor::new("mock", 4, 0);
+    let executor = FixtureCircuitExecutor::new("fixture", 4, 0);
     let inputs = vec![FieldElement::from_u64(1); 4];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -489,9 +489,9 @@ fn test_recursive_attack_full_run() {
 }
 
 #[test]
-// requires mock backend setup
+// requires fixture backend setup
 fn test_base_case_bypass_detection() {
-    use zk_fuzzer::executor::MockCircuitExecutor;
+    use zk_fuzzer::executor::FixtureCircuitExecutor;
 
     let config = RecursiveAttackConfig {
         detect_base_case_bypass: true,
@@ -503,7 +503,7 @@ fn test_base_case_bypass_detection() {
     };
 
     let mut attack = RecursiveAttack::new(config);
-    let executor = MockCircuitExecutor::new("mock", 4, 0);
+    let executor = FixtureCircuitExecutor::new("fixture", 4, 0);
     let inputs = vec![FieldElement::from_u64(1); 4];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -521,9 +521,9 @@ fn test_base_case_bypass_detection() {
 }
 
 #[test]
-// requires mock backend setup
+// requires fixture backend setup
 fn test_folding_attack_detection() {
-    use zk_fuzzer::executor::MockCircuitExecutor;
+    use zk_fuzzer::executor::FixtureCircuitExecutor;
 
     let config = RecursiveAttackConfig {
         detect_base_case_bypass: false,
@@ -536,7 +536,7 @@ fn test_folding_attack_detection() {
     };
 
     let mut attack = RecursiveAttack::new(config);
-    let executor = MockCircuitExecutor::new("mock", 4, 0);
+    let executor = FixtureCircuitExecutor::new("fixture", 4, 0);
     let inputs = vec![FieldElement::from_u64(1); 4];
 
     let rt = tokio::runtime::Runtime::new().unwrap();

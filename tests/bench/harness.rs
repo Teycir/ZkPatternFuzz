@@ -339,7 +339,7 @@ impl BenchmarkHarness {
     ) -> anyhow::Result<BenchmarkRun> {
         let start = Instant::now();
 
-        // For mock testing, simulate benchmark run
+        // For fixture testing, simulate benchmark run
         // In production, this would call the actual fuzzer
         let (findings, coverage, executions) = self.simulate_fuzzing(benchmark_path, seed)?;
 

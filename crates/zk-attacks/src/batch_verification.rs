@@ -1111,7 +1111,6 @@ impl BatchVerificationAttack {
             zk_core::Framework::Noir => ProofSystem::Plonk,
             zk_core::Framework::Halo2 => ProofSystem::Halo2,
             zk_core::Framework::Cairo => ProofSystem::Groth16, // Cairo uses STARK but we map to closest
-            zk_core::Framework::Mock => ProofSystem::Groth16,
         }
     }
 

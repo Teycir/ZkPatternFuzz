@@ -946,7 +946,9 @@ impl FuzzingEngine {
         tracing::info!("Testing {} boundary values", test_values.len());
         {
             use crate::attacks::BoundaryTester;
-            let tester = BoundaryTester::new().with_custom_values(test_values.clone());
+            let tester = BoundaryTester::new()
+                .with_modulus(self.get_field_modulus())
+                .with_custom_values(test_values.clone());
             self.add_attack_findings(&tester, test_values.len(), progress);
         }
 

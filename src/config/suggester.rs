@@ -368,7 +368,7 @@ campaign:
   name: "Test"
   version: "1.0"
   target:
-    framework: "mock"
+    framework: "circom"
     circuit_path: "./test.circom"
     main_component: "Main"
 

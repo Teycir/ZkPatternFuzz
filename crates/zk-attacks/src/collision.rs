@@ -401,7 +401,6 @@ impl Attack for CollisionDetector {
         let mut findings = Vec::new();
 
         if let Some(executor) = context.executor.as_ref() {
-            if !executor.is_mock() {
                 let total_inputs = executor.num_private_inputs() + executor.num_public_inputs();
                 if total_inputs > 0 {
                     let mut rng = StdRng::seed_from_u64(42);
@@ -479,7 +478,6 @@ impl Attack for CollisionDetector {
                         }
                     }
                 }
-            }
         }
 
         // Check for small output space (vulnerable to birthday attack)

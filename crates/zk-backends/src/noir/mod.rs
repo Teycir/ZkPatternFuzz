@@ -678,6 +678,20 @@ impl TargetCircuit for NoirTarget {
         Framework::Noir
     }
 
+    fn field_modulus(&self) -> [u8; 32] {
+        // Noir uses BN254 (Barretenberg backend)
+        let mut modulus = [0u8; 32];
+        let hex_str = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
+        if let Ok(decoded) = hex::decode(hex_str) {
+            modulus.copy_from_slice(&decoded);
+        }
+        modulus
+    }
+
+    fn field_name(&self) -> &str {
+        "bn254"
+    }
+
     fn name(&self) -> &str {
         self.metadata
             .as_ref()

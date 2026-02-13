@@ -189,10 +189,14 @@ impl CoqExporter {
             a_expr, b_expr, c_expr
         ));
 
-        // Add proof
+        // Add proof skeleton with generated obligations
         lemma.push_str("Proof.\n");
-        lemma.push_str("  intros. (* TODO: Complete proof *)\n");
-        lemma.push_str("Admitted.\n\n");
+        lemma.push_str("  intros.\n");
+        lemma.push_str("  (* Auto-generated proof skeleton.\n");
+        lemma.push_str("     Complete this proof by providing the field-arithmetic\n");
+        lemma.push_str("     steps that justify the R1CS constraint. *)\n");
+        lemma.push_str("  (* Obligation: show A·B = C under the given hypotheses. *)\n");
+        lemma.push_str("Admitted. (* SKELETON-ONLY: replace Admitted with Qed once proved *)\n\n");
 
         lemma
     }
@@ -273,8 +277,10 @@ impl ProofExporter for CoqExporter {
 
         code.push_str(".\n");
         code.push_str("Proof.\n");
-        code.push_str("  intros. (* TODO: Complete proof *)\n");
-        code.push_str("Admitted.\n");
+        code.push_str("  intros.\n");
+        code.push_str("  (* Auto-generated proof skeleton.\n");
+        code.push_str("     Prove each postcondition from the given preconditions. *)\n");
+        code.push_str("Admitted. (* SKELETON-ONLY: replace Admitted with Qed once proved *)\n");
 
         ProofResult {
             code,
@@ -282,7 +288,7 @@ impl ProofExporter for CoqExporter {
             success: true,
             system: ProofSystem::Coq,
             dependencies: vec!["Coq.ZArith.ZArith".to_string()],
-            warnings: vec![],
+            warnings: vec!["Output is skeleton-only: all lemmas use Admitted and must be completed manually.".to_string()],
         }
     }
 
@@ -326,8 +332,10 @@ impl ProofExporter for CoqExporter {
         code.push_str("  (forall i, constraint_satisfied witness i) ->\n");
         code.push_str("  circuit_valid witness.\n");
         code.push_str("Proof.\n");
-        code.push_str("  intros. (* TODO: Complete proof *)\n");
-        code.push_str("Admitted.\n");
+        code.push_str("  intros.\n");
+        code.push_str("  (* Auto-generated soundness skeleton.\n");
+        code.push_str("     Prove that any witness satisfying all constraints is valid. *)\n");
+        code.push_str("Admitted. (* SKELETON-ONLY: replace Admitted with Qed once proved *)\n");
 
         code.push_str(&self.generate_footer(name));
 
@@ -337,7 +345,7 @@ impl ProofExporter for CoqExporter {
             success: true,
             system: ProofSystem::Coq,
             dependencies: vec!["Coq.ZArith.ZArith".to_string()],
-            warnings: vec![],
+            warnings: vec!["Output is skeleton-only: all lemmas use Admitted and must be completed manually.".to_string()],
         }
     }
 

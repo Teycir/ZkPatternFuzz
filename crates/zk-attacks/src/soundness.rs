@@ -80,14 +80,6 @@ impl Attack for SoundnessTester {
             return findings;
         };
 
-        if executor.is_mock() {
-            tracing::debug!(
-                "SoundnessTester: skipping proof forgery on mock executor '{}'",
-                executor.name()
-            );
-            return findings;
-        }
-
         let mut rng = StdRng::seed_from_u64(42);
         let valid_inputs: Vec<FieldElement> = (0..executor.num_private_inputs())
             .map(|_| FieldElement::random(&mut rng))

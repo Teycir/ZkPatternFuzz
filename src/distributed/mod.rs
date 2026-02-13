@@ -80,7 +80,12 @@ impl Default for NodeCapabilities {
                 .map(|count| count.get())
                 .unwrap_or(1),
             memory_bytes: 8 * 1024 * 1024 * 1024, // 8GB default
-            frameworks: vec!["mock".to_string()],
+            frameworks: vec![
+                "circom".to_string(),
+                "noir".to_string(),
+                "halo2".to_string(),
+                "cairo".to_string(),
+            ],
             has_gpu: false,
         }
     }
@@ -226,6 +231,8 @@ pub struct ClusterStats {
     pub total_findings: usize,
     /// Global corpus size
     pub global_corpus_size: usize,
+    /// Work units requeued after node timeout/disconnect
+    pub requeued_work_units: usize,
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@
 use super::{NodeId, SerializableCorpusEntry};
 use crate::corpus::{CorpusEntry, SharedCorpus};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 /// Strategy for corpus synchronization
@@ -68,6 +68,8 @@ pub struct CorpusSyncManager {
     last_local_sync: RwLock<Instant>,
     /// Statistics
     stats: Arc<RwLock<SyncStats>>,
+    /// Global merged coverage bitmap (lazily initialised on first merge).
+    remote_coverage: OnceLock<RwLock<Vec<u8>>>,
 }
 
 impl CorpusSyncManager {
@@ -81,6 +83,7 @@ impl CorpusSyncManager {
             pending_share: Arc::new(RwLock::new(Vec::new())),
             last_local_sync: RwLock::new(Instant::now()),
             stats: Arc::new(RwLock::new(SyncStats::default())),
+            remote_coverage: OnceLock::new(),
         }
     }
 
@@ -210,10 +213,57 @@ impl CorpusSyncManager {
         );
     }
 
-    /// Merge coverage bitmaps from remote nodes
-    pub fn merge_coverage(&self, _node_id: &str, _bitmap: &[u8]) {
-        // TODO: Implement coverage bitmap merging
-        // This would update the global coverage tracker
+    /// Merge coverage bitmaps from remote nodes.
+    ///
+    /// Performs a byte-level OR of `bitmap` into the local corpus coverage
+    /// tracker.  Any newly-set bits are recorded so downstream scheduling can
+    /// prioritise inputs that expanded global coverage.
+    pub fn merge_coverage(&self, node_id: &str, bitmap: &[u8]) {
+        if bitmap.is_empty() {
+            return;
+        }
+
+        let mut stats = self.stats.write().unwrap();
+
+        // Build / extend the global bitmap inside the sync manager.
+        // The corpus itself stores per-entry coverage hashes; the bitmap
+        // here is the union across all remote nodes.
+        let global = self
+            .remote_coverage
+            .get_or_init(|| RwLock::new(Vec::new()));
+        let mut global_bitmap = global.write().unwrap();
+
+        if global_bitmap.len() < bitmap.len() {
+            global_bitmap.resize(bitmap.len(), 0);
+        }
+
+        let mut new_bits: usize = 0;
+        for (i, &byte) in bitmap.iter().enumerate() {
+            let old = global_bitmap[i];
+            let merged = old | byte;
+            if merged != old {
+                new_bits += (merged ^ old).count_ones() as usize;
+                global_bitmap[i] = merged;
+            }
+        }
+
+        stats.coverage_merges += 1;
+        stats.new_coverage_bits += new_bits;
+
+        tracing::debug!(
+            "Merged coverage from {}: {} new bits, global bitmap size {} bytes",
+            node_id,
+            new_bits,
+            global_bitmap.len(),
+        );
+    }
+
+    /// Return the current global merged coverage bitmap (if any).
+    pub fn global_coverage_bitmap(&self) -> Vec<u8> {
+        self.remote_coverage
+            .get()
+            .map(|rw| rw.read().unwrap().clone())
+            .unwrap_or_default()
     }
 
     /// Get entries received from a specific node
@@ -268,6 +318,10 @@ pub struct SyncStats {
     pub duplicate_entries: usize,
     /// Number of sync operations
     pub sync_count: usize,
+    /// Number of coverage bitmap merges performed
+    pub coverage_merges: usize,
+    /// Total new coverage bits discovered via merges
+    pub new_coverage_bits: usize,
 }
 
 /// Global corpus manager for coordinator

@@ -95,26 +95,18 @@ fn test_backend_availability() {
     println!("Cairo available: {:?} - {}", cairo_version, cairo_str);
 }
 
-/// Test mock executor creation
+/// Test executor creation reports missing tooling cleanly.
 #[test]
-fn test_mock_executor_creation() {
-    let executor = ExecutorFactory::create(
-        Framework::Mock,
-        "test.circom",
-        "TestCircuit",
-    ).unwrap();
-
-    assert_eq!(executor.framework(), Framework::Mock);
-    assert_eq!(executor.name(), "TestCircuit");
+fn test_executor_creation_reports_missing_tooling() {
+    let result = ExecutorFactory::create(Framework::Circom, "test.circom", "TestCircuit");
+    assert!(result.is_err());
 }
 
-/// Test Halo2 mock mode
+/// Test Halo2 target construction
 #[test]
-fn test_halo2_mock_mode() {
+fn test_halo2_target_basic_construction() {
     let target = Halo2Target::new("test_circuit").unwrap();
-    let target = target.with_mock_mode(true);
-    
-    // Would need to call setup() for actual execution
+
     assert_eq!(target.name(), "test_circuit");
 }
 
@@ -285,7 +277,6 @@ fn test_executor_factory_real_backends() {
     )
     .expect("Failed to create Circom executor via factory");
     assert_eq!(circom_exec.framework(), Framework::Circom);
-    assert!(!circom_exec.is_mock(), "Circom executor should not be mock");
 
     let noir_path = noir_project_path("multiplier");
     assert!(noir_path.exists(), "Missing Noir project at {:?}", noir_path);
@@ -297,7 +288,6 @@ fn test_executor_factory_real_backends() {
     )
     .expect("Failed to create Noir executor via factory");
     assert_eq!(noir_exec.framework(), Framework::Noir);
-    assert!(!noir_exec.is_mock(), "Noir executor should not be mock");
 }
 
 /// Validate constraint-level coverage for Circom executor
@@ -440,17 +430,16 @@ fn test_halo2_json_integration() {
     assert!(!outputs.is_empty());
 }
 
-/// Test executor factory fallback behavior
+/// Test executor factory error behavior with unavailable backend tooling
 #[test]
-fn test_executor_factory_fallback() {
-    // When the real backend isn't available, should fall back to mock
+fn test_executor_factory_missing_backend() {
     let executor = ExecutorFactory::create(
         Framework::Circom,
         "nonexistent.circom",
         "TestCircuit",
     );
     
-    // Should either succeed with mock or fail gracefully
+    // Should fail gracefully when tooling or circuit path is not available.
     match executor {
         Ok(exec) => {
             println!("Executor created (framework: {:?})", exec.framework());

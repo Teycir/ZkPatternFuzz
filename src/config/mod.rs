@@ -217,12 +217,9 @@ impl FuzzConfig {
 
     /// Validate the configuration
     fn validate(&self) -> anyhow::Result<()> {
-        // Skip circuit path validation for mock framework
-        if self.campaign.target.framework != Framework::Mock
-            && !self.campaign.target.circuit_path.exists()
-        {
+        if !self.campaign.target.circuit_path.exists() {
             tracing::warn!(
-                "Circuit file not found: {:?} (will use mock mode)",
+                "Circuit file not found: {:?}",
                 self.campaign.target.circuit_path
             );
         }

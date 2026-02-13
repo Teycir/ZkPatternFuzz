@@ -471,10 +471,29 @@ pub struct ParsedConstraintSet {
 pub struct ConstraintParser;
 
 impl ConstraintParser {
-    /// Parse R1CS constraints from a string representation
-    pub fn parse_r1cs(_content: &str) -> Vec<ExtendedConstraint> {
-        // TODO: Implement R1CS parsing
-        Vec::new()
+    /// Parse R1CS constraints from a string representation.
+    ///
+    /// Supported formats:
+    ///   1. **JSON** – snarkjs-style `{"constraints": [[{...},{...},{...}], ...]}`.
+    ///      Each constraint is a 3-element array of objects mapping wire-index
+    ///      (string key) → coefficient (string or number value).
+    ///   2. **Text** – one constraint per line in the form
+    ///      `<a_terms> * <b_terms> = <c_terms>` where each group is a
+    ///      `+`-separated list of `coeff*w<idx>` or just `w<idx>`.
+    ///
+    /// Returns an empty vec on unrecognised input (fail-closed).
+    pub fn parse_r1cs(content: &str) -> Vec<ExtendedConstraint> {
+        let trimmed = content.trim();
+
+        // Try JSON first
+        if trimmed.starts_with('{') || trimmed.starts_with('[') {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                return parse_r1cs_json(&json);
+            }
+        }
+
+        // Fallback: line-based text parsing
+        parse_r1cs_text(trimmed)
     }
 
     /// Parse PLONK constraints
@@ -1261,6 +1280,137 @@ fn parse_lookup_inputs(lookup: &serde_json::Value) -> Vec<WireRef> {
         }
     }
     inputs
+}
+
+// ---------------------------------------------------------------------------
+// R1CS JSON parsing (snarkjs format)
+// ---------------------------------------------------------------------------
+
+/// Parse R1CS constraints from snarkjs JSON format.
+///
+/// Expected shape: `{"constraints": [[A, B, C], ...]}` where each of A, B, C
+/// is an object mapping wire-index (string) → coefficient (string/number).
+fn parse_r1cs_json(value: &serde_json::Value) -> Vec<ExtendedConstraint> {
+    let constraints = value
+        .get("constraints")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.as_slice())
+        .unwrap_or_default();
+
+    let mut out = Vec::with_capacity(constraints.len());
+    for entry in constraints {
+        let parts = match entry.as_array() {
+            Some(arr) if arr.len() == 3 => arr,
+            _ => continue,
+        };
+        let a = parse_r1cs_lc(&parts[0]);
+        let b = parse_r1cs_lc(&parts[1]);
+        let c = parse_r1cs_lc(&parts[2]);
+        out.push(ExtendedConstraint::R1CS(R1CSConstraint { a, b, c }));
+    }
+    out
+}
+
+fn parse_r1cs_lc(value: &serde_json::Value) -> LinearCombination {
+    let mut lc = LinearCombination::new();
+    let obj = match value.as_object() {
+        Some(o) => o,
+        None => return lc,
+    };
+    for (key, val) in obj {
+        let idx: usize = key.parse().unwrap_or(0);
+        let coeff = match val {
+            serde_json::Value::String(s) => decimal_str_to_field_element(s),
+            serde_json::Value::Number(n) => decimal_str_to_field_element(&n.to_string()),
+            _ => FieldElement::one(),
+        };
+        lc.add_term(WireRef::new(idx), coeff);
+    }
+    lc
+}
+
+fn decimal_str_to_field_element(s: &str) -> FieldElement {
+    let clean = s.trim().trim_matches('"');
+    if let Some(value) = BigUint::parse_bytes(clean.as_bytes(), 10) {
+        let bytes = value.to_bytes_be();
+        let mut result = [0u8; 32];
+        let start = 32usize.saturating_sub(bytes.len());
+        let copy_len = bytes.len().min(32);
+        result[start..start + copy_len].copy_from_slice(&bytes[..copy_len]);
+        FieldElement(result)
+    } else {
+        FieldElement::one()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// R1CS text parsing
+// ---------------------------------------------------------------------------
+
+/// Parse line-based R1CS text format.
+///
+/// Each non-empty, non-comment line is expected to contain exactly one `*` and
+/// one `=` forming `A * B = C` where each group is a `+`-separated list of
+/// terms like `coeff*w<idx>` or bare `w<idx>` (implicit coefficient 1).
+fn parse_r1cs_text(content: &str) -> Vec<ExtendedConstraint> {
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with('#') {
+            continue;
+        }
+        // Expect "A * B = C"
+        let Some(eq_pos) = trimmed.find('=') else {
+            continue;
+        };
+        let lhs = &trimmed[..eq_pos];
+        let rhs = trimmed[eq_pos + 1..].trim();
+
+        // Split lhs on top-level '*' (the R1CS multiplication)
+        let Some(mul_pos) = lhs.find('*') else {
+            continue;
+        };
+        let a_str = lhs[..mul_pos].trim().trim_matches('(').trim_matches(')');
+        let b_str = lhs[mul_pos + 1..]
+            .trim()
+            .trim_matches('(')
+            .trim_matches(')');
+        let c_str = rhs.trim_matches('(').trim_matches(')');
+
+        let a = parse_r1cs_text_lc(a_str);
+        let b = parse_r1cs_text_lc(b_str);
+        let c = parse_r1cs_text_lc(c_str);
+
+        out.push(ExtendedConstraint::R1CS(R1CSConstraint { a, b, c }));
+    }
+    out
+}
+
+fn parse_r1cs_text_lc(s: &str) -> LinearCombination {
+    let mut lc = LinearCombination::new();
+    for part in s.split('+') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        // "coeff*w<idx>"  or  "w<idx>"
+        if let Some(star) = part.find('*') {
+            let coeff_str = part[..star].trim();
+            let wire_str = part[star + 1..].trim();
+            let coeff = decimal_str_to_field_element(coeff_str);
+            let idx = parse_wire_index(wire_str);
+            lc.add_term(WireRef::new(idx), coeff);
+        } else {
+            let idx = parse_wire_index(part);
+            lc.add_term(WireRef::new(idx), FieldElement::one());
+        }
+    }
+    lc
+}
+
+fn parse_wire_index(s: &str) -> usize {
+    let digits: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
+    digits.parse().unwrap_or(0)
 }
 
 fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {

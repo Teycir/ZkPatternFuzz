@@ -91,7 +91,7 @@
 //! - **Noir**: ACIR circuits via Barretenberg  
 //! - **Halo2**: PLONK circuits via halo2_proofs
 //! - **Cairo**: STARK programs via stone-prover
-//! - Mock backends are disabled in runtime execution paths
+//! - Synthetic backends are disabled in runtime execution paths
 
 mod attack_runner;
 mod chain_runner;
@@ -268,13 +268,6 @@ impl FuzzingEngine {
             &executor_factory_options,
         )?;
 
-        // Runtime hardening: never allow mock executors.
-        if executor.is_mock() || executor.is_fallback_mock() {
-            anyhow::bail!(
-                "Mock executor rejected. Use a real backend (circom/noir/halo2/cairo)."
-            );
-        }
-
         let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
 
         // Phase 3A: Enable per_exec_isolation by default in evidence mode for hang safety
@@ -445,7 +438,7 @@ impl FuzzingEngine {
         ];
 
         // Phase 0 Fix: Wire semantic oracles from config
-        Self::add_semantic_oracles_from_config(&config, &mut oracles);
+        Self::add_semantic_oracles_from_config(&config, executor.field_modulus(), &mut oracles);
         let disabled = Self::disabled_oracle_names(&config);
         if !disabled.is_empty() {
             oracles.retain(|o| !disabled.contains(&Self::normalize_oracle_name(o.name())));
@@ -931,7 +924,6 @@ impl FuzzingEngine {
             // Create backend identity from executor
             let backend_identity = crate::reporting::BackendIdentity::from_framework(
                 self.config.campaign.target.framework,
-                self.executor.is_mock(),
             );
 
             let bundles = evidence_gen.generate_all_bundles(&findings, backend_identity);

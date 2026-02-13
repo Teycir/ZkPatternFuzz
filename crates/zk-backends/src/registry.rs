@@ -67,8 +67,6 @@ impl BackendRegistry {
             providers: HashMap::new(),
         };
 
-        #[cfg(feature = "mock")]
-        registry.register(Box::new(MockBackendProvider));
         #[cfg(feature = "circom")]
         registry.register(Box::new(CircomBackendProvider));
         #[cfg(feature = "noir")]
@@ -144,21 +142,13 @@ impl<T: TargetCircuit + Send + Sync> CircuitExecutor for TargetExecutor<T> {
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
         self.target.verify(proof, public_inputs)
     }
-}
 
-#[cfg(feature = "mock")]
-struct MockBackendProvider;
-
-#[cfg(feature = "mock")]
-#[async_trait]
-impl BackendProvider for MockBackendProvider {
-    fn framework(&self) -> Framework {
-        Framework::Mock
+    fn field_modulus(&self) -> [u8; 32] {
+        self.target.field_modulus()
     }
 
-    fn create_executor(&self, config: &BackendConfig) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
-        let circuit = crate::mock::MockCircuit::new(&config.main_component, 10, 2);
-        Ok(Arc::new(TargetExecutor::new(circuit)))
+    fn field_name(&self) -> &str {
+        self.target.field_name()
     }
 }
 

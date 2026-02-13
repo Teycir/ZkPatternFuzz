@@ -1207,7 +1207,7 @@ impl Halo2AccumulationAnalyzer {
 mod tests {
     use super::*;
 
-    fn mock_field_element(val: u64) -> FieldElement {
+    fn sample_field_element(val: u64) -> FieldElement {
         FieldElement::from_u64(val)
     }
 
@@ -1259,11 +1259,11 @@ mod tests {
         assert_eq!(acc.running_acc.len(), 3);
 
         let new_instance = vec![
-            mock_field_element(1),
-            mock_field_element(2),
-            mock_field_element(3),
+            sample_field_element(1),
+            sample_field_element(2),
+            sample_field_element(3),
         ];
-        let r = mock_field_element(5);
+        let r = sample_field_element(5);
 
         let folded = acc.fold_with(&new_instance, &r);
         assert_eq!(folded.counter, 1);
@@ -1274,11 +1274,11 @@ mod tests {
         let config = RecursiveAttackConfig::default();
         let analyzer = NovaAnalyzer::new(config);
 
-        let instance = vec![mock_field_element(1)];
-        let witness = vec![mock_field_element(2)];
+        let instance = vec![sample_field_element(1)];
+        let witness = vec![sample_field_element(2)];
 
         // Non-zero error term indicates vulnerability
-        let non_zero_error = mock_field_element(1);
+        let non_zero_error = sample_field_element(1);
         assert!(analyzer.check_relaxed_r1cs_vulnerability(&instance, &witness, &non_zero_error));
 
         // Zero error term is valid
@@ -1306,7 +1306,7 @@ mod tests {
 
         // All-zero commitment is invalid
         let zero_commitment = vec![0u8; 32];
-        let expected_opening = vec![mock_field_element(1)];
+        let expected_opening = vec![sample_field_element(1)];
         assert!(analyzer.check_commitment_binding(&zero_commitment, &expected_opening));
 
         // Non-zero commitment is valid
@@ -1316,7 +1316,7 @@ mod tests {
 
     #[test]
     fn test_recursive_step_creation() {
-        let inputs = vec![mock_field_element(1), mock_field_element(2)];
+        let inputs = vec![sample_field_element(1), sample_field_element(2)];
 
         let step = RecursiveStep {
             step_index: 0,

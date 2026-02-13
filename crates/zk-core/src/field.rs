@@ -81,7 +81,7 @@ impl FieldElement {
         self.0
     }
 
-    /// Field addition (mod p) - simplified for mock purposes
+    /// Field addition (mod p) using BN254 arithmetic.
     pub fn add(&self, other: &Self) -> Self {
         use num_bigint::BigUint;
         let modulus = BigUint::parse_bytes(
@@ -98,7 +98,7 @@ impl FieldElement {
         Self::from_bytes(&result_bytes)
     }
 
-    /// Field subtraction (mod p) - simplified for mock purposes
+    /// Field subtraction (mod p) using BN254 arithmetic.
     pub fn sub(&self, other: &Self) -> Self {
         use num_bigint::BigUint;
         let modulus = BigUint::parse_bytes(
@@ -127,7 +127,7 @@ impl FieldElement {
         BigUint::from_bytes_be(&self.0).to_str_radix(10)
     }
 
-    /// Field multiplication (mod p) - simplified for mock purposes
+    /// Field multiplication (mod p) using BN254 arithmetic.
     pub fn mul(&self, other: &Self) -> Self {
         use num_bigint::BigUint;
         let modulus = BigUint::parse_bytes(

@@ -282,12 +282,12 @@ impl Default for ConstraintBreakdown {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::MockCircuitExecutor;
+    use crate::executor::FixtureCircuitExecutor;
 
     #[test]
     fn test_complexity_analyzer() {
         let analyzer = ComplexityAnalyzer::new();
-        let executor: Arc<dyn CircuitExecutor> = Arc::new(MockCircuitExecutor::new("test", 10, 2));
+        let executor: Arc<dyn CircuitExecutor> = Arc::new(FixtureCircuitExecutor::new("test", 10, 2));
 
         let metrics = analyzer.analyze(&executor);
 

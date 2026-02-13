@@ -23,9 +23,8 @@ tracing = "0.1"
 libc = "0.2"
 
 [features]
-default = ["mock", "circom", "noir", "halo2", "cairo"]
-all = ["mock", "circom", "noir", "halo2", "cairo"]
-mock = []
+default = ["circom", "noir", "halo2", "cairo"]
+all = ["circom", "noir", "halo2", "cairo"]
 circom = []
 noir = []
 halo2 = []

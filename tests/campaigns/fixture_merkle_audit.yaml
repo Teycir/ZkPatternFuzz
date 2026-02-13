@@ -1,9 +1,9 @@
 campaign:
-  name: "Mock Merkle Audit"
+  name: "Fixture Merkle Audit"
   version: "1.0"
   target:
-    framework: "mock"
-    circuit_path: "./circuits/mock_merkle.circom"
+    framework: "circom"
+    circuit_path: "./circuits/fixture_merkle.circom"
     main_component: "MerkleProof"
   parameters:
     field: "bn254"
@@ -48,5 +48,5 @@ inputs:
     fuzz_strategy: "random"
 
 reporting:
-  output_dir: "./reports/mock_merkle"
+  output_dir: "./reports/fixture_merkle"
   formats: ["json"]

@@ -351,7 +351,7 @@ fn coverage_stats(a: &[usize], b: &[usize]) -> (f64, usize, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::MockCircuitExecutor;
+    use crate::executor::FixtureCircuitExecutor;
 
     #[test]
     fn test_differential_fuzzer_creation() {
@@ -363,17 +363,17 @@ mod tests {
     #[test]
     fn test_differential_comparison() {
         let config = DifferentialConfig {
-            backends: vec![Framework::Mock, Framework::Circom],
+            backends: vec![Framework::Circom, Framework::Circom],
             num_tests: 10,
             ..Default::default()
         };
         let mut fuzzer = DifferentialFuzzer::new(config);
 
         // Add identical executors - should agree on everything
-        let exec1 = Arc::new(MockCircuitExecutor::new("test", 2, 1));
-        let exec2 = Arc::new(MockCircuitExecutor::new("test", 2, 1));
+        let exec1 = Arc::new(FixtureCircuitExecutor::new("test", 2, 1));
+        let exec2 = Arc::new(FixtureCircuitExecutor::new("test", 2, 1));
 
-        fuzzer.add_executor(Framework::Mock, exec1);
+        fuzzer.add_executor(Framework::Circom, exec1);
         fuzzer.add_executor(Framework::Circom, exec2);
 
         let inputs = vec![FieldElement::zero(), FieldElement::one()];

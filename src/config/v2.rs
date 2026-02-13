@@ -942,7 +942,7 @@ impl FuzzConfig {
                 name: String::new(),
                 version: "2.0".to_string(),
                 target: super::Target {
-                    framework: zk_core::Framework::Mock,
+                    framework: zk_core::Framework::Circom,
                     circuit_path: PathBuf::new(),
                     main_component: String::new(),
                 },

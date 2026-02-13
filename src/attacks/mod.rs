@@ -116,7 +116,7 @@ pub use zkevm::{
 };
 pub use zkevm_differential::{
     precompiles, AccountState, DifferentialFinding, DifferentialStats, EvmLog, EvmState,
-    ExecutionTrace, MismatchType, MockReferenceEvm, PrecompileTestGenerator, ReferenceEvm,
+    ExecutionTrace, LocalReferenceEvm, MismatchType, PrecompileTestGenerator, ReferenceEvm,
     StateDifference, TestTransaction, ZkEvmDifferentialConfig, ZkEvmDifferentialTester,
 };
 

@@ -56,7 +56,6 @@
 //! | **Noir** | ✅ Full | Barretenberg (ACIR) | Aztec, privacy protocols |
 //! | **Halo2** | ✅ Full | PLONK | zkEVM, PSE circuits |
 //! | **Cairo** | ✅ Full | STARK | StarkNet, StarkEx |
-//! | **Mock** | Disabled in runtime | N/A | N/A |
 //!
 //! # Attack Types
 //!
@@ -237,7 +236,7 @@ pub use config::{
     Input, FuzzStrategy, Framework, Severity, ReportingConfig
 };
 pub use errors::{ZkFuzzerError, Result};
-pub use executor::{CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions, MockCircuitExecutor};
+pub use executor::{CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions};
 pub use fuzzer::ZkFuzzer;
 pub use reporting::{FuzzReport, PoCGenerator, PoCGeneratorConfig, PoCFormat};
 

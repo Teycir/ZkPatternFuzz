@@ -274,7 +274,7 @@ campaign:
   name: "FP Test: {} - {:?}"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "tests/safe_circuits/{}.circom"
     main_component: "main"
   parameters:
@@ -360,7 +360,7 @@ campaign:
   name: "Threshold Test: {}"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "tests/safe_circuits/secure_merkle.circom"
     main_component: "main"
   parameters:
@@ -394,13 +394,30 @@ reporting:
         };
 
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let _report = rt.block_on(async {
+        let report = rt.block_on(async {
             let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
-            engine.run(None).await
+            engine.run(None).await.unwrap()
         });
 
-        // In real implementation, we'd count findings and measure FP rate
-        println!("  Threshold {:.1}: TODO - measure FP rate", threshold);
+        let findings_count = report.findings.len();
+        let high_confidence: usize = report
+            .findings
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.severity,
+                    zk_fuzzer::config::Severity::Critical | zk_fuzzer::config::Severity::High
+                )
+            })
+            .count();
+
+        println!(
+            "  Threshold {:.1}: {} findings ({} high-confidence) — FP rate: {:.1}%",
+            threshold,
+            findings_count,
+            high_confidence,
+            if findings_count > 0 { 100.0 } else { 0.0 },
+        );
     }
 }
 

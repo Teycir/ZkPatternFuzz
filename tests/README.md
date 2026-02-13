@@ -84,9 +84,9 @@ inputs:
 4. Test with `validate` command first
 5. Run and iterate on configuration
 
-## Mock vs Real Execution
+## Backend Execution
 
-Currently, backend integrations fall back to mock execution. To test with real backends:
+Backend integrations use real backends only:
 
 1. **Circom**: Requires circom compiler and snarkjs
 2. **Noir**: Requires Noir compiler (nargo)  

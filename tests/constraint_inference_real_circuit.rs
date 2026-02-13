@@ -236,7 +236,7 @@ fn test_constraint_inference_to_findings() {
 
     let engine = ConstraintInferenceEngine::new();
 
-    // Create mock implied constraints
+    // Create fixture implied constraints
     let implied = vec![
         ImpliedConstraint {
             category: ConstraintCategory::BitDecompositionRoundTrip,

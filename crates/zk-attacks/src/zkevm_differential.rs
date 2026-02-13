@@ -190,16 +190,16 @@ pub struct EvmState {
 }
 
 // ============================================================================
-// Mock Reference EVM (for testing)
+// Local Reference EVM (for testing)
 // ============================================================================
 
-/// Mock EVM for testing when revm is not available
-pub struct MockReferenceEvm {
+/// Local EVM simulator for testing when revm is not available.
+pub struct LocalReferenceEvm {
     /// Simulated execution results
     results: HashMap<Vec<u8>, ExecutionTrace>,
 }
 
-impl MockReferenceEvm {
+impl LocalReferenceEvm {
     pub fn new() -> Self {
         Self {
             results: HashMap::new(),
@@ -212,13 +212,13 @@ impl MockReferenceEvm {
     }
 }
 
-impl Default for MockReferenceEvm {
+impl Default for LocalReferenceEvm {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ReferenceEvm for MockReferenceEvm {
+impl ReferenceEvm for LocalReferenceEvm {
     fn execute(&self, tx: &TestTransaction, _state: &EvmState) -> anyhow::Result<ExecutionTrace> {
         if let Some(trace) = self.results.get(&tx.data) {
             Ok(trace.clone())
@@ -238,7 +238,7 @@ impl ReferenceEvm for MockReferenceEvm {
     }
 
     fn name(&self) -> &str {
-        "mock_evm"
+        "local_reference_evm"
     }
 
     fn is_available(&self) -> bool {
@@ -341,11 +341,11 @@ pub struct StateDifference {
 }
 
 impl ZkEvmDifferentialTester {
-    /// Create a new differential tester with mock EVM
+    /// Create a new differential tester with local reference EVM.
     pub fn new(config: ZkEvmDifferentialConfig) -> Self {
         Self {
             config,
-            reference_evm: Box::new(MockReferenceEvm::new()),
+            reference_evm: Box::new(LocalReferenceEvm::new()),
             findings: vec![],
             stats: DifferentialStats::default(),
         }

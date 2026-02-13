@@ -236,10 +236,10 @@ jobs:
       - name: Build release
         run: cargo build --release --all-features
       
-      - name: Run Mock Merkle Audit Campaign
+      - name: Run Fixture Merkle Audit Campaign
         run: |
           cargo run --release -- \
-            --config tests/campaigns/mock_merkle_audit.yaml \
+            --config tests/campaigns/fixture_merkle_audit.yaml \
             --output-dir ./fuzzing-results/merkle \
             --seed ${{ github.run_id }}
         continue-on-error: true

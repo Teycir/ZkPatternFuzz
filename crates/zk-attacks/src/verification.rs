@@ -383,7 +383,7 @@ mod tests {
     use super::*;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use zk_backends::MockCircuitExecutor;
+    use zk_backends::FixtureCircuitExecutor;
 
     #[test]
     fn test_verification_fuzzer_creation() {
@@ -401,12 +401,12 @@ mod tests {
             .with_malleability_tests(10)
             .with_malformed_tests(10);
 
-        let executor: Arc<dyn CircuitExecutor> = Arc::new(MockCircuitExecutor::new("test", 2, 1));
+        let executor: Arc<dyn CircuitExecutor> = Arc::new(FixtureCircuitExecutor::new("test", 2, 1));
         let mut rng = StdRng::seed_from_u64(42);
 
         let findings = fuzzer.fuzz(&executor, &mut rng);
 
-        // Mock executor should reject malformed proofs
+        // Fixture executor should reject malformed proofs
         // So we expect no critical findings for properly implemented verifier
         for finding in &findings {
             println!("Finding: {:?} - {}", finding.severity, finding.description);

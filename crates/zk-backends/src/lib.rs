@@ -1,9 +1,8 @@
 //! Backend integrations for ZkPatternFuzz.
 
 pub mod registry;
+pub mod fixture;
 
-#[cfg(feature = "mock")]
-pub mod mock;
 #[cfg(feature = "circom")]
 pub mod circom;
 #[cfg(feature = "noir")]
@@ -14,9 +13,10 @@ pub mod halo2;
 pub mod cairo;
 
 pub use registry::{BackendConfig, BackendError, BackendProvider, BackendRegistry};
+pub use fixture::{
+    create_collision_fixture, create_underconstrained_fixture, FixtureCircuitExecutor,
+};
 
-#[cfg(feature = "mock")]
-pub use mock::{MockCircuit, MockCircuitExecutor, create_collision_mock, create_underconstrained_mock};
 #[cfg(feature = "circom")]
 pub use circom::CircomTarget;
 #[cfg(feature = "noir")]
@@ -62,6 +62,28 @@ pub trait TargetCircuit: Send + Sync {
 
     /// Verify a proof with public inputs.
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool>;
+
+    /// Get the scalar-field modulus for this circuit's arithmetic as a 32-byte
+    /// big-endian array.
+    ///
+    /// Implementations must return the correct prime for their proving system.
+    /// The default falls back to the BN254 scalar-field modulus for backwards
+    /// compatibility, but every concrete backend should override this.
+    fn field_modulus(&self) -> [u8; 32] {
+        // BN254 scalar field – default for backwards compat
+        let mut modulus = [0u8; 32];
+        let hex_str = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
+        if let Ok(decoded) = hex::decode(hex_str) {
+            modulus.copy_from_slice(&decoded);
+        }
+        modulus
+    }
+
+    /// Human-readable field-prime name (e.g. "bn254", "pasta", "bls12-381",
+    /// "stark252").  Used for logging and evidence metadata.
+    fn field_name(&self) -> &str {
+        "bn254"
+    }
 }
 
 /// Factory for creating circuit targets.
@@ -112,16 +134,6 @@ impl TargetFactory {
                 #[cfg(not(feature = "cairo"))]
                 {
                     anyhow::bail!("Cairo backend not enabled")
-                }
-            }
-            Framework::Mock => {
-                #[cfg(feature = "mock")]
-                {
-                    Ok(Box::new(MockCircuit::new(main_component, 10, 2)))
-                }
-                #[cfg(not(feature = "mock"))]
-                {
-                    anyhow::bail!("Mock backend not enabled")
                 }
             }
         }

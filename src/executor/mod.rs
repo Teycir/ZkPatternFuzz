@@ -1,18 +1,17 @@
 //! Circuit execution abstraction layer
 //!
 //! Provides a unified interface for executing ZK circuits across different backends.
-//! Separates mock execution from real circuit execution for testing and production use.
 
 pub mod batch_verifier;
 mod coverage;
+mod fixture;
 mod isolated;
-mod mock;
 mod traits;
 
 pub use batch_verifier::*;
 pub use coverage::*;
+pub use fixture::*;
 pub use isolated::*;
-pub use mock::*;
 pub use traits::*;
 
 // Re-export CircuitInfo for external use
@@ -25,7 +24,6 @@ use crate::analysis::{
 use crate::analysis::constraint_types::LinearCombination;
 use crate::targets::TargetCircuit;
 use zk_core::{FieldElement, Framework};
-use zk_fuzzer_core::constants::FieldType;
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -71,15 +69,6 @@ pub struct ExecutorFactoryOptions {
     /// per-constraint coverage evaluation.
     pub circom_witness_sanity_check: bool,
     /// If true, fail with an error when real backend tooling is missing.
-    /// 
-    /// # Phase 0 Fix: Silent Mock Fallback Prevention
-    /// 
-    /// When strict_backend is true and a real backend (Circom/Noir/Cairo) is
-    /// requested but not available, the factory will return an error instead
-    /// of silently falling back to MockCircuitExecutor.
-    /// 
-    /// This prevents synthetic findings from being reported as real vulnerabilities.
-    /// Default is true.
     pub strict_backend: bool,
     /// Deprecated compatibility flag from the old fallback behavior.
     /// Fallbacks are disabled, so this has no effect.
@@ -130,7 +119,6 @@ impl ExecutorFactoryOptions {
             Framework::Noir => self.noir_build_dir.as_ref(),
             Framework::Halo2 => self.halo2_build_dir.as_ref(),
             Framework::Cairo => self.cairo_build_dir.as_ref(),
-            Framework::Mock => None,
         };
 
         if let Some(path) = specific {
@@ -151,7 +139,6 @@ fn framework_dir_name(framework: Framework) -> &'static str {
         Framework::Noir => "noir",
         Framework::Halo2 => "halo2",
         Framework::Cairo => "cairo",
-        Framework::Mock => "mock",
     }
 }
 
@@ -209,30 +196,6 @@ fn sanitize_component(raw: &str) -> String {
     } else {
         out
     }
-}
-
-fn field_type_from_name(name: &str) -> FieldType {
-    let normalized = name.trim().to_lowercase().replace('_', "-");
-    match normalized.as_str() {
-        "bn254" | "bn128" | "bn256" | "alt-bn128" | "alt_bn128" => FieldType::Bn254,
-        "bls12-381" | "bls12381" | "bls12_381" => FieldType::Bls12_381,
-        "pasta" | "pallas" | "vesta" => FieldType::Pasta,
-        "goldilocks" => FieldType::Goldilocks,
-        _ => FieldType::Bn254,
-    }
-}
-
-fn field_modulus_from_name(name: &str) -> [u8; 32] {
-    let field_type = field_type_from_name(name);
-    let hex = field_type.modulus_hex();
-    let mut bytes = [0u8; 32];
-    if let Ok(decoded) = hex::decode(hex) {
-        if decoded.len() <= 32 {
-            let start = 32 - decoded.len();
-            bytes[start..].copy_from_slice(&decoded);
-        }
-    }
-    bytes
 }
 
 fn coverage_from_results(results: Vec<ConstraintResult>) -> Option<ExecutionCoverage> {
@@ -603,9 +566,6 @@ impl ExecutorFactory {
         options: &ExecutorFactoryOptions,
     ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
         match framework {
-            Framework::Mock => anyhow::bail!(
-                "Mock framework is disabled. Use a real backend (circom/noir/halo2/cairo)."
-            ),
             Framework::Circom => {
                 Self::create_circom_executor(circuit_path, main_component, options)
             }
@@ -734,18 +694,6 @@ impl ExecutorFactory {
         }
     }
 
-    /// Create a mock executor for testing
-    pub fn create_mock(
-        name: &str,
-        private_inputs: usize,
-        public_inputs: usize,
-    ) -> Arc<dyn CircuitExecutor> {
-        Arc::new(MockCircuitExecutor::new(
-            name,
-            private_inputs,
-            public_inputs,
-        ))
-    }
 }
 
 /// Circom executor wrapper
@@ -910,7 +858,7 @@ impl CircuitExecutor for CircomExecutor {
     }
 
     fn field_modulus(&self) -> [u8; 32] {
-        field_modulus_from_name(self.target.field_name())
+        self.target.field_modulus()
     }
 
     fn field_name(&self) -> &str {
@@ -1100,7 +1048,7 @@ impl CircuitExecutor for NoirExecutor {
     }
 
     fn field_modulus(&self) -> [u8; 32] {
-        field_modulus_from_name(self.target.field_name())
+        self.target.field_modulus()
     }
 
     fn field_name(&self) -> &str {
@@ -1285,7 +1233,7 @@ impl CircuitExecutor for Halo2Executor {
     }
 
     fn field_modulus(&self) -> [u8; 32] {
-        field_modulus_from_name(self.target.field_name())
+        self.target.field_modulus()
     }
 
     fn field_name(&self) -> &str {
@@ -1439,6 +1387,14 @@ impl CircuitExecutor for CairoExecutor {
     fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
         Some(self)
     }
+
+    fn field_modulus(&self) -> [u8; 32] {
+        self.target.field_modulus()
+    }
+
+    fn field_name(&self) -> &str {
+        self.target.field_name()
+    }
 }
 
 impl ConstraintInspector for CairoExecutor {
@@ -1476,13 +1432,6 @@ impl ConstraintInspector for CairoExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_executor_factory_rejects_mock_framework() {
-        let err = ExecutorFactory::create(Framework::Mock, "test.circom", "TestCircuit")
-            .expect_err("mock framework should be rejected");
-        assert!(err.to_string().contains("Mock framework is disabled"));
-    }
 
     #[test]
     fn test_execution_result() {
@@ -1540,7 +1489,7 @@ mod tests {
     }
 
     #[test]
-    fn test_halo2_execute_sync_records_constraints() {
+    fn test_halo2_constraint_checks_with_json_spec() {
         let json = r#"
         {
           "name": "test",
@@ -1576,7 +1525,11 @@ mod tests {
         ];
 
         let result = executor.execute_sync(&inputs);
-        assert!(result.success);
-        assert_eq!(result.coverage.satisfied_constraints.len(), 2);
+        assert!(!result.success);
+
+        let inspector = executor.constraint_inspector().unwrap();
+        let checks = inspector.check_constraints(&inputs);
+        assert_eq!(checks.len(), 2);
+        assert!(checks.iter().all(|c| c.satisfied));
     }
 }

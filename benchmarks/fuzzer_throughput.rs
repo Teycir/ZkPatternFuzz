@@ -5,12 +5,12 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::time::Duration;
 
-use zk_fuzzer::config::{FuzzConfig, Framework};
-use zk_fuzzer::executor::MockCircuitExecutor;
-use zk_fuzzer::fuzzer::{FuzzingEngine, TestCase};
-use zk_core::FieldElement;
+use zk_fuzzer::config::FuzzConfig;
+use zk_fuzzer::executor::FixtureCircuitExecutor;
+use zk_fuzzer::fuzzer::FuzzingEngine;
+use zk_core::{CircuitExecutor, FieldElement};
 
-/// Create a mock config for benchmarking
+/// Create a fixture config for benchmarking
 fn create_benchmark_config(name: &str, num_inputs: usize, num_constraints: u64) -> FuzzConfig {
     let yaml = format!(
         r#"
@@ -18,7 +18,7 @@ campaign:
   name: "Benchmark: {}"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./bench_circuit.circom"
     main_component: "main"
   parameters:
@@ -81,9 +81,9 @@ fn bench_test_case_generation(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark mock circuit execution
-fn bench_mock_execution(c: &mut Criterion) {
-    let mut group = c.benchmark_group("mock_execution");
+/// Benchmark fixture circuit execution
+fn bench_fixture_execution(c: &mut Criterion) {
+    let mut group = c.benchmark_group("fixture_execution");
     group.measurement_time(Duration::from_secs(10));
 
     for (name, num_inputs, num_outputs) in [
@@ -91,7 +91,7 @@ fn bench_mock_execution(c: &mut Criterion) {
         ("medium", 32, 8),
         ("large", 128, 32),
     ] {
-        let executor = MockCircuitExecutor::new("bench", num_inputs, 0).with_outputs(num_outputs);
+        let executor = FixtureCircuitExecutor::new("bench", num_inputs, 0).with_outputs(num_outputs);
 
         group.throughput(Throughput::Elements(1));
         group.bench_with_input(BenchmarkId::new("circuit", name), &executor, |b, exec| {
@@ -182,12 +182,12 @@ fn bench_coverage_tracking(c: &mut Criterion) {
 
                 // Pre-populate
                 for i in 0..size {
-                    coverage.mark_covered(i);
+                    coverage.record_hit(i);
                 }
 
                 b.iter(|| {
                     let idx = rand::Rng::gen_range(&mut rng, 0..size * 2);
-                    coverage.mark_covered(idx);
+                    coverage.record_hit(idx);
                     black_box(coverage.coverage_percentage())
                 });
             },
@@ -200,7 +200,7 @@ fn bench_coverage_tracking(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_test_case_generation,
-    bench_mock_execution,
+    bench_fixture_execution,
     bench_engine_init,
     bench_fuzzing_iteration,
     bench_coverage_tracking,

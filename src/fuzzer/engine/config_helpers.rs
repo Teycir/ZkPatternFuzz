@@ -45,6 +45,7 @@ impl FuzzingEngine {
     /// and recognizes common alias names used in campaigns.
     pub(super) fn add_semantic_oracles_from_config(
         config: &FuzzConfig,
+        field_modulus: [u8; 32],
         oracles: &mut Vec<Box<dyn BugOracle>>,
     ) {
         use crate::fuzzer::oracle::{ConstraintCountOracle, ProofForgeryOracle};
@@ -143,7 +144,10 @@ impl FuzzingEngine {
                     Box::new(CommitmentOracle::new(oracle_config.clone())),
                 ))),
                 Some(OracleKind::Range) => add_oracle(Box::new(SemanticOracleAdapter::new(
-                    Box::new(RangeProofOracle::new(oracle_config.clone())),
+                    Box::new(RangeProofOracle::new_with_modulus(
+                        oracle_config.clone(),
+                        field_modulus,
+                    )),
                 ))),
                 Some(OracleKind::ConstraintCount) => {
                     let expected = config.campaign.parameters.max_constraints as usize;
@@ -184,15 +188,15 @@ impl FuzzingEngine {
         options.halo2_build_dir = Self::additional_path(additional, "halo2_build_dir");
         options.cairo_build_dir = Self::additional_path(additional, "cairo_build_dir");
 
-        // Runtime hardening: never allow mock fallback.
+        // Runtime hardening: enforce strict backend availability checks.
         if let Some(strict_backend) = Self::additional_bool(additional, "strict_backend") {
             if !strict_backend {
-                tracing::warn!("Ignoring strict_backend=false; mock backend usage is disabled");
+                tracing::warn!("Ignoring strict_backend=false; strict backend mode is enforced");
             }
         }
         if let Some(mark_fallback) = Self::additional_bool(additional, "mark_fallback") {
             if mark_fallback {
-                tracing::warn!("Ignoring mark_fallback=true; fallback mocks are disabled");
+                tracing::warn!("Ignoring mark_fallback=true; fallback mode is disabled");
             }
         }
         options.strict_backend = true;
@@ -314,7 +318,11 @@ impl FuzzingEngine {
         ];
 
         // Reuse semantic oracle configuration for validation
-        Self::add_semantic_oracles_from_config(&self.config, &mut oracles);
+        Self::add_semantic_oracles_from_config(
+            &self.config,
+            self.executor.field_modulus(),
+            &mut oracles,
+        );
         let disabled = Self::disabled_oracle_names(&self.config);
         if !disabled.is_empty() {
             oracles.retain(|o| !disabled.contains(&Self::normalize_oracle_name(o.name())));

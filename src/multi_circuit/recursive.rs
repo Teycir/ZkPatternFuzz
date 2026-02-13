@@ -238,7 +238,7 @@ pub enum SoundnessIssueType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::MockCircuitExecutor;
+    use crate::executor::FixtureCircuitExecutor;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_recursive_verification() {
-        let verifier = Arc::new(MockCircuitExecutor::new("verifier", 10, 2));
+        let verifier = Arc::new(FixtureCircuitExecutor::new("verifier", 10, 2));
         let tester = RecursiveTester::new(3).with_verifier(verifier);
 
         let inputs = vec![FieldElement::one(); 10];
@@ -267,13 +267,13 @@ mod tests {
 
     #[test]
     fn test_soundness_checking() {
-        let verifier = Arc::new(MockCircuitExecutor::new("verifier", 5, 2));
+        let verifier = Arc::new(FixtureCircuitExecutor::new("verifier", 5, 2));
         let tester = RecursiveTester::new(3).with_verifier(verifier);
 
         let mut rng = StdRng::seed_from_u64(42);
         let issues = tester.test_soundness(&mut rng);
 
-        // Mock executor should reject fake proofs
-        assert!(issues.is_empty(), "Expected no soundness issues in mock");
+        // Fixture executor should reject fake proofs
+        assert!(issues.is_empty(), "Expected no soundness issues in fixture");
     }
 }

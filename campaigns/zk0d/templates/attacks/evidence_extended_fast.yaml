@@ -5,7 +5,7 @@ campaign:
   name: ""
   version: "2.0"
   target:
-    framework: "mock"
+    framework: "circom"
     circuit_path: ""
     main_component: ""
 

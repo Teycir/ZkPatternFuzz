@@ -4,7 +4,7 @@
 //! It checks that all necessary components are properly configured and warns about
 //! potential misconfigurations that could lead to false findings or missed bugs.
 
-use crate::config::{Framework, FuzzConfig};
+use crate::config::FuzzConfig;
 use std::fmt;
 
 /// Readiness warning severity levels
@@ -225,18 +225,7 @@ impl ReadinessReport {
 pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     let mut warnings = Vec::new();
 
-    // 1. Check framework
-    if config.campaign.target.framework == Framework::Mock {
-        warnings.push(
-            ReadinessWarning::critical(
-                "Backend",
-                "Framework is 'mock' - all findings will be synthetic",
-            )
-            .with_fix("Set framework to 'circom', 'noir', 'halo2', or 'cairo'"),
-        );
-    }
-
-    // 2. Check strict_backend
+    // 1. Check strict_backend
     let additional = &config.campaign.parameters.additional;
     let strict_backend = additional
         .get("strict_backend")
@@ -247,13 +236,13 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         warnings.push(
             ReadinessWarning::high(
                 "Backend",
-                "strict_backend is false - may silently fall back to mock",
+                "strict_backend is false - backend/tooling failures may be masked",
             )
             .with_fix("Set strict_backend: true in campaign.parameters.additional"),
         );
     }
 
-    // 3. Check invariants
+    // 2. Check invariants
     let invariants = config.get_invariants();
     if invariants.is_empty() {
         warnings.push(
@@ -424,9 +413,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     }
 
     // 12. Check circuit path exists
-    if config.campaign.target.framework != Framework::Mock
-        && !config.campaign.target.circuit_path.exists()
-    {
+    if !config.campaign.target.circuit_path.exists() {
         warnings.push(ReadinessWarning::critical(
             "Target",
             &format!(
@@ -576,7 +563,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mock_framework_is_critical() {
+    fn test_missing_circuit_path_is_critical() {
         let config = FuzzConfig::default_v2();
         let report = check_0day_readiness(&config);
 
@@ -584,7 +571,7 @@ mod tests {
         assert!(report
             .warnings
             .iter()
-            .any(|w| w.level == ReadinessLevel::Critical && w.category == "Backend"));
+            .any(|w| w.level == ReadinessLevel::Critical && w.category == "Target"));
     }
 
     #[test]

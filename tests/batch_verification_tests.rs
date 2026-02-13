@@ -476,35 +476,35 @@ fn test_analyzer_reset() {
 }
 
 // ============================================================================
-// Integration Tests (require mock executor)
+// Integration Tests (require fixture executor)
 // ============================================================================
 
 #[test]
-// Requires mock executor implementation
+// Requires fixture executor implementation
 fn test_batch_mixing_detection_integration() {
-    // This test requires a mock executor that simulates vulnerable batch verification
-    // Enable when mock executor is available
+    // This test requires a fixture executor that simulates vulnerable batch verification
+    // Enable when fixture executor is available
 }
 
 #[test]
-// Requires mock executor implementation
+// Requires fixture executor implementation
 fn test_aggregation_forgery_detection_integration() {
-    // This test requires a mock executor that simulates vulnerable aggregation
-    // Enable when mock executor is available
+    // This test requires a fixture executor that simulates vulnerable aggregation
+    // Enable when fixture executor is available
 }
 
 #[test]
-// Requires mock executor implementation
+// Requires fixture executor implementation
 fn test_cross_circuit_detection_integration() {
-    // This test requires a mock executor that simulates cross-circuit vulnerabilities
-    // Enable when mock executor is available
+    // This test requires a fixture executor that simulates cross-circuit vulnerabilities
+    // Enable when fixture executor is available
 }
 
 #[test]
-// Requires mock executor implementation
+// Requires fixture executor implementation
 fn test_randomness_reuse_detection_integration() {
-    // This test requires a mock executor that simulates randomness reuse
-    // Enable when mock executor is available
+    // This test requires a fixture executor that simulates randomness reuse
+    // Enable when fixture executor is available
 }
 
 // ============================================================================

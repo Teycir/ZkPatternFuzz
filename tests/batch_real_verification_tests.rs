@@ -11,18 +11,18 @@ use zk_fuzzer::executor::batch_verifier::{
 };
 
 // ============================================================================
-// Mock Executor for Testing
+// Fixture Executor for Testing
 // ============================================================================
 
-/// Mock executor that simulates real proof generation and verification
-struct MockBatchTestExecutor {
+/// Fixture executor that simulates real proof generation and verification
+struct FixtureBatchTestExecutor {
     /// Proofs that should fail verification (by index based on first byte)
     fail_indices: Vec<usize>,
     /// Counter for proof generation
     proof_counter: std::sync::atomic::AtomicUsize,
 }
 
-impl MockBatchTestExecutor {
+impl FixtureBatchTestExecutor {
     fn new() -> Self {
         Self {
             fail_indices: vec![],
@@ -38,18 +38,18 @@ impl MockBatchTestExecutor {
     }
 }
 
-impl CircuitExecutor for MockBatchTestExecutor {
+impl CircuitExecutor for FixtureBatchTestExecutor {
     fn framework(&self) -> Framework {
-        Framework::Mock
+        Framework::Circom
     }
 
     fn name(&self) -> &str {
-        "mock_batch_test"
+        "fixture_batch_test"
     }
 
     fn circuit_info(&self) -> CircuitInfo {
         CircuitInfo {
-            name: "mock_batch_test".to_string(),
+            name: "fixture_batch_test".to_string(),
             num_constraints: 1000,
             num_private_inputs: 3,
             num_public_inputs: 2,
@@ -87,7 +87,7 @@ impl CircuitExecutor for MockBatchTestExecutor {
 
 #[test]
 fn test_real_batch_verification_all_valid() {
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -118,7 +118,7 @@ fn test_real_batch_verification_all_valid() {
 #[test]
 fn test_real_batch_verification_with_invalid_proofs() {
     // Proofs at indices 1 and 3 should fail
-    let executor = Arc::new(MockBatchTestExecutor::with_failures(vec![1, 3]));
+    let executor = Arc::new(FixtureBatchTestExecutor::with_failures(vec![1, 3]));
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -151,7 +151,7 @@ fn test_real_batch_verification_with_invalid_proofs() {
 
 #[test]
 fn test_real_batch_empty() {
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -165,7 +165,7 @@ fn test_real_batch_empty() {
 
 #[test]
 fn test_real_batch_mismatched_lengths() {
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -190,7 +190,7 @@ fn test_real_batch_mismatched_lengths() {
 
 #[test]
 fn test_groth16_batch_aggregation() {
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -216,7 +216,7 @@ fn test_groth16_batch_aggregation() {
 
 #[test]
 fn test_snarkpack_batch_aggregation() {
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -242,7 +242,7 @@ fn test_snarkpack_batch_aggregation() {
 
 #[test]
 fn test_plonk_batch_aggregation() {
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -268,7 +268,7 @@ fn test_plonk_batch_aggregation() {
 
 #[test]
 fn test_halo2_accumulation() {
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -303,7 +303,7 @@ fn test_batch_size_limit() {
         ..Default::default()
     };
     
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::with_config(config)
         .with_executor(executor);
 
@@ -351,7 +351,7 @@ fn test_batch_verification_no_executor() {
 
 #[test]
 fn test_verification_time_recorded() {
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -381,7 +381,7 @@ fn test_verification_time_recorded() {
 
 #[test]
 fn test_diagnostics_populated() {
-    let executor = Arc::new(MockBatchTestExecutor::with_failures(vec![2]));
+    let executor = Arc::new(FixtureBatchTestExecutor::with_failures(vec![2]));
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -413,7 +413,7 @@ fn test_diagnostics_populated() {
 
 #[test]
 fn test_single_proof_batch() {
-    let executor = Arc::new(MockBatchTestExecutor::new());
+    let executor = Arc::new(FixtureBatchTestExecutor::new());
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 
@@ -435,7 +435,7 @@ fn test_single_proof_batch() {
 
 #[test]
 fn test_all_proofs_invalid() {
-    let executor = Arc::new(MockBatchTestExecutor::with_failures(vec![0, 1, 2]));
+    let executor = Arc::new(FixtureBatchTestExecutor::with_failures(vec![0, 1, 2]));
     let verifier = BatchVerifier::new()
         .with_executor(executor);
 

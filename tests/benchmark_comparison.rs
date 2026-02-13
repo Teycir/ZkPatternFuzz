@@ -51,7 +51,7 @@ fn test_throughput_small_circuits() {
 
         // Simulate 1000 fuzzing iterations
         while executions < 1000 {
-            // Simulate circuit execution (mock)
+            // Simulate circuit execution (fixture)
             std::hint::black_box(simulate_execution(size));
             executions += 1;
         }

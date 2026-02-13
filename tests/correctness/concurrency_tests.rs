@@ -82,11 +82,11 @@ fn test_finding_deduplication_concurrent() {
     use std::sync::RwLock;
 
     #[derive(Clone, PartialEq, Eq, Hash)]
-    struct MockFinding {
+    struct FixtureFinding {
         witness_hash: String,
     }
 
-    let findings = Arc::new(RwLock::new(Vec::<MockFinding>::new()));
+    let findings = Arc::new(RwLock::new(Vec::<FixtureFinding>::new()));
     let num_threads = 4;
 
     // All threads try to add the same finding
@@ -94,7 +94,7 @@ fn test_finding_deduplication_concurrent() {
         .map(|_| {
             let findings = Arc::clone(&findings);
             thread::spawn(move || {
-                let finding = MockFinding {
+                let finding = FixtureFinding {
                     witness_hash: "duplicate_hash".to_string(),
                 };
 

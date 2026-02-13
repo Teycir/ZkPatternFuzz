@@ -306,24 +306,24 @@ impl ChainShrinker {
 mod tests {
     use super::*;
     use crate::chain_fuzzer::types::StepSpec;
-    use crate::executor::MockCircuitExecutor;
+    use crate::executor::FixtureCircuitExecutor;
     use std::sync::Arc;
 
     fn create_test_runner() -> ChainRunner {
         let mut executors = HashMap::new();
         executors.insert(
             "circuit_a".to_string(),
-            Arc::new(MockCircuitExecutor::new("circuit_a", 2, 0).with_outputs(2))
+            Arc::new(FixtureCircuitExecutor::new("circuit_a", 2, 0).with_outputs(2))
                 as Arc<dyn zk_core::CircuitExecutor>,
         );
         executors.insert(
             "circuit_b".to_string(),
-            Arc::new(MockCircuitExecutor::new("circuit_b", 2, 0).with_outputs(2))
+            Arc::new(FixtureCircuitExecutor::new("circuit_b", 2, 0).with_outputs(2))
                 as Arc<dyn zk_core::CircuitExecutor>,
         );
         executors.insert(
             "circuit_c".to_string(),
-            Arc::new(MockCircuitExecutor::new("circuit_c", 2, 0).with_outputs(2))
+            Arc::new(FixtureCircuitExecutor::new("circuit_c", 2, 0).with_outputs(2))
                 as Arc<dyn zk_core::CircuitExecutor>,
         );
         ChainRunner::new(executors)

@@ -197,7 +197,7 @@ pub enum VulnerabilityType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::MockCircuitExecutor;
+    use crate::executor::FixtureCircuitExecutor;
 
     #[test]
     fn test_composition_tester_creation() {
@@ -208,8 +208,8 @@ mod tests {
     #[test]
     fn test_sequential_composition() {
         let mut tester = CompositionTester::new(CompositionType::Sequential);
-        tester.add_circuit(Arc::new(MockCircuitExecutor::new("c1", 2, 1)));
-        tester.add_circuit(Arc::new(MockCircuitExecutor::new("c2", 1, 1)));
+        tester.add_circuit(Arc::new(FixtureCircuitExecutor::new("c1", 2, 1)));
+        tester.add_circuit(Arc::new(FixtureCircuitExecutor::new("c2", 1, 1)));
 
         let inputs = vec![FieldElement::one(), FieldElement::zero()];
         let result = tester.test_sequential(&inputs);
@@ -222,9 +222,9 @@ mod tests {
         let mut tester = CompositionTester::new(CompositionType::Sequential);
         // Mismatched circuits (2 outputs, 5 inputs)
         tester.add_circuit(Arc::new(
-            MockCircuitExecutor::new("c1", 2, 1).with_outputs(2),
+            FixtureCircuitExecutor::new("c1", 2, 1).with_outputs(2),
         ));
-        tester.add_circuit(Arc::new(MockCircuitExecutor::new("c2", 5, 1)));
+        tester.add_circuit(Arc::new(FixtureCircuitExecutor::new("c2", 5, 1)));
 
         let vulnerabilities = tester.check_vulnerabilities();
         assert!(!vulnerabilities.is_empty());

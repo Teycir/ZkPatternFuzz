@@ -11,7 +11,6 @@ use zk_core::Framework;
 use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -22,7 +21,6 @@ use std::sync::OnceLock;
 /// that must be compiled and linked. This target supports:
 /// 1. Compiled Rust library circuits (via dynamic loading)
 /// 2. Standalone circuit binaries (via subprocess execution)
-/// 3. Mock mode for testing the fuzzer logic
 pub struct Halo2Target {
     /// Path to the circuit (can be a Rust project, compiled binary, or circuit spec)
     circuit_path: PathBuf,
@@ -32,12 +30,6 @@ pub struct Halo2Target {
     metadata: Option<Halo2Metadata>,
     /// Build directory
     build_dir: PathBuf,
-    /// Whether to use mock mode
-    mock_mode: bool,
-    /// Cached proving key
-    proving_key: Option<Vec<u8>>,
-    /// Cached verification key
-    verification_key: Option<Vec<u8>>,
     /// Circuit configuration
     config: Halo2Config,
     /// Cached PLONK constraints and lookup tables (if available)
@@ -138,9 +130,6 @@ impl Halo2Target {
             name,
             metadata: None,
             build_dir,
-            mock_mode: false,
-            proving_key: None,
-            verification_key: None,
             config: Halo2Config::default(),
             plonk_constraints: OnceLock::new(),
         })
@@ -158,12 +147,6 @@ impl Halo2Target {
         self
     }
 
-    /// Enable mock mode for testing
-    pub fn with_mock_mode(mut self, enabled: bool) -> Self {
-        self.mock_mode = enabled;
-        self
-    }
-
     fn cargo_command(&self) -> Command {
         let mut command = Command::new("cargo");
         command.env("CARGO_TARGET_DIR", &self.build_dir);
@@ -175,22 +158,6 @@ impl Halo2Target {
         tracing::info!("Setting up Halo2 circuit: {:?}", self.circuit_path);
 
         std::fs::create_dir_all(&self.build_dir)?;
-
-        if self.mock_mode {
-            // Create mock metadata
-            self.metadata = Some(Halo2Metadata {
-                name: self.name.clone(),
-                k: self.config.k,
-                num_advice_columns: 4,
-                num_fixed_columns: 2,
-                num_instance_columns: 1,
-                num_constraints: 1 << self.config.k,
-                num_private_inputs: 10,
-                num_public_inputs: 2,
-                num_lookups: 0,
-            });
-            return Ok(());
-        }
 
         // Check if this is a Rust project with Cargo.toml
         let cargo_path = if self.circuit_path.is_dir() {
@@ -211,9 +178,9 @@ impl Halo2Target {
         {
             self.setup_from_json()?;
         } else {
-            tracing::warn!("Could not determine circuit type, using mock mode");
-            self.mock_mode = true;
-            self.setup()?;
+            anyhow::bail!(
+                "Could not determine Halo2 circuit type. Provide a Rust project or JSON constraint spec."
+            );
         }
 
         Ok(())
@@ -278,10 +245,6 @@ impl Halo2Target {
 
     /// Setup from a JSON circuit specification
     fn setup_from_json(&mut self) -> Result<()> {
-        // JSON specs provide constraint metadata but not executable circuits.
-        // Use mock execution for deterministic outputs in tests and analysis.
-        self.mock_mode = true;
-
         let content = std::fs::read_to_string(&self.circuit_path)?;
         let spec: serde_json::Value = serde_json::from_str(&content)?;
 
@@ -389,13 +352,6 @@ impl Halo2Target {
 
     /// Generate keys using the PSE ceremony parameters (for KZG)
     pub fn setup_keys(&mut self) -> Result<()> {
-        if self.mock_mode {
-            // Generate mock keys
-            self.proving_key = Some(vec![0u8; 1024]);
-            self.verification_key = Some(vec![0u8; 256]);
-            return Ok(());
-        }
-
         tracing::info!("Generating Halo2 proving/verification keys...");
 
         // For real implementation, would need to:
@@ -404,16 +360,12 @@ impl Halo2Target {
         // 3. Generate proving and verification keys
 
         anyhow::bail!(
-            "Halo2 key generation not implemented. Enable mock_mode or provide a circuit binary that handles keygen."
+            "Halo2 key generation not implemented. Provide a circuit binary that handles keygen."
         )
     }
 
-    /// Execute circuit with mock or real execution
+    /// Execute circuit with real execution
     fn execute_circuit(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
-        if self.mock_mode {
-            return self.mock_execute(inputs);
-        }
-
         // For real execution, we would need to:
         // 1. Create the circuit with the given inputs as witnesses
         // 2. Synthesize to get the outputs
@@ -445,65 +397,8 @@ impl Halo2Target {
         }
 
         anyhow::bail!(
-            "Halo2 execution failed. Provide a circuit binary that supports --execute or enable mock_mode."
+            "Halo2 execution failed. Provide a circuit binary that supports --execute."
         )
-    }
-
-    /// Mock execution for testing
-    fn mock_execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
-        // Create deterministic output based on inputs
-        let mut hasher = Sha256::new();
-        hasher.update(b"halo2_mock");
-        for input in inputs {
-            hasher.update(input.0);
-        }
-        let hash = hasher.finalize();
-
-        let mut output = [0u8; 32];
-        output.copy_from_slice(&hash);
-
-        Ok(vec![FieldElement(output)])
-    }
-
-    /// Mock proof generation
-    fn mock_prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
-        let mut hasher = Sha256::new();
-        hasher.update(b"halo2_mock_proof");
-        for w in witness {
-            hasher.update(w.0);
-        }
-        let hash = hasher.finalize();
-
-        // Create a mock proof structure
-        let mut proof = vec![0u8; 384]; // Typical Halo2 proof size
-        proof[0..32].copy_from_slice(&hash);
-        proof[32] = 0x01; // Version
-        proof[33..65].copy_from_slice(&hash);
-
-        Ok(proof)
-    }
-
-    /// Mock verification
-    fn mock_verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
-        if proof.len() < 64 {
-            return Ok(false);
-        }
-
-        // Check version byte
-        if proof[32] != 0x01 {
-            return Ok(false);
-        }
-
-        // Check input commitment
-        let mut hasher = Sha256::new();
-        hasher.update(b"halo2_mock_proof");
-        for input in public_inputs {
-            hasher.update(input.0);
-        }
-        let expected = hasher.finalize();
-
-        // Verify first 32 bytes match
-        Ok(&proof[0..32] == expected.as_slice())
     }
 }
 
@@ -514,6 +409,34 @@ impl TargetCircuit for Halo2Target {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn field_modulus(&self) -> [u8; 32] {
+        let hex_str = match self.config.field {
+            Halo2Field::Bn254 => {
+                "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
+            }
+            Halo2Field::Pasta => {
+                // Pallas scalar field
+                "40000000000000000000000000000000224698fc094cf91b992d30ed00000001"
+            }
+            Halo2Field::Bls12_381 => {
+                "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001"
+            }
+        };
+        let mut modulus = [0u8; 32];
+        if let Ok(decoded) = hex::decode(hex_str) {
+            modulus.copy_from_slice(&decoded);
+        }
+        modulus
+    }
+
+    fn field_name(&self) -> &str {
+        match self.config.field {
+            Halo2Field::Bn254 => "bn254",
+            Halo2Field::Pasta => "pasta",
+            Halo2Field::Bls12_381 => "bls12-381",
+        }
     }
 
     fn num_constraints(&self) -> usize {
@@ -542,10 +465,6 @@ impl TargetCircuit for Halo2Target {
     }
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
-        if self.mock_mode {
-            return self.mock_prove(witness);
-        }
-
         // For real proving, need to use halo2_proofs crate
         // This would require the circuit to be compiled into this binary
 
@@ -572,15 +491,11 @@ impl TargetCircuit for Halo2Target {
         }
 
         anyhow::bail!(
-            "Halo2 prove failed. Provide a circuit binary that supports --prove or enable mock_mode."
+            "Halo2 prove failed. Provide a circuit binary that supports --prove."
         )
     }
 
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
-        if self.mock_mode {
-            return self.mock_verify(proof, public_inputs);
-        }
-
         // Try running verify command
         let proof_hex = hex::encode(proof);
         let inputs_json = serde_json::to_string(
@@ -610,7 +525,7 @@ impl TargetCircuit for Halo2Target {
         }
 
         anyhow::bail!(
-            "Halo2 verify failed. Provide a circuit binary that supports --verify or enable mock_mode."
+            "Halo2 verify failed. Provide a circuit binary that supports --verify."
         )
     }
 }
@@ -732,44 +647,62 @@ pub mod analysis {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
-    fn test_halo2_target_mock() {
-        let mut target = Halo2Target::new("test_circuit")
-            .unwrap()
-            .with_mock_mode(true);
+    fn test_halo2_target_from_json_spec() {
+        let dir = tempdir().unwrap();
+        let spec_path = dir.path().join("test_circuit.json");
+        fs::write(
+            &spec_path,
+            r#"{
+                "name": "test_circuit",
+                "k": 12,
+                "advice_columns": 3,
+                "fixed_columns": 1,
+                "instance_columns": 1,
+                "constraints": 42,
+                "private_inputs": 4,
+                "public_inputs": 1,
+                "lookups": 2
+            }"#,
+        )
+        .unwrap();
 
+        let mut target = Halo2Target::new(spec_path.to_str().unwrap()).unwrap();
         target.setup().unwrap();
 
         assert_eq!(target.name(), "test_circuit");
-        assert!(target.num_constraints() > 0);
+        assert_eq!(target.num_constraints(), 42);
+        assert_eq!(target.num_private_inputs(), 4);
+        assert_eq!(target.num_public_inputs(), 1);
     }
 
     #[test]
-    fn test_halo2_mock_execute() {
-        let mut target = Halo2Target::new("test").unwrap().with_mock_mode(true);
+    fn test_halo2_execute_requires_binary_support() {
+        let dir = tempdir().unwrap();
+        let spec_path = dir.path().join("test.json");
+        fs::write(&spec_path, r#"{"name":"test","constraints":1}"#).unwrap();
+
+        let mut target = Halo2Target::new(spec_path.to_str().unwrap()).unwrap();
         target.setup().unwrap();
 
         let inputs = vec![FieldElement::zero(), FieldElement::one()];
-        let result = target.execute(&inputs).unwrap();
-
-        assert!(!result.is_empty());
+        let result = target.execute(&inputs);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_halo2_mock_prove_verify() {
-        let mut target = Halo2Target::new("test").unwrap().with_mock_mode(true);
+    fn test_halo2_key_setup_reports_not_implemented() {
+        let dir = tempdir().unwrap();
+        let spec_path = dir.path().join("test.json");
+        fs::write(&spec_path, r#"{"name":"test","constraints":1}"#).unwrap();
+
+        let mut target = Halo2Target::new(spec_path.to_str().unwrap()).unwrap();
         target.setup().unwrap();
-        target.setup_keys().unwrap();
-
-        let witness = vec![FieldElement::one()];
-        let proof = target.prove(&witness).unwrap();
-
-        assert!(!proof.is_empty());
-
-        // Should verify with same inputs used for proving
-        let verified = target.verify(&proof, &witness).unwrap();
-        assert!(verified);
+        let result = target.setup_keys();
+        assert!(result.is_err());
     }
 
     #[test]

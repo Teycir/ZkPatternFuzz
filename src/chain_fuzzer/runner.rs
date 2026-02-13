@@ -359,14 +359,14 @@ impl ChainRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::MockCircuitExecutor;
+    use crate::executor::FixtureCircuitExecutor;
 
-    fn create_mock_executor(
+    fn create_fixture_executor(
         name: &str,
         num_inputs: usize,
         num_outputs: usize,
     ) -> Arc<dyn CircuitExecutor> {
-        Arc::new(MockCircuitExecutor::new(name, num_inputs, 0).with_outputs(num_outputs))
+        Arc::new(FixtureCircuitExecutor::new(name, num_inputs, 0).with_outputs(num_outputs))
     }
 
     #[test]
@@ -374,11 +374,11 @@ mod tests {
         let mut executors = HashMap::new();
         executors.insert(
             "circuit_a".to_string(),
-            create_mock_executor("circuit_a", 2, 2),
+            create_fixture_executor("circuit_a", 2, 2),
         );
         executors.insert(
             "circuit_b".to_string(),
-            create_mock_executor("circuit_b", 2, 1),
+            create_fixture_executor("circuit_b", 2, 1),
         );
 
         let runner = ChainRunner::new(executors);
@@ -398,10 +398,10 @@ mod tests {
     #[test]
     fn test_chain_runner_wired_inputs() {
         let mut executors = HashMap::new();
-        executors.insert("deposit".to_string(), create_mock_executor("deposit", 2, 2));
+        executors.insert("deposit".to_string(), create_fixture_executor("deposit", 2, 2));
         executors.insert(
             "withdraw".to_string(),
-            create_mock_executor("withdraw", 2, 1),
+            create_fixture_executor("withdraw", 2, 1),
         );
 
         let runner = ChainRunner::new(executors);

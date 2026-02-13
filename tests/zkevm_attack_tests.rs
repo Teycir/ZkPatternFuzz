@@ -307,30 +307,30 @@ fn test_call_vulnerability_detector_creation() {
 }
 
 // ============================================================================
-// Integration-Ready Tests (require mock executor)
+// Integration-Ready Tests (require fixture executor)
 // ============================================================================
 
 #[test]
-// requires CircuitExecutor mock implementation
+// requires CircuitExecutor fixture implementation
 fn test_full_attack_run() {
-    // This test would require a proper mock executor
+    // This test would require a proper fixture executor
     // Left as placeholder for future integration tests
 }
 
 #[test]
-// requires CircuitExecutor mock implementation
+// requires CircuitExecutor fixture implementation
 fn test_state_transition_detection() {
-    // This test would require a proper mock executor
+    // This test would require a proper fixture executor
 }
 
 #[test]
-// requires CircuitExecutor mock implementation
+// requires CircuitExecutor fixture implementation
 fn test_opcode_boundary_detection() {
-    // This test would require a proper mock executor
+    // This test would require a proper fixture executor
 }
 
 #[test]
-// requires CircuitExecutor mock implementation
+// requires CircuitExecutor fixture implementation
 fn test_storage_proof_bypass_detection() {
-    // This test would require a proper mock executor
+    // This test would require a proper fixture executor
 }

@@ -1564,6 +1564,77 @@ impl CircomTarget {
     }
 }
 
+/// Resolve a Circom field/prime string to a 32-byte modulus.
+///
+/// Handles:
+///  - Aliases:  `bn128`, `bn254`, `alt_bn128`, `altbn128` → BN254 scalar field
+///  - `bls12381`, `bls12-381` → BLS12-381 scalar field
+///  - `goldilocks` → Goldilocks prime
+///  - Numeric decimal string (the raw prime)
+///  - Hex string with `0x` prefix
+///
+/// Returns `None` on unrecognised / unparseable input (fail-closed).
+fn resolve_circom_prime(prime: &str) -> Option<[u8; 32]> {
+    let normalised: String = prime
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '_' && *c != '-')
+        .collect();
+
+    // Well-known aliases
+    match normalised.as_str() {
+        "bn128" | "bn254" | "altbn128" | "altbn128_" => {
+            return hex_to_modulus(
+                "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+            );
+        }
+        "bls12381" => {
+            return hex_to_modulus(
+                "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",
+            );
+        }
+        "goldilocks" => {
+            return hex_to_modulus(
+                "000000000000000000000000000000000000000000000000ffffffff00000001",
+            );
+        }
+        _ => {}
+    }
+
+    // Try hex with 0x prefix
+    if let Some(hex_str) = normalised.strip_prefix("0x") {
+        return hex_to_modulus(hex_str);
+    }
+
+    // Try decimal
+    use num_bigint::BigUint;
+    if let Some(value) = BigUint::parse_bytes(normalised.as_bytes(), 10) {
+        let bytes = value.to_bytes_be();
+        if bytes.len() <= 32 {
+            let mut result = [0u8; 32];
+            let start = 32 - bytes.len();
+            result[start..].copy_from_slice(&bytes);
+            return Some(result);
+        }
+    }
+
+    // Fail closed – unknown prime
+    tracing::warn!("Unknown Circom prime '{}', cannot resolve modulus", prime);
+    None
+}
+
+fn hex_to_modulus(hex_str: &str) -> Option<[u8; 32]> {
+    let decoded = hex::decode(hex_str).ok()?;
+    if decoded.len() > 32 {
+        return None;
+    }
+    let mut result = [0u8; 32];
+    let start = 32 - decoded.len();
+    result[start..].copy_from_slice(&decoded);
+    Some(result)
+}
+
 impl TargetCircuit for CircomTarget {
     fn framework(&self) -> Framework {
         Framework::Circom
@@ -1571,6 +1642,29 @@ impl TargetCircuit for CircomTarget {
 
     fn name(&self) -> &str {
         &self.main_component
+    }
+
+    fn field_modulus(&self) -> [u8; 32] {
+        let prime = self.field_name();
+        resolve_circom_prime(prime).unwrap_or_else(|| {
+            // Fail-closed: if we truly can't resolve, return BN254 (circom default)
+            // but log a warning so it's visible.
+            tracing::warn!(
+                "Falling back to BN254 modulus for unrecognised Circom prime '{}'",
+                prime
+            );
+            let mut m = [0u8; 32];
+            let _ = hex::decode("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001")
+                .map(|d| m.copy_from_slice(&d));
+            m
+        })
+    }
+
+    fn field_name(&self) -> &str {
+        self.metadata
+            .as_ref()
+            .map(|m| m.prime.as_str())
+            .unwrap_or("bn128")
     }
 
     fn num_constraints(&self) -> usize {

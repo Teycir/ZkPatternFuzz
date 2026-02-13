@@ -5,7 +5,7 @@
 
 use std::io::Write;
 use tempfile::NamedTempFile;
-use zk_fuzzer::executor::{CircuitExecutor, MockCircuitExecutor};
+use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::attacks::{Attack, AttackContext, CircuitInfo, UnderconstrainedDetector};
 use zk_fuzzer::FuzzConfig;
@@ -16,9 +16,9 @@ use zk_fuzzer::FuzzConfig;
 
 /// Test that the fuzzer detects obviously underconstrained circuits
 #[tokio::test]
-async fn test_detects_underconstrained_mock() {
-    // Create an underconstrained mock (more inputs than constraints)
-    let executor = MockCircuitExecutor::new("underconstrained_test", 10, 2)
+async fn test_detects_underconstrained_fixture() {
+    // Create an underconstrained fixture (more inputs than constraints)
+    let executor = FixtureCircuitExecutor::new("underconstrained_test", 10, 2)
         .with_constraints(5);
 
     // This circuit should be flagged as likely underconstrained
@@ -31,8 +31,8 @@ async fn test_detects_underconstrained_mock() {
 /// Test that properly constrained circuits are not flagged
 #[tokio::test]
 async fn test_properly_constrained_not_flagged() {
-    // Create a properly constrained mock
-    let executor = MockCircuitExecutor::new("proper_test", 5, 2)
+    // Create a properly constrained fixture
+    let executor = FixtureCircuitExecutor::new("proper_test", 5, 2)
         .with_constraints(10);
 
     assert!(!executor.is_likely_underconstrained());
@@ -93,13 +93,13 @@ fn test_underconstrained_detector_no_false_positive() {
 // Collision Detection Tests
 // ============================================================================
 
-/// Test that the fuzzer can detect output collisions using underconstrained mock
+/// Test that the fuzzer can detect output collisions using underconstrained fixture
 /// An underconstrained circuit produces the same output for different inputs
 #[tokio::test]
-async fn test_detects_collisions_in_mock() {
-    // Create an underconstrained mock - this WILL produce collisions
+async fn test_detects_collisions_in_fixture() {
+    // Create an underconstrained fixture - this WILL produce collisions
     // because it only uses the first input to compute output
-    let executor = MockCircuitExecutor::new("collision_test", 2, 1)
+    let executor = FixtureCircuitExecutor::new("collision_test", 2, 1)
         .with_underconstrained(true);
 
     // Execute with same first input but different second input
@@ -120,7 +120,7 @@ async fn test_detects_collisions_in_mock() {
 
     // Outputs should be identical (collision) because only first input is used
     assert_eq!(result_a.outputs, result_b.outputs, 
-        "Underconstrained mock should produce same output for different inputs");
+        "Underconstrained fixture should produce same output for different inputs");
 
     // But inputs are different
     assert_ne!(inputs_a, inputs_b, "Inputs should be different");
@@ -129,8 +129,8 @@ async fn test_detects_collisions_in_mock() {
 /// Test that normal circuits don't produce false collision positives
 #[tokio::test]
 async fn test_no_false_collisions() {
-    // Create a normal mock (no collision simulation)
-    let executor = MockCircuitExecutor::new("normal_test", 2, 1);
+    // Create a normal fixture (no collision simulation)
+    let executor = FixtureCircuitExecutor::new("normal_test", 2, 1);
 
     let mut outputs = std::collections::HashSet::new();
 
@@ -149,7 +149,7 @@ async fn test_no_false_collisions() {
     }
 
     // Each unique input should produce unique output
-    assert_eq!(outputs.len(), 100, "Normal mock should produce unique outputs");
+    assert_eq!(outputs.len(), 100, "Normal fixture should produce unique outputs");
 }
 
 // ============================================================================
@@ -171,7 +171,7 @@ campaign:
   name: "Test Campaign"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Main"
 
@@ -205,7 +205,7 @@ campaign:
   name: "Test Campaign"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Main"
 
@@ -230,7 +230,7 @@ campaign:
   name: "Test Campaign"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Main"
 
@@ -255,7 +255,7 @@ campaign:
   name: "Test"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Main"
 
@@ -291,7 +291,7 @@ campaign:
   name: "Test"
   version: "1.0"
   target:
-    framework: mock
+    framework: circom
     circuit_path: "./test.circom"
     main_component: "Main"
 
@@ -325,7 +325,7 @@ inputs:
 /// Test framework types are recognized
 #[test]
 fn test_framework_types() {
-    let frameworks = vec!["circom", "noir", "halo2", "cairo", "mock"];
+    let frameworks = vec!["circom", "noir", "halo2", "cairo"];
     
     for fw in frameworks {
         let config_content = format!(r#"
@@ -358,7 +358,7 @@ inputs:
 
 #[test]
 fn test_executor_basic_operations() {
-    let executor = MockCircuitExecutor::new("test", 3, 1);
+    let executor = FixtureCircuitExecutor::new("test", 3, 1);
     
     assert_eq!(executor.name(), "test");
     assert_eq!(executor.num_private_inputs(), 3);
@@ -377,7 +377,7 @@ fn test_executor_basic_operations() {
 
 #[test]
 fn test_proof_generation_and_verification() {
-    let executor = MockCircuitExecutor::new("test", 2, 1);
+    let executor = FixtureCircuitExecutor::new("test", 2, 1);
     
     let witness = vec![FieldElement::one(), FieldElement::from_u64(100)];
     
@@ -448,10 +448,10 @@ async fn test_isolated_executor_timeout_kills_subprocess() {
     use zk_core::Framework;
     use zk_fuzzer::executor::{ExecutorFactory, ExecutorFactoryOptions, IsolatedExecutor};
     
-    // Create a mock executor that we'll wrap with isolation
+    // Create an executor that we'll wrap with isolation
     let options = ExecutorFactoryOptions::default();
     let inner = match ExecutorFactory::create_with_options(
-        Framework::Mock,
+        Framework::Circom,
         "test_circuit",
         "TestComponent",
         &options,
@@ -467,7 +467,7 @@ async fn test_isolated_executor_timeout_kills_subprocess() {
     let timeout_ms = 100;
     let isolated = match IsolatedExecutor::new(
         inner,
-        Framework::Mock,
+        Framework::Circom,
         "test_circuit".to_string(),
         "TestComponent".to_string(),
         options,

@@ -349,9 +349,15 @@ fn candidate_invariants_from_hints(
     let mut out = Vec::new();
     for (idx, hint) in hints.iter().enumerate() {
         let affected = inputs_for_category(&hint.category, inputs, 4);
-        let primary = affected.first()
-            .cloned()
-            .unwrap_or_else(|| "TODO_INPUT".to_string());
+        // Deterministic fallback: pick first known input if keyword matching
+        // found nothing, or use a descriptive placeholder derived from the
+        // hint category so reviewers can spot the gap immediately.
+        let primary = affected.first().cloned().unwrap_or_else(|| {
+            inputs
+                .first()
+                .cloned()
+                .unwrap_or_else(|| format!("UNKNOWN_INPUT_{}", idx))
+        });
         let relation = relation_for_category(&hint.category, &primary);
         let name = format!(
             "{:?}_candidate_{}",

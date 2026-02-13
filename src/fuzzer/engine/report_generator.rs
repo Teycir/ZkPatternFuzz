@@ -224,7 +224,6 @@ impl FuzzingEngine {
                 .into_iter()
                 .map(|h| format!("{:?}: {}", h.issue_type, h.description))
                 .collect(),
-            _ => Vec::new(),
         };
 
         if !hints.is_empty() {

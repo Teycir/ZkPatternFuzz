@@ -2,9 +2,9 @@ campaign:
   name: "Example: Kill on Timeout Configuration"
   version: "1.0"
   target:
-    framework: "mock"
-    circuit_path: "./circuits/mock_merkle.circom"
-    main_component: "MockMerkle"
+    framework: "circom"
+    circuit_path: "./circuits/fixture_merkle.circom"
+    main_component: "FixtureMerkle"
   parameters:
     field: "bn254"
     max_constraints: 100000

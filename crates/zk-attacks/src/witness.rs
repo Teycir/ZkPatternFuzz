@@ -362,7 +362,7 @@ mod tests {
     use super::*;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use zk_backends::MockCircuitExecutor;
+    use zk_backends::FixtureCircuitExecutor;
 
     #[test]
     fn test_witness_fuzzer_creation() {
@@ -377,12 +377,12 @@ mod tests {
     #[test]
     fn test_witness_determinism() {
         let fuzzer = WitnessFuzzer::new().with_determinism_tests(10);
-        let executor: Arc<dyn CircuitExecutor> = Arc::new(MockCircuitExecutor::new("test", 2, 1));
+        let executor: Arc<dyn CircuitExecutor> = Arc::new(FixtureCircuitExecutor::new("test", 2, 1));
         let mut rng = StdRng::seed_from_u64(42);
 
         let findings = fuzzer.test_determinism(&executor, &mut rng);
 
-        // Mock executor should be deterministic
+        // Fixture executor should be deterministic
         assert!(findings.is_empty(), "Expected no non-determinism findings");
     }
 }

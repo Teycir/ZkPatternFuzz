@@ -561,14 +561,6 @@ impl CircuitExecutor for HardenedIsolatedExecutor {
         self.inner.name()
     }
 
-    fn is_mock(&self) -> bool {
-        self.inner.is_mock()
-    }
-
-    fn is_fallback_mock(&self) -> bool {
-        self.inner.is_fallback_mock()
-    }
-
     fn circuit_info(&self) -> zk_core::CircuitInfo {
         self.inner.circuit_info()
     }

@@ -8,23 +8,23 @@
 //! 4. Novel Attack Dispatchers - all 5 work without warnings
 //! 5. Field Modulus - circuit-specific, not hardcoded BN254
 //!
-//! Tests use the mock backend for unit testing and can optionally
+//! Tests use the fixture backend for unit testing and can optionally
 //! test against real Circom circuits when available.
 
 use std::path::PathBuf;
 use zk_fuzzer::config::*;
-use zk_fuzzer::executor::{CircuitExecutor, MockCircuitExecutor};
+use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
 use zk_fuzzer::fuzzer::FuzzingEngine;
 use zk_core::{FieldElement, TestCase, TestMetadata};
 
-/// Create a test configuration with mock backend
+/// Create a test configuration with fixture backend
 fn create_test_config() -> FuzzConfig {
     FuzzConfig {
         campaign: Campaign {
             name: "Phase 0 Test Campaign".to_string(),
             version: "1.0".to_string(),
             target: Target {
-                framework: Framework::Mock,
+                framework: Framework::Circom,
                 circuit_path: PathBuf::from("./test_circuit.circom"),
                 main_component: "TestCircuit".to_string(),
             },
@@ -166,7 +166,7 @@ fn test_underconstrained_oracle_with_fixed_public_inputs() {
 
 #[test]
 fn test_field_modulus_from_executor() {
-    let executor = MockCircuitExecutor::new("test_field", 1, 1);
+    let executor = FixtureCircuitExecutor::new("test_field", 1, 1);
     
     // Should return a valid 32-byte field modulus
     let modulus = executor.field_modulus();

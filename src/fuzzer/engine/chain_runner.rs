@@ -143,7 +143,7 @@ impl FuzzingEngine {
         let runner = ChainRunner::new(executors).with_timeout(Duration::from_secs(30));
 
         // Phase 5 Fix (Milestone 5.3): Use framework-aware chain mutator
-        // Previously used ChainMutator::new() which defaults to Framework::Mock,
+        // Previously used ChainMutator::new() default settings,
         // causing reduced mutation validity for real circuits.
         let allow_spec_mutations =
             Self::additional_bool(additional, "chain_allow_spec_mutations").unwrap_or(false);

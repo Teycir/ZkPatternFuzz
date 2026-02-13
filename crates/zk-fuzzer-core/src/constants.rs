@@ -50,6 +50,18 @@ pub enum FieldType {
 }
 
 impl FieldType {
+    /// Get the modulus as a 32-byte big-endian array for this field type.
+    pub fn modulus_bytes(&self) -> [u8; 32] {
+        let mut modulus = [0u8; 32];
+        let hex_str = self.modulus_hex();
+        if let Ok(decoded) = hex::decode(hex_str) {
+            let start = 32usize.saturating_sub(decoded.len());
+            let copy_len = decoded.len().min(32);
+            modulus[start..start + copy_len].copy_from_slice(&decoded[..copy_len]);
+        }
+        modulus
+    }
+
     /// Get the modulus for this field type as a hex string
     pub fn modulus_hex(&self) -> &'static str {
         match self {

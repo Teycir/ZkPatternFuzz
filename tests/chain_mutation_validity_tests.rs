@@ -1,7 +1,7 @@
 //! Chain Mutation Validity Tests (Phase 5: Milestone 5.3)
 //!
 //! Tests that chain mutations produce valid test cases when using the
-//! framework-aware mutator instead of the default Mock framework.
+//! framework-aware mutator instead of relying on default framework settings.
 
 use std::collections::HashMap;
 use zk_core::{FieldElement, Framework};
@@ -93,12 +93,12 @@ fn test_framework_aware_mutator_cairo() {
 }
 
 // ============================================================================
-// Comparison: Mock vs Real Framework
+// Comparison: Default vs Explicit Framework
 // ============================================================================
 
 #[test]
-fn test_mock_vs_circom_mutation_differences() {
-    let mock_mutator = ChainMutator::new(); // Uses Mock by default
+fn test_default_vs_circom_mutation_differences() {
+    let default_mutator = ChainMutator::new();
     let circom_mutator = ChainMutator::new_with_framework(Framework::Circom);
     
     let spec = create_test_chain_spec();
@@ -106,18 +106,19 @@ fn test_mock_vs_circom_mutation_differences() {
     prior_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(100u64)]);
     
     // Use same seed for both
-    let mut mock_rng = ChaCha8Rng::seed_from_u64(42);
+    let mut default_rng = ChaCha8Rng::seed_from_u64(42);
     let mut circom_rng = ChaCha8Rng::seed_from_u64(42);
     
-    let (mock_result, _) = mock_mutator.mutate_inputs(&spec, &prior_inputs, &mut mock_rng);
+    let (default_result, _) =
+        default_mutator.mutate_inputs(&spec, &prior_inputs, &mut default_rng);
     let (circom_result, _) = circom_mutator.mutate_inputs(&spec, &prior_inputs, &mut circom_rng);
     
     // Both should produce valid mutations
-    assert!(!mock_result.is_empty());
+    assert!(!default_result.is_empty());
     assert!(!circom_result.is_empty());
     
     // Note: The structure-aware mutator should produce framework-aware mutations
-    // when given a specific framework, which may differ from Mock mutations
+    // when given a specific framework, which may differ from default mutations
 }
 
 // ============================================================================

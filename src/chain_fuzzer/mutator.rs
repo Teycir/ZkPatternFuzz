@@ -84,11 +84,10 @@ pub struct ChainMutation {
 impl ChainMutator {
     /// Create a new chain mutator
     ///
-    /// Note: This uses Mock framework by default. For production use,
-    /// prefer `new_with_framework()` to ensure framework-aware mutations.
+    /// Defaults to Circom-compatible structure-aware mutations.
     pub fn new() -> Self {
         Self {
-            field_mutator: StructureAwareMutator::new(zk_core::Framework::Mock),
+            field_mutator: StructureAwareMutator::new(zk_core::Framework::Circom),
             strategy_weights: MutationWeights::default(),
         }
     }

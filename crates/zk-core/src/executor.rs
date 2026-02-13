@@ -174,31 +174,6 @@ pub trait CircuitExecutor: Send + Sync {
     /// Get circuit name
     fn name(&self) -> &str;
 
-    /// Check if this executor is a mock/synthetic executor
-    /// 
-    /// Returns true if this executor simulates circuit execution rather than
-    /// running actual ZK computations. Mock executors are useful for testing
-    /// but their results should NOT be used to claim real vulnerabilities.
-    /// 
-    /// # Phase 0 Fix: Silent Mock Fallback Detection
-    /// 
-    /// This method allows the fuzzing engine to detect when it's running against
-    /// a mock backend and warn/error appropriately. Any findings from mock
-    /// execution are synthetic and don't constitute evidence.
-    fn is_mock(&self) -> bool {
-        self.framework() == Framework::Mock
-    }
-
-    /// Check if this is a fallback mock (real backend was unavailable)
-    /// 
-    /// This is MORE concerning than is_mock() because it indicates the user
-    /// intended to use a real backend but tooling was missing. Default
-    /// implementation returns false; mock executors used as fallbacks should
-    /// override this to return true.
-    fn is_fallback_mock(&self) -> bool {
-        false
-    }
-
     /// Get circuit information (constraints, inputs, outputs)
     fn circuit_info(&self) -> CircuitInfo;
 

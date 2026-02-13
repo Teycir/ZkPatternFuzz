@@ -79,10 +79,10 @@ async fn test_missing_range_check() {
 }
 
 /// Test corpus-based fuzzing effectiveness
-/// Currently limited by mock coverage simulation
+/// Currently limited by fixture coverage simulation
 #[tokio::test]
 async fn test_corpus_coverage() {
-    let config = FuzzConfig::from_yaml("tests/campaigns/mock_merkle_audit.yaml").unwrap();
+    let config = FuzzConfig::from_yaml("tests/campaigns/fixture_merkle_audit.yaml").unwrap();
     let mut fuzzer = ZkFuzzer::new(config, Some(42));
     
     let report = fuzzer.run().await.unwrap();
@@ -107,7 +107,7 @@ async fn test_corpus_coverage() {
 async fn test_parallel_performance() {
     use std::time::Instant;
     
-    let config = FuzzConfig::from_yaml("tests/campaigns/mock_merkle_audit.yaml").unwrap();
+    let config = FuzzConfig::from_yaml("tests/campaigns/fixture_merkle_audit.yaml").unwrap();
     
     // Calculate workload size for logging
     let total_work: u64 = config.attacks.iter().map(|a| {
@@ -176,7 +176,7 @@ async fn test_parallel_performance() {
 /// Test deterministic fuzzing with seed
 #[tokio::test]
 async fn test_deterministic_fuzzing() {
-    let config = FuzzConfig::from_yaml("tests/campaigns/mock_merkle_audit.yaml").unwrap();
+    let config = FuzzConfig::from_yaml("tests/campaigns/fixture_merkle_audit.yaml").unwrap();
     
     let report1 = ZkFuzzer::run_with_progress(config.clone(), Some(12345), 1, false).await.unwrap();
     let report2 = ZkFuzzer::run_with_progress(config, Some(12345), 1, false).await.unwrap();

@@ -78,7 +78,7 @@ pub struct EmbeddedProfile {
     pub description: String,
     /// Maximum fuzzing iterations
     pub max_iterations: u64,
-    /// Require real backend (no mock fallback)
+    /// Require strict backend/tooling checks
     pub strict_backend: bool,
     /// Enable evidence mode (proof generation)
     pub evidence_mode: bool,

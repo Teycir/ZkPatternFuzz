@@ -39,8 +39,7 @@ struct Cli {
     #[arg(long, global = true)]
     simple_progress: bool,
 
-    /// Require real backend (fail if mock would be used)
-    /// Sets strict_backend=true and rejects framework: "mock"
+    /// Require strict backend availability checks.
     #[arg(long, global = true)]
     real_only: bool,
 
@@ -329,12 +328,6 @@ async fn run_campaign(
         apply_profile(&mut config, parsed_profile);
     }
 
-    // Runtime hardening: always require real backends.
-    if config.campaign.target.framework == zk_fuzzer::config::Framework::Mock {
-        anyhow::bail!(
-            "Framework 'mock' is disabled. Use a real backend (circom/noir/halo2/cairo)."
-        );
-    }
     if real_only {
         tracing::info!("--real-only set (real backend mode is already enforced)");
     }
@@ -664,12 +657,6 @@ async fn run_chain_campaign(
     tracing::info!("Loading chain campaign from: {}", config_path);
     let mut config = FuzzConfig::from_yaml(config_path)?;
 
-    if config.campaign.target.framework == zk_fuzzer::config::Framework::Mock {
-        anyhow::bail!(
-            "Framework 'mock' is disabled. Use a real backend (circom/noir/halo2/cairo)."
-        );
-    }
-
     // Prevent multi-process collisions on the same output dir (chain_corpus.json, reports, etc.).
     // Skip in --dry-run since no files are written.
     let _output_lock = if dry_run {
@@ -760,8 +747,13 @@ async fn run_chain_campaign(
     let progress = if simple_progress {
         None
     } else {
-        // TODO: Create a progress reporter for chains
-        None
+        // Create a progress reporter for chain mode
+        let total = (iterations as usize * chains.len()) as u64;
+        Some(zk_fuzzer::progress::ProgressReporter::new(
+            &format!("{} (chains)", config.campaign.name),
+            total,
+            verbose,
+        ))
     };
 
     let chain_findings: Vec<ChainFinding> = engine.run_chains(&chains, progress.as_ref()).await;

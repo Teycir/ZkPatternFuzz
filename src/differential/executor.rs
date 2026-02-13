@@ -142,18 +142,20 @@ impl CircuitExecutor for MultiBackendExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::MockCircuitExecutor;
+    use crate::executor::FixtureCircuitExecutor;
 
     #[test]
     fn test_multi_backend_executor() {
-        let mut multi = MultiBackendExecutor::new(Framework::Mock);
-        multi.add_backend(
-            Framework::Mock,
-            Arc::new(MockCircuitExecutor::new("test", 2, 1)),
-        );
+        let mut multi = MultiBackendExecutor::new(Framework::Circom);
         multi.add_backend(
             Framework::Circom,
-            Arc::new(MockCircuitExecutor::new("test", 2, 1)),
+            Arc::new(FixtureCircuitExecutor::new("test", 2, 1)),
+        );
+        multi.add_backend(
+            Framework::Noir,
+            Arc::new(
+                FixtureCircuitExecutor::new("test", 2, 1).with_framework(Framework::Noir),
+            ),
         );
 
         let inputs = vec![FieldElement::zero(), FieldElement::one()];

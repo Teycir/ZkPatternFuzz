@@ -18,7 +18,6 @@
 //! ```bash
 //! cargo test --test ground_truth_test -- --nocapture
 //! cargo test --test ground_truth_test ground_truth_known_bugs -- --nocapture
-//! cargo test --test ground_truth_test ground_truth_mock_validation -- --nocapture
 //! ```
 
 use std::path::PathBuf;
@@ -252,99 +251,103 @@ fn ground_truth_infrastructure_smoke_test() {
     println!("✅ Ground truth infrastructure is set up correctly\n");
 }
 
-/// Test: Run mock-based validation against known bug patterns
-/// This test uses the mock executor to verify the fuzzer's bug detection logic
-/// without requiring circom to be installed.
+/// Test: Known-buggy circuits should be detected.
+///
+/// When circom tooling is available (CI or dev image) the test compiles each
+/// known-buggy circuit and runs ZkPatternFuzz against it with the real Circom
+/// backend.
 #[tokio::test]
-async fn ground_truth_mock_validation() {
-    use zk_fuzzer::config::*;
-    use zk_fuzzer::ZkFuzzer;
-    
-    println!("\n=== Ground Truth Mock Validation ===\n");
-    println!("Testing bug detection logic using mock executor...\n");
-    
-    // Create a mock config that simulates an underconstrained circuit
-    let yaml = r#"
-campaign:
-  name: "Mock Underconstrained Test"
-  version: "1.0"
-  target:
-    framework: "mock"
-    circuit_path: "./mock_circuit.circom"
-    main_component: "MockCircuit"
-  parameters:
-    max_constraints: 100
-    timeout_seconds: 10
-    additional:
-      max_iterations: 500
-      
-attacks:
-  - type: "underconstrained"
-    description: "Detect underconstrained mock circuit"
-    config:
-      witness_pairs: 100
+async fn ground_truth_known_bugs() {
+    use zk_fuzzer::config::FuzzConfig;
+    use zk_fuzzer::fuzzer::FuzzingEngine;
 
-inputs:
-  - name: "a"
-    type: "field"
-    fuzz_strategy: random
-  - name: "b"
-    type: "field"
-    fuzz_strategy: random
-
-reporting:
-  output_dir: "./reports/mock_ground_truth"
-  formats: ["json"]
-  include_poc: true
-"#;
-
-    // Parse config and run
-    let config: FuzzConfig = serde_yaml::from_str(yaml).expect("Failed to parse mock config");
-    
-    let report = ZkFuzzer::run_with_progress(config, Some(42), 1, false)
-        .await
-        .expect("Mock fuzzing should succeed");
-    
-    println!("  Executions: {}", report.statistics.total_executions);
-    println!("  Findings: {}", report.findings.len());
-    println!("  Coverage: {:.1}%", report.statistics.coverage_percentage);
-    
-    // Mock executor should detect underconstrained behavior
-    // (mock deliberately returns same output for different inputs)
-    println!("\n  Finding types:");
-    for finding in &report.findings {
-        println!("    - {:?}: {}", finding.attack_type, finding.description.chars().take(50).collect::<String>());
-    }
-    
-    println!("\n✅ Mock validation complete\n");
-}
-
-/// Test: Known-buggy circuits should be detected (requires circom)
-#[test]
-// Requires circom installation and circuit compilation
-fn ground_truth_known_bugs() {
     println!("\n=== Ground Truth Test: Known Bugs ===\n");
-    
+
+    let circom_available = std::process::Command::new("circom")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !circom_available {
+        println!("  circom not detected; skipping known-bugs execution test");
+        println!("  install circom + snarkjs to enable this suite\n");
+        return;
+    }
+    println!("  circom detected – using real execution path\n");
+
+    let mut stats = GroundTruthStats::default();
+
     for bug in known_bug_circuits() {
         println!("Testing: {} ({:?})", bug.name, bug.circuit_path);
-        
+
         if !bug.circuit_path.exists() {
             println!("  SKIP: Circuit file not found");
             continue;
         }
-        
-        println!("  Expected: {:?} ({})", bug.expected_attack_type, bug.expected_severity);
-        println!("  Status: PENDING (requires circom compilation)\n");
-        
-        // TODO: When circom is available, run actual fuzzing:
-        // 1. Compile circuit: circom circuit.circom --r1cs --wasm -o build/
-        // 2. Generate campaign YAML
-        // 3. Run ZkFuzzer::run_with_progress()
-        // 4. Check findings match expected
+
+        let yaml = generate_campaign_yaml(&bug);
+
+        let config: FuzzConfig = match serde_yaml::from_str(&yaml) {
+            Ok(c) => c,
+            Err(e) => {
+                println!("  SKIP: bad YAML for {}: {}", bug.name, e);
+                continue;
+            }
+        };
+
+        let report = {
+            let mut engine = match FuzzingEngine::new(config, Some(42), 1) {
+                Ok(e) => e,
+                Err(e) => {
+                    println!("  SKIP: engine init failed for {}: {}", bug.name, e);
+                    continue;
+                }
+            };
+            match engine.run(None).await {
+                Ok(r) => r,
+                Err(e) => {
+                    println!("  SKIP: execution failed for {}: {}", bug.name, e);
+                    continue;
+                }
+            }
+        };
+
+        let bug_found = !report.findings.is_empty();
+        let finding_types: Vec<String> = report
+            .findings
+            .iter()
+            .map(|f| format!("{:?}", f.attack_type))
+            .collect();
+
+        let result = GroundTruthResult {
+            name: bug.name.clone(),
+            bug_expected: true,
+            bug_found,
+            findings_count: report.findings.len(),
+            finding_types: finding_types.clone(),
+            time_ms: 0,
+            is_true_positive: bug_found,
+            is_false_positive: false,
+            is_false_negative: !bug_found,
+            is_true_negative: false,
+        };
+        stats.add_result(&result);
+
+        let status = if bug_found { "✓ DETECTED" } else { "✗ MISSED" };
+        println!(
+            "  {} — {} findings {:?}",
+            status, report.findings.len(), finding_types
+        );
     }
-    
-    println!("\nKnown bug circuits: {}", known_bug_circuits().len());
-    println!("Note: Run with circom installed for actual testing\n");
+
+    stats.print_summary();
+
+    assert!(
+        stats.detection_rate() >= 0.80,
+        "Detection rate {:.1}% should be >= 80% with real circom",
+        stats.detection_rate() * 100.0
+    );
 }
 
 /// Test: Full ground truth evaluation with real circuits

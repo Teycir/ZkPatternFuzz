@@ -165,8 +165,10 @@ impl LeanExporter {
             a_expr, b_expr, c_expr
         ));
 
-        // Add proof skeleton
-        theorem.push_str("  sorry -- TODO: Provide proof\n\n");
+        // Add proof skeleton with generated obligation
+        theorem.push_str("  -- Auto-generated proof skeleton.\n");
+        theorem.push_str("  -- Obligation: show A * B = C under the field axioms.\n");
+        theorem.push_str("  sorry -- SKELETON-ONLY: replace sorry with a real proof\n\n");
 
         theorem
     }
@@ -233,7 +235,10 @@ impl ProofExporter for LeanExporter {
             code.push_str(&goals.join(" ∧ "));
         }
 
-        code.push_str(" := by\n  sorry\n");
+        code.push_str(" := by\n");
+        code.push_str("  -- Auto-generated proof skeleton.\n");
+        code.push_str("  -- Prove each postcondition from the given hypotheses.\n");
+        code.push_str("  sorry -- SKELETON-ONLY: replace sorry with a real proof\n");
 
         ProofResult {
             code,
@@ -241,7 +246,7 @@ impl ProofExporter for LeanExporter {
             success: true,
             system: ProofSystem::Lean4,
             dependencies: vec!["Mathlib".to_string()],
-            warnings: vec![],
+            warnings: vec!["Output is skeleton-only: all theorems use sorry and must be completed manually.".to_string()],
         }
     }
 
@@ -284,7 +289,9 @@ impl ProofExporter for LeanExporter {
         ));
         code.push_str("  (∀ i, constraint_satisfied witness i) →\n");
         code.push_str("  circuit_valid witness := by\n");
-        code.push_str("  sorry\n");
+        code.push_str("  -- Auto-generated soundness skeleton.\n");
+        code.push_str("  -- Prove that any witness satisfying all constraints is valid.\n");
+        code.push_str("  sorry -- SKELETON-ONLY: replace sorry with a real proof\n");
 
         code.push_str(&self.generate_footer(name));
 
@@ -294,7 +301,7 @@ impl ProofExporter for LeanExporter {
             success: true,
             system: ProofSystem::Lean4,
             dependencies: vec!["Mathlib".to_string()],
-            warnings: vec![],
+            warnings: vec!["Output is skeleton-only: all theorems use sorry and must be completed manually.".to_string()],
         }
     }
 

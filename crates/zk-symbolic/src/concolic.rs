@@ -511,7 +511,7 @@ mod tests {
 
     impl CircuitExecutor for DummyExecutor {
         fn framework(&self) -> Framework {
-            Framework::Mock
+            Framework::Circom
         }
 
         fn name(&self) -> &str {
@@ -557,8 +557,8 @@ mod tests {
 
     #[test]
     fn test_concolic_executor_creation() {
-        let mock = Arc::new(DummyExecutor::new(3, 1));
-        let executor = ConcolicExecutor::new(mock);
+        let dummy = Arc::new(DummyExecutor::new(3, 1));
+        let executor = ConcolicExecutor::new(dummy);
 
         assert_eq!(executor.num_inputs, 4); // 3 private + 1 public
     }
@@ -568,8 +568,8 @@ mod tests {
         let mut integration = ConcolicFuzzerIntegration::new(3);
         assert!(!integration.is_initialized());
 
-        let mock = Arc::new(DummyExecutor::new(3, 1));
-        integration.initialize(mock);
+        let dummy = Arc::new(DummyExecutor::new(3, 1));
+        integration.initialize(dummy);
         assert!(integration.is_initialized());
     }
 }

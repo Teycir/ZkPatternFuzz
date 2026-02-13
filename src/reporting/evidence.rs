@@ -59,26 +59,14 @@ pub struct BackendIdentity {
     pub version: String,
     /// Hash of the circuit source/compiled artifacts
     pub circuit_hash: String,
-    /// Whether this is a mock/fallback backend
-    pub is_mock: bool,
 }
 
 impl BackendIdentity {
-    pub fn mock() -> Self {
-        Self {
-            framework: "mock".to_string(),
-            version: "synthetic".to_string(),
-            circuit_hash: "0x0".to_string(),
-            is_mock: true,
-        }
-    }
-
-    pub fn from_framework(framework: Framework, is_mock: bool) -> Self {
+    pub fn from_framework(framework: Framework) -> Self {
         Self {
             framework: format!("{:?}", framework).to_lowercase(),
             version: "unknown".to_string(),
             circuit_hash: "unknown".to_string(),
-            is_mock,
         }
     }
 }
@@ -415,11 +403,6 @@ impl EvidenceGenerator {
                         bundle.verification_result = VerificationResult::Skipped(e.to_string());
                     }
                 }
-            }
-            Framework::Mock => {
-                bundle.verification_result = VerificationResult::Skipped(
-                    "Mock framework does not support proof generation".to_string(),
-                );
             }
         }
 
@@ -949,9 +932,6 @@ pub fn format_bundle_markdown(bundle: &EvidenceBundle) -> String {
         "- Circuit Hash: {}\n",
         bundle.backend.circuit_hash
     ));
-    if bundle.backend.is_mock {
-        md.push_str("- ⚠️ **WARNING**: This is a MOCK backend - findings are SYNTHETIC\n");
-    }
     md.push_str("\n---\n\n");
 
     md

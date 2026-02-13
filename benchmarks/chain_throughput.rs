@@ -8,16 +8,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use zk_fuzzer::chain_fuzzer::{ChainRunner, ChainSpec, StepSpec};
-use zk_fuzzer::executor::MockCircuitExecutor;
-use zk_core::{CircuitExecutor, FieldElement};
+use zk_fuzzer::executor::FixtureCircuitExecutor;
+use zk_core::CircuitExecutor;
 
-/// Create chain runner with mock executors
+/// Create chain runner with fixture executors
 fn create_chain_runner(num_circuits: usize, inputs_per_circuit: usize) -> ChainRunner {
     let mut executors: HashMap<String, Arc<dyn CircuitExecutor>> = HashMap::new();
     
     for i in 0..num_circuits {
         let name = format!("circuit_{}", i);
-        let executor = MockCircuitExecutor::new(&name, inputs_per_circuit, 0)
+        let executor = FixtureCircuitExecutor::new(&name, inputs_per_circuit, 0)
             .with_outputs(inputs_per_circuit);
         executors.insert(name, Arc::new(executor));
     }

@@ -139,9 +139,9 @@ fn test_polygon_id_constraint_inference() {
 #[test]
 fn test_field_modulus_circuit_specific() {
     // This test verifies the field_modulus() trait method works
-    use zk_fuzzer::executor::{CircuitExecutor, MockCircuitExecutor};
+    use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
     
-    let executor = MockCircuitExecutor::new("test", 2, 1);
+    let executor = FixtureCircuitExecutor::new("test", 2, 1);
     
     // Get field modulus - should not be hardcoded
     let modulus = executor.field_modulus();
@@ -170,9 +170,9 @@ async fn test_continuous_fuzzing_realistic_iteration_count() {
             name: "Realistic Fuzzing Test".to_string(),
             version: "1.0".to_string(),
             target: Target {
-                framework: Framework::Mock,
-                circuit_path: PathBuf::from("./mock.circom"),
-                main_component: "Mock".to_string(),
+                framework: Framework::Circom,
+                circuit_path: PathBuf::from("./fixture.circom"),
+                main_component: "Fixture".to_string(),
             },
             parameters: {
                 let mut p = Parameters::default();
@@ -253,9 +253,9 @@ async fn test_all_five_novel_attacks_dispatch() {
                 name: format!("Test {} Attack", name),
                 version: "1.0".to_string(),
                 target: Target {
-                    framework: Framework::Mock,
-                    circuit_path: PathBuf::from("./mock.circom"),
-                    main_component: "Mock".to_string(),
+                    framework: Framework::Circom,
+                    circuit_path: PathBuf::from("./fixture.circom"),
+                    main_component: "Fixture".to_string(),
                 },
                 parameters: {
                     let mut p = Parameters::default();

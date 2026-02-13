@@ -323,7 +323,7 @@ impl Profiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::MockCircuitExecutor;
+    use crate::executor::FixtureCircuitExecutor;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 
@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn test_profiler() {
         let profiler = Profiler::new().with_samples(10);
-        let executor: Arc<dyn CircuitExecutor> = Arc::new(MockCircuitExecutor::new("test", 2, 1));
+        let executor: Arc<dyn CircuitExecutor> = Arc::new(FixtureCircuitExecutor::new("test", 2, 1));
         let mut rng = StdRng::seed_from_u64(42);
 
         let profile = profiler.profile(&executor, &mut rng);

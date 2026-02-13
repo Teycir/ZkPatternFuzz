@@ -192,6 +192,10 @@ pub struct BoundaryTester {
     test_sign_boundary: bool,
     /// Whether to generate arithmetic combinations
     test_arithmetic_combinations: bool,
+    /// Runtime field modulus override.  When `Some`, boundary tests use this
+    /// modulus instead of the hardcoded BN254 default.  This is set
+    /// automatically by the engine when a circuit provides `field_modulus()`.
+    modulus_override: Option<[u8; 32]>,
 }
 
 impl Default for BoundaryTester {
@@ -205,6 +209,7 @@ impl Default for BoundaryTester {
             test_overflow: true,
             test_sign_boundary: true,
             test_arithmetic_combinations: true,
+            modulus_override: None,
         }
     }
 }
@@ -255,6 +260,20 @@ impl BoundaryTester {
     pub fn with_arithmetic_combinations(mut self, enabled: bool) -> Self {
         self.test_arithmetic_combinations = enabled;
         self
+    }
+
+    /// Set a runtime field modulus override.
+    ///
+    /// When set, all boundary/overflow/sign tests use this modulus instead of
+    /// the hardcoded BN254 default.  Pass `None` to revert to the default.
+    pub fn with_modulus(mut self, modulus: [u8; 32]) -> Self {
+        self.modulus_override = Some(modulus);
+        self
+    }
+
+    /// Return the effective modulus bytes (override or BN254 default).
+    fn effective_modulus(&self) -> [u8; 32] {
+        self.modulus_override.unwrap_or_else(bn254_modulus_bytes)
     }
 
     /// Get all configured test values as strings
@@ -308,7 +327,7 @@ impl BoundaryTester {
 
     /// Generate field element boundary values
     fn generate_field_boundaries(&self) -> Vec<(FieldElement, String, BoundaryCategory)> {
-        let modulus = bn254_modulus_bytes();
+        let modulus = self.effective_modulus();
         let p = BigUint::from_bytes_be(&modulus);
 
         let mut values = Vec::new();
@@ -468,7 +487,7 @@ impl BoundaryTester {
 
     /// Generate sign boundary values (around (p-1)/2)
     fn generate_sign_boundaries(&self) -> Vec<(FieldElement, String, BoundaryCategory)> {
-        let modulus = bn254_modulus_bytes();
+        let modulus = self.effective_modulus();
         let p = BigUint::from_bytes_be(&modulus);
         let half = (&p - BigUint::from(1u32)) / BigUint::from(2u32);
 
@@ -510,7 +529,7 @@ impl BoundaryTester {
 
     /// Generate overflow/underflow test values
     fn generate_overflow_values(&self) -> Vec<(FieldElement, String, BoundaryCategory)> {
-        let modulus = bn254_modulus_bytes();
+        let modulus = self.effective_modulus();
         let p = BigUint::from_bytes_be(&modulus);
 
         let mut values = Vec::new();
@@ -552,7 +571,7 @@ impl BoundaryTester {
 
     /// Generate arithmetic combinations of boundary values
     fn generate_arithmetic_combinations(&self) -> Vec<(FieldElement, String, BoundaryCategory)> {
-        let modulus = bn254_modulus_bytes();
+        let modulus = self.effective_modulus();
         let p = BigUint::from_bytes_be(&modulus);
         let p_minus_1 = &p - BigUint::from(1u32);
 
@@ -656,7 +675,7 @@ impl Attack for BoundaryTester {
         if let (Some(executor), Some(input_ranges)) =
             (context.executor.as_ref(), context.input_ranges.as_ref())
         {
-            if !executor.is_mock() && !self.ranges.is_empty() {
+            if !self.ranges.is_empty() {
                 let total_inputs = executor.num_private_inputs() + executor.num_public_inputs();
                 if total_inputs > 0 {
                     let mut rng = StdRng::seed_from_u64(42);
@@ -916,7 +935,7 @@ mod tests {
         let tester = BoundaryTester::new();
         let range = common_ranges::percentage_range(); // 0-100
 
-        // Mock circuit that only accepts values <= 50
+        // Fixture circuit that only accepts values <= 50
         let accepts = |fe: &FieldElement| {
             let bytes = fe.to_bytes();
             let value = u64::from_be_bytes(bytes[24..32].try_into().unwrap());
@@ -926,7 +945,7 @@ mod tests {
         let vulnerabilities = tester.check_range_enforcement(accepts, &range);
 
         // Should find vulnerability at max (100) and above max (101)
-        // since our mock only accepts <= 50
+        // since our fixture only accepts <= 50
         assert!(!vulnerabilities.is_empty());
     }
 
