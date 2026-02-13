@@ -1,0 +1,21 @@
+# CVE Database Path Update Configuration
+# Maps CVE circuit paths to actual locations in targets/
+# 
+# Run: python3 scripts/update_cve_paths.py
+
+path_mappings:
+  # Tornado Cash
+  "cat3_privacy/tornado-core/circuits/withdraw.circom": 
+    "targets/zk0d/cat3_privacy/tornado-core/circuits/withdraw.circom"
+  "cat3_privacy/tornado-core/circuits/merkleTree.circom":
+    "targets/zk0d/cat3_privacy/tornado-core/circuits/merkleTree.circom"
+  
+  # Semaphore
+  "cat3_privacy/semaphore/packages/circuits/src/semaphore.circom":
+    "targets/zk0d/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+  
+  # Generic test circuits (use zkbugs instead)
+  "circuits/range_proof.circom":
+    "targets/zkbugs/dataset/circom/iden3/circomlib/kobi_gurkan_mimc_sponge/sponge.circom"
+  "circuits/division.circom":
+    "targets/zkbugs/dataset/circom/reclaimprotocol/circom-chacha20/zksecurity_unsound_left_rotation/circuits/generics.circom"

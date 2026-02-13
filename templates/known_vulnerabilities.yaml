@@ -58,7 +58,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat3_privacy/tornado-core/circuits/withdraw.circom"
+      circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/tornado-core/circuits/withdraw.circom"
       test_cases:
         - name: valid_signature_normal
           inputs:
@@ -121,7 +121,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+      circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
       test_cases:
         - name: unique_nullifiers
           inputs:
@@ -184,7 +184,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat3_privacy/tornado-core/circuits/merkleTree.circom"
+      circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/tornado-core/circuits/merkleTree.circom"
       test_cases:
         - name: correct_depth
           inputs:
@@ -310,7 +310,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "circuits/range_proof.circom"
+      circuit_path: "/media/elements/Repos/zk0d/circuits/range_proof.circom"
       test_cases:
         - name: within_range
           inputs:
@@ -374,7 +374,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "circuits/division.circom"
+      circuit_path: "/media/elements/Repos/zk0d/circuits/division.circom"
       test_cases:
         - name: normal_division
           inputs:
@@ -433,7 +433,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat3_privacy/tornado-core/circuits/withdraw.circom"
+      circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/tornado-core/circuits/withdraw.circom"
       test_cases:
         - name: timing_variance
           inputs:
@@ -481,7 +481,7 @@ vulnerabilities:
 
     regression_test:
       enabled: true
-      circuit_path: "cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+      circuit_path: "/media/elements/Repos/zk0d/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
       test_cases:
         - name: mutual_information_test
           inputs:

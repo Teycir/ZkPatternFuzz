@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "description": "CVE circuit references - maps CVE IDs to actual circuit locations",
+  "base_path": "/media/elements/Repos/zk0d",
+  "references": {
+    "ZK-CVE-2022-001": {
+      "circuit": "cat3_privacy/tornado-core/circuits/withdraw.circom",
+      "exists": false,
+      "tested": false
+    },
+    "ZK-CVE-2022-002": {
+      "circuit": "cat3_privacy/semaphore/packages/circuits/src/semaphore.circom",
+      "exists": false,
+      "tested": false
+    },
+    "ZK-CVE-2021-001": {
+      "circuit": "cat3_privacy/tornado-core/circuits/merkleTree.circom",
+      "exists": false,
+      "tested": false
+    },
+    "ZK-CVE-2021-002": {
+      "circuit": "cat3_privacy/tornado-core/circuits/merkleTree.circom",
+      "exists": false,
+      "tested": false
+    },
+    "ZK-CVE-2023-001": {
+      "circuit": "circuits/range_proof.circom",
+      "exists": false,
+      "tested": false
+    },
+    "ZK-CVE-2023-002": {
+      "circuit": "circuits/division.circom",
+      "exists": false,
+      "tested": false
+    },
+    "ZK-CVE-2022-003": {
+      "circuit": "cat3_privacy/tornado-core/circuits/withdraw.circom",
+      "exists": false,
+      "tested": false
+    },
+    "ZK-CVE-2023-003": {
+      "circuit": "cat3_privacy/semaphore/packages/circuits/src/semaphore.circom",
+      "exists": false,
+      "tested": false
+    }
+  }
+}
