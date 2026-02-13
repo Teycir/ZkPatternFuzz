@@ -391,17 +391,6 @@ impl FuzzingEngineCore {
                 );
                 findings.push(finding);
             }
-
-            if let Some(count) = constraint_count {
-                if let Some(finding) = oracle.check_with_count(test_case, count) {
-                    tracing::warn!(
-                        "Oracle '{}' detected issue: {}",
-                        oracle.name(),
-                        finding.description
-                    );
-                    findings.push(finding);
-                }
-            }
         }
         findings
     }
