@@ -7,6 +7,7 @@ impl FuzzingEngine {
         chains: &[crate::chain_fuzzer::ChainSpec],
         progress: Option<&ProgressReporter>,
     ) -> Vec<crate::chain_fuzzer::ChainFinding> {
+        use anyhow::Context as _;
         use crate::chain_fuzzer::{
             ChainCorpus, ChainFinding, ChainMutator, ChainRunner, ChainScheduler, ChainShrinker,
             CrossStepInvariantChecker, DepthMetrics,
@@ -144,7 +145,23 @@ impl FuzzingEngine {
         // Phase 5 Fix (Milestone 5.3): Use framework-aware chain mutator
         // Previously used ChainMutator::new() which defaults to Framework::Mock,
         // causing reduced mutation validity for real circuits.
-        let mutator = ChainMutator::new_with_framework(self.config.campaign.target.framework);
+        let allow_spec_mutations =
+            Self::additional_bool(additional, "chain_allow_spec_mutations").unwrap_or(false);
+
+        let mutator = if allow_spec_mutations {
+            tracing::info!("Chain spec mutations: enabled");
+            ChainMutator::new_with_framework(self.config.campaign.target.framework)
+        } else {
+            // Default: do not mutate chain structure (reorders/duplications) to avoid generating
+            // misleading assertion violations and to keep throughput stable. Campaigns that want
+            // structural mutations can opt-in with `chain_allow_spec_mutations: true`.
+            tracing::info!("Chain spec mutations: disabled (inputs-only)");
+            let mut weights = crate::chain_fuzzer::mutator::MutationWeights::default();
+            weights.step_reorder = 0.0;
+            weights.step_duplication = 0.0;
+            ChainMutator::new_with_framework(self.config.campaign.target.framework)
+                .with_weights(weights)
+        };
 
         // Initialize scheduler with budget
         let scheduler =
@@ -160,6 +177,142 @@ impl FuzzingEngine {
         let mut rng = match self.seed {
             Some(s) => ChaCha8Rng::seed_from_u64(s),
             None => ChaCha8Rng::from_entropy(),
+        };
+
+        // Optional per-circuit baseline inputs for chain fuzzing.
+        //
+        // This is critical for cross-circuit chains where downstream circuits require a valid
+        // structured witness (e.g. full query circuits). A baseline vector is used as a stable
+        // starting point, and `from_prior_output` wiring overlays only the mapped indices.
+        //
+        // YAML shape (campaign.parameters.additional via flatten):
+        //
+        //   chain_seed_inputs:
+        //     nullify: "campaigns/zk0d/nullify_passthrough_wrapper_seed_flat.json"
+        //     query:   "campaigns/zk0d/credentialAtomicQueryV3_16_16_64_seed_flat.json"
+        //
+        // Each file may be:
+        // - a JSON array: ["0x..", ...]
+        // - a corpus test_case JSON object: { "inputs": ["0x..", ...], ... }
+        let chain_seed_inputs_by_ref: std::collections::HashMap<String, Vec<FieldElement>> = {
+            use std::collections::HashMap;
+
+            fn parse_field_element_str(raw: &str) -> anyhow::Result<FieldElement> {
+                let trimmed = raw.trim();
+                if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
+                    return FieldElement::from_hex(trimmed);
+                }
+
+                // Decimal string
+                use num_bigint::BigUint;
+                let value = BigUint::parse_bytes(trimmed.as_bytes(), 10).ok_or_else(|| {
+                    anyhow::anyhow!("Invalid decimal field element: {}", trimmed)
+                })?;
+                let bytes = value.to_bytes_be();
+                if bytes.len() > 32 {
+                    anyhow::bail!(
+                        "Decimal field element too large: {} bytes (max 32)",
+                        bytes.len()
+                    );
+                }
+                Ok(FieldElement::from_bytes(&bytes))
+            }
+
+            fn load_seed_vec_from_json(path: &std::path::Path) -> anyhow::Result<Vec<FieldElement>> {
+                let raw = std::fs::read_to_string(path)
+                    .with_context(|| format!("Read chain seed inputs: {}", path.display()))?;
+                let json: serde_json::Value = serde_json::from_str(&raw)
+                    .with_context(|| format!("Parse chain seed JSON: {}", path.display()))?;
+
+                let arr = match json {
+                    serde_json::Value::Array(a) => a,
+                    serde_json::Value::Object(mut o) => match o.remove("inputs") {
+                        Some(serde_json::Value::Array(a)) => a,
+                        Some(_) => anyhow::bail!(
+                            "Chain seed object must contain an 'inputs' JSON array: {}",
+                            path.display()
+                        ),
+                        None => anyhow::bail!(
+                            "Chain seed object must contain an 'inputs' JSON array: {}",
+                            path.display()
+                        ),
+                    },
+                    _ => anyhow::bail!(
+                        "Chain seed file must be a JSON array or an object with 'inputs': {}",
+                        path.display()
+                    ),
+                };
+
+                let mut out = Vec::with_capacity(arr.len());
+                for (i, v) in arr.into_iter().enumerate() {
+                    let fe = match v {
+                        serde_json::Value::String(s) => parse_field_element_str(&s).with_context(|| {
+                            format!("Parse chain seed element {} from {}", i, path.display())
+                        })?,
+                        serde_json::Value::Number(n) => parse_field_element_str(&n.to_string()).with_context(|| {
+                            format!("Parse chain seed element {} from {}", i, path.display())
+                        })?,
+                        _ => anyhow::bail!(
+                            "Chain seed element {} must be a string or number: {}",
+                            i,
+                            path.display()
+                        ),
+                    };
+                    out.push(fe);
+                }
+                Ok(out)
+            }
+
+            match additional.get("chain_seed_inputs") {
+                Some(serde_yaml::Value::Mapping(map)) => {
+                    let mut out: HashMap<String, Vec<FieldElement>> = HashMap::new();
+                    for (k, v) in map {
+                        let Some(circuit_ref) = k.as_str() else {
+                            tracing::warn!(
+                                "chain_seed_inputs has a non-string key; skipping: {:?}",
+                                k
+                            );
+                            continue;
+                        };
+                        let Some(path_str) = v.as_str() else {
+                            tracing::warn!(
+                                "chain_seed_inputs[{}] is not a string path; skipping",
+                                circuit_ref
+                            );
+                            continue;
+                        };
+                        let path = std::path::Path::new(path_str);
+                        match load_seed_vec_from_json(path) {
+                            Ok(vec) => {
+                                tracing::info!(
+                                    "Loaded chain seed inputs for '{}': {} ({} elems)",
+                                    circuit_ref,
+                                    path.display(),
+                                    vec.len()
+                                );
+                                out.insert(circuit_ref.to_string(), vec);
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to load chain seed inputs for '{}' from {}: {:#}",
+                                    circuit_ref,
+                                    path.display(),
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    out
+                }
+                Some(other) => {
+                    tracing::warn!(
+                        "chain_seed_inputs must be a mapping of circuit_ref -> json_path; got {:?}",
+                        other
+                    );
+                    HashMap::new()
+                }
+                None => HashMap::new(),
+            }
         };
 
         // Optional seed inputs for chain fuzzing (reuse evidence seed inputs if provided)
@@ -195,7 +348,7 @@ impl FuzzingEngine {
             }
 
             // Initial inputs (seeded if available; otherwise generated fresh)
-            let mut current_inputs = std::collections::HashMap::new();
+            let mut current_inputs = chain_seed_inputs_by_ref.clone();
             if !seed_inputs.is_empty() {
                 if let Some(first_step) = chain.steps.first() {
                     if let Some(executor) = runner.executors.get(&first_step.circuit_ref) {
@@ -216,6 +369,14 @@ impl FuzzingEngine {
                 }
                 seed_index = seed_index.wrapping_add(1);
             }
+
+            let mut ok_completed = 0usize;
+            let mut failed = 0usize;
+            let mut failed_by_step: std::collections::HashMap<usize, usize> =
+                std::collections::HashMap::new();
+            let mut sample_errors: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+
             let mut iterations = 0;
             let mut current_spec: Option<crate::chain_fuzzer::ChainSpec> = None;
 
@@ -226,6 +387,7 @@ impl FuzzingEngine {
                 let result = runner.execute(spec_to_use, &current_inputs, &mut rng);
 
                 if result.completed {
+                    ok_completed += 1;
                     // Rebuild checker if spec was mutated
                     let active_checker = if current_spec.is_some() {
                         CrossStepInvariantChecker::from_spec(spec_to_use)
@@ -304,6 +466,18 @@ impl FuzzingEngine {
                         coverage_bits,
                         result.trace.depth(),
                     ));
+                } else {
+                    failed += 1;
+                    if let Some(failed_at) = result.failed_at {
+                        *failed_by_step.entry(failed_at).or_insert(0) += 1;
+                        if sample_errors.len() < 3 {
+                            if let Some(step) = result.trace.steps.get(failed_at) {
+                                if let Some(err) = &step.error {
+                                    sample_errors.insert(err.clone());
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Mutate for next iteration (may produce a modified spec)
@@ -318,14 +492,25 @@ impl FuzzingEngine {
             }
 
             tracing::info!(
-                "Chain {} completed: {} iterations, {} findings",
+                "Chain {} completed: {} iterations (ok={}, failed={}, failed_by_step={:?}), {} findings",
                 chain.name,
                 iterations,
+                ok_completed,
+                failed,
+                failed_by_step,
                 all_findings
                     .iter()
                     .filter(|f| f.spec_name == chain.name)
                     .count()
             );
+
+            if ok_completed == 0 && failed > 0 && !sample_errors.is_empty() {
+                tracing::warn!(
+                    "Chain {} had 0 completed traces; sample errors: {:?}",
+                    chain.name,
+                    sample_errors
+                );
+            }
         }
 
         // Save corpus

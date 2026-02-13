@@ -205,7 +205,23 @@ impl ChainRunner {
             }
 
             InputWiring::FromPriorOutput { step, mapping } => {
-                let mut inputs = vec![FieldElement::zero(); expected_count];
+                // Start from any provided seed inputs for this circuit_ref so downstream steps
+                // can be executed with a stable baseline (e.g., valid seed witness), then
+                // overlay mapped values from the prior step.
+                let mut inputs = if let Some(seed) = initial_inputs.get(circuit_ref) {
+                    if seed.len() >= expected_count {
+                        seed[..expected_count].to_vec()
+                    } else {
+                        let mut out = seed.clone();
+                        while out.len() < expected_count {
+                            out.push(FieldElement::random(rng));
+                        }
+                        out
+                    }
+                } else {
+                    vec![FieldElement::zero(); expected_count]
+                };
+
                 // Track which indices have been explicitly mapped (even if value is zero)
                 let mapped_indices: std::collections::HashSet<_> = 
                     mapping.iter().map(|(_, in_idx)| *in_idx).collect();
@@ -221,12 +237,16 @@ impl ChainRunner {
                     }
                 }
 
-                // Fill unmapped inputs with random values
-                // CRITICAL FIX: Only fill indices that weren't in the mapping
-                // (zero is a valid output value and should not be overwritten)
-                for i in 0..inputs.len() {
-                    if !mapped_indices.contains(&i) {
-                        inputs[i] = FieldElement::random(rng);
+                // If we did not have a baseline seed for this step, fill unmapped inputs with
+                // random values. If we did have a baseline, keep it (baseline values are
+                // intentional and often required for successful execution).
+                if !initial_inputs.contains_key(circuit_ref) {
+                    // CRITICAL FIX: Only fill indices that weren't in the mapping
+                    // (zero is a valid output value and should not be overwritten)
+                    for i in 0..inputs.len() {
+                        if !mapped_indices.contains(&i) {
+                            inputs[i] = FieldElement::random(rng);
+                        }
                     }
                 }
 

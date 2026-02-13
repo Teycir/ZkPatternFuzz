@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
 use zk_fuzzer::config::{FuzzConfig, ProfileName, apply_profile};
 use zk_fuzzer::fuzzer::ZkFuzzer;
-use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "zk-fuzzer")]
@@ -185,45 +184,6 @@ async fn kill_existing_instances() {
     }
 }
 
-/// Get PID file path
-fn get_pid_file() -> PathBuf {
-    std::env::temp_dir().join("zk-fuzzer.pid")
-}
-
-/// Create PID lockfile
-fn create_pid_file() -> anyhow::Result<()> {
-    let pid_file = get_pid_file();
-    let current_pid = std::process::id();
-    
-    // Check if another instance is running
-    if pid_file.exists() {
-        if let Ok(existing_pid) = std::fs::read_to_string(&pid_file) {
-            if let Ok(pid) = existing_pid.trim().parse::<u32>() {
-                // Check if process is still running
-                let check = std::process::Command::new("kill")
-                    .args(&["-0", &pid.to_string()])
-                    .output();
-                
-                if check.is_ok() && check.unwrap().status.success() {
-                    eprintln!("⚠️  Another zk-fuzzer instance is already running (PID: {})", pid);
-                    eprintln!("   Use --kill-existing to terminate it, or wait for it to finish.");
-                    std::process::exit(1);
-                }
-            }
-        }
-    }
-    
-    // Write our PID
-    std::fs::write(&pid_file, current_pid.to_string())?;
-    Ok(())
-}
-
-/// Remove PID lockfile
-fn remove_pid_file() {
-    let pid_file = get_pid_file();
-    let _ = std::fs::remove_file(pid_file);
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -233,20 +193,9 @@ async fn main() -> anyhow::Result<()> {
         kill_existing_instances().await;
     }
 
-    // Create PID lockfile (unless running exec-worker subcommand)
-    let use_pid_file = !matches!(cli.command, Some(Commands::ExecWorker));
-    if use_pid_file {
-        create_pid_file()?;
-    }
-
     // Run the command and ensure cleanup
     let result = run_cli_command(cli).await;
-    
-    // Cleanup PID file
-    if use_pid_file {
-        remove_pid_file();
-    }
-    
+
     result
 }
 

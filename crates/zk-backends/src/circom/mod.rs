@@ -13,11 +13,73 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, OnceLock};
 use tempfile::Builder;
+
+fn circom_external_command_timeout() -> std::time::Duration {
+    // Default chosen to prevent pathological hangs without being too aggressive for large circuits.
+    // Override with e.g. `ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS=300` for slower machines/circuits.
+    const DEFAULT_SECS: u64 = 60;
+
+    match std::env::var("ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS") {
+        Ok(raw) => raw
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|v| std::time::Duration::from_secs(v.max(1)))
+            .unwrap_or_else(|| std::time::Duration::from_secs(DEFAULT_SECS)),
+        Err(_) => std::time::Duration::from_secs(DEFAULT_SECS),
+    }
+}
+
+fn run_with_timeout(cmd: &mut Command, timeout: std::time::Duration) -> Result<Output> {
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| "Failed to spawn external command")?;
+
+    let start = std::time::Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            let stdout = child
+                .stdout
+                .take()
+                .map(|mut s| {
+                    let mut buf = Vec::new();
+                    let _ = s.read_to_end(&mut buf);
+                    buf
+                })
+                .unwrap_or_default();
+            let stderr = child
+                .stderr
+                .take()
+                .map(|mut s| {
+                    let mut buf = Vec::new();
+                    let _ = s.read_to_end(&mut buf);
+                    buf
+                })
+                .unwrap_or_default();
+            return Ok(Output {
+                status,
+                stdout,
+                stderr,
+            });
+        }
+
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            anyhow::bail!("Command timed out after {:?}", timeout)
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
 
 /// Circom circuit target with full backend integration
 pub struct CircomTarget {
@@ -485,6 +547,7 @@ impl WitnessCalculator {
         let input_path = temp_path.join("input.json");
         let witness_path = temp_path.join("witness.wtns");
         let witness_json_path = temp_path.join("witness.json");
+        let cmd_timeout = circom_external_command_timeout();
 
         // Write inputs to JSON
         let input_json = serde_json::to_string(inputs)?;
@@ -499,11 +562,18 @@ impl WitnessCalculator {
                 let input_js = serde_json::to_string(
                     input_path.to_str().unwrap_or_default()
                 )?;
+                // Use absolute paths since the script runs from a temp dir (relative paths
+                // would be resolved relative to that temp dir and fail).
+                let wasm_abs = std::fs::canonicalize(&self.wasm_path)
+                    .unwrap_or_else(|_| self.wasm_path.clone());
+                let wc_abs = std::fs::canonicalize(&witness_calculator_path)
+                    .unwrap_or_else(|_| witness_calculator_path.clone());
+
                 let wasm_js = serde_json::to_string(
-                    self.wasm_path.to_str().unwrap_or_default()
+                    wasm_abs.to_str().unwrap_or_default()
                 )?;
                 let wc_js = serde_json::to_string(
-                    witness_calculator_path.to_str().unwrap_or_default()
+                    wc_abs.to_str().unwrap_or_default()
                 )?;
                 let out_js = serde_json::to_string(
                     witness_json_path.to_str().unwrap_or_default()
@@ -525,34 +595,79 @@ wc(wasm).then(async (calc) => {{\n\
                 );
                 std::fs::write(&script_path, script)?;
 
-                let output = Command::new("node")
-                    .arg(&script_path)
-                    .output()
-                    .context("Failed to run witness calculator")?;
+                let output = {
+                    let mut cmd = Command::new("node");
+                    cmd.arg(&script_path);
+                    run_with_timeout(&mut cmd, cmd_timeout)
+                }
+                .context("Failed to run witness calculator");
 
-                if output.status.success() && witness_json_path.exists() {
-                    let witness_json = std::fs::read_to_string(&witness_json_path)?;
-                    let witness_values: Vec<String> = serde_json::from_str(&witness_json)?;
-                    let witness: Vec<FieldElement> = witness_values
-                        .iter()
-                        .map(|v| parse_decimal_to_field_element(v))
-                        .collect::<Result<Vec<_>>>()?;
-                    return Ok(witness);
+                match output {
+                    Ok(output) if output.status.success() && witness_json_path.exists() => {
+                        let witness_json = std::fs::read_to_string(&witness_json_path)?;
+                        let witness_values: Vec<String> = serde_json::from_str(&witness_json)?;
+                        let witness: Vec<FieldElement> = witness_values
+                            .iter()
+                            .map(|v| parse_decimal_to_field_element(v))
+                            .collect::<Result<Vec<_>>>()?;
+                        return Ok(witness);
+                    }
+                    Ok(output) => {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        let lower = stderr.to_lowercase();
+                        let status_success = output.status.success();
+                        let witness_missing = status_success && !witness_json_path.exists();
+
+                        // Only fall back to snarkjs for loader/runtime issues where snarkjs might
+                        // still succeed. For actual circuit assertion failures, returning early is
+                        // both correct and faster (snarkjs will fail the same way).
+                        let can_fallback = witness_missing
+                            || lower.contains("cannot find module")
+                            || lower.contains("module_not_found");
+
+                        if !can_fallback {
+                            anyhow::bail!(
+                                "Witness calculation failed: {}",
+                                stderr.chars().take(200).collect::<String>()
+                            );
+                        }
+
+                        static WC_FALLBACK_ONCE: OnceLock<()> = OnceLock::new();
+                        if WC_FALLBACK_ONCE.set(()).is_ok() {
+                            tracing::warn!(
+                                "witness_calculator.js failed; falling back to snarkjs CLI. \
+                                 First error: {}",
+                                stderr.chars().take(200).collect::<String>()
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        static WC_FALLBACK_ERR_ONCE: OnceLock<()> = OnceLock::new();
+                        if WC_FALLBACK_ERR_ONCE.set(()).is_ok() {
+                            tracing::warn!(
+                                "witness_calculator.js errored; falling back to snarkjs CLI. \
+                                 First error: {:#}",
+                                err
+                            );
+                        }
+                    }
                 }
             }
         }
 
         // Run witness generation using snarkjs
-        let output = snarkjs_command_for(self.snarkjs_path.as_deref())
-            .args([
+        let output = {
+            let mut cmd = snarkjs_command_for(self.snarkjs_path.as_deref());
+            cmd.args([
                 "wtns",
                 "calculate",
                 self.wasm_path.to_str().unwrap(),
                 input_path.to_str().unwrap(),
                 witness_path.to_str().unwrap(),
-            ])
-            .output()
-            .context("Failed to run snarkjs witness calculation")?;
+            ]);
+            run_with_timeout(&mut cmd, cmd_timeout)
+        }
+        .context("Failed to run snarkjs witness calculation")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -560,16 +675,18 @@ wc(wasm).then(async (calc) => {{\n\
         }
 
         // Export witness to JSON for parsing
-        let output = snarkjs_command_for(self.snarkjs_path.as_deref())
-            .args([
+        let output = {
+            let mut cmd = snarkjs_command_for(self.snarkjs_path.as_deref());
+            cmd.args([
                 "wtns",
                 "export",
                 "json",
                 witness_path.to_str().unwrap(),
                 witness_json_path.to_str().unwrap(),
-            ])
-            .output()
-            .context("Failed to export witness to JSON")?;
+            ]);
+            run_with_timeout(&mut cmd, cmd_timeout)
+        }
+        .context("Failed to export witness to JSON")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
