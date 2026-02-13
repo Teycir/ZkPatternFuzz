@@ -143,12 +143,11 @@ impl FuzzingEngine {
                 Some(OracleKind::Commitment) => add_oracle(Box::new(SemanticOracleAdapter::new(
                     Box::new(CommitmentOracle::new(oracle_config.clone())),
                 ))),
-                Some(OracleKind::Range) => add_oracle(Box::new(SemanticOracleAdapter::new(
-                    Box::new(RangeProofOracle::new_with_modulus(
-                        oracle_config.clone(),
-                        field_modulus,
-                    )),
-                ))),
+                Some(OracleKind::Range) => {
+                    add_oracle(Box::new(SemanticOracleAdapter::new(Box::new(
+                        RangeProofOracle::new_with_modulus(oracle_config.clone(), field_modulus),
+                    ))))
+                }
                 Some(OracleKind::ConstraintCount) => {
                     let expected = config.campaign.parameters.max_constraints as usize;
                     add_oracle(Box::new(ConstraintCountOracle::new(expected)));
@@ -216,13 +215,11 @@ impl FuzzingEngine {
         {
             options.circom_skip_compile_if_artifacts = skip_compile;
         }
-        if let Some(skip_check) =
-            Self::additional_bool(additional, "circom_skip_constraint_check")
+        if let Some(skip_check) = Self::additional_bool(additional, "circom_skip_constraint_check")
         {
             options.circom_skip_constraint_check = skip_check;
         }
-        if let Some(sanity_check) =
-            Self::additional_bool(additional, "circom_witness_sanity_check")
+        if let Some(sanity_check) = Self::additional_bool(additional, "circom_witness_sanity_check")
         {
             options.circom_witness_sanity_check = sanity_check;
         }
@@ -506,5 +503,4 @@ impl FuzzingEngine {
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as usize
     }
-
 }

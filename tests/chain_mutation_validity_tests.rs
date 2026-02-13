@@ -32,7 +32,7 @@ fn test_framework_aware_mutator_circom() {
         assert!(!mutated.is_empty(), "Mutated inputs should not be empty");
         
         // Verify field elements are within Circom's BN254 field
-        for (_, values) in &mutated {
+        for values in mutated.values() {
             for val in values {
                 assert!(is_valid_bn254_field_element(val), 
                     "Field element should be valid for BN254 field");

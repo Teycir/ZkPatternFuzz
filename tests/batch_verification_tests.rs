@@ -243,7 +243,7 @@ fn test_invalid_position_multiple_random() {
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     let indices = InvalidPosition::MultipleRandom.get_indices(10, &mut rng);
 
-    assert!(indices.len() >= 1);
+    assert!(!indices.is_empty());
     assert!(indices.len() <= 5); // At most half
     for idx in &indices {
         assert!(*idx < 10);

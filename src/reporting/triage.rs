@@ -242,15 +242,16 @@ pub struct ConfidenceBreakdown {
 impl ConfidenceBreakdown {
     /// Calculate breakdown for a triaged finding
     pub fn calculate(finding: &TriagedFinding, config: &TriageConfig) -> Self {
-        let mut breakdown = Self::default();
-
         // Base score from severity (0.3-0.5)
-        breakdown.base_score = match finding.finding.severity {
-            Severity::Critical => 0.50,
-            Severity::High => 0.45,
-            Severity::Medium => 0.40,
-            Severity::Low => 0.35,
-            Severity::Info => 0.30,
+        let mut breakdown = Self {
+            base_score: match finding.finding.severity {
+                Severity::Critical => 0.50,
+                Severity::High => 0.45,
+                Severity::Medium => 0.40,
+                Severity::Low => 0.35,
+                Severity::Info => 0.30,
+            },
+            ..Self::default()
         };
 
         // Cross-oracle validation bonus (up to config.cross_oracle_weight)
@@ -608,8 +609,8 @@ impl TriageReport {
 
         md.push_str("# Triage Report\n\n");
         md.push_str("## Summary\n\n");
-        md.push_str(&format!("| Metric | Value |\n"));
-        md.push_str(&format!("|--------|-------|\n"));
+        md.push_str("| Metric | Value |\n");
+        md.push_str("|--------|-------|\n");
         md.push_str(&format!(
             "| Total Findings | {} |\n",
             self.statistics.total_findings

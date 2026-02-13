@@ -231,7 +231,7 @@ fn test_circom_integration() {
         FieldElement::from_u64(4),
     ]).expect("Circom execution failed");
 
-    assert_eq!(outputs.get(0), Some(&FieldElement::from_u64(12)));
+    assert_eq!(outputs.first(), Some(&FieldElement::from_u64(12)));
 }
 
 /// Integration test for Noir (only runs if nargo is available)
@@ -255,7 +255,7 @@ fn test_noir_integration() {
         FieldElement::from_u64(5),
     ]).expect("Noir execution failed");
 
-    assert_eq!(outputs.get(0), Some(&FieldElement::from_u64(15)));
+    assert_eq!(outputs.first(), Some(&FieldElement::from_u64(15)));
 }
 
 /// Integration test for ExecutorFactory using real backends
@@ -407,7 +407,7 @@ fn test_cairo_integration() {
     target.compile().expect("Cairo compilation failed");
 
     let outputs = target.execute(&[]).expect("Cairo execution failed");
-    assert_eq!(outputs.get(0), Some(&FieldElement::from_u64(12)));
+    assert_eq!(outputs.first(), Some(&FieldElement::from_u64(12)));
 }
 
 /// Integration test for Halo2 JSON spec loading/execution

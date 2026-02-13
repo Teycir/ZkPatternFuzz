@@ -297,9 +297,13 @@ impl AccumulatorState {
     pub fn fold_with(&self, new_instance: &[FieldElement], r: &FieldElement) -> Self {
         // Simplified folding: acc' = acc + r * new_instance
         let mut new_running_acc = Vec::with_capacity(self.running_acc.len());
-        for i in 0..self.running_acc.len().min(new_instance.len()) {
-            let scaled = new_instance[i].mul(r);
-            new_running_acc.push(self.running_acc[i].add(&scaled));
+        for (acc, instance) in self
+            .running_acc
+            .iter()
+            .zip(new_instance.iter())
+        {
+            let scaled = instance.mul(r);
+            new_running_acc.push(acc.add(&scaled));
         }
 
         Self {

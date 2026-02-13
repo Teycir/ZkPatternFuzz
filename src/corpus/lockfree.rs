@@ -48,10 +48,9 @@ impl LockFreeTestQueue {
 
     /// Try to pop a test case from the queue
     pub fn pop(&self) -> Option<TestCase> {
-        self.queue.pop().map(|tc| {
+        self.queue.pop().inspect(|_| {
             self.size.fetch_sub(1, Ordering::Relaxed);
             self.total_removed.fetch_add(1, Ordering::Relaxed);
-            tc
         })
     }
 
@@ -115,7 +114,7 @@ pub struct AtomicCoverageBitmap {
 impl AtomicCoverageBitmap {
     /// Create a new bitmap with given number of bits
     pub fn new(num_bits: usize) -> Self {
-        let num_words = (num_bits + 63) / 64;
+        let num_words = num_bits.div_ceil(64);
         let bitmap = (0..num_words).map(|_| AtomicU64::new(0)).collect();
 
         Self {

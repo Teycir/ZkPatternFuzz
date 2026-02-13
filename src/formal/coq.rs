@@ -68,7 +68,7 @@ impl CoqExporter {
     }
 
     /// Convert symbolic value to Coq expression
-    fn value_to_coq(&self, value: &SymbolicValue) -> String {
+    fn value_to_coq(value: &SymbolicValue) -> String {
         match value {
             SymbolicValue::Concrete(fe) => {
                 format!("{}%Z", fe.to_decimal_string())
@@ -82,61 +82,61 @@ impl CoqExporter {
                 clean
             }
             SymbolicValue::Add(a, b) => {
-                format!("(fadd {} {})", self.value_to_coq(a), self.value_to_coq(b))
+                format!("(fadd {} {})", Self::value_to_coq(a), Self::value_to_coq(b))
             }
             SymbolicValue::Mul(a, b) => {
-                format!("(fmul {} {})", self.value_to_coq(a), self.value_to_coq(b))
+                format!("(fmul {} {})", Self::value_to_coq(a), Self::value_to_coq(b))
             }
             SymbolicValue::Sub(a, b) => {
-                format!("(fsub {} {})", self.value_to_coq(a), self.value_to_coq(b))
+                format!("(fsub {} {})", Self::value_to_coq(a), Self::value_to_coq(b))
             }
             SymbolicValue::Neg(a) => {
-                format!("(fneg {})", self.value_to_coq(a))
+                format!("(fneg {})", Self::value_to_coq(a))
             }
             _ => "0%Z".to_string(),
         }
     }
 
     /// Convert symbolic constraint to Coq proposition
-    fn constraint_to_coq(&self, constraint: &SymbolicConstraint) -> String {
+    fn constraint_to_coq(constraint: &SymbolicConstraint) -> String {
         match constraint {
             SymbolicConstraint::Eq(a, b) => {
-                format!("{} = {}", self.value_to_coq(a), self.value_to_coq(b))
+                format!("{} = {}", Self::value_to_coq(a), Self::value_to_coq(b))
             }
             SymbolicConstraint::Neq(a, b) => {
-                format!("{} <> {}", self.value_to_coq(a), self.value_to_coq(b))
+                format!("{} <> {}", Self::value_to_coq(a), Self::value_to_coq(b))
             }
             SymbolicConstraint::R1CS { a, b, c } => {
                 format!(
                     "fmul {} {} = {}",
-                    self.value_to_coq(a),
-                    self.value_to_coq(b),
-                    self.value_to_coq(c)
+                    Self::value_to_coq(a),
+                    Self::value_to_coq(b),
+                    Self::value_to_coq(c)
                 )
             }
             SymbolicConstraint::Boolean(v) => {
                 format!(
                     "({} = 0%Z \\/ {} = 1%Z)",
-                    self.value_to_coq(v),
-                    self.value_to_coq(v)
+                    Self::value_to_coq(v),
+                    Self::value_to_coq(v)
                 )
             }
             SymbolicConstraint::And(c1, c2) => {
                 format!(
                     "({} /\\ {})",
-                    self.constraint_to_coq(c1),
-                    self.constraint_to_coq(c2)
+                    Self::constraint_to_coq(c1),
+                    Self::constraint_to_coq(c2)
                 )
             }
             SymbolicConstraint::Or(c1, c2) => {
                 format!(
                     "({} \\/ {})",
-                    self.constraint_to_coq(c1),
-                    self.constraint_to_coq(c2)
+                    Self::constraint_to_coq(c1),
+                    Self::constraint_to_coq(c2)
                 )
             }
             SymbolicConstraint::Not(c) => {
-                format!("~({})", self.constraint_to_coq(c))
+                format!("~({})", Self::constraint_to_coq(c))
             }
             SymbolicConstraint::True => "True".to_string(),
             SymbolicConstraint::False => "False".to_string(),
@@ -252,7 +252,7 @@ impl ProofExporter for CoqExporter {
         let pre_strs: Vec<String> = obligation
             .preconditions
             .iter()
-            .map(|c| self.constraint_to_coq(c))
+            .map(Self::constraint_to_coq)
             .collect();
 
         if !pre_strs.is_empty() {
@@ -263,7 +263,7 @@ impl ProofExporter for CoqExporter {
         let goals: Vec<String> = obligation
             .postconditions
             .iter()
-            .map(|c| self.constraint_to_coq(c))
+            .map(Self::constraint_to_coq)
             .collect();
 
         if goals.is_empty() {
@@ -378,18 +378,14 @@ mod tests {
 
     #[test]
     fn test_value_to_coq() {
-        let exporter = CoqExporter::new(
-            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-        );
-
         let sym = SymbolicValue::Symbol("x".to_string());
-        assert_eq!(exporter.value_to_coq(&sym), "x");
+        assert_eq!(CoqExporter::value_to_coq(&sym), "x");
 
         let add = SymbolicValue::Add(
             Box::new(SymbolicValue::Symbol("x".to_string())),
             Box::new(SymbolicValue::Symbol("y".to_string())),
         );
-        assert_eq!(exporter.value_to_coq(&add), "(fadd x y)");
+        assert_eq!(CoqExporter::value_to_coq(&add), "(fadd x y)");
     }
 
     #[test]

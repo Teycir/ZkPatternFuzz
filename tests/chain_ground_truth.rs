@@ -168,9 +168,9 @@ mod tests {
     fn load_expected_spec(campaign_path: &str) -> ExpectedSpec {
         let expected_path = expected_path_for_campaign(campaign_path);
         let content = std::fs::read_to_string(&expected_path)
-            .expect(&format!("Failed to read {}", expected_path.display()));
+            .unwrap_or_else(|_| panic!("Failed to read {}", expected_path.display()));
         let json: serde_json::Value = serde_json::from_str(&content)
-            .expect(&format!("Failed to parse JSON in {}", expected_path.display()));
+            .unwrap_or_else(|_| panic!("Failed to parse JSON in {}", expected_path.display()));
 
         let outcome = parse_expected_outcome(&json["expected_outcome"]);
         let violated_assertion = json["violated_assertion"].as_str().map(|s| s.to_string());
@@ -242,7 +242,7 @@ mod tests {
 
         for case in ground_truth_cases() {
             let config = FuzzConfig::from_yaml(case.campaign_path)
-                .expect(&format!("Failed to parse {}", case.campaign_path));
+                .unwrap_or_else(|_| panic!("Failed to parse {}", case.campaign_path));
 
             let mut circuit_paths = vec![config.campaign.target.circuit_path.clone()];
             for chain in &config.chains {
@@ -270,10 +270,10 @@ mod tests {
         for case in ground_truth_cases() {
             let expected_path = expected_path_for_campaign(case.campaign_path);
             let content = fs::read_to_string(&expected_path)
-                .expect(&format!("Failed to read {}", expected_path.display()));
+                .unwrap_or_else(|_| panic!("Failed to read {}", expected_path.display()));
             
             let json: serde_json::Value = serde_json::from_str(&content)
-                .expect(&format!("Failed to parse JSON in {}", expected_path.display()));
+                .unwrap_or_else(|_| panic!("Failed to parse JSON in {}", expected_path.display()));
             
             // Verify required fields
             assert!(
@@ -320,10 +320,10 @@ mod tests {
         
         for case in ground_truth_cases() {
             let content = fs::read_to_string(case.campaign_path)
-                .expect(&format!("Failed to read {}", case.campaign_path));
+                .unwrap_or_else(|_| panic!("Failed to read {}", case.campaign_path));
             
             let yaml: serde_yaml::Value = serde_yaml::from_str(&content)
-                .expect(&format!("Failed to parse YAML in {}", case.campaign_path));
+                .unwrap_or_else(|_| panic!("Failed to parse YAML in {}", case.campaign_path));
             
             // Verify chains section exists
             assert!(
@@ -655,15 +655,17 @@ mod tests {
                         metrics.false_negatives += 1;
                         passed = false;
                     } else {
-                        let assertion_match = expected_spec.violated_assertion.as_deref().map_or(true, |ea| {
-                            all_findings.iter().any(|f| {
-                                f.violated_assertion.as_deref() == Some(ea)
-                            })
-                        });
+                        let assertion_match = match expected_spec.violated_assertion.as_deref() {
+                            Some(ea) => all_findings
+                                .iter()
+                                .any(|f| f.violated_assertion.as_deref() == Some(ea)),
+                            None => true,
+                        };
 
-                        let l_min_ok = expected_spec.l_min_expected.map_or(true, |el| {
-                            all_findings.iter().any(|f| f.l_min >= el)
-                        });
+                        let l_min_ok = match expected_spec.l_min_expected {
+                            Some(el) => all_findings.iter().any(|f| f.l_min >= el),
+                            None => true,
+                        };
 
                         if assertion_match && l_min_ok {
                             println!("  PASS: Found {} finding(s), assertion match={}, l_min match={}",

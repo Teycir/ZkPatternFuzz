@@ -131,7 +131,7 @@ fn test_parse_snarkjs_groth16_circuit() {
 
     // Validate parsed structure
     assert!(r1cs.num_wires > 0, "Should have wires");
-    assert!(r1cs.constraints.len() > 0, "Should have constraints");
+    assert!(!r1cs.constraints.is_empty(), "Should have constraints");
     assert_eq!(r1cs.field_bytes, 32, "Should use 32-byte field (BN254)");
     
     // The Multiplier(1000) circuit has 1 public input (a) and 1 private input (b)
@@ -223,7 +223,7 @@ fn test_parse_snarkjs_plonk_circuit() {
     println!("Custom Gates Used: {}", r1cs.custom_gates_used);
 
     assert!(r1cs.num_wires > 0);
-    assert!(r1cs.constraints.len() > 0);
+    assert!(!r1cs.constraints.is_empty());
 }
 
 #[test]
@@ -280,7 +280,7 @@ fn test_parse_risc0_multiplier() {
 
     // Simple multiplier should have few constraints
     assert!(r1cs.num_wires > 0);
-    assert!(r1cs.constraints.len() > 0);
+    assert!(!r1cs.constraints.is_empty());
 }
 
 #[test]
@@ -567,7 +567,7 @@ fn test_find_privacy_circuit_sources() {
         if let Ok(entries) = std::fs::read_dir(&tornado_circuits_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().map_or(false, |e| e == "circom") {
+                if path.extension().is_some_and(|e| e == "circom") {
                     println!("  - {}", path.file_name().unwrap().to_string_lossy());
                 }
             }

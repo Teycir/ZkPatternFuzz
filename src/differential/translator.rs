@@ -294,8 +294,10 @@ pub struct CircuitTranslator {
 impl CircuitTranslator {
     /// Create a new translator with default config
     pub fn new(target: TargetFramework) -> Self {
-        let mut config = TranslatorConfig::default();
-        config.target = target;
+        let config = TranslatorConfig {
+            target,
+            ..TranslatorConfig::default()
+        };
         Self::with_config(config)
     }
 
@@ -769,8 +771,10 @@ mod tests {
 
     #[test]
     fn test_translator_strict_mode() {
-        let mut config = TranslatorConfig::default();
-        config.strict_mode = true;
+        let config = TranslatorConfig {
+            strict_mode: true,
+            ..TranslatorConfig::default()
+        };
 
         let translator = CircuitTranslator::with_config(config);
 
@@ -782,9 +786,11 @@ mod tests {
 
     #[test]
     fn test_complexity_limit() {
-        let mut config = TranslatorConfig::default();
-        config.max_complexity = 10;
-        config.strict_mode = false;
+        let config = TranslatorConfig {
+            max_complexity: 10,
+            strict_mode: false,
+            ..TranslatorConfig::default()
+        };
 
         let translator = CircuitTranslator::with_config(config);
 
@@ -806,10 +812,12 @@ mod tests {
 
     #[test]
     fn test_custom_mapping() {
-        let mut config = TranslatorConfig::default();
-        config
-            .custom_mappings
-            .insert("MyCustomGadget".to_string(), "my_custom_impl()".to_string());
+        let mut custom_mappings = HashMap::new();
+        custom_mappings.insert("MyCustomGadget".to_string(), "my_custom_impl()".to_string());
+        let config = TranslatorConfig {
+            custom_mappings,
+            ..TranslatorConfig::default()
+        };
 
         let translator = CircuitTranslator::with_config(config);
 

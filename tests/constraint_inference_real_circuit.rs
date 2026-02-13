@@ -60,7 +60,7 @@ async fn test_constraint_inference_range_bypass() {
         ]);
 
     // Run analysis
-    let mut implied = engine.analyze(&*inspector, num_wires);
+    let mut implied = engine.analyze(inspector, num_wires);
 
     println!("\n=== Constraint Inference Analysis ===");
     println!("Circuit: range_bypass/circuit.circom");
@@ -200,7 +200,7 @@ async fn test_constraint_inference_merkle() {
             ConstraintCategory::HashConsistency,
         ]);
 
-    let mut implied = engine.analyze(&*inspector, num_wires);
+    let mut implied = engine.analyze(inspector, num_wires);
 
     println!("\n=== Merkle Circuit Analysis ===");
     println!("Inferred missing constraints: {}", implied.len());
@@ -317,7 +317,7 @@ async fn test_constraint_inference_comprehensive() {
         let engine = ConstraintInferenceEngine::new()
             .with_categories(&expected_categories);
 
-        let mut implied = engine.analyze(&*inspector, num_wires);
+        let mut implied = engine.analyze(inspector, num_wires);
         total_detected += implied.len();
 
         println!("  Detected: {} missing constraints", implied.len());

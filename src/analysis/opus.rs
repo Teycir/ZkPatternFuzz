@@ -1049,9 +1049,9 @@ fn rewrite_zk0d_path(path: &Path) -> String {
     let root = env_root.as_deref().unwrap_or(DEFAULT_ZK0D_BASE);
     let root = root.trim_end_matches(std::path::MAIN_SEPARATOR);
 
-    if path_str.starts_with(root) {
+    if let Some(raw_suffix) = path_str.strip_prefix(root) {
         let placeholder = format!("${{ZK0D_BASE:-{}}}", DEFAULT_ZK0D_BASE);
-        let suffix = path_str[root.len()..].trim_start_matches(std::path::MAIN_SEPARATOR);
+        let suffix = raw_suffix.trim_start_matches(std::path::MAIN_SEPARATOR);
         if suffix.is_empty() {
             placeholder
         } else {
@@ -1064,11 +1064,11 @@ fn rewrite_zk0d_path(path: &Path) -> String {
 
 fn rewrite_path_with_placeholder(path: &Path, root: &Path, placeholder: &str) -> String {
     let path_str = path.to_string_lossy();
-    let root_str = root.to_string_lossy();
-    let root_str = root_str.trim_end_matches(std::path::MAIN_SEPARATOR);
+    let root_string = root.to_string_lossy().to_string();
+    let root_str = root_string.trim_end_matches(std::path::MAIN_SEPARATOR);
 
-    if path_str.starts_with(root_str) {
-        let suffix = path_str[root_str.len()..].trim_start_matches(std::path::MAIN_SEPARATOR);
+    if let Some(raw_suffix) = path_str.strip_prefix(root_str) {
+        let suffix = raw_suffix.trim_start_matches(std::path::MAIN_SEPARATOR);
         if suffix.is_empty() {
             placeholder.to_string()
         } else {

@@ -156,9 +156,11 @@ impl FuzzingEngine {
             // misleading assertion violations and to keep throughput stable. Campaigns that want
             // structural mutations can opt-in with `chain_allow_spec_mutations: true`.
             tracing::info!("Chain spec mutations: disabled (inputs-only)");
-            let mut weights = crate::chain_fuzzer::mutator::MutationWeights::default();
-            weights.step_reorder = 0.0;
-            weights.step_duplication = 0.0;
+            let weights = crate::chain_fuzzer::mutator::MutationWeights {
+                step_reorder: 0.0,
+                step_duplication: 0.0,
+                ..crate::chain_fuzzer::mutator::MutationWeights::default()
+            };
             ChainMutator::new_with_framework(self.config.campaign.target.framework)
                 .with_weights(weights)
         };

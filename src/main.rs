@@ -142,12 +142,40 @@ enum Commands {
     ExecWorker,
 }
 
+#[derive(Debug, Clone)]
+struct CampaignRunOptions {
+    workers: usize,
+    seed: Option<u64>,
+    verbose: bool,
+    dry_run: bool,
+    simple_progress: bool,
+    real_only: bool,
+    iterations: u64,
+    timeout: Option<u64>,
+    require_invariants: bool,
+    resume: bool,
+    corpus_dir: Option<String>,
+    profile: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ChainRunOptions {
+    workers: usize,
+    seed: Option<u64>,
+    verbose: bool,
+    dry_run: bool,
+    simple_progress: bool,
+    iterations: u64,
+    timeout: u64,
+    resume: bool,
+}
+
 /// Kill existing zk-fuzzer instances with graceful shutdown
 async fn kill_existing_instances() {
     let current_pid = std::process::id();
     
     let pgrep_output = std::process::Command::new("pgrep")
-        .args(&["-f", "zk-fuzzer"])
+        .args(["-f", "zk-fuzzer"])
         .output();
     
     if let Ok(output) = pgrep_output {
@@ -158,7 +186,7 @@ async fn kill_existing_instances() {
                     if pid != current_pid {
                         // Try graceful shutdown first (SIGTERM)
                         let _ = std::process::Command::new("kill")
-                            .args(&["-15", &pid.to_string()])
+                            .args(["-15", &pid.to_string()])
                             .output();
                     }
                 }
@@ -172,7 +200,7 @@ async fn kill_existing_instances() {
                 if let Ok(pid) = pid_str.trim().parse::<u32>() {
                     if pid != current_pid {
                         let _ = std::process::Command::new("kill")
-                            .args(&["-9", &pid.to_string()])
+                            .args(["-9", &pid.to_string()])
                             .output();
                     }
                 }
@@ -218,49 +246,58 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
         Some(Commands::Run { campaign, iterations, timeout, resume, corpus_dir }) => {
             run_campaign(
                 &campaign,
-                cli.workers,
-                cli.seed,
-                cli.verbose,
-                cli.dry_run,
-                cli.simple_progress,
-                cli.real_only,
-                iterations,
-                timeout,
-                false,
-                resume,
-                corpus_dir,
-                cli.profile.as_deref(),
-            ).await
+                CampaignRunOptions {
+                    workers: cli.workers,
+                    seed: cli.seed,
+                    verbose: cli.verbose,
+                    dry_run: cli.dry_run,
+                    simple_progress: cli.simple_progress,
+                    real_only: cli.real_only,
+                    iterations,
+                    timeout,
+                    require_invariants: false,
+                    resume,
+                    corpus_dir,
+                    profile: cli.profile.clone(),
+                },
+            )
+            .await
         }
         Some(Commands::Evidence { campaign, iterations, timeout, resume, corpus_dir }) => {
             run_campaign(
                 &campaign,
-                cli.workers,
-                cli.seed,
-                cli.verbose,
-                cli.dry_run,
-                cli.simple_progress,
-                true, // Evidence mode always requires real backend
-                iterations,
-                timeout,
-                true,
-                resume,
-                corpus_dir,
-                cli.profile.as_deref(),
-            ).await
+                CampaignRunOptions {
+                    workers: cli.workers,
+                    seed: cli.seed,
+                    verbose: cli.verbose,
+                    dry_run: cli.dry_run,
+                    simple_progress: cli.simple_progress,
+                    real_only: true, // Evidence mode always requires real backend
+                    iterations,
+                    timeout,
+                    require_invariants: true,
+                    resume,
+                    corpus_dir,
+                    profile: cli.profile.clone(),
+                },
+            )
+            .await
         }
         Some(Commands::Chains { campaign, iterations, timeout, resume }) => {
             run_chain_campaign(
                 &campaign,
-                cli.workers,
-                cli.seed,
-                cli.verbose,
-                cli.dry_run,
-                cli.simple_progress,
-                iterations,
-                timeout,
-                resume,
-            ).await
+                ChainRunOptions {
+                    workers: cli.workers,
+                    seed: cli.seed,
+                    verbose: cli.verbose,
+                    dry_run: cli.dry_run,
+                    simple_progress: cli.simple_progress,
+                    iterations,
+                    timeout,
+                    resume,
+                },
+            )
+            .await
         }
         Some(Commands::Validate { campaign }) => {
             validate_campaign(&campaign)
@@ -280,19 +317,22 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
                 // Use default values for iterations and timeout
                 run_campaign(
                     &config_path,
-                    cli.workers,
-                    cli.seed,
-                    cli.verbose,
-                    cli.dry_run,
-                    cli.simple_progress,
-                    cli.real_only,
-                    1000,
-                    None,
-                    false,
-                    false, // resume
-                    None,  // corpus_dir
-                    cli.profile.as_deref(),
-                ).await
+                    CampaignRunOptions {
+                        workers: cli.workers,
+                        seed: cli.seed,
+                        verbose: cli.verbose,
+                        dry_run: cli.dry_run,
+                        simple_progress: cli.simple_progress,
+                        real_only: cli.real_only,
+                        iterations: 1000,
+                        timeout: None,
+                        require_invariants: false,
+                        resume: false, // resume
+                        corpus_dir: None,
+                        profile: cli.profile.clone(),
+                    },
+                )
+                .await
             } else {
                 eprintln!("Error: No campaign configuration provided.");
                 eprintln!("Usage: zk-fuzzer --config <path> or zk-fuzzer run <path>");
@@ -303,32 +343,18 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
     }
 }
 
-async fn run_campaign(
-    config_path: &str,
-    workers: usize,
-    seed: Option<u64>,
-    verbose: bool,
-    dry_run: bool,
-    simple_progress: bool,
-    real_only: bool,
-    iterations: u64,
-    timeout: Option<u64>,
-    require_invariants: bool,
-    resume: bool,
-    corpus_dir: Option<String>,
-    profile: Option<&str>,
-) -> anyhow::Result<()> {
+async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow::Result<()> {
     tracing::info!("Loading campaign from: {}", config_path);
     let mut config = FuzzConfig::from_yaml(config_path)?;
 
     // Apply profile if specified
-    if let Some(profile_name) = profile {
+    if let Some(profile_name) = options.profile.as_deref() {
         let parsed_profile: ProfileName = profile_name.parse()
             .map_err(|e: String| anyhow::anyhow!(e))?;
         apply_profile(&mut config, parsed_profile);
     }
 
-    if real_only {
+    if options.real_only {
         tracing::info!("--real-only set (real backend mode is already enforced)");
     }
     config.campaign.parameters.additional.insert(
@@ -336,7 +362,7 @@ async fn run_campaign(
         serde_yaml::Value::Bool(true),
     );
 
-    if require_invariants {
+    if options.require_invariants {
         let invariants = config.get_invariants();
         if invariants.is_empty() {
             anyhow::bail!(
@@ -356,9 +382,9 @@ async fn run_campaign(
     // Inject CLI fuzzing parameters into config
     config.campaign.parameters.additional.insert(
         "fuzzing_iterations".to_string(),
-        serde_yaml::Value::Number(serde_yaml::Number::from(iterations)),
+        serde_yaml::Value::Number(serde_yaml::Number::from(options.iterations)),
     );
-    if let Some(t) = timeout {
+    if let Some(t) = options.timeout {
         config.campaign.parameters.additional.insert(
             "fuzzing_timeout_seconds".to_string(),
             serde_yaml::Value::Number(serde_yaml::Number::from(t)),
@@ -367,7 +393,7 @@ async fn run_campaign(
 
     // Prevent multi-process collisions on the same output dir (reports/corpus/report.json, etc.).
     // Skip in --dry-run since no files are written.
-    let _output_lock = if dry_run {
+    let _output_lock = if options.dry_run {
         None
     } else {
         let output_dir = config.reporting.output_dir.clone();
@@ -393,8 +419,8 @@ async fn run_campaign(
     print_banner(&config);
 
     // Handle resume mode
-    if resume {
-        let corpus_path = if let Some(ref dir) = corpus_dir {
+    if options.resume {
+        let corpus_path = if let Some(ref dir) = options.corpus_dir {
             std::path::PathBuf::from(dir)
         } else {
             config.reporting.output_dir.join("corpus")
@@ -413,28 +439,28 @@ async fn run_campaign(
         }
     }
 
-    if dry_run {
+    if options.dry_run {
         tracing::info!("Dry run mode - configuration validated successfully");
         println!("\n✓ Configuration is valid");
         println!("  Campaign: {}", config.campaign.name);
         println!("  Target: {:?}", config.campaign.target.framework);
         println!("  Attacks: {}", config.attacks.len());
         println!("  Inputs: {}", config.inputs.len());
-        if resume {
+        if options.resume {
             println!("  Resume: enabled");
         }
-        if let Some(ref p) = profile {
+        if let Some(ref p) = options.profile {
             println!("  Profile: {}", p);
         }
         return Ok(());
     }
 
     // Run with new engine if not using simple progress
-    let report = if simple_progress {
-        let mut fuzzer = ZkFuzzer::new(config, seed);
-        fuzzer.run_with_workers(workers).await?
+    let report = if options.simple_progress {
+        let mut fuzzer = ZkFuzzer::new(config, options.seed);
+        fuzzer.run_with_workers(options.workers).await?
     } else {
-        ZkFuzzer::run_with_progress(config, seed, workers, verbose).await?
+        ZkFuzzer::run_with_progress(config, options.seed, options.workers, options.verbose).await?
     };
 
     // Output results
@@ -636,18 +662,7 @@ fn truncate_str(s: &str, max_len: usize) -> String {
 }
 
 /// Run a chain-focused fuzzing campaign (Mode 3: Deepest)
-#[allow(unused_variables)]
-async fn run_chain_campaign(
-    config_path: &str,
-    workers: usize,
-    seed: Option<u64>,
-    verbose: bool,
-    dry_run: bool,
-    simple_progress: bool,
-    iterations: u64,
-    timeout: u64,
-    resume: bool,
-) -> anyhow::Result<()> {
+async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyhow::Result<()> {
     use colored::*;
     use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics};
     use zk_fuzzer::config::parse_chains;
@@ -659,7 +674,7 @@ async fn run_chain_campaign(
 
     // Prevent multi-process collisions on the same output dir (chain_corpus.json, reports, etc.).
     // Skip in --dry-run since no files are written.
-    let _output_lock = if dry_run {
+    let _output_lock = if options.dry_run {
         None
     } else {
         let output_dir = config.reporting.output_dir.clone();
@@ -701,11 +716,11 @@ async fn run_chain_campaign(
     );
     config.campaign.parameters.additional.insert(
         "chain_budget_seconds".to_string(),
-        serde_yaml::Value::Number(serde_yaml::Number::from(timeout)),
+        serde_yaml::Value::Number(serde_yaml::Number::from(options.timeout)),
     );
     config.campaign.parameters.additional.insert(
         "chain_iterations".to_string(),
-        serde_yaml::Value::Number(serde_yaml::Number::from(iterations)),
+        serde_yaml::Value::Number(serde_yaml::Number::from(options.iterations)),
     );
 
     // Print chain-specific banner
@@ -716,8 +731,8 @@ async fn run_chain_campaign(
     println!("{}", "╠═══════════════════════════════════════════════════════════╣".bright_magenta());
     println!("{}  Campaign: {:<45} {}", "║".bright_magenta(), truncate_str(&config.campaign.name, 45).white(), "║".bright_magenta());
     println!("{}  Chains:   {:<45} {}", "║".bright_magenta(), format!("{} defined", chains.len()).cyan(), "║".bright_magenta());
-    println!("{}  Budget:   {:<45} {}", "║".bright_magenta(), format!("{}s per chain", timeout).yellow(), "║".bright_magenta());
-    println!("{}  Resume:   {:<45} {}", "║".bright_magenta(), if resume { "yes".green() } else { "no".white() }, "║".bright_magenta());
+    println!("{}  Budget:   {:<45} {}", "║".bright_magenta(), format!("{}s per chain", options.timeout).yellow(), "║".bright_magenta());
+    println!("{}  Resume:   {:<45} {}", "║".bright_magenta(), if options.resume { "yes".green() } else { "no".white() }, "║".bright_magenta());
     println!("{}", "╚═══════════════════════════════════════════════════════════╝".bright_magenta());
     println!();
 
@@ -734,25 +749,25 @@ async fn run_chain_campaign(
     }
     println!();
 
-    if dry_run {
+    if options.dry_run {
         tracing::info!("Dry run mode - configuration validated successfully");
         println!("\n✓ Chain configuration is valid");
         return Ok(());
     }
 
     // Create engine directly
-    let mut engine = FuzzingEngine::new(config.clone(), seed, workers)?;
+    let mut engine = FuzzingEngine::new(config.clone(), options.seed, options.workers)?;
     
     // Run chain fuzzing
-    let progress = if simple_progress {
+    let progress = if options.simple_progress {
         None
     } else {
         // Create a progress reporter for chain mode
-        let total = (iterations as usize * chains.len()) as u64;
+        let total = (options.iterations as usize * chains.len()) as u64;
         Some(zk_fuzzer::progress::ProgressReporter::new(
             &format!("{} (chains)", config.campaign.name),
             total,
-            verbose,
+            options.verbose,
         ))
     };
 
@@ -810,7 +825,7 @@ async fn run_chain_campaign(
             // Print reproduction command
             println!("     {}", "Reproduction:".bright_yellow());
             println!("       cargo run --release -- chains {} --seed {}", 
-                config_path, seed.unwrap_or(42));
+                config_path, options.seed.unwrap_or(42));
         }
     } else {
         println!("\n{}", "  ✓ No chain vulnerabilities found!".bright_green().bold());
@@ -878,7 +893,7 @@ async fn run_chain_campaign(
             // Add reproduction
             md.push_str("**Reproduction:**\n\n");
             md.push_str(&format!("```bash\ncargo run --release -- chains {} --seed {}\n```\n\n", 
-                config_path, seed.unwrap_or(42)));
+                config_path, options.seed.unwrap_or(42)));
         }
     }
 
@@ -897,7 +912,7 @@ async fn run_chain_campaign(
         zk_core::CoverageMap::default(),
         config.reporting.clone(),
     );
-    report.statistics.total_executions = iterations * chains.len() as u64;
+    report.statistics.total_executions = options.iterations * chains.len() as u64;
     report.save_to_files()?;
 
     // Exit with error code if critical findings

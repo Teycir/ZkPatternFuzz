@@ -271,9 +271,11 @@ fn test_complexity_calculation() {
 
 #[test]
 fn test_complexity_limit() {
-    let mut config = TranslatorConfig::default();
-    config.max_complexity = 100;
-    config.strict_mode = false;
+    let config = TranslatorConfig {
+        max_complexity: 100,
+        strict_mode: false,
+        ..TranslatorConfig::default()
+    };
 
     let translator = CircuitTranslator::with_config(config);
 
@@ -286,9 +288,11 @@ fn test_complexity_limit() {
 
 #[test]
 fn test_complexity_limit_strict() {
-    let mut config = TranslatorConfig::default();
-    config.max_complexity = 100;
-    config.strict_mode = true;
+    let config = TranslatorConfig {
+        max_complexity: 100,
+        strict_mode: true,
+        ..TranslatorConfig::default()
+    };
 
     let translator = CircuitTranslator::with_config(config);
 
@@ -304,8 +308,10 @@ fn test_complexity_limit_strict() {
 
 #[test]
 fn test_unsupported_pattern_non_strict() {
-    let mut config = TranslatorConfig::default();
-    config.strict_mode = false;
+    let config = TranslatorConfig {
+        strict_mode: false,
+        ..TranslatorConfig::default()
+    };
 
     let translator = CircuitTranslator::with_config(config);
 
@@ -322,8 +328,10 @@ fn test_unsupported_pattern_non_strict() {
 
 #[test]
 fn test_unsupported_pattern_strict() {
-    let mut config = TranslatorConfig::default();
-    config.strict_mode = true;
+    let config = TranslatorConfig {
+        strict_mode: true,
+        ..TranslatorConfig::default()
+    };
 
     let translator = CircuitTranslator::with_config(config);
 
@@ -393,8 +401,10 @@ fn test_validation_report_success() {
 
 #[test]
 fn test_validation_report_with_unsupported() {
-    let mut config = TranslatorConfig::default();
-    config.strict_mode = false;
+    let config = TranslatorConfig {
+        strict_mode: false,
+        ..TranslatorConfig::default()
+    };
 
     let translator = CircuitTranslator::with_config(config);
 
@@ -520,14 +530,16 @@ fn test_50_plus_common_patterns_translatable() {
 
     // Check all are translatable
     let mut translated_count = 0;
-    let mut config = TranslatorConfig::default();
-    config.max_complexity = usize::MAX; // No limit for this test
-    config.strict_mode = false;
+    let config = TranslatorConfig {
+        max_complexity: usize::MAX, // No limit for this test
+        strict_mode: false,
+        ..TranslatorConfig::default()
+    };
     
     let translator = CircuitTranslator::with_config(config);
 
     for pattern in &patterns {
-        if translator.can_translate(&[pattern.clone()]) {
+        if translator.can_translate(std::slice::from_ref(pattern)) {
             translated_count += 1;
         }
     }

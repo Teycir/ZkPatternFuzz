@@ -233,7 +233,7 @@ impl EvidenceGenerator {
         let circuit_stem = circuit_path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or_else(|| main_component.as_str());
+            .unwrap_or(main_component.as_str());
 
         // Try to find build directory
         let build_dir = additional
@@ -456,7 +456,7 @@ impl EvidenceGenerator {
             .circuit_path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or_else(|| main_component.as_str());
+            .unwrap_or(main_component.as_str());
 
         let script = match self.config.campaign.target.framework {
             Framework::Circom => {

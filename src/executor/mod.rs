@@ -601,13 +601,15 @@ impl ExecutorFactory {
                 let mut executor = CircomExecutor::new_with_options(
                     circuit_path,
                     main_component,
-                    build_dir,
-                    options.circom_include_paths.clone(),
-                    options.circom_ptau_path.clone(),
-                    options.circom_snarkjs_path.clone(),
-                    options.circom_skip_compile_if_artifacts,
-                    options.circom_skip_constraint_check,
-                    options.circom_witness_sanity_check,
+                    CircomExecutorOptions {
+                        build_dir,
+                        include_paths: options.circom_include_paths.clone(),
+                        ptau_path: options.circom_ptau_path.clone(),
+                        snarkjs_path: options.circom_snarkjs_path.clone(),
+                        skip_compile_if_artifacts: options.circom_skip_compile_if_artifacts,
+                        skip_constraint_check: options.circom_skip_constraint_check,
+                        witness_sanity_check: options.circom_witness_sanity_check,
+                    },
                 )?;
                 if options.circom_auto_setup_keys {
                     tracing::info!("Auto-generating Circom proving/verification keys");
@@ -703,6 +705,31 @@ pub struct CircomExecutor {
     skip_constraint_check: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct CircomExecutorOptions {
+    pub build_dir: Option<PathBuf>,
+    pub include_paths: Vec<PathBuf>,
+    pub ptau_path: Option<PathBuf>,
+    pub snarkjs_path: Option<PathBuf>,
+    pub skip_compile_if_artifacts: bool,
+    pub skip_constraint_check: bool,
+    pub witness_sanity_check: bool,
+}
+
+impl Default for CircomExecutorOptions {
+    fn default() -> Self {
+        Self {
+            build_dir: None,
+            include_paths: Vec::new(),
+            ptau_path: None,
+            snarkjs_path: None,
+            skip_compile_if_artifacts: false,
+            skip_constraint_check: false,
+            witness_sanity_check: true,
+        }
+    }
+}
+
 impl CircomExecutor {
     fn default_include_paths() -> Vec<PathBuf> {
         let mut paths = Vec::new();
@@ -728,18 +755,11 @@ impl CircomExecutor {
     }
 
     pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
-        let include_paths = Self::default_include_paths();
-        Self::new_with_options(
-            circuit_path,
-            main_component,
-            None,
-            include_paths,
-            None,
-            None,
-            false,
-            false,
-            true,
-        )
+        let options = CircomExecutorOptions {
+            include_paths: Self::default_include_paths(),
+            ..CircomExecutorOptions::default()
+        };
+        Self::new_with_options(circuit_path, main_component, options)
     }
 
     pub fn new_with_build_dir(
@@ -747,30 +767,28 @@ impl CircomExecutor {
         main_component: &str,
         build_dir: PathBuf,
     ) -> anyhow::Result<Self> {
-        Self::new_with_options(
-            circuit_path,
-            main_component,
-            Some(build_dir),
-            Vec::new(),
-            None,
-            None,
-            false,
-            false,
-            true,
-        )
+        let options = CircomExecutorOptions {
+            build_dir: Some(build_dir),
+            ..CircomExecutorOptions::default()
+        };
+        Self::new_with_options(circuit_path, main_component, options)
     }
 
     pub fn new_with_options(
         circuit_path: &str,
         main_component: &str,
-        build_dir: Option<PathBuf>,
-        mut include_paths: Vec<PathBuf>,
-        ptau_path: Option<PathBuf>,
-        snarkjs_path: Option<PathBuf>,
-        skip_compile_if_artifacts: bool,
-        skip_constraint_check: bool,
-        witness_sanity_check: bool,
+        options: CircomExecutorOptions,
     ) -> anyhow::Result<Self> {
+        let CircomExecutorOptions {
+            build_dir,
+            mut include_paths,
+            ptau_path,
+            snarkjs_path,
+            skip_compile_if_artifacts,
+            skip_constraint_check,
+            witness_sanity_check,
+        } = options;
+
         if include_paths.is_empty() {
             include_paths = Self::default_include_paths();
         }
@@ -974,15 +992,13 @@ impl NoirExecutor {
         let mut witness = vec![FieldElement::zero(); max_idx.max(1) + 1];
         witness[0] = FieldElement::one();
 
-        let mut idx = 0usize;
-        for wire_idx in public.iter().chain(private.iter()) {
+        for (idx, wire_idx) in public.iter().chain(private.iter()).enumerate() {
             if idx >= inputs.len() {
                 break;
             }
             if *wire_idx < witness.len() {
                 witness[*wire_idx] = inputs[idx].clone();
             }
-            idx += 1;
         }
 
         for (value, wire_idx) in outputs.iter().zip(output_indices.iter()) {

@@ -318,9 +318,11 @@ impl FuzzingEngine {
             // Configure kill_on_timeout if specified
             if !kill_on_timeout {
                 use crate::executor::IsolationConfig;
-                let mut isolation_config = IsolationConfig::default();
-                isolation_config.timeout_ms = execution_timeout_ms;
-                isolation_config.kill_on_timeout = false;
+                let isolation_config = IsolationConfig {
+                    timeout_ms: execution_timeout_ms,
+                    kill_on_timeout: false,
+                    ..IsolationConfig::default()
+                };
                 isolated_executor = isolated_executor.with_config(isolation_config);
             }
             

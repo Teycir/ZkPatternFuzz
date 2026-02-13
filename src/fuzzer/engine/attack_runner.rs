@@ -602,8 +602,12 @@ impl FuzzingEngine {
             return;
         }
 
-        let ptau_a = section.and_then(|v| v.get("ptau_file_a")).and_then(|v| v.as_str());
-        let ptau_b = section.and_then(|v| v.get("ptau_file_b")).and_then(|v| v.as_str());
+        let ptau_a = section
+            .and_then(|v| v.get("ptau_file_a"))
+            .and_then(|v| v.as_str());
+        let ptau_b = section
+            .and_then(|v| v.get("ptau_file_b"))
+            .and_then(|v| v.as_str());
 
         let Some(ptau_a) = ptau_a else {
             tracing::warn!("Trusted setup test skipped: missing ptau_file_a");
@@ -619,11 +623,17 @@ impl FuzzingEngine {
         }
 
         if !std::path::Path::new(ptau_a).exists() {
-            tracing::warn!("Trusted setup test skipped: ptau_file_a not found ({})", ptau_a);
+            tracing::warn!(
+                "Trusted setup test skipped: ptau_file_a not found ({})",
+                ptau_a
+            );
             return;
         }
         if !std::path::Path::new(ptau_b).exists() {
-            tracing::warn!("Trusted setup test skipped: ptau_file_b not found ({})", ptau_b);
+            tracing::warn!(
+                "Trusted setup test skipped: ptau_file_b not found ({})",
+                ptau_b
+            );
             return;
         }
 
@@ -658,7 +668,10 @@ impl FuzzingEngine {
         ) {
             Ok(exec) => exec,
             Err(e) => {
-                tracing::warn!("Trusted setup test skipped: failed to create executor A ({})", e);
+                tracing::warn!(
+                    "Trusted setup test skipped: failed to create executor A ({})",
+                    e
+                );
                 return;
             }
         };
@@ -671,7 +684,10 @@ impl FuzzingEngine {
         ) {
             Ok(exec) => exec,
             Err(e) => {
-                tracing::warn!("Trusted setup test skipped: failed to create executor B ({})", e);
+                tracing::warn!(
+                    "Trusted setup test skipped: failed to create executor B ({})",
+                    e
+                );
                 return;
             }
         };
@@ -1984,21 +2000,21 @@ impl FuzzingEngine {
         let num_inputs = self.executor.num_public_inputs() + self.executor.num_private_inputs();
         let num_wires = num_inputs.saturating_add(100);
         let mut output_wires = std::collections::HashSet::new();
-        
+
         tracing::debug!("Analyzing constraints for inference...");
         let mut implied = if let Some(inspector) = self.executor.constraint_inspector() {
             let mut context = InferenceContext::from_inspector(inspector, num_wires);
             self.merge_config_input_labels(inspector, &mut context.wire_labels);
             self.merge_output_labels(inspector, &mut context.wire_labels);
             output_wires.extend(inspector.output_indices());
-            
+
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 engine.analyze_with_context(&context)
             })) {
                 Ok(result) => {
                     tracing::info!("Found {} implied constraints", result.len());
                     result
-                },
+                }
                 Err(e) => {
                     tracing::error!("FATAL: Constraint analysis panicked: {:?}", e);
                     anyhow::bail!("Constraint analysis panicked during execution");
@@ -2022,7 +2038,7 @@ impl FuzzingEngine {
             })) {
                 Ok(_) => {
                     tracing::info!("✓ Violation confirmation completed successfully");
-                },
+                }
                 Err(e) => {
                     tracing::error!("FATAL: Violation confirmation panicked: {:?}", e);
                     anyhow::bail!("Violation confirmation panicked during execution");
@@ -2034,8 +2050,11 @@ impl FuzzingEngine {
         use crate::attacks::constraint_inference::ViolationConfirmation;
         let before_filter = implied.len();
         implied.retain(|c| c.confirmation == ViolationConfirmation::Confirmed);
-        tracing::info!("Filtered {} -> {} violations (keeping only Confirmed, rejecting false positives)", 
-            before_filter, implied.len());
+        tracing::info!(
+            "Filtered {} -> {} violations (keeping only Confirmed, rejecting false positives)",
+            before_filter,
+            implied.len()
+        );
 
         tracing::debug!("Converting implied constraints to findings...");
         let findings = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -2049,7 +2068,10 @@ impl FuzzingEngine {
         };
 
         if !findings.is_empty() {
-            tracing::info!("Generated {} findings from constraint inference", findings.len());
+            tracing::info!(
+                "Generated {} findings from constraint inference",
+                findings.len()
+            );
             {
                 let findings_store = self.core.findings();
                 let mut store = findings_store.write().unwrap();
@@ -2070,19 +2092,23 @@ impl FuzzingEngine {
             .into_iter()
             .filter(|inv| inv.invariant_type != InvariantType::Metamorphic)
             .collect();
-        
-        let invariant_findings = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.enforce_invariants(&invariants)
-        })) {
-            Ok(f) => f,
-            Err(e) => {
-                tracing::error!("FATAL: Invariant enforcement panicked: {:?}", e);
-                anyhow::bail!("Invariant enforcement panicked during execution");
-            }
-        };
+
+        let invariant_findings =
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.enforce_invariants(&invariants)
+            })) {
+                Ok(f) => f,
+                Err(e) => {
+                    tracing::error!("FATAL: Invariant enforcement panicked: {:?}", e);
+                    anyhow::bail!("Invariant enforcement panicked during execution");
+                }
+            };
 
         if !invariant_findings.is_empty() {
-            tracing::info!("Generated {} findings from invariant enforcement", invariant_findings.len());
+            tracing::info!(
+                "Generated {} findings from invariant enforcement",
+                invariant_findings.len()
+            );
             {
                 let findings_store = self.core.findings();
                 let mut store = findings_store.write().unwrap();
@@ -2383,5 +2409,4 @@ impl FuzzingEngine {
 
         Ok(())
     }
-
 }

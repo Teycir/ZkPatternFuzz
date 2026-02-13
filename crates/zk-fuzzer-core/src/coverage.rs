@@ -161,7 +161,7 @@ impl CoverageTracker {
 
     fn record_value_bucket(&self, constraint_id: usize, bucket: u8) -> bool {
         let mut buckets = self.value_buckets.write().unwrap();
-        let constraint_buckets = buckets.entry(constraint_id).or_insert_with(HashSet::new);
+        let constraint_buckets = buckets.entry(constraint_id).or_default();
         constraint_buckets.insert(bucket)
     }
 

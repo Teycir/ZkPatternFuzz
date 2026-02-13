@@ -6,21 +6,8 @@
 //! Run with: `cargo test false_positive --release -- --nocapture`
 
 use std::collections::HashMap;
-use std::path::PathBuf;
-
 use zk_fuzzer::config::{AttackType, FuzzConfig};
 use zk_fuzzer::fuzzer::FuzzingEngine;
-
-/// Known-safe circuit categories for testing false positives
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-struct SafeCircuitTest {
-    name: String,
-    description: String,
-    circuit_path: PathBuf,
-    expected_findings: usize, // Should be 0 for truly safe circuits
-    tolerance: usize,         // Acceptable false positives
-}
 
 /// Create a campaign config for false positive testing
 fn create_fp_test_campaign(circuit_name: &str, iterations: u64) -> FuzzConfig {
@@ -361,7 +348,7 @@ campaign:
   version: "1.0"
   target:
     framework: circom
-    circuit_path: "tests/safe_circuits/secure_merkle.circom"
+    circuit_path: "tests/safe_circuits/merkle_tree_secure.circom"
     main_component: "main"
   parameters:
     field: bn254

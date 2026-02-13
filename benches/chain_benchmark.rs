@@ -7,9 +7,7 @@
 //! This benchmark is NOT part of the regular test suite due to execution time.
 //! It serves as a regression gate for Mode 3 chain fuzzing quality.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::time::{Duration, Instant};
 
 /// Result of running the chain benchmark suite
@@ -137,9 +135,11 @@ fn run_benchmark_suite() -> ChainBenchmarkResult {
 
     for case in &cases {
         let start = Instant::now();
+        black_box(case.name);
+        black_box(case.expected_assertion);
         
         if let Some((found_bug, l_min, time_to_first)) = run_ground_truth_case(case) {
-            let elapsed = start.elapsed();
+            black_box(start.elapsed());
             
             if case.expected_finding {
                 if found_bug {
@@ -149,12 +149,10 @@ fn run_benchmark_suite() -> ChainBenchmarkResult {
                 } else {
                     result.false_negatives += 1;
                 }
+            } else if found_bug {
+                result.false_positives += 1;
             } else {
-                if found_bug {
-                    result.false_positives += 1;
-                } else {
-                    // True negative - correct behavior, no count needed
-                }
+                // True negative - correct behavior, no count needed
             }
         }
     }
@@ -197,7 +195,7 @@ fn chain_benchmark(c: &mut Criterion) {
     println!("\n{}", final_result.to_markdown());
 
     // Write to file
-    if let Ok(_) = std::fs::create_dir_all("reports") {
+    if std::fs::create_dir_all("reports").is_ok() {
         if let Err(e) = std::fs::write("reports/chain_benchmark.md", final_result.to_markdown()) {
             eprintln!("Failed to write benchmark report: {}", e);
         }

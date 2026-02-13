@@ -591,6 +591,9 @@ pub struct R1CSMatrices {
     pub modulus: BigUint,
 }
 
+pub type DenseMatrix = Vec<Vec<BigUint>>;
+pub type DenseR1CS = (DenseMatrix, DenseMatrix, DenseMatrix);
+
 impl R1CSMatrices {
     /// Extract matrices from parsed R1CS
     pub fn from_r1cs(r1cs: &R1CS) -> Self {
@@ -637,7 +640,7 @@ impl R1CSMatrices {
     }
 
     /// Export to dense representation (for small circuits only)
-    pub fn to_dense(&self) -> Option<(Vec<Vec<BigUint>>, Vec<Vec<BigUint>>, Vec<Vec<BigUint>>)> {
+    pub fn to_dense(&self) -> Option<DenseR1CS> {
         // Only for small circuits (< 1000 constraints x 1000 wires)
         if self.num_constraints > 1000 || self.num_wires > 1000 {
             return None;

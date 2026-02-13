@@ -59,7 +59,7 @@ impl FrozenWireDetector {
             for (idx, output) in result.outputs.iter().enumerate() {
                 value_sets
                     .entry(idx)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(output.0);
             }
         }

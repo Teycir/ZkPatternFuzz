@@ -54,7 +54,7 @@ impl LeanExporter {
     }
 
     /// Convert symbolic value to Lean expression
-    fn value_to_lean(&self, value: &SymbolicValue) -> String {
+    fn value_to_lean(value: &SymbolicValue) -> String {
         match value {
             SymbolicValue::Concrete(fe) => {
                 format!("({} : F)", fe.to_decimal_string())
@@ -67,61 +67,61 @@ impl LeanExporter {
                     .collect()
             }
             SymbolicValue::Add(a, b) => {
-                format!("({} + {})", self.value_to_lean(a), self.value_to_lean(b))
+                format!("({} + {})", Self::value_to_lean(a), Self::value_to_lean(b))
             }
             SymbolicValue::Mul(a, b) => {
-                format!("({} * {})", self.value_to_lean(a), self.value_to_lean(b))
+                format!("({} * {})", Self::value_to_lean(a), Self::value_to_lean(b))
             }
             SymbolicValue::Sub(a, b) => {
-                format!("({} - {})", self.value_to_lean(a), self.value_to_lean(b))
+                format!("({} - {})", Self::value_to_lean(a), Self::value_to_lean(b))
             }
             SymbolicValue::Neg(a) => {
-                format!("(-{})", self.value_to_lean(a))
+                format!("(-{})", Self::value_to_lean(a))
             }
             _ => "(0 : F)".to_string(),
         }
     }
 
     /// Convert symbolic constraint to Lean proposition
-    fn constraint_to_lean(&self, constraint: &SymbolicConstraint) -> String {
+    fn constraint_to_lean(constraint: &SymbolicConstraint) -> String {
         match constraint {
             SymbolicConstraint::Eq(a, b) => {
-                format!("{} = {}", self.value_to_lean(a), self.value_to_lean(b))
+                format!("{} = {}", Self::value_to_lean(a), Self::value_to_lean(b))
             }
             SymbolicConstraint::Neq(a, b) => {
-                format!("{} ≠ {}", self.value_to_lean(a), self.value_to_lean(b))
+                format!("{} ≠ {}", Self::value_to_lean(a), Self::value_to_lean(b))
             }
             SymbolicConstraint::R1CS { a, b, c } => {
                 format!(
                     "{} * {} = {}",
-                    self.value_to_lean(a),
-                    self.value_to_lean(b),
-                    self.value_to_lean(c)
+                    Self::value_to_lean(a),
+                    Self::value_to_lean(b),
+                    Self::value_to_lean(c)
                 )
             }
             SymbolicConstraint::Boolean(v) => {
                 format!(
                     "({} = 0 ∨ {} = 1)",
-                    self.value_to_lean(v),
-                    self.value_to_lean(v)
+                    Self::value_to_lean(v),
+                    Self::value_to_lean(v)
                 )
             }
             SymbolicConstraint::And(c1, c2) => {
                 format!(
                     "({} ∧ {})",
-                    self.constraint_to_lean(c1),
-                    self.constraint_to_lean(c2)
+                    Self::constraint_to_lean(c1),
+                    Self::constraint_to_lean(c2)
                 )
             }
             SymbolicConstraint::Or(c1, c2) => {
                 format!(
                     "({} ∨ {})",
-                    self.constraint_to_lean(c1),
-                    self.constraint_to_lean(c2)
+                    Self::constraint_to_lean(c1),
+                    Self::constraint_to_lean(c2)
                 )
             }
             SymbolicConstraint::Not(c) => {
-                format!("¬({})", self.constraint_to_lean(c))
+                format!("¬({})", Self::constraint_to_lean(c))
             }
             SymbolicConstraint::True => "True".to_string(),
             SymbolicConstraint::False => "False".to_string(),
@@ -224,7 +224,7 @@ impl ProofExporter for LeanExporter {
         let pre_strs: Vec<String> = obligation
             .preconditions
             .iter()
-            .map(|c| self.constraint_to_lean(c))
+            .map(Self::constraint_to_lean)
             .collect();
 
         code.push_str("  ");
@@ -236,7 +236,7 @@ impl ProofExporter for LeanExporter {
         let goals: Vec<String> = obligation
             .postconditions
             .iter()
-            .map(|c| self.constraint_to_lean(c))
+            .map(Self::constraint_to_lean)
             .collect();
 
         if goals.is_empty() {
@@ -352,18 +352,14 @@ mod tests {
 
     #[test]
     fn test_value_to_lean() {
-        let exporter = LeanExporter::new(
-            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-        );
-
         let sym = SymbolicValue::Symbol("x".to_string());
-        assert_eq!(exporter.value_to_lean(&sym), "x");
+        assert_eq!(LeanExporter::value_to_lean(&sym), "x");
 
         let add = SymbolicValue::Add(
             Box::new(SymbolicValue::Symbol("x".to_string())),
             Box::new(SymbolicValue::Symbol("y".to_string())),
         );
-        assert_eq!(exporter.value_to_lean(&add), "(x + y)");
+        assert_eq!(LeanExporter::value_to_lean(&add), "(x + y)");
     }
 
     #[test]

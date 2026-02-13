@@ -146,12 +146,7 @@ fn convert_witness_to_prover_toml(witness_json: &Path, prover_toml: &Path) -> an
     for (key, value) in witness {
         match value {
             serde_json::Value::String(s) => {
-                // Handle hex strings or decimal strings
-                if s.starts_with("0x") {
-                    toml_content.push_str(&format!("{} = \"{}\"\n", key, s));
-                } else {
-                    toml_content.push_str(&format!("{} = \"{}\"\n", key, s));
-                }
+                toml_content.push_str(&format!("{} = \"{}\"\n", key, s));
             }
             serde_json::Value::Number(n) => {
                 toml_content.push_str(&format!("{} = \"{}\"\n", key, n));

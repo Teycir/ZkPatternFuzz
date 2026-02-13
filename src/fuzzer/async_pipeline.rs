@@ -389,7 +389,7 @@ impl BatchExecutor {
 
         inputs
             .into_par_iter()
-            .map(|input| executor(input))
+            .map(&executor)
             .collect()
     }
 
@@ -411,10 +411,7 @@ impl BatchExecutor {
         let results: Vec<_> = inputs
             .into_par_iter()
             .enumerate()
-            .map(|(_i, input)| {
-                let result = executor(input);
-                result
-            })
+            .map(|(_i, input)| executor(input))
             .collect();
 
         progress(total, total);

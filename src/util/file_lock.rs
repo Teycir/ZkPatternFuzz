@@ -53,6 +53,7 @@ pub fn lock_file_exclusive(path: impl AsRef<Path>, mode: LockMode) -> anyhow::Re
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(&path)
         .with_context(|| format!("Failed to open lock file: {}", path.display()))?;
 

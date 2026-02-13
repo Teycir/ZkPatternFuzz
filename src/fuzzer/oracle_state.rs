@@ -94,7 +94,7 @@ pub struct BloomFilter {
 impl BloomFilter {
     /// Create a new bloom filter
     pub fn new(num_bits: usize, num_hashes: usize) -> Self {
-        let num_words = (num_bits + 63) / 64;
+        let num_words = num_bits.div_ceil(64);
         let bits = (0..num_words).map(|_| AtomicU64::new(0)).collect();
 
         Self {
@@ -554,12 +554,12 @@ impl PerWorkerOracleState {
     /// Record output locally
     pub fn record_local(&mut self, output_hash: Vec<u8>, test_case: TestCase) -> bool {
         self.entries_since_merge += 1;
-
-        if self.local_history.contains_key(&output_hash) {
-            true // Collision
-        } else {
-            self.local_history.insert(output_hash, test_case);
-            false
+        match self.local_history.entry(output_hash) {
+            std::collections::hash_map::Entry::Occupied(_) => true, // Collision
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(test_case);
+                false
+            }
         }
     }
 

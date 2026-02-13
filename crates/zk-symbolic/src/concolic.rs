@@ -100,7 +100,7 @@ impl ConcolicTrace {
         if taken {
             self.path_condition.add_constraint(constraint);
         } else {
-            self.path_condition.add_constraint(constraint.not());
+            self.path_condition.add_constraint(constraint.negate());
         }
     }
 
@@ -295,12 +295,12 @@ impl ConcolicExecutor {
                         if bp.taken {
                             new_path.add_constraint(bp.constraint.clone());
                         } else {
-                            new_path.add_constraint(bp.constraint.clone().not());
+                            new_path.add_constraint(bp.constraint.clone().negate());
                         }
                     } else if i == branch_idx {
                         // Negate this branch
                         if bp.taken {
-                            new_path.add_constraint(bp.constraint.clone().not());
+                            new_path.add_constraint(bp.constraint.clone().negate());
                         } else {
                             new_path.add_constraint(bp.constraint.clone());
                         }

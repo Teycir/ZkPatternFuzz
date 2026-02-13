@@ -201,7 +201,7 @@ impl SymbolicConstraint {
         SymbolicConstraint::Or(Box::new(self), Box::new(other))
     }
 
-    pub fn not(self) -> Self {
+    pub fn negate(self) -> Self {
         SymbolicConstraint::Not(Box::new(self))
     }
 }
@@ -249,13 +249,12 @@ impl PathCondition {
     pub fn symbols(&self) -> HashSet<String> {
         let mut symbols = HashSet::new();
         for constraint in &self.constraints {
-            self.collect_symbols_from_constraint(constraint, &mut symbols);
+            Self::collect_symbols_from_constraint(constraint, &mut symbols);
         }
         symbols
     }
 
     fn collect_symbols_from_constraint(
-        &self,
         constraint: &SymbolicConstraint,
         symbols: &mut HashSet<String>,
     ) {
@@ -277,11 +276,11 @@ impl PathCondition {
                 symbols.extend(v.symbols());
             }
             SymbolicConstraint::And(c1, c2) | SymbolicConstraint::Or(c1, c2) => {
-                self.collect_symbols_from_constraint(c1, symbols);
-                self.collect_symbols_from_constraint(c2, symbols);
+                Self::collect_symbols_from_constraint(c1, symbols);
+                Self::collect_symbols_from_constraint(c2, symbols);
             }
             SymbolicConstraint::Not(c) => {
-                self.collect_symbols_from_constraint(c, symbols);
+                Self::collect_symbols_from_constraint(c, symbols);
             }
             SymbolicConstraint::True | SymbolicConstraint::False => {}
         }
@@ -677,8 +676,8 @@ impl Default for Z3Solver {
 fn parse_z3_int(s: &str) -> Result<Vec<u8>, ()> {
     let cleaned = s.trim().replace(' ', "");
 
-    if cleaned.starts_with("0x") {
-        hex::decode(&cleaned[2..]).map_err(|_| ())
+    if let Some(stripped) = cleaned.strip_prefix("0x") {
+        hex::decode(stripped).map_err(|_| ())
     } else if let Ok(n) = cleaned.parse::<u64>() {
         Ok(n.to_be_bytes().to_vec())
     } else {
@@ -887,7 +886,7 @@ impl SymbolicExecutor {
         &self,
         constraint: &SymbolicConstraint,
     ) -> Option<Vec<FieldElement>> {
-        self.find_satisfying_inputs(&constraint.clone().not())
+        self.find_satisfying_inputs(&constraint.clone().negate())
     }
 
     /// Reset executor for new exploration
@@ -945,19 +944,12 @@ impl SymbolicFuzzerIntegration {
 
     /// Generate seeds with interesting boundary values
     fn generate_boundary_seeds(&self) -> Vec<Vec<FieldElement>> {
-        let mut seeds = Vec::new();
-
-        // All zeros
-        seeds.push(vec![FieldElement::zero(); self.num_inputs]);
-
-        // All ones
-        seeds.push(vec![FieldElement::one(); self.num_inputs]);
-
-        // Max field values
-        seeds.push(vec![FieldElement::max_value(); self.num_inputs]);
-
-        // Half field value
-        seeds.push(vec![FieldElement::half_modulus(); self.num_inputs]);
+        let mut seeds = vec![
+            vec![FieldElement::zero(); self.num_inputs],
+            vec![FieldElement::one(); self.num_inputs],
+            vec![FieldElement::max_value(); self.num_inputs],
+            vec![FieldElement::half_modulus(); self.num_inputs],
+        ];
 
         // Mixed boundary values
         if self.num_inputs >= 2 {

@@ -117,8 +117,8 @@ fn bench_assertion_checking(c: &mut Criterion) {
         
         for i in 0..num_assertions {
             let assertion = CrossStepAssertion::new(
-                &format!("assertion_{}", i),
-                &format!("step[0].out[{}] == step[1].in[{}]", i % 4, i % 4),
+                format!("assertion_{}", i),
+                format!("step[0].out[{}] == step[1].in[{}]", i % 4, i % 4),
             );
             spec = spec.with_assertion(assertion);
         }

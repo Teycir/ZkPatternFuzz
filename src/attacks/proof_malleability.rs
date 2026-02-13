@@ -119,26 +119,23 @@ impl ProofMalleabilityScanner {
                     continue;
                 }
 
-                match executor.verify(&mutated, &public_inputs) {
-                    Ok(true) => {
-                        findings.push(Finding {
-                            attack_type: AttackType::Soundness,
-                            severity: Severity::Critical,
-                            description: format!(
-                                "Proof malleability: {:?} on {}-byte proof still verifies",
-                                mutation,
-                                proof.len()
-                            ),
-                            poc: ProofOfConcept {
-                                witness_a: witness.clone(),
-                                witness_b: None,
-                                public_inputs: public_inputs.clone(),
-                                proof: Some(mutated),
-                            },
-                            location: None,
-                        });
-                    }
-                    _ => {}
+                if let Ok(true) = executor.verify(&mutated, &public_inputs) {
+                    findings.push(Finding {
+                        attack_type: AttackType::Soundness,
+                        severity: Severity::Critical,
+                        description: format!(
+                            "Proof malleability: {:?} on {}-byte proof still verifies",
+                            mutation,
+                            proof.len()
+                        ),
+                        poc: ProofOfConcept {
+                            witness_a: witness.clone(),
+                            witness_b: None,
+                            public_inputs: public_inputs.clone(),
+                            proof: Some(mutated),
+                        },
+                        location: None,
+                    });
                 }
             }
         }

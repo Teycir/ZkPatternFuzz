@@ -378,7 +378,7 @@ fn convert_circom_file(
     let filename = if is_root {
         path.file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or_else(|| main_component)
+            .unwrap_or(main_component)
             .to_string()
     } else {
         let stem = path

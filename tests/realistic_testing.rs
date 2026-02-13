@@ -7,7 +7,7 @@
 
 use zk_fuzzer::*;
 use zk_fuzzer::targets::CircomTarget;
-use std::path::PathBuf;
+use std::path::Path;
 
 /// Test with a deliberately underconstrained circuit
 /// Requires real Circom backend to detect the bug
@@ -75,7 +75,7 @@ async fn test_missing_range_check() {
     let report = fuzzer.run().await.unwrap();
     
     // Should accept values > 2^8
-    assert!(report.findings.len() > 0);
+    assert!(!report.findings.is_empty());
 }
 
 /// Test corpus-based fuzzing effectiveness
@@ -187,11 +187,13 @@ async fn test_deterministic_fuzzing() {
 }
 
 /// Helper to create test configuration
-fn create_test_config(circuit_path: &PathBuf, component: &str, framework: Framework) -> FuzzConfig {
+fn create_test_config(circuit_path: &Path, component: &str, framework: Framework) -> FuzzConfig {
     use serde_yaml::Value;
     
-    let mut parameters = Parameters::default();
-    parameters.timeout_seconds = 5;
+    let mut parameters = Parameters {
+        timeout_seconds: 5,
+        ..Parameters::default()
+    };
     parameters
         .additional
         .insert("max_iterations".to_string(), Value::Number(0.into()));
@@ -202,7 +204,7 @@ fn create_test_config(circuit_path: &PathBuf, component: &str, framework: Framew
             version: "1.0".to_string(),
             target: Target {
                 framework,
-                circuit_path: circuit_path.clone(),
+                circuit_path: circuit_path.to_path_buf(),
                 main_component: component.to_string(),
             },
             parameters,

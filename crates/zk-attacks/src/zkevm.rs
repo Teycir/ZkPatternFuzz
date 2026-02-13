@@ -767,27 +767,27 @@ impl ZkEvmAttack {
         match boundary_case {
             OpcodeBoundaryCase::MaxU256Values(_) => {
                 // Division by max should not panic
-                if opcode.name == "DIV"
+                if (opcode.name == "DIV"
                     || opcode.name == "SDIV"
                     || opcode.name == "MOD"
-                    || opcode.name == "SMOD"
+                    || opcode.name == "SMOD")
+                    && !result.success
                 {
-                    if !result.success {
-                        if let Some(ref err) = result.error {
-                            if err.contains("panic") || err.contains("overflow") {
-                                return Ok(Some(ZkEvmTestResult {
-                                    vulnerability_type:
-                                        ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
-                                    description: format!("{} fails with max values", opcode.name),
-                                    opcode: Some(opcode.name.to_string()),
-                                    witness: full_inputs,
-                                    expected_behavior: "Graceful handling of max U256 values"
-                                        .to_string(),
-                                    actual_behavior: format!("Error: {}", err),
-                                    context: HashMap::new(),
-                                }));
-                            }
-                        }
+                    if let Some(err) = result
+                        .error
+                        .as_ref()
+                        .filter(|err| err.contains("panic") || err.contains("overflow"))
+                    {
+                        return Ok(Some(ZkEvmTestResult {
+                            vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
+                            description: format!("{} fails with max values", opcode.name),
+                            opcode: Some(opcode.name.to_string()),
+                            witness: full_inputs,
+                            expected_behavior: "Graceful handling of max U256 values"
+                                .to_string(),
+                            actual_behavior: format!("Error: {}", err),
+                            context: HashMap::new(),
+                        }));
                     }
                 }
             }
@@ -830,20 +830,19 @@ impl ZkEvmAttack {
             }
             OpcodeBoundaryCase::SignedEdge(_) => {
                 // Check signed arithmetic edge cases
-                if opcode.name == "SDIV" || opcode.name == "SMOD" || opcode.name == "SAR" {
-                    if !result.success {
-                        let err = result.error.unwrap_or_else(|| "Unknown error".to_string());
-                        return Ok(Some(ZkEvmTestResult {
-                            vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
-                            description: format!("{} fails on signed edge case", opcode.name),
-                            opcode: Some(opcode.name.to_string()),
-                            witness: full_inputs,
-                            expected_behavior: "Handle signed boundary values correctly"
-                                .to_string(),
-                            actual_behavior: format!("Error: {}", err),
-                            context: HashMap::new(),
-                        }));
-                    }
+                if (opcode.name == "SDIV" || opcode.name == "SMOD" || opcode.name == "SAR")
+                    && !result.success
+                {
+                    let err = result.error.unwrap_or_else(|| "Unknown error".to_string());
+                    return Ok(Some(ZkEvmTestResult {
+                        vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
+                        description: format!("{} fails on signed edge case", opcode.name),
+                        opcode: Some(opcode.name.to_string()),
+                        witness: full_inputs,
+                        expected_behavior: "Handle signed boundary values correctly".to_string(),
+                        actual_behavior: format!("Error: {}", err),
+                        context: HashMap::new(),
+                    }));
                 }
             }
             _ => {}

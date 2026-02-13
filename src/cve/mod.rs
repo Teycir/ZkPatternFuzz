@@ -652,7 +652,7 @@ fn build_inputs_for_test(
             let value = key_map
                 .get(&key)
                 .copied()
-                .or_else(|| synthesized.as_ref());
+                .or(synthesized.as_ref());
 
             let inferred_len = spec.length.or_else(|| {
                 if spec.is_array {
@@ -669,8 +669,10 @@ fn build_inputs_for_test(
 
             if let Some(len) = inferred_len {
                 if elements.len() < len {
-                    elements
-                        .extend(std::iter::repeat(FieldElement::zero()).take(len - elements.len()));
+                    elements.extend(std::iter::repeat_n(
+                        FieldElement::zero(),
+                        len - elements.len(),
+                    ));
                 } else if elements.len() > len {
                     elements.truncate(len);
                 }
@@ -698,7 +700,10 @@ fn build_inputs_for_test(
     }
 
     if inputs.len() < total_inputs {
-        inputs.extend(std::iter::repeat(FieldElement::zero()).take(total_inputs - inputs.len()));
+        inputs.extend(std::iter::repeat_n(
+            FieldElement::zero(),
+            total_inputs - inputs.len(),
+        ));
     } else if inputs.len() > total_inputs {
         inputs.truncate(total_inputs);
     }
@@ -810,7 +815,7 @@ fn parse_value_string(
         if len > 1 {
             let mut out = Vec::with_capacity(len);
             out.push(fe.clone());
-            out.extend(std::iter::repeat(FieldElement::zero()).take(len - 1));
+            out.extend(std::iter::repeat_n(FieldElement::zero(), len - 1));
             return Ok(out);
         }
     }

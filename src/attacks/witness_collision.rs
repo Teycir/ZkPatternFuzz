@@ -29,6 +29,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 
+type WitnessCollisionEntry = (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>);
+
 /// A collision between two witnesses
 #[derive(Debug, Clone)]
 pub struct WitnessCollision {
@@ -211,10 +213,7 @@ impl WitnessCollisionDetector {
         executor: &dyn CircuitExecutor,
         witnesses: &[Vec<FieldElement>],
     ) -> Vec<WitnessCollision> {
-        let mut output_map: HashMap<
-            String,
-            (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>),
-        > = HashMap::new();
+        let mut output_map: HashMap<String, WitnessCollisionEntry> = HashMap::new();
         let mut collisions = Vec::new();
         let num_public = executor.num_public_inputs();
         let explicit_public_indices = self.public_input_indices.as_ref();

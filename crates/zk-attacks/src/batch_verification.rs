@@ -727,11 +727,9 @@ impl BatchVerificationAttack {
             }
             ForgeryStrategy::DuplicateProofs => {
                 // Duplicate proofs to fill batch
-                if let Some(first) = valid_batch.first() {
-                    Some(vec![first.clone(); target_size])
-                } else {
-                    None
-                }
+                valid_batch
+                    .first()
+                    .map(|first| vec![first.clone(); target_size])
             }
             ForgeryStrategy::ReorderedBatch => {
                 // Reverse order of batch
@@ -754,15 +752,7 @@ impl BatchVerificationAttack {
                 // Apply malleable transformation to proofs
                 let mut transformed: Vec<Vec<FieldElement>> = valid_batch
                     .iter()
-                    .map(|proof| {
-                        proof
-                            .iter()
-                            .map(|x| {
-                                // Apply trivial transformation (this is a simplified check)
-                                x.clone()
-                            })
-                            .collect()
-                    })
+                    .map(|proof| proof.to_vec())
                     .collect();
 
                 // Negate and un-negate (identity for checking malleability detection)

@@ -116,26 +116,26 @@ impl ExecOptions {
     }
 
     fn to_factory_options(&self) -> ExecutorFactoryOptions {
-        let mut options = ExecutorFactoryOptions::default();
-        options.build_dir_base = self.build_dir_base.as_ref().map(PathBuf::from);
-        options.circom_build_dir = self.circom_build_dir.as_ref().map(PathBuf::from);
-        options.noir_build_dir = self.noir_build_dir.as_ref().map(PathBuf::from);
-        options.halo2_build_dir = self.halo2_build_dir.as_ref().map(PathBuf::from);
-        options.cairo_build_dir = self.cairo_build_dir.as_ref().map(PathBuf::from);
-        options.circom_include_paths = self
-            .circom_include_paths
-            .iter()
-            .map(PathBuf::from)
-            .collect();
-        options.circom_auto_setup_keys = self.circom_auto_setup_keys;
-        options.circom_ptau_path = self.circom_ptau_path.as_ref().map(PathBuf::from);
-        options.circom_snarkjs_path = self.circom_snarkjs_path.as_ref().map(PathBuf::from);
-        options.circom_skip_compile_if_artifacts = self.circom_skip_compile_if_artifacts;
-        options.circom_skip_constraint_check = self.circom_skip_constraint_check;
-        options.circom_witness_sanity_check = self.circom_witness_sanity_check;
-        options.strict_backend = self.strict_backend;
-        options.mark_fallback = self.mark_fallback;
-        options
+        ExecutorFactoryOptions {
+            build_dir_base: self.build_dir_base.as_ref().map(PathBuf::from),
+            circom_build_dir: self.circom_build_dir.as_ref().map(PathBuf::from),
+            noir_build_dir: self.noir_build_dir.as_ref().map(PathBuf::from),
+            halo2_build_dir: self.halo2_build_dir.as_ref().map(PathBuf::from),
+            cairo_build_dir: self.cairo_build_dir.as_ref().map(PathBuf::from),
+            circom_include_paths: self
+                .circom_include_paths
+                .iter()
+                .map(PathBuf::from)
+                .collect(),
+            circom_auto_setup_keys: self.circom_auto_setup_keys,
+            circom_ptau_path: self.circom_ptau_path.as_ref().map(PathBuf::from),
+            circom_snarkjs_path: self.circom_snarkjs_path.as_ref().map(PathBuf::from),
+            circom_skip_compile_if_artifacts: self.circom_skip_compile_if_artifacts,
+            circom_skip_constraint_check: self.circom_skip_constraint_check,
+            circom_witness_sanity_check: self.circom_witness_sanity_check,
+            strict_backend: self.strict_backend,
+            mark_fallback: self.mark_fallback,
+        }
     }
 }
 
@@ -181,7 +181,7 @@ impl ExecResponse {
         }
     }
 
-    fn to_result(self) -> anyhow::Result<ExecutionResult> {
+    fn into_result(self) -> anyhow::Result<ExecutionResult> {
         let outputs = self
             .outputs
             .iter()
@@ -449,8 +449,10 @@ impl IsolatedExecutor {
             main_component,
             options: ExecOptions::from_factory_options(&options),
         };
-        let mut config = IsolationConfig::default();
-        config.timeout_ms = timeout_ms.max(1);
+        let config = IsolationConfig {
+            timeout_ms: timeout_ms.max(1),
+            ..IsolationConfig::default()
+        };
         Ok(Self {
             inner,
             base_request,
@@ -572,7 +574,7 @@ impl CircuitExecutor for IsolatedExecutor {
         let request = self.base_request.with_inputs(inputs);
         match self
             .run_isolated(&request)
-            .and_then(|resp| resp.to_result())
+            .and_then(ExecResponse::into_result)
         {
             Ok(result) => result,
             Err(err) => ExecutionResult::failure(err.to_string()),

@@ -156,7 +156,7 @@ fn test_semaphore_invariant_detection() {
         ..Default::default()
     });
 
-    let configs = analyzer.analyze_project(&circuit_path.parent().unwrap()).unwrap();
+    let configs = analyzer.analyze_project(circuit_path.parent().unwrap()).unwrap();
     
     if configs.is_empty() {
         println!("⚠️  No configs generated - circuit may need dependencies");
@@ -207,7 +207,9 @@ fn test_nullify_circuits_edge_cases() {
         ..Default::default()
     });
 
-    let configs = analyzer.analyze_project(&nullify_path.parent().unwrap().parent().unwrap()).unwrap();
+    let configs = analyzer
+        .analyze_project(nullify_path.parent().unwrap().parent().unwrap())
+        .unwrap();
     
     println!("Found {} circuits in nullifier module", configs.len());
 

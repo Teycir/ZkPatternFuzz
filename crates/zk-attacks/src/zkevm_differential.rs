@@ -85,7 +85,7 @@ impl Default for ZkEvmDifferentialConfig {
 // ============================================================================
 
 /// EVM account state
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AccountState {
     /// Account balance
     pub balance: [u8; 32],
@@ -95,17 +95,6 @@ pub struct AccountState {
     pub code_hash: [u8; 32],
     /// Storage root
     pub storage_root: [u8; 32],
-}
-
-impl Default for AccountState {
-    fn default() -> Self {
-        Self {
-            balance: [0u8; 32],
-            nonce: 0,
-            code_hash: [0u8; 32],
-            storage_root: [0u8; 32],
-        }
-    }
 }
 
 /// EVM execution trace

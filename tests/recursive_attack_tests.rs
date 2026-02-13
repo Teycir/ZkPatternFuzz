@@ -254,7 +254,7 @@ fn test_accumulator_state_multiple_folds() {
         let challenge = FieldElement::from_u64(i + 10);
         acc = acc.fold_with(&new_instance, &challenge);
 
-        assert_eq!(acc.counter, i as u64);
+        assert_eq!(acc.counter, i);
     }
 
     assert_eq!(acc.counter, 5);
@@ -311,22 +311,17 @@ fn test_recursive_step_intermediate() {
 fn test_recursive_attack_creation() {
     let config = RecursiveAttackConfig::default();
     let _attack = RecursiveAttack::new(config);
-
-    // Initial state should be empty
-    // (fields are private, but we can verify creation doesn't panic)
-    assert!(true);
 }
 
 #[test]
 fn test_recursive_attack_with_seed() {
-    let mut config = RecursiveAttackConfig::default();
-    config.seed = Some(12345);
+    let config = RecursiveAttackConfig {
+        seed: Some(12345),
+        ..RecursiveAttackConfig::default()
+    };
 
     let _attack1 = RecursiveAttack::new(config.clone());
     let _attack2 = RecursiveAttack::new(config);
-
-    // Both attacks should be created successfully
-    assert!(true);
 }
 
 // ============================================================================

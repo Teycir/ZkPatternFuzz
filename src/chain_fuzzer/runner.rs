@@ -127,7 +127,6 @@ impl ChainRunner {
 
             // Resolve inputs for this step
             let inputs = self.resolve_inputs(
-                step_index,
                 &step.input_wiring,
                 &step.circuit_ref,
                 executor.num_private_inputs() + executor.num_public_inputs(),
@@ -178,7 +177,6 @@ impl ChainRunner {
     /// Resolve inputs for a step based on its wiring configuration
     fn resolve_inputs(
         &self,
-        _step_index: usize,
         wiring: &InputWiring,
         circuit_ref: &str,
         expected_count: usize,
@@ -245,9 +243,9 @@ impl ChainRunner {
                 if !initial_inputs.contains_key(circuit_ref) {
                     // CRITICAL FIX: Only fill indices that weren't in the mapping
                     // (zero is a valid output value and should not be overwritten)
-                    for i in 0..inputs.len() {
+                    for (i, input) in inputs.iter_mut().enumerate() {
                         if !mapped_indices.contains(&i) {
-                            inputs[i] = FieldElement::random(rng);
+                            *input = FieldElement::random(rng);
                         }
                     }
                 }
@@ -286,9 +284,9 @@ impl ChainRunner {
 
                 // CRITICAL FIX: Fill any remaining unset indices with random
                 // (only those that were not in prior mapping or fresh_indices)
-                for i in 0..inputs.len() {
+                for (i, input) in inputs.iter_mut().enumerate() {
                     if !set_indices.contains(&i) {
-                        inputs[i] = FieldElement::random(rng);
+                        *input = FieldElement::random(rng);
                     }
                 }
 
@@ -324,9 +322,9 @@ impl ChainRunner {
 
                 // CRITICAL FIX: Fill any remaining unset indices with random
                 // (only those that were not in constants or fresh_indices)
-                for i in 0..inputs.len() {
+                for (i, input) in inputs.iter_mut().enumerate() {
                     if !set_indices.contains(&i) {
-                        inputs[i] = FieldElement::random(rng);
+                        *input = FieldElement::random(rng);
                     }
                 }
 

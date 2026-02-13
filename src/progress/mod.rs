@@ -206,10 +206,12 @@ mod tests {
 
     #[test]
     fn test_fuzzing_stats() {
-        let mut stats = FuzzingStats::default();
-        stats.executions = 1000;
-        stats.crashes = 5;
-        stats.coverage_percentage = 75.5;
+        let stats = FuzzingStats {
+            executions: 1000,
+            crashes: 5,
+            coverage_percentage: 75.5,
+            ..FuzzingStats::default()
+        };
 
         assert_eq!(stats.executions, 1000);
         assert_eq!(stats.crashes, 5);

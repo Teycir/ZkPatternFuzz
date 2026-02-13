@@ -51,25 +51,22 @@ impl SetupPoisoningDetector {
 
             let public_inputs: Vec<FieldElement> = witness[..info.num_public_inputs].to_vec();
 
-            match executor_b.verify(&proof_a, &public_inputs) {
-                Ok(true) => {
-                    findings.push(Finding {
-                        attack_type: AttackType::Soundness,
-                        severity: Severity::Critical,
-                        description: format!(
-                            "Cross-setup verification succeeded: proof from setup A verified under setup B's key (witness {}). Trusted setup may be compromised or verification key is not binding",
-                            idx
-                        ),
-                        poc: ProofOfConcept {
-                            witness_a: witness.clone(),
-                            witness_b: None,
-                            public_inputs,
-                            proof: Some(proof_a),
-                        },
-                        location: None,
-                    });
-                }
-                _ => {}
+            if let Ok(true) = executor_b.verify(&proof_a, &public_inputs) {
+                findings.push(Finding {
+                    attack_type: AttackType::Soundness,
+                    severity: Severity::Critical,
+                    description: format!(
+                        "Cross-setup verification succeeded: proof from setup A verified under setup B's key (witness {}). Trusted setup may be compromised or verification key is not binding",
+                        idx
+                    ),
+                    poc: ProofOfConcept {
+                        witness_a: witness.clone(),
+                        witness_b: None,
+                        public_inputs,
+                        proof: Some(proof_a),
+                    },
+                    location: None,
+                });
             }
         }
 

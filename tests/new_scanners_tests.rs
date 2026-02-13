@@ -101,7 +101,7 @@ impl CircuitExecutor for FlakyExecutor {
 
     fn execute_sync(&self, _inputs: &[FieldElement]) -> ExecutionResult {
         let call = self.counter.fetch_add(1, Ordering::Relaxed);
-        let value = if call % 2 == 0 { 1u64 } else { 2u64 };
+        let value = if call.is_multiple_of(2) { 1u64 } else { 2u64 };
         ExecutionResult::success(vec![FieldElement::from_u64(value)], ExecutionCoverage::default())
     }
 

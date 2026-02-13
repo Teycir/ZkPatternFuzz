@@ -356,7 +356,6 @@ impl BugDirectedExecutor {
                     if self.config.stop_on_first {
                         // Signal early termination by clearing worklist
                         self.worklist.clear();
-                        return;
                     }
                 }
             }
@@ -616,7 +615,7 @@ impl DifferentialExecutor {
         for constraint in &self.constraints_b {
             let constraint_str = format!("{:?}", constraint);
             if only_in_b.iter().any(|s| s == &constraint_str) {
-                pc.add_constraint(constraint.clone().not());
+                pc.add_constraint(constraint.clone().negate());
             }
         }
 
@@ -667,7 +666,7 @@ impl DifferentialExecutor {
         // Must violate at least one constraint in other version
         // (disjunction of negations)
         if !unsatisfied.is_empty() {
-            let negated: Vec<_> = unsatisfied.iter().map(|c| c.clone().not()).collect();
+            let negated: Vec<_> = unsatisfied.iter().map(|c| c.clone().negate()).collect();
             if let Some(first) = negated.first() {
                 let mut disjunction = first.clone();
                 for c in negated.iter().skip(1) {

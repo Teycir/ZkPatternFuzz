@@ -453,8 +453,8 @@ fn rewrite_path_with_placeholder(path: &str, root: &Path, placeholder: Option<&s
     };
     let root_str = root.to_string_lossy();
     let root_str = root_str.trim_end_matches(std::path::MAIN_SEPARATOR);
-    if path.starts_with(root_str) {
-        let suffix = path[root_str.len()..].trim_start_matches(std::path::MAIN_SEPARATOR);
+    if let Some(raw_suffix) = path.strip_prefix(root_str) {
+        let suffix = raw_suffix.trim_start_matches(std::path::MAIN_SEPARATOR);
         if suffix.is_empty() {
             placeholder.to_string()
         } else {

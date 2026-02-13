@@ -245,7 +245,7 @@ impl FuzzingEngine {
         ast: Option<&crate::config::v2::InvariantAST>,
     ) -> Option<FieldElement> {
         if let Some(ast) = ast {
-            if let Some(value) = self.violation_from_ast(ast, invariant) {
+            if let Some(value) = self.violation_from_ast(ast) {
                 return Some(value);
             }
         }
@@ -280,7 +280,7 @@ impl FuzzingEngine {
         input_ranges: &std::collections::HashMap<String, (usize, usize)>,
     ) -> Vec<usize> {
         let mut names = Vec::new();
-        self.collect_identifiers(ast, &mut names);
+        Self::collect_identifiers(ast, &mut names);
         let mut indices = Vec::new();
         for name in names {
             let key = Self::normalize_input_name(&name).to_lowercase();
@@ -295,11 +295,7 @@ impl FuzzingEngine {
         indices
     }
 
-    pub(super) fn collect_identifiers(
-        &self,
-        ast: &crate::config::v2::InvariantAST,
-        out: &mut Vec<String>,
-    ) {
+    pub(super) fn collect_identifiers(ast: &crate::config::v2::InvariantAST, out: &mut Vec<String>) {
         use crate::config::v2::InvariantAST;
 
         match ast {
@@ -317,8 +313,8 @@ impl FuzzingEngine {
             | InvariantAST::GreaterThan(a, b)
             | InvariantAST::GreaterThanOrEqual(a, b)
             | InvariantAST::InSet(a, b) => {
-                self.collect_identifiers(a, out);
-                self.collect_identifiers(b, out);
+                Self::collect_identifiers(a, out);
+                Self::collect_identifiers(b, out);
             }
             InvariantAST::Range {
                 lower,
@@ -326,14 +322,14 @@ impl FuzzingEngine {
                 upper,
                 ..
             } => {
-                self.collect_identifiers(lower, out);
-                self.collect_identifiers(value, out);
-                self.collect_identifiers(upper, out);
+                Self::collect_identifiers(lower, out);
+                Self::collect_identifiers(value, out);
+                Self::collect_identifiers(upper, out);
             }
-            InvariantAST::ForAll { expr, .. } => self.collect_identifiers(expr, out),
+            InvariantAST::ForAll { expr, .. } => Self::collect_identifiers(expr, out),
             InvariantAST::Set(values) => {
                 for value in values {
-                    self.collect_identifiers(value, out);
+                    Self::collect_identifiers(value, out);
                 }
             }
             _ => {}
@@ -396,12 +392,11 @@ impl FuzzingEngine {
     pub(super) fn violation_from_ast(
         &self,
         ast: &crate::config::v2::InvariantAST,
-        invariant: &crate::config::v2::Invariant,
     ) -> Option<FieldElement> {
         use crate::config::v2::InvariantAST;
 
         match ast {
-            InvariantAST::ForAll { expr, .. } => self.violation_from_ast(expr, invariant),
+            InvariantAST::ForAll { expr, .. } => self.violation_from_ast(expr),
             InvariantAST::InSet(_, set) => self.violation_from_in_set(set),
             InvariantAST::Range {
                 lower,

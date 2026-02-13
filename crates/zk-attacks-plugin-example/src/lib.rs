@@ -39,7 +39,11 @@ impl AttackPlugin for ExampleAttack {
 ///
 /// Note: This uses the Rust ABI, so the plugin must be built with a compatible
 /// Rust toolchain and dependency set.
+///
+/// # Safety
+/// The caller must ensure ABI compatibility between host and plugin and must
+/// only load trusted plugin binaries.
 #[no_mangle]
 pub unsafe extern "Rust" fn zk_attacks_plugins() -> Vec<Box<dyn AttackPlugin>> {
-    vec![Box::new(ExampleAttack::default())]
+    vec![Box::new(ExampleAttack)]
 }

@@ -209,16 +209,14 @@ impl PathMerger {
         }
 
         // Merge signals by taking first (simple merge)
-        let merged = SymbolicState {
+        SymbolicState {
             signals: first.signals,
             named_signals: first.named_signals,
             path_condition: merged_pc,
             current_constraint: first.current_constraint,
             is_complete: false,
             depth: first.depth,
-        };
-
-        merged
+        }
     }
 
     /// Merge by constraint structure similarity
@@ -1126,7 +1124,7 @@ impl SymbolicV2Executor {
         &mut self,
         constraint: &SymbolicConstraint,
     ) -> Option<Vec<FieldElement>> {
-        self.find_satisfying_inputs(&constraint.clone().not())
+        self.find_satisfying_inputs(&constraint.clone().negate())
     }
 }
 

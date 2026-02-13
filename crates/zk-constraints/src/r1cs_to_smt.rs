@@ -270,7 +270,7 @@ mod tests {
         let modulus = &r1cs.field_size;
         let mut wires = vec![BigUint::from(1u32); r1cs.num_wires];
 
-        if let Some(first) = inputs.get(0) {
+        if let Some(first) = inputs.first() {
             wires[1] = first.to_biguint();
         }
         if let Some(second) = inputs.get(1) {

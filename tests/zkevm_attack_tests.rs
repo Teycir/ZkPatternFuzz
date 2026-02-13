@@ -295,15 +295,11 @@ fn test_result_without_opcode() {
 #[test]
 fn test_price_impact_analyzer_creation() {
     let _analyzer = ZkEvmPriceAnalyzer::new(0.05);
-    // Just verify it constructs without panic
-    assert!(true);
 }
 
 #[test]
 fn test_call_vulnerability_detector_creation() {
     let _detector = ZkEvmCallDetector::new(10);
-    // Just verify it constructs without panic
-    assert!(true);
 }
 
 // ============================================================================
