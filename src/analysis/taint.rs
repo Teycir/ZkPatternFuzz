@@ -5,10 +5,10 @@
 //! - Improper input segregation
 //! - Privacy violations
 
-use zk_core::Severity;
-use zk_core::ConstraintEquation;
-use zk_core::{Finding, ProofOfConcept};
 use std::collections::{HashMap, HashSet};
+use zk_core::ConstraintEquation;
+use zk_core::Severity;
+use zk_core::{Finding, ProofOfConcept};
 
 /// Taint label for tracking data flow
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

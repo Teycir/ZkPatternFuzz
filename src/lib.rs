@@ -15,9 +15,9 @@
 //! #   name: "Doc Test Campaign"
 //! #   version: "1.0"
 //! #   target:
-//! #     framework: "mock"
-//! #     circuit_path: "./circuits/mock.circom"
-//! #     main_component: "MockCircuit"
+//! #     framework: "circom"
+//! #     circuit_path: "./circuits/example.circom"
+//! #     main_component: "Main"
 //! #
 //! # attacks:
 //! #   - type: "boundary"
@@ -56,7 +56,7 @@
 //! | **Noir** | ✅ Full | Barretenberg (ACIR) | Aztec, privacy protocols |
 //! | **Halo2** | ✅ Full | PLONK | zkEVM, PSE circuits |
 //! | **Cairo** | ✅ Full | STARK | StarkNet, StarkEx |
-//! | **Mock** | ✅ Full | Testing | Fuzzer development |
+//! | **Mock** | Disabled in runtime | N/A | N/A |
 //!
 //! # Attack Types
 //!

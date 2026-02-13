@@ -30,45 +30,45 @@
 //! The [`constraint_cache`] module provides thread-safe constraint evaluation caching.
 //! The [`async_pipeline`] module provides async execution pipeline for high throughput.
 
-mod constants;
-mod mutators;
-mod oracle;
-mod engine;
 pub mod adaptive_attack_scheduler;
 pub mod adaptive_orchestrator;
-pub mod async_pipeline;  // Phase 4.4: Async execution pipeline
-pub mod constraint_cache;  // Phase 4.4: Constraint evaluation caching
-pub mod invariant_checker;  // Phase 2: Fuzz-continuous invariant checking
+pub mod async_pipeline; // Phase 4.4: Async execution pipeline
+mod constants;
+pub mod constraint_cache; // Phase 4.4: Constraint evaluation caching
+mod engine;
+pub mod grammar;
+pub mod invariant_checker; // Phase 2: Fuzz-continuous invariant checking
+mod mutators;
 pub mod near_miss;
-pub mod oracle_correlation;  // Phase 6A: Cross-oracle correlation
+mod oracle;
+pub mod oracle_correlation; // Phase 6A: Cross-oracle correlation
 pub mod oracle_diversity;
-pub mod oracle_validation;  // Phase 0 Fix: Oracle validation framework
-pub mod oracle_state;  // Phase 5.7: Bounded oracle state management
+pub mod oracle_state; // Phase 5.7: Bounded oracle state management
+pub mod oracle_validation; // Phase 0 Fix: Oracle validation framework
+pub mod oracles;
 pub mod phased_scheduler;
 mod power_schedule;
 pub mod structure_aware;
-pub mod grammar;
-pub mod oracles;
 
-pub use constants::*;
-pub use mutators::*;
-pub use oracle::*;
-pub use engine::FuzzingEngine;
 pub use adaptive_attack_scheduler::{
-    AdaptiveScheduler, AdaptiveSchedulerConfig, AdaptiveSchedulerStats,
-    AttackResults, NearMissEvent, YamlSuggestion, SuggestionType,
+    AdaptiveScheduler, AdaptiveSchedulerConfig, AdaptiveSchedulerStats, AttackResults,
+    NearMissEvent, SuggestionType, YamlSuggestion,
 };
 pub use adaptive_orchestrator::{
-    AdaptiveOrchestrator, AdaptiveOrchestratorConfig, AdaptiveOrchestratorBuilder,
-    AdaptiveCampaignResults, ConfirmedZeroDay,
+    AdaptiveCampaignResults, AdaptiveOrchestrator, AdaptiveOrchestratorBuilder,
+    AdaptiveOrchestratorConfig, ConfirmedZeroDay,
 };
-pub use near_miss::{NearMissDetector, NearMiss, NearMissConfig, NearMissStats};
-pub use oracle_diversity::{OracleDiversityTracker, OracleDiversityStats, OracleFire};
+pub use constants::*;
+pub use engine::FuzzingEngine;
+pub use mutators::*;
+pub use near_miss::{NearMiss, NearMissConfig, NearMissDetector, NearMissStats};
+pub use oracle::*;
+pub use oracle_diversity::{OracleDiversityStats, OracleDiversityTracker, OracleFire};
 pub use oracles::{
-    SemanticOracle, OracleConfig, OracleStats, CombinedSemanticOracle,
-    NullifierOracle, MerkleOracle, CommitmentOracle, RangeProofOracle,
+    CombinedSemanticOracle, CommitmentOracle, MerkleOracle, NullifierOracle, OracleConfig,
+    OracleStats, RangeProofOracle, SemanticOracle,
 };
-pub use phased_scheduler::{PhasedScheduler, PhaseResult, ScheduleBuilder, PhaseExecutionResult};
+pub use phased_scheduler::{PhaseExecutionResult, PhaseResult, PhasedScheduler, ScheduleBuilder};
 pub use zk_core::{CoverageMap, FieldElement, Finding, ProofOfConcept, TestCase, TestMetadata};
 
 use crate::config::*;
@@ -94,10 +94,7 @@ struct PhaseRunSummary {
 impl ZkFuzzer {
     /// Create a new fuzzer with the given configuration
     pub fn new(config: FuzzConfig, seed: Option<u64>) -> Self {
-        Self {
-            config,
-            seed,
-        }
+        Self { config, seed }
     }
 
     /// Create and run using the new engine with progress reporting
@@ -112,11 +109,24 @@ impl ZkFuzzer {
         }
 
         // Calculate total iterations for progress bar
-        let total: u64 = config.attacks.iter().map(|a| {
-            a.config.get("witness_pairs").and_then(|v| v.as_u64()).unwrap_or(1000)
-            + a.config.get("forge_attempts").and_then(|v| v.as_u64()).unwrap_or(0)
-            + a.config.get("samples").and_then(|v| v.as_u64()).unwrap_or(0)
-        }).sum();
+        let total: u64 = config
+            .attacks
+            .iter()
+            .map(|a| {
+                a.config
+                    .get("witness_pairs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(1000)
+                    + a.config
+                        .get("forge_attempts")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0)
+                    + a.config
+                        .get("samples")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0)
+            })
+            .sum();
 
         let progress = ProgressReporter::new(&config.campaign.name, total.max(1000), verbose);
 
@@ -229,10 +239,7 @@ impl ZkFuzzer {
             })
             .await?;
 
-        let summaries = summaries
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or_default();
+        let summaries = summaries.lock().map(|s| s.clone()).unwrap_or_default();
 
         let mut findings = Vec::new();
         let mut total_exec = 0u64;

@@ -45,7 +45,10 @@ impl FuzzingEngine {
         }
     }
 
-    pub(super) fn severity_from_invariant(&self, invariant: &crate::config::v2::Invariant) -> Severity {
+    pub(super) fn severity_from_invariant(
+        &self,
+        invariant: &crate::config::v2::Invariant,
+    ) -> Severity {
         match invariant.severity.as_deref().map(|s| s.to_lowercase()) {
             Some(ref s) if s == "critical" => Severity::Critical,
             Some(ref s) if s == "high" => Severity::High,
@@ -61,8 +64,10 @@ impl FuzzingEngine {
         }
     }
 
-
-    pub(super) fn enforce_invariants(&self, invariants: &[crate::config::v2::Invariant]) -> Vec<Finding> {
+    pub(super) fn enforce_invariants(
+        &self,
+        invariants: &[crate::config::v2::Invariant],
+    ) -> Vec<Finding> {
         use crate::config::v2::{InvariantOracle, InvariantType};
 
         use crate::config::v2::parse_invariant_relation;
@@ -281,7 +286,11 @@ impl FuzzingEngine {
         indices
     }
 
-    pub(super) fn collect_identifiers(&self, ast: &crate::config::v2::InvariantAST, out: &mut Vec<String>) {
+    pub(super) fn collect_identifiers(
+        &self,
+        ast: &crate::config::v2::InvariantAST,
+        out: &mut Vec<String>,
+    ) {
         use crate::config::v2::InvariantAST;
 
         match ast {
@@ -406,7 +415,10 @@ impl FuzzingEngine {
         }
     }
 
-    pub(super) fn violation_from_in_set(&self, set: &crate::config::v2::InvariantAST) -> Option<FieldElement> {
+    pub(super) fn violation_from_in_set(
+        &self,
+        set: &crate::config::v2::InvariantAST,
+    ) -> Option<FieldElement> {
         use crate::config::v2::InvariantAST;
 
         if let InvariantAST::Set(values) = set {
@@ -491,7 +503,10 @@ impl FuzzingEngine {
         }
     }
 
-    pub(super) fn violation_from_equal(&self, rhs: &crate::config::v2::InvariantAST) -> Option<FieldElement> {
+    pub(super) fn violation_from_equal(
+        &self,
+        rhs: &crate::config::v2::InvariantAST,
+    ) -> Option<FieldElement> {
         if let Some(value) = self.eval_expr_to_u64(rhs) {
             return Some(FieldElement::from_u64(value));
         }
@@ -552,5 +567,4 @@ impl FuzzingEngine {
         }
         trimmed.parse::<u64>().ok()
     }
-
 }

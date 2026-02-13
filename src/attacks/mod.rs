@@ -30,21 +30,21 @@
 //!   and folding attacks for recursive proof systems (Nova, Supernova, Halo2)
 
 pub mod arithmetic;
-pub mod batch_verification;  // Phase 3: Batch verification bypass attacks
+pub mod batch_verification; // Phase 3: Batch verification bypass attacks
 pub mod boundary;
+pub mod canonicalization;
 pub mod collision;
 pub mod constraint_inference;
 pub mod constraint_slice;
-pub mod canonicalization;
 pub mod cross_backend;
 pub mod determinism;
-pub mod front_running;  // Phase 3: Front-running attacks
+pub mod front_running; // Phase 3: Front-running attacks
 pub mod frozen_wire;
 pub mod metamorphic;
-pub mod mev;  // Phase 3: MEV attacks
+pub mod mev; // Phase 3: MEV attacks
 pub mod nullifier_replay;
 pub mod proof_malleability;
-pub mod recursive;  // Phase 3: Recursive SNARK attacks
+pub mod recursive; // Phase 3: Recursive SNARK attacks
 pub mod setup_poisoning;
 pub mod soundness;
 pub mod spec_inference;
@@ -52,154 +52,72 @@ pub mod underconstrained;
 pub mod verification;
 pub mod witness;
 pub mod witness_collision;
-pub mod zkevm;  // Phase 3: zkEVM-specific attacks
-pub mod zkevm_differential;  // Phase 5: zkEVM differential testing with reference EVM
+pub mod zkevm; // Phase 3: zkEVM-specific attacks
+pub mod zkevm_differential; // Phase 5: zkEVM differential testing with reference EVM
 
 pub use arithmetic::ArithmeticTester;
 pub use batch_verification::{
-    BatchVerificationConfig,
-    BatchVulnerabilityType,
-    AggregationMethod,
-    InvalidPosition,
-    BatchProof,
+    AggregationMethod, BatchProof, BatchProofOfConcept, BatchVerificationAnalyzer,
+    BatchVerificationAttack, BatchVerificationConfig, BatchVerificationFinding,
+    BatchVerificationResult, BatchVerificationStats, BatchVulnerabilityType, InvalidPosition,
     ProofBatch,
-    BatchVerificationResult,
-    BatchProofOfConcept,
-    BatchVerificationFinding,
-    BatchVerificationAttack,
-    BatchVerificationAnalyzer,
-    BatchVerificationStats,
 };
 pub use boundary::{
-    common_ranges,
-    BoundaryCategory,
-    BoundaryTestResult,
-    BoundaryTestSummary,
-    BoundaryTester,
-    BoundaryVulnerability,
-    RangeSpec,
-};
-pub use collision::{
-    CollisionAnalysis,
-    CollisionDetector,
-    CollisionPair,
-    HashType,
-};
-pub use constraint_inference::{
-    ConstraintCategory,
-    ImpliedConstraint,
-    ViolationConfirmation,
-    InferenceRule,
-    InferenceContext,
-    BitDecompositionInference,
-    MerklePathInference,
-    NullifierUniquenessInference,
-    RangeEnforcementInference,
-    ConstraintInferenceEngine,
-    ConstraintInferenceStats,
-};
-pub use constraint_slice::{
-    ConstraintId,
-    ConstraintCone,
-    ConstraintSlicer,
-    OutputMapping,
-    LeakingConstraint,
-    ConstraintSliceOracle,
-    ConstraintSliceStats,
+    common_ranges, BoundaryCategory, BoundaryTestResult, BoundaryTestSummary, BoundaryTester,
+    BoundaryVulnerability, RangeSpec,
 };
 pub use canonicalization::CanonicalizationChecker;
+pub use collision::{CollisionAnalysis, CollisionDetector, CollisionPair, HashType};
+pub use constraint_inference::{
+    BitDecompositionInference, ConstraintCategory, ConstraintInferenceEngine,
+    ConstraintInferenceStats, ImpliedConstraint, InferenceContext, InferenceRule,
+    MerklePathInference, NullifierUniquenessInference, RangeEnforcementInference,
+    ViolationConfirmation,
+};
+pub use constraint_slice::{
+    ConstraintCone, ConstraintId, ConstraintSliceOracle, ConstraintSliceStats, ConstraintSlicer,
+    LeakingConstraint, OutputMapping,
+};
 pub use cross_backend::CrossBackendDifferential;
 pub use determinism::DeterminismOracle;
 pub use front_running::{
-    FrontRunningConfig,
-    FrontRunningVulnerability,
-    FrontRunningResult,
-    FrontRunningAttack,
+    FrontRunningAttack, FrontRunningConfig, FrontRunningResult, FrontRunningVulnerability,
     StateLeakageAnalyzer,
 };
 pub use frozen_wire::FrozenWireDetector;
 pub use metamorphic::{
-    CircuitType,
-    ExpectedBehavior,
-    Transform,
-    MetamorphicRelation,
-    MetamorphicOracle,
-    MetamorphicTestResult,
-    MetamorphicStats,
+    CircuitType, ExpectedBehavior, MetamorphicOracle, MetamorphicRelation, MetamorphicStats,
+    MetamorphicTestResult, Transform,
 };
 pub use mev::{
-    MevConfig,
-    MevTestResult,
-    MevVulnerabilityType,
-    MevAttack,
+    ArbitrageDetector, MevAttack, MevConfig, MevTestResult, MevVulnerabilityType,
     PriceImpactAnalyzer,
-    ArbitrageDetector,
 };
-pub use nullifier_replay::{
-    NullifierHeuristic,
-    NullifierReplayScanner,
-};
-pub use proof_malleability::{
-    ProofMutation,
-    MalleabilityResult,
-    ProofMalleabilityScanner,
-};
+pub use nullifier_replay::{NullifierHeuristic, NullifierReplayScanner};
+pub use proof_malleability::{MalleabilityResult, ProofMalleabilityScanner, ProofMutation};
 pub use recursive::{
-    RecursiveAttackConfig,
-    RecursiveSystem,
-    RecursiveVulnerabilityType,
-    RecursiveStep,
-    AccumulatorState,
-    RecursiveAttack,
-    NovaAnalyzer,
+    AccumulatorState, Halo2AccumulationAnalyzer, NovaAnalyzer, RecursiveAttack,
+    RecursiveAttackConfig, RecursiveStep, RecursiveSystem, RecursiveVulnerabilityType,
     SupernovaAnalyzer,
-    Halo2AccumulationAnalyzer,
 };
 pub use setup_poisoning::SetupPoisoningDetector;
 pub use soundness::SoundnessTester;
-pub use spec_inference::{
-    InferredSpec,
-    ExecutionSample,
-    SpecInferenceOracle,
-    SpecInferenceStats,
-};
+pub use spec_inference::{ExecutionSample, InferredSpec, SpecInferenceOracle, SpecInferenceStats};
 pub use underconstrained::UnderconstrainedDetector;
 pub use verification::VerificationFuzzer;
 pub use witness::WitnessFuzzer;
 pub use witness_collision::{
-    WitnessCollision,
-    EquivalenceClass,
-    EquivalencePredicate,
-    WitnessCollisionDetector,
-    CollisionAnalysis as WitnessCollisionAnalysis,
-    WitnessCollisionStats,
+    CollisionAnalysis as WitnessCollisionAnalysis, EquivalenceClass, EquivalencePredicate,
+    WitnessCollision, WitnessCollisionDetector, WitnessCollisionStats,
 };
 pub use zkevm::{
-    ZkEvmConfig,
-    ZkEvmVulnerabilityType,
-    ZkEvmTestResult,
-    EvmOpcode,
-    EVM_OPCODES,
-    ZkEvmAttack,
-    ZkEvmPriceAnalyzer,
-    ZkEvmCallDetector,
+    EvmOpcode, ZkEvmAttack, ZkEvmCallDetector, ZkEvmConfig, ZkEvmPriceAnalyzer, ZkEvmTestResult,
+    ZkEvmVulnerabilityType, EVM_OPCODES,
 };
 pub use zkevm_differential::{
-    ZkEvmDifferentialConfig,
-    AccountState,
-    ExecutionTrace,
-    EvmLog,
-    TestTransaction,
-    ReferenceEvm,
-    EvmState,
-    MockReferenceEvm,
-    ZkEvmDifferentialTester,
-    DifferentialStats,
-    DifferentialFinding,
-    MismatchType,
-    StateDifference,
-    precompiles,
-    PrecompileTestGenerator,
+    precompiles, AccountState, DifferentialFinding, DifferentialStats, EvmLog, EvmState,
+    ExecutionTrace, MismatchType, MockReferenceEvm, PrecompileTestGenerator, ReferenceEvm,
+    StateDifference, TestTransaction, ZkEvmDifferentialConfig, ZkEvmDifferentialTester,
 };
 
 pub use zk_attacks::{

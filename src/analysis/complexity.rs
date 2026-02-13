@@ -7,9 +7,9 @@
 //! - Constraint density
 //! - Theoretical vs actual complexity
 
-use zk_core::CircuitInfo;
-use zk_core::CircuitExecutor;
 use std::sync::Arc;
+use zk_core::CircuitExecutor;
+use zk_core::CircuitInfo;
 
 /// Complexity metrics for a circuit
 #[derive(Debug, Clone)]

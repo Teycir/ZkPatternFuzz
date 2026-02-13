@@ -6,7 +6,7 @@
 //! high-performance concurrent corpus management.
 
 pub mod deduplication;
-pub mod lockfree;  // Phase 4.4: Lock-free corpus data structures
+pub mod lockfree; // Phase 4.4: Lock-free corpus data structures
 pub mod minimizer;
 pub mod storage;
 
@@ -14,6 +14,6 @@ pub use zk_fuzzer_core::corpus::*;
 
 // Phase 4.4: Lock-free corpus exports
 pub use lockfree::{
-    LockFreeTestQueue, AtomicCoverageBitmap, LockFreeCorpus,
-    SharedLockFreeCorpus, create_shared_corpus,
+    create_shared_corpus, AtomicCoverageBitmap, LockFreeCorpus, LockFreeTestQueue,
+    SharedLockFreeCorpus,
 };

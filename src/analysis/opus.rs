@@ -402,10 +402,16 @@ impl OpusAnalyzer {
                 if content.contains("halo2_proofs") || content.contains("halo2::") {
                     Ok(Framework::Halo2)
                 } else {
-                    Ok(Framework::Mock)
+                    anyhow::bail!(
+                        "Rust circuit file is not recognized as Halo2: {}",
+                        path.display()
+                    )
                 }
             }
-            _ => Ok(Framework::Mock),
+            _ => anyhow::bail!(
+                "Unsupported circuit file extension for backend detection: {}",
+                path.display()
+            ),
         }
     }
 

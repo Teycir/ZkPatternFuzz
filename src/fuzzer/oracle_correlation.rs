@@ -266,7 +266,10 @@ impl OracleCorrelator {
 
             // Compute confidence using independence weighting
             let confidence = if self.use_independence_weighting {
-                self.compute_confidence_with_groups(independent_group_count, has_invariant_violation)
+                self.compute_confidence_with_groups(
+                    independent_group_count,
+                    has_invariant_violation,
+                )
             } else {
                 // Legacy behavior for backward compatibility
                 self.compute_confidence(oracle_count, has_invariant_violation)

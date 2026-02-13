@@ -256,12 +256,15 @@ impl EvidenceGenerator {
             .or_else(|| {
                 // If the campaign is using build_dir_base, mirror ExecutorFactoryOptions behavior:
                 //   <base>/<framework_dir_name>/<derived_build_name>
-                additional.get("build_dir_base").and_then(|v| v.as_str()).map(|s| {
-                    let mut dir = PathBuf::from(s);
-                    dir.push("circom");
-                    dir.push(Self::derive_circom_build_name(circuit_path, main_component));
-                    dir
-                })
+                additional
+                    .get("build_dir_base")
+                    .and_then(|v| v.as_str())
+                    .map(|s| {
+                        let mut dir = PathBuf::from(s);
+                        dir.push("circom");
+                        dir.push(Self::derive_circom_build_name(circuit_path, main_component));
+                        dir
+                    })
             })
             .unwrap_or_else(|| {
                 // Default: look for build dir next to circuit
@@ -556,51 +559,55 @@ echo "Finding description: {}"
         ))
     }
 
-fn derive_circom_build_name(circuit_path: &Path, main_component: &str) -> String {
-    // Keep this in sync with executor/mod.rs::derive_circuit_build_name.
-    let name = if circuit_path.is_dir() {
-        circuit_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("circuit")
-            .to_string()
-    } else {
-        circuit_path
-            .file_stem()
-            .or_else(|| circuit_path.file_name())
-            .and_then(|s| s.to_str())
-            .unwrap_or("circuit")
-            .to_string()
-    };
+    fn derive_circom_build_name(circuit_path: &Path, main_component: &str) -> String {
+        // Keep this in sync with executor/mod.rs::derive_circuit_build_name.
+        let name = if circuit_path.is_dir() {
+            circuit_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("circuit")
+                .to_string()
+        } else {
+            circuit_path
+                .file_stem()
+                .or_else(|| circuit_path.file_name())
+                .and_then(|s| s.to_str())
+                .unwrap_or("circuit")
+                .to_string()
+        };
 
-    let mut combined = name;
-    if !main_component.is_empty() && !combined.contains(main_component) {
-        combined = format!("{}_{}", combined, main_component);
+        let mut combined = name;
+        if !main_component.is_empty() && !combined.contains(main_component) {
+            combined = format!("{}_{}", combined, main_component);
+        }
+
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(circuit_path.to_string_lossy().as_bytes());
+        hasher.update(b"|");
+        hasher.update(main_component.as_bytes());
+        let digest = hasher.finalize();
+        let hash = hex::encode(&digest[..6]);
+
+        Self::sanitize_component(&format!("{}__{}", combined, hash))
     }
 
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(circuit_path.to_string_lossy().as_bytes());
-    hasher.update(b"|");
-    hasher.update(main_component.as_bytes());
-    let digest = hasher.finalize();
-    let hash = hex::encode(&digest[..6]);
+    fn sanitize_component(raw: &str) -> String {
+        let mut out = String::with_capacity(raw.len());
+        for ch in raw.chars() {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
 
-    Self::sanitize_component(&format!("{}__{}", combined, hash))
-}
-
-fn sanitize_component(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    for ch in raw.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-            out.push(ch);
+        if out.is_empty() {
+            "circuit".to_string()
         } else {
-            out.push('_');
+            out
         }
     }
-
-    if out.is_empty() { "circuit".to_string() } else { out }
-}
 
     /// Generate Circom proof and verify it
     ///

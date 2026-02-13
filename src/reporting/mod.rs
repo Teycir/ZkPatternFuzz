@@ -7,37 +7,37 @@
 //! - Coverage Summary: Enhanced CLI coverage view
 //! - PoC Generator: Exploit reproduction scripts
 
-mod command_timeout;  // Timeout wrapper for external commands
+mod command_timeout; // Timeout wrapper for external commands
 
 pub mod coverage_summary;
-pub mod evidence;  // Phase 5: Proof-level evidence bundles
-pub mod evidence_noir;   // Phase 0: Noir proof generation
-pub mod evidence_halo2;  // Phase 0: Halo2 proof generation
-pub mod evidence_cairo;  // Phase 0: Cairo proof generation
+pub mod evidence; // Phase 5: Proof-level evidence bundles
+pub mod evidence_cairo; // Phase 0: Cairo proof generation
+pub mod evidence_halo2; // Phase 0: Halo2 proof generation
+pub mod evidence_noir; // Phase 0: Noir proof generation
 pub mod poc_generator;
 pub mod sarif;
-pub mod triage;  // Phase 2: Automated triage system
+pub mod triage; // Phase 2: Automated triage system
 
-pub use evidence::{EvidenceBundle, EvidenceGenerator, BackendIdentity, VerificationResult};
-pub use evidence_noir::generate_noir_proof;
-pub use evidence_halo2::generate_halo2_proof;
+pub use evidence::{BackendIdentity, EvidenceBundle, EvidenceGenerator, VerificationResult};
 pub use evidence_cairo::generate_cairo_proof;
+pub use evidence_halo2::generate_halo2_proof;
+pub use evidence_noir::generate_noir_proof;
 
 use crate::config::ReportingConfig;
-use zk_core::Severity;
-use zk_core::{CoverageMap, Finding};
 use chrono::{DateTime, Utc};
 use colored::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use zk_core::Severity;
+use zk_core::{CoverageMap, Finding};
 
-pub use coverage_summary::{CoverageSummary, CoverageSummaryBuilder, AdditionalMetrics};
-pub use poc_generator::{PoCGenerator, PoCGeneratorConfig, PoCFormat};
+pub use coverage_summary::{AdditionalMetrics, CoverageSummary, CoverageSummaryBuilder};
+pub use poc_generator::{PoCFormat, PoCGenerator, PoCGeneratorConfig};
 pub use sarif::{SarifBuilder, SarifLevel, SarifReport};
 pub use triage::{
-    TriagePipeline, TriageConfig, TriageReport, TriagedFinding,
-    ConfidenceLevel, ConfidenceBreakdown, TriageStatistics, VerificationStatus,
+    ConfidenceBreakdown, ConfidenceLevel, TriageConfig, TriagePipeline, TriageReport,
+    TriageStatistics, TriagedFinding, VerificationStatus,
 };
 
 /// Complete fuzzing report
@@ -107,7 +107,7 @@ impl FuzzReport {
     ) -> Self {
         let mut findings_by_severity = HashMap::new();
         let mut findings_by_type = HashMap::new();
-        
+
         // Count by severity
         for finding in &findings {
             *findings_by_severity

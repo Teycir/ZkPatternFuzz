@@ -40,8 +40,7 @@ impl FuzzingEngine {
         let mut crash_count = 0u64;
         let mut accepted_count = 0u64;
         let mut failed_count = 0u64;
-        let mut sample_errors: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut sample_errors: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         while completed < iterations {
             // Check overall timeout
@@ -240,7 +239,11 @@ impl FuzzingEngine {
     /// IMPORTANT: Uses cached InvariantChecker to maintain uniqueness tracking state
     /// across executions. Without caching, uniqueness invariants (e.g., nullifier_unique)
     /// would never detect duplicates because each execution would start with a fresh empty set.
-    pub(super) fn check_invariants_against(&mut self, test_case: &TestCase, result: &ExecutionResult) {
+    pub(super) fn check_invariants_against(
+        &mut self,
+        test_case: &TestCase,
+        result: &ExecutionResult,
+    ) {
         // Use cached checker to maintain uniqueness tracking state
         let Some(checker) = self.invariant_checker.as_mut() else {
             return;
@@ -254,5 +257,4 @@ impl FuzzingEngine {
             self.record_invariant_violation(&violation, test_case);
         }
     }
-
 }

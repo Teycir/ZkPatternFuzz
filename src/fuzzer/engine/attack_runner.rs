@@ -1217,7 +1217,6 @@ impl FuzzingEngine {
                 "noir" => Some(Framework::Noir),
                 "halo2" => Some(Framework::Halo2),
                 "cairo" => Some(Framework::Cairo),
-                "mock" => Some(Framework::Mock),
                 _ => None,
             }
         };

@@ -226,7 +226,11 @@ impl DependencyGraph {
         let mut uncovered_with_degree: Vec<(ConstraintId, usize)> = (0..self.num_constraints)
             .filter(|c| !coverage.constraint_hits.contains_key(c))
             .map(|c| {
-                let in_degree = self.constraint_depends.get(&c).map(|s| s.len()).unwrap_or(0);
+                let in_degree = self
+                    .constraint_depends
+                    .get(&c)
+                    .map(|s| s.len())
+                    .unwrap_or(0);
                 let out_degree = self.constraint_graph.get(&c).map(|s| s.len()).unwrap_or(0);
                 (c, in_degree + out_degree)
             })
@@ -254,7 +258,10 @@ impl DependencyGraph {
         dot.push_str("    label=\"Inputs\";\n");
         dot.push_str("    style=dotted;\n");
         for input_id in 0..self.num_inputs {
-            dot.push_str(&format!("    input_{} [label=\"Input {}\", shape=ellipse, color=blue];\n", input_id, input_id));
+            dot.push_str(&format!(
+                "    input_{} [label=\"Input {}\", shape=ellipse, color=blue];\n",
+                input_id, input_id
+            ));
         }
         dot.push_str("  }\n\n");
 
@@ -263,7 +270,10 @@ impl DependencyGraph {
         dot.push_str("    label=\"Constraints\";\n");
         dot.push_str("    style=dotted;\n");
         for constraint_id in 0..self.num_constraints.min(50) {
-            dot.push_str(&format!("    constraint_{} [label=\"C{}\"];\n", constraint_id, constraint_id));
+            dot.push_str(&format!(
+                "    constraint_{} [label=\"C{}\"];\n",
+                constraint_id, constraint_id
+            ));
         }
         dot.push_str("  }\n\n");
 
@@ -434,7 +444,7 @@ impl DependencyAnalyzer {
     }
 
     /// Build graph from sampling (fallback when no inspector)
-    /// 
+    ///
     /// When no constraint inspector is available, we use a conservative
     /// approach assuming all inputs may influence all constraints.
     fn build_from_sampling(

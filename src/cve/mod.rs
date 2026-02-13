@@ -306,7 +306,24 @@ impl RegressionTest {
         }
 
         let source = std::fs::read_to_string(path).unwrap_or_default();
-        let framework = detect_framework(path);
+        let framework = match detect_framework(path) {
+            Ok(framework) => framework,
+            Err(e) => {
+                return RegressionTestResult {
+                    cve_id: self.cve_id.clone(),
+                    passed: false,
+                    test_results: self
+                        .test_cases
+                        .iter()
+                        .map(|tc| TestCaseResult {
+                            name: tc.name.clone(),
+                            passed: false,
+                            message: Some(format!("Framework detection failed: {}", e)),
+                        })
+                        .collect(),
+                };
+            }
+        };
         let main_component = detect_main_component(&source, framework);
 
         let executor = match ExecutorFactory::create(framework, &self.circuit_path, &main_component)
@@ -441,13 +458,16 @@ struct InputSpec {
     is_array: bool,
 }
 
-fn detect_framework(path: &Path) -> Framework {
+fn detect_framework(path: &Path) -> anyhow::Result<Framework> {
     match path.extension().and_then(|e| e.to_str()) {
-        Some("circom") => Framework::Circom,
-        Some("nr") => Framework::Noir,
-        Some("cairo") => Framework::Cairo,
-        Some("rs") => Framework::Halo2,
-        _ => Framework::Mock,
+        Some("circom") => Ok(Framework::Circom),
+        Some("nr") => Ok(Framework::Noir),
+        Some("cairo") => Ok(Framework::Cairo),
+        Some("rs") => Ok(Framework::Halo2),
+        _ => anyhow::bail!(
+            "Unsupported circuit file extension for backend detection: {}",
+            path.display()
+        ),
     }
 }
 

@@ -49,24 +49,24 @@
 //! - **D**: Mean L_min across confirmed findings
 //! - **P_deep**: Probability that a finding requires L_min >= 2
 
-pub mod types;
-pub mod runner;
-pub mod invariants;
-pub mod mutator;
-pub mod shrinker;
-pub mod metrics;
-pub mod scheduler;
 pub mod corpus;
+pub mod invariants;
+pub mod metrics;
+pub mod mutator;
+pub mod runner;
+pub mod scheduler;
+pub mod shrinker;
+pub mod types;
 
 // Re-exports
-pub use types::{
-    ChainSpec, StepSpec, InputWiring, CrossStepAssertion,
-    ChainTrace, StepTrace, ChainFinding, ChainRunResult,
-};
-pub use runner::ChainRunner;
-pub use invariants::{CrossStepInvariantChecker, CrossStepViolation};
-pub use mutator::ChainMutator;
-pub use shrinker::ChainShrinker;
-pub use metrics::DepthMetrics;
-pub use scheduler::ChainScheduler;
 pub use corpus::{ChainCorpus, ChainCorpusEntry};
+pub use invariants::{CrossStepInvariantChecker, CrossStepViolation};
+pub use metrics::DepthMetrics;
+pub use mutator::ChainMutator;
+pub use runner::ChainRunner;
+pub use scheduler::ChainScheduler;
+pub use shrinker::ChainShrinker;
+pub use types::{
+    ChainFinding, ChainRunResult, ChainSpec, ChainTrace, CrossStepAssertion, InputWiring, StepSpec,
+    StepTrace,
+};

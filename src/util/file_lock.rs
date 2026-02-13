@@ -96,4 +96,3 @@ pub fn lock_dir_exclusive(
     let lock_path = dir.join(lock_filename);
     lock_file_exclusive(lock_path, mode)
 }
-

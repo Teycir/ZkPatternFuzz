@@ -2,9 +2,9 @@
 //!
 //! Tests security properties when circuits are composed together.
 
+use std::sync::Arc;
 use zk_core::CircuitExecutor;
 use zk_core::FieldElement;
-use std::sync::Arc;
 
 /// Composition type for testing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

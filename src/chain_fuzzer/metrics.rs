@@ -22,7 +22,9 @@ impl DepthMetrics {
 
     /// Create empty depth metrics
     pub fn empty() -> Self {
-        Self { findings: Vec::new() }
+        Self {
+            findings: Vec::new(),
+        }
     }
 
     /// Add a finding
@@ -102,12 +104,15 @@ impl DepthMetrics {
         }
 
         let mean = self.d_mean();
-        let variance: f64 = self.findings.iter()
+        let variance: f64 = self
+            .findings
+            .iter()
             .map(|f| {
                 let diff = f.l_min as f64 - mean;
                 diff * diff
             })
-            .sum::<f64>() / (self.findings.len() - 1) as f64;
+            .sum::<f64>()
+            / (self.findings.len() - 1) as f64;
 
         variance.sqrt()
     }
@@ -184,22 +189,31 @@ impl DepthMetricsSummary {
     /// Format as a markdown report section
     pub fn to_markdown(&self) -> String {
         let mut output = String::new();
-        
+
         output.push_str("## Multi-Step Depth Metrics\n\n");
         output.push_str("| Metric | Value |\n");
         output.push_str("|--------|-------|\n");
         output.push_str(&format!("| Total Findings | {} |\n", self.total_findings));
         output.push_str(&format!("| D (mean L_min) | {:.2} |\n", self.d_mean));
         output.push_str(&format!("| D std | {:.2} |\n", self.d_std));
-        output.push_str(&format!("| P_deep (L_min ≥ 2) | {:.2}% |\n", self.p_deep * 100.0));
-        output.push_str(&format!("| P_very_deep (L_min ≥ 3) | {:.2}% |\n", self.p_very_deep * 100.0));
+        output.push_str(&format!(
+            "| P_deep (L_min ≥ 2) | {:.2}% |\n",
+            self.p_deep * 100.0
+        ));
+        output.push_str(&format!(
+            "| P_very_deep (L_min ≥ 3) | {:.2}% |\n",
+            self.p_very_deep * 100.0
+        ));
         output.push_str(&format!("| Max Depth | {} |\n", self.max_depth));
-        output.push_str(&format!("| Deep Findings | {} |\n", self.deep_findings_count));
+        output.push_str(&format!(
+            "| Deep Findings | {} |\n",
+            self.deep_findings_count
+        ));
 
         output.push_str("\n### Depth Distribution\n\n");
         output.push_str("| L_min | Count |\n");
         output.push_str("|-------|-------|\n");
-        
+
         let mut depths: Vec<_> = self.depth_distribution.keys().collect();
         depths.sort();
         for depth in depths {
@@ -248,7 +262,7 @@ mod tests {
             create_test_finding(4),
         ];
         let metrics = DepthMetrics::new(findings);
-        
+
         assert!((metrics.d_mean() - 2.5).abs() < 0.001);
     }
 
@@ -261,7 +275,7 @@ mod tests {
             create_test_finding(1), // Not deep
         ];
         let metrics = DepthMetrics::new(findings);
-        
+
         assert!((metrics.p_deep() - 0.5).abs() < 0.001);
     }
 
@@ -274,7 +288,7 @@ mod tests {
             create_test_finding(3),
         ];
         let metrics = DepthMetrics::new(findings);
-        
+
         let dist = metrics.depth_distribution();
         assert_eq!(dist.get(&1), Some(&2));
         assert_eq!(dist.get(&2), Some(&1));
@@ -284,7 +298,7 @@ mod tests {
     #[test]
     fn test_empty_metrics() {
         let metrics = DepthMetrics::empty();
-        
+
         assert_eq!(metrics.d_mean(), 0.0);
         assert_eq!(metrics.p_deep(), 0.0);
         assert!(metrics.depth_distribution().is_empty());
@@ -292,10 +306,7 @@ mod tests {
 
     #[test]
     fn test_summary_markdown() {
-        let findings = vec![
-            create_test_finding(2),
-            create_test_finding(3),
-        ];
+        let findings = vec![create_test_finding(2), create_test_finding(3)];
         let metrics = DepthMetrics::new(findings);
         let summary = metrics.summary();
         let markdown = summary.to_markdown();

@@ -8,11 +8,11 @@
 pub mod composition;
 pub mod recursive;
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use zk_core::{
     AttackType, CircuitExecutor, ExecutionResult, FieldElement, Finding, ProofOfConcept, Severity,
 };
-use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Multi-circuit test configuration
 #[derive(Debug, Clone)]

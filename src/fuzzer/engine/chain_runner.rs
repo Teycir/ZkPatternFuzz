@@ -7,11 +7,11 @@ impl FuzzingEngine {
         chains: &[crate::chain_fuzzer::ChainSpec],
         progress: Option<&ProgressReporter>,
     ) -> Vec<crate::chain_fuzzer::ChainFinding> {
-        use anyhow::Context as _;
         use crate::chain_fuzzer::{
             ChainCorpus, ChainFinding, ChainMutator, ChainRunner, ChainScheduler, ChainShrinker,
             CrossStepInvariantChecker, DepthMetrics,
         };
+        use anyhow::Context as _;
         use rand::SeedableRng;
         use rand_chacha::ChaCha8Rng;
         use std::time::{Duration, Instant};
@@ -141,7 +141,7 @@ impl FuzzingEngine {
         }
 
         let runner = ChainRunner::new(executors).with_timeout(Duration::from_secs(30));
-        
+
         // Phase 5 Fix (Milestone 5.3): Use framework-aware chain mutator
         // Previously used ChainMutator::new() which defaults to Framework::Mock,
         // causing reduced mutation validity for real circuits.
@@ -205,9 +205,8 @@ impl FuzzingEngine {
 
                 // Decimal string
                 use num_bigint::BigUint;
-                let value = BigUint::parse_bytes(trimmed.as_bytes(), 10).ok_or_else(|| {
-                    anyhow::anyhow!("Invalid decimal field element: {}", trimmed)
-                })?;
+                let value = BigUint::parse_bytes(trimmed.as_bytes(), 10)
+                    .ok_or_else(|| anyhow::anyhow!("Invalid decimal field element: {}", trimmed))?;
                 let bytes = value.to_bytes_be();
                 if bytes.len() > 32 {
                     anyhow::bail!(
@@ -218,7 +217,9 @@ impl FuzzingEngine {
                 Ok(FieldElement::from_bytes(&bytes))
             }
 
-            fn load_seed_vec_from_json(path: &std::path::Path) -> anyhow::Result<Vec<FieldElement>> {
+            fn load_seed_vec_from_json(
+                path: &std::path::Path,
+            ) -> anyhow::Result<Vec<FieldElement>> {
                 let raw = std::fs::read_to_string(path)
                     .with_context(|| format!("Read chain seed inputs: {}", path.display()))?;
                 let json: serde_json::Value = serde_json::from_str(&raw)
@@ -246,12 +247,15 @@ impl FuzzingEngine {
                 let mut out = Vec::with_capacity(arr.len());
                 for (i, v) in arr.into_iter().enumerate() {
                     let fe = match v {
-                        serde_json::Value::String(s) => parse_field_element_str(&s).with_context(|| {
-                            format!("Parse chain seed element {} from {}", i, path.display())
-                        })?,
-                        serde_json::Value::Number(n) => parse_field_element_str(&n.to_string()).with_context(|| {
-                            format!("Parse chain seed element {} from {}", i, path.display())
-                        })?,
+                        serde_json::Value::String(s) => {
+                            parse_field_element_str(&s).with_context(|| {
+                                format!("Parse chain seed element {} from {}", i, path.display())
+                            })?
+                        }
+                        serde_json::Value::Number(n) => parse_field_element_str(&n.to_string())
+                            .with_context(|| {
+                                format!("Parse chain seed element {} from {}", i, path.display())
+                            })?,
                         _ => anyhow::bail!(
                             "Chain seed element {} must be a string or number: {}",
                             i,
@@ -329,7 +333,10 @@ impl FuzzingEngine {
         //
         // For the nullify wrapper this means mutate only `nullifierSessionID`, while keeping
         // genesis/profile/schema/verifier pinned to seed.
-        let chain_mutate_indices_by_ref: std::collections::HashMap<String, std::collections::HashSet<usize>> = {
+        let chain_mutate_indices_by_ref: std::collections::HashMap<
+            String,
+            std::collections::HashSet<usize>,
+        > = {
             use std::collections::{HashMap, HashSet};
 
             match additional.get("chain_mutate_indices") {

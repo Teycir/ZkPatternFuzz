@@ -15,8 +15,8 @@ pub use lean::LeanExporter;
 pub use properties::{CircuitProperty, PropertyExtractor};
 
 use crate::analysis::symbolic::SymbolicConstraint;
-use zk_core::ConstraintEquation;
 use std::path::Path;
+use zk_core::ConstraintEquation;
 
 /// Target proof system
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

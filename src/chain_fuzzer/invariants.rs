@@ -37,8 +37,7 @@ impl CrossStepViolation {
         let assertion_name_str = assertion_name.into();
         let desc = format!(
             "Assertion '{}' violated across steps {:?}",
-            assertion_name_str,
-            step_indices
+            assertion_name_str, step_indices
         );
         Self {
             assertion_name: assertion_name_str,
@@ -94,9 +93,7 @@ enum AssertionType {
         field_index: usize,
     },
     /// step[i].success == true
-    StepSuccess {
-        step_index: usize,
-    },
+    StepSuccess { step_index: usize },
     /// Unparseable assertion (skip or warn)
     Unknown,
 }
@@ -122,7 +119,9 @@ enum FieldType {
 impl CrossStepInvariantChecker {
     /// Create a new checker from a chain spec
     pub fn from_spec(spec: &ChainSpec) -> Self {
-        let assertions = spec.assertions.iter()
+        let assertions = spec
+            .assertions
+            .iter()
             .map(|a| ParsedAssertion {
                 original: a.clone(),
                 assertion_type: Self::parse_assertion(&a.relation),
@@ -134,7 +133,8 @@ impl CrossStepInvariantChecker {
 
     /// Create a checker from a list of assertions
     pub fn new(assertions: Vec<CrossStepAssertion>) -> Self {
-        let parsed = assertions.iter()
+        let parsed = assertions
+            .iter()
             .map(|a| ParsedAssertion {
                 original: a.clone(),
                 assertion_type: Self::parse_assertion(&a.relation),
@@ -186,7 +186,9 @@ impl CrossStepInvariantChecker {
 
     fn parse_uniqueness(relation: &str) -> Option<AssertionType> {
         // Match: unique(step[*].out[N]) or unique(step[*].in[N])
-        let re = Regex::new(r"unique\s*\(\s*step\s*\[\s*\*\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*\)").ok()?;
+        let re =
+            Regex::new(r"unique\s*\(\s*step\s*\[\s*\*\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*\)")
+                .ok()?;
         let caps = re.captures(relation)?;
 
         let field_type = match caps.get(1)?.as_str() {
@@ -196,7 +198,10 @@ impl CrossStepInvariantChecker {
         };
         let field_index = caps.get(2)?.as_str().parse().ok()?;
 
-        Some(AssertionType::Uniqueness { field_type, field_index })
+        Some(AssertionType::Uniqueness {
+            field_type,
+            field_index,
+        })
     }
 
     fn parse_equality(relation: &str) -> Option<AssertionType> {
@@ -211,7 +216,12 @@ impl CrossStepInvariantChecker {
         let step_b = Self::parse_step_ref(caps.get(4)?.as_str())?;
         let field_b = Self::parse_field_ref(caps.get(5)?.as_str(), caps.get(6)?.as_str())?;
 
-        Some(AssertionType::Equality { step_a, field_a, step_b, field_b })
+        Some(AssertionType::Equality {
+            step_a,
+            field_a,
+            step_b,
+            field_b,
+        })
     }
 
     fn parse_inequality(relation: &str) -> Option<AssertionType> {
@@ -226,7 +236,12 @@ impl CrossStepInvariantChecker {
         let step_b = Self::parse_step_ref(caps.get(4)?.as_str())?;
         let field_b = Self::parse_field_ref(caps.get(5)?.as_str(), caps.get(6)?.as_str())?;
 
-        Some(AssertionType::Inequality { step_a, field_a, step_b, field_b })
+        Some(AssertionType::Inequality {
+            step_a,
+            field_a,
+            step_b,
+            field_b,
+        })
     }
 
     fn parse_step_success(relation: &str) -> Option<AssertionType> {
@@ -255,22 +270,36 @@ impl CrossStepInvariantChecker {
     }
 
     /// Check a single assertion against a trace
-    fn check_assertion(&self, assertion: &ParsedAssertion, trace: &ChainTrace) -> Option<CrossStepViolation> {
+    fn check_assertion(
+        &self,
+        assertion: &ParsedAssertion,
+        trace: &ChainTrace,
+    ) -> Option<CrossStepViolation> {
         match &assertion.assertion_type {
-            AssertionType::Equality { step_a, field_a, step_b, field_b } => {
-                self.check_equality(assertion, trace, step_a, field_a, step_b, field_b)
-            }
-            AssertionType::Inequality { step_a, field_a, step_b, field_b } => {
-                self.check_inequality(assertion, trace, step_a, field_a, step_b, field_b)
-            }
-            AssertionType::Uniqueness { field_type, field_index } => {
-                self.check_uniqueness(assertion, trace, *field_type, *field_index)
-            }
+            AssertionType::Equality {
+                step_a,
+                field_a,
+                step_b,
+                field_b,
+            } => self.check_equality(assertion, trace, step_a, field_a, step_b, field_b),
+            AssertionType::Inequality {
+                step_a,
+                field_a,
+                step_b,
+                field_b,
+            } => self.check_inequality(assertion, trace, step_a, field_a, step_b, field_b),
+            AssertionType::Uniqueness {
+                field_type,
+                field_index,
+            } => self.check_uniqueness(assertion, trace, *field_type, *field_index),
             AssertionType::StepSuccess { step_index } => {
                 self.check_step_success(assertion, trace, *step_index)
             }
             AssertionType::Unknown => {
-                tracing::warn!("Skipping unknown assertion: {}", assertion.original.relation);
+                tracing::warn!(
+                    "Skipping unknown assertion: {}",
+                    assertion.original.relation
+                );
                 None
             }
         }
@@ -292,23 +321,31 @@ impl CrossStepInvariantChecker {
                 // Check all pairs: step[i].field_a == step[j].field_b for all i, j
                 for (i, step_i) in trace.steps.iter().enumerate() {
                     for (j, step_j) in trace.steps.iter().enumerate() {
-                        if i == j { continue; }
+                        if i == j {
+                            continue;
+                        }
                         let val_a = self.get_field_from_step(step_i, field_a);
                         let val_b = self.get_field_from_step(step_j, field_b);
                         if let (Some(a), Some(b)) = (val_a, val_b) {
                             if a != b {
-                                return Some(CrossStepViolation::new(
-                                    &assertion.original.name,
-                                    &assertion.original.relation,
-                                    vec![i, j],
-                                    vec![a.clone(), b.clone()],
-                                    &assertion.original.severity,
-                                ).with_description(format!(
-                                    "Expected step[{}].{} == step[{}].{}, but {} != {}",
-                                    i, self.field_ref_name(field_a),
-                                    j, self.field_ref_name(field_b),
-                                    a.to_hex(), b.to_hex(),
-                                )));
+                                return Some(
+                                    CrossStepViolation::new(
+                                        &assertion.original.name,
+                                        &assertion.original.relation,
+                                        vec![i, j],
+                                        vec![a.clone(), b.clone()],
+                                        &assertion.original.severity,
+                                    )
+                                    .with_description(format!(
+                                        "Expected step[{}].{} == step[{}].{}, but {} != {}",
+                                        i,
+                                        self.field_ref_name(field_a),
+                                        j,
+                                        self.field_ref_name(field_b),
+                                        a.to_hex(),
+                                        b.to_hex(),
+                                    )),
+                                );
                             }
                         }
                     }
@@ -321,18 +358,24 @@ impl CrossStepInvariantChecker {
                 for (i, step_i) in trace.steps.iter().enumerate() {
                     if let Some(val_a) = self.get_field_from_step(step_i, field_a) {
                         if val_a != val_b {
-                            return Some(CrossStepViolation::new(
-                                &assertion.original.name,
-                                &assertion.original.relation,
-                                vec![i, *j],
-                                vec![val_a.clone(), val_b.clone()],
-                                &assertion.original.severity,
-                            ).with_description(format!(
-                                "Expected step[{}].{} == step[{}].{}, but {} != {}",
-                                i, self.field_ref_name(field_a),
-                                j, self.field_ref_name(field_b),
-                                val_a.to_hex(), val_b.to_hex(),
-                            )));
+                            return Some(
+                                CrossStepViolation::new(
+                                    &assertion.original.name,
+                                    &assertion.original.relation,
+                                    vec![i, *j],
+                                    vec![val_a.clone(), val_b.clone()],
+                                    &assertion.original.severity,
+                                )
+                                .with_description(format!(
+                                    "Expected step[{}].{} == step[{}].{}, but {} != {}",
+                                    i,
+                                    self.field_ref_name(field_a),
+                                    j,
+                                    self.field_ref_name(field_b),
+                                    val_a.to_hex(),
+                                    val_b.to_hex(),
+                                )),
+                            );
                         }
                     }
                 }
@@ -344,18 +387,24 @@ impl CrossStepInvariantChecker {
                 for (j, step_j) in trace.steps.iter().enumerate() {
                     if let Some(val_b) = self.get_field_from_step(step_j, field_b) {
                         if val_a != val_b {
-                            return Some(CrossStepViolation::new(
-                                &assertion.original.name,
-                                &assertion.original.relation,
-                                vec![*i, j],
-                                vec![val_a.clone(), val_b.clone()],
-                                &assertion.original.severity,
-                            ).with_description(format!(
-                                "Expected step[{}].{} == step[{}].{}, but {} != {}",
-                                i, self.field_ref_name(field_a),
-                                j, self.field_ref_name(field_b),
-                                val_a.to_hex(), val_b.to_hex(),
-                            )));
+                            return Some(
+                                CrossStepViolation::new(
+                                    &assertion.original.name,
+                                    &assertion.original.relation,
+                                    vec![*i, j],
+                                    vec![val_a.clone(), val_b.clone()],
+                                    &assertion.original.severity,
+                                )
+                                .with_description(format!(
+                                    "Expected step[{}].{} == step[{}].{}, but {} != {}",
+                                    i,
+                                    self.field_ref_name(field_a),
+                                    j,
+                                    self.field_ref_name(field_b),
+                                    val_a.to_hex(),
+                                    val_b.to_hex(),
+                                )),
+                            );
                         }
                     }
                 }
@@ -371,19 +420,22 @@ impl CrossStepInvariantChecker {
                         self.step_ref_to_index(step_a).unwrap_or(0),
                         self.step_ref_to_index(step_b).unwrap_or(0),
                     ];
-                    Some(CrossStepViolation::new(
-                        &assertion.original.name,
-                        &assertion.original.relation,
-                        step_indices,
-                        vec![value_a.clone(), value_b.clone()],
-                        &assertion.original.severity,
-                    ).with_description(format!(
-                        "Expected {} == {}, but got {} != {}",
-                        self.describe_field_ref(step_a, field_a),
-                        self.describe_field_ref(step_b, field_b),
-                        value_a.to_hex(),
-                        value_b.to_hex(),
-                    )))
+                    Some(
+                        CrossStepViolation::new(
+                            &assertion.original.name,
+                            &assertion.original.relation,
+                            step_indices,
+                            vec![value_a.clone(), value_b.clone()],
+                            &assertion.original.severity,
+                        )
+                        .with_description(format!(
+                            "Expected {} == {}, but got {} != {}",
+                            self.describe_field_ref(step_a, field_a),
+                            self.describe_field_ref(step_b, field_b),
+                            value_a.to_hex(),
+                            value_b.to_hex(),
+                        )),
+                    )
                 } else {
                     None
                 }
@@ -406,23 +458,28 @@ impl CrossStepInvariantChecker {
                 // Check all pairs: step[i].field_a != step[j].field_b
                 for (i, step_i) in trace.steps.iter().enumerate() {
                     for (j, step_j) in trace.steps.iter().enumerate() {
-                        if i == j { continue; }
+                        if i == j {
+                            continue;
+                        }
                         let val_a = self.get_field_from_step(step_i, field_a);
                         let val_b = self.get_field_from_step(step_j, field_b);
                         if let (Some(a), Some(b)) = (val_a, val_b) {
                             if a == b {
-                                return Some(CrossStepViolation::new(
-                                    &assertion.original.name,
-                                    &assertion.original.relation,
-                                    vec![i, j],
-                                    vec![a.clone()],
-                                    &assertion.original.severity,
-                                ).with_description(format!(
+                                return Some(
+                                    CrossStepViolation::new(
+                                        &assertion.original.name,
+                                        &assertion.original.relation,
+                                        vec![i, j],
+                                        vec![a.clone()],
+                                        &assertion.original.severity,
+                                    )
+                                    .with_description(format!(
                                     "Expected step[{}].{} != step[{}].{}, but values are equal: {}",
                                     i, self.field_ref_name(field_a),
                                     j, self.field_ref_name(field_b),
                                     a.to_hex(),
-                                )));
+                                )),
+                                );
                             }
                         }
                     }
@@ -434,18 +491,23 @@ impl CrossStepInvariantChecker {
                 for (i, step_i) in trace.steps.iter().enumerate() {
                     if let Some(val_a) = self.get_field_from_step(step_i, field_a) {
                         if val_a == val_b {
-                            return Some(CrossStepViolation::new(
-                                &assertion.original.name,
-                                &assertion.original.relation,
-                                vec![i, *j],
-                                vec![val_a.clone()],
-                                &assertion.original.severity,
-                            ).with_description(format!(
-                                "Expected step[{}].{} != step[{}].{}, but values are equal: {}",
-                                i, self.field_ref_name(field_a),
-                                j, self.field_ref_name(field_b),
-                                val_a.to_hex(),
-                            )));
+                            return Some(
+                                CrossStepViolation::new(
+                                    &assertion.original.name,
+                                    &assertion.original.relation,
+                                    vec![i, *j],
+                                    vec![val_a.clone()],
+                                    &assertion.original.severity,
+                                )
+                                .with_description(format!(
+                                    "Expected step[{}].{} != step[{}].{}, but values are equal: {}",
+                                    i,
+                                    self.field_ref_name(field_a),
+                                    j,
+                                    self.field_ref_name(field_b),
+                                    val_a.to_hex(),
+                                )),
+                            );
                         }
                     }
                 }
@@ -456,18 +518,23 @@ impl CrossStepInvariantChecker {
                 for (j, step_j) in trace.steps.iter().enumerate() {
                     if let Some(val_b) = self.get_field_from_step(step_j, field_b) {
                         if val_a == val_b {
-                            return Some(CrossStepViolation::new(
-                                &assertion.original.name,
-                                &assertion.original.relation,
-                                vec![*i, j],
-                                vec![val_a.clone()],
-                                &assertion.original.severity,
-                            ).with_description(format!(
-                                "Expected step[{}].{} != step[{}].{}, but values are equal: {}",
-                                i, self.field_ref_name(field_a),
-                                j, self.field_ref_name(field_b),
-                                val_a.to_hex(),
-                            )));
+                            return Some(
+                                CrossStepViolation::new(
+                                    &assertion.original.name,
+                                    &assertion.original.relation,
+                                    vec![*i, j],
+                                    vec![val_a.clone()],
+                                    &assertion.original.severity,
+                                )
+                                .with_description(format!(
+                                    "Expected step[{}].{} != step[{}].{}, but values are equal: {}",
+                                    i,
+                                    self.field_ref_name(field_a),
+                                    j,
+                                    self.field_ref_name(field_b),
+                                    val_a.to_hex(),
+                                )),
+                            );
                         }
                     }
                 }
@@ -483,18 +550,21 @@ impl CrossStepInvariantChecker {
                         self.step_ref_to_index(step_a).unwrap_or(0),
                         self.step_ref_to_index(step_b).unwrap_or(0),
                     ];
-                    Some(CrossStepViolation::new(
-                        &assertion.original.name,
-                        &assertion.original.relation,
-                        step_indices,
-                        vec![value_a.clone()],
-                        &assertion.original.severity,
-                    ).with_description(format!(
-                        "Expected {} != {}, but values are equal: {}",
-                        self.describe_field_ref(step_a, field_a),
-                        self.describe_field_ref(step_b, field_b),
-                        value_a.to_hex(),
-                    )))
+                    Some(
+                        CrossStepViolation::new(
+                            &assertion.original.name,
+                            &assertion.original.relation,
+                            step_indices,
+                            vec![value_a.clone()],
+                            &assertion.original.severity,
+                        )
+                        .with_description(format!(
+                            "Expected {} != {}, but values are equal: {}",
+                            self.describe_field_ref(step_a, field_a),
+                            self.describe_field_ref(step_b, field_b),
+                            value_a.to_hex(),
+                        )),
+                    )
                 } else {
                     None
                 }
@@ -536,19 +606,23 @@ impl CrossStepInvariantChecker {
                 FieldType::Output => format!("out[{}]", field_index),
                 FieldType::Input => format!("in[{}]", field_index),
             };
-            let dup_val_hex = duplicate_value.as_ref().map(|v| v.to_hex()).unwrap_or_default();
-            Some(CrossStepViolation::new(
-                &assertion.original.name,
-                &assertion.original.relation,
-                duplicate_steps.clone(),
-                duplicate_value.into_iter().collect(),
-                &assertion.original.severity,
-            ).with_description(format!(
-                "Duplicate {} found across steps {:?}: {}",
-                field_name,
-                duplicate_steps,
-                dup_val_hex,
-            )))
+            let dup_val_hex = duplicate_value
+                .as_ref()
+                .map(|v| v.to_hex())
+                .unwrap_or_default();
+            Some(
+                CrossStepViolation::new(
+                    &assertion.original.name,
+                    &assertion.original.relation,
+                    duplicate_steps.clone(),
+                    duplicate_value.into_iter().collect(),
+                    &assertion.original.severity,
+                )
+                .with_description(format!(
+                    "Duplicate {} found across steps {:?}: {}",
+                    field_name, duplicate_steps, dup_val_hex,
+                )),
+            )
         } else {
             None
         }
@@ -562,23 +636,27 @@ impl CrossStepInvariantChecker {
     ) -> Option<CrossStepViolation> {
         if let Some(step) = trace.steps.get(step_index) {
             if !step.success {
-                return Some(CrossStepViolation::new(
-                    &assertion.original.name,
-                    &assertion.original.relation,
-                    vec![step_index],
-                    vec![],
-                    &assertion.original.severity,
-                ).with_description(format!(
-                    "Step {} failed: {:?}",
-                    step_index,
-                    step.error,
-                )));
+                return Some(
+                    CrossStepViolation::new(
+                        &assertion.original.name,
+                        &assertion.original.relation,
+                        vec![step_index],
+                        vec![],
+                        &assertion.original.severity,
+                    )
+                    .with_description(format!("Step {} failed: {:?}", step_index, step.error,)),
+                );
             }
         }
         None
     }
 
-    fn get_field_value(&self, trace: &ChainTrace, step_ref: &StepRef, field_ref: &FieldRef) -> Option<FieldElement> {
+    fn get_field_value(
+        &self,
+        trace: &ChainTrace,
+        step_ref: &StepRef,
+        field_ref: &FieldRef,
+    ) -> Option<FieldElement> {
         let step = match step_ref {
             StepRef::Specific(idx) => trace.steps.get(*idx)?,
             StepRef::All => return None, // Can't get single value for all steps
@@ -633,17 +711,19 @@ mod tests {
 
     fn create_test_trace() -> ChainTrace {
         let mut trace = ChainTrace::new("test_chain");
-        
+
         // Step 0: outputs [42, 100]
         trace.add_step(StepTrace::success(
-            0, "circuit_a",
+            0,
+            "circuit_a",
             vec![FieldElement::one()],
             vec![FieldElement::from_u64(42), FieldElement::from_u64(100)],
         ));
-        
+
         // Step 1: inputs include 42 (wired from step 0)
         trace.add_step(StepTrace::success(
-            1, "circuit_b",
+            1,
+            "circuit_b",
             vec![FieldElement::from_u64(42), FieldElement::from_u64(200)],
             vec![FieldElement::from_u64(42)], // Duplicate of step 0 out[0]
         ));
@@ -654,14 +734,12 @@ mod tests {
     #[test]
     fn test_uniqueness_violation() {
         let trace = create_test_trace();
-        
-        let assertions = vec![
-            CrossStepAssertion::unique("no_duplicate_outputs", 0),
-        ];
-        
+
+        let assertions = vec![CrossStepAssertion::unique("no_duplicate_outputs", 0)];
+
         let checker = CrossStepInvariantChecker::new(assertions);
         let violations = checker.check(&trace);
-        
+
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].assertion_name, "no_duplicate_outputs");
     }
@@ -669,30 +747,26 @@ mod tests {
     #[test]
     fn test_equality_check() {
         let trace = create_test_trace();
-        
+
         // This should pass: step[0].out[0] == step[1].in[0] (both are 42)
-        let assertions = vec![
-            CrossStepAssertion::equal("wiring_correct", 0, 0, 1, 0),
-        ];
-        
+        let assertions = vec![CrossStepAssertion::equal("wiring_correct", 0, 0, 1, 0)];
+
         let checker = CrossStepInvariantChecker::new(assertions);
         let violations = checker.check(&trace);
-        
+
         assert!(violations.is_empty());
     }
 
     #[test]
     fn test_equality_violation() {
         let trace = create_test_trace();
-        
+
         // This should fail: step[0].out[1] != step[1].in[0] (100 != 42)
-        let assertions = vec![
-            CrossStepAssertion::equal("bad_wiring", 0, 1, 1, 0),
-        ];
-        
+        let assertions = vec![CrossStepAssertion::equal("bad_wiring", 0, 1, 1, 0)];
+
         let checker = CrossStepInvariantChecker::new(assertions);
         let violations = checker.check(&trace);
-        
+
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].assertion_name, "bad_wiring");
     }

@@ -1,8 +1,7 @@
 //! Target ZK framework backends (re-exported from zk-backends).
 
 pub use zk_backends::{
-    TargetCircuit, TargetFactory, MockCircuit,
-    CircomTarget, NoirTarget, Halo2Target, CairoTarget,
+    CairoTarget, CircomTarget, Halo2Target, MockCircuit, NoirTarget, TargetCircuit, TargetFactory,
 };
 
 pub use zk_backends::cairo_analysis;

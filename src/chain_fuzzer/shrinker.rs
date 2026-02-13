@@ -48,10 +48,7 @@ pub struct ShrinkResult {
 
 impl ChainShrinker {
     /// Create a new chain shrinker
-    pub fn new(
-        runner: ChainRunner,
-        checker: CrossStepInvariantChecker,
-    ) -> Self {
+    pub fn new(runner: ChainRunner, checker: CrossStepInvariantChecker) -> Self {
         Self {
             runner,
             checker,
@@ -109,8 +106,10 @@ impl ChainShrinker {
         while low <= high && total_attempts < budget_1 {
             let mid = (low + high) / 2;
             let truncated = spec.truncate(mid);
-            
-            if let Some((trace, violation)) = self.try_reproduce(&truncated, inputs, target_violation, total_attempts) {
+
+            if let Some((trace, violation)) =
+                self.try_reproduce(&truncated, inputs, target_violation, total_attempts)
+            {
                 if !self.violations_equivalent(&violation, target_violation) {
                     variant_violations += 1;
                 }
@@ -137,8 +136,13 @@ impl ChainShrinker {
                     test_indices.drain(i..end);
 
                     let test_spec = self.build_spec_from_indices(&best_spec, &test_indices);
-                    
-                    if let Some((trace, violation)) = self.try_reproduce(&test_spec, &best_inputs, target_violation, total_attempts) {
+
+                    if let Some((trace, violation)) = self.try_reproduce(
+                        &test_spec,
+                        &best_inputs,
+                        target_violation,
+                        total_attempts,
+                    ) {
                         if !self.violations_equivalent(&violation, target_violation) {
                             variant_violations += 1;
                         }
@@ -157,8 +161,21 @@ impl ChainShrinker {
 
         // Strategy 3: Input minimization
         if total_attempts < self.max_attempts {
-            let minimized_inputs = self.minimize_inputs(&best_spec, &best_inputs, target_violation, &mut total_attempts);
-            if self.try_reproduce(&best_spec, &minimized_inputs, target_violation, total_attempts).is_some() {
+            let minimized_inputs = self.minimize_inputs(
+                &best_spec,
+                &best_inputs,
+                target_violation,
+                &mut total_attempts,
+            );
+            if self
+                .try_reproduce(
+                    &best_spec,
+                    &minimized_inputs,
+                    target_violation,
+                    total_attempts,
+                )
+                .is_some()
+            {
                 best_inputs = minimized_inputs;
             }
         }
@@ -194,8 +211,9 @@ impl ChainShrinker {
 
         // Check if the same violation is triggered
         let violations = self.checker.check(&result.trace);
-        
-        violations.into_iter()
+
+        violations
+            .into_iter()
             .find(|v| self.violations_equivalent(v, target_violation))
             .map(|v| (result.trace, v))
     }
@@ -233,7 +251,8 @@ impl ChainShrinker {
             };
 
             for i in minimizable_indices {
-                let original = minimized.get(circuit_ref)
+                let original = minimized
+                    .get(circuit_ref)
                     .and_then(|v| v.get(i))
                     .cloned()
                     .unwrap_or_else(FieldElement::zero);
@@ -243,8 +262,11 @@ impl ChainShrinker {
                         step_inputs[i] = FieldElement::zero();
                     }
                 }
-                
-                if self.try_reproduce(spec, &minimized, target_violation, *attempt_counter).is_none() {
+
+                if self
+                    .try_reproduce(spec, &minimized, target_violation, *attempt_counter)
+                    .is_none()
+                {
                     if let Some(step_inputs) = minimized.get_mut(circuit_ref) {
                         if i < step_inputs.len() {
                             step_inputs[i] = original;
@@ -260,7 +282,8 @@ impl ChainShrinker {
 
     /// Build a spec from selected step indices
     fn build_spec_from_indices(&self, spec: &ChainSpec, indices: &[usize]) -> ChainSpec {
-        let steps = indices.iter()
+        let steps = indices
+            .iter()
             .filter_map(|&i| spec.steps.get(i).cloned())
             .collect();
         ChainSpec::new(&spec.name, steps)
@@ -290,15 +313,18 @@ mod tests {
         let mut executors = HashMap::new();
         executors.insert(
             "circuit_a".to_string(),
-            Arc::new(MockCircuitExecutor::new("circuit_a", 2, 0).with_outputs(2)) as Arc<dyn zk_core::CircuitExecutor>,
+            Arc::new(MockCircuitExecutor::new("circuit_a", 2, 0).with_outputs(2))
+                as Arc<dyn zk_core::CircuitExecutor>,
         );
         executors.insert(
             "circuit_b".to_string(),
-            Arc::new(MockCircuitExecutor::new("circuit_b", 2, 0).with_outputs(2)) as Arc<dyn zk_core::CircuitExecutor>,
+            Arc::new(MockCircuitExecutor::new("circuit_b", 2, 0).with_outputs(2))
+                as Arc<dyn zk_core::CircuitExecutor>,
         );
         executors.insert(
             "circuit_c".to_string(),
-            Arc::new(MockCircuitExecutor::new("circuit_c", 2, 0).with_outputs(2)) as Arc<dyn zk_core::CircuitExecutor>,
+            Arc::new(MockCircuitExecutor::new("circuit_c", 2, 0).with_outputs(2))
+                as Arc<dyn zk_core::CircuitExecutor>,
         );
         ChainRunner::new(executors)
     }
@@ -306,19 +332,22 @@ mod tests {
     #[test]
     fn test_prefix_truncation() {
         let runner = create_test_runner();
-        
+
         // Create a chain with 5 steps
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-            StepSpec::fresh("circuit_c"),
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-        ]);
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![
+                StepSpec::fresh("circuit_a"),
+                StepSpec::fresh("circuit_b"),
+                StepSpec::fresh("circuit_c"),
+                StepSpec::fresh("circuit_a"),
+                StepSpec::fresh("circuit_b"),
+            ],
+        );
 
         // Create a checker that always finds a violation
         let checker = CrossStepInvariantChecker::new(vec![]);
-        
+
         let shrinker = ChainShrinker::new(runner, checker);
 
         // The truncation should work even if no violations are found
@@ -338,11 +367,14 @@ mod tests {
 
     #[test]
     fn test_step_dropout() {
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-            StepSpec::fresh("circuit_c"),
-        ]);
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![
+                StepSpec::fresh("circuit_a"),
+                StepSpec::fresh("circuit_b"),
+                StepSpec::fresh("circuit_c"),
+            ],
+        );
 
         // Verify without_step works correctly
         let reduced = spec.without_step(1).unwrap();

@@ -13,22 +13,22 @@
 //!
 //! See [`v2`] module for details.
 
+pub mod additional;
 pub mod generator;
 pub mod parser;
-pub mod profiles;  // Phase 0: Embedded configuration profiles
-pub mod readiness;  // Phase 4C: 0-day readiness validation
+pub mod profiles; // Phase 0: Embedded configuration profiles
+pub mod readiness; // Phase 4C: 0-day readiness validation
 pub mod suggester;
 pub mod v2;
-pub mod additional;
 
-pub use profiles::{ProfileName, EmbeddedProfile, apply_profile};
-pub use readiness::{check_0day_readiness, ReadinessReport, ReadinessWarning, ReadinessLevel};
+pub use additional::AdditionalConfig;
+pub use profiles::{apply_profile, EmbeddedProfile, ProfileName};
+pub use readiness::{check_0day_readiness, ReadinessLevel, ReadinessReport, ReadinessWarning};
 pub use suggester::YamlSuggester;
 pub use v2::parse_chains;
-pub use additional::AdditionalConfig;
 
-use serde::{Deserialize, Serialize};
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub use zk_core::{AttackType, Framework, Severity};

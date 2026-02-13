@@ -87,11 +87,13 @@ impl ChainScheduler {
 
         // Calculate total priority
         let total_priority: f64 = self.priorities.values().sum();
-        
+
         if total_priority == 0.0 {
             // Equal distribution if no priorities
             let per_chain = self.budget.as_millis() as u64 / self.chains.len() as u64;
-            return self.chains.iter()
+            return self
+                .chains
+                .iter()
                 .map(|chain| ChainAllocation {
                     spec: chain.clone(),
                     budget: Duration::from_millis(per_chain),
@@ -102,14 +104,17 @@ impl ChainScheduler {
 
         // Calculate minimum guaranteed budget
         let min_total = self.min_budget_per_chain.as_millis() as u64 * self.chains.len() as u64;
-        let remaining = self.budget.as_millis() as u64 - min_total.min(self.budget.as_millis() as u64);
+        let remaining =
+            self.budget.as_millis() as u64 - min_total.min(self.budget.as_millis() as u64);
 
-        self.chains.iter()
+        self.chains
+            .iter()
             .map(|chain| {
                 let priority = self.priorities.get(&chain.name).copied().unwrap_or(1.0);
                 let priority_share = priority / total_priority;
                 let allocated_remaining = (remaining as f64 * priority_share) as u64;
-                let total_budget = self.min_budget_per_chain.as_millis() as u64 + allocated_remaining;
+                let total_budget =
+                    self.min_budget_per_chain.as_millis() as u64 + allocated_remaining;
 
                 ChainAllocation {
                     spec: chain.clone(),
@@ -122,8 +127,12 @@ impl ChainScheduler {
 
     /// Update priorities based on run results
     pub fn update_priority(&mut self, stats: &ChainRunStats) {
-        let current = self.priorities.get(&stats.chain_name).copied().unwrap_or(1.0);
-        
+        let current = self
+            .priorities
+            .get(&stats.chain_name)
+            .copied()
+            .unwrap_or(1.0);
+
         // Priority heuristics:
         // 1. Chains with violations get boost
         // 2. Chains with near-misses get moderate boost
@@ -135,19 +144,26 @@ impl ChainScheduler {
         // Boost for finding violations
         if stats.found_violation {
             new_priority *= 1.5;
-            *self.findings_count.entry(stats.chain_name.clone()).or_insert(0) += 1;
+            *self
+                .findings_count
+                .entry(stats.chain_name.clone())
+                .or_insert(0) += 1;
         }
 
         // Boost for near-misses
         if stats.near_miss_score > 0.5 {
             new_priority *= 1.0 + (stats.near_miss_score * 0.3);
-            self.near_miss_scores.insert(stats.chain_name.clone(), stats.near_miss_score);
+            self.near_miss_scores
+                .insert(stats.chain_name.clone(), stats.near_miss_score);
         }
 
         // Boost for coverage gains
         if stats.new_coverage > 0 {
             new_priority *= 1.0 + (stats.new_coverage as f64 * 0.01).min(0.2);
-            *self.coverage_gains.entry(stats.chain_name.clone()).or_insert(0) += stats.new_coverage;
+            *self
+                .coverage_gains
+                .entry(stats.chain_name.clone())
+                .or_insert(0) += stats.new_coverage;
         }
 
         // Penalty for no progress
@@ -158,7 +174,8 @@ impl ChainScheduler {
         // Clamp priority
         new_priority = new_priority.clamp(0.1, 10.0);
 
-        self.priorities.insert(stats.chain_name.clone(), new_priority);
+        self.priorities
+            .insert(stats.chain_name.clone(), new_priority);
     }
 
     /// Get current priority for a chain
@@ -285,11 +302,17 @@ mod tests {
         scheduler.priorities.insert("chain_a".to_string(), 5.0);
 
         let allocations = scheduler.allocate();
-        
+
         // chain_a should get more budget
-        let alloc_a = allocations.iter().find(|a| a.spec.name == "chain_a").unwrap();
-        let alloc_b = allocations.iter().find(|a| a.spec.name == "chain_b").unwrap();
-        
+        let alloc_a = allocations
+            .iter()
+            .find(|a| a.spec.name == "chain_a")
+            .unwrap();
+        let alloc_b = allocations
+            .iter()
+            .find(|a| a.spec.name == "chain_b")
+            .unwrap();
+
         assert!(alloc_a.budget > alloc_b.budget);
     }
 

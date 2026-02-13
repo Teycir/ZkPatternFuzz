@@ -15,8 +15,8 @@ pub use corpus_sync::{CorpusSyncManager, SyncStrategy};
 pub use network::{FuzzerNode, NetworkConfig, NodeRole};
 
 use crate::corpus::CorpusEntry;
-use zk_core::{FieldElement, Finding, TestCase};
 use std::time::Duration;
+use zk_core::{FieldElement, Finding, TestCase};
 
 /// Unique identifier for a fuzzer node
 pub type NodeId = String;

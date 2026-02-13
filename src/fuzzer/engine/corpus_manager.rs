@@ -167,7 +167,10 @@ impl FuzzingEngine {
         Ok(())
     }
 
-    pub(super) fn load_seed_inputs_from_path(&self, path: &str) -> anyhow::Result<Vec<Vec<FieldElement>>> {
+    pub(super) fn load_seed_inputs_from_path(
+        &self,
+        path: &str,
+    ) -> anyhow::Result<Vec<Vec<FieldElement>>> {
         let raw = std::fs::read_to_string(path)?;
         let json: serde_json::Value = serde_json::from_str(&raw)?;
 
@@ -193,7 +196,10 @@ impl FuzzingEngine {
         Ok(seeds)
     }
 
-    pub(super) fn build_seed_from_json(&self, entry: &serde_json::Value) -> Option<Vec<FieldElement>> {
+    pub(super) fn build_seed_from_json(
+        &self,
+        entry: &serde_json::Value,
+    ) -> Option<Vec<FieldElement>> {
         let map = entry.as_object()?;
         let mut inputs = Vec::with_capacity(self.config.inputs.len());
         let mut missing = Vec::new();
@@ -283,7 +289,10 @@ impl FuzzingEngine {
     /// # Returns
     ///
     /// Number of test cases loaded from the corpus directory
-    pub(super) fn load_resume_corpus(&mut self, corpus_dir: &std::path::Path) -> anyhow::Result<usize> {
+    pub(super) fn load_resume_corpus(
+        &mut self,
+        corpus_dir: &std::path::Path,
+    ) -> anyhow::Result<usize> {
         if !corpus_dir.exists() {
             tracing::warn!("Resume corpus directory does not exist: {:?}", corpus_dir);
             return Ok(0);
@@ -293,7 +302,7 @@ impl FuzzingEngine {
 
         // Load corpus entries from disk
         let entries = corpus_storage::load_corpus_from_dir(corpus_dir)?;
-        
+
         if entries.is_empty() {
             tracing::info!("Resume corpus directory is empty");
             return Ok(0);
@@ -319,7 +328,7 @@ impl FuzzingEngine {
     /// Check for and load resume corpus from config if --resume was specified
     pub(super) fn maybe_load_resume_corpus(&mut self) -> anyhow::Result<usize> {
         let additional = &self.config.campaign.parameters.additional;
-        
+
         // Check if resume_corpus_dir was set by CLI
         let resume_dir = additional
             .get("resume_corpus_dir")
@@ -360,7 +369,6 @@ impl FuzzingEngine {
         self.core
             .execute_and_learn(self.executor.as_ref(), test_case)
     }
-
 
     /// Export corpus to disk for persistence
     pub fn export_corpus(&self, output_dir: &std::path::Path) -> anyhow::Result<usize> {
@@ -414,5 +422,4 @@ impl FuzzingEngine {
 
         collected
     }
-
 }

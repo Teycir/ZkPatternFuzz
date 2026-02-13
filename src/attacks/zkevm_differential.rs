@@ -1,19 +1,7 @@
 //! Re-exported zkevm differential attack helpers from zk-attacks.
 
 pub use zk_attacks::zkevm_differential::{
-    ZkEvmDifferentialConfig,
-    AccountState,
-    ExecutionTrace,
-    EvmLog,
-    TestTransaction,
-    ReferenceEvm,
-    EvmState,
-    MockReferenceEvm,
-    ZkEvmDifferentialTester,
-    DifferentialStats,
-    DifferentialFinding,
-    MismatchType,
-    StateDifference,
-    precompiles,
-    PrecompileTestGenerator,
+    precompiles, AccountState, DifferentialFinding, DifferentialStats, EvmLog, EvmState,
+    ExecutionTrace, MismatchType, MockReferenceEvm, PrecompileTestGenerator, ReferenceEvm,
+    StateDifference, TestTransaction, ZkEvmDifferentialConfig, ZkEvmDifferentialTester,
 };

@@ -47,7 +47,8 @@ impl ChainCorpusEntry {
         depth_reached: usize,
     ) -> Self {
         // Convert FieldElements to hex strings for serialization
-        let inputs_hex: HashMap<String, Vec<String>> = inputs.into_iter()
+        let inputs_hex: HashMap<String, Vec<String>> = inputs
+            .into_iter()
             .map(|(k, v)| (k, v.iter().map(|fe| fe.to_hex()).collect()))
             .collect();
 
@@ -76,9 +77,11 @@ impl ChainCorpusEntry {
 
     /// Get inputs as FieldElements
     pub fn get_inputs(&self) -> HashMap<String, Vec<FieldElement>> {
-        self.inputs.iter()
+        self.inputs
+            .iter()
             .map(|(k, v)| {
-                let fes: Vec<FieldElement> = v.iter()
+                let fes: Vec<FieldElement> = v
+                    .iter()
                     .filter_map(|hex| FieldElement::from_hex(hex).ok())
                     .collect();
                 (k.clone(), fes)
@@ -88,9 +91,7 @@ impl ChainCorpusEntry {
 
     /// Check if this entry is interesting (worth keeping)
     pub fn is_interesting(&self) -> bool {
-        self.triggered_violation
-            || self.near_miss_score > 0.5
-            || self.coverage_bits > 0
+        self.triggered_violation || self.near_miss_score > 0.5 || self.coverage_bits > 0
     }
 
     /// Compute a priority score for this entry (for mutation selection)
@@ -146,9 +147,11 @@ impl ChainCorpus {
     pub fn add(&mut self, entry: ChainCorpusEntry) {
         // Check for duplicates based on inputs hash
         let inputs_hash = Self::hash_inputs(&entry.inputs);
-        
+
         // Update if exists with same inputs, otherwise add
-        if let Some(existing) = self.entries.iter_mut()
+        if let Some(existing) = self
+            .entries
+            .iter_mut()
             .find(|e| Self::hash_inputs(&e.inputs) == inputs_hash)
         {
             existing.execution_count += 1;
@@ -186,23 +189,23 @@ impl ChainCorpus {
 
     /// Get entries for a specific chain
     pub fn entries_for_chain(&self, spec_name: &str) -> Vec<&ChainCorpusEntry> {
-        self.entries.iter()
+        self.entries
+            .iter()
             .filter(|e| e.spec_name == spec_name)
             .collect()
     }
 
     /// Get interesting entries (for mutation seeds)
     pub fn interesting_entries(&self) -> Vec<&ChainCorpusEntry> {
-        self.entries.iter()
-            .filter(|e| e.is_interesting())
-            .collect()
+        self.entries.iter().filter(|e| e.is_interesting()).collect()
     }
 
     /// Get top N entries by priority score
     pub fn top_entries(&self, n: usize) -> Vec<&ChainCorpusEntry> {
         let mut entries: Vec<_> = self.entries.iter().collect();
         entries.sort_by(|a, b| {
-            b.priority_score().partial_cmp(&a.priority_score())
+            b.priority_score()
+                .partial_cmp(&a.priority_score())
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         entries.into_iter().take(n).collect()
@@ -223,7 +226,11 @@ impl ChainCorpus {
         let json = serde_json::to_string_pretty(&self.entries)?;
         std::fs::write(path, json)?;
 
-        tracing::info!("Saved chain corpus with {} entries to {:?}", self.entries.len(), path);
+        tracing::info!(
+            "Saved chain corpus with {} entries to {:?}",
+            self.entries.len(),
+            path
+        );
         Ok(())
     }
 
@@ -236,7 +243,11 @@ impl ChainCorpus {
         let json = std::fs::read_to_string(path)?;
         let entries: Vec<ChainCorpusEntry> = serde_json::from_str(&json)?;
 
-        tracing::info!("Loaded chain corpus with {} entries from {:?}", entries.len(), path);
+        tracing::info!(
+            "Loaded chain corpus with {} entries from {:?}",
+            entries.len(),
+            path
+        );
 
         Ok(Self {
             entries,
@@ -268,7 +279,8 @@ impl ChainCorpus {
 
         // Sort by priority and keep top entries
         self.entries.sort_by(|a, b| {
-            b.priority_score().partial_cmp(&a.priority_score())
+            b.priority_score()
+                .partial_cmp(&a.priority_score())
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         self.entries.truncate(max_entries);
@@ -276,14 +288,14 @@ impl ChainCorpus {
 
     /// Hash inputs for deduplication
     fn hash_inputs(inputs: &HashMap<String, Vec<String>>) -> u64 {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
-        
+
         let mut keys: Vec<_> = inputs.keys().collect();
         keys.sort();
-        
+
         for key in keys {
             key.hash(&mut hasher);
             if let Some(values) = inputs.get(key) {
@@ -300,14 +312,23 @@ impl ChainCorpus {
     pub fn stats(&self) -> CorpusStats {
         let total_entries = self.entries.len();
         let interesting_entries = self.entries.iter().filter(|e| e.is_interesting()).count();
-        let violation_entries = self.entries.iter().filter(|e| e.triggered_violation).count();
+        let violation_entries = self
+            .entries
+            .iter()
+            .filter(|e| e.triggered_violation)
+            .count();
         let total_coverage: u64 = self.entries.iter().map(|e| e.coverage_bits).sum();
         let avg_near_miss = if total_entries > 0 {
             self.entries.iter().map(|e| e.near_miss_score).sum::<f64>() / total_entries as f64
         } else {
             0.0
         };
-        let max_depth = self.entries.iter().map(|e| e.depth_reached).max().unwrap_or(0);
+        let max_depth = self
+            .entries
+            .iter()
+            .map(|e| e.depth_reached)
+            .max()
+            .unwrap_or(0);
 
         CorpusStats {
             total_entries,
@@ -343,25 +364,27 @@ mod tests {
     use tempfile::TempDir;
 
     fn create_test_entry(name: &str, coverage: u64, near_miss: f64) -> ChainCorpusEntry {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
-        
+        use std::hash::{Hash, Hasher};
+
         // Create unique inputs based on name to avoid deduplication
         let mut hasher = DefaultHasher::new();
         name.hash(&mut hasher);
         let unique_value = hasher.finish();
-        
+
         let mut inputs = HashMap::new();
-        inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(unique_value)]);
-        
-        ChainCorpusEntry::new(name, inputs, coverage, 2)
-            .with_near_miss(near_miss)
+        inputs.insert(
+            "circuit_a".to_string(),
+            vec![FieldElement::from_u64(unique_value)],
+        );
+
+        ChainCorpusEntry::new(name, inputs, coverage, 2).with_near_miss(near_miss)
     }
 
     #[test]
     fn test_add_and_get() {
         let mut corpus = ChainCorpus::new();
-        
+
         corpus.add(create_test_entry("chain_a", 10, 0.5));
         corpus.add(create_test_entry("chain_b", 20, 0.8));
 
@@ -372,9 +395,9 @@ mod tests {
     #[test]
     fn test_interesting_entries() {
         let mut corpus = ChainCorpus::new();
-        
+
         corpus.add(create_test_entry("chain_a", 10, 0.9)); // Interesting (high near-miss)
-        corpus.add(create_test_entry("chain_b", 0, 0.1));  // Not interesting
+        corpus.add(create_test_entry("chain_b", 0, 0.1)); // Not interesting
 
         let interesting = corpus.interesting_entries();
         assert_eq!(interesting.len(), 1);
@@ -410,9 +433,13 @@ mod tests {
     #[test]
     fn test_compact() {
         let mut corpus = ChainCorpus::new();
-        
+
         for i in 0..10 {
-            corpus.add(create_test_entry(&format!("chain_{}", i), i as u64, i as f64 * 0.1));
+            corpus.add(create_test_entry(
+                &format!("chain_{}", i),
+                i as u64,
+                i as f64 * 0.1,
+            ));
         }
 
         corpus.compact(5);

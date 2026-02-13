@@ -3,10 +3,10 @@
 //! Provides mutation strategies for multi-step chain fuzzing.
 
 use super::types::{ChainSpec, InputWiring};
+use crate::fuzzer::structure_aware::StructureAwareMutator;
 use rand::Rng;
 use std::collections::HashMap;
 use zk_core::FieldElement;
-use crate::fuzzer::structure_aware::StructureAwareMutator;
 
 /// Mutates chain inputs for coverage-guided exploration
 pub struct ChainMutator {
@@ -58,9 +58,16 @@ pub enum MutationType {
     /// Duplicated a step
     StepDuplication { step_index: usize },
     /// Injected boundary values
-    BoundaryInjection { step_index: usize, input_index: usize },
+    BoundaryInjection {
+        step_index: usize,
+        input_index: usize,
+    },
     /// Flipped bits in an input
-    BitFlip { step_index: usize, input_index: usize, bit: usize },
+    BitFlip {
+        step_index: usize,
+        input_index: usize,
+        bit: usize,
+    },
 }
 
 /// Result of a chain mutation (may include a modified spec)
@@ -169,12 +176,40 @@ impl ChainMutator {
     ) -> ChainMutation {
         let strategy = self.select_strategy(rng);
         match strategy {
-            0 => { let (inputs, mt) = self.single_step_tweak(spec, prior_inputs, rng); ChainMutation { inputs, mutation_type: mt, spec: None } }
-            1 => { let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng); ChainMutation { inputs, mutation_type: mt, spec: None } }
+            0 => {
+                let (inputs, mt) = self.single_step_tweak(spec, prior_inputs, rng);
+                ChainMutation {
+                    inputs,
+                    mutation_type: mt,
+                    spec: None,
+                }
+            }
+            1 => {
+                let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng);
+                ChainMutation {
+                    inputs,
+                    mutation_type: mt,
+                    spec: None,
+                }
+            }
             2 => self.step_reorder_real(spec, prior_inputs, rng),
             3 => self.step_duplication_real(spec, prior_inputs, rng),
-            4 => { let (inputs, mt) = self.boundary_injection(spec, prior_inputs, rng); ChainMutation { inputs, mutation_type: mt, spec: None } }
-            _ => { let (inputs, mt) = self.bit_flip(spec, prior_inputs, rng); ChainMutation { inputs, mutation_type: mt, spec: None } }
+            4 => {
+                let (inputs, mt) = self.boundary_injection(spec, prior_inputs, rng);
+                ChainMutation {
+                    inputs,
+                    mutation_type: mt,
+                    spec: None,
+                }
+            }
+            _ => {
+                let (inputs, mt) = self.bit_flip(spec, prior_inputs, rng);
+                ChainMutation {
+                    inputs,
+                    mutation_type: mt,
+                    spec: None,
+                }
+            }
         }
     }
 
@@ -219,9 +254,16 @@ impl ChainMutator {
         let mut result = prior_inputs.clone();
 
         // Find steps with fresh inputs
-        let mutable_steps: Vec<_> = spec.steps.iter()
+        let mutable_steps: Vec<_> = spec
+            .steps
+            .iter()
             .enumerate()
-            .filter(|(_, step)| matches!(step.input_wiring, InputWiring::Fresh | InputWiring::Mixed { .. }))
+            .filter(|(_, step)| {
+                matches!(
+                    step.input_wiring,
+                    InputWiring::Fresh | InputWiring::Mixed { .. }
+                )
+            })
             .collect();
 
         if mutable_steps.is_empty() {
@@ -239,13 +281,16 @@ impl ChainMutator {
         } else {
             // Generate new random inputs
             let count = rng.gen_range(1..10);
-            let new_inputs: Vec<_> = (0..count)
-                .map(|_| FieldElement::random(rng))
-                .collect();
+            let new_inputs: Vec<_> = (0..count).map(|_| FieldElement::random(rng)).collect();
             result.insert(step.circuit_ref.clone(), new_inputs);
         }
 
-        (result, MutationType::SingleStepTweak { step_index: step_idx })
+        (
+            result,
+            MutationType::SingleStepTweak {
+                step_index: step_idx,
+            },
+        )
     }
 
     /// Strategy 2: Initial-input cascade
@@ -270,9 +315,7 @@ impl ChainMutator {
                 }
             } else {
                 let count = rng.gen_range(1..10);
-                let new_inputs: Vec<_> = (0..count)
-                    .map(|_| FieldElement::random(rng))
-                    .collect();
+                let new_inputs: Vec<_> = (0..count).map(|_| FieldElement::random(rng)).collect();
                 result.insert(first_step.circuit_ref.clone(), new_inputs);
             }
         }
@@ -291,7 +334,7 @@ impl ChainMutator {
         // This is a more complex mutation that would require modifying the spec
         // For now, just return a cascade mutation instead
         // A full implementation would check if steps can be reordered based on dependencies
-        
+
         if spec.steps.len() < 2 {
             return self.cascade_mutation(spec, prior_inputs, rng);
         }
@@ -319,7 +362,7 @@ impl ChainMutator {
         }
 
         let step_index = rng.gen_range(0..spec.steps.len());
-        
+
         // Duplicate the inputs for this step's circuit
         let (result, _) = self.cascade_mutation(spec, prior_inputs, rng);
         (result, MutationType::StepDuplication { step_index })
@@ -334,7 +377,11 @@ impl ChainMutator {
     ) -> ChainMutation {
         if spec.steps.len() < 2 {
             let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng);
-            return ChainMutation { inputs, mutation_type: mt, spec: None };
+            return ChainMutation {
+                inputs,
+                mutation_type: mt,
+                spec: None,
+            };
         }
 
         let n = spec.steps.len();
@@ -362,7 +409,11 @@ impl ChainMutator {
         }
 
         let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng);
-        ChainMutation { inputs, mutation_type: mt, spec: None }
+        ChainMutation {
+            inputs,
+            mutation_type: mt,
+            spec: None,
+        }
     }
 
     /// Strategy 4 (real): Step duplication returning ChainMutation with modified spec
@@ -374,7 +425,11 @@ impl ChainMutator {
     ) -> ChainMutation {
         if spec.steps.is_empty() {
             let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng);
-            return ChainMutation { inputs, mutation_type: mt, spec: None };
+            return ChainMutation {
+                inputs,
+                mutation_type: mt,
+                spec: None,
+            };
         }
 
         let step_index = rng.gen_range(0..spec.steps.len());
@@ -386,7 +441,11 @@ impl ChainMutator {
             }
         } else {
             let (inputs, mt) = self.cascade_mutation(spec, prior_inputs, rng);
-            ChainMutation { inputs, mutation_type: mt, spec: None }
+            ChainMutation {
+                inputs,
+                mutation_type: mt,
+                spec: None,
+            }
         }
     }
 
@@ -401,13 +460,26 @@ impl ChainMutator {
         let mut result = prior_inputs.clone();
 
         // Find a step with fresh inputs
-        let mutable_steps: Vec<_> = spec.steps.iter()
+        let mutable_steps: Vec<_> = spec
+            .steps
+            .iter()
             .enumerate()
-            .filter(|(_, step)| matches!(step.input_wiring, InputWiring::Fresh | InputWiring::Mixed { .. }))
+            .filter(|(_, step)| {
+                matches!(
+                    step.input_wiring,
+                    InputWiring::Fresh | InputWiring::Mixed { .. }
+                )
+            })
             .collect();
 
         if mutable_steps.is_empty() {
-            return (result, MutationType::BoundaryInjection { step_index: 0, input_index: 0 });
+            return (
+                result,
+                MutationType::BoundaryInjection {
+                    step_index: 0,
+                    input_index: 0,
+                },
+            );
         }
 
         let (step_idx, step) = mutable_steps[rng.gen_range(0..mutable_steps.len())];
@@ -432,7 +504,13 @@ impl ChainMutator {
             0
         };
 
-        (result, MutationType::BoundaryInjection { step_index: step_idx, input_index })
+        (
+            result,
+            MutationType::BoundaryInjection {
+                step_index: step_idx,
+                input_index,
+            },
+        )
     }
 
     /// Strategy 6: Bit flip
@@ -445,13 +523,27 @@ impl ChainMutator {
     ) -> (HashMap<String, Vec<FieldElement>>, MutationType) {
         let mut result = prior_inputs.clone();
 
-        let mutable_steps: Vec<_> = spec.steps.iter()
+        let mutable_steps: Vec<_> = spec
+            .steps
+            .iter()
             .enumerate()
-            .filter(|(_, step)| matches!(step.input_wiring, InputWiring::Fresh | InputWiring::Mixed { .. }))
+            .filter(|(_, step)| {
+                matches!(
+                    step.input_wiring,
+                    InputWiring::Fresh | InputWiring::Mixed { .. }
+                )
+            })
             .collect();
 
         if mutable_steps.is_empty() {
-            return (result, MutationType::BitFlip { step_index: 0, input_index: 0, bit: 0 });
+            return (
+                result,
+                MutationType::BitFlip {
+                    step_index: 0,
+                    input_index: 0,
+                    bit: 0,
+                },
+            );
         }
 
         let (step_idx, step) = mutable_steps[rng.gen_range(0..mutable_steps.len())];
@@ -475,7 +567,14 @@ impl ChainMutator {
             0
         };
 
-        (result, MutationType::BitFlip { step_index: step_idx, input_index, bit })
+        (
+            result,
+            MutationType::BitFlip {
+                step_index: step_idx,
+                input_index,
+                bit,
+            },
+        )
     }
 
     /// Mutate a single field element
@@ -534,14 +633,17 @@ mod tests {
     #[test]
     fn test_mutate_inputs() {
         let mutator = ChainMutator::new();
-        
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-        ]);
+
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![StepSpec::fresh("circuit_a"), StepSpec::fresh("circuit_b")],
+        );
 
         let mut initial_inputs = HashMap::new();
-        initial_inputs.insert("circuit_a".to_string(), vec![FieldElement::one(), FieldElement::from_u64(42)]);
+        initial_inputs.insert(
+            "circuit_a".to_string(),
+            vec![FieldElement::one(), FieldElement::from_u64(42)],
+        );
         initial_inputs.insert("circuit_b".to_string(), vec![FieldElement::from_u64(100)]);
 
         let mut rng = rand::thread_rng();
@@ -549,32 +651,29 @@ mod tests {
 
         // Should have mutated something
         assert!(!mutated.is_empty());
-        
+
         // Mutation type should be recorded
         match mutation_type {
-            MutationType::SingleStepTweak { .. } |
-            MutationType::CascadeMutation |
-            MutationType::BoundaryInjection { .. } |
-            MutationType::BitFlip { .. } => {}
+            MutationType::SingleStepTweak { .. }
+            | MutationType::CascadeMutation
+            | MutationType::BoundaryInjection { .. }
+            | MutationType::BitFlip { .. } => {}
             _ => {} // Other types are also valid
         }
     }
 
     #[test]
     fn test_boundary_injection() {
-        let mutator = ChainMutator::new()
-            .with_weights(MutationWeights {
-                single_step_tweak: 0.0,
-                cascade_mutation: 0.0,
-                step_reorder: 0.0,
-                step_duplication: 0.0,
-                boundary_injection: 1.0,
-                bit_flip: 0.0,
-            });
+        let mutator = ChainMutator::new().with_weights(MutationWeights {
+            single_step_tweak: 0.0,
+            cascade_mutation: 0.0,
+            step_reorder: 0.0,
+            step_duplication: 0.0,
+            boundary_injection: 1.0,
+            bit_flip: 0.0,
+        });
 
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-        ]);
+        let spec = ChainSpec::new("test_chain", vec![StepSpec::fresh("circuit_a")]);
 
         let mut initial_inputs = HashMap::new();
         initial_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(500)]);
@@ -583,34 +682,33 @@ mod tests {
         let (mutated, mutation_type) = mutator.mutate_inputs(&spec, &initial_inputs, &mut rng);
 
         matches!(mutation_type, MutationType::BoundaryInjection { .. });
-        
+
         // One of the inputs should be a boundary value
         let inputs = mutated.get("circuit_a").unwrap();
         let is_boundary = inputs.iter().any(|fe| {
-            *fe == FieldElement::zero() ||
-            *fe == FieldElement::one() ||
-            *fe == FieldElement::max_value() ||
-            *fe == FieldElement::half_modulus()
+            *fe == FieldElement::zero()
+                || *fe == FieldElement::one()
+                || *fe == FieldElement::max_value()
+                || *fe == FieldElement::half_modulus()
         });
         assert!(is_boundary);
     }
 
     #[test]
     fn test_mutate_with_spec() {
-        let mutator = ChainMutator::new()
-            .with_weights(MutationWeights {
-                single_step_tweak: 0.0,
-                cascade_mutation: 0.0,
-                step_reorder: 0.0,
-                step_duplication: 1.0,
-                boundary_injection: 0.0,
-                bit_flip: 0.0,
-            });
+        let mutator = ChainMutator::new().with_weights(MutationWeights {
+            single_step_tweak: 0.0,
+            cascade_mutation: 0.0,
+            step_reorder: 0.0,
+            step_duplication: 1.0,
+            boundary_injection: 0.0,
+            bit_flip: 0.0,
+        });
 
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-        ]);
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![StepSpec::fresh("circuit_a"), StepSpec::fresh("circuit_b")],
+        );
 
         let mut initial_inputs = HashMap::new();
         initial_inputs.insert("circuit_a".to_string(), vec![FieldElement::one()]);
@@ -619,9 +717,15 @@ mod tests {
         let mut rng = rand::thread_rng();
         let result = mutator.mutate(&spec, &initial_inputs, &mut rng);
 
-        assert!(result.spec.is_some(), "step_duplication should produce a modified spec");
+        assert!(
+            result.spec.is_some(),
+            "step_duplication should produce a modified spec"
+        );
         let new_spec = result.spec.unwrap();
         assert_eq!(new_spec.steps.len(), spec.steps.len() + 1);
-        assert!(matches!(result.mutation_type, MutationType::StepDuplication { .. }));
+        assert!(matches!(
+            result.mutation_type,
+            MutationType::StepDuplication { .. }
+        ));
     }
 }

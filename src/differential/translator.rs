@@ -207,7 +207,10 @@ impl CircuitPattern {
         match self {
             CircuitPattern::Add | CircuitPattern::Sub | CircuitPattern::Mul => 1,
             CircuitPattern::Div | CircuitPattern::Mod => 5,
-            CircuitPattern::And | CircuitPattern::Or | CircuitPattern::Xor | CircuitPattern::Not => 1,
+            CircuitPattern::And
+            | CircuitPattern::Or
+            | CircuitPattern::Xor
+            | CircuitPattern::Not => 1,
             CircuitPattern::LessThan
             | CircuitPattern::GreaterThan
             | CircuitPattern::Equal
@@ -323,7 +326,11 @@ impl CircuitTranslator {
         self.add_pattern(CircuitPattern::GreaterThan, TargetFramework::Noir, "a > b");
         self.add_pattern(CircuitPattern::Equal, TargetFramework::Noir, "a == b");
         self.add_pattern(CircuitPattern::LessOrEqual, TargetFramework::Noir, "a <= b");
-        self.add_pattern(CircuitPattern::GreaterOrEqual, TargetFramework::Noir, "a >= b");
+        self.add_pattern(
+            CircuitPattern::GreaterOrEqual,
+            TargetFramework::Noir,
+            "a >= b",
+        );
         self.add_pattern(CircuitPattern::IsZero, TargetFramework::Noir, "a == 0");
         self.add_pattern(
             CircuitPattern::Poseidon { inputs: 2 },
@@ -387,10 +394,7 @@ impl CircuitTranslator {
                     let new_total = total_complexity.saturating_add(complexity);
 
                     if new_total > self.config.max_complexity {
-                        warnings.push(format!(
-                            "Complexity limit reached at pattern {:?}",
-                            pattern
-                        ));
+                        warnings.push(format!("Complexity limit reached at pattern {:?}", pattern));
                         if self.config.strict_mode {
                             return Err(anyhow!(
                                 "Translation complexity {} exceeds limit {}",
@@ -603,10 +607,7 @@ impl CircuitTranslator {
                 if inputs == 2 {
                     "dep::std::hash::poseidon::bn254::hash_2([a, b])".to_string()
                 } else {
-                    format!(
-                        "dep::std::hash::poseidon::bn254::hash_{}(inputs)",
-                        inputs
-                    )
+                    format!("dep::std::hash::poseidon::bn254::hash_{}(inputs)", inputs)
                 }
             }
             TargetFramework::Halo2 => {
@@ -625,13 +626,15 @@ impl CircuitTranslator {
     pub fn can_translate(&self, patterns: &[CircuitPattern]) -> bool {
         patterns.iter().all(|p| {
             let key = (p.clone(), self.config.target);
-            self.pattern_db.contains_key(&key) || matches!(p, 
-                CircuitPattern::Num2Bits { .. } |
-                CircuitPattern::Bits2Num { .. } |
-                CircuitPattern::RangeCheck { .. } |
-                CircuitPattern::MerkleProof { .. } |
-                CircuitPattern::Poseidon { .. }
-            )
+            self.pattern_db.contains_key(&key)
+                || matches!(
+                    p,
+                    CircuitPattern::Num2Bits { .. }
+                        | CircuitPattern::Bits2Num { .. }
+                        | CircuitPattern::RangeCheck { .. }
+                        | CircuitPattern::MerkleProof { .. }
+                        | CircuitPattern::Poseidon { .. }
+                )
         })
     }
 
@@ -722,7 +725,11 @@ mod tests {
     fn test_translator_basic() {
         let translator = CircuitTranslator::new(TargetFramework::Noir);
 
-        let patterns = vec![CircuitPattern::Add, CircuitPattern::Mul, CircuitPattern::Equal];
+        let patterns = vec![
+            CircuitPattern::Add,
+            CircuitPattern::Mul,
+            CircuitPattern::Equal,
+        ];
 
         let result = translator.translate(&patterns).unwrap();
         assert!(result.success);
@@ -810,6 +817,9 @@ mod tests {
 
         let result = translator.translate(&patterns).unwrap();
         assert!(result.success);
-        assert_eq!(result.translated_patterns[0].target_code, "my_custom_impl()");
+        assert_eq!(
+            result.translated_patterns[0].target_code,
+            "my_custom_impl()"
+        );
     }
 }

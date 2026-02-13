@@ -7,9 +7,9 @@ pub mod executor;
 pub mod report;
 pub mod translator;
 
-use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Framework, TestCase};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Framework, TestCase};
 
 /// Result of differential testing between backends
 #[derive(Debug, Clone)]
@@ -200,7 +200,9 @@ impl DifferentialFuzzer {
             }
         }
 
-        if disagreements.is_empty() && coverage_mismatches.is_empty() && timing_variations.is_empty()
+        if disagreements.is_empty()
+            && coverage_mismatches.is_empty()
+            && timing_variations.is_empty()
         {
             self.stats.all_agreed += 1;
             return None;

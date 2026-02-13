@@ -157,9 +157,9 @@ pub struct StepConfig {
 }
 
 /// Configuration for input wiring
-/// 
+///
 /// Supports multiple YAML formats:
-/// - Simple string: `input_wiring: fresh` 
+/// - Simple string: `input_wiring: fresh`
 /// - Tagged map: `input_wiring: { from_prior_output: { step: 0, mapping: [[0, 0]] } }`
 /// - Shorthand: `input_wiring: { step: 0, mapping: [[0, 0]] }` (implies from_prior_output)
 #[derive(Debug, Serialize, Clone, Default)]
@@ -196,16 +196,16 @@ impl<'de> serde::Deserialize<'de> for InputWiringConfig {
         D: serde::Deserializer<'de>,
     {
         use serde::de::{self, MapAccess, Visitor};
-        
+
         struct InputWiringVisitor;
-        
+
         impl<'de> Visitor<'de> for InputWiringVisitor {
             type Value = InputWiringConfig;
-            
+
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("'fresh', a map with 'from_prior_output', 'mixed', 'constant', or shorthand {step, mapping}")
             }
-            
+
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
             where
                 E: de::Error,
@@ -215,7 +215,7 @@ impl<'de> serde::Deserialize<'de> for InputWiringConfig {
                     _ => Err(de::Error::unknown_variant(v, &["fresh"])),
                 }
             }
-            
+
             fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
             where
                 M: MapAccess<'de>,
@@ -227,39 +227,45 @@ impl<'de> serde::Deserialize<'de> for InputWiringConfig {
                 let mut fresh_indices: Option<Vec<usize>> = None;
                 let mut values: Option<std::collections::HashMap<usize, String>> = None;
                 let mut tag_found: Option<String> = None;
-                
+
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
                         // Tagged format: { from_prior_output: { step: 0, mapping: [[0,0]] } }
                         "from_prior_output" => {
                             #[derive(Deserialize)]
-                            struct Inner { step: usize, mapping: Vec<[usize; 2]> }
+                            struct Inner {
+                                step: usize,
+                                mapping: Vec<[usize; 2]>,
+                            }
                             let inner: Inner = map.next_value()?;
-                            return Ok(InputWiringConfig::FromPriorOutput { 
-                                step: inner.step, 
-                                mapping: inner.mapping 
+                            return Ok(InputWiringConfig::FromPriorOutput {
+                                step: inner.step,
+                                mapping: inner.mapping,
                             });
                         }
                         "mixed" => {
                             #[derive(Deserialize)]
-                            struct Inner { prior: Vec<[usize; 3]>, fresh_indices: Vec<usize> }
+                            struct Inner {
+                                prior: Vec<[usize; 3]>,
+                                fresh_indices: Vec<usize>,
+                            }
                             let inner: Inner = map.next_value()?;
-                            return Ok(InputWiringConfig::Mixed { 
-                                prior: inner.prior, 
-                                fresh_indices: inner.fresh_indices 
+                            return Ok(InputWiringConfig::Mixed {
+                                prior: inner.prior,
+                                fresh_indices: inner.fresh_indices,
                             });
                         }
                         "constant" => {
                             #[derive(Deserialize)]
-                            struct Inner { 
-                                values: std::collections::HashMap<usize, String>, 
+                            struct Inner {
+                                values: std::collections::HashMap<usize, String>,
                                 #[serde(default)]
-                                fresh_indices: Vec<usize> 
+                                fresh_indices: Vec<usize>,
                             }
                             let inner: Inner = map.next_value()?;
-                            return Ok(InputWiringConfig::Constant { 
-                                values: inner.values, 
-                                fresh_indices: inner.fresh_indices 
+                            return Ok(InputWiringConfig::Constant {
+                                values: inner.values,
+                                fresh_indices: inner.fresh_indices,
                             });
                         }
                         "fresh" => {
@@ -267,39 +273,57 @@ impl<'de> serde::Deserialize<'de> for InputWiringConfig {
                             tag_found = Some("fresh".to_string());
                         }
                         // Shorthand format: { step: 0, mapping: [[0,0]] }
-                        "step" => { step = Some(map.next_value()?); }
-                        "mapping" => { mapping = Some(map.next_value()?); }
-                        "prior" => { prior = Some(map.next_value()?); }
-                        "fresh_indices" => { fresh_indices = Some(map.next_value()?); }
-                        "values" => { values = Some(map.next_value()?); }
-                        _ => { let _: serde_yaml::Value = map.next_value()?; }
+                        "step" => {
+                            step = Some(map.next_value()?);
+                        }
+                        "mapping" => {
+                            mapping = Some(map.next_value()?);
+                        }
+                        "prior" => {
+                            prior = Some(map.next_value()?);
+                        }
+                        "fresh_indices" => {
+                            fresh_indices = Some(map.next_value()?);
+                        }
+                        "values" => {
+                            values = Some(map.next_value()?);
+                        }
+                        _ => {
+                            let _: serde_yaml::Value = map.next_value()?;
+                        }
                     }
                 }
-                
+
                 // Handle tagged fresh
                 if tag_found.as_deref() == Some("fresh") {
                     return Ok(InputWiringConfig::Fresh);
                 }
-                
+
                 // Handle shorthand formats
                 if let (Some(s), Some(m)) = (step, mapping) {
-                    return Ok(InputWiringConfig::FromPriorOutput { step: s, mapping: m });
-                }
-                if let (Some(p), Some(f)) = (prior, fresh_indices.clone()) {
-                    return Ok(InputWiringConfig::Mixed { prior: p, fresh_indices: f });
-                }
-                if let Some(v) = values {
-                    return Ok(InputWiringConfig::Constant { 
-                        values: v, 
-                        fresh_indices: fresh_indices.unwrap_or_default() 
+                    return Ok(InputWiringConfig::FromPriorOutput {
+                        step: s,
+                        mapping: m,
                     });
                 }
-                
+                if let (Some(p), Some(f)) = (prior, fresh_indices.clone()) {
+                    return Ok(InputWiringConfig::Mixed {
+                        prior: p,
+                        fresh_indices: f,
+                    });
+                }
+                if let Some(v) = values {
+                    return Ok(InputWiringConfig::Constant {
+                        values: v,
+                        fresh_indices: fresh_indices.unwrap_or_default(),
+                    });
+                }
+
                 // Default to fresh
                 Ok(InputWiringConfig::Fresh)
             }
         }
-        
+
         deserializer.deserialize_any(InputWiringVisitor)
     }
 }

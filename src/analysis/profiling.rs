@@ -6,12 +6,12 @@
 //! - Memory usage patterns
 //! - Worst-case performance inputs
 
-use zk_core::CircuitExecutor;
-use zk_core::FieldElement;
 use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
+use zk_core::CircuitExecutor;
+use zk_core::FieldElement;
 
 /// Performance profile for a circuit
 #[derive(Debug, Clone)]

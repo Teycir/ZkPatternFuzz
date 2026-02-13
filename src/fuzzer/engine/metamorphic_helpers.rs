@@ -2,7 +2,9 @@ use super::prelude::*;
 use super::FuzzingEngine;
 
 impl FuzzingEngine {
-    pub(super) fn build_metamorphic_relations(&self) -> Vec<crate::attacks::metamorphic::MetamorphicRelation> {
+    pub(super) fn build_metamorphic_relations(
+        &self,
+    ) -> Vec<crate::attacks::metamorphic::MetamorphicRelation> {
         use crate::attacks::metamorphic::MetamorphicRelation;
         use crate::config::v2::InvariantType;
 
@@ -41,7 +43,9 @@ impl FuzzingEngine {
         relations
     }
 
-    pub(super) fn auto_metamorphic_relations(&self) -> Vec<crate::attacks::metamorphic::MetamorphicRelation> {
+    pub(super) fn auto_metamorphic_relations(
+        &self,
+    ) -> Vec<crate::attacks::metamorphic::MetamorphicRelation> {
         use crate::attacks::metamorphic::{ExpectedBehavior, MetamorphicRelation, Transform};
         let traits = self.config.get_target_traits();
         if Self::traits_are_empty(&traits) {
@@ -417,5 +421,4 @@ impl FuzzingEngine {
 
         trimmed.parse::<u64>().ok().map(FieldElement::from_u64)
     }
-
 }

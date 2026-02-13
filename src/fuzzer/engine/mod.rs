@@ -42,9 +42,9 @@
 //! #   name: "Doc Engine Campaign"
 //! #   version: "1.0"
 //! #   target:
-//! #     framework: "mock"
-//! #     circuit_path: "./circuits/mock.circom"
-//! #     main_component: "MockCircuit"
+//! #     framework: "circom"
+//! #     circuit_path: "./circuits/example.circom"
+//! #     main_component: "Main"
 //! #
 //! # attacks:
 //! #   - type: "boundary"
@@ -91,7 +91,7 @@
 //! - **Noir**: ACIR circuits via Barretenberg  
 //! - **Halo2**: PLONK circuits via halo2_proofs
 //! - **Cairo**: STARK programs via stone-prover
-//! - **Mock**: Testing backend for fuzzer development
+//! - Mock backends are disabled in runtime execution paths
 
 mod attack_runner;
 mod chain_runner;
@@ -218,9 +218,9 @@ impl FuzzingEngine {
     /// #   name: "Doc Engine New"
     /// #   version: "1.0"
     /// #   target:
-    /// #     framework: "mock"
-    /// #     circuit_path: "./circuits/mock.circom"
-    /// #     main_component: "MockCircuit"
+    /// #     framework: "circom"
+    /// #     circuit_path: "./circuits/example.circom"
+    /// #     main_component: "Main"
     /// #
     /// # attacks:
     /// #   - type: "boundary"
@@ -268,74 +268,14 @@ impl FuzzingEngine {
             &executor_factory_options,
         )?;
 
-        // Phase 0 Fix: Detect and FAIL-FAST on mock fallback execution
-        //
-        // This is critical for preventing false vulnerability claims.
-        // Any findings from mock execution are SYNTHETIC and should not
-        // be reported as real 0-day vulnerabilities.
-        //
-        // When strict_backend=true (default for evidence mode), we fail immediately.
-        // When strict_backend=false, we warn but continue (for development/testing).
-        let strict_backend = Self::additional_bool(additional, "strict_backend").unwrap_or(false);
-
-        if executor.is_fallback_mock() {
-            let framework = config.campaign.target.framework;
-            let install_hint = match framework {
-                zk_core::Framework::Circom => {
-                    "Install circom: https://docs.circom.io/getting-started/installation/"
-                }
-                zk_core::Framework::Noir => {
-                    "Install nargo: https://noir-lang.org/docs/getting_started/installation/"
-                }
-                zk_core::Framework::Cairo => {
-                    "Install scarb: https://docs.swmansion.com/scarb/download.html"
-                }
-                _ => "Install the required backend tooling",
-            };
-
-            if strict_backend {
-                // Phase 0 Fix: FAIL-FAST in production/evidence mode
-                anyhow::bail!(
-                    "MOCK FALLBACK REJECTED: Using mock executor for {:?} backend. \
-                     Real backend tooling is not available. All findings would be SYNTHETIC. \
-                     {}. \
-                     Set strict_backend=false to allow mock fallback (NOT recommended for evidence mode).",
-                    framework,
-                    install_hint
-                );
-            } else {
-                // Development mode: warn but continue
-                tracing::error!(
-                    "⚠️  CRITICAL: Using MOCK FALLBACK executor for {:?} backend!",
-                    framework
-                );
-                tracing::error!(
-                    "⚠️  Real backend tooling is not available. All findings will be SYNTHETIC."
-                );
-                tracing::error!(
-                    "⚠️  DO NOT report these as real vulnerabilities. {}",
-                    install_hint
-                );
-                tracing::warn!(
-                    "⚠️  Set strict_backend=true to fail-fast on missing backends (recommended for evidence mode)."
-                );
-            }
-        } else if executor.is_mock() && config.campaign.target.framework != zk_core::Framework::Mock
-        {
-            tracing::warn!(
-                "Using mock executor for {:?} framework. Results may not reflect real circuit behavior.",
-                config.campaign.target.framework
-            );
-        }
-
-        // Phase 1A: Block explicit mock in evidence mode
-        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
-        if evidence_mode && executor.is_mock() {
+        // Runtime hardening: never allow mock executors.
+        if executor.is_mock() || executor.is_fallback_mock() {
             anyhow::bail!(
-                "EVIDENCE MODE REJECTED: Cannot use mock executor in evidence mode. \
-                 All findings would be synthetic. Use a real backend (circom/noir/halo2/cairo)."
+                "Mock executor rejected. Use a real backend (circom/noir/halo2/cairo)."
             );
         }
+
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
 
         // Phase 3A: Enable per_exec_isolation by default in evidence mode for hang safety
         let mut isolate_exec = Self::additional_bool(additional, "per_exec_isolation")
@@ -616,9 +556,9 @@ impl FuzzingEngine {
     /// #   name: "Doc Engine Run"
     /// #   version: "1.0"
     /// #   target:
-    /// #     framework: "mock"
-    /// #     circuit_path: "./circuits/mock.circom"
-    /// #     main_component: "MockCircuit"
+    /// #     framework: "circom"
+    /// #     circuit_path: "./circuits/example.circom"
+    /// #     main_component: "Main"
     /// #
     /// # attacks:
     /// #   - type: "boundary"

@@ -184,12 +184,19 @@ impl FuzzingEngine {
         options.halo2_build_dir = Self::additional_path(additional, "halo2_build_dir");
         options.cairo_build_dir = Self::additional_path(additional, "cairo_build_dir");
 
+        // Runtime hardening: never allow mock fallback.
         if let Some(strict_backend) = Self::additional_bool(additional, "strict_backend") {
-            options.strict_backend = strict_backend;
+            if !strict_backend {
+                tracing::warn!("Ignoring strict_backend=false; mock backend usage is disabled");
+            }
         }
         if let Some(mark_fallback) = Self::additional_bool(additional, "mark_fallback") {
-            options.mark_fallback = mark_fallback;
+            if mark_fallback {
+                tracing::warn!("Ignoring mark_fallback=true; fallback mocks are disabled");
+            }
         }
+        options.strict_backend = true;
+        options.mark_fallback = false;
         if let Some(auto_setup) = Self::additional_bool(additional, "circom_auto_setup_keys") {
             tracing::info!("Circom auto setup keys: {}", auto_setup);
             options.circom_auto_setup_keys = auto_setup;

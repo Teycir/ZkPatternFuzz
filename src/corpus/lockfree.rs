@@ -10,10 +10,10 @@
 //! Expected 2-3x reduction in contention overhead compared to RwLock-based
 //! corpus management.
 
-use zk_core::TestCase;
 use crossbeam::queue::SegQueue;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use zk_core::TestCase;
 
 /// Lock-free test case queue
 #[derive(Debug)]
@@ -117,7 +117,7 @@ impl AtomicCoverageBitmap {
     pub fn new(num_bits: usize) -> Self {
         let num_words = (num_bits + 63) / 64;
         let bitmap = (0..num_words).map(|_| AtomicU64::new(0)).collect();
-        
+
         Self {
             bitmap,
             num_bits,
@@ -192,7 +192,7 @@ impl AtomicCoverageBitmap {
     /// Merge another bitmap (OR operation)
     pub fn merge(&self, other: &AtomicCoverageBitmap) -> usize {
         let mut new_bits = 0;
-        
+
         for (i, word) in self.bitmap.iter().enumerate() {
             if i < other.bitmap.len() {
                 let other_word = other.bitmap[i].load(Ordering::Relaxed);
@@ -264,7 +264,7 @@ impl LockFreeCorpus {
     /// Add a test case with priority based on coverage impact
     pub fn add(&self, test_case: TestCase, coverage_hash: u64) -> bool {
         let is_new = self.coverage.set_from_hash(coverage_hash);
-        
+
         // Track ID
         let _id = self.next_id.fetch_add(1, Ordering::Relaxed);
 
@@ -304,7 +304,7 @@ impl LockFreeCorpus {
     /// Select multiple test cases
     pub fn select_batch(&self, count: usize) -> Vec<TestCase> {
         let mut batch = Vec::with_capacity(count);
-        
+
         // Fill from queues in priority order
         batch.extend(self.high_priority.pop_batch(count - batch.len()));
         if batch.len() < count {
@@ -385,11 +385,11 @@ mod tests {
     fn test_lock_free_queue_basic() {
         let queue = LockFreeTestQueue::new();
         assert!(queue.is_empty());
-        
+
         queue.push(make_test_case(vec![1, 2, 3]));
         assert!(!queue.is_empty());
         assert_eq!(queue.len(), 1);
-        
+
         let tc = queue.pop().unwrap();
         assert_eq!(tc.inputs.len(), 3);
         assert!(queue.is_empty());
@@ -398,14 +398,12 @@ mod tests {
     #[test]
     fn test_lock_free_queue_batch() {
         let queue = LockFreeTestQueue::new();
-        
-        let batch: Vec<_> = (0..10)
-            .map(|i| make_test_case(vec![i]))
-            .collect();
+
+        let batch: Vec<_> = (0..10).map(|i| make_test_case(vec![i])).collect();
         queue.push_batch(batch);
-        
+
         assert_eq!(queue.len(), 10);
-        
+
         let popped = queue.pop_batch(5);
         assert_eq!(popped.len(), 5);
         assert_eq!(queue.len(), 5);
@@ -414,12 +412,12 @@ mod tests {
     #[test]
     fn test_atomic_coverage_bitmap() {
         let bitmap = AtomicCoverageBitmap::new(100);
-        
+
         assert!(!bitmap.is_set(50));
         assert!(bitmap.set(50)); // First set returns true
         assert!(bitmap.is_set(50));
         assert!(!bitmap.set(50)); // Second set returns false
-        
+
         assert_eq!(bitmap.count_set(), 1);
         assert!(bitmap.coverage_percentage() > 0.0);
     }
@@ -428,14 +426,14 @@ mod tests {
     fn test_atomic_coverage_bitmap_merge() {
         let bitmap1 = AtomicCoverageBitmap::new(100);
         let bitmap2 = AtomicCoverageBitmap::new(100);
-        
+
         bitmap1.set(10);
         bitmap1.set(20);
         bitmap2.set(20);
         bitmap2.set(30);
-        
+
         let new_bits = bitmap1.merge(&bitmap2);
-        
+
         // Only bit 30 should be new
         assert_eq!(new_bits, 1);
         assert!(bitmap1.is_set(10));
@@ -446,14 +444,14 @@ mod tests {
     #[test]
     fn test_lock_free_corpus() {
         let corpus = LockFreeCorpus::new(1000);
-        
+
         // Add test cases with different coverage
         let tc1 = make_test_case(vec![1]);
         let tc2 = make_test_case(vec![2]);
-        
+
         assert!(corpus.add(tc1, 12345)); // New coverage
         assert!(!corpus.add(tc2, 12345)); // Same coverage hash
-        
+
         assert_eq!(corpus.unique_count(), 1);
         assert!(!corpus.is_empty());
     }
@@ -461,13 +459,13 @@ mod tests {
     #[test]
     fn test_lock_free_corpus_priority() {
         let corpus = LockFreeCorpus::new(1000);
-        
+
         // Add test cases with different coverage
         for i in 0..3 {
             let tc = make_test_case(vec![i]);
             corpus.add(tc, i * 12345 + 100); // Different hashes
         }
-        
+
         let (high, _mid, _low) = corpus.queue_sizes();
         // New coverage goes to high priority
         assert!(high > 0);
@@ -477,11 +475,11 @@ mod tests {
     fn test_shared_corpus() {
         let corpus = create_shared_corpus(1000);
         let corpus_clone = Arc::clone(&corpus);
-        
+
         // Add from one reference
         let tc = make_test_case(vec![42]);
         corpus.add(tc, 99999);
-        
+
         // Select from clone
         let selected = corpus_clone.select();
         assert!(selected.is_some());
@@ -490,11 +488,11 @@ mod tests {
     #[test]
     fn test_coverage_from_hash() {
         let bitmap = AtomicCoverageBitmap::new(1000);
-        
+
         // Same hash should set same bits
         let new1 = bitmap.set_from_hash(12345);
         let new2 = bitmap.set_from_hash(12345);
-        
+
         assert!(new1);
         assert!(!new2); // Already set
     }
@@ -502,9 +500,9 @@ mod tests {
     #[test]
     fn test_concurrent_access() {
         use std::thread;
-        
+
         let queue = Arc::new(LockFreeTestQueue::new());
-        
+
         // Spawn multiple writers
         let mut handles = vec![];
         for i in 0..4 {

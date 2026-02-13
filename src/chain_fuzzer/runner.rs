@@ -3,9 +3,7 @@
 //! The ChainRunner is responsible for executing a ChainSpec against a set of
 //! named CircuitExecutors, producing a ChainTrace that records the full execution.
 
-use super::types::{
-    ChainSpec, ChainTrace, StepTrace, ChainRunResult, InputWiring,
-};
+use super::types::{ChainRunResult, ChainSpec, ChainTrace, InputWiring, StepTrace};
 use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -72,7 +70,9 @@ impl ChainRunner {
         if spec.steps.len() > self.max_chain_length {
             tracing::warn!(
                 "Chain {} has {} steps, exceeding max of {}",
-                spec.name, spec.steps.len(), self.max_chain_length
+                spec.name,
+                spec.steps.len(),
+                self.max_chain_length
             );
             return ChainRunResult::failure(trace, 0);
         }
@@ -86,7 +86,8 @@ impl ChainRunner {
                 None => {
                     tracing::warn!(
                         "No executor found for circuit '{}' in chain '{}'",
-                        step.circuit_ref, spec.name
+                        step.circuit_ref,
+                        spec.name
                     );
                     let step_trace = StepTrace::failure(
                         step_index,
@@ -105,7 +106,10 @@ impl ChainRunner {
                 if actual_inputs != expected {
                     tracing::warn!(
                         "Step {} circuit '{}' has {} inputs, but expected {}",
-                        step_index, step.circuit_ref, actual_inputs, expected
+                        step_index,
+                        step.circuit_ref,
+                        actual_inputs,
+                        expected
                     );
                     let step_trace = StepTrace::failure(
                         step_index,
@@ -137,30 +141,28 @@ impl ChainRunner {
             let step_time = step_start.elapsed().as_millis() as u64;
 
             if result.success {
-                let mut step_trace = StepTrace::success(
-                    step_index,
-                    &step.circuit_ref,
-                    inputs,
-                    result.outputs,
-                );
+                let mut step_trace =
+                    StepTrace::success(step_index, &step.circuit_ref, inputs, result.outputs);
                 step_trace = step_trace.with_time(step_time);
 
                 // Add constraint coverage
                 if !result.coverage.satisfied_constraints.is_empty() {
                     step_trace = step_trace.with_constraints(
-                        result.coverage.satisfied_constraints.iter().cloned().collect()
+                        result
+                            .coverage
+                            .satisfied_constraints
+                            .iter()
+                            .cloned()
+                            .collect(),
                     );
                 }
 
                 trace.add_step(step_trace);
             } else {
                 let error_msg = result.error.unwrap_or_else(|| "Unknown error".to_string());
-                let step_trace = StepTrace::failure(
-                    step_index,
-                    &step.circuit_ref,
-                    inputs,
-                    error_msg,
-                ).with_time(step_time);
+                let step_trace =
+                    StepTrace::failure(step_index, &step.circuit_ref, inputs, error_msg)
+                        .with_time(step_time);
 
                 trace.add_step(step_trace);
                 trace.execution_time_ms = start_time.elapsed().as_millis() as u64;
@@ -223,7 +225,7 @@ impl ChainRunner {
                 };
 
                 // Track which indices have been explicitly mapped (even if value is zero)
-                let mapped_indices: std::collections::HashSet<_> = 
+                let mapped_indices: std::collections::HashSet<_> =
                     mapping.iter().map(|(_, in_idx)| *in_idx).collect();
 
                 // Get outputs from the prior step
@@ -253,10 +255,14 @@ impl ChainRunner {
                 inputs
             }
 
-            InputWiring::Mixed { prior, fresh_indices } => {
+            InputWiring::Mixed {
+                prior,
+                fresh_indices,
+            } => {
                 let mut inputs = vec![FieldElement::zero(); expected_count];
                 // Track which indices have been explicitly set (even if value is zero)
-                let mut set_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
+                let mut set_indices: std::collections::HashSet<usize> =
+                    std::collections::HashSet::new();
 
                 // Fill in values from prior steps
                 for (step, out_idx, in_idx) in prior {
@@ -289,10 +295,14 @@ impl ChainRunner {
                 inputs
             }
 
-            InputWiring::Constant { values, fresh_indices } => {
+            InputWiring::Constant {
+                values,
+                fresh_indices,
+            } => {
                 let mut inputs = vec![FieldElement::zero(); expected_count];
                 // Track which indices have been explicitly set (even if value is zero)
-                let mut set_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
+                let mut set_indices: std::collections::HashSet<usize> =
+                    std::collections::HashSet::new();
 
                 // Fill in constant values
                 for (idx, hex_value) in values {
@@ -335,10 +345,14 @@ impl ChainRunner {
         use rand::SeedableRng;
         use rand_chacha::ChaCha8Rng;
 
-        specs.iter().enumerate().map(|(i, spec)| {
-            let mut rng = ChaCha8Rng::seed_from_u64(seed.wrapping_add(i as u64));
-            self.execute(spec, initial_inputs, &mut rng)
-        }).collect()
+        specs
+            .iter()
+            .enumerate()
+            .map(|(i, spec)| {
+                let mut rng = ChaCha8Rng::seed_from_u64(seed.wrapping_add(i as u64));
+                self.execute(spec, initial_inputs, &mut rng)
+            })
+            .collect()
     }
 }
 
@@ -347,22 +361,32 @@ mod tests {
     use super::*;
     use crate::executor::MockCircuitExecutor;
 
-    fn create_mock_executor(name: &str, num_inputs: usize, num_outputs: usize) -> Arc<dyn CircuitExecutor> {
+    fn create_mock_executor(
+        name: &str,
+        num_inputs: usize,
+        num_outputs: usize,
+    ) -> Arc<dyn CircuitExecutor> {
         Arc::new(MockCircuitExecutor::new(name, num_inputs, 0).with_outputs(num_outputs))
     }
 
     #[test]
     fn test_chain_runner_fresh_inputs() {
         let mut executors = HashMap::new();
-        executors.insert("circuit_a".to_string(), create_mock_executor("circuit_a", 2, 2));
-        executors.insert("circuit_b".to_string(), create_mock_executor("circuit_b", 2, 1));
+        executors.insert(
+            "circuit_a".to_string(),
+            create_mock_executor("circuit_a", 2, 2),
+        );
+        executors.insert(
+            "circuit_b".to_string(),
+            create_mock_executor("circuit_b", 2, 1),
+        );
 
         let runner = ChainRunner::new(executors);
 
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-        ]);
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![StepSpec::fresh("circuit_a"), StepSpec::fresh("circuit_b")],
+        );
 
         let mut rng = rand::thread_rng();
         let result = runner.execute(&spec, &HashMap::new(), &mut rng);
@@ -375,14 +399,20 @@ mod tests {
     fn test_chain_runner_wired_inputs() {
         let mut executors = HashMap::new();
         executors.insert("deposit".to_string(), create_mock_executor("deposit", 2, 2));
-        executors.insert("withdraw".to_string(), create_mock_executor("withdraw", 2, 1));
+        executors.insert(
+            "withdraw".to_string(),
+            create_mock_executor("withdraw", 2, 1),
+        );
 
         let runner = ChainRunner::new(executors);
 
-        let spec = ChainSpec::new("deposit_withdraw", vec![
-            StepSpec::fresh("deposit"),
-            StepSpec::from_prior("withdraw", 0, vec![(0, 0), (1, 1)]),
-        ]);
+        let spec = ChainSpec::new(
+            "deposit_withdraw",
+            vec![
+                StepSpec::fresh("deposit"),
+                StepSpec::from_prior("withdraw", 0, vec![(0, 0), (1, 1)]),
+            ],
+        );
 
         let mut rng = rand::thread_rng();
         let result = runner.execute(&spec, &HashMap::new(), &mut rng);
@@ -393,7 +423,7 @@ mod tests {
         // Verify the wiring worked: withdraw's inputs should match deposit's outputs
         let deposit_outputs = result.trace.step_outputs(0).unwrap();
         let withdraw_inputs = result.trace.step_inputs(1).unwrap();
-        
+
         assert_eq!(withdraw_inputs[0], deposit_outputs[0]);
         assert_eq!(withdraw_inputs[1], deposit_outputs[1]);
     }
@@ -403,9 +433,7 @@ mod tests {
         let executors = HashMap::new(); // Empty
         let runner = ChainRunner::new(executors);
 
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("nonexistent"),
-        ]);
+        let spec = ChainSpec::new("test_chain", vec![StepSpec::fresh("nonexistent")]);
 
         let mut rng = rand::thread_rng();
         let result = runner.execute(&spec, &HashMap::new(), &mut rng);

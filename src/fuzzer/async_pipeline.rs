@@ -12,11 +12,11 @@
 //! - Batch processing for amortized overhead
 //! - Efficient channel-based communication
 
-use zk_core::{ExecutionResult, FieldElement, TestCase};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use zk_core::{ExecutionResult, FieldElement, TestCase};
 
 /// Pipeline stage message types
 #[derive(Debug, Clone)]
@@ -140,7 +140,8 @@ impl AsyncPipeline {
 
     /// Stop the pipeline
     pub fn stop(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::SeqCst);
+        self.running
+            .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -163,7 +164,7 @@ where
 pub trait SelectionStrategy: Send + Sync {
     /// Select next test case(s) from corpus
     fn select(&self, count: usize) -> Vec<SelectionMessage>;
-    
+
     /// Check if more cases available
     fn has_more(&self) -> bool;
 }
@@ -273,7 +274,11 @@ where
         let elapsed = start.elapsed().as_secs_f64();
         let mut s = stats.write().await;
         s.cases_selected = count;
-        s.selection_throughput = if elapsed > 0.0 { count as f64 / elapsed } else { 0.0 };
+        s.selection_throughput = if elapsed > 0.0 {
+            count as f64 / elapsed
+        } else {
+            0.0
+        };
     }
 
     async fn mutation_stage(
@@ -298,7 +303,11 @@ where
         let elapsed = start.elapsed().as_secs_f64();
         let mut s = stats.write().await;
         s.mutations_generated = count;
-        s.mutation_throughput = if elapsed > 0.0 { count as f64 / elapsed } else { 0.0 };
+        s.mutation_throughput = if elapsed > 0.0 {
+            count as f64 / elapsed
+        } else {
+            0.0
+        };
     }
 
     async fn execution_stage(
@@ -313,10 +322,7 @@ where
 
         while let Some(msg) = rx.recv().await {
             // Execute with timeout
-            let exec_result = tokio::time::timeout(timeout, async {
-                executor.execute(msg)
-            })
-            .await;
+            let exec_result = tokio::time::timeout(timeout, async { executor.execute(msg) }).await;
 
             if let Ok(result) = exec_result {
                 count += 1;
@@ -329,7 +335,11 @@ where
         let elapsed = start.elapsed().as_secs_f64();
         let mut s = stats.write().await;
         s.executions_completed = count;
-        s.execution_throughput = if elapsed > 0.0 { count as f64 / elapsed } else { 0.0 };
+        s.execution_throughput = if elapsed > 0.0 {
+            count as f64 / elapsed
+        } else {
+            0.0
+        };
     }
 
     async fn result_stage(
@@ -435,7 +445,7 @@ mod tests {
     fn test_batch_executor() {
         use zk_core::ExecutionCoverage;
         let executor = BatchExecutor::new(10, Duration::from_secs(5));
-        
+
         let inputs: Vec<u64> = (0..100).collect();
         let results = executor.execute_batch(inputs, |x| {
             ExecutionResult::success(
@@ -443,7 +453,7 @@ mod tests {
                 ExecutionCoverage::default(),
             )
         });
-        
+
         assert_eq!(results.len(), 100);
     }
 
@@ -451,17 +461,19 @@ mod tests {
     fn test_async_pipeline_creation() {
         let config = PipelineConfig::default();
         let pipeline = AsyncPipeline::new(config);
-        
+
         assert!(!pipeline.is_running());
     }
 
     #[test]
     fn test_pipeline_stop() {
         let pipeline = AsyncPipeline::new(PipelineConfig::default());
-        pipeline.running.store(true, std::sync::atomic::Ordering::SeqCst);
-        
+        pipeline
+            .running
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+
         assert!(pipeline.is_running());
-        
+
         pipeline.stop();
         assert!(!pipeline.is_running());
     }

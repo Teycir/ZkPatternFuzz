@@ -65,9 +65,9 @@ pub struct OracleStateConfig {
 impl Default for OracleStateConfig {
     fn default() -> Self {
         Self {
-            max_entries: 1_000_000,         // 1M entries
-            bloom_filter_bits: 10_000_000,  // ~10MB bloom filter
-            bloom_hash_count: 7,            // Optimal for 1% FP rate
+            max_entries: 1_000_000,        // 1M entries
+            bloom_filter_bits: 10_000_000, // ~10MB bloom filter
+            bloom_hash_count: 7,           // Optimal for 1% FP rate
             enable_lru: true,
             memory_limit_bytes: 1024 * 1024 * 1024, // 1GB
             eviction_batch_size: 10_000,
@@ -309,13 +309,16 @@ where
     /// Insert a key-value pair
     pub fn insert(&self, key: K, value: V, estimated_size: usize) -> bool {
         // Check if we need to evict
-        if self.config.enable_lru && self.entry_count.load(Ordering::Relaxed) >= self.config.max_entries {
+        if self.config.enable_lru
+            && self.entry_count.load(Ordering::Relaxed) >= self.config.max_entries
+        {
             self.evict_oldest();
         }
 
         // Check memory limit
         if self.config.memory_limit_bytes > 0
-            && self.memory_used.load(Ordering::Relaxed) + estimated_size > self.config.memory_limit_bytes
+            && self.memory_used.load(Ordering::Relaxed) + estimated_size
+                > self.config.memory_limit_bytes
         {
             self.evict_oldest();
         }
@@ -337,7 +340,8 @@ where
 
         if is_new {
             self.entry_count.fetch_add(1, Ordering::Relaxed);
-            self.memory_used.fetch_add(estimated_size, Ordering::Relaxed);
+            self.memory_used
+                .fetch_add(estimated_size, Ordering::Relaxed);
         }
 
         self.stats.insertions.fetch_add(1, Ordering::Relaxed);
@@ -437,11 +441,7 @@ impl OracleStateManager {
     /// Record an output and check for collision
     ///
     /// Returns Some(colliding_test_case) if a collision is detected
-    pub fn record_output(
-        &self,
-        output_hash: Vec<u8>,
-        test_case: TestCase,
-    ) -> Option<TestCase> {
+    pub fn record_output(&self, output_hash: Vec<u8>, test_case: TestCase) -> Option<TestCase> {
         // Fast path: check bloom filter
         if !self.output_history.might_contain(&output_hash) {
             // Definitely new - just insert
@@ -477,7 +477,11 @@ impl OracleStateManager {
             bloom_fp_rate: self.output_history.bloom.estimated_fp_rate(),
             cache_hit_rate: self.output_history.stats().cache_hit_rate(),
             bloom_effectiveness: self.output_history.stats().bloom_effectiveness(),
-            evictions: self.output_history.stats().evictions.load(Ordering::Relaxed),
+            evictions: self
+                .output_history
+                .stats()
+                .evictions
+                .load(Ordering::Relaxed),
         }
     }
 

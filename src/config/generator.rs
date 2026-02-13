@@ -685,7 +685,10 @@ fn detect_framework(path: &Path) -> anyhow::Result<Framework> {
         Some("nr") => Ok(Framework::Noir),
         Some("cairo") => Ok(Framework::Cairo),
         Some("rs") => Ok(Framework::Halo2), // Halo2 uses Rust
-        _ => Ok(Framework::Mock),
+        _ => anyhow::bail!(
+            "Unsupported circuit file extension for backend detection: {}",
+            path.display()
+        ),
     }
 }
 

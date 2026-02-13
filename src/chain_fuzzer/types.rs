@@ -68,23 +68,27 @@ impl ChainSpec {
         if index >= self.steps.len() {
             return None;
         }
-        
-        let mut steps: Vec<_> = self.steps.iter()
+
+        let mut steps: Vec<_> = self
+            .steps
+            .iter()
             .enumerate()
             .filter(|(i, _)| *i != index)
             .map(|(_, s)| s.clone())
             .collect();
-        
+
         // Adjust input wiring references for steps after the removed one
         for (i, step) in steps.iter_mut().enumerate() {
             step.input_wiring = step.input_wiring.adjust_after_removal(index, i);
         }
-        
+
         // Remap assertion step indices - filter out assertions that become invalid
-        let assertions: Vec<_> = self.assertions.iter()
+        let assertions: Vec<_> = self
+            .assertions
+            .iter()
             .filter_map(|a| a.remap_after_removal(index))
             .collect();
-        
+
         Some(Self {
             name: format!("{}_without_{}", self.name, index),
             steps,
@@ -110,7 +114,9 @@ impl ChainSpec {
         }
 
         // Remap assertion step indices
-        let assertions: Vec<_> = self.assertions.iter()
+        let assertions: Vec<_> = self
+            .assertions
+            .iter()
             .map(|a| a.remap_after_swap(i, j))
             .collect();
 
@@ -142,7 +148,9 @@ impl ChainSpec {
         }
 
         // Remap assertion step indices (increment indices > index)
-        let assertions: Vec<_> = self.assertions.iter()
+        let assertions: Vec<_> = self
+            .assertions
+            .iter()
             .map(|a| a.remap_after_insertion(index))
             .collect();
 
@@ -186,7 +194,11 @@ impl StepSpec {
     }
 
     /// Create a step that uses outputs from a prior step
-    pub fn from_prior(circuit_ref: impl Into<String>, step: usize, mapping: Vec<(usize, usize)>) -> Self {
+    pub fn from_prior(
+        circuit_ref: impl Into<String>,
+        step: usize,
+        mapping: Vec<(usize, usize)>,
+    ) -> Self {
         Self {
             circuit_ref: circuit_ref.into(),
             input_wiring: InputWiring::FromPriorOutput { step, mapping },
@@ -256,15 +268,19 @@ impl InputWiring {
                     }
                 }
             }
-            InputWiring::Mixed { prior, fresh_indices } => {
-                let adjusted_prior: Vec<_> = prior.iter()
+            InputWiring::Mixed {
+                prior,
+                fresh_indices,
+            } => {
+                let adjusted_prior: Vec<_> = prior
+                    .iter()
                     .filter(|(s, _, _)| *s != removed_index)
                     .map(|(s, out_idx, in_idx)| {
                         let new_s = if *s > removed_index { s - 1 } else { *s };
                         (new_s, *out_idx, *in_idx)
                     })
                     .collect();
-                
+
                 if adjusted_prior.is_empty() {
                     InputWiring::Fresh
                 } else {
@@ -274,12 +290,13 @@ impl InputWiring {
                     }
                 }
             }
-            InputWiring::Constant { values, fresh_indices } => {
-                InputWiring::Constant {
-                    values: values.clone(),
-                    fresh_indices: fresh_indices.clone(),
-                }
-            }
+            InputWiring::Constant {
+                values,
+                fresh_indices,
+            } => InputWiring::Constant {
+                values: values.clone(),
+                fresh_indices: fresh_indices.clone(),
+            },
         }
     }
 
@@ -300,7 +317,10 @@ impl InputWiring {
                     mapping: mapping.clone(),
                 }
             }
-            InputWiring::Mixed { prior, fresh_indices } => {
+            InputWiring::Mixed {
+                prior,
+                fresh_indices,
+            } => {
                 let adjusted_prior: Vec<_> = prior
                     .iter()
                     .map(|(s, out_idx, in_idx)| {
@@ -319,7 +339,10 @@ impl InputWiring {
                     fresh_indices: fresh_indices.clone(),
                 }
             }
-            InputWiring::Constant { values, fresh_indices } => InputWiring::Constant {
+            InputWiring::Constant {
+                values,
+                fresh_indices,
+            } => InputWiring::Constant {
                 values: values.clone(),
                 fresh_indices: fresh_indices.clone(),
             },
@@ -331,17 +354,16 @@ impl InputWiring {
         match self {
             InputWiring::Fresh => InputWiring::Fresh,
             InputWiring::FromPriorOutput { step, mapping } => {
-                let new_step = if *step > inserted_at {
-                    step + 1
-                } else {
-                    *step
-                };
+                let new_step = if *step > inserted_at { step + 1 } else { *step };
                 InputWiring::FromPriorOutput {
                     step: new_step,
                     mapping: mapping.clone(),
                 }
             }
-            InputWiring::Mixed { prior, fresh_indices } => {
+            InputWiring::Mixed {
+                prior,
+                fresh_indices,
+            } => {
                 let adjusted_prior: Vec<_> = prior
                     .iter()
                     .map(|(s, out_idx, in_idx)| {
@@ -354,7 +376,10 @@ impl InputWiring {
                     fresh_indices: fresh_indices.clone(),
                 }
             }
-            InputWiring::Constant { values, fresh_indices } => InputWiring::Constant {
+            InputWiring::Constant {
+                values,
+                fresh_indices,
+            } => InputWiring::Constant {
                 values: values.clone(),
                 fresh_indices: fresh_indices.clone(),
             },
@@ -421,12 +446,17 @@ impl CrossStepAssertion {
     /// Create an equality assertion between steps
     pub fn equal(
         name: impl Into<String>,
-        step_a: usize, out_idx: usize,
-        step_b: usize, in_idx: usize,
+        step_a: usize,
+        out_idx: usize,
+        step_b: usize,
+        in_idx: usize,
     ) -> Self {
         Self::new(
             name,
-            format!("step[{}].out[{}] == step[{}].in[{}]", step_a, out_idx, step_b, in_idx),
+            format!(
+                "step[{}].out[{}] == step[{}].in[{}]",
+                step_a, out_idx, step_b, in_idx
+            ),
         )
     }
 
@@ -442,7 +472,7 @@ impl CrossStepAssertion {
                 Some(idx)
             }
         })?;
-        
+
         Some(Self {
             name: self.name.clone(),
             relation: new_relation,
@@ -461,8 +491,9 @@ impl CrossStepAssertion {
             } else {
                 Some(idx)
             }
-        }).unwrap_or_else(|| self.relation.clone());
-        
+        })
+        .unwrap_or_else(|| self.relation.clone());
+
         Self {
             name: self.name.clone(),
             relation: new_relation,
@@ -480,8 +511,9 @@ impl CrossStepAssertion {
             } else {
                 Some(idx)
             }
-        }).unwrap_or_else(|| self.relation.clone());
-        
+        })
+        .unwrap_or_else(|| self.relation.clone());
+
         Self {
             name: self.name.clone(),
             relation: new_relation,
@@ -498,19 +530,19 @@ where
     F: Fn(usize) -> Option<usize>,
 {
     use regex::Regex;
-    
+
     // Match step[N] where N is a number (not *)
     let re = Regex::new(r"step\s*\[\s*(\d+)\s*\]").ok()?;
-    
+
     let mut result = String::new();
     let mut last_end = 0;
     let mut all_valid = true;
-    
+
     for caps in re.captures_iter(relation) {
         let full_match = caps.get(0)?;
         let idx_str = caps.get(1)?.as_str();
         let idx: usize = idx_str.parse().ok()?;
-        
+
         // Apply the mapper
         match mapper(idx) {
             Some(new_idx) => {
@@ -524,11 +556,11 @@ where
             }
         }
     }
-    
+
     if !all_valid {
         return None;
     }
-    
+
     result.push_str(&relation[last_end..]);
     Some(result)
 }
@@ -581,7 +613,8 @@ impl ChainTrace {
 
     /// Collect all outputs at a given index across all steps
     pub fn all_outputs_at(&self, output_index: usize) -> Vec<&FieldElement> {
-        self.steps.iter()
+        self.steps
+            .iter()
             .filter_map(|s| s.outputs.get(output_index))
             .collect()
     }
@@ -738,7 +771,9 @@ impl ChainFinding {
         spec_name: impl Into<String>,
     ) -> Self {
         // Convert Finding to ChainFindingCore
-        let witness_inputs: Vec<Vec<String>> = trace.steps.iter()
+        let witness_inputs: Vec<Vec<String>> = trace
+            .steps
+            .iter()
             .map(|s| s.inputs.iter().map(|fe| fe.to_hex()).collect())
             .collect();
 
@@ -778,22 +813,25 @@ impl ChainFinding {
 
         // CRITICAL FIX: Capture all L_min steps, not just first 2
         // This enables reproduction of deep chain bugs (L_min >= 3)
-        let witness_a = self.trace.steps.first()
+        let witness_a = self
+            .trace
+            .steps
+            .first()
             .map(|s| s.inputs.clone())
             .unwrap_or_default();
 
         // For L_min > 2, we need to capture all step inputs
         // Use witness_b for step 2, and embed remaining steps in description
-        let witness_b = self.trace.steps.get(1)
-            .map(|s| s.inputs.clone());
+        let witness_b = self.trace.steps.get(1).map(|s| s.inputs.clone());
 
         // Capture all step inputs as hex strings for complete reproducibility
-        let all_step_inputs: Vec<String> = self.trace.steps.iter()
+        let all_step_inputs: Vec<String> = self
+            .trace
+            .steps
+            .iter()
             .enumerate()
             .map(|(i, step)| {
-                let inputs_hex: Vec<String> = step.inputs.iter()
-                    .map(|fe| fe.to_hex())
-                    .collect();
+                let inputs_hex: Vec<String> = step.inputs.iter().map(|fe| fe.to_hex()).collect();
                 format!("step[{}]: [{}]", i, inputs_hex.join(", "))
             })
             .collect();
@@ -802,7 +840,10 @@ impl ChainFinding {
         let full_description = if self.l_min > 2 {
             format!(
                 "[Chain: {} | L_min: {} | Steps: {}] {}\n\nFull witness (all {} steps):\n{}",
-                self.spec_name, self.l_min, self.chain_length, self.finding.description,
+                self.spec_name,
+                self.l_min,
+                self.chain_length,
+                self.finding.description,
                 self.trace.steps.len(),
                 all_step_inputs.join("\n")
             )
@@ -814,7 +855,10 @@ impl ChainFinding {
         };
 
         // Collect public inputs from all steps for completeness
-        let all_public_inputs: Vec<FieldElement> = self.trace.steps.iter()
+        let all_public_inputs: Vec<FieldElement> = self
+            .trace
+            .steps
+            .iter()
             .flat_map(|step| step.outputs.iter().cloned())
             .take(10) // Limit to avoid huge PoCs
             .collect();
@@ -835,7 +879,9 @@ impl ChainFinding {
 
     /// Get all step inputs as a vector for complete PoC reproduction
     pub fn all_step_inputs(&self) -> Vec<Vec<FieldElement>> {
-        self.trace.steps.iter()
+        self.trace
+            .steps
+            .iter()
             .map(|step| step.inputs.clone())
             .collect()
     }
@@ -852,11 +898,14 @@ mod tests {
 
     #[test]
     fn test_chain_spec_truncate() {
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-            StepSpec::fresh("circuit_c"),
-        ]);
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![
+                StepSpec::fresh("circuit_a"),
+                StepSpec::fresh("circuit_b"),
+                StepSpec::fresh("circuit_c"),
+            ],
+        );
 
         let truncated = spec.truncate(2);
         assert_eq!(truncated.steps.len(), 2);
@@ -865,16 +914,19 @@ mod tests {
 
     #[test]
     fn test_chain_spec_without_step() {
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::from_prior("circuit_b", 0, vec![(0, 0)]),
-            StepSpec::from_prior("circuit_c", 1, vec![(0, 0)]),
-        ]);
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![
+                StepSpec::fresh("circuit_a"),
+                StepSpec::from_prior("circuit_b", 0, vec![(0, 0)]),
+                StepSpec::from_prior("circuit_c", 1, vec![(0, 0)]),
+            ],
+        );
 
         // Remove middle step
         let reduced = spec.without_step(1).unwrap();
         assert_eq!(reduced.steps.len(), 2);
-        
+
         // The third step (now second) should have its wiring adjusted
         // It referenced step 1 which is now gone, so it falls back to Fresh
         assert!(matches!(reduced.steps[1].input_wiring, InputWiring::Fresh));
@@ -884,10 +936,13 @@ mod tests {
     fn test_input_wiring_dependent_steps() {
         let empty: Vec<usize> = vec![];
         assert_eq!(InputWiring::Fresh.dependent_steps(), empty);
-        
-        let from_prior = InputWiring::FromPriorOutput { step: 2, mapping: vec![] };
+
+        let from_prior = InputWiring::FromPriorOutput {
+            step: 2,
+            mapping: vec![],
+        };
         assert_eq!(from_prior.dependent_steps(), vec![2]);
-        
+
         let mixed = InputWiring::Mixed {
             prior: vec![(0, 0, 0), (2, 1, 1), (0, 2, 2)],
             fresh_indices: vec![3],
@@ -898,22 +953,24 @@ mod tests {
     #[test]
     fn test_chain_trace() {
         let mut trace = ChainTrace::new("test_chain");
-        
+
         trace.add_step(StepTrace::success(
-            0, "circuit_a",
+            0,
+            "circuit_a",
             vec![FieldElement::one()],
             vec![FieldElement::from_u64(42)],
         ));
-        
+
         trace.add_step(StepTrace::success(
-            1, "circuit_b",
+            1,
+            "circuit_b",
             vec![FieldElement::from_u64(42)],
             vec![FieldElement::from_u64(100)],
         ));
 
         assert_eq!(trace.depth(), 2);
         assert!(trace.success);
-        
+
         let outputs = trace.step_outputs(0).unwrap();
         assert_eq!(outputs[0], FieldElement::from_u64(42));
     }
@@ -922,18 +979,21 @@ mod tests {
     fn test_cross_step_assertion() {
         let unique = CrossStepAssertion::unique("nullifier_unique", 0);
         assert!(unique.relation.contains("unique(step[*].out[0])"));
-        
+
         let equal = CrossStepAssertion::equal("root_consistent", 0, 1, 1, 0);
         assert!(equal.relation.contains("step[0].out[1] == step[1].in[0]"));
     }
 
     #[test]
     fn test_chain_spec_swap_steps() {
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-            StepSpec::from_prior("circuit_c", 0, vec![(0, 0)]),
-        ]);
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![
+                StepSpec::fresh("circuit_a"),
+                StepSpec::fresh("circuit_b"),
+                StepSpec::from_prior("circuit_c", 0, vec![(0, 0)]),
+            ],
+        );
 
         let swapped = spec.swap_steps(0, 1).unwrap();
         assert_eq!(swapped.steps.len(), 3);
@@ -951,10 +1011,13 @@ mod tests {
 
     #[test]
     fn test_chain_spec_duplicate_step() {
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::from_prior("circuit_b", 0, vec![(0, 0)]),
-        ]);
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![
+                StepSpec::fresh("circuit_a"),
+                StepSpec::from_prior("circuit_b", 0, vec![(0, 0)]),
+            ],
+        );
 
         let duped = spec.duplicate_step(0).unwrap();
         assert_eq!(duped.steps.len(), 3);
@@ -974,13 +1037,13 @@ mod tests {
     fn test_assertion_remap_after_removal() {
         // Test remapping assertion when step is removed
         let assertion = CrossStepAssertion::equal("test", 0, 0, 2, 0);
-        
+
         // Remove step 1 - indices 0 stays 0, index 2 becomes 1
         let remapped = assertion.remap_after_removal(1).unwrap();
         assert!(remapped.relation.contains("step[0]"));
         assert!(remapped.relation.contains("step[1]"));
         assert!(!remapped.relation.contains("step[2]"));
-        
+
         // Remove step 0 - assertion should become invalid (references removed step)
         let invalid = assertion.remap_after_removal(0);
         assert!(invalid.is_none());
@@ -990,17 +1053,19 @@ mod tests {
     fn test_assertion_remap_after_swap() {
         // Test remapping assertion when steps are swapped
         let assertion = CrossStepAssertion::equal("test", 0, 0, 2, 0);
-        
+
         // Swap steps 0 and 2 - indices should swap
         let remapped = assertion.remap_after_swap(0, 2);
-        assert!(remapped.relation.contains("step[2].out[0] == step[0].in[0]"));
+        assert!(remapped
+            .relation
+            .contains("step[2].out[0] == step[0].in[0]"));
     }
 
     #[test]
     fn test_assertion_remap_after_insertion() {
         // Test remapping assertion when step is inserted
         let assertion = CrossStepAssertion::equal("test", 0, 0, 2, 0);
-        
+
         // Insert step at 1 - index 0 stays 0, index 2 becomes 3
         let remapped = assertion.remap_after_insertion(1);
         assert!(remapped.relation.contains("step[0]"));
@@ -1011,11 +1076,14 @@ mod tests {
     #[test]
     fn test_chain_with_assertions_without_step() {
         // Test that assertions are properly remapped when removing a step
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-            StepSpec::fresh("circuit_c"),
-        ])
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![
+                StepSpec::fresh("circuit_a"),
+                StepSpec::fresh("circuit_b"),
+                StepSpec::fresh("circuit_c"),
+            ],
+        )
         .with_assertion(CrossStepAssertion::equal("ab_check", 0, 0, 1, 0))
         .with_assertion(CrossStepAssertion::equal("bc_check", 1, 0, 2, 0));
 
@@ -1027,11 +1095,14 @@ mod tests {
 
     #[test]
     fn test_chain_with_assertions_swap_steps() {
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-            StepSpec::fresh("circuit_c"),
-        ])
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![
+                StepSpec::fresh("circuit_a"),
+                StepSpec::fresh("circuit_b"),
+                StepSpec::fresh("circuit_c"),
+            ],
+        )
         .with_assertion(CrossStepAssertion::equal("ac_check", 0, 0, 2, 0));
 
         // Swap 0 and 1 - assertion indices should update: 0->1, 2 stays 2
@@ -1043,10 +1114,10 @@ mod tests {
 
     #[test]
     fn test_chain_with_assertions_duplicate_step() {
-        let spec = ChainSpec::new("test_chain", vec![
-            StepSpec::fresh("circuit_a"),
-            StepSpec::fresh("circuit_b"),
-        ])
+        let spec = ChainSpec::new(
+            "test_chain",
+            vec![StepSpec::fresh("circuit_a"), StepSpec::fresh("circuit_b")],
+        )
         .with_assertion(CrossStepAssertion::equal("ab_check", 0, 0, 1, 0));
 
         // Duplicate step 0 - assertion indices: 0 stays 0, 1 becomes 2
