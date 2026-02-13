@@ -21,6 +21,16 @@ ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK c
 
 **Evidence Mode:** Strict backend verification with automatic fallback rejection ensures all findings are cryptographically confirmed, not synthetic.
 
+## Validation Results
+
+Validation artifacts are tracked in:
+
+- `docs/VALIDATION_RESULTS.md` (consolidated status)
+- `reports/validation/0xparc_summary.md`
+- `reports/validation/false_positive_report.md`
+- `reports/validation/ground_truth_report.md`
+- `reports/validation/cve_detection_report.md`
+
 ## Features
 
 ### Core Attack Detection

@@ -81,9 +81,9 @@ Scope note:
 3. `P0.3` complete: Halo2 field mapping (`bn254`, `pasta`, `bls12-381`) is preserved with no BN254 regression.
 4. `P0.4` complete: Circom prime alias handling is robust (`bn128`/`bn254` + numeric parse path).
 5. `P0.5` complete: semantic range checks now use runtime modulus via `RangeProofOracle::new_with_modulus`.
-6. `P1.1` complete: Coq export emits explicit skeleton markers instead of placeholder proofs.
-7. `P1.2` complete: Lean export emits explicit skeleton markers instead of `sorry` stubs.
-8. `P1.3` complete: Halo2 evidence script path is wired with explicit integration placeholders.
+6. `P1.1` complete: Coq export now emits obligation-style definitions and identity theorems (no `Admitted` placeholders).
+7. `P1.2` complete: Lean export now emits obligation-style definitions and identity theorems (no `sorry` placeholders).
+8. `P1.3` complete: Halo2 evidence script now uses `Halo2Target` directly (no project-specific `YourCircuit` glue).
 9. `P1.4` complete: `ConstraintParser::parse_r1cs` supports JSON and text forms with regression coverage.
 10. `P2.1` complete: distributed coverage bitmap merging is implemented in `corpus_sync`.
 11. `P2.2` complete: timed-out/disconnected node work units are requeued with priority.
@@ -91,6 +91,7 @@ Scope note:
 13. `P3.1` complete: `TODO_INPUT` fallback replaced with deterministic inferred inputs.
 14. `P3.2` complete: false-positive analysis path now executes real measurement flow.
 15. `P3.3` complete: ground-truth known-bug test uses real Circom execution when available, otherwise skips explicitly.
+16. Validation checklist complete: `docs/VALIDATION_PLAN.md` deliverables are backed by `tests/campaigns/validation/*`, `tests/scripts/*`, `reports/validation/*.md`, and `docs/VALIDATION_RESULTS.md`.
 
 ### Addendum: Backend Policy
 

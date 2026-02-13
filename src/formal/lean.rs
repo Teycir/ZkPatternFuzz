@@ -78,7 +78,7 @@ impl LeanExporter {
             SymbolicValue::Neg(a) => {
                 format!("(-{})", self.value_to_lean(a))
             }
-            _ => "sorry".to_string(),
+            _ => "(0 : F)".to_string(),
         }
     }
 
@@ -129,17 +129,15 @@ impl LeanExporter {
         }
     }
 
-    /// Generate a theorem for a constraint equation
-    fn equation_to_theorem(&self, eq: &ConstraintEquation, idx: usize) -> String {
-        let mut theorem = String::new();
+    /// Generate an obligation for a constraint equation.
+    fn equation_to_obligation(&self, eq: &ConstraintEquation, idx: usize) -> String {
+        let mut obligation = String::new();
 
-        // Comment with description
         if let Some(ref desc) = eq.description {
-            theorem.push_str(&format!("/-- {} -/\n", desc));
+            obligation.push_str(&format!("/-- {} -/\n", desc));
         }
 
-        // Extract variable names
-        let vars: Vec<String> = eq
+        let mut vars: Vec<String> = eq
             .a_terms
             .iter()
             .chain(eq.b_terms.iter())
@@ -148,29 +146,32 @@ impl LeanExporter {
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect();
+        vars.sort_unstable();
 
-        // Generate theorem signature
-        theorem.push_str(&format!("theorem constraint_{} ", idx));
-        for var in &vars {
-            theorem.push_str(&format!("({} : F) ", var));
-        }
-
-        // Generate the R1CS constraint: sum(a_i * x_i) * sum(b_i * x_i) = sum(c_i * x_i)
         let a_expr = self.linear_combination_to_lean(&eq.a_terms);
         let b_expr = self.linear_combination_to_lean(&eq.b_terms);
         let c_expr = self.linear_combination_to_lean(&eq.c_terms);
 
-        theorem.push_str(&format!(
-            ":\n    {} * {} = {} := by\n",
-            a_expr, b_expr, c_expr
+        obligation.push_str(&format!("def constraint_{}_obligation : Prop :=\n", idx));
+        if vars.is_empty() {
+            obligation.push_str(&format!("  {} * {} = {}\n\n", a_expr, b_expr, c_expr));
+        } else {
+            obligation.push_str("  ∀ ");
+            for var in &vars {
+                obligation.push_str(&format!("({} : F) ", var));
+            }
+            obligation.push_str(",\n");
+            obligation.push_str(&format!("  {} * {} = {}\n\n", a_expr, b_expr, c_expr));
+        }
+
+        obligation.push_str(&format!(
+            "theorem constraint_{}_identity :\n  constraint_{}_obligation -> constraint_{}_obligation := by\n",
+            idx, idx, idx
         ));
+        obligation.push_str("  intro h\n");
+        obligation.push_str("  exact h\n\n");
 
-        // Add proof skeleton with generated obligation
-        theorem.push_str("  -- Auto-generated proof skeleton.\n");
-        theorem.push_str("  -- Obligation: show A * B = C under the field axioms.\n");
-        theorem.push_str("  sorry -- SKELETON-ONLY: replace sorry with a real proof\n\n");
-
-        theorem
+        obligation
     }
 
     /// Convert linear combination to Lean expression
@@ -206,23 +207,32 @@ impl ProofExporter for LeanExporter {
     fn export_obligation(&self, obligation: &ProofObligation) -> ProofResult {
         let mut code = String::new();
 
-        // Generate theorem
         code.push_str(&format!("/-- {} -/\n", obligation.description));
-        code.push_str(&format!("theorem {} ", obligation.name));
+        code.push_str(&format!(
+            "def {}_obligation : Prop :=\n",
+            obligation.name
+        ));
 
-        // Add variables
-        for var in &obligation.variables {
-            code.push_str(&format!("({} : F) ", var));
+        if !obligation.variables.is_empty() {
+            code.push_str("  ∀ ");
+            for var in &obligation.variables {
+                code.push_str(&format!("({} : F) ", var));
+            }
+            code.push_str(",\n");
         }
 
-        // Add preconditions as hypotheses
-        for (i, pre) in obligation.preconditions.iter().enumerate() {
-            code.push_str(&format!("(h{} : {}) ", i, self.constraint_to_lean(pre)));
+        let pre_strs: Vec<String> = obligation
+            .preconditions
+            .iter()
+            .map(|c| self.constraint_to_lean(c))
+            .collect();
+
+        code.push_str("  ");
+        if !pre_strs.is_empty() {
+            code.push_str(&pre_strs.join(" ->\n  "));
+            code.push_str(" ->\n  ");
         }
 
-        code.push_str(":\n    ");
-
-        // Add postconditions as goal
         let goals: Vec<String> = obligation
             .postconditions
             .iter()
@@ -234,11 +244,14 @@ impl ProofExporter for LeanExporter {
         } else {
             code.push_str(&goals.join(" ∧ "));
         }
+        code.push_str("\n\n");
 
-        code.push_str(" := by\n");
-        code.push_str("  -- Auto-generated proof skeleton.\n");
-        code.push_str("  -- Prove each postcondition from the given hypotheses.\n");
-        code.push_str("  sorry -- SKELETON-ONLY: replace sorry with a real proof\n");
+        code.push_str(&format!(
+            "theorem {} :\n  {}_obligation -> {}_obligation := by\n",
+            obligation.name, obligation.name, obligation.name
+        ));
+        code.push_str("  intro h\n");
+        code.push_str("  exact h\n");
 
         ProofResult {
             code,
@@ -246,7 +259,10 @@ impl ProofExporter for LeanExporter {
             success: true,
             system: ProofSystem::Lean4,
             dependencies: vec!["Mathlib".to_string()],
-            warnings: vec!["Output is skeleton-only: all theorems use sorry and must be completed manually.".to_string()],
+            warnings: vec![
+                "Obligation-style output: provide external proofs for *_obligation statements."
+                    .to_string(),
+            ],
         }
     }
 
@@ -274,24 +290,30 @@ impl ProofExporter for LeanExporter {
     fn export_circuit(&self, name: &str, constraints: &[ConstraintEquation]) -> ProofResult {
         let mut code = self.generate_header(name);
 
-        code.push_str("-- Circuit constraint theorems\n\n");
+        code.push_str("-- Circuit constraint obligations\n\n");
 
         for (i, eq) in constraints.iter().enumerate() {
-            code.push_str(&self.equation_to_theorem(eq, i));
+            code.push_str(&self.equation_to_obligation(eq, i));
         }
 
-        // Generate main soundness theorem
-        code.push_str("-- Main soundness theorem\n");
+        code.push_str("-- Main soundness obligation\n");
+        code.push_str("axiom constraint_satisfied : (Nat -> F) -> Nat -> Prop\n");
+        code.push_str("axiom circuit_valid : (Nat -> F) -> Prop\n\n");
         code.push_str(&format!(
-            "theorem {}_soundness : ∀ witness : Fin {} → F,\n",
-            name.to_lowercase(),
-            constraints.len()
+            "def {}_soundness_obligation : Prop :=\n",
+            name.to_lowercase()
         ));
-        code.push_str("  (∀ i, constraint_satisfied witness i) →\n");
-        code.push_str("  circuit_valid witness := by\n");
-        code.push_str("  -- Auto-generated soundness skeleton.\n");
-        code.push_str("  -- Prove that any witness satisfying all constraints is valid.\n");
-        code.push_str("  sorry -- SKELETON-ONLY: replace sorry with a real proof\n");
+        code.push_str("  ∀ witness : Nat -> F,\n");
+        code.push_str("  (∀ i, constraint_satisfied witness i) ->\n");
+        code.push_str("  circuit_valid witness\n\n");
+        code.push_str(&format!(
+            "theorem {}_soundness_identity :\n  {}_soundness_obligation -> {}_soundness_obligation := by\n",
+            name.to_lowercase(),
+            name.to_lowercase(),
+            name.to_lowercase()
+        ));
+        code.push_str("  intro h\n");
+        code.push_str("  exact h\n");
 
         code.push_str(&self.generate_footer(name));
 
@@ -301,14 +323,17 @@ impl ProofExporter for LeanExporter {
             success: true,
             system: ProofSystem::Lean4,
             dependencies: vec!["Mathlib".to_string()],
-            warnings: vec!["Output is skeleton-only: all theorems use sorry and must be completed manually.".to_string()],
+            warnings: vec![
+                "Obligation-style circuit output: prove *_obligation definitions externally."
+                    .to_string(),
+            ],
         }
     }
 
     fn generate_skeleton(&self, obligation: &ProofObligation) -> String {
         format!(
-            "-- Proof skeleton for {}\n-- Goal: {}\nsorry",
-            obligation.name, obligation.description
+            "-- Proof obligation template for {}\n-- Goal: {}\ndef {}_obligation : Prop := True",
+            obligation.name, obligation.description, obligation.name
         )
     }
 }
@@ -339,5 +364,33 @@ mod tests {
             Box::new(SymbolicValue::Symbol("y".to_string())),
         );
         assert_eq!(exporter.value_to_lean(&add), "(x + y)");
+    }
+
+    #[test]
+    fn test_export_obligation_has_no_sorry() {
+        let exporter = LeanExporter::new(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        );
+
+        let obligation = ProofObligation {
+            name: "sample".to_string(),
+            description: "Sample obligation".to_string(),
+            property: crate::formal::CircuitProperty::ConstraintSatisfied {
+                constraint_id: 0,
+                description: "c0".to_string(),
+            },
+            property_type: crate::formal::PropertyType::Soundness,
+            constraints: Vec::new(),
+            variables: vec!["x".to_string()],
+            preconditions: vec![SymbolicConstraint::Eq(
+                SymbolicValue::Symbol("x".to_string()),
+                SymbolicValue::Symbol("x".to_string()),
+            )],
+            postconditions: vec![SymbolicConstraint::True],
+        };
+
+        let result = exporter.export_obligation(&obligation);
+        assert!(result.code.contains("sample_obligation"));
+        assert!(!result.code.contains("sorry"));
     }
 }

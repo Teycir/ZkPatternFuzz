@@ -4,6 +4,17 @@
 
 ZkPatternFuzz is a modular security testing framework for zero-knowledge circuits. This document describes the internal architecture, design decisions, and extension points.
 
+## Validation Methodology
+
+Validation assets are organized as first-class project artifacts:
+
+- Campaign templates: `tests/campaigns/validation/`
+- Automation scripts: `tests/scripts/`
+- Generated validation reports: `reports/validation/`
+- Consolidated status: `docs/VALIDATION_RESULTS.md`
+
+This keeps reproducibility data versioned alongside code and backend integrations.
+
 ## Core Components
 
 ### 1. Fuzzing Engine (`src/fuzzer/engine.rs`)

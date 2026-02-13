@@ -1,0 +1,33 @@
+campaign:
+  name: "Validation: 0xPARC Template"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "tests/datasets/0xparc-bugs/circuits/example.circom"
+    main_component: "Main"
+  parameters:
+    timeout_seconds: 120
+    additional:
+      strict_backend: true
+      evidence_mode: true
+
+attacks:
+  - type: underconstrained
+    config:
+      witness_pairs: 2000
+  - type: soundness
+    config:
+      forge_attempts: 500
+  - type: arithmetic_overflow
+  - type: collision
+  - type: boundary
+
+inputs:
+  - name: input
+    type: field
+    fuzz_strategy: random
+
+reporting:
+  output_dir: "reports/validation/0xparc"
+  formats: ["json", "markdown"]
+  include_poc: true

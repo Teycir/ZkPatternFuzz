@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Validation-plan baseline artifacts and automation:
+  - Added `tests/campaigns/validation/*` templates
+  - Added `tests/scripts/*` validation utilities
+  - Added `reports/validation/*.md` baselines
+  - Added consolidated `docs/VALIDATION_RESULTS.md`
 - **Phase 3.1: MEV & Front-Running Attacks** (`src/attacks/mev.rs`, `src/attacks/front_running.rs`)
   - MEV attack detection: ordering dependency, sandwich attacks, state leakage
   - Front-running detection: information leakage, commitment bypass, delay attacks

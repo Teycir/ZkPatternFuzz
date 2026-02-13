@@ -1,0 +1,30 @@
+campaign:
+  name: "Validation: Ground Truth Template"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "tests/ground_truth_circuits/merkle_unconstrained.circom"
+    main_component: "main"
+  parameters:
+    timeout_seconds: 120
+    additional:
+      strict_backend: true
+      evidence_mode: true
+
+attacks:
+  - type: underconstrained
+    config:
+      witness_pairs: 3000
+  - type: soundness
+    config:
+      forge_attempts: 1000
+
+inputs:
+  - name: input
+    type: field
+    fuzz_strategy: random
+
+reporting:
+  output_dir: "reports/validation/ground_truth"
+  formats: ["json", "markdown"]
+  include_poc: true

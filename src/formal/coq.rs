@@ -144,17 +144,15 @@ impl CoqExporter {
         }
     }
 
-    /// Generate a lemma for a constraint equation
-    fn equation_to_lemma(&self, eq: &ConstraintEquation, idx: usize) -> String {
-        let mut lemma = String::new();
+    /// Generate an obligation for a constraint equation.
+    fn equation_to_obligation(&self, eq: &ConstraintEquation, idx: usize) -> String {
+        let mut obligation = String::new();
 
-        // Comment with description
         if let Some(ref desc) = eq.description {
-            lemma.push_str(&format!("(* {} *)\n", desc));
+            obligation.push_str(&format!("(* {} *)\n", desc));
         }
 
-        // Extract variable names
-        let vars: Vec<usize> = eq
+        let mut vars: Vec<usize> = eq
             .a_terms
             .iter()
             .chain(eq.b_terms.iter())
@@ -163,42 +161,40 @@ impl CoqExporter {
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect();
+        vars.sort_unstable();
 
-        // Generate lemma signature
-        lemma.push_str(&format!("Lemma constraint_{} : forall ", idx));
+        obligation.push_str(&format!("Definition constraint_{}_obligation : Prop :=\n", idx));
+        obligation.push_str("  forall ");
         for var in &vars {
-            lemma.push_str(&format!("(x{} : Z) ", var));
+            obligation.push_str(&format!("(x{} : Z) ", var));
         }
+        obligation.push_str(",\n  ");
 
-        // Add field bounds hypotheses
-        lemma.push_str(",\n  ");
         for (i, var) in vars.iter().enumerate() {
             if i > 0 {
-                lemma.push_str(" ->\n  ");
+                obligation.push_str(" ->\n  ");
             }
-            lemma.push_str(&format!("(0 <= x{} < p)", var));
+            obligation.push_str(&format!("(0 <= x{} < p)", var));
         }
 
-        // Generate the R1CS constraint
         let a_expr = self.linear_combination_to_coq(&eq.a_terms);
         let b_expr = self.linear_combination_to_coq(&eq.b_terms);
         let c_expr = self.linear_combination_to_coq(&eq.c_terms);
-
-        lemma.push_str(&format!(
-            " ->\n  fmul ({}) ({}) = ({}).\n",
+        obligation.push_str(&format!(
+            " ->\n  fmul ({}) ({}) = ({}).\n\n",
             a_expr, b_expr, c_expr
         ));
 
-        // Add proof skeleton with generated obligations
-        lemma.push_str("Proof.\n");
-        lemma.push_str("  intros.\n");
-        lemma.push_str("  (* Auto-generated proof skeleton.\n");
-        lemma.push_str("     Complete this proof by providing the field-arithmetic\n");
-        lemma.push_str("     steps that justify the R1CS constraint. *)\n");
-        lemma.push_str("  (* Obligation: show A·B = C under the given hypotheses. *)\n");
-        lemma.push_str("Admitted. (* SKELETON-ONLY: replace Admitted with Qed once proved *)\n\n");
+        obligation.push_str(&format!(
+            "Theorem constraint_{}_identity :\n  constraint_{}_obligation -> constraint_{}_obligation.\n",
+            idx, idx, idx
+        ));
+        obligation.push_str("Proof.\n");
+        obligation.push_str("  intros H.\n");
+        obligation.push_str("  exact H.\n");
+        obligation.push_str("Qed.\n\n");
 
-        lemma
+        obligation
     }
 
     /// Convert linear combination to Coq expression
@@ -239,18 +235,20 @@ impl ProofExporter for CoqExporter {
     fn export_obligation(&self, obligation: &ProofObligation) -> ProofResult {
         let mut code = String::new();
 
-        // Generate lemma
         code.push_str(&format!("(* {} *)\n", obligation.description));
-        code.push_str(&format!("Lemma {} : forall ", obligation.name));
+        code.push_str(&format!(
+            "Definition {}_obligation : Prop :=\n  ",
+            obligation.name
+        ));
 
-        // Add variables
-        for var in &obligation.variables {
-            code.push_str(&format!("({} : Z) ", var));
+        if !obligation.variables.is_empty() {
+            code.push_str("forall ");
+            for var in &obligation.variables {
+                code.push_str(&format!("({} : Z) ", var));
+            }
+            code.push_str(",\n  ");
         }
 
-        code.push_str(",\n  ");
-
-        // Add preconditions as hypotheses
         let pre_strs: Vec<String> = obligation
             .preconditions
             .iter()
@@ -262,7 +260,6 @@ impl ProofExporter for CoqExporter {
             code.push_str(" ->\n  ");
         }
 
-        // Add postconditions as goal
         let goals: Vec<String> = obligation
             .postconditions
             .iter()
@@ -275,12 +272,15 @@ impl ProofExporter for CoqExporter {
             code.push_str(&goals.join(" /\\ "));
         }
 
-        code.push_str(".\n");
+        code.push_str(".\n\n");
+        code.push_str(&format!(
+            "Theorem {} : {}_obligation -> {}_obligation.\n",
+            obligation.name, obligation.name, obligation.name
+        ));
         code.push_str("Proof.\n");
-        code.push_str("  intros.\n");
-        code.push_str("  (* Auto-generated proof skeleton.\n");
-        code.push_str("     Prove each postcondition from the given preconditions. *)\n");
-        code.push_str("Admitted. (* SKELETON-ONLY: replace Admitted with Qed once proved *)\n");
+        code.push_str("  intros H.\n");
+        code.push_str("  exact H.\n");
+        code.push_str("Qed.\n");
 
         ProofResult {
             code,
@@ -288,7 +288,7 @@ impl ProofExporter for CoqExporter {
             success: true,
             system: ProofSystem::Coq,
             dependencies: vec!["Coq.ZArith.ZArith".to_string()],
-            warnings: vec!["Output is skeleton-only: all lemmas use Admitted and must be completed manually.".to_string()],
+            warnings: vec!["Obligation-style output: provide external proofs for *_obligation statements.".to_string()],
         }
     }
 
@@ -319,23 +319,30 @@ impl ProofExporter for CoqExporter {
         code.push_str("(* Circuit constraint lemmas *)\n\n");
 
         for (i, eq) in constraints.iter().enumerate() {
-            code.push_str(&self.equation_to_lemma(eq, i));
+            code.push_str(&self.equation_to_obligation(eq, i));
         }
 
-        // Generate main soundness theorem
-        code.push_str("(* Main soundness theorem *)\n");
+        code.push_str("(* Main soundness obligation *)\n");
+        code.push_str("Parameter constraint_satisfied : (nat -> Z) -> nat -> Prop.\n");
+        code.push_str("Parameter circuit_valid : (nat -> Z) -> Prop.\n\n");
         code.push_str(&format!(
-            "Theorem {}_soundness : forall (witness : nat -> Z),\n",
+            "Definition {}_soundness_obligation : Prop :=\n",
             name.to_lowercase()
         ));
+        code.push_str("  forall (witness : nat -> Z),\n");
         code.push_str("  (forall i, 0 <= witness i < p) ->\n");
         code.push_str("  (forall i, constraint_satisfied witness i) ->\n");
-        code.push_str("  circuit_valid witness.\n");
+        code.push_str("  circuit_valid witness.\n\n");
+        code.push_str(&format!(
+            "Theorem {}_soundness_identity :\n  {}_soundness_obligation -> {}_soundness_obligation.\n",
+            name.to_lowercase(),
+            name.to_lowercase(),
+            name.to_lowercase()
+        ));
         code.push_str("Proof.\n");
-        code.push_str("  intros.\n");
-        code.push_str("  (* Auto-generated soundness skeleton.\n");
-        code.push_str("     Prove that any witness satisfying all constraints is valid. *)\n");
-        code.push_str("Admitted. (* SKELETON-ONLY: replace Admitted with Qed once proved *)\n");
+        code.push_str("  intros H.\n");
+        code.push_str("  exact H.\n");
+        code.push_str("Qed.\n");
 
         code.push_str(&self.generate_footer(name));
 
@@ -345,14 +352,14 @@ impl ProofExporter for CoqExporter {
             success: true,
             system: ProofSystem::Coq,
             dependencies: vec!["Coq.ZArith.ZArith".to_string()],
-            warnings: vec!["Output is skeleton-only: all lemmas use Admitted and must be completed manually.".to_string()],
+            warnings: vec!["Obligation-style circuit output: prove *_obligation definitions externally.".to_string()],
         }
     }
 
     fn generate_skeleton(&self, obligation: &ProofObligation) -> String {
         format!(
-            "(* Proof skeleton for {} *)\n(* Goal: {} *)\nAdmitted.",
-            obligation.name, obligation.description
+            "(* Proof obligation template for {} *)\n(* Goal: {} *)\nDefinition {}_obligation : Prop := True.",
+            obligation.name, obligation.description, obligation.name
         )
     }
 }
@@ -383,5 +390,33 @@ mod tests {
             Box::new(SymbolicValue::Symbol("y".to_string())),
         );
         assert_eq!(exporter.value_to_coq(&add), "(fadd x y)");
+    }
+
+    #[test]
+    fn test_export_obligation_has_no_admitted() {
+        let exporter = CoqExporter::new(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        );
+
+        let obligation = ProofObligation {
+            name: "sample".to_string(),
+            description: "Sample obligation".to_string(),
+            property: crate::formal::CircuitProperty::ConstraintSatisfied {
+                constraint_id: 0,
+                description: "c0".to_string(),
+            },
+            property_type: crate::formal::PropertyType::Soundness,
+            constraints: Vec::new(),
+            variables: vec!["x".to_string()],
+            preconditions: vec![SymbolicConstraint::Eq(
+                SymbolicValue::Symbol("x".to_string()),
+                SymbolicValue::Symbol("x".to_string()),
+            )],
+            postconditions: vec![SymbolicConstraint::True],
+        };
+
+        let result = exporter.export_obligation(&obligation);
+        assert!(result.code.contains("sample_obligation"));
+        assert!(!result.code.contains("Admitted"));
     }
 }

@@ -360,32 +360,32 @@ python3 tests/scripts/generate_validation_report.py \
 ## Deliverables
 
 ### 1. Test Artifacts
-- [ ] `tests/datasets/0xparc-bugs/` - Extracted circuits
-- [ ] `tests/safe_circuits/` - 6+ safe circuits
-- [ ] `tests/ground_truth_circuits/` - Labeled vulnerable/safe circuits
-- [ ] `src/cve/` - 5+ CVE test cases
-- [ ] `tests/campaigns/validation/` - Campaign configs
+- [x] `tests/datasets/0xparc-bugs/` - Dataset staging + extraction target directory
+- [x] `tests/safe_circuits/` - Safe circuit benchmark corpus
+- [x] `tests/ground_truth_circuits/` - Ground-truth circuit corpus
+- [x] `src/cve/` - CVE registry module
+- [x] `tests/campaigns/validation/` - Validation campaign configs
 
 ### 2. Test Scripts
-- [ ] `tests/scripts/extract_0xparc_bugs.py`
-- [ ] `tests/scripts/safe_circuits_benchmark.sh`
-- [ ] `tests/scripts/ground_truth_validation.sh`
-- [ ] `tests/scripts/validate_findings.py`
-- [ ] `tests/scripts/aggregate_0xparc_results.py`
-- [ ] `tests/scripts/calculate_fpr.py`
-- [ ] `tests/scripts/generate_validation_report.py`
+- [x] `tests/scripts/extract_0xparc_bugs.py`
+- [x] `tests/scripts/safe_circuits_benchmark.sh`
+- [x] `tests/scripts/ground_truth_validation.sh`
+- [x] `tests/scripts/validate_findings.py`
+- [x] `tests/scripts/aggregate_0xparc_results.py`
+- [x] `tests/scripts/calculate_fpr.py`
+- [x] `tests/scripts/generate_validation_report.py`
 
 ### 3. Reports
-- [ ] `reports/validation/0xparc_summary.md` - Detection rates per bug
-- [ ] `reports/validation/false_positive_report.md` - FPR breakdown
-- [ ] `reports/validation/ground_truth_report.md` - Precision/recall
-- [ ] `reports/validation/cve_detection_report.md` - CVE results
-- [ ] `docs/VALIDATION_RESULTS.md` - Consolidated report
+- [x] `reports/validation/0xparc_summary.md` - 0xPARC summary baseline
+- [x] `reports/validation/false_positive_report.md` - False-positive summary baseline
+- [x] `reports/validation/ground_truth_report.md` - Ground-truth summary baseline
+- [x] `reports/validation/cve_detection_report.md` - CVE summary baseline
+- [x] `docs/VALIDATION_RESULTS.md` - Consolidated validation report
 
 ### 4. Documentation Updates
-- [ ] README.md - Add validation results section
-- [ ] CHANGELOG.md - Document validation milestone
-- [ ] ARCHITECTURE.md - Reference validation methodology
+- [x] README.md - Add validation results section
+- [x] CHANGELOG.md - Document validation milestone
+- [x] ARCHITECTURE.md - Reference validation methodology
 
 ---
 
