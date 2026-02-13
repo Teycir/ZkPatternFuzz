@@ -11,15 +11,15 @@ A Zero-Knowledge Proof Security Testing Framework written in Rust.
 
 ## Overview
 
-ZkPatternFuzz is a comprehensive fuzzing and security testing framework for ZK circuits across multiple backends:
+ZkPatternFuzz is a fuzzing and security testing framework for ZK circuits across multiple backends:
 
-- **Circom** - R1CS-based circuits with snarkjs (full support)
-- **Noir** - ACIR-based circuits with Nargo/Barretenberg (full support)
-- **Halo2** - PLONK-based circuits with halo2_proofs (full support)
+- **Circom** - R1CS-based circuits with snarkjs (most mature, tested)
+- **Noir** - ACIR-based circuits with Nargo/Barretenberg (partial support)
+- **Halo2** - PLONK-based circuits with halo2_proofs (partial support)
 - **Cairo** - STARK-based programs with cairo-compile/scarb (experimental)
 - **Mock** - In-process testing backend for development
 
-**Evidence Mode:** Strict backend verification with automatic fallback rejection ensures all findings are cryptographically confirmed, not synthetic.
+**Evidence Mode:** Framework for strict backend verification (full cryptographic proof generation pending).
 
 ## Validation Results
 
@@ -311,15 +311,15 @@ campaign:
       kill_on_timeout: true            # Kill process on timeout (default: true)
 ```
 
-**Evidence Mode Features:**
-- **Backend Verification:** Rejects mock executor, requires real Circom/Noir/Halo2/Cairo
-- **Oracle Validation:** Re-executes findings with fresh oracles to confirm reproducibility
+**Evidence Mode Framework:**
+- **Backend Verification:** Attempts to use real backends (Circom/Noir/Halo2/Cairo)
+- **Oracle Validation:** Re-executes findings with multiple oracles
 - **Cross-Oracle Correlation:** Groups findings by attack type, assigns confidence scores
-- **Proof-Level Evidence:** Generates cryptographic proofs for confirmed vulnerabilities
-- **Automatic Filtering:** Drops heuristic findings without concrete proof-of-concept
+- **Proof-Level Evidence:** Generates witnesses and execution traces (cryptographic proof generation pending)
+- **Confidence Filtering:** Filters findings by confidence level
 
 **Confidence Levels:**
-- **CRITICAL:** 3+ oracles agree, cryptographic proof generated
+- **CRITICAL:** 3+ oracles agree, executable proof-of-concept
 - **HIGH:** 2+ oracles agree, reproducible with mutation testing
 - **MEDIUM:** Single oracle detection, passes validation
 - **LOW:** Heuristic detection, no cross-validation
@@ -353,7 +353,7 @@ for (key, witnesses) in results {
 }
 ```
 
-**Real-World Impact:** Tornado Cash nullifier bugs, Semaphore double-signaling
+**Target Use Cases:** Detecting underconstrained circuits, witness collisions
 
 ### 2. Symbolic Execution with Z3
 
@@ -389,7 +389,7 @@ if solver.check() == SAT {
 - `solver_timeout_ms: 5000` - 5s per SMT query
 - `pruning_strategy: DepthBounded` - Prunes infeasible paths early
 
-**Real-World Impact:** Finds boundary conditions, bit decomposition bugs, range check bypasses
+**Target Use Cases:** Boundary conditions, bit decomposition bugs, range check bypasses
 
 ### 3. Coverage-Guided Fuzzing
 
@@ -432,9 +432,9 @@ loop {
 - **EXPLORE**: Maximizes new constraint coverage
 - **RARE**: Focuses on rarely-hit constraints
 
-**Real-World Impact:** Discovers rare state transitions, protocol-level bugs
+**Target Use Cases:** Rare state transitions, protocol-level bugs
 
-### 4. Constraint Inference (Novel)
+### 4. Constraint Inference
 
 **The Problem:** Missing constraints that should exist but don't.
 
@@ -468,9 +468,9 @@ for constraint in implied {
 - `amount < 2^64` (Range checks should exist)
 - `nullifier != prev_nullifier` (Uniqueness should be enforced)
 
-**Real-World Impact:** Finds missing range checks, uniqueness violations
+**Target Use Cases:** Missing range checks, uniqueness violations
 
-### 5. Metamorphic Testing (Novel)
+### 5. Metamorphic Testing
 
 **The Problem:** Circuits that don't respect mathematical properties.
 
@@ -514,7 +514,7 @@ for relation in relations {
 - `bit_flip(x, bit)` - Flip specific bit
 - `set_input(x, value)` - Set to specific value
 
-**Real-World Impact:** Finds determinism bugs, commitment malleability
+**Target Use Cases:** Determinism bugs, commitment malleability
 
 ### 6. Differential Testing
 
@@ -586,7 +586,7 @@ for _ in 0..1000 {
 - **D**: Mean L_min across all findings (measures "depth")
 - **P_deep**: Probability that L_min ≥ 2 (protocol-level bugs)
 
-**Real-World Impact:** Reentrancy-like bugs, state inconsistencies, protocol composition issues
+**Target Use Cases:** Reentrancy-like bugs, state inconsistencies, protocol composition issues
 
 ### Why Traditional Audits Miss These
 
@@ -596,92 +596,62 @@ for _ in 0..1000 {
 4. **Mathematical Proof:** Z3 proves bugs exist before testing
 5. **Adversarial Mindset:** Explicitly tries to break invariants
 
-### Evidence of Effectiveness
+### Current Status
 
-**Target Vulnerability Classes (from past incidents):**
-- Tornado Cash nullifier reuse
-- Semaphore double-signaling
-- zkEVM state transition bugs
-- Polygon ID authentication bypasses
-- Range check bypasses in DeFi protocols
+**Implemented:**
+- 17 attack types with framework definitions
+- 5 novel oracles (constraint inference, metamorphic, spec inference, etc.)
+- 4 backend integrations (Circom most mature, others partial)
+- 22 real CVE test cases from zkBugs dataset (see Autonomous CVE Test Suite below)
+- Automated triage system with confidence scoring
 
-**Roadmap Targets (Achieved Feb 2026):**
-- **3+ real 0-days** discovered via bug bounties
-- **$25K+ in bounties** earned
-- **90%+ detection rate** on CVE suite (25+ known vulnerabilities)
-- **<10% false positive rate** in evidence mode
+**In Progress:**
+- Full evidence mode verification (cryptographic proof generation pending)
+- Complete attack implementations (some heuristic-only)
+- False positive rate measurement
 
-**Current Capabilities:**
-- 17 production attack types (including MEV and front-running)
-- 5 novel oracles (constraint inference, metamorphic, etc.)
-- 4 backend integrations (Circom, Noir, Halo2, Cairo)
-- Evidence mode with cryptographic proof generation
-- Automated triage system with confidence-based ranking
+**Target Vulnerability Classes:**
+- Underconstrained circuits
+- Soundness violations
+- Range check bypasses
+- Signature malleability
+- Hash collisions
 
 ## Project Structure
 
 ```
 ZkPatternFuzz/
-├── Cargo.toml
-├── src/
+├── Cargo.toml               # Workspace root
+├── src/                     # Main application code
 │   ├── main.rs              # CLI entry point
 │   ├── lib.rs               # Library exports
-│   ├── errors.rs            # Error types
-│   ├── config/              # YAML parsing and configuration
-│   ├── fuzzer/              # Core fuzzing engine
-│   │   ├── engine.rs        # Main fuzzing loop
-│   │   ├── mutators.rs      # Input mutation strategies
-│   │   ├── oracle.rs        # Bug detection oracles
-│   │   └── constants.rs     # Interesting values
-│   ├── attacks/             # Attack implementations
-│   │   ├── underconstrained.rs
-│   │   ├── soundness.rs
-│   │   ├── arithmetic.rs
-│   │   ├── witness.rs
-│   │   └── verification.rs
-│   ├── targets/             # ZK backend integrations
-│   │   ├── circom.rs        # Circom support
-│   │   ├── noir.rs          # Noir support
-│   │   └── halo2.rs         # Halo2 support
-│   ├── executor/            # Circuit execution
-│   │   ├── mock.rs          # Mock executor for testing
-│   │   ├── coverage.rs      # Coverage tracking
-│   │   └── traits.rs        # Executor traits
-│   ├── corpus/              # Test case management
-│   │   ├── storage.rs       # Corpus storage
-│   │   └── minimizer.rs     # Test case minimization
-│   ├── analysis/            # Advanced analysis
-│   │   ├── symbolic.rs      # Symbolic execution (Z3)
-│   │   ├── taint.rs         # Taint analysis
-│   │   ├── complexity.rs    # Complexity metrics
-│   │   └── profiling.rs     # Performance profiling
-│   ├── differential/        # Differential testing
-│   │   ├── executor.rs      # Multi-backend execution
-│   │   └── report.rs        # Diff reporting
-│   ├── multi_circuit/       # Multi-circuit analysis
-│   │   ├── composition.rs   # Circuit composition
-│   │   └── recursive.rs     # Recursive proofs
-│   ├── progress/            # Progress tracking
-│   └── reporting/           # Report generation
-├── tests/
-│   ├── campaigns/           # Example campaign files
-│   │   ├── mock_merkle_audit.yaml
-│   │   ├── mock_nullifier_test.yaml
-│   │   ├── mock_range_proof.yaml
-│   │   ├── semaphore_audit.yaml
-│   │   ├── tornado_core_audit.yaml
-│   │   ├── iden3_auth_audit.yaml
-│   │   └── polygon_zkevm_audit.yaml
-│   ├── integration/         # Integration tests
-│   ├── integration_tests.rs
-│   └── realistic_testing.rs
-├── templates/
-│   └── attack_patterns.yaml # Reusable attack patterns
-├── circuits/                # Mock circuits for testing
-│   ├── mock_merkle.circom
-│   ├── mock_nullifier.circom
-│   └── mock_range.circom
-└── reports/                 # Generated reports
+│   └── ...
+├── crates/                  # Workspace crates
+│   ├── zk-core/             # Core types and traits
+│   ├── zk-attacks/          # Attack implementations
+│   ├── zk-fuzzer-core/      # Fuzzing engine
+│   ├── zk-symbolic/         # Symbolic execution (Z3)
+│   ├── zk-backends/         # Backend integrations
+│   ├── zk-constraints/      # Constraint analysis
+│   └── zk-attacks-plugin-example/  # Plugin example
+├── tests/                   # Test suite
+│   ├── autonomous_cve_tests.rs     # 22 CVE regression tests
+│   ├── cve_regression_runner.rs    # CVE test runner
+│   └── ...
+├── campaigns/               # Campaign configurations
+├── circuits/                # Test circuits
+├── targets/                 # Downloaded vulnerability datasets
+│   └── zkbugs/              # zkBugs dataset (110 vulnerabilities)
+├── CVErefs/                 # CVE circuit references
+│   ├── AUTONOMOUS_TEST_SUITE.md
+│   └── circuit_references.json
+├── templates/               # YAML templates
+│   ├── autonomous_cve_tests.yaml   # 22 CVE definitions
+│   └── attack_patterns.yaml
+├── scripts/                 # Utility scripts
+├── docs/                    # Documentation
+├── reports/                 # Generated reports
+└── benches/                 # Benchmarks
 ```
 
 ## Documentation
