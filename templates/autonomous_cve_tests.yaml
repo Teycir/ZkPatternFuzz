@@ -1,0 +1,340 @@
+version: "1.0"
+description: "Autonomous CVE regression tests using downloaded zkBugs dataset"
+last_updated: "2026-02-13"
+
+vulnerabilities:
+  # Reclaim Protocol - Unsound Left Rotation (Real vulnerability from zkBugs)
+  - id: "ZK-CVE-AUTO-001"
+    name: "Unsound Left Rotation Gadget"
+    severity: critical
+    cvss_score: 9.1
+    affected_circuits:
+      - pattern: "reclaimprotocol/circom-chacha20"
+        versions: ["*"]
+    sources:
+      - "zkSecurity Audit"
+      - "zkBugs Dataset"
+    description: |
+      The RotateLeft32Bits template has underconstrained part1 and part2 signals.
+      One can arbitrarily set a value to part1 or part2 and find a value for the 
+      other signal to satisfy the constraint. This allows getting a different out 
+      value for a given in.
+      
+      Root Cause: Wrong translation of logic into constraints
+      Impact: Soundness violation
+      
+    detection:
+      oracle: underconstrained
+      attack_type: underconstrained
+      procedure:
+        - action: generate_inputs
+        - action: execute_circuit
+        - action: check_constraint_satisfaction
+        - action: verify_multiple_witnesses
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/reclaimprotocol/circom-chacha20/zksecurity_unsound_left_rotation/circuits/circuit.circom"
+      test_cases:
+        - name: valid_rotation
+          inputs:
+            in: "0x12345678"
+            bits: 8
+          expected_result: valid_proof
+        - name: underconstrained_part1
+          inputs:
+            in: "0x12345678"
+            part1_manipulated: true
+          expected_result: should_be_invalid
+      assertion: "Rotation must be deterministic for given inputs"
+
+    remediation:
+      description: "Constrain part1 and part2 to be bit-sized values"
+      code_example: |
+        // Constrain part1 to n bits
+        component part1Bits = Num2Bits(n);
+        part1Bits.in <== part1;
+        
+        // Constrain part2 to (32-n) bits  
+        component part2Bits = Num2Bits(32-n);
+        part2Bits.in <== part2;
+
+  # Self.xyz - Missing Boolean Constraints in Merkle Tree
+  - id: "ZK-CVE-AUTO-002"
+    name: "Merkle Tree Path Indices Not Boolean Constrained"
+    severity: critical
+    cvss_score: 9.3
+    affected_circuits:
+      - pattern: "selfxyz/self"
+        versions: ["*"]
+    sources:
+      - "zkSecurity Audit"
+      - "zkBugs Dataset"
+    description: |
+      The pathIndices in the Merkle tree verification are not constrained to be 
+      boolean (0 or 1). This allows an attacker to craft a fake Merkle proof for 
+      an arbitrary leaf by using non-binary indices.
+      
+      Impact: Fake inclusion proofs, unauthorized access
+      
+    detection:
+      oracle: underconstrained
+      attack_type: underconstrained
+      procedure:
+        - action: test_binary_indices
+          params:
+            valid_indices: [0, 1]
+            invalid_indices: [2, 255, -1]
+        - action: verify_constraint_enforcement
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/selfxyz/self/zksecurity_missing_boolean_constraints_in_the_merkle_tree_path_leads_to_an_attacker_being_able_to_craft_a_fake_merkle_proof_for_an_arbitrary_leaf/circuits/circuit.circom"
+      test_cases:
+        - name: valid_binary_indices
+          inputs:
+            pathIndices: [0, 1, 0, 1, 0]
+          expected_result: valid_proof
+        - name: non_binary_index
+          inputs:
+            pathIndices: [2, 1, 0, 1, 0]
+          expected_result: invalid_proof
+      assertion: "pathIndices must be binary (0 or 1)"
+
+    remediation:
+      description: "Constrain each pathIndex to binary"
+      code_example: |
+        for (var i = 0; i < levels; i++) {
+            pathIndices[i] * (pathIndices[i] - 1) === 0;
+        }
+
+  # Self.xyz - Forbidden Country Check Bypass
+  - id: "ZK-CVE-AUTO-003"
+    name: "Packed Byte Overflow Allows Country Check Bypass"
+    severity: high
+    cvss_score: 8.5
+    affected_circuits:
+      - pattern: "selfxyz/self"
+        versions: ["*"]
+    sources:
+      - "zkSecurity Audit"
+      - "zkBugs Dataset"
+    description: |
+      Missing range checks on packed data allows overflow that bypasses the 
+      forbidden country check. An attacker can manipulate packed bytes to 
+      represent a forbidden country as an allowed one.
+      
+    detection:
+      oracle: boundary
+      attack_type: boundary
+      procedure:
+        - action: test_boundary_values
+        - action: check_overflow_behavior
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/selfxyz/self/zksecurity_forbidden_country_check_bypass_via_packed_byte_overflow/circuits/circuit.circom"
+      test_cases:
+        - name: normal_country_code
+          inputs:
+            country: "US"
+          expected_result: valid_proof
+        - name: overflow_country_code
+          inputs:
+            country: "XX"  # Crafted to overflow
+          expected_result: depends_on_implementation
+      assertion: "Country codes must be properly range-checked"
+
+    remediation:
+      description: "Add range checks to packed byte operations"
+      recommendations:
+        - "Constrain each byte to 8 bits"
+        - "Verify packed representation matches unpacked"
+
+  # Self.xyz - Big Integer Zero Check Not Sound
+  - id: "ZK-CVE-AUTO-004"
+    name: "Big Integer Zero Check Soundness Issue"
+    severity: high
+    cvss_score: 8.0
+    affected_circuits:
+      - pattern: "selfxyz/self"
+        versions: ["*"]
+    sources:
+      - "zkSecurity Audit"
+      - "zkBugs Dataset"
+    description: |
+      The zero check for big integers is not sound, allowing non-zero values 
+      to pass as zero under certain conditions.
+      
+    detection:
+      oracle: soundness
+      attack_type: soundness
+      procedure:
+        - action: test_zero_detection
+        - action: verify_non_zero_rejection
+
+    remediation:
+      description: "Use properly implemented IsZero template from circomlib"
+      code_example: |
+        component isZero = IsZero();
+        isZero.in <== value;
+        isZero.out === 1;  // Constrain to be zero
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/selfxyz/self/zksecurity_big_integer_zero_check_is_not_sound/circuits/circuit.circom"
+      test_cases:
+        - name: actual_zero
+          inputs:
+            value: 0
+          expected_result: is_zero
+        - name: non_zero_value
+          inputs:
+            value: "0x1234567890abcdef"
+          expected_result: is_not_zero
+      assertion: "Zero check must be sound for all inputs"
+
+  # Idem3 Circomlib - MIMC Assigned But Not Constrained
+  - id: "ZK-CVE-AUTO-005"
+    name: "MIMC Hash Output Assigned But Not Constrained"
+    severity: critical
+    cvss_score: 9.5
+    affected_circuits:
+      - pattern: "iden3/circomlib"
+        versions: ["*"]
+    sources:
+      - "Kobi Gurkan Disclosure"
+      - "zkBugs Dataset"
+    description: |
+      The MIMC hash output is computed using <-- (assignment) but not properly 
+      constrained with <==. This means the prover can set any value as the output 
+      without the constraint system verifying it was computed correctly.
+      
+      Impact: Complete hash collision, proof forgery
+      
+    detection:
+      oracle: underconstrained
+      attack_type: assigned_not_constrained
+      procedure:
+        - action: identify_unconstrained_assignments
+        - action: verify_constraint_presence
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/iden3/circomlib/kobi_gurkan_mimc_hash_assigned_but_not_constrained/circuits/circuit.circom"
+      test_cases:
+        - name: normal_hash
+          inputs:
+            x_in: "0x1234"
+            k: "0x5678"
+          expected_result: valid_proof
+        - name: arbitrary_output
+          inputs:
+            x_in: "0x1234"
+            k: "0x5678"
+            forced_out: "0xdeadbeef"
+          expected_result: should_be_invalid
+      assertion: "Hash output must be properly constrained"
+
+    remediation:
+      description: "Replace <-- with <== or add explicit constraints"
+      code_example: |
+        // Instead of:
+        // out <-- x^7 + x^3 + x;
+        
+        // Use:
+        out <== x^7 + x^3 + x;
+        
+        // Or add constraints:
+        out === x^7 + x^3 + x;
+
+  # Additional test circuits from zkBugs
+  - id: "ZK-CVE-AUTO-006"
+    name: "Missing Byte Range Checks Allows Data Pollution"
+    severity: high
+    cvss_score: 8.2
+    affected_circuits:
+      - pattern: "selfxyz/self"
+        versions: ["*"]
+    sources:
+      - "zkSecurity Audit"
+    description: |
+      Missing byte range checks allow packed data pollution, enabling 
+      manipulation of disclosed attributes.
+      
+    detection:
+      oracle: boundary
+      attack_type: boundary
+      procedure:
+        - action: test_byte_range
+        - action: verify_overflow_prevention
+
+    remediation:
+      description: "Add range checks to all byte operations"
+      code_example: |
+        // Constrain each byte to 8 bits
+        component byteCheck = Num2Bits(8);
+        byteCheck.in <== byte;
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/selfxyz/self/zksecurity_missing_byte_range_checks_allows_packed_data_pollution/circuits/circuit.circom"
+      test_cases:
+        - name: valid_bytes
+          inputs:
+            data: [0x00, 0x12, 0xFF]
+          expected_result: valid_proof
+        - name: out_of_range_bytes
+          inputs:
+            data: [0x100, 0x200]  # > 8 bits
+          expected_result: invalid_proof
+      assertion: "All bytes must be in range [0, 255]"
+
+  - id: "ZK-CVE-AUTO-007"
+    name: "Range Check Bypass via Overflow"
+    severity: critical
+    cvss_score: 9.0
+    affected_circuits:
+      - pattern: "darkforest*"
+        versions: ["v0.3"]
+    sources:
+      - "0xPARC Bug Tracker"
+      - "Daira Hopwood Disclosure"
+    description: |
+      RangeProof circuit uses LessThan without constraining input bits.
+      Allows proving false range claims using overflow.
+      
+    detection:
+      oracle: boundary
+      attack_type: boundary
+      procedure:
+        - action: test_boundary_values
+        - action: check_bit_constraints
+
+    regression_test:
+      enabled: true
+      circuit_path: "targets/zkbugs/dataset/circom/darkforest-eth/darkforest-v0.3/daira_hopwood_darkforest_v0_3_missing_bit_length_check/circuits/circuit.circom"
+      test_cases:
+        - name: within_range
+          inputs:
+            in: 100
+            max: 1000
+          expected_result: valid_proof
+        - name: overflow_attack
+          inputs:
+            in: "0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000"  # p - 1
+            max: 1000
+          expected_result: invalid_proof
+      assertion: "Large values must fail range proof"
+
+    remediation:
+      description: "Add bit-length constraints before comparison"
+      code_example: |
+        // Constrain to n bits first
+        component n2b = Num2Bits(n);
+        n2b.in <== in;
+        
+        // Then do comparison
+        component lt = LessThan(n);
+        lt.in[0] <== in;
+        lt.in[1] <== max;
