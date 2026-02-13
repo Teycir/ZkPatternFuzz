@@ -1,0 +1,16 @@
+attacks:
+- config:
+    max_execution_time_ms: 300000
+    witness_pairs: 5000
+  type: underconstrained
+campaign:
+  name: 'Validation: Soundness failure due to 0 value not enforced'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/bellperson/lurk-lab/lurk-rs/inference_Soundness_failure_due_to_0_value_not_enforced
+    framework: bellperson
+  version: '1.0'

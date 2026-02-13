@@ -1,0 +1,17 @@
+attacks:
+- config:
+    max_execution_time_ms: 300000
+    witness_pairs: 5000
+  type: underconstrained
+campaign:
+  name: "Validation: ChainId is not mapped to it\u2019s corresponding RLP Tag in Tx\
+    \ Circuit"
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/halo2/scroll-tech/zkevm-circuits/zellic_ChainId_is_not_mapped_to_its_corresponding_RLP_Tag_in_Tx_Circuit
+    framework: halo2
+  version: '1.0'

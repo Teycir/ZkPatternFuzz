@@ -1,0 +1,17 @@
+attacks:
+- config:
+    max_execution_time_ms: 300000
+    witness_pairs: 5000
+  type: underconstrained
+campaign:
+  name: 'Validation: The sv_address is not constrained to be equal throughout a single
+    transaction'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/halo2/scroll-tech/zkevm-circuits/zellic_The_sv_address_is_not_constrained_to_be_equal_throughout_a_single_transaction
+    framework: halo2
+  version: '1.0'

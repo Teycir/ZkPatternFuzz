@@ -1,0 +1,17 @@
+attacks:
+- config:
+    max_execution_time_ms: 300000
+    witness_pairs: 5000
+  type: underconstrained
+campaign:
+  name: 'Validation: The CallDataRLC value in the fixed assignments is not validated
+    against the actual calldata in Tx Circuit'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/halo2/scroll-tech/zkevm-circuits/zellic_The_CallDataRLC_value_in_the_fixed_assignments_is_not_validated_against_the_actual_calldata_in_Tx_Circuit
+    framework: halo2
+  version: '1.0'

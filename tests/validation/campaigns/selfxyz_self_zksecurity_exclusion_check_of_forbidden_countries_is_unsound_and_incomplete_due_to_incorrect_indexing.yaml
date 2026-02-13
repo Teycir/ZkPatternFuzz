@@ -1,0 +1,14 @@
+attacks:
+- type: underconstrained
+campaign:
+  name: 'Validation: Exclusion Check Of Forbidden Countries Is Unsound And Incomplete
+    Due To Incorrect Indexing'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/circom/selfxyz/self/zksecurity_exclusion_check_of_forbidden_countries_is_unsound_and_incomplete_due_to_incorrect_indexing/circuits/bytes.circom
+    framework: circom
+  version: '1.0'

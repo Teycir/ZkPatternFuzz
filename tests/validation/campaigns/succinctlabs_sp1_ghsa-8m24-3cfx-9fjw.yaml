@@ -1,0 +1,13 @@
+attacks:
+- type: underconstrained
+campaign:
+  name: 'Validation: Insufficient observation of cumulative sum'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/plonky3/succinctlabs/sp1/ghsa_insufficient_observation_cumulative_sum
+    framework: plonky3
+  version: '1.0'

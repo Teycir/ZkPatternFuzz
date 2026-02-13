@@ -1,0 +1,16 @@
+attacks:
+- config:
+    max_execution_time_ms: 300000
+    witness_pairs: 5000
+  type: underconstrained
+campaign:
+  name: 'Validation: Unsafe use of Num2Bits in multiple circuits'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/circom/iden3/circuits/trailofbits_unsafe_use_of_num2bits_in_multiple_circuits/circuits/circuit.circom
+    framework: circom
+  version: '1.0'

@@ -1,0 +1,16 @@
+attacks:
+- config:
+    max_execution_time_ms: 300000
+    witness_pairs: 5000
+  type: underconstrained
+campaign:
+  name: 'Validation: Highest tx_id must be equal to cum_num_txs in Tx Circuit'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/halo2/scroll-tech/zkevm-circuits/zellic_Highest_tx_id_must_be_equal_to_cum_num_txs_in_Tx_Circuit
+    framework: halo2
+  version: '1.0'

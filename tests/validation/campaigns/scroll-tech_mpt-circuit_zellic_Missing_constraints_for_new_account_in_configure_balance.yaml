@@ -1,0 +1,16 @@
+attacks:
+- config:
+    max_execution_time_ms: 300000
+    witness_pairs: 5000
+  type: underconstrained
+campaign:
+  name: 'Validation: Missing constraints for new account in configure_balance'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/halo2/scroll-tech/mpt-circuit/zellic_Missing_constraints_for_new_account_in_configure_balance
+    framework: halo2
+  version: '1.0'

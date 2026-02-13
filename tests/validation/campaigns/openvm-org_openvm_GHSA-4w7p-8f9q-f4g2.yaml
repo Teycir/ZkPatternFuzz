@@ -1,0 +1,14 @@
+attacks:
+- type: underconstrained
+campaign:
+  name: 'Validation: Plonky3 missing final polynomial degree check and randomness
+    in FRI verifier'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/plonky3/openvm-org/openvm/ghsa_plonky3_fri_verifier_vulnerabilities
+    framework: plonky3
+  version: '1.0'

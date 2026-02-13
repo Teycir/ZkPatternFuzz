@@ -1,0 +1,17 @@
+attacks:
+- config:
+    max_execution_time_ms: 300000
+    witness_pairs: 5000
+  type: underconstrained
+campaign:
+  name: 'Validation: Transition to new RLP instance in the state machine is un- derconstrained
+    in RLP Circuit'
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      timeout_seconds: 600
+  target:
+    circuit_path: /home/teycir/Repos/ZkPatternFuzz/targets/zkbugs/dataset/halo2/scroll-tech/zkevm-circuits/zellic_Transition_to_new_RLP_instance_in_the_state_machine_is_un__derconstrained_in_RLP_Circuit
+    framework: halo2
+  version: '1.0'
