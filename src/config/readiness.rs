@@ -227,6 +227,14 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
 
     // 1. Check strict_backend
     let additional = &config.campaign.parameters.additional;
+    let evidence_mode = additional
+        .get("evidence_mode")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let engagement_strict = additional
+        .get("engagement_strict")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(evidence_mode);
     let strict_backend = additional
         .get("strict_backend")
         .and_then(|v| v.as_bool())
@@ -244,7 +252,12 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
 
     // 2. Check invariants
     let invariants = config.get_invariants();
-    if invariants.is_empty() {
+    let has_chain_assertions = config
+        .chains
+        .iter()
+        .any(|c| !c.assertions.is_empty());
+
+    if invariants.is_empty() && !has_chain_assertions {
         warnings.push(
             ReadinessWarning::critical(
                 "Invariants",
@@ -262,6 +275,17 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
                 ));
             }
         }
+    }
+
+    // If Mode 3 chains exist, they must have assertions; otherwise chain fuzzing cannot produce findings.
+    if !config.chains.is_empty() && !has_chain_assertions {
+        warnings.push(
+            ReadinessWarning::critical(
+                "Chains",
+                "Chains are defined but no cross-step assertions are configured (Mode 3 would be silent)",
+            )
+            .with_fix("Add `assertions:` to each chain (or remove `chains:` and use v2 invariants)"),
+        );
     }
 
     // 4. Check symbolic execution depth
@@ -303,15 +327,23 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     let oracle_validation = additional
         .get("oracle_validation")
         .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+        .unwrap_or(evidence_mode);
 
     if !oracle_validation {
         warnings.push(
-            ReadinessWarning::medium(
-                "Oracles",
-                "oracle_validation is false - findings may have higher false positive rate",
-            )
-            .with_fix("Set oracle_validation: true"),
+            if engagement_strict {
+                ReadinessWarning::critical(
+                    "Oracles",
+                    "oracle_validation is false - strict engagement requires validated findings",
+                )
+                .with_fix("Set oracle_validation: true")
+            } else {
+                ReadinessWarning::medium(
+                    "Oracles",
+                    "oracle_validation is false - findings may have higher false positive rate",
+                )
+                .with_fix("Set oracle_validation: true")
+            },
         );
     }
 
@@ -347,24 +379,45 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         ));
     }
 
-    // 9. Check attacks configuration
-    let has_soundness = config
-        .attacks
-        .iter()
-        .any(|a| matches!(a.attack_type, crate::config::AttackType::Soundness));
-    let has_underconstrained = config
-        .attacks
-        .iter()
-        .any(|a| matches!(a.attack_type, crate::config::AttackType::Underconstrained));
+    // 9. Check attacks configuration (skip for chain-only campaigns)
+    if !config.attacks.is_empty() {
+        let has_soundness = config
+            .attacks
+            .iter()
+            .any(|a| matches!(a.attack_type, crate::config::AttackType::Soundness));
+        let has_underconstrained = config
+            .attacks
+            .iter()
+            .any(|a| matches!(a.attack_type, crate::config::AttackType::Underconstrained));
 
-    if !has_soundness && !has_underconstrained {
-        warnings.push(
-            ReadinessWarning::high(
-                "Attacks",
-                "No soundness or underconstrained attacks configured",
-            )
-            .with_fix("Add soundness and underconstrained attack types"),
-        );
+        if engagement_strict {
+            if !has_soundness {
+                warnings.push(
+                    ReadinessWarning::critical(
+                        "Attacks",
+                        "Missing required attack: soundness (strict engagement requires it)",
+                    )
+                    .with_fix("Add attack type: soundness"),
+                );
+            }
+            if !has_underconstrained {
+                warnings.push(
+                    ReadinessWarning::critical(
+                        "Attacks",
+                        "Missing required attack: underconstrained (strict engagement requires it)",
+                    )
+                    .with_fix("Add attack type: underconstrained"),
+                );
+            }
+        } else if !has_soundness && !has_underconstrained {
+            warnings.push(
+                ReadinessWarning::high(
+                    "Attacks",
+                    "No soundness or underconstrained attacks configured",
+                )
+                .with_fix("Add soundness and underconstrained attack types"),
+            );
+        }
     }
 
     // 10. Check forge attempts
@@ -378,8 +431,13 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
 
             if forge_attempts == 0 {
                 warnings.push(
-                    ReadinessWarning::high("Attacks", "Soundness attack has 0 forge_attempts")
-                        .with_fix("Set forge_attempts >= 1000"),
+                    if engagement_strict {
+                        ReadinessWarning::critical("Attacks", "Soundness attack has 0 forge_attempts")
+                            .with_fix("Set forge_attempts >= 1000")
+                    } else {
+                        ReadinessWarning::high("Attacks", "Soundness attack has 0 forge_attempts")
+                            .with_fix("Set forge_attempts >= 1000")
+                    },
                 );
             } else if forge_attempts < 100 {
                 warnings.push(
@@ -427,6 +485,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     let max_iterations = additional
         .get("max_iterations")
         .and_then(|v| v.as_u64())
+        .or_else(|| additional.get("fuzzing_iterations").and_then(|v| v.as_u64()))
         .unwrap_or(1000);
 
     if max_iterations < 10_000 {
@@ -448,11 +507,6 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     }
 
     // 14. Check evidence mode consistency
-    let evidence_mode = additional
-        .get("evidence_mode")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
     if evidence_mode && !oracle_validation {
         warnings.push(
             ReadinessWarning::high(
@@ -463,30 +517,67 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         );
     }
 
-    // 15. Check novel oracle attacks are enabled
-    let has_constraint_inference = config.attacks.iter().any(|a| {
-        matches!(
-            a.attack_type,
-            crate::config::AttackType::ConstraintInference
-        )
-    });
-    let has_metamorphic = config
-        .attacks
-        .iter()
-        .any(|a| matches!(a.attack_type, crate::config::AttackType::Metamorphic));
-    let has_witness_collision = config
-        .attacks
-        .iter()
-        .any(|a| matches!(a.attack_type, crate::config::AttackType::WitnessCollision));
-
-    if !has_constraint_inference && !has_metamorphic && !has_witness_collision {
-        warnings.push(
-            ReadinessWarning::medium(
-                "Attacks",
-                "No novel oracle attacks (constraint_inference, metamorphic, witness_collision)",
+    // 15. Check novel oracle attacks are enabled (skip for chain-only campaigns)
+    if !config.attacks.is_empty() {
+        let has_constraint_inference = config.attacks.iter().any(|a| {
+            matches!(
+                a.attack_type,
+                crate::config::AttackType::ConstraintInference
             )
-            .with_fix("Add novel oracle attacks for deeper bug discovery"),
-        );
+        });
+        let has_metamorphic = config
+            .attacks
+            .iter()
+            .any(|a| matches!(a.attack_type, crate::config::AttackType::Metamorphic));
+        let has_constraint_slice = config
+            .attacks
+            .iter()
+            .any(|a| matches!(a.attack_type, crate::config::AttackType::ConstraintSlice));
+        let has_spec_inference = config
+            .attacks
+            .iter()
+            .any(|a| matches!(a.attack_type, crate::config::AttackType::SpecInference));
+        let has_witness_collision = config
+            .attacks
+            .iter()
+            .any(|a| matches!(a.attack_type, crate::config::AttackType::WitnessCollision));
+
+        if engagement_strict {
+            let required = [
+                (has_constraint_inference, "constraint_inference"),
+                (has_metamorphic, "metamorphic"),
+                (has_constraint_slice, "constraint_slice"),
+                (has_spec_inference, "spec_inference"),
+                (has_witness_collision, "witness_collision"),
+            ];
+            for (present, name) in required {
+                if !present {
+                    warnings.push(
+                        ReadinessWarning::critical(
+                            "Attacks",
+                            &format!(
+                                "Missing required novel attack: {} (strict engagement requires all pattern attacks)",
+                                name
+                            ),
+                        )
+                        .with_fix("Enable all novel oracle attacks in the campaign attacks list"),
+                    );
+                }
+            }
+        } else if !has_constraint_inference
+            && !has_metamorphic
+            && !has_constraint_slice
+            && !has_spec_inference
+            && !has_witness_collision
+        {
+            warnings.push(
+                ReadinessWarning::medium(
+                    "Attacks",
+                    "No novel oracle attacks (constraint_inference, metamorphic, constraint_slice, spec_inference, witness_collision)",
+                )
+                .with_fix("Add novel oracle attacks for deeper bug discovery"),
+            );
+        }
     }
 
     // 16. Check timeout configuration
@@ -516,13 +607,23 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
 
             if !has_public_config {
                 warnings.push(
-                    ReadinessWarning::high(
-                        "Attacks",
-                        "Underconstrained attack missing public input configuration",
-                    )
-                    .with_fix(
-                        "Add public_input_names or public_input_positions to underconstrained attack config",
-                    ),
+                    if engagement_strict {
+                        ReadinessWarning::critical(
+                            "Attacks",
+                            "Underconstrained attack missing public input configuration (strict engagement requires explicit public wiring)",
+                        )
+                        .with_fix(
+                            "Add public_input_names or public_input_positions to underconstrained attack config",
+                        )
+                    } else {
+                        ReadinessWarning::high(
+                            "Attacks",
+                            "Underconstrained attack missing public input configuration",
+                        )
+                        .with_fix(
+                            "Add public_input_names or public_input_positions to underconstrained attack config",
+                        )
+                    },
                 );
             }
         }

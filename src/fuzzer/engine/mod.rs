@@ -587,6 +587,10 @@ impl FuzzingEngine {
 
         let additional = &self.config.campaign.parameters.additional;
         let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        // Engagement contract: in evidence mode, fail fast on misconfiguration that would cause
+        // patterns/attacks to be silently skipped.
+        let engagement_strict =
+            Self::additional_bool(additional, "engagement_strict").unwrap_or(evidence_mode);
         let mode_label = if evidence_mode { "evidence" } else { "run" };
 
         tracing::warn!(
@@ -668,7 +672,7 @@ impl FuzzingEngine {
         self.update_power_scheduler_globals();
 
         // Run attacks
-        for attack_config in &self.config.attacks.clone() {
+        for (attack_idx, attack_config) in self.config.attacks.clone().into_iter().enumerate() {
             tracing::warn!(
                 "MILESTONE attack_start target={} type={:?}",
                 self.config.campaign.name,
@@ -679,8 +683,9 @@ impl FuzzingEngine {
             }
 
             let findings_before = self.core.findings().read().unwrap().len();
-            let (plugin_name, plugin_explicit) = Self::resolve_attack_plugin(attack_config);
+            let (plugin_name, plugin_explicit) = Self::resolve_attack_plugin(&attack_config);
             let mut plugin_ran = false;
+            let mut attack_executed = false;
 
             if let Some(name) = plugin_name.as_deref() {
                 let lookup = name.trim();
@@ -693,7 +698,17 @@ impl FuzzingEngine {
                     let samples = Self::attack_samples(&attack_config.config);
                     self.add_attack_findings(plugin, samples, progress);
                     plugin_ran = true;
+                    attack_executed = true;
                 } else {
+                    if plugin_explicit && engagement_strict {
+                        anyhow::bail!(
+                            "Engagement contract violation: attack[{}] specifies plugin '{}' \
+                             but it was not found in the registry. In strict evidence mode this \
+                             is a hard error because it would silently skip intended patterns.",
+                            attack_idx,
+                            lookup
+                        );
+                    }
                     tracing::warn!("Attack plugin '{}' not found in registry", lookup);
                 }
             }
@@ -703,50 +718,62 @@ impl FuzzingEngine {
                     AttackType::Underconstrained => {
                         self.run_underconstrained_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::Soundness => {
                         self.run_soundness_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::ArithmeticOverflow => {
                         self.run_arithmetic_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::Collision => {
                         self.run_collision_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::Boundary => {
                         self.run_boundary_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::VerificationFuzzing => {
                         self.run_verification_fuzzing_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::WitnessFuzzing => {
                         self.run_witness_fuzzing_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::Differential => {
                         self.run_differential_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::InformationLeakage => {
                         self.run_information_leakage_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::TimingSideChannel => {
                         self.run_timing_sidechannel_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::CircuitComposition => {
                         self.run_circuit_composition_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::RecursiveProof => {
                         self.run_recursive_proof_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     // Phase 4: Novel Oracle Attacks - Now Implemented!
                     AttackType::ConstraintInference => {
@@ -763,22 +790,27 @@ impl FuzzingEngine {
                                 return Err(e);
                             }
                         }
+                        attack_executed = true;
                     }
                     AttackType::Metamorphic => {
                         self.run_metamorphic_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::ConstraintSlice => {
                         self.run_constraint_slice_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::SpecInference => {
                         self.run_spec_inference_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     AttackType::WitnessCollision => {
                         self.run_witness_collision_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
                     }
                     _ => {
                         tracing::warn!(
@@ -787,6 +819,16 @@ impl FuzzingEngine {
                         );
                     }
                 }
+            }
+
+            if engagement_strict && !attack_executed {
+                anyhow::bail!(
+                    "Engagement contract violation: attack[{}] type {:?} is configured but did not execute \
+                     (unimplemented or skipped). In strict evidence mode, this run is invalid because it \
+                     would silently skip attack patterns.",
+                    attack_idx,
+                    attack_config.attack_type
+                );
             }
 
             let findings_after = self.core.findings().read().unwrap().len();

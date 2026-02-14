@@ -375,6 +375,10 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             serde_yaml::Value::Bool(true),
         );
         config.campaign.parameters.additional.insert(
+            "engagement_strict".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+        config.campaign.parameters.additional.insert(
             "strict_backend".to_string(),
             serde_yaml::Value::Bool(true),
         );
@@ -390,6 +394,16 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "fuzzing_timeout_seconds".to_string(),
             serde_yaml::Value::Number(serde_yaml::Number::from(t)),
         );
+    }
+
+    // Pre-flight readiness check for strict evidence engagements.
+    if options.require_invariants {
+        println!();
+        let readiness = zk_fuzzer::config::check_0day_readiness(&config);
+        print!("{}", readiness.format());
+        if !readiness.ready_for_evidence {
+            anyhow::bail!("Campaign has critical issues; refusing to start strict evidence run");
+        }
     }
 
     // Prevent multi-process collisions on the same output dir (reports/corpus/report.json, etc.).
@@ -701,7 +715,7 @@ fn truncate_str(s: &str, max_len: usize) -> String {
 /// Run a chain-focused fuzzing campaign (Mode 3: Deepest)
 async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyhow::Result<()> {
     use colored::*;
-    use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics};
+    use zk_fuzzer::chain_fuzzer::{ChainCorpus, ChainFinding, DepthMetrics};
     use zk_fuzzer::config::parse_chains;
     use zk_fuzzer::fuzzer::FuzzingEngine;
     use zk_fuzzer::reporting::FuzzReport;
@@ -748,6 +762,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         serde_yaml::Value::Bool(true),
     );
     config.campaign.parameters.additional.insert(
+        "engagement_strict".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    config.campaign.parameters.additional.insert(
         "strict_backend".to_string(),
         serde_yaml::Value::Bool(true),
     );
@@ -759,6 +777,14 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         "chain_iterations".to_string(),
         serde_yaml::Value::Number(serde_yaml::Number::from(options.iterations)),
     );
+
+    // Pre-flight readiness check (chains need assertions; strict mode blocks silent runs).
+    println!();
+    let readiness = zk_fuzzer::config::check_0day_readiness(&config);
+    print!("{}", readiness.format());
+    if !readiness.ready_for_evidence {
+        anyhow::bail!("Campaign has critical issues; refusing to start strict chain run");
+    }
 
     // Print chain-specific banner
     println!();
@@ -794,6 +820,15 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         return Ok(());
     }
 
+    let output_dir = std::path::PathBuf::from(&config.reporting.output_dir);
+    let corpus_path = output_dir.join("chain_corpus.json");
+    let baseline_corpus = ChainCorpus::load(&corpus_path).unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
+    let baseline_total_entries = baseline_corpus.len();
+    let baseline_unique_coverage_bits: usize = {
+        use std::collections::HashSet;
+        baseline_corpus.entries().iter().map(|e| e.coverage_bits).collect::<HashSet<_>>().len()
+    };
+
     // Create engine directly
     let mut engine = FuzzingEngine::new(config.clone(), options.seed, options.workers)?;
     
@@ -812,6 +847,67 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let chain_findings: Vec<ChainFinding> = engine.run_chains(&chains, progress.as_ref()).await;
 
+    // Load chain corpus for quality/coverage metrics (persistent across runs).
+    let final_corpus = ChainCorpus::load(&corpus_path).unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
+    let final_total_entries = final_corpus.len();
+    let final_unique_coverage_bits: usize = {
+        use std::collections::HashSet;
+        final_corpus.entries().iter().map(|e| e.coverage_bits).collect::<HashSet<_>>().len()
+    };
+    let final_max_depth = final_corpus
+        .entries()
+        .iter()
+        .map(|e| e.depth_reached)
+        .max()
+        .unwrap_or(0);
+
+    // Engagement contract for Mode 3: refuse to report a "clean" run when exploration is too narrow.
+    let engagement_strict = config
+        .campaign
+        .parameters
+        .additional
+        .get_bool("engagement_strict")
+        .unwrap_or(true);
+    let min_unique_coverage_bits = config
+        .campaign
+        .parameters
+        .additional
+        .get_usize("engagement_min_chain_unique_coverage_bits")
+        .unwrap_or(2);
+    let min_completed_per_chain = config
+        .campaign
+        .parameters
+        .additional
+        .get_usize("engagement_min_chain_completed_per_chain")
+        .unwrap_or(1);
+
+    let mut quality_failures: Vec<String> = Vec::new();
+    for chain in &chains {
+        let entries: Vec<_> = final_corpus
+            .entries()
+            .iter()
+            .filter(|e| e.spec_name == chain.name)
+            .collect();
+        let completed = entries.len();
+        let unique_cov: usize = {
+            use std::collections::HashSet;
+            entries.iter().map(|e| e.coverage_bits).collect::<HashSet<_>>().len()
+        };
+        if completed < min_completed_per_chain {
+            quality_failures.push(format!(
+                "chain '{}' completed_traces={} < min_completed_per_chain={}",
+                chain.name, completed, min_completed_per_chain
+            ));
+        }
+        if unique_cov < min_unique_coverage_bits {
+            quality_failures.push(format!(
+                "chain '{}' unique_coverage_bits={} < min_unique_coverage_bits={}",
+                chain.name, unique_cov, min_unique_coverage_bits
+            ));
+        }
+    }
+    let run_valid = quality_failures.is_empty();
+
     // Compute metrics
     let metrics = DepthMetrics::new(chain_findings.clone());
     let summary = metrics.summary();
@@ -826,6 +922,11 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     println!("  Total Chain Findings:  {}", summary.total_findings);
     println!("  Mean L_min (D):        {:.2}", summary.d_mean);
     println!("  P(L_min >= 2):         {:.1}%", summary.p_deep * 100.0);
+    println!();
+    println!("{}", "CORPUS / EXPLORATION METRICS".bright_yellow().bold());
+    println!("  Corpus entries:            {} (Δ {})", final_total_entries, final_total_entries.saturating_sub(baseline_total_entries));
+    println!("  Unique coverage bits:      {} (Δ {})", final_unique_coverage_bits, final_unique_coverage_bits.saturating_sub(baseline_unique_coverage_bits));
+    println!("  Max depth reached:         {}", final_max_depth);
 
     if !summary.depth_distribution.is_empty() {
         println!("\n{}", "DEPTH DISTRIBUTION".bright_yellow().bold());
@@ -867,13 +968,22 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 config_path, options.seed.unwrap_or(42));
         }
     } else {
-        println!("\n{}", "  ✓ No chain vulnerabilities found!".bright_green().bold());
+        if run_valid {
+            println!("\n{}", "  ✓ No chain vulnerabilities found!".bright_green().bold());
+        } else {
+            println!(
+                "\n{}",
+                "  ✗ Run invalid: exploration too narrow to treat as 'clean'".bright_red().bold()
+            );
+            for failure in &quality_failures {
+                println!("     - {}", failure);
+            }
+        }
     }
 
     println!("\n{}", "═".repeat(60).bright_magenta());
 
     // Save reports
-    let output_dir = std::path::PathBuf::from(&config.reporting.output_dir);
     std::fs::create_dir_all(&output_dir)?;
 
     // Save chain findings as JSON
@@ -882,11 +992,29 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         "campaign_name": config.campaign.name,
         "mode": "chain_fuzzing",
         "timestamp": chrono::Utc::now().to_rfc3339(),
+        "engagement": {
+            "strict": engagement_strict,
+            "valid_run": run_valid,
+            "failures": quality_failures,
+            "thresholds": {
+                "min_unique_coverage_bits": min_unique_coverage_bits,
+                "min_completed_per_chain": min_completed_per_chain,
+            },
+        },
         "metrics": {
             "total_findings": summary.total_findings,
             "d_mean": summary.d_mean,
             "p_deep": summary.p_deep,
             "depth_distribution": summary.depth_distribution,
+        },
+        "corpus_metrics": {
+            "corpus_entries": final_total_entries,
+            "unique_coverage_bits": final_unique_coverage_bits,
+            "max_depth": final_max_depth,
+            "baseline": {
+                "corpus_entries": baseline_total_entries,
+                "unique_coverage_bits": baseline_unique_coverage_bits,
+            }
         },
         "chain_findings": chain_findings,
     });
@@ -899,6 +1027,35 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     md.push_str(&format!("# Chain Fuzzing Report: {}\n\n", config.campaign.name));
     md.push_str("**Mode:** Multi-Step Chain Fuzzing (Mode 3)\n");
     md.push_str(&format!("**Generated:** {}\n\n", chrono::Utc::now().to_rfc3339()));
+
+    md.push_str("## Engagement Validation\n\n");
+    md.push_str(&format!("**Strict:** {}\n", engagement_strict));
+    md.push_str(&format!("**Valid Run:** {}\n", if run_valid { "yes" } else { "no" }));
+    md.push_str(&format!(
+        "**Thresholds:** min_unique_coverage_bits={}, min_completed_per_chain={}\n\n",
+        min_unique_coverage_bits, min_completed_per_chain
+    ));
+
+    md.push_str("### Corpus / Exploration Metrics\n\n");
+    md.push_str(&format!(
+        "- Corpus entries: {} (delta {})\n",
+        final_total_entries,
+        final_total_entries.saturating_sub(baseline_total_entries)
+    ));
+    md.push_str(&format!(
+        "- Unique coverage bits: {} (delta {})\n",
+        final_unique_coverage_bits,
+        final_unique_coverage_bits.saturating_sub(baseline_unique_coverage_bits)
+    ));
+    md.push_str(&format!("- Max depth: {}\n\n", final_max_depth));
+
+    if !quality_failures.is_empty() {
+        md.push_str("### Failures\n\n");
+        for failure in &quality_failures {
+            md.push_str(&format!("- {}\n", failure));
+        }
+        md.push('\n');
+    }
 
     md.push_str("## Depth Metrics\n\n");
     md.push_str("| Metric | Value |\n");
@@ -957,6 +1114,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     // Exit with error code if critical findings
     if chain_findings.iter().any(|f| f.finding.severity.to_lowercase() == "critical") {
         std::process::exit(1);
+    }
+
+    if engagement_strict && !run_valid {
+        anyhow::bail!("Strict chain run failed engagement contract; see chain_report.json for details");
     }
 
     Ok(())

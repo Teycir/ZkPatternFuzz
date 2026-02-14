@@ -145,15 +145,14 @@ impl ChainRunner {
                 step_trace = step_trace.with_time(step_time);
 
                 // Add constraint coverage
-                if !result.coverage.satisfied_constraints.is_empty() {
-                    step_trace = step_trace.with_constraints(
-                        result
-                            .coverage
-                            .satisfied_constraints
-                            .iter()
-                            .cloned()
-                            .collect(),
-                    );
+                let constraints = if !result.coverage.evaluated_constraints.is_empty() {
+                    &result.coverage.evaluated_constraints
+                } else {
+                    &result.coverage.satisfied_constraints
+                };
+                if !constraints.is_empty() {
+                    step_trace =
+                        step_trace.with_constraints(constraints.iter().cloned().collect());
                 }
 
                 trace.add_step(step_trace);
