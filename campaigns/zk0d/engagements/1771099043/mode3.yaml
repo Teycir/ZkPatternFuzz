@@ -1,0 +1,109 @@
+---
+# Mode 3 (Chains) cross-circuit campaign:
+#   1) Run standalone Nullify() wrapper (with pass-through outputs).
+#   2) Wire its outputs into credentialAtomicQueryV3-16-16-64 inputs.
+#   3) Assert the nullifier outputs match.
+
+campaign:
+  name: "zk0d_credentialAtomicQueryV3_nullify_cross_circuit_mode3_deep_eng_1771099043"
+  version: "2.0"
+  target:
+    framework: "circom"
+    circuit_path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/circuits/credentialAtomicQueryV3-16-16-64.circom"
+    main_component: "main"
+  parameters:
+    field: "bn254"
+    max_constraints: 120000
+    timeout_seconds: 1200
+    build_dir_base: "./build/zk0d"
+
+    # Chain mode needs a valid baseline for downstream circuits; otherwise the second step will
+    # often fail and the chain never completes.
+    #
+    # These files are flattened scalar vectors (public first, then private) in Circom input order.
+    chain_seed_inputs:
+      nullify: "campaigns/zk0d/nullify_passthrough_wrapper_seed_flat.json"
+      query: "campaigns/zk0d/credentialAtomicQueryV3_16_16_64_seed_flat.json"
+
+    # Deep pass: mutate verifier/session and also query operator sizing knobs.
+    chain_mutate_indices:
+      nullify:
+        - 3
+        - 4
+      query:
+        - 6
+        - 71
+        - 74
+
+    # Flattened campaign.parameters map (do not nest under `additional:`)
+    strict_backend: true
+    per_exec_isolation: false
+    evidence_allow_no_isolation: true
+    circom_skip_compile_if_artifacts: true
+    circom_skip_constraint_check: true
+    circom_auto_setup_keys: false
+    symbolic_enabled: true
+    constraint_guided_enabled: true
+
+chains:
+  - name: "nullify_to_query"
+    description: "Cross-circuit: Nullify() -> credentialAtomicQueryV3 nullifier output."
+    circuits:
+      nullify:
+        path: "targets/zk0d/wrappers/nullify_passthrough_wrapper.circom"
+        main_component: "main"
+        framework: "circom"
+      query:
+        path: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/circuits/circuits/credentialAtomicQueryV3-16-16-64.circom"
+        main_component: "main"
+        framework: "circom"
+    steps:
+      - circuit_ref: "nullify"
+        input_wiring: fresh
+        label: "Nullify seed inputs"
+      - circuit_ref: "query"
+        input_wiring:
+          from_prior_output:
+            step: 0
+            mapping:
+              # Query input indices are 0-based in the flattened scalar input vector:
+              # claimSchema=6, verifierID=75, nullifierSessionID=76, userGenesisID=77, claimSubjectProfileNonce=79
+              - [0, 77] # genesisID_out -> query.userGenesisID
+              - [1, 79] # claimSubjectProfileNonce_out -> query.claimSubjectProfileNonce
+              - [2, 6]  # claimSchema_out -> query.claimSchema
+              - [3, 75] # verifierID_out -> query.verifierID
+              - [4, 76] # nullifierSessionID_out -> query.nullifierSessionID
+        label: "Query with wired nullify inputs"
+    assertions:
+      - name: "nullifier_matches"
+        relation: "step[0].out[5] == step[1].out[4]"
+        severity: "critical"
+        description: "Query nullifier must match standalone Nullify() output."
+      - name: "wired_genesis_id"
+        relation: "step[0].out[0] == step[1].in[77]"
+        severity: "high"
+        description: "Wiring check: userGenesisID sourced from step0."
+      - name: "wired_claim_schema"
+        relation: "step[0].out[2] == step[1].in[6]"
+        severity: "high"
+        description: "Wiring check: claimSchema sourced from step0."
+      - name: "wired_subject_nonce"
+        relation: "step[0].out[1] == step[1].in[79]"
+        severity: "high"
+        description: "Wiring check: claimSubjectProfileNonce sourced from step0."
+      - name: "wired_verifier_id"
+        relation: "step[0].out[3] == step[1].in[75]"
+        severity: "high"
+        description: "Wiring check: verifierID sourced from step0."
+      - name: "wired_session_id"
+        relation: "step[0].out[4] == step[1].in[76]"
+        severity: "high"
+        description: "Wiring check: nullifierSessionID sourced from step0."
+
+reporting:
+  output_dir: "./reports/zk0d/eng_1771099043/mode3"
+  formats:
+    - "json"
+    - "markdown"
+  include_poc: true
+  crash_reproduction: true
