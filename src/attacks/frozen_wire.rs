@@ -57,10 +57,7 @@ impl FrozenWireDetector {
             }
             success_count += 1;
             for (idx, output) in result.outputs.iter().enumerate() {
-                value_sets
-                    .entry(idx)
-                    .or_default()
-                    .insert(output.0);
+                value_sets.entry(idx).or_default().insert(output.0);
             }
         }
 

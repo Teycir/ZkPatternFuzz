@@ -153,9 +153,7 @@ mod tests {
         );
         multi.add_backend(
             Framework::Noir,
-            Arc::new(
-                FixtureCircuitExecutor::new("test", 2, 1).with_framework(Framework::Noir),
-            ),
+            Arc::new(FixtureCircuitExecutor::new("test", 2, 1).with_framework(Framework::Noir)),
         );
 
         let inputs = vec![FieldElement::zero(), FieldElement::one()];

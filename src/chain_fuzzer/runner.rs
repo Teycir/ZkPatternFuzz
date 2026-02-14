@@ -396,7 +396,10 @@ mod tests {
     #[test]
     fn test_chain_runner_wired_inputs() {
         let mut executors = HashMap::new();
-        executors.insert("deposit".to_string(), create_fixture_executor("deposit", 2, 2));
+        executors.insert(
+            "deposit".to_string(),
+            create_fixture_executor("deposit", 2, 2),
+        );
         executors.insert(
             "withdraw".to_string(),
             create_fixture_executor("withdraw", 2, 1),

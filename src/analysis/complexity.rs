@@ -287,7 +287,8 @@ mod tests {
     #[test]
     fn test_complexity_analyzer() {
         let analyzer = ComplexityAnalyzer::new();
-        let executor: Arc<dyn CircuitExecutor> = Arc::new(FixtureCircuitExecutor::new("test", 10, 2));
+        let executor: Arc<dyn CircuitExecutor> =
+            Arc::new(FixtureCircuitExecutor::new("test", 10, 2));
 
         let metrics = analyzer.analyze(&executor);
 

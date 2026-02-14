@@ -211,7 +211,10 @@ impl OpusAnalyzer {
     }
 
     /// Analyze a ZK project directory
-    pub fn analyze_project(&self, project_path: impl AsRef<Path>) -> anyhow::Result<Vec<GeneratedConfig>> {
+    pub fn analyze_project(
+        &self,
+        project_path: impl AsRef<Path>,
+    ) -> anyhow::Result<Vec<GeneratedConfig>> {
         let project_path = project_path.as_ref();
         tracing::info!("Analyzing ZK project: {}", project_path.display());
 
@@ -237,7 +240,10 @@ impl OpusAnalyzer {
     }
 
     /// Analyze a single circuit file
-    pub fn analyze_circuit(&self, circuit_path: impl AsRef<Path>) -> anyhow::Result<CircuitAnalysisResult> {
+    pub fn analyze_circuit(
+        &self,
+        circuit_path: impl AsRef<Path>,
+    ) -> anyhow::Result<CircuitAnalysisResult> {
         let circuit_path = circuit_path.as_ref();
         let source = std::fs::read_to_string(circuit_path)?;
         let framework = self.detect_framework(circuit_path)?;
@@ -255,7 +261,8 @@ impl OpusAnalyzer {
         let zero_day_hints = self.detect_zero_day_hints(&source, framework, &patterns);
 
         // Calculate attack priorities
-        let attack_priorities = self.calculate_attack_priorities(&patterns, &zero_day_hints, &complexity);
+        let attack_priorities =
+            self.calculate_attack_priorities(&patterns, &zero_day_hints, &complexity);
 
         // Detect main component
         let main_component = self.detect_main_component(&source, framework);
@@ -273,7 +280,10 @@ impl OpusAnalyzer {
     }
 
     /// Generate YAML configuration from analysis
-    pub fn generate_config(&self, analysis: &CircuitAnalysisResult) -> anyhow::Result<GeneratedConfig> {
+    pub fn generate_config(
+        &self,
+        analysis: &CircuitAnalysisResult,
+    ) -> anyhow::Result<GeneratedConfig> {
         let circuit_name = analysis
             .circuit_path
             .file_stem()
@@ -302,7 +312,7 @@ impl OpusAnalyzer {
             target_traits: self.build_target_traits(&analysis.patterns),
             invariants,
             schedule,
-            chains: Vec::new(),  // Mode 3: No auto-generated chains
+            chains: Vec::new(), // Mode 3: No auto-generated chains
             base: Some(FuzzConfig {
                 campaign: Campaign {
                     name: format!("Opus-Generated: {}", circuit_name),
@@ -391,7 +401,7 @@ impl OpusAnalyzer {
     /// Detect framework from file extension and content
     fn detect_framework(&self, path: &Path) -> anyhow::Result<Framework> {
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        
+
         match ext {
             "circom" => Ok(Framework::Circom),
             "nr" => Ok(Framework::Noir),
@@ -423,8 +433,9 @@ impl OpusAnalyzer {
             Framework::Circom => {
                 for (line_num, line) in source.lines().enumerate() {
                     let line = line.trim();
-                    
-                    if line.starts_with("signal input") || line.starts_with("signal private input") {
+
+                    if line.starts_with("signal input") || line.starts_with("signal private input")
+                    {
                         let is_public = !line.contains("private");
                         if let Some(info) = self.parse_circom_signal(line, is_public, line_num) {
                             inputs.push(info);
@@ -474,7 +485,12 @@ impl OpusAnalyzer {
         inputs
     }
 
-    fn parse_circom_signal(&self, line: &str, is_public: bool, _line_num: usize) -> Option<InputInfo> {
+    fn parse_circom_signal(
+        &self,
+        line: &str,
+        is_public: bool,
+        _line_num: usize,
+    ) -> Option<InputInfo> {
         let parts: Vec<&str> = line.split_whitespace().collect();
         let name_part = parts.last()?;
         let name = name_part.trim_end_matches(';');
@@ -491,7 +507,11 @@ impl OpusAnalyzer {
 
         Some(InputInfo {
             name,
-            input_type: if length.is_some() { "array<field>".to_string() } else { "field".to_string() },
+            input_type: if length.is_some() {
+                "array<field>".to_string()
+            } else {
+                "field".to_string()
+            },
             is_public,
             constraints: vec![],
             length,
@@ -523,18 +543,18 @@ impl OpusAnalyzer {
 
     /// Estimate circuit complexity
     fn estimate_complexity(&self, source: &str, framework: Framework) -> ComplexityEstimate {
-        let lines_of_code = source.lines().filter(|l| !l.trim().is_empty() && !l.trim().starts_with("//")).count();
-        
+        let lines_of_code = source
+            .lines()
+            .filter(|l| !l.trim().is_empty() && !l.trim().starts_with("//"))
+            .count();
+
         let template_calls = match framework {
             Framework::Circom => {
-                source.matches("component ").count() + 
-                source.matches("<==").count() +
-                source.matches("===").count()
+                source.matches("component ").count()
+                    + source.matches("<==").count()
+                    + source.matches("===").count()
             }
-            Framework::Noir => {
-                source.matches("fn ").count() +
-                source.matches("assert").count()
-            }
+            Framework::Noir => source.matches("fn ").count() + source.matches("assert").count(),
             _ => source.lines().count() / 10,
         };
 
@@ -802,7 +822,9 @@ impl OpusAnalyzer {
         for hint in &analysis.zero_day_hints {
             if hint.confidence > 0.5 {
                 invariants.push(Invariant {
-                    name: format!("zero_day_{:?}", hint.category).to_lowercase().replace(' ', "_"),
+                    name: format!("zero_day_{:?}", hint.category)
+                        .to_lowercase()
+                        .replace(' ', "_"),
                     invariant_type: InvariantType::Constraint,
                     relation: hint.description.clone(),
                     oracle: InvariantOracle::MustHold,
@@ -938,13 +960,19 @@ impl OpusAnalyzer {
 
     fn generate_summary(&self, analysis: &CircuitAnalysisResult) -> String {
         let mut summary = String::new();
-        
+
         summary.push_str(&format!("Circuit: {}\n", analysis.circuit_path.display()));
         summary.push_str(&format!("Framework: {:?}\n", analysis.framework));
-        summary.push_str(&format!("Estimated constraints: {}\n", analysis.complexity.estimated_constraints));
+        summary.push_str(&format!(
+            "Estimated constraints: {}\n",
+            analysis.complexity.estimated_constraints
+        ));
         summary.push_str(&format!("Patterns detected: {}\n", analysis.patterns.len()));
-        summary.push_str(&format!("Zero-day hints: {}\n", analysis.zero_day_hints.len()));
-        
+        summary.push_str(&format!(
+            "Zero-day hints: {}\n",
+            analysis.zero_day_hints.len()
+        ));
+
         if !analysis.zero_day_hints.is_empty() {
             summary.push_str("\nZero-day vulnerability hints:\n");
             for hint in &analysis.zero_day_hints {
@@ -1011,8 +1039,11 @@ impl GeneratedConfig {
         let display_path = if let Some((root, placeholder)) = rewrite {
             let rewritten = rewrite_path_with_placeholder(&self.circuit_path, root, placeholder);
             if let Some(base) = &mut config.base {
-                let rewritten_target =
-                    rewrite_path_with_placeholder(&base.campaign.target.circuit_path, root, placeholder);
+                let rewritten_target = rewrite_path_with_placeholder(
+                    &base.campaign.target.circuit_path,
+                    root,
+                    placeholder,
+                );
                 base.campaign.target.circuit_path = PathBuf::from(rewritten_target);
             }
             rewritten
@@ -1094,7 +1125,12 @@ trait ZeroDayDetector: Send + Sync {
 struct MissingConstraintDetector;
 
 impl ZeroDayDetector for MissingConstraintDetector {
-    fn detect(&self, source: &str, framework: Framework, _patterns: &[DetectedPattern]) -> Vec<ZeroDayHint> {
+    fn detect(
+        &self,
+        source: &str,
+        framework: Framework,
+        _patterns: &[DetectedPattern],
+    ) -> Vec<ZeroDayHint> {
         let mut hints = Vec::new();
 
         if framework == Framework::Circom {
@@ -1131,11 +1167,17 @@ impl ZeroDayDetector for MissingConstraintDetector {
 struct RangeCheckDetector;
 
 impl ZeroDayDetector for RangeCheckDetector {
-    fn detect(&self, source: &str, _framework: Framework, _patterns: &[DetectedPattern]) -> Vec<ZeroDayHint> {
+    fn detect(
+        &self,
+        source: &str,
+        _framework: Framework,
+        _patterns: &[DetectedPattern],
+    ) -> Vec<ZeroDayHint> {
         let mut hints = Vec::new();
 
         // Check for Num2Bits without proper range validation
-        if source.contains("Num2Bits") && !source.contains("LessThan") && !source.contains("assert") {
+        if source.contains("Num2Bits") && !source.contains("LessThan") && !source.contains("assert")
+        {
             hints.push(ZeroDayHint {
                 category: ZeroDayCategory::IncorrectRangeCheck,
                 confidence: 0.5,
@@ -1152,10 +1194,17 @@ impl ZeroDayDetector for RangeCheckDetector {
 struct HashMisuseDetector;
 
 impl ZeroDayDetector for HashMisuseDetector {
-    fn detect(&self, source: &str, _framework: Framework, patterns: &[DetectedPattern]) -> Vec<ZeroDayHint> {
+    fn detect(
+        &self,
+        source: &str,
+        _framework: Framework,
+        patterns: &[DetectedPattern],
+    ) -> Vec<ZeroDayHint> {
         let mut hints = Vec::new();
 
-        let has_hash = patterns.iter().any(|p| matches!(p.pattern_type, PatternType::HashFunction(_)));
+        let has_hash = patterns
+            .iter()
+            .any(|p| matches!(p.pattern_type, PatternType::HashFunction(_)));
 
         if has_hash {
             // Check for potential domain separation issues
@@ -1177,10 +1226,17 @@ impl ZeroDayDetector for HashMisuseDetector {
 struct SignatureMalleabilityDetector;
 
 impl ZeroDayDetector for SignatureMalleabilityDetector {
-    fn detect(&self, source: &str, _framework: Framework, patterns: &[DetectedPattern]) -> Vec<ZeroDayHint> {
+    fn detect(
+        &self,
+        source: &str,
+        _framework: Framework,
+        patterns: &[DetectedPattern],
+    ) -> Vec<ZeroDayHint> {
         let mut hints = Vec::new();
 
-        let has_signature = patterns.iter().any(|p| p.pattern_type == PatternType::Signature);
+        let has_signature = patterns
+            .iter()
+            .any(|p| p.pattern_type == PatternType::Signature);
 
         if has_signature {
             // Check for s-value normalization
@@ -1188,7 +1244,8 @@ impl ZeroDayDetector for SignatureMalleabilityDetector {
                 hints.push(ZeroDayHint {
                     category: ZeroDayCategory::SignatureMalleability,
                     confidence: 0.6,
-                    description: "Signature without s-value normalization (potential malleability)".to_string(),
+                    description: "Signature without s-value normalization (potential malleability)"
+                        .to_string(),
                     locations: vec![],
                     mutation_focus: Some("signature_s".to_string()),
                 });
@@ -1202,14 +1259,24 @@ impl ZeroDayDetector for SignatureMalleabilityDetector {
 struct NullifierReuseDetector;
 
 impl ZeroDayDetector for NullifierReuseDetector {
-    fn detect(&self, source: &str, _framework: Framework, patterns: &[DetectedPattern]) -> Vec<ZeroDayHint> {
+    fn detect(
+        &self,
+        source: &str,
+        _framework: Framework,
+        patterns: &[DetectedPattern],
+    ) -> Vec<ZeroDayHint> {
         let mut hints = Vec::new();
 
-        let has_nullifier = patterns.iter().any(|p| p.pattern_type == PatternType::Nullifier);
+        let has_nullifier = patterns
+            .iter()
+            .any(|p| p.pattern_type == PatternType::Nullifier);
 
         if has_nullifier {
             // Check if nullifier includes external entropy
-            if !source.contains("random") && !source.contains("nonce") && !source.contains("external") {
+            if !source.contains("random")
+                && !source.contains("nonce")
+                && !source.contains("external")
+            {
                 hints.push(ZeroDayHint {
                     category: ZeroDayCategory::NullifierReuse,
                     confidence: 0.4,
@@ -1227,15 +1294,20 @@ impl ZeroDayDetector for NullifierReuseDetector {
 struct BitDecompositionDetector;
 
 impl ZeroDayDetector for BitDecompositionDetector {
-    fn detect(&self, source: &str, _framework: Framework, _patterns: &[DetectedPattern]) -> Vec<ZeroDayHint> {
+    fn detect(
+        &self,
+        source: &str,
+        _framework: Framework,
+        _patterns: &[DetectedPattern],
+    ) -> Vec<ZeroDayHint> {
         let mut hints = Vec::new();
 
         // Check for bit constraints
         if source.contains("Num2Bits") || source.contains("bits[") {
             // Verify binary constraints exist
-            let has_binary_check = source.contains("* (1 - ") || 
-                                   source.contains("* (b - 1)") ||
-                                   source.contains("b * b === b");
+            let has_binary_check = source.contains("* (1 - ")
+                || source.contains("* (b - 1)")
+                || source.contains("b * b === b");
 
             if !has_binary_check {
                 hints.push(ZeroDayHint {
@@ -1255,12 +1327,18 @@ impl ZeroDayDetector for BitDecompositionDetector {
 struct ArithmeticOverflowDetector;
 
 impl ZeroDayDetector for ArithmeticOverflowDetector {
-    fn detect(&self, source: &str, _framework: Framework, _patterns: &[DetectedPattern]) -> Vec<ZeroDayHint> {
+    fn detect(
+        &self,
+        source: &str,
+        _framework: Framework,
+        _patterns: &[DetectedPattern],
+    ) -> Vec<ZeroDayHint> {
         let mut hints = Vec::new();
 
         // Check for multiplication without range check
         let mul_count = source.matches(" * ").count();
-        let range_check_count = source.matches("LessThan").count() + source.matches("range").count();
+        let range_check_count =
+            source.matches("LessThan").count() + source.matches("range").count();
 
         if mul_count > 5 && range_check_count == 0 {
             hints.push(ZeroDayHint {

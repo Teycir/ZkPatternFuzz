@@ -21,10 +21,10 @@
 use crate::executor::ExecutorFactory;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use zk_core::{AttackType, FieldElement, Finding, Framework, ProofOfConcept, Severity, TestCase};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use zk_core::{AttackType, FieldElement, Finding, Framework, ProofOfConcept, Severity, TestCase};
 
 /// Complete CVE database loaded from YAML
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -381,7 +381,11 @@ impl RegressionTest {
                         Some(format!(
                             "Expected {} but execution {}",
                             if expected { "valid" } else { "invalid" },
-                            if result.success { "succeeded" } else { "failed" }
+                            if result.success {
+                                "succeeded"
+                            } else {
+                                "failed"
+                            }
                         ))
                     };
                     (passed, message)
@@ -649,10 +653,7 @@ fn build_inputs_for_test(
 
             let key = spec.name.to_lowercase();
             let synthesized = indexed_map.get(&key).map(build_indexed_sequence);
-            let value = key_map
-                .get(&key)
-                .copied()
-                .or(synthesized.as_ref());
+            let value = key_map.get(&key).copied().or(synthesized.as_ref());
 
             let inferred_len = spec.length.or_else(|| {
                 if spec.is_array {
@@ -917,11 +918,7 @@ impl CveOracle {
     }
 
     /// Check for range overflow
-    fn check_range_overflow(
-        &self,
-        pattern: &CvePattern,
-        test_case: &TestCase,
-    ) -> Option<Finding> {
+    fn check_range_overflow(&self, pattern: &CvePattern, test_case: &TestCase) -> Option<Finding> {
         // Check for values that might overflow bit decomposition
         for (i, input) in test_case.inputs.iter().enumerate() {
             // Check if input is suspiciously large

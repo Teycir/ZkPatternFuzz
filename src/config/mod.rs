@@ -213,7 +213,12 @@ impl FuzzConfig {
             .with_context(|| format!("Failed to load config (v2) from {}", path))?;
         // Backward-compat: hoist legacy `campaign.parameters.additional: { ... }` into the
         // flattened `parameters` key/value map so older templates don't silently no-op.
-        if config.campaign.parameters.additional.hoist_legacy_additional() {
+        if config
+            .campaign
+            .parameters
+            .additional
+            .hoist_legacy_additional()
+        {
             tracing::warn!(
                 "Legacy YAML detected: `campaign.parameters.additional:` is deprecated; \
                  hoisting keys into `campaign.parameters` for compatibility. \
