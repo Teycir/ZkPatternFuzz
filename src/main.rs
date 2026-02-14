@@ -28,9 +28,9 @@ struct DynamicTeeWriter;
 impl DynamicTeeWriter {
     fn desired_log_path() -> PathBuf {
         if let Some(ctx) = get_run_log_context() {
-            engagement_root_dir(&ctx.run_id)
-                .join("log")
-                .join("tracing.log")
+            // Engagement-local session log. This makes each `report_<timestamp>/` folder
+            // self-contained and easy to manage when you have many engagements.
+            engagement_root_dir(&ctx.run_id).join("session.log")
         } else {
             run_signal_dir().join("session.log")
         }
@@ -173,7 +173,7 @@ fn run_signal_dir() -> PathBuf {
     // Base folder where "easy to find" run folders are written.
     //
     // Default matches your requested structure:
-    //   /home/teycir/ZkFuzzReports/report_<epoch>/
+    //   /home/<user>/ZkFuzz/report_<epoch>/
     //
     // Override with:
     //   ZKF_RUN_SIGNAL_DIR=/some/other/base
@@ -192,13 +192,25 @@ fn run_signal_dir() -> PathBuf {
     if let Ok(home) = std::env::var("HOME") {
         let home = home.trim();
         if !home.is_empty() {
-            candidate = Some(PathBuf::from(home).join("ZkFuzzReports"));
+            candidate = Some(PathBuf::from(home).join("ZkFuzz"));
         }
     }
 
     if let Some(path) = candidate {
-        if std::fs::create_dir_all(&path).is_ok() {
-            return path;
+        match std::fs::create_dir_all(&path) {
+            Ok(()) => return path,
+            Err(err) => {
+                // This function can be called before tracing is initialized (we need a place to
+                // write session logs), so use stderr and only print once to avoid noise.
+                static ONCE: std::sync::Once = std::sync::Once::new();
+                ONCE.call_once(|| {
+                    eprintln!(
+                        "[zk-fuzzer] WARN: cannot create run-signal dir '{}': {}. Falling back to in-repo 'reports/_run_signals'. Set ZKF_RUN_SIGNAL_DIR to override.",
+                        path.display(),
+                        err
+                    );
+                });
+            }
         }
     }
 
@@ -1044,6 +1056,19 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     let run_id = make_run_id(command, Some(config_path));
     let mut stage = "load_config";
 
+    // Put `session.log` under the engagement folder from the very start (even if YAML parsing
+    // fails). This avoids scattering logs across multiple locations.
+    if !options.dry_run {
+        set_run_log_context(Some(RunLogContext {
+            run_id: run_id.clone(),
+            command: command.to_string(),
+            campaign_path: Some(config_path.to_string()),
+            campaign_name: None,
+            output_dir: None,
+            started_utc: started_utc.to_rfc3339(),
+        }));
+    }
+
     tracing::info!("Loading campaign from: {}", config_path);
     let mut config = match FuzzConfig::from_yaml(config_path) {
         Ok(cfg) => cfg,
@@ -1760,6 +1785,19 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let command = "chains";
     let run_id = make_run_id(command, Some(config_path));
     let mut stage = "load_config";
+
+    // Put `session.log` under the engagement folder from the very start (even if YAML parsing
+    // fails). This avoids scattering logs across multiple locations.
+    if !options.dry_run {
+        set_run_log_context(Some(RunLogContext {
+            run_id: run_id.clone(),
+            command: command.to_string(),
+            campaign_path: Some(config_path.to_string()),
+            campaign_name: None,
+            output_dir: None,
+            started_utc: started_utc.to_rfc3339(),
+        }));
+    }
 
     tracing::info!("Loading chain campaign from: {}", config_path);
     let mut config = match FuzzConfig::from_yaml(config_path) {
