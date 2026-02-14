@@ -7,6 +7,9 @@ impl FuzzingEngine {
         iterations: u64,
         timeout_seconds: Option<u64>,
         progress: Option<&ProgressReporter>,
+        mode_label: &str,
+        phases_total: u64,
+        phases_completed_base: u64,
     ) -> anyhow::Result<()> {
         let start = Instant::now();
         let timeout = timeout_seconds.map(Duration::from_secs);
@@ -41,6 +44,7 @@ impl FuzzingEngine {
         let mut accepted_count = 0u64;
         let mut failed_count = 0u64;
         let mut sample_errors: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut last_progress_write = Instant::now();
 
         while completed < iterations {
             // Check overall timeout
@@ -117,6 +121,35 @@ impl FuzzingEngine {
                 }
             }
 
+            // Progress snapshot (cheap, periodic). This gives a "percent done" signal even when
+            // wall-clock duration is not predictable.
+            if last_progress_write.elapsed() >= Duration::from_secs(10) || completed.is_multiple_of(5000) {
+                let frac = if iterations == 0 {
+                    0.0
+                } else {
+                    (completed as f64) / (iterations as f64)
+                }
+                .clamp(0.0, 1.0);
+
+                self.write_progress_snapshot(
+                    mode_label,
+                    "continuous",
+                    phases_total,
+                    phases_completed_base,
+                    Some(frac),
+                    serde_json::json!({
+                        "completed": completed,
+                        "iterations": iterations,
+                        "accepted": accepted_count,
+                        "failed": failed_count,
+                        "hangs": hang_count,
+                        "crashes": crash_count,
+                        "elapsed_seconds": start.elapsed().as_secs_f64(),
+                    }),
+                );
+                last_progress_write = Instant::now();
+            }
+
             // Update power scheduler periodically
             if completed.is_multiple_of(1000) {
                 self.update_power_scheduler_globals();
@@ -156,6 +189,29 @@ impl FuzzingEngine {
             accepted_count,
             failed_count,
             final_stats.minimized_size
+        );
+
+        let frac = if iterations == 0 {
+            0.0
+        } else {
+            (completed as f64) / (iterations as f64)
+        }
+        .clamp(0.0, 1.0);
+        self.write_progress_snapshot(
+            mode_label,
+            "continuous_done",
+            phases_total,
+            phases_completed_base,
+            Some(frac),
+            serde_json::json!({
+                "completed": completed,
+                "iterations": iterations,
+                "accepted": accepted_count,
+                "failed": failed_count,
+                "hangs": hang_count,
+                "crashes": crash_count,
+                "elapsed_seconds": start.elapsed().as_secs_f64(),
+            }),
         );
 
         if accepted_count == 0 && failed_count > 0 && !sample_errors.is_empty() {

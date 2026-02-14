@@ -153,6 +153,66 @@ impl FuzzingEngine {
         self.core.stats()
     }
 
+    pub(super) fn write_progress_snapshot(
+        &self,
+        mode_label: &str,
+        stage: &str,
+        phases_total: u64,
+        phases_completed: u64,
+        phase_progress: Option<f64>,
+        details: serde_json::Value,
+    ) {
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let overall = if phases_total == 0 {
+            0.0
+        } else {
+            let sub = phase_progress.unwrap_or(0.0).clamp(0.0, 1.0);
+            ((phases_completed as f64) + sub) / (phases_total as f64)
+        }
+        .clamp(0.0, 1.0);
+
+        let additional = &self.config.campaign.parameters.additional;
+        let run_id = Self::additional_string(additional, "run_id");
+        let command = Self::additional_string(additional, "run_command").unwrap_or_else(|| {
+            // Fallback for older binaries.
+            if mode_label == "evidence" {
+                "evidence".to_string()
+            } else {
+                "run".to_string()
+            }
+        });
+
+        let snapshot = serde_json::json!({
+            "updated_unix_seconds": now_epoch,
+            "run_id": run_id,
+            "command": command,
+            "mode_label": mode_label,
+            "campaign_name": self.config.campaign.name,
+            "output_dir": self.config.reporting.output_dir.display().to_string(),
+            "stage": stage,
+            "progress": {
+                "overall_fraction": overall,
+                "overall_percent": (overall * 100.0),
+                "phases_total": phases_total,
+                "phases_completed": phases_completed,
+                "phase_progress": phase_progress,
+            },
+            "details": details,
+        });
+
+        let path = self.config.reporting.output_dir.join("progress.json");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(data) = serde_json::to_string_pretty(&snapshot) {
+            let _ = std::fs::write(path, data);
+        }
+    }
+
     /// Update power scheduler with global statistics
     pub(super) fn update_power_scheduler_globals(&mut self) {
         self.core.update_power_scheduler_globals();

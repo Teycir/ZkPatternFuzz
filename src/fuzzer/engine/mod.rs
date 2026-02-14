@@ -592,6 +592,10 @@ impl FuzzingEngine {
         let engagement_strict =
             Self::additional_bool(additional, "engagement_strict").unwrap_or(evidence_mode);
         let mode_label = if evidence_mode { "evidence" } else { "run" };
+        let phases_total = 1u64
+            .saturating_add(self.config.attacks.len() as u64)
+            .saturating_add(1)
+            .saturating_add(1); // seeded_corpus + attacks + continuous + reporting
 
         tracing::warn!(
             "MILESTONE start mode={} target={} circuit={} output_dir={}",
@@ -599,6 +603,14 @@ impl FuzzingEngine {
             self.config.campaign.name,
             self.config.campaign.target.circuit_path.display(),
             self.config.reporting.output_dir.display()
+        );
+        self.write_progress_snapshot(
+            mode_label,
+            "start",
+            phases_total,
+            0,
+            None,
+            serde_json::json!({}),
         );
 
         tracing::info!("Starting fuzzing campaign: {}", self.config.campaign.name);
@@ -664,6 +676,16 @@ impl FuzzingEngine {
             self.config.campaign.name,
             self.core.corpus().len()
         );
+        self.write_progress_snapshot(
+            mode_label,
+            "seeded_corpus",
+            phases_total,
+            1,
+            None,
+            serde_json::json!({
+                "corpus_len": self.core.corpus().len(),
+            }),
+        );
 
         // Initialize simple progress tracker for non-interactive environments
         self.simple_tracker = Some(SimpleProgressTracker::new());
@@ -672,7 +694,21 @@ impl FuzzingEngine {
         self.update_power_scheduler_globals();
 
         // Run attacks
+        let attacks_total = self.config.attacks.len() as u64;
         for (attack_idx, attack_config) in self.config.attacks.clone().into_iter().enumerate() {
+            let phases_completed = 1u64.saturating_add(attack_idx as u64);
+            self.write_progress_snapshot(
+                mode_label,
+                "attack_start",
+                phases_total,
+                phases_completed,
+                Some(0.0),
+                serde_json::json!({
+                    "attack_idx": attack_idx,
+                    "attacks_total": attacks_total,
+                    "attack_type": format!("{:?}", attack_config.attack_type),
+                }),
+            );
             tracing::warn!(
                 "MILESTONE attack_start target={} type={:?}",
                 self.config.campaign.name,
@@ -844,6 +880,21 @@ impl FuzzingEngine {
                 new_findings,
                 findings_after
             );
+            let phases_completed = 1u64.saturating_add((attack_idx as u64).saturating_add(1));
+            self.write_progress_snapshot(
+                mode_label,
+                "attack_complete",
+                phases_total,
+                phases_completed,
+                Some(0.0),
+                serde_json::json!({
+                    "attack_idx": attack_idx,
+                    "attacks_total": attacks_total,
+                    "attack_type": format!("{:?}", attack_config.attack_type),
+                    "new_findings": new_findings,
+                    "total_findings": findings_after,
+                }),
+            );
 
             // Update power scheduler with current stats after each attack
             self.update_power_scheduler_globals();
@@ -887,17 +938,45 @@ impl FuzzingEngine {
             .and_then(|v| v.as_u64());
 
         if iterations > 0 {
+            let phases_completed = 1u64.saturating_add(attacks_total);
+            self.write_progress_snapshot(
+                mode_label,
+                "continuous_start",
+                phases_total,
+                phases_completed,
+                Some(0.0),
+                serde_json::json!({
+                    "iterations": iterations,
+                    "timeout_seconds": timeout,
+                }),
+            );
             tracing::warn!(
                 "MILESTONE continuous_start target={} iterations={} timeout={:?}",
                 self.config.campaign.name,
                 iterations,
                 timeout
             );
-            self.run_continuous_fuzzing_phase(iterations, timeout, progress)
+            self.run_continuous_fuzzing_phase(
+                iterations,
+                timeout,
+                progress,
+                mode_label,
+                phases_total,
+                phases_completed,
+            )
                 .await?;
             tracing::warn!(
                 "MILESTONE continuous_complete target={}",
                 self.config.campaign.name
+            );
+            let phases_completed = phases_completed.saturating_add(1);
+            self.write_progress_snapshot(
+                mode_label,
+                "continuous_complete",
+                phases_total,
+                phases_completed,
+                Some(0.0),
+                serde_json::json!({}),
             );
         }
 
@@ -954,6 +1033,17 @@ impl FuzzingEngine {
             self.config.campaign.name,
             findings.len(),
             elapsed.as_secs_f64()
+        );
+        self.write_progress_snapshot(
+            mode_label,
+            "completed",
+            phases_total,
+            phases_total,
+            None,
+            serde_json::json!({
+                "findings_total": findings.len(),
+                "duration_seconds": elapsed.as_secs_f64(),
+            }),
         );
 
         let mut report = self.generate_report(findings.clone(), elapsed.as_secs());

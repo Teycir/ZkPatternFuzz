@@ -365,6 +365,7 @@ fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Valu
     for name in [
         "report.json",
         "report.md",
+        "progress.json",
         "chain_report.json",
         "chain_report.md",
         "run_outcome.json",
@@ -947,6 +948,17 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         );
     }
 
+    // Provide a stable identifier for the engine to emit progress snapshots into output_dir.
+    // This also allows the "engagement report" to group mode1/mode2/mode3 runs together.
+    config.campaign.parameters.additional.insert(
+        "run_id".to_string(),
+        serde_yaml::Value::String(run_id.clone()),
+    );
+    config.campaign.parameters.additional.insert(
+        "run_command".to_string(),
+        serde_yaml::Value::String(command.to_string()),
+    );
+
     // Prevent multi-process collisions on the same output dir (reports/corpus/report.json, etc.).
     // Skip in --dry-run since no files are written.
     stage = "acquire_output_lock";
@@ -1142,6 +1154,80 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             println!("  Profile: {}", p);
         }
         return Ok(());
+    }
+
+    // While the engine is running, periodically mirror progress snapshots (progress.json) into
+    // the engagement report folder so you can see "where we are at from total" without digging
+    // into the app output_dir.
+    let (progress_stop_tx, mut progress_stop_rx) = tokio::sync::watch::channel(false);
+    struct _StopProgress(tokio::sync::watch::Sender<bool>);
+    impl Drop for _StopProgress {
+        fn drop(&mut self) {
+            let _ = self.0.send(true);
+        }
+    }
+    let _progress_guard = _StopProgress(progress_stop_tx);
+
+    {
+        let output_dir_for_monitor = output_dir.clone();
+        let run_id_for_monitor = run_id.clone();
+        let command_for_monitor = command.to_string();
+        let campaign_name_for_monitor = campaign_name.clone();
+        let campaign_path_for_monitor = config_path.to_string();
+        let started_utc_for_monitor = started_utc;
+        let timeout_for_monitor = options.timeout;
+        let pid = std::process::id();
+
+        tokio::spawn(async move {
+            let progress_path = output_dir_for_monitor.join("progress.json");
+            loop {
+                if *progress_stop_rx.borrow() {
+                    break;
+                }
+
+                tokio::select! {
+                    _ = progress_stop_rx.changed() => {},
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {},
+                }
+
+                if *progress_stop_rx.borrow() {
+                    break;
+                }
+
+                let progress_raw = match std::fs::read_to_string(&progress_path) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                let progress_json: serde_json::Value = match serde_json::from_str(&progress_raw) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                let mut doc = serde_json::json!({
+                    "status": "running",
+                    "command": command_for_monitor,
+                    "run_id": run_id_for_monitor,
+                    "stage": "engine_progress",
+                    "pid": pid,
+                    "campaign_path": campaign_path_for_monitor,
+                    "campaign_name": campaign_name_for_monitor,
+                    "output_dir": output_dir_for_monitor.display().to_string(),
+                    "started_utc": started_utc_for_monitor.to_rfc3339(),
+                    "progress": progress_json,
+                });
+                add_run_window_fields(&mut doc, started_utc_for_monitor, timeout_for_monitor, "continuous_phase_only");
+                write_global_run_signal(doc["run_id"].as_str().unwrap_or("unknown"), &doc);
+
+                // Convenience: copy the raw progress.json into the engagement folder.
+                let report_dir = engagement_root_dir(doc["run_id"].as_str().unwrap_or("unknown"));
+                let mode = mode_folder_from_command(doc["command"].as_str().unwrap_or("unknown"));
+                let dst = report_dir.join(mode).join("progress.json");
+                if let Some(parent) = dst.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(dst, progress_raw);
+            }
+        });
     }
 
     // Run with new engine if not using simple progress
