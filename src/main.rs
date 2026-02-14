@@ -1,7 +1,244 @@
 use clap::{Parser, Subcommand};
-use chrono::{DateTime, Duration as ChronoDuration, Local};
-use zk_fuzzer::config::{FuzzConfig, ProfileName, apply_profile};
+use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use zk_fuzzer::config::{FuzzConfig, ProfileName, ReadinessReport, apply_profile};
 use zk_fuzzer::fuzzer::ZkFuzzer;
+
+#[derive(Debug, Clone)]
+struct RunLogContext {
+    run_id: String,
+    command: String,
+    campaign_path: Option<String>,
+    campaign_name: Option<String>,
+    output_dir: Option<PathBuf>,
+    started_utc: String,
+}
+
+static RUN_LOG_CONTEXT: OnceLock<Mutex<Option<RunLogContext>>> = OnceLock::new();
+static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
+static SIGNAL_WATCHER_STARTED: OnceLock<()> = OnceLock::new();
+
+fn set_run_log_context(ctx: Option<RunLogContext>) {
+    let slot = RUN_LOG_CONTEXT.get_or_init(|| Mutex::new(None));
+    if let Ok(mut guard) = slot.lock() {
+        *guard = ctx;
+    }
+}
+
+fn get_run_log_context() -> Option<RunLogContext> {
+    let slot = RUN_LOG_CONTEXT.get_or_init(|| Mutex::new(None));
+    slot.lock().ok().and_then(|g| g.clone())
+}
+
+fn sanitize_slug(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    out.trim_matches('_').to_string()
+}
+
+fn derive_campaign_slug(campaign_path: &str) -> String {
+    Path::new(campaign_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(sanitize_slug)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown_campaign".to_string())
+}
+
+fn make_run_id(command: &str, campaign_path: Option<&str>) -> String {
+    let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    let pid = std::process::id();
+    let campaign = campaign_path
+        .map(derive_campaign_slug)
+        .unwrap_or_else(|| "unknown_campaign".to_string());
+    format!("{}_{}_{}_pid{}", ts, sanitize_slug(command), campaign, pid)
+}
+
+fn readiness_report_to_json(readiness: &ReadinessReport) -> serde_json::Value {
+    let warnings = readiness
+        .warnings
+        .iter()
+        .map(|w| {
+            serde_json::json!({
+                "level": w.level.to_string(),
+                "category": w.category,
+                "message": w.message,
+                "fix_hint": w.fix_hint,
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "score": readiness.score,
+        "ready_for_evidence": readiness.ready_for_evidence,
+        "warnings": warnings,
+    })
+}
+
+fn best_effort_write_json(path: &Path, value: &serde_json::Value) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(data) = serde_json::to_string_pretty(value) {
+        let _ = std::fs::write(path, data);
+    }
+}
+
+fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Value) {
+    best_effort_write_json(&output_dir.join("run_outcome.json"), value);
+    let runs_dir = output_dir.join("_runs");
+    best_effort_write_json(&runs_dir.join(format!("{}.json", run_id)), value);
+    best_effort_write_json(&output_dir.join("run_status.json"), value);
+}
+
+fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
+    let failed_dir = PathBuf::from("reports/_failed_runs");
+    best_effort_write_json(&failed_dir.join(format!("{}.json", run_id)), value);
+}
+
+fn install_panic_hook() {
+    if PANIC_HOOK_INSTALLED.set(()).is_err() {
+        return;
+    }
+
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let now = Utc::now().to_rfc3339();
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "panic payload (non-string)".to_string()
+        };
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
+        let backtrace = std::backtrace::Backtrace::force_capture().to_string();
+
+        let ctx = get_run_log_context();
+        let run_id = ctx
+            .as_ref()
+            .map(|c| c.run_id.clone())
+            .unwrap_or_else(|| make_run_id("panic", None));
+
+        let doc = serde_json::json!({
+            "status": "panic",
+            "timestamp_utc": now,
+            "run_id": run_id.clone(),
+            "panic": {
+                "message": payload,
+                "location": location,
+                "backtrace": backtrace,
+            },
+            "context": ctx.as_ref().map(|c| serde_json::json!({
+                "command": c.command,
+                "campaign_path": c.campaign_path,
+                "campaign_name": c.campaign_name,
+                "output_dir": c.output_dir.as_ref().map(|p| p.display().to_string()),
+                "started_utc": c.started_utc,
+                "pid": std::process::id(),
+            })),
+        });
+
+        if let Some(ctx) = ctx {
+            if let Some(output_dir) = ctx.output_dir.as_ref() {
+                write_run_artifacts(output_dir, &run_id, &doc);
+            } else {
+                write_failed_run_artifact(&run_id, &doc);
+            }
+        } else {
+            write_failed_run_artifact(&run_id, &doc);
+        }
+
+        default_hook(info);
+    }));
+}
+
+fn start_signal_watchers() {
+    if SIGNAL_WATCHER_STARTED.set(()).is_err() {
+        return;
+    }
+
+    tokio::spawn(async move {
+        let mut sigint = Box::pin(tokio::signal::ctrl_c());
+
+        #[cfg(unix)]
+        let mut sigterm = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            Ok(s) => Some(s),
+            Err(_) => None,
+        };
+
+        #[cfg(not(unix))]
+        let mut sigterm: Option<()> = None;
+
+        let stop = async {
+            #[cfg(unix)]
+            {
+                tokio::select! {
+                    _ = &mut sigint => "SIGINT",
+                    _ = async {
+                        if let Some(s) = sigterm.as_mut() {
+                            let _ = s.recv().await;
+                        } else {
+                            std::future::pending::<()>().await;
+                        }
+                    } => "SIGTERM",
+                }
+            }
+
+            #[cfg(not(unix))]
+            {
+                sigint.await.ok();
+                "SIGINT"
+            }
+        };
+
+        let signal_name = stop.await;
+        let now = Utc::now().to_rfc3339();
+        let ctx = get_run_log_context();
+        let run_id = ctx
+            .as_ref()
+            .map(|c| c.run_id.clone())
+            .unwrap_or_else(|| make_run_id("interrupted", None));
+
+        let doc = serde_json::json!({
+            "status": "interrupted",
+            "timestamp_utc": now,
+            "run_id": run_id.clone(),
+            "signal": signal_name,
+            "context": ctx.as_ref().map(|c| serde_json::json!({
+                "command": c.command,
+                "campaign_path": c.campaign_path,
+                "campaign_name": c.campaign_name,
+                "output_dir": c.output_dir.as_ref().map(|p| p.display().to_string()),
+                "started_utc": c.started_utc,
+                "pid": std::process::id(),
+            })),
+        });
+
+        if let Some(ctx) = ctx {
+            if let Some(output_dir) = ctx.output_dir.as_ref() {
+                write_run_artifacts(output_dir, &run_id, &doc);
+            } else {
+                write_failed_run_artifact(&run_id, &doc);
+            }
+        } else {
+            write_failed_run_artifact(&run_id, &doc);
+        }
+
+        // Conventional shell exit codes: 130 (SIGINT), 143 (SIGTERM).
+        let code = if signal_name == "SIGTERM" { 143 } else { 130 };
+        std::process::exit(code);
+    });
+}
 
 #[derive(Parser)]
 #[command(name = "zk-fuzzer")]
@@ -243,6 +480,10 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
         .with_ansi(false)
         .init();
 
+    // Ensure early-stop causes are captured to disk when possible (panic/signal).
+    install_panic_hook();
+    start_signal_watchers();
+
     match cli.command {
         Some(Commands::Run { campaign, iterations, timeout, resume, corpus_dir }) => {
             run_campaign(
@@ -335,55 +576,84 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
                 )
                 .await
             } else {
-                eprintln!("Error: No campaign configuration provided.");
-                eprintln!("Usage: zk-fuzzer --config <path> or zk-fuzzer run <path>");
-                eprintln!("Run 'zk-fuzzer --help' for more information.");
-                std::process::exit(1);
+                anyhow::bail!(
+                    "No campaign configuration provided. Use `zk-fuzzer --config <path>` or `zk-fuzzer run <path>`."
+                );
             }
         }
     }
 }
 
 async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow::Result<()> {
+    let started_utc = Utc::now();
+    let command = if options.require_invariants { "evidence" } else { "run" };
+    let run_id = make_run_id(command, Some(config_path));
+    let mut stage = "load_config";
+
     tracing::info!("Loading campaign from: {}", config_path);
-    let mut config = FuzzConfig::from_yaml(config_path)?;
+    let mut config = match FuzzConfig::from_yaml(config_path) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            let ended_utc = Utc::now();
+            let doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id.clone(),
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "error": format!("{:#}", err),
+            });
+            write_failed_run_artifact(&run_id, &doc);
+            return Err(err);
+        }
+    };
 
     // Apply profile if specified
+    stage = "apply_profile";
     if let Some(profile_name) = options.profile.as_deref() {
-        let parsed_profile: ProfileName = profile_name.parse()
-            .map_err(|e: String| anyhow::anyhow!(e))?;
-        apply_profile(&mut config, parsed_profile);
+        match profile_name.parse::<ProfileName>() {
+            Ok(parsed_profile) => apply_profile(&mut config, parsed_profile),
+            Err(e) => {
+                let ended_utc = Utc::now();
+                let doc = serde_json::json!({
+                    "status": "failed",
+                    "command": command,
+                    "run_id": run_id.clone(),
+                    "stage": stage,
+                    "pid": std::process::id(),
+                    "campaign_path": config_path,
+                    "output_dir": config.reporting.output_dir.display().to_string(),
+                    "started_utc": started_utc.to_rfc3339(),
+                    "ended_utc": ended_utc.to_rfc3339(),
+                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                    "error": e,
+                });
+                write_failed_run_artifact(&run_id, &doc);
+                return Err(anyhow::anyhow!(
+                    "Invalid --profile '{}': {}",
+                    profile_name,
+                    doc["error"].as_str().unwrap_or("parse error")
+                ));
+            }
+        }
     }
+
+    let campaign_name = config.campaign.name.clone();
 
     if options.real_only {
         tracing::info!("--real-only set (real backend mode is already enforced)");
     }
+
+    // Always enforce strict backend in this CLI.
     config.campaign.parameters.additional.insert(
         "strict_backend".to_string(),
         serde_yaml::Value::Bool(true),
     );
 
-    if options.require_invariants {
-        let invariants = config.get_invariants();
-        if invariants.is_empty() {
-            anyhow::bail!(
-                "Evidence mode requires v2 invariants in the YAML (invariants: ...)."
-            );
-        }
-        config.campaign.parameters.additional.insert(
-            "evidence_mode".to_string(),
-            serde_yaml::Value::Bool(true),
-        );
-        config.campaign.parameters.additional.insert(
-            "engagement_strict".to_string(),
-            serde_yaml::Value::Bool(true),
-        );
-        config.campaign.parameters.additional.insert(
-            "strict_backend".to_string(),
-            serde_yaml::Value::Bool(true),
-        );
-    }
-    
     // Inject CLI fuzzing parameters into config
     config.campaign.parameters.additional.insert(
         "fuzzing_iterations".to_string(),
@@ -396,22 +666,13 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         );
     }
 
-    // Pre-flight readiness check for strict evidence engagements.
-    if options.require_invariants {
-        println!();
-        let readiness = zk_fuzzer::config::check_0day_readiness(&config);
-        print!("{}", readiness.format());
-        if !readiness.ready_for_evidence {
-            anyhow::bail!("Campaign has critical issues; refusing to start strict evidence run");
-        }
-    }
-
     // Prevent multi-process collisions on the same output dir (reports/corpus/report.json, etc.).
     // Skip in --dry-run since no files are written.
+    stage = "acquire_output_lock";
+    let output_dir = config.reporting.output_dir.clone();
     let _output_lock = if options.dry_run {
         None
     } else {
-        let output_dir = config.reporting.output_dir.clone();
         Some(match zk_fuzzer::util::file_lock::lock_dir_exclusive(
             &output_dir,
             ".zkfuzz.lock",
@@ -419,16 +680,143 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         ) {
             Ok(lock) => lock,
             Err(err) => {
-                anyhow::bail!(
-                    "Output directory is already in use (locked): {}. \
-                     Choose a different `reporting.output_dir` (or wait for the other run to finish). \
-                     Error: {:#}",
+                let ended_utc = Utc::now();
+                let doc = serde_json::json!({
+                    "status": "failed",
+                    "command": command,
+                    "run_id": run_id.clone(),
+                    "stage": stage,
+                    "pid": std::process::id(),
+                    "campaign_path": config_path,
+                    "campaign_name": campaign_name.clone(),
+                    "output_dir": output_dir.display().to_string(),
+                    "started_utc": started_utc.to_rfc3339(),
+                    "ended_utc": ended_utc.to_rfc3339(),
+                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                    "error": format!("{:#}", err),
+                    "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
+                });
+                write_failed_run_artifact(&run_id, &doc);
+                return Err(anyhow::anyhow!(
+                    "Output directory is already in use (locked): {}. Error: {:#}",
                     output_dir.display(),
                     err
-                );
+                ));
             }
         })
     };
+
+    if !options.dry_run {
+        set_run_log_context(Some(RunLogContext {
+            run_id: run_id.clone(),
+            command: command.to_string(),
+            campaign_path: Some(config_path.to_string()),
+            campaign_name: Some(config.campaign.name.clone()),
+            output_dir: Some(output_dir.clone()),
+            started_utc: started_utc.to_rfc3339(),
+        }));
+
+        // Seed a persistent status file early so "it stopped" cases always leave artifacts.
+        let doc = serde_json::json!({
+            "status": "running",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "options": {
+                "workers": options.workers,
+                "seed": options.seed,
+                "iterations": options.iterations,
+                "timeout_seconds": options.timeout,
+                "resume": options.resume,
+                "corpus_dir": options.corpus_dir.clone(),
+                "profile": options.profile.clone(),
+                "simple_progress": options.simple_progress,
+                "dry_run": options.dry_run,
+            }
+        });
+        write_run_artifacts(&output_dir, &run_id, &doc);
+    }
+
+    struct _ClearRunContext;
+    impl Drop for _ClearRunContext {
+        fn drop(&mut self) {
+            set_run_log_context(None);
+        }
+    }
+    let _ctx_guard = _ClearRunContext;
+
+    // Evidence mode settings + preflight checks.
+    if options.require_invariants {
+        stage = "preflight_invariants";
+        let invariants = config.get_invariants();
+        if invariants.is_empty() {
+            let ended_utc = Utc::now();
+            let doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id.clone(),
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "campaign_name": campaign_name.clone(),
+                "output_dir": output_dir.display().to_string(),
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "reason": "Evidence mode requires v2 invariants in the YAML (invariants: ...).",
+            });
+            if !options.dry_run {
+                write_run_artifacts(&output_dir, &run_id, &doc);
+            }
+            anyhow::bail!("Evidence mode requires v2 invariants in the YAML (invariants: ...).");
+        }
+
+        config.campaign.parameters.additional.insert(
+            "evidence_mode".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+        config.campaign.parameters.additional.insert(
+            "engagement_strict".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+        config.campaign.parameters.additional.insert(
+            "strict_backend".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+
+        // Pre-flight readiness check for strict evidence engagements.
+        stage = "preflight_readiness";
+        println!();
+        let readiness = zk_fuzzer::config::check_0day_readiness(&config);
+        print!("{}", readiness.format());
+        if !readiness.ready_for_evidence {
+            let ended_utc = Utc::now();
+            let doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id.clone(),
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "campaign_name": campaign_name.clone(),
+                "output_dir": output_dir.display().to_string(),
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "reason": "Campaign has critical issues; refusing to start strict evidence run",
+                "readiness": readiness_report_to_json(&readiness),
+            });
+            if !options.dry_run {
+                write_run_artifacts(&output_dir, &run_id, &doc);
+            }
+            anyhow::bail!("Campaign has critical issues; refusing to start strict evidence run");
+        }
+    }
 
     // Print banner
     print_banner(&config);
@@ -473,19 +861,82 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     }
 
     // Run with new engine if not using simple progress
-    let report = if options.simple_progress {
+    stage = "engine_run";
+    let report = match if options.simple_progress {
         let mut fuzzer = ZkFuzzer::new(config, options.seed);
-        fuzzer.run_with_workers(options.workers).await?
+        fuzzer.run_with_workers(options.workers).await
     } else {
-        ZkFuzzer::run_with_progress(config, options.seed, options.workers, options.verbose).await?
+        ZkFuzzer::run_with_progress(config, options.seed, options.workers, options.verbose).await
+    } {
+        Ok(r) => r,
+        Err(err) => {
+            let ended_utc = Utc::now();
+            let doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id.clone(),
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "campaign_name": campaign_name.clone(),
+                "output_dir": output_dir.display().to_string(),
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "error": format!("{:#}", err),
+            });
+            write_run_artifacts(&output_dir, &run_id, &doc);
+            return Err(err);
+        }
     };
 
     // Output results
+    stage = "save_report";
     report.print_summary();
-    report.save_to_files()?;
+    if let Err(err) = report.save_to_files() {
+        let ended_utc = Utc::now();
+        let doc = serde_json::json!({
+            "status": "failed",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "ended_utc": ended_utc.to_rfc3339(),
+            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+            "error": format!("{:#}", err),
+        });
+        write_run_artifacts(&output_dir, &run_id, &doc);
+        return Err(err);
+    }
 
-    if report.has_critical_findings() {
-        std::process::exit(1);
+    let ended_utc = Utc::now();
+    let critical = report.has_critical_findings();
+    let doc = serde_json::json!({
+        "status": if critical { "completed_with_critical_findings" } else { "completed" },
+        "command": command,
+        "run_id": run_id.clone(),
+        "stage": "completed",
+        "pid": std::process::id(),
+        "campaign_path": config_path,
+        "campaign_name": campaign_name.clone(),
+        "output_dir": output_dir.display().to_string(),
+        "started_utc": started_utc.to_rfc3339(),
+        "ended_utc": ended_utc.to_rfc3339(),
+        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+        "metrics": {
+            "findings_total": report.findings.len(),
+            "critical_findings": critical,
+            "total_executions": report.statistics.total_executions,
+        },
+    });
+    write_run_artifacts(&output_dir, &run_id, &doc);
+
+    if critical {
+        anyhow::bail!("Run completed with CRITICAL findings (see report.json/report.md)");
     }
 
     Ok(())
@@ -493,46 +944,37 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
 fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
     tracing::info!("Validating campaign: {}", config_path);
+    let config = FuzzConfig::from_yaml(config_path)?;
 
-    match FuzzConfig::from_yaml(config_path) {
-        Ok(config) => {
-            println!("✓ Configuration is valid");
-            println!();
-            println!("Campaign Details:");
-            println!("  Name: {}", config.campaign.name);
-            println!("  Version: {}", config.campaign.version);
-            println!("  Framework: {:?}", config.campaign.target.framework);
-            println!("  Circuit: {:?}", config.campaign.target.circuit_path);
-            println!("  Main Component: {}", config.campaign.target.main_component);
-            println!();
-            println!("Attacks ({}):", config.attacks.len());
-            for attack in &config.attacks {
-                println!("  - {:?}: {}", attack.attack_type, attack.description);
-            }
-            println!();
-            println!("Inputs ({}):", config.inputs.len());
-            for input in &config.inputs {
-                println!("  - {}: {} ({:?})", input.name, input.input_type, input.fuzz_strategy);
-            }
-            
-            // Phase 4C: 0-day readiness check
-            println!();
-            let readiness = zk_fuzzer::config::check_0day_readiness(&config);
-            print!("{}", readiness.format());
-            
-            if !readiness.ready_for_evidence {
-                eprintln!("\n⚠️  Campaign has critical issues - not ready for evidence mode");
-                std::process::exit(1);
-            }
-            
-            Ok(())
-        }
-        Err(e) => {
-            eprintln!("✗ Configuration is invalid");
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
+    println!("✓ Configuration is valid");
+    println!();
+    println!("Campaign Details:");
+    println!("  Name: {}", config.campaign.name);
+    println!("  Version: {}", config.campaign.version);
+    println!("  Framework: {:?}", config.campaign.target.framework);
+    println!("  Circuit: {:?}", config.campaign.target.circuit_path);
+    println!("  Main Component: {}", config.campaign.target.main_component);
+    println!();
+    println!("Attacks ({}):", config.attacks.len());
+    for attack in &config.attacks {
+        println!("  - {:?}: {}", attack.attack_type, attack.description);
     }
+    println!();
+    println!("Inputs ({}):", config.inputs.len());
+    for input in &config.inputs {
+        println!("  - {}: {} ({:?})", input.name, input.input_type, input.fuzz_strategy);
+    }
+
+    // Phase 4C: 0-day readiness check
+    println!();
+    let readiness = zk_fuzzer::config::check_0day_readiness(&config);
+    print!("{}", readiness.format());
+
+    if !readiness.ready_for_evidence {
+        anyhow::bail!("Campaign has critical issues - not ready for evidence mode");
+    }
+
+    Ok(())
 }
 
 fn minimize_corpus(corpus_dir: &str, output: Option<&str>) -> anyhow::Result<()> {
@@ -720,15 +1162,42 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     use zk_fuzzer::fuzzer::FuzzingEngine;
     use zk_fuzzer::reporting::FuzzReport;
 
+    let started_utc = Utc::now();
+    let command = "chains";
+    let run_id = make_run_id(command, Some(config_path));
+    let mut stage = "load_config";
+
     tracing::info!("Loading chain campaign from: {}", config_path);
-    let mut config = FuzzConfig::from_yaml(config_path)?;
+    let mut config = match FuzzConfig::from_yaml(config_path) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            let ended_utc = Utc::now();
+            let doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id.clone(),
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "error": format!("{:#}", err),
+            });
+            write_failed_run_artifact(&run_id, &doc);
+            return Err(err);
+        }
+    };
+
+    let campaign_name = config.campaign.name.clone();
 
     // Prevent multi-process collisions on the same output dir (chain_corpus.json, reports, etc.).
     // Skip in --dry-run since no files are written.
+    stage = "acquire_output_lock";
+    let output_dir = config.reporting.output_dir.clone();
     let _output_lock = if options.dry_run {
         None
     } else {
-        let output_dir = config.reporting.output_dir.clone();
         Some(match zk_fuzzer::util::file_lock::lock_dir_exclusive(
             &output_dir,
             ".zkfuzz.lock",
@@ -736,20 +1205,95 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         ) {
             Ok(lock) => lock,
             Err(err) => {
-                anyhow::bail!(
-                    "Output directory is already in use (locked): {}. \
-                     Choose a different `reporting.output_dir` (or wait for the other run to finish). \
-                     Error: {:#}",
+                let ended_utc = Utc::now();
+                let doc = serde_json::json!({
+                    "status": "failed",
+                    "command": command,
+                    "run_id": run_id.clone(),
+                    "stage": stage,
+                    "pid": std::process::id(),
+                    "campaign_path": config_path,
+                    "campaign_name": campaign_name.clone(),
+                    "output_dir": output_dir.display().to_string(),
+                    "started_utc": started_utc.to_rfc3339(),
+                    "ended_utc": ended_utc.to_rfc3339(),
+                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                    "error": format!("{:#}", err),
+                    "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
+                });
+                write_failed_run_artifact(&run_id, &doc);
+                return Err(anyhow::anyhow!(
+                    "Output directory is already in use (locked): {}. Error: {:#}",
                     output_dir.display(),
                     err
-                );
+                ));
             }
         })
     };
 
+    if !options.dry_run {
+        set_run_log_context(Some(RunLogContext {
+            run_id: run_id.clone(),
+            command: command.to_string(),
+            campaign_path: Some(config_path.to_string()),
+            campaign_name: Some(campaign_name.clone()),
+            output_dir: Some(output_dir.clone()),
+            started_utc: started_utc.to_rfc3339(),
+        }));
+
+        let doc = serde_json::json!({
+            "status": "running",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "options": {
+                "workers": options.workers,
+                "seed": options.seed,
+                "iterations": options.iterations,
+                "timeout_seconds": options.timeout,
+                "resume": options.resume,
+                "simple_progress": options.simple_progress,
+                "dry_run": options.dry_run,
+            }
+        });
+        write_run_artifacts(&output_dir, &run_id, &doc);
+    }
+
+    struct _ClearRunContext;
+    impl Drop for _ClearRunContext {
+        fn drop(&mut self) {
+            set_run_log_context(None);
+        }
+    }
+    let _ctx_guard = _ClearRunContext;
+
     // Get chains from config
+    stage = "parse_chains";
     let chains = parse_chains(&config);
     if chains.is_empty() {
+        let ended_utc = Utc::now();
+        let doc = serde_json::json!({
+            "status": "failed",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "ended_utc": ended_utc.to_rfc3339(),
+            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+            "reason": "Chain mode requires chains: definitions in the YAML.",
+        });
+        if !options.dry_run {
+            write_run_artifacts(&output_dir, &run_id, &doc);
+        }
         anyhow::bail!(
             "Chain mode requires chains: definitions in the YAML. \
              See campaigns/templates/deepest_multistep.yaml for examples."
@@ -779,10 +1323,30 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     );
 
     // Pre-flight readiness check (chains need assertions; strict mode blocks silent runs).
+    stage = "preflight_readiness";
     println!();
     let readiness = zk_fuzzer::config::check_0day_readiness(&config);
     print!("{}", readiness.format());
     if !readiness.ready_for_evidence {
+        let ended_utc = Utc::now();
+        let doc = serde_json::json!({
+            "status": "failed",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "ended_utc": ended_utc.to_rfc3339(),
+            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+            "reason": "Campaign has critical issues; refusing to start strict chain run",
+            "readiness": readiness_report_to_json(&readiness),
+        });
+        if !options.dry_run {
+            write_run_artifacts(&output_dir, &run_id, &doc);
+        }
         anyhow::bail!("Campaign has critical issues; refusing to start strict chain run");
     }
 
@@ -820,7 +1384,6 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         return Ok(());
     }
 
-    let output_dir = std::path::PathBuf::from(&config.reporting.output_dir);
     let corpus_path = output_dir.join("chain_corpus.json");
     let baseline_corpus = ChainCorpus::load(&corpus_path).unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
     let baseline_total_entries = baseline_corpus.len();
@@ -830,7 +1393,29 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     };
 
     // Create engine directly
-    let mut engine = FuzzingEngine::new(config.clone(), options.seed, options.workers)?;
+    stage = "engine_init";
+    let mut engine = match FuzzingEngine::new(config.clone(), options.seed, options.workers) {
+        Ok(e) => e,
+        Err(err) => {
+            let ended_utc = Utc::now();
+            let doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id.clone(),
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "campaign_name": campaign_name.clone(),
+                "output_dir": output_dir.display().to_string(),
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "error": format!("{:#}", err),
+            });
+            write_run_artifacts(&output_dir, &run_id, &doc);
+            return Err(err);
+        }
+    };
     
     // Run chain fuzzing
     let progress = if options.simple_progress {
@@ -984,7 +1569,26 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     println!("\n{}", "═".repeat(60).bright_magenta());
 
     // Save reports
-    std::fs::create_dir_all(&output_dir)?;
+    stage = "save_chain_reports";
+    if let Err(err) = std::fs::create_dir_all(&output_dir) {
+        let ended_utc = Utc::now();
+        let doc = serde_json::json!({
+            "status": "failed",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "ended_utc": ended_utc.to_rfc3339(),
+            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+            "error": format!("{:#}", err),
+        });
+        write_run_artifacts(&output_dir, &run_id, &doc);
+        return Err(err.into());
+    }
 
     // Save chain findings as JSON
     let chain_report_path = output_dir.join("chain_report.json");
@@ -1018,7 +1622,47 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         },
         "chain_findings": chain_findings,
     });
-    std::fs::write(&chain_report_path, serde_json::to_string_pretty(&chain_report)?)?;
+    let chain_report_json = match serde_json::to_string_pretty(&chain_report) {
+        Ok(s) => s,
+        Err(err) => {
+            let ended_utc = Utc::now();
+            let doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id.clone(),
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "campaign_name": campaign_name.clone(),
+                "output_dir": output_dir.display().to_string(),
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "error": format!("{:#}", err),
+            });
+            write_run_artifacts(&output_dir, &run_id, &doc);
+            return Err(err.into());
+        }
+    };
+    if let Err(err) = std::fs::write(&chain_report_path, chain_report_json) {
+        let ended_utc = Utc::now();
+        let doc = serde_json::json!({
+            "status": "failed",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "ended_utc": ended_utc.to_rfc3339(),
+            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+            "error": format!("{:#}", err),
+        });
+        write_run_artifacts(&output_dir, &run_id, &doc);
+        return Err(err.into());
+    }
     tracing::info!("Saved chain report to {:?}", chain_report_path);
 
     // Save chain findings as markdown
@@ -1093,7 +1737,25 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         }
     }
 
-    std::fs::write(&chain_md_path, md)?;
+    if let Err(err) = std::fs::write(&chain_md_path, md) {
+        let ended_utc = Utc::now();
+        let doc = serde_json::json!({
+            "status": "failed",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "ended_utc": ended_utc.to_rfc3339(),
+            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+            "error": format!("{:#}", err),
+        });
+        write_run_artifacts(&output_dir, &run_id, &doc);
+        return Err(err.into());
+    }
     tracing::info!("Saved chain markdown report to {:?}", chain_md_path);
 
     // Convert chain findings to regular findings for standard report
@@ -1109,15 +1771,80 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         config.reporting.clone(),
     );
     report.statistics.total_executions = options.iterations * chains.len() as u64;
-    report.save_to_files()?;
-
-    // Exit with error code if critical findings
-    if chain_findings.iter().any(|f| f.finding.severity.to_lowercase() == "critical") {
-        std::process::exit(1);
+    stage = "save_standard_report";
+    if let Err(err) = report.save_to_files() {
+        let ended_utc = Utc::now();
+        let doc = serde_json::json!({
+            "status": "failed",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "ended_utc": ended_utc.to_rfc3339(),
+            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+            "error": format!("{:#}", err),
+        });
+        write_run_artifacts(&output_dir, &run_id, &doc);
+        return Err(err);
     }
 
+    let critical = chain_findings
+        .iter()
+        .any(|f| f.finding.severity.to_lowercase() == "critical");
+    let ended_utc = Utc::now();
+    let status = if critical {
+        "completed_with_critical_findings"
+    } else if engagement_strict && !run_valid {
+        "failed_engagement_contract"
+    } else {
+        "completed"
+    };
+
+    stage = "completed";
+    let doc = serde_json::json!({
+        "status": status,
+        "command": command,
+        "run_id": run_id.clone(),
+        "stage": stage,
+        "pid": std::process::id(),
+        "campaign_path": config_path,
+        "campaign_name": campaign_name.clone(),
+        "output_dir": output_dir.display().to_string(),
+        "started_utc": started_utc.to_rfc3339(),
+        "ended_utc": ended_utc.to_rfc3339(),
+        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+        "metrics": {
+            "chain_findings_total": summary.total_findings,
+            "critical_findings": critical,
+            "corpus_entries": final_total_entries,
+            "unique_coverage_bits": final_unique_coverage_bits,
+            "max_depth": final_max_depth,
+            "d_mean": summary.d_mean,
+            "p_deep": summary.p_deep,
+        },
+        "engagement": {
+            "strict": engagement_strict,
+            "valid_run": run_valid,
+            "failures": quality_failures,
+            "thresholds": {
+                "min_unique_coverage_bits": min_unique_coverage_bits,
+                "min_completed_per_chain": min_completed_per_chain,
+            }
+        }
+    });
+    write_run_artifacts(&output_dir, &run_id, &doc);
+
+    if critical {
+        anyhow::bail!("Chain run produced CRITICAL findings (see chain_report.json/report.json)");
+    }
     if engagement_strict && !run_valid {
-        anyhow::bail!("Strict chain run failed engagement contract; see chain_report.json for details");
+        anyhow::bail!(
+            "Strict chain run failed engagement contract; see chain_report.json for details"
+        );
     }
 
     Ok(())
