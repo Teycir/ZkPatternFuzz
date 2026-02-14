@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use zk_fuzzer::config::{FuzzConfig, ProfileName, ReadinessReport, apply_profile};
@@ -90,16 +91,296 @@ fn best_effort_write_json(path: &Path, value: &serde_json::Value) {
     }
 }
 
+fn run_signal_dir() -> PathBuf {
+    // Base folder where "easy to find" run folders are written.
+    //
+    // Default matches your requested structure:
+    //   /home/teycir/ZkFuzzReports/report_<epoch>/
+    //
+    // Override with:
+    //   ZKF_RUN_SIGNAL_DIR=/some/other/base
+    //
+    // If writing outside the repo is not allowed in your environment, set it back to:
+    //   ZKF_RUN_SIGNAL_DIR=reports/_run_signals
+    if let Ok(v) = std::env::var("ZKF_RUN_SIGNAL_DIR") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        let home = home.trim();
+        if !home.is_empty() {
+            return PathBuf::from(home).join("ZkFuzzReports");
+        }
+    }
+
+    PathBuf::from("reports/_run_signals")
+}
+
+fn best_effort_append_jsonl(path: &Path, value: &serde_json::Value) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(line) = serde_json::to_string(value) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(f, "{}", line);
+        }
+    }
+}
+
+fn run_id_epoch_dir(run_id: &str) -> Option<String> {
+    // run_id prefix is make_run_id(): "%Y%m%d_%H%M%S_..."
+    if run_id.len() < 15 {
+        return None;
+    }
+    let ts = &run_id[..15];
+    let naive = chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d_%H%M%S").ok()?;
+    let started_utc = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
+    Some(format!("report_{}", started_utc.timestamp()))
+}
+
+fn engagement_dir_name(run_id: &str) -> String {
+    // Allow grouping multiple processes (mode1 + mode2 + mode3) into the same report folder.
+    //
+    // Example:
+    //   export ZKF_ENGAGEMENT_EPOCH=176963063
+    //   ... run mode1, mode2, mode3 ...
+    //   => /home/teycir/ZkFuzzReports/report_176963063/
+    if let Ok(epoch) = std::env::var("ZKF_ENGAGEMENT_EPOCH") {
+        let trimmed = epoch.trim();
+        if !trimmed.is_empty() {
+            return format!("report_{}", trimmed);
+        }
+    }
+
+    if let Ok(name) = std::env::var("ZKF_ENGAGEMENT_NAME") {
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    run_id_epoch_dir(run_id).unwrap_or_else(|| "report_unknown".to_string())
+}
+
+fn engagement_root_dir(run_id: &str) -> PathBuf {
+    // If ZKF_ENGAGEMENT_DIR is set, use it as the full report folder.
+    if let Ok(dir) = std::env::var("ZKF_ENGAGEMENT_DIR") {
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+
+    run_signal_dir().join(engagement_dir_name(run_id))
+}
+
+fn mode_folder_from_command(command: &str) -> &'static str {
+    match command {
+        "run" => "mode1",
+        "evidence" => "mode2",
+        "chains" => "mode3",
+        _ => "misc",
+    }
+}
+
+fn get_command_from_doc(value: &serde_json::Value) -> String {
+    value
+        .get("command")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
+    let now = Utc::now().to_rfc3339();
+    let command = get_command_from_doc(value);
+    let mode = mode_folder_from_command(&command).to_string();
+
+    let summary_path = report_dir.join("summary.json");
+    let mut summary: serde_json::Value = std::fs::read_to_string(&summary_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "updated_utc": now,
+                "modes": {},
+            })
+        });
+
+    if let Some(obj) = summary.as_object_mut() {
+        obj.insert("updated_utc".to_string(), serde_json::Value::String(now.clone()));
+        obj.insert(
+            "report_dir".to_string(),
+            serde_json::Value::String(report_dir.display().to_string()),
+        );
+        let modes = obj
+            .entry("modes".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        if let Some(modes_obj) = modes.as_object_mut() {
+            modes_obj.insert(mode.clone(), value.clone());
+        }
+    }
+
+    best_effort_write_json(&summary_path, &summary);
+
+    // Markdown summary (human-friendly).
+    let mut md = String::new();
+    md.push_str("# ZkFuzz Engagement Summary\n\n");
+    md.push_str(&format!("Updated (UTC): `{}`\n\n", now));
+
+    if let Some(modes) = summary.get("modes").and_then(|m| m.as_object()) {
+        for key in ["mode1", "mode2", "mode3"] {
+            let v = modes.get(key);
+            md.push_str(&format!("## {}\n\n", key));
+            if let Some(v) = v {
+                let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
+                let run_id = v.get("run_id").and_then(|s| s.as_str()).unwrap_or("unknown");
+                let campaign = v.get("campaign_name").and_then(|s| s.as_str()).unwrap_or("unknown");
+                let started = v.get("started_utc").and_then(|s| s.as_str()).unwrap_or("unknown");
+                let ended = v.get("ended_utc").and_then(|s| s.as_str()).unwrap_or("");
+                md.push_str(&format!("- Status: `{}`\n", status));
+                md.push_str(&format!("- Run ID: `{}`\n", run_id));
+                md.push_str(&format!("- Campaign: `{}`\n", campaign));
+                md.push_str(&format!("- Started (UTC): `{}`\n", started));
+                if !ended.is_empty() {
+                    md.push_str(&format!("- Ended (UTC): `{}`\n", ended));
+                }
+
+                if let Some(window) = v.get("run_window") {
+                    if let Some(exp) = window.get("expected_latest_end_utc").and_then(|s| s.as_str()) {
+                        md.push_str(&format!("- Expected latest end (UTC): `{}`\n", exp));
+                    }
+                    if let Some(sem) = window.get("timeout_semantics").and_then(|s| s.as_str()) {
+                        md.push_str(&format!("- Timeout semantics: `{}`\n", sem));
+                    }
+                }
+
+                if let Some(metrics) = v.get("metrics") {
+                    if let Some(total) = metrics.get("findings_total").and_then(|n| n.as_u64()) {
+                        md.push_str(&format!("- Findings: `{}`\n", total));
+                    } else if let Some(total) = metrics.get("chain_findings_total").and_then(|n| n.as_u64()) {
+                        md.push_str(&format!("- Findings: `{}`\n", total));
+                    }
+                    if let Some(crit) = metrics.get("critical_findings").and_then(|b| b.as_bool()) {
+                        md.push_str(&format!("- Critical: `{}`\n", crit));
+                    }
+                }
+            } else {
+                md.push_str("- Not run in this engagement yet.\n");
+            }
+            md.push_str("\n");
+        }
+    }
+
+    let md_path = report_dir.join("summary.md");
+    if let Some(parent) = md_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(md_path, md);
+}
+
+fn add_run_window_fields(
+    doc: &mut serde_json::Value,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+    timeout_semantics: &'static str,
+) {
+    let started_local = started_utc.with_timezone(&Local);
+    let expected_end_utc = timeout_seconds
+        .and_then(|s| i64::try_from(s).ok())
+        .map(|s| started_utc + ChronoDuration::seconds(s));
+    let expected_end_local = expected_end_utc.map(|dt| dt.with_timezone(&Local));
+
+    if let Some(obj) = doc.as_object_mut() {
+        obj.insert(
+            "run_window".to_string(),
+            serde_json::json!({
+                "started_utc": started_utc.to_rfc3339(),
+                "started_local": started_local.to_rfc3339(),
+                "timeout_seconds": timeout_seconds,
+                "timeout_semantics": timeout_semantics,
+                "expected_latest_end_utc": expected_end_utc.map(|dt| dt.to_rfc3339()),
+                "expected_latest_end_local": expected_end_local.map(|dt| dt.to_rfc3339()),
+                "note": match timeout_semantics {
+                    "continuous_phase_only" => "In run/evidence modes, --timeout applies to the continuous fuzzing phase only; setup + attacks may extend wall time.",
+                    "wall_clock" => "In chains mode, --timeout is the total wall-clock budget for the chain fuzzing run.",
+                    _ => "",
+                },
+            }),
+        );
+    }
+}
+
+fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
+    let base = run_signal_dir();
+    let report_dir = engagement_root_dir(run_id);
+    let command = get_command_from_doc(value);
+    let mode = mode_folder_from_command(&command);
+
+    // Log/event stream (engagement-wide + per-run).
+    let log_dir = report_dir.join("log");
+    best_effort_append_jsonl(&log_dir.join("events.jsonl"), value);
+    best_effort_append_jsonl(&log_dir.join(format!("events_{}.jsonl", run_id)), value);
+
+    // Latest pointers.
+    best_effort_write_json(&report_dir.join("latest.json"), value);
+    best_effort_write_json(&report_dir.join(mode).join("latest.json"), value);
+    best_effort_write_json(&base.join("latest.json"), value);
+
+    // Per-run snapshot (stored under its mode).
+    best_effort_write_json(
+        &report_dir
+            .join(mode)
+            .join("runs")
+            .join(run_id)
+            .join("run_event.json"),
+        value,
+    );
+
+    update_engagement_summary(&report_dir, value);
+}
+
 fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Value) {
     best_effort_write_json(&output_dir.join("run_outcome.json"), value);
     let runs_dir = output_dir.join("_runs");
     best_effort_write_json(&runs_dir.join(format!("{}.json", run_id)), value);
     best_effort_write_json(&output_dir.join("run_status.json"), value);
+    write_global_run_signal(run_id, value);
+
+    // Best-effort mirror of the "human-facing" reports into the engagement folder, so you can
+    // find mode1/mode2/mode3 outputs in one place.
+    let report_dir = engagement_root_dir(run_id);
+    let command = get_command_from_doc(value);
+    let mode = mode_folder_from_command(&command);
+    let dst_dir = report_dir.join(mode).join("runs").join(run_id);
+    let _ = std::fs::create_dir_all(&dst_dir);
+
+    for name in [
+        "report.json",
+        "report.md",
+        "chain_report.json",
+        "chain_report.md",
+        "run_outcome.json",
+        "run_status.json",
+    ] {
+        let src = output_dir.join(name);
+        if src.exists() {
+            let _ = std::fs::copy(&src, dst_dir.join(name));
+        }
+    }
 }
 
 fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
     let failed_dir = PathBuf::from("reports/_failed_runs");
     best_effort_write_json(&failed_dir.join(format!("{}.json", run_id)), value);
+    write_global_run_signal(run_id, value);
 }
 
 fn install_panic_hook() {
@@ -717,7 +998,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         }));
 
         // Seed a persistent status file early so "it stopped" cases always leave artifacts.
-        let doc = serde_json::json!({
+        let mut doc = serde_json::json!({
             "status": "running",
             "command": command,
             "run_id": run_id.clone(),
@@ -739,6 +1020,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "dry_run": options.dry_run,
             }
         });
+        add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
 
@@ -756,7 +1038,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         let invariants = config.get_invariants();
         if invariants.is_empty() {
             let ended_utc = Utc::now();
-            let doc = serde_json::json!({
+            let mut doc = serde_json::json!({
                 "status": "failed",
                 "command": command,
                 "run_id": run_id.clone(),
@@ -770,6 +1052,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
                 "reason": "Evidence mode requires v2 invariants in the YAML (invariants: ...).",
             });
+            add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
             if !options.dry_run {
                 write_run_artifacts(&output_dir, &run_id, &doc);
             }
@@ -796,7 +1079,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         print!("{}", readiness.format());
         if !readiness.ready_for_evidence {
             let ended_utc = Utc::now();
-            let doc = serde_json::json!({
+            let mut doc = serde_json::json!({
                 "status": "failed",
                 "command": command,
                 "run_id": run_id.clone(),
@@ -811,6 +1094,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "reason": "Campaign has critical issues; refusing to start strict evidence run",
                 "readiness": readiness_report_to_json(&readiness),
             });
+            add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
             if !options.dry_run {
                 write_run_artifacts(&output_dir, &run_id, &doc);
             }
@@ -871,7 +1155,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         Ok(r) => r,
         Err(err) => {
             let ended_utc = Utc::now();
-            let doc = serde_json::json!({
+            let mut doc = serde_json::json!({
                 "status": "failed",
                 "command": command,
                 "run_id": run_id.clone(),
@@ -885,6 +1169,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
                 "error": format!("{:#}", err),
             });
+            add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
             write_run_artifacts(&output_dir, &run_id, &doc);
             return Err(err);
         }
@@ -895,7 +1180,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     report.print_summary();
     if let Err(err) = report.save_to_files() {
         let ended_utc = Utc::now();
-        let doc = serde_json::json!({
+        let mut doc = serde_json::json!({
             "status": "failed",
             "command": command,
             "run_id": run_id.clone(),
@@ -909,13 +1194,14 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
             "error": format!("{:#}", err),
         });
+        add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
         write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err);
     }
 
     let ended_utc = Utc::now();
     let critical = report.has_critical_findings();
-    let doc = serde_json::json!({
+    let mut doc = serde_json::json!({
         "status": if critical { "completed_with_critical_findings" } else { "completed" },
         "command": command,
         "run_id": run_id.clone(),
@@ -933,6 +1219,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "total_executions": report.statistics.total_executions,
         },
     });
+    add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
     write_run_artifacts(&output_dir, &run_id, &doc);
 
     if critical {
@@ -1241,7 +1528,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             started_utc: started_utc.to_rfc3339(),
         }));
 
-        let doc = serde_json::json!({
+        let mut doc = serde_json::json!({
             "status": "running",
             "command": command,
             "run_id": run_id.clone(),
@@ -1261,6 +1548,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 "dry_run": options.dry_run,
             }
         });
+        add_run_window_fields(&mut doc, started_utc, Some(options.timeout), "wall_clock");
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
 
@@ -1805,7 +2093,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     };
 
     stage = "completed";
-    let doc = serde_json::json!({
+    let mut doc = serde_json::json!({
         "status": status,
         "command": command,
         "run_id": run_id.clone(),
@@ -1836,6 +2124,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             }
         }
     });
+    add_run_window_fields(&mut doc, started_utc, Some(options.timeout), "wall_clock");
     write_run_artifacts(&output_dir, &run_id, &doc);
 
     if critical {
