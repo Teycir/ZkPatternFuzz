@@ -1034,12 +1034,13 @@ impl FuzzingEngine {
             findings.len(),
             elapsed.as_secs_f64()
         );
+        // Reporting/evidence generation can still take time; don't mark 100% until the end.
         self.write_progress_snapshot(
             mode_label,
-            "completed",
+            "reporting",
             phases_total,
-            phases_total,
-            None,
+            phases_total.saturating_sub(1),
+            Some(0.0),
             serde_json::json!({
                 "findings_total": findings.len(),
                 "duration_seconds": elapsed.as_secs_f64(),
@@ -1105,6 +1106,17 @@ impl FuzzingEngine {
                 }
             }
         }
+
+        self.write_progress_snapshot(
+            mode_label,
+            "completed",
+            phases_total,
+            phases_total,
+            None,
+            serde_json::json!({
+                "findings_total": report.findings.len(),
+            }),
+        );
 
         Ok(report)
     }

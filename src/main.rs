@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use zk_fuzzer::config::{FuzzConfig, ProfileName, ReadinessReport, apply_profile};
@@ -19,6 +19,84 @@ struct RunLogContext {
 static RUN_LOG_CONTEXT: OnceLock<Mutex<Option<RunLogContext>>> = OnceLock::new();
 static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 static SIGNAL_WATCHER_STARTED: OnceLock<()> = OnceLock::new();
+static DYNAMIC_LOG_FILE: OnceLock<Mutex<Option<(PathBuf, std::fs::File)>>> = OnceLock::new();
+
+struct DynamicLogWriter;
+
+struct DynamicTeeWriter;
+
+impl DynamicTeeWriter {
+    fn desired_log_path() -> PathBuf {
+        if let Some(ctx) = get_run_log_context() {
+            engagement_root_dir(&ctx.run_id)
+                .join("log")
+                .join("tracing.log")
+        } else {
+            run_signal_dir().join("session.log")
+        }
+    }
+
+    fn with_log_file<F, R>(f: F) -> io::Result<R>
+    where
+        F: FnOnce(&mut std::fs::File) -> io::Result<R>,
+    {
+        let path = Self::desired_log_path();
+        let slot = DYNAMIC_LOG_FILE.get_or_init(|| Mutex::new(None));
+        let mut guard = slot.lock().map_err(|_| io::ErrorKind::Other)?;
+
+        let need_reopen = match guard.as_ref() {
+            Some((p, _)) => *p != path,
+            None => true,
+        };
+
+        if need_reopen {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                Ok(file) => {
+                    *guard = Some((path.clone(), file));
+                }
+                Err(err) => {
+                    // If file logging can't be opened, just fall back to console-only.
+                    return Err(err);
+                }
+            }
+        }
+
+        if let Some((_, ref mut file)) = guard.as_mut() {
+            f(file)
+        } else {
+            Err(io::Error::new(io::ErrorKind::Other, "log file unavailable"))
+        }
+    }
+}
+
+impl io::Write for DynamicTeeWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // Console output (keep behavior similar to default fmt subscriber).
+        let _ = io::stderr().write_all(buf);
+
+        // Best-effort file output.
+        let _ = Self::with_log_file(|file| file.write_all(buf).map(|_| ()));
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let _ = io::stderr().flush();
+        let _ = Self::with_log_file(|file| file.flush());
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for DynamicLogWriter {
+    type Writer = DynamicTeeWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        DynamicTeeWriter
+    }
+}
 
 fn set_run_log_context(ctx: Option<RunLogContext>) {
     let slot = RUN_LOG_CONTEXT.get_or_init(|| Mutex::new(None));
@@ -109,14 +187,24 @@ fn run_signal_dir() -> PathBuf {
         }
     }
 
+    let mut candidate = None;
+
     if let Ok(home) = std::env::var("HOME") {
         let home = home.trim();
         if !home.is_empty() {
-            return PathBuf::from(home).join("ZkFuzzReports");
+            candidate = Some(PathBuf::from(home).join("ZkFuzzReports"));
         }
     }
 
-    PathBuf::from("reports/_run_signals")
+    if let Some(path) = candidate {
+        if std::fs::create_dir_all(&path).is_ok() {
+            return path;
+        }
+    }
+
+    let fallback = PathBuf::from("reports/_run_signals");
+    let _ = std::fs::create_dir_all(&fallback);
+    fallback
 }
 
 fn best_effort_append_jsonl(path: &Path, value: &serde_json::Value) {
@@ -382,6 +470,89 @@ fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
     let failed_dir = PathBuf::from("reports/_failed_runs");
     best_effort_write_json(&failed_dir.join(format!("{}.json", run_id)), value);
     write_global_run_signal(run_id, value);
+}
+
+fn pid_is_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        std::path::Path::new(&format!("/proc/{}", pid)).exists()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
+fn mark_stale_previous_run_if_any(output_dir: &Path, current_pid: u32) {
+    let path = output_dir.join("run_outcome.json");
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let mut doc: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let status = doc
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    if status != "running" {
+        return;
+    }
+
+    let prev_pid = doc.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    if prev_pid == 0 || prev_pid == current_pid || pid_is_alive(prev_pid) {
+        return;
+    }
+
+    let prev_run_id = doc
+        .get("run_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown_run_id")
+        .to_string();
+
+    let ended_utc = Utc::now();
+    if let Some(obj) = doc.as_object_mut() {
+        obj.insert(
+            "status".to_string(),
+            serde_json::Value::String("stale_interrupted".to_string()),
+        );
+        obj.insert(
+            "stage".to_string(),
+            serde_json::Value::String("detected_stale_run".to_string()),
+        );
+        obj.insert(
+            "ended_utc".to_string(),
+            serde_json::Value::String(ended_utc.to_rfc3339()),
+        );
+        obj.insert(
+            "reason".to_string(),
+            serde_json::Value::String(
+                "Previous run_outcome.json said status=running but its PID is no longer alive. The run likely died via SIGKILL/OOM or external termination before it could write completion artifacts."
+                    .to_string(),
+            ),
+        );
+        obj.insert(
+            "previous_pid".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(prev_pid)),
+        );
+        obj.insert(
+            "current_pid".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(current_pid)),
+        );
+    }
+
+    // Preserve an explicit stale marker in the output dir.
+    best_effort_write_json(&output_dir.join("stale_run.json"), &doc);
+
+    // Also emit it into the engagement report/log stream.
+    write_global_run_signal(&prev_run_id, &doc);
 }
 
 fn install_panic_hook() {
@@ -760,6 +931,7 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
         .with_max_level(log_level)
         .with_target(false)
         .with_ansi(false)
+        .with_writer(DynamicLogWriter)
         .init();
 
     // Ensure early-stop causes are captured to disk when possible (panic/signal).
@@ -1000,6 +1172,12 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     };
 
     if !options.dry_run {
+        // If a previous run died without updating run_outcome.json, mark it as stale so it doesn't
+        // look like "still running forever".
+        mark_stale_previous_run_if_any(&output_dir, std::process::id());
+    }
+
+    if !options.dry_run {
         set_run_log_context(Some(RunLogContext {
             run_id: run_id.clone(),
             command: command.to_string(),
@@ -1119,6 +1297,34 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     let run_start = Local::now();
     print_run_window(run_start, options.timeout);
 
+    if !options.dry_run {
+        // Update run artifacts with a more informative stage than the initial lock acquisition.
+        let mut doc = serde_json::json!({
+            "status": "running",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": "starting_engine",
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "options": {
+                "workers": options.workers,
+                "seed": options.seed,
+                "iterations": options.iterations,
+                "timeout_seconds": options.timeout,
+                "resume": options.resume,
+                "corpus_dir": options.corpus_dir.clone(),
+                "profile": options.profile.clone(),
+                "simple_progress": options.simple_progress,
+                "dry_run": options.dry_run,
+            }
+        });
+        add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+        write_run_artifacts(&output_dir, &run_id, &doc);
+    }
+
     // Handle resume mode
     if options.resume {
         let corpus_path = if let Some(ref dir) = options.corpus_dir {
@@ -1232,6 +1438,21 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
     // Run with new engine if not using simple progress
     stage = "engine_run";
+    if !options.dry_run {
+        let mut doc = serde_json::json!({
+            "status": "running",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": stage,
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+        });
+        add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+        write_run_artifacts(&output_dir, &run_id, &doc);
+    }
     let report = match if options.simple_progress {
         let mut fuzzer = ZkFuzzer::new(config, options.seed);
         fuzzer.run_with_workers(options.workers).await
@@ -1605,6 +1826,11 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     };
 
     if !options.dry_run {
+        // If a previous chain run died without updating run_outcome.json, mark it as stale.
+        mark_stale_previous_run_if_any(&output_dir, std::process::id());
+    }
+
+    if !options.dry_run {
         set_run_log_context(Some(RunLogContext {
             run_id: run_id.clone(),
             command: command.to_string(),
@@ -1738,6 +1964,31 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     println!();
     let run_start = Local::now();
     print_run_window(run_start, Some(options.timeout));
+
+    if !options.dry_run {
+        let mut doc = serde_json::json!({
+            "status": "running",
+            "command": command,
+            "run_id": run_id.clone(),
+            "stage": "starting_engine",
+            "pid": std::process::id(),
+            "campaign_path": config_path,
+            "campaign_name": campaign_name.clone(),
+            "output_dir": output_dir.display().to_string(),
+            "started_utc": started_utc.to_rfc3339(),
+            "options": {
+                "workers": options.workers,
+                "seed": options.seed,
+                "iterations": options.iterations,
+                "timeout_seconds": options.timeout,
+                "resume": options.resume,
+                "simple_progress": options.simple_progress,
+                "dry_run": options.dry_run,
+            }
+        });
+        add_run_window_fields(&mut doc, started_utc, Some(options.timeout), "wall_clock");
+        write_run_artifacts(&output_dir, &run_id, &doc);
+    }
 
     // List chains
     println!("{}", "CHAINS TO FUZZ:".bright_yellow().bold());

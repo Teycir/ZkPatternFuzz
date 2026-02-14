@@ -123,7 +123,9 @@ impl FuzzingEngine {
 
             // Progress snapshot (cheap, periodic). This gives a "percent done" signal even when
             // wall-clock duration is not predictable.
-            if last_progress_write.elapsed() >= Duration::from_secs(10) || completed.is_multiple_of(5000) {
+            if last_progress_write.elapsed() >= Duration::from_secs(10)
+                || completed.is_multiple_of(5000)
+            {
                 let frac = if iterations == 0 {
                     0.0
                 } else {

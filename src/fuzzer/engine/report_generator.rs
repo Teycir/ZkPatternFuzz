@@ -175,6 +175,10 @@ impl FuzzingEngine {
         }
         .clamp(0.0, 1.0);
 
+        let steps_total = phases_total.max(1);
+        let steps_done = phases_completed.min(steps_total);
+        let step_current = (steps_done.saturating_add(1)).min(steps_total);
+
         let additional = &self.config.campaign.parameters.additional;
         let run_id = Self::additional_string(additional, "run_id");
         let command = Self::additional_string(additional, "run_command").unwrap_or_else(|| {
@@ -195,10 +199,13 @@ impl FuzzingEngine {
             "output_dir": self.config.reporting.output_dir.display().to_string(),
             "stage": stage,
             "progress": {
+                // "steps" is the clean signal: 1/n, 3/n, ..., n/n.
+                "steps_total": steps_total,
+                "steps_done": steps_done,
+                "step_current": step_current,
+                "step_fraction": format!("{}/{}", step_current, steps_total),
                 "overall_fraction": overall,
                 "overall_percent": (overall * 100.0),
-                "phases_total": phases_total,
-                "phases_completed": phases_completed,
                 "phase_progress": phase_progress,
             },
             "details": details,
