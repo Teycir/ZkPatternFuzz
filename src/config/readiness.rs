@@ -179,7 +179,7 @@ impl ReadinessReport {
             let low: Vec<_> = self
                 .warnings
                 .iter()
-                .filter(|w| w.level <= ReadinessLevel::Low)
+                .filter(|w| matches!(w.level, ReadinessLevel::Low | ReadinessLevel::Info))
                 .collect();
 
             if !critical.is_empty() {
@@ -482,19 +482,32 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     }
 
     // 13. Check fuzzing iterations (CRITICAL for 0-day discovery)
-    let max_iterations = additional
-        .get("max_iterations")
-        .and_then(|v| v.as_u64())
-        .or_else(|| additional.get("fuzzing_iterations").and_then(|v| v.as_u64()))
-        .unwrap_or(1000);
+    let (iterations_key, max_iterations) = if !config.chains.is_empty() {
+        (
+            "chain_iterations",
+            additional
+                .get("chain_iterations")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1000),
+        )
+    } else {
+        (
+            "max_iterations",
+            additional
+                .get("max_iterations")
+                .and_then(|v| v.as_u64())
+                .or_else(|| additional.get("fuzzing_iterations").and_then(|v| v.as_u64()))
+                .unwrap_or(1000),
+        )
+    };
 
     if max_iterations < 10_000 {
         warnings.push(
             ReadinessWarning::high(
                 "Fuzzing",
                 &format!(
-                    "max_iterations={} is too low for 0-day discovery",
-                    max_iterations
+                    "{}={} is too low for 0-day discovery",
+                    iterations_key, max_iterations
                 ),
             )
             .with_fix("Set max_iterations >= 100000 for production audits"),
@@ -502,7 +515,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     } else if max_iterations < 100_000 {
         warnings.push(ReadinessWarning::medium(
             "Fuzzing",
-            &format!("max_iterations={} may miss deep bugs", max_iterations),
+            &format!("{}={} may miss deep bugs", iterations_key, max_iterations),
         ));
     }
 
