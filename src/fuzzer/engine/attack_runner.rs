@@ -2068,20 +2068,9 @@ impl FuzzingEngine {
         };
 
         if !findings.is_empty() {
-            tracing::info!(
-                "Generated {} findings from constraint inference",
-                findings.len()
-            );
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(findings.iter().cloned());
-            }
-            if let Some(p) = progress {
-                for finding in &findings {
-                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
-                }
-            }
+            let kept =
+                self.record_custom_findings(findings, AttackType::ConstraintInference, progress);
+            tracing::info!("Generated {} findings from constraint inference", kept);
         }
 
         // Enforce v2 invariants (constraint/range/uniqueness) by attempting violations.
@@ -2105,20 +2094,12 @@ impl FuzzingEngine {
             };
 
         if !invariant_findings.is_empty() {
-            tracing::info!(
-                "Generated {} findings from invariant enforcement",
-                invariant_findings.len()
+            let kept = self.record_custom_findings(
+                invariant_findings,
+                AttackType::ConstraintInference,
+                progress,
             );
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(invariant_findings.iter().cloned());
-            }
-            if let Some(p) = progress {
-                for finding in &invariant_findings {
-                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
-                }
-            }
+            tracing::info!("Generated {} findings from invariant enforcement", kept);
         }
 
         tracing::info!("Constraint inference attack completed");
@@ -2260,18 +2241,7 @@ impl FuzzingEngine {
             .run(self.executor.as_ref(), &base_witness.inputs, &outputs)
             .await;
 
-        if !findings.is_empty() {
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(findings.iter().cloned());
-            }
-            if let Some(p) = progress {
-                for finding in &findings {
-                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
-                }
-            }
-        }
+        let _kept = self.record_custom_findings(findings, AttackType::ConstraintSlice, progress);
 
         if let Some(p) = progress {
             p.inc();

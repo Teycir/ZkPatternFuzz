@@ -295,7 +295,10 @@ impl FuzzingEngine {
         indices
     }
 
-    pub(super) fn collect_identifiers(ast: &crate::config::v2::InvariantAST, out: &mut Vec<String>) {
+    pub(super) fn collect_identifiers(
+        ast: &crate::config::v2::InvariantAST,
+        out: &mut Vec<String>,
+    ) {
         use crate::config::v2::InvariantAST;
 
         match ast {

@@ -629,7 +629,9 @@ pub fn filter_validated_findings(
     validator: &mut OracleValidator,
     oracles: &mut [Box<dyn BugOracle>],
     executor: &dyn CircuitExecutor,
+    evidence_mode: bool,
 ) -> Vec<Finding> {
+    let expected_inputs = executor.num_public_inputs() + executor.num_private_inputs();
     findings
         .into_iter()
         .filter(|finding| {
@@ -637,6 +639,16 @@ pub fn filter_validated_findings(
             let mut outputs = Vec::new();
 
             let mut push_sample = |inputs: Vec<FieldElement>, label: &str| {
+                if inputs.len() != expected_inputs {
+                    tracing::debug!(
+                        "Oracle validation skipped for '{:?}' ({}): wrong input length (got {}, expected {})",
+                        finding.attack_type,
+                        label,
+                        inputs.len(),
+                        expected_inputs
+                    );
+                    return;
+                }
                 let test_case = TestCase {
                     inputs,
                     expected_output: None,
@@ -644,10 +656,14 @@ pub fn filter_validated_findings(
                 };
                 let exec_result = executor.execute_sync(&test_case.inputs);
                 if !exec_result.success {
-                    tracing::warn!(
-                        "Oracle validation skipped for '{:?}' ({}): execution failed",
+                    tracing::debug!(
+                        "Oracle validation skipped for '{:?}' ({}): execution failed ({})",
                         finding.attack_type,
-                        label
+                        label,
+                        exec_result
+                            .error
+                            .as_deref()
+                            .unwrap_or("unknown error")
                     );
                     return;
                 }
@@ -661,7 +677,9 @@ pub fn filter_validated_findings(
             }
 
             if test_cases.is_empty() {
-                return true;
+                // In evidence mode, findings must be reproducible with an executable witness.
+                // In non-evidence mode, keep as a hint even if we couldn't validate.
+                return !evidence_mode;
             }
 
             let samples: Vec<ValidationSample<'_>> = test_cases

@@ -890,6 +890,7 @@ impl FuzzingEngine {
                 &mut validator,
                 &mut validation_oracles,
                 self.executor.as_ref(),
+                evidence_mode,
             );
             let after = findings.len();
             tracing::info!(
