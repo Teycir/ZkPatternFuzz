@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use chrono::{DateTime, Duration as ChronoDuration, Local};
 use zk_fuzzer::config::{FuzzConfig, ProfileName, apply_profile};
 use zk_fuzzer::fuzzer::ZkFuzzer;
 
@@ -417,6 +418,8 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
     // Print banner
     print_banner(&config);
+    let run_start = Local::now();
+    print_run_window(run_start, options.timeout);
 
     // Handle resume mode
     if options.resume {
@@ -654,6 +657,39 @@ fn print_banner(config: &FuzzConfig) {
     println!();
 }
 
+fn print_run_window(start: DateTime<Local>, timeout_seconds: Option<u64>) {
+    println!("RUN WINDOW");
+    println!(
+        "  Start: {}",
+        start.format("%Y-%m-%d %H:%M:%S %Z")
+    );
+
+    match timeout_seconds.and_then(|s| i64::try_from(s).ok()) {
+        Some(seconds) => {
+            let expected_end = start + ChronoDuration::seconds(seconds);
+            println!(
+                "  Expected latest end: {} (timeout {}s)",
+                expected_end.format("%Y-%m-%d %H:%M:%S %Z"),
+                seconds
+            );
+            tracing::info!(
+                "RUN_WINDOW start={} expected_latest_end={} timeout_seconds={}",
+                start.to_rfc3339(),
+                expected_end.to_rfc3339(),
+                seconds
+            );
+        }
+        None => {
+            println!("  Expected latest end: unbounded (no --timeout)");
+            tracing::info!(
+                "RUN_WINDOW start={} expected_latest_end=unbounded",
+                start.to_rfc3339()
+            );
+        }
+    }
+    println!();
+}
+
 fn truncate_str(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
@@ -732,10 +768,12 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     println!("{}", "╠═══════════════════════════════════════════════════════════╣".bright_magenta());
     println!("{}  Campaign: {:<45} {}", "║".bright_magenta(), truncate_str(&config.campaign.name, 45).white(), "║".bright_magenta());
     println!("{}  Chains:   {:<45} {}", "║".bright_magenta(), format!("{} defined", chains.len()).cyan(), "║".bright_magenta());
-    println!("{}  Budget:   {:<45} {}", "║".bright_magenta(), format!("{}s per chain", options.timeout).yellow(), "║".bright_magenta());
+    println!("{}  Budget:   {:<45} {}", "║".bright_magenta(), format!("{}s total", options.timeout).yellow(), "║".bright_magenta());
     println!("{}  Resume:   {:<45} {}", "║".bright_magenta(), if options.resume { "yes".green() } else { "no".white() }, "║".bright_magenta());
     println!("{}", "╚═══════════════════════════════════════════════════════════╝".bright_magenta());
     println!();
+    let run_start = Local::now();
+    print_run_window(run_start, Some(options.timeout));
 
     // List chains
     println!("{}", "CHAINS TO FUZZ:".bright_yellow().bold());
