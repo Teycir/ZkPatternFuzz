@@ -198,13 +198,7 @@ impl FuzzingEngine {
                 tracing::warn!("Ignoring strict_backend=false; strict backend mode is enforced");
             }
         }
-        if let Some(mark_fallback) = Self::additional_bool(additional, "mark_fallback") {
-            if mark_fallback {
-                tracing::warn!("Ignoring mark_fallback=true; fallback mode is disabled");
-            }
-        }
         options.strict_backend = true;
-        options.mark_fallback = false;
         if let Some(auto_setup) = Self::additional_bool(additional, "circom_auto_setup_keys") {
             tracing::info!("Circom auto setup keys: {}", auto_setup);
             options.circom_auto_setup_keys = auto_setup;

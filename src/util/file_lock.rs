@@ -42,7 +42,13 @@ impl Drop for FileLock {
     fn drop(&mut self) {
         #[cfg(unix)]
         {
-            let _ = flock(&self.file, libc::LOCK_UN);
+            if let Err(e) = flock(&self.file, libc::LOCK_UN) {
+                tracing::warn!(
+                    "Failed to unlock file lock {}: {}",
+                    self.path.display(),
+                    e
+                );
+            }
         }
     }
 }
@@ -74,14 +80,20 @@ pub fn lock_file_exclusive(path: impl AsRef<Path>, mode: LockMode) -> anyhow::Re
 
     // Helpful metadata for humans.
     // Failure to write metadata should not prevent locking.
-    let _ = file.set_len(0);
-    let _ = writeln!(
+    if let Err(e) = file.set_len(0) {
+        tracing::warn!("Failed to truncate lock file {}: {}", path.display(), e);
+    }
+    if let Err(e) = writeln!(
         file,
         "pid={} started={}",
         std::process::id(),
         chrono::Utc::now().to_rfc3339()
-    );
-    let _ = file.sync_all();
+    ) {
+        tracing::warn!("Failed to write lock metadata {}: {}", path.display(), e);
+    }
+    if let Err(e) = file.sync_all() {
+        tracing::warn!("Failed to sync lock file {}: {}", path.display(), e);
+    }
 
     Ok(FileLock { path, file })
 }

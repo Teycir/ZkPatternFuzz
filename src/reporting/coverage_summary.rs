@@ -118,7 +118,9 @@ impl CoverageSummary {
 
     /// Print summary to stdout with colors
     pub fn print(&self) {
-        self.print_to(&mut io::stdout()).ok();
+        if let Err(e) = self.print_to(&mut io::stdout()) {
+            tracing::error!("Failed to print coverage summary: {}", e);
+        }
     }
 
     /// Print summary to a writer

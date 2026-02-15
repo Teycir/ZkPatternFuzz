@@ -185,7 +185,7 @@ impl CairoTarget {
             return Ok((CairoVersion::Cairo0, version));
         }
 
-        // Fallback to Scarb (Cairo 1).
+        // Try Scarb (Cairo 1 toolchain).
         let output = {
             let mut cmd = Command::new("scarb");
             cmd.arg("--version");
@@ -309,19 +309,10 @@ impl CairoTarget {
         }
 
         if self.compiled_path.is_none() {
-            let fallback_dir = project_dir.join("target").join("dev");
-            if let Ok(entries) = std::fs::read_dir(&fallback_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path
-                        .extension()
-                        .is_some_and(|e| e == "sierra.json" || e == "casm.json")
-                    {
-                        self.compiled_path = Some(path);
-                        break;
-                    }
-                }
-            }
+            anyhow::bail!(
+                "Scarb build succeeded but no compiled artifact (.sierra.json/.casm.json) was found in {}",
+                target_dir.display()
+            );
         }
 
         tracing::info!("Cairo 1 compilation successful");
@@ -334,39 +325,44 @@ impl CairoTarget {
     fn parse_program_info(&mut self) -> Result<()> {
         let compiled_path = match &self.compiled_path {
             Some(p) => p,
-            None => return Ok(()),
+            None => anyhow::bail!("No compiled Cairo artifact available"),
         };
 
         if compiled_path.exists() {
             let content = std::fs::read_to_string(compiled_path)?;
-            if let Ok(program) = serde_json::from_str::<serde_json::Value>(&content) {
-                // Extract builtins
-                let builtins: Vec<String> = program
-                    .get("builtins")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect()
-                    })
-                    .unwrap_or_default();
+            let program: serde_json::Value = serde_json::from_str(&content).with_context(|| {
+                format!(
+                    "Failed parsing compiled Cairo artifact '{}'",
+                    compiled_path.display()
+                )
+            })?;
 
-                // Count hints for input estimation
-                let num_hints = program
-                    .get("hints")
-                    .and_then(|v| v.as_object())
-                    .map(|h| h.len())
-                    .unwrap_or(0);
+            // Extract builtins
+            let builtins: Vec<String> = program
+                .get("builtins")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
 
-                self.metadata = Some(CairoMetadata {
-                    name: self.name.clone(),
-                    num_steps: 0,
-                    num_memory_cells: 0,
-                    builtins,
-                    num_inputs: num_hints.max(1),
-                    num_outputs: 1,
-                });
-            }
+            // Count hints for input estimation
+            let num_hints = program
+                .get("hints")
+                .and_then(|v| v.as_object())
+                .map(|h| h.len())
+                .unwrap_or(0);
+
+            self.metadata = Some(CairoMetadata {
+                name: self.name.clone(),
+                num_steps: 0,
+                num_memory_cells: 0,
+                builtins,
+                num_inputs: num_hints.max(1),
+                num_outputs: 1,
+            });
         }
 
         Ok(())
@@ -552,15 +548,21 @@ impl CairoTarget {
         std::fs::write(&config_path, &config)?;
 
         // Run stone-prover
+        let trace_path_str = trace_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 trace path: {}", trace_path.display()))?;
+        let memory_path_str = memory_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 memory path: {}", memory_path.display()))?;
         let output = {
             let mut cmd = Command::new("cpu_air_prover");
             cmd.args([
                 "--out_file",
                 proof_path.to_str().unwrap(),
                 "--trace_file",
-                trace_path.to_str().unwrap_or_default(),
+                trace_path_str,
                 "--memory_file",
-                memory_path.to_str().unwrap_or_default(),
+                memory_path_str,
                 "--prover_config_file",
                 config_path.to_str().unwrap(),
             ]);

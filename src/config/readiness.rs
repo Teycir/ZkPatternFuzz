@@ -239,10 +239,6 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         .get("strict_backend")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let mark_fallback = additional
-        .get("mark_fallback")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
 
     if !strict_backend {
         warnings.push(
@@ -251,15 +247,6 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
                 "strict_backend is false - backend/tooling failures can hide real bugs",
             )
             .with_fix("Set strict_backend: true in campaign.parameters.additional"),
-        );
-    }
-    if mark_fallback {
-        warnings.push(
-            ReadinessWarning::critical(
-                "Backend",
-                "mark_fallback is true - fallback mode is forbidden by strict policy",
-            )
-            .with_fix("Set mark_fallback: false (or remove the key entirely)"),
         );
     }
 

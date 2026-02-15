@@ -163,11 +163,11 @@ fn main() -> anyhow::Result<()> {
         let config_dir = Path::new(&args.config_dir);
         std::fs::create_dir_all(config_dir)?;
         for gen in &generated {
-            let _ = if let Some(placeholder) = root_placeholder.as_deref() {
-                gen.save_with_placeholder(config_dir, &root, placeholder)?
+            if let Some(placeholder) = root_placeholder.as_deref() {
+                gen.save_with_placeholder(config_dir, &root, placeholder)?;
             } else {
-                gen.save(config_dir)?
-            };
+                gen.save(config_dir)?;
+            }
         }
     }
 
@@ -346,15 +346,15 @@ fn candidate_invariants_from_hints(
     let mut out = Vec::new();
     for (idx, hint) in hints.iter().enumerate() {
         let affected = inputs_for_category(&hint.category, inputs, 4);
-        // Deterministic fallback: pick first known input if keyword matching
-        // found nothing, or use a descriptive placeholder derived from the
-        // hint category so reviewers can spot the gap immediately.
-        let primary = affected.first().cloned().unwrap_or_else(|| {
-            inputs
-                .first()
-                .cloned()
-                .unwrap_or_else(|| format!("UNKNOWN_INPUT_{}", idx))
-        });
+        if affected.is_empty() {
+            tracing::warn!(
+                "Skipping hint {} ({:?}): no matching circuit inputs found",
+                idx.saturating_add(1),
+                hint.category
+            );
+            continue;
+        }
+        let primary = affected[0].clone();
         let relation = relation_for_category(&hint.category, &primary);
         let name =
             format!("{:?}_candidate_{}", hint.category, idx.saturating_add(1)).to_lowercase();

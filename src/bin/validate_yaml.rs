@@ -97,23 +97,7 @@ fn extract_identifiers(relation: &str) -> Vec<String> {
             return out;
         }
     }
-
-    // Fallback: token scan
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    for ch in relation.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            current.push(ch);
-        } else if !current.is_empty() {
-            tokens.push(current.clone());
-            current.clear();
-        }
-    }
-    if !current.is_empty() {
-        tokens.push(current);
-    }
-
-    tokens
+    Vec::new()
 }
 
 fn collect_identifiers(ast: &InvariantAST, out: &mut Vec<String>) {

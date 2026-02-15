@@ -63,7 +63,6 @@ pub struct ExecOptions {
     #[serde(default = "default_circom_witness_sanity_check")]
     pub circom_witness_sanity_check: bool,
     pub strict_backend: bool,
-    pub mark_fallback: bool,
 }
 
 fn default_circom_witness_sanity_check() -> bool {
@@ -111,7 +110,6 @@ impl ExecOptions {
             circom_skip_constraint_check: options.circom_skip_constraint_check,
             circom_witness_sanity_check: options.circom_witness_sanity_check,
             strict_backend: options.strict_backend,
-            mark_fallback: options.mark_fallback,
         }
     }
 
@@ -134,7 +132,6 @@ impl ExecOptions {
             circom_skip_constraint_check: self.circom_skip_constraint_check,
             circom_witness_sanity_check: self.circom_witness_sanity_check,
             strict_backend: self.strict_backend,
-            mark_fallback: self.mark_fallback,
         }
     }
 }
@@ -530,7 +527,13 @@ impl IsolatedExecutor {
         loop {
             if let Some(status) = child.try_wait()? {
                 if !status.success() {
-                    let _ = std::fs::remove_file(&response_path);
+                    if let Err(e) = std::fs::remove_file(&response_path) {
+                        tracing::warn!(
+                            "Failed to remove worker response file {:?}: {}",
+                            response_path,
+                            e
+                        );
+                    }
                     anyhow::bail!("Worker process crashed with exit code: {:?}", status.code());
                 }
                 break;
@@ -538,10 +541,20 @@ impl IsolatedExecutor {
 
             if start.elapsed() >= timeout {
                 if self.config.kill_on_timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    if let Err(e) = child.kill() {
+                        tracing::warn!("Failed to kill timed out worker process: {}", e);
+                    }
+                    if let Err(e) = child.wait() {
+                        tracing::warn!("Failed to wait on timed out worker process: {}", e);
+                    }
                 }
-                let _ = std::fs::remove_file(&response_path);
+                if let Err(e) = std::fs::remove_file(&response_path) {
+                    tracing::warn!(
+                        "Failed to remove worker response file {:?}: {}",
+                        response_path,
+                        e
+                    );
+                }
                 anyhow::bail!("Execution timeout after {} ms", self.config.timeout_ms);
             }
 
@@ -550,7 +563,13 @@ impl IsolatedExecutor {
 
         let response_data = std::fs::read_to_string(&response_path)
             .with_context(|| format!("Exec worker response missing at {:?}", response_path))?;
-        let _ = std::fs::remove_file(&response_path);
+        if let Err(e) = std::fs::remove_file(&response_path) {
+            tracing::warn!(
+                "Failed to remove worker response file {:?}: {}",
+                response_path,
+                e
+            );
+        }
 
         let response: ExecResponse = serde_json::from_str(&response_data)?;
         Ok(response)

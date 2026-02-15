@@ -373,28 +373,7 @@ impl ConfigGenerator {
                     }
                 }
             }
-            _ => {
-                // Default fallback
-                inputs.push(Input {
-                    name: "input".to_string(),
-                    input_type: "field".to_string(),
-                    fuzz_strategy: super::FuzzStrategy::Random,
-                    constraints: vec![],
-                    interesting: vec![],
-                    length: None,
-                });
-            }
-        }
-
-        if inputs.is_empty() {
-            inputs.push(Input {
-                name: "default_input".to_string(),
-                input_type: "field".to_string(),
-                fuzz_strategy: super::FuzzStrategy::Random,
-                constraints: vec![],
-                interesting: vec![],
-                length: None,
-            });
+            _ => {}
         }
 
         inputs

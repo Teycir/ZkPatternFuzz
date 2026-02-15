@@ -218,20 +218,6 @@ pub fn expand_value_placeholder(
     }
 }
 
-/// Legacy wrapper that logs warnings for invalid values
-///
-/// Use this when you need backward compatibility but want visibility into errors.
-/// For new code, prefer `expand_value_placeholder` directly.
-pub fn expand_value_placeholder_with_default(value: &str, field_modulus: &[u8; 32]) -> Vec<u8> {
-    match expand_value_placeholder(value, field_modulus) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            tracing::warn!("{}", e);
-            vec![0u8; 32]
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

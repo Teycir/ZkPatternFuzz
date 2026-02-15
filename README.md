@@ -21,7 +21,7 @@ ZkPatternFuzz is a fuzzing and security testing framework for ZK circuits across
 
 **Evidence Mode:** Framework for strict backend verification (full cryptographic proof generation pending).
 
-**Runtime Rules:** Fallback mode is disabled. Backend/tooling failures and unsupported CVE expectations/inputs are treated as hard errors, not warnings.
+**Runtime Rules:** Runtime fallback behavior is removed. Backend/tooling failures and unsupported CVE expectations/inputs are treated as hard errors, not warnings.
 
 ## Validation Results
 
@@ -138,7 +138,7 @@ Options:
   -v, --verbose            Verbose output
       --quiet              Minimal output
       --simple-progress    Use simple progress output (no terminal UI)
-      --real-only          Fail if a real backend is unavailable (no mock fallback)
+      --real-only          Fail if a real backend is unavailable (no mock backend substitution)
       --profile <PROFILE>  Apply profile (quick | standard | deep | perf)
       --kill-existing      Kill other zk-fuzzer instances on startup (use with caution)
       --dry-run            Validate config without executing
@@ -165,7 +165,6 @@ campaign:
     timeout_seconds: 300
     additional:
       strict_backend: true    # fail if real backend tooling is missing
-      mark_fallback: false    # fallback mode is disabled by policy
       kill_on_timeout: true   # kill process on timeout (default: true)
 
 attacks:
@@ -216,7 +215,7 @@ reporting:
 - `tolerance`: DOF ratio tolerance for quick heuristic (optional)
 - `public_input_names`: list of input names to treat as public (preferred method)
 - `public_input_positions`: list of input indices to treat as public (alternative)
-- `public_input_count`: number of leading inputs to treat as public (fallback)
+- `public_input_count`: number of leading inputs to treat as public (legacy compatibility option)
 - `fixed_public_inputs`: values to hold constant for public inputs (must match public input list)
 
 ### Optional Scanner Configs (Opt-In)
@@ -305,7 +304,7 @@ campaign:
   parameters:
     additional:
       evidence_mode: true              # Enable strict verification
-      strict_backend: true             # Fail if real backend unavailable (no mock fallback)
+      strict_backend: true             # Fail if real backend unavailable (no mock backend substitution)
       oracle_validation: true          # Cross-validate findings with multiple oracles
       min_evidence_confidence: "high"  # Filter to HIGH+ confidence (critical/high/medium/low)
       per_exec_isolation: true         # Isolate each execution (hang/crash safety)

@@ -356,8 +356,10 @@ impl DependencyAnalyzer {
         if let Some(inspector) = executor.constraint_inspector() {
             self.build_from_inspector(&mut graph, inspector)?;
         } else {
-            // Fallback: infer from sampling
-            self.build_from_sampling(&mut graph, executor)?;
+            anyhow::bail!(
+                "Dependency analysis requires a constraint inspector; {:?} does not provide one",
+                executor.framework()
+            );
         }
 
         Ok(graph)
@@ -441,34 +443,6 @@ impl DependencyAnalyzer {
                 }
             }
         }
-    }
-
-    /// Build graph from sampling (fallback when no inspector)
-    ///
-    /// When no constraint inspector is available, we use a conservative
-    /// approach assuming all inputs may influence all constraints.
-    fn build_from_sampling(
-        &self,
-        graph: &mut DependencyGraph,
-        _executor: &dyn CircuitExecutor,
-    ) -> anyhow::Result<()> {
-        // Without constraint inspection, use a conservative approach:
-        // Assume all inputs may influence all constraints
-        // This is a fallback that doesn't require async execution
-        for input_id in 0..graph.num_inputs {
-            for constraint_id in 0..graph.num_constraints {
-                graph.add_input_influence(input_id, constraint_id);
-            }
-        }
-
-        tracing::warn!(
-            "Using conservative dependency graph (no constraint inspector available). \
-             All {} inputs are assumed to influence all {} constraints.",
-            graph.num_inputs,
-            graph.num_constraints
-        );
-
-        Ok(())
     }
 
     /// Analyze coverage and compute uncovered paths

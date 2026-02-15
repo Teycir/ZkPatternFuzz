@@ -19,20 +19,22 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<
             let stdout = child
                 .stdout
                 .take()
-                .map(|mut s| {
+                .map(|mut s| -> anyhow::Result<Vec<u8>> {
                     let mut buf = Vec::new();
-                    let _ = s.read_to_end(&mut buf);
-                    buf
+                    s.read_to_end(&mut buf)?;
+                    Ok(buf)
                 })
+                .transpose()?
                 .unwrap_or_default();
             let stderr = child
                 .stderr
                 .take()
-                .map(|mut s| {
+                .map(|mut s| -> anyhow::Result<Vec<u8>> {
                     let mut buf = Vec::new();
-                    let _ = s.read_to_end(&mut buf);
-                    buf
+                    s.read_to_end(&mut buf)?;
+                    Ok(buf)
                 })
+                .transpose()?
                 .unwrap_or_default();
             Ok(Output {
                 status,

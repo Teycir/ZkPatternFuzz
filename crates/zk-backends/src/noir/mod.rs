@@ -42,10 +42,16 @@ impl Drop for ScopedFileOverwrite {
     fn drop(&mut self) {
         match self.original.take() {
             Some(bytes) => {
-                let _ = fs::write(&self.path, bytes);
+                if let Err(err) = fs::write(&self.path, bytes) {
+                    tracing::warn!("Failed restoring '{}': {}", self.path.display(), err);
+                }
             }
             None => {
-                let _ = fs::remove_file(&self.path);
+                if let Err(err) = fs::remove_file(&self.path) {
+                    if err.kind() != std::io::ErrorKind::NotFound {
+                        tracing::warn!("Failed removing '{}': {}", self.path.display(), err);
+                    }
+                }
             }
         }
     }
@@ -315,30 +321,22 @@ impl NoirTarget {
             "unknown".to_string()
         };
 
-        // Try to get circuit info using nargo info
-        let output = self
-            .nargo_command()
-            .map(|mut command| {
-                command.args(["info", "--json"]);
-                command
-            })
-            .and_then(|mut command| command.output().context("Failed to run nargo info --json"))
-            .ok();
-
-        let (num_opcodes, num_witnesses, num_public_inputs) = output
-            .as_ref()
-            .and_then(|output| {
-                if output.status.success() {
-                    Some(String::from_utf8_lossy(&output.stdout))
-                } else {
-                    None
-                }
-            })
-            .map(|stdout| self.parse_nargo_info(&stdout))
-            .unwrap_or((0, 0, 0));
+        // Get circuit info using nargo info
+        let output = {
+            let mut command = self.nargo_command()?;
+            command.args(["info", "--json"]);
+            crate::util::run_with_timeout(&mut command, noir_external_command_timeout())
+                .context("Failed to run nargo info --json")?
+        };
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("nargo info --json failed: {}", stderr);
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let (num_opcodes, num_witnesses, num_public_inputs) = self.parse_nargo_info(&stdout)?;
 
         // Parse ABI from compiled artifact
-        let abi = self.parse_abi().unwrap_or_default();
+        let abi = self.parse_abi()?;
 
         self.metadata = Some(NoirMetadata {
             name,
@@ -365,40 +363,25 @@ impl NoirTarget {
     }
 
     /// Parse nargo info output
-    fn parse_nargo_info(&self, output: &str) -> (usize, usize, usize) {
-        // Try to parse JSON output
-        if let Ok(info) = serde_json::from_str::<serde_json::Value>(output) {
-            let opcodes = info.get("opcodes").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-            let witnesses = info.get("witnesses").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-            let public = info
-                .get("public_inputs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as usize;
-            return (opcodes, witnesses, public);
-        }
-
-        // Fallback: parse text output
-        let mut opcodes = 0;
-        let mut witnesses = 0;
-        let mut public = 0;
-
-        for line in output.lines() {
-            if line.contains("ACIR opcodes") {
-                if let Some(num) = line.split(':').nth(1) {
-                    opcodes = num.trim().parse().unwrap_or(0);
-                }
-            } else if line.contains("Witnesses") {
-                if let Some(num) = line.split(':').nth(1) {
-                    witnesses = num.trim().parse().unwrap_or(0);
-                }
-            } else if line.contains("Public") {
-                if let Some(num) = line.split(':').nth(1) {
-                    public = num.trim().parse().unwrap_or(0);
-                }
-            }
-        }
-
-        (opcodes, witnesses, public)
+    fn parse_nargo_info(&self, output: &str) -> Result<(usize, usize, usize)> {
+        let info: serde_json::Value =
+            serde_json::from_str(output).context("Invalid JSON from nargo info --json")?;
+        let opcodes = info
+            .get("opcodes")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'opcodes' in nargo info output"))?
+            as usize;
+        let witnesses = info
+            .get("witnesses")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'witnesses' in nargo info output"))?
+            as usize;
+        let public = info
+            .get("public_inputs")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'public_inputs' in nargo info output"))?
+            as usize;
+        Ok((opcodes, witnesses, public))
     }
 
     /// Parse ABI from compiled artifact
@@ -417,7 +400,10 @@ impl NoirTarget {
             }
         }
 
-        Ok(NoirAbi::default())
+        anyhow::bail!(
+            "Failed to locate ABI in Noir build artifacts under {}",
+            self.build_dir.display()
+        )
     }
 
     fn candidate_artifact_paths(&self) -> Vec<PathBuf> {
@@ -463,7 +449,13 @@ impl NoirTarget {
                 continue;
             }
 
-            let bytes = std::fs::read(&json_path).ok()?;
+            let bytes = match std::fs::read(&json_path) {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    tracing::warn!("Failed reading Noir artifact '{}': {}", json_path.display(), err);
+                    continue;
+                }
+            };
             if let Ok(artifact) = serde_json::from_slice::<serde_json::Value>(&bytes) {
                 if artifact.get("opcodes").is_some()
                     || artifact.get("program").is_some()
@@ -482,15 +474,41 @@ impl NoirTarget {
     /// Load ACIR text via `nargo compile --print-acir` when available.
     pub fn load_acir_text(&self) -> Option<String> {
         let _guard = noir_io_lock().lock().unwrap();
-        let _dir_lock = crate::util::DirLock::acquire_shared(&self.build_dir).ok()?;
+        let _dir_lock = match crate::util::DirLock::acquire_shared(&self.build_dir) {
+            Ok(lock) => lock,
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to acquire Noir shared build lock '{}': {}",
+                    self.build_dir.display(),
+                    err
+                );
+                return None;
+            }
+        };
 
         let output = {
-            let mut cmd = self.nargo_command().ok()?;
+            let mut cmd = match self.nargo_command() {
+                Ok(cmd) => cmd,
+                Err(err) => {
+                    tracing::warn!("Failed building nargo command: {}", err);
+                    return None;
+                }
+            };
             cmd.args(["compile", "--print-acir"]);
-            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout()).ok()?
+            match crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout()) {
+                Ok(output) => output,
+                Err(err) => {
+                    tracing::warn!("Failed running 'nargo compile --print-acir': {}", err);
+                    return None;
+                }
+            }
         };
 
         if !output.status.success() {
+            tracing::warn!(
+                "nargo compile --print-acir failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
             return None;
         }
 
@@ -500,7 +518,9 @@ impl NoirTarget {
     fn acir_info(&self) -> Result<&NoirAcirInfo> {
         if self.acir_info.get().is_none() {
             let info = self.build_acir_info()?;
-            let _ = self.acir_info.set(info);
+            if self.acir_info.set(info).is_err() {
+                anyhow::bail!("Failed to initialize ACIR info cache");
+            }
         }
 
         self.acir_info
@@ -532,21 +552,33 @@ impl NoirTarget {
     }
 
     pub fn public_input_indices(&self) -> Vec<usize> {
-        self.acir_info()
-            .map(|info| info.public_indices.clone())
-            .unwrap_or_default()
+        match self.acir_info() {
+            Ok(info) => info.public_indices.clone(),
+            Err(err) => {
+                tracing::warn!("Failed reading Noir public input indices: {}", err);
+                Vec::new()
+            }
+        }
     }
 
     pub fn private_input_indices(&self) -> Vec<usize> {
-        self.acir_info()
-            .map(|info| info.private_indices.clone())
-            .unwrap_or_default()
+        match self.acir_info() {
+            Ok(info) => info.private_indices.clone(),
+            Err(err) => {
+                tracing::warn!("Failed reading Noir private input indices: {}", err);
+                Vec::new()
+            }
+        }
     }
 
     pub fn output_signal_indices(&self) -> Vec<usize> {
-        self.acir_info()
-            .map(|info| info.return_indices.clone())
-            .unwrap_or_default()
+        match self.acir_info() {
+            Ok(info) => info.return_indices.clone(),
+            Err(err) => {
+                tracing::warn!("Failed reading Noir output indices: {}", err);
+                Vec::new()
+            }
+        }
     }
 
     /// Execute circuit with given inputs
@@ -671,7 +703,9 @@ impl NoirTarget {
         match value {
             serde_json::Value::String(s) => Ok(vec![parse_noir_field(s)?]),
             serde_json::Value::Number(n) => {
-                let num = n.as_u64().unwrap_or(0);
+                let num = n
+                    .as_u64()
+                    .ok_or_else(|| anyhow::anyhow!("Unsupported non-u64 Noir JSON number: {}", n))?;
                 Ok(vec![FieldElement::from_u64(num)])
             }
             serde_json::Value::Array(arr) => {
@@ -689,7 +723,7 @@ impl NoirTarget {
                 }
                 Ok(results)
             }
-            _ => Ok(vec![FieldElement::zero()]),
+            _ => anyhow::bail!("Unsupported Noir JSON value type for witness input: {}", value),
         }
     }
 

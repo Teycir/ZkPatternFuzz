@@ -51,7 +51,12 @@ impl DynamicTeeWriter {
 
         if need_reopen {
             if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+                std::fs::create_dir_all(parent).map_err(|err| {
+                    io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("Failed to create log directory '{}': {err}", parent.display()),
+                    )
+                })?;
             }
             match std::fs::OpenOptions::new()
                 .create(true)
@@ -79,17 +84,25 @@ impl DynamicTeeWriter {
 impl io::Write for DynamicTeeWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         // Console output (keep behavior similar to default fmt subscriber).
-        let _ = io::stderr().write_all(buf);
+        if let Err(err) = io::stderr().write_all(buf) {
+            eprintln!("[zk-fuzzer] WARN: failed writing to stderr: {}", err);
+        }
 
         // Best-effort file output.
-        let _ = Self::with_log_file(|file| file.write_all(buf).map(|_| ()));
+        if let Err(err) = Self::with_log_file(|file| file.write_all(buf).map(|_| ())) {
+            eprintln!("[zk-fuzzer] WARN: failed writing session log: {}", err);
+        }
 
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let _ = io::stderr().flush();
-        let _ = Self::with_log_file(|file| file.flush());
+        if let Err(err) = io::stderr().flush() {
+            eprintln!("[zk-fuzzer] WARN: failed flushing stderr: {}", err);
+        }
+        if let Err(err) = Self::with_log_file(|file| file.flush()) {
+            eprintln!("[zk-fuzzer] WARN: failed flushing session log: {}", err);
+        }
         Ok(())
     }
 }
@@ -104,14 +117,21 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for DynamicLogWriter {
 
 fn set_run_log_context(ctx: Option<RunLogContext>) {
     let slot = RUN_LOG_CONTEXT.get_or_init(|| Mutex::new(None));
-    if let Ok(mut guard) = slot.lock() {
-        *guard = ctx;
+    match slot.lock() {
+        Ok(mut guard) => *guard = ctx,
+        Err(err) => eprintln!("[zk-fuzzer] WARN: failed to lock run log context: {}", err),
     }
 }
 
 fn get_run_log_context() -> Option<RunLogContext> {
     let slot = RUN_LOG_CONTEXT.get_or_init(|| Mutex::new(None));
-    slot.lock().ok().and_then(|g| g.clone())
+    match slot.lock() {
+        Ok(guard) => guard.clone(),
+        Err(err) => {
+            eprintln!("[zk-fuzzer] WARN: failed to lock run log context: {}", err);
+            None
+        }
+    }
 }
 
 fn sanitize_slug(s: &str) -> String {
@@ -166,10 +186,24 @@ fn readiness_report_to_json(readiness: &ReadinessReport) -> serde_json::Value {
 
 fn best_effort_write_json(path: &Path, value: &serde_json::Value) {
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                "Failed to create parent directory for '{}': {}",
+                path.display(),
+                err
+            );
+            return;
+        }
     }
-    if let Ok(data) = serde_json::to_string_pretty(value) {
-        let _ = std::fs::write(path, data);
+    let data = match serde_json::to_string_pretty(value) {
+        Ok(data) => data,
+        Err(err) => {
+            tracing::warn!("Failed to serialize JSON for '{}': {}", path.display(), err);
+            return;
+        }
+    };
+    if let Err(err) = std::fs::write(path, data) {
+        tracing::warn!("Failed to write JSON '{}': {}", path.display(), err);
     }
 }
 
@@ -184,43 +218,36 @@ fn run_signal_dir() -> PathBuf {
     //
     // If writing outside the repo is not allowed in your environment, set it back to:
     //   ZKF_RUN_SIGNAL_DIR=reports/_run_signals
-    if let Ok(v) = std::env::var("ZKF_RUN_SIGNAL_DIR") {
+    let path = if let Ok(v) = std::env::var("ZKF_RUN_SIGNAL_DIR") {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
+            PathBuf::from(trimmed)
+        } else {
+            eprintln!("[zk-fuzzer] ERROR: ZKF_RUN_SIGNAL_DIR is set but empty");
+            std::process::exit(2);
         }
-    }
-
-    let mut candidate = None;
-
-    if let Ok(home) = std::env::var("HOME") {
+    } else if let Ok(home) = std::env::var("HOME") {
         let home = home.trim();
         if !home.is_empty() {
-            candidate = Some(PathBuf::from(home).join("ZkFuzz"));
+            PathBuf::from(home).join("ZkFuzz")
+        } else {
+            eprintln!("[zk-fuzzer] ERROR: HOME is set but empty");
+            std::process::exit(2);
         }
-    }
+    } else {
+        eprintln!("[zk-fuzzer] ERROR: neither ZKF_RUN_SIGNAL_DIR nor HOME is available");
+        std::process::exit(2);
+    };
 
-    if let Some(path) = candidate {
-        match std::fs::create_dir_all(&path) {
-            Ok(()) => return path,
-            Err(err) => {
-                // This function can be called before tracing is initialized (we need a place to
-                // write session logs), so use stderr and only print once to avoid noise.
-                static ONCE: std::sync::Once = std::sync::Once::new();
-                ONCE.call_once(|| {
-                    eprintln!(
-                        "[zk-fuzzer] WARN: cannot create run-signal dir '{}': {}. Falling back to in-repo 'reports/_run_signals'. Set ZKF_RUN_SIGNAL_DIR to override.",
-                        path.display(),
-                        err
-                    );
-                });
-            }
-        }
+    if let Err(err) = std::fs::create_dir_all(&path) {
+        eprintln!(
+            "[zk-fuzzer] ERROR: cannot create run-signal dir '{}': {}",
+            path.display(),
+            err
+        );
+        std::process::exit(2);
     }
-
-    let fallback = PathBuf::from("reports/_run_signals");
-    let _ = std::fs::create_dir_all(&fallback);
-    fallback
+    path
 }
 
 fn build_cache_dir() -> PathBuf {
@@ -234,13 +261,27 @@ fn build_cache_dir() -> PathBuf {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
             let path = PathBuf::from(trimmed);
-            let _ = std::fs::create_dir_all(&path);
+            if let Err(err) = std::fs::create_dir_all(&path) {
+                eprintln!(
+                    "[zk-fuzzer] ERROR: cannot create build cache dir '{}': {}",
+                    path.display(),
+                    err
+                );
+                std::process::exit(2);
+            }
             return path;
         }
     }
 
     let path = run_signal_dir().join("_build_cache");
-    let _ = std::fs::create_dir_all(&path);
+    if let Err(err) = std::fs::create_dir_all(&path) {
+        eprintln!(
+            "[zk-fuzzer] ERROR: cannot create build cache dir '{}': {}",
+            path.display(),
+            err
+        );
+        std::process::exit(2);
+    }
     path
 }
 
@@ -291,16 +332,35 @@ fn normalize_build_paths(config: &mut FuzzConfig, run_id: &str) {
 
 fn best_effort_append_jsonl(path: &Path, value: &serde_json::Value) {
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Ok(line) = serde_json::to_string(value) {
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
-            let _ = writeln!(f, "{}", line);
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                "Failed to create parent directory for '{}': {}",
+                path.display(),
+                err
+            );
+            return;
         }
+    }
+    let line = match serde_json::to_string(value) {
+        Ok(line) => line,
+        Err(err) => {
+            tracing::warn!("Failed to serialize JSONL record '{}': {}", path.display(), err);
+            return;
+        }
+    };
+    let mut f = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(err) => {
+            tracing::warn!("Failed to open JSONL file '{}': {}", path.display(), err);
+            return;
+        }
+    };
+    if let Err(err) = writeln!(f, "{}", line) {
+        tracing::warn!("Failed to append JSONL record '{}': {}", path.display(), err);
     }
 }
 
@@ -374,15 +434,37 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
     let mode = mode_folder_from_command(&command).to_string();
 
     let summary_path = report_dir.join("summary.json");
-    let mut summary: serde_json::Value = std::fs::read_to_string(&summary_path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| {
+    let mut summary: serde_json::Value = match std::fs::read_to_string(&summary_path) {
+        Ok(raw) => match serde_json::from_str(&raw) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                tracing::warn!(
+                    "Invalid existing summary JSON '{}': {}; recreating",
+                    summary_path.display(),
+                    err
+                );
+                serde_json::json!({
+                    "updated_utc": now,
+                    "modes": {},
+                })
+            }
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => serde_json::json!({
+            "updated_utc": now,
+            "modes": {},
+        }),
+        Err(err) => {
+            tracing::warn!(
+                "Failed to read existing summary '{}': {}; recreating",
+                summary_path.display(),
+                err
+            );
             serde_json::json!({
                 "updated_utc": now,
                 "modes": {},
             })
-        });
+        }
+    };
 
     if let Some(obj) = summary.as_object_mut() {
         obj.insert(
@@ -471,9 +553,22 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
 
     let md_path = report_dir.join("summary.md");
     if let Some(parent) = md_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                "Failed to create summary directory '{}': {}",
+                parent.display(),
+                err
+            );
+            return;
+        }
     }
-    let _ = std::fs::write(md_path, md);
+    if let Err(err) = std::fs::write(&md_path, md) {
+        tracing::warn!(
+            "Failed to write engagement summary markdown '{}': {}",
+            md_path.display(),
+            err
+        );
+    }
 }
 
 fn add_run_window_fields(
@@ -511,8 +606,6 @@ fn add_run_window_fields(
 fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
     let base = run_signal_dir();
     let report_dir = engagement_root_dir(run_id);
-    let command = get_command_from_doc(value);
-    let mode = mode_folder_from_command(&command);
 
     // Log/event stream (engagement-wide). Each line includes run_id, so per-run
     // splitting is redundant and creates unnecessary files.
@@ -522,7 +615,6 @@ fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
     // Latest pointers.
     best_effort_write_json(&report_dir.join("latest.json"), value);
     best_effort_write_json(&base.join("latest.json"), value);
-    let _ = mode; // keep for summary rendering logic
 
     update_engagement_summary(&report_dir, value);
 }
@@ -553,7 +645,7 @@ fn pid_is_alive(pid: u32) -> bool {
     }
     #[cfg(not(unix))]
     {
-        let _ = pid;
+        let _pid = pid;
         false
     }
 }
@@ -566,13 +658,26 @@ fn mark_stale_previous_run_if_any(output_dir: &Path, current_pid: u32) {
     };
     let mut doc: serde_json::Value = match serde_json::from_str(&raw) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(err) => {
+            tracing::warn!(
+                "Invalid run outcome JSON while checking stale run '{}': {}",
+                path.display(),
+                err
+            );
+            return;
+        }
     };
 
-    let status = doc
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
+    let status = match doc.get("status").and_then(|v| v.as_str()) {
+        Some(status) => status,
+        None => {
+            tracing::warn!(
+                "Missing status in run outcome JSON while checking stale run '{}'",
+                path.display()
+            );
+            return;
+        }
+    };
     if status != "running" {
         return;
     }
@@ -710,7 +815,10 @@ fn start_signal_watchers() {
                     _ = &mut sigint => "SIGINT",
                     _ = async {
                         if let Some(s) = sigterm.as_mut() {
-                            let _ = s.recv().await;
+                            if s.recv().await.is_none() {
+                                tracing::warn!("SIGTERM stream ended unexpectedly");
+                                std::future::pending::<()>().await;
+                            }
                         } else {
                             std::future::pending::<()>().await;
                         }
@@ -720,7 +828,9 @@ fn start_signal_watchers() {
 
             #[cfg(not(unix))]
             {
-                sigint.await.ok();
+                if let Err(err) = sigint.await {
+                    tracing::warn!("Failed waiting for SIGINT: {}", err);
+                }
                 "SIGINT"
             }
         };
@@ -949,9 +1059,20 @@ async fn kill_existing_instances() {
                 if let Ok(pid) = pid_str.trim().parse::<u32>() {
                     if pid != current_pid {
                         // Try graceful shutdown first (SIGTERM)
-                        let _ = std::process::Command::new("kill")
+                        match std::process::Command::new("kill")
                             .args(["-15", &pid.to_string()])
-                            .output();
+                            .output()
+                        {
+                            Ok(output) if output.status.success() => {}
+                            Ok(output) => tracing::warn!(
+                                "Failed to send SIGTERM to {}: {}",
+                                pid,
+                                String::from_utf8_lossy(&output.stderr)
+                            ),
+                            Err(err) => {
+                                tracing::warn!("Error sending SIGTERM to {}: {}", pid, err)
+                            }
+                        }
                     }
                 }
             }
@@ -963,9 +1084,20 @@ async fn kill_existing_instances() {
             for pid_str in pids.lines() {
                 if let Ok(pid) = pid_str.trim().parse::<u32>() {
                     if pid != current_pid {
-                        let _ = std::process::Command::new("kill")
+                        match std::process::Command::new("kill")
                             .args(["-9", &pid.to_string()])
-                            .output();
+                            .output()
+                        {
+                            Ok(output) if output.status.success() => {}
+                            Ok(output) => tracing::warn!(
+                                "Failed to send SIGKILL to {}: {}",
+                                pid,
+                                String::from_utf8_lossy(&output.stderr)
+                            ),
+                            Err(err) => {
+                                tracing::warn!("Error sending SIGKILL to {}: {}", pid, err)
+                            }
+                        }
                     }
                 }
             }
@@ -1508,7 +1640,9 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     struct _StopProgress(tokio::sync::watch::Sender<bool>);
     impl Drop for _StopProgress {
         fn drop(&mut self) {
-            let _ = self.0.send(true);
+            if let Err(err) = self.0.send(true) {
+                tracing::warn!("Failed to stop progress monitor: {}", err);
+            }
         }
     }
     let _progress_guard = _StopProgress(progress_stop_tx);
@@ -1576,9 +1710,22 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 let dst = report_dir.join(mode).join("progress.json");
                 if dst != progress_path {
                     if let Some(parent) = dst.parent() {
-                        let _ = std::fs::create_dir_all(parent);
+                        if let Err(err) = std::fs::create_dir_all(parent) {
+                            tracing::warn!(
+                                "Failed to create mirrored progress dir '{}': {}",
+                                parent.display(),
+                                err
+                            );
+                            continue;
+                        }
                     }
-                    let _ = std::fs::write(dst, progress_raw);
+                    if let Err(err) = std::fs::write(&dst, progress_raw) {
+                        tracing::warn!(
+                            "Failed to write mirrored progress '{}': {}",
+                            dst.display(),
+                            err
+                        );
+                    }
                 }
             }
         });
@@ -1836,7 +1983,6 @@ campaign:
     # NOTE: campaign.parameters is a flattened key/value map.
     # Do NOT nest under `additional:` (legacy templates used that shape).
     strict_backend: true
-    mark_fallback: false
 
 attacks:
   - type: underconstrained
@@ -2311,12 +2457,22 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let corpus_path = output_dir.join("chain_corpus.json");
     let corpus_meta_path = output_dir.join("chain_corpus_meta.json");
-    let read_chain_meta =
-        |p: &std::path::Path| -> Option<zk_fuzzer::chain_fuzzer::ChainCorpusMeta> {
-            std::fs::read_to_string(p).ok().and_then(|s| {
-                serde_json::from_str::<zk_fuzzer::chain_fuzzer::ChainCorpusMeta>(&s).ok()
-            })
-        };
+    let read_chain_meta = |p: &std::path::Path| -> Option<zk_fuzzer::chain_fuzzer::ChainCorpusMeta> {
+        match std::fs::read_to_string(p) {
+            Ok(raw) => match serde_json::from_str::<zk_fuzzer::chain_fuzzer::ChainCorpusMeta>(&raw)
+            {
+                Ok(meta) => Some(meta),
+                Err(err) => {
+                    tracing::warn!("Invalid chain corpus metadata '{}': {}", p.display(), err);
+                    None
+                }
+            },
+            Err(err) => {
+                tracing::warn!("Failed to read chain corpus metadata '{}': {}", p.display(), err);
+                None
+            }
+        }
+    };
 
     let baseline_meta = if corpus_meta_path.exists() {
         read_chain_meta(&corpus_meta_path)

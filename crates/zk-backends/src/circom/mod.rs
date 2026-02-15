@@ -49,20 +49,22 @@ fn run_with_timeout(cmd: &mut Command, timeout: std::time::Duration) -> Result<O
             let stdout = child
                 .stdout
                 .take()
-                .map(|mut s| {
+                .map(|mut s| -> Result<Vec<u8>> {
                     let mut buf = Vec::new();
-                    let _ = s.read_to_end(&mut buf);
-                    buf
+                    s.read_to_end(&mut buf)?;
+                    Ok(buf)
                 })
+                .transpose()?
                 .unwrap_or_default();
             let stderr = child
                 .stderr
                 .take()
-                .map(|mut s| {
+                .map(|mut s| -> Result<Vec<u8>> {
                     let mut buf = Vec::new();
-                    let _ = s.read_to_end(&mut buf);
-                    buf
+                    s.read_to_end(&mut buf)?;
+                    Ok(buf)
                 })
+                .transpose()?
                 .unwrap_or_default();
             return Ok(Output {
                 status,
@@ -72,8 +74,12 @@ fn run_with_timeout(cmd: &mut Command, timeout: std::time::Duration) -> Result<O
         }
 
         if start.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
+            if let Err(e) = child.kill() {
+                tracing::warn!("Failed to kill timed out process: {}", e);
+            }
+            if let Err(e) = child.wait() {
+                tracing::warn!("Failed to wait for timed out process: {}", e);
+            }
             anyhow::bail!("Command timed out after {:?}", timeout)
         }
 
@@ -192,9 +198,15 @@ impl BuildDirLock {
         }
 
         // Helpful metadata for humans. Not required for correctness.
-        let _ = file.set_len(0);
-        let _ = writeln!(file, "pid={}", std::process::id());
-        let _ = file.sync_all();
+        if let Err(e) = file.set_len(0) {
+            tracing::warn!("Failed to truncate build lock {}: {}", path.display(), e);
+        }
+        if let Err(e) = writeln!(file, "pid={}", std::process::id()) {
+            tracing::warn!("Failed to write build lock metadata {}: {}", path.display(), e);
+        }
+        if let Err(e) = file.sync_all() {
+            tracing::warn!("Failed to sync build lock {}: {}", path.display(), e);
+        }
 
         Ok(Self { path, file })
     }
@@ -221,7 +233,15 @@ impl Drop for BuildDirLock {
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
-            let _ = unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) };
+            let rc = unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) };
+            if rc != 0 {
+                let err = std::io::Error::last_os_error();
+                tracing::warn!(
+                    "Failed to unlock build dir lock {}: {}",
+                    self.path.display(),
+                    err
+                );
+            }
         }
     }
 }
@@ -645,7 +665,7 @@ impl WitnessCalculator {
         let witness_calculator_path = wasm_dir.join("witness_calculator.js");
         if !witness_calculator_path.exists() {
             anyhow::bail!(
-                "witness_calculator.js not found at {} (fallback disabled)",
+                "witness_calculator.js not found at {}",
                 witness_calculator_path.display()
             );
         }

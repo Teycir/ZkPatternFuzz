@@ -68,46 +68,20 @@ pub fn generate_halo2_proof(
     let witness: serde_json::Map<String, serde_json::Value> =
         serde_json::from_str(&witness_content)?;
 
-    let fallback_reason = match try_halo2_prove_and_verify(spec_path, &witness) {
+    match try_halo2_prove_and_verify(spec_path, &witness) {
         Ok((proof_bytes, verified)) => {
             std::fs::write(&proof_path, &proof_bytes)?;
-            return Ok((
+            Ok((
                 proof_path,
                 if verified {
                     VerificationResult::Passed
                 } else {
                     VerificationResult::Failed("Halo2 proof verification failed".to_string())
                 },
-            ));
+            ))
         }
-        Err(e) => e.to_string(),
-    };
-
-    // Create verification result JSON
-    let verification_result = serde_json::json!({
-        "circuit_spec": spec_path.display().to_string(),
-        "witness": witness,
-        "prover_k": 10,  // Default circuit size parameter
-        "status": "requires_local_halo2_runtime",
-        "note": "Automatic proof generation failed in this environment. Use verify_halo2.rs for standalone verification with Halo2Target.",
-        "fallback_reason": fallback_reason
-    });
-
-    std::fs::write(
-        &proof_path,
-        serde_json::to_string_pretty(&verification_result)?,
-    )?;
-
-    // Generate verification script
-    let verify_script = finding_dir.join("verify_halo2.rs");
-    generate_halo2_verify_script(&verify_script, spec_path, &witness_json)?;
-
-    Ok((
-        proof_path,
-        VerificationResult::Skipped(
-            "Automatic Halo2 verification unavailable here. Run verify_halo2.rs for standalone verification.".to_string(),
-        ),
-    ))
+        Err(e) => Ok((proof_path, VerificationResult::Failed(e.to_string()))),
+    }
 }
 
 fn try_halo2_prove_and_verify(
@@ -117,7 +91,10 @@ fn try_halo2_prove_and_verify(
     use crate::targets::Halo2Target;
     use crate::targets::TargetCircuit;
 
-    let mut target = Halo2Target::new(spec_path.to_str().unwrap_or_default())?;
+    let spec_path_str = spec_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Non-UTF8 Halo2 spec path: {}", spec_path.display()))?;
+    let mut target = Halo2Target::new(spec_path_str)?;
     target.setup()?;
 
     let inputs = parse_witness_inputs(witness)?;
@@ -159,7 +136,9 @@ fn flatten_json_value(
             }
         }
         serde_json::Value::Number(n) => {
-            let num = n.as_u64().unwrap_or(0);
+            let num = n
+                .as_u64()
+                .ok_or_else(|| anyhow::anyhow!("Unsupported non-u64 witness number: {}", n))?;
             out.push(FieldElement::from_u64(num));
         }
         serde_json::Value::Array(arr) => {
@@ -262,7 +241,9 @@ fn flatten_json_value(value: &Value, out: &mut Vec<FieldElement>) -> Result<()> 
             }}
         }}
         Value::Number(n) => {{
-            let num = n.as_u64().unwrap_or(0);
+            let num = n
+                .as_u64()
+                .ok_or_else(|| anyhow::anyhow!("Unsupported non-u64 witness number: {{}}", n))?;
             out.push(FieldElement::from_u64(num));
         }}
         Value::Array(arr) => {{
@@ -298,6 +279,17 @@ pub fn generate_halo2_repro_script(
     finding: &Finding,
     circuit_spec_path: Option<&Path>,
 ) -> anyhow::Result<String> {
+    let script_dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Repro script path has no parent: {}", path.display()))?;
+    if let Some(spec) = circuit_spec_path {
+        if spec.exists() {
+            let verify_script = script_dir.join("verify_halo2.rs");
+            let witness_json = script_dir.join("witness.json");
+            generate_halo2_verify_script(&verify_script, spec, &witness_json)?;
+        }
+    }
+
     let spec_display = circuit_spec_path
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "<circuit_spec>".to_string());
@@ -340,7 +332,7 @@ echo "If verify_halo2.rs prints 'Verification PASSED', this is a CONFIRMED bug."
 
     Ok(format!(
         "cd {} && ./repro.sh",
-        path.parent().unwrap().display()
+        script_dir.display()
     ))
 }
 

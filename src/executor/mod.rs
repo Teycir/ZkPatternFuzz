@@ -70,9 +70,6 @@ pub struct ExecutorFactoryOptions {
     pub circom_witness_sanity_check: bool,
     /// If true, fail with an error when real backend tooling is missing.
     pub strict_backend: bool,
-    /// Deprecated compatibility flag from the old fallback behavior.
-    /// Fallbacks are disabled, so this has no effect.
-    pub mark_fallback: bool,
 }
 
 impl Default for ExecutorFactoryOptions {
@@ -91,7 +88,6 @@ impl Default for ExecutorFactoryOptions {
             circom_skip_constraint_check: false,
             circom_witness_sanity_check: true,
             strict_backend: true,
-            mark_fallback: false,
         }
     }
 }
@@ -100,7 +96,7 @@ impl ExecutorFactoryOptions {
     /// Create options with strict backend mode enabled
     ///
     /// In strict mode, the factory will error if a real backend is not available
-    /// instead of attempting any fallback behavior.
+    /// instead of substituting alternative execution paths.
     pub fn strict() -> Self {
         Self {
             strict_backend: true,
@@ -881,7 +877,13 @@ impl CircuitExecutor for CircomExecutor {
 impl ConstraintInspector for CircomExecutor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
         self.constraints
-            .get_or_init(|| self.target.load_constraints().unwrap_or_default())
+            .get_or_init(|| match self.target.load_constraints() {
+                Ok(constraints) => constraints,
+                Err(err) => {
+                    tracing::error!("Failed to load Circom constraints: {}", err);
+                    Vec::new()
+                }
+            })
             .clone()
     }
 
@@ -1068,7 +1070,13 @@ impl CircuitExecutor for NoirExecutor {
 
 impl ConstraintInspector for NoirExecutor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
-        self.target.load_constraints().unwrap_or_default()
+        match self.target.load_constraints() {
+            Ok(constraints) => constraints,
+            Err(err) => {
+                tracing::error!("Failed to load Noir constraints: {}", err);
+                Vec::new()
+            }
+        }
     }
 
     fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {

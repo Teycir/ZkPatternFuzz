@@ -382,7 +382,24 @@ impl RegressionTest {
             };
         }
 
-        let source = std::fs::read_to_string(path).unwrap_or_default();
+        let source = match std::fs::read_to_string(path) {
+            Ok(source) => source,
+            Err(e) => {
+                return RegressionTestResult {
+                    cve_id: self.cve_id.clone(),
+                    passed: false,
+                    test_results: self
+                        .test_cases
+                        .iter()
+                        .map(|tc| TestCaseResult {
+                            name: tc.name.clone(),
+                            passed: false,
+                            message: Some(format!("Failed to read circuit source: {}", e)),
+                        })
+                        .collect(),
+                };
+            }
+        };
         let framework = match detect_framework(path) {
             Ok(framework) => framework,
             Err(e) => {
@@ -854,12 +871,11 @@ fn build_inputs_for_test(
 
     if !input_specs.is_empty() {
         for spec in input_specs {
-            if inputs.len() >= total_inputs {
-                break;
-            }
-
             let key = spec.name.to_lowercase();
-            let synthesized = indexed_map.get(&key).map(build_indexed_sequence);
+            let synthesized = match indexed_map.get(&key) {
+                Some(values) => Some(build_indexed_sequence(values)?),
+                None => None,
+            };
             let value = key_map.get(&key).copied().or(synthesized.as_ref());
 
             let inferred_len = spec.length.or_else(|| {
@@ -870,50 +886,43 @@ fn build_inputs_for_test(
                 }
             });
 
-            let mut elements = match value {
+            let elements = match value {
                 Some(v) => parse_yaml_value(v, field_modulus, rng, inferred_len)?,
-                None => vec![FieldElement::zero(); inferred_len.unwrap_or(1)],
+                None => {
+                    return Err(format!(
+                        "Missing required input '{}' for test '{}'",
+                        spec.name, tc.name
+                    ))
+                }
             };
 
             if let Some(len) = inferred_len {
                 if elements.len() < len {
-                    elements.extend(std::iter::repeat_n(
-                        FieldElement::zero(),
-                        len - elements.len(),
+                    return Err(format!(
+                        "Input '{}' in test '{}' has too few elements: expected {}, got {}",
+                        spec.name,
+                        tc.name,
+                        len,
+                        elements.len()
                     ));
                 } else if elements.len() > len {
-                    elements.truncate(len);
+                    return Err(format!(
+                        "Input '{}' in test '{}' has too many elements: expected {}, got {}",
+                        spec.name,
+                        tc.name,
+                        len,
+                        elements.len()
+                    ));
                 }
-            }
-
-            let remaining = total_inputs.saturating_sub(inputs.len());
-            if elements.len() > remaining {
-                elements.truncate(remaining);
             }
 
             inputs.extend(elements);
         }
     } else {
         for (_key, value) in &tc.inputs {
-            if inputs.len() >= total_inputs {
-                break;
-            }
             let mut elements = parse_yaml_value(value, field_modulus, rng, None)?;
-            let remaining = total_inputs.saturating_sub(inputs.len());
-            if elements.len() > remaining {
-                elements.truncate(remaining);
-            }
             inputs.append(&mut elements);
         }
-    }
-
-    if inputs.len() < total_inputs {
-        inputs.extend(std::iter::repeat_n(
-            FieldElement::zero(),
-            total_inputs - inputs.len(),
-        ));
-    } else if inputs.len() > total_inputs {
-        inputs.truncate(total_inputs);
     }
 
     Ok(inputs)
@@ -937,17 +946,24 @@ fn parse_indexed_name(name: &str) -> Option<(String, usize)> {
 
 fn build_indexed_sequence(
     values: &std::collections::BTreeMap<usize, &serde_yaml::Value>,
-) -> serde_yaml::Value {
+) -> Result<serde_yaml::Value, String> {
+    if values.is_empty() {
+        return Err("Indexed input map is empty".to_string());
+    }
+
     let max = values.keys().max().copied().unwrap_or(0);
     let mut seq = Vec::with_capacity(max + 1);
     for idx in 0..=max {
         if let Some(value) = values.get(&idx) {
             seq.push((*value).clone());
         } else {
-            seq.push(serde_yaml::Value::Number(serde_yaml::Number::from(0)));
+            return Err(format!(
+                "Indexed input is missing index {} (indices must be contiguous from 0)",
+                idx
+            ));
         }
     }
-    serde_yaml::Value::Sequence(seq)
+    Ok(serde_yaml::Value::Sequence(seq))
 }
 
 fn infer_length_from_value(value: &serde_yaml::Value) -> Option<usize> {
@@ -1030,7 +1046,7 @@ fn parse_value_string(
     raw: &str,
     field_modulus: &[u8; 32],
     rng: &mut impl Rng,
-    expected_len: Option<usize>,
+    _expected_len: Option<usize>,
 ) -> Result<Vec<FieldElement>, String> {
     let value = raw.trim();
 
@@ -1047,16 +1063,6 @@ fn parse_value_string(
         }
     }
     let fe = parse_string_as_field_element(value, field_modulus)?;
-
-    if let Some(len) = expected_len {
-        if len > 1 {
-            let mut out = Vec::with_capacity(len);
-            out.push(fe.clone());
-            out.extend(std::iter::repeat_n(FieldElement::zero(), len - 1));
-            return Ok(out);
-        }
-    }
-
     Ok(vec![fe])
 }
 

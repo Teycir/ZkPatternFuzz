@@ -515,13 +515,12 @@ curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
 curl -L https://github.com/starkware-libs/cairo/releases/download/v2.0.0/release-x86_64-unknown-linux-musl.tar.gz | tar xz
 ```
 
-If you want to prevent mock fallback entirely, set:
+If you want to enforce real backends only, set:
 ```yaml
 campaign:
   parameters:
     additional:
       strict_backend: true
-      mark_fallback: false
 ```
 
 ### Issue: Low Coverage
