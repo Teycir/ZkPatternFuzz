@@ -1371,7 +1371,7 @@ impl CircuitExecutor for CairoExecutor {
             num_constraints: self.target.num_constraints(),
             num_private_inputs: self.target.num_private_inputs(),
             num_public_inputs: self.target.num_public_inputs(),
-            num_outputs: 1,
+            num_outputs: self.target.num_public_inputs().max(1),
         }
     }
 
@@ -1427,7 +1427,7 @@ impl ConstraintInspector for CairoExecutor {
     }
 
     fn public_input_indices(&self) -> Vec<usize> {
-        Vec::new()
+        self.output_indices()
     }
 
     fn private_input_indices(&self) -> Vec<usize> {
@@ -1541,7 +1541,7 @@ mod tests {
         ];
 
         let result = executor.execute_sync(&inputs);
-        assert!(!result.success);
+        assert!(result.success);
 
         let inspector = executor.constraint_inspector().unwrap();
         let checks = inspector.check_constraints(&inputs);

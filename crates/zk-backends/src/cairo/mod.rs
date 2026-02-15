@@ -15,6 +15,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
+fn cairo_external_command_timeout() -> std::time::Duration {
+    // Cairo executions can be heavier than CLI compilation; default a bit higher.
+    crate::util::timeout_from_env("ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS", 120)
+}
+
 /// Cairo circuit target with full backend integration
 pub struct CairoTarget {
     /// Path to the Cairo source file or project
@@ -154,34 +159,58 @@ impl CairoTarget {
 
     /// Check if Cairo compiler is available
     pub fn check_cairo_available() -> Result<(CairoVersion, String)> {
-        let output = Command::new("cairo-compile")
-            .arg("--version")
-            .output()
-            .context("cairo-compile not found in PATH")?;
+        // Prefer Cairo 0 toolchain when available (cairo-compile + cairo-run).
+        let cairo0 = (|| -> Result<String> {
+            let mut cmd = Command::new("cairo-compile");
+            cmd.arg("--version");
+            let output =
+                crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                    .context("cairo-compile not found in PATH")?;
+            if !output.status.success() {
+                anyhow::bail!("cairo-compile --version failed");
+            }
 
+            let mut run_cmd = Command::new("cairo-run");
+            run_cmd.arg("--version");
+            let run_output =
+                crate::util::run_with_timeout(&mut run_cmd, cairo_external_command_timeout())
+                    .context("cairo-run not found in PATH")?;
+            if !run_output.status.success() {
+                anyhow::bail!("cairo-run --version failed");
+            }
+
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        })();
+
+        if let Ok(version) = cairo0 {
+            return Ok((CairoVersion::Cairo0, version));
+        }
+
+        // Fallback to Scarb (Cairo 1).
+        let output = {
+            let mut cmd = Command::new("scarb");
+            cmd.arg("--version");
+            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("scarb not found in PATH")?
+        };
         if !output.status.success() {
-            anyhow::bail!("cairo-compile --version failed");
+            anyhow::bail!("No Cairo toolchain detected (need cairo-compile/cairo-run or scarb)");
         }
 
-        let run_output = Command::new("cairo-run")
-            .arg("--version")
-            .output()
-            .context("cairo-run not found in PATH")?;
-
-        if !run_output.status.success() {
-            anyhow::bail!("cairo-run --version failed");
-        }
-
-        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok((CairoVersion::Cairo0, version))
+        Ok((
+            CairoVersion::Cairo1,
+            String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        ))
     }
 
     /// Check if stone-prover is available
     pub fn check_stone_prover_available() -> Result<String> {
-        let output = Command::new("cpu_air_prover")
-            .arg("--version")
-            .output()
-            .context("stone-prover not found")?;
+        let output = {
+            let mut cmd = Command::new("cpu_air_prover");
+            cmd.arg("--version");
+            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("stone-prover not found")?
+        };
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -199,6 +228,7 @@ impl CairoTarget {
         tracing::info!("Compiling Cairo program: {:?}", self.source_path);
 
         std::fs::create_dir_all(&self.build_dir)?;
+        let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.build_dir)?;
 
         match self.cairo_version {
             CairoVersion::Cairo0 => self.compile_cairo0()?,
@@ -225,10 +255,12 @@ impl CairoTarget {
             args.push("--no_proof_mode".to_string());
         }
 
-        let output = Command::new("cairo-compile")
-            .args(&args)
-            .output()
-            .context("Failed to run cairo-compile")?;
+        let output = {
+            let mut cmd = Command::new("cairo-compile");
+            cmd.args(&args);
+            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("Failed to run cairo-compile")?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -248,12 +280,14 @@ impl CairoTarget {
     fn compile_cairo1(&mut self) -> Result<()> {
         let project_dir = self.source_path.parent().unwrap_or(Path::new("."));
 
-        let output = Command::new("scarb")
-            .args(["build"])
-            .env("SCARB_TARGET_DIR", &self.build_dir)
-            .current_dir(project_dir)
-            .output()
-            .context("Failed to run scarb build")?;
+        let output = {
+            let mut cmd = Command::new("scarb");
+            cmd.args(["build"])
+                .env("SCARB_TARGET_DIR", &self.build_dir)
+                .current_dir(project_dir);
+            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("Failed to run scarb build")?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -363,15 +397,20 @@ impl CairoTarget {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No compiled program"))?;
 
+        let temp_dir = tempfile::Builder::new()
+            .prefix("zkfuzz_cairo_")
+            .tempdir()
+            .context("Failed to create temp directory")?;
+        let work = temp_dir.path();
+
         // Create input file
-        let input_path = self.build_dir.join("input.json");
+        let input_path = work.join("input.json");
         let input_json = self.create_input_json(inputs)?;
         std::fs::write(&input_path, &input_json)?;
 
         // Run cairo-run
-        let _output_path = self.build_dir.join("output.json");
-        let trace_path = self.build_dir.join("trace.bin");
-        let memory_path = self.build_dir.join("memory.bin");
+        let trace_path = work.join("trace.bin");
+        let memory_path = work.join("memory.bin");
 
         let mut args = vec![
             "--program".to_string(),
@@ -397,10 +436,12 @@ impl CairoTarget {
             input_path.to_str().unwrap().to_string(),
         ]);
 
-        let output = Command::new("cairo-run")
-            .args(&args)
-            .output()
-            .context("Failed to run cairo-run")?;
+        let output = {
+            let mut cmd = Command::new("cairo-run");
+            cmd.args(&args);
+            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("Failed to run cairo-run")?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -423,11 +464,12 @@ impl CairoTarget {
             .collect();
         let args_json = format!("[{}]", args.join(", "));
 
-        let output = Command::new("scarb")
-            .args(["cairo-run", "--", &args_json])
-            .current_dir(project_dir)
-            .output()
-            .context("Failed to run scarb cairo-run")?;
+        let output = {
+            let mut cmd = Command::new("scarb");
+            cmd.args(["cairo-run", "--", &args_json]).current_dir(project_dir);
+            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("Failed to run scarb cairo-run")?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -492,36 +534,39 @@ impl CairoTarget {
     }
 
     /// Generate STARK proof using stone-prover
-    pub fn generate_stark_proof(&self) -> Result<Vec<u8>> {
-        let trace_path = self.build_dir.join("trace.bin");
-        let memory_path = self.build_dir.join("memory.bin");
-        let proof_path = self.build_dir.join("proof.json");
+    pub fn generate_stark_proof(
+        &self,
+        trace_path: &Path,
+        memory_path: &Path,
+        output_dir: &Path,
+    ) -> Result<Vec<u8>> {
+        let proof_path = output_dir.join("proof.json");
 
         if !trace_path.exists() || !memory_path.exists() {
-            anyhow::bail!(
-                "Trace and memory files not found. Run execute with proof_mode=true first."
-            );
+            anyhow::bail!("Trace and memory files not found for proving")
         }
 
         // Create prover config
-        let config_path = self.build_dir.join("cpu_air_prover_config.json");
+        let config_path = output_dir.join("cpu_air_prover_config.json");
         let config = self.create_prover_config()?;
         std::fs::write(&config_path, &config)?;
 
         // Run stone-prover
-        let output = Command::new("cpu_air_prover")
-            .args([
+        let output = {
+            let mut cmd = Command::new("cpu_air_prover");
+            cmd.args([
                 "--out_file",
                 proof_path.to_str().unwrap(),
                 "--trace_file",
-                trace_path.to_str().unwrap(),
+                trace_path.to_str().unwrap_or_default(),
                 "--memory_file",
-                memory_path.to_str().unwrap(),
+                memory_path.to_str().unwrap_or_default(),
                 "--prover_config_file",
                 config_path.to_str().unwrap(),
-            ])
-            .output()
-            .context("Failed to run cpu_air_prover")?;
+            ]);
+            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("Failed to run cpu_air_prover")?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -610,47 +655,77 @@ impl TargetCircuit for CairoTarget {
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
         let _guard = cairo_io_lock().lock().unwrap();
 
-        // First execute with proof mode to generate trace
-        let target = self.clone_with_proof_mode(true);
-        target.execute_cairo_inner(witness)?;
+        if self.cairo_version == CairoVersion::Cairo1 {
+            anyhow::bail!("Cairo1 proving via stone-prover is not implemented");
+        }
 
-        // Then generate STARK proof
-        self.generate_stark_proof()
+        let compiled_path = self
+            .compiled_path
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No compiled program"))?;
+
+        let temp_dir = tempfile::Builder::new()
+            .prefix("zkfuzz_cairo_prove_")
+            .tempdir()
+            .context("Failed to create temp directory")?;
+        let work = temp_dir.path();
+
+        // Generate trace/memory with cairo-run proof mode.
+        let input_path = work.join("input.json");
+        let input_json = self.create_input_json(witness)?;
+        std::fs::write(&input_path, &input_json)?;
+
+        let trace_path = work.join("trace.bin");
+        let memory_path = work.join("memory.bin");
+
+        let args = vec![
+            "--program".to_string(),
+            compiled_path.to_str().unwrap().to_string(),
+            "--print_output".to_string(),
+            "--layout".to_string(),
+            self.config.layout.clone(),
+            "--trace_file".to_string(),
+            trace_path.to_str().unwrap().to_string(),
+            "--memory_file".to_string(),
+            memory_path.to_str().unwrap().to_string(),
+            "--proof_mode".to_string(),
+            "--program_input".to_string(),
+            input_path.to_str().unwrap().to_string(),
+        ];
+
+        let output = {
+            let mut cmd = Command::new("cairo-run");
+            cmd.args(&args);
+            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("Failed to run cairo-run for proving")?
+        };
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Cairo execution (prove mode) failed: {}", stderr);
+        }
+
+        self.generate_stark_proof(&trace_path, &memory_path, work)
     }
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {
         let _guard = cairo_io_lock().lock().unwrap();
 
-        // Write proof to file
-        let proof_path = self.build_dir.join("proof.json");
+        let temp_dir = tempfile::Builder::new()
+            .prefix("zkfuzz_cairo_verify_")
+            .tempdir()
+            .context("Failed to create temp directory")?;
+        let proof_path = temp_dir.path().join("proof.json");
         std::fs::write(&proof_path, proof)?;
 
         // Run stone verifier
-        let output = Command::new("cpu_air_verifier")
-            .args(["--in_file", proof_path.to_str().unwrap()])
-            .output()
-            .context("Failed to run cpu_air_verifier")?;
+        let output = {
+            let mut cmd = Command::new("cpu_air_verifier");
+            cmd.args(["--in_file", proof_path.to_str().unwrap()]);
+            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("Failed to run cpu_air_verifier")?
+        };
 
         Ok(output.status.success())
-    }
-}
-
-impl CairoTarget {
-    /// Create a copy with modified proof mode
-    fn clone_with_proof_mode(&self, proof_mode: bool) -> Self {
-        Self {
-            source_path: self.source_path.clone(),
-            name: self.name.clone(),
-            compiled_path: self.compiled_path.clone(),
-            metadata: self.metadata.clone(),
-            build_dir: self.build_dir.clone(),
-            compiled: self.compiled,
-            cairo_version: self.cairo_version,
-            config: CairoConfig {
-                proof_mode,
-                ..self.config.clone()
-            },
-        }
     }
 }
 

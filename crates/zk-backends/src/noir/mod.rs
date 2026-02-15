@@ -12,9 +12,44 @@ use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+
+fn noir_external_command_timeout() -> std::time::Duration {
+    crate::util::timeout_from_env("ZK_FUZZER_NOIR_EXTERNAL_TIMEOUT_SECS", 60)
+}
+
+struct ScopedFileOverwrite {
+    path: PathBuf,
+    original: Option<Vec<u8>>,
+}
+
+impl ScopedFileOverwrite {
+    fn overwrite(path: PathBuf, contents: &[u8]) -> Result<Self> {
+        let original = match fs::read(&path) {
+            Ok(bytes) => Some(bytes),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+            Err(err) => return Err(err).context("Failed reading original file"),
+        };
+        fs::write(&path, contents).with_context(|| format!("Failed writing {}", path.display()))?;
+        Ok(Self { path, original })
+    }
+}
+
+impl Drop for ScopedFileOverwrite {
+    fn drop(&mut self) {
+        match self.original.take() {
+            Some(bytes) => {
+                let _ = fs::write(&self.path, bytes);
+            }
+            None => {
+                let _ = fs::remove_file(&self.path);
+            }
+        }
+    }
+}
 
 /// Noir circuit target with full backend integration
 pub struct NoirTarget {
@@ -243,13 +278,15 @@ impl NoirTarget {
         tracing::debug!("Using nargo: {}", nargo_version);
 
         let _guard = noir_io_lock().lock().unwrap();
+        let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.build_dir)?;
 
         // Compile the project
-        let output = self
-            .nargo_command()?
-            .args(["compile"])
-            .output()
-            .context("Failed to run nargo compile")?;
+        let output = {
+            let mut cmd = self.nargo_command()?;
+            cmd.args(["compile"]);
+            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
+                .context("Failed to run nargo compile")?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -443,13 +480,13 @@ impl NoirTarget {
     /// Load ACIR text via `nargo compile --print-acir` when available.
     pub fn load_acir_text(&self) -> Option<String> {
         let _guard = noir_io_lock().lock().unwrap();
+        let _dir_lock = crate::util::DirLock::acquire_shared(&self.build_dir).ok()?;
 
-        let output = self
-            .nargo_command()
-            .ok()?
-            .args(["compile", "--print-acir"])
-            .output()
-            .ok()?;
+        let output = {
+            let mut cmd = self.nargo_command().ok()?;
+            cmd.args(["compile", "--print-acir"]);
+            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout()).ok()?
+        };
 
         if !output.status.success() {
             return None;
@@ -471,12 +508,14 @@ impl NoirTarget {
 
     fn build_acir_info(&self) -> Result<NoirAcirInfo> {
         let _guard = noir_io_lock().lock().unwrap();
+        let _dir_lock = crate::util::DirLock::acquire_shared(&self.build_dir)?;
 
-        let output = self
-            .nargo_command()?
-            .args(["compile", "--print-acir"])
-            .output()
-            .context("Failed to run nargo compile --print-acir")?;
+        let output = {
+            let mut cmd = self.nargo_command()?;
+            cmd.args(["compile", "--print-acir"]);
+            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
+                .context("Failed to run nargo compile --print-acir")?
+        };
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("Nargo ACIR print failed: {}", stderr);
@@ -515,27 +554,29 @@ impl NoirTarget {
         }
 
         let _guard = noir_io_lock().lock().unwrap();
+        let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
 
         // Create Prover.toml with inputs
         let prover_toml = self.create_prover_toml(inputs)?;
         let prover_path = self.project_path.join("Prover.toml");
-        std::fs::write(&prover_path, &prover_toml)?;
+        let _prover_guard = ScopedFileOverwrite::overwrite(prover_path, prover_toml.as_bytes())?;
 
         // Execute using nargo execute (JSON output is version-dependent)
-        let output = self
-            .nargo_command()?
-            .args(["execute", "--json"])
-            .output()
-            .context("Failed to execute Noir circuit")?;
+        let output = {
+            let mut cmd = self.nargo_command()?;
+            cmd.args(["execute", "--json"]);
+            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
+                .context("Failed to execute Noir circuit")?
+        };
 
         let output = if output.status.success() {
             output
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.contains("unexpected argument '--json'") {
-                self.nargo_command()?
-                    .args(["execute"])
-                    .output()
+                let mut cmd = self.nargo_command()?;
+                cmd.args(["execute"]);
+                crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
                     .context("Failed to execute Noir circuit without --json")?
             } else {
                 anyhow::bail!("Noir execution failed: {}", stderr);
@@ -744,17 +785,20 @@ impl TargetCircuit for NoirTarget {
         }
 
         let _guard = noir_io_lock().lock().unwrap();
+        let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
 
         // Create Prover.toml
         let prover_toml = self.create_prover_toml(witness)?;
-        std::fs::write(self.project_path.join("Prover.toml"), &prover_toml)?;
+        let prover_path = self.project_path.join("Prover.toml");
+        let _prover_guard = ScopedFileOverwrite::overwrite(prover_path, prover_toml.as_bytes())?;
 
         // Generate proof using nargo
-        let output = self
-            .nargo_command()?
-            .args(["prove"])
-            .output()
-            .context("Failed to generate Noir proof")?;
+        let output = {
+            let mut cmd = self.nargo_command()?;
+            cmd.args(["prove"]);
+            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
+                .context("Failed to generate Noir proof")?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -782,19 +826,21 @@ impl TargetCircuit for NoirTarget {
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {
         let _guard = noir_io_lock().lock().unwrap();
+        let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
 
         // Write proof to file
         let proof_dir = self.project_path.join("proofs");
         std::fs::create_dir_all(&proof_dir)?;
         let proof_path = proof_dir.join(format!("{}.proof", self.name()));
-        std::fs::write(&proof_path, proof)?;
+        let _proof_guard = ScopedFileOverwrite::overwrite(proof_path, proof)?;
 
         // Verify using nargo
-        let output = self
-            .nargo_command()?
-            .args(["verify"])
-            .output()
-            .context("Failed to verify Noir proof")?;
+        let output = {
+            let mut cmd = self.nargo_command()?;
+            cmd.args(["verify"]);
+            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
+                .context("Failed to verify Noir proof")?
+        };
 
         Ok(output.status.success())
     }

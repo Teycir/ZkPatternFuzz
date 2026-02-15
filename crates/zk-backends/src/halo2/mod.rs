@@ -6,14 +6,19 @@
 //! - PLONK-based constraint system
 
 use crate::TargetCircuit;
-use zk_constraints::{ConstraintParser, ParsedConstraintSet};
+use zk_constraints::{ConstraintChecker, ConstraintParser, ParsedConstraintSet, UnknownLookupPolicy};
 use zk_core::Framework;
 use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
+
+fn halo2_external_command_timeout() -> std::time::Duration {
+    crate::util::timeout_from_env("ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS", 120)
+}
 
 /// Halo2 circuit target
 ///
@@ -192,12 +197,12 @@ impl Halo2Target {
 
         // Build the project
         tracing::info!("Building Halo2 Rust project...");
-        let output = self
-            .cargo_command()
-            .args(["build", "--release"])
-            .current_dir(project_dir)
-            .output()
-            .context("Failed to build Halo2 circuit")?;
+        let output = {
+            let mut cmd = self.cargo_command();
+            cmd.args(["build", "--release"]).current_dir(project_dir);
+            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout())
+                .context("Failed to build Halo2 circuit")?
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -214,13 +219,14 @@ impl Halo2Target {
     /// Get circuit info by running the binary
     fn get_circuit_info_from_binary(&self, project_dir: &Path) -> Halo2Metadata {
         // Try to run with --info flag
-        let output = self
-            .cargo_command()
-            .args(["run", "--release", "--", "--info"])
-            .current_dir(project_dir)
-            .output();
+        let output = {
+            let mut cmd = self.cargo_command();
+            cmd.args(["run", "--release", "--", "--info"])
+                .current_dir(project_dir);
+            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()
+        };
 
-        if let Ok(output) = output {
+        if let Some(output) = output {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 if let Ok(info) = serde_json::from_str(&stdout) {
@@ -330,12 +336,12 @@ impl Halo2Target {
         &self,
         project_dir: &Path,
     ) -> Option<ParsedConstraintSet> {
-        let output = self
-            .cargo_command()
-            .args(["run", "--release", "--", "--constraints"])
-            .current_dir(project_dir)
-            .output()
-            .ok()?;
+        let output = {
+            let mut cmd = self.cargo_command();
+            cmd.args(["run", "--release", "--", "--constraints"])
+                .current_dir(project_dir);
+            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()?
+        };
 
         if !output.status.success() {
             return None;
@@ -381,13 +387,14 @@ impl Halo2Target {
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
 
-        let output = self
-            .cargo_command()
-            .args(["run", "--release", "--", "--execute", &input_json])
-            .current_dir(project_dir)
-            .output();
+        let output = {
+            let mut cmd = self.cargo_command();
+            cmd.args(["run", "--release", "--", "--execute", &input_json])
+                .current_dir(project_dir);
+            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()
+        };
 
-        if let Ok(output) = output {
+        if let Some(output) = output {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 if let Ok(values) = serde_json::from_str::<Vec<String>>(&stdout) {
@@ -399,6 +406,46 @@ impl Halo2Target {
         anyhow::bail!(
             "Halo2 execution failed. Provide a circuit binary that supports --execute."
         )
+    }
+
+    fn execute_from_json_spec(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
+        let parsed = self.load_plonk_constraints();
+        if parsed.constraints.is_empty() {
+            anyhow::bail!("Halo2 JSON spec has no constraints to execute");
+        }
+
+        let mut wire_values: HashMap<usize, FieldElement> = inputs
+            .iter()
+            .enumerate()
+            .map(|(idx, value)| (idx, value.clone()))
+            .collect();
+        // Common convention: wire 0 is constant 1.
+        wire_values.insert(0, FieldElement::one());
+
+        let mut checker =
+            ConstraintChecker::new().with_unknown_lookup_policy(UnknownLookupPolicy::FailClosed);
+        for (id, table) in parsed.lookup_tables {
+            checker.add_table(id, table);
+        }
+
+        for (idx, constraint) in parsed.constraints.iter().enumerate() {
+            let eval = checker.evaluate(constraint, &wire_values);
+            if !eval.satisfied {
+                anyhow::bail!(
+                    "Halo2 JSON spec constraint {} unsatisfied (lhs={}, rhs={})",
+                    idx,
+                    eval.lhs.to_decimal_string(),
+                    eval.rhs.to_decimal_string()
+                );
+            }
+        }
+
+        let public = self.num_public_inputs();
+        if public > 0 {
+            Ok(inputs.iter().take(public).cloned().collect())
+        } else {
+            Ok(vec![FieldElement::one()])
+        }
     }
 }
 
@@ -461,7 +508,15 @@ impl TargetCircuit for Halo2Target {
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
-        self.execute_circuit(inputs)
+        if self
+            .circuit_path
+            .extension()
+            .is_some_and(|e| e == "json")
+        {
+            self.execute_from_json_spec(inputs)
+        } else {
+            self.execute_circuit(inputs)
+        }
     }
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
@@ -478,13 +533,14 @@ impl TargetCircuit for Halo2Target {
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
 
-        let output = self
-            .cargo_command()
-            .args(["run", "--release", "--", "--prove", &witness_json])
-            .current_dir(project_dir)
-            .output();
+        let output = {
+            let mut cmd = self.cargo_command();
+            cmd.args(["run", "--release", "--", "--prove", &witness_json])
+                .current_dir(project_dir);
+            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()
+        };
 
-        if let Ok(output) = output {
+        if let Some(output) = output {
             if output.status.success() {
                 return Ok(output.stdout);
             }
@@ -507,9 +563,9 @@ impl TargetCircuit for Halo2Target {
 
         let project_dir = self.circuit_path.parent().unwrap_or(Path::new("."));
 
-        let output = self
-            .cargo_command()
-            .args([
+        let output = {
+            let mut cmd = self.cargo_command();
+            cmd.args([
                 "run",
                 "--release",
                 "--",
@@ -517,10 +573,11 @@ impl TargetCircuit for Halo2Target {
                 &proof_hex,
                 &inputs_json,
             ])
-            .current_dir(project_dir)
-            .output();
+            .current_dir(project_dir);
+            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()
+        };
 
-        if let Ok(output) = output {
+        if let Some(output) = output {
             return Ok(output.status.success());
         }
 

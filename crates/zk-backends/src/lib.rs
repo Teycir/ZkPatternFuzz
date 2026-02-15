@@ -1,5 +1,6 @@
 //! Backend integrations for ZkPatternFuzz.
 
+mod util;
 pub mod registry;
 pub mod fixture;
 

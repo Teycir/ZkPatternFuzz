@@ -19,7 +19,7 @@ fn test_cve_regression_tests_execute() {
     println!("Found {} CVE regression tests", tests.len());
 
     let mut executed = 0;
-    let mut skipped = 0;
+    let mut _skipped = 0;
     let mut circuit_not_found = 0;
 
     for test in &tests {
@@ -31,7 +31,7 @@ fn test_cve_regression_tests_execute() {
         let circuit_path = Path::new(&test.circuit_path);
         if !circuit_path.exists() {
             println!("  ⚠️  Circuit not found - SKIPPING");
-            skipped += 1;
+            _skipped += 1;
             circuit_not_found += 1;
             continue;
         }
