@@ -360,6 +360,9 @@ async fn test_continuous_fuzzing_loop() {
 #[tokio::test]
 async fn test_fuzzing_loop_with_timeout() {
     let mut config = create_test_config();
+    // Scope this test to the continuous fuzzing loop timeout only.
+    // Attack dispatch/runtime is covered by dedicated tests below.
+    config.attacks.clear();
     
     // Very short timeout
     config.campaign.parameters.additional.insert(
@@ -371,8 +374,8 @@ async fn test_fuzzing_loop_with_timeout() {
         serde_yaml::Value::Number(1.into()), // 1 second timeout
     );
     
-    let start = std::time::Instant::now();
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
+    let start = std::time::Instant::now();
     let _ = engine.run(None).await;
     let elapsed = start.elapsed();
     

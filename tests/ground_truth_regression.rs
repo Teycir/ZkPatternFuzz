@@ -90,7 +90,6 @@ reporting:
 
 /// Test detection of Merkle path index not constrained to binary
 #[test]
-// requires fixture backend setup
 fn test_detects_merkle_unconstrained() {
     let config = create_ground_truth_campaign(
         "merkle_unconstrained",
@@ -121,7 +120,6 @@ fn test_detects_merkle_unconstrained() {
 
 /// Test detection of range proof overflow
 #[test]
-// requires fixture backend setup
 fn test_detects_range_overflow() {
     let config = create_ground_truth_campaign(
         "range_overflow",
@@ -151,7 +149,6 @@ fn test_detects_range_overflow() {
 
 /// Test detection of nullifier collision
 #[test]
-// requires fixture backend setup
 fn test_detects_nullifier_collision() {
     let config = create_ground_truth_campaign(
         "nullifier_collision",
@@ -179,7 +176,6 @@ fn test_detects_nullifier_collision() {
 
 /// Test detection of bit decomposition missing constraint
 #[test]
-// requires fixture backend setup
 fn test_detects_bit_decomposition_unconstrained() {
     let config = create_ground_truth_campaign(
         "bit_decomposition",
@@ -207,7 +203,6 @@ fn test_detects_bit_decomposition_unconstrained() {
 
 /// Test detection of EdDSA signature malleability
 #[test]
-// requires fixture backend setup
 fn test_detects_eddsa_malleability() {
     let config = create_ground_truth_campaign(
         "eddsa_malleability",
@@ -237,7 +232,6 @@ fn test_detects_eddsa_malleability() {
 
 /// Test detection of private input leakage
 #[test]
-// requires fixture backend setup
 fn test_detects_public_input_leak() {
     let config = create_ground_truth_campaign(
         "public_input_leak",
@@ -265,7 +259,6 @@ fn test_detects_public_input_leak() {
 
 /// Test detection of division by zero
 #[test]
-// requires fixture backend setup
 fn test_detects_division_by_zero() {
     let config = create_ground_truth_campaign(
         "division_by_zero",
@@ -295,7 +288,6 @@ fn test_detects_division_by_zero() {
 
 /// Test detection of hash length extension vulnerability
 #[test]
-// requires fixture backend setup
 fn test_detects_hash_length_extension() {
     let config = create_ground_truth_campaign(
         "hash_length_extension",
@@ -323,7 +315,6 @@ fn test_detects_hash_length_extension() {
 
 /// Test detection of multiexp soundness issue
 #[test]
-// requires fixture backend setup
 fn test_detects_multiexp_soundness() {
     let config = create_ground_truth_campaign(
         "multiexp_soundness",
@@ -351,7 +342,6 @@ fn test_detects_multiexp_soundness() {
 
 /// Test detection of non-binding commitment
 #[test]
-// requires fixture backend setup
 fn test_detects_commitment_not_binding() {
     let config = create_ground_truth_campaign(
         "commitment_binding",
@@ -381,7 +371,6 @@ fn test_detects_commitment_not_binding() {
 
 /// Measure overall detection rate across ground truth suite
 #[test]
-// requires full circuit suite
 fn test_ground_truth_detection_rate() {
     let test_cases = vec![
         ("merkle_unconstrained", AttackType::Underconstrained),

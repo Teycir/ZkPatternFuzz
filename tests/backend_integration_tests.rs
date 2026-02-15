@@ -363,10 +363,14 @@ fn test_halo2_real_circuit_constraint_coverage() {
         repo_path
     );
 
-    let cargo_home = std::env::temp_dir().join("zk0d_cargo_home");
+    // Use a writable temporary cargo home for sandboxed test runs.
+    // Prefill this cache externally when network access is restricted.
+    let cargo_home = std::env::temp_dir().join("zk0d_halo2_cargo_home");
     std::fs::create_dir_all(&cargo_home).expect("Failed to create temp cargo home");
     std::env::set_var("CARGO_HOME", &cargo_home);
-    std::env::set_var("RUSTUP_HOME", cargo_home.join("rustup"));
+    std::env::set_var("RUSTUP_SKIP_UPDATE_CHECK", "1");
+    std::env::set_var("RUSTUP_TOOLCHAIN", "nightly");
+    std::env::set_var("CARGO_NET_OFFLINE", "true");
 
     let build_dir = std::env::temp_dir().join("zk0d_halo2_build");
     let executor = Halo2Executor::new_with_build_dir(

@@ -140,7 +140,6 @@ impl FPAnalysisResult {
 /// Test false positive rate on audited production circuits
 /// These are circuits that have been professionally audited and are known safe
 #[test]
-// requires safe circuit test data
 fn test_fp_rate_audited_circuits() {
     let safe_circuits = vec![
         "tornado_withdraw_fixed",    // Fixed Tornado Cash withdraw
@@ -188,7 +187,6 @@ fn test_fp_rate_audited_circuits() {
 /// Test false positive rate on formally verified circuits
 /// These circuits have been verified with Picus or other formal tools
 #[test]
-// requires formally verified circuit test data
 fn test_fp_rate_verified_circuits() {
     let verified_circuits = vec![
         "merkle_tree_secure",
@@ -226,7 +224,6 @@ fn test_fp_rate_verified_circuits() {
 /// Test false positive rate by attack type
 /// Helps identify which oracles need tuning
 #[test]
-// requires safe circuit test data
 fn test_fp_rate_by_attack_type() {
     let test_cases: Vec<(AttackType, Vec<&str>)> = vec![
         (
@@ -331,7 +328,6 @@ reporting:
 
 /// Test that tuned oracle thresholds reduce false positives
 #[test]
-// requires oracle tuning data
 fn test_oracle_threshold_tuning() {
     // Test different confidence thresholds
     let thresholds = [0.5, 0.6, 0.7, 0.8, 0.9];

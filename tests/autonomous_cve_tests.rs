@@ -5,17 +5,6 @@ const AUTONOMOUS_CVE_DB: &str = "templates/autonomous_cve_tests.yaml";
 
 #[test]
 fn test_autonomous_cve_regression_tests() {
-    if std::env::var("ZK_FUZZER_RUN_AUTONOMOUS_CVE_TESTS")
-        .ok()
-        .as_deref()
-        != Some("1")
-    {
-        eprintln!(
-            "skipping autonomous CVE regression tests (set ZK_FUZZER_RUN_AUTONOMOUS_CVE_TESTS=1 to run)"
-        );
-        return;
-    }
-
     println!("Loading autonomous CVE database...");
 
     let db = CveDatabase::load(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
