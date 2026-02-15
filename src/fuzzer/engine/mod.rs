@@ -480,7 +480,17 @@ impl FuzzingEngine {
             rayon::ThreadPoolBuilder::new()
                 .num_threads(workers)
                 .build()
-                .ok()
+                .map_or_else(
+                    |err| {
+                        tracing::warn!(
+                            "Failed to create rayon thread pool (workers={}): {}",
+                            workers,
+                            err
+                        );
+                        None
+                    },
+                    Some,
+                )
         } else {
             None
         };

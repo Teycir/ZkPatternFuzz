@@ -120,7 +120,9 @@ impl ProgressReporter {
             stats.executions, total, stats.coverage_percentage, stats.crashes
         ));
         self.stats_bar.finish_and_clear();
-        let _ = self.multi_progress.clear();
+        if let Err(err) = self.multi_progress.clear() {
+            tracing::warn!("Failed to clear progress UI: {}", err);
+        }
     }
 
     /// Finish with an error
@@ -128,7 +130,9 @@ impl ProgressReporter {
         self.main_bar
             .abandon_with_message(format!("Error: {}", error));
         self.stats_bar.finish_and_clear();
-        let _ = self.multi_progress.clear();
+        if let Err(err) = self.multi_progress.clear() {
+            tracing::warn!("Failed to clear progress UI after error: {}", err);
+        }
     }
 
     /// Get elapsed time

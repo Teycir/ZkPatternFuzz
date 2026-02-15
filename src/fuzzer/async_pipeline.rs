@@ -246,7 +246,20 @@ where
         });
 
         // Wait for all stages
-        let _ = tokio::join!(select_handle, mutate_handle, exec_handle, result_handle);
+        let (select_res, mutate_res, exec_res, result_res) =
+            tokio::join!(select_handle, mutate_handle, exec_handle, result_handle);
+        if let Err(err) = select_res {
+            tracing::error!("Selection stage task failed: {}", err);
+        }
+        if let Err(err) = mutate_res {
+            tracing::error!("Mutation stage task failed: {}", err);
+        }
+        if let Err(err) = exec_res {
+            tracing::error!("Execution stage task failed: {}", err);
+        }
+        if let Err(err) = result_res {
+            tracing::error!("Result stage task failed: {}", err);
+        }
     }
 
     async fn selection_stage(

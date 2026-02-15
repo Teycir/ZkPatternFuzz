@@ -180,8 +180,24 @@ fn main() -> Result<()> {
             let link_path = work_node_modules.join(name);
             let target_path = PathBuf::from(target);
             if fs::symlink_metadata(&link_path).is_ok() {
-                let _ = fs::remove_file(&link_path);
-                let _ = fs::remove_dir_all(&link_path);
+                let remove_file_res = fs::remove_file(&link_path);
+                let remove_dir_res = fs::remove_dir_all(&link_path);
+                if remove_file_res.is_err() && remove_dir_res.is_err() {
+                    let file_err = remove_file_res
+                        .err()
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let dir_err = remove_dir_res
+                        .err()
+                        .map(|e| e.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    anyhow::bail!(
+                        "Failed to remove existing symlink target '{}': remove_file={}, remove_dir_all={}",
+                        link_path.display(),
+                        file_err,
+                        dir_err
+                    );
+                }
             }
             create_symlink(&target_path, &link_path)?;
         }
@@ -374,8 +390,7 @@ fn resolve_extra_path(
             .join(extra)
     };
     if let Some(root) = source_root {
-        let _ = path
-            .strip_prefix(root)
+        path.strip_prefix(root)
             .context("extra file must be under source_root")?;
     }
     Ok(path)
@@ -517,14 +532,23 @@ fn read_sym_map(sym_path: &Path) -> Result<HashMap<String, usize>> {
     for line in contents.lines() {
         let parts: Vec<&str> = line.split(',').collect();
         if parts.len() < 2 {
+            tracing::warn!("Skipping malformed .sym line (expected at least 2 columns): {}", line);
             continue;
         }
-        let primary = parts.get(1).and_then(|v| v.trim().parse::<isize>().ok());
-        let fallback = parts.first().and_then(|v| v.trim().parse::<isize>().ok());
-        let chosen = match primary {
-            Some(value) if value >= 0 => Some(value as usize),
-            _ => fallback.and_then(|v| if v >= 0 { Some(v as usize) } else { None }),
+
+        let chosen = match parts.get(1).map(|v| v.trim().parse::<isize>()) {
+            Some(Ok(value)) if value >= 0 => Some(value as usize),
+            Some(Ok(_)) => {
+                tracing::warn!("Skipping .sym line with negative index: {}", line);
+                None
+            }
+            Some(Err(err)) => {
+                tracing::warn!("Skipping .sym line with invalid index '{}': {}", line, err);
+                None
+            }
+            None => None,
         };
+
         let name = parts.last().map(|s| s.trim()).filter(|s| !s.is_empty());
         if let (Some(idx), Some(name)) = (chosen, name) {
             map.insert(name.to_string(), idx);

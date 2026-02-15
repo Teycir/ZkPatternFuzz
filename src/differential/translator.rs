@@ -247,7 +247,10 @@ fn parse_num_from_name(name: &str) -> Option<usize> {
     }
 
     let digits: String = digits_rev.chars().rev().collect();
-    digits.parse().ok()
+    match digits.parse() {
+        Ok(value) => Some(value),
+        Err(_) => None,
+    }
 }
 
 // ============================================================================

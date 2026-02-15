@@ -686,15 +686,7 @@ fn detect_main_component(source: &str, framework: Framework) -> String {
                     }
                 }
             }
-            // Fallback: look for first template
-            for line in source.lines() {
-                if line.trim().starts_with("template ") {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        return parts[1].trim_end_matches('(').to_string();
-                    }
-                }
-            }
+            panic!("Circom source missing explicit `component main = ...`; implicit template selection removed");
         }
         Framework::Noir => {
             // Look for "fn main"
@@ -703,10 +695,11 @@ fn detect_main_component(source: &str, framework: Framework) -> String {
                     return "main".to_string();
                 }
             }
+            panic!("Noir source missing `fn main`; implicit defaults removed");
         }
         _ => {}
     }
-    "Main".to_string()
+    panic!("Unsupported framework for main component detection: {:?}", framework)
 }
 
 /// Parse Circom input declaration
@@ -723,7 +716,10 @@ fn parse_circom_input(line: &str) -> Option<Input> {
             let (name, length) = if let Some(bracket) = name.find('[') {
                 let base_name = &name[..bracket];
                 let len_str = &name[bracket + 1..];
-                let len: usize = len_str.trim_end_matches(']').parse().ok()?;
+                let len: usize = match len_str.trim_end_matches(']').parse() {
+                    Ok(len) => len,
+                    Err(_) => return None,
+                };
                 (base_name.to_string(), Some(len))
             } else {
                 (name.to_string(), None)

@@ -883,7 +883,7 @@ fn expand_env_string(input: &str) -> String {
         }
 
         if matches!(chars.peek(), Some('{')) {
-            let _ = chars.next();
+            chars.next();
             let mut name = String::new();
             for next in chars.by_ref() {
                 if next == '}' {
@@ -895,15 +895,14 @@ fn expand_env_string(input: &str) -> String {
                 out.push('$');
                 continue;
             }
-            let (var_name, default) = if let Some((var, fallback)) = name.split_once(":-") {
-                (var, Some(fallback))
+            let var_name = if let Some((var, _legacy_default)) = name.split_once(":-") {
+                // Strict mode: `${VAR:-default}` no longer injects defaults.
+                var
             } else {
-                (name.as_str(), None)
+                name.as_str()
             };
             if let Ok(val) = std::env::var(var_name) {
                 out.push_str(&val);
-            } else if let Some(fallback) = default {
-                out.push_str(fallback);
             } else {
                 out.push_str(&format!("${{{}}}", name));
             }
@@ -974,7 +973,13 @@ impl FuzzConfig {
             .parameters
             .additional
             .get("v2_invariants")
-            .and_then(|v| serde_yaml::from_value(v.clone()).ok())
+            .and_then(|v| match serde_yaml::from_value(v.clone()) {
+                Ok(parsed) => Some(parsed),
+                Err(err) => {
+                    tracing::warn!("Invalid v2_invariants config: {}", err);
+                    None
+                }
+            })
             .unwrap_or_default()
     }
 
@@ -984,7 +989,13 @@ impl FuzzConfig {
             .parameters
             .additional
             .get("v2_schedule")
-            .and_then(|v| serde_yaml::from_value(v.clone()).ok())
+            .and_then(|v| match serde_yaml::from_value(v.clone()) {
+                Ok(parsed) => Some(parsed),
+                Err(err) => {
+                    tracing::warn!("Invalid v2_schedule config: {}", err);
+                    None
+                }
+            })
             .unwrap_or_default()
     }
 
@@ -994,7 +1005,13 @@ impl FuzzConfig {
             .parameters
             .additional
             .get("v2_traits")
-            .and_then(|v| serde_yaml::from_value(v.clone()).ok())
+            .and_then(|v| match serde_yaml::from_value(v.clone()) {
+                Ok(parsed) => Some(parsed),
+                Err(err) => {
+                    tracing::warn!("Invalid v2_traits config: {}", err);
+                    None
+                }
+            })
             .unwrap_or_default()
     }
 

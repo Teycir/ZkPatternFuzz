@@ -178,7 +178,9 @@ impl Profiler {
             // Profile proving
             let proving_time = if self.profile_proving {
                 let start = Instant::now();
-                let _ = executor.prove(&inputs);
+                if let Err(err) = executor.prove(&inputs) {
+                    tracing::warn!("Profiling prove failed: {}", err);
+                }
                 start.elapsed().as_micros() as u64
             } else {
                 0
@@ -195,7 +197,9 @@ impl Profiler {
                         .collect();
 
                     let start = Instant::now();
-                    let _ = executor.verify(&proof, &public_inputs);
+                    if let Err(err) = executor.verify(&proof, &public_inputs) {
+                        tracing::warn!("Profiling verify failed: {}", err);
+                    }
                     start.elapsed().as_micros() as u64
                 } else {
                     0
@@ -311,7 +315,14 @@ impl Profiler {
 
         for (i, inputs) in test_inputs.iter().enumerate() {
             let start = Instant::now();
-            let _ = executor.execute_sync(inputs);
+            let result = executor.execute_sync(inputs);
+            if !result.success {
+                tracing::warn!(
+                    "Profiling execution failed for test_case_{}: {}",
+                    i,
+                    result.error.as_deref().unwrap_or("unknown execution error")
+                );
+            }
             let elapsed = start.elapsed().as_micros() as u64;
             results.insert(format!("test_case_{}", i), elapsed);
         }

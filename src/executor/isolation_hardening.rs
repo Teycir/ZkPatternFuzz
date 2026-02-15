@@ -333,27 +333,54 @@ impl ResourceMonitor {
         let statm_path = format!("/proc/{}/statm", pid);
         let stat_path = format!("/proc/{}/stat", pid);
 
-        let memory_bytes = std::fs::read_to_string(&statm_path)
-            .ok()
-            .and_then(|content| {
+        let memory_bytes = match std::fs::read_to_string(&statm_path) {
+            Ok(content) => {
                 let parts: Vec<&str> = content.split_whitespace().collect();
                 // First field is total program size in pages
-                parts.first()?.parse::<u64>().ok().map(|pages| pages * page_size)
-            })
-            .unwrap_or(0);
+                match parts.first().map(|s| s.parse::<u64>()) {
+                    Some(Ok(pages)) => pages * page_size,
+                    Some(Err(err)) => {
+                        tracing::warn!("Failed to parse statm pages for pid {}: {}", pid, err);
+                        0
+                    }
+                    None => 0,
+                }
+            }
+            Err(err) => {
+                tracing::debug!("Failed to read {}: {}", statm_path, err);
+                0
+            }
+        };
 
-        let (cpu_time_ms, is_alive) = std::fs::read_to_string(&stat_path)
-            .ok()
-            .map(|content| {
+        let (cpu_time_ms, is_alive) = match std::fs::read_to_string(&stat_path) {
+            Ok(content) => {
                 let parts: Vec<&str> = content.split_whitespace().collect();
                 // Fields 14 and 15 are utime and stime in clock ticks
-                let utime = parts.get(13).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
-                let stime = parts.get(14).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+                let utime = match parts.get(13).map(|s| s.parse::<u64>()) {
+                    Some(Ok(v)) => v,
+                    Some(Err(err)) => {
+                        tracing::warn!("Failed to parse utime for pid {}: {}", pid, err);
+                        0
+                    }
+                    None => 0,
+                };
+                let stime = match parts.get(14).map(|s| s.parse::<u64>()) {
+                    Some(Ok(v)) => v,
+                    Some(Err(err)) => {
+                        tracing::warn!("Failed to parse stime for pid {}: {}", pid, err);
+                        0
+                    }
+                    None => 0,
+                };
                 // Convert clock ticks to milliseconds
                 let cpu_ms = ((utime + stime) * 1000) / clock_ticks_per_sec;
                 (cpu_ms, true)
-            })
-            .unwrap_or((0, false));
+            }
+            Err(err) => {
+                tracing::debug!("Failed to read {}: {}", stat_path, err);
+                (0, false)
+            }
+        };
 
         ResourceUsage {
             memory_bytes,

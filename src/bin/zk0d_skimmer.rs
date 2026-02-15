@@ -96,9 +96,13 @@ struct CandidateInvariantsFile {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    let env_root = match std::env::var("ZK0D_BASE") {
+        Ok(v) => Some(v),
+        Err(_) => None,
+    };
     let root_value = args
         .root
-        .or_else(|| std::env::var("ZK0D_BASE").ok())
+        .or(env_root)
         .unwrap_or_else(|| DEFAULT_ZK0D_BASE.to_string());
     let root = PathBuf::from(&root_value);
 
@@ -441,9 +445,12 @@ fn root_placeholder(root: &Path, override_placeholder: Option<&str>) -> Option<S
         }
     }
     let root_str = root.to_string_lossy();
-    let env_root = std::env::var("ZK0D_BASE").ok();
+    let env_root = match std::env::var("ZK0D_BASE") {
+        Ok(v) => Some(v),
+        Err(_) => None,
+    };
     if root_str == DEFAULT_ZK0D_BASE || env_root.as_deref() == Some(root_str.as_ref()) {
-        Some(format!("${{ZK0D_BASE:-{}}}", DEFAULT_ZK0D_BASE))
+        Some("${ZK0D_BASE}".to_string())
     } else {
         None
     }

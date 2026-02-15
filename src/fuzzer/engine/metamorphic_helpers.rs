@@ -279,7 +279,10 @@ impl FuzzingEngine {
                 let (input_name, bit) = Self::parse_two_args(&args)?;
                 let (input_name, _) = Self::parse_transform_target(&input_name);
                 let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
-                let bit_position = bit.parse::<usize>().ok()?;
+                let bit_position = match bit.parse::<usize>() {
+                    Ok(bit_position) => bit_position,
+                    Err(_) => return None,
+                };
                 Some(Transform::BitFlipInput {
                     index: *idx,
                     bit_position,
@@ -378,7 +381,10 @@ impl FuzzingEngine {
             if trimmed.ends_with(']') {
                 let base = trimmed[..start].trim();
                 let index = trimmed[start + 1..trimmed.len() - 1].trim();
-                let parsed = index.parse::<usize>().ok();
+                let parsed = match index.parse::<usize>() {
+                    Ok(value) => Some(value),
+                    Err(_) => None,
+                };
                 return (base.to_string(), parsed);
             }
         }
@@ -397,7 +403,10 @@ impl FuzzingEngine {
         }
 
         if lower.starts_with("0x") {
-            return FieldElement::from_hex(trimmed).ok();
+            return match FieldElement::from_hex(trimmed) {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            };
         }
 
         if let Some(exp) = lower.strip_prefix("2^") {
@@ -419,6 +428,9 @@ impl FuzzingEngine {
             return Some(FieldElement::max_value());
         }
 
-        trimmed.parse::<u64>().ok().map(FieldElement::from_u64)
+        match trimmed.parse::<u64>() {
+            Ok(value) => Some(FieldElement::from_u64(value)),
+            Err(_) => None,
+        }
     }
 }

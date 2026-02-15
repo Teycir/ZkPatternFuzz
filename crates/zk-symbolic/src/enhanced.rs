@@ -1273,10 +1273,18 @@ mod tests {
             SymbolicValue::concrete(FieldElement::zero()),
         )];
 
-        let _ = solver.solve_incremental(&base_path, &constraints);
+        let first = solver.solve_incremental(&base_path, &constraints);
+        assert!(
+            !matches!(first, SolverResult::Unknown),
+            "first incremental solve returned unknown"
+        );
         assert_eq!(solver.cache_hits(), 0);
 
-        let _ = solver.solve_incremental(&base_path, &constraints);
+        let second = solver.solve_incremental(&base_path, &constraints);
+        assert!(
+            !matches!(second, SolverResult::Unknown),
+            "second incremental solve returned unknown"
+        );
         assert_eq!(solver.cache_hits(), 1);
     }
 }

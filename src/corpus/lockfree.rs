@@ -529,7 +529,9 @@ mod tests {
         }
 
         for handle in handles {
-            let _ = handle.join();
+            handle
+                .join()
+                .expect("concurrent access test thread should not panic");
         }
 
         // Total added should match

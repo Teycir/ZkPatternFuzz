@@ -186,9 +186,12 @@ impl CrossStepInvariantChecker {
 
     fn parse_uniqueness(relation: &str) -> Option<AssertionType> {
         // Match: unique(step[*].out[N]) or unique(step[*].in[N])
-        let re =
-            Regex::new(r"unique\s*\(\s*step\s*\[\s*\*\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*\)")
-                .ok()?;
+        let re = match Regex::new(
+            r"unique\s*\(\s*step\s*\[\s*\*\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*\)",
+        ) {
+            Ok(re) => re,
+            Err(_) => return None,
+        };
         let caps = re.captures(relation)?;
 
         let field_type = match caps.get(1)?.as_str() {
@@ -196,7 +199,10 @@ impl CrossStepInvariantChecker {
             "in" => FieldType::Input,
             _ => return None,
         };
-        let field_index = caps.get(2)?.as_str().parse().ok()?;
+        let field_index = match caps.get(2)?.as_str().parse() {
+            Ok(field_index) => field_index,
+            Err(_) => return None,
+        };
 
         Some(AssertionType::Uniqueness {
             field_type,
@@ -206,9 +212,12 @@ impl CrossStepInvariantChecker {
 
     fn parse_equality(relation: &str) -> Option<AssertionType> {
         // Match: step[N].out[M] == step[K].in[L]
-        let re = Regex::new(
-            r"step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*==\s*step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]"
-        ).ok()?;
+        let re = match Regex::new(
+            r"step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*==\s*step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]",
+        ) {
+            Ok(re) => re,
+            Err(_) => return None,
+        };
         let caps = re.captures(relation)?;
 
         let step_a = Self::parse_step_ref(caps.get(1)?.as_str())?;
@@ -226,9 +235,12 @@ impl CrossStepInvariantChecker {
 
     fn parse_inequality(relation: &str) -> Option<AssertionType> {
         // Match: step[N].out[M] != step[K].out[L]
-        let re = Regex::new(
-            r"step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*!=\s*step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]"
-        ).ok()?;
+        let re = match Regex::new(
+            r"step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*!=\s*step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]",
+        ) {
+            Ok(re) => re,
+            Err(_) => return None,
+        };
         let caps = re.captures(relation)?;
 
         let step_a = Self::parse_step_ref(caps.get(1)?.as_str())?;
@@ -246,9 +258,15 @@ impl CrossStepInvariantChecker {
 
     fn parse_step_success(relation: &str) -> Option<AssertionType> {
         // Match: step[N].success == true
-        let re = Regex::new(r"step\s*\[\s*(\d+)\s*\]\s*\.\s*success\s*==\s*true").ok()?;
+        let re = match Regex::new(r"step\s*\[\s*(\d+)\s*\]\s*\.\s*success\s*==\s*true") {
+            Ok(re) => re,
+            Err(_) => return None,
+        };
         let caps = re.captures(relation)?;
-        let step_index = caps.get(1)?.as_str().parse().ok()?;
+        let step_index = match caps.get(1)?.as_str().parse() {
+            Ok(step_index) => step_index,
+            Err(_) => return None,
+        };
         Some(AssertionType::StepSuccess { step_index })
     }
 
@@ -256,12 +274,18 @@ impl CrossStepInvariantChecker {
         if s == "*" {
             Some(StepRef::All)
         } else {
-            s.parse().ok().map(StepRef::Specific)
+            match s.parse() {
+                Ok(step) => Some(StepRef::Specific(step)),
+                Err(_) => None,
+            }
         }
     }
 
     fn parse_field_ref(field_type: &str, index: &str) -> Option<FieldRef> {
-        let idx = index.parse().ok()?;
+        let idx = match index.parse() {
+            Ok(idx) => idx,
+            Err(_) => return None,
+        };
         match field_type {
             "out" => Some(FieldRef::Output(idx)),
             "in" => Some(FieldRef::Input(idx)),

@@ -492,7 +492,7 @@ impl ConstraintParser {
             }
         }
 
-        // Fallback: line-based text parsing
+        // Line-based text parsing path
         parse_r1cs_text(trimmed)
     }
 
@@ -1216,7 +1216,7 @@ fn parse_json_from_text(content: &str, expected_keys: &[&str]) -> Option<serde_j
         return Some(value);
     }
 
-    let mut fallback = None;
+    let mut first_valid_json = None;
     for (idx, ch) in content.char_indices() {
         if ch != '{' && ch != '[' {
             continue;
@@ -1228,13 +1228,13 @@ fn parse_json_from_text(content: &str, expected_keys: &[&str]) -> Option<serde_j
             if json_has_any_key(&value, expected_keys) {
                 return Some(value);
             }
-            if fallback.is_none() {
-                fallback = Some(value);
+            if first_valid_json.is_none() {
+                first_valid_json = Some(value);
             }
         }
     }
 
-    fallback
+    first_valid_json
 }
 
 fn collect_wire_refs(value: &serde_json::Value, output: &mut Vec<WireRef>) {
@@ -1510,7 +1510,10 @@ fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {
                     lookup
                         .get("table")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| s.parse().ok())
+                        .and_then(|s| match s.parse() {
+                            Ok(v) => Some(v),
+                            Err(_) => None,
+                        })
                 })
                 .or_else(|| lookup.get("id").and_then(|v| v.as_u64()))
                 .map(|v| v as usize)
@@ -1582,7 +1585,10 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                             .unwrap_or_else(|| format!("table_{}", id));
                         let num_columns = kv
                             .get("columns")
-                            .and_then(|v| v.parse::<usize>().ok())
+                            .and_then(|v| match v.parse::<usize>() {
+                                Ok(parsed) => Some(parsed),
+                                Err(_) => None,
+                            })
                             .unwrap_or(1);
                         let mut table = LookupTable::new(&name, num_columns);
                         if let Some(entries) = kv.get("entries") {
@@ -1604,14 +1610,20 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
             "lookup" => {
                 let table_id = kv
                     .get("table")
-                    .and_then(|v| v.parse::<usize>().ok())
+                    .and_then(|v| match v.parse::<usize>() {
+                        Ok(parsed) => Some(parsed),
+                        Err(_) => None,
+                    })
                     .unwrap_or(0);
                 let inputs = kv
                     .get("inputs")
                     .or_else(|| kv.get("input"))
                     .map(|v| {
                         v.split(',')
-                            .filter_map(|s| s.parse::<usize>().ok())
+                            .filter_map(|s| match s.parse::<usize>() {
+                                Ok(parsed) => Some(parsed),
+                                Err(_) => None,
+                            })
                             .map(WireRef::new)
                             .collect::<Vec<_>>()
                     })
@@ -1640,9 +1652,18 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
             }
             "gate" | "plonk" => {
                 if let (Some(a), Some(b), Some(c)) = (
-                    kv.get("a").and_then(|v| v.parse::<usize>().ok()),
-                    kv.get("b").and_then(|v| v.parse::<usize>().ok()),
-                    kv.get("c").and_then(|v| v.parse::<usize>().ok()),
+                    kv.get("a").and_then(|v| match v.parse::<usize>() {
+                        Ok(parsed) => Some(parsed),
+                        Err(_) => None,
+                    }),
+                    kv.get("b").and_then(|v| match v.parse::<usize>() {
+                        Ok(parsed) => Some(parsed),
+                        Err(_) => None,
+                    }),
+                    kv.get("c").and_then(|v| match v.parse::<usize>() {
+                        Ok(parsed) => Some(parsed),
+                        Err(_) => None,
+                    }),
                 ) {
                     let gate = PlonkGate {
                         a: WireRef::new(a),
@@ -1737,13 +1758,16 @@ fn parse_acir_json(value: &serde_json::Value) -> ParsedConstraintSet {
 #[cfg(feature = "acir-bytecode")]
 fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet> {
     let bytecode = value.get("bytecode")?.as_str()?;
-    let raw = base64::engine::general_purpose::STANDARD
-        .decode(bytecode)
-        .ok()?;
+    let raw = match base64::engine::general_purpose::STANDARD.decode(bytecode) {
+        Ok(raw) => raw,
+        Err(_) => return None,
+    };
     let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
         let mut decoder = GzDecoder::new(raw.as_slice());
         let mut decoded = Vec::new();
-        decoder.read_to_end(&mut decoded).ok()?;
+        if decoder.read_to_end(&mut decoded).is_err() {
+            return None;
+        }
         decoded
     } else {
         raw
@@ -1752,12 +1776,18 @@ fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet>
     // Attempt to deserialize ACIR bytecode into a Program or Circuit and convert to JSON.
     // This keeps decoding logic centralized in ACIR crates while reusing existing JSON parsing.
     if let Ok(program) = bincode::deserialize::<acir::circuit::Program>(&bytes) {
-        let json = serde_json::to_value(program).ok()?;
+        let json = match serde_json::to_value(program) {
+            Ok(json) => json,
+            Err(_) => return None,
+        };
         return Some(parse_acir_json(&json));
     }
 
     if let Ok(circuit) = bincode::deserialize::<acir::circuit::Circuit>(&bytes) {
-        let json = serde_json::to_value(circuit).ok()?;
+        let json = match serde_json::to_value(circuit) {
+            Ok(json) => json,
+            Err(_) => return None,
+        };
         return Some(parse_acir_json(&json));
     }
 
@@ -2059,10 +2089,10 @@ fn parse_plonk_gate_value(value: &serde_json::Value) -> Option<ExtendedConstrain
 
 fn parse_lookup_table_value(
     value: &serde_json::Value,
-    fallback_id: Option<usize>,
+    table_id_hint: Option<usize>,
 ) -> Option<(usize, LookupTable)> {
     if let Some(array) = value.as_array() {
-        let id = fallback_id?;
+        let id = table_id_hint?;
         let mut rows = Vec::new();
         let mut max_cols = 0usize;
 
@@ -2106,7 +2136,7 @@ fn parse_lookup_table_value(
         .get("id")
         .and_then(|v| v.as_u64())
         .map(|v| v as usize)
-        .or(fallback_id)?;
+        .or(table_id_hint)?;
 
     let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("lookup");
     let num_columns = obj
@@ -2524,11 +2554,17 @@ fn parse_air_expression_text(input: &str) -> Option<AirExpression> {
         let mut parts = inner.split(',');
         let index = parts
             .next()
-            .and_then(|s| s.trim().parse::<usize>().ok())
+            .and_then(|s| match s.trim().parse::<usize>() {
+                Ok(parsed) => Some(parsed),
+                Err(_) => None,
+            })
             .unwrap_or(0);
         let offset = parts
             .next()
-            .and_then(|s| s.trim().parse::<i32>().ok())
+            .and_then(|s| match s.trim().parse::<i32>() {
+                Ok(parsed) => Some(parsed),
+                Err(_) => None,
+            })
             .unwrap_or(0);
         return Some(AirExpression::Column { index, offset });
     }
@@ -2571,7 +2607,10 @@ fn parse_field_element_str(input: &str) -> Option<FieldElement> {
     };
 
     let mut fe = if value_str.starts_with("0x") || value_str.starts_with("0X") {
-        FieldElement::from_hex(value_str).ok()?
+        match FieldElement::from_hex(value_str) {
+            Ok(fe) => fe,
+            Err(_) => return None,
+        }
     } else {
         let value = BigUint::parse_bytes(value_str.as_bytes(), 10)?;
         FieldElement::from_bytes(&value.to_bytes_be())

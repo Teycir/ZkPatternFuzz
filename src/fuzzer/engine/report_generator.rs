@@ -182,7 +182,7 @@ impl FuzzingEngine {
         let additional = &self.config.campaign.parameters.additional;
         let run_id = Self::additional_string(additional, "run_id");
         let command = Self::additional_string(additional, "run_command").unwrap_or_else(|| {
-            // Fallback for older binaries.
+            // Compatibility path for older binaries.
             if mode_label == "evidence" {
                 "evidence".to_string()
             } else {
@@ -213,10 +213,28 @@ impl FuzzingEngine {
 
         let path = self.config.reporting.output_dir.join("progress.json");
         if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(err) = std::fs::create_dir_all(parent) {
+                tracing::warn!(
+                    "Failed to create progress snapshot directory '{}': {}",
+                    parent.display(),
+                    err
+                );
+                return;
+            }
         }
-        if let Ok(data) = serde_json::to_string_pretty(&snapshot) {
-            let _ = std::fs::write(path, data);
+        match serde_json::to_string_pretty(&snapshot) {
+            Ok(data) => {
+                if let Err(err) = std::fs::write(&path, data) {
+                    tracing::warn!(
+                        "Failed to write progress snapshot '{}': {}",
+                        path.display(),
+                        err
+                    );
+                }
+            }
+            Err(err) => {
+                tracing::warn!("Failed to serialize progress snapshot: {}", err);
+            }
         }
     }
 

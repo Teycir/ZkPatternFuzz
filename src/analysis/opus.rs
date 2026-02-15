@@ -499,7 +499,10 @@ impl OpusAnalyzer {
         let (name, length) = if let Some(bracket) = name.find('[') {
             let base_name = &name[..bracket];
             let len_str = name[bracket + 1..].trim_end_matches(']');
-            let len: usize = len_str.parse().ok()?;
+            let len: usize = match len_str.parse() {
+                Ok(len) => len,
+                Err(_) => return None,
+            };
             (base_name.to_string(), Some(len))
         } else {
             (name.to_string(), None)
@@ -728,24 +731,19 @@ impl OpusAnalyzer {
                         }
                     }
                 }
-                // Fallback: first template
-                for line in source.lines() {
-                    if line.trim().starts_with("template ") {
-                        let parts: Vec<&str> = line.split_whitespace().collect();
-                        if parts.len() >= 2 {
-                            return parts[1].trim_end_matches('(').to_string();
-                        }
-                    }
-                }
+                panic!(
+                    "Circom source missing explicit `component main = ...`; implicit template selection removed"
+                );
             }
             Framework::Noir => {
                 if source.contains("fn main") {
                     return "main".to_string();
                 }
+                panic!("Noir source missing `fn main`; implicit defaults removed");
             }
             _ => {}
         }
-        "Main".to_string()
+        panic!("Unsupported framework for main component detection: {:?}", framework)
     }
 
     fn build_attacks(&self, analysis: &CircuitAnalysisResult) -> Vec<Attack> {
@@ -1076,12 +1074,15 @@ impl GeneratedConfig {
 
 fn rewrite_zk0d_path(path: &Path) -> String {
     let path_str = path.to_string_lossy();
-    let env_root = std::env::var("ZK0D_BASE").ok();
+    let env_root = match std::env::var("ZK0D_BASE") {
+        Ok(v) => Some(v),
+        Err(_) => None,
+    };
     let root = env_root.as_deref().unwrap_or(DEFAULT_ZK0D_BASE);
     let root = root.trim_end_matches(std::path::MAIN_SEPARATOR);
 
     if let Some(raw_suffix) = path_str.strip_prefix(root) {
-        let placeholder = format!("${{ZK0D_BASE:-{}}}", DEFAULT_ZK0D_BASE);
+        let placeholder = "${ZK0D_BASE}".to_string();
         let suffix = raw_suffix.trim_start_matches(std::path::MAIN_SEPARATOR);
         if suffix.is_empty() {
             placeholder

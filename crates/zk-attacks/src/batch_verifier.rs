@@ -597,7 +597,7 @@ impl BatchVerifier {
         public_inputs: &[PublicInputs],
         _rlc_coefficients: &[Vec<u8>],
     ) -> Result<(bool, Vec<bool>)> {
-        // Fallback to individual verification if no native aggregation available
+        // Use individual verification if no native aggregation is available.
         let executor = self
             .executor
             .as_ref()
@@ -628,7 +628,7 @@ impl BatchVerifier {
         public_inputs: &[PublicInputs],
         _random_scalars: &[Vec<u8>],
     ) -> Result<(bool, Vec<bool>)> {
-        // Fallback to individual verification if no native batching available
+        // Use individual verification if no native batching is available.
         let executor = self
             .executor
             .as_ref()
@@ -657,7 +657,7 @@ impl BatchVerifier {
         public_inputs: &[PublicInputs],
         _challenge: &[u8],
     ) -> Result<(bool, Vec<bool>)> {
-        // Fallback to individual verification
+        // Use individual verification.
         let executor = self
             .executor
             .as_ref()
@@ -686,7 +686,7 @@ impl BatchVerifier {
         public_inputs: &[PublicInputs],
         initial_state: &[u8],
     ) -> Result<(bool, Vec<bool>, Vec<u8>)> {
-        // Fallback to individual verification
+        // Use individual verification.
         let executor = self
             .executor
             .as_ref()

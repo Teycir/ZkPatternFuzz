@@ -238,7 +238,10 @@ impl FuzzingEngine {
     pub(super) fn split_indexed_name(name: &str) -> Option<(&str, usize)> {
         let (base, idx_str) = name.rsplit_once('_')?;
         if idx_str.chars().all(|c| c.is_ascii_digit()) {
-            let idx = idx_str.parse::<usize>().ok()?;
+            let idx = match idx_str.parse::<usize>() {
+                Ok(idx) => idx,
+                Err(_) => return None,
+            };
             return Some((base, idx));
         }
         None
@@ -262,7 +265,10 @@ impl FuzzingEngine {
     pub(super) fn parse_field_string(raw: &str) -> Option<FieldElement> {
         let trimmed = raw.trim();
         if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
-            return FieldElement::from_hex(trimmed).ok();
+            return match FieldElement::from_hex(trimmed) {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            };
         }
 
         let value = num_bigint::BigUint::parse_bytes(trimmed.as_bytes(), 10)?;

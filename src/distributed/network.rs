@@ -152,7 +152,13 @@ impl FuzzerNode {
                 match listener.accept() {
                     Ok((stream, addr)) => {
                         tracing::info!("New worker connection from {}", addr);
-                        stream.set_read_timeout(Some(read_timeout)).ok();
+                        if let Err(err) = stream.set_read_timeout(Some(read_timeout)) {
+                            tracing::warn!(
+                                "Failed to set read timeout for worker {}: {}",
+                                addr,
+                                err
+                            );
+                        }
 
                         // Handle registration in separate thread
                         let workers = Arc::clone(&workers);
@@ -204,7 +210,13 @@ impl FuzzerNode {
             let idle = connection.current_work.is_none();
             let worker_threads = connection.capabilities.worker_count;
             let heartbeat_age_ms = connection.last_heartbeat.elapsed().as_millis();
-            let _ = connection.stream.peer_addr();
+            if let Err(err) = connection.stream.peer_addr() {
+                tracing::warn!(
+                    "Failed to read peer address for worker '{}': {}",
+                    connection.node_id,
+                    err
+                );
+            }
             tracing::debug!(
                 "Worker {} registered: threads={}, idle={}, heartbeat_age_ms={}",
                 connection.node_id,
@@ -257,7 +269,10 @@ impl FuzzerNode {
     /// Read a message from a stream
     fn read_message(stream: &mut TcpStream, max_message_size: usize) -> Option<DistributedMessage> {
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).ok()?;
+        if let Err(err) = stream.read_exact(&mut len_buf) {
+            tracing::debug!("Failed reading message length: {}", err);
+            return None;
+        }
         let len = u32::from_le_bytes(len_buf) as usize;
 
         // Enforce max_message_size before allocation
@@ -267,9 +282,18 @@ impl FuzzerNode {
         }
 
         let mut data = vec![0u8; len];
-        stream.read_exact(&mut data).ok()?;
+        if let Err(err) = stream.read_exact(&mut data) {
+            tracing::warn!("Failed reading message payload ({} bytes): {}", len, err);
+            return None;
+        }
 
-        serde_json::from_slice(&data).ok()
+        match serde_json::from_slice(&data) {
+            Ok(msg) => Some(msg),
+            Err(err) => {
+                tracing::warn!("Failed deserializing distributed message: {}", err);
+                None
+            }
+        }
     }
 
     /// Send heartbeat (for workers)

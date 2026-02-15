@@ -101,7 +101,13 @@ impl ChainCorpusEntry {
             .map(|(k, v)| {
                 let fes: Vec<FieldElement> = v
                     .iter()
-                    .filter_map(|hex| FieldElement::from_hex(hex).ok())
+                    .filter_map(|hex| match FieldElement::from_hex(hex) {
+                        Ok(fe) => Some(fe),
+                        Err(err) => {
+                            tracing::warn!("Failed to parse corpus field element '{}': {}", hex, err);
+                            None
+                        }
+                    })
                     .collect();
                 (k.clone(), fes)
             })

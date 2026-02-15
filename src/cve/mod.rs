@@ -798,7 +798,10 @@ fn parse_circom_input(line: &str) -> Option<InputSpec> {
             let (name, length) = if let Some(bracket) = name.find('[') {
                 let base_name = &name[..bracket];
                 let len_str = &name[bracket + 1..];
-                let len = len_str.trim_end_matches(']').parse::<usize>().ok();
+                let len = match len_str.trim_end_matches(']').parse::<usize>() {
+                    Ok(len) => Some(len),
+                    Err(_) => None,
+                };
                 (base_name.to_string(), len)
             } else {
                 (name.to_string(), None)
@@ -932,13 +935,19 @@ fn parse_indexed_name(name: &str) -> Option<(String, usize)> {
     if let Some(start) = name.rfind('[') {
         if let Some(end) = name.rfind(']') {
             let base = name[..start].to_string();
-            let idx = name[start + 1..end].parse::<usize>().ok()?;
+            let idx = match name[start + 1..end].parse::<usize>() {
+                Ok(idx) => idx,
+                Err(_) => return None,
+            };
             return Some((base, idx));
         }
     }
     if let Some(dot) = name.rfind('.') {
         let (base, idx_str) = name.split_at(dot);
-        let idx = idx_str.trim_start_matches('.').parse::<usize>().ok()?;
+        let idx = match idx_str.trim_start_matches('.').parse::<usize>() {
+            Ok(idx) => idx,
+            Err(_) => return None,
+        };
         return Some((base.to_string(), idx));
     }
     None

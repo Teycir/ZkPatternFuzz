@@ -1096,12 +1096,12 @@ impl RecursiveAttack {
 
 /// Analyzer for Nova-specific vulnerabilities
 pub struct NovaAnalyzer {
-    config: RecursiveAttackConfig,
+    _config: RecursiveAttackConfig,
 }
 
 impl NovaAnalyzer {
     pub fn new(config: RecursiveAttackConfig) -> Self {
-        Self { config }
+        Self { _config: config }
     }
 
     /// Check for relaxed R1CS vulnerabilities
@@ -1111,8 +1111,6 @@ impl NovaAnalyzer {
         _witness: &[FieldElement],
         error_term: &FieldElement,
     ) -> bool {
-        let _ = &self.config;
-
         // In Nova, the relaxed R1CS is: A * z ∘ B * z = u * (C * z) + E
         // where u is a scalar and E is the error term
         // If u or E can be manipulated, the constraint can be satisfied incorrectly
@@ -1135,12 +1133,12 @@ impl NovaAnalyzer {
 
 /// Analyzer for Supernova-specific vulnerabilities
 pub struct SupernovaAnalyzer {
-    config: RecursiveAttackConfig,
+    _config: RecursiveAttackConfig,
 }
 
 impl SupernovaAnalyzer {
     pub fn new(config: RecursiveAttackConfig) -> Self {
-        Self { config }
+        Self { _config: config }
     }
 
     /// Check for opcode selection vulnerabilities
@@ -1149,8 +1147,6 @@ impl SupernovaAnalyzer {
         selected_opcode: usize,
         valid_opcodes: &[usize],
     ) -> bool {
-        let _ = &self.config;
-
         // In Supernova, the prover selects which "opcode" circuit to execute
         // If the selection can be manipulated, invalid state transitions can occur
         !valid_opcodes.contains(&selected_opcode)
@@ -1168,12 +1164,12 @@ impl SupernovaAnalyzer {
 
 /// Analyzer for Halo2 accumulation vulnerabilities
 pub struct Halo2AccumulationAnalyzer {
-    config: RecursiveAttackConfig,
+    _config: RecursiveAttackConfig,
 }
 
 impl Halo2AccumulationAnalyzer {
     pub fn new(config: RecursiveAttackConfig) -> Self {
-        Self { config }
+        Self { _config: config }
     }
 
     /// Check for accumulator commitment binding
@@ -1182,8 +1178,6 @@ impl Halo2AccumulationAnalyzer {
         commitment: &[u8],
         _expected_opening: &[FieldElement],
     ) -> bool {
-        let _ = &self.config;
-
         // Simplified check: commitment should be non-trivial
         commitment.iter().all(|&b| b == 0)
     }

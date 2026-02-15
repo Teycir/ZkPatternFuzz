@@ -332,7 +332,7 @@ impl BitDecompositionInference {
             }
         }
 
-        // Fallback: if we found many bits but none of the heuristic groups are large,
+        // If we found many bits but none of the heuristic groups are large,
         // anchor them to a "value" wire label when available.
         let has_large_group = bit_groups.values().any(|bits| bits.len() >= self.min_bits);
         if !all_bits.is_empty() && !has_large_group {
@@ -823,8 +823,12 @@ impl ConstraintInferenceEngine {
                 );
                 // Force flush to show progress immediately
                 use std::io::Write;
-                let _ = std::io::stdout().flush();
-                let _ = std::io::stderr().flush();
+                if let Err(err) = std::io::stdout().flush() {
+                    tracing::warn!("Failed to flush stdout during confirmation logging: {}", err);
+                }
+                if let Err(err) = std::io::stderr().flush() {
+                    tracing::warn!("Failed to flush stderr during confirmation logging: {}", err);
+                }
             }
 
             let mut candidate_inputs = seed_inputs.clone();

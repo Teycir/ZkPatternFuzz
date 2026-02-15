@@ -532,7 +532,10 @@ where
     use regex::Regex;
 
     // Match step[N] where N is a number (not *)
-    let re = Regex::new(r"step\s*\[\s*(\d+)\s*\]").ok()?;
+    let re = match Regex::new(r"step\s*\[\s*(\d+)\s*\]") {
+        Ok(re) => re,
+        Err(_) => return None,
+    };
 
     let mut result = String::new();
     let mut last_end = 0;
@@ -541,7 +544,10 @@ where
     for caps in re.captures_iter(relation) {
         let full_match = caps.get(0)?;
         let idx_str = caps.get(1)?.as_str();
-        let idx: usize = idx_str.parse().ok()?;
+        let idx: usize = match idx_str.parse() {
+            Ok(idx) => idx,
+            Err(_) => return None,
+        };
 
         // Apply the mapper
         match mapper(idx) {

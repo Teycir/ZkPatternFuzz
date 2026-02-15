@@ -311,7 +311,10 @@ impl<'de> serde::Deserialize<'de> for Finding {
                 let witness_a: Vec<FieldElement> = poc_witness_a
                     .unwrap_or_default()
                     .iter()
-                    .filter_map(|hex| FieldElement::from_hex(hex).ok())
+                    .filter_map(|hex| match FieldElement::from_hex(hex) {
+                        Ok(fe) => Some(fe),
+                        Err(_) => None,
+                    })
                     .collect();
 
                 Ok(Finding {

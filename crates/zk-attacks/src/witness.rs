@@ -228,7 +228,13 @@ impl WitnessFuzzer {
                 .collect();
 
             let start = Instant::now();
-            let _ = executor.execute_sync(&inputs);
+            let exec_result = executor.execute_sync(&inputs);
+            if !exec_result.success {
+                tracing::warn!(
+                    "Timing probe execution failed: {}",
+                    exec_result.error.as_deref().unwrap_or("unknown execution error")
+                );
+            }
             let elapsed_us = start.elapsed().as_micros() as u64;
 
             timings.push((inputs, elapsed_us));

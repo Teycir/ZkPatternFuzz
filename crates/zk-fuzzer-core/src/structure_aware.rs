@@ -178,7 +178,10 @@ impl StructureAwareMutator {
         if let Some(start) = line.find('[') {
             if let Some(end) = line.find(']') {
                 let len_str = &line[start + 1..end];
-                return len_str.parse().ok();
+                return match len_str.parse() {
+                    Ok(len) => Some(len),
+                    Err(_) => None,
+                };
             }
         }
         None
@@ -197,7 +200,10 @@ impl StructureAwareMutator {
         if let Some(start) = line.find("; ") {
             if let Some(end) = line[start..].find(']') {
                 let len_str = &line[start + 2..start + end];
-                return len_str.parse().ok();
+                return match len_str.parse() {
+                    Ok(len) => Some(len),
+                    Err(_) => None,
+                };
             }
         }
         None

@@ -75,7 +75,10 @@ impl AdditionalConfig {
     pub fn get_usize(&self, key: &str) -> Option<usize> {
         match self.extra.get(key)? {
             serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
-            serde_yaml::Value::String(s) => s.parse::<usize>().ok(),
+            serde_yaml::Value::String(s) => match s.parse::<usize>() {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            },
             _ => None,
         }
     }
@@ -90,7 +93,10 @@ impl AdditionalConfig {
     pub fn get_u64(&self, key: &str) -> Option<u64> {
         match self.extra.get(key)? {
             serde_yaml::Value::Number(n) => n.as_u64(),
-            serde_yaml::Value::String(s) => s.parse::<u64>().ok(),
+            serde_yaml::Value::String(s) => match s.parse::<u64>() {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            },
             _ => None,
         }
     }
@@ -98,7 +104,10 @@ impl AdditionalConfig {
     pub fn get_f64(&self, key: &str) -> Option<f64> {
         match self.extra.get(key)? {
             serde_yaml::Value::Number(n) => n.as_f64(),
-            serde_yaml::Value::String(s) => s.parse::<f64>().ok(),
+            serde_yaml::Value::String(s) => match s.parse::<f64>() {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            },
             _ => None,
         }
     }

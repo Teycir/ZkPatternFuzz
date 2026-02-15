@@ -72,7 +72,7 @@ impl FuzzingEngine {
                     ) {
                         Ok(exec) => exec,
                         Err(e) => {
-                            // CRITICAL FIX: Fail in strict_backend mode instead of silent fallback
+                            // CRITICAL FIX: Fail in strict_backend mode instead of silent substitution
                             if strict_backend {
                                 tracing::error!(
                                     "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' at {:?} failed to load: {}. \
@@ -100,7 +100,7 @@ impl FuzzingEngine {
                         ) {
                             Ok(exec) => exec,
                             Err(e) => {
-                                // CRITICAL FIX: Fail in strict_backend mode instead of silent fallback
+                                // CRITICAL FIX: Fail in strict_backend mode instead of silent substitution
                                 if strict_backend {
                                     tracing::error!(
                                         "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' failed to load: {}. \
@@ -117,7 +117,7 @@ impl FuzzingEngine {
                             }
                         }
                     } else {
-                        // CRITICAL FIX: Fail in strict_backend mode instead of silent fallback
+                        // CRITICAL FIX: Fail in strict_backend mode instead of silent substitution
                         if strict_backend {
                             tracing::error!(
                                 "CHAIN CIRCUIT MISSING: No circuit path configured for '{}' and no file found. \

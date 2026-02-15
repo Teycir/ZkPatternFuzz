@@ -94,7 +94,7 @@ impl FuzzingEngine {
                     .collect()
             })
         } else {
-            // Fallback: sequential execution
+            // Sequential execution when no thread pool is available.
             test_cases
                 .iter()
                 .enumerate()
@@ -191,7 +191,10 @@ impl FuzzingEngine {
             for entry in list {
                 let parsed = match entry {
                     serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
-                    serde_yaml::Value::String(s) => s.parse::<usize>().ok(),
+                    serde_yaml::Value::String(s) => match s.parse::<usize>() {
+                        Ok(value) => Some(value),
+                        Err(_) => None,
+                    },
                     _ => None,
                 };
                 if let Some(idx) = parsed {
@@ -271,7 +274,10 @@ impl FuzzingEngine {
             for entry in list {
                 let parsed = match entry {
                     serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
-                    serde_yaml::Value::String(s) => s.parse::<usize>().ok(),
+                    serde_yaml::Value::String(s) => match s.parse::<usize>() {
+                        Ok(value) => Some(value),
+                        Err(_) => None,
+                    },
                     _ => None,
                 };
                 if let Some(idx) = parsed {
@@ -826,7 +832,7 @@ impl FuzzingEngine {
                     .collect()
             })
         } else {
-            // Fallback: sequential execution
+            // Sequential execution when no thread pool is available.
             test_cases
                 .iter()
                 .enumerate()
@@ -922,7 +928,10 @@ impl FuzzingEngine {
             for entry in list {
                 let parsed = match entry {
                     serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
-                    serde_yaml::Value::String(s) => s.parse::<usize>().ok(),
+                    serde_yaml::Value::String(s) => match s.parse::<usize>() {
+                        Ok(value) => Some(value),
+                        Err(_) => None,
+                    },
                     _ => None,
                 };
                 if let Some(idx) = parsed {
@@ -985,7 +994,14 @@ impl FuzzingEngine {
             let fe = FieldElement(fe_bytes);
 
             let test_case = self.create_test_case_with_value(fe);
-            let _ = self.execute_and_learn(&test_case);
+            let result = self.execute_and_learn(&test_case);
+            if !result.success {
+                tracing::warn!(
+                    "Boundary testcase execution failed for value '{}': {}",
+                    value,
+                    result.error.as_deref().unwrap_or("unknown execution error")
+                );
+            }
 
             if let Some(p) = progress {
                 p.inc();

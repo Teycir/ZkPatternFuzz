@@ -8,7 +8,13 @@ pub fn parse_attack_config<T: serde::de::DeserializeOwned>(
 ) -> T {
     config
         .get(key)
-        .and_then(|v| serde_yaml::from_value(v.clone()).ok())
+        .and_then(|v| match serde_yaml::from_value(v.clone()) {
+            Ok(parsed) => Some(parsed),
+            Err(err) => {
+                tracing::warn!("Failed parsing attack config key '{}': {}", key, err);
+                None
+            }
+        })
         .unwrap_or(default)
 }
 

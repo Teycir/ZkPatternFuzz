@@ -294,7 +294,13 @@ where
         }
 
         // Slow path: check actual storage
-        let storage = self.storage.read().ok()?;
+        let storage = match self.storage.read() {
+            Ok(storage) => storage,
+            Err(err) => {
+                tracing::warn!("Oracle state storage lock poisoned in get(): {}", err);
+                return None;
+            }
+        };
         if let Some(entry) = storage.get(key) {
             self.stats.cache_hits.fetch_add(1, Ordering::Relaxed);
             // Note: We can't update last_access here without write lock

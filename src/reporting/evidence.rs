@@ -867,7 +867,17 @@ echo "Finding description: {}"
     ) -> Vec<EvidenceBundle> {
         findings
             .iter()
-            .filter_map(|f| self.generate_bundle(f, backend.clone()).ok())
+            .filter_map(|f| match self.generate_bundle(f, backend.clone()) {
+                Ok(bundle) => Some(bundle),
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to generate evidence bundle for {:?}: {}",
+                        f.attack_type,
+                        err
+                    );
+                    None
+                }
+            })
             .collect()
     }
 }

@@ -190,7 +190,7 @@ impl Corpus {
             target -= energy;
         }
 
-        // Fallback (should be unreachable due to energy sum matching selection)
+        // Defensive path (should be unreachable due to energy sum matching selection).
         entries.last().cloned()
     }
 
@@ -346,18 +346,24 @@ impl SerializableCorpus {
                     .map(|hex| FieldElement::from_hex(hex))
                     .collect();
 
-                inputs.ok().map(|inputs| {
-                    let test_case = TestCase {
-                        inputs,
-                        expected_output: None,
-                        metadata: TestMetadata::default(),
-                    };
-                    let mut entry = CorpusEntry::new(test_case, e.coverage_hash);
-                    if e.discovered_new_coverage {
-                        entry = entry.with_new_coverage();
+                match inputs {
+                    Ok(inputs) => Some({
+                        let test_case = TestCase {
+                            inputs,
+                            expected_output: None,
+                            metadata: TestMetadata::default(),
+                        };
+                        let mut entry = CorpusEntry::new(test_case, e.coverage_hash);
+                        if e.discovered_new_coverage {
+                            entry = entry.with_new_coverage();
+                        }
+                        entry
+                    }),
+                    Err(err) => {
+                        tracing::warn!("Failed to parse persisted corpus entry inputs: {}", err);
+                        None
                     }
-                    entry
-                })
+                }
             })
             .collect()
     }

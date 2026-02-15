@@ -370,7 +370,13 @@ fn run_id_epoch_dir(run_id: &str) -> Option<String> {
         return None;
     }
     let ts = &run_id[..15];
-    let naive = chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d_%H%M%S").ok()?;
+    let naive = match chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d_%H%M%S") {
+        Ok(naive) => naive,
+        Err(err) => {
+            tracing::warn!("Invalid run_id timestamp prefix '{}': {}", ts, err);
+            return None;
+        }
+    };
     let started_utc = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
     Some(format!("report_{}", started_utc.timestamp()))
 }
@@ -579,7 +585,13 @@ fn add_run_window_fields(
 ) {
     let started_local = started_utc.with_timezone(&Local);
     let expected_end_utc = timeout_seconds
-        .and_then(|s| i64::try_from(s).ok())
+        .and_then(|s| match i64::try_from(s) {
+            Ok(seconds) => Some(seconds),
+            Err(err) => {
+                tracing::warn!("Timeout seconds value '{}' exceeds i64: {}", s, err);
+                None
+            }
+        })
         .map(|s| started_utc + ChronoDuration::seconds(s));
     let expected_end_local = expected_end_utc.map(|dt| dt.with_timezone(&Local));
 
@@ -2101,7 +2113,13 @@ fn print_run_window(start: DateTime<Local>, timeout_seconds: Option<u64>) {
     println!("RUN WINDOW");
     println!("  Start: {}", start.format("%Y-%m-%d %H:%M:%S %Z"));
 
-    match timeout_seconds.and_then(|s| i64::try_from(s).ok()) {
+    match timeout_seconds.and_then(|s| match i64::try_from(s) {
+        Ok(seconds) => Some(seconds),
+        Err(err) => {
+            tracing::warn!("Timeout seconds value '{}' exceeds i64: {}", s, err);
+            None
+        }
+    }) {
         Some(seconds) => {
             let expected_end = start + ChronoDuration::seconds(seconds);
             println!(

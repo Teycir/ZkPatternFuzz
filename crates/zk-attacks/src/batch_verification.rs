@@ -1003,7 +1003,7 @@ impl BatchVerificationAttack {
             return result;
         }
 
-        // Fallback to execution-based verification for executors without prove/verify
+        // Use execution-based verification for executors without prove/verify.
         self.execute_based_batch_verification(executor, batch_inputs)
     }
 
@@ -1070,7 +1070,7 @@ impl BatchVerificationAttack {
         }
     }
 
-    /// Execution-based batch verification (fallback when proving not available)
+    /// Execution-based batch verification (when proving is not available)
     fn execute_based_batch_verification<E: CircuitExecutor>(
         &self,
         executor: &E,

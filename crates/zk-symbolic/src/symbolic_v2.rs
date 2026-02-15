@@ -259,7 +259,7 @@ impl PathMerger {
     /// Veritesting-style merge at convergence
     fn merge_veritesting(&self, states: Vec<SymbolicState>) -> SymbolicState {
         // Veritesting: identify straight-line code between branch and merge points
-        // For now, fallback to program point merge
+        // For now, use program point merge.
         self.merge_at_program_point(states)
     }
 

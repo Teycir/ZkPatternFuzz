@@ -162,19 +162,25 @@ impl SerializableCorpusEntry {
             .map(|hex| FieldElement::from_hex(hex))
             .collect();
 
-        inputs.ok().map(|inputs| {
-            let test_case = TestCase {
-                inputs,
-                expected_output: None,
-                metadata: Default::default(),
-            };
-            let mut entry = CorpusEntry::new(test_case, self.coverage_hash);
-            entry.energy = self.energy;
-            if self.discovered_new_coverage {
-                entry = entry.with_new_coverage();
+        match inputs {
+            Ok(inputs) => Some({
+                let test_case = TestCase {
+                    inputs,
+                    expected_output: None,
+                    metadata: Default::default(),
+                };
+                let mut entry = CorpusEntry::new(test_case, self.coverage_hash);
+                entry.energy = self.energy;
+                if self.discovered_new_coverage {
+                    entry = entry.with_new_coverage();
+                }
+                entry
+            }),
+            Err(err) => {
+                tracing::warn!("Failed to parse distributed corpus entry inputs: {}", err);
+                None
             }
-            entry
-        })
+        }
     }
 }
 

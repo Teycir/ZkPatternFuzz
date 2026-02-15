@@ -1177,11 +1177,24 @@ fn parse_location(loc: &str, default_path: Option<&str>) -> SarifLocation {
 
     let (file, line, column) = match parts.len() {
         1 => (parts[0], None, None),
-        2 => (parts[0], parts[1].parse::<usize>().ok(), None),
+        2 => (
+            parts[0],
+            match parts[1].parse::<usize>() {
+                Ok(line) => Some(line),
+                Err(_) => None,
+            },
+            None,
+        ),
         _ => (
             parts[0],
-            parts[1].parse::<usize>().ok(),
-            parts[2].parse::<usize>().ok(),
+            match parts[1].parse::<usize>() {
+                Ok(line) => Some(line),
+                Err(_) => None,
+            },
+            match parts[2].parse::<usize>() {
+                Ok(column) => Some(column),
+                Err(_) => None,
+            },
         ),
     };
 

@@ -221,7 +221,17 @@ impl Halo2Target {
             let mut cmd = self.cargo_command();
             cmd.args(["run", "--release", "--", "--info"])
                 .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()
+            match crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()) {
+                Ok(output) => Some(output),
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to run Halo2 --info command in '{}': {}",
+                        project_dir.display(),
+                        err
+                    );
+                    None
+                }
+            }
         };
 
         if let Some(output) = output {
@@ -290,7 +300,9 @@ impl Halo2Target {
         });
 
         let parsed = ConstraintParser::parse_plonk_with_tables(&content);
-        let _ = self.plonk_constraints.set(parsed);
+        if self.plonk_constraints.set(parsed).is_err() {
+            tracing::warn!("PLONK constraint cache already initialized during setup_from_json");
+        }
 
         Ok(())
     }
@@ -304,7 +316,11 @@ impl Halo2Target {
         if self.circuit_path.extension().is_some_and(|e| e == "json") {
             if let Ok(content) = std::fs::read_to_string(&self.circuit_path) {
                 let parsed = ConstraintParser::parse_plonk_with_tables(&content);
-                let _ = self.plonk_constraints.set(parsed.clone());
+                if self.plonk_constraints.set(parsed.clone()).is_err() {
+                    tracing::warn!(
+                        "PLONK constraint cache already initialized while loading JSON constraints"
+                    );
+                }
                 return parsed;
             }
         }
@@ -319,7 +335,11 @@ impl Halo2Target {
         };
 
         if let Some(parsed) = self.try_extract_constraints_from_binary(&project_dir) {
-            let _ = self.plonk_constraints.set(parsed.clone());
+            if self.plonk_constraints.set(parsed.clone()).is_err() {
+                tracing::warn!(
+                    "PLONK constraint cache already initialized while loading binary constraints"
+                );
+            }
             return parsed;
         }
 
@@ -334,7 +354,17 @@ impl Halo2Target {
             let mut cmd = self.cargo_command();
             cmd.args(["run", "--release", "--", "--constraints"])
                 .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()?
+            match crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()) {
+                Ok(output) => output,
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to extract Halo2 constraints via binary run in '{}': {}",
+                        project_dir.display(),
+                        err
+                    );
+                    return None;
+                }
+            }
         };
 
         if !output.status.success() {
@@ -389,7 +419,17 @@ impl Halo2Target {
             let mut cmd = self.cargo_command();
             cmd.args(["run", "--release", "--", "--execute", &input_json])
                 .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()
+            match crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()) {
+                Ok(output) => Some(output),
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to run Halo2 execute command in '{}': {}",
+                        project_dir.display(),
+                        err
+                    );
+                    None
+                }
+            }
         };
 
         if let Some(output) = output {
@@ -538,7 +578,17 @@ impl TargetCircuit for Halo2Target {
             let mut cmd = self.cargo_command();
             cmd.args(["run", "--release", "--", "--prove", &witness_json])
                 .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()
+            match crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()) {
+                Ok(output) => Some(output),
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to run Halo2 prove command in '{}': {}",
+                        project_dir.display(),
+                        err
+                    );
+                    None
+                }
+            }
         };
 
         if let Some(output) = output {
@@ -577,7 +627,17 @@ impl TargetCircuit for Halo2Target {
                 &inputs_json,
             ])
             .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()).ok()
+            match crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()) {
+                Ok(output) => Some(output),
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to run Halo2 verify command in '{}': {}",
+                        project_dir.display(),
+                        err
+                    );
+                    None
+                }
+            }
         };
 
         if let Some(output) = output {

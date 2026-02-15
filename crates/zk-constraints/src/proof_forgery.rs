@@ -292,7 +292,13 @@ impl ProofForgeryDetector {
         let alt_private = self.extract_private_inputs(alternative);
 
         let verification_result = if self.zkey_path.is_some() && self.vkey_path.is_some() {
-            self.verify_forged_proof(alternative).ok()
+            match self.verify_forged_proof(alternative) {
+                Ok(result) => Some(result),
+                Err(err) => {
+                    tracing::warn!("Forged proof verification errored: {}", err);
+                    None
+                }
+            }
         } else {
             None
         };
@@ -360,7 +366,7 @@ impl ProofForgeryDetector {
             .unwrap_or(false);
 
         if !import_ok {
-            // Fallback: if WASM is available, try wtns calculate (may lose freedom)
+            // If WASM is available, try `wtns calculate` (may lose freedom).
             if let Some(wasm) = &self.wasm_path {
                 tracing::warn!(
                     "wtns import failed, falling back to WASM wtns calculate \

@@ -25,12 +25,18 @@ fn circom_external_command_timeout() -> std::time::Duration {
     const DEFAULT_SECS: u64 = 60;
 
     match std::env::var("ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS") {
-        Ok(raw) => raw
-            .trim()
-            .parse::<u64>()
-            .ok()
-            .map(|v| std::time::Duration::from_secs(v.max(1)))
-            .unwrap_or_else(|| std::time::Duration::from_secs(DEFAULT_SECS)),
+        Ok(raw) => match raw.trim().parse::<u64>() {
+            Ok(secs) => std::time::Duration::from_secs(secs.max(1)),
+            Err(err) => {
+                tracing::warn!(
+                    "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS='{}': {}; using default {}s",
+                    raw,
+                    err,
+                    DEFAULT_SECS
+                );
+                std::time::Duration::from_secs(DEFAULT_SECS)
+            }
+        },
         Err(_) => std::time::Duration::from_secs(DEFAULT_SECS),
     }
 }
@@ -283,7 +289,10 @@ fn split_array_index(name: &str) -> Option<(&str, usize)> {
     if idx_str.is_empty() {
         return None;
     }
-    let idx = idx_str.parse::<usize>().ok()?;
+    let idx = match idx_str.parse::<usize>() {
+        Ok(idx) => idx,
+        Err(_) => return None,
+    };
     Some((&name[..open], idx))
 }
 
@@ -671,16 +680,44 @@ impl WitnessCalculator {
         }
 
         let script_path = temp_path.join("calc_witness.js");
-        let input_js = serde_json::to_string(input_path.to_str().unwrap_or_default())?;
+        let input_path_str = input_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 input path: {}", input_path.display()))?;
+        let input_js = serde_json::to_string(input_path_str)?;
         // Use absolute paths since the script runs from a temp dir (relative paths
         // would be resolved relative to that temp dir and fail).
-        let wasm_abs = std::fs::canonicalize(&self.wasm_path).unwrap_or_else(|_| self.wasm_path.clone());
-        let wc_abs = std::fs::canonicalize(&witness_calculator_path)
-            .unwrap_or_else(|_| witness_calculator_path.clone());
+        let wasm_abs = std::fs::canonicalize(&self.wasm_path).with_context(|| {
+            format!(
+                "Failed to canonicalize wasm path '{}'",
+                self.wasm_path.display()
+            )
+        })?;
+        let wc_abs = std::fs::canonicalize(&witness_calculator_path).with_context(|| {
+            format!(
+                "Failed to canonicalize witness_calculator path '{}'",
+                witness_calculator_path.display()
+            )
+        })?;
 
-        let wasm_js = serde_json::to_string(wasm_abs.to_str().unwrap_or_default())?;
-        let wc_js = serde_json::to_string(wc_abs.to_str().unwrap_or_default())?;
-        let out_js = serde_json::to_string(witness_json_path.to_str().unwrap_or_default())?;
+        let wasm_abs_str = wasm_abs
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 wasm path: {}", wasm_abs.display()))?;
+        let wc_abs_str = wc_abs.to_str().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Non-UTF8 witness calculator path: {}",
+                wc_abs.display()
+            )
+        })?;
+        let witness_json_path_str = witness_json_path.to_str().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Non-UTF8 witness output path: {}",
+                witness_json_path.display()
+            )
+        })?;
+
+        let wasm_js = serde_json::to_string(wasm_abs_str)?;
+        let wc_js = serde_json::to_string(wc_abs_str)?;
+        let out_js = serde_json::to_string(witness_json_path_str)?;
         let sanity = if self.sanity_check { 1 } else { 0 };
 
         let script = format!(
@@ -987,8 +1024,7 @@ impl CircomTarget {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            tracing::warn!("Failed to parse R1CS info: {}", stderr);
-            return Ok(());
+            anyhow::bail!("Failed to parse R1CS info: {}", stderr);
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1009,16 +1045,24 @@ impl CircomTarget {
                 let value_str = line[last_colon_idx + 1..].trim();
 
                 if line.contains("Constraints") {
-                    num_constraints = value_str.parse().unwrap_or(0);
+                    num_constraints = value_str.parse().with_context(|| {
+                        format!("Failed parsing constraint count from '{}'", line)
+                    })?;
                 } else if line.contains("Private Inputs") {
-                    num_private_inputs = value_str.parse().unwrap_or(0);
+                    num_private_inputs = value_str.parse().with_context(|| {
+                        format!("Failed parsing private input count from '{}'", line)
+                    })?;
                 } else if line.contains("Public Inputs") {
-                    num_public_inputs = value_str.parse().unwrap_or(0);
+                    num_public_inputs = value_str.parse().with_context(|| {
+                        format!("Failed parsing public input count from '{}'", line)
+                    })?;
                 } else if line.contains("Outputs")
                     && !line.contains("Public")
                     && !line.contains("Private")
                 {
-                    num_outputs = value_str.parse().unwrap_or(0);
+                    num_outputs = value_str
+                        .parse()
+                        .with_context(|| format!("Failed parsing output count from '{}'", line))?;
                 }
             }
         }
@@ -1260,8 +1304,13 @@ impl CircomTarget {
         let ptau_dirs = vec![
             self.build_dir.clone(),
             PathBuf::from("."),
-            dirs::home_dir().unwrap_or_default().join(".snarkjs"),
         ];
+        let mut ptau_dirs = ptau_dirs;
+        if let Some(home) = dirs::home_dir() {
+            ptau_dirs.push(home.join(".snarkjs"));
+        } else {
+            tracing::warn!("HOME directory not found; skipping ~/.snarkjs ptau search path");
+        }
 
         for dir in &ptau_dirs {
             for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
@@ -1483,22 +1532,25 @@ impl CircomTarget {
     pub fn public_input_indices(&self) -> Vec<usize> {
         self.metadata
             .as_ref()
-            .map(|m| m.public_input_indices.clone())
-            .unwrap_or_default()
+            .expect("Circom metadata missing; call compile() before querying public_input_indices")
+            .public_input_indices
+            .clone()
     }
 
     pub fn private_input_indices(&self) -> Vec<usize> {
         self.metadata
             .as_ref()
-            .map(|m| m.private_input_indices.clone())
-            .unwrap_or_default()
+            .expect("Circom metadata missing; call compile() before querying private_input_indices")
+            .private_input_indices
+            .clone()
     }
 
     pub fn output_signal_indices(&self) -> Vec<usize> {
         self.metadata
             .as_ref()
-            .map(|m| m.output_signal_indices.clone())
-            .unwrap_or_default()
+            .expect("Circom metadata missing; call compile() before querying output_signal_indices")
+            .output_signal_indices
+            .clone()
     }
 
     /// Extract outputs from a full witness using metadata when available.
@@ -1536,7 +1588,7 @@ impl CircomTarget {
         self.metadata
             .as_ref()
             .map(|m| m.prime.as_str())
-            .unwrap_or("bn128")
+            .expect("Circom metadata missing; call compile() before querying field_name")
     }
 
     /// Get wire labels when available (index -> name)
@@ -1612,7 +1664,10 @@ fn resolve_circom_prime(prime: &str) -> Option<[u8; 32]> {
 }
 
 fn hex_to_modulus(hex_str: &str) -> Option<[u8; 32]> {
-    let decoded = hex::decode(hex_str).ok()?;
+    let decoded = match hex::decode(hex_str) {
+        Ok(decoded) => decoded,
+        Err(_) => return None,
+    };
     if decoded.len() > 32 {
         return None;
     }
@@ -1633,46 +1688,36 @@ impl TargetCircuit for CircomTarget {
 
     fn field_modulus(&self) -> [u8; 32] {
         let prime = self.field_name();
-        resolve_circom_prime(prime).unwrap_or_else(|| {
-            // Fail-closed: if we truly can't resolve, return BN254 (circom default)
-            // but log a warning so it's visible.
-            tracing::warn!(
-                "Falling back to BN254 modulus for unrecognised Circom prime '{}'",
-                prime
-            );
-            let mut m = [0u8; 32];
-            let _ = hex::decode("30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001")
-                .map(|d| m.copy_from_slice(&d));
-            m
-        })
+        resolve_circom_prime(prime)
+            .unwrap_or_else(|| panic!("Unknown Circom prime '{}'; cannot resolve field modulus", prime))
     }
 
     fn field_name(&self) -> &str {
         self.metadata
             .as_ref()
             .map(|m| m.prime.as_str())
-            .unwrap_or("bn128")
+            .expect("Circom metadata missing; call compile() before querying field_name")
     }
 
     fn num_constraints(&self) -> usize {
         self.metadata
             .as_ref()
             .map(|m| m.num_constraints)
-            .unwrap_or(0)
+            .expect("Circom metadata missing; call compile() before querying num_constraints")
     }
 
     fn num_private_inputs(&self) -> usize {
         self.metadata
             .as_ref()
             .map(|m| m.num_private_inputs)
-            .unwrap_or(0)
+            .expect("Circom metadata missing; call compile() before querying num_private_inputs")
     }
 
     fn num_public_inputs(&self) -> usize {
         self.metadata
             .as_ref()
             .map(|m| m.num_public_inputs)
-            .unwrap_or(0)
+            .expect("Circom metadata missing; call compile() before querying num_public_inputs")
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -1794,7 +1839,9 @@ fn parse_constraint_terms(value: &serde_json::Value) -> Result<Vec<(usize, Field
 
     let mut terms = Vec::new();
     for (key, val) in obj {
-        let idx: usize = key.parse().unwrap_or(0);
+        let idx: usize = key
+            .parse()
+            .with_context(|| format!("Invalid constraint wire index '{}'", key))?;
         let coeff = match val {
             serde_json::Value::String(s) => parse_decimal_to_field_element(s)?,
             serde_json::Value::Number(n) => parse_decimal_to_field_element(&n.to_string())?,
@@ -1891,7 +1938,18 @@ pub mod analysis {
         let (name, array_size) = if let Some(open_idx) = raw_name.find('[') {
             if let Some(close_idx) = raw_name.find(']') {
                 let size_str = &raw_name[open_idx + 1..close_idx];
-                let size = size_str.parse::<usize>().ok();
+                let size = match size_str.parse::<usize>() {
+                    Ok(size) => Some(size),
+                    Err(err) => {
+                        tracing::warn!(
+                            "Invalid array size '{}' in signal declaration '{}': {}",
+                            size_str,
+                            raw_name,
+                            err
+                        );
+                        None
+                    }
+                };
                 (raw_name[..open_idx].to_string(), size)
             } else {
                 (raw_name.clone(), None)

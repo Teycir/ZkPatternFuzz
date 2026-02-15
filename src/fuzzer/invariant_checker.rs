@@ -142,7 +142,17 @@ impl InvariantChecker {
             return None;
         }
 
-        let ast = parse_invariant_relation(&invariant.relation).ok();
+        let ast = match parse_invariant_relation(&invariant.relation) {
+            Ok(ast) => Some(ast),
+            Err(err) => {
+                tracing::debug!(
+                    "Invariant relation AST parse failed for '{}': {}",
+                    invariant.relation,
+                    err
+                );
+                None
+            }
+        };
         let input_indices = Self::extract_input_indices(&invariant.relation, input_map);
 
         let range_bounds = if invariant.invariant_type == InvariantType::Range {
@@ -265,8 +275,14 @@ impl InvariantChecker {
 
         // Handle power notation: 2^N
         if let Some((base, exp)) = s.split_once('^') {
-            let base: u64 = base.trim().parse().ok()?;
-            let exp: u32 = exp.trim().parse().ok()?;
+            let base: u64 = match base.trim().parse() {
+                Ok(base) => base,
+                Err(_) => return None,
+            };
+            let exp: u32 = match exp.trim().parse() {
+                Ok(exp) => exp,
+                Err(_) => return None,
+            };
             if base == 2 && exp <= 253 {
                 let mut bytes = [0u8; 32];
                 let byte_idx = 31 - (exp / 8) as usize;
@@ -280,7 +296,10 @@ impl InvariantChecker {
 
         // Hex format
         if s.starts_with("0x") || s.starts_with("0X") {
-            return FieldElement::from_hex(s).ok();
+            return match FieldElement::from_hex(s) {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            };
         }
 
         // Decimal format

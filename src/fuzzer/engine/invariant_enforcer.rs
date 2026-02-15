@@ -95,7 +95,17 @@ impl FuzzingEngine {
                 continue;
             }
 
-            let ast = parse_invariant_relation(&invariant.relation).ok();
+            let ast = match parse_invariant_relation(&invariant.relation) {
+                Ok(ast) => Some(ast),
+                Err(err) => {
+                    tracing::debug!(
+                        "Invariant relation AST parse failed for '{}': {}",
+                        invariant.relation,
+                        err
+                    );
+                    None
+                }
+            };
             let target_indices = if let Some(ast) = ast.as_ref() {
                 self.extract_target_indices_from_ast(ast, &input_ranges)
             } else {
@@ -551,7 +561,10 @@ impl FuzzingEngine {
     pub(super) fn parse_u64_literal(&self, raw: &str) -> Option<u64> {
         let trimmed = raw.trim().to_lowercase();
         if trimmed.starts_with("0x") {
-            return u64::from_str_radix(trimmed.trim_start_matches("0x"), 16).ok();
+            return match u64::from_str_radix(trimmed.trim_start_matches("0x"), 16) {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            };
         }
         if let Some(expr) = trimmed.strip_prefix("2^") {
             let expr = expr.trim();
@@ -572,6 +585,9 @@ impl FuzzingEngine {
                 }
             }
         }
-        trimmed.parse::<u64>().ok()
+        match trimmed.parse::<u64>() {
+            Ok(value) => Some(value),
+            Err(_) => None,
+        }
     }
 }
