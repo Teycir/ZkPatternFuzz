@@ -266,7 +266,7 @@ impl OpusAnalyzer {
             self.calculate_attack_priorities(&patterns, &zero_day_hints, &complexity);
 
         // Detect main component
-        let main_component = self.detect_main_component(&source, framework);
+        let main_component = self.detect_main_component(&source, framework)?;
 
         Ok(CircuitAnalysisResult {
             circuit_path: circuit_path.to_path_buf(),
@@ -736,7 +736,7 @@ impl OpusAnalyzer {
         priorities
     }
 
-    fn detect_main_component(&self, source: &str, framework: Framework) -> String {
+    fn detect_main_component(&self, source: &str, framework: Framework) -> anyhow::Result<String> {
         match framework {
             Framework::Circom => {
                 for line in source.lines() {
@@ -744,24 +744,24 @@ impl OpusAnalyzer {
                         if let Some(start) = line.find('=') {
                             let rest = &line[start + 1..];
                             if let Some(end) = rest.find('(') {
-                                return rest[..end].trim().to_string();
+                                return Ok(rest[..end].trim().to_string());
                             }
                         }
                     }
                 }
-                panic!(
+                anyhow::bail!(
                     "Circom source missing explicit `component main = ...`; implicit template selection removed"
                 );
             }
             Framework::Noir => {
                 if source.contains("fn main") {
-                    return "main".to_string();
+                    return Ok("main".to_string());
                 }
-                panic!("Noir source missing `fn main`; implicit defaults removed");
+                anyhow::bail!("Noir source missing `fn main`; implicit defaults removed");
             }
             _ => {}
         }
-        panic!(
+        anyhow::bail!(
             "Unsupported framework for main component detection: {:?}",
             framework
         )

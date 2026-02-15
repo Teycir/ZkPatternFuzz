@@ -20,11 +20,11 @@ struct Args {
     root_placeholder: Option<String>,
 
     /// Maximum circuit files to analyze
-    #[arg(long, default_value_t = 200)]
+    #[arg(long, default_value_t = 1200)]
     max_files: usize,
 
     /// Minimum hint confidence
-    #[arg(long, default_value_t = 0.3)]
+    #[arg(long, default_value_t = 0.15)]
     min_confidence: f64,
 
     /// Comma-separated circuit extensions to scan (default: circom,nr,cairo)
@@ -44,7 +44,7 @@ struct Args {
     output_dir: String,
 
     /// Number of top candidates to display
-    #[arg(long, default_value_t = 10)]
+    #[arg(long, default_value_t = 40)]
     top: usize,
 }
 

@@ -86,8 +86,9 @@ phase_skim() {
     
     "$SKIMMER" \
         --root "$repo_path" \
-        --max-files 200 \
-        --min-confidence 0.3 \
+        --max-files 1200 \
+        --min-confidence 0.15 \
+        --top 40 \
         --output-dir "$output_dir" \
         --save-configs
     
