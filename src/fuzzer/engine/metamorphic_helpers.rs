@@ -412,7 +412,11 @@ impl FuzzingEngine {
             return match FieldElement::from_hex(trimmed) {
                 Ok(value) => Some(value),
                 Err(err) => {
-                    tracing::debug!("Invalid hex metamorphic field literal '{}': {}", trimmed, err);
+                    tracing::debug!(
+                        "Invalid hex metamorphic field literal '{}': {}",
+                        trimmed,
+                        err
+                    );
                     None
                 }
             };
@@ -440,7 +444,11 @@ impl FuzzingEngine {
         match trimmed.parse::<u64>() {
             Ok(value) => Some(FieldElement::from_u64(value)),
             Err(err) => {
-                tracing::debug!("Invalid decimal metamorphic field literal '{}': {}", trimmed, err);
+                tracing::debug!(
+                    "Invalid decimal metamorphic field literal '{}': {}",
+                    trimmed,
+                    err
+                );
                 None
             }
         }

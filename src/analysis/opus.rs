@@ -761,7 +761,10 @@ impl OpusAnalyzer {
             }
             _ => {}
         }
-        panic!("Unsupported framework for main component detection: {:?}", framework)
+        panic!(
+            "Unsupported framework for main component detection: {:?}",
+            framework
+        )
     }
 
     fn build_attacks(&self, analysis: &CircuitAnalysisResult) -> Vec<Attack> {

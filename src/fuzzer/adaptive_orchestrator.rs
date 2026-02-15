@@ -485,7 +485,10 @@ impl AdaptiveOrchestrator {
 
     /// Check if campaign should stop (timeout)
     fn should_stop(&self) -> bool {
-        match self.start_time.map(|s| s.elapsed() >= self.config.max_duration) {
+        match self
+            .start_time
+            .map(|s| s.elapsed() >= self.config.max_duration)
+        {
             Some(value) => value,
             None => false,
         }

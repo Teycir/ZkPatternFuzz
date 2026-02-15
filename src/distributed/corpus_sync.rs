@@ -269,12 +269,7 @@ impl CorpusSyncManager {
 
     /// Get entries received from a specific node
     pub fn get_remote_entries(&self, node_id: &str) -> Vec<CorpusEntry> {
-        let entries = self
-            .remote_entries
-            .read()
-            .unwrap()
-            .get(node_id)
-            .cloned();
+        let entries = self.remote_entries.read().unwrap().get(node_id).cloned();
         match entries {
             Some(value) => value,
             None => Vec::new(),

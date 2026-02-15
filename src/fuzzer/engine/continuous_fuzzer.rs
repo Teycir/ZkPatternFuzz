@@ -23,11 +23,10 @@ impl FuzzingEngine {
             .expect("default timeout injected")
             .max(1);
 
-        let minimize_enabled =
-            match Self::additional_bool(additional, "corpus_minimize_enabled") {
-                Some(value) => value,
-                None => true,
-            };
+        let minimize_enabled = match Self::additional_bool(additional, "corpus_minimize_enabled") {
+            Some(value) => value,
+            None => true,
+        };
         let minimize_interval = Self::additional_u64(additional, "corpus_minimize_interval")
             .map(|value| value)
             .or_else(|| Some(10_000))

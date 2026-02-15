@@ -163,29 +163,26 @@ impl SemanticDeduplicator {
         let input_pattern = InputPattern::from_inputs(&finding.poc.witness_a);
 
         // Categorize location
-        let location_category = finding
-            .location
-            .as_ref()
-            .map(|loc| {
-                if loc.contains("nullifier") {
-                    "nullifier"
-                } else if loc.contains("merkle") {
-                    "merkle"
-                } else if loc.contains("signature") {
-                    "signature"
-                } else if loc.contains("range") {
-                    "range"
-                } else if loc.contains("arithmetic") {
-                    "arithmetic"
-                } else {
-                    "other"
-                }
-            });
+        let location_category = finding.location.as_ref().map(|loc| {
+            if loc.contains("nullifier") {
+                "nullifier"
+            } else if loc.contains("merkle") {
+                "merkle"
+            } else if loc.contains("signature") {
+                "signature"
+            } else if loc.contains("range") {
+                "range"
+            } else if loc.contains("arithmetic") {
+                "arithmetic"
+            } else {
+                "other"
+            }
+        });
         let location_category = match location_category {
             Some(value) => value,
             None => "unknown",
         }
-            .to_string();
+        .to_string();
 
         SemanticFingerprint {
             oracle_type: finding.attack_type.clone(),
@@ -363,11 +360,7 @@ impl FindingCluster {
 
     /// Get highest severity in cluster
     pub fn max_severity(&self) -> Severity {
-        let max_severity = self
-            .members
-            .iter()
-            .map(|f| f.severity)
-            .max();
+        let max_severity = self.members.iter().map(|f| f.severity).max();
         match max_severity {
             Some(value) => value,
             None => Severity::Info,

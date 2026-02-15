@@ -33,7 +33,10 @@ fn circom_external_command_timeout() -> std::time::Duration {
             ),
         },
         Err(std::env::VarError::NotPresent) => std::time::Duration::from_secs(DEFAULT_SECS),
-        Err(e) => panic!("Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS value: {}", e),
+        Err(e) => panic!(
+            "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS value: {}",
+            e
+        ),
     }
 }
 
@@ -196,7 +199,11 @@ impl BuildDirLock {
             tracing::warn!("Failed to truncate build lock {}: {}", path.display(), e);
         }
         if let Err(e) = writeln!(file, "pid={}", std::process::id()) {
-            tracing::warn!("Failed to write build lock metadata {}: {}", path.display(), e);
+            tracing::warn!(
+                "Failed to write build lock metadata {}: {}",
+                path.display(),
+                e
+            );
         }
         if let Err(e) = file.sync_all() {
             tracing::warn!("Failed to sync build lock {}: {}", path.display(), e);
@@ -500,15 +507,12 @@ fn convert_circom_file(
             })?
             .to_string()
     } else {
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Invalid Circom filename stem (non-UTF8 or missing): '{}'",
-                    path.display()
-                )
-            })?;
+        let stem = path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Invalid Circom filename stem (non-UTF8 or missing): '{}'",
+                path.display()
+            )
+        })?;
         let hash = hash_path(path);
         format!("{stem}_{hash}.circom")
     };
@@ -738,10 +742,7 @@ impl WitnessCalculator {
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 wasm path: {}", wasm_abs.display()))?;
         let wc_abs_str = wc_abs.to_str().ok_or_else(|| {
-            anyhow::anyhow!(
-                "Non-UTF8 witness calculator path: {}",
-                wc_abs.display()
-            )
+            anyhow::anyhow!("Non-UTF8 witness calculator path: {}", wc_abs.display())
         })?;
         let witness_json_path_str = witness_json_path.to_str().ok_or_else(|| {
             anyhow::anyhow!(
@@ -934,10 +935,8 @@ impl CircomTarget {
                 self.build_dir
             );
             self.parse_r1cs_info()?;
-            self.witness_calculator = Some(WitnessCalculator::new(
-                wasm_path,
-                self.witness_sanity_check,
-            ));
+            self.witness_calculator =
+                Some(WitnessCalculator::new(wasm_path, self.witness_sanity_check));
             self.compiled = true;
             return Ok(());
         }
@@ -952,10 +951,8 @@ impl CircomTarget {
                 self.build_dir
             );
             self.parse_r1cs_info()?;
-            self.witness_calculator = Some(WitnessCalculator::new(
-                wasm_path,
-                self.witness_sanity_check,
-            ));
+            self.witness_calculator =
+                Some(WitnessCalculator::new(wasm_path, self.witness_sanity_check));
             self.compiled = true;
             return Ok(());
         }
@@ -980,9 +977,9 @@ impl CircomTarget {
         for include in &self.include_paths {
             cmd.arg("-l").arg(include);
         }
-        let compile_path_str = compile_path.to_str().ok_or_else(|| {
-            anyhow::anyhow!("Non-UTF8 compile path: {}", compile_path.display())
-        })?;
+        let compile_path_str = compile_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 compile path: {}", compile_path.display()))?;
         let build_dir_str = self
             .build_dir
             .to_str()
@@ -1018,10 +1015,8 @@ impl CircomTarget {
             .join(format!("{}.wasm", basename));
 
         if wasm_path.exists() {
-            self.witness_calculator = Some(WitnessCalculator::new(
-                wasm_path,
-                self.witness_sanity_check,
-            ));
+            self.witness_calculator =
+                Some(WitnessCalculator::new(wasm_path, self.witness_sanity_check));
         } else {
             tracing::warn!(
                 "WASM file not found at expected path {:?}, witness calculation may fail",
@@ -1382,10 +1377,7 @@ impl CircomTarget {
             anyhow::bail!("Configured ptau file not found: {:?}", path);
         }
         // Check for existing ptau files
-        let ptau_dirs = vec![
-            self.build_dir.clone(),
-            PathBuf::from("."),
-        ];
+        let ptau_dirs = vec![self.build_dir.clone(), PathBuf::from(".")];
         let mut ptau_dirs = ptau_dirs;
         if let Some(home) = dirs::home_dir() {
             ptau_dirs.push(home.join(".snarkjs"));
@@ -1486,10 +1478,7 @@ impl CircomTarget {
                             .copied()
                             .flatten()
                             .ok_or_else(|| {
-                                anyhow::anyhow!(
-                                    "Missing input size metadata for signal '{}'",
-                                    name
-                                )
+                                anyhow::anyhow!("Missing input size metadata for signal '{}'", name)
                             })?;
                         tracing::debug!("  input '{}' size {}", name, size);
                     }
@@ -1598,13 +1587,7 @@ impl CircomTarget {
                 .ok_or_else(|| anyhow::anyhow!("Non-UTF8 temp path: {}", temp_path.display()))?;
 
             let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
-                .args([
-                    "r1cs",
-                    "export",
-                    "json",
-                    r1cs_path_str,
-                    temp_path_str,
-                ])
+                .args(["r1cs", "export", "json", r1cs_path_str, temp_path_str])
                 .output()
                 .context("Failed to export R1CS constraints")?;
 
@@ -1813,7 +1796,10 @@ impl TargetCircuit for CircomTarget {
         let prime = self.field_name();
         match resolve_circom_prime(prime) {
             Some(modulus) => modulus,
-            None => panic!("Unknown Circom prime '{}'; cannot resolve field modulus", prime),
+            None => panic!(
+                "Unknown Circom prime '{}'; cannot resolve field modulus",
+                prime
+            ),
         }
     }
 
@@ -1890,10 +1876,9 @@ impl TargetCircuit for CircomTarget {
         std::fs::write(&input_path, &input_json)?;
 
         if let Some(calc) = &self.witness_calculator {
-            let calc_wasm_path_str = calc
-                .wasm_path
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 wasm path: {}", calc.wasm_path.display()))?;
+            let calc_wasm_path_str = calc.wasm_path.to_str().ok_or_else(|| {
+                anyhow::anyhow!("Non-UTF8 wasm path: {}", calc.wasm_path.display())
+            })?;
             let input_path_str = input_path
                 .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Non-UTF8 input path: {}", input_path.display()))?;

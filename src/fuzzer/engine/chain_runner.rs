@@ -45,9 +45,7 @@ impl FuzzingEngine {
             let executor = match path_config {
                 Some(config) => {
                     // Load the circuit from the specified path
-                    let framework = config
-                        .framework
-                        .map(|value| value);
+                    let framework = config.framework.map(|value| value);
                     let framework = match framework {
                         Some(value) => value,
                         None => self.config.campaign.target.framework,
@@ -508,7 +506,12 @@ impl FuzzingEngine {
                                 violation.description
                             ),
                             poc: ProofOfConcept {
-                                witness_a: match result.trace.steps.first().map(|s| s.inputs.clone()) {
+                                witness_a: match result
+                                    .trace
+                                    .steps
+                                    .first()
+                                    .map(|s| s.inputs.clone())
+                                {
                                     Some(inputs) => inputs,
                                     None => Vec::new(),
                                 },

@@ -204,7 +204,7 @@ impl PathMerger {
             Some(value) => value,
             None => panic!("State merge called with no states to merge"),
         }
-            .min(first.path_condition.constraints.len());
+        .min(first.path_condition.constraints.len());
 
         // Add common prefix constraints
         for constraint in first.path_condition.constraints.iter().take(min_len) {

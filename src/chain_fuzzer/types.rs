@@ -248,7 +248,11 @@ pub enum InputWiring {
 
 impl InputWiring {
     /// Adjust step references after a step has been removed
-    pub fn adjust_after_removal(&self, removed_index: usize, _current_index: usize) -> Option<Self> {
+    pub fn adjust_after_removal(
+        &self,
+        removed_index: usize,
+        _current_index: usize,
+    ) -> Option<Self> {
         match self {
             InputWiring::Fresh => Some(InputWiring::Fresh),
             InputWiring::FromPriorOutput { step, mapping } => {
@@ -561,7 +565,10 @@ where
         let idx_str = caps.get(1)?.as_str();
         let idx: usize = match idx_str.parse() {
             Ok(idx) => idx,
-            Err(err) => panic!("Invalid step index '{}' in relation '{}': {}", idx_str, relation, err),
+            Err(err) => panic!(
+                "Invalid step index '{}' in relation '{}': {}",
+                idx_str, relation, err
+            ),
         };
 
         // Apply the mapper
@@ -834,11 +841,7 @@ impl ChainFinding {
 
         // CRITICAL FIX: Capture all L_min steps, not just first 2
         // This enables reproduction of deep chain bugs (L_min >= 3)
-        let witness_a = self
-            .trace
-            .steps
-            .first()
-            .map(|s| s.inputs.clone());
+        let witness_a = self.trace.steps.first().map(|s| s.inputs.clone());
         let witness_a = match witness_a {
             Some(value) => value,
             None => {

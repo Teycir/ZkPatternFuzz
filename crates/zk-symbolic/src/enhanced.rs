@@ -875,7 +875,10 @@ impl IncrementalSolver {
                 let dec_str = fe.to_decimal_string();
                 match ast::Int::from_str(ctx, &dec_str) {
                     Some(value) => value,
-                    None => panic!("Failed to parse decimal field element into Z3 Int: {}", dec_str),
+                    None => panic!(
+                        "Failed to parse decimal field element into Z3 Int: {}",
+                        dec_str
+                    ),
                 }
             }
             SymbolicValue::Symbol(name) => {

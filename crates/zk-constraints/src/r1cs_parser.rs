@@ -637,7 +637,10 @@ mod tests {
             for (idx, coeff) in terms {
                 let value = match wires.get(*idx).cloned() {
                     Some(v) => v,
-                    None => panic!("Wire index {} out of bounds in test linear combination", idx),
+                    None => panic!(
+                        "Wire index {} out of bounds in test linear combination",
+                        idx
+                    ),
                 };
                 let term = (coeff * value) % modulus;
                 acc = (acc + term) % modulus;

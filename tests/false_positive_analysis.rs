@@ -303,9 +303,7 @@ reporting:
                 Ok(c) => c,
                 Err(err) => panic!(
                     "Failed to parse FP by-attack config for circuit '{}' and attack '{:?}': {}",
-                    circuit,
-                    attack_type,
-                    err
+                    circuit, attack_type, err
                 ),
             };
 
@@ -394,8 +392,7 @@ reporting:
             Ok(c) => c,
             Err(err) => panic!(
                 "Failed to parse threshold test config for threshold {}: {}",
-                threshold,
-                err
+                threshold, err
             ),
         };
 

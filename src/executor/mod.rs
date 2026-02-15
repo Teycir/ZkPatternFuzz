@@ -223,9 +223,7 @@ fn value_bucket_for(value_bytes: &[u8]) -> u8 {
     if value_bytes.is_empty() {
         return 0;
     }
-    let first_nonzero = value_bytes
-        .iter()
-        .position(|&b| b != 0);
+    let first_nonzero = value_bytes.iter().position(|&b| b != 0);
     let first_nonzero = match first_nonzero {
         Some(value) => value,
         None => value_bytes.len(),

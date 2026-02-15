@@ -831,10 +831,16 @@ impl ConstraintInferenceEngine {
                 // Force flush to show progress immediately
                 use std::io::Write;
                 if let Err(err) = std::io::stdout().flush() {
-                    tracing::warn!("Failed to flush stdout during confirmation logging: {}", err);
+                    tracing::warn!(
+                        "Failed to flush stdout during confirmation logging: {}",
+                        err
+                    );
                 }
                 if let Err(err) = std::io::stderr().flush() {
-                    tracing::warn!("Failed to flush stderr during confirmation logging: {}", err);
+                    tracing::warn!(
+                        "Failed to flush stderr during confirmation logging: {}",
+                        err
+                    );
                 }
             }
 
@@ -882,9 +888,7 @@ impl ConstraintInferenceEngine {
             }
 
             let has_internal_wires = constraint.involved_wires.iter().any(|&wire| {
-                let is_input = wire_to_input
-                    .as_ref()
-                    .map(|map| map.contains_key(&wire));
+                let is_input = wire_to_input.as_ref().map(|map| map.contains_key(&wire));
                 let is_input = match is_input {
                     Some(value) => value,
                     None => wire < num_inputs,

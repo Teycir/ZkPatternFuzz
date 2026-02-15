@@ -355,12 +355,7 @@ impl EvidenceGenerator {
                 }
             },
             Framework::Noir => {
-                let project_path = self
-                    .config
-                    .campaign
-                    .target
-                    .circuit_path
-                    .parent();
+                let project_path = self.config.campaign.target.circuit_path.parent();
                 let project_path = match project_path {
                     Some(value) => value,
                     None => Path::new("."),
@@ -557,10 +552,7 @@ echo "Finding description: {}"
                 path.display()
             )
         })?;
-        Ok(format!(
-            "cd {} && ./repro.sh",
-            parent.display()
-        ))
+        Ok(format!("cd {} && ./repro.sh", parent.display()))
     }
 
     fn derive_circom_build_name(circuit_path: &Path, main_component: &str) -> String {

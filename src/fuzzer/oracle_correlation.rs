@@ -276,10 +276,7 @@ impl OracleCorrelator {
             };
 
             // Compute combined severity (max)
-            let combined_severity = group_findings
-                .iter()
-                .map(|f| f.severity)
-                .max();
+            let combined_severity = group_findings.iter().map(|f| f.severity).max();
             let combined_severity = match combined_severity {
                 Some(value) => value,
                 None => {

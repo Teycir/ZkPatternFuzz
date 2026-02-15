@@ -849,10 +849,8 @@ impl ZkEvmAttack {
                 {
                     let err = match result.error {
                         Some(value) => value,
-                        None => {
-                            "Execution failed without backend error message (signed edge case)"
-                                .to_string()
-                        }
+                        None => "Execution failed without backend error message (signed edge case)"
+                            .to_string(),
                     };
                     return Ok(Some(ZkEvmTestResult {
                         vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,

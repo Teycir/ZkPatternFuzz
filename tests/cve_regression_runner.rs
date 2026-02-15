@@ -50,12 +50,7 @@ fn test_cve_regression_tests_execute() {
                 Some(message) => message,
                 None => "OK",
             };
-            println!(
-                "    {} {}: {}",
-                status,
-                tc_result.name,
-                message
-            );
+            println!("    {} {}: {}", status, tc_result.name, message);
         }
 
         executed += 1;

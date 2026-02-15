@@ -128,9 +128,7 @@ impl UnderconstrainedDetector {
                 continue;
             }
 
-            let label = labels
-                .get(&idx)
-                .cloned();
+            let label = labels.get(&idx).cloned();
             let label = match label {
                 Some(value) => value,
                 None => format!("signal_{}", idx),
@@ -236,9 +234,7 @@ impl UnderconstrainedDetector {
                 continue;
             }
 
-            let label = labels
-                .get(&idx)
-                .cloned();
+            let label = labels.get(&idx).cloned();
             let label = match label {
                 Some(value) => value,
                 None => format!("signal_{}", idx),

@@ -445,9 +445,8 @@ impl NoirTarget {
 
         let nargo_toml_path = self.project_path.join("Nargo.toml");
         if nargo_toml_path.exists() {
-            let content = std::fs::read_to_string(&nargo_toml_path).with_context(|| {
-                format!("Failed reading '{}'", nargo_toml_path.display())
-            })?;
+            let content = std::fs::read_to_string(&nargo_toml_path)
+                .with_context(|| format!("Failed reading '{}'", nargo_toml_path.display()))?;
             let name = self.parse_project_name(&content)?;
             let path = self.build_dir.join(format!("{}.json", name));
             if seen.insert(path.clone()) {
@@ -456,7 +455,10 @@ impl NoirTarget {
         }
 
         for entry in std::fs::read_dir(&self.build_dir).with_context(|| {
-            format!("Failed reading Noir build dir '{}'", self.build_dir.display())
+            format!(
+                "Failed reading Noir build dir '{}'",
+                self.build_dir.display()
+            )
         })? {
             let entry = entry.with_context(|| {
                 format!(
@@ -490,7 +492,11 @@ impl NoirTarget {
             let bytes = match std::fs::read(&json_path) {
                 Ok(bytes) => bytes,
                 Err(err) => {
-                    tracing::warn!("Failed reading Noir artifact '{}': {}", json_path.display(), err);
+                    tracing::warn!(
+                        "Failed reading Noir artifact '{}': {}",
+                        json_path.display(),
+                        err
+                    );
                     continue;
                 }
             };
@@ -756,9 +762,9 @@ impl NoirTarget {
         match value {
             serde_json::Value::String(s) => Ok(vec![parse_noir_field(s)?]),
             serde_json::Value::Number(n) => {
-                let num = n
-                    .as_u64()
-                    .ok_or_else(|| anyhow::anyhow!("Unsupported non-u64 Noir JSON number: {}", n))?;
+                let num = n.as_u64().ok_or_else(|| {
+                    anyhow::anyhow!("Unsupported non-u64 Noir JSON number: {}", n)
+                })?;
                 Ok(vec![FieldElement::from_u64(num)])
             }
             serde_json::Value::Array(arr) => {
@@ -776,7 +782,10 @@ impl NoirTarget {
                 }
                 Ok(results)
             }
-            _ => anyhow::bail!("Unsupported Noir JSON value type for witness input: {}", value),
+            _ => anyhow::bail!(
+                "Unsupported Noir JSON value type for witness input: {}",
+                value
+            ),
         }
     }
 
@@ -957,11 +966,7 @@ fn extract_witness_indices(text: &str) -> Vec<usize> {
                 match digits.parse::<usize>() {
                     Ok(idx) => indices.push(idx),
                     Err(e) => {
-                        tracing::warn!(
-                            "Failed to parse ACIR witness index '{}': {}",
-                            digits,
-                            e
-                        );
+                        tracing::warn!("Failed to parse ACIR witness index '{}': {}", digits, e);
                     }
                 }
             }

@@ -78,8 +78,13 @@ fn main() -> anyhow::Result<()> {
     }
 
     if let Some(path) = &args.cve_db {
-        CveDatabase::load_strict(path)
-            .map_err(|e| anyhow::anyhow!("Strict CVE fixture validation failed for '{}': {:#}", path, e))?;
+        CveDatabase::load_strict(path).map_err(|e| {
+            anyhow::anyhow!(
+                "Strict CVE fixture validation failed for '{}': {:#}",
+                path,
+                e
+            )
+        })?;
         println!("✓ CVE fixtures validated successfully (strict, unambiguous)");
     }
 

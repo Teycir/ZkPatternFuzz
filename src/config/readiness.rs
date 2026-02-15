@@ -227,9 +227,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
 
     // 1. Check strict_backend
     let additional = &config.campaign.parameters.additional;
-    let evidence_mode = additional
-        .get("evidence_mode")
-        .and_then(|v| v.as_bool());
+    let evidence_mode = additional.get("evidence_mode").and_then(|v| v.as_bool());
     let evidence_mode = match evidence_mode {
         Some(value) => value,
         None => false,
@@ -241,9 +239,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         Some(value) => value,
         None => evidence_mode,
     };
-    let strict_backend = additional
-        .get("strict_backend")
-        .and_then(|v| v.as_bool());
+    let strict_backend = additional.get("strict_backend").and_then(|v| v.as_bool());
     let strict_backend = match strict_backend {
         Some(value) => value,
         None => false,
@@ -446,10 +442,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     // 10. Check forge attempts
     for attack in &config.attacks {
         if matches!(attack.attack_type, crate::config::AttackType::Soundness) {
-            let forge_attempts = attack
-                .config
-                .get("forge_attempts")
-                .and_then(|v| v.as_u64());
+            let forge_attempts = attack.config.get("forge_attempts").and_then(|v| v.as_u64());
             let forge_attempts = match forge_attempts {
                 Some(value) => value,
                 None => 0,
@@ -479,9 +472,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     }
 
     // 11. Check corpus size
-    let corpus_max_size = additional
-        .get("corpus_max_size")
-        .and_then(|v| v.as_u64());
+    let corpus_max_size = additional.get("corpus_max_size").and_then(|v| v.as_u64());
     let corpus_max_size = match corpus_max_size {
         Some(value) => value,
         None => 100_000,
@@ -513,9 +504,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     // Note: runs typically set `fuzzing_iterations` via the CLI, while some YAMLs set
     // `max_iterations` (profile-style). Report the effective key for clarity.
     let (iterations_key, max_iterations) = if !config.chains.is_empty() {
-        let v = additional
-            .get("chain_iterations")
-            .and_then(|v| v.as_u64());
+        let v = additional.get("chain_iterations").and_then(|v| v.as_u64());
         let v = match v {
             Some(value) => value,
             None => 1000,

@@ -85,7 +85,10 @@ impl FrozenWireDetector {
         let output_wire_indices = executor
             .constraint_inspector()
             .map(|inspector| inspector.output_indices());
-        let apply_known_constants = match output_wire_indices.as_ref().map(|indices| !indices.is_empty()) {
+        let apply_known_constants = match output_wire_indices
+            .as_ref()
+            .map(|indices| !indices.is_empty())
+        {
             Some(value) => value,
             None => false,
         };

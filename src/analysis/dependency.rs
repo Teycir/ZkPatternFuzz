@@ -226,14 +226,8 @@ impl DependencyGraph {
         let mut uncovered_with_degree: Vec<(ConstraintId, usize)> = (0..self.num_constraints)
             .filter(|c| !coverage.constraint_hits.contains_key(c))
             .map(|c| {
-                let in_degree = self
-                    .constraint_depends
-                    .get(&c)
-                    .map(|s| s.len());
-                let out_degree = self
-                    .constraint_graph
-                    .get(&c)
-                    .map(|s| s.len());
+                let in_degree = self.constraint_depends.get(&c).map(|s| s.len());
+                let out_degree = self.constraint_graph.get(&c).map(|s| s.len());
                 let in_degree = match in_degree {
                     Some(v) => v,
                     None => 0,

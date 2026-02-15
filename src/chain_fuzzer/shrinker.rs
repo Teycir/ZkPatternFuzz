@@ -254,10 +254,7 @@ impl ChainShrinker {
             };
 
             for i in minimizable_indices {
-                let original = minimized
-                    .get(circuit_ref)
-                    .and_then(|v| v.get(i))
-                    .cloned();
+                let original = minimized.get(circuit_ref).and_then(|v| v.get(i)).cloned();
                 let original = match original {
                     Some(value) => value,
                     None => continue,

@@ -305,10 +305,11 @@ impl PhasedScheduler {
                     )
                 }
             };
-            config.campaign.parameters.additional.insert(
-                "mutation_weights".to_string(),
-                mutation_weights,
-            );
+            config
+                .campaign
+                .parameters
+                .additional
+                .insert("mutation_weights".to_string(), mutation_weights);
         }
 
         config

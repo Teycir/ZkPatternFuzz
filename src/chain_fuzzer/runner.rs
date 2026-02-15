@@ -138,8 +138,57 @@ impl ChainRunner {
             // Execute the circuit
             let result = executor.execute_sync(&inputs);
             let step_time = step_start.elapsed().as_millis() as u64;
+            let timeout_ms = self.timeout_per_step.as_millis();
+            if timeout_ms > 0 && u128::from(step_time) > timeout_ms {
+                tracing::warn!(
+                    "Step {} in chain '{}' exceeded timeout: {} ms > {} ms",
+                    step_index,
+                    spec.name,
+                    step_time,
+                    timeout_ms
+                );
+                let step_trace = StepTrace::failure(
+                    step_index,
+                    &step.circuit_ref,
+                    inputs,
+                    format!(
+                        "Step timed out: execution took {} ms (limit {} ms)",
+                        step_time, timeout_ms
+                    ),
+                )
+                .with_time(step_time);
+                trace.add_step(step_trace);
+                trace.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                return ChainRunResult::failure(trace, step_index);
+            }
 
             if result.success {
+                if let Some(expected) = step.expected_outputs {
+                    let actual_outputs = result.outputs.len();
+                    if actual_outputs != expected {
+                        tracing::warn!(
+                            "Step {} circuit '{}' produced {} outputs, but expected {}",
+                            step_index,
+                            step.circuit_ref,
+                            actual_outputs,
+                            expected
+                        );
+                        let step_trace = StepTrace::failure(
+                            step_index,
+                            &step.circuit_ref,
+                            inputs,
+                            format!(
+                                "Output validation failed: expected {} outputs, got {}",
+                                expected, actual_outputs
+                            ),
+                        )
+                        .with_time(step_time);
+                        trace.add_step(step_trace);
+                        trace.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                        return ChainRunResult::failure(trace, step_index);
+                    }
+                }
+
                 let mut step_trace =
                     StepTrace::success(step_index, &step.circuit_ref, inputs, result.outputs);
                 step_trace = step_trace.with_time(step_time);
@@ -362,6 +411,49 @@ impl ChainRunner {
 mod tests {
     use super::*;
     use crate::executor::FixtureCircuitExecutor;
+    use std::thread;
+    use zk_core::{CircuitInfo, ExecutionResult, Framework};
+
+    struct SlowExecutor {
+        inner: FixtureCircuitExecutor,
+        delay: Duration,
+    }
+
+    impl SlowExecutor {
+        fn new(name: &str, num_inputs: usize, num_outputs: usize, delay: Duration) -> Self {
+            Self {
+                inner: FixtureCircuitExecutor::new(name, num_inputs, 0).with_outputs(num_outputs),
+                delay,
+            }
+        }
+    }
+
+    impl CircuitExecutor for SlowExecutor {
+        fn framework(&self) -> Framework {
+            self.inner.framework()
+        }
+
+        fn name(&self) -> &str {
+            self.inner.name()
+        }
+
+        fn circuit_info(&self) -> CircuitInfo {
+            self.inner.circuit_info()
+        }
+
+        fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
+            thread::sleep(self.delay);
+            self.inner.execute_sync(inputs)
+        }
+
+        fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
+            self.inner.prove(witness)
+        }
+
+        fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
+            self.inner.verify(proof, public_inputs)
+        }
+    }
 
     fn create_fixture_executor(
         name: &str,
@@ -445,6 +537,54 @@ mod tests {
 
         assert!(!result.completed);
         assert_eq!(result.failed_at, Some(0));
+    }
+
+    #[test]
+    fn test_chain_runner_validates_expected_outputs() {
+        let mut executors = HashMap::new();
+        executors.insert(
+            "circuit_a".to_string(),
+            create_fixture_executor("circuit_a", 2, 1),
+        );
+
+        let runner = ChainRunner::new(executors);
+        let mut step = StepSpec::fresh("circuit_a");
+        step.expected_outputs = Some(2);
+        let spec = ChainSpec::new("outputs_contract", vec![step]);
+
+        let mut rng = rand::thread_rng();
+        let result = runner.execute(&spec, &HashMap::new(), &mut rng);
+
+        assert!(!result.completed);
+        assert_eq!(result.failed_at, Some(0));
+        assert!(result.trace.steps[0]
+            .error
+            .as_ref()
+            .expect("missing step error")
+            .contains("expected 2 outputs"));
+    }
+
+    #[test]
+    fn test_chain_runner_enforces_step_timeout() {
+        let mut executors = HashMap::new();
+        executors.insert(
+            "slow".to_string(),
+            Arc::new(SlowExecutor::new("slow", 2, 1, Duration::from_millis(25)))
+                as Arc<dyn CircuitExecutor>,
+        );
+        let runner = ChainRunner::new(executors).with_timeout(Duration::from_millis(5));
+        let spec = ChainSpec::new("timeout_contract", vec![StepSpec::fresh("slow")]);
+
+        let mut rng = rand::thread_rng();
+        let result = runner.execute(&spec, &HashMap::new(), &mut rng);
+
+        assert!(!result.completed);
+        assert_eq!(result.failed_at, Some(0));
+        assert!(result.trace.steps[0]
+            .error
+            .as_ref()
+            .expect("missing step error")
+            .contains("timed out"));
     }
 
     use super::super::types::StepSpec;

@@ -290,8 +290,7 @@ pub fn generate_halo2_repro_script(
         }
     }
 
-    let spec_display = circuit_spec_path
-        .map(|p| p.display().to_string());
+    let spec_display = circuit_spec_path.map(|p| p.display().to_string());
     let spec_display = match spec_display {
         Some(value) => value,
         None => "<circuit_spec>".to_string(),
@@ -333,10 +332,7 @@ echo "If verify_halo2.rs prints 'Verification PASSED', this is a CONFIRMED bug."
         std::fs::set_permissions(path, perms)?;
     }
 
-    Ok(format!(
-        "cd {} && ./repro.sh",
-        script_dir.display()
-    ))
+    Ok(format!("cd {} && ./repro.sh", script_dir.display()))
 }
 
 #[cfg(test)]

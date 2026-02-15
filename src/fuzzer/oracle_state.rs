@@ -358,7 +358,10 @@ where
     fn evict_oldest(&self) {
         let mut storage = match self.storage.write() {
             Ok(s) => s,
-            Err(err) => panic!("oracle state storage lock poisoned during eviction: {}", err),
+            Err(err) => panic!(
+                "oracle state storage lock poisoned during eviction: {}",
+                err
+            ),
         };
 
         if storage.len() < self.config.eviction_batch_size {

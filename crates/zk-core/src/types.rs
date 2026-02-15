@@ -315,10 +315,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                 let mut parsed_witness_a: Vec<FieldElement> = Vec::with_capacity(witness_a.len());
                 for hex in &witness_a {
                     let field = FieldElement::from_hex(hex).map_err(|e| {
-                        de::Error::custom(format!(
-                            "invalid poc.witness_a element '{}': {}",
-                            hex, e
-                        ))
+                        de::Error::custom(format!("invalid poc.witness_a element '{}': {}", hex, e))
                     })?;
                     parsed_witness_a.push(field);
                 }

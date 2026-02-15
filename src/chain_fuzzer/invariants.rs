@@ -634,9 +634,7 @@ impl CrossStepInvariantChecker {
                 FieldType::Output => format!("out[{}]", field_index),
                 FieldType::Input => format!("in[{}]", field_index),
             };
-            let dup_val_hex = duplicate_value
-                .as_ref()
-                .map(|v| v.to_hex());
+            let dup_val_hex = duplicate_value.as_ref().map(|v| v.to_hex());
             let dup_val_hex = match dup_val_hex {
                 Some(value) => value,
                 None => "<duplicate-value-unavailable>".to_string(),

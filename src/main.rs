@@ -55,7 +55,10 @@ impl DynamicTeeWriter {
                 std::fs::create_dir_all(parent).map_err(|err| {
                     io::Error::new(
                         io::ErrorKind::Other,
-                        format!("Failed to create log directory '{}': {err}", parent.display()),
+                        format!(
+                            "Failed to create log directory '{}': {err}",
+                            parent.display()
+                        ),
                     )
                 })?;
             }
@@ -363,7 +366,11 @@ fn best_effort_append_jsonl(path: &Path, value: &serde_json::Value) {
     let line = match serde_json::to_string(value) {
         Ok(line) => line,
         Err(err) => {
-            tracing::warn!("Failed to serialize JSONL record '{}': {}", path.display(), err);
+            tracing::warn!(
+                "Failed to serialize JSONL record '{}': {}",
+                path.display(),
+                err
+            );
             return;
         }
     };
@@ -379,7 +386,11 @@ fn best_effort_append_jsonl(path: &Path, value: &serde_json::Value) {
         }
     };
     if let Err(err) = writeln!(f, "{}", line) {
-        tracing::warn!("Failed to append JSONL record '{}': {}", path.display(), err);
+        tracing::warn!(
+            "Failed to append JSONL record '{}': {}",
+            path.display(),
+            err
+        );
     }
 }
 
@@ -423,7 +434,10 @@ fn engagement_dir_name(run_id: &str) -> String {
 
     match run_id_epoch_dir(run_id) {
         Some(dir_name) => dir_name,
-        None => panic!("Run id '{}' does not contain a valid timestamp prefix", run_id),
+        None => panic!(
+            "Run id '{}' does not contain a valid timestamp prefix",
+            run_id
+        ),
     }
 }
 
@@ -522,30 +536,22 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
             let v = modes.get(key);
             md.push_str(&format!("## {}\n\n", key));
             if let Some(v) = v {
-                let status = v
-                    .get("status")
-                    .and_then(|s| s.as_str());
+                let status = v.get("status").and_then(|s| s.as_str());
                 let status = match status {
                     Some(value) => value,
                     None => "unknown",
                 };
-                let run_id = v
-                    .get("run_id")
-                    .and_then(|s| s.as_str());
+                let run_id = v.get("run_id").and_then(|s| s.as_str());
                 let run_id = match run_id {
                     Some(value) => value,
                     None => "unknown",
                 };
-                let campaign = v
-                    .get("campaign_name")
-                    .and_then(|s| s.as_str());
+                let campaign = v.get("campaign_name").and_then(|s| s.as_str());
                 let campaign = match campaign {
                     Some(value) => value,
                     None => "unknown",
                 };
-                let started = v
-                    .get("started_utc")
-                    .and_then(|s| s.as_str());
+                let started = v.get("started_utc").and_then(|s| s.as_str());
                 let started = match started {
                     Some(value) => value,
                     None => "unknown",
@@ -683,18 +689,18 @@ fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
     write_global_run_signal(run_id, value);
 }
 
-fn pid_is_alive(pid: u32) -> bool {
+fn pid_is_alive(pid: u32) -> Option<bool> {
     if pid == 0 {
-        return false;
+        return Some(false);
     }
     #[cfg(unix)]
     {
-        std::path::Path::new(&format!("/proc/{}", pid)).exists()
+        Some(std::path::Path::new(&format!("/proc/{}", pid)).exists())
     }
     #[cfg(not(unix))]
     {
         let _pid = pid;
-        false
+        None
     }
 }
 
@@ -750,10 +756,20 @@ fn mark_stale_previous_run_if_any(output_dir: &Path, current_pid: u32) {
             return;
         }
     };
-    if prev_pid == current_pid || pid_is_alive(prev_pid) {
+    if prev_pid == current_pid {
         return;
     }
-
+    match pid_is_alive(prev_pid) {
+        Some(true) => return,
+        Some(false) => {}
+        None => {
+            tracing::warn!(
+                "Skipping stale-run detection for prior PID {}: process liveness checks are not supported on this platform",
+                prev_pid
+            );
+            return;
+        }
+    }
     let prev_run_id = match doc.get("run_id").and_then(|v| v.as_str()) {
         Some(run_id) => run_id.to_string(),
         None => {
@@ -2573,28 +2589,37 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let corpus_path = output_dir.join("chain_corpus.json");
     let corpus_meta_path = output_dir.join("chain_corpus_meta.json");
-    let read_chain_meta = |p: &std::path::Path| -> Option<zk_fuzzer::chain_fuzzer::ChainCorpusMeta> {
-        match std::fs::read_to_string(p) {
-            Ok(raw) => match serde_json::from_str::<zk_fuzzer::chain_fuzzer::ChainCorpusMeta>(&raw)
-            {
-                Ok(meta) => Some(meta),
+    let read_chain_meta =
+        |p: &std::path::Path| -> Option<zk_fuzzer::chain_fuzzer::ChainCorpusMeta> {
+            match std::fs::read_to_string(p) {
+                Ok(raw) => {
+                    match serde_json::from_str::<zk_fuzzer::chain_fuzzer::ChainCorpusMeta>(&raw) {
+                        Ok(meta) => Some(meta),
+                        Err(err) => {
+                            tracing::warn!(
+                                "Invalid chain corpus metadata '{}': {}",
+                                p.display(),
+                                err
+                            );
+                            None
+                        }
+                    }
+                }
                 Err(err) => {
-                    tracing::warn!("Invalid chain corpus metadata '{}': {}", p.display(), err);
+                    tracing::warn!(
+                        "Failed to read chain corpus metadata '{}': {}",
+                        p.display(),
+                        err
+                    );
                     None
                 }
-            },
-            Err(err) => {
-                tracing::warn!("Failed to read chain corpus metadata '{}': {}", p.display(), err);
-                None
             }
-        }
-    };
+        };
     let load_chain_corpus =
         |p: &std::path::Path| -> anyhow::Result<zk_fuzzer::chain_fuzzer::ChainCorpus> {
             if p.exists() {
-                ChainCorpus::load(p).with_context(|| {
-                    format!("Failed to load chain corpus from '{}'", p.display())
-                })
+                ChainCorpus::load(p)
+                    .with_context(|| format!("Failed to load chain corpus from '{}'", p.display()))
             } else {
                 Ok(ChainCorpus::with_storage(p))
             }
@@ -2689,11 +2714,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                     .collect::<HashSet<_>>()
                     .len()
             };
-            let final_max_depth = final_corpus
-                .entries()
-                .iter()
-                .map(|e| e.depth_reached)
-                .max();
+            let final_max_depth = final_corpus.entries().iter().map(|e| e.depth_reached).max();
             let final_max_depth = match final_max_depth {
                 Some(value) => value,
                 None => 0,

@@ -665,10 +665,16 @@ impl ConstraintChecker {
                 value.is_zero() || value.is_one()
             }
             ExtendedConstraint::Equal { a, b } => {
-                let a_val =
-                    require_wire_value(wire_values, a, "checking equality lhs in ConstraintChecker::check");
-                let b_val =
-                    require_wire_value(wire_values, b, "checking equality rhs in ConstraintChecker::check");
+                let a_val = require_wire_value(
+                    wire_values,
+                    a,
+                    "checking equality lhs in ConstraintChecker::check",
+                );
+                let b_val = require_wire_value(
+                    wire_values,
+                    b,
+                    "checking equality rhs in ConstraintChecker::check",
+                );
                 a_val == b_val
             }
             ExtendedConstraint::Add { a, b, c } => {
@@ -1514,7 +1520,10 @@ fn parse_wire_index(s: &str) -> usize {
     let digits: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
     match digits.parse() {
         Ok(index) => index,
-        Err(err) => panic!("Invalid wire reference '{}': no parseable index: {}", s, err),
+        Err(err) => panic!(
+            "Invalid wire reference '{}': no parseable index: {}",
+            s, err
+        ),
     }
 }
 
@@ -1624,10 +1633,7 @@ fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {
                 .map(|v| v as usize);
 
             if let Some(table_val) = lookup.get("table") {
-                if let Some((id, table)) = parse_lookup_table_value(
-                    table_val,
-                    table_id,
-                ) {
+                if let Some((id, table)) = parse_lookup_table_value(table_val, table_id) {
                     table_id = Some(id);
                     set.lookup_tables.entry(id).or_insert(table);
                 }
@@ -1691,9 +1697,8 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                         let Some(name) = kv.get("name").cloned() else {
                             continue;
                         };
-                        let Some(num_columns) = kv
-                            .get("columns")
-                            .and_then(|v| match v.parse::<usize>() {
+                        let Some(num_columns) =
+                            kv.get("columns").and_then(|v| match v.parse::<usize>() {
                                 Ok(parsed) => Some(parsed),
                                 Err(_err) => None,
                             })
@@ -2255,8 +2260,7 @@ fn parse_lookup_table_value(
         .get("num_columns")
         .and_then(|v| v.as_u64())
         .or_else(|| obj.get("columns").and_then(|v| v.as_u64()))
-        .map(|v| v as usize)
-        ?;
+        .map(|v| v as usize)?;
 
     let mut table = LookupTable::new(name, num_columns);
 

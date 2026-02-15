@@ -323,7 +323,10 @@ impl CairoTarget {
             .with_context(|| format!("Failed to read target dir '{}'", target_dir.display()))?;
         for entry in entries {
             let entry = entry.with_context(|| {
-                format!("Failed reading an entry in target dir '{}'", target_dir.display())
+                format!(
+                    "Failed reading an entry in target dir '{}'",
+                    target_dir.display()
+                )
             })?;
             let path = entry.path();
             if path
@@ -451,7 +454,10 @@ impl CairoTarget {
             compiled_path
                 .to_str()
                 .ok_or_else(|| {
-                    anyhow::anyhow!("Non-UTF8 compiled program path: {}", compiled_path.display())
+                    anyhow::anyhow!(
+                        "Non-UTF8 compiled program path: {}",
+                        compiled_path.display()
+                    )
                 })?
                 .to_string(),
             "--print_output".to_string(),
@@ -696,8 +702,8 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn field_modulus(&self) -> [u8; 32] {
-        let decoded = hex::decode(STARK252_MODULUS_HEX)
-            .expect("STARK252 modulus constant must be valid hex");
+        let decoded =
+            hex::decode(STARK252_MODULUS_HEX).expect("STARK252 modulus constant must be valid hex");
         let mut modulus = [0u8; 32];
         let start = 32usize.saturating_sub(decoded.len());
         modulus[start..].copy_from_slice(&decoded[..decoded.len().min(32)]);
@@ -766,7 +772,10 @@ impl TargetCircuit for CairoTarget {
             compiled_path
                 .to_str()
                 .ok_or_else(|| {
-                    anyhow::anyhow!("Non-UTF8 compiled program path: {}", compiled_path.display())
+                    anyhow::anyhow!(
+                        "Non-UTF8 compiled program path: {}",
+                        compiled_path.display()
+                    )
                 })?
                 .to_string(),
             "--print_output".to_string(),

@@ -302,15 +302,14 @@ impl FuzzingEngine {
         }
 
         if isolate_exec {
-            let execution_timeout_ms = match Self::additional_u64(additional, "execution_timeout_ms")
-                .or_else(|| {
+            let execution_timeout_ms =
+                match Self::additional_u64(additional, "execution_timeout_ms").or_else(|| {
                     Self::additional_u64(additional, "timeout_per_execution").map(|v| v * 1000)
-                })
-            {
-                Some(value) => value,
-                None => 30_000,
-            }
-            .max(1);
+                }) {
+                    Some(value) => value,
+                    None => 30_000,
+                }
+                .max(1);
 
             let kill_on_timeout = match Self::additional_bool(additional, "kill_on_timeout") {
                 Some(value) => value,
@@ -382,15 +381,13 @@ impl FuzzingEngine {
                 None => 200,
             }
             .max(1) as usize;
-            let symbolic_solver_timeout = match Self::additional_u64(
-                additional,
-                "symbolic_solver_timeout_ms",
-            ) {
-                Some(value) => value,
-                None => 5000,
-            }
-            .max(1)
-            .min(u32::MAX as u64) as u32;
+            let symbolic_solver_timeout =
+                match Self::additional_u64(additional, "symbolic_solver_timeout_ms") {
+                    Some(value) => value,
+                    None => 5000,
+                }
+                .max(1)
+                .min(u32::MAX as u64) as u32;
             Some(
                 SymbolicFuzzerIntegration::new(num_inputs).with_config(SymbolicConfig {
                     max_paths: symbolic_max_paths,
@@ -977,8 +974,7 @@ impl FuzzingEngine {
                     .additional
                     .get("fuzzing_iterations")
                     .and_then(|v| v.as_u64())
-            })
-        {
+            }) {
             Some(value) => value,
             None => 1000,
         };

@@ -321,9 +321,7 @@ impl AdaptiveScheduler {
                 Some(value) => value,
                 None => 0,
             };
-            if score < 5.0
-                && findings_count == 0
-            {
+            if score < 5.0 && findings_count == 0 {
                 suggestions.push(YamlSuggestion {
                     suggestion_type: SuggestionType::DecreaseBudget,
                     key: format!("{:?}", attack_type),

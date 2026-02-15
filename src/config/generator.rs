@@ -699,7 +699,10 @@ fn detect_main_component(source: &str, framework: Framework) -> String {
         }
         _ => {}
     }
-    panic!("Unsupported framework for main component detection: {:?}", framework)
+    panic!(
+        "Unsupported framework for main component detection: {:?}",
+        framework
+    )
 }
 
 /// Parse Circom input declaration

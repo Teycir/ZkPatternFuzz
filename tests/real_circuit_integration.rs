@@ -64,10 +64,7 @@ fn resolve_path(candidates: &[std::path::PathBuf]) -> Option<std::path::PathBuf>
     None
 }
 
-fn resolve_r1cs_path(
-    relative: &str,
-    compiled_alt: Option<&str>,
-) -> Option<std::path::PathBuf> {
+fn resolve_r1cs_path(relative: &str, compiled_alt: Option<&str>) -> Option<std::path::PathBuf> {
     let mut candidates = vec![zk0d_base().join(relative)];
     if let Some(compiled) = compiled_alt {
         candidates.push(std::path::PathBuf::from(compiled));
@@ -83,10 +80,7 @@ fn resolve_sym_path(relative: &str, compiled_alt: Option<&str>) -> Option<std::p
     resolve_path(&candidates)
 }
 
-fn resolve_source_path(
-    relative: &str,
-    staged_alt: Option<&str>,
-) -> Option<std::path::PathBuf> {
+fn resolve_source_path(relative: &str, staged_alt: Option<&str>) -> Option<std::path::PathBuf> {
     let mut candidates = vec![zk0d_base().join(relative)];
     if let Some(staged) = staged_alt {
         candidates.push(std::path::PathBuf::from(staged));

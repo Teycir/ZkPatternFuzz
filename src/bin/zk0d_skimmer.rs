@@ -101,9 +101,7 @@ fn main() -> anyhow::Result<()> {
         Err(std::env::VarError::NotPresent) => None,
         Err(e) => anyhow::bail!("Invalid ZK0D_BASE value: {}", e),
     };
-    let root_value = args
-        .root
-        .or(env_root);
+    let root_value = args.root.or(env_root);
     let root_value = match root_value {
         Some(value) => value,
         None => {
@@ -245,8 +243,7 @@ fn write_summary_markdown(
     let mut out = String::new();
     out.push_str("# zk0d Skimmer Summary (Hints Only)\n\n");
     out.push_str("**WARNING:** This is a hint-only scan. No findings are confirmed.\n\n");
-    let root_display = root_placeholder
-        .map(str::to_string);
+    let root_display = root_placeholder.map(str::to_string);
     let root_display = match root_display {
         Some(value) => value,
         None => root.display().to_string(),
@@ -317,8 +314,7 @@ fn write_candidate_invariants(
         });
     }
 
-    let root_display = root_placeholder
-        .map(str::to_string);
+    let root_display = root_placeholder.map(str::to_string);
     let root_display = match root_display {
         Some(value) => value,
         None => root.display().to_string(),

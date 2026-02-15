@@ -21,34 +21,10 @@ impl FileLock {
     }
 }
 
-#[cfg(unix)]
-fn flock(file: &File, operation: i32) -> std::io::Result<()> {
-    use std::os::unix::io::AsRawFd;
-    let rc = unsafe { libc::flock(file.as_raw_fd(), operation) };
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
-    }
-}
-
-#[cfg(not(unix))]
-fn flock(_file: &File, _operation: i32) -> std::io::Result<()> {
-    // Best-effort no-op on non-Unix platforms.
-    Ok(())
-}
-
 impl Drop for FileLock {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        {
-            if let Err(e) = flock(&self.file, libc::LOCK_UN) {
-                tracing::warn!(
-                    "Failed to unlock file lock {}: {}",
-                    self.path.display(),
-                    e
-                );
-            }
+        if let Err(e) = self.file.unlock() {
+            tracing::warn!("Failed to unlock file lock {}: {}", self.path.display(), e);
         }
     }
 }
@@ -63,20 +39,17 @@ pub fn lock_file_exclusive(path: impl AsRef<Path>, mode: LockMode) -> anyhow::Re
         .open(&path)
         .with_context(|| format!("Failed to open lock file: {}", path.display()))?;
 
-    #[cfg(unix)]
-    {
-        let mut op = libc::LOCK_EX;
-        if mode == LockMode::NonBlocking {
-            op |= libc::LOCK_NB;
-        }
-        flock(&file, op).with_context(|| {
-            format!(
-                "Failed to acquire exclusive lock (mode={:?}) on {}",
-                mode,
-                path.display()
-            )
-        })?;
+    match mode {
+        LockMode::Blocking => file.lock(),
+        LockMode::NonBlocking => file.try_lock().map_err(std::io::Error::from),
     }
+    .with_context(|| {
+        format!(
+            "Failed to acquire exclusive lock (mode={:?}) on {}",
+            mode,
+            path.display()
+        )
+    })?;
 
     // Helpful metadata for humans.
     // Failure to write metadata should not prevent locking.

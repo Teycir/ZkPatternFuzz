@@ -189,7 +189,10 @@ fn test_empty_chain_spec() {
     // Should handle empty spec gracefully
     let (mutated, _) = mutator.mutate_inputs(&spec, &prior_inputs, &mut rng);
     // Empty spec may produce empty mutations
-    assert!(mutated.is_empty(), "empty chain should produce no mutated inputs");
+    assert!(
+        mutated.is_empty(),
+        "empty chain should produce no mutated inputs"
+    );
 }
 
 #[test]
@@ -271,7 +274,10 @@ fn test_boundary_injection_with_framework() {
 
         // Note: The mutation type should indicate boundary injection when weights
         // are set to 100% boundary_injection
-        assert!(matches!(mutation_type, MutationType::BoundaryInjection { .. }));
+        assert!(matches!(
+            mutation_type,
+            MutationType::BoundaryInjection { .. }
+        ));
     }
 }
 

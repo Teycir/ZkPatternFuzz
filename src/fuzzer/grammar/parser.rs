@@ -11,10 +11,7 @@ impl GrammarParser {
     pub fn parse_file<P: AsRef<Path>>(path: P) -> anyhow::Result<InputGrammar> {
         let path_ref = path.as_ref();
         let path_str = path_ref.to_str().ok_or_else(|| {
-            anyhow::anyhow!(
-                "Grammar path is not valid UTF-8: {}",
-                path_ref.display()
-            )
+            anyhow::anyhow!("Grammar path is not valid UTF-8: {}", path_ref.display())
         })?;
         InputGrammar::from_yaml(path_str)
     }

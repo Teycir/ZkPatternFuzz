@@ -86,10 +86,7 @@ impl CveDatabase {
                     let key_name = match key {
                         serde_yaml::Value::String(s) if !s.trim().is_empty() => s.clone(),
                         serde_yaml::Value::String(_) => {
-                            errors.push(format!(
-                                "{}:{} has empty input key",
-                                pattern.id, tc.name
-                            ));
+                            errors.push(format!("{}:{} has empty input key", pattern.id, tc.name));
                             "<empty-key>".to_string()
                         }
                         _ => {
@@ -671,7 +668,11 @@ fn is_strict_expected_result(expected: &str) -> bool {
     )
 }
 
-fn validate_strict_fixture_value(value: &serde_yaml::Value, context: &str, errors: &mut Vec<String>) {
+fn validate_strict_fixture_value(
+    value: &serde_yaml::Value,
+    context: &str,
+    errors: &mut Vec<String>,
+) {
     match value {
         serde_yaml::Value::Null => {
             errors.push(format!(
@@ -735,7 +736,10 @@ fn is_decimal_literal(value: &str) -> bool {
 }
 
 fn is_hex_literal(value: &str) -> bool {
-    let Some(hex_part) = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X")) else {
+    let Some(hex_part) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    else {
         return false;
     };
     !hex_part.is_empty() && hex_part.chars().all(|ch| ch.is_ascii_hexdigit())
@@ -1456,7 +1460,10 @@ vulnerabilities:
       references: []
 "#;
         let db: CveDatabase = serde_yaml::from_str(yaml).unwrap();
-        let err = db.validate_regression_fixtures_strict().unwrap_err().to_string();
+        let err = db
+            .validate_regression_fixtures_strict()
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("ambiguous expected_result"));
         assert!(err.contains("ambiguous string input"));
     }

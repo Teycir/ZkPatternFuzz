@@ -66,10 +66,7 @@ impl CompositionTester {
                         i
                     ),
                 };
-                return Err(CompositionError::StepFailed {
-                    step: i,
-                    error,
-                });
+                return Err(CompositionError::StepFailed { step: i, error });
             }
 
             current = result.outputs;
@@ -103,10 +100,7 @@ impl CompositionTester {
                         i
                     ),
                 };
-                return Err(CompositionError::StepFailed {
-                    step: i,
-                    error,
-                });
+                return Err(CompositionError::StepFailed { step: i, error });
             }
 
             outputs.push(result.outputs);

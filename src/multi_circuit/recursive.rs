@@ -71,10 +71,7 @@ impl RecursiveTester {
                         d
                     ),
                 };
-                return RecursionResult::VerificationFailed {
-                    depth: d,
-                    error,
-                };
+                return RecursionResult::VerificationFailed { depth: d, error };
             }
 
             // Generate proof of verification

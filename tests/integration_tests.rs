@@ -467,7 +467,10 @@ async fn test_isolated_executor_timeout_kills_subprocess() {
         Ok(exec) => exec,
         Err(err) => {
             // Skip if executor can't be created (missing backend)
-            eprintln!("Skipping timeout kill test: executor creation failed: {}", err);
+            eprintln!(
+                "Skipping timeout kill test: executor creation failed: {}",
+                err
+            );
             return;
         }
     };

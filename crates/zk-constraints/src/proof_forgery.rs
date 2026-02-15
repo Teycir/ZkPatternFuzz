@@ -105,10 +105,9 @@ impl ProofForgeryDetector {
             .to_string_lossy()
             .to_string();
 
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| anyhow::anyhow!("R1CS file stem is missing or non-UTF8: '{}'", r1cs_path))?;
+        let stem = path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
+            anyhow::anyhow!("R1CS file stem is missing or non-UTF8: '{}'", r1cs_path)
+        })?;
 
         // Look for related artifacts
         let zkey_path = format!("{}/{}.zkey", build_dir, stem);
@@ -233,10 +232,7 @@ impl ProofForgeryDetector {
             None
         };
 
-        let forgery_verified = verification_result
-            .as_ref()
-            .map(|r| r.passed)
-            .map(|v| v);
+        let forgery_verified = verification_result.as_ref().map(|r| r.passed).map(|v| v);
         let forgery_verified = match forgery_verified {
             Some(value) => value,
             None => false,
@@ -307,10 +303,7 @@ impl ProofForgeryDetector {
             None
         };
 
-        let forgery_verified = verification_result
-            .as_ref()
-            .map(|r| r.passed)
-            .map(|v| v);
+        let forgery_verified = verification_result.as_ref().map(|r| r.passed).map(|v| v);
         let forgery_verified = match forgery_verified {
             Some(value) => value,
             None => false,

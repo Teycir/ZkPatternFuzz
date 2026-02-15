@@ -3,12 +3,16 @@ use zk_fuzzer::cve::CveDatabase;
 
 const AUTONOMOUS_CVE_DB: &str = "templates/autonomous_cve_tests.yaml";
 
+fn repo_root() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+}
+
 #[test]
 fn test_autonomous_cve_regression_tests() {
     println!("Loading autonomous CVE database...");
 
-    let db =
-        CveDatabase::load_strict(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
+    let db = CveDatabase::load_strict(AUTONOMOUS_CVE_DB)
+        .expect("Failed to load autonomous CVE database");
 
     let tests = db.generate_regression_tests();
     assert!(!tests.is_empty(), "Should have autonomous CVE tests");
@@ -24,8 +28,7 @@ fn test_autonomous_cve_regression_tests() {
     for test in &tests {
         println!("Testing: {} - {}", test.cve_id, test.cve_name);
 
-        let circuit_full_path =
-            Path::new("/home/teycir/Repos/ZkPatternFuzz").join(&test.circuit_path);
+        let circuit_full_path = repo_root().join(&test.circuit_path);
         println!("  Circuit: {}", circuit_full_path.display());
         println!("  Test cases: {}", test.test_cases.len());
 
@@ -100,8 +103,8 @@ fn test_autonomous_cve_regression_tests() {
 
 #[test]
 fn test_autonomous_cve_database_structure() {
-    let db =
-        CveDatabase::load_strict(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
+    let db = CveDatabase::load_strict(AUTONOMOUS_CVE_DB)
+        .expect("Failed to load autonomous CVE database");
 
     for cve in db.all_patterns() {
         assert!(!cve.id.is_empty(), "CVE ID cannot be empty");
@@ -143,10 +146,10 @@ fn test_autonomous_cve_database_structure() {
 
 #[test]
 fn test_cve_circuits_exist_in_repo() {
-    let db =
-        CveDatabase::load_strict(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
+    let db = CveDatabase::load_strict(AUTONOMOUS_CVE_DB)
+        .expect("Failed to load autonomous CVE database");
 
-    let repo_root = Path::new("/home/teycir/Repos/ZkPatternFuzz");
+    let repo_root = repo_root();
     let mut found = 0;
     let mut missing = 0;
 

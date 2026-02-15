@@ -288,7 +288,12 @@ impl InvariantChecker {
             let exp: u32 = match exp.trim().parse() {
                 Ok(exp) => exp,
                 Err(err) => {
-                    tracing::debug!("Invalid power exponent '{}' in '{}': {}", exp.trim(), s, err);
+                    tracing::debug!(
+                        "Invalid power exponent '{}' in '{}': {}",
+                        exp.trim(),
+                        s,
+                        err
+                    );
                     return None;
                 }
             };

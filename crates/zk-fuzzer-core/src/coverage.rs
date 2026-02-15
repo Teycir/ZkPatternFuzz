@@ -169,10 +169,7 @@ impl CoverageTracker {
         if value_bytes.is_empty() {
             return 0;
         }
-        let first_nonzero = value_bytes
-            .iter()
-            .position(|&b| b != 0)
-            .map(|v| v);
+        let first_nonzero = value_bytes.iter().position(|&b| b != 0).map(|v| v);
         let first_nonzero = match first_nonzero {
             Some(value) => value,
             None => value_bytes.len(),

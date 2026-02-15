@@ -346,10 +346,7 @@ impl DistributedCoordinator {
 
         for attack in &config.attacks {
             // Split attack into multiple work units based on iterations
-            let iterations = attack
-                .config
-                .get("iterations")
-                .and_then(|v| v.as_u64());
+            let iterations = attack.config.get("iterations").and_then(|v| v.as_u64());
             let iterations = match iterations {
                 Some(value) => value as usize,
                 None => {

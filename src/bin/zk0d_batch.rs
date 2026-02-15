@@ -124,10 +124,7 @@ fn main() -> anyhow::Result<()> {
             None => 1800,
         };
 
-        let output_dir = target
-            .output_dir
-            .clone()
-            .map(|value| value);
+        let output_dir = target.output_dir.clone().map(|value| value);
         let output_dir = match output_dir {
             Some(value) => value,
             None => format!("reports/zk0d/{}", target.name),

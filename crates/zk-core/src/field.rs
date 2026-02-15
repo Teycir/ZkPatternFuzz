@@ -39,8 +39,7 @@ impl FieldElement {
     /// Maximum field value (p - 1 for BN254 scalar field)
     pub fn max_value() -> Self {
         // BN254 scalar field: p - 1
-        match Self::from_hex("0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000")
-        {
+        match Self::from_hex("0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000") {
             Ok(value) => value,
             Err(err) => panic!("Invalid hardcoded BN254 max_value constant: {}", err),
         }

@@ -128,7 +128,9 @@ impl Halo2Target {
 
         let build_dir = path
             .parent()
-            .ok_or_else(|| anyhow::anyhow!("Halo2 circuit path has no parent: '{}'", path.display()))?
+            .ok_or_else(|| {
+                anyhow::anyhow!("Halo2 circuit path has no parent: '{}'", path.display())
+            })?
             .join("target")
             .join("halo2_build");
 
@@ -273,9 +275,9 @@ impl Halo2Target {
         let spec: serde_json::Value = serde_json::from_str(&content)?;
 
         let required_u64 = |key: &str| -> Result<u64> {
-            spec.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
-                anyhow::anyhow!("Halo2 JSON spec missing required '{}' field", key)
-            })
+            spec.get(key)
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("Halo2 JSON spec missing required '{}' field", key))
         };
         let required_usize = |key: &str| -> Result<usize> { Ok(required_u64(key)? as usize) };
         let name = spec

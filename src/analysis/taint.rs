@@ -284,10 +284,7 @@ impl TaintAnalyzer {
                 input_signals.dedup();
 
                 for (output_idx, _) in &constraint.c_terms {
-                    let before = self
-                        .signal_taints
-                        .get(output_idx)
-                        .map(|t| t.labels.len());
+                    let before = self.signal_taints.get(output_idx).map(|t| t.labels.len());
                     let before = match before {
                         Some(value) => value,
                         None => {
@@ -298,10 +295,7 @@ impl TaintAnalyzer {
                         }
                     };
                     self.propagate_constraint(constraint.id, &input_signals, *output_idx);
-                    let after = self
-                        .signal_taints
-                        .get(output_idx)
-                        .map(|t| t.labels.len());
+                    let after = self.signal_taints.get(output_idx).map(|t| t.labels.len());
                     let after = match after {
                         Some(value) => value,
                         None => {

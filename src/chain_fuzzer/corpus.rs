@@ -104,7 +104,11 @@ impl ChainCorpusEntry {
                     .filter_map(|hex| match FieldElement::from_hex(hex) {
                         Ok(fe) => Some(fe),
                         Err(err) => {
-                            tracing::warn!("Failed to parse corpus field element '{}': {}", hex, err);
+                            tracing::warn!(
+                                "Failed to parse corpus field element '{}': {}",
+                                hex,
+                                err
+                            );
                             None
                         }
                     })
@@ -228,12 +232,12 @@ impl ChainCorpus {
     /// Get top N entries by priority score
     pub fn top_entries(&self, n: usize) -> Vec<&ChainCorpusEntry> {
         let mut entries: Vec<_> = self.entries.iter().collect();
-        entries.sort_by(|a, b| {
-            match b.priority_score().partial_cmp(&a.priority_score()) {
+        entries.sort_by(
+            |a, b| match b.priority_score().partial_cmp(&a.priority_score()) {
                 Some(ordering) => ordering,
                 None => std::cmp::Ordering::Equal,
-            }
-        });
+            },
+        );
         entries.into_iter().take(n).collect()
     }
 
@@ -367,12 +371,12 @@ impl ChainCorpus {
         }
 
         // Sort by priority and keep top entries
-        self.entries.sort_by(|a, b| {
-            match b.priority_score().partial_cmp(&a.priority_score()) {
+        self.entries.sort_by(
+            |a, b| match b.priority_score().partial_cmp(&a.priority_score()) {
                 Some(ordering) => ordering,
                 None => std::cmp::Ordering::Equal,
-            }
-        });
+            },
+        );
         self.entries.truncate(max_entries);
     }
 
@@ -413,11 +417,7 @@ impl ChainCorpus {
         } else {
             0.0
         };
-        let max_depth = self
-            .entries
-            .iter()
-            .map(|e| e.depth_reached)
-            .max();
+        let max_depth = self.entries.iter().map(|e| e.depth_reached).max();
         let max_depth = match max_depth {
             Some(value) => value,
             None => 0,

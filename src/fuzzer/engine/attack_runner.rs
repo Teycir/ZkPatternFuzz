@@ -1740,10 +1740,7 @@ impl FuzzingEngine {
             .and_then(|v| v.as_u64())
             .or_value(100) as usize;
 
-        let max_depth = config
-            .get("max_depth")
-            .and_then(|v| v.as_u64())
-            .or_value(3) as usize;
+        let max_depth = config.get("max_depth").and_then(|v| v.as_u64()).or_value(3) as usize;
 
         tracing::info!(
             "Running recursive proof fuzzing with {} tests, max depth {}",

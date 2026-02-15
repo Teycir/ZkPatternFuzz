@@ -195,7 +195,11 @@ mod tests {
         };
         let json: serde_json::Value = match serde_json::from_str(&content) {
             Ok(json) => json,
-            Err(err) => panic!("Failed to parse JSON in {}: {}", expected_path.display(), err),
+            Err(err) => panic!(
+                "Failed to parse JSON in {}: {}",
+                expected_path.display(),
+                err
+            ),
         };
 
         let outcome = parse_expected_outcome(&json["expected_outcome"]);
@@ -304,7 +308,11 @@ mod tests {
 
             let json: serde_json::Value = match serde_json::from_str(&content) {
                 Ok(json) => json,
-                Err(err) => panic!("Failed to parse JSON in {}: {}", expected_path.display(), err),
+                Err(err) => panic!(
+                    "Failed to parse JSON in {}: {}",
+                    expected_path.display(),
+                    err
+                ),
             };
 
             // Verify required fields

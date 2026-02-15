@@ -575,9 +575,7 @@ impl ConfigResolver {
             return Err(ConfigV2Error::MaxIncludeDepth);
         }
 
-        let canonical = config_path
-            .canonicalize()
-            .map(|value| value);
+        let canonical = config_path.canonicalize().map(|value| value);
         let canonical = match canonical {
             Ok(value) => value,
             Err(err) => {
