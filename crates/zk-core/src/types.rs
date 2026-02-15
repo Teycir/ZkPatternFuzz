@@ -312,13 +312,16 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     Some(value) => value,
                     None => Vec::new(),
                 };
-                let witness_a: Vec<FieldElement> = witness_a
-                    .iter()
-                    .filter_map(|hex| match FieldElement::from_hex(hex) {
-                        Ok(fe) => Some(fe),
-                        Err(_) => None,
-                    })
-                    .collect();
+                let mut parsed_witness_a: Vec<FieldElement> = Vec::with_capacity(witness_a.len());
+                for hex in &witness_a {
+                    let field = FieldElement::from_hex(hex).map_err(|e| {
+                        de::Error::custom(format!(
+                            "invalid poc.witness_a element '{}': {}",
+                            hex, e
+                        ))
+                    })?;
+                    parsed_witness_a.push(field);
+                }
 
                 Ok(Finding {
                     attack_type: parsed_attack_type,
@@ -330,7 +333,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                         None => None,
                     },
                     poc: ProofOfConcept {
-                        witness_a,
+                        witness_a: parsed_witness_a,
                         witness_b: None,
                         public_inputs: vec![],
                         proof: None,

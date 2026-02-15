@@ -42,7 +42,14 @@ impl SetupPoisoningDetector {
         for (idx, witness) in witnesses.iter().take(self.attempts).enumerate() {
             let proof_a = match executor_a.prove(witness) {
                 Ok(p) => p,
-                Err(_) => continue,
+                Err(err) => {
+                    tracing::debug!(
+                        "Skipping witness {} due to setup-A proof generation error: {}",
+                        idx,
+                        err
+                    );
+                    continue;
+                }
             };
 
             if witness.len() < info.num_public_inputs {

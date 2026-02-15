@@ -215,6 +215,17 @@ fn best_effort_write_json(path: &Path, value: &serde_json::Value) {
     }
 }
 
+fn read_optional_env(name: &str) -> Option<String> {
+    match std::env::var(name) {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(e) => {
+            eprintln!("[zk-fuzzer] ERROR: invalid {} value: {}", name, e);
+            std::process::exit(2);
+        }
+    }
+}
+
 fn run_signal_dir() -> PathBuf {
     // Base folder where "easy to find" run folders are written.
     //
@@ -226,7 +237,7 @@ fn run_signal_dir() -> PathBuf {
     //
     // If writing outside the repo is not allowed in your environment, set it back to:
     //   ZKF_RUN_SIGNAL_DIR=reports/_run_signals
-    let path = if let Ok(v) = std::env::var("ZKF_RUN_SIGNAL_DIR") {
+    let path = if let Some(v) = read_optional_env("ZKF_RUN_SIGNAL_DIR") {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
             PathBuf::from(trimmed)
@@ -234,7 +245,7 @@ fn run_signal_dir() -> PathBuf {
             eprintln!("[zk-fuzzer] ERROR: ZKF_RUN_SIGNAL_DIR is set but empty");
             std::process::exit(2);
         }
-    } else if let Ok(home) = std::env::var("HOME") {
+    } else if let Some(home) = read_optional_env("HOME") {
         let home = home.trim();
         if !home.is_empty() {
             PathBuf::from(home).join("ZkFuzz")
@@ -265,7 +276,7 @@ fn build_cache_dir() -> PathBuf {
     //
     // Override with:
     //   ZKF_BUILD_CACHE_DIR=/some/other/path
-    if let Ok(v) = std::env::var("ZKF_BUILD_CACHE_DIR") {
+    if let Some(v) = read_optional_env("ZKF_BUILD_CACHE_DIR") {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
             let path = PathBuf::from(trimmed);
@@ -396,14 +407,14 @@ fn engagement_dir_name(run_id: &str) -> String {
     //   export ZKF_ENGAGEMENT_EPOCH=176963063
     //   ... run mode1, mode2, mode3 ...
     //   => /home/teycir/ZkFuzzReports/report_176963063/
-    if let Ok(epoch) = std::env::var("ZKF_ENGAGEMENT_EPOCH") {
+    if let Some(epoch) = read_optional_env("ZKF_ENGAGEMENT_EPOCH") {
         let trimmed = epoch.trim();
         if !trimmed.is_empty() {
             return format!("report_{}", trimmed);
         }
     }
 
-    if let Ok(name) = std::env::var("ZKF_ENGAGEMENT_NAME") {
+    if let Some(name) = read_optional_env("ZKF_ENGAGEMENT_NAME") {
         let trimmed = name.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
@@ -418,7 +429,7 @@ fn engagement_dir_name(run_id: &str) -> String {
 
 fn engagement_root_dir(run_id: &str) -> PathBuf {
     // If ZKF_ENGAGEMENT_DIR is set, use it as the full report folder.
-    if let Ok(dir) = std::env::var("ZKF_ENGAGEMENT_DIR") {
+    if let Some(dir) = read_optional_env("ZKF_ENGAGEMENT_DIR") {
         let trimmed = dir.trim();
         if !trimmed.is_empty() {
             return PathBuf::from(trimmed);
@@ -691,7 +702,16 @@ fn mark_stale_previous_run_if_any(output_dir: &Path, current_pid: u32) {
     let path = output_dir.join("run_outcome.json");
     let raw = match std::fs::read_to_string(&path) {
         Ok(s) => s,
-        Err(_) => return,
+        Err(err) => {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(
+                    "Failed to read prior run outcome '{}': {}",
+                    path.display(),
+                    err
+                );
+            }
+            return;
+        }
     };
     let mut doc: serde_json::Value = match serde_json::from_str(&raw) {
         Ok(v) => v,
@@ -854,7 +874,7 @@ fn start_signal_watchers() {
         let mut sigterm =
             match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
                 Ok(s) => Some(s),
-                Err(_) => None,
+                Err(err) => panic!("Failed to install SIGTERM handler: {}", err),
             };
 
         #[cfg(not(unix))]
@@ -1731,11 +1751,27 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
                 let progress_raw = match std::fs::read_to_string(&progress_path) {
                     Ok(s) => s,
-                    Err(_) => continue,
+                    Err(err) => {
+                        if err.kind() != std::io::ErrorKind::NotFound {
+                            tracing::warn!(
+                                "Failed reading progress snapshot '{}': {}",
+                                progress_path.display(),
+                                err
+                            );
+                        }
+                        continue;
+                    }
                 };
                 let progress_json: serde_json::Value = match serde_json::from_str(&progress_raw) {
                     Ok(v) => v,
-                    Err(_) => continue,
+                    Err(err) => {
+                        tracing::warn!(
+                            "Failed parsing progress snapshot '{}': {}",
+                            progress_path.display(),
+                            err
+                        );
+                        continue;
+                    }
                 };
 
                 let mut doc = serde_json::json!({

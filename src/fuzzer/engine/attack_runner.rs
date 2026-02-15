@@ -219,7 +219,14 @@ impl FuzzingEngine {
                     serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
                     serde_yaml::Value::String(s) => match s.parse::<usize>() {
                         Ok(value) => Some(value),
-                        Err(_) => None,
+                        Err(err) => {
+                            tracing::debug!(
+                                "Invalid known_constants entry '{}' in underconstrained config: {}",
+                                s,
+                                err
+                            );
+                            None
+                        }
                     },
                     _ => None,
                 };
@@ -302,7 +309,14 @@ impl FuzzingEngine {
                     serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
                     serde_yaml::Value::String(s) => match s.parse::<usize>() {
                         Ok(value) => Some(value),
-                        Err(_) => None,
+                        Err(err) => {
+                            tracing::debug!(
+                                "Invalid public_input_positions entry '{}': {}",
+                                s,
+                                err
+                            );
+                            None
+                        }
                     },
                     _ => None,
                 };
@@ -956,7 +970,10 @@ impl FuzzingEngine {
                     serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
                     serde_yaml::Value::String(s) => match s.parse::<usize>() {
                         Ok(value) => Some(value),
-                        Err(_) => None,
+                        Err(err) => {
+                            tracing::debug!("Invalid constant index '{}' in config: {}", s, err);
+                            None
+                        }
                     },
                     _ => None,
                 };

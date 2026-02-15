@@ -622,8 +622,10 @@ impl CircuitExecutor for IsolatedExecutor {
 }
 
 fn resolve_worker_exe() -> anyhow::Result<PathBuf> {
-    if let Ok(path) = std::env::var("ZK_FUZZER_EXEC_WORKER") {
-        return Ok(PathBuf::from(path));
+    match std::env::var("ZK_FUZZER_EXEC_WORKER") {
+        Ok(path) => return Ok(PathBuf::from(path)),
+        Err(std::env::VarError::NotPresent) => {}
+        Err(e) => anyhow::bail!("Invalid ZK_FUZZER_EXEC_WORKER value: {}", e),
     }
     Ok(std::env::current_exe()?)
 }
@@ -666,10 +668,10 @@ pub fn run_exec_worker() -> anyhow::Result<()> {
     let response = ExecResponse::from_result(result);
     let response_json = serde_json::to_string(&response)?;
 
-    if let Ok(path) = std::env::var("ZK_FUZZER_EXEC_RESPONSE") {
-        std::fs::write(path, response_json)?;
-    } else {
-        println!("{response_json}");
+    match std::env::var("ZK_FUZZER_EXEC_RESPONSE") {
+        Ok(path) => std::fs::write(path, response_json)?,
+        Err(std::env::VarError::NotPresent) => println!("{response_json}"),
+        Err(e) => anyhow::bail!("Invalid ZK_FUZZER_EXEC_RESPONSE value: {}", e),
     }
 
     Ok(())

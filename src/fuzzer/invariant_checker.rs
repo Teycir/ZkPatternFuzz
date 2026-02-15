@@ -280,11 +280,17 @@ impl InvariantChecker {
         if let Some((base, exp)) = s.split_once('^') {
             let base: u64 = match base.trim().parse() {
                 Ok(base) => base,
-                Err(_) => return None,
+                Err(err) => {
+                    tracing::debug!("Invalid power base '{}' in '{}': {}", base.trim(), s, err);
+                    return None;
+                }
             };
             let exp: u32 = match exp.trim().parse() {
                 Ok(exp) => exp,
-                Err(_) => return None,
+                Err(err) => {
+                    tracing::debug!("Invalid power exponent '{}' in '{}': {}", exp.trim(), s, err);
+                    return None;
+                }
             };
             if base == 2 && exp <= 253 {
                 let mut bytes = [0u8; 32];
@@ -301,7 +307,10 @@ impl InvariantChecker {
         if s.starts_with("0x") || s.starts_with("0X") {
             return match FieldElement::from_hex(s) {
                 Ok(value) => Some(value),
-                Err(_) => None,
+                Err(err) => {
+                    tracing::debug!("Invalid hex field literal '{}': {}", s, err);
+                    None
+                }
             };
         }
 

@@ -550,7 +550,7 @@ where
     // Match step[N] where N is a number (not *)
     let re = match Regex::new(r"step\s*\[\s*(\d+)\s*\]") {
         Ok(re) => re,
-        Err(_) => return None,
+        Err(err) => panic!("Invalid step remap regex pattern: {}", err),
     };
 
     let mut result = String::new();
@@ -562,7 +562,7 @@ where
         let idx_str = caps.get(1)?.as_str();
         let idx: usize = match idx_str.parse() {
             Ok(idx) => idx,
-            Err(_) => return None,
+            Err(err) => panic!("Invalid step index '{}' in relation '{}': {}", idx_str, relation, err),
         };
 
         // Apply the mapper

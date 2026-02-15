@@ -99,7 +99,10 @@ impl ProofMalleabilityScanner {
             // Step 1: Generate a valid proof
             let proof = match executor.prove(witness) {
                 Ok(p) => p,
-                Err(_) => continue,
+                Err(err) => {
+                    tracing::debug!("Skipping witness due to proof generation error: {}", err);
+                    continue;
+                }
             };
 
             // Step 2: Extract public inputs from witness

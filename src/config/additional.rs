@@ -77,7 +77,7 @@ impl AdditionalConfig {
             serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
             serde_yaml::Value::String(s) => match s.parse::<usize>() {
                 Ok(value) => Some(value),
-                Err(_) => None,
+                Err(err) => panic!("Invalid usize value for '{}': '{}': {}", key, s, err),
             },
             _ => None,
         }
@@ -95,7 +95,7 @@ impl AdditionalConfig {
             serde_yaml::Value::Number(n) => n.as_u64(),
             serde_yaml::Value::String(s) => match s.parse::<u64>() {
                 Ok(value) => Some(value),
-                Err(_) => None,
+                Err(err) => panic!("Invalid u64 value for '{}': '{}': {}", key, s, err),
             },
             _ => None,
         }
@@ -106,7 +106,7 @@ impl AdditionalConfig {
             serde_yaml::Value::Number(n) => n.as_f64(),
             serde_yaml::Value::String(s) => match s.parse::<f64>() {
                 Ok(value) => Some(value),
-                Err(_) => None,
+                Err(err) => panic!("Invalid f64 value for '{}': '{}': {}", key, s, err),
             },
             _ => None,
         }

@@ -174,7 +174,7 @@ impl FuzzingEngine {
             .map(|duration| duration.as_secs());
         let now_epoch = match now_epoch {
             Ok(value) => value,
-            Err(_) => 0,
+            Err(err) => panic!("System clock is before UNIX_EPOCH: {}", err),
         };
 
         let overall = if phases_total == 0 {
@@ -292,7 +292,14 @@ impl FuzzingEngine {
         // Try to read the circuit source file
         let source = match std::fs::read_to_string(&self.config.campaign.target.circuit_path) {
             Ok(s) => s,
-            Err(_) => return, // Skip if source not readable
+            Err(err) => {
+                tracing::warn!(
+                    "Skipping source analysis, cannot read '{}': {}",
+                    self.config.campaign.target.circuit_path.display(),
+                    err
+                );
+                return;
+            }
         };
 
         let hints: Vec<String> = match self.config.campaign.target.framework {

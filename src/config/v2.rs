@@ -580,7 +580,14 @@ impl ConfigResolver {
             .map(|value| value);
         let canonical = match canonical {
             Ok(value) => value,
-            Err(_) => config_path.to_path_buf(),
+            Err(err) => {
+                tracing::debug!(
+                    "Using non-canonical config path '{}' due to canonicalize error: {}",
+                    config_path.display(),
+                    err
+                );
+                config_path.to_path_buf()
+            }
         };
 
         // Check for circular includes
@@ -908,10 +915,12 @@ fn expand_env_string(input: &str) -> String {
             } else {
                 name.as_str()
             };
-            if let Ok(val) = std::env::var(var_name) {
-                out.push_str(&val);
-            } else {
-                out.push_str(&format!("${{{}}}", name));
+            match std::env::var(var_name) {
+                Ok(val) => out.push_str(&val),
+                Err(std::env::VarError::NotPresent) => {
+                    out.push_str(&format!("${{{}}}", name));
+                }
+                Err(e) => panic!("Invalid environment variable {}: {}", var_name, e),
             }
             continue;
         }
@@ -929,11 +938,13 @@ fn expand_env_string(input: &str) -> String {
             out.push('$');
             continue;
         }
-        if let Ok(val) = std::env::var(&name) {
-            out.push_str(&val);
-        } else {
-            out.push('$');
-            out.push_str(&name);
+        match std::env::var(&name) {
+            Ok(val) => out.push_str(&val),
+            Err(std::env::VarError::NotPresent) => {
+                out.push('$');
+                out.push_str(&name);
+            }
+            Err(e) => panic!("Invalid environment variable {}: {}", name, e),
         }
     }
 

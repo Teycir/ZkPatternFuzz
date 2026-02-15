@@ -1416,7 +1416,10 @@ fn parse_r1cs_lc(value: &serde_json::Value) -> LinearCombination {
     for (key, val) in obj {
         let idx: usize = match key.parse() {
             Ok(parsed) => parsed,
-            Err(_) => panic!("Invalid R1CS wire index key '{}': expected unsigned integer", key),
+            Err(err) => panic!(
+                "Invalid R1CS wire index key '{}': expected unsigned integer: {}",
+                key, err
+            ),
         };
         let coeff = match val {
             serde_json::Value::String(s) => decimal_str_to_field_element(s),
@@ -1511,7 +1514,7 @@ fn parse_wire_index(s: &str) -> usize {
     let digits: String = s.chars().filter(|c| c.is_ascii_digit()).collect();
     match digits.parse() {
         Ok(index) => index,
-        Err(_) => panic!("Invalid wire reference '{}': no parseable index", s),
+        Err(err) => panic!("Invalid wire reference '{}': no parseable index: {}", s, err),
     }
 }
 
@@ -1614,7 +1617,7 @@ fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {
                         .and_then(|v| v.as_str())
                         .and_then(|s| match s.parse() {
                             Ok(v) => Some(v),
-                            Err(_) => None,
+                            Err(_err) => None,
                         })
                 })
                 .or_else(|| lookup.get("id").and_then(|v| v.as_u64()))
@@ -1692,7 +1695,7 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                             .get("columns")
                             .and_then(|v| match v.parse::<usize>() {
                                 Ok(parsed) => Some(parsed),
-                                Err(_) => None,
+                                Err(_err) => None,
                             })
                         else {
                             continue;
@@ -1717,7 +1720,7 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
             "lookup" => {
                 let Some(table_id) = kv.get("table").and_then(|v| match v.parse::<usize>() {
                     Ok(parsed) => Some(parsed),
-                    Err(_) => None,
+                    Err(_err) => None,
                 }) else {
                     continue;
                 };
@@ -1729,7 +1732,7 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                 for raw in inputs_raw.split(',') {
                     match raw.parse::<usize>() {
                         Ok(parsed) => inputs.push(WireRef::new(parsed)),
-                        Err(_) => {
+                        Err(_err) => {
                             invalid = true;
                             break;
                         }
@@ -1764,15 +1767,15 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                 if let (Some(a), Some(b), Some(c)) = (
                     kv.get("a").and_then(|v| match v.parse::<usize>() {
                         Ok(parsed) => Some(parsed),
-                        Err(_) => None,
+                        Err(_err) => None,
                     }),
                     kv.get("b").and_then(|v| match v.parse::<usize>() {
                         Ok(parsed) => Some(parsed),
-                        Err(_) => None,
+                        Err(_err) => None,
                     }),
                     kv.get("c").and_then(|v| match v.parse::<usize>() {
                         Ok(parsed) => Some(parsed),
-                        Err(_) => None,
+                        Err(_err) => None,
                     }),
                 ) {
                     let Some(q_l) = kv.get("ql").and_then(|v| parse_field_element_str(v)) else {
@@ -1871,7 +1874,7 @@ fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet>
     let bytecode = value.get("bytecode")?.as_str()?;
     let raw = match base64::engine::general_purpose::STANDARD.decode(bytecode) {
         Ok(raw) => raw,
-        Err(_) => return None,
+        Err(_err) => return None,
     };
     let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
         let mut decoder = GzDecoder::new(raw.as_slice());
@@ -1889,7 +1892,7 @@ fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet>
     if let Ok(program) = bincode::deserialize::<acir::circuit::Program>(&bytes) {
         let json = match serde_json::to_value(program) {
             Ok(json) => json,
-            Err(_) => return None,
+            Err(_err) => return None,
         };
         return Some(parse_acir_json(&json));
     }
@@ -1897,7 +1900,7 @@ fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet>
     if let Ok(circuit) = bincode::deserialize::<acir::circuit::Circuit>(&bytes) {
         let json = match serde_json::to_value(circuit) {
             Ok(json) => json,
-            Err(_) => return None,
+            Err(_err) => return None,
         };
         return Some(parse_acir_json(&json));
     }
@@ -2634,12 +2637,12 @@ fn parse_air_expression_text(input: &str) -> Option<AirExpression> {
         let mut parts = inner.split(',');
         let index = parts.next().and_then(|s| match s.trim().parse::<usize>() {
             Ok(parsed) => Some(parsed),
-            Err(_) => None,
+            Err(_err) => None,
         })?;
         let offset = match parts.next() {
             Some(raw) => match raw.trim().parse::<i32>() {
                 Ok(parsed) => parsed,
-                Err(_) => return None,
+                Err(_err) => return None,
             },
             None => 0,
         };
@@ -2686,7 +2689,7 @@ fn parse_field_element_str(input: &str) -> Option<FieldElement> {
     let mut fe = if value_str.starts_with("0x") || value_str.starts_with("0X") {
         match FieldElement::from_hex(value_str) {
             Ok(fe) => fe,
-            Err(_) => return None,
+            Err(_err) => return None,
         }
     } else {
         let value = BigUint::parse_bytes(value_str.as_bytes(), 10)?;

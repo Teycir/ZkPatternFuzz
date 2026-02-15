@@ -281,7 +281,10 @@ impl FuzzingEngine {
                 let idx = input_map.get(&Self::normalize_input_name(&input_name).to_lowercase())?;
                 let bit_position = match bit.parse::<usize>() {
                     Ok(bit_position) => bit_position,
-                    Err(_) => return None,
+                    Err(err) => {
+                        tracing::debug!("Invalid bit_flip position '{}': {}", bit, err);
+                        return None;
+                    }
                 };
                 Some(Transform::BitFlipInput {
                     index: *idx,
@@ -383,7 +386,10 @@ impl FuzzingEngine {
                 let index = trimmed[start + 1..trimmed.len() - 1].trim();
                 let parsed = match index.parse::<usize>() {
                     Ok(value) => Some(value),
-                    Err(_) => None,
+                    Err(err) => {
+                        tracing::debug!("Invalid transform target index '{}': {}", index, err);
+                        None
+                    }
                 };
                 return (base.to_string(), parsed);
             }
@@ -405,7 +411,10 @@ impl FuzzingEngine {
         if lower.starts_with("0x") {
             return match FieldElement::from_hex(trimmed) {
                 Ok(value) => Some(value),
-                Err(_) => None,
+                Err(err) => {
+                    tracing::debug!("Invalid hex metamorphic field literal '{}': {}", trimmed, err);
+                    None
+                }
             };
         }
 
@@ -430,7 +439,10 @@ impl FuzzingEngine {
 
         match trimmed.parse::<u64>() {
             Ok(value) => Some(FieldElement::from_u64(value)),
-            Err(_) => None,
+            Err(err) => {
+                tracing::debug!("Invalid decimal metamorphic field literal '{}': {}", trimmed, err);
+                None
+            }
         }
     }
 }

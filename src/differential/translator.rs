@@ -261,7 +261,10 @@ fn parse_num_from_name(name: &str) -> Option<usize> {
     let digits: String = digits_rev.chars().rev().collect();
     match digits.parse() {
         Ok(value) => Some(value),
-        Err(_) => None,
+        Err(err) => panic!(
+            "Failed to parse numeric suffix '{}' from '{}': {}",
+            digits, name, err
+        ),
     }
 }
 

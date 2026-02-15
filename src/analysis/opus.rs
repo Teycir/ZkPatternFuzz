@@ -516,7 +516,10 @@ impl OpusAnalyzer {
             let len_str = name[bracket + 1..].trim_end_matches(']');
             let len: usize = match len_str.parse() {
                 Ok(len) => len,
-                Err(_) => return None,
+                Err(err) => {
+                    tracing::debug!("Skipping non-literal input length '{}': {}", len_str, err);
+                    return None;
+                }
             };
             (base_name.to_string(), Some(len))
         } else {
@@ -1091,7 +1094,8 @@ fn rewrite_zk0d_path(path: &Path) -> String {
     let path_str = path.to_string_lossy();
     let env_root = match std::env::var("ZK0D_BASE") {
         Ok(v) => Some(v),
-        Err(_) => None,
+        Err(std::env::VarError::NotPresent) => None,
+        Err(e) => panic!("Invalid ZK0D_BASE value: {}", e),
     };
     let root = match env_root.as_deref() {
         Some(v) => v,

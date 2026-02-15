@@ -1048,8 +1048,11 @@ impl BatchVerificationAttack {
                     });
                     public_inputs.push(PublicInputs::new(inputs.clone()));
                 }
-                Err(_) => {
-                    // If proving fails, return None to fall back to execution-based
+                Err(err) => {
+                    tracing::debug!(
+                        "Proof generation unavailable for batch verification input: {}",
+                        err
+                    );
                     return None;
                 }
             }
@@ -1069,8 +1072,8 @@ impl BatchVerificationAttack {
         // Perform batch verification
         match verifier.verify_batch(&proofs, &public_inputs, method) {
             Ok(result) => Some((result.batch_passed, Some(result.individual_results))),
-            Err(_) => {
-                // If batch verification fails, return None to fall back
+            Err(err) => {
+                tracing::debug!("Batch verifier failed, using execution fallback: {}", err);
                 None
             }
         }

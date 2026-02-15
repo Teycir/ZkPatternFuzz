@@ -1111,7 +1111,7 @@ fn finding_to_result(
 
     // Add location if available
     if let Some(ref loc) = finding.location {
-        locations.push(parse_location(loc, circuit_path));
+        locations.push(parse_location(loc));
     } else if let Some(path) = circuit_path {
         // Default to circuit file
         locations.push(SarifLocation {
@@ -1171,7 +1171,7 @@ fn finding_to_result(
 }
 
 /// Parse location string to SARIF location
-fn parse_location(loc: &str, default_path: Option<&str>) -> SarifLocation {
+fn parse_location(loc: &str) -> SarifLocation {
     // Try to parse "file:line" or "file:line:column" format
     let parts: Vec<&str> = loc.split(':').collect();
 
@@ -1181,7 +1181,7 @@ fn parse_location(loc: &str, default_path: Option<&str>) -> SarifLocation {
             parts[0],
             match parts[1].parse::<usize>() {
                 Ok(line) => Some(line),
-                Err(_) => None,
+                Err(err) => panic!("Invalid SARIF location line '{}': {}", loc, err),
             },
             None,
         ),
@@ -1189,22 +1189,16 @@ fn parse_location(loc: &str, default_path: Option<&str>) -> SarifLocation {
             parts[0],
             match parts[1].parse::<usize>() {
                 Ok(line) => Some(line),
-                Err(_) => None,
+                Err(err) => panic!("Invalid SARIF location line '{}': {}", loc, err),
             },
             match parts[2].parse::<usize>() {
                 Ok(column) => Some(column),
-                Err(_) => None,
+                Err(err) => panic!("Invalid SARIF location column '{}': {}", loc, err),
             },
         ),
     };
 
-    let uri = if file.contains('/') || file.contains('\\') || file.contains('.') {
-        file.to_string()
-    } else if let Some(path) = default_path {
-        path.to_string()
-    } else {
-        file.to_string()
-    };
+    let uri = file.to_string();
 
     SarifLocation {
         physical_location: Some(SarifPhysicalLocation {
@@ -1472,7 +1466,7 @@ mod tests {
 
     #[test]
     fn test_parse_location() {
-        let loc = parse_location("test.circom:42:10", None);
+        let loc = parse_location("test.circom:42:10");
         let phys = loc.physical_location.unwrap();
         assert_eq!(
             phys.artifact_location.unwrap().uri,

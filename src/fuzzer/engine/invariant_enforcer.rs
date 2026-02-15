@@ -566,7 +566,10 @@ impl FuzzingEngine {
         if trimmed.starts_with("0x") {
             return match u64::from_str_radix(trimmed.trim_start_matches("0x"), 16) {
                 Ok(value) => Some(value),
-                Err(_) => None,
+                Err(err) => {
+                    tracing::debug!("Invalid hex literal '{}': {}", trimmed, err);
+                    None
+                }
             };
         }
         if let Some(expr) = trimmed.strip_prefix("2^") {
@@ -590,7 +593,10 @@ impl FuzzingEngine {
         }
         match trimmed.parse::<u64>() {
             Ok(value) => Some(value),
-            Err(_) => None,
+            Err(err) => {
+                tracing::debug!("Invalid decimal literal '{}': {}", trimmed, err);
+                None
+            }
         }
     }
 }

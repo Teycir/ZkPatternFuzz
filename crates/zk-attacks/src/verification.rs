@@ -136,8 +136,8 @@ impl VerificationFuzzer {
                 Ok(false) => {
                     // Expected behavior - mutated proof rejected
                 }
-                Err(_) => {
-                    // Verifier error - might be interesting for robustness
+                Err(err) => {
+                    tracing::debug!("Verifier returned error on mutated proof: {}", err);
                 }
             }
         }

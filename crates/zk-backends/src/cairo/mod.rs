@@ -386,8 +386,11 @@ impl CairoTarget {
             let num_hints = program
                 .get("hints")
                 .and_then(|v| v.as_object())
-                .map(|h| h.len())
-                .map_or(0usize, |v| v);
+                .map(|h| h.len());
+            let num_hints = match num_hints {
+                Some(count) => count,
+                None => 0usize,
+            };
 
             self.metadata = Some(CairoMetadata {
                 name: self.name.clone(),
@@ -982,7 +985,10 @@ pub mod analysis {
                 Some(name) => name.trim(),
                 None => continue,
             };
-            let typ = iter.next().map_or("", |t| t.trim());
+            let typ = match iter.next() {
+                Some(t) => t.trim(),
+                None => "",
+            };
             if !name.is_empty() {
                 args.push((name.to_string(), typ.to_string()));
             }

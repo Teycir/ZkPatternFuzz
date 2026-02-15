@@ -27,17 +27,13 @@ fn circom_external_command_timeout() -> std::time::Duration {
     match std::env::var("ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS") {
         Ok(raw) => match raw.trim().parse::<u64>() {
             Ok(secs) => std::time::Duration::from_secs(secs.max(1)),
-            Err(err) => {
-                tracing::warn!(
-                    "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS='{}': {}; using default {}s",
-                    raw,
-                    err,
-                    DEFAULT_SECS
-                );
-                std::time::Duration::from_secs(DEFAULT_SECS)
-            }
+            Err(err) => panic!(
+                "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS='{}': {}",
+                raw, err
+            ),
         },
-        Err(_) => std::time::Duration::from_secs(DEFAULT_SECS),
+        Err(std::env::VarError::NotPresent) => std::time::Duration::from_secs(DEFAULT_SECS),
+        Err(e) => panic!("Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS value: {}", e),
     }
 }
 
@@ -286,7 +282,10 @@ fn split_array_index(name: &str) -> Option<(&str, usize)> {
     }
     let idx = match idx_str.parse::<usize>() {
         Ok(idx) => idx,
-        Err(_) => return None,
+        Err(err) => {
+            tracing::debug!("Invalid array index '{}': {}", idx_str, err);
+            return None;
+        }
     };
     Some((&name[..open], idx))
 }
@@ -1787,7 +1786,10 @@ fn resolve_circom_prime(prime: &str) -> Option<[u8; 32]> {
 fn hex_to_modulus(hex_str: &str) -> Option<[u8; 32]> {
     let decoded = match hex::decode(hex_str) {
         Ok(decoded) => decoded,
-        Err(_) => return None,
+        Err(err) => {
+            tracing::debug!("Failed to decode hex modulus '{}': {}", hex_str, err);
+            return None;
+        }
     };
     if decoded.len() > 32 {
         return None;

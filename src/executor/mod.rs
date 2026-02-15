@@ -733,14 +733,18 @@ impl CircomExecutor {
     fn default_include_paths() -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        if let Ok(raw) = std::env::var("CIRCOM_INCLUDE_PATHS") {
-            let separator = if cfg!(windows) { ';' } else { ':' };
-            for entry in raw.split(separator) {
-                let entry = entry.trim();
-                if !entry.is_empty() {
-                    paths.push(PathBuf::from(entry));
+        match std::env::var("CIRCOM_INCLUDE_PATHS") {
+            Ok(raw) => {
+                let separator = if cfg!(windows) { ';' } else { ':' };
+                for entry in raw.split(separator) {
+                    let entry = entry.trim();
+                    if !entry.is_empty() {
+                        paths.push(PathBuf::from(entry));
+                    }
                 }
             }
+            Err(std::env::VarError::NotPresent) => {}
+            Err(e) => panic!("Invalid CIRCOM_INCLUDE_PATHS value: {}", e),
         }
 
         for candidate in ["third_party", "third_party/node_modules", "node_modules"] {

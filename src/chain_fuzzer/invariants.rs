@@ -190,7 +190,7 @@ impl CrossStepInvariantChecker {
             r"unique\s*\(\s*step\s*\[\s*\*\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*\)",
         ) {
             Ok(re) => re,
-            Err(_) => return None,
+            Err(err) => panic!("Invalid uniqueness regex pattern: {}", err),
         };
         let caps = re.captures(relation)?;
 
@@ -201,7 +201,7 @@ impl CrossStepInvariantChecker {
         };
         let field_index = match caps.get(2)?.as_str().parse() {
             Ok(field_index) => field_index,
-            Err(_) => return None,
+            Err(err) => panic!("Invalid uniqueness field index in '{}': {}", relation, err),
         };
 
         Some(AssertionType::Uniqueness {
@@ -216,7 +216,7 @@ impl CrossStepInvariantChecker {
             r"step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*==\s*step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]",
         ) {
             Ok(re) => re,
-            Err(_) => return None,
+            Err(err) => panic!("Invalid equality regex pattern: {}", err),
         };
         let caps = re.captures(relation)?;
 
@@ -239,7 +239,7 @@ impl CrossStepInvariantChecker {
             r"step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]\s*!=\s*step\s*\[\s*(\d+|\*)\s*\]\s*\.\s*(out|in)\s*\[\s*(\d+)\s*\]",
         ) {
             Ok(re) => re,
-            Err(_) => return None,
+            Err(err) => panic!("Invalid inequality regex pattern: {}", err),
         };
         let caps = re.captures(relation)?;
 
@@ -260,12 +260,12 @@ impl CrossStepInvariantChecker {
         // Match: step[N].success == true
         let re = match Regex::new(r"step\s*\[\s*(\d+)\s*\]\s*\.\s*success\s*==\s*true") {
             Ok(re) => re,
-            Err(_) => return None,
+            Err(err) => panic!("Invalid step-success regex pattern: {}", err),
         };
         let caps = re.captures(relation)?;
         let step_index = match caps.get(1)?.as_str().parse() {
             Ok(step_index) => step_index,
-            Err(_) => return None,
+            Err(err) => panic!("Invalid step index in '{}': {}", relation, err),
         };
         Some(AssertionType::StepSuccess { step_index })
     }
@@ -276,7 +276,7 @@ impl CrossStepInvariantChecker {
         } else {
             match s.parse() {
                 Ok(step) => Some(StepRef::Specific(step)),
-                Err(_) => None,
+                Err(err) => panic!("Invalid step reference '{}': {}", s, err),
             }
         }
     }
@@ -284,7 +284,7 @@ impl CrossStepInvariantChecker {
     fn parse_field_ref(field_type: &str, index: &str) -> Option<FieldRef> {
         let idx = match index.parse() {
             Ok(idx) => idx,
-            Err(_) => return None,
+            Err(err) => panic!("Invalid field index '{}': {}", index, err),
         };
         match field_type {
             "out" => Some(FieldRef::Output(idx)),

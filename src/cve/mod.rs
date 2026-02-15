@@ -801,7 +801,15 @@ fn parse_circom_input(line: &str) -> Option<InputSpec> {
                 let len_str = &name[bracket + 1..];
                 let len = match len_str.trim_end_matches(']').parse::<usize>() {
                     Ok(len) => Some(len),
-                    Err(_) => None,
+                    Err(err) => {
+                        tracing::debug!(
+                            "Non-literal Circom array length '{}' in line '{}': {}",
+                            len_str,
+                            line,
+                            err
+                        );
+                        None
+                    }
                 };
                 (base_name.to_string(), len)
             } else {
@@ -938,7 +946,10 @@ fn parse_indexed_name(name: &str) -> Option<(String, usize)> {
             let base = name[..start].to_string();
             let idx = match name[start + 1..end].parse::<usize>() {
                 Ok(idx) => idx,
-                Err(_) => return None,
+                Err(err) => {
+                    tracing::debug!("Invalid bracket index in '{}': {}", name, err);
+                    return None;
+                }
             };
             return Some((base, idx));
         }
@@ -947,7 +958,10 @@ fn parse_indexed_name(name: &str) -> Option<(String, usize)> {
         let (base, idx_str) = name.split_at(dot);
         let idx = match idx_str.trim_start_matches('.').parse::<usize>() {
             Ok(idx) => idx,
-            Err(_) => return None,
+            Err(err) => {
+                tracing::debug!("Invalid dotted index in '{}': {}", name, err);
+                return None;
+            }
         };
         return Some((base.to_string(), idx));
     }

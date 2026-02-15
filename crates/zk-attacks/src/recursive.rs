@@ -583,7 +583,7 @@ impl RecursiveAttack {
             is_base_case: true,
             vk_hash: match forged_commitment.try_into() {
                 Ok(hash) => hash,
-                Err(_) => panic!("Forged commitment length is not 32 bytes"),
+                Err(err) => panic!("Forged commitment length is not 32 bytes: {:?}", err),
             },
         };
 

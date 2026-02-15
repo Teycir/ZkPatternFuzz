@@ -98,7 +98,8 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let env_root = match std::env::var("ZK0D_BASE") {
         Ok(v) => Some(v),
-        Err(_) => None,
+        Err(std::env::VarError::NotPresent) => None,
+        Err(e) => anyhow::bail!("Invalid ZK0D_BASE value: {}", e),
     };
     let root_value = args
         .root
@@ -464,7 +465,8 @@ fn root_placeholder(root: &Path, override_placeholder: Option<&str>) -> Option<S
     let root_str = root.to_string_lossy();
     let env_root = match std::env::var("ZK0D_BASE") {
         Ok(v) => Some(v),
-        Err(_) => None,
+        Err(std::env::VarError::NotPresent) => None,
+        Err(e) => panic!("Invalid ZK0D_BASE value: {}", e),
     };
     if root_str == DEFAULT_ZK0D_BASE || env_root.as_deref() == Some(root_str.as_ref()) {
         Some("${ZK0D_BASE}".to_string())

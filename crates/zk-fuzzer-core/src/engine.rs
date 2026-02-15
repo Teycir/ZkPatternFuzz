@@ -85,18 +85,9 @@ impl FuzzingEngineCore {
     }
 
     pub fn stats(&self) -> FuzzingStats {
-        if let Ok(stats) = self.stats.read() {
-            stats.clone()
-        } else {
-            FuzzingStats {
-                executions: self.execution_count.load(Ordering::Relaxed),
-                crashes: self.findings.read().unwrap().len() as u64,
-                coverage_percentage: self.coverage.coverage_percentage(),
-                unique_crashes: self.findings.read().unwrap().len() as u64,
-                corpus_size: self.corpus.len(),
-                new_coverage_count: self.coverage.new_coverage_count(),
-                ..Default::default()
-            }
+        match self.stats.read() {
+            Ok(stats) => stats.clone(),
+            Err(err) => panic!("stats lock poisoned: {}", err),
         }
     }
 
@@ -104,7 +95,7 @@ impl FuzzingEngineCore {
         let avg_time = self.avg_exec_time.read();
         let avg_time = match avg_time {
             Ok(value) => *value,
-            Err(_) => Duration::from_micros(100),
+            Err(err) => panic!("avg_exec_time lock poisoned: {}", err),
         };
         let total_edges = self.coverage.unique_constraints_hit() as u64;
         self.power_scheduler.update_globals(avg_time, total_edges);

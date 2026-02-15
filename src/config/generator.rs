@@ -718,7 +718,15 @@ fn parse_circom_input(line: &str) -> Option<Input> {
                 let len_str = &name[bracket + 1..];
                 let len: usize = match len_str.trim_end_matches(']').parse() {
                     Ok(len) => len,
-                    Err(_) => return None,
+                    Err(err) => {
+                        tracing::debug!(
+                            "Skipping non-literal Circom input length '{}' in '{}': {}",
+                            len_str,
+                            line,
+                            err
+                        );
+                        return None;
+                    }
                 };
                 (base_name.to_string(), Some(len))
             } else {

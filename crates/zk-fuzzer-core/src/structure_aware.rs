@@ -183,7 +183,10 @@ impl StructureAwareMutator {
                 let len_str = &line[start + 1..end];
                 return match len_str.parse() {
                     Ok(len) => Some(len),
-                    Err(_) => None,
+                    Err(err) => {
+                        tracing::debug!("Invalid Circom array length '{}': {}", len_str, err);
+                        None
+                    }
                 };
             }
         }
@@ -205,7 +208,10 @@ impl StructureAwareMutator {
                 let len_str = &line[start + 2..start + end];
                 return match len_str.parse() {
                     Ok(len) => Some(len),
-                    Err(_) => None,
+                    Err(err) => {
+                        tracing::debug!("Invalid Noir array length '{}': {}", len_str, err);
+                        None
+                    }
                 };
             }
         }
@@ -423,7 +429,7 @@ impl StructureAwareMutator {
         let bytes = &fe.0[24..32];
         let bytes: [u8; 8] = match bytes.try_into() {
             Ok(value) => value,
-            Err(_) => panic!("FieldElement tail slice is not 8 bytes"),
+            Err(err) => panic!("FieldElement tail slice is not 8 bytes: {:?}", err),
         };
         u64::from_be_bytes(bytes)
     }
