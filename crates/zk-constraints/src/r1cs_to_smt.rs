@@ -30,7 +30,10 @@ impl<'ctx> R1CSToSMT<'ctx> {
             r1cs.field_size.to_str_radix(10)
         };
 
-        let modulus = Int::from_str(ctx, &modulus_str).unwrap_or_else(|| Int::from_i64(ctx, 0));
+        let modulus = match Int::from_str(ctx, &modulus_str) {
+            Some(value) => value,
+            None => panic!("Failed to parse field modulus into Z3 Int: {}", modulus_str),
+        };
 
         let wire_vars: Vec<_> = (0..r1cs.num_wires)
             .map(|i| {
@@ -51,7 +54,11 @@ impl<'ctx> R1CSToSMT<'ctx> {
 
     /// Convert a BigUint to Z3 Int.
     fn bigint_to_int(&self, n: &BigUint) -> Int<'ctx> {
-        Int::from_str(self.ctx, &n.to_str_radix(10)).unwrap_or_else(|| Int::from_i64(self.ctx, 0))
+        let decimal = n.to_str_radix(10);
+        match Int::from_str(self.ctx, &decimal) {
+            Some(value) => value,
+            None => panic!("Failed to parse BigUint into Z3 Int: {}", decimal),
+        }
     }
 
     /// Compute sparse dot product: Σ (coeff_i * wire_i)
@@ -257,7 +264,10 @@ mod tests {
     fn eval_lc(terms: &[(usize, BigUint)], wires: &[BigUint], modulus: &BigUint) -> BigUint {
         let mut acc = BigUint::from(0u32);
         for (idx, coeff) in terms {
-            let value = wires.get(*idx).cloned().unwrap_or_default();
+            let value = match wires.get(*idx).cloned() {
+                Some(v) => v,
+                None => panic!("Wire index {} out of bounds in linear combination", idx),
+            };
             let term = (coeff * value) % modulus;
             acc = (acc + term) % modulus;
         }

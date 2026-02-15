@@ -456,10 +456,13 @@ impl TriagePipeline {
         // Sort by confidence score descending
         let mut indices: Vec<usize> = (0..self.findings.len()).collect();
         indices.sort_by(|&a, &b| {
-            self.findings[b]
+            match self.findings[b]
                 .confidence_score
                 .partial_cmp(&self.findings[a].confidence_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            {
+                Some(ordering) => ordering,
+                None => std::cmp::Ordering::Equal,
+            }
         });
 
         // Assign ranks

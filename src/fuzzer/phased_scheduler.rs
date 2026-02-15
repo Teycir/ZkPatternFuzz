@@ -104,7 +104,10 @@ impl PhaseCallback for LoggingPhaseCallback {
             if result.early_terminated {
                 format!(
                     " [early: {}]",
-                    result.termination_reason.as_deref().unwrap_or("unknown")
+                    match result.termination_reason.as_deref() {
+                        Some(reason) => reason,
+                        None => "unknown",
+                    }
                 )
             } else {
                 String::new()
@@ -293,9 +296,18 @@ impl PhasedScheduler {
 
         // Apply mutation weights
         if !phase.mutation_weights.is_empty() {
+            let mutation_weights = match serde_yaml::to_value(&phase.mutation_weights) {
+                Ok(value) => value,
+                Err(err) => {
+                    panic!(
+                        "Failed to serialize phase mutation weights for '{}': {}",
+                        phase.phase, err
+                    )
+                }
+            };
             config.campaign.parameters.additional.insert(
                 "mutation_weights".to_string(),
-                serde_yaml::to_value(&phase.mutation_weights).unwrap_or_default(),
+                mutation_weights,
             );
         }
 

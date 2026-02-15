@@ -67,18 +67,18 @@ impl DependencyGraph {
 
     /// Get all inputs that influence a given constraint
     pub fn inputs_for_constraint(&self, constraint_id: ConstraintId) -> HashSet<InputId> {
-        self.constraint_depends
-            .get(&constraint_id)
-            .cloned()
-            .map_or(HashSet::new(), |v| v)
+        match self.constraint_depends.get(&constraint_id) {
+            Some(inputs) => inputs.clone(),
+            None => HashSet::new(),
+        }
     }
 
     /// Get all constraints influenced by a given input
     pub fn constraints_for_input(&self, input_id: InputId) -> HashSet<ConstraintId> {
-        self.input_influences
-            .get(&input_id)
-            .cloned()
-            .map_or(HashSet::new(), |v| v)
+        match self.input_influences.get(&input_id) {
+            Some(constraints) => constraints.clone(),
+            None => HashSet::new(),
+        }
     }
 
     /// Add an edge from input to constraint
@@ -229,13 +229,19 @@ impl DependencyGraph {
                 let in_degree = self
                     .constraint_depends
                     .get(&c)
-                    .map(|s| s.len())
-                    .map_or(0, |v| v);
+                    .map(|s| s.len());
                 let out_degree = self
                     .constraint_graph
                     .get(&c)
-                    .map(|s| s.len())
-                    .map_or(0, |v| v);
+                    .map(|s| s.len());
+                let in_degree = match in_degree {
+                    Some(v) => v,
+                    None => 0,
+                };
+                let out_degree = match out_degree {
+                    Some(v) => v,
+                    None => 0,
+                };
                 (c, in_degree + out_degree)
             })
             .collect();

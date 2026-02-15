@@ -24,8 +24,11 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<
                     s.read_to_end(&mut buf)?;
                     Ok(buf)
                 })
-                .transpose()?
-                .unwrap_or_default();
+                .transpose()?;
+            let stdout = match stdout {
+                Some(bytes) => bytes,
+                None => Vec::new(),
+            };
             let stderr = child
                 .stderr
                 .take()
@@ -34,8 +37,11 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<
                     s.read_to_end(&mut buf)?;
                     Ok(buf)
                 })
-                .transpose()?
-                .unwrap_or_default();
+                .transpose()?;
+            let stderr = match stderr {
+                Some(bytes) => bytes,
+                None => Vec::new(),
+            };
             Ok(Output {
                 status,
                 stdout,

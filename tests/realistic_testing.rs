@@ -115,18 +115,26 @@ async fn test_parallel_performance() {
         .attacks
         .iter()
         .map(|a| {
-            a.config
-                .get("witness_pairs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0)
-                + a.config
-                    .get("forge_attempts")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0)
-                + a.config
-                    .get("samples")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0)
+            let witness_pairs = match a.config.get("witness_pairs") {
+                Some(value) => value
+                    .as_u64()
+                    .expect("attack config 'witness_pairs' must be a u64"),
+                None => 0,
+            };
+            let forge_attempts = match a.config.get("forge_attempts") {
+                Some(value) => value
+                    .as_u64()
+                    .expect("attack config 'forge_attempts' must be a u64"),
+                None => 0,
+            };
+            let samples = match a.config.get("samples") {
+                Some(value) => value
+                    .as_u64()
+                    .expect("attack config 'samples' must be a u64"),
+                None => 0,
+            };
+
+            witness_pairs + forge_attempts + samples
         })
         .sum();
 

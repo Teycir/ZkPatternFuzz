@@ -636,8 +636,11 @@ impl CrossStepInvariantChecker {
             };
             let dup_val_hex = duplicate_value
                 .as_ref()
-                .map(|v| v.to_hex())
-                .map_or(String::new(), |v| v);
+                .map(|v| v.to_hex());
+            let dup_val_hex = match dup_val_hex {
+                Some(value) => value,
+                None => "<duplicate-value-unavailable>".to_string(),
+            };
             Some(
                 CrossStepViolation::new(
                     &assertion.original.name,

@@ -89,12 +89,18 @@ impl DepthMetrics {
 
     /// Get the maximum L_min across all findings
     pub fn max_depth(&self) -> usize {
-        self.findings.iter().map(|f| f.l_min).max().map_or(0, |v| v)
+        match self.findings.iter().map(|f| f.l_min).max() {
+            Some(v) => v,
+            None => 0,
+        }
     }
 
     /// Get the minimum L_min across all findings
     pub fn min_depth(&self) -> usize {
-        self.findings.iter().map(|f| f.l_min).min().map_or(0, |v| v)
+        match self.findings.iter().map(|f| f.l_min).min() {
+            Some(v) => v,
+            None => 0,
+        }
     }
 
     /// Compute the standard deviation of L_min
@@ -217,7 +223,10 @@ impl DepthMetricsSummary {
         let mut depths: Vec<_> = self.depth_distribution.keys().collect();
         depths.sort();
         for depth in depths {
-            let count = self.depth_distribution.get(depth).map_or(&0, |v| v);
+            let count = match self.depth_distribution.get(depth) {
+                Some(v) => *v,
+                None => 0,
+            };
             output.push_str(&format!("| {} | {} |\n", depth, count));
         }
 

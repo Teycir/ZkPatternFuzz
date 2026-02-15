@@ -70,9 +70,10 @@ impl PartialOrd for PrioritizedPath {
 
 impl Ord for PrioritizedPath {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.priority
-            .partial_cmp(&other.priority)
-            .unwrap_or(Ordering::Equal)
+        match self.priority.partial_cmp(&other.priority) {
+            Some(ordering) => ordering,
+            None => Ordering::Equal,
+        }
     }
 }
 
@@ -197,7 +198,10 @@ impl PathPruner {
             *pattern_counts.entry(hash).or_insert(0) += 1;
         }
 
-        pattern_counts.values().max().copied().unwrap_or(0)
+        match pattern_counts.values().max().copied() {
+            Some(value) => value,
+            None => 0,
+        }
     }
 
     /// Compute hash for similarity detection
@@ -869,7 +873,10 @@ impl IncrementalSolver {
         match value {
             SymbolicValue::Concrete(fe) => {
                 let dec_str = fe.to_decimal_string();
-                ast::Int::from_str(ctx, &dec_str).unwrap_or_else(|| ast::Int::from_i64(ctx, 0))
+                match ast::Int::from_str(ctx, &dec_str) {
+                    Some(value) => value,
+                    None => panic!("Failed to parse decimal field element into Z3 Int: {}", dec_str),
+                }
             }
             SymbolicValue::Symbol(name) => {
                 if let Some(var) = vars.get(name) {

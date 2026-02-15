@@ -270,7 +270,10 @@ fn assignments_to_inputs(
             assignments.get(&input_key).cloned()
         };
 
-        inputs.push(value.unwrap_or_else(FieldElement::zero));
+        inputs.push(match value {
+            Some(v) => v,
+            None => FieldElement::zero(),
+        });
     }
 
     inputs

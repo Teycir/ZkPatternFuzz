@@ -116,10 +116,10 @@ impl PoCGenerator {
             writeln!(
                 script,
                 "CIRCUIT_PATH=\"{}\"",
-                self.config
-                    .circuit_path
-                    .as_deref()
-                    .unwrap_or("./circuit.circom")
+                match self.config.circuit_path.as_deref() {
+                    Some(path) => path,
+                    None => "./circuit.circom",
+                }
             )?;
             writeln!(script, "PTAU_PATH=\"./powersOfTau28_hez_final_10.ptau\"")?;
             writeln!(script)?;
@@ -253,7 +253,10 @@ impl PoCGenerator {
         writeln!(
             script,
             "    const circuitWasm = \"{}circuit_js/circuit.wasm\";",
-            self.config.circuit_path.as_deref().unwrap_or("./")
+            match self.config.circuit_path.as_deref() {
+                Some(path) => path,
+                None => "./",
+            }
         )?;
         writeln!(script, "    const zkey = \"circuit_0000.zkey\";")?;
         writeln!(script)?;

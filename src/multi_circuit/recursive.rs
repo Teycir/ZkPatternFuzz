@@ -64,9 +64,16 @@ impl RecursiveTester {
             let result = verifier.execute_sync(&recursive_inputs);
 
             if !result.success {
+                let error = match result.error {
+                    Some(err) => err,
+                    None => format!(
+                        "Recursive verification failed at depth {} without backend error message",
+                        d
+                    ),
+                };
                 return RecursionResult::VerificationFailed {
                     depth: d,
-                    error: result.error.unwrap_or_else(|| "Unknown".to_string()),
+                    error,
                 };
             }
 

@@ -182,7 +182,11 @@ impl BenchmarkSuite {
             
             let ttf = result.time_to_first_finding_ms
                 .map(|t| format!("{}ms", t))
-                .unwrap_or_else(|| "N/A".to_string());
+                .map(|v| v);
+            let ttf = match ttf {
+                Some(value) => value,
+                None => "N/A".to_string(),
+            };
 
             report.push_str(&format!(
                 "{:<20} {:>15} {:>15} {:>12.0}\n",

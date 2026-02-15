@@ -292,11 +292,16 @@ async fn ground_truth_known_bugs() {
 
     println!("\n=== Ground Truth Test: Known Bugs ===\n");
 
-    let circom_available = std::process::Command::new("circom")
+    let circom_available = match std::process::Command::new("circom")
         .arg("--version")
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    {
+        Ok(output) => output.status.success(),
+        Err(err) => {
+            println!("  circom check failed: {}", err);
+            false
+        }
+    };
 
     if !circom_available {
         println!("  circom not detected; skipping known-bugs execution test");

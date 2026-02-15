@@ -349,8 +349,16 @@ impl DistributedCoordinator {
             let iterations = attack
                 .config
                 .get("iterations")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(1000) as usize;
+                .and_then(|v| v.as_u64());
+            let iterations = match iterations {
+                Some(value) => value as usize,
+                None => {
+                    panic!(
+                        "Attack {:?} is missing required numeric 'iterations' in distributed mode",
+                        attack.attack_type
+                    )
+                }
+            };
 
             let unit_size = self.config.work_unit_size;
             let num_units = iterations.div_ceil(unit_size);

@@ -179,7 +179,10 @@ impl Transform {
                 assert_eq!(from_indices.len(), to_indices.len());
                 let temp: Vec<FieldElement> = from_indices
                     .iter()
-                    .map(|&i| witness.get(i).cloned().unwrap_or_default())
+                    .map(|&i| match witness.get(i).cloned() {
+                        Some(value) => value,
+                        None => FieldElement::zero(),
+                    })
                     .collect();
                 for (i, &to) in to_indices.iter().enumerate() {
                     if to < result.len() {
@@ -375,7 +378,10 @@ impl MetamorphicOracle {
     /// Only adds relations that are semantically appropriate for the circuit type,
     /// avoiding false positives from applying linear transforms to nonlinear circuits.
     pub fn with_circuit_aware_relations(mut self) -> Self {
-        let circuit_type = self.circuit_type.unwrap_or(CircuitType::Unknown);
+        let circuit_type = match self.circuit_type {
+            Some(value) => value,
+            None => CircuitType::Unknown,
+        };
 
         // Universal: Identity should always preserve output
         self.relations.push(
@@ -761,7 +767,10 @@ impl MetamorphicOracle {
                 description: format!(
                     "Metamorphic relation '{}' violated: {}",
                     r.relation_name,
-                    r.violation_reason.as_deref().unwrap_or("unknown")
+                    match r.violation_reason.as_deref() {
+                        Some(reason) => reason,
+                        None => "unknown",
+                    }
                 ),
                 poc: ProofOfConcept {
                     witness_a: r.base_witness.clone(),

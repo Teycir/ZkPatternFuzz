@@ -130,8 +130,11 @@ impl UnderconstrainedDetector {
 
             let label = labels
                 .get(&idx)
-                .cloned()
-                .unwrap_or_else(|| format!("signal_{}", idx));
+                .cloned();
+            let label = match label {
+                Some(value) => value,
+                None => format!("signal_{}", idx),
+            };
             let severity = match kind {
                 "private input" => Severity::High,
                 "public input" => Severity::Medium,
@@ -225,15 +228,21 @@ impl UnderconstrainedDetector {
         let labels = inspector.wire_labels();
 
         for idx in private_indices {
-            let count = counts.get(&idx).copied().unwrap_or(0);
+            let count = match counts.get(&idx).copied() {
+                Some(value) => value,
+                None => 0,
+            };
             if count == 0 || count > threshold {
                 continue;
             }
 
             let label = labels
                 .get(&idx)
-                .cloned()
-                .unwrap_or_else(|| format!("signal_{}", idx));
+                .cloned();
+            let label = match label {
+                Some(value) => value,
+                None => format!("signal_{}", idx),
+            };
             let severity = if count <= 1 {
                 Severity::Medium
             } else {

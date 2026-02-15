@@ -308,8 +308,11 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     }
                 };
 
-                let witness_a: Vec<FieldElement> = poc_witness_a
-                    .unwrap_or_default()
+                let witness_a = match poc_witness_a {
+                    Some(value) => value,
+                    None => Vec::new(),
+                };
+                let witness_a: Vec<FieldElement> = witness_a
                     .iter()
                     .filter_map(|hex| match FieldElement::from_hex(hex) {
                         Ok(fe) => Some(fe),
@@ -322,7 +325,10 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     severity: severity.ok_or_else(|| de::Error::missing_field("severity"))?,
                     description: description
                         .ok_or_else(|| de::Error::missing_field("description"))?,
-                    location: location.unwrap_or(None),
+                    location: match location {
+                        Some(value) => value,
+                        None => None,
+                    },
                     poc: ProofOfConcept {
                         witness_a,
                         witness_b: None,

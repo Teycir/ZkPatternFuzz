@@ -109,10 +109,10 @@ impl NullifierReplayScanner {
         }
 
         let info = executor.circuit_info();
-        let nullifier_wires = self
-            .nullifier_indices
-            .clone()
-            .unwrap_or_else(|| NullifierHeuristic::detect(executor));
+        let nullifier_wires = match self.nullifier_indices.clone() {
+            Some(indices) => indices,
+            None => NullifierHeuristic::detect(executor),
+        };
 
         if nullifier_wires.is_empty() {
             return Vec::new();

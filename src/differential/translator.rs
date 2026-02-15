@@ -179,16 +179,28 @@ impl CircuitPattern {
             _ => {
                 // Try to parse parameterized patterns
                 if lower.starts_with("num2bits") {
-                    let bits = parse_num_from_name(name).map_or(254, |v| v);
+                    let bits = match parse_num_from_name(name) {
+                        Some(v) => v,
+                        None => 254,
+                    };
                     CircuitPattern::Num2Bits { num_bits: bits }
                 } else if lower.starts_with("bits2num") {
-                    let bits = parse_num_from_name(name).map_or(254, |v| v);
+                    let bits = match parse_num_from_name(name) {
+                        Some(v) => v,
+                        None => 254,
+                    };
                     CircuitPattern::Bits2Num { num_bits: bits }
                 } else if lower.starts_with("rangecheck") || lower.starts_with("range_check") {
-                    let bits = parse_num_from_name(name).map_or(32, |v| v);
+                    let bits = match parse_num_from_name(name) {
+                        Some(v) => v,
+                        None => 32,
+                    };
                     CircuitPattern::RangeCheck { num_bits: bits }
                 } else if lower.starts_with("merkle") {
-                    let levels = parse_num_from_name(name).map_or(20, |v| v);
+                    let levels = match parse_num_from_name(name) {
+                        Some(v) => v,
+                        None => 20,
+                    };
                     CircuitPattern::MerkleProof { levels }
                 } else {
                     CircuitPattern::Custom(name.to_string())

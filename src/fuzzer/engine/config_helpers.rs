@@ -172,7 +172,12 @@ impl FuzzingEngine {
         // Check for power_schedule in campaign parameters
         if let Some(schedule_str) = config.campaign.parameters.additional.get("power_schedule") {
             if let Some(s) = schedule_str.as_str() {
-                return s.parse().unwrap_or(PowerSchedule::Mmopt);
+                return match s.parse() {
+                    Ok(schedule) => schedule,
+                    Err(err) => {
+                        panic!("Invalid power_schedule '{}': {:?}", s, err);
+                    }
+                };
             }
         }
         // Default to MMOPT for balanced performance
@@ -494,12 +499,15 @@ impl FuzzingEngine {
     }
 
     pub(super) fn attack_samples(config: &serde_yaml::Value) -> usize {
-        config
+        let samples = config
             .get("samples")
             .or_else(|| config.get("witness_pairs"))
             .or_else(|| config.get("forge_attempts"))
             .or_else(|| config.get("tests"))
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize
+            .and_then(|v| v.as_u64());
+        match samples {
+            Some(value) => value as usize,
+            None => 0,
+        }
     }
 }

@@ -156,7 +156,13 @@ impl ChainRunner {
 
                 trace.add_step(step_trace);
             } else {
-                let error_msg = result.error.unwrap_or_else(|| "Unknown error".to_string());
+                let error_msg = match result.error {
+                    Some(err) => err,
+                    None => format!(
+                        "Chain step {} failed without backend error message",
+                        step_index
+                    ),
+                };
                 let step_trace =
                     StepTrace::failure(step_index, &step.circuit_ref, inputs, error_msg)
                         .with_time(step_time);

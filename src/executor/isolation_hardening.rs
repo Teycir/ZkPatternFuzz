@@ -262,7 +262,10 @@ impl CrashRecoveryState {
         let one_minute_ago = now - Duration::from_secs(60);
 
         // Remove old entries
-        while times.front().map(|t| *t < one_minute_ago).map_or(false, |v| v) {
+        while match times.front() {
+            Some(t) => *t < one_minute_ago,
+            None => false,
+        } {
             times.pop_front();
         }
 
@@ -444,10 +447,12 @@ impl Watchdog {
     }
 
     fn now_millis() -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .map_or(0, |v| v)
+        match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            Ok(duration) => duration.as_millis() as u64,
+            Err(err) => {
+                panic!("System clock is before UNIX_EPOCH while computing watchdog time: {err}")
+            }
+        }
     }
 }
 
@@ -532,10 +537,14 @@ impl HardenedIsolatedExecutor {
 
         // Record telemetry
         self.telemetry.record(IsolationEvent {
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .map_or(0, |v| v),
+            timestamp: match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(duration) => duration.as_secs(),
+                Err(err) => {
+                    panic!(
+                        "System clock is before UNIX_EPOCH while recording crash event: {err}"
+                    )
+                }
+            },
             event_type: IsolationEventType::Crash,
             circuit_id: self.circuit_id.clone(),
             error: result.error.clone(),
@@ -546,10 +555,16 @@ impl HardenedIsolatedExecutor {
         if crash_count >= self.config.max_consecutive_crashes {
             self.recovery_state.blacklist(&self.circuit_id);
             self.telemetry.record(IsolationEvent {
-                timestamp: std::time::SystemTime::now()
+                timestamp: match std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .map_or(0, |v| v),
+                {
+                    Ok(duration) => duration.as_secs(),
+                    Err(err) => {
+                        panic!(
+                            "System clock is before UNIX_EPOCH while recording blacklist event: {err}"
+                        )
+                    }
+                },
                 event_type: IsolationEventType::Blacklisted,
                 circuit_id: self.circuit_id.clone(),
                 error: None,

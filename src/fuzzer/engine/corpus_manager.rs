@@ -227,7 +227,10 @@ impl FuzzingEngine {
             tracing::warn!(
                 "Skipping external seed: missing {} inputs (e.g. {})",
                 missing.len(),
-                missing.first().cloned().unwrap_or_default()
+                match missing.first().cloned() {
+                    Some(name) => name,
+                    None => "<unknown>".to_string(),
+                }
             );
             return None;
         }

@@ -59,7 +59,10 @@ fn test_autonomous_cve_regression_tests() {
 
         for tc_result in &result.test_results {
             let status = if tc_result.passed { "✓" } else { "✗" };
-            let msg = tc_result.message.as_deref().unwrap_or("OK");
+            let msg = match tc_result.message.as_deref() {
+                Some(message) => message,
+                None => "OK",
+            };
             println!("    {} {}: {}", status, tc_result.name, msg);
         }
         println!();

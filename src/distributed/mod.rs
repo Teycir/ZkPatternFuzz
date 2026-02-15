@@ -76,9 +76,12 @@ pub struct NodeCapabilities {
 impl Default for NodeCapabilities {
     fn default() -> Self {
         Self {
-            worker_count: std::thread::available_parallelism()
-                .map(|count| count.get())
-                .unwrap_or(1),
+            worker_count: match std::thread::available_parallelism() {
+                Ok(count) => count.get(),
+                Err(err) => {
+                    panic!("Failed to detect available parallelism for node capabilities: {err}")
+                }
+            },
             memory_bytes: 8 * 1024 * 1024 * 1024, // 8GB default
             frameworks: vec![
                 "circom".to_string(),

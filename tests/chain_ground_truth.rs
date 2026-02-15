@@ -89,12 +89,36 @@ mod tests {
         l_min_expected: Option<usize>,
     }
 
+    fn optional_env(name: &str) -> Option<String> {
+        match std::env::var(name) {
+            Ok(value) => Some(value),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(e) => panic!("Invalid {} value: {}", name, e),
+        }
+    }
+
+    fn env_present(name: &str) -> bool {
+        match std::env::var(name) {
+            Ok(value) => !value.is_empty(),
+            Err(std::env::VarError::NotPresent) => false,
+            Err(e) => panic!("Invalid {} value: {}", name, e),
+        }
+    }
+
     fn parse_env_usize(name: &str) -> Option<usize> {
-        std::env::var(name).ok()?.parse().ok()
+        let value = optional_env(name)?;
+        match value.parse() {
+            Ok(parsed) => Some(parsed),
+            Err(e) => panic!("Invalid {}='{}': {}", name, value, e),
+        }
     }
 
     fn parse_env_u64(name: &str) -> Option<u64> {
-        std::env::var(name).ok()?.parse().ok()
+        let value = optional_env(name)?;
+        match value.parse() {
+            Ok(parsed) => Some(parsed),
+            Err(e) => panic!("Invalid {}='{}': {}", name, value, e),
+        }
     }
 
     fn seed_from_name(name: &str) -> u64 {
@@ -117,9 +141,8 @@ mod tests {
             std::time::Duration::from_secs(config.campaign.parameters.timeout_seconds);
         let mut mode = "full";
 
-        let mode_env = std::env::var("ZKPF_GROUND_TRUTH_MODE").ok();
-        let ci_smoke = std::env::var("CI").ok().filter(|v| !v.is_empty()).is_some()
-            && std::env::var("ZKPF_GROUND_TRUTH_FULL").is_err();
+        let mode_env = optional_env("ZKPF_GROUND_TRUTH_MODE");
+        let ci_smoke = env_present("CI") && !env_present("ZKPF_GROUND_TRUTH_FULL");
         let smoke = match mode_env.as_deref() {
             Some("smoke") => true,
             Some("full") => false,
@@ -166,10 +189,14 @@ mod tests {
 
     fn load_expected_spec(campaign_path: &str) -> ExpectedSpec {
         let expected_path = expected_path_for_campaign(campaign_path);
-        let content = std::fs::read_to_string(&expected_path)
-            .unwrap_or_else(|_| panic!("Failed to read {}", expected_path.display()));
-        let json: serde_json::Value = serde_json::from_str(&content)
-            .unwrap_or_else(|_| panic!("Failed to parse JSON in {}", expected_path.display()));
+        let content = match std::fs::read_to_string(&expected_path) {
+            Ok(content) => content,
+            Err(_) => panic!("Failed to read {}", expected_path.display()),
+        };
+        let json: serde_json::Value = match serde_json::from_str(&content) {
+            Ok(json) => json,
+            Err(_) => panic!("Failed to parse JSON in {}", expected_path.display()),
+        };
 
         let outcome = parse_expected_outcome(&json["expected_outcome"]);
         let violated_assertion = json["violated_assertion"].as_str().map(|s| s.to_string());
@@ -240,8 +267,10 @@ mod tests {
         use zk_fuzzer::config::FuzzConfig;
 
         for case in ground_truth_cases() {
-            let config = FuzzConfig::from_yaml(case.campaign_path)
-                .unwrap_or_else(|_| panic!("Failed to parse {}", case.campaign_path));
+            let config = match FuzzConfig::from_yaml(case.campaign_path) {
+                Ok(config) => config,
+                Err(_) => panic!("Failed to parse {}", case.campaign_path),
+            };
 
             let mut circuit_paths = vec![config.campaign.target.circuit_path.clone()];
             for chain in &config.chains {
@@ -268,11 +297,15 @@ mod tests {
 
         for case in ground_truth_cases() {
             let expected_path = expected_path_for_campaign(case.campaign_path);
-            let content = fs::read_to_string(&expected_path)
-                .unwrap_or_else(|_| panic!("Failed to read {}", expected_path.display()));
+            let content = match fs::read_to_string(&expected_path) {
+                Ok(content) => content,
+                Err(_) => panic!("Failed to read {}", expected_path.display()),
+            };
 
-            let json: serde_json::Value = serde_json::from_str(&content)
-                .unwrap_or_else(|_| panic!("Failed to parse JSON in {}", expected_path.display()));
+            let json: serde_json::Value = match serde_json::from_str(&content) {
+                Ok(json) => json,
+                Err(_) => panic!("Failed to parse JSON in {}", expected_path.display()),
+            };
 
             // Verify required fields
             assert!(
@@ -318,11 +351,15 @@ mod tests {
         use std::fs;
 
         for case in ground_truth_cases() {
-            let content = fs::read_to_string(case.campaign_path)
-                .unwrap_or_else(|_| panic!("Failed to read {}", case.campaign_path));
+            let content = match fs::read_to_string(case.campaign_path) {
+                Ok(content) => content,
+                Err(_) => panic!("Failed to read {}", case.campaign_path),
+            };
 
-            let yaml: serde_yaml::Value = serde_yaml::from_str(&content)
-                .unwrap_or_else(|_| panic!("Failed to parse YAML in {}", case.campaign_path));
+            let yaml: serde_yaml::Value = match serde_yaml::from_str(&content) {
+                Ok(yaml) => yaml,
+                Err(_) => panic!("Failed to parse YAML in {}", case.campaign_path),
+            };
 
             // Verify chains section exists
             assert!(
@@ -423,7 +460,6 @@ mod tests {
                 .flat_map(|c| c.steps.iter().map(|s| s.circuit_ref.clone()))
                 .collect();
 
-            let circuit_root = config.campaign.target.circuit_path.clone();
             let mut circuit_map: HashMap<String, CircuitPathConfig> = HashMap::new();
             for chain_cfg in &config.chains {
                 for (name, cfg) in &chain_cfg.circuits {
@@ -440,29 +476,24 @@ mod tests {
                     if executors.contains_key(&step.circuit_ref) {
                         continue;
                     }
-                    let (circuit_path, main_component, framework) = if let Some(cfg) =
-                        circuit_map.get(&step.circuit_ref)
-                    {
-                        let framework = cfg.framework.unwrap_or(config.campaign.target.framework);
-                        let main_component = cfg
-                            .main_component
-                            .as_deref()
-                            .unwrap_or(&step.circuit_ref)
-                            .to_string();
-                        (cfg.path.clone(), main_component, framework)
-                    } else {
-                        let root = if circuit_root.is_dir() {
-                            circuit_root.clone()
+                    let (circuit_path, main_component, framework) =
+                        if let Some(cfg) = circuit_map.get(&step.circuit_ref) {
+                            let framework = match cfg.framework {
+                                Some(framework) => framework,
+                                None => config.campaign.target.framework,
+                            };
+                            let main_component = match cfg.main_component.as_deref() {
+                                Some(component) => component.to_string(),
+                                None => step.circuit_ref.clone(),
+                            };
+                            (cfg.path.clone(), main_component, framework)
                         } else {
-                            circuit_root.parent().unwrap_or(&circuit_root).to_path_buf()
+                            load_error = Some(format!(
+                                "Missing explicit chain circuit mapping for '{}'",
+                                step.circuit_ref
+                            ));
+                            break 'load;
                         };
-                        let fallback_path = root.join(format!("{}.circom", step.circuit_ref));
-                        (
-                            fallback_path,
-                            config.campaign.target.main_component.clone(),
-                            config.campaign.target.framework,
-                        )
-                    };
                     let circom_path = match circuit_path.to_str() {
                         Some(p) => p,
                         None => {
@@ -586,6 +617,16 @@ mod tests {
 
                             let shrink_result =
                                 shrinker.minimize(chain, &current_inputs, violation);
+                            let witness_a = match result.trace.steps.first() {
+                                Some(step_result) => step_result.inputs.clone(),
+                                None => {
+                                    case_error = Some(format!(
+                                        "Chain '{}' produced a violation without any execution steps",
+                                        chain.name
+                                    ));
+                                    break 'chain_run;
+                                }
+                            };
 
                             let finding = zk_core::Finding {
                                 attack_type: zk_core::AttackType::CircuitComposition,
@@ -599,12 +640,7 @@ mod tests {
                                     violation.assertion_name, violation.description
                                 ),
                                 poc: zk_core::ProofOfConcept {
-                                    witness_a: result
-                                        .trace
-                                        .steps
-                                        .first()
-                                        .map(|s| s.inputs.clone())
-                                        .unwrap_or_default(),
+                                    witness_a,
                                     witness_b: result.trace.steps.get(1).map(|s| s.inputs.clone()),
                                     public_inputs: vec![],
                                     proof: None,
@@ -751,9 +787,10 @@ mod tests {
                 r.actual_findings,
                 r.actual_assertion,
                 r.actual_l_min,
-                r.error
-                    .as_ref()
-                    .map_or(String::new(), |e| format!(", error={}", e)),
+                match r.error.as_ref() {
+                    Some(error) => format!(", error={}", error),
+                    None => String::new(),
+                },
             );
         }
 

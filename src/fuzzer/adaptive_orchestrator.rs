@@ -402,14 +402,15 @@ impl AdaptiveOrchestrator {
             }
         }
 
-        let report = accumulated_report.unwrap_or_else(|| {
-            FuzzReport::new(
+        let report = match accumulated_report {
+            Some(value) => value,
+            None => FuzzReport::new(
                 gen_config.circuit_name.clone(),
                 vec![],
                 zk_core::CoverageMap::default(),
                 base_config.reporting.clone(),
-            )
-        });
+            ),
+        };
 
         Ok((report, scheduler))
     }
@@ -455,7 +456,10 @@ impl AdaptiveOrchestrator {
                     hint: hint.clone(),
                     finding: finding.clone(),
                     circuit: circuit_name.to_string(),
-                    time_to_discovery: self.start_time.map(|s| s.elapsed()).unwrap_or_default(),
+                    time_to_discovery: match self.start_time.map(|s| s.elapsed()) {
+                        Some(value) => value,
+                        None => std::time::Duration::default(),
+                    },
                 });
             }
         }
@@ -481,9 +485,10 @@ impl AdaptiveOrchestrator {
 
     /// Check if campaign should stop (timeout)
     fn should_stop(&self) -> bool {
-        self.start_time
-            .map(|s| s.elapsed() >= self.config.max_duration)
-            .unwrap_or(false)
+        match self.start_time.map(|s| s.elapsed() >= self.config.max_duration) {
+            Some(value) => value,
+            None => false,
+        }
     }
 
     /// Log campaign summary

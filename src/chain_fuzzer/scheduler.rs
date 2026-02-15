@@ -110,7 +110,13 @@ impl ChainScheduler {
         self.chains
             .iter()
             .map(|chain| {
-                let priority = self.priorities.get(&chain.name).copied().map_or(1.0, |v| v);
+                let priority = self
+                    .priorities
+                    .get(&chain.name)
+                    .copied()
+                    .map(|value| value)
+                    .or_else(|| Some(1.0))
+                    .expect("default priority injected");
                 let priority_share = priority / total_priority;
                 let allocated_remaining = (remaining as f64 * priority_share) as u64;
                 let total_budget =
@@ -131,7 +137,9 @@ impl ChainScheduler {
             .priorities
             .get(&stats.chain_name)
             .copied()
-            .map_or(1.0, |v| v);
+            .map(|value| value)
+            .or_else(|| Some(1.0))
+            .expect("default priority injected");
 
         // Priority heuristics:
         // 1. Chains with violations get boost
@@ -183,7 +191,9 @@ impl ChainScheduler {
         self.priorities
             .get(chain_name)
             .copied()
-            .map_or(1.0, |v| v)
+            .map(|value| value)
+            .or_else(|| Some(1.0))
+            .expect("default priority injected")
     }
 
     /// Add a new chain to the scheduler
@@ -202,8 +212,20 @@ impl ChainScheduler {
     pub fn chains_by_priority(&self) -> Vec<&ChainSpec> {
         let mut chains: Vec<_> = self.chains.iter().collect();
         chains.sort_by(|a, b| {
-            let pa = self.priorities.get(&a.name).copied().map_or(1.0, |v| v);
-            let pb = self.priorities.get(&b.name).copied().map_or(1.0, |v| v);
+            let pa = self
+                .priorities
+                .get(&a.name)
+                .copied()
+                .map(|value| value)
+                .or_else(|| Some(1.0))
+                .expect("default priority injected");
+            let pb = self
+                .priorities
+                .get(&b.name)
+                .copied()
+                .map(|value| value)
+                .or_else(|| Some(1.0))
+                .expect("default priority injected");
             match pb.partial_cmp(&pa) {
                 Some(ordering) => ordering,
                 None => std::cmp::Ordering::Equal,

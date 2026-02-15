@@ -180,8 +180,11 @@ impl SemanticDeduplicator {
                 } else {
                     "other"
                 }
-            })
-            .unwrap_or("unknown")
+            });
+        let location_category = match location_category {
+            Some(value) => value,
+            None => "unknown",
+        }
             .to_string();
 
         SemanticFingerprint {
@@ -360,11 +363,15 @@ impl FindingCluster {
 
     /// Get highest severity in cluster
     pub fn max_severity(&self) -> Severity {
-        self.members
+        let max_severity = self
+            .members
             .iter()
             .map(|f| f.severity)
-            .max()
-            .unwrap_or(Severity::Info)
+            .max();
+        match max_severity {
+            Some(value) => value,
+            None => Severity::Info,
+        }
     }
 }
 

@@ -10,9 +10,11 @@ use zk_fuzzer::config::generator::PatternType;
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
 
 fn zk0d_base() -> PathBuf {
-    std::env::var("ZK0D_BASE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_ZK0D_BASE))
+    match std::env::var("ZK0D_BASE") {
+        Ok(path) => PathBuf::from(path),
+        Err(std::env::VarError::NotPresent) => PathBuf::from(DEFAULT_ZK0D_BASE),
+        Err(e) => panic!("Invalid ZK0D_BASE value: {}", e),
+    }
 }
 
 /// Check if zk0d repository is available
@@ -49,12 +51,13 @@ fn test_real_privacy_circuits() {
         println!("\n=== {} ===", config.circuit_name);
         println!(
             "Patterns: {:?}",
-            config
-                .config
-                .base
-                .as_ref()
-                .map(|b| b.attacks.len())
-                .unwrap_or(0)
+            match config.config.base.as_ref() {
+                Some(base) => base.attacks.len(),
+                None => panic!(
+                    "Missing generated base config for analyzed circuit: {}",
+                    config.circuit_name
+                ),
+            }
         );
         println!("Zero-day hints: {}", config.zero_day_hints.len());
 
@@ -234,7 +237,7 @@ fn test_adaptive_scheduling_real_circuits() {
             .base
             .as_ref()
             .map(|b| b.attacks.iter().map(|a| a.attack_type.clone()).collect())
-            .unwrap_or_default();
+            .expect("Missing generated base config while building attack schedule");
 
         if attack_types.is_empty() {
             continue;

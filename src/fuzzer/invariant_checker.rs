@@ -102,7 +102,10 @@ impl InvariantChecker {
         let mut offset = 0usize;
         for input in inputs {
             let len = if input.input_type.starts_with("array") {
-                input.length.map_or(1, |v| v)
+                match input.length {
+                    Some(value) => value,
+                    None => 1,
+                }
             } else {
                 1
             };
@@ -173,10 +176,10 @@ impl InvariantChecker {
             relation: invariant.relation.clone(),
             ast,
             invariant_type: invariant.invariant_type.clone(),
-            severity: invariant
-                .severity
-                .clone()
-                .unwrap_or_else(|| "medium".to_string()),
+            severity: match invariant.severity.clone() {
+                Some(value) => value,
+                None => "medium".to_string(),
+            },
             input_indices,
             range_bounds,
             uniqueness_key_indices,
@@ -641,7 +644,15 @@ impl InvariantChecker {
                     inputs.get(offset).cloned()
                 } else if lower.starts_with("output") {
                     // Try to parse output index
-                    let idx_str = lower.strip_prefix("output").map_or("0", |v| v);
+                    let idx_str = match lower.strip_prefix("output") {
+                        Some(value) => value,
+                        None => {
+                            panic!(
+                                "Invariant identifier unexpectedly lost 'output' prefix: {}",
+                                name
+                            )
+                        }
+                    };
                     let idx: usize = match idx_str.trim_start_matches('_').parse() {
                         Ok(parsed) => parsed,
                         Err(err) => {

@@ -546,7 +546,10 @@ pub struct ZkEvmAttack {
 impl ZkEvmAttack {
     /// Create a new zkEVM attack detector
     pub fn new(config: ZkEvmConfig) -> Self {
-        let seed = config.seed.unwrap_or_else(rand::random);
+        let seed = match config.seed {
+            Some(value) => value,
+            None => rand::random(),
+        };
         Self {
             config,
             rng: ChaCha8Rng::seed_from_u64(seed),
@@ -681,7 +684,13 @@ impl ZkEvmAttack {
             StateTransitionTest::ZeroValueTransfer => {
                 // Zero-value transfers should succeed
                 if !result.success {
-                    let err = result.error.unwrap_or_else(|| "Unknown error".to_string());
+                    let err = match result.error {
+                        Some(value) => value,
+                        None => {
+                            "Execution failed without backend error message (zero-value transfer)"
+                                .to_string()
+                        }
+                    };
                     return Ok(Some(ZkEvmTestResult {
                         vulnerability_type: ZkEvmVulnerabilityType::StateTransitionMismatch,
                         description: "Zero-value transfer fails unexpectedly".to_string(),
@@ -811,7 +820,13 @@ impl ZkEvmAttack {
                             }));
                         }
                     } else if !result.success {
-                        let err = result.error.unwrap_or_else(|| "Unknown error".to_string());
+                        let err = match result.error {
+                            Some(value) => value,
+                            None => {
+                                "Execution failed without backend error message (division/mod by zero)"
+                                    .to_string()
+                            }
+                        };
                         return Ok(Some(ZkEvmTestResult {
                             vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
                             description: format!(
@@ -832,7 +847,13 @@ impl ZkEvmAttack {
                 if (opcode.name == "SDIV" || opcode.name == "SMOD" || opcode.name == "SAR")
                     && !result.success
                 {
-                    let err = result.error.unwrap_or_else(|| "Unknown error".to_string());
+                    let err = match result.error {
+                        Some(value) => value,
+                        None => {
+                            "Execution failed without backend error message (signed edge case)"
+                                .to_string()
+                        }
+                    };
                     return Ok(Some(ZkEvmTestResult {
                         vulnerability_type: ZkEvmVulnerabilityType::OpcodeBoundaryViolation,
                         description: format!("{} fails on signed edge case", opcode.name),
@@ -1286,8 +1307,14 @@ impl ZkEvmPriceAnalyzer {
     }
 
     fn calculate_price_delta(&self, a: &FieldElement, b: &FieldElement) -> f64 {
-        let a_val = a.to_u64().unwrap_or(0) as f64;
-        let b_val = b.to_u64().unwrap_or(0) as f64;
+        let a_val = match a.to_u64() {
+            Some(value) => value as f64,
+            None => panic!("Price-delta input A does not fit in u64"),
+        };
+        let b_val = match b.to_u64() {
+            Some(value) => value as f64,
+            None => panic!("Price-delta input B does not fit in u64"),
+        };
 
         if a_val == 0.0 {
             return if b_val == 0.0 { 0.0 } else { 1.0 };

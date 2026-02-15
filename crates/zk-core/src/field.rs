@@ -39,14 +39,19 @@ impl FieldElement {
     /// Maximum field value (p - 1 for BN254 scalar field)
     pub fn max_value() -> Self {
         // BN254 scalar field: p - 1
-        Self::from_hex("0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000")
-            .unwrap_or_else(|_| Self::zero())
+        match Self::from_hex("0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000")
+        {
+            Ok(value) => value,
+            Err(err) => panic!("Invalid hardcoded BN254 max_value constant: {}", err),
+        }
     }
 
     /// Half of the field modulus: (p - 1) / 2
     pub fn half_modulus() -> Self {
-        Self::from_hex("0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000")
-            .unwrap_or_else(|_| Self::zero())
+        match Self::from_hex("0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000") {
+            Ok(value) => value,
+            Err(err) => panic!("Invalid hardcoded BN254 half_modulus constant: {}", err),
+        }
     }
 
     pub fn random(rng: &mut impl Rng) -> Self {
@@ -155,8 +160,14 @@ impl FieldElement {
     /// - The decoded value exceeds 32 bytes (silently truncating large values
     ///   could hide bugs in test configurations)
     pub fn from_hex(hex_str: &str) -> anyhow::Result<Self> {
-        let clean = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-        let clean = clean.strip_prefix("0X").unwrap_or(clean);
+        let clean = match hex_str.strip_prefix("0x") {
+            Some(value) => value,
+            None => hex_str,
+        };
+        let clean = match clean.strip_prefix("0X") {
+            Some(value) => value,
+            None => clean,
+        };
         let decoded = hex::decode(clean)?;
 
         // Reject values that are too large instead of silently truncating

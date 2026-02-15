@@ -367,7 +367,10 @@ impl BatchVerificationFinding {
     pub fn to_finding(&self) -> Finding {
         // Create ProofOfConcept from trigger_inputs
         let poc = ProofOfConcept {
-            witness_a: self.trigger_inputs.first().cloned().unwrap_or_default(),
+            witness_a: match self.trigger_inputs.first().cloned() {
+                Some(value) => value,
+                None => Vec::new(),
+            },
             witness_b: self.trigger_inputs.get(1).cloned(),
             public_inputs: Vec::new(),
             proof: None,
@@ -403,7 +406,10 @@ pub struct BatchVerificationAttack {
 impl BatchVerificationAttack {
     /// Create a new batch verification attack detector
     pub fn new(config: BatchVerificationConfig) -> Self {
-        let seed = config.seed.unwrap_or(42);
+        let seed = match config.seed {
+            Some(value) => value,
+            None => 42,
+        };
         Self {
             config,
             rng: ChaCha8Rng::seed_from_u64(seed),

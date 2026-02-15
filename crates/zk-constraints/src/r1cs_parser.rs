@@ -635,7 +635,10 @@ mod tests {
         fn eval_lc(terms: &[(usize, BigUint)], wires: &[BigUint], modulus: &BigUint) -> BigUint {
             let mut acc = BigUint::from(0u32);
             for (idx, coeff) in terms {
-                let value = wires.get(*idx).cloned().unwrap_or_default();
+                let value = match wires.get(*idx).cloned() {
+                    Some(v) => v,
+                    None => panic!("Wire index {} out of bounds in test linear combination", idx),
+                };
                 let term = (coeff * value) % modulus;
                 acc = (acc + term) % modulus;
             }

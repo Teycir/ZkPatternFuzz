@@ -66,7 +66,11 @@ fn halo2_real_repo_path() -> PathBuf {
     if let Ok(path) = std::env::var("HALO2_SCAFFOLD_PATH") {
         return PathBuf::from(path);
     }
-    let base = std::env::var("ZK0D_BASE").unwrap_or_else(|_| DEFAULT_ZK0D_BASE.to_string());
+    let base = match std::env::var("ZK0D_BASE") {
+        Ok(path) => path,
+        Err(std::env::VarError::NotPresent) => DEFAULT_ZK0D_BASE.to_string(),
+        Err(e) => panic!("Invalid ZK0D_BASE value: {}", e),
+    };
     PathBuf::from(base).join("cat5_frameworks/halo2-scaffold")
 }
 

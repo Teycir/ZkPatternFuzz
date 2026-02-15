@@ -18,16 +18,25 @@ impl FuzzingEngine {
         let additional = &self.config.campaign.parameters.additional;
         let execution_timeout_ms = Self::additional_u64(additional, "execution_timeout_ms")
             .or_else(|| Self::additional_u64(additional, "timeout_per_execution").map(|v| v * 1000))
-            .map_or(30_000, |v| v)
+            .map(|value| value)
+            .or_else(|| Some(30_000))
+            .expect("default timeout injected")
             .max(1);
 
         let minimize_enabled =
-            Self::additional_bool(additional, "corpus_minimize_enabled").map_or(true, |v| v);
+            match Self::additional_bool(additional, "corpus_minimize_enabled") {
+                Some(value) => value,
+                None => true,
+            };
         let minimize_interval = Self::additional_u64(additional, "corpus_minimize_interval")
-            .map_or(10_000, |v| v)
+            .map(|value| value)
+            .or_else(|| Some(10_000))
+            .expect("default minimize interval injected")
             .max(1);
         let minimize_min_size = Self::additional_u64(additional, "corpus_minimize_min_size")
-            .map_or(1_000, |v| v)
+            .map(|value| value)
+            .or_else(|| Some(1_000))
+            .expect("default minimize min size injected")
             .max(1) as usize;
         let execution_timeout = Duration::from_millis(execution_timeout_ms);
 
@@ -261,7 +270,9 @@ impl FuzzingEngine {
 
         let error_msg = result
             .error_message()
-            .unwrap_or_else(|| "Unknown crash".to_string());
+            .map(|value| value)
+            .or_else(|| Some("Unknown crash".to_string()))
+            .expect("default crash message injected");
 
         let finding = Finding {
             attack_type: zk_core::AttackType::WitnessFuzzing,

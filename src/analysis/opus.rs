@@ -27,6 +27,7 @@
 use crate::config::generator::{ConfigGenerator, DetectedPattern, PatternType};
 use crate::config::v2::{FuzzConfigV2, Invariant, InvariantOracle, InvariantType, SchedulePhase};
 use crate::config::{Attack, Campaign, FuzzConfig, Input, Parameters, ReportingConfig, Target};
+use anyhow::Context;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use zk_core::{AttackType, Framework};
@@ -284,11 +285,19 @@ impl OpusAnalyzer {
         &self,
         analysis: &CircuitAnalysisResult,
     ) -> anyhow::Result<GeneratedConfig> {
-        let circuit_name = analysis
-            .circuit_path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
+        let circuit_stem = analysis.circuit_path.file_stem().with_context(|| {
+            format!(
+                "Cannot derive circuit name from path without file stem: {}",
+                analysis.circuit_path.display()
+            )
+        })?;
+        let circuit_name = circuit_stem.to_str().with_context(|| {
+            format!(
+                "Circuit name is not valid UTF-8: {}",
+                analysis.circuit_path.display()
+            )
+        })?;
+        let circuit_name = circuit_name.to_string();
 
         // Build attacks from priorities
         let attacks = self.build_attacks(analysis);
@@ -369,10 +378,10 @@ impl OpusAnalyzer {
 
                     // Skip node_modules, target, .git, etc.
                     if path.is_dir() {
-                        let name = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .map_or("", |v| v);
+                        let Some(name_os) = path.file_name() else {
+                            continue;
+                        };
+                        let name = name_os.to_string_lossy();
                         if name.starts_with('.') || name == "node_modules" || name == "target" {
                             continue;
                         }
@@ -406,7 +415,7 @@ impl OpusAnalyzer {
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
-            .map_or("", |v| v);
+            .with_context(|| format!("Circuit file has no UTF-8 extension: {}", path.display()))?;
 
         match ext {
             "circom" => Ok(Framework::Circom),
@@ -1084,7 +1093,10 @@ fn rewrite_zk0d_path(path: &Path) -> String {
         Ok(v) => Some(v),
         Err(_) => None,
     };
-    let root = env_root.as_deref().map_or(DEFAULT_ZK0D_BASE, |v| v);
+    let root = match env_root.as_deref() {
+        Some(v) => v,
+        None => DEFAULT_ZK0D_BASE,
+    };
     let root = root.trim_end_matches(std::path::MAIN_SEPARATOR);
 
     if let Some(raw_suffix) = path_str.strip_prefix(root) {

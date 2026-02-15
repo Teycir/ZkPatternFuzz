@@ -81,6 +81,16 @@ impl MultiBackendExecutor {
     pub fn primary_executor(&self) -> Option<&Arc<dyn CircuitExecutor>> {
         self.backends.get(&self.primary)
     }
+
+    fn require_primary_executor(&self) -> &Arc<dyn CircuitExecutor> {
+        match self.backends.get(&self.primary) {
+            Some(executor) => executor,
+            None => panic!(
+                "MultiBackendExecutor misconfigured: primary backend {:?} was not registered",
+                self.primary
+            ),
+        }
+    }
 }
 
 /// Result of checking backend agreement
@@ -103,25 +113,15 @@ impl CircuitExecutor for MultiBackendExecutor {
     }
 
     fn name(&self) -> &str {
-        self.backends
-            .get(&self.primary)
-            .map(|e| e.name())
-            .unwrap_or("multi-backend")
+        self.require_primary_executor().name()
     }
 
     fn circuit_info(&self) -> CircuitInfo {
-        self.backends
-            .get(&self.primary)
-            .map(|e| e.circuit_info())
-            .unwrap_or_default()
+        self.require_primary_executor().circuit_info()
     }
 
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
-        // Return primary backend's result
-        self.backends
-            .get(&self.primary)
-            .map(|e| e.execute_sync(inputs))
-            .unwrap_or_else(|| ExecutionResult::failure("No primary backend".to_string()))
+        self.require_primary_executor().execute_sync(inputs)
     }
 
     fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {

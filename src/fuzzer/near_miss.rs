@@ -89,10 +89,10 @@ impl NearMiss {
                 }
             },
             distance: self.distance,
-            description: self
-                .suggestion
-                .clone()
-                .unwrap_or_else(|| format!("{:?}", self.miss_type)),
+            description: match self.suggestion.clone() {
+                Some(value) => value,
+                None => format!("{:?}", self.miss_type),
+            },
         }
     }
 }

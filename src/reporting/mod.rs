@@ -298,10 +298,10 @@ impl FuzzReport {
         let report = SarifBuilder::new("zk-fuzzer", env!("CARGO_PKG_VERSION"))
             .with_information_uri("https://github.com/example/zk-fuzzer")
             .with_circuit_path(
-                self.campaign_name
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(&self.campaign_name),
+                match self.campaign_name.rsplit('/').next() {
+                    Some(name) => name,
+                    None => &self.campaign_name,
+                },
             )
             .add_findings(&self.findings)
             .build();

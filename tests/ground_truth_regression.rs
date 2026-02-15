@@ -81,12 +81,15 @@ reporting:
     );
 
     // For testing, we use a simplified config
-    let config: FuzzConfig = serde_yaml::from_str(&yaml).unwrap_or_else(|e| {
-        panic!(
-            "Failed to parse ground truth config for {}: {}",
-            circuit_name, e
-        );
-    });
+    let config: FuzzConfig = match serde_yaml::from_str(&yaml) {
+        Ok(config) => config,
+        Err(e) => {
+            panic!(
+                "Failed to parse ground truth config for {}: {}",
+                circuit_name, e
+            );
+        }
+    };
 
     config
 }

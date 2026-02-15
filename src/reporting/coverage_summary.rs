@@ -259,14 +259,20 @@ impl CoverageSummary {
         let dep_pct = self
             .dependency_coverage
             .as_ref()
-            .map(|d| format!("{:.1}%", d.input_path_coverage_percent))
-            .unwrap_or_else(|| "N/A".to_string());
+            .map(|d| format!("{:.1}%", d.input_path_coverage_percent));
+        let dep_pct = match dep_pct {
+            Some(value) => value,
+            None => "N/A".to_string(),
+        };
 
         let oracle_pct = self
             .oracle_diversity
             .as_ref()
-            .map(|o| format!("{:.1}%", o.coverage_percent))
-            .unwrap_or_else(|| "N/A".to_string());
+            .map(|o| format!("{:.1}%", o.coverage_percent));
+        let oracle_pct = match oracle_pct {
+            Some(value) => value,
+            None => "N/A".to_string(),
+        };
 
         println!(
             "{} cov:{} dep:{} oracle:{}",

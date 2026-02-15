@@ -44,9 +44,11 @@ const GNARK_ISSUE1045_R1CS: &str =
 
 /// Helper to get the base path for zk0d (supports env override)
 fn zk0d_base() -> std::path::PathBuf {
-    std::env::var("ZK0D_BASE")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| Path::new(DEFAULT_ZK0D_BASE).to_path_buf())
+    match std::env::var("ZK0D_BASE") {
+        Ok(path) => std::path::PathBuf::from(path),
+        Err(std::env::VarError::NotPresent) => Path::new(DEFAULT_ZK0D_BASE).to_path_buf(),
+        Err(e) => panic!("Invalid ZK0D_BASE value: {}", e),
+    }
 }
 
 fn zk0d_base_display() -> String {

@@ -166,7 +166,10 @@ impl FuzzingEngine {
         let mut offset = 0usize;
         for input in &self.config.inputs {
             let len = if input.input_type.starts_with("array") {
-                input.length.unwrap_or(1)
+                match input.length {
+                    Some(value) => value,
+                    None => 1,
+                }
             } else {
                 1
             };
@@ -394,12 +397,12 @@ impl FuzzingEngine {
     }
 
     pub(super) fn normalize_input_name(raw: &str) -> String {
-        raw.trim()
-            .split('[')
-            .next()
-            .unwrap_or(raw)
-            .trim()
-            .to_string()
+        let prefix = raw.trim().split('[').next();
+        let prefix = match prefix {
+            Some(value) => value,
+            None => raw,
+        };
+        prefix.trim().to_string()
     }
 
     pub(super) fn violation_from_ast(

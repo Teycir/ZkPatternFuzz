@@ -279,8 +279,13 @@ impl OracleCorrelator {
             let combined_severity = group_findings
                 .iter()
                 .map(|f| f.severity)
-                .max()
-                .unwrap_or(Severity::Low);
+                .max();
+            let combined_severity = match combined_severity {
+                Some(value) => value,
+                None => {
+                    panic!("Correlation group unexpectedly empty while computing combined severity")
+                }
+            };
 
             // Primary is highest severity, rest are corroborating
             let mut sorted_findings: Vec<_> = group_findings.into_iter().collect();
@@ -464,7 +469,10 @@ impl CorrelationReport {
             ConfidenceLevel::Medium,
             ConfidenceLevel::Low,
         ] {
-            let count = self.findings_by_confidence.get(&level).unwrap_or(&0);
+            let count = match self.findings_by_confidence.get(&level) {
+                Some(value) => *value,
+                None => 0,
+            };
             md.push_str(&format!("| {} | {} |\n", level.as_str(), count));
         }
         md.push('\n');

@@ -211,9 +211,10 @@ impl PartialOrd for PrioritizedDirectedState {
 
 impl Ord for PrioritizedDirectedState {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.relevance_score
-            .partial_cmp(&other.relevance_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        match self.relevance_score.partial_cmp(&other.relevance_score) {
+            Some(ordering) => ordering,
+            None => std::cmp::Ordering::Equal,
+        }
     }
 }
 
@@ -402,10 +403,10 @@ impl BugDirectedExecutor {
         (0..self.num_inputs)
             .map(|i| {
                 let key = format!("input_{}", i);
-                assignments
-                    .get(&key)
-                    .cloned()
-                    .unwrap_or_else(FieldElement::zero)
+                match assignments.get(&key).cloned() {
+                    Some(value) => value,
+                    None => FieldElement::zero(),
+                }
             })
             .collect()
     }
@@ -802,10 +803,10 @@ impl DifferentialExecutor {
         (0..self.num_inputs)
             .map(|i| {
                 let key = format!("input_{}", i);
-                assignments
-                    .get(&key)
-                    .cloned()
-                    .unwrap_or_else(FieldElement::zero)
+                match assignments.get(&key).cloned() {
+                    Some(value) => value,
+                    None => FieldElement::zero(),
+                }
             })
             .collect()
     }

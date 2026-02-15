@@ -326,7 +326,10 @@ pub struct RecursiveAttack {
 impl RecursiveAttack {
     /// Create a new recursive attack detector
     pub fn new(config: RecursiveAttackConfig) -> Self {
-        let seed = config.seed.unwrap_or(42);
+        let seed = match config.seed {
+            Some(value) => value,
+            None => 42,
+        };
         Self {
             config,
             rng: ChaCha8Rng::seed_from_u64(seed),
@@ -578,7 +581,10 @@ impl RecursiveAttack {
                 counter: 0,
             }),
             is_base_case: true,
-            vk_hash: forged_commitment.try_into().unwrap_or([0u8; 32]),
+            vk_hash: match forged_commitment.try_into() {
+                Ok(hash) => hash,
+                Err(_) => panic!("Forged commitment length is not 32 bytes"),
+            },
         };
 
         let pattern_key = format!("commitment_forgery_{:?}", &forged_step.vk_hash[..8]);
@@ -1063,10 +1069,10 @@ impl RecursiveAttack {
         let witness_a: Vec<FieldElement> = if steps.is_empty() {
             vec![FieldElement::zero()]
         } else {
-            steps
-                .first()
-                .map(|s| s.public_inputs.clone())
-                .unwrap_or_default()
+            match steps.first().map(|s| s.public_inputs.clone()) {
+                Some(value) => value,
+                None => Vec::new(),
+            }
         };
 
         Finding {

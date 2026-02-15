@@ -97,9 +97,10 @@ impl CveDatabase {
                                 "{}:{} has non-string input key '{}'",
                                 pattern.id,
                                 tc.name,
-                                serde_yaml::to_string(key)
-                                    .unwrap_or_else(|_| "<unprintable>".to_string())
-                                    .trim()
+                                match serde_yaml::to_string(key) {
+                                    Ok(value) => value.trim().to_string(),
+                                    Err(err) => format!("<unprintable:{}>", err),
+                                }
                             ));
                             "<non-string-key>".to_string()
                         }
@@ -160,10 +161,10 @@ impl CveDatabase {
 
     /// Get interesting values by category
     pub fn get_interesting_values(&self, category: &str) -> Vec<&InterestingValue> {
-        self.interesting_values
-            .get(category)
-            .map(|v| v.iter().collect())
-            .unwrap_or_default()
+        match self.interesting_values.get(category) {
+            Some(values) => values.iter().collect(),
+            None => Vec::new(),
+        }
     }
 }
 
@@ -694,10 +695,10 @@ fn validate_strict_fixture_value(value: &serde_yaml::Value, context: &str, error
         }
         serde_yaml::Value::Mapping(map) => {
             for (k, v) in map {
-                let key = serde_yaml::to_string(k)
-                    .unwrap_or_else(|_| "<unprintable-key>".to_string())
-                    .trim()
-                    .to_string();
+                let key = match serde_yaml::to_string(k) {
+                    Ok(serialized) => serialized.trim().to_string(),
+                    Err(err) => format!("<unprintable-key:{}>", err),
+                };
                 validate_strict_fixture_value(v, &format!("{}{{{}}}", context, key), errors);
             }
         }
@@ -960,7 +961,12 @@ fn build_indexed_sequence(
         return Err("Indexed input map is empty".to_string());
     }
 
-    let max = values.keys().max().copied().unwrap_or(0);
+    let max = match values.keys().max().copied() {
+        Some(value) => value,
+        None => {
+            return Err("Indexed input map is empty".to_string());
+        }
+    };
     let mut seq = Vec::with_capacity(max + 1);
     for idx in 0..=max {
         if let Some(value) = values.get(&idx) {

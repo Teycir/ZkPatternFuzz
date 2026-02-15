@@ -59,9 +59,16 @@ impl CompositionTester {
             let result = circuit.execute_sync(&current);
 
             if !result.success {
+                let error = match result.error {
+                    Some(err) => err,
+                    None => format!(
+                        "Sequential composition step {} failed without backend error message",
+                        i
+                    ),
+                };
                 return Err(CompositionError::StepFailed {
                     step: i,
-                    error: result.error.unwrap_or_else(|| "Unknown error".to_string()),
+                    error,
                 });
             }
 
@@ -89,9 +96,16 @@ impl CompositionTester {
             let result = circuit.execute_sync(input);
 
             if !result.success {
+                let error = match result.error {
+                    Some(err) => err,
+                    None => format!(
+                        "Parallel composition step {} failed without backend error message",
+                        i
+                    ),
+                };
                 return Err(CompositionError::StepFailed {
                     step: i,
-                    error: result.error.unwrap_or_else(|| "Unknown error".to_string()),
+                    error,
                 });
             }
 

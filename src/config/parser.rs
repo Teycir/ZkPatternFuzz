@@ -6,7 +6,7 @@ pub fn parse_attack_config<T: serde::de::DeserializeOwned>(
     key: &str,
     default: T,
 ) -> T {
-    config
+    let parsed = config
         .get(key)
         .and_then(|v| match serde_yaml::from_value(v.clone()) {
             Ok(parsed) => Some(parsed),
@@ -14,21 +14,27 @@ pub fn parse_attack_config<T: serde::de::DeserializeOwned>(
                 tracing::warn!("Failed parsing attack config key '{}': {}", key, err);
                 None
             }
-        })
-        .unwrap_or(default)
+        });
+    match parsed {
+        Some(value) => value,
+        None => default,
+    }
 }
 
 /// Parse a list of test values from attack config
 pub fn parse_test_values(config: &serde_yaml::Value) -> Vec<String> {
-    config
+    let values = config
         .get("test_values")
         .and_then(|v| v.as_sequence())
         .map(|seq| {
             seq.iter()
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()
-        })
-        .unwrap_or_default()
+        });
+    match values {
+        Some(value) => value,
+        None => Vec::new(),
+    }
 }
 
 /// Error type for value expansion failures

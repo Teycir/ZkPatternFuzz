@@ -241,7 +241,10 @@ impl ChainShrinker {
         // FIX #5: Minimize all input types, not just Fresh
         for step in spec.steps.iter() {
             let circuit_ref = &step.circuit_ref;
-            let input_count = minimized.get(circuit_ref).map(|v| v.len()).unwrap_or(0);
+            let input_count = match minimized.get(circuit_ref).map(|v| v.len()) {
+                Some(value) => value,
+                None => 0,
+            };
 
             let minimizable_indices: Vec<usize> = match &step.input_wiring {
                 InputWiring::Fresh => (0..input_count).collect(),
@@ -254,8 +257,11 @@ impl ChainShrinker {
                 let original = minimized
                     .get(circuit_ref)
                     .and_then(|v| v.get(i))
-                    .cloned()
-                    .unwrap_or_else(FieldElement::zero);
+                    .cloned();
+                let original = match original {
+                    Some(value) => value,
+                    None => continue,
+                };
 
                 if let Some(step_inputs) = minimized.get_mut(circuit_ref) {
                     if i < step_inputs.len() {

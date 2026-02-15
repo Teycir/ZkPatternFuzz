@@ -48,9 +48,11 @@ use zk_fuzzer::analysis::opus::{OpusAnalyzer, OpusConfig, ZeroDayCategory};
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
 
 fn zk0d_base() -> PathBuf {
-    std::env::var("ZK0D_BASE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_ZK0D_BASE))
+    match std::env::var("ZK0D_BASE") {
+        Ok(path) => PathBuf::from(path),
+        Err(std::env::VarError::NotPresent) => PathBuf::from(DEFAULT_ZK0D_BASE),
+        Err(e) => panic!("Invalid ZK0D_BASE value: {}", e),
+    }
 }
 
 fn zk0d_privacy_base() -> PathBuf {

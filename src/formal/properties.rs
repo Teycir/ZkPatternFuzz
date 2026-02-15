@@ -143,9 +143,13 @@ impl PropertyExtractor {
 
         // Add constraint satisfaction properties
         for eq in constraints {
+            let description = match eq.description.clone() {
+                Some(value) => value,
+                None => String::new(),
+            };
             properties.push(CircuitProperty::ConstraintSatisfied {
                 constraint_id: eq.id,
-                description: eq.description.clone().unwrap_or_default(),
+                description,
             });
         }
 

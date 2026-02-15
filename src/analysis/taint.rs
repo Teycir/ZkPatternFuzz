@@ -287,14 +287,30 @@ impl TaintAnalyzer {
                     let before = self
                         .signal_taints
                         .get(output_idx)
-                        .map(|t| t.labels.len())
-                        .unwrap_or(0);
+                        .map(|t| t.labels.len());
+                    let before = match before {
+                        Some(value) => value,
+                        None => {
+                            panic!(
+                                "Missing taint state for output signal {} before propagation",
+                                output_idx
+                            )
+                        }
+                    };
                     self.propagate_constraint(constraint.id, &input_signals, *output_idx);
                     let after = self
                         .signal_taints
                         .get(output_idx)
-                        .map(|t| t.labels.len())
-                        .unwrap_or(0);
+                        .map(|t| t.labels.len());
+                    let after = match after {
+                        Some(value) => value,
+                        None => {
+                            panic!(
+                                "Missing taint state for output signal {} after propagation",
+                                output_idx
+                            )
+                        }
+                    };
                     if after > before {
                         changed = true;
                     }

@@ -229,9 +229,10 @@ impl ChainCorpus {
     pub fn top_entries(&self, n: usize) -> Vec<&ChainCorpusEntry> {
         let mut entries: Vec<_> = self.entries.iter().collect();
         entries.sort_by(|a, b| {
-            b.priority_score()
-                .partial_cmp(&a.priority_score())
-                .map_or(std::cmp::Ordering::Equal, |v| v)
+            match b.priority_score().partial_cmp(&a.priority_score()) {
+                Some(ordering) => ordering,
+                None => std::cmp::Ordering::Equal,
+            }
         });
         entries.into_iter().take(n).collect()
     }
@@ -367,9 +368,10 @@ impl ChainCorpus {
 
         // Sort by priority and keep top entries
         self.entries.sort_by(|a, b| {
-            b.priority_score()
-                .partial_cmp(&a.priority_score())
-                .map_or(std::cmp::Ordering::Equal, |v| v)
+            match b.priority_score().partial_cmp(&a.priority_score()) {
+                Some(ordering) => ordering,
+                None => std::cmp::Ordering::Equal,
+            }
         });
         self.entries.truncate(max_entries);
     }
@@ -415,8 +417,11 @@ impl ChainCorpus {
             .entries
             .iter()
             .map(|e| e.depth_reached)
-            .max()
-            .map_or(0, |v| v);
+            .max();
+        let max_depth = match max_depth {
+            Some(value) => value,
+            None => 0,
+        };
 
         CorpusStats {
             total_entries,

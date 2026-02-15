@@ -491,8 +491,16 @@ impl CrossStepAssertion {
             } else {
                 Some(idx)
             }
-        })
-        .unwrap_or_else(|| self.relation.clone());
+        });
+        let new_relation = match new_relation {
+            Some(value) => value,
+            None => {
+                panic!(
+                    "Invalid relation during swap remap (relation='{}', i={}, j={})",
+                    self.relation, i, j
+                )
+            }
+        };
 
         Self {
             name: self.name.clone(),
@@ -511,8 +519,16 @@ impl CrossStepAssertion {
             } else {
                 Some(idx)
             }
-        })
-        .unwrap_or_else(|| self.relation.clone());
+        });
+        let new_relation = match new_relation {
+            Some(value) => value,
+            None => {
+                panic!(
+                    "Invalid relation during insertion remap (relation='{}', inserted_at={})",
+                    self.relation, inserted_at
+                )
+            }
+        };
 
         Self {
             name: self.name.clone(),
@@ -823,8 +839,16 @@ impl ChainFinding {
             .trace
             .steps
             .first()
-            .map(|s| s.inputs.clone())
-            .unwrap_or_default();
+            .map(|s| s.inputs.clone());
+        let witness_a = match witness_a {
+            Some(value) => value,
+            None => {
+                panic!(
+                    "Cannot convert ChainFinding to Finding without at least one trace step (spec='{}')",
+                    self.spec_name
+                )
+            }
+        };
 
         // For L_min > 2, we need to capture all step inputs
         // Use witness_b for step 2, and embed remaining steps in description

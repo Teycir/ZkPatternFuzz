@@ -101,11 +101,11 @@ impl FuzzingEngineCore {
     }
 
     pub fn update_power_scheduler_globals(&mut self) {
-        let avg_time = self
-            .avg_exec_time
-            .read()
-            .map(|t| *t)
-            .unwrap_or(Duration::from_micros(100));
+        let avg_time = self.avg_exec_time.read();
+        let avg_time = match avg_time {
+            Ok(value) => *value,
+            Err(_) => Duration::from_micros(100),
+        };
         let total_edges = self.coverage.unique_constraints_hit() as u64;
         self.power_scheduler.update_globals(avg_time, total_edges);
     }
@@ -142,10 +142,10 @@ impl FuzzingEngineCore {
                 path_frequency: 1,
                 generation: entry.test_case.metadata.generation as u32,
                 depth: entry.test_case.metadata.generation as u32,
-                time_since_finding: self
-                    .start_time
-                    .map(|t| t.elapsed())
-                    .unwrap_or(Duration::ZERO),
+                time_since_finding: match self.start_time.map(|t| t.elapsed()) {
+                    Some(value) => value,
+                    None => Duration::ZERO,
+                },
             };
 
             let energy = self.power_scheduler.calculate_energy(&metrics);

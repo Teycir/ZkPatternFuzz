@@ -111,7 +111,10 @@ impl EquivalenceClass {
                         va.to_bytes() == vb.to_bytes()
                             || va.mul(&FieldElement::from_u64(2)).to_bytes() == vb.to_bytes()
                     });
-                ratio.unwrap_or(false)
+                match ratio {
+                    Some(value) => value,
+                    None => false,
+                }
             }
             EquivalencePredicate::Custom(_) => false,
         }
@@ -507,6 +510,10 @@ mod tests {
         let analysis = detector.analyze_patterns(&collisions);
 
         assert_eq!(analysis.total_collisions, 2);
-        assert_eq!(*analysis.differing_indices.get(&1).unwrap_or(&0), 2);
+        let differing = match analysis.differing_indices.get(&1) {
+            Some(value) => *value,
+            None => 0,
+        };
+        assert_eq!(differing, 2);
     }
 }

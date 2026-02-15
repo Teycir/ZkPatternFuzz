@@ -28,6 +28,7 @@
 //! let findings = attack.run(&executor, &inputs)?;
 //! ```
 
+use anyhow::Context;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
@@ -154,7 +155,10 @@ pub struct FrontRunningAttack {
 impl FrontRunningAttack {
     /// Create a new front-running attack detector
     pub fn new(config: FrontRunningConfig) -> Self {
-        let seed = config.seed.unwrap_or_else(rand::random);
+        let seed = match config.seed {
+            Some(seed) => seed,
+            None => rand::random(),
+        };
         Self {
             config,
             rng: ChaCha8Rng::seed_from_u64(seed),
@@ -341,8 +345,10 @@ impl FrontRunningAttack {
                 let commitment_key = result
                     .outputs
                     .first()
-                    .map(|f| f.to_hex())
-                    .map_or(String::new(), |v| v);
+                    .context(
+                        "front_running: successful execution returned no outputs during commitment collision check",
+                    )?
+                    .to_hex();
 
                 commitment_map
                     .entry(commitment_key)
@@ -413,13 +419,23 @@ impl FrontRunningAttack {
                 let output_a = result_a
                     .outputs
                     .first()
-                    .and_then(|f| f.to_u64())
-                    .map_or(0, |v| v);
+                    .context(
+                        "front_running: successful execution A returned no outputs during weak-hiding analysis",
+                    )?
+                    .to_u64()
+                    .context(
+                        "front_running: output A does not fit in u64 during weak-hiding analysis",
+                    )?;
                 let output_b = result_b
                     .outputs
                     .first()
-                    .and_then(|f| f.to_u64())
-                    .map_or(0, |v| v);
+                    .context(
+                        "front_running: successful execution B returned no outputs during weak-hiding analysis",
+                    )?
+                    .to_u64()
+                    .context(
+                        "front_running: output B does not fit in u64 during weak-hiding analysis",
+                    )?;
 
                 let diff = (output_a as i128 - output_b as i128).unsigned_abs();
                 similar_pairs.push(diff);

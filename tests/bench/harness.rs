@@ -165,8 +165,14 @@ impl BenchmarkStats {
             sorted_times[sorted_times.len() / 2] as f64
         };
 
-        let min = *sorted_times.first().unwrap_or(&0);
-        let max = *sorted_times.last().unwrap_or(&0);
+        let min = match sorted_times.first() {
+            Some(value) => *value,
+            None => 0,
+        };
+        let max = match sorted_times.last() {
+            Some(value) => *value,
+            None => 0,
+        };
 
         let passed = median <= expected_time_ms as f64 && detection_rate >= 0.8;
 
@@ -290,13 +296,16 @@ impl BenchmarkHarness {
         let mut runs = Vec::new();
 
         for run_idx in 0..self.config.runs_per_benchmark {
-            let seed = self.config.seed.map(|s| s + run_idx as u64).unwrap_or_else(|| {
-                use std::time::SystemTime;
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-            });
+            let seed = match self.config.seed.map(|s| s + run_idx as u64) {
+                Some(value) => value,
+                None => {
+                    use std::time::SystemTime;
+                    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+                        Ok(duration) => duration.as_secs(),
+                        Err(err) => panic!("System clock before UNIX_EPOCH while generating seed: {}", err),
+                    }
+                }
+            };
 
             println!("  Run {}/{} (seed: {})", run_idx + 1, self.config.runs_per_benchmark, seed);
 

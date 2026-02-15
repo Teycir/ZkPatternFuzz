@@ -166,9 +166,12 @@ impl StructureAwareMutator {
     }
 
     fn extract_signal_name(line: &str) -> String {
-        line.split_whitespace()
-            .last()
-            .unwrap_or("")
+        let token = line.split_whitespace().last();
+        let token = match token {
+            Some(value) => value,
+            None => "",
+        };
+        token
             .trim_end_matches(';')
             .trim_end_matches('[')
             .to_string()
@@ -418,7 +421,11 @@ impl StructureAwareMutator {
 
     fn to_u64(&self, fe: &FieldElement) -> u64 {
         let bytes = &fe.0[24..32];
-        u64::from_be_bytes(bytes.try_into().unwrap_or([0; 8]))
+        let bytes: [u8; 8] = match bytes.try_into() {
+            Ok(value) => value,
+            Err(_) => panic!("FieldElement tail slice is not 8 bytes"),
+        };
+        u64::from_be_bytes(bytes)
     }
 
     /// Add learned patterns from successful inputs

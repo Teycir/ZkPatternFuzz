@@ -236,7 +236,11 @@ impl ProofForgeryDetector {
         let forgery_verified = verification_result
             .as_ref()
             .map(|r| r.passed)
-            .map_or(false, |v| v);
+            .map(|v| v);
+        let forgery_verified = match forgery_verified {
+            Some(value) => value,
+            None => false,
+        };
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
 
@@ -306,7 +310,11 @@ impl ProofForgeryDetector {
         let forgery_verified = verification_result
             .as_ref()
             .map(|r| r.passed)
-            .map_or(false, |v| v);
+            .map(|v| v);
+        let forgery_verified = match forgery_verified {
+            Some(value) => value,
+            None => false,
+        };
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
 

@@ -173,7 +173,11 @@ impl<'ctx> AltWitnessSolver<'ctx> {
 
     /// Convert a BigUint to Z3 Int
     fn bigint_to_int(&self, n: &BigUint) -> Int<'ctx> {
-        Int::from_str(self.ctx, &n.to_str_radix(10)).unwrap_or_else(|| Int::from_i64(self.ctx, 0))
+        let decimal = n.to_str_radix(10);
+        match Int::from_str(self.ctx, &decimal) {
+            Some(value) => value,
+            None => panic!("Failed to parse BigUint into Z3 Int: {}", decimal),
+        }
     }
 
     /// Compute sparse dot product: Σ (coeff_i * wire_i)
@@ -304,7 +308,11 @@ impl<'ctx> AltWitnessSolver<'ctx> {
             let value = model
                 .eval(wire, true)
                 .and_then(|v| int_to_biguint(&v))
-                .unwrap_or_else(|| BigUint::from(0u32));
+                .map(|v| v);
+            let value = match value {
+                Some(v) => v,
+                None => BigUint::from(0u32),
+            };
             witness.push(FieldElement::from_bytes(&value.to_bytes_be()));
         }
 

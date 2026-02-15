@@ -207,10 +207,11 @@ impl OracleDiversityTracker {
         let is_new_pattern = self.violation_patterns.insert(pattern.clone());
 
         // Calculate elapsed time
-        let elapsed_ms = self
-            .start_time
-            .map(|t| t.elapsed().as_millis() as u64)
-            .unwrap_or(0);
+        let elapsed_ms = self.start_time.map(|t| t.elapsed().as_millis() as u64);
+        let elapsed_ms = match elapsed_ms {
+            Some(value) => value,
+            None => 0,
+        };
 
         // Update pattern details
         if is_new_pattern {

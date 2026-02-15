@@ -269,12 +269,16 @@ impl CorpusSyncManager {
 
     /// Get entries received from a specific node
     pub fn get_remote_entries(&self, node_id: &str) -> Vec<CorpusEntry> {
-        self.remote_entries
+        let entries = self
+            .remote_entries
             .read()
             .unwrap()
             .get(node_id)
-            .cloned()
-            .map_or(Vec::new(), |v| v)
+            .cloned();
+        match entries {
+            Some(value) => value,
+            None => Vec::new(),
+        }
     }
 
     /// Get synchronization statistics
@@ -376,11 +380,14 @@ impl GlobalCorpusManager {
     /// Get entries for redistribution to a node
     pub fn get_entries_for_node(&self, node_id: &str, max_entries: usize) -> Vec<CorpusEntry> {
         // Get entries this node hasn't seen
-        let node_hashes: HashSet<u64> = self
+        let node_hashes = self
             .node_corpora
             .get(node_id)
-            .map(|entries| entries.iter().map(|e| e.coverage_hash).collect())
-            .map_or(HashSet::new(), |v| v);
+            .map(|entries| entries.iter().map(|e| e.coverage_hash).collect());
+        let node_hashes = match node_hashes {
+            Some(value) => value,
+            None => HashSet::new(),
+        };
 
         self.global_corpus
             .iter()

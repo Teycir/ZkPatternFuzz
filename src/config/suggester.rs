@@ -256,10 +256,10 @@ impl YamlSuggester {
                     suggestion_type: SuggestionType::AddInterestingValue,
                     key: "interesting".to_string(),
                     value: value.to_hex(),
-                    reason: nm
-                        .suggestion
-                        .clone()
-                        .unwrap_or_else(|| format!("Near-miss at distance {:.3}", nm.distance)),
+                    reason: match nm.suggestion.clone() {
+                        Some(reason) => reason,
+                        None => format!("Near-miss at distance {:.3}", nm.distance),
+                    },
                 });
             }
         }

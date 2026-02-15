@@ -66,9 +66,12 @@ reporting:
 "#,
     );
 
-    serde_yaml::from_str(&yaml).unwrap_or_else(|e| {
-        panic!("Failed to parse FP test config for {}: {}", circuit_name, e);
-    })
+    match serde_yaml::from_str(&yaml) {
+        Ok(config) => config,
+        Err(e) => {
+            panic!("Failed to parse FP test config for {}: {}", circuit_name, e);
+        }
+    }
 }
 
 /// FP Rate calculation result
@@ -161,8 +164,10 @@ fn test_fp_rate_audited_circuits() {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         let report = rt.block_on(async {
-            let mut engine = FuzzingEngine::new(config, Some(42), 1)
-                .unwrap_or_else(|e| panic!("Failed to init engine for {}: {}", circuit, e));
+            let mut engine = match FuzzingEngine::new(config, Some(42), 1) {
+                Ok(engine) => engine,
+                Err(e) => panic!("Failed to init engine for {}: {}", circuit, e),
+            };
             engine.run(None).await.unwrap()
         });
 
@@ -209,8 +214,10 @@ fn test_fp_rate_verified_circuits() {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         let report = rt.block_on(async {
-            let mut engine = FuzzingEngine::new(config, Some(42), 1)
-                .unwrap_or_else(|e| panic!("Failed to init engine for {}: {}", circuit, e));
+            let mut engine = match FuzzingEngine::new(config, Some(42), 1) {
+                Ok(engine) => engine,
+                Err(e) => panic!("Failed to init engine for {}: {}", circuit, e),
+            };
             engine.run(None).await.unwrap()
         });
 

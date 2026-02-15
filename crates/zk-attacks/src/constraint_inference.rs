@@ -193,7 +193,11 @@ impl InferenceContext {
             .chain(max_from_labels)
             .max()
             .map(|max_wire| max_wire.saturating_add(1))
-            .map_or(num_wires, |v| v);
+            .map(|v| v);
+        let inferred_wires = match inferred_wires {
+            Some(value) => value,
+            None => num_wires,
+        };
 
         Self {
             constraints,
@@ -307,7 +311,10 @@ impl InferenceRule for BitDecompositionInference {
 
         for (i, &bit_wire) in bit_wires.iter().enumerate() {
             if bit_wire < num_wires {
-                let bit_value = different_value.checked_shr(i as u32).map_or(0, |v| v) & 1;
+                let bit_value = match different_value.checked_shr(i as u32) {
+                    Some(value) => value,
+                    None => 0,
+                } & 1;
                 witness[bit_wire] = FieldElement::from_u64(bit_value);
             }
         }
@@ -855,7 +862,11 @@ impl ConstraintInferenceEngine {
                     let input_idx = wire_to_input
                         .as_ref()
                         .and_then(|map| map.get(&wire).copied())
-                        .map_or(wire, |v| v);
+                        .map(|v| v);
+                    let input_idx = match input_idx {
+                        Some(value) => value,
+                        None => wire,
+                    };
                     if input_idx < candidate_inputs.len() && wire < violation.len() {
                         candidate_inputs[input_idx] = violation[wire].clone();
                     } else {
@@ -873,7 +884,11 @@ impl ConstraintInferenceEngine {
             let has_internal_wires = constraint.involved_wires.iter().any(|&wire| {
                 let is_input = wire_to_input
                     .as_ref()
-                    .map_or(wire < num_inputs, |map| map.contains_key(&wire));
+                    .map(|map| map.contains_key(&wire));
+                let is_input = match is_input {
+                    Some(value) => value,
+                    None => wire < num_inputs,
+                };
                 !is_input && !output_wires.contains(&wire)
             });
 
@@ -941,7 +956,10 @@ impl ConstraintInferenceEngine {
                     description
                 },
                 poc: ProofOfConcept {
-                    witness_a: ic.violation_witness.clone().map_or(Vec::new(), |v| v),
+                    witness_a: match ic.violation_witness.clone() {
+                        Some(value) => value,
+                        None => Vec::new(),
+                    },
                     witness_b: None,
                     public_inputs: vec![],
                     proof: None,

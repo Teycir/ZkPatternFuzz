@@ -273,7 +273,10 @@ impl BoundaryTester {
 
     /// Return the effective modulus bytes (override or BN254 default).
     fn effective_modulus(&self) -> [u8; 32] {
-        self.modulus_override.unwrap_or_else(bn254_modulus_bytes)
+        match self.modulus_override {
+            Some(value) => value,
+            None => bn254_modulus_bytes(),
+        }
     }
 
     /// Get all configured test values as strings

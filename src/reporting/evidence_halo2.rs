@@ -291,8 +291,11 @@ pub fn generate_halo2_repro_script(
     }
 
     let spec_display = circuit_spec_path
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "<circuit_spec>".to_string());
+        .map(|p| p.display().to_string());
+    let spec_display = match spec_display {
+        Some(value) => value,
+        None => "<circuit_spec>".to_string(),
+    };
 
     let script = format!(
         r#"#!/bin/bash

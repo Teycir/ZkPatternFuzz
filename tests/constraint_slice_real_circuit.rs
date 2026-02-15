@@ -33,38 +33,29 @@ async fn test_constraint_slice_withdraw_real_circuit() {
         .map(|_| FieldElement::random(&mut rng))
         .collect();
 
-    let outputs: Vec<OutputMapping> = executor
+    let inspector = executor
         .constraint_inspector()
-        .map(|inspector| {
-            let outputs = inspector.output_indices();
-            if outputs.is_empty() {
-                let start = executor.num_public_inputs() + executor.num_private_inputs();
-                vec![OutputMapping {
-                    output_index: 0,
-                    output_wire: start,
-                }]
-            } else {
-                outputs
-                    .into_iter()
-                    .enumerate()
-                    .map(|(output_index, output_wire)| OutputMapping {
-                        output_index,
-                        output_wire,
-                    })
-                    .collect()
-            }
+        .expect("Constraint inspector unavailable for real-circuit slice test");
+    let output_wires = inspector.output_indices();
+    assert!(
+        !output_wires.is_empty(),
+        "Constraint inspector returned no output wires"
+    );
+    let outputs: Vec<OutputMapping> = output_wires
+        .into_iter()
+        .enumerate()
+        .map(|(output_index, output_wire)| OutputMapping {
+            output_index,
+            output_wire,
         })
-        .unwrap_or_else(|| {
-            let start = executor.num_public_inputs() + executor.num_private_inputs();
-            vec![OutputMapping {
-                output_index: 0,
-                output_wire: start,
-            }]
-        });
+        .collect();
 
     let oracle = ConstraintSliceOracle::new().with_samples(5);
     let findings = oracle.run(&executor, &base_inputs, &outputs).await;
 
     // Validation: ensure the oracle runs to completion on a real circuit.
-    let _ = findings;
+    println!(
+        "Constraint slice oracle completed with {} finding(s)",
+        findings.len()
+    );
 }

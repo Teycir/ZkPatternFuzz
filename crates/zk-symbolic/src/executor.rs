@@ -408,7 +408,10 @@ impl Z3Solver {
         match value {
             SymbolicValue::Concrete(fe) => {
                 let dec_str = fe.to_decimal_string();
-                ast::Int::from_str(ctx, &dec_str).unwrap_or_else(|| ast::Int::from_i64(ctx, 0))
+                match ast::Int::from_str(ctx, &dec_str) {
+                    Some(value) => value,
+                    None => panic!("Failed to parse decimal field element into Z3 Int: {}", dec_str),
+                }
             }
             SymbolicValue::Symbol(name) => {
                 if let Some(var) = vars.get(name) {

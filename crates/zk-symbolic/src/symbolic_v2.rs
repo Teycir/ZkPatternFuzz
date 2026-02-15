@@ -199,8 +199,11 @@ impl PathMerger {
         let min_len = states
             .iter()
             .map(|s| s.path_condition.constraints.len())
-            .min()
-            .unwrap_or(0)
+            .min();
+        let min_len = match min_len {
+            Some(value) => value,
+            None => panic!("State merge called with no states to merge"),
+        }
             .min(first.path_condition.constraints.len());
 
         // Add common prefix constraints
@@ -751,10 +754,10 @@ impl PartialOrd for PrioritizedStateV2 {
 
 impl Ord for PrioritizedStateV2 {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.priority
-            .score
-            .partial_cmp(&other.priority.score)
-            .unwrap_or(Ordering::Equal)
+        match self.priority.score.partial_cmp(&other.priority.score) {
+            Some(ordering) => ordering,
+            None => Ordering::Equal,
+        }
     }
 }
 
