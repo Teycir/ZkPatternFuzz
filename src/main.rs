@@ -1606,7 +1606,39 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
 fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
     tracing::info!("Validating campaign: {}", config_path);
-    let config = FuzzConfig::from_yaml(config_path)?;
+    let mut config = FuzzConfig::from_yaml(config_path)?;
+
+    // The validate subcommand should reflect the CLI defaults used by `run/evidence/chains`.
+    // Otherwise the readiness report emits noisy iteration warnings for configs that intentionally
+    // omit max_iterations and rely on CLI defaults.
+    {
+        let additional = &mut config.campaign.parameters.additional;
+        if !config.chains.is_empty() {
+            // Match `chains` defaults: iterations=100000, timeout=600.
+            additional
+                .entry("chain_iterations".to_string())
+                .or_insert_with(|| serde_yaml::Value::Number(serde_yaml::Number::from(100_000u64)));
+            additional
+                .entry("chain_budget_seconds".to_string())
+                .or_insert_with(|| serde_yaml::Value::Number(serde_yaml::Number::from(600u64)));
+
+            // Match `chains` run behavior (strict evidence semantics for findings).
+            additional
+                .entry("evidence_mode".to_string())
+                .or_insert_with(|| serde_yaml::Value::Bool(true));
+            additional
+                .entry("engagement_strict".to_string())
+                .or_insert_with(|| serde_yaml::Value::Bool(true));
+            additional
+                .entry("strict_backend".to_string())
+                .or_insert_with(|| serde_yaml::Value::Bool(true));
+        } else {
+            // Match `run/evidence` defaults: iterations=100000.
+            additional.entry("fuzzing_iterations".to_string()).or_insert_with(|| {
+                serde_yaml::Value::Number(serde_yaml::Number::from(100_000u64))
+            });
+        }
+    }
 
     println!("✓ Configuration is valid");
     println!();
