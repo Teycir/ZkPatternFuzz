@@ -280,6 +280,20 @@ impl Halo2Target {
                 .ok_or_else(|| anyhow::anyhow!("Halo2 JSON spec missing required '{}' field", key))
         };
         let required_usize = |key: &str| -> Result<usize> { Ok(required_u64(key)? as usize) };
+        let lookup_count = || -> Result<usize> {
+            // Accept either:
+            // - numeric `lookups: <count>`
+            // - array `lookups: [ ... ]` (count inferred from length)
+            match spec.get("lookups") {
+                Some(value) if value.is_u64() => Ok(value.as_u64().unwrap_or(0) as usize),
+                Some(value) if value.is_array() => {
+                    Ok(value.as_array().map(|a| a.len()).unwrap_or(0))
+                }
+                _ => Err(anyhow::anyhow!(
+                    "Halo2 JSON spec missing required 'lookups' field"
+                )),
+            }
+        };
         let name = spec
             .get("name")
             .and_then(|v| v.as_str())
@@ -297,7 +311,7 @@ impl Halo2Target {
             num_constraints: required_usize("constraints")?,
             num_private_inputs: required_usize("private_inputs")?,
             num_public_inputs: required_usize("public_inputs")?,
-            num_lookups: required_usize("lookups")?,
+            num_lookups: lookup_count()?,
         });
 
         let parsed = ConstraintParser::parse_plonk_with_tables(&content);

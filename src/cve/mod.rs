@@ -19,12 +19,16 @@
 //! ```
 
 use crate::executor::ExecutorFactory;
+use crate::fuzzer::oracles::{
+    CommitmentOracle, MerkleOracle, NullifierOracle, OracleConfig, RangeProofOracle, SemanticOracle,
+};
 use num_bigint::BigUint;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Mutex;
 use zk_core::{AttackType, FieldElement, Finding, Framework, ProofOfConcept, Severity, TestCase};
 
 /// Complete CVE database loaded from YAML
@@ -1135,9 +1139,93 @@ fn parse_string_as_field_element(
 pub struct CveOracle {
     database: CveDatabase,
     active_patterns: Vec<String>,
+    nullifier_oracle: Mutex<NullifierOracle>,
+    merkle_oracle: Mutex<MerkleOracle>,
+    range_oracle: Mutex<RangeProofOracle>,
+    commitment_oracle: Mutex<CommitmentOracle>,
 }
 
 impl CveOracle {
+    fn with_active_patterns(database: CveDatabase, active_patterns: Vec<String>) -> Self {
+        let oracle_config = OracleConfig::default();
+        Self {
+            database,
+            active_patterns,
+            nullifier_oracle: Mutex::new(NullifierOracle::new(oracle_config.clone())),
+            merkle_oracle: Mutex::new(MerkleOracle::new(oracle_config.clone()).with_expected_depth(20)),
+            range_oracle: Mutex::new(RangeProofOracle::new(oracle_config.clone())),
+            commitment_oracle: Mutex::new(CommitmentOracle::new(oracle_config)),
+        }
+    }
+
+    fn run_semantic_oracle<O: SemanticOracle>(
+        oracle: &Mutex<O>,
+        test_case: &TestCase,
+        output: &[FieldElement],
+    ) -> Option<Finding> {
+        let mut guard = oracle
+            .lock()
+            .expect("semantic oracle state mutex poisoned; aborting CVE check");
+        guard.check(test_case, output)
+    }
+
+    fn adapt_semantic_finding(&self, pattern: &CvePattern, finding: Finding) -> Finding {
+        let mut cve_finding = pattern.create_finding(finding.poc, finding.location);
+        let semantic_headline = finding
+            .description
+            .lines()
+            .next()
+            .map(str::trim)
+            .filter(|line| !line.is_empty());
+        if let Some(headline) = semantic_headline {
+            cve_finding.description = format!(
+                "{}\n\nSemantic trigger: {}",
+                cve_finding.description, headline
+            );
+        }
+        cve_finding
+    }
+
+    fn check_with_nullifier_oracle(
+        &self,
+        pattern: &CvePattern,
+        test_case: &TestCase,
+        output: &[FieldElement],
+    ) -> Option<Finding> {
+        Self::run_semantic_oracle(&self.nullifier_oracle, test_case, output)
+            .map(|finding| self.adapt_semantic_finding(pattern, finding))
+    }
+
+    fn check_with_merkle_oracle(
+        &self,
+        pattern: &CvePattern,
+        test_case: &TestCase,
+        output: &[FieldElement],
+    ) -> Option<Finding> {
+        Self::run_semantic_oracle(&self.merkle_oracle, test_case, output)
+            .map(|finding| self.adapt_semantic_finding(pattern, finding))
+    }
+
+    fn check_with_range_oracle(
+        &self,
+        pattern: &CvePattern,
+        test_case: &TestCase,
+        output: &[FieldElement],
+    ) -> Option<Finding> {
+        Self::run_semantic_oracle(&self.range_oracle, test_case, output)
+            .map(|finding| self.adapt_semantic_finding(pattern, finding))
+    }
+
+    fn check_with_commitment_oracle(
+        &self,
+        pattern: &CvePattern,
+        test_case: &TestCase,
+        output: &[FieldElement],
+    ) -> Option<Finding> {
+        Self::run_semantic_oracle(&self.commitment_oracle, test_case, output)
+            .map(|finding| self.adapt_semantic_finding(pattern, finding))
+    }
+
     /// Create oracle with all patterns active
     pub fn new(database: CveDatabase) -> Self {
         let active_patterns = database
@@ -1145,10 +1233,7 @@ impl CveOracle {
             .iter()
             .map(|p| p.id.clone())
             .collect();
-        Self {
-            database,
-            active_patterns,
-        }
+        Self::with_active_patterns(database, active_patterns)
     }
 
     /// Create oracle for specific circuit
@@ -1158,10 +1243,7 @@ impl CveOracle {
             .iter()
             .map(|p| p.id.clone())
             .collect();
-        Self {
-            database,
-            active_patterns,
-        }
+        Self::with_active_patterns(database, active_patterns)
     }
 
     /// Check test case against known CVE patterns
@@ -1176,20 +1258,30 @@ impl CveOracle {
         None
     }
 
-    /// Check single pattern (placeholder for actual implementation)
+    /// Check single pattern using strict CVE-specific oracle routing.
     fn check_pattern(
         &self,
         pattern: &CvePattern,
         test_case: &TestCase,
-        _output: &[FieldElement],
+        output: &[FieldElement],
     ) -> Option<Finding> {
-        // This would implement pattern-specific detection logic
-        // For now, return None (no finding)
         match pattern.detection.oracle.as_str() {
             "signature_malleability" => self.check_signature_malleability(pattern, test_case),
-            "nullifier_collision" => None, // Handled by NullifierOracle
-            "merkle_soundness" => None,    // Handled by MerkleOracle
-            "range_overflow" => self.check_range_overflow(pattern, test_case),
+            "nullifier_collision" | "replay_protection" | "randomness_reuse"
+            | "linkability_analysis" => self.check_with_nullifier_oracle(pattern, test_case, output),
+            "merkle_soundness" | "state_transition" | "ordering_dependency" | "batch_soundness"
+            | "recursive_soundness" | "recursive_base_case" | "storage_soundness" => {
+                self.check_with_merkle_oracle(pattern, test_case, output)
+            }
+            "range_overflow" | "arithmetic_boundary" | "opcode_boundary" | "opcode_bounds"
+            | "accumulator_overflow" | "lookup_soundness" | "gate_activation"
+            | "gas_accounting" | "gas_analysis" | "price_manipulation" => {
+                self.check_with_range_oracle(pattern, test_case, output)
+            }
+            "vk_binding" | "fiat_shamir_binding" | "point_validation" | "cofactor_attack"
+            | "oracle_manipulation" | "information_leakage" | "timing_analysis" => {
+                self.check_with_commitment_oracle(pattern, test_case, output)
+            }
             _ => None,
         }
     }
@@ -1224,29 +1316,6 @@ impl CveOracle {
         None
     }
 
-    /// Check for range overflow
-    fn check_range_overflow(&self, pattern: &CvePattern, test_case: &TestCase) -> Option<Finding> {
-        // Check for values that might overflow bit decomposition
-        for (i, input) in test_case.inputs.iter().enumerate() {
-            // Check if input is suspiciously large
-            let bytes = input.to_bytes();
-            let leading_zeros = bytes.iter().take_while(|&&b| b == 0).count();
-
-            // If value uses most of the field, it might cause overflow
-            if leading_zeros < 4 {
-                return Some(pattern.create_finding(
-                    ProofOfConcept {
-                        witness_a: test_case.inputs.clone(),
-                        witness_b: None,
-                        public_inputs: vec![],
-                        proof: None,
-                    },
-                    Some(format!("input[{}] near field max", i)),
-                ));
-            }
-        }
-        None
-    }
 }
 
 #[cfg(test)]

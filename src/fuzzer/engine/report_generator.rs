@@ -241,7 +241,7 @@ impl FuzzingEngine {
         }
         match serde_json::to_string_pretty(&snapshot) {
             Ok(data) => {
-                if let Err(err) = std::fs::write(&path, data) {
+                if let Err(err) = crate::util::write_file_atomic(&path, data.as_bytes()) {
                     tracing::warn!(
                         "Failed to write progress snapshot '{}': {}",
                         path.display(),

@@ -6,9 +6,11 @@
 use super::types::{ChainRunResult, ChainSpec, ChainTrace, InputWiring, StepTrace};
 use rand::Rng;
 use std::collections::HashMap;
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, Instant};
-use zk_core::{CircuitExecutor, FieldElement};
+use zk_core::{CircuitExecutor, ExecutionResult, FieldElement};
 
 /// Executes chain specifications against circuit executors
 pub struct ChainRunner {
@@ -21,6 +23,37 @@ pub struct ChainRunner {
 }
 
 impl ChainRunner {
+    fn execute_step_with_timeout(
+        &self,
+        executor: Arc<dyn CircuitExecutor>,
+        inputs: &[FieldElement],
+    ) -> Result<(ExecutionResult, u64), u64> {
+        let exec_start = Instant::now();
+        if self.timeout_per_step.is_zero() {
+            let result = executor.execute_sync(inputs);
+            return Ok((result, exec_start.elapsed().as_millis() as u64));
+        }
+
+        let (tx, rx) = mpsc::channel();
+        let thread_executor = Arc::clone(&executor);
+        let thread_inputs = inputs.to_vec();
+        thread::spawn(move || {
+            let result = thread_executor.execute_sync(&thread_inputs);
+            let _ = tx.send(result);
+        });
+
+        match rx.recv_timeout(self.timeout_per_step) {
+            Ok(result) => Ok((result, exec_start.elapsed().as_millis() as u64)),
+            Err(RecvTimeoutError::Timeout) => Err(exec_start.elapsed().as_millis() as u64),
+            Err(RecvTimeoutError::Disconnected) => Ok((
+                ExecutionResult::failure(
+                    "Step execution worker disconnected before sending a result".to_string(),
+                ),
+                exec_start.elapsed().as_millis() as u64,
+            )),
+        }
+    }
+
     /// Create a new chain runner with the given executors
     pub fn new(executors: HashMap<String, Arc<dyn CircuitExecutor>>) -> Self {
         Self {
@@ -135,16 +168,45 @@ impl ChainRunner {
                 rng,
             );
 
-            // Execute the circuit
-            let result = executor.execute_sync(&inputs);
+            // Execute the circuit with preemptive timeout enforcement.
+            // This guarantees the chain contract fails fast instead of waiting for
+            // the backend call to eventually return.
+            let (result, execution_time_ms) =
+                match self.execute_step_with_timeout(Arc::clone(executor), &inputs) {
+                    Ok(done) => done,
+                    Err(step_time) => {
+                        let timeout_ms = self.timeout_per_step.as_millis();
+                        tracing::warn!(
+                            "Step {} in chain '{}' timed out after {} ms (limit {} ms)",
+                            step_index,
+                            spec.name,
+                            step_time,
+                            timeout_ms
+                        );
+                        let step_trace = StepTrace::failure(
+                            step_index,
+                            &step.circuit_ref,
+                            inputs,
+                            format!(
+                                "Step timed out: exceeded {} ms limit",
+                                timeout_ms
+                            ),
+                        )
+                        .with_time(step_time);
+                        trace.add_step(step_trace);
+                        trace.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                        return ChainRunResult::failure(trace, step_index);
+                    }
+                };
+
             let step_time = step_start.elapsed().as_millis() as u64;
             let timeout_ms = self.timeout_per_step.as_millis();
-            if timeout_ms > 0 && u128::from(step_time) > timeout_ms {
+            if timeout_ms > 0 && u128::from(execution_time_ms) > timeout_ms {
                 tracing::warn!(
                     "Step {} in chain '{}' exceeded timeout: {} ms > {} ms",
                     step_index,
                     spec.name,
-                    step_time,
+                    execution_time_ms,
                     timeout_ms
                 );
                 let step_trace = StepTrace::failure(
@@ -153,7 +215,7 @@ impl ChainRunner {
                     inputs,
                     format!(
                         "Step timed out: execution took {} ms (limit {} ms)",
-                        step_time, timeout_ms
+                        execution_time_ms, timeout_ms
                     ),
                 )
                 .with_time(step_time);
@@ -585,6 +647,31 @@ mod tests {
             .as_ref()
             .expect("missing step error")
             .contains("timed out"));
+    }
+
+    #[test]
+    fn test_chain_runner_timeout_is_preemptive() {
+        let mut executors = HashMap::new();
+        executors.insert(
+            "slow".to_string(),
+            Arc::new(SlowExecutor::new("slow", 2, 1, Duration::from_millis(300)))
+                as Arc<dyn CircuitExecutor>,
+        );
+        let runner = ChainRunner::new(executors).with_timeout(Duration::from_millis(20));
+        let spec = ChainSpec::new("timeout_preemptive", vec![StepSpec::fresh("slow")]);
+
+        let mut rng = rand::thread_rng();
+        let wall_start = std::time::Instant::now();
+        let result = runner.execute(&spec, &HashMap::new(), &mut rng);
+        let wall_elapsed = wall_start.elapsed();
+
+        assert!(!result.completed);
+        assert_eq!(result.failed_at, Some(0));
+        assert!(
+            wall_elapsed < Duration::from_millis(200),
+            "preemptive timeout should return quickly; elapsed {:?}",
+            wall_elapsed
+        );
     }
 
     use super::super::types::StepSpec;

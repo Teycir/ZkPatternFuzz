@@ -70,6 +70,14 @@ pub enum ZkFuzzerError {
     /// Internal errors
     #[error("Internal error: {message}")]
     Internal { message: String },
+
+    /// Generic contextual wrapper that preserves the original error source.
+    #[error("{message}")]
+    Context {
+        message: String,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
 }
 
 impl ZkFuzzerError {
@@ -198,7 +206,7 @@ impl<T, E: std::error::Error + Send + Sync + 'static> ErrorContext<T>
     for std::result::Result<T, E>
 {
     fn context(self, message: impl Into<String>) -> Result<T> {
-        self.map_err(|e| ZkFuzzerError::Config {
+        self.map_err(|e| ZkFuzzerError::Context {
             message: message.into(),
             source: Some(Box::new(e)),
         })

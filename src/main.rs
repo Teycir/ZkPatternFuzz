@@ -147,21 +147,22 @@ fn sanitize_slug(s: &str) -> String {
             out.push('_');
         }
     }
-    out.trim_matches('_').to_string()
+    let trimmed = out.trim_matches('_').to_string();
+    if trimmed.is_empty() {
+        "unnamed".to_string()
+    } else {
+        trimmed
+    }
 }
 
 fn derive_campaign_slug(campaign_path: &str) -> String {
     let slug = Path::new(campaign_path)
         .file_stem()
         .and_then(|s| s.to_str())
-        .map(sanitize_slug)
-        .filter(|s| !s.is_empty());
+        .map(sanitize_slug);
     match slug {
         Some(value) => value,
-        None => panic!(
-            "Campaign path '{}' does not provide a valid non-empty slug",
-            campaign_path
-        ),
+        None => "campaign".to_string(),
     }
 }
 
@@ -213,7 +214,7 @@ fn best_effort_write_json(path: &Path, value: &serde_json::Value) {
             return;
         }
     };
-    if let Err(err) = std::fs::write(path, data) {
+    if let Err(err) = zk_fuzzer::util::write_file_atomic(path, data.as_bytes()) {
         tracing::warn!("Failed to write JSON '{}': {}", path.display(), err);
     }
 }
@@ -1845,7 +1846,9 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                             continue;
                         }
                     }
-                    if let Err(err) = std::fs::write(&dst, progress_raw) {
+                    if let Err(err) =
+                        zk_fuzzer::util::write_file_atomic(&dst, progress_raw.as_bytes())
+                    {
                         tracing::warn!(
                             "Failed to write mirrored progress '{}': {}",
                             dst.display(),

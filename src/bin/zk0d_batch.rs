@@ -49,6 +49,7 @@ struct Target {
     campaign: String,
     #[serde(default = "default_true")]
     enabled: bool,
+    #[allow(dead_code)]
     output_dir: Option<String>,
     workers: Option<usize>,
     seed: Option<u64>,
@@ -124,11 +125,7 @@ fn main() -> anyhow::Result<()> {
             None => 1800,
         };
 
-        let output_dir = target.output_dir.clone().map(|value| value);
-        let output_dir = match output_dir {
-            Some(value) => value,
-            None => format!("reports/zk0d/{}", target.name),
-        };
+        let output_dir = single_output_dir().display().to_string();
 
         if !args.skip_validate {
             validate_campaign(&target.campaign, &output_dir, &mode)?;
@@ -183,6 +180,22 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn single_output_dir() -> PathBuf {
+    if let Ok(path) = std::env::var("ZKF_OUTPUT_DIR") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let trimmed = home.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join("ZkFuzz");
+        }
+    }
+    PathBuf::from("./reports")
 }
 
 fn validate_campaign(campaign: &str, output_dir: &str, mode: &str) -> anyhow::Result<()> {

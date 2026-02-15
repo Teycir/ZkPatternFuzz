@@ -235,6 +235,11 @@ fn value_bucket_for(value_bytes: &[u8]) -> u8 {
     (first_nonzero as u8).wrapping_add(byte)
 }
 
+/// Upper bound for synthetic witness vector size when mapping backend wire indices.
+///
+/// This prevents untrusted or corrupted metadata from forcing unbounded allocations.
+const MAX_SYNTHETIC_WITNESS_WIRES: usize = 1_000_000;
+
 fn lc_to_terms(lc: &LinearCombination) -> Vec<(usize, FieldElement)> {
     lc.terms
         .iter()
@@ -985,7 +990,7 @@ impl NoirExecutor {
         &self,
         inputs: &[FieldElement],
         outputs: &[FieldElement],
-    ) -> Vec<FieldElement> {
+    ) -> anyhow::Result<Vec<FieldElement>> {
         let public = self.target.public_input_indices();
         let private = self.target.private_input_indices();
         let output_indices = self.target.output_signal_indices();
@@ -1000,8 +1005,19 @@ impl NoirExecutor {
             Some(value) => value,
             None => 0,
         };
+        if max_idx > MAX_SYNTHETIC_WITNESS_WIRES {
+            anyhow::bail!(
+                "Noir metadata reported wire index {} above safety cap {}",
+                max_idx,
+                MAX_SYNTHETIC_WITNESS_WIRES
+            );
+        }
 
-        let mut witness = vec![FieldElement::zero(); max_idx.max(1) + 1];
+        let witness_len = max_idx
+            .max(1)
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("Noir witness length overflow"))?;
+        let mut witness = vec![FieldElement::zero(); witness_len];
         witness[0] = FieldElement::one();
 
         for (idx, wire_idx) in public.iter().chain(private.iter()).enumerate() {
@@ -1019,7 +1035,7 @@ impl NoirExecutor {
             }
         }
 
-        witness
+        Ok(witness)
     }
 }
 
@@ -1051,10 +1067,20 @@ impl CircuitExecutor for NoirExecutor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let witness = self.build_witness_with_outputs(inputs, &outputs);
-                let coverage = match coverage_from_results(self.check_constraints(&witness)) {
-                    Some(coverage) => coverage,
-                    None => ExecutionCoverage::with_output_hash(&outputs),
+                let coverage = match self.build_witness_with_outputs(inputs, &outputs) {
+                    Ok(witness) => {
+                        match coverage_from_results(self.check_constraints(&witness)) {
+                            Some(coverage) => coverage,
+                            None => ExecutionCoverage::with_output_hash(&outputs),
+                        }
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            "Skipping Noir constraint checks due to witness safety validation: {}",
+                            err
+                        );
+                        ExecutionCoverage::with_output_hash(&outputs)
+                    }
                 };
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)

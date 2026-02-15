@@ -249,7 +249,7 @@ impl ZkFuzzer {
 
         let summaries = summaries
             .lock()
-            .expect("phase summaries mutex poisoned")
+            .map_err(|_| anyhow::anyhow!("phase summaries mutex poisoned"))?
             .clone();
 
         let mut findings = Vec::new();
@@ -266,7 +266,7 @@ impl ZkFuzzer {
 
         let edge_coverage = union_constraints
             .lock()
-            .expect("union constraints mutex poisoned")
+            .map_err(|_| anyhow::anyhow!("union constraints mutex poisoned"))?
             .len() as u64;
 
         let mut report = FuzzReport::new(

@@ -257,8 +257,9 @@ impl InputWiring {
             InputWiring::Fresh => Some(InputWiring::Fresh),
             InputWiring::FromPriorOutput { step, mapping } => {
                 if *step == removed_index {
-                    // The referenced step was removed; wiring is now invalid.
-                    None
+                    // If the referenced step was removed, degrade to fresh inputs
+                    // so shrink/mutation operations remain valid.
+                    Some(InputWiring::Fresh)
                 } else if *step > removed_index {
                     // Adjust the step index down
                     Some(InputWiring::FromPriorOutput {
@@ -277,21 +278,22 @@ impl InputWiring {
                 prior,
                 fresh_indices,
             } => {
-                if prior.iter().any(|(s, _, _)| *s == removed_index) {
-                    return None;
-                }
-
                 let adjusted_prior: Vec<_> = prior
                     .iter()
+                    .filter(|(s, _, _)| *s != removed_index)
                     .map(|(s, out_idx, in_idx)| {
                         let new_s = if *s > removed_index { s - 1 } else { *s };
                         (new_s, *out_idx, *in_idx)
                     })
                     .collect();
-                Some(InputWiring::Mixed {
-                    prior: adjusted_prior,
-                    fresh_indices: fresh_indices.clone(),
-                })
+                if adjusted_prior.is_empty() {
+                    Some(InputWiring::Fresh)
+                } else {
+                    Some(InputWiring::Mixed {
+                        prior: adjusted_prior,
+                        fresh_indices: fresh_indices.clone(),
+                    })
+                }
             }
             InputWiring::Constant {
                 values,

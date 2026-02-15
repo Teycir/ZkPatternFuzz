@@ -188,6 +188,18 @@ pub struct ReportingConfig {
 }
 
 fn default_output_dir() -> PathBuf {
+    if let Ok(path) = std::env::var("ZKF_OUTPUT_DIR") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let trimmed = home.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join("ZkFuzz");
+        }
+    }
     PathBuf::from("./reports")
 }
 
@@ -211,6 +223,8 @@ impl FuzzConfig {
     pub fn from_yaml(path: &str) -> anyhow::Result<Self> {
         let mut config = Self::from_yaml_v2(path)
             .with_context(|| format!("Failed to load config (v2) from {}", path))?;
+        // Enforce a single output destination for all campaigns.
+        config.reporting.output_dir = default_output_dir();
         // Backward-compat: hoist legacy `campaign.parameters.additional: { ... }` into the
         // flattened `parameters` key/value map so older templates don't silently no-op.
         if config
