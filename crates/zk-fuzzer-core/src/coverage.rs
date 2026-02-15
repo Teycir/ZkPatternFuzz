@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use zk_core::ExecutionCoverage;
 
 /// Global coverage tracker for the fuzzing campaign
-/// 
+///
 /// Phase 0 Fix: Extended to track edge coverage (constraint transitions),
 /// path coverage (execution traces), and value coverage (constraint values).
 #[derive(Debug)]
@@ -23,7 +23,7 @@ pub struct CoverageTracker {
     max_coverage: RwLock<usize>,
     /// Number of times new coverage was discovered
     new_coverage_count: RwLock<u64>,
-    
+
     // Phase 0 Fix: Extended coverage metrics
     /// Edge coverage: tracks transitions between consecutive constraints (from -> to)
     edge_hits: RwLock<HashMap<(usize, usize), u64>>,
@@ -63,7 +63,7 @@ impl CoverageTracker {
     }
 
     /// Record multiple constraint hits from an execution
-    /// 
+    ///
     /// Phase 0 Fix: Now also records edge coverage (transitions) and path coverage.
     pub fn record_execution(&self, coverage: &ExecutionCoverage) -> bool {
         let satisfied_constraints = &coverage.satisfied_constraints;
@@ -90,10 +90,10 @@ impl CoverageTracker {
                 *max = current_coverage;
             }
         }
-        
+
         // Phase 0 Fix: Record edge coverage (transitions between constraints)
         let is_new_edge = self.record_edges(evaluated_constraints);
-        
+
         // Phase 0 Fix: Record path coverage (execution trace hash)
         let is_new_path = self.record_path(evaluated_constraints);
 
@@ -108,16 +108,16 @@ impl CoverageTracker {
         // Return true if any new coverage was discovered
         is_new_constraint_coverage || is_new_edge || is_new_path || is_new_value
     }
-    
+
     /// Phase 0 Fix: Record edge coverage - transitions between consecutive constraints
     fn record_edges(&self, constraints: &[usize]) -> bool {
         if constraints.len() < 2 {
             return false;
         }
-        
+
         let mut edges = self.edge_hits.write().unwrap();
         let mut found_new = false;
-        
+
         for window in constraints.windows(2) {
             let edge = (window[0], window[1]);
             let count = edges.entry(edge).or_insert(0);
@@ -126,17 +126,17 @@ impl CoverageTracker {
             }
             *count += 1;
         }
-        
+
         found_new
     }
-    
+
     /// Phase 0 Fix: Record path coverage - hash of execution trace
     fn record_path(&self, constraints: &[usize]) -> bool {
         use sha2::{Digest, Sha256};
-        
+
         // Use first N constraints as path signature (prevent explosion)
         let path_prefix: Vec<_> = constraints.iter().take(32).copied().collect();
-        
+
         let mut hasher = Sha256::new();
         for c in &path_prefix {
             hasher.update(c.to_le_bytes());
@@ -145,13 +145,13 @@ impl CoverageTracker {
         let path_hash = u64::from_le_bytes([
             hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ]);
-        
+
         let mut paths = self.path_hashes.write().unwrap();
         paths.insert(path_hash)
     }
-    
+
     /// Phase 0 Fix: Record value bucket coverage for a constraint
-    /// 
+    ///
     /// Groups constraint values into buckets to detect different value ranges.
     /// This helps find edge cases like boundary values, zero, max, etc.
     pub fn record_value(&self, constraint_id: usize, value_bytes: &[u8]) -> bool {
@@ -189,7 +189,6 @@ impl CoverageTracker {
             false
         }
     }
-
 
     /// Get the current coverage percentage
     pub fn coverage_percentage(&self) -> f64 {
@@ -265,24 +264,29 @@ impl CoverageTracker {
         *self.path_hashes.write().unwrap() = HashSet::new();
         *self.value_buckets.write().unwrap() = HashMap::new();
     }
-    
+
     // Phase 0 Fix: Extended coverage accessors
-    
+
     /// Get number of unique edges (constraint transitions) discovered
     pub fn unique_edges(&self) -> usize {
         self.edge_hits.read().unwrap().len()
     }
-    
+
     /// Get number of unique execution paths discovered
     pub fn unique_paths(&self) -> usize {
         self.path_hashes.read().unwrap().len()
     }
-    
+
     /// Get total number of value buckets hit across all constraints
     pub fn total_value_buckets(&self) -> usize {
-        self.value_buckets.read().unwrap().values().map(|s| s.len()).sum()
+        self.value_buckets
+            .read()
+            .unwrap()
+            .values()
+            .map(|s| s.len())
+            .sum()
     }
-    
+
     /// Get edges that have never been hit (sparse representation)
     /// Returns edges with hit count > 0 for analysis
     pub fn edge_coverage(&self) -> HashMap<(usize, usize), u64> {
@@ -291,7 +295,7 @@ impl CoverageTracker {
 }
 
 /// Snapshot of coverage statistics
-/// 
+///
 /// Phase 0 Fix: Extended to include edge, path, and value coverage.
 #[derive(Debug, Clone)]
 pub struct CoverageSnapshot {

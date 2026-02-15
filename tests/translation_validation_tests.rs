@@ -176,8 +176,13 @@ fn test_translate_to_noir_parameterized() {
     assert!(result.success);
 
     // Check parameters are captured
-    assert!(result.translated_patterns[0].parameter_map.contains_key("num_bits"));
-    assert_eq!(result.translated_patterns[0].parameter_map["num_bits"], "64");
+    assert!(result.translated_patterns[0]
+        .parameter_map
+        .contains_key("num_bits"));
+    assert_eq!(
+        result.translated_patterns[0].parameter_map["num_bits"],
+        "64"
+    );
 
     // Check generated code contains the bit count
     assert!(result.translated_patterns[0].target_code.contains("64"));
@@ -193,7 +198,9 @@ fn test_translate_to_noir_crypto() {
     let result = translator.translate(&patterns).unwrap();
     assert!(result.success);
 
-    assert!(result.translated_patterns[0].target_code.contains("poseidon"));
+    assert!(result.translated_patterns[0]
+        .target_code
+        .contains("poseidon"));
 }
 
 // ============================================================================
@@ -210,8 +217,12 @@ fn test_translate_to_halo2_arithmetic() {
     assert!(result.success);
 
     // Halo2 uses region assignment
-    assert!(result.translated_patterns[0].target_code.contains("assign_advice"));
-    assert!(result.translated_patterns[1].target_code.contains("assign_advice"));
+    assert!(result.translated_patterns[0]
+        .target_code
+        .contains("assign_advice"));
+    assert!(result.translated_patterns[1]
+        .target_code
+        .contains("assign_advice"));
 }
 
 #[test]
@@ -223,7 +234,9 @@ fn test_translate_to_halo2_equality() {
     let result = translator.translate(&patterns).unwrap();
     assert!(result.success);
 
-    assert!(result.translated_patterns[0].target_code.contains("constrain_equal"));
+    assert!(result.translated_patterns[0]
+        .target_code
+        .contains("constrain_equal"));
 }
 
 // ============================================================================
@@ -234,7 +247,11 @@ fn test_translate_to_halo2_equality() {
 fn test_translate_to_cairo_arithmetic() {
     let translator = CircuitTranslator::new(TargetFramework::Cairo);
 
-    let patterns = vec![CircuitPattern::Add, CircuitPattern::Mul, CircuitPattern::Sub];
+    let patterns = vec![
+        CircuitPattern::Add,
+        CircuitPattern::Mul,
+        CircuitPattern::Sub,
+    ];
 
     let result = translator.translate(&patterns).unwrap();
     assert!(result.success);
@@ -253,7 +270,9 @@ fn test_translate_to_cairo_crypto() {
     let result = translator.translate(&patterns).unwrap();
     assert!(result.success);
 
-    assert!(result.translated_patterns[0].target_code.contains("poseidon_hash_span"));
+    assert!(result.translated_patterns[0]
+        .target_code
+        .contains("poseidon_hash_span"));
 }
 
 // ============================================================================
@@ -266,7 +285,10 @@ fn test_complexity_calculation() {
     assert_eq!(CircuitPattern::Mul.complexity(), 1);
     assert_eq!(CircuitPattern::Div.complexity(), 5);
     assert_eq!(CircuitPattern::Num2Bits { num_bits: 64 }.complexity(), 64);
-    assert_eq!(CircuitPattern::MerkleProof { levels: 20 }.complexity(), 1000);
+    assert_eq!(
+        CircuitPattern::MerkleProof { levels: 20 }.complexity(),
+        1000
+    );
 }
 
 #[test]
@@ -283,7 +305,10 @@ fn test_complexity_limit() {
     let patterns = vec![CircuitPattern::MerkleProof { levels: 20 }]; // complexity: 1000
 
     let result = translator.translate(&patterns).unwrap();
-    assert!(!result.warnings.is_empty(), "Expected warning about complexity limit");
+    assert!(
+        !result.warnings.is_empty(),
+        "Expected warning about complexity limit"
+    );
 }
 
 #[test]
@@ -359,7 +384,10 @@ fn test_custom_mapping() {
 
     let result = translator.translate(&patterns).unwrap();
     assert!(result.success);
-    assert_eq!(result.translated_patterns[0].target_code, "custom_hash_impl(inputs)");
+    assert_eq!(
+        result.translated_patterns[0].target_code,
+        "custom_hash_impl(inputs)"
+    );
 }
 
 // ============================================================================
@@ -535,7 +563,7 @@ fn test_50_plus_common_patterns_translatable() {
         strict_mode: false,
         ..TranslatorConfig::default()
     };
-    
+
     let translator = CircuitTranslator::with_config(config);
 
     for pattern in &patterns {

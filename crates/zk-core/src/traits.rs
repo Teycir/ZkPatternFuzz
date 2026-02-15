@@ -42,10 +42,7 @@ impl AttackContext {
     }
 
     /// Provide input name -> (offset, length) mapping for attacks that need it.
-    pub fn with_input_ranges(
-        mut self,
-        input_ranges: HashMap<String, (usize, usize)>,
-    ) -> Self {
+    pub fn with_input_ranges(mut self, input_ranges: HashMap<String, (usize, usize)>) -> Self {
         self.input_ranges = Some(input_ranges);
         self
     }

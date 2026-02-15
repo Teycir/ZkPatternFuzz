@@ -220,7 +220,8 @@ impl FuzzingEngineCore {
         if result.coverage.satisfied_constraints.is_empty()
             && result.coverage.evaluated_constraints.is_empty()
         {
-            self.coverage.record_coverage_hash(result.coverage.coverage_hash);
+            self.coverage
+                .record_coverage_hash(result.coverage.coverage_hash);
         } else {
             self.coverage.record_execution(&result.coverage);
         }
@@ -302,8 +303,7 @@ impl FuzzingEngineCore {
                 None
             };
 
-            let oracle_findings =
-                self.run_oracles(test_case, &result.outputs, constraint_count);
+            let oracle_findings = self.run_oracles(test_case, &result.outputs, constraint_count);
             if !oracle_findings.is_empty() {
                 let mut findings = self.findings.write().unwrap();
                 findings.extend(oracle_findings);
@@ -486,7 +486,9 @@ impl FuzzingEngineCoreBuilder {
         let structure_mutator = self
             .structure_mutator
             .ok_or_else(|| anyhow!("missing structure_mutator"))?;
-        let input_count = self.input_count.ok_or_else(|| anyhow!("missing input_count"))?;
+        let input_count = self
+            .input_count
+            .ok_or_else(|| anyhow!("missing input_count"))?;
 
         let rng = match self.seed {
             Some(s) => StdRng::seed_from_u64(s),

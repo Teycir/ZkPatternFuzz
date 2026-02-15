@@ -7,18 +7,16 @@
 //! 4. Adaptive scheduler allocates budget correctly
 //! 5. Near-miss detection works
 
-use zk_fuzzer::analysis::opus::{
-    OpusAnalyzer, OpusConfig, ZeroDayCategory,
-};
+use std::time::Duration;
+use tempfile::TempDir;
+use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
+use zk_fuzzer::analysis::opus::{OpusAnalyzer, OpusConfig, ZeroDayCategory};
 use zk_fuzzer::config::generator::{ConfigGenerator, PatternType};
 use zk_fuzzer::fuzzer::adaptive_attack_scheduler::{
     AdaptiveScheduler, AdaptiveSchedulerConfig, AttackResults,
 };
-use zk_fuzzer::fuzzer::near_miss::{NearMissDetector, NearMissConfig, RangeConstraint};
+use zk_fuzzer::fuzzer::near_miss::{NearMissConfig, NearMissDetector, RangeConstraint};
 use zk_fuzzer::SuggestionType;
-use std::time::Duration;
-use zk_core::{AttackType, FieldElement, Finding, Severity, ProofOfConcept};
-use tempfile::TempDir;
 
 /// Test Opus analyzer with a nullifier circuit
 #[test]
@@ -55,12 +53,14 @@ component main = Nullify();
     assert_eq!(result.framework, zk_core::Framework::Circom);
 
     // Verify pattern detection
-    assert!(result.patterns.iter().any(|p| 
-        matches!(p.pattern_type, PatternType::HashFunction(_))
-    ));
-    assert!(result.patterns.iter().any(|p| 
-        p.pattern_type == PatternType::Nullifier
-    ));
+    assert!(result
+        .patterns
+        .iter()
+        .any(|p| matches!(p.pattern_type, PatternType::HashFunction(_))));
+    assert!(result
+        .patterns
+        .iter()
+        .any(|p| p.pattern_type == PatternType::Nullifier));
 
     // Verify inputs extraction
     assert!(!result.inputs.is_empty());
@@ -69,9 +69,10 @@ component main = Nullify();
     assert!(input_names.contains(&"nullifierSessionID"));
 
     // Verify attack priorities include collision
-    assert!(result.attack_priorities.iter().any(|a| 
-        a.attack_type == AttackType::Collision
-    ));
+    assert!(result
+        .attack_priorities
+        .iter()
+        .any(|a| a.attack_type == AttackType::Collision));
 }
 
 /// Test Opus analyzer with a Merkle tree circuit
@@ -111,14 +112,16 @@ component main = MerkleProof(20);
     let result = analyzer.analyze_circuit(&circuit_path).unwrap();
 
     // Verify Merkle pattern detected
-    assert!(result.patterns.iter().any(|p| 
-        p.pattern_type == PatternType::MerkleTree
-    ));
+    assert!(result
+        .patterns
+        .iter()
+        .any(|p| p.pattern_type == PatternType::MerkleTree));
 
     // Verify collision attack is prioritized
-    assert!(result.attack_priorities.iter().any(|a| 
-        a.attack_type == AttackType::Collision && a.priority <= 2
-    ));
+    assert!(result
+        .attack_priorities
+        .iter()
+        .any(|a| a.attack_type == AttackType::Collision && a.priority <= 2));
 
     // Verify main component detection
     assert_eq!(result.main_component, "MerkleProof");
@@ -152,9 +155,10 @@ component main = VulnerableCircuit();
     let result = analyzer.analyze_circuit(&circuit_path).unwrap();
 
     // Should detect missing constraint
-    assert!(result.zero_day_hints.iter().any(|h| 
-        h.category == ZeroDayCategory::MissingConstraint
-    ));
+    assert!(result
+        .zero_day_hints
+        .iter()
+        .any(|h| h.category == ZeroDayCategory::MissingConstraint));
 }
 
 /// Test zero-day hint detection for bit decomposition bypass
@@ -190,10 +194,11 @@ component main = RangeCheck();
     let result = analyzer.analyze_circuit(&circuit_path).unwrap();
 
     // Should detect potential bit decomposition issue
-    assert!(result.zero_day_hints.iter().any(|h| 
-        h.category == ZeroDayCategory::BitDecompositionBypass ||
-        h.category == ZeroDayCategory::IncorrectRangeCheck
-    ));
+    assert!(result
+        .zero_day_hints
+        .iter()
+        .any(|h| h.category == ZeroDayCategory::BitDecompositionBypass
+            || h.category == ZeroDayCategory::IncorrectRangeCheck));
 }
 
 /// Test YAML configuration generation
@@ -226,7 +231,10 @@ component main = Simple();
 
     // Verify attacks are generated
     assert!(!base.attacks.is_empty());
-    assert!(base.attacks.iter().any(|a| a.attack_type == AttackType::Underconstrained));
+    assert!(base
+        .attacks
+        .iter()
+        .any(|a| a.attack_type == AttackType::Underconstrained));
 
     // Verify inputs are captured
     assert!(!base.inputs.is_empty());
@@ -275,8 +283,10 @@ fn test_adaptive_scheduler_budget_allocation() {
 
     // Budget should favor underconstrained
     let budget = scheduler.allocate_budget(Duration::from_secs(300));
-    assert!(budget.get(&AttackType::Underconstrained).unwrap() > 
-            budget.get(&AttackType::Soundness).unwrap());
+    assert!(
+        budget.get(&AttackType::Underconstrained).unwrap()
+            > budget.get(&AttackType::Soundness).unwrap()
+    );
 }
 
 /// Test near-miss detection for range boundaries
@@ -305,11 +315,10 @@ fn test_near_miss_range_detection() {
 /// Test near-miss collision detection
 #[test]
 fn test_near_miss_collision_detection() {
-    let detector = NearMissDetector::new()
-        .with_config(NearMissConfig {
-            collision_threshold: 0.9, // 90% similar
-            ..Default::default()
-        });
+    let detector = NearMissDetector::new().with_config(NearMissConfig {
+        collision_threshold: 0.9, // 90% similar
+        ..Default::default()
+    });
 
     // Two hashes that differ by only a few bits
     let hash_a = vec![0xFF; 32];
@@ -318,7 +327,7 @@ fn test_near_miss_collision_detection() {
 
     let near_miss = detector.check_collision_near_miss(&hash_a, &hash_b);
     assert!(near_miss.is_some());
-    
+
     let nm = near_miss.unwrap();
     assert!(nm.distance < 0.1);
 }
@@ -331,22 +340,33 @@ fn test_config_generator_patterns() {
     // Test hash pattern (most reliable)
     let hash_source = "component hasher = Poseidon(2);";
     let patterns = generator.detect_patterns(hash_source, zk_core::Framework::Circom);
-    assert!(patterns.iter().any(|p| matches!(p.pattern_type, PatternType::HashFunction(_))),
-        "Should detect Poseidon hash function");
+    assert!(
+        patterns
+            .iter()
+            .any(|p| matches!(p.pattern_type, PatternType::HashFunction(_))),
+        "Should detect Poseidon hash function"
+    );
 
     // Test range pattern
     let range_source = "component n2b = Num2Bits(64); LessThan comparison";
     let patterns = generator.detect_patterns(range_source, zk_core::Framework::Circom);
-    assert!(patterns.iter().any(|p| 
-        p.pattern_type == PatternType::RangeCheck || 
-        p.pattern_type == PatternType::BitDecomposition
-    ), "Should detect range/bit pattern");
+    assert!(
+        patterns
+            .iter()
+            .any(|p| p.pattern_type == PatternType::RangeCheck
+                || p.pattern_type == PatternType::BitDecomposition),
+        "Should detect range/bit pattern"
+    );
 
     // Test MiMC hash detection (alternative hash)
     let mimc_source = "component mimc = MiMC7(91);";
     let patterns = generator.detect_patterns(mimc_source, zk_core::Framework::Circom);
-    assert!(patterns.iter().any(|p| matches!(p.pattern_type, PatternType::HashFunction(_))),
-        "Should detect MiMC hash function");
+    assert!(
+        patterns
+            .iter()
+            .any(|p| matches!(p.pattern_type, PatternType::HashFunction(_))),
+        "Should detect MiMC hash function"
+    );
 }
 
 /// Test YAML suggestion generation
@@ -380,12 +400,16 @@ fn test_yaml_suggestions() {
     scheduler.update_scores(&results);
 
     let suggestions = scheduler.suggest_yaml_edits();
-    
+
     // Scheduler should provide suggestions based on results
     // (might be empty if no near-misses recorded)
-    assert!(suggestions.is_empty() || suggestions.iter().any(|s| 
-        matches!(s.suggestion_type, SuggestionType::AddInterestingValue | SuggestionType::IncreaseBudget)
-    ));
+    assert!(
+        suggestions.is_empty()
+            || suggestions.iter().any(|s| matches!(
+                s.suggestion_type,
+                SuggestionType::AddInterestingValue | SuggestionType::IncreaseBudget
+            ))
+    );
 }
 
 /// Integration test: Full Opus analysis workflow
@@ -448,26 +472,50 @@ component main = SecureWithdraw(20);
     let analysis = analyzer.analyze_circuit(&circuit_path).unwrap();
 
     // Verify multiple patterns detected
-    assert!(analysis.patterns.iter().any(|p| p.pattern_type == PatternType::MerkleTree));
-    assert!(analysis.patterns.iter().any(|p| p.pattern_type == PatternType::Nullifier));
-    assert!(analysis.patterns.iter().any(|p| p.pattern_type == PatternType::RangeCheck));
-    assert!(analysis.patterns.iter().any(|p| matches!(p.pattern_type, PatternType::HashFunction(_))));
+    assert!(analysis
+        .patterns
+        .iter()
+        .any(|p| p.pattern_type == PatternType::MerkleTree));
+    assert!(analysis
+        .patterns
+        .iter()
+        .any(|p| p.pattern_type == PatternType::Nullifier));
+    assert!(analysis
+        .patterns
+        .iter()
+        .any(|p| p.pattern_type == PatternType::RangeCheck));
+    assert!(analysis
+        .patterns
+        .iter()
+        .any(|p| matches!(p.pattern_type, PatternType::HashFunction(_))));
 
     // Verify attack priorities
-    let has_collision = analysis.attack_priorities.iter().any(|a| a.attack_type == AttackType::Collision);
-    let has_underconstrained = analysis.attack_priorities.iter().any(|a| a.attack_type == AttackType::Underconstrained);
-    let has_overflow = analysis.attack_priorities.iter().any(|a| a.attack_type == AttackType::ArithmeticOverflow);
+    let has_collision = analysis
+        .attack_priorities
+        .iter()
+        .any(|a| a.attack_type == AttackType::Collision);
+    let has_underconstrained = analysis
+        .attack_priorities
+        .iter()
+        .any(|a| a.attack_type == AttackType::Underconstrained);
+    let has_overflow = analysis
+        .attack_priorities
+        .iter()
+        .any(|a| a.attack_type == AttackType::ArithmeticOverflow);
 
     assert!(has_collision, "Should prioritize collision attack");
-    assert!(has_underconstrained, "Should include underconstrained attack");
+    assert!(
+        has_underconstrained,
+        "Should include underconstrained attack"
+    );
     assert!(has_overflow, "Should include arithmetic overflow attack");
 
     // Generate config
     let config = analyzer.generate_config(&analysis).unwrap();
-    
+
     // Verify invariants generated
     assert!(!config.config.invariants.is_empty());
-    
+
     // Verify schedule has multiple phases
     assert!(config.config.schedule.len() >= 2);
 }
@@ -476,14 +524,14 @@ component main = SecureWithdraw(20);
 #[test]
 fn test_opus_project_analysis() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     // Create multiple circuit files
     let circuit1 = r#"
 pragma circom 2.0.0;
 template Circuit1() { signal input x; signal output y; y <== x * x; }
 component main = Circuit1();
 "#;
-    
+
     let circuit2 = r#"
 pragma circom 2.0.0;
 include "poseidon.circom";
@@ -528,12 +576,15 @@ component main = Large();
     std::fs::write(&circuit_path, source).unwrap();
 
     let analyzer = OpusAnalyzer::new();
-    
+
     let start = Instant::now();
     let _result = analyzer.analyze_circuit(&circuit_path).unwrap();
     let duration = start.elapsed();
 
     // Analysis should complete quickly (< 100ms)
-    assert!(duration < Duration::from_millis(100), 
-        "Analysis took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_millis(100),
+        "Analysis took too long: {:?}",
+        duration
+    );
 }

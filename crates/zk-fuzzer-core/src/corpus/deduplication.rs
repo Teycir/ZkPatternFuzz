@@ -10,10 +10,10 @@
 //! - Confidence scoring
 //! - DBSCAN clustering for related findings
 
-use zk_core::{AttackType, Severity};
-use zk_core::{FieldElement, Finding};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use zk_core::{AttackType, Severity};
+use zk_core::{FieldElement, Finding};
 
 /// Semantic fingerprint for a finding
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -310,7 +310,9 @@ impl SemanticDeduplicator {
             let mut found_cluster = false;
 
             for cluster in &mut clusters {
-                if self.similarity(finding, &cluster.representative) >= self.config.similarity_threshold {
+                if self.similarity(finding, &cluster.representative)
+                    >= self.config.similarity_threshold
+                {
                     cluster.members.push(finding.clone());
                     found_cluster = true;
                     break;
@@ -394,7 +396,11 @@ pub fn calculate_confidence(finding: &Finding) -> f64 {
         score += 0.05;
     }
 
-    if score > 1.0 { 1.0 } else { score }
+    if score > 1.0 {
+        1.0
+    } else {
+        score
+    }
 }
 
 #[cfg(test)]

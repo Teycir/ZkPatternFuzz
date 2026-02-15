@@ -1,5 +1,5 @@
 use rand::Rng;
-use serde::{Deserialize, Serialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Field element representation (32 bytes for bn254)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -62,7 +62,10 @@ impl FieldElement {
     }
 
     /// Deprecated: Use from_u64() instead for clarity
-    #[deprecated(since = "0.2.0", note = "Use from_u64() instead for explicit type conversion")]
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use from_u64() instead for explicit type conversion"
+    )]
     pub fn from(value: u64) -> Self {
         Self::from_u64(value)
     }
@@ -199,7 +202,7 @@ impl FieldElement {
     pub fn to_u64(&self) -> Option<u64> {
         use num_bigint::BigUint;
         use num_traits::ToPrimitive;
-        
+
         let big_value = BigUint::from_bytes_be(&self.0);
         big_value.to_u64()
     }

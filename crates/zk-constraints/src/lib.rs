@@ -15,26 +15,25 @@ pub mod r1cs_to_smt;
 pub mod underconstrained_exploit;
 
 pub use alt_witness_solver::{
-    find_alternative_witness, find_multiple_alternatives, AlternativeWitnessResult,
-    AltWitnessSolver, R1CSMatrices, SolverStats,
+    find_alternative_witness, find_multiple_alternatives, AltWitnessSolver,
+    AlternativeWitnessResult, R1CSMatrices, SolverStats,
 };
 pub use constraint_types::{
-    ExtendedConstraint, R1CSConstraint, PlonkGate, CustomGateConstraint,
-    LookupConstraint, LookupTable, RangeConstraint, RangeMethod,
-    PolynomialConstraint, PolynomialTerm, AcirOpcode, BlackBoxOp, MemoryOpType,
-    AirConstraint, AirExpression, AirDomain, ConstraintParser, ConstraintChecker,
-    WireRef, ParsedConstraintSet, UnknownLookupPolicy, ConstraintEvaluation,
-    LinearCombination,
+    AcirOpcode, AirConstraint, AirDomain, AirExpression, BlackBoxOp, ConstraintChecker,
+    ConstraintEvaluation, ConstraintParser, CustomGateConstraint, ExtendedConstraint,
+    LinearCombination, LookupConstraint, LookupTable, MemoryOpType, ParsedConstraintSet, PlonkGate,
+    PolynomialConstraint, PolynomialTerm, R1CSConstraint, RangeConstraint, RangeMethod,
+    UnknownLookupPolicy, WireRef,
 };
 
-pub use r1cs_parser::{R1CS, R1CSConstraint as ParsedR1CSConstraint, parse_sym_file};
-pub use r1cs_to_smt::{generate_constraint_guided_inputs, R1CSToSMT};
 pub use proof_forgery::{
-    ProofForgeryDetector, ProofForgeryResult, VerificationResult, ForgeryStats,
-    quick_underconstrained_check,
+    quick_underconstrained_check, ForgeryStats, ProofForgeryDetector, ProofForgeryResult,
+    VerificationResult,
 };
+pub use r1cs_parser::{parse_sym_file, R1CSConstraint as ParsedR1CSConstraint, R1CS};
+pub use r1cs_to_smt::{generate_constraint_guided_inputs, R1CSToSMT};
 pub use underconstrained_exploit::{
-    UnderconstrainedExploitDetector, UnderconstrainedExploit, ExploitDetectorConfig,
-    ExploitConfidence, WitnessBundle, ProofVerificationBundle, DifferenceAnalysis,
-    ExploitStats, detect_underconstrained, detect_underconstrained_circom,
+    detect_underconstrained, detect_underconstrained_circom, DifferenceAnalysis, ExploitConfidence,
+    ExploitDetectorConfig, ExploitStats, ProofVerificationBundle, UnderconstrainedExploit,
+    UnderconstrainedExploitDetector, WitnessBundle,
 };

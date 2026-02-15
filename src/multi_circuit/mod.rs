@@ -314,8 +314,14 @@ mod tests {
     #[test]
     fn test_circuit_chain() {
         let mut chain = CircuitChain::new();
-        chain.add("circuit1", Arc::new(FixtureCircuitExecutor::new("c1", 2, 1)));
-        chain.add("circuit2", Arc::new(FixtureCircuitExecutor::new("c2", 1, 1)));
+        chain.add(
+            "circuit1",
+            Arc::new(FixtureCircuitExecutor::new("c1", 2, 1)),
+        );
+        chain.add(
+            "circuit2",
+            Arc::new(FixtureCircuitExecutor::new("c2", 1, 1)),
+        );
 
         let inputs = vec![FieldElement::one(), FieldElement::zero()];
         let result = chain.execute(&inputs);

@@ -1,6 +1,7 @@
 use clap::Parser;
-use zk_fuzzer::config::FuzzConfig;
 use zk_fuzzer::config::v2::{parse_invariant_relation, InvariantAST};
+use zk_fuzzer::config::FuzzConfig;
+use zk_fuzzer::cve::CveDatabase;
 
 #[derive(Parser, Debug)]
 #[command(name = "validate_yaml")]
@@ -12,6 +13,10 @@ struct Args {
     /// Require v2 invariants (evidence mode)
     #[arg(long, default_value_t = true)]
     require_invariants: bool,
+
+    /// Optional CVE database YAML to validate with strict fixture rules
+    #[arg(long)]
+    cve_db: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -50,9 +55,9 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 let identifiers = extract_identifiers(&inv.relation);
-                let has_input_ref = identifiers.iter().any(|id| {
-                    input_names.iter().any(|n| n.eq_ignore_ascii_case(id))
-                });
+                let has_input_ref = identifiers
+                    .iter()
+                    .any(|id| input_names.iter().any(|n| n.eq_ignore_ascii_case(id)));
 
                 if !has_input_ref {
                     errors.push(format!(
@@ -70,6 +75,12 @@ fn main() -> anyhow::Result<()> {
             eprintln!("  - {}", err);
         }
         std::process::exit(1);
+    }
+
+    if let Some(path) = &args.cve_db {
+        CveDatabase::load_strict(path)
+            .map_err(|e| anyhow::anyhow!("Strict CVE fixture validation failed for '{}': {:#}", path, e))?;
+        println!("✓ CVE fixtures validated successfully (strict, unambiguous)");
     }
 
     println!("✓ YAML validated successfully (evidence-ready)");
@@ -124,7 +135,12 @@ fn collect_identifiers(ast: &InvariantAST, out: &mut Vec<String>) {
             collect_identifiers(a, out);
             collect_identifiers(b, out);
         }
-        InvariantAST::Range { lower, value, upper, .. } => {
+        InvariantAST::Range {
+            lower,
+            value,
+            upper,
+            ..
+        } => {
             collect_identifiers(lower, out);
             collect_identifiers(value, out);
             collect_identifiers(upper, out);

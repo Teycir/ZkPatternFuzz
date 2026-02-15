@@ -9,8 +9,8 @@
 //! - Verification and witness attacks
 
 pub mod arithmetic;
-pub mod batch_verifier;
 pub mod batch_verification;
+pub mod batch_verifier;
 pub mod boundary;
 pub mod collision;
 pub mod constraint_inference;

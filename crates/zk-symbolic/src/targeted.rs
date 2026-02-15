@@ -10,13 +10,13 @@
 //! - Find regressions in <10 minutes
 //! - Differential mode finds all patch differences
 
+use crate::enhanced::{ConstraintSimplifier, PathPruner, PruningStrategy};
 use crate::executor::{
     PathCondition, SolverResult, SymbolicConstraint, SymbolicState, SymbolicValue, Z3Solver,
 };
-use crate::enhanced::{ConstraintSimplifier, PathPruner, PruningStrategy};
-use zk_core::FieldElement;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::time::Instant;
+use zk_core::FieldElement;
 
 // ============================================================================
 // Bug-Directed Symbolic Execution
@@ -62,13 +62,23 @@ impl VulnerabilityTarget {
                 vec!["range".into(), "bound".into(), "limit".into(), "max".into()]
             }
             VulnerabilityTarget::HashCollision => {
-                vec!["hash".into(), "poseidon".into(), "mimc".into(), "pedersen".into()]
+                vec![
+                    "hash".into(),
+                    "poseidon".into(),
+                    "mimc".into(),
+                    "pedersen".into(),
+                ]
             }
             VulnerabilityTarget::MerklePathManipulation => {
                 vec!["merkle".into(), "root".into(), "path".into(), "leaf".into()]
             }
             VulnerabilityTarget::SignatureForgery => {
-                vec!["signature".into(), "eddsa".into(), "verify".into(), "sign".into()]
+                vec![
+                    "signature".into(),
+                    "eddsa".into(),
+                    "verify".into(),
+                    "sign".into(),
+                ]
             }
             VulnerabilityTarget::InformationLeakage => {
                 vec!["secret".into(), "private".into(), "witness".into()]
@@ -256,7 +266,10 @@ impl BugDirectedExecutor {
                 // Check path condition constraints
                 for constraint in &state.path_condition.constraints {
                     let constraint_str = format!("{:?}", constraint);
-                    if constraint_str.to_lowercase().contains(&pattern.to_lowercase()) {
+                    if constraint_str
+                        .to_lowercase()
+                        .contains(&pattern.to_lowercase())
+                    {
                         total_score += boost;
                         matched.push(pattern.clone());
                     }
@@ -307,7 +320,10 @@ impl BugDirectedExecutor {
             for pattern in patterns {
                 for constraint in &state.path_condition.constraints {
                     let constraint_str = format!("{:?}", constraint);
-                    if constraint_str.to_lowercase().contains(&pattern.to_lowercase()) {
+                    if constraint_str
+                        .to_lowercase()
+                        .contains(&pattern.to_lowercase())
+                    {
                         matched_patterns.push(pattern.clone());
                     }
                 }
@@ -343,10 +359,7 @@ impl BugDirectedExecutor {
                         witness,
                         path_condition: state.path_condition.clone(),
                         confidence,
-                        description: format!(
-                            "Matched patterns: {}",
-                            matched_patterns.join(", ")
-                        ),
+                        description: format!("Matched patterns: {}", matched_patterns.join(", ")),
                         involved_constraints: (0..state.path_condition.constraints.len()).collect(),
                     };
 
@@ -376,12 +389,10 @@ impl BugDirectedExecutor {
 
     fn compute_confidence(&self, patterns: &[String], state: &SymbolicState) -> f64 {
         let pattern_count = patterns.len() as f64;
-        let constraint_ratio =
-            pattern_count / state.path_condition.constraints.len().max(1) as f64;
+        let constraint_ratio = pattern_count / state.path_condition.constraints.len().max(1) as f64;
         let depth_factor = 1.0 - (state.depth as f64 / self.config.max_depth as f64);
 
-        (pattern_count.min(5.0) / 5.0 * 0.4 + constraint_ratio * 0.3 + depth_factor * 0.3)
-            .min(1.0)
+        (pattern_count.min(5.0) / 5.0 * 0.4 + constraint_ratio * 0.3 + depth_factor * 0.3).min(1.0)
     }
 
     fn assignments_to_inputs(
@@ -391,7 +402,10 @@ impl BugDirectedExecutor {
         (0..self.num_inputs)
             .map(|i| {
                 let key = format!("input_{}", i);
-                assignments.get(&key).cloned().unwrap_or_else(FieldElement::zero)
+                assignments
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(FieldElement::zero)
             })
             .collect()
     }
@@ -622,7 +636,7 @@ impl DifferentialExecutor {
         self.stats.solver_calls += 1;
         if let SolverResult::Sat(assignments) = self.solver.solve(&pc) {
             let input = self.assignments_to_inputs(&assignments);
-            
+
             self.differences.push(CircuitDifference {
                 diverging_input: input,
                 output_a: None,
@@ -657,7 +671,7 @@ impl DifferentialExecutor {
 
         // Build: satisfies all of `satisfied` AND violates at least one of `unsatisfied`
         let mut pc = PathCondition::new();
-        
+
         // Must satisfy all constraints in target version
         for constraint in satisfied {
             pc.add_constraint(constraint.clone());
@@ -681,7 +695,7 @@ impl DifferentialExecutor {
 
         if let SolverResult::Sat(assignments) = self.solver.solve(&pc) {
             let input = self.assignments_to_inputs(&assignments);
-            
+
             let description = if for_version_a {
                 "Input valid for version A but rejected by version B"
             } else {
@@ -788,7 +802,10 @@ impl DifferentialExecutor {
         (0..self.num_inputs)
             .map(|i| {
                 let key = format!("input_{}", i);
-                assignments.get(&key).cloned().unwrap_or_else(FieldElement::zero)
+                assignments
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(FieldElement::zero)
             })
             .collect()
     }
@@ -846,14 +863,10 @@ mod tests {
     #[test]
     fn test_differential_executor_identical() {
         let constraints = vec![SymbolicConstraint::Boolean(SymbolicValue::symbol("x"))];
-        let mut executor = DifferentialExecutor::new(
-            constraints.clone(),
-            constraints,
-            1,
-        );
-        
+        let mut executor = DifferentialExecutor::new(constraints.clone(), constraints, 1);
+
         executor.find_differences();
-        
+
         // Identical circuits should have no structural differences
         // (solver may still find differences based on constraint ordering)
         assert!(executor.stats.differences_found <= 2);
@@ -869,10 +882,10 @@ mod tests {
                 SymbolicValue::Concrete(FieldElement::zero()),
             ),
         ];
-        
+
         let mut executor = DifferentialExecutor::new(constraints_a, constraints_b, 2);
         executor.find_differences();
-        
+
         // Different constraints should be detected
         assert!(executor.stats.solver_calls > 0);
     }

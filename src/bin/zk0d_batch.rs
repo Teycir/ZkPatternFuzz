@@ -91,7 +91,10 @@ fn main() -> anyhow::Result<()> {
             .or_else(|| targets_file.defaults.mode.clone())
             .unwrap_or_else(|| "evidence".to_string());
 
-        let workers = target.workers.or(targets_file.defaults.workers).unwrap_or(8);
+        let workers = target
+            .workers
+            .or(targets_file.defaults.workers)
+            .unwrap_or(8);
         let seed = target.seed.or(targets_file.defaults.seed).unwrap_or(42);
         let iterations = target
             .iterations
@@ -102,9 +105,10 @@ fn main() -> anyhow::Result<()> {
             .or(targets_file.defaults.timeout)
             .unwrap_or(1800);
 
-        let output_dir = target.output_dir.clone().unwrap_or_else(|| {
-            format!("reports/zk0d/{}", target.name)
-        });
+        let output_dir = target
+            .output_dir
+            .clone()
+            .unwrap_or_else(|| format!("reports/zk0d/{}", target.name));
 
         if !args.skip_validate {
             validate_campaign(&target.campaign, &output_dir, &mode)?;
@@ -163,7 +167,7 @@ fn main() -> anyhow::Result<()> {
 
 fn validate_campaign(campaign: &str, output_dir: &str, mode: &str) -> anyhow::Result<()> {
     let config = FuzzConfig::from_yaml(campaign)?;
-    
+
     // Only require invariants in evidence mode
     if mode == "evidence" {
         let invariants = config.get_invariants();
@@ -196,7 +200,10 @@ fn write_campaign_override(campaign: &str, output_dir: &str) -> anyhow::Result<P
 
         if let Some(reporting) = map.get_mut(&reporting_key) {
             if let Some(reporting_map) = reporting.as_mapping_mut() {
-                reporting_map.insert(output_key, serde_yaml::Value::String(output_dir.to_string_lossy().to_string()));
+                reporting_map.insert(
+                    output_key,
+                    serde_yaml::Value::String(output_dir.to_string_lossy().to_string()),
+                );
             }
         } else {
             let mut reporting_map = serde_yaml::Mapping::new();

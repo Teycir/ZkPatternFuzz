@@ -101,12 +101,12 @@ impl<'ctx> AltWitnessSolver<'ctx> {
 
         // Compute fixed wire indices (constant + public outputs + public inputs)
         let mut fixed_wire_indices = vec![0]; // Wire 0 is constant 1
-        
+
         // Public outputs: wires 1..=num_public_outputs
         for i in 1..=r1cs.num_public_outputs {
             fixed_wire_indices.push(i);
         }
-        
+
         // Public inputs: wires after public outputs
         let pub_input_start = 1 + r1cs.num_public_outputs;
         let pub_input_end = pub_input_start + r1cs.num_public_inputs;
@@ -173,8 +173,7 @@ impl<'ctx> AltWitnessSolver<'ctx> {
 
     /// Convert a BigUint to Z3 Int
     fn bigint_to_int(&self, n: &BigUint) -> Int<'ctx> {
-        Int::from_str(self.ctx, &n.to_str_radix(10))
-            .unwrap_or_else(|| Int::from_i64(self.ctx, 0))
+        Int::from_str(self.ctx, &n.to_str_radix(10)).unwrap_or_else(|| Int::from_i64(self.ctx, 0))
     }
 
     /// Compute sparse dot product: Σ (coeff_i * wire_i)
@@ -239,7 +238,7 @@ impl<'ctx> AltWitnessSolver<'ctx> {
     /// Add field bounds: 0 <= wire < p for non-fixed wires
     fn add_field_bounds(&self, solver: &Solver<'ctx>) {
         let zero = Int::from_i64(self.ctx, 0);
-        
+
         for (idx, wire) in self.wire_vars.iter().enumerate() {
             if idx == 0 || self.fixed_wire_indices.contains(&idx) {
                 continue;
@@ -276,7 +275,9 @@ impl<'ctx> AltWitnessSolver<'ctx> {
         variable_indices: &[usize],
     ) {
         if variable_indices.is_empty() {
-            tracing::warn!("No variable (non-public) wires to block -- solver may return original witness");
+            tracing::warn!(
+                "No variable (non-public) wires to block -- solver may return original witness"
+            );
             return;
         }
 
@@ -499,7 +500,7 @@ pub fn find_multiple_alternatives(
     }
 
     let solver = Solver::new(&ctx);
-    
+
     let mut params = z3::Params::new(&ctx);
     params.set_u32("timeout", timeout_ms);
     solver.set_params(&params);
@@ -717,7 +718,7 @@ mod tests {
         // Should find alternative since y is private and unconstrained
         // except by x * y = z. With x=2, z=6 fixed, y must = 3.
         // Actually this is fully constrained! Let's test a truly underconstrained case.
-        
+
         println!("Result: {:?}", result);
     }
 
@@ -758,13 +759,13 @@ mod tests {
         let result = find_alternative_witness(&r1cs, &original, 5000);
 
         assert!(result.found, "Should find alternative witness");
-        
+
         if let Some(alt) = &result.alternative_witness {
             // Verify constraint: a + b = 10
             let a = alt[1].to_biguint();
             let b = alt[2].to_biguint();
             assert_eq!(a + b, BigUint::from(10u32));
-            
+
             // Verify it's different
             assert!(alt[1] != original[1] || alt[2] != original[2]);
         }

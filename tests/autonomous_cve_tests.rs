@@ -7,7 +7,8 @@ const AUTONOMOUS_CVE_DB: &str = "templates/autonomous_cve_tests.yaml";
 fn test_autonomous_cve_regression_tests() {
     println!("Loading autonomous CVE database...");
 
-    let db = CveDatabase::load(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
+    let db =
+        CveDatabase::load_strict(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
 
     let tests = db.generate_regression_tests();
     assert!(!tests.is_empty(), "Should have autonomous CVE tests");
@@ -96,7 +97,8 @@ fn test_autonomous_cve_regression_tests() {
 
 #[test]
 fn test_autonomous_cve_database_structure() {
-    let db = CveDatabase::load(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
+    let db =
+        CveDatabase::load_strict(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
 
     for cve in db.all_patterns() {
         assert!(!cve.id.is_empty(), "CVE ID cannot be empty");
@@ -138,7 +140,8 @@ fn test_autonomous_cve_database_structure() {
 
 #[test]
 fn test_cve_circuits_exist_in_repo() {
-    let db = CveDatabase::load(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
+    let db =
+        CveDatabase::load_strict(AUTONOMOUS_CVE_DB).expect("Failed to load autonomous CVE database");
 
     let repo_root = Path::new("/home/teycir/Repos/ZkPatternFuzz");
     let mut found = 0;

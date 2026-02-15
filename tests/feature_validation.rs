@@ -33,7 +33,11 @@ fn test_constraint_inference_precision() {
             vec!["value < 2^64", "bits are binary", "recomposition correct"],
             0.8,
         ),
-        ("merkle_tree", vec!["path_idx is binary", "hash_consistency"], 0.75),
+        (
+            "merkle_tree",
+            vec!["path_idx is binary", "hash_consistency"],
+            0.75,
+        ),
         ("nullifier", vec!["hash_binding", "uniqueness"], 0.7),
         ("signature", vec!["curve_point", "scalar_range"], 0.7),
         ("commitment", vec!["binding", "hiding"], 0.7),
@@ -46,31 +50,38 @@ fn test_constraint_inference_precision() {
         // Simulate constraint inference
         let inferred = simulate_constraint_inference(circuit);
         let correct = count_correct_inferences(&inferred, expected);
-        
+
         let precision = correct as f64 / inferred.len().max(1) as f64;
-        
-        println!("  {:<15} Inferred: {:>2} | Correct: {:>2} | Precision: {:.0}%",
-                 circuit, inferred.len(), correct, precision * 100.0);
-        
+
+        println!(
+            "  {:<15} Inferred: {:>2} | Correct: {:>2} | Precision: {:.0}%",
+            circuit,
+            inferred.len(),
+            correct,
+            precision * 100.0
+        );
+
         total_correct += correct;
         total_inferences += inferred.len();
-        
+
         assert!(
             precision >= *tolerance - 0.1, // Allow 10% margin for test variance
             "{} precision {:.0}% below target {:.0}%",
-            circuit, precision * 100.0, tolerance * 100.0
+            circuit,
+            precision * 100.0,
+            tolerance * 100.0
         );
     }
 
     let overall_precision = total_correct as f64 / total_inferences.max(1) as f64;
     println!("\n  Overall Precision: {:.1}%", overall_precision * 100.0);
-    
+
     assert!(
         overall_precision >= 0.70,
         "Overall precision {:.1}% below 70% target",
         overall_precision * 100.0
     );
-    
+
     println!("  ✓ Constraint inference meets 70% precision target");
 }
 
@@ -81,12 +92,12 @@ fn test_constraint_inference_categories() {
     println!("═══════════════════════════════════════════════════════════\n");
 
     let categories = vec![
-        ("Range Constraints", 85),      // e.g., 0 <= x < 2^n
-        ("Binary Constraints", 90),     // e.g., x * (x-1) = 0
-        ("Hash Preimage", 75),          // e.g., H(x) = y
-        ("Equality", 95),               // e.g., x = y
-        ("Polynomial Identity", 70),    // e.g., x^2 + y^2 = 1
-        ("Lookup Membership", 65),      // e.g., x in Table
+        ("Range Constraints", 85),   // e.g., 0 <= x < 2^n
+        ("Binary Constraints", 90),  // e.g., x * (x-1) = 0
+        ("Hash Preimage", 75),       // e.g., H(x) = y
+        ("Equality", 95),            // e.g., x = y
+        ("Polynomial Identity", 70), // e.g., x^2 + y^2 = 1
+        ("Lookup Membership", 65),   // e.g., x in Table
     ];
 
     println!("{:<25} {:>15}", "Category", "Est. Precision%");
@@ -98,9 +109,11 @@ fn test_constraint_inference_categories() {
     }
 
     println!();
-    println!("  Categories meeting 70% target: {}/{}",
-             categories.iter().filter(|(_, p)| *p >= 70).count(),
-             categories.len());
+    println!(
+        "  Categories meeting 70% target: {}/{}",
+        categories.iter().filter(|(_, p)| *p >= 70).count(),
+        categories.len()
+    );
 }
 
 // ============================================================================
@@ -166,22 +179,34 @@ fn test_metamorphic_relations_coverage() {
         },
     ];
 
-    println!("{:<25} {:>15} {:>20}", "Relation", "Validation%", "Applicable To");
+    println!(
+        "{:<25} {:>15} {:>20}",
+        "Relation", "Validation%", "Applicable To"
+    );
     println!("{}", "-".repeat(65));
 
     let mut valid_relations = 0;
     for relation in &relations {
-        let status = if relation.validation_rate >= 0.80 { "✓" } else { "⚠" };
+        let status = if relation.validation_rate >= 0.80 {
+            "✓"
+        } else {
+            "⚠"
+        };
         let short_desc: String = relation.description.chars().take(28).collect();
         println!(
             "{} {:<23} {:>15.0}% {:>20}  {}",
             status,
             relation.name,
             relation.validation_rate * 100.0,
-            relation.applicable_to.join(", ").chars().take(18).collect::<String>(),
+            relation
+                .applicable_to
+                .join(", ")
+                .chars()
+                .take(18)
+                .collect::<String>(),
             short_desc
         );
-        
+
         if relation.validation_rate >= 0.80 {
             valid_relations += 1;
         }
@@ -189,13 +214,13 @@ fn test_metamorphic_relations_coverage() {
 
     println!();
     println!("  Valid relations (>80% rate): {}", valid_relations);
-    
+
     assert!(
         valid_relations >= 5,
         "Only {} valid relations, need 5+",
         valid_relations
     );
-    
+
     println!("  ✓ Metamorphic testing has 5+ validated relations");
 }
 
@@ -208,10 +233,22 @@ fn test_metamorphic_circuit_awareness() {
     // Test that metamorphic relations are circuit-type aware
     let circuit_types = vec![
         ("HashCircuit", vec!["Hash Avalanche", "Input Permutation"]),
-        ("MerkleCircuit", vec!["Merkle Leaf Sensitivity", "Hash Avalanche"]),
-        ("SignatureCircuit", vec!["Signature Uniqueness", "Identity Transformation"]),
-        ("RangeCircuit", vec!["Range Boundary", "Identity Transformation"]),
-        ("ArithmeticCircuit", vec!["Inverse Cancellation", "Input Permutation"]),
+        (
+            "MerkleCircuit",
+            vec!["Merkle Leaf Sensitivity", "Hash Avalanche"],
+        ),
+        (
+            "SignatureCircuit",
+            vec!["Signature Uniqueness", "Identity Transformation"],
+        ),
+        (
+            "RangeCircuit",
+            vec!["Range Boundary", "Identity Transformation"],
+        ),
+        (
+            "ArithmeticCircuit",
+            vec!["Inverse Cancellation", "Input Permutation"],
+        ),
     ];
 
     for (circuit, applicable_relations) in circuit_types {
@@ -276,15 +313,21 @@ fn test_spec_inference_accuracy() {
         },
     ];
 
-    println!("{:<20} {:>10} {:>10} {:>12}", 
-             "Spec Type", "Inferred", "Correct", "Accuracy%");
+    println!(
+        "{:<20} {:>10} {:>10} {:>12}",
+        "Spec Type", "Inferred", "Correct", "Accuracy%"
+    );
     println!("{}", "-".repeat(55));
 
     let mut total_inferred = 0;
     let mut total_correct = 0;
 
     for result in &results {
-        let status = if result.accuracy >= 0.80 { "✓" } else { "⚠" };
+        let status = if result.accuracy >= 0.80 {
+            "✓"
+        } else {
+            "⚠"
+        };
         println!(
             "{} {:<18} {:>10} {:>10} {:>12.1}",
             status,
@@ -293,7 +336,7 @@ fn test_spec_inference_accuracy() {
             result.correct_count,
             result.accuracy * 100.0
         );
-        
+
         total_inferred += result.inferred_count;
         total_correct += result.correct_count;
     }
@@ -322,7 +365,7 @@ fn test_spec_violation_detection() {
         ("Input out of range", true, true),
         ("Output overflow", true, true),
         ("Invariant broken", true, true),
-        ("Type mismatch", true, false),  // False negative case
+        ("Type mismatch", true, false), // False negative case
         ("Dependency violated", true, true),
     ];
 
@@ -362,8 +405,10 @@ fn test_all_experimental_features() {
         ("Spec Inference", 0.85, 0.80, true),
     ];
 
-    println!("{:<25} {:>12} {:>12} {:>10}", 
-             "Feature", "Current%", "Target%", "Status");
+    println!(
+        "{:<25} {:>12} {:>12} {:>10}",
+        "Feature", "Current%", "Target%", "Status"
+    );
     println!("{}", "-".repeat(62));
 
     let mut all_pass = true;
@@ -403,22 +448,10 @@ fn simulate_constraint_inference(circuit_type: &str) -> Vec<String> {
             "bits are binary".into(),
             "recomposition correct".into(),
         ],
-        "merkle_tree" => vec![
-            "path_idx is binary".into(),
-            "hash_consistency".into(),
-        ],
-        "nullifier" => vec![
-            "hash_binding".into(),
-            "uniqueness".into(),
-        ],
-        "signature" => vec![
-            "curve_point".into(),
-            "scalar_range".into(),
-        ],
-        "commitment" => vec![
-            "binding".into(),
-            "hiding".into(),
-        ],
+        "merkle_tree" => vec!["path_idx is binary".into(), "hash_consistency".into()],
+        "nullifier" => vec!["hash_binding".into(), "uniqueness".into()],
+        "signature" => vec!["curve_point".into(), "scalar_range".into()],
+        "commitment" => vec!["binding".into(), "hiding".into()],
         _ => vec![],
     }
 }
@@ -454,7 +487,7 @@ mod unit_tests {
     fn test_count_correct_inferences() {
         let inferred = vec!["value < 2^64".into(), "bits are binary".into()];
         let expected = vec!["value < 2^64", "bits are binary"];
-        
+
         let correct = count_correct_inferences(&inferred, &expected);
         assert_eq!(correct, 2);
     }

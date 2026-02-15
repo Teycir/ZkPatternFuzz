@@ -12,10 +12,10 @@
 //! test against real Circom circuits when available.
 
 use std::path::PathBuf;
+use zk_core::{FieldElement, TestCase, TestMetadata};
 use zk_fuzzer::config::*;
 use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
 use zk_fuzzer::fuzzer::FuzzingEngine;
-use zk_core::{FieldElement, TestCase, TestMetadata};
 
 /// Create a test configuration with fixture backend
 fn create_test_config() -> FuzzConfig {
@@ -35,21 +35,19 @@ fn create_test_config() -> FuzzConfig {
                 additional: AdditionalConfig::default(),
             },
         },
-        attacks: vec![
-            Attack {
-                attack_type: AttackType::Underconstrained,
-                description: "Test underconstrained detection".to_string(),
-                plugin: None,
-                config: serde_yaml::Value::Mapping({
-                    let mut m = serde_yaml::Mapping::new();
-                    m.insert(
-                        serde_yaml::Value::String("witness_pairs".to_string()),
-                        serde_yaml::Value::Number(100.into()),
-                    );
-                    m
-                }),
-            },
-        ],
+        attacks: vec![Attack {
+            attack_type: AttackType::Underconstrained,
+            description: "Test underconstrained detection".to_string(),
+            plugin: None,
+            config: serde_yaml::Value::Mapping({
+                let mut m = serde_yaml::Mapping::new();
+                m.insert(
+                    serde_yaml::Value::String("witness_pairs".to_string()),
+                    serde_yaml::Value::Number(100.into()),
+                );
+                m
+            }),
+        }],
         inputs: vec![Input {
             name: "a".to_string(),
             input_type: "field".to_string(),
@@ -72,40 +70,44 @@ fn create_test_config() -> FuzzConfig {
 #[test]
 fn test_underconstrained_oracle_stateful() {
     use zk_fuzzer_core::oracle::{BugOracle, UnderconstrainedOracle};
-    
+
     let mut oracle = UnderconstrainedOracle::new();
-    
+
     // Create two test cases with different inputs
     let test_case_1 = TestCase {
         inputs: vec![FieldElement::from_u64(42)],
         expected_output: None,
         metadata: TestMetadata::default(),
     };
-    
+
     let test_case_2 = TestCase {
         inputs: vec![FieldElement::from_u64(123)],
         expected_output: None,
         metadata: TestMetadata::default(),
     };
-    
+
     // Same output for both - simulates underconstrained circuit
     let output = vec![FieldElement::from_u64(999)];
-    
+
     // First check should record the output, not find anything
     let finding_1 = oracle.check(&test_case_1, &output);
     assert!(finding_1.is_none(), "First check should not find collision");
-    
+
     // Verify the oracle recorded the output
-    assert_eq!(oracle.unique_outputs(), 1, "Should have recorded one unique output");
-    
+    assert_eq!(
+        oracle.unique_outputs(),
+        1,
+        "Should have recorded one unique output"
+    );
+
     // Second check with DIFFERENT inputs but SAME output should detect collision
     let finding_2 = oracle.check(&test_case_2, &output);
     assert!(finding_2.is_some(), "Second check should detect collision");
-    
+
     let finding = finding_2.unwrap();
     assert_eq!(finding.attack_type, zk_core::AttackType::Underconstrained);
     assert_eq!(finding.severity, zk_core::Severity::Critical);
-    
+
     // Verify collision count
     assert_eq!(oracle.collision_count, 1);
 }
@@ -113,21 +115,21 @@ fn test_underconstrained_oracle_stateful() {
 #[test]
 fn test_underconstrained_oracle_reset() {
     use zk_fuzzer_core::oracle::{BugOracle, UnderconstrainedOracle};
-    
+
     let mut oracle = UnderconstrainedOracle::new();
-    
+
     let test_case = TestCase {
         inputs: vec![FieldElement::from_u64(42)],
         expected_output: None,
         metadata: TestMetadata::default(),
     };
-    
+
     let output = vec![FieldElement::from_u64(999)];
-    
+
     // Record an output
     let _ = oracle.check(&test_case, &output);
     assert_eq!(oracle.unique_outputs(), 1);
-    
+
     // Reset should clear state
     oracle.reset();
     assert_eq!(oracle.unique_outputs(), 0);
@@ -137,25 +139,24 @@ fn test_underconstrained_oracle_reset() {
 #[test]
 fn test_underconstrained_oracle_with_fixed_public_inputs() {
     use zk_fuzzer_core::oracle::UnderconstrainedOracle;
-    
+
     let fixed_public = vec![FieldElement::from_u64(100)];
-    let oracle = UnderconstrainedOracle::new()
-        .with_fixed_public_inputs(fixed_public.clone());
-    
+    let oracle = UnderconstrainedOracle::new().with_fixed_public_inputs(fixed_public.clone());
+
     // Test case with matching public inputs
     let matching_case = TestCase {
         inputs: vec![FieldElement::from_u64(100), FieldElement::from_u64(42)],
         expected_output: None,
         metadata: TestMetadata::default(),
     };
-    
+
     // Test case with different public inputs
     let non_matching_case = TestCase {
         inputs: vec![FieldElement::from_u64(200), FieldElement::from_u64(42)],
         expected_output: None,
         metadata: TestMetadata::default(),
     };
-    
+
     assert!(oracle.matches_fixed_public_inputs(&matching_case, 1));
     assert!(!oracle.matches_fixed_public_inputs(&non_matching_case, 1));
 }
@@ -167,14 +168,14 @@ fn test_underconstrained_oracle_with_fixed_public_inputs() {
 #[test]
 fn test_field_modulus_from_executor() {
     let executor = FixtureCircuitExecutor::new("test_field", 1, 1);
-    
+
     // Should return a valid 32-byte field modulus
     let modulus = executor.field_modulus();
     assert_eq!(modulus.len(), 32);
-    
+
     // Default is BN254
     assert_eq!(executor.field_name(), "bn254");
-    
+
     // Verify it's not all zeros
     assert!(modulus.iter().any(|&b| b != 0));
 }
@@ -186,7 +187,7 @@ fn test_field_modulus_from_executor() {
 #[test]
 fn test_semantic_oracles_from_config() {
     let mut config = create_test_config();
-    
+
     // Add semantic oracles to config
     config.oracles = vec![
         Oracle {
@@ -200,7 +201,7 @@ fn test_semantic_oracles_from_config() {
             description: "Detect invalid Merkle proofs".to_string(),
         },
     ];
-    
+
     // Create engine - should instantiate oracles without panic
     let engine = FuzzingEngine::new(config, Some(42), 1);
     assert!(engine.is_ok(), "Engine should create with semantic oracles");
@@ -209,7 +210,7 @@ fn test_semantic_oracles_from_config() {
 #[test]
 fn test_semantic_oracles_from_parameters() {
     let mut config = create_test_config();
-    
+
     // Add oracles via parameters (alternative syntax)
     config.campaign.parameters.additional.insert(
         "enabled_oracles".to_string(),
@@ -218,9 +219,12 @@ fn test_semantic_oracles_from_parameters() {
             serde_yaml::Value::String("range".to_string()),
         ]),
     );
-    
+
     let engine = FuzzingEngine::new(config, Some(42), 1);
-    assert!(engine.is_ok(), "Engine should create with oracles from parameters");
+    assert!(
+        engine.is_ok(),
+        "Engine should create with oracles from parameters"
+    );
 }
 
 // ============================================================================
@@ -236,11 +240,14 @@ async fn test_constraint_inference_attack_dispatch() {
         plugin: None,
         config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
     }];
-    
+
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let report = engine.run(None).await;
-    
-    assert!(report.is_ok(), "ConstraintInference attack should not panic");
+
+    assert!(
+        report.is_ok(),
+        "ConstraintInference attack should not panic"
+    );
 }
 
 #[tokio::test]
@@ -259,10 +266,10 @@ async fn test_metamorphic_attack_dispatch() {
             m
         }),
     }];
-    
+
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let report = engine.run(None).await;
-    
+
     assert!(report.is_ok(), "Metamorphic attack should not panic");
 }
 
@@ -275,10 +282,10 @@ async fn test_constraint_slice_attack_dispatch() {
         plugin: None,
         config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
     }];
-    
+
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let report = engine.run(None).await;
-    
+
     assert!(report.is_ok(), "ConstraintSlice attack should not panic");
 }
 
@@ -298,10 +305,10 @@ async fn test_spec_inference_attack_dispatch() {
             m
         }),
     }];
-    
+
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let report = engine.run(None).await;
-    
+
     assert!(report.is_ok(), "SpecInference attack should not panic");
 }
 
@@ -321,10 +328,10 @@ async fn test_witness_collision_attack_dispatch() {
             m
         }),
     }];
-    
+
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let report = engine.run(None).await;
-    
+
     assert!(report.is_ok(), "WitnessCollision attack should not panic");
 }
 
@@ -335,7 +342,7 @@ async fn test_witness_collision_attack_dispatch() {
 #[tokio::test]
 async fn test_continuous_fuzzing_loop() {
     let mut config = create_test_config();
-    
+
     // Configure continuous fuzzing
     config.campaign.parameters.additional.insert(
         "fuzzing_iterations".to_string(),
@@ -345,10 +352,10 @@ async fn test_continuous_fuzzing_loop() {
         "fuzzing_timeout_seconds".to_string(),
         serde_yaml::Value::Number(30.into()),
     );
-    
+
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let report = engine.run(None).await.unwrap();
-    
+
     // Verify we ran significant iterations
     assert!(
         report.statistics.total_executions >= 100,
@@ -363,7 +370,7 @@ async fn test_fuzzing_loop_with_timeout() {
     // Scope this test to the continuous fuzzing loop timeout only.
     // Attack dispatch/runtime is covered by dedicated tests below.
     config.attacks.clear();
-    
+
     // Very short timeout
     config.campaign.parameters.additional.insert(
         "fuzzing_iterations".to_string(),
@@ -373,12 +380,12 @@ async fn test_fuzzing_loop_with_timeout() {
         "fuzzing_timeout_seconds".to_string(),
         serde_yaml::Value::Number(1.into()), // 1 second timeout
     );
-    
+
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let start = std::time::Instant::now();
     let _ = engine.run(None).await;
     let elapsed = start.elapsed();
-    
+
     // Should respect timeout (with some margin for setup/teardown)
     assert!(
         elapsed.as_secs() < 10,
@@ -398,10 +405,10 @@ async fn test_phase0_success_metrics() {
     // 2. Fuzzing loop runs >1000 iterations ✓ (tested above)
     // 3. Semantic oracles instantiate from config ✓ (tested above)
     // 4. All 5 novel attacks dispatch without warnings ✓ (tested above)
-    
+
     // This test runs a complete campaign with all features
     let mut config = create_test_config();
-    
+
     // Enable all novel attacks
     config.attacks = vec![
         Attack {
@@ -437,28 +444,26 @@ async fn test_phase0_success_metrics() {
             }),
         },
     ];
-    
+
     // Enable semantic oracles
-    config.oracles = vec![
-        Oracle {
-            name: "nullifier".to_string(),
-            severity: Severity::Critical,
-            description: "Nullifier oracle".to_string(),
-        },
-    ];
-    
+    config.oracles = vec![Oracle {
+        name: "nullifier".to_string(),
+        severity: Severity::Critical,
+        description: "Nullifier oracle".to_string(),
+    }];
+
     // Enable continuous fuzzing
     config.campaign.parameters.additional.insert(
         "fuzzing_iterations".to_string(),
         serde_yaml::Value::Number(500.into()),
     );
-    
+
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let report = engine.run(None).await.unwrap();
-    
+
     // Basic sanity checks
     assert!(report.duration_seconds > 0 || report.statistics.total_executions > 0);
-    
+
     println!("Phase 0 Integration Test Complete:");
     println!("  Total Executions: {}", report.statistics.total_executions);
     println!("  Coverage: {:.1}%", report.statistics.coverage_percentage);

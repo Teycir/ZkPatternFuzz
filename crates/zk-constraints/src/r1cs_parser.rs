@@ -57,7 +57,9 @@ impl R1CSConstraint {
     /// Convert to our internal ExtendedConstraint format
     pub fn to_extended(&self) -> crate::constraint_types::ExtendedConstraint {
         use crate::constraint_types::LinearCombination;
-        use crate::constraint_types::{ExtendedConstraint, R1CSConstraint as InternalR1CS, WireRef};
+        use crate::constraint_types::{
+            ExtendedConstraint, R1CSConstraint as InternalR1CS, WireRef,
+        };
 
         let convert_terms = |terms: &[(usize, BigUint)]| -> LinearCombination {
             let mut lc = LinearCombination::new();
@@ -154,18 +156,18 @@ impl R1CS {
         // Two-pass parsing: First collect section locations, then parse in correct order
         // This handles R1CS files where sections appear in different orders
         let mut section_info: Vec<(u32, u64, u64)> = Vec::with_capacity(num_sections as usize);
-        
+
         for _ in 0..num_sections {
             let section_type = read_u32_le(reader)?;
             let section_size = read_u64_le(reader)?;
             let section_start = reader.stream_position()?;
-            
+
             section_info.push((section_type, section_start, section_size));
-            
+
             // Skip to next section
             reader.seek(SeekFrom::Start(section_start + section_size))?;
         }
-        
+
         // Parse header section first (type 1) - needed for field_bytes and num_constraints
         for &(section_type, section_start, _section_size) in &section_info {
             if section_type == 1 {
@@ -174,11 +176,11 @@ impl R1CS {
                 break;
             }
         }
-        
+
         // Parse remaining sections
         for &(section_type, section_start, section_size) in &section_info {
             reader.seek(SeekFrom::Start(section_start))?;
-            
+
             match section_type {
                 1 => {} // Already parsed
                 2 => parse_constraints_section(reader, &mut r1cs)?,

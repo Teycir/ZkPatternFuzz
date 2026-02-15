@@ -387,10 +387,7 @@ impl BatchExecutor {
     {
         use rayon::prelude::*;
 
-        inputs
-            .into_par_iter()
-            .map(&executor)
-            .collect()
+        inputs.into_par_iter().map(&executor).collect()
     }
 
     /// Execute with batching and progress callback

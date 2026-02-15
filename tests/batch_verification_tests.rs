@@ -9,13 +9,12 @@
 //! - Randomness reuse detection
 //! - Configuration and API correctness
 
-use zk_fuzzer::attacks::batch_verification::{
-    AggregationMethod, BatchVerificationAnalyzer, BatchVerificationAttack,
-    BatchVerificationConfig, BatchVerificationFinding, BatchVerificationResult,
-    BatchVulnerabilityType, InvalidPosition,
-};
-use zk_core::{FieldElement, Severity};
 use std::collections::HashMap;
+use zk_core::{FieldElement, Severity};
+use zk_fuzzer::attacks::batch_verification::{
+    AggregationMethod, BatchVerificationAnalyzer, BatchVerificationAttack, BatchVerificationConfig,
+    BatchVerificationFinding, BatchVerificationResult, BatchVulnerabilityType, InvalidPosition,
+};
 
 // ============================================================================
 // Configuration Tests
@@ -620,10 +619,7 @@ fn test_finding_serialization() {
     let deserialized: BatchVerificationFinding =
         serde_json::from_str(&serialized).expect("Deserialization failed");
 
-    assert_eq!(
-        finding.vulnerability_type,
-        deserialized.vulnerability_type
-    );
+    assert_eq!(finding.vulnerability_type, deserialized.vulnerability_type);
     assert_eq!(finding.batch_size, deserialized.batch_size);
     assert_eq!(finding.confidence, deserialized.confidence);
 }

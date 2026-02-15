@@ -17,17 +17,17 @@ pub use traits::*;
 // Re-export CircuitInfo for external use
 pub use zk_core::CircuitInfo;
 
+use crate::analysis::constraint_types::LinearCombination;
 use crate::analysis::{
     AcirOpcode, BlackBoxOp, ConstraintChecker, ExtendedConstraint, RangeMethod,
     UnknownLookupPolicy, WireRef,
 };
-use crate::analysis::constraint_types::LinearCombination;
 use crate::targets::TargetCircuit;
-use zk_core::{FieldElement, Framework};
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
+use zk_core::{FieldElement, Framework};
 
 /// Options for controlling executor creation (e.g., build directory overrides).
 #[derive(Debug, Clone)]
@@ -98,7 +98,7 @@ impl Default for ExecutorFactoryOptions {
 
 impl ExecutorFactoryOptions {
     /// Create options with strict backend mode enabled
-    /// 
+    ///
     /// In strict mode, the factory will error if a real backend is not available
     /// instead of attempting any fallback behavior.
     pub fn strict() -> Self {
@@ -293,27 +293,21 @@ fn constraint_to_equation(id: usize, constraint: &ExtendedConstraint) -> Constra
             deps.dedup();
             equation_from_deps(id, &deps, "custom_gate")
         }
-        ExtendedConstraint::Lookup(lookup) => {
-            ConstraintEquation {
-                id,
-                a_terms: lookup
-                    .additional_inputs
-                    .iter()
-                    .map(|w| (w.index, FieldElement::one()))
-                    .collect(),
-                b_terms: Vec::new(),
-                c_terms: vec![(lookup.input.index, FieldElement::one())],
-                description: Some("lookup".to_string()),
-            }
-        }
+        ExtendedConstraint::Lookup(lookup) => ConstraintEquation {
+            id,
+            a_terms: lookup
+                .additional_inputs
+                .iter()
+                .map(|w| (w.index, FieldElement::one()))
+                .collect(),
+            b_terms: Vec::new(),
+            c_terms: vec![(lookup.input.index, FieldElement::one())],
+            description: Some("lookup".to_string()),
+        },
         ExtendedConstraint::Range(range) => {
             let mut input_terms = Vec::new();
             if let RangeMethod::BitDecomposition { bit_wires } = &range.method {
-                input_terms.extend(
-                    bit_wires
-                        .iter()
-                        .map(|w| (w.index, FieldElement::one())),
-                );
+                input_terms.extend(bit_wires.iter().map(|w| (w.index, FieldElement::one())));
             } else {
                 input_terms.push((range.wire.index, FieldElement::one()));
             }
@@ -353,13 +347,17 @@ fn constraint_to_equation(id: usize, constraint: &ExtendedConstraint) -> Constra
                     | BlackBoxOp::Keccak256 { inputs, outputs }
                     | BlackBoxOp::Pedersen { inputs, outputs }
                     | BlackBoxOp::FixedBaseScalarMul { inputs, outputs }
-                    | BlackBoxOp::RecursiveAggregation { inputs, outputs } => {
-                        inputs.iter().map(|w| w.index).chain(outputs.iter().map(|w| w.index)).collect()
-                    }
+                    | BlackBoxOp::RecursiveAggregation { inputs, outputs } => inputs
+                        .iter()
+                        .map(|w| w.index)
+                        .chain(outputs.iter().map(|w| w.index))
+                        .collect(),
                     BlackBoxOp::SchnorrVerify { inputs, output }
-                    | BlackBoxOp::EcdsaSecp256k1 { inputs, output } => {
-                        inputs.iter().map(|w| w.index).chain(std::iter::once(output.index)).collect()
-                    }
+                    | BlackBoxOp::EcdsaSecp256k1 { inputs, output } => inputs
+                        .iter()
+                        .map(|w| w.index)
+                        .chain(std::iter::once(output.index))
+                        .collect(),
                     BlackBoxOp::Range { input, .. } => vec![input.index],
                 };
                 deps.sort_unstable();
@@ -378,9 +376,7 @@ fn constraint_to_equation(id: usize, constraint: &ExtendedConstraint) -> Constra
                     .collect();
                 equation_from_deps(id, &deps, "acir_brillig")
             }
-            AcirOpcode::Range { input, .. } => {
-                equation_from_deps(id, &[input.index], "acir_range")
-            }
+            AcirOpcode::Range { input, .. } => equation_from_deps(id, &[input.index], "acir_range"),
         },
         ExtendedConstraint::AirConstraint(_) => ConstraintEquation {
             id,
@@ -539,7 +535,6 @@ fn collect_wire_labels_from_constraint(
     }
 }
 
-
 /// Factory for creating circuit executors based on framework type
 pub struct ExecutorFactory;
 
@@ -695,7 +690,6 @@ impl ExecutorFactory {
             }
         }
     }
-
 }
 
 /// Circom executor wrapper

@@ -61,8 +61,16 @@ impl ChainBenchmarkResult {
             self.mean_l_min,
             self.p_deep * 100.0,
             self.mean_time_to_first,
-            if self.precision >= 0.9 { "✅ PASS" } else { "❌ FAIL" },
-            if self.recall >= 0.8 { "✅ PASS" } else { "❌ FAIL" },
+            if self.precision >= 0.9 {
+                "✅ PASS"
+            } else {
+                "❌ FAIL"
+            },
+            if self.recall >= 0.8 {
+                "✅ PASS"
+            } else {
+                "❌ FAIL"
+            },
         )
     }
 }
@@ -108,7 +116,7 @@ fn get_ground_truth_cases() -> Vec<GroundTruthCase> {
 /// Run a single ground truth case and return (is_positive, l_min, time_to_first)
 fn run_ground_truth_case(case: &GroundTruthCase) -> Option<(bool, usize, Duration)> {
     use std::path::Path;
-    
+
     let yaml_path = Path::new(case.chain_yaml);
     if !yaml_path.exists() {
         eprintln!("Ground truth YAML not found: {}", case.chain_yaml);
@@ -137,10 +145,10 @@ fn run_benchmark_suite() -> ChainBenchmarkResult {
         let start = Instant::now();
         black_box(case.name);
         black_box(case.expected_assertion);
-        
+
         if let Some((found_bug, l_min, time_to_first)) = run_ground_truth_case(case) {
             black_box(start.elapsed());
-            
+
             if case.expected_finding {
                 if found_bug {
                     result.true_positives += 1;
@@ -168,7 +176,8 @@ fn run_benchmark_suite() -> ChainBenchmarkResult {
 
     if !times.is_empty() {
         let total_nanos: u128 = times.iter().map(|d| d.as_nanos()).sum();
-        result.mean_time_to_first = Duration::from_nanos((total_nanos / times.len() as u128) as u64);
+        result.mean_time_to_first =
+            Duration::from_nanos((total_nanos / times.len() as u128) as u64);
     }
 
     result
@@ -176,7 +185,7 @@ fn run_benchmark_suite() -> ChainBenchmarkResult {
 
 fn chain_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("chain_fuzzing");
-    
+
     // Set long measurement time since chain fuzzing is slow
     group.measurement_time(Duration::from_secs(60));
     group.sample_size(10);

@@ -239,23 +239,33 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         .get("strict_backend")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let mark_fallback = additional
+        .get("mark_fallback")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     if !strict_backend {
         warnings.push(
-            ReadinessWarning::high(
+            ReadinessWarning::critical(
                 "Backend",
-                "strict_backend is false - backend/tooling failures may be masked",
+                "strict_backend is false - backend/tooling failures can hide real bugs",
             )
             .with_fix("Set strict_backend: true in campaign.parameters.additional"),
+        );
+    }
+    if mark_fallback {
+        warnings.push(
+            ReadinessWarning::critical(
+                "Backend",
+                "mark_fallback is true - fallback mode is forbidden by strict policy",
+            )
+            .with_fix("Set mark_fallback: false (or remove the key entirely)"),
         );
     }
 
     // 2. Check invariants
     let invariants = config.get_invariants();
-    let has_chain_assertions = config
-        .chains
-        .iter()
-        .any(|c| !c.assertions.is_empty());
+    let has_chain_assertions = config.chains.iter().any(|c| !c.assertions.is_empty());
 
     if invariants.is_empty() && !has_chain_assertions {
         warnings.push(
@@ -330,21 +340,19 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         .unwrap_or(evidence_mode);
 
     if !oracle_validation {
-        warnings.push(
-            if engagement_strict {
-                ReadinessWarning::critical(
-                    "Oracles",
-                    "oracle_validation is false - strict engagement requires validated findings",
-                )
-                .with_fix("Set oracle_validation: true")
-            } else {
-                ReadinessWarning::medium(
-                    "Oracles",
-                    "oracle_validation is false - findings may have higher false positive rate",
-                )
-                .with_fix("Set oracle_validation: true")
-            },
-        );
+        warnings.push(if engagement_strict {
+            ReadinessWarning::critical(
+                "Oracles",
+                "oracle_validation is false - strict engagement requires validated findings",
+            )
+            .with_fix("Set oracle_validation: true")
+        } else {
+            ReadinessWarning::medium(
+                "Oracles",
+                "oracle_validation is false - findings may have higher false positive rate",
+            )
+            .with_fix("Set oracle_validation: true")
+        });
     }
 
     // 7. Check per-execution isolation
@@ -430,15 +438,13 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
                 .unwrap_or(0);
 
             if forge_attempts == 0 {
-                warnings.push(
-                    if engagement_strict {
-                        ReadinessWarning::critical("Attacks", "Soundness attack has 0 forge_attempts")
-                            .with_fix("Set forge_attempts >= 1000")
-                    } else {
-                        ReadinessWarning::high("Attacks", "Soundness attack has 0 forge_attempts")
-                            .with_fix("Set forge_attempts >= 1000")
-                    },
-                );
+                warnings.push(if engagement_strict {
+                    ReadinessWarning::critical("Attacks", "Soundness attack has 0 forge_attempts")
+                        .with_fix("Set forge_attempts >= 1000")
+                } else {
+                    ReadinessWarning::high("Attacks", "Soundness attack has 0 forge_attempts")
+                        .with_fix("Set forge_attempts >= 1000")
+                });
             } else if forge_attempts < 100 {
                 warnings.push(
                     ReadinessWarning::medium(
@@ -493,7 +499,10 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         ("chain_iterations", v)
     } else if let Some(v) = additional.get("max_iterations").and_then(|v| v.as_u64()) {
         ("max_iterations", v)
-    } else if let Some(v) = additional.get("fuzzing_iterations").and_then(|v| v.as_u64()) {
+    } else if let Some(v) = additional
+        .get("fuzzing_iterations")
+        .and_then(|v| v.as_u64())
+    {
         ("fuzzing_iterations", v)
     } else {
         ("fuzzing_iterations", 1000)

@@ -157,8 +157,8 @@ fn test_detection_rate_ground_truth() {
     // Calculate metrics
     let total_vulnerabilities = results.true_positives + results.false_negatives;
     let detection_rate = results.true_positives as f64 / total_vulnerabilities as f64;
-    let precision = results.true_positives as f64 
-        / (results.true_positives + results.false_positives) as f64;
+    let precision =
+        results.true_positives as f64 / (results.true_positives + results.false_positives) as f64;
     let recall = detection_rate;
     let f1_score = 2.0 * precision * recall / (precision + recall);
 
@@ -167,7 +167,10 @@ fn test_detection_rate_ground_truth() {
     println!("  False Positives:           {}", results.false_positives);
     println!("  False Negatives:           {}", results.false_negatives);
     println!();
-    println!("  Detection Rate:            {:.1}%", detection_rate * 100.0);
+    println!(
+        "  Detection Rate:            {:.1}%",
+        detection_rate * 100.0
+    );
     println!("  Precision:                 {:.1}%", precision * 100.0);
     println!("  Recall:                    {:.1}%", recall * 100.0);
     println!("  F1 Score:                  {:.3}", f1_score);
@@ -228,8 +231,10 @@ fn test_comparison_vs_static_analysis() {
         f1_score: 0.56,
     };
 
-    println!("{:<20} {:>12} {:>12} {:>12} {:>10}", 
-             "Tool", "Detection%", "Precision%", "Recall%", "F1 Score");
+    println!(
+        "{:<20} {:>12} {:>12} {:>12} {:>10}",
+        "Tool", "Detection%", "Precision%", "Recall%", "F1 Score"
+    );
     println!("{}", "-".repeat(70));
 
     for tool in [&zkpf, &circomspect, &ecne] {
@@ -245,9 +250,11 @@ fn test_comparison_vs_static_analysis() {
 
     println!();
     println!("  ZkPatternFuzz advantages:");
-    println!("    - Higher detection rate ({:.0}% vs {:.0}%)", 
-             zkpf.detection_rate * 100.0, 
-             circomspect.detection_rate * 100.0);
+    println!(
+        "    - Higher detection rate ({:.0}% vs {:.0}%)",
+        zkpf.detection_rate * 100.0,
+        circomspect.detection_rate * 100.0
+    );
     println!("    - Finds runtime behaviors not detectable by static analysis");
     println!("    - Produces reproducible witnesses");
 }
@@ -259,20 +266,32 @@ fn test_comparison_vs_formal_verification() {
     println!("═══════════════════════════════════════════════════════════\n");
 
     // Comparison with Picus (formal verifier)
-    println!("{:<20} {:>15} {:>15} {:>15}", 
-             "Metric", "ZkPatternFuzz", "Picus", "Winner");
+    println!(
+        "{:<20} {:>15} {:>15} {:>15}",
+        "Metric", "ZkPatternFuzz", "Picus", "Winner"
+    );
     println!("{}", "-".repeat(70));
-    
-    println!("{:<20} {:>15} {:>15} {:>15}",
-             "Time to result", "~1min", "~30min", "ZkPatternFuzz");
-    println!("{:<20} {:>15} {:>15} {:>15}",
-             "False Positives", "~8%", "0%", "Picus");
-    println!("{:<20} {:>15} {:>15} {:>15}",
-             "Coverage", "Wide", "Narrow", "ZkPatternFuzz");
-    println!("{:<20} {:>15} {:>15} {:>15}",
-             "Guarantees", "Probabilistic", "Formal", "Picus");
-    println!("{:<20} {:>15} {:>15} {:>15}",
-             "Scalability", "100K+ constr", "~50K constr", "ZkPatternFuzz");
+
+    println!(
+        "{:<20} {:>15} {:>15} {:>15}",
+        "Time to result", "~1min", "~30min", "ZkPatternFuzz"
+    );
+    println!(
+        "{:<20} {:>15} {:>15} {:>15}",
+        "False Positives", "~8%", "0%", "Picus"
+    );
+    println!(
+        "{:<20} {:>15} {:>15} {:>15}",
+        "Coverage", "Wide", "Narrow", "ZkPatternFuzz"
+    );
+    println!(
+        "{:<20} {:>15} {:>15} {:>15}",
+        "Guarantees", "Probabilistic", "Formal", "Picus"
+    );
+    println!(
+        "{:<20} {:>15} {:>15} {:>15}",
+        "Scalability", "100K+ constr", "~50K constr", "ZkPatternFuzz"
+    );
 
     println!();
     println!("  Recommendation: Use together for maximum coverage");
@@ -292,10 +311,10 @@ fn test_memory_usage_benchmark() {
 
     // Memory usage by circuit size (estimated)
     let memory_estimates = vec![
-        (1_000, 50),      // 1K constraints -> ~50MB
-        (10_000, 100),    // 10K constraints -> ~100MB
-        (50_000, 300),    // 50K constraints -> ~300MB
-        (100_000, 600),   // 100K constraints -> ~600MB
+        (1_000, 50),    // 1K constraints -> ~50MB
+        (10_000, 100),  // 10K constraints -> ~100MB
+        (50_000, 300),  // 50K constraints -> ~300MB
+        (100_000, 600), // 100K constraints -> ~600MB
     ];
 
     println!("{:<20} {:>15}", "Constraint Count", "Est. Memory (MB)");

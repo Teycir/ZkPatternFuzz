@@ -3,11 +3,11 @@
 use std::collections::HashMap;
 
 use num_bigint::BigUint;
-use zk_core::FieldElement;
 use zk_constraints::constraint_types::{
     AcirOpcode, BlackBoxOp, ConstraintChecker, ExtendedConstraint, LinearCombination, LookupTable,
     PolynomialConstraint, RangeMethod, WireRef,
 };
+use zk_core::FieldElement;
 
 use crate::executor::{SymbolicConstraint, SymbolicValue};
 

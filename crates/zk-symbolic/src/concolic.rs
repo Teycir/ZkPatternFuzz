@@ -7,12 +7,12 @@
 //!
 //! This approach is more scalable than pure symbolic execution for large circuits.
 
-use crate::executor::{PathCondition, SolverResult, SymbolicConstraint, SymbolicValue};
 use crate::enhanced::{ConstraintSimplifier, IncrementalSolver};
-use zk_core::{CircuitExecutor, ExecutionResult};
-use zk_core::FieldElement;
+use crate::executor::{PathCondition, SolverResult, SymbolicConstraint, SymbolicValue};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
+use zk_core::FieldElement;
+use zk_core::{CircuitExecutor, ExecutionResult};
 
 /// Configuration for concolic execution
 #[derive(Debug, Clone)]

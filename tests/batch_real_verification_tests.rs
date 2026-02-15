@@ -4,10 +4,12 @@
 //! verification instead of heuristic simulation.
 
 use std::sync::Arc;
-use zk_core::{CircuitExecutor, ExecutionResult, ExecutionCoverage, FieldElement, Framework, CircuitInfo};
+use zk_core::{
+    CircuitExecutor, CircuitInfo, ExecutionCoverage, ExecutionResult, FieldElement, Framework,
+};
 use zk_fuzzer::executor::batch_verifier::{
-    BatchVerifier, BatchVerifierConfig, SerializedProof, PublicInputs,
-    AggregationMethod, ProofSystem,
+    AggregationMethod, BatchVerifier, BatchVerifierConfig, ProofSystem, PublicInputs,
+    SerializedProof,
 };
 
 // ============================================================================
@@ -63,7 +65,9 @@ impl CircuitExecutor for FixtureBatchTestExecutor {
 
     fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
         // Generate a deterministic proof based on witness
-        let counter = self.proof_counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let counter = self
+            .proof_counter
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let mut proof = vec![counter as u8];
         for (i, w) in witness.iter().enumerate().take(31) {
             proof.push(w.0[i % 32]);
@@ -88,8 +92,7 @@ impl CircuitExecutor for FixtureBatchTestExecutor {
 #[test]
 fn test_real_batch_verification_all_valid() {
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     // Create 5 valid proofs
     let proofs: Vec<SerializedProof> = (0..5)
@@ -119,8 +122,7 @@ fn test_real_batch_verification_all_valid() {
 fn test_real_batch_verification_with_invalid_proofs() {
     // Proofs at indices 1 and 3 should fail
     let executor = Arc::new(FixtureBatchTestExecutor::with_failures(vec![1, 3]));
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs: Vec<SerializedProof> = (0..5)
         .map(|i| SerializedProof {
@@ -138,7 +140,10 @@ fn test_real_batch_verification_with_invalid_proofs() {
         .verify_batch(&proofs, &public_inputs, AggregationMethod::NaiveBatch)
         .expect("Batch verification should complete");
 
-    assert!(!result.batch_passed, "Batch should fail with invalid proofs");
+    assert!(
+        !result.batch_passed,
+        "Batch should fail with invalid proofs"
+    );
     assert!(result.individual_results[0], "Proof 0 should be valid");
     assert!(!result.individual_results[1], "Proof 1 should be invalid");
     assert!(result.individual_results[2], "Proof 2 should be valid");
@@ -152,8 +157,7 @@ fn test_real_batch_verification_with_invalid_proofs() {
 #[test]
 fn test_real_batch_empty() {
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let result = verifier
         .verify_batch(&[], &[], AggregationMethod::NaiveBatch)
@@ -166,15 +170,14 @@ fn test_real_batch_empty() {
 #[test]
 fn test_real_batch_mismatched_lengths() {
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs = vec![SerializedProof {
         data: vec![0u8; 32],
         proof_system: ProofSystem::Groth16,
         circuit_id: "test".to_string(),
     }];
-    
+
     let public_inputs = vec![
         PublicInputs::new(vec![FieldElement::from_u64(1u64)]),
         PublicInputs::new(vec![FieldElement::from_u64(2u64)]),
@@ -191,8 +194,7 @@ fn test_real_batch_mismatched_lengths() {
 #[test]
 fn test_groth16_batch_aggregation() {
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs: Vec<SerializedProof> = (0..3)
         .map(|i| SerializedProof {
@@ -207,7 +209,11 @@ fn test_groth16_batch_aggregation() {
         .collect();
 
     let result = verifier
-        .verify_batch(&proofs, &public_inputs, AggregationMethod::Groth16Aggregation)
+        .verify_batch(
+            &proofs,
+            &public_inputs,
+            AggregationMethod::Groth16Aggregation,
+        )
         .expect("Groth16 batch should succeed");
 
     assert!(result.batch_passed);
@@ -217,8 +223,7 @@ fn test_groth16_batch_aggregation() {
 #[test]
 fn test_snarkpack_batch_aggregation() {
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs: Vec<SerializedProof> = (0..4)
         .map(|i| SerializedProof {
@@ -243,8 +248,7 @@ fn test_snarkpack_batch_aggregation() {
 #[test]
 fn test_plonk_batch_aggregation() {
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs: Vec<SerializedProof> = (0..3)
         .map(|i| SerializedProof {
@@ -269,8 +273,7 @@ fn test_plonk_batch_aggregation() {
 #[test]
 fn test_halo2_accumulation() {
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs: Vec<SerializedProof> = (0..3)
         .map(|i| SerializedProof {
@@ -285,7 +288,11 @@ fn test_halo2_accumulation() {
         .collect();
 
     let result = verifier
-        .verify_batch(&proofs, &public_inputs, AggregationMethod::Halo2Accumulation)
+        .verify_batch(
+            &proofs,
+            &public_inputs,
+            AggregationMethod::Halo2Accumulation,
+        )
         .expect("Halo2 batch should succeed");
 
     assert!(result.batch_passed);
@@ -302,10 +309,9 @@ fn test_batch_size_limit() {
         max_batch_size: 5,
         ..Default::default()
     };
-    
+
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::with_config(config)
-        .with_executor(executor);
+    let verifier = BatchVerifier::with_config(config).with_executor(executor);
 
     // Create batch larger than limit
     let proofs: Vec<SerializedProof> = (0..10)
@@ -338,7 +344,7 @@ fn test_batch_verification_no_executor() {
         proof_system: ProofSystem::Groth16,
         circuit_id: "test".to_string(),
     }];
-    
+
     let public_inputs = vec![PublicInputs::new(vec![FieldElement::from_u64(1u64)])];
 
     let result = verifier.verify_batch(&proofs, &public_inputs, AggregationMethod::NaiveBatch);
@@ -352,8 +358,7 @@ fn test_batch_verification_no_executor() {
 #[test]
 fn test_verification_time_recorded() {
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs: Vec<SerializedProof> = (0..3)
         .map(|i| SerializedProof {
@@ -382,8 +387,7 @@ fn test_verification_time_recorded() {
 #[test]
 fn test_diagnostics_populated() {
     let executor = Arc::new(FixtureBatchTestExecutor::with_failures(vec![2]));
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs: Vec<SerializedProof> = (0..5)
         .map(|i| SerializedProof {
@@ -414,15 +418,14 @@ fn test_diagnostics_populated() {
 #[test]
 fn test_single_proof_batch() {
     let executor = Arc::new(FixtureBatchTestExecutor::new());
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs = vec![SerializedProof {
         data: vec![0u8; 32],
         proof_system: ProofSystem::Groth16,
         circuit_id: "test".to_string(),
     }];
-    
+
     let public_inputs = vec![PublicInputs::new(vec![FieldElement::from_u64(42u64)])];
 
     let result = verifier
@@ -436,8 +439,7 @@ fn test_single_proof_batch() {
 #[test]
 fn test_all_proofs_invalid() {
     let executor = Arc::new(FixtureBatchTestExecutor::with_failures(vec![0, 1, 2]));
-    let verifier = BatchVerifier::new()
-        .with_executor(executor);
+    let verifier = BatchVerifier::new().with_executor(executor);
 
     let proofs: Vec<SerializedProof> = (0..3)
         .map(|i| SerializedProof {

@@ -42,7 +42,7 @@ impl ExecutionResult {
         self.execution_time_us = time_us;
         self
     }
-    
+
     /// Phase 0 Fix: Check if execution resulted in a crash
     pub fn is_crash(&self) -> bool {
         if self.success {
@@ -69,7 +69,7 @@ impl ExecutionResult {
         ];
         crash_markers.iter().any(|marker| lower.contains(marker))
     }
-    
+
     /// Phase 0 Fix: Get error message if execution failed
     pub fn error_message(&self) -> Option<String> {
         self.error.clone()
@@ -215,11 +215,11 @@ pub trait CircuitExecutor: Send + Sync {
     fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
         None
     }
-    
+
     /// Get the field modulus for this circuit's arithmetic
-    /// 
+    ///
     /// # Phase 0 Fix
-    /// 
+    ///
     /// This replaces the hardcoded BN254 modulus with a circuit-specific value.
     /// Different proving systems use different fields (BN254, BLS12-381, Pallas, etc.)
     fn field_modulus(&self) -> [u8; 32] {
@@ -232,7 +232,7 @@ pub trait CircuitExecutor: Send + Sync {
         }
         modulus
     }
-    
+
     /// Get the field prime name (e.g., "bn254", "bls12-381", "pallas")
     fn field_name(&self) -> &str {
         "bn254"

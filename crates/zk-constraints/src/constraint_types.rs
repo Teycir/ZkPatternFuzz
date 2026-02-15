@@ -7,9 +7,9 @@
 //! - Polynomial constraints
 //! - ACIR opcodes
 
-use zk_core::FieldElement;
 use num_bigint::BigUint;
 use std::collections::HashMap;
+use zk_core::FieldElement;
 
 #[cfg(feature = "acir-bytecode")]
 use {base64::Engine, flate2::read::GzDecoder, std::io::Read};
@@ -1751,14 +1751,12 @@ fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet>
 
     // Attempt to deserialize ACIR bytecode into a Program or Circuit and convert to JSON.
     // This keeps decoding logic centralized in ACIR crates while reusing existing JSON parsing.
-    if let Ok(program) = bincode::deserialize::<acir::circuit::Program>(&bytes)
-    {
+    if let Ok(program) = bincode::deserialize::<acir::circuit::Program>(&bytes) {
         let json = serde_json::to_value(program).ok()?;
         return Some(parse_acir_json(&json));
     }
 
-    if let Ok(circuit) = bincode::deserialize::<acir::circuit::Circuit>(&bytes)
-    {
+    if let Ok(circuit) = bincode::deserialize::<acir::circuit::Circuit>(&bytes) {
         let json = serde_json::to_value(circuit).ok()?;
         return Some(parse_acir_json(&json));
     }

@@ -5,12 +5,12 @@
 //! Run with: `cargo test recursive_attack --release -- --nocapture`
 
 use std::collections::HashSet;
+use zk_core::{FieldElement, Severity};
 use zk_fuzzer::attacks::recursive::{
     AccumulatorState, Halo2AccumulationAnalyzer, NovaAnalyzer, RecursiveAttack,
     RecursiveAttackConfig, RecursiveStep, RecursiveSystem, RecursiveVulnerabilityType,
     SupernovaAnalyzer,
 };
-use zk_core::{FieldElement, Severity};
 
 // ============================================================================
 // Configuration Tests
@@ -95,7 +95,9 @@ fn test_recursive_system_descriptions() {
     assert!(!RecursiveSystem::Supernova.description().is_empty());
     assert!(!RecursiveSystem::Halo2Recursive.description().is_empty());
     assert!(RecursiveSystem::Nova.description().contains("folding"));
-    assert!(RecursiveSystem::Halo2Recursive.description().contains("accumulation"));
+    assert!(RecursiveSystem::Halo2Recursive
+        .description()
+        .contains("accumulation"));
 }
 
 // ============================================================================
@@ -247,10 +249,7 @@ fn test_accumulator_state_multiple_folds() {
     let mut acc = AccumulatorState::new_base_case(2);
 
     for i in 1..=5 {
-        let new_instance = vec![
-            FieldElement::from_u64(i),
-            FieldElement::from_u64(i * 2),
-        ];
+        let new_instance = vec![FieldElement::from_u64(i), FieldElement::from_u64(i * 2)];
         let challenge = FieldElement::from_u64(i + 10);
         acc = acc.fold_with(&new_instance, &challenge);
 
@@ -338,19 +337,11 @@ fn test_nova_analyzer_relaxed_r1cs_vulnerability() {
 
     // Non-zero error term indicates potential vulnerability
     let non_zero_error = FieldElement::from_u64(1);
-    assert!(analyzer.check_relaxed_r1cs_vulnerability(
-        &instance,
-        &witness,
-        &non_zero_error
-    ));
+    assert!(analyzer.check_relaxed_r1cs_vulnerability(&instance, &witness, &non_zero_error));
 
     // Zero error term is valid (satisfied constraint)
     let zero_error = FieldElement::zero();
-    assert!(!analyzer.check_relaxed_r1cs_vulnerability(
-        &instance,
-        &witness,
-        &zero_error
-    ));
+    assert!(!analyzer.check_relaxed_r1cs_vulnerability(&instance, &witness, &zero_error));
 }
 
 #[test]
@@ -473,13 +464,17 @@ fn test_recursive_attack_full_run() {
     let inputs = vec![FieldElement::from_u64(1); 4];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let findings = rt.block_on(async {
-        attack.run(&executor, &inputs)
-    }).unwrap();
+    let findings = rt
+        .block_on(async { attack.run(&executor, &inputs) })
+        .unwrap();
 
     println!("Found {} findings", findings.len());
     for finding in &findings {
-        println!("  - [{:?}] {}", finding.severity, finding.description.chars().take(50).collect::<String>());
+        println!(
+            "  - [{:?}] {}",
+            finding.severity,
+            finding.description.chars().take(50).collect::<String>()
+        );
     }
 }
 
@@ -502,9 +497,9 @@ fn test_base_case_bypass_detection() {
     let inputs = vec![FieldElement::from_u64(1); 4];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let findings = rt.block_on(async {
-        attack.run(&executor, &inputs)
-    }).unwrap();
+    let findings = rt
+        .block_on(async { attack.run(&executor, &inputs) })
+        .unwrap();
 
     // Check for base case bypass findings
     let base_case_findings: Vec<_> = findings
@@ -535,9 +530,9 @@ fn test_folding_attack_detection() {
     let inputs = vec![FieldElement::from_u64(1); 4];
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let findings = rt.block_on(async {
-        attack.run(&executor, &inputs)
-    }).unwrap();
+    let findings = rt
+        .block_on(async { attack.run(&executor, &inputs) })
+        .unwrap();
 
     // Check for folding-related findings
     let folding_findings: Vec<_> = findings

@@ -4,8 +4,8 @@
 //! generated field elements are valid (within the BN254 scalar field).
 
 use crate::constants::{BN254_MODULUS, BN254_MODULUS_MINUS_ONE};
-use zk_core::FieldElement;
 use rand::Rng;
+use zk_core::FieldElement;
 
 /// BN254 scalar field modulus as bytes for comparison
 /// Lazy-initialized for efficiency

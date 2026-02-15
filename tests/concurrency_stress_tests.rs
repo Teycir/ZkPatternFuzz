@@ -12,9 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use zk_core::{FieldElement, TestCase};
-use zk_fuzzer::corpus::lockfree::{
-    AtomicCoverageBitmap, LockFreeCorpus, LockFreeTestQueue,
-};
+use zk_fuzzer::corpus::lockfree::{AtomicCoverageBitmap, LockFreeCorpus, LockFreeTestQueue};
 
 /// Test configuration
 const NUM_WORKERS: usize = 32;
@@ -118,9 +116,7 @@ fn test_queue_high_contention_batch_operations() {
                 let batch: Vec<_> = (0..100)
                     .map(|i| {
                         make_test_case(
-                            (worker_id as u64) * 1_000_000
-                                + (batch_id as u64) * 1_000
-                                + (i as u64),
+                            (worker_id as u64) * 1_000_000 + (batch_id as u64) * 1_000 + (i as u64),
                         )
                     })
                     .collect();
@@ -292,10 +288,7 @@ fn test_corpus_concurrent_add_select() {
     );
 
     // Adds should match our expectation
-    assert_eq!(
-        total_adds,
-        (NUM_WORKERS / 2 * OPERATIONS_PER_WORKER) as u64
-    );
+    assert_eq!(total_adds, (NUM_WORKERS / 2 * OPERATIONS_PER_WORKER) as u64);
 }
 
 #[test]
@@ -356,7 +349,9 @@ fn test_extended_stress_24_hour_simulation() {
 
             while start.elapsed() < Duration::from_secs(SIMULATION_DURATION_SECS) {
                 // Simple LCG for random operations
-                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
 
                 match rng % 10 {
                     0..=6 => {

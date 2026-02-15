@@ -103,15 +103,6 @@ mod metamorphic_helpers;
 mod report_generator;
 
 mod prelude {
-    pub(super) use crate::fuzzer::invariant_checker::InvariantChecker; // Phase 2: Fuzz-continuous invariant checking
-    pub(super) use crate::fuzzer::mutate_field_element;
-    pub(super) use crate::fuzzer::oracle::{ArithmeticOverflowOracle, BugOracle, UnderconstrainedOracle};
-    pub(super) use crate::fuzzer::oracle_correlation::{ConfidenceLevel, OracleCorrelator}; // Phase 6A: Cross-oracle correlation
-    pub(super) use crate::fuzzer::oracle_validation::{
-        filter_validated_findings, OracleValidationConfig, OracleValidator,
-    };
-    pub(super) use crate::fuzzer::power_schedule::{PowerSchedule, PowerScheduler};
-    pub(super) use crate::fuzzer::structure_aware::StructureAwareMutator;
     pub(super) use crate::analysis::complexity::ComplexityAnalyzer;
     pub(super) use crate::analysis::symbolic::{
         SymbolicConfig, SymbolicFuzzerIntegration, VulnerabilityPattern,
@@ -129,6 +120,17 @@ mod prelude {
     pub(super) use crate::executor::{
         create_coverage_tracker, ExecutorFactory, ExecutorFactoryOptions, IsolatedExecutor,
     };
+    pub(super) use crate::fuzzer::invariant_checker::InvariantChecker; // Phase 2: Fuzz-continuous invariant checking
+    pub(super) use crate::fuzzer::mutate_field_element;
+    pub(super) use crate::fuzzer::oracle::{
+        ArithmeticOverflowOracle, BugOracle, UnderconstrainedOracle,
+    };
+    pub(super) use crate::fuzzer::oracle_correlation::{ConfidenceLevel, OracleCorrelator}; // Phase 6A: Cross-oracle correlation
+    pub(super) use crate::fuzzer::oracle_validation::{
+        filter_validated_findings, OracleValidationConfig, OracleValidator,
+    };
+    pub(super) use crate::fuzzer::power_schedule::{PowerSchedule, PowerScheduler};
+    pub(super) use crate::fuzzer::structure_aware::StructureAwareMutator;
     pub(super) use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
     pub(super) use crate::reporting::FuzzReport;
     pub(super) use rand::Rng;
@@ -297,10 +299,10 @@ impl FuzzingEngine {
                 })
                 .unwrap_or(30_000)
                 .max(1);
-            
-            let kill_on_timeout = Self::additional_bool(additional, "kill_on_timeout")
-                .unwrap_or(true);
-            
+
+            let kill_on_timeout =
+                Self::additional_bool(additional, "kill_on_timeout").unwrap_or(true);
+
             let mut isolated_executor = IsolatedExecutor::new(
                 executor,
                 config.campaign.target.framework,
@@ -314,7 +316,7 @@ impl FuzzingEngine {
                 executor_factory_options.clone(),
                 execution_timeout_ms,
             )?;
-            
+
             // Configure kill_on_timeout if specified
             if !kill_on_timeout {
                 use crate::executor::IsolationConfig;
@@ -325,7 +327,7 @@ impl FuzzingEngine {
                 };
                 isolated_executor = isolated_executor.with_config(isolation_config);
             }
-            
+
             executor = Arc::new(isolated_executor);
             tracing::info!(
                 "Per-exec isolation enabled (timeout {} ms, kill_on_timeout: {})",
@@ -813,15 +815,23 @@ impl FuzzingEngine {
                     }
                     // Phase 4: Novel Oracle Attacks - Now Implemented!
                     AttackType::ConstraintInference => {
-                        match self.run_constraint_inference_attack(&attack_config.config, progress).await {
+                        match self
+                            .run_constraint_inference_attack(&attack_config.config, progress)
+                            .await
+                        {
                             Ok(_) => {
-                                tracing::info!("✓ Constraint inference attack completed successfully");
-                            },
+                                tracing::info!(
+                                    "✓ Constraint inference attack completed successfully"
+                                );
+                            }
                             Err(e) => {
                                 tracing::error!("✗ Constraint inference attack FAILED: {}", e);
                                 tracing::error!("Error details: {:?}", e);
                                 if let Some(p) = progress {
-                                    p.log_finding("ERROR", &format!("Constraint inference failed: {}", e));
+                                    p.log_finding(
+                                        "ERROR",
+                                        &format!("Constraint inference failed: {}", e),
+                                    );
                                 }
                                 return Err(e);
                             }
@@ -964,7 +974,7 @@ impl FuzzingEngine {
                 phases_total,
                 phases_completed,
             )
-                .await?;
+            .await?;
             tracing::warn!(
                 "MILESTONE continuous_complete target={}",
                 self.config.campaign.name

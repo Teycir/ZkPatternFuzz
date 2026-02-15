@@ -401,83 +401,83 @@ impl Attack for CollisionDetector {
         let mut findings = Vec::new();
 
         if let Some(executor) = context.executor.as_ref() {
-                let total_inputs = executor.num_private_inputs() + executor.num_public_inputs();
-                if total_inputs > 0 {
-                    let mut rng = StdRng::seed_from_u64(42);
-                    let mut pairs: Vec<(Vec<FieldElement>, Vec<u8>)> = Vec::new();
-                    let target_samples = if context.samples > 0 {
-                        self.samples.min(context.samples)
-                    } else {
-                        self.samples
-                    };
-                    let target_samples = target_samples.max(1);
+            let total_inputs = executor.num_private_inputs() + executor.num_public_inputs();
+            if total_inputs > 0 {
+                let mut rng = StdRng::seed_from_u64(42);
+                let mut pairs: Vec<(Vec<FieldElement>, Vec<u8>)> = Vec::new();
+                let target_samples = if context.samples > 0 {
+                    self.samples.min(context.samples)
+                } else {
+                    self.samples
+                };
+                let target_samples = target_samples.max(1);
 
-                    for _ in 0..target_samples {
-                        let inputs: Vec<FieldElement> = (0..total_inputs)
-                            .map(|_| FieldElement::random(&mut rng))
-                            .collect();
-                        let result = executor.execute_sync(&inputs);
-                        if !result.success || result.outputs.is_empty() {
-                            continue;
+                for _ in 0..target_samples {
+                    let inputs: Vec<FieldElement> = (0..total_inputs)
+                        .map(|_| FieldElement::random(&mut rng))
+                        .collect();
+                    let result = executor.execute_sync(&inputs);
+                    if !result.success || result.outputs.is_empty() {
+                        continue;
+                    }
+                    let output_bytes = outputs_to_bytes(&result.outputs);
+                    pairs.push((inputs, output_bytes));
+                }
+
+                if pairs.len() >= 2 {
+                    let analysis = self.analyze_collisions(&pairs);
+
+                    if analysis.exact_collisions > 0 {
+                        for pair in analysis
+                            .collision_pairs
+                            .iter()
+                            .filter(|p| p.is_exact)
+                            .take(self.max_near_collision_reports)
+                        {
+                            findings.push(Finding {
+                                attack_type: AttackType::Collision,
+                                severity: Severity::Critical,
+                                description: format!(
+                                    "Exact collision detected in '{}' (outputs identical)",
+                                    context.circuit_info.name
+                                ),
+                                poc: ProofOfConcept {
+                                    witness_a: pair.input_a.clone(),
+                                    witness_b: Some(pair.input_b.clone()),
+                                    public_inputs: vec![],
+                                    proof: None,
+                                },
+                                location: None,
+                            });
                         }
-                        let output_bytes = outputs_to_bytes(&result.outputs);
-                        pairs.push((inputs, output_bytes));
                     }
 
-                    if pairs.len() >= 2 {
-                        let analysis = self.analyze_collisions(&pairs);
-
-                        if analysis.exact_collisions > 0 {
-                            for pair in analysis
-                                .collision_pairs
-                                .iter()
-                                .filter(|p| p.is_exact)
-                                .take(self.max_near_collision_reports)
-                            {
-                                findings.push(Finding {
-                                    attack_type: AttackType::Collision,
-                                    severity: Severity::Critical,
-                                    description: format!(
-                                        "Exact collision detected in '{}' (outputs identical)",
-                                        context.circuit_info.name
-                                    ),
-                                    poc: ProofOfConcept {
-                                        witness_a: pair.input_a.clone(),
-                                        witness_b: Some(pair.input_b.clone()),
-                                        public_inputs: vec![],
-                                        proof: None,
-                                    },
-                                    location: None,
-                                });
-                            }
-                        }
-
-                        if analysis.near_collisions > 0 {
-                            for pair in analysis
-                                .collision_pairs
-                                .iter()
-                                .filter(|p| !p.is_exact)
-                                .take(self.max_near_collision_reports)
-                            {
-                                findings.push(Finding {
-                                    attack_type: AttackType::Collision,
-                                    severity: Severity::Medium,
-                                    description: format!(
-                                        "Near-collision detected in '{}' (Hamming distance {})",
-                                        context.circuit_info.name, pair.hamming_distance
-                                    ),
-                                    poc: ProofOfConcept {
-                                        witness_a: pair.input_a.clone(),
-                                        witness_b: Some(pair.input_b.clone()),
-                                        public_inputs: vec![],
-                                        proof: None,
-                                    },
-                                    location: None,
-                                });
-                            }
+                    if analysis.near_collisions > 0 {
+                        for pair in analysis
+                            .collision_pairs
+                            .iter()
+                            .filter(|p| !p.is_exact)
+                            .take(self.max_near_collision_reports)
+                        {
+                            findings.push(Finding {
+                                attack_type: AttackType::Collision,
+                                severity: Severity::Medium,
+                                description: format!(
+                                    "Near-collision detected in '{}' (Hamming distance {})",
+                                    context.circuit_info.name, pair.hamming_distance
+                                ),
+                                poc: ProofOfConcept {
+                                    witness_a: pair.input_a.clone(),
+                                    witness_b: Some(pair.input_b.clone()),
+                                    public_inputs: vec![],
+                                    proof: None,
+                                },
+                                location: None,
+                            });
                         }
                     }
                 }
+            }
         }
 
         // Check for small output space (vulnerable to birthday attack)

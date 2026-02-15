@@ -866,8 +866,7 @@ fn generate_rules() -> Vec<SarifRule> {
              soundness property of the proof system.",
             "Review circuit constraints and ensure all private inputs are properly \
              constrained. Add assertions or range checks as needed.",
-            (Some("CWE-697"),
-            Severity::Critical),
+            (Some("CWE-697"), Severity::Critical),
         ),
         create_rule(
             AttackType::Soundness,
@@ -878,8 +877,7 @@ fn generate_rules() -> Vec<SarifRule> {
              witnesses. This completely breaks the security of the proof system.",
             "Check verifier implementation for bugs. Ensure all constraints are \
              properly enforced.",
-            (Some("CWE-347"),
-            Severity::Critical),
+            (Some("CWE-347"), Severity::Critical),
         ),
         create_rule(
             AttackType::ArithmeticOverflow,
@@ -890,8 +888,7 @@ fn generate_rules() -> Vec<SarifRule> {
              Missing range checks can lead to unexpected behavior at boundaries.",
             "Add explicit range checks for all arithmetic operations. Test with \
              boundary values (0, 1, p-1, 2^n).",
-            (Some("CWE-190"),
-            Severity::High),
+            (Some("CWE-190"), Severity::High),
         ),
         create_rule(
             AttackType::Collision,
@@ -902,8 +899,7 @@ fn generate_rules() -> Vec<SarifRule> {
              uniqueness guarantees (e.g., nullifier reuse).",
             "Use cryptographically secure ZK-friendly hash functions (Poseidon, MiMC) \
              with sufficient rounds. Ensure full output is used.",
-            (Some("CWE-328"),
-            Severity::Critical),
+            (Some("CWE-328"), Severity::Critical),
         ),
         create_rule(
             AttackType::Boundary,
@@ -914,8 +910,7 @@ fn generate_rules() -> Vec<SarifRule> {
              circuit behavior or bypass access controls.",
             "Add range checks for all inputs. Test with field boundaries and \
              application-specific limits.",
-            (Some("CWE-20"),
-            Severity::Medium),
+            (Some("CWE-20"), Severity::Medium),
         ),
         create_rule(
             AttackType::BitDecomposition,
@@ -925,8 +920,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Incorrect bit decomposition allows values outside expected ranges \
              to pass validation, bypassing range proofs.",
             "Ensure bit decomposition covers all necessary bits. Verify sum constraints.",
-            (Some("CWE-682"),
-            Severity::High),
+            (Some("CWE-682"), Severity::High),
         ),
         create_rule(
             AttackType::Malleability,
@@ -936,8 +930,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Malleable proofs allow attackers to create variations of valid proofs, \
              potentially bypassing replay protection or causing double-spending.",
             "Use non-malleable proof systems or add unique identifiers to proofs.",
-            (Some("CWE-354"),
-            Severity::High),
+            (Some("CWE-354"), Severity::High),
         ),
         create_rule(
             AttackType::InformationLeakage,
@@ -948,8 +941,7 @@ fn generate_rules() -> Vec<SarifRule> {
              revealing sensitive data through circuit outputs.",
             "Review output constraints. Ensure private data is properly masked \
              or hashed before output.",
-            (Some("CWE-200"),
-            Severity::High),
+            (Some("CWE-200"), Severity::High),
         ),
         create_rule(
             AttackType::TimingSideChannel,
@@ -959,8 +951,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Variable execution time can leak information about private inputs \
              through timing measurements.",
             "Ensure constant-time operations for security-critical computations.",
-            (Some("CWE-208"),
-            Severity::Medium),
+            (Some("CWE-208"), Severity::Medium),
         ),
         create_rule(
             AttackType::Differential,
@@ -970,8 +961,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Inconsistent behavior between different ZK backends may indicate \
              implementation bugs or specification ambiguities.",
             "Test with multiple backends. Review specification compliance.",
-            (Some("CWE-436"),
-            Severity::Medium),
+            (Some("CWE-436"), Severity::Medium),
         ),
         create_rule(
             AttackType::VerificationFuzzing,
@@ -981,8 +971,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Verification weaknesses may allow invalid proofs to pass or cause \
              denial of service with malformed inputs.",
             "Fuzz test the verifier with malformed proofs. Add input validation.",
-            (Some("CWE-20"),
-            Severity::High),
+            (Some("CWE-20"), Severity::High),
         ),
         create_rule(
             AttackType::WitnessFuzzing,
@@ -992,8 +981,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Non-deterministic witness generation can cause reproducibility issues \
              or denial of service.",
             "Ensure deterministic witness computation. Handle all edge cases.",
-            (Some("CWE-330"),
-            Severity::Medium),
+            (Some("CWE-330"), Severity::Medium),
         ),
         create_rule(
             AttackType::CircuitComposition,
@@ -1003,8 +991,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Composition vulnerabilities arise when circuits are combined without \
              proper input/output validation between components.",
             "Validate all inter-circuit data flows. Add boundary checks at interfaces.",
-            (Some("CWE-501"),
-            Severity::Medium),
+            (Some("CWE-501"), Severity::Medium),
         ),
         create_rule(
             AttackType::RecursiveProof,
@@ -1014,8 +1001,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Recursive proof systems may have issues at extreme depths or with \
              malformed inner proofs.",
             "Test recursive verification at various depths. Add depth limits.",
-            (Some("CWE-674"),
-            Severity::High),
+            (Some("CWE-674"), Severity::High),
         ),
         create_rule(
             AttackType::ConstraintBypass,
@@ -1024,8 +1010,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Circuit constraints can be bypassed",
             "Missing or weak constraints allow unauthorized operations or state transitions.",
             "Audit all constraints. Add explicit checks for all security properties.",
-            (Some("CWE-862"),
-            Severity::Critical),
+            (Some("CWE-862"), Severity::Critical),
         ),
         create_rule(
             AttackType::WitnessLeakage,
@@ -1034,8 +1019,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Witness values may be extractable from proofs",
             "Witness leakage allows recovery of private inputs from proof data.",
             "Use hiding commitments. Verify zero-knowledge property holds.",
-            (Some("CWE-200"),
-            Severity::High),
+            (Some("CWE-200"), Severity::High),
         ),
         create_rule(
             AttackType::ReplayAttack,
@@ -1044,8 +1028,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Proofs can be replayed in different contexts",
             "Replay attacks allow reusing valid proofs in unauthorized contexts.",
             "Add unique identifiers or domain separators to proof construction.",
-            (Some("CWE-294"),
-            Severity::High),
+            (Some("CWE-294"), Severity::High),
         ),
         create_rule(
             AttackType::TrustedSetup,
@@ -1054,8 +1037,7 @@ fn generate_rules() -> Vec<SarifRule> {
             "Trusted setup parameters may be compromised",
             "Compromised trusted setup allows universal proof forgery.",
             "Use multi-party computation for setup. Consider transparent alternatives.",
-            (Some("CWE-310"),
-            Severity::Critical),
+            (Some("CWE-310"), Severity::Critical),
         ),
     ]
 }

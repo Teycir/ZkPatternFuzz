@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use zk_core::{CircuitExecutor, CircuitInfo, ExecutionCoverage, ExecutionResult, FieldElement, Framework};
+use zk_core::{
+    CircuitExecutor, CircuitInfo, ExecutionCoverage, ExecutionResult, FieldElement, Framework,
+};
 
 use crate::TargetCircuit;
 
@@ -129,8 +131,11 @@ impl<T: TargetCircuit + Send + Sync> CircuitExecutor for TargetExecutor<T> {
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
         let start = std::time::Instant::now();
         match self.target.execute(inputs) {
-            Ok(outputs) => ExecutionResult::success(outputs.clone(), ExecutionCoverage::with_output_hash(&outputs))
-                .with_time(start.elapsed().as_micros() as u64),
+            Ok(outputs) => ExecutionResult::success(
+                outputs.clone(),
+                ExecutionCoverage::with_output_hash(&outputs),
+            )
+            .with_time(start.elapsed().as_micros() as u64),
             Err(e) => ExecutionResult::failure(e.to_string()),
         }
     }
@@ -163,10 +168,8 @@ impl BackendProvider for CircomBackendProvider {
     }
 
     fn create_executor(&self, config: &BackendConfig) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
-        let mut target = crate::circom::CircomTarget::new(
-            &config.circuit_path,
-            &config.main_component,
-        )?;
+        let mut target =
+            crate::circom::CircomTarget::new(&config.circuit_path, &config.main_component)?;
 
         if let Some(dir) = &config.build_dir {
             target = target.with_build_dir(dir.clone());

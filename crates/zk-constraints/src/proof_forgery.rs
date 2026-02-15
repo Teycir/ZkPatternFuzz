@@ -15,7 +15,9 @@ use std::process::Command;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::alt_witness_solver::{find_alternative_witness, find_multiple_alternatives, R1CSMatrices};
+use super::alt_witness_solver::{
+    find_alternative_witness, find_multiple_alternatives, R1CSMatrices,
+};
 use super::r1cs_parser::R1CS;
 use zk_core::FieldElement;
 
@@ -251,7 +253,11 @@ impl ProofForgeryDetector {
     }
 
     /// Detect with multiple alternative witnesses
-    pub fn detect_multiple(&self, witness: &[FieldElement], max_alternatives: usize) -> Vec<ProofForgeryResult> {
+    pub fn detect_multiple(
+        &self,
+        witness: &[FieldElement],
+        max_alternatives: usize,
+    ) -> Vec<ProofForgeryResult> {
         let alternatives = find_multiple_alternatives(
             &self.r1cs,
             witness,
@@ -331,10 +337,7 @@ impl ProofForgeryDetector {
         let wtns_path = temp_path.join("witness.wtns");
 
         // Write witness as JSON array
-        let witness_values: Vec<String> = witness
-            .iter()
-            .map(|fe| fe.to_decimal_string())
-            .collect();
+        let witness_values: Vec<String> = witness.iter().map(|fe| fe.to_decimal_string()).collect();
         let witness_json = serde_json::to_string(&witness_values)?;
         std::fs::write(&witness_path, &witness_json)?;
 
@@ -518,9 +521,9 @@ pub fn quick_underconstrained_check(r1cs: &R1CS) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::r1cs_parser::R1CSConstraint;
     use super::*;
     use num_bigint::BigUint;
-    use super::super::r1cs_parser::R1CSConstraint;
 
     const BN254_MODULUS: &str =
         "21888242871839275222246405745257275088548364400416034343698204186575808495617";

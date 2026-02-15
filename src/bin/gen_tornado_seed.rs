@@ -161,9 +161,8 @@ fn main() -> Result<()> {
                 .file_name()
                 .unwrap_or_else(|| std::ffi::OsStr::new("circuit.circom")),
         );
-        fs::copy(&circuit_path, &dest).with_context(|| {
-            format!("Failed to copy circuit from {}", circuit_path.display())
-        })?;
+        fs::copy(&circuit_path, &dest)
+            .with_context(|| format!("Failed to copy circuit from {}", circuit_path.display()))?;
         for extra in &extra_files {
             let extra_path = resolve_extra_path(extra, &circuit_path, None)?;
             let dest_extra = work_circuits.join(
@@ -308,8 +307,8 @@ fn main() -> Result<()> {
 fn preset_defaults(preset: &str) -> Defaults {
     let mut defaults = Defaults::default();
     if preset == "tornado" {
-        let zk0d_base = std::env::var("ZK0D_BASE")
-            .unwrap_or_else(|_| "/media/elements/Repos/zk0d".to_string());
+        let zk0d_base =
+            std::env::var("ZK0D_BASE").unwrap_or_else(|_| "/media/elements/Repos/zk0d".to_string());
         defaults.circuit = Some(
             Path::new(&zk0d_base)
                 .join("cat3_privacy/tornado-core/circuits/withdraw.circom")
@@ -375,7 +374,9 @@ fn resolve_extra_path(
             .join(extra)
     };
     if let Some(root) = source_root {
-        let _ = path.strip_prefix(root).context("extra file must be under source_root")?;
+        let _ = path
+            .strip_prefix(root)
+            .context("extra file must be under source_root")?;
     }
     Ok(path)
 }
@@ -399,8 +400,8 @@ fn apply_edits(
     comment_out: &[String],
     public_inputs: &[String],
 ) -> Result<()> {
-    let mut source = fs::read_to_string(path)
-        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let mut source =
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
     if ensure_pragma && !source.contains("pragma circom") {
         source = format!("pragma circom 2.0.0;\n\n{}", source);
     }
@@ -417,10 +418,8 @@ fn apply_edits(
                 let line = &remainder[..=end];
                 if let Some((_lhs, rhs)) = line.split_once('=') {
                     let rhs_clean = rhs.trim().trim_end_matches(';');
-                    let replacement = format!(
-                        "component main {{public [{}]}} = {};",
-                        list, rhs_clean
-                    );
+                    let replacement =
+                        format!("component main {{public [{}]}} = {};", list, rhs_clean);
                     source = source.replacen(line, &replacement, 1);
                 }
             }
@@ -482,7 +481,8 @@ fn normalize_value(value: Value) -> Value {
 fn apply_input_overrides(input: &mut Map<String, Value>, overrides: &[String]) -> Result<()> {
     for entry in overrides {
         if let Some((key, raw)) = entry.split_once('=') {
-            let parsed: Value = serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()));
+            let parsed: Value =
+                serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()));
             input.insert(key.to_string(), normalize_value(parsed));
         }
     }
@@ -525,10 +525,7 @@ fn read_sym_map(sym_path: &Path) -> Result<HashMap<String, usize>> {
             Some(value) if value >= 0 => Some(value as usize),
             _ => fallback.and_then(|v| if v >= 0 { Some(v as usize) } else { None }),
         };
-        let name = parts
-            .last()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty());
+        let name = parts.last().map(|s| s.trim()).filter(|s| !s.is_empty());
         if let (Some(idx), Some(name)) = (chosen, name) {
             map.insert(name.to_string(), idx);
         }
@@ -545,7 +542,11 @@ fn parse_extract_spec(spec: &str) -> Result<(String, String)> {
 }
 
 fn resolve_signal_index(map: &HashMap<String, usize>, spec: &str) -> Option<usize> {
-    let candidates: Vec<&str> = spec.split('|').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    let candidates: Vec<&str> = spec
+        .split('|')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
     for candidate in candidates {
         if let Some(idx) = map.get(candidate) {
             return Some(*idx);
@@ -556,7 +557,9 @@ fn resolve_signal_index(map: &HashMap<String, usize>, spec: &str) -> Option<usiz
         }
         let suffix_matches: Vec<_> = map
             .keys()
-            .filter(|k| *k == candidate || k.ends_with(&format!(".{}", candidate)) || k.ends_with(candidate))
+            .filter(|k| {
+                *k == candidate || k.ends_with(&format!(".{}", candidate)) || k.ends_with(candidate)
+            })
             .collect();
         if suffix_matches.len() == 1 {
             return map.get(suffix_matches[0]).copied();
@@ -596,6 +599,10 @@ fn create_symlink(target: &Path, link: &Path) -> Result<()> {
     fs::create_dir_all(link)?;
     run_command(
         "cp",
-        &["-R".to_string(), target.to_string_lossy().to_string(), link.to_string_lossy().to_string()],
+        &[
+            "-R".to_string(),
+            target.to_string_lossy().to_string(),
+            link.to_string_lossy().to_string(),
+        ],
     )
 }

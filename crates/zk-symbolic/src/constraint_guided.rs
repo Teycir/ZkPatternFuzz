@@ -7,9 +7,9 @@
 use crate::constraint_symbolic::{ExtendedConstraintSymbolicExt, SymbolicConversionOptions};
 use crate::enhanced::{ConstraintSimplifier, EnhancedSymbolicConfig, PruningStrategy};
 use crate::executor::{PathCondition, SymbolicConstraint, Z3Solver};
+use std::collections::{HashMap, HashSet};
 use zk_constraints::{ExtendedConstraint, LinearCombination, LookupTable, R1CSConstraint, WireRef};
 use zk_core::{ConstraintEquation, ConstraintInspector, FieldElement};
-use std::collections::{HashMap, HashSet};
 
 /// Stats for constraint-guided seed generation.
 #[derive(Debug, Clone, Default)]

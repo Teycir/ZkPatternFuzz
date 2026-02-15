@@ -7,12 +7,12 @@
 //! Run with: `cargo test zkevm_attack --release`
 
 use std::collections::HashMap;
+use zk_core::FieldElement;
 use zk_fuzzer::attacks::zkevm::{
-    ZkEvmAttack, ZkEvmConfig, ZkEvmVulnerabilityType, ZkEvmTestResult,
-    ZkEvmPriceAnalyzer, ZkEvmCallDetector, EVM_OPCODES,
+    ZkEvmAttack, ZkEvmCallDetector, ZkEvmConfig, ZkEvmPriceAnalyzer, ZkEvmTestResult,
+    ZkEvmVulnerabilityType, EVM_OPCODES,
 };
 use zk_fuzzer::config::Severity;
-use zk_core::FieldElement;
 
 // ============================================================================
 // Configuration Tests
@@ -21,7 +21,7 @@ use zk_core::FieldElement;
 #[test]
 fn test_zkevm_config_default() {
     let config = ZkEvmConfig::default();
-    
+
     assert_eq!(config.state_transition_tests, 500);
     assert_eq!(config.opcode_boundary_tests, 100);
     assert_eq!(config.memory_expansion_tests, 200);
@@ -42,7 +42,7 @@ fn test_zkevm_config_custom() {
         seed: Some(42),
         ..Default::default()
     };
-    
+
     assert_eq!(config.state_transition_tests, 1000);
     assert_eq!(config.target_opcodes.len(), 2);
     assert!(!config.detect_memory_expansion);
@@ -72,7 +72,7 @@ fn test_vulnerability_severity_mapping() {
         ZkEvmVulnerabilityType::CallHandlingVulnerability.severity(),
         Severity::Critical
     );
-    
+
     // High severity vulnerabilities
     assert_eq!(
         ZkEvmVulnerabilityType::OpcodeBoundaryViolation.severity(),
@@ -90,7 +90,7 @@ fn test_vulnerability_severity_mapping() {
         ZkEvmVulnerabilityType::ContractCreationError.severity(),
         Severity::High
     );
-    
+
     // Medium severity vulnerabilities
     assert_eq!(
         ZkEvmVulnerabilityType::GasAccountingError.severity(),
@@ -107,10 +107,10 @@ fn test_vulnerability_descriptions() {
     let vuln = ZkEvmVulnerabilityType::StateTransitionMismatch;
     assert!(!vuln.description().is_empty());
     assert!(vuln.description().contains("EVM"));
-    
+
     let vuln = ZkEvmVulnerabilityType::StorageProofBypass;
     assert!(vuln.description().to_lowercase().contains("storage"));
-    
+
     let vuln = ZkEvmVulnerabilityType::OpcodeBoundaryViolation;
     assert!(vuln.description().to_lowercase().contains("boundary"));
 }
@@ -139,7 +139,7 @@ fn test_vulnerability_as_str() {
 fn test_evm_opcode_list_completeness() {
     // Ensure critical opcodes are included
     let opcode_names: Vec<&str> = EVM_OPCODES.iter().map(|op| op.name).collect();
-    
+
     // Arithmetic
     assert!(opcode_names.contains(&"ADD"));
     assert!(opcode_names.contains(&"MUL"));
@@ -149,25 +149,25 @@ fn test_evm_opcode_list_completeness() {
     assert!(opcode_names.contains(&"ADDMOD"));
     assert!(opcode_names.contains(&"MULMOD"));
     assert!(opcode_names.contains(&"EXP"));
-    
+
     // Comparison
     assert!(opcode_names.contains(&"LT"));
     assert!(opcode_names.contains(&"GT"));
     assert!(opcode_names.contains(&"EQ"));
-    
+
     // Memory
     assert!(opcode_names.contains(&"MLOAD"));
     assert!(opcode_names.contains(&"MSTORE"));
-    
+
     // Storage
     assert!(opcode_names.contains(&"SLOAD"));
     assert!(opcode_names.contains(&"SSTORE"));
-    
+
     // Calls
     assert!(opcode_names.contains(&"CALL"));
     assert!(opcode_names.contains(&"DELEGATECALL"));
     assert!(opcode_names.contains(&"STATICCALL"));
-    
+
     // Creates
     assert!(opcode_names.contains(&"CREATE"));
     assert!(opcode_names.contains(&"CREATE2"));
@@ -180,12 +180,12 @@ fn test_opcode_stack_requirements() {
     assert_eq!(div.stack_input, 2);
     assert_eq!(div.stack_output, 1);
     assert_eq!(div.base_gas, 5);
-    
+
     // CALL takes 7 inputs
     let call = EVM_OPCODES.iter().find(|op| op.name == "CALL").unwrap();
     assert_eq!(call.stack_input, 7);
     assert_eq!(call.stack_output, 1);
-    
+
     // CREATE2 takes 4 inputs
     let create2 = EVM_OPCODES.iter().find(|op| op.name == "CREATE2").unwrap();
     assert_eq!(create2.stack_input, 4);
@@ -197,13 +197,13 @@ fn test_opcode_codes() {
     // Verify opcode byte codes are correct
     let stop = EVM_OPCODES.iter().find(|op| op.name == "STOP").unwrap();
     assert_eq!(stop.code, 0x00);
-    
+
     let add = EVM_OPCODES.iter().find(|op| op.name == "ADD").unwrap();
     assert_eq!(add.code, 0x01);
-    
+
     let call = EVM_OPCODES.iter().find(|op| op.name == "CALL").unwrap();
     assert_eq!(call.code, 0xf1);
-    
+
     let create = EVM_OPCODES.iter().find(|op| op.name == "CREATE").unwrap();
     assert_eq!(create.code, 0xf0);
 }
@@ -216,7 +216,7 @@ fn test_opcode_codes() {
 fn test_attack_creation() {
     let config = ZkEvmConfig::default();
     let attack = ZkEvmAttack::new(config);
-    
+
     assert!(attack.findings().is_empty());
     assert!(attack.tested_opcodes().is_empty());
 }
@@ -227,15 +227,15 @@ fn test_attack_with_different_seeds() {
         seed: Some(12345),
         ..Default::default()
     };
-    
+
     let config2 = ZkEvmConfig {
         seed: Some(67890),
         ..Default::default()
     };
-    
+
     let attack1 = ZkEvmAttack::new(config1);
     let attack2 = ZkEvmAttack::new(config2);
-    
+
     // Both should start empty
     assert!(attack1.findings().is_empty());
     assert!(attack2.findings().is_empty());
@@ -260,11 +260,14 @@ fn test_result_to_finding_conversion() {
             ctx
         },
     };
-    
+
     let finding = result.to_finding();
-    
+
     assert_eq!(finding.severity, Severity::High);
-    assert!(finding.description.contains("opcode_boundary"), "Description should contain vulnerability type");
+    assert!(
+        finding.description.contains("opcode_boundary"),
+        "Description should contain vulnerability type"
+    );
     // Opcode name is in the location field, not description
     assert_eq!(finding.location, Some("opcode:DIV".to_string()));
     assert_eq!(finding.poc.witness_a.len(), 2);
@@ -281,9 +284,9 @@ fn test_result_without_opcode() {
         actual_behavior: "No change".to_string(),
         context: HashMap::new(),
     };
-    
+
     let finding = result.to_finding();
-    
+
     assert_eq!(finding.severity, Severity::Critical);
     assert!(finding.location.is_none());
 }

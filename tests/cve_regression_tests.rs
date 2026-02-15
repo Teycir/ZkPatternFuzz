@@ -4,12 +4,14 @@
 //! Each test loads a CVE pattern and verifies detection capability.
 
 use zk_fuzzer::config::{AttackType, Severity};
+use zk_fuzzer::corpus::{calculate_confidence, SemanticDeduplicator};
 use zk_fuzzer::cve::CveDatabase;
-use zk_fuzzer::corpus::{SemanticDeduplicator, calculate_confidence};
 use zk_fuzzer::fuzzer::{
+    grammar::{self, GenerationStrategy, GrammarGenerator, InputGrammar},
+    oracles::{
+        CombinedSemanticOracle, MerkleOracle, NullifierOracle, OracleConfig, SemanticOracle,
+    },
     FieldElement, Finding, ProofOfConcept, TestCase, TestMetadata,
-    grammar::{self, InputGrammar, GrammarGenerator, GenerationStrategy},
-    oracles::{SemanticOracle, OracleConfig, NullifierOracle, MerkleOracle, CombinedSemanticOracle},
 };
 
 /// Path to the CVE database
@@ -23,7 +25,10 @@ fn test_load_cve_database() {
     assert!(db.is_ok(), "Failed to load CVE database: {:?}", db.err());
 
     let db = db.unwrap();
-    assert!(!db.vulnerabilities.is_empty(), "CVE database should not be empty");
+    assert!(
+        !db.vulnerabilities.is_empty(),
+        "CVE database should not be empty"
+    );
     assert!(
         db.vulnerabilities.len() >= 8,
         "Expected at least 8 CVEs, got {}",
@@ -40,14 +45,21 @@ fn test_cve_database_structure() {
         assert!(!cve.id.is_empty(), "CVE ID cannot be empty");
         assert!(!cve.name.is_empty(), "CVE name cannot be empty");
         assert!(!cve.severity.is_empty(), "CVE severity cannot be empty");
-        assert!(!cve.description.is_empty(), "CVE description cannot be empty");
+        assert!(
+            !cve.description.is_empty(),
+            "CVE description cannot be empty"
+        );
 
         // Severity must be valid
         let severity = cve.severity_enum();
         assert!(
             matches!(
                 severity,
-                Severity::Critical | Severity::High | Severity::Medium | Severity::Low | Severity::Info
+                Severity::Critical
+                    | Severity::High
+                    | Severity::Medium
+                    | Severity::Low
+                    | Severity::Info
             ),
             "Invalid severity: {}",
             cve.severity
@@ -178,7 +190,10 @@ fn test_nullifier_collision_oracle() {
 
     // First check - records observation
     let finding1 = oracle.check(&tc1, &output);
-    assert!(finding1.is_none(), "First observation should not trigger finding");
+    assert!(
+        finding1.is_none(),
+        "First observation should not trigger finding"
+    );
 
     // Second check with same nullifier but different secret - COLLISION!
     let finding2 = oracle.check(&tc2, &output);
@@ -231,7 +246,8 @@ fn test_merkle_oracle_path_validation() {
         inputs.push(FieldElement::random(&mut rand::thread_rng())); // path elements
     }
     for _ in 0..20 {
-        inputs.push(FieldElement::from_u64(if rand::random() { 1 } else { 0 })); // indices
+        inputs.push(FieldElement::from_u64(if rand::random() { 1 } else { 0 }));
+        // indices
     }
 
     let tc = TestCase {
@@ -436,7 +452,10 @@ fn test_confidence_scoring() {
     let low_score = calculate_confidence(&low_confidence);
     let high_score = calculate_confidence(&high_confidence);
 
-    assert!(high_score > low_score, "Critical findings with POC should have higher confidence");
+    assert!(
+        high_score > low_score,
+        "Critical findings with POC should have higher confidence"
+    );
     assert!(high_score > 0.8, "High confidence score should be > 0.8");
 }
 
@@ -448,10 +467,7 @@ fn test_combined_semantic_oracle() {
     let mut combined = CombinedSemanticOracle::with_all_oracles(config);
 
     let tc = TestCase {
-        inputs: vec![
-            FieldElement::from_u64(111),
-            FieldElement::from_u64(222),
-        ],
+        inputs: vec![FieldElement::from_u64(111), FieldElement::from_u64(222)],
         expected_output: None,
         metadata: TestMetadata::default(),
     };
@@ -460,7 +476,7 @@ fn test_combined_semantic_oracle() {
 
     // Check all oracles
     let findings = combined.check_all(&tc, &output);
-    
+
     // Should not crash and should return valid findings (may be empty)
     let _ = findings;
 
@@ -527,7 +543,7 @@ fn test_full_cve_detection_flow() {
             FieldElement::from_u64(1000 + i as u64),
             FieldElement::from_u64(2000 + i as u64),
         ];
-        
+
         if let Some(finding) = oracle.check(&tc, &out) {
             dedup.add(finding);
         }

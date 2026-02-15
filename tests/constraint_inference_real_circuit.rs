@@ -8,14 +8,14 @@
 //!
 //! Completes Phase 4 requirement: "Validate on real circuits"
 
-use std::path::PathBuf;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use zk_core::FieldElement;
 use zk_fuzzer::attacks::constraint_inference::{
-    ConstraintInferenceEngine, ConstraintCategory, ViolationConfirmation,
+    ConstraintCategory, ConstraintInferenceEngine, ViolationConfirmation,
 };
 use zk_fuzzer::executor::{CircomExecutor, CircuitExecutor};
 use zk_fuzzer::targets::CircomTarget;
-use zk_core::FieldElement;
 
 /// Test constraint inference on the range_bypass circuit
 /// This circuit has a known bug: bit decomposition without recomposition check
@@ -38,26 +38,21 @@ async fn test_constraint_inference_range_bypass() {
     }
 
     // Create executor
-    let executor = CircomExecutor::new(
-        circuit_path.to_str().unwrap(),
-        "RangeBypass"
-    ).expect("Failed to create CircomExecutor");
+    let executor = CircomExecutor::new(circuit_path.to_str().unwrap(), "RangeBypass")
+        .expect("Failed to create CircomExecutor");
 
     // Get constraint inspector
     let inspector = executor
         .constraint_inspector()
         .expect("Should have constraint inspector");
 
-    let num_wires = executor.num_public_inputs() 
-        + executor.num_private_inputs() 
-        + 1000; // Add buffer for intermediate wires
+    let num_wires = executor.num_public_inputs() + executor.num_private_inputs() + 1000; // Add buffer for intermediate wires
 
     // Initialize constraint inference engine
-    let engine = ConstraintInferenceEngine::new()
-        .with_categories(&[
-            ConstraintCategory::BitDecompositionRoundTrip,
-            ConstraintCategory::RangeEnforcement,
-        ]);
+    let engine = ConstraintInferenceEngine::new().with_categories(&[
+        ConstraintCategory::BitDecompositionRoundTrip,
+        ConstraintCategory::RangeEnforcement,
+    ]);
 
     // Run analysis
     let mut implied = engine.analyze(inspector, num_wires);
@@ -80,10 +75,10 @@ async fn test_constraint_inference_range_bypass() {
         "Should detect at least one missing constraint"
     );
 
-    let has_bit_decomp = implied.iter().any(|c| 
-        c.category == ConstraintCategory::BitDecompositionRoundTrip
-    );
-    
+    let has_bit_decomp = implied
+        .iter()
+        .any(|c| c.category == ConstraintCategory::BitDecompositionRoundTrip);
+
     println!("\n=== Detection Results ===");
     println!("Detected bit decomposition issue: {}", has_bit_decomp);
 
@@ -98,12 +93,18 @@ async fn test_constraint_inference_range_bypass() {
         .enumerate()
         .map(|(idx, wire)| (wire, idx))
         .collect();
-    if let Some((&wire, _)) = labels.iter().find(|(_, name)| name.ends_with(".value") || *name == "value") {
+    if let Some((&wire, _)) = labels
+        .iter()
+        .find(|(_, name)| name.ends_with(".value") || *name == "value")
+    {
         if let Some(&input_idx) = wire_to_input.get(&wire) {
             base_inputs[input_idx] = FieldElement::from_u64(42);
         }
     }
-    if let Some((&wire, _)) = labels.iter().find(|(_, name)| name.ends_with(".inRange") || *name == "inRange") {
+    if let Some((&wire, _)) = labels
+        .iter()
+        .find(|(_, name)| name.ends_with(".inRange") || *name == "inRange")
+    {
         if let Some(&input_idx) = wire_to_input.get(&wire) {
             base_inputs[input_idx] = FieldElement::from_u64(1);
         }
@@ -168,16 +169,17 @@ async fn test_constraint_inference_merkle() {
         return;
     }
 
-    let circuit_path = PathBuf::from("tests/bench/known_bugs/underconstrained_merkle/circuit.circom");
+    let circuit_path =
+        PathBuf::from("tests/bench/known_bugs/underconstrained_merkle/circuit.circom");
     if !circuit_path.exists() {
-        eprintln!("Skipping: Merkle test circuit not found at {:?}", circuit_path);
+        eprintln!(
+            "Skipping: Merkle test circuit not found at {:?}",
+            circuit_path
+        );
         return;
     }
 
-    let executor = CircomExecutor::new(
-        circuit_path.to_str().unwrap(),
-        "UnderconstrainedMerkle"
-    );
+    let executor = CircomExecutor::new(circuit_path.to_str().unwrap(), "UnderconstrainedMerkle");
 
     if executor.is_err() {
         eprintln!("Skipping: Failed to create executor for Merkle circuit");
@@ -189,16 +191,13 @@ async fn test_constraint_inference_merkle() {
         .constraint_inspector()
         .expect("Should have constraint inspector");
 
-    let num_wires = executor.num_public_inputs() 
-        + executor.num_private_inputs() 
-        + 1000;
+    let num_wires = executor.num_public_inputs() + executor.num_private_inputs() + 1000;
 
     // Initialize engine with Merkle-specific categories
-    let engine = ConstraintInferenceEngine::new()
-        .with_categories(&[
-            ConstraintCategory::MerklePathValidation,
-            ConstraintCategory::HashConsistency,
-        ]);
+    let engine = ConstraintInferenceEngine::new().with_categories(&[
+        ConstraintCategory::MerklePathValidation,
+        ConstraintCategory::HashConsistency,
+    ]);
 
     let mut implied = engine.analyze(inspector, num_wires);
 
@@ -206,7 +205,8 @@ async fn test_constraint_inference_merkle() {
     println!("Inferred missing constraints: {}", implied.len());
 
     for constraint in &implied {
-        println!("  - [{:?}] {} (confidence: {:.1}%)",
+        println!(
+            "  - [{:?}] {} (confidence: {:.1}%)",
             constraint.category,
             constraint.description,
             constraint.confidence * 100.0
@@ -218,42 +218,44 @@ async fn test_constraint_inference_merkle() {
     let output_wires = HashSet::new();
     engine.confirm_violations(&executor, &base_inputs, &mut implied, &output_wires);
 
-    let confirmed = implied.iter()
+    let confirmed = implied
+        .iter()
         .filter(|c| matches!(c.confirmation, ViolationConfirmation::Confirmed))
         .count();
 
     println!("Confirmed violations: {}", confirmed);
-    
+
     // We expect some constraints to be detected
-    assert!(!implied.is_empty(), "Should detect missing Merkle constraints");
+    assert!(
+        !implied.is_empty(),
+        "Should detect missing Merkle constraints"
+    );
 }
 
 /// Test constraint inference produces actionable findings
 #[test]
 fn test_constraint_inference_to_findings() {
+    use zk_core::{AttackType, Severity};
     use zk_fuzzer::attacks::constraint_inference::{ConstraintInferenceEngine, ImpliedConstraint};
-    use zk_core::{Severity, AttackType};
 
     let engine = ConstraintInferenceEngine::new();
 
     // Create fixture implied constraints
-    let implied = vec![
-        ImpliedConstraint {
-            category: ConstraintCategory::BitDecompositionRoundTrip,
-            description: "Missing bit recomposition".to_string(),
-            confidence: 0.9,
-            involved_wires: vec![0, 1, 2],
-            suggested_constraint: "sum(bits[i] * 2^i) == value".to_string(),
-            violation_witness: Some(vec![FieldElement::from_u64(42)]),
-            confirmation: ViolationConfirmation::Confirmed,
-        },
-    ];
+    let implied = vec![ImpliedConstraint {
+        category: ConstraintCategory::BitDecompositionRoundTrip,
+        description: "Missing bit recomposition".to_string(),
+        confidence: 0.9,
+        involved_wires: vec![0, 1, 2],
+        suggested_constraint: "sum(bits[i] * 2^i) == value".to_string(),
+        violation_witness: Some(vec![FieldElement::from_u64(42)]),
+        confirmation: ViolationConfirmation::Confirmed,
+    }];
 
     // Convert to findings
     let findings = engine.to_findings(&implied);
 
     assert_eq!(findings.len(), 1, "Should produce one finding");
-    
+
     let finding = &findings[0];
     assert_eq!(finding.attack_type, AttackType::ConstraintInference);
     assert_eq!(finding.severity, Severity::Critical);
@@ -275,10 +277,16 @@ async fn test_constraint_inference_comprehensive() {
     }
 
     let test_circuits = vec![
-        ("tests/bench/known_bugs/range_bypass/circuit.circom", "RangeBypass", 
-         vec![ConstraintCategory::BitDecompositionRoundTrip]),
-        ("tests/bench/known_bugs/underconstrained_merkle/circuit.circom", "UnderconstrainedMerkle",
-         vec![ConstraintCategory::MerklePathValidation]),
+        (
+            "tests/bench/known_bugs/range_bypass/circuit.circom",
+            "RangeBypass",
+            vec![ConstraintCategory::BitDecompositionRoundTrip],
+        ),
+        (
+            "tests/bench/known_bugs/underconstrained_merkle/circuit.circom",
+            "UnderconstrainedMerkle",
+            vec![ConstraintCategory::MerklePathValidation],
+        ),
     ];
 
     let mut total_detected = 0;
@@ -309,13 +317,10 @@ async fn test_constraint_inference_comprehensive() {
             }
         };
 
-        let num_wires = executor.num_public_inputs() 
-            + executor.num_private_inputs() 
-            + 1000;
+        let num_wires = executor.num_public_inputs() + executor.num_private_inputs() + 1000;
 
         // Build engine with relevant categories
-        let engine = ConstraintInferenceEngine::new()
-            .with_categories(&expected_categories);
+        let engine = ConstraintInferenceEngine::new().with_categories(&expected_categories);
 
         let mut implied = engine.analyze(inspector, num_wires);
         total_detected += implied.len();
@@ -327,10 +332,11 @@ async fn test_constraint_inference_comprehensive() {
         let output_wires = HashSet::new();
         engine.confirm_violations(&executor, &base_inputs, &mut implied, &output_wires);
 
-        let confirmed = implied.iter()
+        let confirmed = implied
+            .iter()
             .filter(|c| matches!(c.confirmation, ViolationConfirmation::Confirmed))
             .count();
-        
+
         total_confirmed += confirmed;
         println!("  Confirmed: {} violations", confirmed);
     }
@@ -339,7 +345,10 @@ async fn test_constraint_inference_comprehensive() {
     println!("Total constraints detected: {}", total_detected);
     println!("Total violations confirmed: {}", total_confirmed);
 
-    assert!(total_detected > 0, "Should detect missing constraints across test circuits");
-    
+    assert!(
+        total_detected > 0,
+        "Should detect missing constraints across test circuits"
+    );
+
     println!("\n✅ Comprehensive constraint inference validation complete");
 }

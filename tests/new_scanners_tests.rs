@@ -2,13 +2,13 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use zk_core::{CircuitInfo, ExecutionCoverage, ExecutionResult, Framework};
 use zk_fuzzer::attacks::{
     CanonicalizationChecker, CrossBackendDifferential, DeterminismOracle, FrozenWireDetector,
     NullifierReplayScanner, ProofMalleabilityScanner, SetupPoisoningDetector,
 };
 use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
 use zk_fuzzer::fuzzer::FieldElement;
-use zk_core::{CircuitInfo, ExecutionCoverage, ExecutionResult, Framework};
 
 struct LenientProofExecutor {
     name: String,
@@ -102,7 +102,10 @@ impl CircuitExecutor for FlakyExecutor {
     fn execute_sync(&self, _inputs: &[FieldElement]) -> ExecutionResult {
         let call = self.counter.fetch_add(1, Ordering::Relaxed);
         let value = if call.is_multiple_of(2) { 1u64 } else { 2u64 };
-        ExecutionResult::success(vec![FieldElement::from_u64(value)], ExecutionCoverage::default())
+        ExecutionResult::success(
+            vec![FieldElement::from_u64(value)],
+            ExecutionCoverage::default(),
+        )
     }
 
     fn prove(&self, _witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
@@ -234,7 +237,10 @@ fn test_cross_backend_differential_detects_divergence() {
         .with_tolerance_bits(0);
 
     let findings = oracle.run(&exec_a, &exec_b, &[witness]);
-    assert!(!findings.is_empty(), "Expected cross-backend divergence finding");
+    assert!(
+        !findings.is_empty(),
+        "Expected cross-backend divergence finding"
+    );
 }
 
 #[test]

@@ -493,8 +493,7 @@ impl DistributedCoordinator {
             }
 
             // Re-create a minimal work unit and push to front of queue.
-            let requeued = WorkUnit::new(*work_id, "requeued", 0)
-                .with_priority(i32::MAX); // highest priority
+            let requeued = WorkUnit::new(*work_id, "requeued", 0).with_priority(i32::MAX); // highest priority
             queue.push_front(requeued);
 
             tracing::warn!(

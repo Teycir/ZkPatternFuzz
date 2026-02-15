@@ -2199,7 +2199,10 @@ impl FuzzingEngine {
         }
 
         let Some(base_witness) = base_witness else {
-            tracing::warn!("Constraint slice skipped: no valid base witness after {} attempts", attempts);
+            tracing::warn!(
+                "Constraint slice skipped: no valid base witness after {} attempts",
+                attempts
+            );
             if let Some(p) = progress {
                 p.log_finding("WARN", "Constraint slice skipped: no valid base witness");
                 p.inc();

@@ -129,10 +129,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let mut entries: Vec<SkimEntry> = generated
-        .iter()
-        .map(entry_from_generated)
-        .collect();
+    let mut entries: Vec<SkimEntry> = generated.iter().map(entry_from_generated).collect();
 
     entries.sort_by(|a, b| b.hint_score.total_cmp(&a.hint_score));
 
@@ -359,12 +356,8 @@ fn candidate_invariants_from_hints(
                 .unwrap_or_else(|| format!("UNKNOWN_INPUT_{}", idx))
         });
         let relation = relation_for_category(&hint.category, &primary);
-        let name = format!(
-            "{:?}_candidate_{}",
-            hint.category,
-            idx.saturating_add(1)
-        )
-        .to_lowercase();
+        let name =
+            format!("{:?}_candidate_{}", hint.category, idx.saturating_add(1)).to_lowercase();
         out.push(CandidateInvariant {
             name,
             category: format!("{:?}", hint.category),
@@ -378,17 +371,22 @@ fn candidate_invariants_from_hints(
     out
 }
 
-fn inputs_for_category(
-    category: &ZeroDayCategory,
-    inputs: &[String],
-    limit: usize,
-) -> Vec<String> {
+fn inputs_for_category(category: &ZeroDayCategory, inputs: &[String], limit: usize) -> Vec<String> {
     let keywords: &[&str] = match category {
         ZeroDayCategory::SignatureMalleability => &["sig", "signature", "r8", "s"],
         ZeroDayCategory::BitDecompositionBypass => &["path", "index", "indices", "bit", "flag"],
         ZeroDayCategory::IncorrectRangeCheck | ZeroDayCategory::ArithmeticOverflow => &[
-            "amount", "value", "nonce", "balance", "fee", "refund", "timestamp", "index",
-            "slot", "count", "size",
+            "amount",
+            "value",
+            "nonce",
+            "balance",
+            "fee",
+            "refund",
+            "timestamp",
+            "index",
+            "slot",
+            "count",
+            "size",
         ],
         ZeroDayCategory::HashMisuse => &["hash", "root", "commit", "merkle"],
         ZeroDayCategory::NullifierReuse => &["nullifier"],
@@ -409,7 +407,11 @@ fn inputs_for_category(
     }
 
     if matches.is_empty() {
-        inputs.iter().take(limit.min(inputs.len())).cloned().collect()
+        inputs
+            .iter()
+            .take(limit.min(inputs.len()))
+            .cloned()
+            .collect()
     } else {
         matches
     }

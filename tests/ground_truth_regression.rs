@@ -82,9 +82,12 @@ reporting:
 
     // For testing, we use a simplified config
     let config: FuzzConfig = serde_yaml::from_str(&yaml).unwrap_or_else(|e| {
-        panic!("Failed to parse ground truth config for {}: {}", circuit_name, e);
+        panic!(
+            "Failed to parse ground truth config for {}: {}",
+            circuit_name, e
+        );
     });
-    
+
     config
 }
 
@@ -114,7 +117,11 @@ fn test_detects_merkle_unconstrained() {
         "Failed to detect underconstrained Merkle path indices. \
          Found {} findings: {:?}",
         report.findings.len(),
-        report.findings.iter().map(|f| &f.attack_type).collect::<Vec<_>>()
+        report
+            .findings
+            .iter()
+            .map(|f| &f.attack_type)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -150,11 +157,8 @@ fn test_detects_range_overflow() {
 /// Test detection of nullifier collision
 #[test]
 fn test_detects_nullifier_collision() {
-    let config = create_ground_truth_campaign(
-        "nullifier_collision",
-        vec![AttackType::Collision],
-        10_000,
-    );
+    let config =
+        create_ground_truth_campaign("nullifier_collision", vec![AttackType::Collision], 10_000);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let report = rt.block_on(async {
@@ -289,11 +293,8 @@ fn test_detects_division_by_zero() {
 /// Test detection of hash length extension vulnerability
 #[test]
 fn test_detects_hash_length_extension() {
-    let config = create_ground_truth_campaign(
-        "hash_length_extension",
-        vec![AttackType::Soundness],
-        10_000,
-    );
+    let config =
+        create_ground_truth_campaign("hash_length_extension", vec![AttackType::Soundness], 10_000);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     let report = rt.block_on(async {
@@ -397,7 +398,11 @@ fn test_ground_truth_detection_rate() {
             engine.run(None).await.unwrap()
         });
 
-        if report.findings.iter().any(|f| &f.attack_type == expected_attack) {
+        if report
+            .findings
+            .iter()
+            .any(|f| &f.attack_type == expected_attack)
+        {
             detected += 1;
             println!("✓ Detected vulnerability in {}", circuit);
         } else {
@@ -436,11 +441,8 @@ mod unit_tests {
         ];
 
         for circuit in circuits {
-            let path = PathBuf::from(format!(
-                "tests/ground_truth_circuits/{}.circom",
-                circuit
-            ));
-            
+            let path = PathBuf::from(format!("tests/ground_truth_circuits/{}.circom", circuit));
+
             // Just check the README exists (circuits are in a separate directory)
             let readme = PathBuf::from("tests/ground_truth_circuits/README.md");
             assert!(
@@ -454,7 +456,7 @@ mod unit_tests {
     fn test_campaign_config_parsing() {
         // Test that we can create valid configs for ground truth circuits
         let attacks = vec![AttackType::Underconstrained];
-        
+
         // This should not panic
         let _config = create_ground_truth_campaign("test_circuit", attacks, 1000);
     }

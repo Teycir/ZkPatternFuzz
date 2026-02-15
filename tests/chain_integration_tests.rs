@@ -8,15 +8,13 @@
 //!
 //! Run with: `cargo test --test chain_integration_tests`
 
-
-
 #[cfg(test)]
 mod tests {
 
     /// Test that chain YAML parsing works correctly
     #[test]
     fn test_parse_chains_from_yaml() {
-        use zk_fuzzer::config::{FuzzConfig, parse_chains};
+        use zk_fuzzer::config::{parse_chains, FuzzConfig};
 
         let yaml = r#"
 campaign:
@@ -64,13 +62,17 @@ reporting:
         assert_eq!(chains.len(), 1, "Should parse one chain");
         assert_eq!(chains[0].name, "simple_chain");
         assert_eq!(chains[0].steps.len(), 2, "Chain should have 2 steps");
-        assert_eq!(chains[0].assertions.len(), 1, "Chain should have 1 assertion");
+        assert_eq!(
+            chains[0].assertions.len(),
+            1,
+            "Chain should have 1 assertion"
+        );
     }
 
     /// Test input wiring parsing for all variants
     #[test]
     fn test_parse_input_wiring_variants() {
-        use zk_fuzzer::config::{FuzzConfig, parse_chains};
+        use zk_fuzzer::config::{parse_chains, FuzzConfig};
 
         let yaml = r#"
 campaign:
@@ -137,14 +139,18 @@ reporting:
         let chains = parse_chains(&config);
 
         assert_eq!(chains.len(), 1);
-        assert_eq!(chains[0].steps.len(), 4, "Should parse all 4 wiring variants");
+        assert_eq!(
+            chains[0].steps.len(),
+            4,
+            "Should parse all 4 wiring variants"
+        );
     }
 
     /// Test multi-circuit configuration parsing
     /// Note: Circuit paths are resolved from the v2 config, not stored in ChainSpec directly
     #[test]
     fn test_parse_multi_circuit_chain() {
-        use zk_fuzzer::config::{FuzzConfig, parse_chains};
+        use zk_fuzzer::config::{parse_chains, FuzzConfig};
 
         let yaml = r#"
 campaign:
@@ -190,7 +196,7 @@ reporting:
 
         assert_eq!(chains.len(), 1);
         let chain = &chains[0];
-        
+
         // Verify chain was parsed with multiple steps
         assert_eq!(chain.steps.len(), 2, "Should have 2 steps");
         assert_eq!(chain.steps[0].circuit_ref, "deposit");
@@ -201,7 +207,7 @@ reporting:
     /// Test assertion relation parsing
     #[test]
     fn test_parse_assertion_relations() {
-        use zk_fuzzer::config::{FuzzConfig, parse_chains};
+        use zk_fuzzer::config::{parse_chains, FuzzConfig};
 
         let yaml = r#"
 campaign:
@@ -258,8 +264,12 @@ reporting:
         let chains = parse_chains(&config);
 
         assert_eq!(chains.len(), 1);
-        assert_eq!(chains[0].assertions.len(), 4, "Should parse all 4 assertions");
-        
+        assert_eq!(
+            chains[0].assertions.len(),
+            4,
+            "Should parse all 4 assertions"
+        );
+
         // Verify assertion properties
         let assertions = &chains[0].assertions;
         assert_eq!(assertions[0].name, "equality_check");
@@ -271,7 +281,7 @@ reporting:
     /// Test chain with schedule phases
     #[test]
     fn test_parse_chain_with_schedule() {
-        use zk_fuzzer::config::{FuzzConfig, parse_chains};
+        use zk_fuzzer::config::{parse_chains, FuzzConfig};
 
         let yaml = r#"
 campaign:
@@ -319,7 +329,7 @@ reporting:
 
         let config = FuzzConfig::from_yaml(config_path.to_str().unwrap()).unwrap();
         let chains = parse_chains(&config);
-        
+
         // Verify chains parsed and schedule config is valid
         assert_eq!(chains.len(), 1, "Should parse 1 chain");
         assert_eq!(chains[0].name, "scheduled_chain");
@@ -328,7 +338,7 @@ reporting:
     /// Test empty chains section is handled
     #[test]
     fn test_empty_chains_section() {
-        use zk_fuzzer::config::{FuzzConfig, parse_chains};
+        use zk_fuzzer::config::{parse_chains, FuzzConfig};
 
         // Note: Config requires at least one attack, so we include a minimal one
         let yaml = r#"
@@ -372,7 +382,7 @@ reporting:
     /// Test chain types module integration
     #[test]
     fn test_chain_spec_creation() {
-        use zk_fuzzer::chain_fuzzer::{ChainSpec, StepSpec, InputWiring, CrossStepAssertion};
+        use zk_fuzzer::chain_fuzzer::{ChainSpec, CrossStepAssertion, InputWiring, StepSpec};
 
         let chain = ChainSpec {
             name: "test_chain".to_string(),
@@ -395,12 +405,11 @@ reporting:
                     expected_outputs: None,
                 },
             ],
-            assertions: vec![
-                CrossStepAssertion::new(
-                    "test_assertion",
-                    "step[0].out[0] == step[1].in[0]",
-                ).with_severity("high"),
-            ],
+            assertions: vec![CrossStepAssertion::new(
+                "test_assertion",
+                "step[0].out[0] == step[1].in[0]",
+            )
+            .with_severity("high")],
             description: None,
         };
 
@@ -412,8 +421,8 @@ reporting:
     /// Test depth metrics calculation
     #[test]
     fn test_depth_metrics_calculation() {
-        use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics, ChainTrace, StepTrace};
         use zk_fuzzer::chain_fuzzer::types::ChainFindingCore;
+        use zk_fuzzer::chain_fuzzer::{ChainFinding, ChainTrace, DepthMetrics, StepTrace};
 
         // Create fixture chain findings with different L_min values
         let findings = vec![
@@ -482,15 +491,21 @@ reporting:
         let summary = metrics.summary();
 
         assert_eq!(summary.total_findings, 2);
-        assert!((summary.d_mean - 2.5).abs() < 0.01, "D should be 2.5 (mean of 2 and 3)");
-        assert!((summary.p_deep - 1.0).abs() < 0.01, "P_deep should be 1.0 (all findings have L_min >= 2)");
+        assert!(
+            (summary.d_mean - 2.5).abs() < 0.01,
+            "D should be 2.5 (mean of 2 and 3)"
+        );
+        assert!(
+            (summary.p_deep - 1.0).abs() < 0.01,
+            "P_deep should be 1.0 (all findings have L_min >= 2)"
+        );
     }
 
     /// Test chain finding serialization
     #[test]
     fn test_chain_finding_serialization() {
-        use zk_fuzzer::chain_fuzzer::{ChainFinding, ChainTrace, StepTrace};
         use zk_fuzzer::chain_fuzzer::types::ChainFindingCore;
+        use zk_fuzzer::chain_fuzzer::{ChainFinding, ChainTrace, StepTrace};
 
         let finding = ChainFinding {
             finding: ChainFindingCore {
@@ -506,18 +521,16 @@ reporting:
             violated_assertion: Some("no_nullifier_reuse".to_string()),
             trace: ChainTrace {
                 spec_name: "double_withdraw".to_string(),
-                steps: vec![
-                    StepTrace {
-                        step_index: 0,
-                        circuit_ref: "withdraw".to_string(),
-                        inputs: vec![],
-                        outputs: vec![],
-                        success: true,
-                        error: None,
-                        constraints_hit: std::collections::HashSet::new(),
-                        execution_time_ms: 0,
-                    },
-                ],
+                steps: vec![StepTrace {
+                    step_index: 0,
+                    circuit_ref: "withdraw".to_string(),
+                    inputs: vec![],
+                    outputs: vec![],
+                    success: true,
+                    error: None,
+                    constraints_hit: std::collections::HashSet::new(),
+                    execution_time_ms: 0,
+                }],
                 success: true,
                 execution_time_ms: 0,
             },
@@ -525,8 +538,14 @@ reporting:
 
         // Test JSON serialization
         let json = serde_json::to_string_pretty(&finding).unwrap();
-        assert!(json.contains("double_withdraw"), "JSON should contain spec name");
-        assert!(json.contains("no_nullifier_reuse"), "JSON should contain violated assertion");
+        assert!(
+            json.contains("double_withdraw"),
+            "JSON should contain spec name"
+        );
+        assert!(
+            json.contains("no_nullifier_reuse"),
+            "JSON should contain violated assertion"
+        );
 
         // Test deserialization roundtrip
         let deserialized: ChainFinding = serde_json::from_str(&json).unwrap();
@@ -570,13 +589,16 @@ reporting:
         std::fs::write(&config_path, valid_yaml).unwrap();
 
         let result = FuzzConfig::from_yaml(config_path.to_str().unwrap());
-        assert!(result.is_ok(), "Valid chain config should parse successfully");
+        assert!(
+            result.is_ok(),
+            "Valid chain config should parse successfully"
+        );
     }
 
     /// Test chain with template file format (deepest_multistep.yaml compatibility)
     #[test]
     fn test_template_format_compatibility() {
-        use zk_fuzzer::config::{FuzzConfig, parse_chains};
+        use zk_fuzzer::config::{parse_chains, FuzzConfig};
 
         // This mimics the format used in campaigns/templates/deepest_multistep.yaml
         let yaml = r#"
@@ -664,9 +686,12 @@ schedule:
         assert_eq!(chain.name, "deposit_then_withdraw");
         assert_eq!(chain.steps.len(), 2);
         assert_eq!(chain.assertions.len(), 2);
-        
+
         // Verify step labels were parsed
         assert_eq!(chain.steps[0].label, Some("Initial deposit".to_string()));
-        assert_eq!(chain.steps[1].label, Some("Withdrawal using deposit outputs".to_string()));
+        assert_eq!(
+            chain.steps[1].label,
+            Some("Withdrawal using deposit outputs".to_string())
+        );
     }
 }

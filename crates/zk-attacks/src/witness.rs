@@ -377,7 +377,8 @@ mod tests {
     #[test]
     fn test_witness_determinism() {
         let fuzzer = WitnessFuzzer::new().with_determinism_tests(10);
-        let executor: Arc<dyn CircuitExecutor> = Arc::new(FixtureCircuitExecutor::new("test", 2, 1));
+        let executor: Arc<dyn CircuitExecutor> =
+            Arc::new(FixtureCircuitExecutor::new("test", 2, 1));
         let mut rng = StdRng::seed_from_u64(42);
 
         let findings = fuzzer.test_determinism(&executor, &mut rng);

@@ -208,10 +208,7 @@ impl ProofExporter for LeanExporter {
         let mut code = String::new();
 
         code.push_str(&format!("/-- {} -/\n", obligation.description));
-        code.push_str(&format!(
-            "def {}_obligation : Prop :=\n",
-            obligation.name
-        ));
+        code.push_str(&format!("def {}_obligation : Prop :=\n", obligation.name));
 
         if !obligation.variables.is_empty() {
             code.push_str("  ∀ ");

@@ -59,17 +59,20 @@ fn test_tornado_withdraw_underconstrained_detection() {
         eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
         return;
     }
-    
+
     let circuit_path = tornado_path().join("withdraw.circom");
     if !circuit_path.exists() {
-        eprintln!("Skipping: Tornado withdraw.circom not found at {:?}", circuit_path);
+        eprintln!(
+            "Skipping: Tornado withdraw.circom not found at {:?}",
+            circuit_path
+        );
         return;
     }
-    
+
     // This demonstrates the Phase 0 fix:
     // The stateful underconstrained oracle will now properly track
     // executions and detect if different witnesses produce same output
-    
+
     println!("Found Tornado Cash withdraw circuit at {:?}", circuit_path);
     println!("Phase 0 Fix Verification:");
     println!("  ✓ BugOracle::check() now uses &mut self for stateful tracking");
@@ -88,16 +91,19 @@ fn test_semaphore_nullifier_oracle() {
         eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
         return;
     }
-    
+
     let circuit_path = semaphore_path().join("semaphore.circom");
     if !circuit_path.exists() {
-        eprintln!("Skipping: Semaphore circuit not found at {:?}", circuit_path);
+        eprintln!(
+            "Skipping: Semaphore circuit not found at {:?}",
+            circuit_path
+        );
         return;
     }
-    
+
     // This demonstrates the Phase 0 fix:
     // Semantic oracles (nullifier) are now wired from config
-    
+
     println!("Found Semaphore circuit at {:?}", circuit_path);
     println!("Phase 0 Fix Verification:");
     println!("  ✓ Semantic oracles instantiate from config.oracles");
@@ -116,16 +122,19 @@ fn test_polygon_id_constraint_inference() {
         eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
         return;
     }
-    
+
     let circuit_path = polygon_id_path().join("authV3.circom");
     if !circuit_path.exists() {
-        eprintln!("Skipping: Polygon ID authV3 not found at {:?}", circuit_path);
+        eprintln!(
+            "Skipping: Polygon ID authV3 not found at {:?}",
+            circuit_path
+        );
         return;
     }
-    
+
     // This demonstrates the Phase 0 fix:
     // Novel attacks (ConstraintInference) now dispatch without warnings
-    
+
     println!("Found Polygon ID authV3 circuit at {:?}", circuit_path);
     println!("Phase 0 Fix Verification:");
     println!("  ✓ ConstraintInference attack dispatches correctly");
@@ -140,16 +149,20 @@ fn test_polygon_id_constraint_inference() {
 fn test_field_modulus_circuit_specific() {
     // This test verifies the field_modulus() trait method works
     use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
-    
+
     let executor = FixtureCircuitExecutor::new("test", 2, 1);
-    
+
     // Get field modulus - should not be hardcoded
     let modulus = executor.field_modulus();
-    
+
     // BN254 modulus (default) in big-endian
     let expected_start = [0x30, 0x64, 0x4e, 0x72];
-    assert_eq!(&modulus[0..4], &expected_start[..], "Should return BN254 modulus by default");
-    
+    assert_eq!(
+        &modulus[0..4],
+        &expected_start[..],
+        "Should return BN254 modulus by default"
+    );
+
     println!("Phase 0 Fix Verification:");
     println!("  ✓ field_modulus() added to CircuitExecutor trait");
     println!("  ✓ Returns circuit-specific field, not hardcoded");
@@ -164,7 +177,7 @@ fn test_field_modulus_circuit_specific() {
 async fn test_continuous_fuzzing_realistic_iteration_count() {
     use zk_fuzzer::config::*;
     use zk_fuzzer::fuzzer::FuzzingEngine;
-    
+
     let config = FuzzConfig {
         campaign: Campaign {
             name: "Realistic Fuzzing Test".to_string(),
@@ -188,18 +201,16 @@ async fn test_continuous_fuzzing_realistic_iteration_count() {
                 p
             },
         },
-        attacks: vec![
-            Attack {
-                attack_type: AttackType::Underconstrained,
-                description: "Quick underconstrained check".to_string(),
-                plugin: None,
-                config: serde_yaml::Value::Mapping({
-                    let mut m = serde_yaml::Mapping::new();
-                    m.insert("witness_pairs".into(), 100.into());
-                    m
-                }),
-            },
-        ],
+        attacks: vec![Attack {
+            attack_type: AttackType::Underconstrained,
+            description: "Quick underconstrained check".to_string(),
+            plugin: None,
+            config: serde_yaml::Value::Mapping({
+                let mut m = serde_yaml::Mapping::new();
+                m.insert("witness_pairs".into(), 100.into());
+                m
+            }),
+        }],
         inputs: vec![Input {
             name: "x".to_string(),
             input_type: "field".to_string(),
@@ -213,20 +224,23 @@ async fn test_continuous_fuzzing_realistic_iteration_count() {
         reporting: ReportingConfig::default(),
         chains: vec![],
     };
-    
+
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let report = engine.run(None).await.unwrap();
-    
+
     // Phase 0 Success Metric: Fuzzing loop runs >50 iterations
     assert!(
         report.statistics.total_executions >= 50,
         "Phase 0 metric: Should run at least 50 iterations, got {}",
         report.statistics.total_executions
     );
-    
+
     println!("Phase 0 Fix Verification:");
     println!("  ✓ Continuous fuzzing loop implemented");
-    println!("  ✓ Ran {} iterations (target: >50)", report.statistics.total_executions);
+    println!(
+        "  ✓ Ran {} iterations (target: >50)",
+        report.statistics.total_executions
+    );
     println!("  ✓ Loop: select_from_corpus() → mutate() → execute_and_learn()");
 }
 
@@ -238,7 +252,7 @@ async fn test_continuous_fuzzing_realistic_iteration_count() {
 async fn test_all_five_novel_attacks_dispatch() {
     use zk_fuzzer::config::*;
     use zk_fuzzer::fuzzer::FuzzingEngine;
-    
+
     let novel_attacks = vec![
         (AttackType::ConstraintInference, "constraint_inference"),
         (AttackType::Metamorphic, "metamorphic"),
@@ -246,7 +260,7 @@ async fn test_all_five_novel_attacks_dispatch() {
         (AttackType::SpecInference, "spec_inference"),
         (AttackType::WitnessCollision, "witness_collision"),
     ];
-    
+
     for (attack_type, name) in novel_attacks {
         let config = FuzzConfig {
             campaign: Campaign {
@@ -291,19 +305,19 @@ async fn test_all_five_novel_attacks_dispatch() {
             reporting: ReportingConfig::default(),
             chains: vec![],
         };
-        
+
         let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
         let result = engine.run(None).await;
-        
+
         assert!(
             result.is_ok(),
             "Phase 0 metric: {} attack should dispatch without panic/warning",
             name
         );
-        
+
         println!("  ✓ {:?} attack dispatched successfully", attack_type);
     }
-    
+
     println!("\nPhase 0 Fix Verification:");
     println!("  ✓ All 5 novel attacks dispatch without 'not implemented' warnings");
 }

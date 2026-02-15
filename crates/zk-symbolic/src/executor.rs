@@ -6,10 +6,10 @@
 //! - Guide fuzzing with symbolic information
 //! - Automatically generate edge-case test vectors
 
-use zk_core::FieldElement;
 use std::collections::{HashMap, HashSet, VecDeque};
 use z3::ast::Ast;
 use z3::{ast, Config, Context, SatResult, Solver};
+use zk_core::FieldElement;
 
 /// BN254 scalar field modulus
 const BN254_MODULUS: &str =
@@ -408,8 +408,7 @@ impl Z3Solver {
         match value {
             SymbolicValue::Concrete(fe) => {
                 let dec_str = fe.to_decimal_string();
-                ast::Int::from_str(ctx, &dec_str)
-                    .unwrap_or_else(|| ast::Int::from_i64(ctx, 0))
+                ast::Int::from_str(ctx, &dec_str).unwrap_or_else(|| ast::Int::from_i64(ctx, 0))
             }
             SymbolicValue::Symbol(name) => {
                 if let Some(var) = vars.get(name) {

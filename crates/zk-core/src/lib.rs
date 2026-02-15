@@ -16,6 +16,5 @@ pub use field::FieldElement;
 pub use info::CircuitInfo;
 pub use traits::{Attack, AttackContext, OracleConfig, OracleStats, SemanticOracle};
 pub use types::{
-    AttackType, CoverageMap, Finding, Framework, ProofOfConcept, Severity, TestCase,
-    TestMetadata,
+    AttackType, CoverageMap, Finding, Framework, ProofOfConcept, Severity, TestCase, TestMetadata,
 };

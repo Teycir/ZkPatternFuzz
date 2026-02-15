@@ -10,11 +10,11 @@
 use crate::executor::{
     PathCondition, SolverResult, SymbolicConstraint, SymbolicState, SymbolicValue, Z3Solver,
 };
-use zk_core::FieldElement;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use z3::ast::Ast;
 use z3::{ast, Config, Context, SatResult, Solver};
+use zk_core::FieldElement;
 
 /// BN254 scalar field modulus
 const BN254_MODULUS: &str =
@@ -869,8 +869,7 @@ impl IncrementalSolver {
         match value {
             SymbolicValue::Concrete(fe) => {
                 let dec_str = fe.to_decimal_string();
-                ast::Int::from_str(ctx, &dec_str)
-                    .unwrap_or_else(|| ast::Int::from_i64(ctx, 0))
+                ast::Int::from_str(ctx, &dec_str).unwrap_or_else(|| ast::Int::from_i64(ctx, 0))
             }
             SymbolicValue::Symbol(name) => {
                 if let Some(var) = vars.get(name) {
@@ -1241,21 +1240,27 @@ mod tests {
         let mut pruner = PathPruner::new(PruningStrategy::SubsumptionBased);
 
         let mut base_state = SymbolicState::new(1);
-        base_state.path_condition.add_constraint(SymbolicConstraint::Eq(
-            SymbolicValue::symbol("x"),
-            SymbolicValue::concrete(FieldElement::one()),
-        ));
+        base_state
+            .path_condition
+            .add_constraint(SymbolicConstraint::Eq(
+                SymbolicValue::symbol("x"),
+                SymbolicValue::concrete(FieldElement::one()),
+            ));
         assert!(!pruner.should_prune(&base_state, 0));
 
         let mut stricter_state = SymbolicState::new(1);
-        stricter_state.path_condition.add_constraint(SymbolicConstraint::Eq(
-            SymbolicValue::symbol("x"),
-            SymbolicValue::concrete(FieldElement::one()),
-        ));
-        stricter_state.path_condition.add_constraint(SymbolicConstraint::Neq(
-            SymbolicValue::symbol("x"),
-            SymbolicValue::concrete(FieldElement::zero()),
-        ));
+        stricter_state
+            .path_condition
+            .add_constraint(SymbolicConstraint::Eq(
+                SymbolicValue::symbol("x"),
+                SymbolicValue::concrete(FieldElement::one()),
+            ));
+        stricter_state
+            .path_condition
+            .add_constraint(SymbolicConstraint::Neq(
+                SymbolicValue::symbol("x"),
+                SymbolicValue::concrete(FieldElement::zero()),
+            ));
         assert!(pruner.should_prune(&stricter_state, 1));
     }
 

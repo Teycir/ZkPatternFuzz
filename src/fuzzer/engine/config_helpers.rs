@@ -13,7 +13,12 @@ impl FuzzingEngine {
         use std::collections::HashSet;
 
         let mut disabled = HashSet::new();
-        let Some(value) = config.campaign.parameters.additional.get("disabled_oracles") else {
+        let Some(value) = config
+            .campaign
+            .parameters
+            .additional
+            .get("disabled_oracles")
+        else {
             return disabled;
         };
 

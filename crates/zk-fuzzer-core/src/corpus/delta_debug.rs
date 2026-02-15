@@ -29,8 +29,8 @@
 //! let minimal = debugger.minimize(&failing_input)?;
 //! ```
 
-use zk_core::{FieldElement, TestCase, TestMetadata};
 use std::time::{Duration, Instant};
+use zk_core::{FieldElement, TestCase, TestMetadata};
 
 /// Result of testing a candidate input
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,7 +136,10 @@ where
     ///
     /// The oracle should return `OracleResult::Fail` for inputs that
     /// still exhibit the bug.
-    pub fn minimize(&self, input: &[FieldElement]) -> Result<(Vec<FieldElement>, DeltaDebugStats), String> {
+    pub fn minimize(
+        &self,
+        input: &[FieldElement],
+    ) -> Result<(Vec<FieldElement>, DeltaDebugStats), String> {
         let start = Instant::now();
         let mut stats = DeltaDebugStats::new(input.len());
 
@@ -323,7 +326,9 @@ where
             // Create oracle that tests within this group
             let mut i = 0;
             while i < current_groups[group_idx].len() {
-                if start.elapsed() > self.config.max_time || stats.queries >= self.config.max_queries {
+                if start.elapsed() > self.config.max_time
+                    || stats.queries >= self.config.max_queries
+                {
                     break;
                 }
 

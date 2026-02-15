@@ -1,9 +1,9 @@
-use clap::{Parser, Subcommand};
 use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
+use clap::{Parser, Subcommand};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use zk_fuzzer::config::{FuzzConfig, ProfileName, ReadinessReport, apply_profile};
+use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName, ReadinessReport};
 use zk_fuzzer::fuzzer::ZkFuzzer;
 
 #[derive(Debug, Clone)]
@@ -53,7 +53,11 @@ impl DynamicTeeWriter {
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            match std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+            {
                 Ok(file) => {
                     *guard = Some((path.clone(), file));
                 }
@@ -381,7 +385,10 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
         });
 
     if let Some(obj) = summary.as_object_mut() {
-        obj.insert("updated_utc".to_string(), serde_json::Value::String(now.clone()));
+        obj.insert(
+            "updated_utc".to_string(),
+            serde_json::Value::String(now.clone()),
+        );
         obj.insert(
             "report_dir".to_string(),
             serde_json::Value::String(report_dir.display().to_string()),
@@ -406,10 +413,22 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
             let v = modes.get(key);
             md.push_str(&format!("## {}\n\n", key));
             if let Some(v) = v {
-                let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
-                let run_id = v.get("run_id").and_then(|s| s.as_str()).unwrap_or("unknown");
-                let campaign = v.get("campaign_name").and_then(|s| s.as_str()).unwrap_or("unknown");
-                let started = v.get("started_utc").and_then(|s| s.as_str()).unwrap_or("unknown");
+                let status = v
+                    .get("status")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+                let run_id = v
+                    .get("run_id")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+                let campaign = v
+                    .get("campaign_name")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+                let started = v
+                    .get("started_utc")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
                 let ended = v.get("ended_utc").and_then(|s| s.as_str()).unwrap_or("");
                 md.push_str(&format!("- Status: `{}`\n", status));
                 md.push_str(&format!("- Run ID: `{}`\n", run_id));
@@ -420,7 +439,10 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
                 }
 
                 if let Some(window) = v.get("run_window") {
-                    if let Some(exp) = window.get("expected_latest_end_utc").and_then(|s| s.as_str()) {
+                    if let Some(exp) = window
+                        .get("expected_latest_end_utc")
+                        .and_then(|s| s.as_str())
+                    {
                         md.push_str(&format!("- Expected latest end (UTC): `{}`\n", exp));
                     }
                     if let Some(sem) = window.get("timeout_semantics").and_then(|s| s.as_str()) {
@@ -431,7 +453,9 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
                 if let Some(metrics) = v.get("metrics") {
                     if let Some(total) = metrics.get("findings_total").and_then(|n| n.as_u64()) {
                         md.push_str(&format!("- Findings: `{}`\n", total));
-                    } else if let Some(total) = metrics.get("chain_findings_total").and_then(|n| n.as_u64()) {
+                    } else if let Some(total) =
+                        metrics.get("chain_findings_total").and_then(|n| n.as_u64())
+                    {
                         md.push_str(&format!("- Findings: `{}`\n", total));
                     }
                     if let Some(crit) = metrics.get("critical_findings").and_then(|b| b.as_bool()) {
@@ -670,11 +694,11 @@ fn start_signal_watchers() {
         let mut sigint = Box::pin(tokio::signal::ctrl_c());
 
         #[cfg(unix)]
-        let mut sigterm = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        {
-            Ok(s) => Some(s),
-            Err(_) => None,
-        };
+        let mut sigterm =
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(s) => Some(s),
+                Err(_) => None,
+            };
 
         #[cfg(not(unix))]
         let mut sigterm: Option<()> = None;
@@ -744,7 +768,9 @@ fn start_signal_watchers() {
 #[command(name = "zk-fuzzer")]
 #[command(version = "0.1.0")]
 #[command(about = "Zero-Knowledge Proof Security Testing Framework")]
-#[command(long_about = "A comprehensive fuzzing framework for detecting vulnerabilities in ZK circuits.\n\nSupports Circom, Noir, Halo2, and Cairo backends with coverage-guided fuzzing,\nmultiple attack vectors, and detailed vulnerability reporting.")]
+#[command(
+    long_about = "A comprehensive fuzzing framework for detecting vulnerabilities in ZK circuits.\n\nSupports Circom, Noir, Halo2, and Cairo backends with coverage-guided fuzzing,\nmultiple attack vectors, and detailed vulnerability reporting."
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -799,11 +825,11 @@ enum Commands {
     Run {
         /// Path to campaign YAML file
         campaign: String,
-        
+
         /// Number of continuous fuzzing iterations (Phase 0)
         #[arg(short, long, default_value = "100000")]
         iterations: u64,
-        
+
         /// Timeout in seconds for continuous fuzzing phase
         #[arg(short, long)]
         timeout: Option<u64>,
@@ -911,11 +937,11 @@ struct ChainRunOptions {
 /// Kill existing zk-fuzzer instances with graceful shutdown
 async fn kill_existing_instances() {
     let current_pid = std::process::id();
-    
+
     let pgrep_output = std::process::Command::new("pgrep")
         .args(["-f", "zk-fuzzer"])
         .output();
-    
+
     if let Ok(output) = pgrep_output {
         if output.status.success() {
             let pids = String::from_utf8_lossy(&output.stdout);
@@ -929,10 +955,10 @@ async fn kill_existing_instances() {
                     }
                 }
             }
-            
+
             // Wait for graceful shutdown
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-            
+
             // Force kill any remaining processes (SIGKILL)
             for pid_str in pids.lines() {
                 if let Ok(pid) = pid_str.trim().parse::<u32>() {
@@ -943,8 +969,11 @@ async fn kill_existing_instances() {
                     }
                 }
             }
-            
-            eprintln!("Terminated existing zk-fuzzer instances (excluding PID {})", current_pid);
+
+            eprintln!(
+                "Terminated existing zk-fuzzer instances (excluding PID {})",
+                current_pid
+            );
         }
     }
 }
@@ -986,7 +1015,13 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
     start_signal_watchers();
 
     match cli.command {
-        Some(Commands::Run { campaign, iterations, timeout, resume, corpus_dir }) => {
+        Some(Commands::Run {
+            campaign,
+            iterations,
+            timeout,
+            resume,
+            corpus_dir,
+        }) => {
             run_campaign(
                 &campaign,
                 CampaignRunOptions {
@@ -1006,7 +1041,13 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
             )
             .await
         }
-        Some(Commands::Evidence { campaign, iterations, timeout, resume, corpus_dir }) => {
+        Some(Commands::Evidence {
+            campaign,
+            iterations,
+            timeout,
+            resume,
+            corpus_dir,
+        }) => {
             run_campaign(
                 &campaign,
                 CampaignRunOptions {
@@ -1026,7 +1067,12 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
             )
             .await
         }
-        Some(Commands::Chains { campaign, iterations, timeout, resume }) => {
+        Some(Commands::Chains {
+            campaign,
+            iterations,
+            timeout,
+            resume,
+        }) => {
             run_chain_campaign(
                 &campaign,
                 ChainRunOptions {
@@ -1042,18 +1088,12 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
             )
             .await
         }
-        Some(Commands::Validate { campaign }) => {
-            validate_campaign(&campaign)
-        }
+        Some(Commands::Validate { campaign }) => validate_campaign(&campaign),
         Some(Commands::Minimize { corpus_dir, output }) => {
             minimize_corpus(&corpus_dir, output.as_deref())
         }
-        Some(Commands::Init { output, framework }) => {
-            generate_sample_config(&output, &framework)
-        }
-        Some(Commands::ExecWorker) => {
-            zk_fuzzer::executor::run_exec_worker()
-        }
+        Some(Commands::Init { output, framework }) => generate_sample_config(&output, &framework),
+        Some(Commands::ExecWorker) => zk_fuzzer::executor::run_exec_worker(),
         None => {
             // Default behavior: run with config if provided
             if let Some(config_path) = cli.config {
@@ -1087,7 +1127,11 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
 
 async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow::Result<()> {
     let started_utc = Utc::now();
-    let command = if options.require_invariants { "evidence" } else { "run" };
+    let command = if options.require_invariants {
+        "evidence"
+    } else {
+        "run"
+    };
     let run_id = make_run_id(command, Some(config_path));
     let mut stage = "load_config";
 
@@ -1163,10 +1207,11 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     }
 
     // Always enforce strict backend in this CLI.
-    config.campaign.parameters.additional.insert(
-        "strict_backend".to_string(),
-        serde_yaml::Value::Bool(true),
-    );
+    config
+        .campaign
+        .parameters
+        .additional
+        .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
 
     // Inject CLI fuzzing parameters into config
     config.campaign.parameters.additional.insert(
@@ -1198,37 +1243,39 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     let _output_lock = if options.dry_run {
         None
     } else {
-        Some(match zk_fuzzer::util::file_lock::lock_dir_exclusive(
-            &output_dir,
-            ".zkfuzz.lock",
-            zk_fuzzer::util::file_lock::LockMode::NonBlocking,
-        ) {
-            Ok(lock) => lock,
-            Err(err) => {
-                let ended_utc = Utc::now();
-                let doc = serde_json::json!({
-                    "status": "failed",
-                    "command": command,
-                    "run_id": run_id.clone(),
-                    "stage": stage,
-                    "pid": std::process::id(),
-                    "campaign_path": config_path,
-                    "campaign_name": campaign_name.clone(),
-                    "output_dir": output_dir.display().to_string(),
-                    "started_utc": started_utc.to_rfc3339(),
-                    "ended_utc": ended_utc.to_rfc3339(),
-                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                    "error": format!("{:#}", err),
-                    "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
-                });
-                write_failed_run_artifact(&run_id, &doc);
-                return Err(anyhow::anyhow!(
-                    "Output directory is already in use (locked): {}. Error: {:#}",
-                    output_dir.display(),
-                    err
-                ));
-            }
-        })
+        Some(
+            match zk_fuzzer::util::file_lock::lock_dir_exclusive(
+                &output_dir,
+                ".zkfuzz.lock",
+                zk_fuzzer::util::file_lock::LockMode::NonBlocking,
+            ) {
+                Ok(lock) => lock,
+                Err(err) => {
+                    let ended_utc = Utc::now();
+                    let doc = serde_json::json!({
+                        "status": "failed",
+                        "command": command,
+                        "run_id": run_id.clone(),
+                        "stage": stage,
+                        "pid": std::process::id(),
+                        "campaign_path": config_path,
+                        "campaign_name": campaign_name.clone(),
+                        "output_dir": output_dir.display().to_string(),
+                        "started_utc": started_utc.to_rfc3339(),
+                        "ended_utc": ended_utc.to_rfc3339(),
+                        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                        "error": format!("{:#}", err),
+                        "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
+                    });
+                    write_failed_run_artifact(&run_id, &doc);
+                    return Err(anyhow::anyhow!(
+                        "Output directory is already in use (locked): {}. Error: {:#}",
+                        output_dir.display(),
+                        err
+                    ));
+                }
+            },
+        )
     };
 
     if !options.dry_run {
@@ -1270,7 +1317,12 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "dry_run": options.dry_run,
             }
         });
-        add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+        add_run_window_fields(
+            &mut doc,
+            started_utc,
+            options.timeout,
+            "continuous_phase_only",
+        );
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
 
@@ -1306,25 +1358,32 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
                 "reason": "Evidence mode requires v2 invariants in the YAML (invariants: ...).",
             });
-            add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+            add_run_window_fields(
+                &mut doc,
+                started_utc,
+                options.timeout,
+                "continuous_phase_only",
+            );
             if !options.dry_run {
                 write_run_artifacts(&output_dir, &run_id, &doc);
             }
             anyhow::bail!("Evidence mode requires v2 invariants in the YAML (invariants: ...).");
         }
 
-        config.campaign.parameters.additional.insert(
-            "evidence_mode".to_string(),
-            serde_yaml::Value::Bool(true),
-        );
+        config
+            .campaign
+            .parameters
+            .additional
+            .insert("evidence_mode".to_string(), serde_yaml::Value::Bool(true));
         config.campaign.parameters.additional.insert(
             "engagement_strict".to_string(),
             serde_yaml::Value::Bool(true),
         );
-        config.campaign.parameters.additional.insert(
-            "strict_backend".to_string(),
-            serde_yaml::Value::Bool(true),
-        );
+        config
+            .campaign
+            .parameters
+            .additional
+            .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
 
         // Pre-flight readiness check for strict evidence engagements.
         stage = "preflight_readiness";
@@ -1348,7 +1407,12 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "reason": "Campaign has critical issues; refusing to start strict evidence run",
                 "readiness": readiness_report_to_json(&readiness),
             });
-            add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+            add_run_window_fields(
+                &mut doc,
+                started_utc,
+                options.timeout,
+                "continuous_phase_only",
+            );
             if !options.dry_run {
                 write_run_artifacts(&output_dir, &run_id, &doc);
             }
@@ -1385,7 +1449,12 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "dry_run": options.dry_run,
             }
         });
-        add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+        add_run_window_fields(
+            &mut doc,
+            started_utc,
+            options.timeout,
+            "continuous_phase_only",
+        );
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
 
@@ -1396,7 +1465,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         } else {
             config.reporting.output_dir.join("corpus")
         };
-        
+
         if corpus_path.exists() {
             tracing::info!("Resume mode: loading corpus from {:?}", corpus_path);
             config.campaign.parameters.additional.insert(
@@ -1405,8 +1474,14 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             );
             println!("📂 Resuming from corpus: {}", corpus_path.display());
         } else {
-            tracing::warn!("Resume requested but corpus directory not found: {:?}", corpus_path);
-            println!("⚠️  Corpus directory not found, starting fresh: {}", corpus_path.display());
+            tracing::warn!(
+                "Resume requested but corpus directory not found: {:?}",
+                corpus_path
+            );
+            println!(
+                "⚠️  Corpus directory not found, starting fresh: {}",
+                corpus_path.display()
+            );
         }
     }
 
@@ -1485,7 +1560,12 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                     "started_utc": started_utc_for_monitor.to_rfc3339(),
                     "progress": progress_json,
                 });
-                add_run_window_fields(&mut doc, started_utc_for_monitor, timeout_for_monitor, "continuous_phase_only");
+                add_run_window_fields(
+                    &mut doc,
+                    started_utc_for_monitor,
+                    timeout_for_monitor,
+                    "continuous_phase_only",
+                );
                 write_global_run_signal(doc["run_id"].as_str().unwrap_or("unknown"), &doc);
 
                 // Convenience: if output_dir is outside the engagement report folder, mirror the
@@ -1518,7 +1598,12 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "output_dir": output_dir.display().to_string(),
             "started_utc": started_utc.to_rfc3339(),
         });
-        add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+        add_run_window_fields(
+            &mut doc,
+            started_utc,
+            options.timeout,
+            "continuous_phase_only",
+        );
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
     let report = match if options.simple_progress {
@@ -1544,7 +1629,12 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
                 "error": format!("{:#}", err),
             });
-            add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+            add_run_window_fields(
+                &mut doc,
+                started_utc,
+                options.timeout,
+                "continuous_phase_only",
+            );
             write_run_artifacts(&output_dir, &run_id, &doc);
             return Err(err);
         }
@@ -1569,7 +1659,12 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
             "error": format!("{:#}", err),
         });
-        add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+        add_run_window_fields(
+            &mut doc,
+            started_utc,
+            options.timeout,
+            "continuous_phase_only",
+        );
         write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err);
     }
@@ -1594,7 +1689,12 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "total_executions": report.statistics.total_executions,
         },
     });
-    add_run_window_fields(&mut doc, started_utc, options.timeout, "continuous_phase_only");
+    add_run_window_fields(
+        &mut doc,
+        started_utc,
+        options.timeout,
+        "continuous_phase_only",
+    );
     write_run_artifacts(&output_dir, &run_id, &doc);
 
     if critical {
@@ -1634,9 +1734,9 @@ fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
                 .or_insert_with(|| serde_yaml::Value::Bool(true));
         } else {
             // Match `run/evidence` defaults: iterations=100000.
-            additional.entry("fuzzing_iterations".to_string()).or_insert_with(|| {
-                serde_yaml::Value::Number(serde_yaml::Number::from(100_000u64))
-            });
+            additional
+                .entry("fuzzing_iterations".to_string())
+                .or_insert_with(|| serde_yaml::Value::Number(serde_yaml::Number::from(100_000u64)));
         }
     }
 
@@ -1647,7 +1747,10 @@ fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
     println!("  Version: {}", config.campaign.version);
     println!("  Framework: {:?}", config.campaign.target.framework);
     println!("  Circuit: {:?}", config.campaign.target.circuit_path);
-    println!("  Main Component: {}", config.campaign.target.main_component);
+    println!(
+        "  Main Component: {}",
+        config.campaign.target.main_component
+    );
     println!();
     println!("Attacks ({}):", config.attacks.len());
     for attack in &config.attacks {
@@ -1656,7 +1759,10 @@ fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
     println!();
     println!("Inputs ({}):", config.inputs.len());
     for input in &config.inputs {
-        println!("  - {}: {} ({:?})", input.name, input.input_type, input.fuzz_strategy);
+        println!(
+            "  - {}: {} ({:?})",
+            input.name, input.input_type, input.fuzz_strategy
+        );
     }
 
     // Phase 4C: 0-day readiness check
@@ -1672,8 +1778,8 @@ fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
 }
 
 fn minimize_corpus(corpus_dir: &str, output: Option<&str>) -> anyhow::Result<()> {
-    use zk_fuzzer::corpus::{minimizer, storage};
     use std::path::Path;
+    use zk_fuzzer::corpus::{minimizer, storage};
 
     tracing::info!("Loading corpus from: {}", corpus_dir);
 
@@ -1710,8 +1816,9 @@ fn generate_sample_config(output: &str, framework: &str) -> anyhow::Result<()> {
         "cairo" => ("./circuits/example.cairo", "main"),
         _ => ("./circuits/example.circom", "Main"),
     };
-    
-    let sample = format!(r#"# ZK-Fuzzer Campaign Configuration
+
+    let sample = format!(
+        r#"# ZK-Fuzzer Campaign Configuration
 # Generated sample for {} framework
 
 campaign:
@@ -1729,7 +1836,7 @@ campaign:
     # NOTE: campaign.parameters is a flattened key/value map.
     # Do NOT nest under `additional:` (legacy templates used that shape).
     strict_backend: true
-    mark_fallback: true
+    mark_fallback: false
 
 attacks:
   - type: underconstrained
@@ -1782,7 +1889,9 @@ reporting:
     - markdown
   include_poc: true
   crash_reproduction: true
-"#, framework, framework, framework, circuit_path, main_component);
+"#,
+        framework, framework, framework, circuit_path, main_component
+    );
 
     std::fs::write(output, sample)?;
     println!("Generated sample configuration: {}", output);
@@ -1795,24 +1904,56 @@ fn print_banner(config: &FuzzConfig) {
     use colored::*;
 
     println!();
-    println!("{}", "╔═══════════════════════════════════════════════════════════╗".bright_cyan());
-    println!("{}", "║              ZK-FUZZER v0.1.0                             ║".bright_cyan());
-    println!("{}", "║       Zero-Knowledge Proof Security Tester                ║".bright_cyan());
-    println!("{}", "╠═══════════════════════════════════════════════════════════╣".bright_cyan());
-    println!("{}  Campaign: {:<45} {}", "║".bright_cyan(), truncate_str(&config.campaign.name, 45).white(), "║".bright_cyan());
-    println!("{}  Target:   {:<45} {}", "║".bright_cyan(), format!("{:?}", config.campaign.target.framework).yellow(), "║".bright_cyan());
-    println!("{}  Attacks:  {:<45} {}", "║".bright_cyan(), format!("{} configured", config.attacks.len()).green(), "║".bright_cyan());
-    println!("{}  Inputs:   {:<45} {}", "║".bright_cyan(), format!("{} defined", config.inputs.len()).green(), "║".bright_cyan());
-    println!("{}", "╚═══════════════════════════════════════════════════════════╝".bright_cyan());
+    println!(
+        "{}",
+        "╔═══════════════════════════════════════════════════════════╗".bright_cyan()
+    );
+    println!(
+        "{}",
+        "║              ZK-FUZZER v0.1.0                             ║".bright_cyan()
+    );
+    println!(
+        "{}",
+        "║       Zero-Knowledge Proof Security Tester                ║".bright_cyan()
+    );
+    println!(
+        "{}",
+        "╠═══════════════════════════════════════════════════════════╣".bright_cyan()
+    );
+    println!(
+        "{}  Campaign: {:<45} {}",
+        "║".bright_cyan(),
+        truncate_str(&config.campaign.name, 45).white(),
+        "║".bright_cyan()
+    );
+    println!(
+        "{}  Target:   {:<45} {}",
+        "║".bright_cyan(),
+        format!("{:?}", config.campaign.target.framework).yellow(),
+        "║".bright_cyan()
+    );
+    println!(
+        "{}  Attacks:  {:<45} {}",
+        "║".bright_cyan(),
+        format!("{} configured", config.attacks.len()).green(),
+        "║".bright_cyan()
+    );
+    println!(
+        "{}  Inputs:   {:<45} {}",
+        "║".bright_cyan(),
+        format!("{} defined", config.inputs.len()).green(),
+        "║".bright_cyan()
+    );
+    println!(
+        "{}",
+        "╚═══════════════════════════════════════════════════════════╝".bright_cyan()
+    );
     println!();
 }
 
 fn print_run_window(start: DateTime<Local>, timeout_seconds: Option<u64>) {
     println!("RUN WINDOW");
-    println!(
-        "  Start: {}",
-        start.format("%Y-%m-%d %H:%M:%S %Z")
-    );
+    println!("  Start: {}", start.format("%Y-%m-%d %H:%M:%S %Z"));
 
     match timeout_seconds.and_then(|s| i64::try_from(s).ok()) {
         Some(seconds) => {
@@ -1905,37 +2046,39 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let _output_lock = if options.dry_run {
         None
     } else {
-        Some(match zk_fuzzer::util::file_lock::lock_dir_exclusive(
-            &output_dir,
-            ".zkfuzz.lock",
-            zk_fuzzer::util::file_lock::LockMode::NonBlocking,
-        ) {
-            Ok(lock) => lock,
-            Err(err) => {
-                let ended_utc = Utc::now();
-                let doc = serde_json::json!({
-                    "status": "failed",
-                    "command": command,
-                    "run_id": run_id.clone(),
-                    "stage": stage,
-                    "pid": std::process::id(),
-                    "campaign_path": config_path,
-                    "campaign_name": campaign_name.clone(),
-                    "output_dir": output_dir.display().to_string(),
-                    "started_utc": started_utc.to_rfc3339(),
-                    "ended_utc": ended_utc.to_rfc3339(),
-                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                    "error": format!("{:#}", err),
-                    "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
-                });
-                write_failed_run_artifact(&run_id, &doc);
-                return Err(anyhow::anyhow!(
-                    "Output directory is already in use (locked): {}. Error: {:#}",
-                    output_dir.display(),
-                    err
-                ));
-            }
-        })
+        Some(
+            match zk_fuzzer::util::file_lock::lock_dir_exclusive(
+                &output_dir,
+                ".zkfuzz.lock",
+                zk_fuzzer::util::file_lock::LockMode::NonBlocking,
+            ) {
+                Ok(lock) => lock,
+                Err(err) => {
+                    let ended_utc = Utc::now();
+                    let doc = serde_json::json!({
+                        "status": "failed",
+                        "command": command,
+                        "run_id": run_id.clone(),
+                        "stage": stage,
+                        "pid": std::process::id(),
+                        "campaign_path": config_path,
+                        "campaign_name": campaign_name.clone(),
+                        "output_dir": output_dir.display().to_string(),
+                        "started_utc": started_utc.to_rfc3339(),
+                        "ended_utc": ended_utc.to_rfc3339(),
+                        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                        "error": format!("{:#}", err),
+                        "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
+                    });
+                    write_failed_run_artifact(&run_id, &doc);
+                    return Err(anyhow::anyhow!(
+                        "Output directory is already in use (locked): {}. Error: {:#}",
+                        output_dir.display(),
+                        err
+                    ));
+                }
+            },
+        )
     };
 
     if !options.dry_run {
@@ -2017,18 +2160,20 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     }
 
     // Force evidence mode settings for chain fuzzing
-    config.campaign.parameters.additional.insert(
-        "evidence_mode".to_string(),
-        serde_yaml::Value::Bool(true),
-    );
+    config
+        .campaign
+        .parameters
+        .additional
+        .insert("evidence_mode".to_string(), serde_yaml::Value::Bool(true));
     config.campaign.parameters.additional.insert(
         "engagement_strict".to_string(),
         serde_yaml::Value::Bool(true),
     );
-    config.campaign.parameters.additional.insert(
-        "strict_backend".to_string(),
-        serde_yaml::Value::Bool(true),
-    );
+    config
+        .campaign
+        .parameters
+        .additional
+        .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
     config.campaign.parameters.additional.insert(
         "chain_budget_seconds".to_string(),
         serde_yaml::Value::Number(serde_yaml::Number::from(options.timeout)),
@@ -2068,15 +2213,54 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     // Print chain-specific banner
     println!();
-    println!("{}", "╔═══════════════════════════════════════════════════════════╗".bright_magenta());
-    println!("{}", "║         ZK-FUZZER v0.1.0 — MODE 3: CHAIN FUZZING          ║".bright_magenta());
-    println!("{}", "║               Multi-Step Deep Bug Discovery               ║".bright_magenta());
-    println!("{}", "╠═══════════════════════════════════════════════════════════╣".bright_magenta());
-    println!("{}  Campaign: {:<45} {}", "║".bright_magenta(), truncate_str(&config.campaign.name, 45).white(), "║".bright_magenta());
-    println!("{}  Chains:   {:<45} {}", "║".bright_magenta(), format!("{} defined", chains.len()).cyan(), "║".bright_magenta());
-    println!("{}  Budget:   {:<45} {}", "║".bright_magenta(), format!("{}s total", options.timeout).yellow(), "║".bright_magenta());
-    println!("{}  Resume:   {:<45} {}", "║".bright_magenta(), if options.resume { "yes".green() } else { "no".white() }, "║".bright_magenta());
-    println!("{}", "╚═══════════════════════════════════════════════════════════╝".bright_magenta());
+    println!(
+        "{}",
+        "╔═══════════════════════════════════════════════════════════╗".bright_magenta()
+    );
+    println!(
+        "{}",
+        "║         ZK-FUZZER v0.1.0 — MODE 3: CHAIN FUZZING          ║".bright_magenta()
+    );
+    println!(
+        "{}",
+        "║               Multi-Step Deep Bug Discovery               ║".bright_magenta()
+    );
+    println!(
+        "{}",
+        "╠═══════════════════════════════════════════════════════════╣".bright_magenta()
+    );
+    println!(
+        "{}  Campaign: {:<45} {}",
+        "║".bright_magenta(),
+        truncate_str(&config.campaign.name, 45).white(),
+        "║".bright_magenta()
+    );
+    println!(
+        "{}  Chains:   {:<45} {}",
+        "║".bright_magenta(),
+        format!("{} defined", chains.len()).cyan(),
+        "║".bright_magenta()
+    );
+    println!(
+        "{}  Budget:   {:<45} {}",
+        "║".bright_magenta(),
+        format!("{}s total", options.timeout).yellow(),
+        "║".bright_magenta()
+    );
+    println!(
+        "{}  Resume:   {:<45} {}",
+        "║".bright_magenta(),
+        if options.resume {
+            "yes".green()
+        } else {
+            "no".white()
+        },
+        "║".bright_magenta()
+    );
+    println!(
+        "{}",
+        "╚═══════════════════════════════════════════════════════════╝".bright_magenta()
+    );
     println!();
     let run_start = Local::now();
     print_run_window(run_start, Some(options.timeout));
@@ -2127,11 +2311,12 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let corpus_path = output_dir.join("chain_corpus.json");
     let corpus_meta_path = output_dir.join("chain_corpus_meta.json");
-    let read_chain_meta = |p: &std::path::Path| -> Option<zk_fuzzer::chain_fuzzer::ChainCorpusMeta> {
-        std::fs::read_to_string(p)
-            .ok()
-            .and_then(|s| serde_json::from_str::<zk_fuzzer::chain_fuzzer::ChainCorpusMeta>(&s).ok())
-    };
+    let read_chain_meta =
+        |p: &std::path::Path| -> Option<zk_fuzzer::chain_fuzzer::ChainCorpusMeta> {
+            std::fs::read_to_string(p).ok().and_then(|s| {
+                serde_json::from_str::<zk_fuzzer::chain_fuzzer::ChainCorpusMeta>(&s).ok()
+            })
+        };
 
     let baseline_meta = if corpus_meta_path.exists() {
         read_chain_meta(&corpus_meta_path)
@@ -2181,7 +2366,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             return Err(err);
         }
     };
-    
+
     // Run chain fuzzing
     let progress = if options.simple_progress {
         None
@@ -2206,7 +2391,11 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     };
     let (final_total_entries, final_unique_coverage_bits, final_max_depth): (usize, usize, usize) =
         if let Some(meta) = &final_meta {
-            (meta.total_entries, meta.unique_coverage_bits, meta.max_depth)
+            (
+                meta.total_entries,
+                meta.unique_coverage_bits,
+                meta.max_depth,
+            )
         } else {
             let final_corpus = ChainCorpus::load(&corpus_path)
                 .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
@@ -2226,7 +2415,11 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 .map(|e| e.depth_reached)
                 .max()
                 .unwrap_or(0);
-            (final_total_entries, final_unique_coverage_bits, final_max_depth)
+            (
+                final_total_entries,
+                final_unique_coverage_bits,
+                final_max_depth,
+            )
         };
 
     // Engagement contract for Mode 3: refuse to report a "clean" run when exploration is too narrow.
@@ -2306,8 +2499,16 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     println!("  P(L_min >= 2):         {:.1}%", summary.p_deep * 100.0);
     println!();
     println!("{}", "CORPUS / EXPLORATION METRICS".bright_yellow().bold());
-    println!("  Corpus entries:            {} (Δ {})", final_total_entries, final_total_entries.saturating_sub(baseline_total_entries));
-    println!("  Unique coverage bits:      {} (Δ {})", final_unique_coverage_bits, final_unique_coverage_bits.saturating_sub(baseline_unique_coverage_bits));
+    println!(
+        "  Corpus entries:            {} (Δ {})",
+        final_total_entries,
+        final_total_entries.saturating_sub(baseline_total_entries)
+    );
+    println!(
+        "  Unique coverage bits:      {} (Δ {})",
+        final_unique_coverage_bits,
+        final_unique_coverage_bits.saturating_sub(baseline_unique_coverage_bits)
+    );
     println!("  Max depth reached:         {}", final_max_depth);
 
     if !summary.depth_distribution.is_empty() {
@@ -2324,7 +2525,9 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         println!("\n{}", "CHAIN FINDINGS".bright_yellow().bold());
         for (i, finding) in chain_findings.iter().enumerate() {
             let severity_str = match finding.finding.severity.to_uppercase().as_str() {
-                "CRITICAL" => format!("[{}]", finding.finding.severity).bright_red().bold(),
+                "CRITICAL" => format!("[{}]", finding.finding.severity)
+                    .bright_red()
+                    .bold(),
                 "HIGH" => format!("[{}]", finding.finding.severity).red(),
                 "MEDIUM" => format!("[{}]", finding.finding.severity).yellow(),
                 "LOW" => format!("[{}]", finding.finding.severity).bright_yellow(),
@@ -2339,23 +2542,31 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 finding.l_min.to_string().bright_green()
             );
             println!("     {}", finding.finding.description);
-            
+
             if let Some(ref assertion) = finding.violated_assertion {
                 println!("     Violated: {}", assertion.bright_red());
             }
 
             // Print reproduction command
             println!("     {}", "Reproduction:".bright_yellow());
-            println!("       cargo run --release -- chains {} --seed {}", 
-                config_path, options.seed.unwrap_or(42));
+            println!(
+                "       cargo run --release -- chains {} --seed {}",
+                config_path,
+                options.seed.unwrap_or(42)
+            );
         }
     } else {
         if run_valid {
-            println!("\n{}", "  ✓ No chain vulnerabilities found!".bright_green().bold());
+            println!(
+                "\n{}",
+                "  ✓ No chain vulnerabilities found!".bright_green().bold()
+            );
         } else {
             println!(
                 "\n{}",
-                "  ✗ Run invalid: exploration too narrow to treat as 'clean'".bright_red().bold()
+                "  ✗ Run invalid: exploration too narrow to treat as 'clean'"
+                    .bright_red()
+                    .bold()
             );
             for failure in &quality_failures {
                 println!("     - {}", failure);
@@ -2450,13 +2661,22 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     // Save chain findings as markdown
     let chain_md_path = output_dir.join("chain_report.md");
     let mut md = String::new();
-    md.push_str(&format!("# Chain Fuzzing Report: {}\n\n", config.campaign.name));
+    md.push_str(&format!(
+        "# Chain Fuzzing Report: {}\n\n",
+        config.campaign.name
+    ));
     md.push_str("**Mode:** Multi-Step Chain Fuzzing (Mode 3)\n");
-    md.push_str(&format!("**Generated:** {}\n\n", chrono::Utc::now().to_rfc3339()));
+    md.push_str(&format!(
+        "**Generated:** {}\n\n",
+        chrono::Utc::now().to_rfc3339()
+    ));
 
     md.push_str("## Engagement Validation\n\n");
     md.push_str(&format!("**Strict:** {}\n", engagement_strict));
-    md.push_str(&format!("**Valid Run:** {}\n", if run_valid { "yes" } else { "no" }));
+    md.push_str(&format!(
+        "**Valid Run:** {}\n",
+        if run_valid { "yes" } else { "no" }
+    ));
     md.push_str(&format!(
         "**Thresholds:** min_unique_coverage_bits={}, min_completed_per_chain={}\n\n",
         min_unique_coverage_bits, min_completed_per_chain
@@ -2486,17 +2706,28 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     md.push_str("## Depth Metrics\n\n");
     md.push_str("| Metric | Value |\n");
     md.push_str("|--------|-------|\n");
-    md.push_str(&format!("| Total Findings | {} |\n", summary.total_findings));
+    md.push_str(&format!(
+        "| Total Findings | {} |\n",
+        summary.total_findings
+    ));
     md.push_str(&format!("| Mean L_min (D) | {:.2} |\n", summary.d_mean));
-    md.push_str(&format!("| P(L_min >= 2) | {:.1}% |\n\n", summary.p_deep * 100.0));
+    md.push_str(&format!(
+        "| P(L_min >= 2) | {:.1}% |\n\n",
+        summary.p_deep * 100.0
+    ));
 
     if !chain_findings.is_empty() {
         md.push_str("## Chain Findings\n\n");
         for (i, finding) in chain_findings.iter().enumerate() {
-            md.push_str(&format!("### {}. [{}] Chain: {}\n\n", i + 1, finding.finding.severity.to_uppercase(), finding.spec_name));
+            md.push_str(&format!(
+                "### {}. [{}] Chain: {}\n\n",
+                i + 1,
+                finding.finding.severity.to_uppercase(),
+                finding.spec_name
+            ));
             md.push_str(&format!("**L_min:** {}\n\n", finding.l_min));
             md.push_str(&format!("{}\n\n", finding.finding.description));
-            
+
             if let Some(ref assertion) = finding.violated_assertion {
                 md.push_str(&format!("**Violated Assertion:** `{}`\n\n", assertion));
             }
@@ -2505,17 +2736,27 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             md.push_str("**Trace:**\n\n");
             for (step_idx, step) in finding.trace.steps.iter().enumerate() {
                 let status = if step.success { "✓" } else { "✗" };
-                md.push_str(&format!("- Step {}: {} `{}` - {}\n", 
-                    step_idx, status, step.circuit_ref,
-                    if step.success { "success" } else { step.error.as_deref().unwrap_or("failed") }
+                md.push_str(&format!(
+                    "- Step {}: {} `{}` - {}\n",
+                    step_idx,
+                    status,
+                    step.circuit_ref,
+                    if step.success {
+                        "success"
+                    } else {
+                        step.error.as_deref().unwrap_or("failed")
+                    }
                 ));
             }
             md.push('\n');
 
             // Add reproduction
             md.push_str("**Reproduction:**\n\n");
-            md.push_str(&format!("```bash\ncargo run --release -- chains {} --seed {}\n```\n\n", 
-                config_path, options.seed.unwrap_or(42)));
+            md.push_str(&format!(
+                "```bash\ncargo run --release -- chains {} --seed {}\n```\n\n",
+                config_path,
+                options.seed.unwrap_or(42)
+            ));
         }
     }
 
@@ -2541,9 +2782,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     tracing::info!("Saved chain markdown report to {:?}", chain_md_path);
 
     // Convert chain findings to regular findings for standard report
-    let standard_findings: Vec<_> = chain_findings.iter()
-        .map(|cf| cf.to_finding())
-        .collect();
+    let standard_findings: Vec<_> = chain_findings.iter().map(|cf| cf.to_finding()).collect();
 
     // Create standard report with chain findings merged in
     let mut report = FuzzReport::new(

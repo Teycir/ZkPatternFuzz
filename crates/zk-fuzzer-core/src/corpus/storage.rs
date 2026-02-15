@@ -1,8 +1,8 @@
 //! Corpus storage and persistence
 
 use super::CorpusEntry;
-use zk_core::{FieldElement, TestCase, TestMetadata};
 use std::path::Path;
+use zk_core::{FieldElement, TestCase, TestMetadata};
 
 /// Save a single test case to disk
 pub fn save_test_case(entry: &CorpusEntry, dir: &Path, index: usize) -> anyhow::Result<()> {
@@ -30,14 +30,16 @@ pub fn load_test_case(path: &Path) -> anyhow::Result<CorpusEntry> {
 
     let mut inputs = Vec::with_capacity(input_array.len());
     for (i, v) in input_array.iter().enumerate() {
-        let hex = v.as_str()
+        let hex = v
+            .as_str()
             .ok_or_else(|| anyhow::anyhow!("Input {} is not a string", i))?;
         let fe = FieldElement::from_hex(hex)
             .map_err(|e| anyhow::anyhow!("Invalid hex at input {}: {}", i, e))?;
         inputs.push(fe);
     }
 
-    let coverage_hash = data["coverage_hash"].as_u64()
+    let coverage_hash = data["coverage_hash"]
+        .as_u64()
         .ok_or_else(|| anyhow::anyhow!("Missing or invalid coverage_hash"))?;
     let discovered_new_coverage = data["discovered_new_coverage"].as_bool().unwrap_or(false);
     let execution_count = data["execution_count"].as_u64().unwrap_or(0) as usize;

@@ -224,87 +224,165 @@ pub mod util;
 
 // New feature modules
 pub mod analysis;
-pub mod chain_fuzzer;  // Mode 3: Multi-step chain fuzzing
+pub mod chain_fuzzer; // Mode 3: Multi-step chain fuzzing
 pub mod differential;
 pub mod distributed;
 pub mod formal;
 pub mod multi_circuit;
 
-pub use zk_core::CircuitInfo;
 pub use config::{
-    FuzzConfig, Campaign, Target, Parameters, Attack, AttackType, 
-    Input, FuzzStrategy, Framework, Severity, ReportingConfig
+    Attack, AttackType, Campaign, Framework, FuzzConfig, FuzzStrategy, Input, Parameters,
+    ReportingConfig, Severity, Target,
 };
-pub use errors::{ZkFuzzerError, Result};
+pub use errors::{Result, ZkFuzzerError};
 pub use executor::{CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions};
 pub use fuzzer::ZkFuzzer;
-pub use reporting::{FuzzReport, PoCGenerator, PoCGeneratorConfig, PoCFormat};
+pub use reporting::{FuzzReport, PoCFormat, PoCGenerator, PoCGeneratorConfig};
+pub use zk_core::CircuitInfo;
 
 // Semantic oracles for ZK-specific vulnerability detection
 pub use fuzzer::{
-    SemanticOracle, OracleConfig, OracleStats, CombinedSemanticOracle,
-    NullifierOracle, MerkleOracle, CommitmentOracle, RangeProofOracle,
+    AdaptiveCampaignResults,
+    AdaptiveOrchestrator,
+    AdaptiveOrchestratorBuilder,
+    AdaptiveOrchestratorConfig,
     // Adaptive fuzzing
-    AdaptiveScheduler, AdaptiveSchedulerConfig, AdaptiveSchedulerStats,
-    AdaptiveOrchestrator, AdaptiveOrchestratorConfig, AdaptiveOrchestratorBuilder,
-    AdaptiveCampaignResults, ConfirmedZeroDay,
+    AdaptiveScheduler,
+    AdaptiveSchedulerConfig,
+    AdaptiveSchedulerStats,
+    CombinedSemanticOracle,
+    CommitmentOracle,
+    ConfirmedZeroDay,
+    MerkleOracle,
+    NearMiss,
+    NearMissConfig,
     // Near-miss detection
-    NearMissDetector, NearMiss, NearMissConfig, NearMissStats,
+    NearMissDetector,
+    NearMissStats,
+    NullifierOracle,
+    OracleConfig,
+    OracleStats,
+    RangeProofOracle,
+    SemanticOracle,
+    SuggestionType,
     // YAML suggestions
-    YamlSuggestion, SuggestionType,
+    YamlSuggestion,
 };
 
 // Re-export new feature types
 pub use analysis::{
-    TaintAnalyzer, TaintFinding, Profiler, PerformanceProfile,
-    ComplexityAnalyzer, ComplexityMetrics, SymbolicExecutor, SymbolicState,
-    SymbolicConfig, SymbolicFuzzerIntegration, SymbolicConstraint, SymbolicValue,
-    VulnerabilityPattern, Z3Solver, SolverResult, PathCondition, SymbolicStats,
-    // Enhanced symbolic execution
-    EnhancedSymbolicExecutor, EnhancedSymbolicConfig, EnhancedSymbolicStats,
-    ConstraintSimplifier, IncrementalSolver, PathPruner, PruningStrategy,
-    // Constraint-guided symbolic seeding
-    ConstraintSeedGenerator, ConstraintSeedOutput, ConstraintSeedStats, collect_input_wire_indices,
-    // Concolic execution
-    ConcolicExecutor, ConcolicConfig, ConcolicTrace, ConcolicStats,
-    ConcolicFuzzerIntegration,
-    // Extended constraint types
-    ExtendedConstraint, R1CSConstraint, PlonkGate, CustomGateConstraint,
-    LookupConstraint, LookupTable, RangeConstraint, RangeMethod,
-    PolynomialConstraint, PolynomialTerm, AcirOpcode, BlackBoxOp, MemoryOpType,
-    AirConstraint, AirExpression, AirDomain, ConstraintParser, ConstraintChecker,
-    WireRef, ParsedConstraintSet, UnknownLookupPolicy, ConstraintEvaluation,
-    SymbolicConversionOptions, ExtendedConstraintSymbolicExt, ConstraintCheckerSymbolicExt,
-    // R1CS binary parsing
-    R1CS, ParsedR1CSConstraint, parse_sym_file, R1CSConstraintGuidedExt,
-    // Opus project analyzer
-    OpusAnalyzer, OpusConfig, CircuitAnalysisResult, GeneratedConfig,
-    ZeroDayHint, ZeroDayCategory, AttackPriority,
+    collect_input_wire_indices,
+    detect_underconstrained,
+    detect_underconstrained_circom,
     // Underconstrained exploit detection (R1CS matrix extraction + alt witness solving)
-    find_alternative_witness, find_multiple_alternatives, AlternativeWitnessResult,
-    AltWitnessSolver, R1CSMatrices, AltWitnessSolverStats,
-    ProofForgeryDetector, ProofForgeryResult, VerificationResult, ForgeryStats,
+    find_alternative_witness,
+    find_multiple_alternatives,
+    parse_sym_file,
     quick_underconstrained_check,
-    UnderconstrainedExploitDetector, UnderconstrainedExploit, ExploitDetectorConfig,
-    ExploitConfidence, WitnessBundle, ProofVerificationBundle, DifferenceAnalysis,
-    ExploitStats, detect_underconstrained, detect_underconstrained_circom,
+    AcirOpcode,
+    AirConstraint,
+    AirDomain,
+    AirExpression,
+    AltWitnessSolver,
+    AltWitnessSolverStats,
+    AlternativeWitnessResult,
+    AttackPriority,
+    BlackBoxOp,
+    CircuitAnalysisResult,
+    ComplexityAnalyzer,
+    ComplexityMetrics,
+    ConcolicConfig,
+    // Concolic execution
+    ConcolicExecutor,
+    ConcolicFuzzerIntegration,
+    ConcolicStats,
+    ConcolicTrace,
+    ConstraintChecker,
+    ConstraintCheckerSymbolicExt,
+    ConstraintEvaluation,
+    ConstraintParser,
+    // Constraint-guided symbolic seeding
+    ConstraintSeedGenerator,
+    ConstraintSeedOutput,
+    ConstraintSeedStats,
+    ConstraintSimplifier,
+    CustomGateConstraint,
+    DifferenceAnalysis,
+    EnhancedSymbolicConfig,
+    // Enhanced symbolic execution
+    EnhancedSymbolicExecutor,
+    EnhancedSymbolicStats,
+    ExploitConfidence,
+    ExploitDetectorConfig,
+    ExploitStats,
+    // Extended constraint types
+    ExtendedConstraint,
+    ExtendedConstraintSymbolicExt,
+    ForgeryStats,
+    GeneratedConfig,
+    IncrementalSolver,
+    LookupConstraint,
+    LookupTable,
+    MemoryOpType,
+    // Opus project analyzer
+    OpusAnalyzer,
+    OpusConfig,
+    ParsedConstraintSet,
+    ParsedR1CSConstraint,
+    PathCondition,
+    PathPruner,
+    PerformanceProfile,
+    PlonkGate,
+    PolynomialConstraint,
+    PolynomialTerm,
+    Profiler,
+    ProofForgeryDetector,
+    ProofForgeryResult,
+    ProofVerificationBundle,
+    PruningStrategy,
+    R1CSConstraint,
+    R1CSConstraintGuidedExt,
+    R1CSMatrices,
+    RangeConstraint,
+    RangeMethod,
+    SolverResult,
+    SymbolicConfig,
+    SymbolicConstraint,
+    SymbolicConversionOptions,
+    SymbolicExecutor,
+    SymbolicFuzzerIntegration,
+    SymbolicState,
+    SymbolicStats,
+    SymbolicValue,
+    TaintAnalyzer,
+    TaintFinding,
+    UnderconstrainedExploit,
+    UnderconstrainedExploitDetector,
+    UnknownLookupPolicy,
+    VerificationResult,
+    VulnerabilityPattern,
+    WireRef,
+    WitnessBundle,
+    Z3Solver,
+    ZeroDayCategory,
+    ZeroDayHint,
+    // R1CS binary parsing
+    R1CS,
 };
-pub use differential::{DifferentialFuzzer, DifferentialConfig, DifferentialResult};
+pub use differential::{DifferentialConfig, DifferentialFuzzer, DifferentialResult};
 pub use distributed::{
-    DistributedCoordinator, DistributedConfig, FuzzerNode, NodeRole,
-    CorpusSyncManager, SyncStrategy, WorkUnit, NodeStatus, ClusterStats,
+    ClusterStats, CorpusSyncManager, DistributedConfig, DistributedCoordinator, FuzzerNode,
+    NodeRole, NodeStatus, SyncStrategy, WorkUnit,
 };
 pub use formal::{
-    FormalVerificationManager, FormalConfig, ProofSystem, ProofObligation,
-    LeanExporter, CoqExporter, CircuitProperty, PropertyExtractor,
+    CircuitProperty, CoqExporter, FormalConfig, FormalVerificationManager, LeanExporter,
+    ProofObligation, ProofSystem, PropertyExtractor,
 };
-pub use multi_circuit::{MultiCircuitFuzzer, MultiCircuitConfig, CircuitChain};
+pub use multi_circuit::{CircuitChain, MultiCircuitConfig, MultiCircuitFuzzer};
 
 // Mode 3: Chain fuzzing for multi-step vulnerabilities
 pub use chain_fuzzer::{
-    ChainSpec, StepSpec, InputWiring, CrossStepAssertion,
-    ChainTrace, StepTrace, ChainFinding, ChainRunResult,
-    ChainRunner, CrossStepInvariantChecker, CrossStepViolation,
-    ChainMutator, ChainShrinker, DepthMetrics, ChainScheduler,
-    ChainCorpus, ChainCorpusEntry,
+    ChainCorpus, ChainCorpusEntry, ChainFinding, ChainMutator, ChainRunResult, ChainRunner,
+    ChainScheduler, ChainShrinker, ChainSpec, ChainTrace, CrossStepAssertion,
+    CrossStepInvariantChecker, CrossStepViolation, DepthMetrics, InputWiring, StepSpec, StepTrace,
 };

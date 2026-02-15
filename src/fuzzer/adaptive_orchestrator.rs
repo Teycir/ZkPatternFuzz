@@ -425,25 +425,30 @@ impl AdaptiveOrchestrator {
 
         for hint in hints {
             // Match hint category to finding attack types
-            let matching_finding =
-                findings
-                    .iter()
-                    .find(|f| matches!(
-                        (&hint.category, &f.attack_type),
-                        (ZeroDayCategory::MissingConstraint, AttackType::Underconstrained)
-                            | (
-                                ZeroDayCategory::IncorrectRangeCheck,
-                                AttackType::ArithmeticOverflow
-                            )
-                            | (ZeroDayCategory::SignatureMalleability, AttackType::Soundness)
-                            | (ZeroDayCategory::NullifierReuse, AttackType::Collision)
-                            | (ZeroDayCategory::HashMisuse, AttackType::Collision)
-                            | (
-                                ZeroDayCategory::BitDecompositionBypass,
-                                AttackType::ArithmeticOverflow
-                            )
-                            | (ZeroDayCategory::ArithmeticOverflow, AttackType::ArithmeticOverflow)
-                    ));
+            let matching_finding = findings.iter().find(|f| {
+                matches!(
+                    (&hint.category, &f.attack_type),
+                    (
+                        ZeroDayCategory::MissingConstraint,
+                        AttackType::Underconstrained
+                    ) | (
+                        ZeroDayCategory::IncorrectRangeCheck,
+                        AttackType::ArithmeticOverflow
+                    ) | (
+                        ZeroDayCategory::SignatureMalleability,
+                        AttackType::Soundness
+                    ) | (ZeroDayCategory::NullifierReuse, AttackType::Collision)
+                        | (ZeroDayCategory::HashMisuse, AttackType::Collision)
+                        | (
+                            ZeroDayCategory::BitDecompositionBypass,
+                            AttackType::ArithmeticOverflow
+                        )
+                        | (
+                            ZeroDayCategory::ArithmeticOverflow,
+                            AttackType::ArithmeticOverflow
+                        )
+                )
+            });
 
             if let Some(finding) = matching_finding {
                 confirmed.push(ConfirmedZeroDay {

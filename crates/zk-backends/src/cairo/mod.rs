@@ -6,14 +6,14 @@
 //! - STARK proof generation via stone-prover
 
 use crate::TargetCircuit;
-use zk_core::Framework;
-use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+use zk_core::FieldElement;
+use zk_core::Framework;
 
 fn cairo_external_command_timeout() -> std::time::Duration {
     // Cairo executions can be heavier than CLI compilation; default a bit higher.
@@ -163,9 +163,8 @@ impl CairoTarget {
         let cairo0 = (|| -> Result<String> {
             let mut cmd = Command::new("cairo-compile");
             cmd.arg("--version");
-            let output =
-                crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
-                    .context("cairo-compile not found in PATH")?;
+            let output = crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                .context("cairo-compile not found in PATH")?;
             if !output.status.success() {
                 anyhow::bail!("cairo-compile --version failed");
             }
@@ -466,7 +465,8 @@ impl CairoTarget {
 
         let output = {
             let mut cmd = Command::new("scarb");
-            cmd.args(["cairo-run", "--", &args_json]).current_dir(project_dir);
+            cmd.args(["cairo-run", "--", &args_json])
+                .current_dir(project_dir);
             crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
                 .context("Failed to run scarb cairo-run")?
         };
@@ -860,7 +860,11 @@ pub mod analysis {
 
     fn extract_args(signature: &str) -> Vec<(String, String)> {
         let mut args = Vec::new();
-        let args_section = match signature.split('(').nth(1).and_then(|s| s.split(')').next()) {
+        let args_section = match signature
+            .split('(')
+            .nth(1)
+            .and_then(|s| s.split(')').next())
+        {
             Some(section) => section.trim(),
             None => return args,
         };

@@ -21,6 +21,8 @@ ZkPatternFuzz is a fuzzing and security testing framework for ZK circuits across
 
 **Evidence Mode:** Framework for strict backend verification (full cryptographic proof generation pending).
 
+**Runtime Rules:** Fallback mode is disabled. Backend/tooling failures and unsupported CVE expectations/inputs are treated as hard errors, not warnings.
+
 ## Validation Results
 
 Validation artifacts are tracked in:
@@ -163,7 +165,7 @@ campaign:
     timeout_seconds: 300
     additional:
       strict_backend: true    # fail if real backend tooling is missing
-      mark_fallback: true     # mark mock fallback (default: true)
+      mark_fallback: false    # fallback mode is disabled by policy
       kill_on_timeout: true   # kill process on timeout (default: true)
 
 attacks:

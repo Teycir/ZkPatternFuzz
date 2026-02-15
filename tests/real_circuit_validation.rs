@@ -47,11 +47,24 @@ fn test_real_privacy_circuits() {
 
     for config in &configs {
         println!("\n=== {} ===", config.circuit_name);
-        println!("Patterns: {:?}", config.config.base.as_ref().map(|b| b.attacks.len()).unwrap_or(0));
+        println!(
+            "Patterns: {:?}",
+            config
+                .config
+                .base
+                .as_ref()
+                .map(|b| b.attacks.len())
+                .unwrap_or(0)
+        );
         println!("Zero-day hints: {}", config.zero_day_hints.len());
-        
+
         for hint in &config.zero_day_hints {
-            println!("  [{:.0}%] {:?}: {}", hint.confidence * 100.0, hint.category, hint.description);
+            println!(
+                "  [{:.0}%] {:?}: {}",
+                hint.confidence * 100.0,
+                hint.category,
+                hint.description
+            );
         }
     }
 
@@ -86,7 +99,14 @@ fn test_real_noir_circuits() {
 
     for config in &configs {
         println!("\n=== {} ===", config.circuit_name);
-        println!("Framework: {:?}", config.config.base.as_ref().map(|b| &b.campaign.target.framework));
+        println!(
+            "Framework: {:?}",
+            config
+                .config
+                .base
+                .as_ref()
+                .map(|b| &b.campaign.target.framework)
+        );
         println!("Zero-day hints: {}", config.zero_day_hints.len());
     }
 }
@@ -131,8 +151,7 @@ fn test_pattern_detection_accuracy() {
     }
 
     // Test nullify.circom specifically
-    let nullify_path =
-        zk0d_base().join("cat3_privacy/circuits/circuits/lib/utils/nullify.circom");
+    let nullify_path = zk0d_base().join("cat3_privacy/circuits/circuits/lib/utils/nullify.circom");
 
     if !nullify_path.exists() {
         eprintln!("Skipping: nullify.circom not found");
@@ -145,21 +164,41 @@ fn test_pattern_detection_accuracy() {
     println!("Nullify.circom Analysis:");
     println!("  Framework: {:?}", result.framework);
     println!("  Main component: {}", result.main_component);
-    println!("  Inputs: {:?}", result.inputs.iter().map(|i| &i.name).collect::<Vec<_>>());
+    println!(
+        "  Inputs: {:?}",
+        result.inputs.iter().map(|i| &i.name).collect::<Vec<_>>()
+    );
     println!("  Patterns:");
     for pattern in &result.patterns {
-        println!("    - {:?} (confidence: {:.2})", pattern.pattern_type, pattern.confidence);
+        println!(
+            "    - {:?} (confidence: {:.2})",
+            pattern.pattern_type, pattern.confidence
+        );
     }
     println!("  Zero-day hints:");
     for hint in &result.zero_day_hints {
-        println!("    - [{:.0}%] {:?}", hint.confidence * 100.0, hint.category);
+        println!(
+            "    - [{:.0}%] {:?}",
+            hint.confidence * 100.0,
+            hint.category
+        );
     }
 
     // Verify expected patterns
-    assert!(result.patterns.iter().any(|p| p.pattern_type == PatternType::Nullifier),
-        "Should detect nullifier pattern");
-    assert!(result.patterns.iter().any(|p| matches!(p.pattern_type, PatternType::HashFunction(_))),
-        "Should detect hash function (Poseidon)");
+    assert!(
+        result
+            .patterns
+            .iter()
+            .any(|p| p.pattern_type == PatternType::Nullifier),
+        "Should detect nullifier pattern"
+    );
+    assert!(
+        result
+            .patterns
+            .iter()
+            .any(|p| matches!(p.pattern_type, PatternType::HashFunction(_))),
+        "Should detect hash function (Poseidon)"
+    );
 }
 
 /// Test adaptive scheduling with real circuit complexity
@@ -170,9 +209,9 @@ fn test_adaptive_scheduling_real_circuits() {
         return;
     }
 
-    use zk_fuzzer::fuzzer::adaptive_attack_scheduler::{AdaptiveScheduler, AttackResults};
     use std::time::Duration;
     use zk_core::AttackType;
+    use zk_fuzzer::fuzzer::adaptive_attack_scheduler::{AdaptiveScheduler, AttackResults};
 
     let privacy_path = zk0d_base().join("cat3_privacy/circuits");
     if !privacy_path.exists() {
@@ -190,7 +229,9 @@ fn test_adaptive_scheduling_real_circuits() {
         println!("\nScheduling for: {}", config.circuit_name);
 
         // Extract attack types from config
-        let attack_types: Vec<AttackType> = config.config.base
+        let attack_types: Vec<AttackType> = config
+            .config
+            .base
             .as_ref()
             .map(|b| b.attacks.iter().map(|a| a.attack_type.clone()).collect())
             .unwrap_or_default();
@@ -204,7 +245,7 @@ fn test_adaptive_scheduling_real_circuits() {
 
         // Simulate initial budget allocation
         let budget = scheduler.allocate_budget(Duration::from_secs(300));
-        
+
         println!("  Initial budget allocation:");
         for (attack, duration) in &budget {
             println!("    {:?}: {:?}", attack, duration);
@@ -261,7 +302,11 @@ fn test_generated_configs_validity() {
         // Verify the YAML is valid by parsing it
         let yaml_content = std::fs::read_to_string(&saved_path).unwrap();
         let parsed: Result<serde_yaml::Value, _> = serde_yaml::from_str(&yaml_content);
-        
-        assert!(parsed.is_ok(), "Generated YAML should be valid: {}", saved_path.display());
+
+        assert!(
+            parsed.is_ok(),
+            "Generated YAML should be valid: {}",
+            saved_path.display()
+        );
     }
 }

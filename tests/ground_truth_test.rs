@@ -128,21 +128,42 @@ impl GroundTruthStats {
         println!();
         println!("  Total Tests:        {}", self.total_tests);
         println!();
-        println!("  True Positives:     {} (bugs correctly detected)", self.true_positives);
-        println!("  True Negatives:     {} (clean circuits correctly passed)", self.true_negatives);
-        println!("  False Positives:    {} (false alarms)", self.false_positives);
-        println!("  False Negatives:    {} (missed bugs)", self.false_negatives);
+        println!(
+            "  True Positives:     {} (bugs correctly detected)",
+            self.true_positives
+        );
+        println!(
+            "  True Negatives:     {} (clean circuits correctly passed)",
+            self.true_negatives
+        );
+        println!(
+            "  False Positives:    {} (false alarms)",
+            self.false_positives
+        );
+        println!(
+            "  False Negatives:    {} (missed bugs)",
+            self.false_negatives
+        );
         println!();
-        println!("  Detection Rate:     {:.1}%", self.detection_rate() * 100.0);
-        println!("  False Positive Rate: {:.1}%", self.false_positive_rate() * 100.0);
+        println!(
+            "  Detection Rate:     {:.1}%",
+            self.detection_rate() * 100.0
+        );
+        println!(
+            "  False Positive Rate: {:.1}%",
+            self.false_positive_rate() * 100.0
+        );
         println!("  Overall Accuracy:   {:.1}%", self.accuracy() * 100.0);
         println!();
-        
+
         if self.false_negatives > 0 {
             println!("  ⚠️  WARNING: {} bugs were MISSED", self.false_negatives);
         }
         if self.false_positives > 0 {
-            println!("  ⚠️  WARNING: {} false positives reported", self.false_positives);
+            println!(
+                "  ⚠️  WARNING: {} false positives reported",
+                self.false_positives
+            );
         }
         if self.false_negatives == 0 && self.false_positives == 0 {
             println!("  ✅ PERFECT SCORE: 100% detection, 0% false positives");
@@ -164,7 +185,7 @@ pub struct KnownBug {
 /// Known bug test cases from tests/bench/known_bugs/
 fn known_bug_circuits() -> Vec<KnownBug> {
     let base_dir = PathBuf::from("tests/bench/known_bugs");
-    
+
     vec![
         KnownBug {
             name: "underconstrained_merkle".to_string(),
@@ -215,39 +236,47 @@ fn known_bug_circuits() -> Vec<KnownBug> {
 #[test]
 fn ground_truth_infrastructure_smoke_test() {
     println!("\n=== Ground Truth Infrastructure Smoke Test ===\n");
-    
+
     let known_bugs = known_bug_circuits();
     let base_dir = PathBuf::from("tests/bench/known_bugs");
-    
+
     // Verify base directory exists
     assert!(base_dir.exists(), "Known bugs directory should exist");
-    
+
     // Check each known bug
     let mut found_count = 0;
     for bug in &known_bugs {
         let exists = bug.circuit_path.exists();
-        let expected_json = bug.circuit_path.parent().unwrap().join("expected_finding.json");
+        let expected_json = bug
+            .circuit_path
+            .parent()
+            .unwrap()
+            .join("expected_finding.json");
         let has_expected = expected_json.exists();
-        
+
         println!(
             "  {} -> circuit={}, expected_finding={}",
             bug.name, exists, has_expected
         );
-        
+
         if exists && has_expected {
             found_count += 1;
         }
     }
-    
-    println!("\n  Found {}/{} complete test cases\n", found_count, known_bugs.len());
-    
+
+    println!(
+        "\n  Found {}/{} complete test cases\n",
+        found_count,
+        known_bugs.len()
+    );
+
     // At minimum, verify at least 5 known bug cases exist
     assert!(
         found_count >= 5,
         "Should have at least 5 known bug test cases, found {}",
         found_count
     );
-    
+
     println!("✅ Ground truth infrastructure is set up correctly\n");
 }
 
@@ -334,10 +363,16 @@ async fn ground_truth_known_bugs() {
         };
         stats.add_result(&result);
 
-        let status = if bug_found { "✓ DETECTED" } else { "✗ MISSED" };
+        let status = if bug_found {
+            "✓ DETECTED"
+        } else {
+            "✗ MISSED"
+        };
         println!(
             "  {} — {} findings {:?}",
-            status, report.findings.len(), finding_types
+            status,
+            report.findings.len(),
+            finding_types
         );
     }
 
@@ -355,25 +390,28 @@ async fn ground_truth_known_bugs() {
 // Requires circom installation
 fn ground_truth_full_evaluation() {
     let config = GroundTruthConfig::default();
-    
+
     println!("\n=== Full Ground Truth Evaluation ===\n");
     println!("Configuration:");
     println!("  Timeout: {} seconds", config.timeout_secs);
     println!("  Iterations: {}", config.iterations);
     println!("  Seed: {}", config.seed);
     println!("  Workers: {}\n", config.workers);
-    
+
     let known_bugs = known_bug_circuits();
-    
+
     println!("Total test cases: {}", known_bugs.len());
     println!("  Known bugs: {}", known_bugs.len());
-    
+
     // Print expected outcomes
     println!("\nExpected outcomes:");
     for bug in &known_bugs {
-        println!("  - {}: {} ({})", bug.name, bug.expected_attack_type, bug.expected_severity);
+        println!(
+            "  - {}: {} ({})",
+            bug.name, bug.expected_attack_type, bug.expected_severity
+        );
     }
-    
+
     println!("\n⚠️  Full evaluation requires circom installation");
     println!("   Run: npm install -g snarkjs && brew install circom (or equivalent)\n");
 }
@@ -432,8 +470,16 @@ reporting:
 "#,
         name = bug.name,
         path = bug.circuit_path.display(),
-        component = bug.name.replace("_", "").chars().enumerate()
-            .map(|(i, c)| if i == 0 { c.to_uppercase().next().unwrap() } else { c })
+        component = bug
+            .name
+            .replace("_", "")
+            .chars()
+            .enumerate()
+            .map(|(i, c)| if i == 0 {
+                c.to_uppercase().next().unwrap()
+            } else {
+                c
+            })
             .collect::<String>(),
         severity = bug.expected_severity,
     )

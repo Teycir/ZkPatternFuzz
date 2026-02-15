@@ -4,9 +4,9 @@
 //! chain corpus entries to avoid losing coverage state between runs.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::{BufReader, BufWriter, Write};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use zk_core::FieldElement;
 

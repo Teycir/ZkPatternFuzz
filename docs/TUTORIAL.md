@@ -521,6 +521,7 @@ campaign:
   parameters:
     additional:
       strict_backend: true
+      mark_fallback: false
 ```
 
 ### Issue: Low Coverage

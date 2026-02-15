@@ -6,15 +6,17 @@
 //! - PLONK-based constraint system
 
 use crate::TargetCircuit;
-use zk_constraints::{ConstraintChecker, ConstraintParser, ParsedConstraintSet, UnknownLookupPolicy};
-use zk_core::Framework;
-use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
+use zk_constraints::{
+    ConstraintChecker, ConstraintParser, ParsedConstraintSet, UnknownLookupPolicy,
+};
+use zk_core::FieldElement;
+use zk_core::Framework;
 
 fn halo2_external_command_timeout() -> std::time::Duration {
     crate::util::timeout_from_env("ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS", 120)
@@ -176,11 +178,7 @@ impl Halo2Target {
 
         if cargo_path.exists() {
             self.setup_rust_circuit(&cargo_path)?;
-        } else if self
-            .circuit_path
-            .extension()
-            .is_some_and(|e| e == "json")
-        {
+        } else if self.circuit_path.extension().is_some_and(|e| e == "json") {
             self.setup_from_json()?;
         } else {
             anyhow::bail!(
@@ -303,11 +301,7 @@ impl Halo2Target {
             return existing.clone();
         }
 
-        if self
-            .circuit_path
-            .extension()
-            .is_some_and(|e| e == "json")
-        {
+        if self.circuit_path.extension().is_some_and(|e| e == "json") {
             if let Ok(content) = std::fs::read_to_string(&self.circuit_path) {
                 let parsed = ConstraintParser::parse_plonk_with_tables(&content);
                 let _ = self.plonk_constraints.set(parsed.clone());
@@ -407,9 +401,7 @@ impl Halo2Target {
             }
         }
 
-        anyhow::bail!(
-            "Halo2 execution failed. Provide a circuit binary that supports --execute."
-        )
+        anyhow::bail!("Halo2 execution failed. Provide a circuit binary that supports --execute.")
     }
 
     fn execute_from_json_spec(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -471,9 +463,7 @@ impl TargetCircuit for Halo2Target {
 
     fn field_modulus(&self) -> [u8; 32] {
         let hex_str = match self.config.field {
-            Halo2Field::Bn254 => {
-                "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
-            }
+            Halo2Field::Bn254 => "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
             Halo2Field::Pasta => {
                 // Pallas scalar field
                 "40000000000000000000000000000000224698fc094cf91b992d30ed00000001"
@@ -519,11 +509,7 @@ impl TargetCircuit for Halo2Target {
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
-        if self
-            .circuit_path
-            .extension()
-            .is_some_and(|e| e == "json")
-        {
+        if self.circuit_path.extension().is_some_and(|e| e == "json") {
             self.execute_from_json_spec(inputs)
         } else {
             self.execute_circuit(inputs)
@@ -561,9 +547,7 @@ impl TargetCircuit for Halo2Target {
             }
         }
 
-        anyhow::bail!(
-            "Halo2 prove failed. Provide a circuit binary that supports --prove."
-        )
+        anyhow::bail!("Halo2 prove failed. Provide a circuit binary that supports --prove.")
     }
 
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
@@ -600,9 +584,7 @@ impl TargetCircuit for Halo2Target {
             return Ok(output.status.success());
         }
 
-        anyhow::bail!(
-            "Halo2 verify failed. Provide a circuit binary that supports --verify."
-        )
+        anyhow::bail!("Halo2 verify failed. Provide a circuit binary that supports --verify.")
     }
 }
 

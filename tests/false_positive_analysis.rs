@@ -110,7 +110,10 @@ impl FPAnalysisResult {
 
         println!("SUMMARY:");
         println!("  Safe circuits tested:      {}", self.total_safe_circuits);
-        println!("  Circuits with FP findings: {}", self.circuits_with_findings.len());
+        println!(
+            "  Circuits with FP findings: {}",
+            self.circuits_with_findings.len()
+        );
         println!("  Total false findings:      {}", self.total_findings);
         println!(
             "  False Positive Rate:       {:.1}%",
@@ -142,12 +145,12 @@ impl FPAnalysisResult {
 #[test]
 fn test_fp_rate_audited_circuits() {
     let safe_circuits = vec![
-        "tornado_withdraw_fixed",    // Fixed Tornado Cash withdraw
-        "poseidon_standard",         // Standard Poseidon implementation
-        "merkle_tree_secure",        // Properly constrained Merkle tree
-        "range_proof_secure",        // Secure range proof implementation
-        "eddsa_canonical",           // Canonical EdDSA checks
-        "nullifier_secure",          // Properly constrained nullifier
+        "tornado_withdraw_fixed", // Fixed Tornado Cash withdraw
+        "poseidon_standard",      // Standard Poseidon implementation
+        "merkle_tree_secure",     // Properly constrained Merkle tree
+        "range_proof_secure",     // Secure range proof implementation
+        "eddsa_canonical",        // Canonical EdDSA checks
+        "nullifier_secure",       // Properly constrained nullifier
     ];
 
     let mut results = FPAnalysisResult::default();
@@ -164,10 +167,14 @@ fn test_fp_rate_audited_circuits() {
         });
 
         results.add_findings(circuit, &report.findings);
-        
+
         println!(
             "  {} {} findings on {}",
-            if report.findings.is_empty() { "✓" } else { "✗" },
+            if report.findings.is_empty() {
+                "✓"
+            } else {
+                "✗"
+            },
             report.findings.len(),
             circuit
         );
@@ -331,10 +338,10 @@ reporting:
 fn test_oracle_threshold_tuning() {
     // Test different confidence thresholds
     let thresholds = [0.5, 0.6, 0.7, 0.8, 0.9];
-    
+
     println!("\nTHRESHOLD TUNING ANALYSIS:");
     println!("═══════════════════════════════════════════════════════════");
-    
+
     for threshold in thresholds {
         // Create config with specific threshold
         let yaml = format!(
@@ -411,7 +418,7 @@ mod unit_tests {
     #[test]
     fn test_fp_result_calculation() {
         let mut result = FPAnalysisResult::default();
-        
+
         // Add 10 safe circuits, 2 with findings
         for i in 0..10 {
             let findings = if i < 2 {
@@ -427,9 +434,9 @@ mod unit_tests {
             };
             result.add_findings(&format!("circuit_{}", i), &findings);
         }
-        
+
         result.calculate_rate();
-        
+
         assert_eq!(result.total_safe_circuits, 10);
         assert_eq!(result.circuits_with_findings.len(), 2);
         assert!((result.false_positive_rate - 0.2).abs() < 0.01);

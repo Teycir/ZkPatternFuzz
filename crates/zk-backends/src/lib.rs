@@ -1,31 +1,31 @@
 //! Backend integrations for ZkPatternFuzz.
 
-mod util;
-pub mod registry;
 pub mod fixture;
+pub mod registry;
+mod util;
 
-#[cfg(feature = "circom")]
-pub mod circom;
-#[cfg(feature = "noir")]
-pub mod noir;
-#[cfg(feature = "halo2")]
-pub mod halo2;
 #[cfg(feature = "cairo")]
 pub mod cairo;
+#[cfg(feature = "circom")]
+pub mod circom;
+#[cfg(feature = "halo2")]
+pub mod halo2;
+#[cfg(feature = "noir")]
+pub mod noir;
 
-pub use registry::{BackendConfig, BackendError, BackendProvider, BackendRegistry};
 pub use fixture::{
     create_collision_fixture, create_underconstrained_fixture, FixtureCircuitExecutor,
 };
+pub use registry::{BackendConfig, BackendError, BackendProvider, BackendRegistry};
 
-#[cfg(feature = "circom")]
-pub use circom::CircomTarget;
-#[cfg(feature = "noir")]
-pub use noir::NoirTarget;
-#[cfg(feature = "halo2")]
-pub use halo2::Halo2Target;
 #[cfg(feature = "cairo")]
 pub use cairo::CairoTarget;
+#[cfg(feature = "circom")]
+pub use circom::CircomTarget;
+#[cfg(feature = "halo2")]
+pub use halo2::Halo2Target;
+#[cfg(feature = "noir")]
+pub use noir::NoirTarget;
 
 #[cfg(feature = "cairo")]
 pub use cairo::analysis as cairo_analysis;

@@ -91,18 +91,22 @@ fn test_tornado_withdraw_invariant_detection() {
     let configs = analyzer
         .analyze_project(circuit_path.parent().unwrap())
         .unwrap();
-    
+
     assert!(!configs.is_empty(), "Should analyze at least one circuit");
 
     let config = &configs[0];
-    
+
     println!("Circuit: {}", config.circuit_name);
     println!("Analysis: {}", config.analysis_summary);
 
     println!("\n🔍 ZERO-DAY HINTS ({}):", config.zero_day_hints.len());
     println!("--------------------");
     for hint in &config.zero_day_hints {
-        println!("  [{:?}] {:.0}% confidence", hint.category, hint.confidence * 100.0);
+        println!(
+            "  [{:?}] {:.0}% confidence",
+            hint.category,
+            hint.confidence * 100.0
+        );
         println!("     {}", hint.description);
         if let Some(focus) = &hint.mutation_focus {
             println!("     Focus: {}", focus);
@@ -119,17 +123,25 @@ fn test_tornado_withdraw_invariant_detection() {
     }
 
     // Check for expected zero-day hints
-    let hint_categories: Vec<_> = config.zero_day_hints.iter()
+    let hint_categories: Vec<_> = config
+        .zero_day_hints
+        .iter()
         .map(|h| format!("{:?}", h.category))
         .collect();
-    
-    println!("\n🎯 VULNERABILITY HINTS FOUND ({}):", hint_categories.len());
+
+    println!(
+        "\n🎯 VULNERABILITY HINTS FOUND ({}):",
+        hint_categories.len()
+    );
     for cat in &hint_categories {
         println!("  • {}", cat);
     }
 
     // We should detect something interesting
-    println!("\n✅ VALIDATION: Detected {} zero-day hints", config.zero_day_hints.len());
+    println!(
+        "\n✅ VALIDATION: Detected {} zero-day hints",
+        config.zero_day_hints.len()
+    );
 }
 
 #[test]
@@ -156,15 +168,17 @@ fn test_semaphore_invariant_detection() {
         ..Default::default()
     });
 
-    let configs = analyzer.analyze_project(circuit_path.parent().unwrap()).unwrap();
-    
+    let configs = analyzer
+        .analyze_project(circuit_path.parent().unwrap())
+        .unwrap();
+
     if configs.is_empty() {
         println!("⚠️  No configs generated - circuit may need dependencies");
         return;
     }
 
     let config = &configs[0];
-    
+
     println!("Circuit: {}", config.circuit_name);
     println!("Analysis: {}", config.analysis_summary);
 
@@ -180,7 +194,10 @@ fn test_semaphore_invariant_detection() {
         }
     }
 
-    println!("\n✅ Detected {} zero-day hints", config.zero_day_hints.len());
+    println!(
+        "\n✅ Detected {} zero-day hints",
+        config.zero_day_hints.len()
+    );
 }
 
 #[test]
@@ -210,15 +227,16 @@ fn test_nullify_circuits_edge_cases() {
     let configs = analyzer
         .analyze_project(nullify_path.parent().unwrap().parent().unwrap())
         .unwrap();
-    
+
     println!("Found {} circuits in nullifier module", configs.len());
 
     for config in &configs {
         println!("\n--- {} ---", config.circuit_name);
         println!("Zero-day hints: {}", config.zero_day_hints.len());
-        
+
         for hint in &config.zero_day_hints {
-            println!("  • [{:.0}%] {:?}: {}", 
+            println!(
+                "  • [{:.0}%] {:?}: {}",
                 hint.confidence * 100.0,
                 hint.category,
                 hint.description
@@ -227,11 +245,14 @@ fn test_nullify_circuits_edge_cases() {
     }
 
     // The nullify circuits should trigger edge case detection
-    let has_edge_case_hint = configs.iter().any(|c| 
-        c.zero_day_hints.iter().any(|h| 
-            matches!(h.category, ZeroDayCategory::MissingConstraint | ZeroDayCategory::NullifierReuse)
-        )
-    );
+    let has_edge_case_hint = configs.iter().any(|c| {
+        c.zero_day_hints.iter().any(|h| {
+            matches!(
+                h.category,
+                ZeroDayCategory::MissingConstraint | ZeroDayCategory::NullifierReuse
+            )
+        })
+    });
 
     println!("\n🎯 Edge case detection: {}", has_edge_case_hint);
 }
@@ -256,7 +277,7 @@ fn test_comprehensive_zk0d_scan() {
 
     let privacy_path = zk0d_privacy_base();
     let configs = analyzer.analyze_project(privacy_path).unwrap();
-    
+
     println!("📊 TOTAL CIRCUITS ANALYZED: {}", configs.len());
     println!("\n{}\n", "=".repeat(80));
 
@@ -267,12 +288,19 @@ fn test_comprehensive_zk0d_scan() {
     for (i, config) in configs.iter().enumerate() {
         if !config.zero_day_hints.is_empty() {
             circuits_with_findings += 1;
-            println!("{}. {} - {} hints", i + 1, config.circuit_name, config.zero_day_hints.len());
-            
+            println!(
+                "{}. {} - {} hints",
+                i + 1,
+                config.circuit_name,
+                config.zero_day_hints.len()
+            );
+
             for hint in &config.zero_day_hints {
                 total_hints += 1;
-                *hints_by_category.entry(format!("{:?}", hint.category)).or_insert(0) += 1;
-                
+                *hints_by_category
+                    .entry(format!("{:?}", hint.category))
+                    .or_insert(0) += 1;
+
                 println!("   [{:.0}%] {:?}", hint.confidence * 100.0, hint.category);
                 println!("      {}", hint.description);
             }
@@ -286,20 +314,27 @@ fn test_comprehensive_zk0d_scan() {
     println!("Total circuits: {}", configs.len());
     println!("Circuits with findings: {}", circuits_with_findings);
     println!("Total zero-day hints: {}", total_hints);
-    
+
     println!("\n📊 HINTS BY CATEGORY:");
     let mut sorted_cats: Vec<_> = hints_by_category.iter().collect();
     sorted_cats.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-    
+
     for (cat, count) in sorted_cats {
         println!("  {:30} : {}", cat, count);
     }
 
-    println!("\n🎯 DETECTION RATE: {:.1}%", 
+    println!(
+        "\n🎯 DETECTION RATE: {:.1}%",
         (circuits_with_findings as f64 / configs.len() as f64) * 100.0
     );
 
     // We should find vulnerabilities in real circuits
-    assert!(total_hints > 0, "Should detect potential vulnerabilities in zk0d circuits");
-    assert!(circuits_with_findings > 0, "Should find at least some circuits with issues");
+    assert!(
+        total_hints > 0,
+        "Should detect potential vulnerabilities in zk0d circuits"
+    );
+    assert!(
+        circuits_with_findings > 0,
+        "Should find at least some circuits with issues"
+    );
 }

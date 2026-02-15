@@ -151,8 +151,7 @@ impl ChainRunner {
                     &result.coverage.satisfied_constraints
                 };
                 if !constraints.is_empty() {
-                    step_trace =
-                        step_trace.with_constraints(constraints.iter().cloned().collect());
+                    step_trace = step_trace.with_constraints(constraints.iter().cloned().collect());
                 }
 
                 trace.add_step(step_trace);

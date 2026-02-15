@@ -15,17 +15,17 @@ pub mod minimizer;
 pub mod storage;
 
 pub use deduplication::{
-    SemanticDeduplicator, SemanticFingerprint, DeduplicationConfig, 
-    DeduplicationStats, FindingCluster, calculate_confidence, InputPattern,
+    calculate_confidence, DeduplicationConfig, DeduplicationStats, FindingCluster, InputPattern,
+    SemanticDeduplicator, SemanticFingerprint,
 };
 pub use delta_debug::{
-    DeltaDebugger, DeltaDebugConfig, DeltaDebugStats, OracleResult,
-    minimize_test_case, binary_minimize,
+    binary_minimize, minimize_test_case, DeltaDebugConfig, DeltaDebugStats, DeltaDebugger,
+    OracleResult,
 };
 
-use zk_core::{FieldElement, TestCase, TestMetadata};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use zk_core::{FieldElement, TestCase, TestMetadata};
 
 /// Corpus entry with additional metadata
 #[derive(Debug, Clone)]
@@ -261,35 +261,35 @@ impl Corpus {
         }
         Ok(())
     }
-    
+
     /// Phase 0 Fix: Minimize corpus to smallest set that maintains coverage
-    /// 
+    ///
     /// Uses greedy set cover algorithm to remove redundant test cases.
     /// Returns statistics about the minimization.
     pub fn minimize(&self) -> minimizer::MinimizationStats {
         let mut entries = self.entries.write().unwrap();
         let original_size = entries.len();
-        
+
         if original_size == 0 {
             return minimizer::MinimizationStats::compute(0, 0);
         }
-        
+
         // First deduplicate, then minimize
         let deduped = minimizer::deduplicate_corpus(&entries);
         let minimized = minimizer::minimize_corpus(&deduped);
-        
+
         let minimized_size = minimized.len();
-        
+
         // Rebuild the corpus with minimized entries
         let mut index = self.coverage_index.write().unwrap();
         entries.clear();
         index.clear();
-        
+
         for (i, entry) in minimized.into_iter().enumerate() {
             index.insert(entry.coverage_hash, i);
             entries.push(entry);
         }
-        
+
         let stats = minimizer::MinimizationStats::compute(original_size, minimized_size);
         tracing::info!(
             "Corpus minimized: {} → {} entries ({:.1}% reduction)",
@@ -297,10 +297,10 @@ impl Corpus {
             stats.minimized_size,
             stats.reduction_percentage
         );
-        
+
         stats
     }
-    
+
     /// Phase 0 Fix: Get max size configuration
     pub fn max_size(&self) -> usize {
         self.max_size

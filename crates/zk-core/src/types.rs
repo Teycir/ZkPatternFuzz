@@ -104,7 +104,7 @@ pub struct TestMetadata {
 }
 
 /// Phase 3C: Classification of finding types for proper categorization
-/// 
+///
 /// This enum distinguishes between different classes of findings,
 /// helping to properly categorize and prioritize issues.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -154,7 +154,7 @@ impl Finding {
     /// Phase 3C: Classify this finding based on its characteristics
     pub fn classify(&self) -> FindingClass {
         let desc_lower = self.description.to_lowercase();
-        
+
         if desc_lower.contains("hang") || desc_lower.contains("timeout") {
             FindingClass::Hang
         } else if desc_lower.contains("crash") || desc_lower.contains("panic") {

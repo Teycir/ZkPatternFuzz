@@ -10,10 +10,10 @@ pub trait BugOracle: Send + Sync {
 
     /// Get the oracle name
     fn name(&self) -> &str;
-    
+
     /// Reset the oracle state (optional, for stateful oracles)
     fn reset(&mut self) {}
-    
+
     /// Get statistics about this oracle (optional)
     fn stats(&self) -> Option<OracleStatistics> {
         None
@@ -64,12 +64,12 @@ pub struct OracleStatistics {
 }
 
 /// Oracle for detecting underconstrained circuits
-/// 
+///
 /// This oracle tracks execution history to detect when different witnesses
 /// produce identical outputs - a strong indicator of missing constraints.
-/// 
+///
 /// # Critical Fix (Phase 0)
-/// 
+///
 /// The oracle is now stateful and records each execution's output hash.
 /// The `check()` method uses `&mut self` to allow recording, which is
 /// essential for detecting collisions across multiple executions.
@@ -93,18 +93,23 @@ impl UnderconstrainedOracle {
             num_public_inputs: None,
         }
     }
-    
+
     /// Create oracle with fixed public inputs for proper underconstrained testing
-    /// 
+    ///
     /// When testing for underconstrained circuits, public inputs should be held
     /// constant while varying private inputs. This ensures we're testing the
     /// correct hypothesis: "multiple private witnesses for same public inputs".
     pub fn with_fixed_public_inputs(mut self, public_inputs: Vec<FieldElement>) -> Self {
         self.fixed_public_inputs = Some(public_inputs);
-        self.num_public_inputs = Some(self.fixed_public_inputs.as_ref().map(|v| v.len()).unwrap_or(0));
+        self.num_public_inputs = Some(
+            self.fixed_public_inputs
+                .as_ref()
+                .map(|v| v.len())
+                .unwrap_or(0),
+        );
         self
     }
-    
+
     /// Configure how many inputs are public (to scope collisions correctly)
     pub fn with_public_input_count(mut self, num_public: usize) -> Self {
         self.num_public_inputs = Some(num_public);
@@ -119,7 +124,7 @@ impl UnderconstrainedOracle {
         }
         hasher.finalize().to_vec()
     }
-    
+
     fn hash_inputs(&self, inputs: &[FieldElement]) -> Vec<u8> {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
@@ -128,7 +133,7 @@ impl UnderconstrainedOracle {
         }
         hasher.finalize().to_vec()
     }
-    
+
     fn public_inputs<'a>(&self, test_case: &'a TestCase) -> &'a [FieldElement] {
         let num_public = self.num_public_inputs.unwrap_or(0);
         if num_public == 0 || test_case.inputs.is_empty() {
@@ -138,14 +143,14 @@ impl UnderconstrainedOracle {
             &test_case.inputs[..end]
         }
     }
-    
+
     fn combined_key(&self, output: &[FieldElement], public_inputs: &[FieldElement]) -> Vec<u8> {
         let mut key = Vec::with_capacity(64);
         key.extend_from_slice(&self.hash_output(output));
         key.extend_from_slice(&self.hash_inputs(public_inputs));
         key
     }
-    
+
     /// Record an output for future collision detection
     /// This is the key method that was missing - stateful recording
     pub fn record_output(&mut self, test_case: TestCase, output: &[FieldElement]) {
@@ -154,7 +159,7 @@ impl UnderconstrainedOracle {
         // Only record if we haven't seen this output for these public inputs before
         self.output_history.entry(key).or_insert(test_case);
     }
-    
+
     /// Check if a test case matches the fixed public inputs (if set)
     pub fn matches_fixed_public_inputs(&self, test_case: &TestCase, num_public: usize) -> bool {
         match &self.fixed_public_inputs {
@@ -167,7 +172,7 @@ impl UnderconstrainedOracle {
             None => true, // No fixed inputs, all pass
         }
     }
-    
+
     /// Get the number of unique outputs seen
     pub fn unique_outputs(&self) -> usize {
         self.output_history.len()
@@ -230,12 +235,12 @@ impl BugOracle for UnderconstrainedOracle {
     fn attack_type(&self) -> Option<AttackType> {
         Some(AttackType::Underconstrained)
     }
-    
+
     fn reset(&mut self) {
         self.output_history.clear();
         self.collision_count = 0;
     }
-    
+
     fn stats(&self) -> Option<OracleStatistics> {
         Some(OracleStatistics {
             executions: self.output_history.len() as u64,
@@ -246,14 +251,14 @@ impl BugOracle for UnderconstrainedOracle {
 }
 
 /// Oracle for detecting constraint count mismatches
-/// 
+///
 /// # Phase 0 Fix: Make Oracle Evidence-Producing
-/// 
+///
 /// This oracle is now stateful and tracks the actual constraint count from
 /// executions. It produces findings when:
 /// 1. The actual constraint count differs from expected
 /// 2. The constraint count varies between executions (dynamic constraints)
-/// 
+///
 /// **IMPORTANT**: This oracle requires integration with the executor's
 /// constraint inspector to get actual constraint counts. Without this,
 /// it cannot produce evidence and will log a warning.
@@ -287,7 +292,7 @@ impl ConstraintCountOracle {
     }
 
     /// Record an observed constraint count from execution
-    /// 
+    ///
     /// This should be called by the engine with data from the executor's
     /// constraint inspector.
     pub fn record_constraint_count(&mut self, count: usize) {
@@ -297,13 +302,13 @@ impl ConstraintCountOracle {
     }
 
     /// Check if constraint count is anomalous
-    /// 
+    ///
     /// Returns Some(finding) if:
     /// - Count differs significantly from expected
     /// - Count varies between executions (shouldn't happen for static circuits)
     pub fn check_with_count(&mut self, test_case: &TestCase, count: usize) -> Option<Finding> {
         self.check_count += 1;
-        
+
         // Update incremental min/max tracking
         self.min_count = Some(self.min_count.map_or(count, |m| m.min(count)));
         self.max_count = Some(self.max_count.map_or(count, |m| m.max(count)));
@@ -361,10 +366,10 @@ impl ConstraintCountOracle {
         OracleStatistics {
             executions: self.check_count,
             findings: self.finding_count,
-            unique_outputs_seen: if self.min_count.is_some() { 
-                (self.max_count.unwrap_or(0) - self.min_count.unwrap_or(0) + 1) as u64 
-            } else { 
-                0 
+            unique_outputs_seen: if self.min_count.is_some() {
+                (self.max_count.unwrap_or(0) - self.min_count.unwrap_or(0) + 1) as u64
+            } else {
+                0
             },
         }
     }
@@ -373,7 +378,7 @@ impl ConstraintCountOracle {
 impl BugOracle for ConstraintCountOracle {
     fn check(&mut self, _test_case: &TestCase, _output: &[FieldElement]) -> Option<Finding> {
         // Phase 0 Fix: Log warning that this oracle needs integration
-        // 
+        //
         // The basic check() method cannot produce evidence without constraint
         // count data from the executor. The engine should call check_with_count()
         // instead after obtaining the count from the executor's constraint inspector.
@@ -424,13 +429,13 @@ impl BugOracle for ConstraintCountOracle {
 }
 
 /// Oracle for detecting proof forgery attempts
-/// 
+///
 /// # Phase 0 Fix: Make Oracle Evidence-Producing
-/// 
+///
 /// This oracle is now stateful and tracks proof/verification attempts.
 /// It produces findings when a proof generated for one set of inputs
 /// verifies for a different set of public inputs (soundness violation).
-/// 
+///
 /// **IMPORTANT**: This oracle requires integration with the executor's
 /// prove() and verify() methods to produce evidence. The engine should:
 /// 1. Generate a proof for valid inputs
@@ -475,13 +480,13 @@ impl ProofForgeryOracle {
     }
 
     /// Check if a proof verifies for different public inputs (soundness violation)
-    /// 
+    ///
     /// # Arguments
     /// * `original_inputs` - The inputs the proof was generated for
     /// * `mutated_inputs` - Different public inputs to verify against
     /// * `proof` - The proof bytes
     /// * `verified` - Whether verification succeeded
-    /// 
+    ///
     /// # Returns
     /// Finding if verification succeeded (soundness violation)
     pub fn check_with_verification(
@@ -536,7 +541,7 @@ impl Default for ProofForgeryOracle {
 impl BugOracle for ProofForgeryOracle {
     fn check(&mut self, _test_case: &TestCase, _output: &[FieldElement]) -> Option<Finding> {
         // Phase 0 Fix: Log warning that this oracle needs integration
-        // 
+        //
         // The basic check() method cannot produce evidence without proof/verification
         // data from the executor. The engine should:
         // 1. Call executor.prove() to generate a proof
@@ -603,7 +608,7 @@ impl ArithmeticOverflowOracle {
     pub fn new() -> Self {
         Self::new_with_modulus(default_bn254_modulus())
     }
-    
+
     /// Create oracle with an explicit field modulus
     pub fn new_with_modulus(field_modulus: [u8; 32]) -> Self {
         Self { field_modulus }
@@ -697,7 +702,7 @@ impl ArithmeticOverflowOracle {
 }
 
 /// Adapter to wrap SemanticOracle as BugOracle
-/// 
+///
 /// This allows semantic oracles to be used with the core engine's oracle system.
 pub struct SemanticOracleAdapter {
     inner: Box<dyn zk_core::SemanticOracle>,
@@ -717,11 +722,11 @@ impl BugOracle for SemanticOracleAdapter {
     fn name(&self) -> &str {
         self.inner.name()
     }
-    
+
     fn reset(&mut self) {
         self.inner.reset();
     }
-    
+
     fn stats(&self) -> Option<OracleStatistics> {
         let inner_stats = self.inner.stats();
         Some(OracleStatistics {

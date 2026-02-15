@@ -6,11 +6,11 @@
 use std::path::PathBuf;
 use zk_fuzzer::config::Framework;
 use zk_fuzzer::executor::{
-    CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions, CircomExecutor, NoirExecutor,
-    Halo2Executor,
+    CircomExecutor, CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions, Halo2Executor,
+    NoirExecutor,
 };
 use zk_fuzzer::fuzzer::FieldElement;
-use zk_fuzzer::targets::{CircomTarget, NoirTarget, Halo2Target, CairoTarget, TargetCircuit};
+use zk_fuzzer::targets::{CairoTarget, CircomTarget, Halo2Target, NoirTarget, TargetCircuit};
 
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
 
@@ -45,10 +45,7 @@ fn circom_test_circuit(name: &str) -> PathBuf {
 }
 
 fn noir_project_path(name: &str) -> PathBuf {
-    repo_path()
-        .join("tests")
-        .join("noir_projects")
-        .join(name)
+    repo_path().join("tests").join("noir_projects").join(name)
 }
 
 fn cairo_program_path(name: &str) -> PathBuf {
@@ -69,8 +66,7 @@ fn halo2_real_repo_path() -> PathBuf {
     if let Ok(path) = std::env::var("HALO2_SCAFFOLD_PATH") {
         return PathBuf::from(path);
     }
-    let base = std::env::var("ZK0D_BASE")
-        .unwrap_or_else(|_| DEFAULT_ZK0D_BASE.to_string());
+    let base = std::env::var("ZK0D_BASE").unwrap_or_else(|_| DEFAULT_ZK0D_BASE.to_string());
     PathBuf::from(base).join("cat5_frameworks/halo2-scaffold")
 }
 
@@ -115,13 +111,13 @@ fn test_halo2_target_basic_construction() {
 fn test_field_element_operations() {
     let zero = FieldElement::zero();
     let one = FieldElement::one();
-    
+
     assert_ne!(zero, one);
-    
+
     // Test addition
     let two = one.add(&one);
     assert_eq!(two, FieldElement::from_u64(2));
-    
+
     // Test multiplication
     let four = two.mul(&two);
     assert_eq!(four, FieldElement::from_u64(4));
@@ -143,10 +139,10 @@ fn test_circom_analysis() {
         
         component main = Multiplier();
     "#;
-    
+
     let signals = zk_fuzzer::targets::circom_analysis::extract_signals(source);
     assert_eq!(signals.len(), 3);
-    
+
     let vulnerabilities = zk_fuzzer::targets::circom_analysis::analyze_for_vulnerabilities(source);
     // Should detect potential underconstrained (3 signals, 1 constraint)
     println!("Found {} potential issues", vulnerabilities.len());
@@ -165,11 +161,11 @@ fn test_noir_analysis() {
             a + 1
         }
     "#;
-    
+
     let functions = zk_fuzzer::targets::noir_analysis::extract_functions(source);
     assert_eq!(functions.len(), 2);
     assert!(functions[0].is_main);
-    
+
     let vulnerabilities = zk_fuzzer::targets::noir_analysis::analyze_for_vulnerabilities(source);
     println!("Found {} potential issues", vulnerabilities.len());
 }
@@ -184,7 +180,7 @@ fn test_halo2_analysis() {
         region.assign_advice(a1, 0, || Value::known(x));
         region.query_advice(a1, Rotation::cur());
     "#;
-    
+
     let issues = zk_fuzzer::targets::halo2_analysis::analyze_circuit(source);
     // Should detect unused column (a2 declared but never used)
     println!("Found {} potential issues", issues.len());
@@ -200,10 +196,12 @@ fn test_cairo_analysis() {
             [ap] = [ap - 1] + x;
         }
     "#;
-    
+
     let vulnerabilities = zk_fuzzer::targets::cairo_analysis::analyze_for_vulnerabilities(source);
     // Should detect hint usage
-    assert!(vulnerabilities.iter().any(|v| v.issue_type == zk_fuzzer::targets::cairo_analysis::IssueType::HintUsage));
+    assert!(vulnerabilities
+        .iter()
+        .any(|v| v.issue_type == zk_fuzzer::targets::cairo_analysis::IssueType::HintUsage));
 }
 
 /// Integration test for Circom (only runs if circom is available)
@@ -218,18 +216,19 @@ fn test_circom_integration() {
         .expect("snarkjs not available. Install with: npm install -g snarkjs");
 
     let circuit_path = circom_test_circuit("multiplier");
-    assert!(circuit_path.exists(), "Missing test circuit at {:?}", circuit_path);
+    assert!(
+        circuit_path.exists(),
+        "Missing test circuit at {:?}",
+        circuit_path
+    );
 
-    let mut target = CircomTarget::new(
-        circuit_path.to_str().unwrap(),
-        "Multiplier",
-    ).expect("Failed to create CircomTarget");
+    let mut target = CircomTarget::new(circuit_path.to_str().unwrap(), "Multiplier")
+        .expect("Failed to create CircomTarget");
     target.compile().expect("Circom compilation failed");
 
-    let outputs = target.execute(&[
-        FieldElement::from_u64(3),
-        FieldElement::from_u64(4),
-    ]).expect("Circom execution failed");
+    let outputs = target
+        .execute(&[FieldElement::from_u64(3), FieldElement::from_u64(4)])
+        .expect("Circom execution failed");
 
     assert_eq!(outputs.first(), Some(&FieldElement::from_u64(12)));
 }
@@ -244,16 +243,19 @@ fn test_noir_integration() {
         .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
 
     let project_path = noir_project_path("multiplier");
-    assert!(project_path.exists(), "Missing Noir project at {:?}", project_path);
+    assert!(
+        project_path.exists(),
+        "Missing Noir project at {:?}",
+        project_path
+    );
 
-    let mut target = NoirTarget::new(project_path.to_str().unwrap())
-        .expect("Failed to create NoirTarget");
+    let mut target =
+        NoirTarget::new(project_path.to_str().unwrap()).expect("Failed to create NoirTarget");
     target.compile().expect("Noir compilation failed");
 
-    let outputs = target.execute(&[
-        FieldElement::from_u64(3),
-        FieldElement::from_u64(5),
-    ]).expect("Noir execution failed");
+    let outputs = target
+        .execute(&[FieldElement::from_u64(3), FieldElement::from_u64(5)])
+        .expect("Noir execution failed");
 
     assert_eq!(outputs.first(), Some(&FieldElement::from_u64(15)));
 }
@@ -268,7 +270,11 @@ fn test_executor_factory_real_backends() {
     let options = ExecutorFactoryOptions::strict();
 
     let circom_path = circom_test_circuit("multiplier");
-    assert!(circom_path.exists(), "Missing test circuit at {:?}", circom_path);
+    assert!(
+        circom_path.exists(),
+        "Missing test circuit at {:?}",
+        circom_path
+    );
     let circom_exec = ExecutorFactory::create_with_options(
         Framework::Circom,
         circom_path.to_str().unwrap(),
@@ -279,7 +285,11 @@ fn test_executor_factory_real_backends() {
     assert_eq!(circom_exec.framework(), Framework::Circom);
 
     let noir_path = noir_project_path("multiplier");
-    assert!(noir_path.exists(), "Missing Noir project at {:?}", noir_path);
+    assert!(
+        noir_path.exists(),
+        "Missing Noir project at {:?}",
+        noir_path
+    );
     let noir_exec = ExecutorFactory::create_with_options(
         Framework::Noir,
         noir_path.to_str().unwrap(),
@@ -302,17 +312,16 @@ fn test_circom_constraint_coverage() {
         .expect("snarkjs not available. Install with: npm install -g snarkjs");
 
     let circuit_path = circom_test_circuit("multiplier");
-    assert!(circuit_path.exists(), "Missing test circuit at {:?}", circuit_path);
+    assert!(
+        circuit_path.exists(),
+        "Missing test circuit at {:?}",
+        circuit_path
+    );
 
-    let executor = CircomExecutor::new(
-        circuit_path.to_str().unwrap(),
-        "Multiplier",
-    ).expect("Failed to create CircomExecutor");
+    let executor = CircomExecutor::new(circuit_path.to_str().unwrap(), "Multiplier")
+        .expect("Failed to create CircomExecutor");
 
-    let result = executor.execute_sync(&[
-        FieldElement::from_u64(3),
-        FieldElement::from_u64(4),
-    ]);
+    let result = executor.execute_sync(&[FieldElement::from_u64(3), FieldElement::from_u64(4)]);
 
     assert!(result.success, "Circom execution failed");
     assert!(
@@ -331,15 +340,16 @@ fn test_noir_constraint_coverage() {
         .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
 
     let project_path = noir_project_path("multiplier");
-    assert!(project_path.exists(), "Missing Noir project at {:?}", project_path);
+    assert!(
+        project_path.exists(),
+        "Missing Noir project at {:?}",
+        project_path
+    );
 
-    let executor = NoirExecutor::new(project_path.to_str().unwrap())
-        .expect("Failed to create NoirExecutor");
+    let executor =
+        NoirExecutor::new(project_path.to_str().unwrap()).expect("Failed to create NoirExecutor");
 
-    let result = executor.execute_sync(&[
-        FieldElement::from_u64(3),
-        FieldElement::from_u64(5),
-    ]);
+    let result = executor.execute_sync(&[FieldElement::from_u64(3), FieldElement::from_u64(5)]);
 
     assert!(result.success, "Noir execution failed");
     assert!(
@@ -373,12 +383,9 @@ fn test_halo2_real_circuit_constraint_coverage() {
     std::env::set_var("CARGO_NET_OFFLINE", "true");
 
     let build_dir = std::env::temp_dir().join("zk0d_halo2_build");
-    let executor = Halo2Executor::new_with_build_dir(
-        repo_path.to_str().unwrap(),
-        "zk0d_mul",
-        build_dir,
-    )
-        .expect("Failed to create Halo2Executor");
+    let executor =
+        Halo2Executor::new_with_build_dir(repo_path.to_str().unwrap(), "zk0d_mul", build_dir)
+            .expect("Failed to create Halo2Executor");
 
     let inputs = vec![
         FieldElement::from_u64(3),
@@ -404,10 +411,14 @@ fn test_cairo_integration() {
         .expect("Cairo not available. Ensure cairo-compile and cairo-run are on PATH");
 
     let program_path = cairo_program_path("multiplier");
-    assert!(program_path.exists(), "Missing Cairo program at {:?}", program_path);
+    assert!(
+        program_path.exists(),
+        "Missing Cairo program at {:?}",
+        program_path
+    );
 
-    let mut target = CairoTarget::new(program_path.to_str().unwrap())
-        .expect("Failed to create CairoTarget");
+    let mut target =
+        CairoTarget::new(program_path.to_str().unwrap()).expect("Failed to create CairoTarget");
     target.compile().expect("Cairo compilation failed");
 
     let outputs = target.execute(&[]).expect("Cairo execution failed");
@@ -423,33 +434,31 @@ fn test_halo2_json_integration() {
     let spec_path = halo2_spec_path("minimal");
     assert!(spec_path.exists(), "Missing Halo2 spec at {:?}", spec_path);
 
-    let mut target = Halo2Target::new(spec_path.to_str().unwrap())
-        .expect("Failed to create Halo2Target");
+    let mut target =
+        Halo2Target::new(spec_path.to_str().unwrap()).expect("Failed to create Halo2Target");
     target.setup().expect("Halo2 setup failed");
 
-    let outputs = target.execute(&[
-        FieldElement::from_u64(1),
-        FieldElement::from_u64(2),
-    ]).expect("Halo2 execution failed");
+    let outputs = target
+        .execute(&[FieldElement::from_u64(1), FieldElement::from_u64(2)])
+        .expect("Halo2 execution failed");
     assert!(!outputs.is_empty());
 }
 
 /// Test executor factory error behavior with unavailable backend tooling
 #[test]
 fn test_executor_factory_missing_backend() {
-    let executor = ExecutorFactory::create(
-        Framework::Circom,
-        "nonexistent.circom",
-        "TestCircuit",
-    );
-    
+    let executor = ExecutorFactory::create(Framework::Circom, "nonexistent.circom", "TestCircuit");
+
     // Should fail gracefully when tooling or circuit path is not available.
     match executor {
         Ok(exec) => {
             println!("Executor created (framework: {:?})", exec.framework());
         }
         Err(e) => {
-            println!("Executor creation failed (expected if circom not available): {}", e);
+            println!(
+                "Executor creation failed (expected if circom not available): {}",
+                e
+            );
         }
     }
 }

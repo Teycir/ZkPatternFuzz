@@ -3,9 +3,9 @@
 //! Provides intelligent mutations that understand the structure of ZK circuit
 //! inputs, rather than treating them as opaque bytes.
 
-use zk_core::{FieldElement, Framework};
 use rand::Rng;
 use std::collections::HashMap;
+use zk_core::{FieldElement, Framework};
 
 /// Types of structured inputs in ZK circuits
 #[derive(Debug, Clone, PartialEq, Eq)]

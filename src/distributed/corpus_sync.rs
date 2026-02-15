@@ -228,9 +228,7 @@ impl CorpusSyncManager {
         // Build / extend the global bitmap inside the sync manager.
         // The corpus itself stores per-entry coverage hashes; the bitmap
         // here is the union across all remote nodes.
-        let global = self
-            .remote_coverage
-            .get_or_init(|| RwLock::new(Vec::new()));
+        let global = self.remote_coverage.get_or_init(|| RwLock::new(Vec::new()));
         let mut global_bitmap = global.write().unwrap();
 
         if global_bitmap.len() < bitmap.len() {

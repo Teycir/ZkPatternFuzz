@@ -113,9 +113,8 @@ mod tests {
     fn resolve_run_settings(config: &zk_fuzzer::config::FuzzConfig) -> RunSettings {
         let mut iterations = 500;
         let mut shrink_max_attempts = 100;
-        let mut chain_timeout = std::time::Duration::from_secs(
-            config.campaign.parameters.timeout_seconds,
-        );
+        let mut chain_timeout =
+            std::time::Duration::from_secs(config.campaign.parameters.timeout_seconds);
         let mut mode = "full";
 
         let mode_env = std::env::var("ZKPF_GROUND_TRUTH_MODE").ok();
@@ -266,15 +265,15 @@ mod tests {
     #[test]
     fn test_parse_expected_findings() {
         use std::fs;
-        
+
         for case in ground_truth_cases() {
             let expected_path = expected_path_for_campaign(case.campaign_path);
             let content = fs::read_to_string(&expected_path)
                 .unwrap_or_else(|_| panic!("Failed to read {}", expected_path.display()));
-            
+
             let json: serde_json::Value = serde_json::from_str(&content)
                 .unwrap_or_else(|_| panic!("Failed to parse JSON in {}", expected_path.display()));
-            
+
             // Verify required fields
             assert!(
                 json.get("expected_outcome").is_some(),
@@ -317,14 +316,14 @@ mod tests {
     #[test]
     fn test_chain_campaign_yaml_structure() {
         use std::fs;
-        
+
         for case in ground_truth_cases() {
             let content = fs::read_to_string(case.campaign_path)
                 .unwrap_or_else(|_| panic!("Failed to read {}", case.campaign_path));
-            
+
             let yaml: serde_yaml::Value = serde_yaml::from_str(&content)
                 .unwrap_or_else(|_| panic!("Failed to parse YAML in {}", case.campaign_path));
-            
+
             // Verify chains section exists
             assert!(
                 yaml.get("chains").is_some(),
@@ -359,19 +358,18 @@ mod tests {
     /// with real circom backends and verifies findings match expectations.
     #[test]
     fn test_chain_ground_truth_integration() {
-        use std::collections::{HashMap, HashSet};
-        use std::sync::Arc;
-        use zk_fuzzer::chain_fuzzer::{
-            ChainRunner, ChainMutator, ChainShrinker,
-            CrossStepInvariantChecker, ChainFinding,
-        };
-        use zk_fuzzer::config::{FuzzConfig, parse_chains};
-        use zk_fuzzer::config::v2::CircuitPathConfig;
-        use zk_fuzzer::executor::ExecutorFactory;
-        use zk_core::{CircuitExecutor, FieldElement};
         use rand::SeedableRng;
         use rand_chacha::ChaCha8Rng;
+        use std::collections::{HashMap, HashSet};
+        use std::sync::Arc;
         use std::time::Instant;
+        use zk_core::{CircuitExecutor, FieldElement};
+        use zk_fuzzer::chain_fuzzer::{
+            ChainFinding, ChainMutator, ChainRunner, ChainShrinker, CrossStepInvariantChecker,
+        };
+        use zk_fuzzer::config::v2::CircuitPathConfig;
+        use zk_fuzzer::config::{parse_chains, FuzzConfig};
+        use zk_fuzzer::executor::ExecutorFactory;
 
         let mut metrics = super::GroundTruthMetrics::default();
         let mut results: Vec<GroundTruthResult> = Vec::new();
@@ -429,7 +427,9 @@ mod tests {
             let mut circuit_map: HashMap<String, CircuitPathConfig> = HashMap::new();
             for chain_cfg in &config.chains {
                 for (name, cfg) in &chain_cfg.circuits {
-                    circuit_map.entry(name.clone()).or_insert_with(|| cfg.clone());
+                    circuit_map
+                        .entry(name.clone())
+                        .or_insert_with(|| cfg.clone());
                 }
             }
             let mut executors: HashMap<String, Arc<dyn CircuitExecutor>> = HashMap::new();
@@ -440,7 +440,9 @@ mod tests {
                     if executors.contains_key(&step.circuit_ref) {
                         continue;
                     }
-                    let (circuit_path, main_component, framework) = if let Some(cfg) = circuit_map.get(&step.circuit_ref) {
+                    let (circuit_path, main_component, framework) = if let Some(cfg) =
+                        circuit_map.get(&step.circuit_ref)
+                    {
                         let framework = cfg.framework.unwrap_or(config.campaign.target.framework);
                         let main_component = cfg
                             .main_component
@@ -475,7 +477,8 @@ mod tests {
 
                     match ExecutorFactory::create(framework, circom_path, &main_component) {
                         Ok(exec) => {
-                            println!("  Loaded circuit: {} ({} inputs, {} constraints)",
+                            println!(
+                                "  Loaded circuit: {} ({} inputs, {} constraints)",
                                 step.circuit_ref,
                                 exec.num_private_inputs(),
                                 exec.num_constraints(),
@@ -571,7 +574,8 @@ mod tests {
                             let shrinker = shrinker.get_or_insert_with(|| {
                                 let shrink_runner = ChainRunner::new(executors.clone())
                                     .with_timeout(std::time::Duration::from_secs(30));
-                                let shrink_seed = seed_from_name(&format!("{}::{}", case.name, chain.name));
+                                let shrink_seed =
+                                    seed_from_name(&format!("{}::{}", case.name, chain.name));
                                 ChainShrinker::new(
                                     shrink_runner,
                                     CrossStepInvariantChecker::from_spec(chain),
@@ -580,9 +584,8 @@ mod tests {
                                 .with_max_attempts(settings.shrink_max_attempts)
                             });
 
-                            let shrink_result = shrinker.minimize(
-                                chain, &current_inputs, violation,
-                            );
+                            let shrink_result =
+                                shrinker.minimize(chain, &current_inputs, violation);
 
                             let finding = zk_core::Finding {
                                 attack_type: zk_core::AttackType::CircuitComposition,
@@ -596,11 +599,13 @@ mod tests {
                                     violation.assertion_name, violation.description
                                 ),
                                 poc: zk_core::ProofOfConcept {
-                                    witness_a: result.trace.steps.first()
+                                    witness_a: result
+                                        .trace
+                                        .steps
+                                        .first()
                                         .map(|s| s.inputs.clone())
                                         .unwrap_or_default(),
-                                    witness_b: result.trace.steps.get(1)
-                                        .map(|s| s.inputs.clone()),
+                                    witness_b: result.trace.steps.get(1).map(|s| s.inputs.clone()),
                                     public_inputs: vec![],
                                     proof: None,
                                 },
@@ -613,13 +618,18 @@ mod tests {
                                 shrink_result.l_min,
                                 result.trace.clone(),
                                 &chain.name,
-                            ).with_violated_assertion(&violation.assertion_name);
+                            )
+                            .with_violated_assertion(&violation.assertion_name);
 
                             all_findings.push(chain_finding);
                         }
 
                         if !violations.is_empty() {
-                            println!("  Found {} violation(s) at iteration {}", violations.len(), iter);
+                            println!(
+                                "  Found {} violation(s) at iteration {}",
+                                violations.len(),
+                                iter
+                            );
                             break;
                         }
                     }
@@ -639,7 +649,9 @@ mod tests {
                         passed: false,
                         expected: expected_spec.outcome,
                         actual_findings: all_findings.len(),
-                        actual_assertion: all_findings.first().and_then(|f| f.violated_assertion.clone()),
+                        actual_assertion: all_findings
+                            .first()
+                            .and_then(|f| f.violated_assertion.clone()),
                         actual_l_min: all_findings.first().map(|f| f.l_min),
                         error: Some(err),
                     });
@@ -668,12 +680,19 @@ mod tests {
                         };
 
                         if assertion_match && l_min_ok {
-                            println!("  PASS: Found {} finding(s), assertion match={}, l_min match={}",
-                                all_findings.len(), assertion_match, l_min_ok);
+                            println!(
+                                "  PASS: Found {} finding(s), assertion match={}, l_min match={}",
+                                all_findings.len(),
+                                assertion_match,
+                                l_min_ok
+                            );
                             metrics.true_positives += 1;
                             passed = true;
                         } else {
-                            println!("  FAIL: assertion_match={}, l_min_ok={}", assertion_match, l_min_ok);
+                            println!(
+                                "  FAIL: assertion_match={}, l_min_ok={}",
+                                assertion_match, l_min_ok
+                            );
                             metrics.false_negatives += 1;
                             passed = false;
                         }
@@ -685,7 +704,10 @@ mod tests {
                         metrics.true_negatives += 1;
                         passed = true;
                     } else {
-                        println!("  FAIL: Expected CLEAN but got {} finding(s)", all_findings.len());
+                        println!(
+                            "  FAIL: Expected CLEAN but got {} finding(s)",
+                            all_findings.len()
+                        );
                         metrics.false_positives += 1;
                         passed = false;
                     }
@@ -706,21 +728,32 @@ mod tests {
 
         println!("\n══════════════════════════════════════════════");
         println!("Ground Truth Results:");
-        println!("  TP={} FP={} FN={} TN={}",
-            metrics.true_positives, metrics.false_positives,
-            metrics.false_negatives, metrics.true_negatives);
-        println!("  Precision={:.2} Recall={:.2} F1={:.2}",
-            metrics.precision(), metrics.recall(), metrics.f1_score());
+        println!(
+            "  TP={} FP={} FN={} TN={}",
+            metrics.true_positives,
+            metrics.false_positives,
+            metrics.false_negatives,
+            metrics.true_negatives
+        );
+        println!(
+            "  Precision={:.2} Recall={:.2} F1={:.2}",
+            metrics.precision(),
+            metrics.recall(),
+            metrics.f1_score()
+        );
         println!("══════════════════════════════════════════════\n");
 
         for r in &results {
-            println!("  {} {} (findings={}, assertion={:?}, l_min={:?}{})",
+            println!(
+                "  {} {} (findings={}, assertion={:?}, l_min={:?}{})",
                 if r.passed { "✓" } else { "✗" },
                 r.name,
                 r.actual_findings,
                 r.actual_assertion,
                 r.actual_l_min,
-                r.error.as_ref().map_or(String::new(), |e| format!(", error={}", e)),
+                r.error
+                    .as_ref()
+                    .map_or(String::new(), |e| format!(", error={}", e)),
             );
         }
 
@@ -729,7 +762,10 @@ mod tests {
         assert!(
             passed == total,
             "Ground truth: {}/{} passed. Precision={:.2}, Recall={:.2}",
-            passed, total, metrics.precision(), metrics.recall()
+            passed,
+            total,
+            metrics.precision(),
+            metrics.recall()
         );
     }
 }

@@ -783,8 +783,7 @@ impl ZkEvmAttack {
                             description: format!("{} fails with max values", opcode.name),
                             opcode: Some(opcode.name.to_string()),
                             witness: full_inputs,
-                            expected_behavior: "Graceful handling of max U256 values"
-                                .to_string(),
+                            expected_behavior: "Graceful handling of max U256 values".to_string(),
                             actual_behavior: format!("Error: {}", err),
                             context: HashMap::new(),
                         }));

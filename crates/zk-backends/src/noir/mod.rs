@@ -6,9 +6,6 @@
 //! - Support for Noir's ACIR format
 
 use crate::TargetCircuit;
-use zk_core::Framework;
-use zk_core::ConstraintEquation;
-use zk_core::FieldElement;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -16,6 +13,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+use zk_core::ConstraintEquation;
+use zk_core::FieldElement;
+use zk_core::Framework;
 
 fn noir_external_command_timeout() -> std::time::Duration {
     crate::util::timeout_from_env("ZK_FUZZER_NOIR_EXTERNAL_TIMEOUT_SECS", 60)
@@ -176,7 +176,9 @@ impl NoirTarget {
         }
 
         for (i, wire_idx) in self.output_signal_indices().into_iter().enumerate() {
-            labels.entry(wire_idx).or_insert_with(|| format!("return_{}", i));
+            labels
+                .entry(wire_idx)
+                .or_insert_with(|| format!("return_{}", i));
         }
 
         labels
@@ -898,7 +900,11 @@ fn parse_acir_output(output: &str) -> NoirAcirInfo {
                 if let Some((lhs, rhs)) = trimmed.split_once('=') {
                     let lhs_indices = extract_witness_indices(lhs);
                     let rhs_indices = extract_witness_indices(rhs);
-                    (lhs_indices.into_iter().next(), rhs_indices, Some(rhs.trim()))
+                    (
+                        lhs_indices.into_iter().next(),
+                        rhs_indices,
+                        Some(rhs.trim()),
+                    )
                 } else {
                     let all_indices = extract_witness_indices(trimmed);
                     if all_indices.len() >= 2 {

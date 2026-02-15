@@ -8,8 +8,7 @@ use std::time::Instant;
 
 use zk_core::{FieldElement, TestCase};
 use zk_fuzzer::fuzzer::oracle_state::{
-    BloomFilter, BoundedStateMap, OracleStateConfig, OracleStateManager,
-    PerWorkerOracleState,
+    BloomFilter, BoundedStateMap, OracleStateConfig, OracleStateManager, PerWorkerOracleState,
 };
 
 const NUM_WORKERS: usize = 32;
@@ -95,7 +94,10 @@ fn test_bloom_filter_high_load() {
     );
 
     // All should be found (no false negatives)
-    assert_eq!(hits, 1_000_000, "Bloom filter should have no false negatives");
+    assert_eq!(
+        hits, 1_000_000,
+        "Bloom filter should have no false negatives"
+    );
 }
 
 #[test]
@@ -502,7 +504,10 @@ fn test_performance_1m_test_cases() {
 
     println!("=== 1M Test Cases ===");
     println!("Duration: {:?}", duration);
-    println!("Throughput: {:.0} ops/sec", 1_000_000.0 / duration.as_secs_f64());
+    println!(
+        "Throughput: {:.0} ops/sec",
+        1_000_000.0 / duration.as_secs_f64()
+    );
     println!("Entries: {}", stats.entries);
     println!("Memory: {} bytes", stats.memory_used);
     println!("Evictions: {}", stats.evictions);

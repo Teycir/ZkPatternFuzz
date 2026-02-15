@@ -12,8 +12,7 @@
 
 use std::path::Path;
 use zk_fuzzer::analysis::{
-    R1CS, ConstraintSeedGenerator, EnhancedSymbolicConfig, PruningStrategy,
-    R1CSConstraintGuidedExt,
+    ConstraintSeedGenerator, EnhancedSymbolicConfig, PruningStrategy, R1CSConstraintGuidedExt, R1CS,
 };
 
 // ============================================================================
@@ -36,10 +35,12 @@ const SNARKJS_PLONK_R1CS: &str = "cat5_frameworks/snarkjs/test/plonk_circuit/cir
 const SNARKJS_CIRCUIT_R1CS: &str = "cat5_frameworks/snarkjs/test/circuit/circuit.r1cs";
 
 // risc0 test circuits
-const RISC0_MULTIPLIER_R1CS: &str = "cat5_frameworks/risc0/groth16_proof/circom-compat/test/data/multiplier2.r1cs";
+const RISC0_MULTIPLIER_R1CS: &str =
+    "cat5_frameworks/risc0/groth16_proof/circom-compat/test/data/multiplier2.r1cs";
 
 // gnark test circuits
-const GNARK_ISSUE1045_R1CS: &str = "cat5_frameworks/gnark/internal/regression_tests/issue1045/testdata/issue1045.r1cs";
+const GNARK_ISSUE1045_R1CS: &str =
+    "cat5_frameworks/gnark/internal/regression_tests/issue1045/testdata/issue1045.r1cs";
 
 /// Helper to get the base path for zk0d (supports env override)
 fn zk0d_base() -> std::path::PathBuf {
@@ -61,7 +62,10 @@ fn resolve_path(candidates: &[std::path::PathBuf]) -> Option<std::path::PathBuf>
     None
 }
 
-fn resolve_r1cs_path(relative: &str, compiled_fallback: Option<&str>) -> Option<std::path::PathBuf> {
+fn resolve_r1cs_path(
+    relative: &str,
+    compiled_fallback: Option<&str>,
+) -> Option<std::path::PathBuf> {
     let mut candidates = vec![zk0d_base().join(relative)];
     if let Some(compiled) = compiled_fallback {
         candidates.push(std::path::PathBuf::from(compiled));
@@ -77,7 +81,10 @@ fn resolve_sym_path(relative: &str, compiled_fallback: Option<&str>) -> Option<s
     resolve_path(&candidates)
 }
 
-fn resolve_source_path(relative: &str, staged_fallback: Option<&str>) -> Option<std::path::PathBuf> {
+fn resolve_source_path(
+    relative: &str,
+    staged_fallback: Option<&str>,
+) -> Option<std::path::PathBuf> {
     let mut candidates = vec![zk0d_base().join(relative)];
     if let Some(staged) = staged_fallback {
         candidates.push(std::path::PathBuf::from(staged));
@@ -107,16 +114,14 @@ fn test_parse_snarkjs_groth16_circuit() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_GROTH16_R1CS,
-        Some(COMPILED_SNARKJS_GROTH16_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+    else {
         eprintln!("Skipping: Groth16 R1CS not found");
         return;
     };
-    
-    let r1cs = R1CS::from_file(&r1cs_path)
-        .expect("Should parse snarkjs groth16 circuit.r1cs");
+
+    let r1cs = R1CS::from_file(&r1cs_path).expect("Should parse snarkjs groth16 circuit.r1cs");
 
     // The circuit is: Multiplier(1000) with 2 inputs (a, b) and 1 output (c)
     // This creates ~1000 constraints for the iterative squaring
@@ -133,17 +138,26 @@ fn test_parse_snarkjs_groth16_circuit() {
     assert!(r1cs.num_wires > 0, "Should have wires");
     assert!(!r1cs.constraints.is_empty(), "Should have constraints");
     assert_eq!(r1cs.field_bytes, 32, "Should use 32-byte field (BN254)");
-    
+
     // The Multiplier(1000) circuit has 1 public input (a) and 1 private input (b)
-    assert!(r1cs.num_public_inputs >= 1, "Should have at least 1 public input");
-    
+    assert!(
+        r1cs.num_public_inputs >= 1,
+        "Should have at least 1 public input"
+    );
+
     // Check constraint structure
     let constraint = &r1cs.constraints[0];
-    assert!(!constraint.is_trivial(), "First constraint should not be trivial");
-    
+    assert!(
+        !constraint.is_trivial(),
+        "First constraint should not be trivial"
+    );
+
     let wire_indices = constraint.wire_indices();
-    assert!(!wire_indices.is_empty(), "Constraint should reference wires");
-    
+    assert!(
+        !wire_indices.is_empty(),
+        "Constraint should reference wires"
+    );
+
     println!("First constraint involves wires: {:?}", wire_indices);
 }
 
@@ -157,41 +171,38 @@ fn test_parse_snarkjs_groth16_with_symbols() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_GROTH16_R1CS,
-        Some(COMPILED_SNARKJS_GROTH16_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+    else {
         eprintln!("Skipping: Groth16 R1CS not found");
         return;
     };
-    let Some(sym_path) =
-        resolve_sym_path(SNARKJS_GROTH16_SYM, Some(COMPILED_SNARKJS_GROTH16_SYM))
+    let Some(sym_path) = resolve_sym_path(SNARKJS_GROTH16_SYM, Some(COMPILED_SNARKJS_GROTH16_SYM))
     else {
         eprintln!("Skipping: Groth16 .sym not found");
         return;
     };
 
-    let _r1cs = R1CS::from_file(&r1cs_path)
-        .expect("Should parse R1CS");
-    
+    let _r1cs = R1CS::from_file(&r1cs_path).expect("Should parse R1CS");
+
     // Parse symbol file for wire names
-    let wire_names = zk_fuzzer::analysis::parse_sym_file(&sym_path)
-        .expect("Should parse symbol file");
+    let wire_names =
+        zk_fuzzer::analysis::parse_sym_file(&sym_path).expect("Should parse symbol file");
 
     println!("=== Symbol File Analysis ===");
     println!("Total symbols: {}", wire_names.len());
-    
+
     // Print first 10 wire names
     for (i, name) in wire_names.iter().take(10).enumerate() {
         println!("  Wire {}: {}", i, name);
     }
 
     assert!(!wire_names.is_empty(), "Should have wire names");
-    
+
     // Check for expected signal names from Multiplier template
     let has_int_signal = wire_names.iter().any(|n| n.contains("int"));
     let has_main = wire_names.iter().any(|n| n.contains("main"));
-    
+
     println!("Has 'int' signals: {}", has_int_signal);
     println!("Has 'main' signals: {}", has_main);
 }
@@ -206,16 +217,13 @@ fn test_parse_snarkjs_plonk_circuit() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_PLONK_R1CS,
-        Some(COMPILED_SNARKJS_PLONK_R1CS),
-    ) else {
+    let Some(r1cs_path) = resolve_r1cs_path(SNARKJS_PLONK_R1CS, Some(COMPILED_SNARKJS_PLONK_R1CS))
+    else {
         eprintln!("Skipping: PLONK circuit not found");
         return;
     };
 
-    let r1cs = R1CS::from_file(&r1cs_path)
-        .expect("Should parse snarkjs PLONK circuit");
+    let r1cs = R1CS::from_file(&r1cs_path).expect("Should parse snarkjs PLONK circuit");
 
     println!("=== snarkjs PLONK Circuit ===");
     println!("Wires: {}", r1cs.num_wires);
@@ -236,16 +244,14 @@ fn test_parse_snarkjs_basic_circuit() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_CIRCUIT_R1CS,
-        Some(COMPILED_SNARKJS_CIRCUIT_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_CIRCUIT_R1CS, Some(COMPILED_SNARKJS_CIRCUIT_R1CS))
+    else {
         eprintln!("Skipping: Basic circuit not found");
         return;
     };
 
-    let r1cs = R1CS::from_file(&r1cs_path)
-        .expect("Should parse snarkjs basic circuit");
+    let r1cs = R1CS::from_file(&r1cs_path).expect("Should parse snarkjs basic circuit");
 
     println!("=== snarkjs Basic Circuit ===");
     println!("Wires: {}", r1cs.num_wires);
@@ -269,8 +275,7 @@ fn test_parse_risc0_multiplier() {
         return;
     };
 
-    let r1cs = R1CS::from_file(&r1cs_path)
-        .expect("Should parse RISC0 multiplier2 circuit");
+    let r1cs = R1CS::from_file(&r1cs_path).expect("Should parse RISC0 multiplier2 circuit");
 
     println!("=== RISC0 Multiplier2 Circuit ===");
     println!("Wires: {}", r1cs.num_wires);
@@ -307,7 +312,10 @@ fn test_parse_gnark_circuit() {
         }
         Err(e) => {
             // gnark uses a different R1CS format
-            println!("gnark R1CS parsing failed (expected - different format): {}", e);
+            println!(
+                "gnark R1CS parsing failed (expected - different format): {}",
+                e
+            );
         }
     }
 }
@@ -326,10 +334,9 @@ fn test_input_constraints_extraction() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_GROTH16_R1CS,
-        Some(COMPILED_SNARKJS_GROTH16_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+    else {
         eprintln!("Skipping: Groth16 R1CS not found");
         return;
     };
@@ -346,7 +353,7 @@ fn test_input_constraints_extraction() {
 
     // Get constraints that involve input wires
     let input_constraints = r1cs.input_constraints();
-    
+
     println!("Constraints involving inputs: {}", input_constraints.len());
     println!("Total constraints: {}", r1cs.constraints.len());
     println!(
@@ -355,7 +362,10 @@ fn test_input_constraints_extraction() {
     );
 
     assert!(!input_indices.is_empty(), "Should have input wires");
-    assert!(!input_constraints.is_empty(), "Should have input constraints");
+    assert!(
+        !input_constraints.is_empty(),
+        "Should have input constraints"
+    );
 }
 
 #[test]
@@ -368,10 +378,9 @@ fn test_extended_constraint_conversion() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_GROTH16_R1CS,
-        Some(COMPILED_SNARKJS_GROTH16_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+    else {
         eprintln!("Skipping: Groth16 R1CS not found");
         return;
     };
@@ -415,17 +424,19 @@ fn test_smt_seed_generation_basic() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_GROTH16_R1CS,
-        Some(COMPILED_SNARKJS_GROTH16_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+    else {
         eprintln!("Skipping: Groth16 R1CS not found");
         return;
     };
     let r1cs = R1CS::from_file(&r1cs_path).expect("Should parse R1CS");
 
     println!("=== SMT Seed Generation ===");
-    println!("Generating seeds from {} constraints...", r1cs.constraints.len());
+    println!(
+        "Generating seeds from {} constraints...",
+        r1cs.constraints.len()
+    );
 
     // Use short timeout for test
     let config = EnhancedSymbolicConfig {
@@ -454,9 +465,18 @@ fn test_smt_seed_generation_basic() {
     );
 
     println!("Stats:");
-    println!("  Total constraints processed: {}", output.stats.total_constraints);
-    println!("  Symbolic constraints: {}", output.stats.symbolic_constraints);
-    println!("  Skipped constraints: {}", output.stats.skipped_constraints);
+    println!(
+        "  Total constraints processed: {}",
+        output.stats.total_constraints
+    );
+    println!(
+        "  Symbolic constraints: {}",
+        output.stats.symbolic_constraints
+    );
+    println!(
+        "  Skipped constraints: {}",
+        output.stats.skipped_constraints
+    );
     println!("  Pruned constraints: {}", output.stats.pruned_constraints);
     println!("  Solutions found: {}", output.stats.solutions);
     println!("  Seeds generated: {}", output.seeds.len());
@@ -480,10 +500,9 @@ fn test_smt_seed_generation_via_r1cs_api() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_GROTH16_R1CS,
-        Some(COMPILED_SNARKJS_GROTH16_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+    else {
         eprintln!("Skipping: Groth16 R1CS not found");
         return;
     };
@@ -515,10 +534,9 @@ fn test_underconstrained_detection() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_GROTH16_R1CS,
-        Some(COMPILED_SNARKJS_GROTH16_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+    else {
         eprintln!("Skipping: Groth16 R1CS not found");
         return;
     };
@@ -527,9 +545,15 @@ fn test_underconstrained_detection() {
     println!("=== Underconstrained Analysis ===");
     println!("Wires: {}", r1cs.num_wires);
     println!("Constraints: {}", r1cs.constraints.len());
-    println!("Total inputs: {}", r1cs.num_public_inputs + r1cs.num_private_inputs);
+    println!(
+        "Total inputs: {}",
+        r1cs.num_public_inputs + r1cs.num_private_inputs
+    );
     println!("Constraint density: {:.2}", r1cs.constraint_density());
-    println!("Likely underconstrained: {}", r1cs.is_likely_underconstrained());
+    println!(
+        "Likely underconstrained: {}",
+        r1cs.is_likely_underconstrained()
+    );
 
     // The Multiplier(1000) should be well-constrained
     assert!(
@@ -562,7 +586,7 @@ fn test_find_privacy_circuit_sources() {
     let tornado_circuits_dir = zk0d_base().join("cat3_privacy/tornado-core/circuits");
     if tornado_circuits_dir.exists() {
         println!("Tornado Cash circuits found at {:?}", tornado_circuits_dir);
-        
+
         // List circom files
         if let Ok(entries) = std::fs::read_dir(&tornado_circuits_dir) {
             for entry in entries.flatten() {
@@ -588,7 +612,10 @@ fn test_find_privacy_circuit_sources() {
 
     // Check staged circuits (from setup script)
     if Path::new(STAGED_TORNADO_WITHDRAW).exists() {
-        println!("Staged Tornado withdraw circuit at {}", STAGED_TORNADO_WITHDRAW);
+        println!(
+            "Staged Tornado withdraw circuit at {}",
+            STAGED_TORNADO_WITHDRAW
+        );
     }
     if Path::new(STAGED_SEMAPHORE).exists() {
         println!("Staged Semaphore circuit at {}", STAGED_SEMAPHORE);
@@ -622,8 +649,7 @@ fn test_tornado_cash_source_analysis() {
 
     println!("=== Tornado Cash Source Analysis ===");
 
-    let source = std::fs::read_to_string(&withdraw_circom)
-        .expect("Should read withdraw.circom");
+    let source = std::fs::read_to_string(&withdraw_circom).expect("Should read withdraw.circom");
 
     // Analyze circuit structure
     println!("Source length: {} bytes", source.len());
@@ -678,8 +704,7 @@ fn test_semaphore_source_analysis() {
 
     println!("=== Semaphore Source Analysis ===");
 
-    let source = std::fs::read_to_string(&semaphore_circom)
-        .expect("Should read semaphore.circom");
+    let source = std::fs::read_to_string(&semaphore_circom).expect("Should read semaphore.circom");
 
     println!("Source length: {} bytes", source.len());
 
@@ -718,8 +743,7 @@ fn test_iden3_credential_source_analysis() {
 
     println!("=== Iden3 Auth Circuit Analysis ===");
 
-    let source = std::fs::read_to_string(&auth_circom)
-        .expect("Should read authV3.circom");
+    let source = std::fs::read_to_string(&auth_circom).expect("Should read authV3.circom");
 
     println!("Source length: {} bytes", source.len());
 
@@ -727,7 +751,8 @@ fn test_iden3_credential_source_analysis() {
     let has_claim = source.contains("claim") || source.contains("Claim");
     let has_identity = source.contains("identity") || source.contains("Identity");
     let has_state = source.contains("state") || source.contains("State");
-    let has_merkle = source.contains("Merkle") || source.contains("merkle") || source.contains("SMT");
+    let has_merkle =
+        source.contains("Merkle") || source.contains("merkle") || source.contains("SMT");
 
     println!("Iden3 components:");
     println!("  Has claim: {}", has_claim);
@@ -750,10 +775,9 @@ fn test_r1cs_parsing_performance() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_GROTH16_R1CS,
-        Some(COMPILED_SNARKJS_GROTH16_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+    else {
         eprintln!("Skipping: Groth16 R1CS not found");
         return;
     };
@@ -766,7 +790,10 @@ fn test_r1cs_parsing_performance() {
 
     println!("Parse time: {:?}", parse_time);
     println!("Constraints: {}", r1cs.constraints.len());
-    println!("Constraints/ms: {:.1}", r1cs.constraints.len() as f64 / parse_time.as_millis() as f64);
+    println!(
+        "Constraints/ms: {:.1}",
+        r1cs.constraints.len() as f64 / parse_time.as_millis() as f64
+    );
 
     // Parsing should be fast
     assert!(
@@ -785,10 +812,9 @@ fn test_constraint_conversion_performance() {
         return;
     }
 
-    let Some(r1cs_path) = resolve_r1cs_path(
-        SNARKJS_GROTH16_R1CS,
-        Some(COMPILED_SNARKJS_GROTH16_R1CS),
-    ) else {
+    let Some(r1cs_path) =
+        resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+    else {
         eprintln!("Skipping: Groth16 R1CS not found");
         return;
     };
@@ -828,7 +854,7 @@ fn test_summary_report() {
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!("║           REAL CIRCUIT INTEGRATION TEST SUMMARY              ║");
     println!("╠══════════════════════════════════════════════════════════════╣");
-    
+
     // Test each available circuit
     let circuits = [
         ("snarkjs groth16", SNARKJS_GROTH16_R1CS),
@@ -839,18 +865,15 @@ fn test_summary_report() {
 
     for (name, path) in &circuits {
         let full_path = match *path {
-            SNARKJS_GROTH16_R1CS => resolve_r1cs_path(
-                SNARKJS_GROTH16_R1CS,
-                Some(COMPILED_SNARKJS_GROTH16_R1CS),
-            ),
-            SNARKJS_PLONK_R1CS => resolve_r1cs_path(
-                SNARKJS_PLONK_R1CS,
-                Some(COMPILED_SNARKJS_PLONK_R1CS),
-            ),
-            SNARKJS_CIRCUIT_R1CS => resolve_r1cs_path(
-                SNARKJS_CIRCUIT_R1CS,
-                Some(COMPILED_SNARKJS_CIRCUIT_R1CS),
-            ),
+            SNARKJS_GROTH16_R1CS => {
+                resolve_r1cs_path(SNARKJS_GROTH16_R1CS, Some(COMPILED_SNARKJS_GROTH16_R1CS))
+            }
+            SNARKJS_PLONK_R1CS => {
+                resolve_r1cs_path(SNARKJS_PLONK_R1CS, Some(COMPILED_SNARKJS_PLONK_R1CS))
+            }
+            SNARKJS_CIRCUIT_R1CS => {
+                resolve_r1cs_path(SNARKJS_CIRCUIT_R1CS, Some(COMPILED_SNARKJS_CIRCUIT_R1CS))
+            }
             RISC0_MULTIPLIER_R1CS => resolve_r1cs_path(RISC0_MULTIPLIER_R1CS, None),
             _ => resolve_r1cs_path(path, None),
         };
@@ -858,12 +881,19 @@ fn test_summary_report() {
         if let Some(full_path) = full_path {
             match R1CS::from_file(&full_path) {
                 Ok(r1cs) => {
-                    println!("║ ✅ {:<20} | {:>6} wires | {:>6} constraints  ║",
-                        name, r1cs.num_wires, r1cs.constraints.len());
+                    println!(
+                        "║ ✅ {:<20} | {:>6} wires | {:>6} constraints  ║",
+                        name,
+                        r1cs.num_wires,
+                        r1cs.constraints.len()
+                    );
                 }
                 Err(e) => {
-                    println!("║ ❌ {:<20} | Parse error: {}           ║",
-                        name, &e.to_string()[..20.min(e.to_string().len())]);
+                    println!(
+                        "║ ❌ {:<20} | Parse error: {}           ║",
+                        name,
+                        &e.to_string()[..20.min(e.to_string().len())]
+                    );
                 }
             }
         } else {

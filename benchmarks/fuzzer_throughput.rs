@@ -5,10 +5,10 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::time::Duration;
 
+use zk_core::{CircuitExecutor, FieldElement};
 use zk_fuzzer::config::FuzzConfig;
 use zk_fuzzer::executor::FixtureCircuitExecutor;
 use zk_fuzzer::fuzzer::FuzzingEngine;
-use zk_core::{CircuitExecutor, FieldElement};
 
 /// Create a fixture config for benchmarking
 fn create_benchmark_config(name: &str, num_inputs: usize, num_constraints: u64) -> FuzzConfig {
@@ -86,12 +86,10 @@ fn bench_fixture_execution(c: &mut Criterion) {
     let mut group = c.benchmark_group("fixture_execution");
     group.measurement_time(Duration::from_secs(10));
 
-    for (name, num_inputs, num_outputs) in [
-        ("small", 4, 2),
-        ("medium", 32, 8),
-        ("large", 128, 32),
-    ] {
-        let executor = FixtureCircuitExecutor::new("bench", num_inputs, 0).with_outputs(num_outputs);
+    for (name, num_inputs, num_outputs) in [("small", 4, 2), ("medium", 32, 8), ("large", 128, 32)]
+    {
+        let executor =
+            FixtureCircuitExecutor::new("bench", num_inputs, 0).with_outputs(num_outputs);
 
         group.throughput(Throughput::Elements(1));
         group.bench_with_input(BenchmarkId::new("circuit", name), &executor, |b, exec| {
@@ -141,7 +139,7 @@ fn bench_fuzzing_iteration(c: &mut Criterion) {
 
     // Small circuit benchmark
     let small_config = create_benchmark_config("small_circuit", 4, 1000);
-    
+
     group.throughput(Throughput::Elements(100)); // 100 iterations per sample
     group.bench_function("small_100_iterations", |b| {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -152,7 +150,7 @@ fn bench_fuzzing_iteration(c: &mut Criterion) {
                     "max_iterations".to_string(),
                     serde_yaml::Value::Number(100.into()),
                 );
-                
+
                 let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
                 let report = engine.run(None).await.unwrap();
                 black_box(report)

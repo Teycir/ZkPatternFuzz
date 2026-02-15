@@ -314,10 +314,6 @@ fn infer_io_from_symbols(
 struct WitnessCalculator {
     /// Path to the WASM file
     wasm_path: PathBuf,
-    /// Path to the R1CS file (needed for snarkjs witness checks on fallback)
-    r1cs_path: PathBuf,
-    /// Optional override path for snarkjs CLI
-    snarkjs_path: Option<PathBuf>,
     /// If true, ask the witness calculator to verify constraints while building the witness.
     sanity_check: bool,
 }
@@ -337,6 +333,7 @@ fn maybe_prepare_circom2_source(
     let mut has_pragma = false;
     let mut pragma_legacy = false;
     let mut needs_semicolon_fix = false;
+    let mut needs_param_signal_compat_fix = false;
 
     for line in source.lines() {
         let trimmed = line.trim();
@@ -349,10 +346,22 @@ fn maybe_prepare_circom2_source(
         if (trimmed.contains("===") || trimmed.contains("<==")) && !trimmed.ends_with(';') {
             needs_semicolon_fix = true;
         }
+        if is_param_signal_assignment_compat_line(trimmed) {
+            needs_param_signal_compat_fix = true;
+        }
     }
 
+    let mut visited = HashSet::new();
+    let needs_include_param_signal_compat_fix =
+        has_param_signal_compat_issue_recursive(circuit_path, &mut visited);
+
     let has_private_inputs = source.contains("signal private input");
-    let needs_rewrite = has_private_inputs || !has_pragma || pragma_legacy || needs_semicolon_fix;
+    let needs_rewrite = has_private_inputs
+        || !has_pragma
+        || pragma_legacy
+        || needs_semicolon_fix
+        || needs_param_signal_compat_fix
+        || needs_include_param_signal_compat_fix;
 
     if !needs_rewrite {
         return Ok((circuit_path.to_path_buf(), None));
@@ -381,6 +390,42 @@ fn maybe_prepare_circom2_source(
     tracing::info!("Using circom2-compat source for {}", circuit_path.display());
 
     Ok((converted_path, Some(temp_dir)))
+}
+
+fn has_param_signal_compat_issue_recursive(path: &Path, visited: &mut HashSet<PathBuf>) -> bool {
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if !visited.insert(canonical) {
+        return false;
+    }
+
+    let source = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let source_dir = path.parent().unwrap_or(Path::new("."));
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if is_param_signal_assignment_compat_line(trimmed) {
+            return true;
+        }
+
+        if trimmed.starts_with("include ") {
+            if let Some((path_str, _quote)) = extract_include_path(trimmed) {
+                let include_path = Path::new(&path_str);
+                let resolved = if include_path.is_relative() {
+                    source_dir.join(include_path)
+                } else {
+                    include_path.to_path_buf()
+                };
+                if has_param_signal_compat_issue_recursive(&resolved, visited) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }
 
 fn convert_circom_file(
@@ -440,6 +485,12 @@ fn convert_circom_file(
         updated = updated.replace("MiMCSponge(2, 1)", "MiMCSponge(2, 220, 1)");
         updated = updated.replace("MiMCSponge(2,1)", "MiMCSponge(2,220,1)");
         let mut updated_trimmed = updated.trim_start().to_string();
+
+        if is_param_signal_assignment_compat_line(&updated_trimmed) {
+            // External dataset snapshots sometimes wire `.p[...]` like a signal even
+            // when `p` is a template parameter in the callee; drop the stale wiring.
+            continue;
+        }
 
         if updated_trimmed.starts_with("include ") {
             if let Some((path_str, quote)) = extract_include_path(&updated_trimmed) {
@@ -530,6 +581,11 @@ fn extract_include_path(line: &str) -> Option<(String, char)> {
     Some((rest[..end].to_string(), quote))
 }
 
+fn is_param_signal_assignment_compat_line(trimmed: &str) -> bool {
+    let compact = trimmed.replace(' ', "");
+    compact.contains(".p[") && compact.contains("<==p[")
+}
+
 fn is_js_cli(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|ext| ext.to_str()),
@@ -559,16 +615,9 @@ fn circom_io_lock() -> &'static Mutex<()> {
 }
 
 impl WitnessCalculator {
-    fn new(
-        wasm_path: PathBuf,
-        r1cs_path: PathBuf,
-        snarkjs_path: Option<PathBuf>,
-        sanity_check: bool,
-    ) -> Self {
+    fn new(wasm_path: PathBuf, sanity_check: bool) -> Self {
         Self {
             wasm_path,
-            r1cs_path,
-            snarkjs_path,
             sanity_check,
         }
     }
@@ -580,7 +629,6 @@ impl WitnessCalculator {
         let temp_path = temp_dir.path();
 
         let input_path = temp_path.join("input.json");
-        let witness_path = temp_path.join("witness.wtns");
         let witness_json_path = temp_path.join("witness.json");
         let cmd_timeout = circom_external_command_timeout();
 
@@ -588,27 +636,35 @@ impl WitnessCalculator {
         let input_json = serde_json::to_string(inputs)?;
         std::fs::write(&input_path, &input_json)?;
 
-        // Prefer the generated witness_calculator.js when available to avoid snarkjs CLI hangs.
-        // This uses the same WASM witness calculator generated by circom.
-        if let Some(wasm_dir) = self.wasm_path.parent() {
-            let witness_calculator_path = wasm_dir.join("witness_calculator.js");
-            if witness_calculator_path.exists() {
-                let script_path = temp_path.join("calc_witness.js");
-                let input_js = serde_json::to_string(input_path.to_str().unwrap_or_default())?;
-                // Use absolute paths since the script runs from a temp dir (relative paths
-                // would be resolved relative to that temp dir and fail).
-                let wasm_abs = std::fs::canonicalize(&self.wasm_path)
-                    .unwrap_or_else(|_| self.wasm_path.clone());
-                let wc_abs = std::fs::canonicalize(&witness_calculator_path)
-                    .unwrap_or_else(|_| witness_calculator_path.clone());
+        // Strict mode policy: witness generation must use circom's generated
+        // witness_calculator.js, and must fail hard on any error.
+        let wasm_dir = self
+            .wasm_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("WASM path has no parent directory"))?;
+        let witness_calculator_path = wasm_dir.join("witness_calculator.js");
+        if !witness_calculator_path.exists() {
+            anyhow::bail!(
+                "witness_calculator.js not found at {} (fallback disabled)",
+                witness_calculator_path.display()
+            );
+        }
 
-                let wasm_js = serde_json::to_string(wasm_abs.to_str().unwrap_or_default())?;
-                let wc_js = serde_json::to_string(wc_abs.to_str().unwrap_or_default())?;
-                let out_js = serde_json::to_string(witness_json_path.to_str().unwrap_or_default())?;
-                let sanity = if self.sanity_check { 1 } else { 0 };
+        let script_path = temp_path.join("calc_witness.js");
+        let input_js = serde_json::to_string(input_path.to_str().unwrap_or_default())?;
+        // Use absolute paths since the script runs from a temp dir (relative paths
+        // would be resolved relative to that temp dir and fail).
+        let wasm_abs = std::fs::canonicalize(&self.wasm_path).unwrap_or_else(|_| self.wasm_path.clone());
+        let wc_abs = std::fs::canonicalize(&witness_calculator_path)
+            .unwrap_or_else(|_| witness_calculator_path.clone());
 
-                let script = format!(
-                    "const wc = require({wc_js});\n\
+        let wasm_js = serde_json::to_string(wasm_abs.to_str().unwrap_or_default())?;
+        let wc_js = serde_json::to_string(wc_abs.to_str().unwrap_or_default())?;
+        let out_js = serde_json::to_string(witness_json_path.to_str().unwrap_or_default())?;
+        let sanity = if self.sanity_check { 1 } else { 0 };
+
+        let script = format!(
+            "const wc = require({wc_js});\n\
 const fs = require('fs');\n\
 const input = JSON.parse(fs.readFileSync({input_js}, 'utf8'));\n\
 const wasm = fs.readFileSync({wasm_js});\n\
@@ -620,139 +676,31 @@ wc(wasm).then(async (calc) => {{\n\
   console.error(err);\n\
   process.exit(1);\n\
 }});\n"
-                );
-                std::fs::write(&script_path, script)?;
+        );
+        std::fs::write(&script_path, script)?;
 
-                let output = {
-                    let mut cmd = Command::new("node");
-                    cmd.arg(&script_path);
-                    run_with_timeout(&mut cmd, cmd_timeout)
-                }
-                .context("Failed to run witness calculator");
-
-                match output {
-                    Ok(output) if output.status.success() && witness_json_path.exists() => {
-                        let witness_json = std::fs::read_to_string(&witness_json_path)?;
-                        let witness_values: Vec<String> = serde_json::from_str(&witness_json)?;
-                        let witness: Vec<FieldElement> = witness_values
-                            .iter()
-                            .map(|v| parse_decimal_to_field_element(v))
-                            .collect::<Result<Vec<_>>>()?;
-                        return Ok(witness);
-                    }
-                    Ok(output) => {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        let lower = stderr.to_lowercase();
-                        let status_success = output.status.success();
-                        let witness_missing = status_success && !witness_json_path.exists();
-
-                        // Only fall back to snarkjs for loader/runtime issues where snarkjs might
-                        // still succeed. For actual circuit assertion failures, returning early is
-                        // both correct and faster (snarkjs will fail the same way).
-                        let can_fallback = witness_missing
-                            || lower.contains("cannot find module")
-                            || lower.contains("module_not_found");
-
-                        if !can_fallback {
-                            anyhow::bail!(
-                                "Witness calculation failed: {}",
-                                stderr.chars().take(200).collect::<String>()
-                            );
-                        }
-
-                        static WC_FALLBACK_ONCE: OnceLock<()> = OnceLock::new();
-                        if WC_FALLBACK_ONCE.set(()).is_ok() {
-                            tracing::warn!(
-                                "witness_calculator.js failed; falling back to snarkjs CLI. \
-                                 First error: {}",
-                                stderr.chars().take(200).collect::<String>()
-                            );
-                        }
-                    }
-                    Err(err) => {
-                        static WC_FALLBACK_ERR_ONCE: OnceLock<()> = OnceLock::new();
-                        if WC_FALLBACK_ERR_ONCE.set(()).is_ok() {
-                            tracing::warn!(
-                                "witness_calculator.js errored; falling back to snarkjs CLI. \
-                                 First error: {:#}",
-                                err
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
-        // Run witness generation using snarkjs
         let output = {
-            let mut cmd = snarkjs_command_for(self.snarkjs_path.as_deref());
-            cmd.args([
-                "wtns",
-                "calculate",
-                self.wasm_path.to_str().unwrap(),
-                input_path.to_str().unwrap(),
-                witness_path.to_str().unwrap(),
-            ]);
+            let mut cmd = Command::new("node");
+            cmd.arg(&script_path);
             run_with_timeout(&mut cmd, cmd_timeout)
         }
-        .context("Failed to run snarkjs witness calculation")?;
-
+        .context("Failed to run witness calculator")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Witness calculation failed: {}", stderr);
+            anyhow::bail!(
+                "witness_calculator.js failed: {}",
+                stderr.chars().take(200).collect::<String>()
+            );
+        }
+        if !witness_json_path.exists() {
+            anyhow::bail!(
+                "witness_calculator.js succeeded but did not produce witness JSON at {}",
+                witness_json_path.display()
+            );
         }
 
-        // If we are operating in "sanity check" mode, verify the witness satisfies the R1CS
-        // constraints. This is only used on the snarkjs fallback path; the primary path uses
-        // witness_calculator.js with `calculateWitness(..., 1)` which checks constraints itself.
-        if self.sanity_check {
-            if !self.r1cs_path.exists() {
-                anyhow::bail!(
-                    "Witness sanity check enabled, but R1CS file not found: {}",
-                    self.r1cs_path.display()
-                );
-            }
-            let output = {
-                let mut cmd = snarkjs_command_for(self.snarkjs_path.as_deref());
-                cmd.args([
-                    "wtns",
-                    "check",
-                    self.r1cs_path.to_str().unwrap(),
-                    witness_path.to_str().unwrap(),
-                ]);
-                run_with_timeout(&mut cmd, cmd_timeout)
-            }
-            .context("Failed to run snarkjs witness check")?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                anyhow::bail!("Witness sanity check failed: {}", stderr);
-            }
-        }
-
-        // Export witness to JSON for parsing
-        let output = {
-            let mut cmd = snarkjs_command_for(self.snarkjs_path.as_deref());
-            cmd.args([
-                "wtns",
-                "export",
-                "json",
-                witness_path.to_str().unwrap(),
-                witness_json_path.to_str().unwrap(),
-            ]);
-            run_with_timeout(&mut cmd, cmd_timeout)
-        }
-        .context("Failed to export witness to JSON")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Witness export failed: {}", stderr);
-        }
-
-        // Parse witness JSON
         let witness_json = std::fs::read_to_string(&witness_json_path)?;
         let witness_values: Vec<String> = serde_json::from_str(&witness_json)?;
-
-        // Convert to FieldElements
         let witness: Vec<FieldElement> = witness_values
             .iter()
             .map(|v| parse_decimal_to_field_element(v))
@@ -888,8 +836,6 @@ impl CircomTarget {
             self.parse_r1cs_info()?;
             self.witness_calculator = Some(WitnessCalculator::new(
                 wasm_path,
-                r1cs_path,
-                self.snarkjs_path_override.clone(),
                 self.witness_sanity_check,
             ));
             self.compiled = true;
@@ -908,8 +854,6 @@ impl CircomTarget {
             self.parse_r1cs_info()?;
             self.witness_calculator = Some(WitnessCalculator::new(
                 wasm_path,
-                r1cs_path,
-                self.snarkjs_path_override.clone(),
                 self.witness_sanity_check,
             ));
             self.compiled = true;
@@ -967,8 +911,6 @@ impl CircomTarget {
         if wasm_path.exists() {
             self.witness_calculator = Some(WitnessCalculator::new(
                 wasm_path,
-                r1cs_path,
-                self.snarkjs_path_override.clone(),
                 self.witness_sanity_check,
             ));
         } else {

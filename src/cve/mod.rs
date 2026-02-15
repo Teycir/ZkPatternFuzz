@@ -19,6 +19,7 @@
 //! ```
 
 use crate::executor::ExecutorFactory;
+use num_bigint::BigUint;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -44,6 +45,82 @@ impl CveDatabase {
         let content = std::fs::read_to_string(path)?;
         let db: CveDatabase = serde_yaml::from_str(&content)?;
         Ok(db)
+    }
+
+    /// Load CVE database and enforce strict fixture semantics.
+    ///
+    /// Strict mode rejects ambiguous regression fixtures:
+    /// - non-validity expected results
+    /// - unsupported string literals in test inputs
+    pub fn load_strict<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
+        let db = Self::load(path)?;
+        db.validate_regression_fixtures_strict()?;
+        Ok(db)
+    }
+
+    /// Validate regression fixtures with strict, unambiguous semantics.
+    pub fn validate_regression_fixtures_strict(&self) -> anyhow::Result<()> {
+        let mut errors = Vec::new();
+
+        for pattern in &self.vulnerabilities {
+            if !pattern.regression_test.enabled {
+                continue;
+            }
+
+            for tc in &pattern.regression_test.test_cases {
+                if tc.name.trim().is_empty() {
+                    errors.push(format!(
+                        "{}: regression test case has empty name",
+                        pattern.id
+                    ));
+                }
+
+                if !is_strict_expected_result(&tc.expected_result) {
+                    errors.push(format!(
+                        "{}:{} has ambiguous expected_result '{}'. Use explicit validity labels only.",
+                        pattern.id, tc.name, tc.expected_result
+                    ));
+                }
+
+                for (key, value) in &tc.inputs {
+                    let key_name = match key {
+                        serde_yaml::Value::String(s) if !s.trim().is_empty() => s.clone(),
+                        serde_yaml::Value::String(_) => {
+                            errors.push(format!(
+                                "{}:{} has empty input key",
+                                pattern.id, tc.name
+                            ));
+                            "<empty-key>".to_string()
+                        }
+                        _ => {
+                            errors.push(format!(
+                                "{}:{} has non-string input key '{}'",
+                                pattern.id,
+                                tc.name,
+                                serde_yaml::to_string(key)
+                                    .unwrap_or_else(|_| "<unprintable>".to_string())
+                                    .trim()
+                            ));
+                            "<non-string-key>".to_string()
+                        }
+                    };
+                    validate_strict_fixture_value(
+                        value,
+                        &format!("{}:{}:{}", pattern.id, tc.name, key_name),
+                        &mut errors,
+                    );
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            anyhow::bail!(
+                "Strict CVE fixture validation failed:\n{}",
+                errors.join("\n")
+            )
+        }
     }
 
     /// Get all CVE patterns
@@ -370,44 +447,38 @@ impl RegressionTest {
                 }
             };
 
-            let result = executor.execute_sync(&inputs);
+            let expectation = match expectation_for_result(&tc.expected_result) {
+                Ok(expectation) => expectation,
+                Err(e) => {
+                    passed_all = false;
+                    test_results.push(TestCaseResult {
+                        name: tc.name.clone(),
+                        passed: false,
+                        message: Some(e),
+                    });
+                    continue;
+                }
+            };
 
-            let (passed, message) = match tc.expected_valid {
-                Some(expected) => {
-                    let passed = result.success == expected;
+            let result = executor.execute_sync(&inputs);
+            let (passed, message) = match expectation {
+                RegressionExpectation::ExecutionSucceeds => {
+                    let passed = result.success;
                     let message = if passed {
                         None
                     } else {
-                        Some(format!(
-                            "Expected {} but execution {}",
-                            if expected { "valid" } else { "invalid" },
-                            if result.success {
-                                "succeeded"
-                            } else {
-                                "failed"
-                            }
-                        ))
+                        Some("Expected valid but execution failed".to_string())
                     };
                     (passed, message)
                 }
-                None => {
-                    if result.success {
-                        (
-                            true,
-                            Some(format!(
-                                "Expected result '{}' not evaluated; checked execution success only",
-                                tc.expected_result
-                            )),
-                        )
+                RegressionExpectation::ExecutionFails => {
+                    let passed = !result.success;
+                    let message = if passed {
+                        None
                     } else {
-                        (
-                            false,
-                            Some(format!(
-                                "Execution failed; expected result '{}' is not evaluated",
-                                tc.expected_result
-                            )),
-                        )
-                    }
+                        Some("Expected invalid but execution succeeded".to_string())
+                    };
+                    (passed, message)
                 }
             };
 
@@ -437,6 +508,14 @@ pub struct GeneratedTestCase {
     pub inputs: Vec<(String, serde_yaml::Value)>,
     pub expected_result: String,
     pub expected_valid: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RegressionExpectation {
+    /// Expect circuit execution to succeed (valid witness/proof path)
+    ExecutionSucceeds,
+    /// Expect circuit execution to fail
+    ExecutionFails,
 }
 
 /// Result of running a regression test
@@ -539,6 +618,134 @@ fn expected_result_to_validity(expected: &str) -> Option<bool> {
     }
 
     None
+}
+
+fn expectation_for_result(expected: &str) -> Result<RegressionExpectation, String> {
+    match expected_result_to_validity(expected) {
+        Some(true) => Ok(RegressionExpectation::ExecutionSucceeds),
+        Some(false) => Ok(RegressionExpectation::ExecutionFails),
+        None => Err(format!(
+            "Unsupported expected_result '{}'. Use explicit validity markers (valid/invalid, should_pass/should_fail, accepted/rejected).",
+            expected
+        )),
+    }
+}
+
+fn is_strict_expected_result(expected: &str) -> bool {
+    let normalized = expected.trim().to_lowercase();
+    matches!(
+        normalized.as_str(),
+        "valid"
+            | "valid_proof"
+            | "should_be_valid"
+            | "should_pass"
+            | "accept"
+            | "accepted"
+            | "success"
+            | "invalid"
+            | "invalid_proof"
+            | "should_be_invalid"
+            | "should_fail"
+            | "reject"
+            | "rejected"
+            | "fail"
+            | "failure"
+    )
+}
+
+fn validate_strict_fixture_value(value: &serde_yaml::Value, context: &str, errors: &mut Vec<String>) {
+    match value {
+        serde_yaml::Value::Null => {
+            errors.push(format!(
+                "{} contains null input value, which is ambiguous",
+                context
+            ));
+        }
+        serde_yaml::Value::Bool(_) | serde_yaml::Value::Number(_) => {}
+        serde_yaml::Value::String(s) => {
+            if !is_strict_fixture_string_literal(s) {
+                errors.push(format!(
+                    "{} has ambiguous string input '{}'. Use numeric/hex/placeholders only.",
+                    context, s
+                ));
+            }
+        }
+        serde_yaml::Value::Sequence(items) => {
+            for (idx, item) in items.iter().enumerate() {
+                validate_strict_fixture_value(item, &format!("{}[{}]", context, idx), errors);
+            }
+        }
+        serde_yaml::Value::Mapping(map) => {
+            for (k, v) in map {
+                let key = serde_yaml::to_string(k)
+                    .unwrap_or_else(|_| "<unprintable-key>".to_string())
+                    .trim()
+                    .to_string();
+                validate_strict_fixture_value(v, &format!("{}{{{}}}", context, key), errors);
+            }
+        }
+        serde_yaml::Value::Tagged(tagged) => {
+            validate_strict_fixture_value(&tagged.value, context, errors);
+        }
+    }
+}
+
+fn is_strict_fixture_string_literal(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed == "..." {
+        return false;
+    }
+    if trimmed == "random_field_element" {
+        return true;
+    }
+    if let Some(rest) = trimmed.strip_prefix("random_") {
+        return !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_digit());
+    }
+    if is_decimal_literal(trimmed) || is_hex_literal(trimmed) {
+        return true;
+    }
+    is_field_placeholder_literal(trimmed)
+}
+
+fn is_decimal_literal(value: &str) -> bool {
+    let mut chars = value.chars();
+    match chars.next() {
+        Some('+') | Some('-') => chars.next().is_some() && chars.all(|ch| ch.is_ascii_digit()),
+        Some(first) if first.is_ascii_digit() => chars.all(|ch| ch.is_ascii_digit()),
+        _ => false,
+    }
+}
+
+fn is_hex_literal(value: &str) -> bool {
+    let Some(hex_part) = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X")) else {
+        return false;
+    };
+    !hex_part.is_empty() && hex_part.chars().all(|ch| ch.is_ascii_hexdigit())
+}
+
+fn is_field_placeholder_literal(value: &str) -> bool {
+    let normalized = value.to_lowercase().replace(' ', "");
+    matches!(
+        normalized.as_str(),
+        "zero" | "one" | "max" | "max_field" | "p" | "field_mod" | "(p-1)/2"
+    ) || has_signed_offset(&normalized, "p")
+        || has_signed_offset(&normalized, "max")
+        || has_signed_offset(&normalized, "max_field")
+        || has_signed_offset(&normalized, "field_mod")
+}
+
+fn has_signed_offset(value: &str, prefix: &str) -> bool {
+    let Some(rest) = value.strip_prefix(prefix) else {
+        return false;
+    };
+    if rest.is_empty() {
+        return true;
+    }
+    let mut chars = rest.chars();
+    let Some(sign) = chars.next() else {
+        return false;
+    };
+    (sign == '+' || sign == '-') && chars.next().is_some() && chars.all(|ch| ch.is_ascii_digit())
 }
 
 fn parse_inputs_from_source(source: &str, framework: Framework) -> Vec<InputSpec> {
@@ -766,10 +973,7 @@ fn parse_yaml_value(
     expected_len: Option<usize>,
 ) -> Result<Vec<FieldElement>, String> {
     match value {
-        serde_yaml::Value::Number(n) => {
-            let num = n.as_u64().unwrap_or(0);
-            Ok(vec![FieldElement::from_u64(num)])
-        }
+        serde_yaml::Value::Number(n) => parse_yaml_number(n, field_modulus),
         serde_yaml::Value::Bool(b) => Ok(vec![if *b {
             FieldElement::one()
         } else {
@@ -788,6 +992,40 @@ fn parse_yaml_value(
     }
 }
 
+fn parse_yaml_number(
+    number: &serde_yaml::Number,
+    field_modulus: &[u8; 32],
+) -> Result<Vec<FieldElement>, String> {
+    if let Some(u) = number.as_u64() {
+        return Ok(vec![FieldElement::from_u64(u)]);
+    }
+
+    if let Some(i) = number.as_i64() {
+        if i >= 0 {
+            return Ok(vec![FieldElement::from_u64(i as u64)]);
+        }
+
+        let modulus = BigUint::from_bytes_be(field_modulus);
+        if modulus == BigUint::from(0u8) {
+            return Err(format!(
+                "Cannot encode negative number {} without a non-zero field modulus",
+                i
+            ));
+        }
+
+        let abs = BigUint::from(i.unsigned_abs());
+        let rem = abs % &modulus;
+        let value = if rem == BigUint::from(0u8) {
+            BigUint::from(0u8)
+        } else {
+            modulus - rem
+        };
+        return Ok(vec![FieldElement::from_bytes(&value.to_bytes_be())]);
+    }
+
+    Err(format!("Unsupported numeric input '{}'", number))
+}
+
 fn parse_value_string(
     raw: &str,
     field_modulus: &[u8; 32],
@@ -795,6 +1033,7 @@ fn parse_value_string(
     expected_len: Option<usize>,
 ) -> Result<Vec<FieldElement>, String> {
     let value = raw.trim();
+
     if value == "random_field_element" {
         return Ok(vec![FieldElement::random(rng)]);
     }
@@ -807,10 +1046,7 @@ fn parse_value_string(
             return Ok(out);
         }
     }
-
-    let bytes = crate::config::parser::expand_value_placeholder(value, field_modulus)
-        .map_err(|e| e.to_string())?;
-    let fe = FieldElement::from_bytes(&bytes);
+    let fe = parse_string_as_field_element(value, field_modulus)?;
 
     if let Some(len) = expected_len {
         if len > 1 {
@@ -822,6 +1058,38 @@ fn parse_value_string(
     }
 
     Ok(vec![fe])
+}
+
+fn parse_string_as_field_element(
+    value: &str,
+    field_modulus: &[u8; 32],
+) -> Result<FieldElement, String> {
+    if let Ok(bytes) = crate::config::parser::expand_value_placeholder(value, field_modulus) {
+        return Ok(FieldElement::from_bytes(&bytes));
+    }
+
+    // Allow odd-nibble hex values such as "0x2" by left-padding one nibble.
+    if let Some(hex_part) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
+        let normalized = hex_part.replace('_', "");
+        if !normalized.is_empty() && normalized.chars().all(|c| c.is_ascii_hexdigit()) {
+            let even = if normalized.len() % 2 == 0 {
+                normalized
+            } else {
+                format!("0{}", normalized)
+            };
+            let decoded =
+                hex::decode(&even).map_err(|e| format!("Invalid hex '{}': {}", value, e))?;
+            return Ok(FieldElement::from_bytes(&decoded));
+        }
+    }
+
+    Err(format!(
+        "Unsupported string literal '{}'. Use numeric/hex values or supported placeholders.",
+        value
+    ))
 }
 
 /// CVE-aware oracle that checks for known vulnerability patterns
@@ -945,6 +1213,7 @@ impl CveOracle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
 
     #[test]
     fn test_load_cve_database() {
@@ -1045,5 +1314,115 @@ vulnerabilities:
         };
 
         assert_eq!(pattern.severity_enum(), Severity::Critical);
+    }
+
+    #[test]
+    fn test_parse_value_string_rejects_ascii_literals() {
+        let mut rng = StdRng::seed_from_u64(7);
+        let modulus = [0u8; 32];
+        let err = parse_value_string("US", &modulus, &mut rng, None).unwrap_err();
+        assert!(err.contains("Unsupported string literal"));
+    }
+
+    #[test]
+    fn test_parse_value_string_accepts_odd_hex_nibbles() {
+        let mut rng = StdRng::seed_from_u64(7);
+        let modulus = [0u8; 32];
+        let values = parse_value_string("0x2", &modulus, &mut rng, None).unwrap();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0], FieldElement::from_u64(2));
+    }
+
+    #[test]
+    fn test_parse_yaml_number_handles_negative_values_mod_field() {
+        let mut modulus = [0u8; 32];
+        modulus[31] = 5; // tiny field: p = 5
+        let n = serde_yaml::Number::from(-1);
+        let values = parse_yaml_number(&n, &modulus).unwrap();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0], FieldElement::from_u64(4));
+    }
+
+    #[test]
+    fn test_parse_value_string_rejects_ellipsis_placeholder() {
+        let mut rng = StdRng::seed_from_u64(7);
+        let modulus = [0u8; 32];
+        let err = parse_value_string("...", &modulus, &mut rng, Some(3)).unwrap_err();
+        assert!(err.contains("Unsupported string literal"));
+    }
+
+    #[test]
+    fn test_strict_fixture_validation_accepts_unambiguous_cases() {
+        let yaml = r#"
+version: "1.0"
+last_updated: "2026-02-15"
+vulnerabilities:
+  - id: "ZK-STRICT-OK"
+    name: "Strict Fixture OK"
+    severity: "high"
+    affected_circuits:
+      - pattern: "test*"
+        versions: ["*"]
+    sources: []
+    description: "Strict fixture"
+    detection:
+      oracle: "test"
+      attack_type: "soundness"
+      procedure: []
+    regression_test:
+      enabled: true
+      circuit_path: "test.circom"
+      test_cases:
+        - name: "ok_case"
+          inputs:
+            a: "0x2"
+            b: [1, 2, 3]
+          expected_result: "invalid_proof"
+      assertion: "strict"
+    remediation:
+      description: "none"
+      recommendations: []
+      references: []
+"#;
+        let db: CveDatabase = serde_yaml::from_str(yaml).unwrap();
+        assert!(db.validate_regression_fixtures_strict().is_ok());
+    }
+
+    #[test]
+    fn test_strict_fixture_validation_rejects_ambiguous_expected_result_and_input() {
+        let yaml = r#"
+version: "1.0"
+last_updated: "2026-02-15"
+vulnerabilities:
+  - id: "ZK-STRICT-BAD"
+    name: "Strict Fixture Bad"
+    severity: "high"
+    affected_circuits:
+      - pattern: "test*"
+        versions: ["*"]
+    sources: []
+    description: "Strict fixture"
+    detection:
+      oracle: "test"
+      attack_type: "soundness"
+      procedure: []
+    regression_test:
+      enabled: true
+      circuit_path: "test.circom"
+      test_cases:
+        - name: "bad_case"
+          inputs:
+            country: "US"
+          expected_result: "different_hashes"
+      assertion: "strict"
+    remediation:
+      description: "none"
+      recommendations: []
+      references: []
+"#;
+        let db: CveDatabase = serde_yaml::from_str(yaml).unwrap();
+        let err = db.validate_regression_fixtures_strict().unwrap_err().to_string();
+        assert!(err.contains("ambiguous expected_result"));
+        assert!(err.contains("ambiguous string input"));
     }
 }

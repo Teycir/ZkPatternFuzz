@@ -163,7 +163,10 @@ impl CoqExporter {
             .collect();
         vars.sort_unstable();
 
-        obligation.push_str(&format!("Definition constraint_{}_obligation : Prop :=\n", idx));
+        obligation.push_str(&format!(
+            "Definition constraint_{}_obligation : Prop :=\n",
+            idx
+        ));
         obligation.push_str("  forall ");
         for var in &vars {
             obligation.push_str(&format!("(x{} : Z) ", var));
@@ -288,7 +291,10 @@ impl ProofExporter for CoqExporter {
             success: true,
             system: ProofSystem::Coq,
             dependencies: vec!["Coq.ZArith.ZArith".to_string()],
-            warnings: vec!["Obligation-style output: provide external proofs for *_obligation statements.".to_string()],
+            warnings: vec![
+                "Obligation-style output: provide external proofs for *_obligation statements."
+                    .to_string(),
+            ],
         }
     }
 
@@ -352,7 +358,10 @@ impl ProofExporter for CoqExporter {
             success: true,
             system: ProofSystem::Coq,
             dependencies: vec!["Coq.ZArith.ZArith".to_string()],
-            warnings: vec!["Obligation-style circuit output: prove *_obligation definitions externally.".to_string()],
+            warnings: vec![
+                "Obligation-style circuit output: prove *_obligation definitions externally."
+                    .to_string(),
+            ],
         }
     }
 

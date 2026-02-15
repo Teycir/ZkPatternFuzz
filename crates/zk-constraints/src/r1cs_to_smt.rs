@@ -7,7 +7,7 @@ use num_bigint::BigUint;
 use z3::ast::{Ast, Bool, Int};
 use z3::{Config, Context, SatResult, Solver};
 
-use super::r1cs_parser::{R1CS, R1CSConstraint};
+use super::r1cs_parser::{R1CSConstraint, R1CS};
 use zk_core::FieldElement;
 
 /// BN254 scalar field modulus (decimal string)
@@ -30,8 +30,7 @@ impl<'ctx> R1CSToSMT<'ctx> {
             r1cs.field_size.to_str_radix(10)
         };
 
-        let modulus = Int::from_str(ctx, &modulus_str)
-            .unwrap_or_else(|| Int::from_i64(ctx, 0));
+        let modulus = Int::from_str(ctx, &modulus_str).unwrap_or_else(|| Int::from_i64(ctx, 0));
 
         let wire_vars: Vec<_> = (0..r1cs.num_wires)
             .map(|i| {
@@ -52,8 +51,7 @@ impl<'ctx> R1CSToSMT<'ctx> {
 
     /// Convert a BigUint to Z3 Int.
     fn bigint_to_int(&self, n: &BigUint) -> Int<'ctx> {
-        Int::from_str(self.ctx, &n.to_str_radix(10))
-            .unwrap_or_else(|| Int::from_i64(self.ctx, 0))
+        Int::from_str(self.ctx, &n.to_str_radix(10)).unwrap_or_else(|| Int::from_i64(self.ctx, 0))
     }
 
     /// Compute sparse dot product: Σ (coeff_i * wire_i)

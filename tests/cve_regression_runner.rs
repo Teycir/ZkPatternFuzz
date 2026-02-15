@@ -86,20 +86,18 @@ fn test_cve_regression_tests_execute() {
 fn test_cve_run_not_stubbed() {
     // Create a test with a non-existent circuit
     use zk_fuzzer::cve::GeneratedTestCase;
-    
+
     // Create a test with a non-existent circuit but WITH a test case
     let test = RegressionTest {
         cve_id: "TEST-CVE-000".to_string(),
         cve_name: "Test CVE".to_string(),
         circuit_path: "/nonexistent/path/circuit.circom".to_string(),
-        test_cases: vec![
-            GeneratedTestCase {
-                name: "test_case_1".to_string(),
-                inputs: vec![],
-                expected_result: "valid".to_string(),
-                expected_valid: Some(true),
-            }
-        ],
+        test_cases: vec![GeneratedTestCase {
+            name: "test_case_1".to_string(),
+            inputs: vec![],
+            expected_result: "valid".to_string(),
+            expected_valid: Some(true),
+        }],
         assertion: "Test".to_string(),
     };
 

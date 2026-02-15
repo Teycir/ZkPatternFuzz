@@ -750,10 +750,8 @@ impl BatchVerificationAttack {
             }
             ForgeryStrategy::MalleableTransform => {
                 // Apply malleable transformation to proofs
-                let mut transformed: Vec<Vec<FieldElement>> = valid_batch
-                    .iter()
-                    .map(|proof| proof.to_vec())
-                    .collect();
+                let mut transformed: Vec<Vec<FieldElement>> =
+                    valid_batch.iter().map(|proof| proof.to_vec()).collect();
 
                 // Negate and un-negate (identity for checking malleability detection)
                 if !transformed.is_empty() && !transformed[0].is_empty() {
