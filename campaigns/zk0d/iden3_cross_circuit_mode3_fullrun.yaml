@@ -1,6 +1,7 @@
 ---
-# Shared evidence-mode core attacks
-# NOTE: uses a stub campaign to satisfy v2 include parsing.
+includes:
+  - "iden3_cross_circuit_mode3.yaml"
+
 campaign:
   name: ""
   version: "2.0"
@@ -35,17 +36,17 @@ attacks:
       public_input_count: 1
 
   - type: "metamorphic"
-    description: "Metamorphic relation testing"
+    description: "Strict readiness metamorphic oracle"
     config: {}
 
   - type: "constraint_slice"
-    description: "Dependency cone mutation testing"
+    description: "Strict readiness constraint slice"
     config: {}
 
   - type: "spec_inference"
-    description: "Spec inference violation testing"
+    description: "Strict readiness spec inference"
     config: {}
 
   - type: "witness_collision"
-    description: "Witness/output collision testing"
+    description: "Strict readiness witness collision"
     config: {}

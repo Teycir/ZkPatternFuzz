@@ -210,11 +210,40 @@ fn validate_campaign(campaign: &str, output_dir: &str, mode: &str) -> anyhow::Re
 fn write_campaign_override(campaign: &str, output_dir: &str) -> anyhow::Result<PathBuf> {
     let raw = std::fs::read_to_string(campaign)?;
     let mut doc: serde_yaml::Value = serde_yaml::from_str(&raw)?;
+    let campaign_dir = Path::new(campaign).parent().map(|p| p.to_path_buf());
+    let campaign_dir = match campaign_dir {
+        Some(path) => path,
+        None => PathBuf::from("."),
+    };
 
     let output_dir = PathBuf::from(output_dir);
     std::fs::create_dir_all(&output_dir)?;
 
     if let Some(map) = doc.as_mapping_mut() {
+        // Preserve include resolution after copying campaign.yaml into output_dir by
+        // rewriting relative include paths to absolute paths anchored at source YAML.
+        let includes_key = serde_yaml::Value::String("includes".to_string());
+        if let Some(includes) = map.get_mut(&includes_key) {
+            if let Some(seq) = includes.as_sequence_mut() {
+                for item in seq.iter_mut() {
+                    let include = match item.as_str() {
+                        Some(value) => value,
+                        None => continue,
+                    };
+                    // Keep env/placeholders and already-absolute paths as-is.
+                    if include.starts_with("${") {
+                        continue;
+                    }
+                    let include_path = Path::new(include);
+                    if include_path.is_absolute() {
+                        continue;
+                    }
+                    let rewritten = campaign_dir.join(include_path);
+                    *item = serde_yaml::Value::String(rewritten.to_string_lossy().to_string());
+                }
+            }
+        }
+
         let reporting_key = serde_yaml::Value::String("reporting".to_string());
         let output_key = serde_yaml::Value::String("output_dir".to_string());
 
