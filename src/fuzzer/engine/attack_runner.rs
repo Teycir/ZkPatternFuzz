@@ -1,6 +1,32 @@
 use super::prelude::*;
 use super::FuzzingEngine;
 
+trait OptionValueExt<T> {
+    fn or_value(self, default: T) -> T;
+    fn or_else_value<F>(self, default: F) -> T
+    where
+        F: FnOnce() -> T;
+}
+
+impl<T> OptionValueExt<T> for Option<T> {
+    fn or_value(self, default: T) -> T {
+        match self {
+            Some(value) => value,
+            None => default,
+        }
+    }
+
+    fn or_else_value<F>(self, default: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        match self {
+            Some(value) => value,
+            None => default(),
+        }
+    }
+}
+
 impl FuzzingEngine {
     pub(super) async fn run_underconstrained_attack(
         &mut self,
@@ -10,7 +36,7 @@ impl FuzzingEngine {
         let witness_pairs: usize = config
             .get("witness_pairs")
             .and_then(|v| v.as_u64())
-            .unwrap_or(1000) as usize;
+            .or_value(1000) as usize;
 
         tracing::info!(
             "Testing {} witness pairs for underconstrained circuits",
@@ -173,7 +199,7 @@ impl FuzzingEngine {
         let enabled = section
             .and_then(|v| v.get("enabled"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .or_value(false);
         if !enabled {
             return;
         }
@@ -181,7 +207,7 @@ impl FuzzingEngine {
         let min_samples = section
             .and_then(|v| v.get("min_samples"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+            .or_value(100) as usize;
 
         let mut constants = HashSet::new();
         if let Some(list) = section
@@ -389,12 +415,12 @@ impl FuzzingEngine {
         let forge_attempts: usize = config
             .get("forge_attempts")
             .and_then(|v| v.as_u64())
-            .unwrap_or(1000) as usize;
+            .or_value(1000) as usize;
 
         let mutation_rate: f64 = config
             .get("mutation_rate")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.1);
+            .or_value(0.1);
 
         tracing::info!("Attempting {} proof forgeries", forge_attempts);
         {
@@ -511,7 +537,7 @@ impl FuzzingEngine {
         let enabled = section
             .and_then(|v| v.get("enabled"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .or_value(false);
         if !enabled {
             return;
         }
@@ -519,15 +545,15 @@ impl FuzzingEngine {
         let proof_samples = section
             .and_then(|v| v.get("proof_samples"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(10) as usize;
+            .or_value(10) as usize;
         let random_mutations = section
             .and_then(|v| v.get("random_mutations"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+            .or_value(100) as usize;
         let structured_mutations = section
             .and_then(|v| v.get("structured_mutations"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+            .or_value(true);
 
         let witnesses = self.collect_corpus_inputs(proof_samples.max(1));
         if witnesses.is_empty() {
@@ -555,7 +581,7 @@ impl FuzzingEngine {
         let enabled = section
             .and_then(|v| v.get("enabled"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .or_value(false);
         if !enabled {
             return;
         }
@@ -563,11 +589,11 @@ impl FuzzingEngine {
         let repetitions = section
             .and_then(|v| v.get("repetitions"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(5) as usize;
+            .or_value(5) as usize;
         let sample_count = section
             .and_then(|v| v.get("sample_count"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(50) as usize;
+            .or_value(50) as usize;
 
         let witnesses = self.collect_corpus_inputs(sample_count.max(1));
         if witnesses.is_empty() {
@@ -595,7 +621,7 @@ impl FuzzingEngine {
         let enabled = section
             .and_then(|v| v.get("enabled"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .or_value(false);
         if !enabled {
             return;
         }
@@ -603,7 +629,7 @@ impl FuzzingEngine {
         let attempts = section
             .and_then(|v| v.get("attempts"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(10) as usize;
+            .or_value(10) as usize;
         if attempts == 0 {
             return;
         }
@@ -649,7 +675,7 @@ impl FuzzingEngine {
             .target
             .circuit_path
             .to_str()
-            .unwrap_or("");
+            .or_value("");
         if circuit_path.is_empty() {
             tracing::warn!("Trusted setup test skipped: invalid circuit path");
             return;
@@ -722,7 +748,7 @@ impl FuzzingEngine {
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect::<Vec<_>>()
             })
-            .unwrap_or_else(|| {
+            .or_else_value(|| {
                 vec![
                     "0".to_string(),
                     "1".to_string(),
@@ -794,7 +820,7 @@ impl FuzzingEngine {
         let samples: usize = config
             .get("samples")
             .and_then(|v| v.as_u64())
-            .unwrap_or(10000) as usize;
+            .or_value(10000) as usize;
 
         tracing::info!("Running collision detection with {} samples", samples);
         {
@@ -902,7 +928,7 @@ impl FuzzingEngine {
         let enabled = section
             .and_then(|v| v.get("enabled"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .or_value(false);
         if !enabled {
             return;
         }
@@ -910,11 +936,11 @@ impl FuzzingEngine {
         let replay_attempts = section
             .and_then(|v| v.get("replay_attempts"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(50) as usize;
+            .or_value(50) as usize;
         let base_samples = section
             .and_then(|v| v.get("base_samples"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(10) as usize;
+            .or_value(10) as usize;
 
         let mut scanner = NullifierReplayScanner::new()
             .with_replay_attempts(replay_attempts)
@@ -966,7 +992,7 @@ impl FuzzingEngine {
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect::<Vec<_>>()
             })
-            .unwrap_or_else(|| vec!["0".to_string(), "1".to_string(), "p-1".to_string()]);
+            .or_else_value(|| vec!["0".to_string(), "1".to_string(), "p-1".to_string()]);
 
         tracing::info!("Testing {} boundary values", test_values.len());
         {
@@ -999,7 +1025,7 @@ impl FuzzingEngine {
                 tracing::warn!(
                     "Boundary testcase execution failed for value '{}': {}",
                     value,
-                    result.error.as_deref().unwrap_or("unknown execution error")
+                    result.error.as_deref().or_value("unknown execution error")
                 );
             }
 
@@ -1024,7 +1050,7 @@ impl FuzzingEngine {
         let enabled = section
             .and_then(|v| v.get("enabled"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .or_value(false);
         if !enabled {
             return;
         }
@@ -1032,19 +1058,19 @@ impl FuzzingEngine {
         let sample_count = section
             .and_then(|v| v.get("sample_count"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(20) as usize;
+            .or_value(20) as usize;
         let test_field_wrap = section
             .and_then(|v| v.get("test_field_wrap"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+            .or_value(true);
         let test_additive_inverse = section
             .and_then(|v| v.get("test_additive_inverse"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .or_value(false);
         let test_negative_zero = section
             .and_then(|v| v.get("test_negative_zero"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+            .or_value(true);
 
         let witnesses = self.collect_corpus_inputs(sample_count.max(1));
         if witnesses.is_empty() {
@@ -1072,19 +1098,19 @@ impl FuzzingEngine {
         let malleability_tests = config
             .get("malleability_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(1000) as usize;
+            .or_value(1000) as usize;
         let malformed_tests = config
             .get("malformed_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(1000) as usize;
+            .or_value(1000) as usize;
         let edge_case_tests = config
             .get("edge_case_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(500) as usize;
+            .or_value(500) as usize;
         let mutation_rate = config
             .get("mutation_rate")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.05);
+            .or_value(0.05);
 
         tracing::info!(
             "Running verification fuzzing: malleability={}, malformed={}, edge_cases={}",
@@ -1128,23 +1154,23 @@ impl FuzzingEngine {
         let determinism_tests = config
             .get("determinism_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+            .or_value(100) as usize;
         let timing_tests = config
             .get("timing_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(500) as usize;
+            .or_value(500) as usize;
         let stress_tests = config
             .get("stress_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(1000) as usize;
+            .or_value(1000) as usize;
         let timing_threshold_us = config
             .get("timing_threshold_us")
             .and_then(|v| v.as_u64())
-            .unwrap_or(10_000);
+            .or_value(10_000);
         let timing_cv_threshold = config
             .get("timing_cv_threshold")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.5);
+            .or_value(0.5);
 
         tracing::info!(
             "Running witness fuzzing: determinism={}, timing={}, stress={}",
@@ -1191,57 +1217,57 @@ impl FuzzingEngine {
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(500) as usize;
+            .or_value(500) as usize;
         let compare_coverage = config
             .get("compare_coverage")
             .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+            .or_value(true);
         let compare_timing = config
             .get("compare_timing")
             .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+            .or_value(true);
         let timing_tolerance_percent = config
             .get("timing_tolerance_percent")
             .and_then(|v| v.as_f64())
-            .unwrap_or(50.0);
+            .or_value(50.0);
         let timing_min_us = config
             .get("timing_min_us")
             .and_then(|v| v.as_u64())
-            .unwrap_or(2_000);
+            .or_value(2_000);
         let timing_abs_threshold_us = config
             .get("timing_abs_threshold_us")
             .and_then(|v| v.as_u64())
-            .unwrap_or(5_000);
+            .or_value(5_000);
         let coverage_min_constraints = config
             .get("coverage_min_constraints")
             .and_then(|v| v.as_u64())
-            .unwrap_or(16) as usize;
+            .or_value(16) as usize;
         let coverage_jaccard_threshold = config
             .get("coverage_jaccard_threshold")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.5);
+            .or_value(0.5);
         let coverage_abs_delta_threshold = config
             .get("coverage_abs_delta_threshold")
             .and_then(|v| v.as_u64())
-            .unwrap_or(200) as usize;
+            .or_value(200) as usize;
         let coverage_rel_delta_threshold = config
             .get("coverage_rel_delta_threshold")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.25);
+            .or_value(0.25);
 
         let cross_backend_section = config.get("cross_backend");
         let cross_backend_enabled = cross_backend_section
             .and_then(|v| v.get("enabled"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .or_value(false);
         let cross_backend_samples = cross_backend_section
             .and_then(|v| v.get("sample_count"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+            .or_value(100) as usize;
         let cross_backend_tolerance_bits = cross_backend_section
             .and_then(|v| v.get("tolerance_bits"))
             .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
+            .or_value(0) as usize;
 
         tracing::info!("Running differential fuzzing with {} tests", num_tests);
 
@@ -1312,13 +1338,13 @@ impl FuzzingEngine {
             let circuit_path = backend_paths
                 .get(backend)
                 .map(|s| s.as_str())
-                .unwrap_or_else(|| {
+                .or_else_value(|| {
                     self.config
                         .campaign
                         .target
                         .circuit_path
                         .to_str()
-                        .unwrap_or("")
+                        .or_value("")
                 });
 
             match ExecutorFactory::create_with_options(
@@ -1465,7 +1491,7 @@ impl FuzzingEngine {
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(200) as usize;
+            .or_value(200) as usize;
 
         tracing::info!(
             "Running circuit composition fuzzing with {} tests",
@@ -1548,7 +1574,7 @@ impl FuzzingEngine {
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(300) as usize;
+            .or_value(300) as usize;
 
         tracing::info!(
             "Running information leakage detection with {} tests",
@@ -1641,7 +1667,7 @@ impl FuzzingEngine {
         let num_samples = config
             .get("num_samples")
             .and_then(|v| v.as_u64())
-            .unwrap_or(1000) as usize;
+            .or_value(1000) as usize;
 
         tracing::info!(
             "Running timing side-channel detection with {} samples",
@@ -1695,12 +1721,12 @@ impl FuzzingEngine {
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+            .or_value(100) as usize;
 
         let max_depth = config
             .get("max_depth")
             .and_then(|v| v.as_u64())
-            .unwrap_or(3) as usize;
+            .or_value(3) as usize;
 
         tracing::info!(
             "Running recursive proof fuzzing with {} tests, max depth {}",
@@ -1768,7 +1794,7 @@ impl FuzzingEngine {
 
         let evidence_mode =
             Self::additional_bool(&self.config.campaign.parameters.additional, "evidence_mode")
-                .unwrap_or(false);
+                .or_value(false);
 
         if evidence_mode {
             let before = findings.len();
@@ -1817,7 +1843,7 @@ impl FuzzingEngine {
     ) -> usize {
         let evidence_mode =
             Self::additional_bool(&self.config.campaign.parameters.additional, "evidence_mode")
-                .unwrap_or(false);
+                .or_value(false);
 
         if evidence_mode {
             let before = findings.len();
@@ -1997,12 +2023,12 @@ impl FuzzingEngine {
         let confidence_threshold = config
             .get("confidence_threshold")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.7);
+            .or_value(0.7);
 
         let confirm_violations = config
             .get("confirm_violations")
             .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+            .or_value(true);
 
         tracing::info!(
             "Running constraint inference attack (confidence >= {:.0}%)",
@@ -2136,7 +2162,7 @@ impl FuzzingEngine {
         let num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+            .or_value(100) as usize;
 
         tracing::info!(
             "Running metamorphic testing with {} base witnesses",
@@ -2188,12 +2214,12 @@ impl FuzzingEngine {
         let samples_per_cone = config
             .get("samples_per_cone")
             .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+            .or_value(100) as usize;
 
         let base_witness_attempts = config
             .get("base_witness_attempts")
             .and_then(|v| v.as_u64())
-            .unwrap_or(5) as usize;
+            .or_value(5) as usize;
 
         tracing::info!(
             "Running constraint slice analysis ({} samples/cone)",
@@ -2279,7 +2305,7 @@ impl FuzzingEngine {
         let sample_count = config
             .get("sample_count")
             .and_then(|v| v.as_u64())
-            .unwrap_or(500) as usize;
+            .or_value(500) as usize;
 
         // Depth contract: SpecInference must run full depth in Mode 2.
         // Do not accept YAML knobs that would cap work or reduce attempt depth.
@@ -2338,12 +2364,12 @@ impl FuzzingEngine {
         let samples = config
             .get("samples")
             .and_then(|v| v.as_u64())
-            .unwrap_or(10000) as usize;
+            .or_value(10000) as usize;
 
         let scope_public_inputs = config
             .get("scope_public_inputs")
             .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+            .or_value(true);
 
         tracing::info!("Running witness collision detection ({} samples)", samples);
 

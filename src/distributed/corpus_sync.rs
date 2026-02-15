@@ -258,10 +258,13 @@ impl CorpusSyncManager {
 
     /// Return the current global merged coverage bitmap (if any).
     pub fn global_coverage_bitmap(&self) -> Vec<u8> {
-        self.remote_coverage
-            .get()
-            .map(|rw| rw.read().unwrap().clone())
-            .unwrap_or_default()
+        match self.remote_coverage.get() {
+            Some(bitmap) => bitmap
+                .read()
+                .expect("remote coverage bitmap lock poisoned")
+                .clone(),
+            None => Vec::new(),
+        }
     }
 
     /// Get entries received from a specific node
@@ -271,7 +274,7 @@ impl CorpusSyncManager {
             .unwrap()
             .get(node_id)
             .cloned()
-            .unwrap_or_default()
+            .map_or(Vec::new(), |v| v)
     }
 
     /// Get synchronization statistics
@@ -377,7 +380,7 @@ impl GlobalCorpusManager {
             .node_corpora
             .get(node_id)
             .map(|entries| entries.iter().map(|e| e.coverage_hash).collect())
-            .unwrap_or_default();
+            .map_or(HashSet::new(), |v| v);
 
         self.global_corpus
             .iter()

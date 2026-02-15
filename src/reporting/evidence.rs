@@ -233,7 +233,11 @@ impl EvidenceGenerator {
         let circuit_stem = circuit_path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or(main_component.as_str());
+            .map(|value| value);
+        let circuit_stem = match circuit_stem {
+            Some(value) => value,
+            None => main_component.as_str(),
+        };
 
         // Try to find build directory
         let build_dir = additional
@@ -253,14 +257,18 @@ impl EvidenceGenerator {
                         dir.push(Self::derive_circom_build_name(circuit_path, main_component));
                         dir
                     })
-            })
-            .unwrap_or_else(|| {
-                // Default: look for build dir next to circuit
-                circuit_path
-                    .parent()
-                    .map(|p| p.join("build"))
-                    .unwrap_or_else(|| PathBuf::from("./build"))
             });
+        let build_dir = match build_dir {
+            Some(value) => value,
+            None => {
+                // Default: look for build dir next to circuit
+                let parent = match circuit_path.parent() {
+                    Some(value) => value,
+                    None => Path::new("."),
+                };
+                parent.join("build")
+            }
+        };
 
         // Discover WASM
         let wasm = self.wasm_path.clone().or_else(|| {
@@ -352,8 +360,11 @@ impl EvidenceGenerator {
                     .campaign
                     .target
                     .circuit_path
-                    .parent()
-                    .unwrap_or(Path::new("."));
+                    .parent();
+                let project_path = match project_path {
+                    Some(value) => value,
+                    None => Path::new("."),
+                };
                 match super::evidence_noir::generate_noir_proof(&finding_dir, finding, project_path)
                 {
                     Ok((proof_path, verification)) => {
@@ -456,7 +467,11 @@ impl EvidenceGenerator {
             .circuit_path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or(main_component.as_str());
+            .map(|value| value);
+        let circuit_stem = match circuit_stem {
+            Some(value) => value,
+            None => main_component.as_str(),
+        };
 
         let script = match self.config.campaign.target.framework {
             Framework::Circom => {
@@ -536,27 +551,34 @@ echo "Finding description: {}"
         }
 
         // Return the key command
+        let parent = path.parent().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Reproduction script path has no parent directory: '{}'",
+                path.display()
+            )
+        })?;
         Ok(format!(
             "cd {} && ./repro.sh",
-            path.parent().unwrap().display()
+            parent.display()
         ))
     }
 
     fn derive_circom_build_name(circuit_path: &Path, main_component: &str) -> String {
         // Keep this in sync with executor/mod.rs::derive_circuit_build_name.
         let name = if circuit_path.is_dir() {
-            circuit_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("circuit")
-                .to_string()
+            match circuit_path.file_name().and_then(|s| s.to_str()) {
+                Some(value) => value.to_string(),
+                None => "circuit".to_string(),
+            }
         } else {
-            circuit_path
+            match circuit_path
                 .file_stem()
                 .or_else(|| circuit_path.file_name())
                 .and_then(|s| s.to_str())
-                .unwrap_or("circuit")
-                .to_string()
+            {
+                Some(value) => value.to_string(),
+                None => "circuit".to_string(),
+            }
         };
 
         let mut combined = name;

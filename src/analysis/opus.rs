@@ -369,7 +369,10 @@ impl OpusAnalyzer {
 
                     // Skip node_modules, target, .git, etc.
                     if path.is_dir() {
-                        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        let name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map_or("", |v| v);
                         if name.starts_with('.') || name == "node_modules" || name == "target" {
                             continue;
                         }
@@ -400,7 +403,10 @@ impl OpusAnalyzer {
 
     /// Detect framework from file extension and content
     fn detect_framework(&self, path: &Path) -> anyhow::Result<Framework> {
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map_or("", |v| v);
 
         match ext {
             "circom" => Ok(Framework::Circom),
@@ -1078,7 +1084,7 @@ fn rewrite_zk0d_path(path: &Path) -> String {
         Ok(v) => Some(v),
         Err(_) => None,
     };
-    let root = env_root.as_deref().unwrap_or(DEFAULT_ZK0D_BASE);
+    let root = env_root.as_deref().map_or(DEFAULT_ZK0D_BASE, |v| v);
     let root = root.trim_end_matches(std::path::MAIN_SEPARATOR);
 
     if let Some(raw_suffix) = path_str.strip_prefix(root) {

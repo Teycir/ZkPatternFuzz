@@ -89,26 +89,49 @@ fn main() -> anyhow::Result<()> {
             .mode
             .clone()
             .or_else(|| targets_file.defaults.mode.clone())
-            .unwrap_or_else(|| "evidence".to_string());
+            .map(|value| value);
+        let mode = match mode {
+            Some(value) => value,
+            None => "evidence".to_string(),
+        };
 
         let workers = target
             .workers
             .or(targets_file.defaults.workers)
-            .unwrap_or(8);
-        let seed = target.seed.or(targets_file.defaults.seed).unwrap_or(42);
+            .map(|value| value);
+        let workers = match workers {
+            Some(value) => value,
+            None => 8,
+        };
+        let seed = match target.seed.or(targets_file.defaults.seed) {
+            Some(value) => value,
+            None => 42,
+        };
         let iterations = target
             .iterations
             .or(targets_file.defaults.iterations)
-            .unwrap_or(50000);
+            .map(|value| value);
+        let iterations = match iterations {
+            Some(value) => value,
+            None => 50000,
+        };
         let timeout = target
             .timeout
             .or(targets_file.defaults.timeout)
-            .unwrap_or(1800);
+            .map(|value| value);
+        let timeout = match timeout {
+            Some(value) => value,
+            None => 1800,
+        };
 
         let output_dir = target
             .output_dir
             .clone()
-            .unwrap_or_else(|| format!("reports/zk0d/{}", target.name));
+            .map(|value| value);
+        let output_dir = match output_dir {
+            Some(value) => value,
+            None => format!("reports/zk0d/{}", target.name),
+        };
 
         if !args.skip_validate {
             validate_campaign(&target.campaign, &output_dir, &mode)?;

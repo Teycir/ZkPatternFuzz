@@ -93,7 +93,7 @@ struct Defaults {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let defaults = preset_defaults(&args.preset);
+    let defaults = preset_defaults(&args.preset)?;
 
     let circuit = args
         .circuit
@@ -102,11 +102,11 @@ fn main() -> Result<()> {
     let output = args
         .output
         .or_else(|| defaults.output.clone())
-        .unwrap_or_else(|| "seed_inputs.json".to_string());
+        .ok_or_else(|| anyhow::anyhow!("Missing --output (or preset default output)"))?;
     let build_root = args
         .build_root
         .or_else(|| defaults.build_root.clone())
-        .unwrap_or_else(|| "/tmp/zkfuzzer_seed".to_string());
+        .ok_or_else(|| anyhow::anyhow!("Missing --build-root (or preset default build root)"))?;
 
     let levels = if args.levels > 0 {
         args.levels
@@ -156,20 +156,24 @@ fn main() -> Result<()> {
             .with_context(|| "circuit path must be under source_root")?;
         work_circuits.join(rel)
     } else {
-        let dest = work_circuits.join(
-            circuit_path
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new("circuit.circom")),
-        );
+        let circuit_name = circuit_path.file_name().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Circuit path '{}' must include a file name",
+                circuit_path.display()
+            )
+        })?;
+        let dest = work_circuits.join(circuit_name);
         fs::copy(&circuit_path, &dest)
             .with_context(|| format!("Failed to copy circuit from {}", circuit_path.display()))?;
         for extra in &extra_files {
             let extra_path = resolve_extra_path(extra, &circuit_path, None)?;
-            let dest_extra = work_circuits.join(
-                extra_path
-                    .file_name()
-                    .unwrap_or_else(|| std::ffi::OsStr::new("extra.circom")),
-            );
+            let extra_name = extra_path.file_name().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Extra file path '{}' must include a file name",
+                    extra_path.display()
+                )
+            })?;
+            let dest_extra = work_circuits.join(extra_name);
             fs::copy(&extra_path, &dest_extra)?;
         }
         dest
@@ -185,12 +189,10 @@ fn main() -> Result<()> {
                 if remove_file_res.is_err() && remove_dir_res.is_err() {
                     let file_err = remove_file_res
                         .err()
-                        .map(|e| e.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
+                        .expect("remove_file_res.is_err() checked");
                     let dir_err = remove_dir_res
                         .err()
-                        .map(|e| e.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
+                        .expect("remove_dir_res.is_err() checked");
                     anyhow::bail!(
                         "Failed to remove existing symlink target '{}': remove_file={}, remove_dir_all={}",
                         link_path.display(),
@@ -207,14 +209,22 @@ fn main() -> Result<()> {
     for extra in &extra_files {
         let extra_path = resolve_extra_path(extra, &circuit_path, source_root.as_deref())?;
         let local_path = if let Some(root) = &source_root {
-            let rel = extra_path.strip_prefix(root).unwrap_or(&extra_path);
+            let rel = extra_path.strip_prefix(root).with_context(|| {
+                format!(
+                    "Extra path '{}' is not under source root '{}'",
+                    extra_path.display(),
+                    root.display()
+                )
+            })?;
             work_circuits.join(rel)
         } else {
-            work_circuits.join(
-                extra_path
-                    .file_name()
-                    .unwrap_or_else(|| std::ffi::OsStr::new("extra.circom")),
-            )
+            let extra_name = extra_path.file_name().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Extra path '{}' must include a file name",
+                    extra_path.display()
+                )
+            })?;
+            work_circuits.join(extra_name)
         };
         files_to_edit.push(local_path);
     }
@@ -247,7 +257,12 @@ fn main() -> Result<()> {
     let basename = local_circuit
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("circuit");
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Local circuit path '{}' has no valid UTF-8 stem",
+                local_circuit.display()
+            )
+        })?;
     let wasm_path = build_dir
         .join(format!("{}_js", basename))
         .join(format!("{}.wasm", basename));
@@ -320,11 +335,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn preset_defaults(preset: &str) -> Defaults {
+fn preset_defaults(preset: &str) -> Result<Defaults> {
     let mut defaults = Defaults::default();
     if preset == "tornado" {
-        let zk0d_base =
-            std::env::var("ZK0D_BASE").unwrap_or_else(|_| "/media/elements/Repos/zk0d".to_string());
+        let zk0d_base = std::env::var("ZK0D_BASE")
+            .context("ZK0D_BASE is required when using --preset tornado")?;
         defaults.circuit = Some(
             Path::new(&zk0d_base)
                 .join("cat3_privacy/tornado-core/circuits/withdraw.circom")
@@ -367,7 +382,7 @@ fn preset_defaults(preset: &str) -> Defaults {
             .symlinks
             .push("circomlib=third_party/circomlib".to_string());
     }
-    defaults
+    Ok(defaults)
 }
 
 fn merge_vec<T: Clone>(mut base: Vec<T>, mut extra: Vec<T>) -> Vec<T> {
@@ -384,10 +399,13 @@ fn resolve_extra_path(
     let path = if extra_path.is_absolute() {
         extra_path
     } else {
-        circuit_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(extra)
+        let parent = circuit_path.parent().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Circuit path '{}' has no parent directory",
+                circuit_path.display()
+            )
+        })?;
+        parent.join(extra)
     };
     if let Some(root) = source_root {
         path.strip_prefix(root)
@@ -475,7 +493,7 @@ fn load_input_json(path: &str) -> Result<Map<String, Value>> {
     Ok(normalize_value(Value::Object(obj))
         .as_object()
         .cloned()
-        .unwrap_or_default())
+        .expect("normalize_value(Value::Object(_)) always returns Value::Object"))
 }
 
 fn normalize_value(value: Value) -> Value {
@@ -496,9 +514,15 @@ fn normalize_value(value: Value) -> Value {
 fn apply_input_overrides(input: &mut Map<String, Value>, overrides: &[String]) -> Result<()> {
     for entry in overrides {
         if let Some((key, raw)) = entry.split_once('=') {
-            let parsed: Value =
-                serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()));
+            let parsed: Value = serde_json::from_str(raw).with_context(|| {
+                format!(
+                    "Invalid override value for '{}': '{}' is not valid JSON",
+                    key, raw
+                )
+            })?;
             input.insert(key.to_string(), normalize_value(parsed));
+        } else {
+            bail!("Invalid --input override '{}': expected key=value", entry);
         }
     }
     Ok(())
@@ -529,30 +553,53 @@ fn read_sym_map(sym_path: &Path) -> Result<HashMap<String, usize>> {
     let contents = fs::read_to_string(sym_path)
         .with_context(|| format!("Failed to read {}", sym_path.display()))?;
     let mut map = HashMap::new();
-    for line in contents.lines() {
+    for (line_number, line) in contents.lines().enumerate() {
         let parts: Vec<&str> = line.split(',').collect();
         if parts.len() < 2 {
-            tracing::warn!("Skipping malformed .sym line (expected at least 2 columns): {}", line);
-            continue;
+            bail!(
+                "Malformed .sym line {} in {} (expected at least 2 columns): {}",
+                line_number + 1,
+                sym_path.display(),
+                line
+            );
         }
 
-        let chosen = match parts.get(1).map(|v| v.trim().parse::<isize>()) {
-            Some(Ok(value)) if value >= 0 => Some(value as usize),
-            Some(Ok(_)) => {
-                tracing::warn!("Skipping .sym line with negative index: {}", line);
-                None
+        let index = match parts.get(1) {
+            Some(raw) => raw.trim().parse::<isize>().with_context(|| {
+                format!(
+                    "Invalid witness index '{}' at .sym line {} in {}",
+                    raw,
+                    line_number + 1,
+                    sym_path.display()
+                )
+            })?,
+            None => {
+                bail!(
+                    "Missing witness index at .sym line {} in {}",
+                    line_number + 1,
+                    sym_path.display()
+                );
             }
-            Some(Err(err)) => {
-                tracing::warn!("Skipping .sym line with invalid index '{}': {}", line, err);
-                None
-            }
-            None => None,
         };
+        if index < 0 {
+            bail!(
+                "Negative witness index {} at .sym line {} in {}",
+                index,
+                line_number + 1,
+                sym_path.display()
+            );
+        }
+        let chosen = index as usize;
 
         let name = parts.last().map(|s| s.trim()).filter(|s| !s.is_empty());
-        if let (Some(idx), Some(name)) = (chosen, name) {
-            map.insert(name.to_string(), idx);
-        }
+        let signal_name = name.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Missing signal name at .sym line {} in {}",
+                line_number + 1,
+                sym_path.display()
+            )
+        })?;
+        map.insert(signal_name.to_string(), chosen);
     }
     Ok(map)
 }
@@ -561,7 +608,10 @@ fn parse_extract_spec(spec: &str) -> Result<(String, String)> {
     if let Some((signal, input)) = spec.split_once("=>") {
         Ok((signal.to_string(), input.to_string()))
     } else {
-        Ok((spec.to_string(), spec.to_string()))
+        bail!(
+            "Invalid --extract spec '{}': expected 'signal|alt=>input_name'",
+            spec
+        )
     }
 }
 

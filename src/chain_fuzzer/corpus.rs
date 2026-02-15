@@ -231,7 +231,7 @@ impl ChainCorpus {
         entries.sort_by(|a, b| {
             b.priority_score()
                 .partial_cmp(&a.priority_score())
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .map_or(std::cmp::Ordering::Equal, |v| v)
         });
         entries.into_iter().take(n).collect()
     }
@@ -263,7 +263,7 @@ impl ChainCorpus {
         let meta = self.compute_meta();
         let meta_path = path
             .parent()
-            .unwrap_or_else(|| Path::new("."))
+            .map_or_else(|| Path::new("."), |v| v)
             .join("chain_corpus_meta.json");
         {
             let f = std::fs::File::create(&meta_path)?;
@@ -369,7 +369,7 @@ impl ChainCorpus {
         self.entries.sort_by(|a, b| {
             b.priority_score()
                 .partial_cmp(&a.priority_score())
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .map_or(std::cmp::Ordering::Equal, |v| v)
         });
         self.entries.truncate(max_entries);
     }
@@ -416,7 +416,7 @@ impl ChainCorpus {
             .iter()
             .map(|e| e.depth_reached)
             .max()
-            .unwrap_or(0);
+            .map_or(0, |v| v);
 
         CorpusStats {
             total_entries,

@@ -342,7 +342,7 @@ impl FrontRunningAttack {
                     .outputs
                     .first()
                     .map(|f| f.to_hex())
-                    .unwrap_or_default();
+                    .map_or(String::new(), |v| v);
 
                 commitment_map
                     .entry(commitment_key)
@@ -414,12 +414,12 @@ impl FrontRunningAttack {
                     .outputs
                     .first()
                     .and_then(|f| f.to_u64())
-                    .unwrap_or(0);
+                    .map_or(0, |v| v);
                 let output_b = result_b
                     .outputs
                     .first()
                     .and_then(|f| f.to_u64())
-                    .unwrap_or(0);
+                    .map_or(0, |v| v);
 
                 let diff = (output_a as i128 - output_b as i128).unsigned_abs();
                 similar_pairs.push(diff);

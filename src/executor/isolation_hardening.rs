@@ -177,8 +177,12 @@ impl IsolationTelemetry {
     pub fn recent_events(&self, count: usize) -> Vec<IsolationEvent> {
         self.events
             .lock()
-            .map(|events| events.iter().rev().take(count).cloned().collect())
-            .unwrap_or_default()
+            .expect("isolation telemetry events mutex poisoned")
+            .iter()
+            .rev()
+            .take(count)
+            .cloned()
+            .collect()
     }
 
     /// Get statistics
@@ -258,7 +262,7 @@ impl CrashRecoveryState {
         let one_minute_ago = now - Duration::from_secs(60);
 
         // Remove old entries
-        while times.front().map(|t| *t < one_minute_ago).unwrap_or(false) {
+        while times.front().map(|t| *t < one_minute_ago).map_or(false, |v| v) {
             times.pop_front();
         }
 
@@ -443,7 +447,7 @@ impl Watchdog {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
-            .unwrap_or(0)
+            .map_or(0, |v| v)
     }
 }
 
@@ -531,7 +535,7 @@ impl HardenedIsolatedExecutor {
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
-                .unwrap_or(0),
+                .map_or(0, |v| v),
             event_type: IsolationEventType::Crash,
             circuit_id: self.circuit_id.clone(),
             error: result.error.clone(),
@@ -545,7 +549,7 @@ impl HardenedIsolatedExecutor {
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs())
-                    .unwrap_or(0),
+                    .map_or(0, |v| v),
                 event_type: IsolationEventType::Blacklisted,
                 circuit_id: self.circuit_id.clone(),
                 error: None,

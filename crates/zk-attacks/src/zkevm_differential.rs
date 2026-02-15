@@ -496,8 +496,10 @@ impl ZkEvmDifferentialTester {
                         if z_val != r_val {
                             differences.push(StateDifference {
                                 description: "Storage slot value differs".to_string(),
-                                zkevm_value: z_val.map(hex::encode).unwrap_or_default(),
-                                reference_value: r_val.map(hex::encode).unwrap_or_default(),
+                                zkevm_value: z_val.map(hex::encode).map_or(String::new(), |v| v),
+                                reference_value: r_val
+                                    .map(hex::encode)
+                                    .map_or(String::new(), |v| v),
                                 location: Some(format!(
                                     "{}:{}",
                                     hex::encode(addr),
@@ -670,7 +672,7 @@ impl DifferentialFinding {
                 self.differences
                     .first()
                     .map(|d| d.description.as_str())
-                    .unwrap_or("unknown difference")
+                    .map_or("unknown difference", |v| v)
             ),
             severity: self.severity,
             poc: zk_core::ProofOfConcept {

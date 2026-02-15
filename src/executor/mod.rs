@@ -141,16 +141,19 @@ fn framework_dir_name(framework: Framework) -> &'static str {
 fn derive_circuit_build_name(circuit_path: &str, main_component: &str) -> String {
     let path = Path::new(circuit_path);
     let name = if path.is_dir() {
-        path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("circuit")
-            .to_string()
+        match path.file_name().and_then(|s| s.to_str()) {
+            Some(value) => value.to_string(),
+            None => "circuit".to_string(),
+        }
     } else {
-        path.file_stem()
+        match path
+            .file_stem()
             .or_else(|| path.file_name())
             .and_then(|s| s.to_str())
-            .unwrap_or("circuit")
-            .to_string()
+        {
+            Some(value) => value.to_string(),
+            None => "circuit".to_string(),
+        }
     };
 
     let mut combined = name;
@@ -222,9 +225,15 @@ fn value_bucket_for(value_bytes: &[u8]) -> u8 {
     }
     let first_nonzero = value_bytes
         .iter()
-        .position(|&b| b != 0)
-        .unwrap_or(value_bytes.len());
-    let byte = value_bytes.get(first_nonzero).copied().unwrap_or(0);
+        .position(|&b| b != 0);
+    let first_nonzero = match first_nonzero {
+        Some(value) => value,
+        None => value_bytes.len(),
+    };
+    let byte = match value_bytes.get(first_nonzero).copied() {
+        Some(byte) => byte,
+        None => return first_nonzero as u8,
+    };
     (first_nonzero as u8).wrapping_add(byte)
 }
 
@@ -841,8 +850,10 @@ impl CircuitExecutor for CircomExecutor {
                 let coverage = if self.skip_constraint_check {
                     ExecutionCoverage::with_output_hash(&outputs)
                 } else {
-                    coverage_from_results(self.check_constraints(&witness))
-                        .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs))
+                    match coverage_from_results(self.check_constraints(&witness)) {
+                        Some(coverage) => coverage,
+                        None => ExecutionCoverage::with_output_hash(&outputs),
+                    }
                 };
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
@@ -982,8 +993,11 @@ impl NoirExecutor {
             .chain(private.iter())
             .chain(output_indices.iter())
             .copied()
-            .max()
-            .unwrap_or(0);
+            .max();
+        let max_idx = match max_idx {
+            Some(value) => value,
+            None => 0,
+        };
 
         let mut witness = vec![FieldElement::zero(); max_idx.max(1) + 1];
         witness[0] = FieldElement::one();
@@ -1036,8 +1050,10 @@ impl CircuitExecutor for NoirExecutor {
         match self.target.execute(inputs) {
             Ok(outputs) => {
                 let witness = self.build_witness_with_outputs(inputs, &outputs);
-                let coverage = coverage_from_results(self.check_constraints(&witness))
-                    .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs));
+                let coverage = match coverage_from_results(self.check_constraints(&witness)) {
+                    Some(coverage) => coverage,
+                    None => ExecutionCoverage::with_output_hash(&outputs),
+                };
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -1228,7 +1244,11 @@ impl CircuitExecutor for Halo2Executor {
         match self.target.execute(inputs) {
             Ok(outputs) => {
                 let coverage = coverage_from_results(self.check_constraints(inputs))
-                    .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs));
+                    .or_else(|| Some(ExecutionCoverage::with_output_hash(&outputs)));
+                let coverage = match coverage {
+                    Some(value) => value,
+                    None => ExecutionCoverage::with_output_hash(&outputs),
+                };
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -1384,7 +1404,11 @@ impl CircuitExecutor for CairoExecutor {
         match self.target.execute(inputs) {
             Ok(outputs) => {
                 let coverage = coverage_from_results(self.check_constraints(inputs))
-                    .unwrap_or_else(|| ExecutionCoverage::with_output_hash(&outputs));
+                    .or_else(|| Some(ExecutionCoverage::with_output_hash(&outputs)));
+                let coverage = match coverage {
+                    Some(value) => value,
+                    None => ExecutionCoverage::with_output_hash(&outputs),
+                };
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }

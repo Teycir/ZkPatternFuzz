@@ -123,12 +123,12 @@ impl Halo2Target {
         let name = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or("unknown")
+            .ok_or_else(|| anyhow::anyhow!("Invalid Halo2 circuit path '{}'", path.display()))?
             .to_string();
 
         let build_dir = path
             .parent()
-            .unwrap_or(Path::new("."))
+            .ok_or_else(|| anyhow::anyhow!("Halo2 circuit path has no parent: '{}'", path.display()))?
             .join("target")
             .join("halo2_build");
 
@@ -172,7 +172,12 @@ impl Halo2Target {
         } else {
             self.circuit_path
                 .parent()
-                .unwrap_or(Path::new("."))
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Halo2 circuit path has no parent: '{}'",
+                        self.circuit_path.display()
+                    )
+                })?
                 .join("Cargo.toml")
         };
 
@@ -191,7 +196,12 @@ impl Halo2Target {
 
     /// Setup from a Rust project
     fn setup_rust_circuit(&mut self, cargo_path: &Path) -> Result<()> {
-        let project_dir = cargo_path.parent().unwrap();
+        let project_dir = cargo_path.parent().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Halo2 Cargo.toml path has no parent directory: '{}'",
+                cargo_path.display()
+            )
+        })?;
 
         // Build the project
         tracing::info!("Building Halo2 Rust project...");
@@ -262,41 +272,30 @@ impl Halo2Target {
         let content = std::fs::read_to_string(&self.circuit_path)?;
         let spec: serde_json::Value = serde_json::from_str(&content)?;
 
-        let k = spec.get("k").and_then(|v| v.as_u64()).unwrap_or(10) as u32;
+        let required_u64 = |key: &str| -> Result<u64> {
+            spec.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
+                anyhow::anyhow!("Halo2 JSON spec missing required '{}' field", key)
+            })
+        };
+        let required_usize = |key: &str| -> Result<usize> { Ok(required_u64(key)? as usize) };
+        let name = spec
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Halo2 JSON spec missing required 'name' field"))?
+            .to_string();
+        let k = required_u64("k")? as u32;
 
         self.config.k = k;
         self.metadata = Some(Halo2Metadata {
-            name: spec
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&self.name)
-                .to_string(),
+            name,
             k,
-            num_advice_columns: spec
-                .get("advice_columns")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(4) as usize,
-            num_fixed_columns: spec
-                .get("fixed_columns")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(2) as usize,
-            num_instance_columns: spec
-                .get("instance_columns")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(1) as usize,
-            num_constraints: spec
-                .get("constraints")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as usize,
-            num_private_inputs: spec
-                .get("private_inputs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(10) as usize,
-            num_public_inputs: spec
-                .get("public_inputs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(2) as usize,
-            num_lookups: spec.get("lookups").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+            num_advice_columns: required_usize("advice_columns")?,
+            num_fixed_columns: required_usize("fixed_columns")?,
+            num_instance_columns: required_usize("instance_columns")?,
+            num_constraints: required_usize("constraints")?,
+            num_private_inputs: required_usize("private_inputs")?,
+            num_public_inputs: required_usize("public_inputs")?,
+            num_lookups: required_usize("lookups")?,
         });
 
         let parsed = ConstraintParser::parse_plonk_with_tables(&content);
@@ -330,7 +329,7 @@ impl Halo2Target {
         } else {
             self.circuit_path
                 .parent()
-                .unwrap_or(Path::new("."))
+                .expect("Halo2 circuit path must have parent directory")
                 .to_path_buf()
         };
 
@@ -412,7 +411,9 @@ impl Halo2Target {
         let project_dir = if self.circuit_path.is_dir() {
             self.circuit_path.as_path()
         } else {
-            self.circuit_path.parent().unwrap_or(Path::new("."))
+            self.circuit_path
+                .parent()
+                .expect("Halo2 circuit path must have parent directory")
         };
 
         let output = {
@@ -531,21 +532,21 @@ impl TargetCircuit for Halo2Target {
         self.metadata
             .as_ref()
             .map(|m| m.num_constraints)
-            .unwrap_or(0)
+            .expect("Halo2 metadata unavailable; call setup() before querying num_constraints")
     }
 
     fn num_private_inputs(&self) -> usize {
         self.metadata
             .as_ref()
             .map(|m| m.num_private_inputs)
-            .unwrap_or(0)
+            .expect("Halo2 metadata unavailable; call setup() before querying num_private_inputs")
     }
 
     fn num_public_inputs(&self) -> usize {
         self.metadata
             .as_ref()
             .map(|m| m.num_public_inputs)
-            .unwrap_or(0)
+            .expect("Halo2 metadata unavailable; call setup() before querying num_public_inputs")
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -571,7 +572,9 @@ impl TargetCircuit for Halo2Target {
         let project_dir = if self.circuit_path.is_dir() {
             self.circuit_path.as_path()
         } else {
-            self.circuit_path.parent().unwrap_or(Path::new("."))
+            self.circuit_path
+                .parent()
+                .expect("Halo2 circuit path must have parent directory")
         };
 
         let output = {
@@ -613,7 +616,9 @@ impl TargetCircuit for Halo2Target {
         let project_dir = if self.circuit_path.is_dir() {
             self.circuit_path.as_path()
         } else {
-            self.circuit_path.parent().unwrap_or(Path::new("."))
+            self.circuit_path
+                .parent()
+                .expect("Halo2 circuit path must have parent directory")
         };
 
         let output = {
@@ -801,7 +806,21 @@ mod tests {
     fn test_halo2_execute_metadata_only_spec_returns_public_projection() {
         let dir = tempdir().unwrap();
         let spec_path = dir.path().join("test.json");
-        fs::write(&spec_path, r#"{"name":"test","constraints":1}"#).unwrap();
+        fs::write(
+            &spec_path,
+            r#"{
+                "name":"test",
+                "k":12,
+                "advice_columns":2,
+                "fixed_columns":1,
+                "instance_columns":1,
+                "constraints":1,
+                "private_inputs":0,
+                "public_inputs":2,
+                "lookups":0
+            }"#,
+        )
+        .unwrap();
 
         let mut target = Halo2Target::new(spec_path.to_str().unwrap()).unwrap();
         target.setup().unwrap();
@@ -816,7 +835,21 @@ mod tests {
     fn test_halo2_key_setup_reports_not_implemented() {
         let dir = tempdir().unwrap();
         let spec_path = dir.path().join("test.json");
-        fs::write(&spec_path, r#"{"name":"test","constraints":1}"#).unwrap();
+        fs::write(
+            &spec_path,
+            r#"{
+                "name":"test",
+                "k":12,
+                "advice_columns":2,
+                "fixed_columns":1,
+                "instance_columns":1,
+                "constraints":1,
+                "private_inputs":0,
+                "public_inputs":1,
+                "lookups":0
+            }"#,
+        )
+        .unwrap();
 
         let mut target = Halo2Target::new(spec_path.to_str().unwrap()).unwrap();
         target.setup().unwrap();

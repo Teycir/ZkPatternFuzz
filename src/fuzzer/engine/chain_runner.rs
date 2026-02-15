@@ -25,13 +25,14 @@ impl FuzzingEngine {
 
         // Get chain fuzzing budget from config
         let additional = &self.config.campaign.parameters.additional;
-        let chain_budget_secs =
-            Self::additional_u64(additional, "chain_budget_seconds").unwrap_or(300);
-        let chain_iterations =
-            Self::additional_u64(additional, "chain_iterations").unwrap_or(1000) as usize;
-
-        // CRITICAL FIX: Check strict_backend for chain circuit loading
-        let strict_backend = Self::additional_bool(additional, "strict_backend").unwrap_or(false);
+        let chain_budget_secs = match Self::additional_u64(additional, "chain_budget_seconds") {
+            Some(value) => value,
+            None => 300,
+        };
+        let chain_iterations = match Self::additional_u64(additional, "chain_iterations") {
+            Some(value) => value,
+            None => 1000,
+        } as usize;
 
         // Build executor map from circuit configurations
         let mut executors = std::collections::HashMap::new();
@@ -46,11 +47,15 @@ impl FuzzingEngine {
                     // Load the circuit from the specified path
                     let framework = config
                         .framework
-                        .unwrap_or(self.config.campaign.target.framework);
-                    let main_component = config
-                        .main_component
-                        .clone()
-                        .unwrap_or_else(|| circuit_ref.clone());
+                        .map(|value| value);
+                    let framework = match framework {
+                        Some(value) => value,
+                        None => self.config.campaign.target.framework,
+                    };
+                    let main_component = match config.main_component.clone() {
+                        Some(value) => value,
+                        None => circuit_ref.clone(),
+                    };
 
                     let circuit_path = match config.path.to_str() {
                         Some(path) => path,
@@ -72,21 +77,14 @@ impl FuzzingEngine {
                     ) {
                         Ok(exec) => exec,
                         Err(e) => {
-                            // CRITICAL FIX: Fail in strict_backend mode instead of silent substitution
-                            if strict_backend {
-                                tracing::error!(
-                                    "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' at {:?} failed to load: {}. \
-                                     In strict_backend mode, we cannot fall back to primary executor. \
-                                     All findings would be against the wrong circuit.",
-                                    circuit_ref, config.path, e
-                                );
-                                return Vec::new(); // Return empty findings - chain fuzzing cannot proceed
-                            }
-                            tracing::warn!(
-                                "Failed to load executor for circuit '{}' at {:?}: {}. Using primary executor.",
-                                circuit_ref, config.path, e
+                            tracing::error!(
+                                "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' at {:?} failed to load: {}. \
+                                 Chain fuzzing cannot proceed without a valid executor.",
+                                circuit_ref,
+                                config.path,
+                                e
                             );
-                            self.executor.clone()
+                            return Vec::new();
                         }
                     }
                 }
@@ -100,40 +98,22 @@ impl FuzzingEngine {
                         ) {
                             Ok(exec) => exec,
                             Err(e) => {
-                                // CRITICAL FIX: Fail in strict_backend mode instead of silent substitution
-                                if strict_backend {
-                                    tracing::error!(
-                                        "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' failed to load: {}. \
-                                         In strict_backend mode, we cannot fall back to primary executor.",
-                                        circuit_ref, e
-                                    );
-                                    return Vec::new();
-                                }
-                                tracing::warn!(
-                                    "Failed to load circuit '{}' from path: {}. Falling back to primary executor.",
-                                    circuit_ref, e
+                                tracing::error!(
+                                    "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' failed to load: {}. \
+                                     Chain fuzzing cannot proceed without a valid executor.",
+                                    circuit_ref,
+                                    e
                                 );
-                                self.executor.clone()
+                                return Vec::new();
                             }
                         }
                     } else {
-                        // CRITICAL FIX: Fail in strict_backend mode instead of silent substitution
-                        if strict_backend {
-                            tracing::error!(
-                                "CHAIN CIRCUIT MISSING: No circuit path configured for '{}' and no file found. \
-                                 In strict_backend mode, we cannot fall back to primary executor. \
-                                 Add a 'circuits' mapping in your chain config to specify circuit paths.",
-                                circuit_ref
-                            );
-                            return Vec::new();
-                        }
-                        tracing::warn!(
-                            "No circuit path configured for '{}' and no file found at that path. \
-                             Using primary executor. Add a 'circuits' mapping in your chain config \
-                             to load distinct circuits per step.",
+                        tracing::error!(
+                            "CHAIN CIRCUIT MISSING: No circuit path configured for '{}' and no file found. \
+                             Add a 'circuits' mapping in your chain config to specify circuit paths.",
                             circuit_ref
                         );
-                        self.executor.clone()
+                        return Vec::new();
                     }
                 }
             };
@@ -146,7 +126,10 @@ impl FuzzingEngine {
         // Previously used ChainMutator::new() default settings,
         // causing reduced mutation validity for real circuits.
         let allow_spec_mutations =
-            Self::additional_bool(additional, "chain_allow_spec_mutations").unwrap_or(false);
+            match Self::additional_bool(additional, "chain_allow_spec_mutations") {
+                Some(value) => value,
+                None => false,
+            };
 
         let mutator = if allow_spec_mutations {
             tracing::info!("Chain spec mutations: enabled");
@@ -172,8 +155,21 @@ impl FuzzingEngine {
         // Initialize corpus for persistence
         let output_dir = self.config.reporting.output_dir.clone();
         let corpus_path = std::path::PathBuf::from(&output_dir).join("chain_corpus.json");
-        let mut corpus = ChainCorpus::load(&corpus_path)
-            .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
+        let mut corpus = if corpus_path.exists() {
+            match ChainCorpus::load(&corpus_path) {
+                Ok(corpus) => corpus,
+                Err(err) => {
+                    tracing::error!(
+                        "Failed to load chain corpus '{}': {}",
+                        corpus_path.display(),
+                        err
+                    );
+                    return Vec::new();
+                }
+            }
+        } else {
+            ChainCorpus::with_storage(&corpus_path)
+        };
 
         let mut all_findings = Vec::new();
         let mut rng = match self.seed {
@@ -463,7 +459,10 @@ impl FuzzingEngine {
             let mut current_spec: Option<crate::chain_fuzzer::ChainSpec> = None;
 
             while chain_start.elapsed() < chain_budget && iterations < chain_iterations {
-                let spec_to_use = current_spec.as_ref().unwrap_or(chain);
+                let spec_to_use = match current_spec.as_ref() {
+                    Some(spec) => spec,
+                    None => chain,
+                };
 
                 // Execute chain
                 let result = runner.execute(spec_to_use, &current_inputs, &mut rng);
@@ -484,7 +483,10 @@ impl FuzzingEngine {
                             ChainRunner::new(runner.executors.clone()),
                             CrossStepInvariantChecker::from_spec(spec_to_use),
                         )
-                        .with_seed(self.seed.unwrap_or(42));
+                        .with_seed(match self.seed {
+                            Some(seed) => seed,
+                            None => 42,
+                        });
 
                         let shrink_result =
                             shrinker.minimize(spec_to_use, &current_inputs, &violation);
@@ -506,12 +508,10 @@ impl FuzzingEngine {
                                 violation.description
                             ),
                             poc: ProofOfConcept {
-                                witness_a: result
-                                    .trace
-                                    .steps
-                                    .first()
-                                    .map(|s| s.inputs.clone())
-                                    .unwrap_or_default(),
+                                witness_a: match result.trace.steps.first().map(|s| s.inputs.clone()) {
+                                    Some(inputs) => inputs,
+                                    None => Vec::new(),
+                                },
                                 witness_b: result.trace.steps.get(1).map(|s| s.inputs.clone()),
                                 public_inputs: vec![],
                                 proof: None,

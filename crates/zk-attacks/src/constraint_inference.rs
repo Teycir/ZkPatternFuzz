@@ -193,7 +193,7 @@ impl InferenceContext {
             .chain(max_from_labels)
             .max()
             .map(|max_wire| max_wire.saturating_add(1))
-            .unwrap_or(num_wires);
+            .map_or(num_wires, |v| v);
 
         Self {
             constraints,
@@ -307,7 +307,7 @@ impl InferenceRule for BitDecompositionInference {
 
         for (i, &bit_wire) in bit_wires.iter().enumerate() {
             if bit_wire < num_wires {
-                let bit_value = different_value.checked_shr(i as u32).unwrap_or(0) & 1;
+                let bit_value = different_value.checked_shr(i as u32).map_or(0, |v| v) & 1;
                 witness[bit_wire] = FieldElement::from_u64(bit_value);
             }
         }
@@ -855,7 +855,7 @@ impl ConstraintInferenceEngine {
                     let input_idx = wire_to_input
                         .as_ref()
                         .and_then(|map| map.get(&wire).copied())
-                        .unwrap_or(wire);
+                        .map_or(wire, |v| v);
                     if input_idx < candidate_inputs.len() && wire < violation.len() {
                         candidate_inputs[input_idx] = violation[wire].clone();
                     } else {
@@ -941,7 +941,7 @@ impl ConstraintInferenceEngine {
                     description
                 },
                 poc: ProofOfConcept {
-                    witness_a: ic.violation_witness.clone().unwrap_or_default(),
+                    witness_a: ic.violation_witness.clone().map_or(Vec::new(), |v| v),
                     witness_b: None,
                     public_inputs: vec![],
                     proof: None,

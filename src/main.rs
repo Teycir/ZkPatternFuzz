@@ -1,3 +1,4 @@
+use anyhow::Context;
 use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
 use clap::{Parser, Subcommand};
 use std::io::{self, Write};
@@ -147,20 +148,27 @@ fn sanitize_slug(s: &str) -> String {
 }
 
 fn derive_campaign_slug(campaign_path: &str) -> String {
-    Path::new(campaign_path)
+    let slug = Path::new(campaign_path)
         .file_stem()
         .and_then(|s| s.to_str())
         .map(sanitize_slug)
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "unknown_campaign".to_string())
+        .filter(|s| !s.is_empty());
+    match slug {
+        Some(value) => value,
+        None => panic!(
+            "Campaign path '{}' does not provide a valid non-empty slug",
+            campaign_path
+        ),
+    }
 }
 
 fn make_run_id(command: &str, campaign_path: Option<&str>) -> String {
     let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
     let pid = std::process::id();
-    let campaign = campaign_path
-        .map(derive_campaign_slug)
-        .unwrap_or_else(|| "unknown_campaign".to_string());
+    let campaign = match campaign_path {
+        Some(path) => derive_campaign_slug(path),
+        None => "no_campaign".to_string(),
+    };
     format!("{}_{}_{}_pid{}", ts, sanitize_slug(command), campaign, pid)
 }
 
@@ -402,7 +410,10 @@ fn engagement_dir_name(run_id: &str) -> String {
         }
     }
 
-    run_id_epoch_dir(run_id).unwrap_or_else(|| "report_unknown".to_string())
+    match run_id_epoch_dir(run_id) {
+        Some(dir_name) => dir_name,
+        None => panic!("Run id '{}' does not contain a valid timestamp prefix", run_id),
+    }
 }
 
 fn engagement_root_dir(run_id: &str) -> PathBuf {
@@ -427,11 +438,10 @@ fn mode_folder_from_command(command: &str) -> &'static str {
 }
 
 fn get_command_from_doc(value: &serde_json::Value) -> String {
-    value
-        .get("command")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string()
+    match value.get("command").and_then(|v| v.as_str()) {
+        Some(command) => command.to_string(),
+        None => panic!("Missing required 'command' in run document"),
+    }
 }
 
 fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
@@ -503,21 +513,36 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
             if let Some(v) = v {
                 let status = v
                     .get("status")
-                    .and_then(|s| s.as_str())
-                    .unwrap_or("unknown");
+                    .and_then(|s| s.as_str());
+                let status = match status {
+                    Some(value) => value,
+                    None => "unknown",
+                };
                 let run_id = v
                     .get("run_id")
-                    .and_then(|s| s.as_str())
-                    .unwrap_or("unknown");
+                    .and_then(|s| s.as_str());
+                let run_id = match run_id {
+                    Some(value) => value,
+                    None => "unknown",
+                };
                 let campaign = v
                     .get("campaign_name")
-                    .and_then(|s| s.as_str())
-                    .unwrap_or("unknown");
+                    .and_then(|s| s.as_str());
+                let campaign = match campaign {
+                    Some(value) => value,
+                    None => "unknown",
+                };
                 let started = v
                     .get("started_utc")
-                    .and_then(|s| s.as_str())
-                    .unwrap_or("unknown");
-                let ended = v.get("ended_utc").and_then(|s| s.as_str()).unwrap_or("");
+                    .and_then(|s| s.as_str());
+                let started = match started {
+                    Some(value) => value,
+                    None => "unknown",
+                };
+                let ended = match v.get("ended_utc").and_then(|s| s.as_str()) {
+                    Some(value) => value,
+                    None => "",
+                };
                 md.push_str(&format!("- Status: `{}`\n", status));
                 md.push_str(&format!("- Run ID: `{}`\n", run_id));
                 md.push_str(&format!("- Campaign: `{}`\n", campaign));
@@ -694,16 +719,31 @@ fn mark_stale_previous_run_if_any(output_dir: &Path, current_pid: u32) {
         return;
     }
 
-    let prev_pid = doc.get("pid").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-    if prev_pid == 0 || prev_pid == current_pid || pid_is_alive(prev_pid) {
+    let prev_pid = match doc.get("pid").and_then(|v| v.as_u64()) {
+        Some(pid) if pid > 0 => pid as u32,
+        Some(_) => return,
+        None => {
+            tracing::warn!(
+                "Missing pid in run outcome JSON while checking stale run '{}'",
+                path.display()
+            );
+            return;
+        }
+    };
+    if prev_pid == current_pid || pid_is_alive(prev_pid) {
         return;
     }
 
-    let prev_run_id = doc
-        .get("run_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown_run_id")
-        .to_string();
+    let prev_run_id = match doc.get("run_id").and_then(|v| v.as_str()) {
+        Some(run_id) => run_id.to_string(),
+        None => {
+            tracing::warn!(
+                "Missing run_id in run outcome JSON while checking stale run '{}'",
+                path.display()
+            );
+            return;
+        }
+    };
 
     let ended_utc = Utc::now();
     if let Some(obj) = doc.as_object_mut() {
@@ -764,10 +804,10 @@ fn install_panic_hook() {
         let backtrace = std::backtrace::Backtrace::force_capture().to_string();
 
         let ctx = get_run_log_context();
-        let run_id = ctx
-            .as_ref()
-            .map(|c| c.run_id.clone())
-            .unwrap_or_else(|| make_run_id("panic", None));
+        let run_id = match ctx.as_ref().map(|c| c.run_id.clone()) {
+            Some(id) => id,
+            None => make_run_id("panic", None),
+        };
 
         let doc = serde_json::json!({
             "status": "panic",
@@ -850,10 +890,10 @@ fn start_signal_watchers() {
         let signal_name = stop.await;
         let now = Utc::now().to_rfc3339();
         let ctx = get_run_log_context();
-        let run_id = ctx
-            .as_ref()
-            .map(|c| c.run_id.clone())
-            .unwrap_or_else(|| make_run_id("interrupted", None));
+        let run_id = match ctx.as_ref().map(|c| c.run_id.clone()) {
+            Some(id) => id,
+            None => make_run_id("interrupted", None),
+        };
 
         let doc = serde_json::json!({
             "status": "interrupted",
@@ -1335,10 +1375,14 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                     "error": e,
                 });
                 write_failed_run_artifact(&run_id, &doc);
+                let parse_error = match doc.get("error").and_then(|v| v.as_str()) {
+                    Some(err) => err.to_string(),
+                    None => e.to_string(),
+                };
                 return Err(anyhow::anyhow!(
                     "Invalid --profile '{}': {}",
                     profile_name,
-                    doc["error"].as_str().unwrap_or("parse error")
+                    parse_error
                 ));
             }
         }
@@ -1712,13 +1756,31 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                     timeout_for_monitor,
                     "continuous_phase_only",
                 );
-                write_global_run_signal(doc["run_id"].as_str().unwrap_or("unknown"), &doc);
+                let run_id_for_signal = match doc.get("run_id").and_then(|v| v.as_str()) {
+                    Some(run_id) => run_id,
+                    None => {
+                        tracing::warn!(
+                            "Progress document missing run_id while writing global run signal"
+                        );
+                        continue;
+                    }
+                };
+                write_global_run_signal(run_id_for_signal, &doc);
 
                 // Convenience: if output_dir is outside the engagement report folder, mirror the
                 // progress snapshot into the engagement folder. When output_dir already lives
                 // under the engagement folder (our default), avoid redundant writes.
-                let report_dir = engagement_root_dir(doc["run_id"].as_str().unwrap_or("unknown"));
-                let mode = mode_folder_from_command(doc["command"].as_str().unwrap_or("unknown"));
+                let command_for_mode = match doc.get("command").and_then(|v| v.as_str()) {
+                    Some(command) => command,
+                    None => {
+                        tracing::warn!(
+                            "Progress document missing command while mirroring progress snapshot"
+                        );
+                        continue;
+                    }
+                };
+                let report_dir = engagement_root_dir(run_id_for_signal);
+                let mode = mode_folder_from_command(command_for_mode);
                 let dst = report_dir.join(mode).join("progress.json");
                 if dst != progress_path {
                     if let Some(parent) = dst.parent() {
@@ -2491,6 +2553,16 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             }
         }
     };
+    let load_chain_corpus =
+        |p: &std::path::Path| -> anyhow::Result<zk_fuzzer::chain_fuzzer::ChainCorpus> {
+            if p.exists() {
+                ChainCorpus::load(p).with_context(|| {
+                    format!("Failed to load chain corpus from '{}'", p.display())
+                })
+            } else {
+                Ok(ChainCorpus::with_storage(p))
+            }
+        };
 
     let baseline_meta = if corpus_meta_path.exists() {
         read_chain_meta(&corpus_meta_path)
@@ -2501,8 +2573,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         if let Some(meta) = &baseline_meta {
             (meta.total_entries, meta.unique_coverage_bits)
         } else {
-            let baseline_corpus = ChainCorpus::load(&corpus_path)
-                .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
+            let baseline_corpus = load_chain_corpus(&corpus_path)?;
             let baseline_total_entries = baseline_corpus.len();
             let baseline_unique_coverage_bits: usize = {
                 use std::collections::HashSet;
@@ -2571,8 +2642,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 meta.max_depth,
             )
         } else {
-            let final_corpus = ChainCorpus::load(&corpus_path)
-                .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
+            let final_corpus = load_chain_corpus(&corpus_path)?;
             let final_total_entries = final_corpus.len();
             let final_unique_coverage_bits: usize = {
                 use std::collections::HashSet;
@@ -2587,8 +2657,11 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 .entries()
                 .iter()
                 .map(|e| e.depth_reached)
-                .max()
-                .unwrap_or(0);
+                .max();
+            let final_max_depth = match final_max_depth {
+                Some(value) => value,
+                None => 0,
+            };
             (
                 final_total_entries,
                 final_unique_coverage_bits,
@@ -2601,31 +2674,45 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         .campaign
         .parameters
         .additional
-        .get_bool("engagement_strict")
-        .unwrap_or(true);
+        .get_bool("engagement_strict");
+    let engagement_strict = match engagement_strict {
+        Some(value) => value,
+        None => true,
+    };
     let min_unique_coverage_bits = config
         .campaign
         .parameters
         .additional
-        .get_usize("engagement_min_chain_unique_coverage_bits")
-        .unwrap_or(2);
+        .get_usize("engagement_min_chain_unique_coverage_bits");
+    let min_unique_coverage_bits = match min_unique_coverage_bits {
+        Some(value) => value,
+        None => 2,
+    };
     let min_completed_per_chain = config
         .campaign
         .parameters
         .additional
-        .get_usize("engagement_min_chain_completed_per_chain")
-        .unwrap_or(1);
+        .get_usize("engagement_min_chain_completed_per_chain");
+    let min_completed_per_chain = match min_completed_per_chain {
+        Some(value) => value,
+        None => 1,
+    };
 
     let mut quality_failures: Vec<String> = Vec::new();
     for chain in &chains {
         let (completed, unique_cov): (usize, usize) = if let Some(meta) = &final_meta {
-            meta.per_chain
-                .get(&chain.name)
-                .map(|m| (m.completed_traces, m.unique_coverage_bits))
-                .unwrap_or((0, 0))
+            match meta.per_chain.get(&chain.name) {
+                Some(m) => (m.completed_traces, m.unique_coverage_bits),
+                None => {
+                    tracing::warn!(
+                        "Chain corpus metadata missing per-chain entry for '{}'",
+                        chain.name
+                    );
+                    (0, 0)
+                }
+            }
         } else {
-            let final_corpus = ChainCorpus::load(&corpus_path)
-                .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
+            let final_corpus = load_chain_corpus(&corpus_path)?;
             let entries: Vec<_> = final_corpus
                 .entries()
                 .iter()
@@ -2726,7 +2813,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             println!(
                 "       cargo run --release -- chains {} --seed {}",
                 config_path,
-                options.seed.unwrap_or(42)
+                match options.seed {
+                    Some(seed) => seed,
+                    None => 42,
+                }
             );
         }
     } else {
@@ -2918,7 +3008,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                     if step.success {
                         "success"
                     } else {
-                        step.error.as_deref().unwrap_or("failed")
+                        match step.error.as_deref() {
+                            Some(err) => err,
+                            None => "failed",
+                        }
                     }
                 ));
             }
@@ -2929,7 +3022,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             md.push_str(&format!(
                 "```bash\ncargo run --release -- chains {} --seed {}\n```\n\n",
                 config_path,
-                options.seed.unwrap_or(42)
+                match options.seed {
+                    Some(seed) => seed,
+                    None => 42,
+                }
             ));
         }
     }

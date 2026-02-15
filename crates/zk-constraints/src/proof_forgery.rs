@@ -101,14 +101,14 @@ impl ProofForgeryDetector {
         let path = Path::new(r1cs_path);
         let build_dir = path
             .parent()
-            .unwrap_or(Path::new("."))
+            .ok_or_else(|| anyhow::anyhow!("R1CS path has no parent directory: '{}'", r1cs_path))?
             .to_string_lossy()
             .to_string();
 
         let stem = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or("circuit");
+            .ok_or_else(|| anyhow::anyhow!("R1CS file stem is missing or non-UTF8: '{}'", r1cs_path))?;
 
         // Look for related artifacts
         let zkey_path = format!("{}/{}.zkey", build_dir, stem);
@@ -236,7 +236,7 @@ impl ProofForgeryDetector {
         let forgery_verified = verification_result
             .as_ref()
             .map(|r| r.passed)
-            .unwrap_or(false);
+            .map_or(false, |v| v);
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
 
@@ -306,7 +306,7 @@ impl ProofForgeryDetector {
         let forgery_verified = verification_result
             .as_ref()
             .map(|r| r.passed)
-            .unwrap_or(false);
+            .map_or(false, |v| v);
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
 
@@ -358,43 +358,11 @@ impl ProofForgeryDetector {
                 witness_path.to_str().unwrap(),
                 wtns_path.to_str().unwrap(),
             ])
-            .output();
-
-        let import_ok = import_output
-            .as_ref()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-
-        if !import_ok {
-            // If WASM is available, try `wtns calculate` (may lose freedom).
-            if let Some(wasm) = &self.wasm_path {
-                tracing::warn!(
-                    "wtns import failed, falling back to WASM wtns calculate \
-                     (alternative witness may be recomputed)"
-                );
-                let input_json = self.witness_to_input_json(witness)?;
-                let input_path = temp_path.join("input.json");
-                std::fs::write(&input_path, &input_json)?;
-
-                let output = Command::new("npx")
-                    .args([
-                        "snarkjs",
-                        "wtns",
-                        "calculate",
-                        wasm,
-                        input_path.to_str().unwrap(),
-                        wtns_path.to_str().unwrap(),
-                    ])
-                    .output()
-                    .context("Failed to calculate witness")?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    anyhow::bail!("Witness calculation failed: {}", stderr);
-                }
-            } else {
-                tracing::warn!("Could not generate wtns file, attempting direct proof");
-            }
+            .output()
+            .context("Failed to run snarkjs wtns import")?;
+        if !import_output.status.success() {
+            let stderr = String::from_utf8_lossy(&import_output.stderr);
+            anyhow::bail!("wtns import failed: {}", stderr);
         }
 
         // Generate proof
@@ -441,45 +409,6 @@ impl ProofForgeryDetector {
             passed,
             output: stdout.to_string(),
         })
-    }
-
-    /// Convert full witness to input JSON for snarkjs
-    fn witness_to_input_json(&self, witness: &[FieldElement]) -> Result<String> {
-        use std::collections::HashMap;
-
-        let mut inputs: HashMap<String, serde_json::Value> = HashMap::new();
-
-        // Get private input indices
-        let private_start = 1 + self.r1cs.num_public_outputs + self.r1cs.num_public_inputs;
-        let private_end = private_start + self.r1cs.num_private_inputs;
-
-        // Also include public inputs
-        let public_start = 1 + self.r1cs.num_public_outputs;
-        let public_end = public_start + self.r1cs.num_public_inputs;
-
-        for (i, idx) in (public_start..public_end).enumerate() {
-            if idx < witness.len() {
-                let name = self
-                    .r1cs
-                    .wire_name(idx)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| format!("pub_in_{}", i));
-                inputs.insert(name, serde_json::json!(witness[idx].to_decimal_string()));
-            }
-        }
-
-        for (i, idx) in (private_start..private_end).enumerate() {
-            if idx < witness.len() {
-                let name = self
-                    .r1cs
-                    .wire_name(idx)
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| format!("priv_in_{}", i));
-                inputs.insert(name, serde_json::json!(witness[idx].to_decimal_string()));
-            }
-        }
-
-        Ok(serde_json::to_string(&inputs)?)
     }
 
     fn extract_public_inputs(&self, witness: &[FieldElement]) -> Vec<String> {

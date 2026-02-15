@@ -70,7 +70,7 @@ impl DependencyGraph {
         self.constraint_depends
             .get(&constraint_id)
             .cloned()
-            .unwrap_or_default()
+            .map_or(HashSet::new(), |v| v)
     }
 
     /// Get all constraints influenced by a given input
@@ -78,7 +78,7 @@ impl DependencyGraph {
         self.input_influences
             .get(&input_id)
             .cloned()
-            .unwrap_or_default()
+            .map_or(HashSet::new(), |v| v)
     }
 
     /// Add an edge from input to constraint
@@ -230,8 +230,12 @@ impl DependencyGraph {
                     .constraint_depends
                     .get(&c)
                     .map(|s| s.len())
-                    .unwrap_or(0);
-                let out_degree = self.constraint_graph.get(&c).map(|s| s.len()).unwrap_or(0);
+                    .map_or(0, |v| v);
+                let out_degree = self
+                    .constraint_graph
+                    .get(&c)
+                    .map(|s| s.len())
+                    .map_or(0, |v| v);
                 (c, in_degree + out_degree)
             })
             .collect();

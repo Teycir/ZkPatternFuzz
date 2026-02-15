@@ -110,7 +110,7 @@ impl ChainScheduler {
         self.chains
             .iter()
             .map(|chain| {
-                let priority = self.priorities.get(&chain.name).copied().unwrap_or(1.0);
+                let priority = self.priorities.get(&chain.name).copied().map_or(1.0, |v| v);
                 let priority_share = priority / total_priority;
                 let allocated_remaining = (remaining as f64 * priority_share) as u64;
                 let total_budget =
@@ -131,7 +131,7 @@ impl ChainScheduler {
             .priorities
             .get(&stats.chain_name)
             .copied()
-            .unwrap_or(1.0);
+            .map_or(1.0, |v| v);
 
         // Priority heuristics:
         // 1. Chains with violations get boost
@@ -180,7 +180,10 @@ impl ChainScheduler {
 
     /// Get current priority for a chain
     pub fn get_priority(&self, chain_name: &str) -> f64 {
-        self.priorities.get(chain_name).copied().unwrap_or(1.0)
+        self.priorities
+            .get(chain_name)
+            .copied()
+            .map_or(1.0, |v| v)
     }
 
     /// Add a new chain to the scheduler
@@ -199,9 +202,12 @@ impl ChainScheduler {
     pub fn chains_by_priority(&self) -> Vec<&ChainSpec> {
         let mut chains: Vec<_> = self.chains.iter().collect();
         chains.sort_by(|a, b| {
-            let pa = self.priorities.get(&a.name).copied().unwrap_or(1.0);
-            let pb = self.priorities.get(&b.name).copied().unwrap_or(1.0);
-            pb.partial_cmp(&pa).unwrap_or(std::cmp::Ordering::Equal)
+            let pa = self.priorities.get(&a.name).copied().map_or(1.0, |v| v);
+            let pb = self.priorities.get(&b.name).copied().map_or(1.0, |v| v);
+            match pb.partial_cmp(&pa) {
+                Some(ordering) => ordering,
+                None => std::cmp::Ordering::Equal,
+            }
         });
         chains
     }

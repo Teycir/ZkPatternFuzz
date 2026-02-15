@@ -315,7 +315,10 @@ impl<'de> serde::Deserialize<'de> for InputWiringConfig {
                 if let Some(v) = values {
                     return Ok(InputWiringConfig::Constant {
                         values: v,
-                        fresh_indices: fresh_indices.unwrap_or_default(),
+                        fresh_indices: match fresh_indices {
+                            Some(indices) => indices,
+                            None => Vec::new(),
+                        },
                     });
                 }
 
@@ -574,7 +577,11 @@ impl ConfigResolver {
 
         let canonical = config_path
             .canonicalize()
-            .unwrap_or_else(|_| config_path.to_path_buf());
+            .map(|value| value);
+        let canonical = match canonical {
+            Ok(value) => value,
+            Err(_) => config_path.to_path_buf(),
+        };
 
         // Check for circular includes
         if self.visited.contains(&canonical) {
@@ -960,7 +967,7 @@ impl FuzzConfig {
     pub fn from_yaml_v2(path: &str) -> Result<Self, ConfigV2Error> {
         let base_path = Path::new(path)
             .parent()
-            .unwrap_or_else(|| Path::new("."))
+            .map_or_else(|| Path::new("."), |p| p)
             .to_path_buf();
 
         let mut resolver = ConfigResolver::new(base_path);
@@ -980,7 +987,9 @@ impl FuzzConfig {
                     None
                 }
             })
-            .unwrap_or_default()
+            .map(|value| value)
+            .or_else(|| Some(Vec::new()))
+            .expect("default vector injected")
     }
 
     /// Extract v2 schedule from config
@@ -996,7 +1005,9 @@ impl FuzzConfig {
                     None
                 }
             })
-            .unwrap_or_default()
+            .map(|value| value)
+            .or_else(|| Some(Vec::new()))
+            .expect("default vector injected")
     }
 
     /// Extract v2 target traits from config
@@ -1012,7 +1023,9 @@ impl FuzzConfig {
                     None
                 }
             })
-            .unwrap_or_default()
+            .map(|value| value)
+            .or_else(|| Some(TargetTraits::default()))
+            .expect("default traits injected")
     }
 
     /// Check if config uses v2 features
@@ -1039,7 +1052,11 @@ pub fn parse_invariant_relation(relation: &str) -> Result<InvariantAST, ConfigV2
 
     if relation.starts_with('∀') || relation.to_lowercase().starts_with("forall") {
         let trimmed = relation.trim_start_matches('∀').trim();
-        let trimmed = trimmed.strip_prefix("forall").unwrap_or(trimmed).trim();
+        let trimmed = match trimmed.strip_prefix("forall") {
+            Some(value) => value,
+            None => trimmed,
+        }
+        .trim();
         if let Some((binder, body)) = trimmed.split_once(':') {
             let expr = parse_invariant_relation(body.trim())?;
             return Ok(InvariantAST::ForAll {

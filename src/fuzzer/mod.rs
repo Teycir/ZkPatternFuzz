@@ -116,15 +116,15 @@ impl ZkFuzzer {
                 a.config
                     .get("witness_pairs")
                     .and_then(|v| v.as_u64())
-                    .unwrap_or(1000)
+                    .map_or(1000, |v| v)
                     + a.config
                         .get("forge_attempts")
                         .and_then(|v| v.as_u64())
-                        .unwrap_or(0)
+                        .map_or(0, |v| v)
                     + a.config
                         .get("samples")
                         .and_then(|v| v.as_u64())
-                        .unwrap_or(0)
+                        .map_or(0, |v| v)
             })
             .sum();
 
@@ -169,7 +169,7 @@ impl ZkFuzzer {
             .additional
             .get("phase_corpus_limit")
             .and_then(|v| v.as_u64())
-            .unwrap_or(500) as usize;
+            .map_or(500, |v| v) as usize;
 
         scheduler
             .execute(&config, {
@@ -239,7 +239,10 @@ impl ZkFuzzer {
             })
             .await?;
 
-        let summaries = summaries.lock().map(|s| s.clone()).unwrap_or_default();
+        let summaries = summaries
+            .lock()
+            .expect("phase summaries mutex poisoned")
+            .clone();
 
         let mut findings = Vec::new();
         let mut total_exec = 0u64;
@@ -255,8 +258,8 @@ impl ZkFuzzer {
 
         let edge_coverage = union_constraints
             .lock()
-            .map(|s| s.len() as u64)
-            .unwrap_or(0);
+            .expect("union constraints mutex poisoned")
+            .len() as u64;
 
         let mut report = FuzzReport::new(
             config.campaign.name.clone(),

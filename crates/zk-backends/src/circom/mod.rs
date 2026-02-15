@@ -52,26 +52,18 @@ fn run_with_timeout(cmd: &mut Command, timeout: std::time::Duration) -> Result<O
     let start = std::time::Instant::now();
     loop {
         if let Some(status) = child.try_wait()? {
-            let stdout = child
+            let mut stdout_pipe = child
                 .stdout
                 .take()
-                .map(|mut s| -> Result<Vec<u8>> {
-                    let mut buf = Vec::new();
-                    s.read_to_end(&mut buf)?;
-                    Ok(buf)
-                })
-                .transpose()?
-                .unwrap_or_default();
-            let stderr = child
+                .ok_or_else(|| anyhow::anyhow!("Timed command missing stdout pipe"))?;
+            let mut stdout = Vec::new();
+            stdout_pipe.read_to_end(&mut stdout)?;
+            let mut stderr_pipe = child
                 .stderr
                 .take()
-                .map(|mut s| -> Result<Vec<u8>> {
-                    let mut buf = Vec::new();
-                    s.read_to_end(&mut buf)?;
-                    Ok(buf)
-                })
-                .transpose()?
-                .unwrap_or_default();
+                .ok_or_else(|| anyhow::anyhow!("Timed command missing stderr pipe"))?;
+            let mut stderr = Vec::new();
+            stderr_pipe.read_to_end(&mut stderr)?;
             return Ok(Output {
                 status,
                 stdout,
@@ -269,7 +261,10 @@ fn infer_array_size(signals: &HashMap<String, usize>, name: &str) -> Option<usiz
             if let Some(rest) = key.strip_prefix(prefix) {
                 if let Some(close_idx) = rest.find(']') {
                     if let Ok(idx) = rest[..close_idx].parse::<usize>() {
-                        max_index = Some(max_index.map(|v| v.max(idx)).unwrap_or(idx));
+                        max_index = Some(match max_index {
+                            Some(current) => current.max(idx),
+                            None => idx,
+                        });
                     }
                 }
             }
@@ -422,17 +417,43 @@ fn maybe_prepare_circom2_source(
 }
 
 fn has_param_signal_compat_issue_recursive(path: &Path, visited: &mut HashSet<PathBuf>) -> bool {
-    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let canonical = match std::fs::canonicalize(path) {
+        Ok(canonical) => canonical,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to canonicalize Circom path '{}' while checking compat issues: {}",
+                path.display(),
+                e
+            );
+            return false;
+        }
+    };
     if !visited.insert(canonical) {
         return false;
     }
 
     let source = match std::fs::read_to_string(path) {
         Ok(s) => s,
-        Err(_) => return false,
+        Err(e) => {
+            tracing::warn!(
+                "Failed reading Circom file '{}' while checking compat issues: {}",
+                path.display(),
+                e
+            );
+            return false;
+        }
     };
 
-    let source_dir = path.parent().unwrap_or(Path::new("."));
+    let source_dir = match path.parent() {
+        Some(parent) => parent,
+        None => {
+            tracing::warn!(
+                "Circom file '{}' has no parent directory for include resolution",
+                path.display()
+            );
+            return false;
+        }
+    };
     for line in source.lines() {
         let trimmed = line.trim();
         if is_param_signal_assignment_compat_line(trimmed) {
@@ -472,13 +493,23 @@ fn convert_circom_file(
     let filename = if is_root {
         path.file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or(main_component)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Invalid root Circom filename (non-UTF8 or missing): '{}'",
+                    path.display()
+                )
+            })?
             .to_string()
     } else {
         let stem = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or("circom");
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Invalid Circom filename stem (non-UTF8 or missing): '{}'",
+                    path.display()
+                )
+            })?;
         let hash = hash_path(path);
         format!("{stem}_{hash}.circom")
     };
@@ -501,7 +532,12 @@ fn convert_circom_file(
     }
 
     let mut main_rewritten = false;
-    let source_dir = path.parent().unwrap_or(Path::new("."));
+    let source_dir = path.parent().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Circom source path has no parent directory: '{}'",
+            path.display()
+        )
+    })?;
 
     for line in source.lines() {
         let trimmed = line.trim();
@@ -774,7 +810,15 @@ impl CircomTarget {
 
         // Create build directory next to the circuit
         // Note: circom outputs files based on source filename, not template name
-        let build_dir = path.parent().unwrap_or(Path::new(".")).join("build");
+        let build_dir = path
+            .parent()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Circom circuit path has no parent directory: '{}'",
+                    path.display()
+                )
+            })?
+            .join("build");
 
         Ok(Self {
             circuit_path: path,
@@ -798,7 +842,7 @@ impl CircomTarget {
         self.circuit_path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or(&self.main_component)
+            .expect("Circom circuit path has no valid UTF-8 file stem for output basename")
             .to_string()
     }
 
@@ -918,7 +962,9 @@ impl CircomTarget {
         }
 
         // In-process IO lock to avoid concurrent circom/snarkjs calls stepping on each other.
-        let _guard = circom_io_lock().lock().unwrap();
+        let _guard = circom_io_lock()
+            .lock()
+            .expect("circom IO lock poisoned during compile");
 
         tracing::info!("Compiling Circom circuit: {:?}", self.circuit_path);
 
@@ -935,15 +981,22 @@ impl CircomTarget {
         for include in &self.include_paths {
             cmd.arg("-l").arg(include);
         }
+        let compile_path_str = compile_path.to_str().ok_or_else(|| {
+            anyhow::anyhow!("Non-UTF8 compile path: {}", compile_path.display())
+        })?;
+        let build_dir_str = self
+            .build_dir
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 build dir: {}", self.build_dir.display()))?;
         let output = cmd
             .args([
-                compile_path.to_str().unwrap(),
+                compile_path_str,
                 "--r1cs",
                 "--wasm",
                 "--sym",
                 "--json",
                 "-o",
-                self.build_dir.to_str().unwrap(),
+                build_dir_str,
             ])
             .output()
             .context("Failed to run circom compiler")?;
@@ -1017,8 +1070,11 @@ impl CircomTarget {
         }
 
         // Use snarkjs to get R1CS info
+        let r1cs_path_str = r1cs_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 r1cs path: {}", r1cs_path.display()))?;
         let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
-            .args(["r1cs", "info", r1cs_path.to_str().unwrap()])
+            .args(["r1cs", "info", r1cs_path_str])
             .output()
             .context("Failed to get R1CS info")?;
 
@@ -1078,10 +1134,9 @@ impl CircomTarget {
             (HashMap::new(), Vec::new())
         };
 
-        let io_info = self.parse_io_info().unwrap_or_else(|e| {
-            tracing::warn!("Failed to parse Circom IO metadata: {}", e);
-            CircomIoInfo::default()
-        });
+        let io_info = self
+            .parse_io_info()
+            .context("Failed to parse Circom IO metadata")?;
 
         let mut input_names: Vec<String> = io_info
             .input_signals
@@ -1163,12 +1218,13 @@ impl CircomTarget {
         if io_info.input_signals.is_empty() {
             for name in &ordered_inputs {
                 let inferred = infer_array_size(&signals, name);
-                input_signal_sizes.insert(name.clone(), inferred);
+                let size = inferred.or(Some(1));
+                input_signal_sizes.insert(name.clone(), size);
             }
         } else {
             for signal in &io_info.input_signals {
                 let inferred = infer_array_size(&signals, &signal.name);
-                let size = signal.array_size.or(inferred);
+                let size = signal.array_size.or(inferred).or(Some(1));
                 input_signal_sizes.insert(signal.name.clone(), size);
             }
         }
@@ -1209,7 +1265,13 @@ impl CircomTarget {
             let line = line?;
             let parts: Vec<&str> = line.split(',').collect();
             if parts.len() >= 4 {
-                let index: usize = parts[0].parse().unwrap_or(0);
+                let index: usize = parts[0].parse().with_context(|| {
+                    format!(
+                        "Failed to parse symbol index '{}' in {}",
+                        parts[0],
+                        path.display()
+                    )
+                })?;
                 let name = parts[3].to_string();
                 signals.insert(name, index);
             }
@@ -1227,7 +1289,13 @@ impl CircomTarget {
             let line = line?;
             let parts: Vec<&str> = line.split(',').collect();
             if parts.len() >= 4 {
-                let index: usize = parts[0].parse().unwrap_or(0);
+                let index: usize = parts[0].parse().with_context(|| {
+                    format!(
+                        "Failed to parse symbol index '{}' in {}",
+                        parts[0],
+                        path.display()
+                    )
+                })?;
                 let name = parts[3].to_string();
                 entries.push((index, name));
             }
@@ -1241,13 +1309,27 @@ impl CircomTarget {
     pub fn setup_keys(&mut self) -> Result<()> {
         // Prevent cross-process writes to the same build dir (zkey/vkey/ptau).
         let _build_lock = BuildDirLock::acquire_exclusive(&self.build_dir)?;
-        let _guard = circom_io_lock().lock().unwrap();
+        let _guard = circom_io_lock()
+            .lock()
+            .expect("circom IO lock poisoned during setup_keys");
         let basename = self.output_basename();
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         let ptau_path = self.find_or_download_ptau()?;
 
         let zkey_path = self.build_dir.join(format!("{}.zkey", basename));
         let vkey_path = self.build_dir.join(format!("{}_vkey.json", basename));
+        let r1cs_path_str = r1cs_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 r1cs path: {}", r1cs_path.display()))?;
+        let ptau_path_str = ptau_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 ptau path: {}", ptau_path.display()))?;
+        let zkey_path_str = zkey_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 zkey path: {}", zkey_path.display()))?;
+        let vkey_path_str = vkey_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 vkey path: {}", vkey_path.display()))?;
 
         // Generate zkey (proving key)
         tracing::info!("Generating proving key...");
@@ -1255,9 +1337,9 @@ impl CircomTarget {
             .args([
                 "groth16",
                 "setup",
-                r1cs_path.to_str().unwrap(),
-                ptau_path.to_str().unwrap(),
-                zkey_path.to_str().unwrap(),
+                r1cs_path_str,
+                ptau_path_str,
+                zkey_path_str,
             ])
             .output()
             .context("Failed to generate proving key")?;
@@ -1274,8 +1356,8 @@ impl CircomTarget {
                 "zkey",
                 "export",
                 "verificationkey",
-                zkey_path.to_str().unwrap(),
-                vkey_path.to_str().unwrap(),
+                zkey_path_str,
+                vkey_path_str,
             ])
             .output()
             .context("Failed to export verification key")?;
@@ -1313,7 +1395,25 @@ impl CircomTarget {
         }
 
         for dir in &ptau_dirs {
-            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let entries = match std::fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(e) => {
+                    tracing::warn!("Failed reading ptau directory '{}': {}", dir.display(), e);
+                    continue;
+                }
+            };
+            for entry in entries {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed reading an entry in ptau directory '{}': {}",
+                            dir.display(),
+                            e
+                        );
+                        continue;
+                    }
+                };
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "ptau") {
                     tracing::info!("Found existing ptau file: {:?}", path);
@@ -1326,11 +1426,14 @@ impl CircomTarget {
         let ptau_path = self.build_dir.join("pot12_final.ptau");
         if !ptau_path.exists() {
             tracing::info!("Downloading powers of tau file...");
+            let ptau_path_str = ptau_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 ptau path: {}", ptau_path.display()))?;
             let output = Command::new("curl")
                 .args([
                     "-L",
                     "-o",
-                    ptau_path.to_str().unwrap(),
+                    ptau_path_str,
                     "https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_12.ptau",
                 ])
                 .output()
@@ -1346,7 +1449,9 @@ impl CircomTarget {
 
     /// Calculate witness for given inputs
     pub fn calculate_witness(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
-        let _guard = circom_io_lock().lock().unwrap();
+        let _guard = circom_io_lock()
+            .lock()
+            .expect("circom IO lock poisoned during witness calculation");
         let calculator = self
             .witness_calculator
             .as_ref()
@@ -1381,7 +1486,12 @@ impl CircomTarget {
                             .get(name)
                             .copied()
                             .flatten()
-                            .unwrap_or(1);
+                            .ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "Missing input size metadata for signal '{}'",
+                                    name
+                                )
+                            })?;
                         tracing::debug!("  input '{}' size {}", name, size);
                     }
                 }
@@ -1389,7 +1499,10 @@ impl CircomTarget {
 
             let mut cursor = 0usize;
             for (i, name) in metadata.input_signals.iter().enumerate() {
-                let clean_name = name.strip_prefix("main.").unwrap_or(name).to_string();
+                let clean_name = match name.strip_prefix("main.") {
+                    Some(trimmed) => trimmed.to_string(),
+                    None => name.to_string(),
+                };
 
                 if let Some((base, idx)) = split_array_index(&clean_name) {
                     if cursor >= inputs.len() {
@@ -1421,7 +1534,9 @@ impl CircomTarget {
                     .get(name)
                     .copied()
                     .flatten()
-                    .unwrap_or(1);
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Missing input size metadata for signal '{}'", name)
+                    })?;
 
                 if cursor + size > inputs.len() {
                     anyhow::bail!(
@@ -1476,14 +1591,20 @@ impl CircomTarget {
 
             let temp_dir = create_temp_dir()?;
             let temp_path = temp_dir.path().join("constraints.json");
+            let r1cs_path_str = r1cs_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 r1cs path: {}", r1cs_path.display()))?;
+            let temp_path_str = temp_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 temp path: {}", temp_path.display()))?;
 
             let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
                 .args([
                     "r1cs",
                     "export",
                     "json",
-                    r1cs_path.to_str().unwrap(),
-                    temp_path.to_str().unwrap(),
+                    r1cs_path_str,
+                    temp_path_str,
                 ])
                 .output()
                 .context("Failed to export R1CS constraints")?;
@@ -1688,8 +1809,10 @@ impl TargetCircuit for CircomTarget {
 
     fn field_modulus(&self) -> [u8; 32] {
         let prime = self.field_name();
-        resolve_circom_prime(prime)
-            .unwrap_or_else(|| panic!("Unknown Circom prime '{}'; cannot resolve field modulus", prime))
+        match resolve_circom_prime(prime) {
+            Some(modulus) => modulus,
+            None => panic!("Unknown Circom prime '{}'; cannot resolve field modulus", prime),
+        }
     }
 
     fn field_name(&self) -> &str {
@@ -1730,7 +1853,9 @@ impl TargetCircuit for CircomTarget {
     }
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
-        let _guard = circom_io_lock().lock().unwrap();
+        let _guard = circom_io_lock()
+            .lock()
+            .expect("circom IO lock poisoned during prove");
         let zkey_path = self
             .proving_key_path
             .as_ref()
@@ -1742,6 +1867,18 @@ impl TargetCircuit for CircomTarget {
         let witness_path = temp_path.join("witness.wtns");
         let proof_path = temp_path.join("proof.json");
         let public_path = temp_path.join("public.json");
+        let zkey_path_str = zkey_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 zkey path: {}", zkey_path.display()))?;
+        let witness_path_str = witness_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 witness path: {}", witness_path.display()))?;
+        let proof_path_str = proof_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 proof path: {}", proof_path.display()))?;
+        let public_path_str = public_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 public path: {}", public_path.display()))?;
 
         // First need to create witness file
         // For now, use the WASM-based approach
@@ -1751,13 +1888,20 @@ impl TargetCircuit for CircomTarget {
         std::fs::write(&input_path, &input_json)?;
 
         if let Some(calc) = &self.witness_calculator {
+            let calc_wasm_path_str = calc
+                .wasm_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 wasm path: {}", calc.wasm_path.display()))?;
+            let input_path_str = input_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 input path: {}", input_path.display()))?;
             let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
                 .args([
                     "wtns",
                     "calculate",
-                    calc.wasm_path.to_str().unwrap(),
-                    input_path.to_str().unwrap(),
-                    witness_path.to_str().unwrap(),
+                    calc_wasm_path_str,
+                    input_path_str,
+                    witness_path_str,
                 ])
                 .output()
                 .context("Failed to calculate witness for proof")?;
@@ -1773,10 +1917,10 @@ impl TargetCircuit for CircomTarget {
             .args([
                 "groth16",
                 "prove",
-                zkey_path.to_str().unwrap(),
-                witness_path.to_str().unwrap(),
-                proof_path.to_str().unwrap(),
-                public_path.to_str().unwrap(),
+                zkey_path_str,
+                witness_path_str,
+                proof_path_str,
+                public_path_str,
             ])
             .output()
             .context("Failed to generate proof")?;
@@ -1793,7 +1937,9 @@ impl TargetCircuit for CircomTarget {
     }
 
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
-        let _guard = circom_io_lock().lock().unwrap();
+        let _guard = circom_io_lock()
+            .lock()
+            .expect("circom IO lock poisoned during verify");
         let vkey_path = self
             .verification_key_path
             .as_ref()
@@ -1804,6 +1950,15 @@ impl TargetCircuit for CircomTarget {
 
         let proof_path = temp_path.join("proof.json");
         let public_path = temp_path.join("public.json");
+        let vkey_path_str = vkey_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 vkey path: {}", vkey_path.display()))?;
+        let public_path_str = public_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 public path: {}", public_path.display()))?;
+        let proof_path_str = proof_path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("Non-UTF8 proof path: {}", proof_path.display()))?;
 
         // Write proof
         std::fs::write(&proof_path, proof)?;
@@ -1819,9 +1974,9 @@ impl TargetCircuit for CircomTarget {
             .args([
                 "groth16",
                 "verify",
-                vkey_path.to_str().unwrap(),
-                public_path.to_str().unwrap(),
-                proof_path.to_str().unwrap(),
+                vkey_path_str,
+                public_path_str,
+                proof_path_str,
             ])
             .output()
             .context("Failed to verify proof")?;

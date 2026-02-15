@@ -268,7 +268,7 @@ impl SpecInferenceOracle {
             specs.retain(|spec| {
                 self.spec_support_ratio(spec, validation_samples, num_inputs)
                     .map(|ratio| ratio >= self.validation_threshold)
-                    .unwrap_or(false)
+                    .map_or(false, |v| v)
             });
         }
 
@@ -340,7 +340,7 @@ impl SpecInferenceOracle {
     /// Infer non-zero constraints
     fn infer_non_zero(&self, samples: &[ExecutionSample], total_wires: usize) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
-        let num_inputs = samples.first().map(|s| s.inputs.len()).unwrap_or(0);
+        let num_inputs = samples.first().map(|s| s.inputs.len()).map_or(0, |v| v);
         if self.wire_labels.is_empty() {
             return specs;
         }
@@ -359,7 +359,10 @@ impl SpecInferenceOracle {
                 continue;
             }
 
-            let min = *values.iter().min().unwrap_or(&u64::MAX);
+            let min = *values
+                .iter()
+                .min()
+                .expect("values is non-empty when inferring non-zero constraints");
             if min > 3 {
                 // No evidence of a small-domain input; skip to reduce false positives.
                 continue;
@@ -369,7 +372,7 @@ impl SpecInferenceOracle {
                 s.inputs
                     .get(wire_idx)
                     .map(|fe| !fe.is_zero())
-                    .unwrap_or(true)
+                    .map_or(true, |v| v)
             });
 
             if all_nonzero && samples.len() >= self.min_samples {
@@ -402,7 +405,7 @@ impl SpecInferenceOracle {
                     s.outputs
                         .get(output_idx)
                         .map(|v| v == expected)
-                        .unwrap_or(false)
+                        .map_or(false, |v| v)
                 });
 
                 if all_same && samples.len() >= 10 {
@@ -513,7 +516,7 @@ impl SpecInferenceOracle {
                     // Set to a value outside the range
                     let overflow_value = 1u64
                         .checked_shl(*inferred_bits as u32)
-                        .unwrap_or(u64::MAX)
+                        .map_or(u64::MAX, |v| v)
                         .saturating_add(rng.gen_range(1..1000));
                     witness[*input_index] = FieldElement::from_u64(overflow_value);
                     modified = true;

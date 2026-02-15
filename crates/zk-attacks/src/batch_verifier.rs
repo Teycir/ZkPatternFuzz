@@ -30,7 +30,7 @@
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -323,7 +323,7 @@ impl BatchVerifier {
         for (i, (proof, inputs)) in proofs.iter().zip(public_inputs.iter()).enumerate() {
             let result = executor
                 .verify(&proof.data, &inputs.inputs)
-                .unwrap_or(false);
+                .with_context(|| format!("Naive batch verification failed at index {}", i))?;
 
             if !result {
                 invalid_indices.push(i);
@@ -609,7 +609,7 @@ impl BatchVerifier {
         for (proof, inputs) in proofs.iter().zip(public_inputs.iter()) {
             let passed = executor
                 .verify(&proof.data, &inputs.inputs)
-                .unwrap_or(false);
+                .context("SnarkPack verification failed during individual proof check")?;
             if !passed {
                 all_passed = false;
             }
@@ -640,7 +640,7 @@ impl BatchVerifier {
         for (proof, inputs) in proofs.iter().zip(public_inputs.iter()) {
             let passed = executor
                 .verify(&proof.data, &inputs.inputs)
-                .unwrap_or(false);
+                .context("Groth16 batched verification failed during individual proof check")?;
             if !passed {
                 all_passed = false;
             }
@@ -669,7 +669,7 @@ impl BatchVerifier {
         for (proof, inputs) in proofs.iter().zip(public_inputs.iter()) {
             let passed = executor
                 .verify(&proof.data, &inputs.inputs)
-                .unwrap_or(false);
+                .context("Plonk batched verification failed during individual proof check")?;
             if !passed {
                 all_passed = false;
             }
@@ -698,7 +698,7 @@ impl BatchVerifier {
         for (proof, inputs) in proofs.iter().zip(public_inputs.iter()) {
             let passed = executor
                 .verify(&proof.data, &inputs.inputs)
-                .unwrap_or(false);
+                .context("Halo2 accumulation verification failed during individual proof check")?;
             if !passed {
                 all_passed = false;
             }
@@ -762,7 +762,17 @@ impl BatchVerificationAttackIntegration {
                 .iter()
                 .enumerate()
                 .filter(|(i, &expected)| {
-                    !expected && result.individual_results.get(*i).copied().unwrap_or(true)
+                    !expected
+                        && match result.individual_results.get(*i).copied() {
+                            Some(actual) => actual,
+                            None => {
+                                tracing::error!(
+                                    "Batch bypass check missing individual result at index {}",
+                                    i
+                                );
+                                false
+                            }
+                        }
                 })
                 .map(|(i, _)| i)
                 .collect();

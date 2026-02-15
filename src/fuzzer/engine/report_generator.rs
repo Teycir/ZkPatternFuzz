@@ -5,7 +5,10 @@ impl FuzzingEngine {
     pub(super) fn generate_report(&self, findings: Vec<Finding>, duration: u64) -> FuzzReport {
         // Phase 6A: Apply cross-oracle correlation for confidence scoring
         let additional = &self.config.campaign.parameters.additional;
-        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        let evidence_mode = match Self::additional_bool(additional, "evidence_mode") {
+            Some(value) => value,
+            None => false,
+        };
 
         let processed_findings = if evidence_mode && !findings.is_empty() {
             // In evidence mode, filter to only HIGH+ confidence findings
@@ -47,7 +50,11 @@ impl FuzzingEngine {
                     "low" => ConfidenceLevel::Low,
                     _ => ConfidenceLevel::Medium,
                 })
-                .unwrap_or(ConfidenceLevel::Medium);
+                .map(|value| value);
+            let min_confidence = match min_confidence {
+                Some(value) => value,
+                None => ConfidenceLevel::Medium,
+            };
 
             let filtered: Vec<Finding> = correlated
                 .into_iter()
@@ -164,13 +171,20 @@ impl FuzzingEngine {
     ) {
         let now_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+            .map(|duration| duration.as_secs());
+        let now_epoch = match now_epoch {
+            Ok(value) => value,
+            Err(_) => 0,
+        };
 
         let overall = if phases_total == 0 {
             0.0
         } else {
-            let sub = phase_progress.unwrap_or(0.0).clamp(0.0, 1.0);
+            let sub = match phase_progress {
+                Some(value) => value,
+                None => 0.0,
+            }
+            .clamp(0.0, 1.0);
             ((phases_completed as f64) + sub) / (phases_total as f64)
         }
         .clamp(0.0, 1.0);
@@ -181,14 +195,17 @@ impl FuzzingEngine {
 
         let additional = &self.config.campaign.parameters.additional;
         let run_id = Self::additional_string(additional, "run_id");
-        let command = Self::additional_string(additional, "run_command").unwrap_or_else(|| {
-            // Compatibility path for older binaries.
-            if mode_label == "evidence" {
-                "evidence".to_string()
-            } else {
-                "run".to_string()
+        let command = match Self::additional_string(additional, "run_command") {
+            Some(value) => value,
+            None => {
+                // Compatibility path for older binaries.
+                if mode_label == "evidence" {
+                    "evidence".to_string()
+                } else {
+                    "run".to_string()
+                }
             }
-        });
+        };
 
         let snapshot = serde_json::json!({
             "updated_unix_seconds": now_epoch,
@@ -286,7 +303,10 @@ impl FuzzingEngine {
                         "{:?}: {} at line {}",
                         h.hint_type,
                         h.description,
-                        h.line.unwrap_or(0)
+                        match h.line {
+                            Some(value) => value,
+                            None => 0,
+                        }
                     )
                 })
                 .collect(),
@@ -297,7 +317,10 @@ impl FuzzingEngine {
                         "{:?}: {} at line {}",
                         h.hint_type,
                         h.description,
-                        h.line.unwrap_or(0)
+                        match h.line {
+                            Some(value) => value,
+                            None => 0,
+                        }
                     )
                 })
                 .collect(),

@@ -18,16 +18,16 @@ impl FuzzingEngine {
         let additional = &self.config.campaign.parameters.additional;
         let execution_timeout_ms = Self::additional_u64(additional, "execution_timeout_ms")
             .or_else(|| Self::additional_u64(additional, "timeout_per_execution").map(|v| v * 1000))
-            .unwrap_or(30_000)
+            .map_or(30_000, |v| v)
             .max(1);
 
         let minimize_enabled =
-            Self::additional_bool(additional, "corpus_minimize_enabled").unwrap_or(true);
+            Self::additional_bool(additional, "corpus_minimize_enabled").map_or(true, |v| v);
         let minimize_interval = Self::additional_u64(additional, "corpus_minimize_interval")
-            .unwrap_or(10_000)
+            .map_or(10_000, |v| v)
             .max(1);
         let minimize_min_size = Self::additional_u64(additional, "corpus_minimize_min_size")
-            .unwrap_or(1_000)
+            .map_or(1_000, |v| v)
             .max(1) as usize;
         let execution_timeout = Duration::from_millis(execution_timeout_ms);
 

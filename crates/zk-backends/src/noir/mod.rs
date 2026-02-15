@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use zk_core::ConstraintEquation;
@@ -220,7 +220,14 @@ impl NoirTarget {
 
         // Determine if this is a project dir or a file
         let project_path = if path.is_file() {
-            path.parent().unwrap_or(Path::new(".")).to_path_buf()
+            path.parent()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Noir source file path has no parent directory: '{}'",
+                        path.display()
+                    )
+                })?
+                .to_path_buf()
         } else {
             path
         };
@@ -260,17 +267,17 @@ impl NoirTarget {
 
     /// Check if bb (Barretenberg) is available
     pub fn check_bb_available() -> Result<String> {
-        let output = Command::new("bb").arg("--version").output();
+        let output = Command::new("bb")
+            .arg("--version")
+            .output()
+            .context("Failed to run bb --version")?;
 
-        match output {
-            Ok(o) if o.status.success() => {
-                Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
-            }
-            _ => {
-                // bb might not be in path, try through nargo
-                Ok("using nargo backend".to_string())
-            }
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("bb --version failed: {}", stderr.trim());
         }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
     /// Compile the Noir project
@@ -285,7 +292,9 @@ impl NoirTarget {
         let nargo_version = Self::check_nargo_available()?;
         tracing::debug!("Using nargo: {}", nargo_version);
 
-        let _guard = noir_io_lock().lock().unwrap();
+        let _guard = noir_io_lock()
+            .lock()
+            .expect("noir IO lock poisoned during compile");
         let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.build_dir)?;
 
         // Compile the project
@@ -314,12 +323,14 @@ impl NoirTarget {
     fn parse_circuit_info(&mut self) -> Result<()> {
         // Get project name from Nargo.toml
         let nargo_toml_path = self.project_path.join("Nargo.toml");
-        let name = if nargo_toml_path.exists() {
-            let content = std::fs::read_to_string(&nargo_toml_path)?;
-            self.parse_project_name(&content)
-        } else {
-            "unknown".to_string()
-        };
+        if !nargo_toml_path.exists() {
+            anyhow::bail!(
+                "Noir project is missing Nargo.toml at '{}'",
+                nargo_toml_path.display()
+            );
+        }
+        let content = std::fs::read_to_string(&nargo_toml_path)?;
+        let name = self.parse_project_name(&content)?;
 
         // Get circuit info using nargo info
         let output = {
@@ -351,15 +362,19 @@ impl NoirTarget {
     }
 
     /// Parse project name from Nargo.toml
-    fn parse_project_name(&self, content: &str) -> String {
+    fn parse_project_name(&self, content: &str) -> Result<String> {
         for line in content.lines() {
             if line.trim().starts_with("name") {
                 if let Some(value) = line.split('=').nth(1) {
-                    return value.trim().trim_matches('"').to_string();
+                    let parsed = value.trim().trim_matches('"').to_string();
+                    if parsed.is_empty() {
+                        anyhow::bail!("Noir project name in Nargo.toml is empty");
+                    }
+                    return Ok(parsed);
                 }
             }
         }
-        "unknown".to_string()
+        anyhow::bail!("Missing 'name' entry in Nargo.toml")
     }
 
     /// Parse nargo info output
@@ -386,16 +401,25 @@ impl NoirTarget {
 
     /// Parse ABI from compiled artifact
     fn parse_abi(&self) -> Result<NoirAbi> {
-        let candidates = self.candidate_artifact_paths();
+        let candidates = self.candidate_artifact_paths()?;
 
         for json_path in candidates {
             if !json_path.exists() {
                 continue;
             }
             let content = std::fs::read_to_string(&json_path)?;
-            if let Ok(artifact) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(abi) = artifact.get("abi") {
-                    return Ok(serde_json::from_value(abi.clone())?);
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(artifact) => {
+                    if let Some(abi) = artifact.get("abi") {
+                        return Ok(serde_json::from_value(abi.clone())?);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed parsing Noir artifact JSON '{}': {}",
+                        json_path.display(),
+                        e
+                    );
                 }
             }
         }
@@ -406,7 +430,7 @@ impl NoirTarget {
         )
     }
 
-    fn candidate_artifact_paths(&self) -> Vec<PathBuf> {
+    fn candidate_artifact_paths(&self) -> Result<Vec<PathBuf>> {
         use std::collections::HashSet;
 
         let mut candidates = Vec::new();
@@ -421,30 +445,44 @@ impl NoirTarget {
 
         let nargo_toml_path = self.project_path.join("Nargo.toml");
         if nargo_toml_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&nargo_toml_path) {
-                let name = self.parse_project_name(&content);
-                let path = self.build_dir.join(format!("{}.json", name));
-                if seen.insert(path.clone()) {
-                    candidates.push(path);
-                }
+            let content = std::fs::read_to_string(&nargo_toml_path).with_context(|| {
+                format!("Failed reading '{}'", nargo_toml_path.display())
+            })?;
+            let name = self.parse_project_name(&content)?;
+            let path = self.build_dir.join(format!("{}.json", name));
+            if seen.insert(path.clone()) {
+                candidates.push(path);
             }
         }
 
-        if let Ok(entries) = std::fs::read_dir(&self.build_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|e| e == "json") && seen.insert(path.clone()) {
-                    candidates.push(path);
-                }
+        for entry in std::fs::read_dir(&self.build_dir).with_context(|| {
+            format!("Failed reading Noir build dir '{}'", self.build_dir.display())
+        })? {
+            let entry = entry.with_context(|| {
+                format!(
+                    "Failed reading an entry in Noir build dir '{}'",
+                    self.build_dir.display()
+                )
+            })?;
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "json") && seen.insert(path.clone()) {
+                candidates.push(path);
             }
         }
 
-        candidates
+        Ok(candidates)
     }
 
     /// Load the compiled ACIR artifact (JSON) when available.
     pub fn load_acir_artifact(&self) -> Option<Vec<u8>> {
-        for json_path in self.candidate_artifact_paths() {
+        let candidates = match self.candidate_artifact_paths() {
+            Ok(candidates) => candidates,
+            Err(err) => {
+                tracing::warn!("Failed resolving Noir artifact candidates: {}", err);
+                return None;
+            }
+        };
+        for json_path in candidates {
             if !json_path.exists() {
                 continue;
             }
@@ -456,14 +494,23 @@ impl NoirTarget {
                     continue;
                 }
             };
-            if let Ok(artifact) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                if artifact.get("opcodes").is_some()
-                    || artifact.get("program").is_some()
-                    || artifact.get("functions").is_some()
-                    || artifact.get("constraints").is_some()
-                    || artifact.get("bytecode").is_some()
-                {
-                    return Some(bytes);
+            match serde_json::from_slice::<serde_json::Value>(&bytes) {
+                Ok(artifact) => {
+                    if artifact.get("opcodes").is_some()
+                        || artifact.get("program").is_some()
+                        || artifact.get("functions").is_some()
+                        || artifact.get("constraints").is_some()
+                        || artifact.get("bytecode").is_some()
+                    {
+                        return Some(bytes);
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed parsing Noir artifact bytes '{}': {}",
+                        json_path.display(),
+                        err
+                    );
                 }
             }
         }
@@ -473,7 +520,9 @@ impl NoirTarget {
 
     /// Load ACIR text via `nargo compile --print-acir` when available.
     pub fn load_acir_text(&self) -> Option<String> {
-        let _guard = noir_io_lock().lock().unwrap();
+        let _guard = noir_io_lock()
+            .lock()
+            .expect("noir IO lock poisoned while loading ACIR text");
         let _dir_lock = match crate::util::DirLock::acquire_shared(&self.build_dir) {
             Ok(lock) => lock,
             Err(err) => {
@@ -529,7 +578,9 @@ impl NoirTarget {
     }
 
     fn build_acir_info(&self) -> Result<NoirAcirInfo> {
-        let _guard = noir_io_lock().lock().unwrap();
+        let _guard = noir_io_lock()
+            .lock()
+            .expect("noir IO lock poisoned while building ACIR info");
         let _dir_lock = crate::util::DirLock::acquire_shared(&self.build_dir)?;
 
         let output = {
@@ -587,7 +638,9 @@ impl NoirTarget {
             anyhow::bail!("Circuit not compiled. Call compile() first.");
         }
 
-        let _guard = noir_io_lock().lock().unwrap();
+        let _guard = noir_io_lock()
+            .lock()
+            .expect("noir IO lock poisoned during execute");
         let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
 
         // Create Prover.toml with inputs
@@ -757,11 +810,10 @@ impl TargetCircuit for NoirTarget {
 
     fn field_modulus(&self) -> [u8; 32] {
         // Noir uses BN254 (Barretenberg backend)
-        let mut modulus = [0u8; 32];
         let hex_str = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
-        if let Ok(decoded) = hex::decode(hex_str) {
-            modulus.copy_from_slice(&decoded);
-        }
+        let decoded = hex::decode(hex_str).expect("Noir BN254 modulus constant must be valid hex");
+        let mut modulus = [0u8; 32];
+        modulus.copy_from_slice(&decoded);
         modulus
     }
 
@@ -773,42 +825,42 @@ impl TargetCircuit for NoirTarget {
         self.metadata
             .as_ref()
             .map(|m| m.name.as_str())
-            .unwrap_or_else(|| {
-                self.project_path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown")
-            })
+            .expect("Noir metadata unavailable; call compile() before querying name")
     }
 
     fn num_constraints(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_opcodes).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_opcodes)
+            .expect("Noir metadata unavailable; call compile() before querying num_constraints")
     }
 
     fn num_private_inputs(&self) -> usize {
-        if let Some(metadata) = &self.metadata {
-            if !metadata.abi.parameters.is_empty() {
-                return metadata.abi.parameters.len();
-            }
-            return metadata.num_witnesses;
+        let metadata = self
+            .metadata
+            .as_ref()
+            .expect("Noir metadata unavailable; call compile() before querying num_private_inputs");
+        if !metadata.abi.parameters.is_empty() {
+            return metadata.abi.parameters.len();
         }
-        0
+        metadata.num_witnesses
     }
 
     fn num_public_inputs(&self) -> usize {
-        if let Some(metadata) = &self.metadata {
-            let public = metadata
-                .abi
-                .parameters
-                .iter()
-                .filter(|p| p.visibility == Visibility::Public)
-                .count();
-            if public > 0 {
-                return public;
-            }
-            return metadata.num_public_inputs;
+        let metadata = self
+            .metadata
+            .as_ref()
+            .expect("Noir metadata unavailable; call compile() before querying num_public_inputs");
+        let public = metadata
+            .abi
+            .parameters
+            .iter()
+            .filter(|p| p.visibility == Visibility::Public)
+            .count();
+        if public > 0 {
+            return public;
         }
-        0
+        metadata.num_public_inputs
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -820,7 +872,9 @@ impl TargetCircuit for NoirTarget {
             anyhow::bail!("Circuit not compiled. Call compile() first.");
         }
 
-        let _guard = noir_io_lock().lock().unwrap();
+        let _guard = noir_io_lock()
+            .lock()
+            .expect("noir IO lock poisoned during prove");
         let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
 
         // Create Prover.toml
@@ -861,7 +915,9 @@ impl TargetCircuit for NoirTarget {
     }
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {
-        let _guard = noir_io_lock().lock().unwrap();
+        let _guard = noir_io_lock()
+            .lock()
+            .expect("noir IO lock poisoned during verify");
         let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
 
         // Write proof to file
@@ -898,8 +954,15 @@ fn extract_witness_indices(text: &str) -> Vec<usize> {
                 }
             }
             if !digits.is_empty() {
-                if let Ok(idx) = digits.parse::<usize>() {
-                    indices.push(idx);
+                match digits.parse::<usize>() {
+                    Ok(idx) => indices.push(idx),
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to parse ACIR witness index '{}': {}",
+                            digits,
+                            e
+                        );
+                    }
                 }
             }
         }
@@ -949,7 +1012,10 @@ fn parse_acir_output(output: &str) -> NoirAcirInfo {
                 };
 
             if let Some(out_idx) = output_idx {
-                let is_multiplication = rhs_text.map(|rhs| rhs.contains('*')).unwrap_or(false);
+                let is_multiplication = match rhs_text {
+                    Some(rhs) => rhs.contains('*'),
+                    None => false,
+                };
                 if is_multiplication && input_indices.len() >= 2 {
                     constraints.push(ConstraintEquation {
                         id,

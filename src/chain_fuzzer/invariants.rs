@@ -441,8 +441,10 @@ impl CrossStepInvariantChecker {
 
                 if value_a != value_b {
                     let step_indices = vec![
-                        self.step_ref_to_index(step_a).unwrap_or(0),
-                        self.step_ref_to_index(step_b).unwrap_or(0),
+                        self.step_ref_to_index(step_a)
+                            .expect("Specific step reference must resolve to an index"),
+                        self.step_ref_to_index(step_b)
+                            .expect("Specific step reference must resolve to an index"),
                     ];
                     Some(
                         CrossStepViolation::new(
@@ -571,8 +573,10 @@ impl CrossStepInvariantChecker {
 
                 if value_a == value_b {
                     let step_indices = vec![
-                        self.step_ref_to_index(step_a).unwrap_or(0),
-                        self.step_ref_to_index(step_b).unwrap_or(0),
+                        self.step_ref_to_index(step_a)
+                            .expect("Specific step reference must resolve to an index"),
+                        self.step_ref_to_index(step_b)
+                            .expect("Specific step reference must resolve to an index"),
                     ];
                     Some(
                         CrossStepViolation::new(
@@ -633,7 +637,7 @@ impl CrossStepInvariantChecker {
             let dup_val_hex = duplicate_value
                 .as_ref()
                 .map(|v| v.to_hex())
-                .unwrap_or_default();
+                .map_or(String::new(), |v| v);
             Some(
                 CrossStepViolation::new(
                     &assertion.original.name,

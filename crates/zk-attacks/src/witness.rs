@@ -232,7 +232,10 @@ impl WitnessFuzzer {
             if !exec_result.success {
                 tracing::warn!(
                     "Timing probe execution failed: {}",
-                    exec_result.error.as_deref().unwrap_or("unknown execution error")
+                    exec_result
+                        .error
+                        .as_deref()
+                        .map_or("unknown execution error", |v| v)
                 );
             }
             let elapsed_us = start.elapsed().as_micros() as u64;
@@ -264,11 +267,11 @@ impl WitnessFuzzer {
                         mean,
                         std_dev,
                         cv,
-                        fastest.map(|(_, t)| *t).unwrap_or(0),
-                        slowest.map(|(_, t)| *t).unwrap_or(0)
+                        fastest.map(|(_, t)| *t).map_or(0, |v| v),
+                        slowest.map(|(_, t)| *t).map_or(0, |v| v)
                     ),
                     poc: ProofOfConcept {
-                        witness_a: slowest.map(|(i, _)| i.clone()).unwrap_or_default(),
+                        witness_a: slowest.map(|(i, _)| i.clone()).map_or(Vec::new(), |v| v),
                         witness_b: fastest.map(|(i, _)| i.clone()),
                         public_inputs: vec![],
                         proof: None,

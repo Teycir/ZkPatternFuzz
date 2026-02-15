@@ -94,14 +94,20 @@ impl CairoTarget {
         let name = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or("unknown")
+            .ok_or_else(|| anyhow::anyhow!("Invalid Cairo source path '{}'", path.display()))?
             .to_string();
 
         // Detect Cairo version from file extension/content
         let cairo_version = Self::detect_version(&path)?;
         let build_dir = match cairo_version {
-            CairoVersion::Cairo0 => path.parent().unwrap_or(Path::new(".")).join("build"),
-            CairoVersion::Cairo1 => path.parent().unwrap_or(Path::new(".")).join("target"),
+            CairoVersion::Cairo0 => path
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent"))?
+                .join("build"),
+            CairoVersion::Cairo1 => path
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent"))?
+                .join("target"),
         };
 
         Ok(Self {
@@ -131,29 +137,31 @@ impl CairoTarget {
     /// Detect Cairo version from the source file
     fn detect_version(path: &Path) -> Result<CairoVersion> {
         // Check for Scarb.toml (Cairo 1)
-        let scarb_path = path.parent().unwrap_or(Path::new(".")).join("Scarb.toml");
+        let scarb_path = path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent"))?
+            .join("Scarb.toml");
         if scarb_path.exists() {
             return Ok(CairoVersion::Cairo1);
         }
 
         // Check file extension
-        if let Some(ext) = path.extension() {
-            if ext == "cairo" {
-                // Try to read file and detect version from syntax
-                if let Ok(content) = std::fs::read_to_string(path) {
-                    // Cairo 1 uses different syntax
-                    if content.contains("fn main()")
-                        || content.contains("#[contract]")
-                        || content.contains("mod ")
-                        || content.contains("use ")
-                    {
-                        return Ok(CairoVersion::Cairo1);
-                    }
-                }
-            }
+        if !path.extension().is_some_and(|ext| ext == "cairo") {
+            anyhow::bail!(
+                "Unsupported Cairo source extension for '{}'; expected .cairo",
+                path.display()
+            );
         }
-
-        // Default to Cairo 0
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read Cairo source '{}'", path.display()))?;
+        // Cairo 1 uses different syntax
+        if content.contains("fn main()")
+            || content.contains("#[contract]")
+            || content.contains("mod ")
+            || content.contains("use ")
+        {
+            return Ok(CairoVersion::Cairo1);
+        }
         Ok(CairoVersion::Cairo0)
     }
 
@@ -181,9 +189,10 @@ impl CairoTarget {
             Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
         })();
 
-        if let Ok(version) = cairo0 {
-            return Ok((CairoVersion::Cairo0, version));
-        }
+        let cairo0_error = match cairo0 {
+            Ok(version) => return Ok((CairoVersion::Cairo0, version)),
+            Err(e) => e,
+        };
 
         // Try Scarb (Cairo 1 toolchain).
         let output = {
@@ -193,7 +202,13 @@ impl CairoTarget {
                 .context("scarb not found in PATH")?
         };
         if !output.status.success() {
-            anyhow::bail!("No Cairo toolchain detected (need cairo-compile/cairo-run or scarb)");
+            let scarb_stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!(
+                "No Cairo toolchain detected. Cairo0 check failed: {}. Scarb check failed with status {}: {}",
+                cairo0_error,
+                output.status,
+                scarb_stderr.trim()
+            );
         }
 
         Ok((
@@ -241,11 +256,17 @@ impl CairoTarget {
     /// Compile Cairo 0 program
     fn compile_cairo0(&mut self) -> Result<()> {
         let output_path = self.build_dir.join(format!("{}.json", self.name));
+        let source_path_str = self.source_path.to_str().ok_or_else(|| {
+            anyhow::anyhow!("Non-UTF8 Cairo source path: {}", self.source_path.display())
+        })?;
+        let output_path_str = output_path.to_str().ok_or_else(|| {
+            anyhow::anyhow!("Non-UTF8 Cairo output path: {}", output_path.display())
+        })?;
 
         let mut args = vec![
-            self.source_path.to_str().unwrap().to_string(),
+            source_path_str.to_string(),
             "--output".to_string(),
-            output_path.to_str().unwrap().to_string(),
+            output_path_str.to_string(),
         ];
 
         if self.config.proof_mode {
@@ -277,7 +298,10 @@ impl CairoTarget {
 
     /// Compile Cairo 1 program using scarb
     fn compile_cairo1(&mut self) -> Result<()> {
-        let project_dir = self.source_path.parent().unwrap_or(Path::new("."));
+        let project_dir = self
+            .source_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
 
         let output = {
             let mut cmd = Command::new("scarb");
@@ -295,16 +319,19 @@ impl CairoTarget {
 
         // Find the compiled Sierra file
         let target_dir = self.build_dir.join("dev");
-        if let Ok(entries) = std::fs::read_dir(&target_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path
-                    .extension()
-                    .is_some_and(|e| e == "sierra.json" || e == "casm.json")
-                {
-                    self.compiled_path = Some(path);
-                    break;
-                }
+        let entries = std::fs::read_dir(&target_dir)
+            .with_context(|| format!("Failed to read target dir '{}'", target_dir.display()))?;
+        for entry in entries {
+            let entry = entry.with_context(|| {
+                format!("Failed reading an entry in target dir '{}'", target_dir.display())
+            })?;
+            let path = entry.path();
+            if path
+                .extension()
+                .is_some_and(|e| e == "sierra.json" || e == "casm.json")
+            {
+                self.compiled_path = Some(path);
+                break;
             }
         }
 
@@ -338,22 +365,29 @@ impl CairoTarget {
             })?;
 
             // Extract builtins
-            let builtins: Vec<String> = program
-                .get("builtins")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
+            let builtins: Vec<String> = match program.get("builtins") {
+                Some(v) => {
+                    let arr = v
+                        .as_array()
+                        .ok_or_else(|| anyhow::anyhow!("'builtins' field is not an array"))?;
+                    let mut parsed = Vec::with_capacity(arr.len());
+                    for item in arr {
+                        let item_str = item
+                            .as_str()
+                            .ok_or_else(|| anyhow::anyhow!("Builtins entry is not a string"))?;
+                        parsed.push(item_str.to_string());
+                    }
+                    parsed
+                }
+                None => Vec::new(),
+            };
 
             // Count hints for input estimation
             let num_hints = program
                 .get("hints")
                 .and_then(|v| v.as_object())
                 .map(|h| h.len())
-                .unwrap_or(0);
+                .map_or(0usize, |v| v);
 
             self.metadata = Some(CairoMetadata {
                 name: self.name.clone(),
@@ -374,7 +408,9 @@ impl CairoTarget {
             anyhow::bail!("Program not compiled. Call compile() first.");
         }
 
-        let _guard = cairo_io_lock().lock().unwrap();
+        let _guard = cairo_io_lock()
+            .lock()
+            .expect("cairo IO lock poisoned during execute");
         self.execute_cairo_inner(inputs)
     }
 
@@ -409,7 +445,12 @@ impl CairoTarget {
 
         let mut args = vec![
             "--program".to_string(),
-            compiled_path.to_str().unwrap().to_string(),
+            compiled_path
+                .to_str()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Non-UTF8 compiled program path: {}", compiled_path.display())
+                })?
+                .to_string(),
             "--print_output".to_string(),
             "--layout".to_string(),
             self.config.layout.clone(),
@@ -418,9 +459,19 @@ impl CairoTarget {
         if self.config.proof_mode {
             args.extend([
                 "--trace_file".to_string(),
-                trace_path.to_str().unwrap().to_string(),
+                trace_path
+                    .to_str()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Non-UTF8 trace path: {}", trace_path.display())
+                    })?
+                    .to_string(),
                 "--memory_file".to_string(),
-                memory_path.to_str().unwrap().to_string(),
+                memory_path
+                    .to_str()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Non-UTF8 memory path: {}", memory_path.display())
+                    })?
+                    .to_string(),
                 "--proof_mode".to_string(),
             ]);
         }
@@ -428,7 +479,10 @@ impl CairoTarget {
         // Add program input if the program expects it
         args.extend([
             "--program_input".to_string(),
-            input_path.to_str().unwrap().to_string(),
+            input_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 input path: {}", input_path.display()))?
+                .to_string(),
         ]);
 
         let output = {
@@ -450,7 +504,10 @@ impl CairoTarget {
 
     /// Execute Cairo 1 program
     fn execute_cairo1(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
-        let project_dir = self.source_path.parent().unwrap_or(Path::new("."));
+        let project_dir = self
+            .source_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
 
         // Create args JSON
         let args: Vec<String> = inputs
@@ -555,16 +612,22 @@ impl CairoTarget {
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 memory path: {}", memory_path.display()))?;
         let output = {
+            let proof_path_str = proof_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 proof path: {}", proof_path.display()))?;
+            let config_path_str = config_path.to_str().ok_or_else(|| {
+                anyhow::anyhow!("Non-UTF8 prover config path: {}", config_path.display())
+            })?;
             let mut cmd = Command::new("cpu_air_prover");
             cmd.args([
                 "--out_file",
-                proof_path.to_str().unwrap(),
+                proof_path_str,
                 "--trace_file",
                 trace_path_str,
                 "--memory_file",
                 memory_path_str,
                 "--prover_config_file",
-                config_path.to_str().unwrap(),
+                config_path_str,
             ]);
             crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
                 .context("Failed to run cpu_air_prover")?
@@ -593,14 +656,18 @@ impl CairoTarget {
         let mut labels = HashMap::new();
         let source = match std::fs::read_to_string(&self.source_path) {
             Ok(s) => s,
-            Err(_) => return labels,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed reading Cairo source '{}' while collecting wire labels: {}",
+                    self.source_path.display(),
+                    e
+                );
+                return labels;
+            }
         };
 
         let functions = analysis::extract_functions(&source);
-        let func = functions
-            .iter()
-            .find(|f| f.name == "main")
-            .or_else(|| functions.first());
+        let func = functions.iter().find(|f| f.name == "main");
 
         if let Some(func) = func {
             for (idx, (name, _typ)) in func.args.iter().enumerate() {
@@ -626,11 +693,11 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn field_modulus(&self) -> [u8; 32] {
+        let decoded = hex::decode(STARK252_MODULUS_HEX)
+            .expect("STARK252 modulus constant must be valid hex");
         let mut modulus = [0u8; 32];
-        if let Ok(decoded) = hex::decode(STARK252_MODULUS_HEX) {
-            let start = 32usize.saturating_sub(decoded.len());
-            modulus[start..].copy_from_slice(&decoded[..decoded.len().min(32)]);
-        }
+        let start = 32usize.saturating_sub(decoded.len());
+        modulus[start..].copy_from_slice(&decoded[..decoded.len().min(32)]);
         modulus
     }
 
@@ -639,15 +706,24 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn num_constraints(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_steps).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_steps)
+            .expect("Cairo metadata unavailable; call compile() before querying num_constraints")
     }
 
     fn num_private_inputs(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_inputs).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_inputs)
+            .expect("Cairo metadata unavailable; call compile() before querying num_private_inputs")
     }
 
     fn num_public_inputs(&self) -> usize {
-        self.metadata.as_ref().map(|m| m.num_outputs).unwrap_or(0)
+        self.metadata
+            .as_ref()
+            .map(|m| m.num_outputs)
+            .expect("Cairo metadata unavailable; call compile() before querying num_public_inputs")
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -655,7 +731,9 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
-        let _guard = cairo_io_lock().lock().unwrap();
+        let _guard = cairo_io_lock()
+            .lock()
+            .expect("cairo IO lock poisoned during prove");
 
         if self.cairo_version == CairoVersion::Cairo1 {
             anyhow::bail!("Cairo1 proving via stone-prover is not implemented");
@@ -682,17 +760,31 @@ impl TargetCircuit for CairoTarget {
 
         let args = vec![
             "--program".to_string(),
-            compiled_path.to_str().unwrap().to_string(),
+            compiled_path
+                .to_str()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Non-UTF8 compiled program path: {}", compiled_path.display())
+                })?
+                .to_string(),
             "--print_output".to_string(),
             "--layout".to_string(),
             self.config.layout.clone(),
             "--trace_file".to_string(),
-            trace_path.to_str().unwrap().to_string(),
+            trace_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 trace path: {}", trace_path.display()))?
+                .to_string(),
             "--memory_file".to_string(),
-            memory_path.to_str().unwrap().to_string(),
+            memory_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 memory path: {}", memory_path.display()))?
+                .to_string(),
             "--proof_mode".to_string(),
             "--program_input".to_string(),
-            input_path.to_str().unwrap().to_string(),
+            input_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 input path: {}", input_path.display()))?
+                .to_string(),
         ];
 
         let output = {
@@ -710,7 +802,9 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {
-        let _guard = cairo_io_lock().lock().unwrap();
+        let _guard = cairo_io_lock()
+            .lock()
+            .expect("cairo IO lock poisoned during verify");
 
         let temp_dir = tempfile::Builder::new()
             .prefix("zkfuzz_cairo_verify_")
@@ -721,8 +815,11 @@ impl TargetCircuit for CairoTarget {
 
         // Run stone verifier
         let output = {
+            let proof_path_str = proof_path
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 proof path: {}", proof_path.display()))?;
             let mut cmd = Command::new("cpu_air_verifier");
-            cmd.args(["--in_file", proof_path.to_str().unwrap()]);
+            cmd.args(["--in_file", proof_path_str]);
             crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
                 .context("Failed to run cpu_air_verifier")?
         };
@@ -881,8 +978,11 @@ pub mod analysis {
                 continue;
             }
             let mut iter = part.splitn(2, ':');
-            let name = iter.next().unwrap_or("").trim();
-            let typ = iter.next().unwrap_or("").trim();
+            let name = match iter.next() {
+                Some(name) => name.trim(),
+                None => continue,
+            };
+            let typ = iter.next().map_or("", |t| t.trim());
             if !name.is_empty() {
                 args.push((name.to_string(), typ.to_string()));
             }

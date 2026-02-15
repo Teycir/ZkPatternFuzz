@@ -101,12 +101,11 @@ impl UnderconstrainedOracle {
     /// correct hypothesis: "multiple private witnesses for same public inputs".
     pub fn with_fixed_public_inputs(mut self, public_inputs: Vec<FieldElement>) -> Self {
         self.fixed_public_inputs = Some(public_inputs);
-        self.num_public_inputs = Some(
-            self.fixed_public_inputs
-                .as_ref()
-                .map(|v| v.len())
-                .unwrap_or(0),
-        );
+        let public_len = match self.fixed_public_inputs.as_ref() {
+            Some(values) => values.len(),
+            None => 0,
+        };
+        self.num_public_inputs = Some(public_len);
         self
     }
 
@@ -135,7 +134,10 @@ impl UnderconstrainedOracle {
     }
 
     fn public_inputs<'a>(&self, test_case: &'a TestCase) -> &'a [FieldElement] {
-        let num_public = self.num_public_inputs.unwrap_or(0);
+        let num_public = match self.num_public_inputs {
+            Some(value) => value,
+            None => 0,
+        };
         if num_public == 0 || test_case.inputs.is_empty() {
             &test_case.inputs[..0]
         } else {
@@ -187,7 +189,10 @@ impl Default for UnderconstrainedOracle {
 
 impl BugOracle for UnderconstrainedOracle {
     fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
-        let num_public = self.num_public_inputs.unwrap_or(0);
+        let num_public = match self.num_public_inputs {
+            Some(value) => value,
+            None => 0,
+        };
         if !self.matches_fixed_public_inputs(test_case, num_public) {
             return None;
         }
@@ -296,8 +301,14 @@ impl ConstraintCountOracle {
     /// This should be called by the engine with data from the executor's
     /// constraint inspector.
     pub fn record_constraint_count(&mut self, count: usize) {
-        self.min_count = Some(self.min_count.map_or(count, |m| m.min(count)));
-        self.max_count = Some(self.max_count.map_or(count, |m| m.max(count)));
+        self.min_count = Some(match self.min_count {
+            Some(minimum) => minimum.min(count),
+            None => count,
+        });
+        self.max_count = Some(match self.max_count {
+            Some(maximum) => maximum.max(count),
+            None => count,
+        });
         self.last_count = Some(count);
     }
 
@@ -310,8 +321,14 @@ impl ConstraintCountOracle {
         self.check_count += 1;
 
         // Update incremental min/max tracking
-        self.min_count = Some(self.min_count.map_or(count, |m| m.min(count)));
-        self.max_count = Some(self.max_count.map_or(count, |m| m.max(count)));
+        self.min_count = Some(match self.min_count {
+            Some(minimum) => minimum.min(count),
+            None => count,
+        });
+        self.max_count = Some(match self.max_count {
+            Some(maximum) => maximum.max(count),
+            None => count,
+        });
         self.last_count = Some(count);
 
         // Check if count differs from expected
@@ -367,7 +384,15 @@ impl ConstraintCountOracle {
             executions: self.check_count,
             findings: self.finding_count,
             unique_outputs_seen: if self.min_count.is_some() {
-                (self.max_count.unwrap_or(0) - self.min_count.unwrap_or(0) + 1) as u64
+                let max_count = match self.max_count {
+                    Some(value) => value,
+                    None => 0,
+                };
+                let min_count = match self.min_count {
+                    Some(value) => value,
+                    None => 0,
+                };
+                (max_count - min_count + 1) as u64
             } else {
                 0
             },

@@ -102,7 +102,7 @@ impl InvariantChecker {
         let mut offset = 0usize;
         for input in inputs {
             let len = if input.input_type.starts_with("array") {
-                input.length.unwrap_or(1)
+                input.length.map_or(1, |v| v)
             } else {
                 1
             };
@@ -641,8 +641,18 @@ impl InvariantChecker {
                     inputs.get(offset).cloned()
                 } else if lower.starts_with("output") {
                     // Try to parse output index
-                    let idx_str = lower.strip_prefix("output").unwrap_or("0");
-                    let idx: usize = idx_str.trim_start_matches('_').parse().unwrap_or(0);
+                    let idx_str = lower.strip_prefix("output").map_or("0", |v| v);
+                    let idx: usize = match idx_str.trim_start_matches('_').parse() {
+                        Ok(parsed) => parsed,
+                        Err(err) => {
+                            tracing::warn!(
+                                "Failed to parse output index from invariant identifier '{}': {}",
+                                name,
+                                err
+                            );
+                            return None;
+                        }
+                    };
                     outputs.get(idx).cloned()
                 } else {
                     None
