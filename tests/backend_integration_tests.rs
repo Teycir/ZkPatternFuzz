@@ -17,7 +17,8 @@ const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
 fn real_backend_tests_enabled() -> bool {
     match std::env::var("ZKFUZZ_REAL_BACKENDS") {
         Ok(value) => matches!(value.as_str(), "1" | "true" | "yes"),
-        Err(_) => false,
+        Err(std::env::VarError::NotPresent) => false,
+        Err(err) => panic!("Invalid ZKFUZZ_REAL_BACKENDS value: {}", err),
     }
 }
 

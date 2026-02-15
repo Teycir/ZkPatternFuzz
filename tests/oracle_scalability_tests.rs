@@ -189,7 +189,7 @@ fn test_bounded_state_map_bloom_effectiveness() {
     // Check for non-existent items
     for i in 5000..10000 {
         let key = hash_from_id(i);
-        let _ = map.get(&key);
+        assert!(map.get(&key).is_none());
     }
 
     // Bloom filter should have filtered most lookups

@@ -53,7 +53,7 @@ Scope note:
 2. Fix Cairo modulus propagation end-to-end:
    `CairoTarget::field_modulus()` returns Starkware prime and `CairoExecutor::field_modulus()` delegates to target (currently missing override).
 3. Keep Halo2 non-BN254 support intact when refactoring modulus flow:
-   do not regress existing `pasta`/`bls12-381` mapping to BN254 fallback.
+   do not regress existing `pasta`/`bls12-381` mapping to BN254 compatibility handling.
 4. Make Circom modulus resolution robust:
    handle aliases (`bn128`/`bn254`) and numeric prime strings safely; fail closed on invalid parse.
 5. Remove BN254 hardcoding in semantic range checks by wiring runtime modulus into `RangeProofOracle`.
@@ -70,7 +70,7 @@ Scope note:
 3. Add chain progress reporter wiring in CLI chain mode.
 
 **P3: Tooling/Test Debt**
-1. Replace `TODO_INPUT` fallback in skimmer candidate invariant generation with deterministic inferred input selection.
+1. Replace `TODO_INPUT` placeholder behavior in skimmer candidate invariant generation with deterministic inferred input selection.
 2. Complete false-positive-rate measurement path in `tests/false_positive_analysis.rs`.
 3. Enable real circom execution path in `tests/ground_truth_test.rs` when tooling is available in CI/dev images.
 
@@ -88,7 +88,7 @@ Scope note:
 10. `P2.1` complete: distributed coverage bitmap merging is implemented in `corpus_sync`.
 11. `P2.2` complete: timed-out/disconnected node work units are requeued with priority.
 12. `P2.3` complete: chain progress reporting is wired in CLI chain mode.
-13. `P3.1` complete: `TODO_INPUT` fallback replaced with deterministic inferred inputs.
+13. `P3.1` complete: `TODO_INPUT` placeholder behavior replaced with deterministic inferred inputs.
 14. `P3.2` complete: false-positive analysis path now executes real measurement flow.
 15. `P3.3` complete: ground-truth known-bug test uses real Circom execution when available, otherwise skips explicitly.
 16. Validation checklist complete: `docs/VALIDATION_PLAN.md` deliverables are backed by `tests/campaigns/validation/*`, `tests/scripts/*`, `reports/validation/*.md`, and `docs/VALIDATION_RESULTS.md`.
@@ -97,7 +97,7 @@ Scope note:
 
 1. Removed legacy `mock` backend enum/module paths from runtime code.
 2. Runtime execution remains strict real-backend-only.
-3. Test-only deterministic execution uses `FixtureCircuitExecutor` with no runtime fallback behavior.
+3. Test-only deterministic execution uses `FixtureCircuitExecutor` with no runtime alternate-path behavior.
 
 Validation gates for this addendum:
 1. `cargo check --workspace`
@@ -105,7 +105,7 @@ Validation gates for this addendum:
 3. Focused regression tests for:
    - modulus-aware boundary and overflow checks
    - range oracle behavior across BN254 vs Cairo prime
-   - Halo2 field selection (`bn254`/`pasta`/`bls12-381`) without fallback regression
+   - Halo2 field selection (`bn254`/`pasta`/`bls12-381`) without compatibility regression
 
 Validation snapshot (2026-02-13):
 1. `cargo check --workspace` ✅

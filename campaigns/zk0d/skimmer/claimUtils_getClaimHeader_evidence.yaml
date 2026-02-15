@@ -12,7 +12,6 @@ campaign:
     timeout_seconds: 300
     additional:
       strict_backend: true
-      mark_fallback: true
       per_exec_isolation: true
       execution_timeout_ms: 30000
       oracle_validation: true

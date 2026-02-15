@@ -262,7 +262,7 @@ fn test_merkle_oracle_path_validation() {
     let finding = oracle.check(&tc, &output);
     // MerkleOracle may or may not find issues depending on internal validation
     // This test ensures no panic and basic functionality
-    let _ = finding;
+    drop(finding);
 }
 
 // ============== ZK-CVE-2021-002: Merkle Sibling Order ==============
@@ -478,7 +478,7 @@ fn test_combined_semantic_oracle() {
     let findings = combined.check_all(&tc, &output);
 
     // Should not crash and should return valid findings (may be empty)
-    let _ = findings;
+    drop(findings);
 
     // Get stats from all oracles
     let stats = combined.stats();

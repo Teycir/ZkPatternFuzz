@@ -7,7 +7,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
 use zk_core::{FieldElement, Framework};
-use zk_fuzzer::chain_fuzzer::mutator::{ChainMutator, MutationWeights};
+use zk_fuzzer::chain_fuzzer::mutator::{ChainMutator, MutationType, MutationWeights};
 use zk_fuzzer::chain_fuzzer::types::{ChainSpec, StepSpec};
 
 // ============================================================================
@@ -189,7 +189,7 @@ fn test_empty_chain_spec() {
     // Should handle empty spec gracefully
     let (mutated, _) = mutator.mutate_inputs(&spec, &prior_inputs, &mut rng);
     // Empty spec may produce empty mutations
-    let _ = mutated;
+    assert!(mutated.is_empty(), "empty chain should produce no mutated inputs");
 }
 
 #[test]
@@ -271,7 +271,7 @@ fn test_boundary_injection_with_framework() {
 
         // Note: The mutation type should indicate boundary injection when weights
         // are set to 100% boundary_injection
-        let _ = mutation_type;
+        assert!(matches!(mutation_type, MutationType::BoundaryInjection { .. }));
     }
 }
 

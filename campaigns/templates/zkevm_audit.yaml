@@ -28,7 +28,6 @@ campaign:
     # Do NOT nest under `additional:` (legacy templates used that shape).
     strict_backend: true
     evidence_mode: true
-    mark_fallback: true
     # zkEVM-specific settings
     opcode_coverage: true
     state_transition_checks: true

@@ -271,7 +271,7 @@ These bugs are designed to test multi-step circuit chain detection.
 ### 3.6 zk0d Skimmer Placeholder (Resolved 2026-02-13)
 **Location:** `src/bin/zk0d_skimmer.rs`
 
-**Resolution:** `TODO_INPUT` fallback replaced with deterministic inferred input names.
+**Resolution:** `TODO_INPUT` placeholder replacement now uses deterministic inferred input names.
 
 **Status:** Closed.
 

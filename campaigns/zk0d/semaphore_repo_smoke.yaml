@@ -20,7 +20,6 @@ campaign:
       - "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/node_modules/@zk-kit/binary-merkle-root.circom/src"
     additional:
       strict_backend: true
-      mark_fallback: true
       per_exec_isolation: true
       execution_timeout_ms: 1000
       constraint_guided_enabled: false

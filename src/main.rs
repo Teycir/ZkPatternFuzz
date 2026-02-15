@@ -68,7 +68,7 @@ impl DynamicTeeWriter {
                     *guard = Some((path.clone(), file));
                 }
                 Err(err) => {
-                    // If file logging can't be opened, just fall back to console-only.
+                    // Fail opening file logger for this write attempt.
                     return Err(err);
                 }
             }

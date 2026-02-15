@@ -6,7 +6,7 @@ Date: 2026-02-11
 
 - Circom, Noir, Halo2, or Cairo circuits with deterministic builds and accessible artifacts.
 - Protocols using Merkle trees, nullifiers, commitments, range checks, or signatures where semantic oracles add signal.
-- Projects that can supply real backend tooling (no mock fallback) for evidence-quality claims.
+- Projects that can supply real backend tooling (no mock execution path) for evidence-quality claims.
 
 ## Recommended Workflows
 

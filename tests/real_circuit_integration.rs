@@ -66,18 +66,18 @@ fn resolve_path(candidates: &[std::path::PathBuf]) -> Option<std::path::PathBuf>
 
 fn resolve_r1cs_path(
     relative: &str,
-    compiled_fallback: Option<&str>,
+    compiled_alt: Option<&str>,
 ) -> Option<std::path::PathBuf> {
     let mut candidates = vec![zk0d_base().join(relative)];
-    if let Some(compiled) = compiled_fallback {
+    if let Some(compiled) = compiled_alt {
         candidates.push(std::path::PathBuf::from(compiled));
     }
     resolve_path(&candidates)
 }
 
-fn resolve_sym_path(relative: &str, compiled_fallback: Option<&str>) -> Option<std::path::PathBuf> {
+fn resolve_sym_path(relative: &str, compiled_alt: Option<&str>) -> Option<std::path::PathBuf> {
     let mut candidates = vec![zk0d_base().join(relative)];
-    if let Some(compiled) = compiled_fallback {
+    if let Some(compiled) = compiled_alt {
         candidates.push(std::path::PathBuf::from(compiled));
     }
     resolve_path(&candidates)
@@ -85,10 +85,10 @@ fn resolve_sym_path(relative: &str, compiled_fallback: Option<&str>) -> Option<s
 
 fn resolve_source_path(
     relative: &str,
-    staged_fallback: Option<&str>,
+    staged_alt: Option<&str>,
 ) -> Option<std::path::PathBuf> {
     let mut candidates = vec![zk0d_base().join(relative)];
-    if let Some(staged) = staged_fallback {
+    if let Some(staged) = staged_alt {
         candidates.push(std::path::PathBuf::from(staged));
     }
     resolve_path(&candidates)

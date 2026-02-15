@@ -78,9 +78,11 @@ function readSymMap(symPath) {
     if (!line.trim()) continue;
     const parts = line.split(',');
     if (parts.length < 2) continue;
-    const rawPrimary = Number(parts[1] ? parts[1].trim() : parts[0].trim());
-    const fallback = Number(parts[0].trim());
-    const idx = Number.isNaN(rawPrimary) || rawPrimary < 0 ? fallback : rawPrimary;
+    const primaryToken = parts[1] ? parts[1].trim() : parts[0].trim();
+    const idx = Number(primaryToken);
+    if (Number.isNaN(idx) || idx < 0) {
+      throw new Error(`Invalid .sym index token '${primaryToken}' in line '${line}'`);
+    }
     const name = parts[parts.length - 1].trim();
     if (!Number.isNaN(idx) && name) {
       map.set(name, idx);

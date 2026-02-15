@@ -108,7 +108,7 @@ try_real_batch_verification()
 ## Aggregation Methods
 
 ### Naive Batch
-Simple sequential verification of each proof. Used as baseline and fallback.
+Simple sequential verification of each proof. Used as baseline and reference path.
 
 ### Groth16 Aggregation
 Uses random linear combination for batch verification:
@@ -180,7 +180,7 @@ match executor.prove(inputs) {
         let result = verifier.verify_batch(&proofs, &public_inputs, method)?;
         result.batch_passed
     }
-    Err(_) => false
+    Err(err) => panic!("proof generation failed: {}", err)
 }
 ```
 

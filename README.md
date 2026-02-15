@@ -21,7 +21,7 @@ ZkPatternFuzz is a fuzzing and security testing framework for ZK circuits across
 
 **Evidence Mode:** Framework for strict backend verification (full cryptographic proof generation pending).
 
-**Runtime Rules:** Runtime fallback behavior is removed. Backend/tooling failures and unsupported CVE expectations/inputs are treated as hard errors, not warnings.
+**Runtime Rules:** Runtime alternate-path behavior is removed. Backend/tooling failures and unsupported CVE expectations/inputs are treated as hard errors, not warnings.
 
 ## Validation Results
 

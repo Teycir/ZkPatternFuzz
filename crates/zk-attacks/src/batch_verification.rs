@@ -1003,14 +1003,13 @@ impl BatchVerificationAttack {
             AggregationMethod::Halo2Aggregation => RealAggregationMethod::Halo2Accumulation,
         };
 
-        // Try to use real batch verification if executor supports prove/verify
-        if let Some(result) = self.try_real_batch_verification(executor, batch_inputs, real_method)
-        {
-            return result;
+        match self.try_real_batch_verification(executor, batch_inputs, real_method) {
+            Ok(result) => result,
+            Err(err) => panic!(
+                "Batch verification requires real prove/verify support; execution-mode path removed: {}",
+                err
+            ),
         }
-
-        // Use execution-based verification for executors without prove/verify.
-        self.execute_based_batch_verification(executor, batch_inputs)
     }
 
     /// Attempt real cryptographic batch verification
@@ -1019,7 +1018,7 @@ impl BatchVerificationAttack {
         executor: &E,
         batch_inputs: &[Vec<FieldElement>],
         method: RealAggregationMethod,
-    ) -> Option<(bool, Option<Vec<bool>>)> {
+    ) -> Result<(bool, Option<Vec<bool>>), String> {
         // Generate proofs for each input
         let mut proofs = Vec::with_capacity(batch_inputs.len());
         let mut public_inputs = Vec::with_capacity(batch_inputs.len());
@@ -1053,7 +1052,7 @@ impl BatchVerificationAttack {
                         "Proof generation unavailable for batch verification input: {}",
                         err
                     );
-                    return None;
+                    return Err(format!("proof generation failed: {}", err));
                 }
             }
         }
@@ -1071,34 +1070,12 @@ impl BatchVerificationAttack {
 
         // Perform batch verification
         match verifier.verify_batch(&proofs, &public_inputs, method) {
-            Ok(result) => Some((result.batch_passed, Some(result.individual_results))),
+            Ok(result) => Ok((result.batch_passed, Some(result.individual_results))),
             Err(err) => {
-                tracing::debug!("Batch verifier failed, using execution fallback: {}", err);
-                None
+                tracing::debug!("Batch verifier failed: {}", err);
+                Err(format!("batch verifier error: {}", err))
             }
         }
-    }
-
-    /// Execution-based batch verification (when proving is not available)
-    fn execute_based_batch_verification<E: CircuitExecutor>(
-        &self,
-        executor: &E,
-        batch_inputs: &[Vec<FieldElement>],
-    ) -> (bool, Option<Vec<bool>>) {
-        let mut all_passed = true;
-        let mut individual_results = Vec::with_capacity(batch_inputs.len());
-
-        for inputs in batch_inputs {
-            // Use actual execution to verify
-            let result = executor.execute_sync(inputs);
-            let passed = result.success;
-            individual_results.push(passed);
-            if !passed {
-                all_passed = false;
-            }
-        }
-
-        (all_passed, Some(individual_results))
     }
 
     /// Detect the proof system based on executor framework

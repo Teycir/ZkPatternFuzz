@@ -25,7 +25,7 @@ campaign:
     # Do NOT nest under `additional:` (legacy templates used that shape).
 
     # Fast mode settings
-    strict_backend: false  # Allow fallback for quick testing
+    strict_backend: true   # Keep backend/tooling strict even in quick mode
     per_exec_isolation: false  # Faster without isolation
     execution_timeout_ms: 5000
 

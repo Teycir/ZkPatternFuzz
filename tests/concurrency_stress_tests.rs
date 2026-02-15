@@ -361,7 +361,7 @@ fn test_extended_stress_24_hour_simulation() {
                     }
                     7..=9 => {
                         // Select test case (30%)
-                        let _ = c.select();
+                        drop(c.select());
                     }
                     _ => unreachable!(),
                 }
@@ -484,7 +484,7 @@ fn test_throughput_scaling() {
                 for i in 0..ops_per_worker {
                     let id = (worker_id * ops_per_worker + i) as u64;
                     q.push(make_test_case(id));
-                    let _ = q.pop();
+                    assert!(q.pop().is_some(), "queue pop should succeed after push");
                 }
             }));
         }

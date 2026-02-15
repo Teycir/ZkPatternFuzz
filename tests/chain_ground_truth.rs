@@ -191,11 +191,11 @@ mod tests {
         let expected_path = expected_path_for_campaign(campaign_path);
         let content = match std::fs::read_to_string(&expected_path) {
             Ok(content) => content,
-            Err(_) => panic!("Failed to read {}", expected_path.display()),
+            Err(err) => panic!("Failed to read {}: {}", expected_path.display(), err),
         };
         let json: serde_json::Value = match serde_json::from_str(&content) {
             Ok(json) => json,
-            Err(_) => panic!("Failed to parse JSON in {}", expected_path.display()),
+            Err(err) => panic!("Failed to parse JSON in {}: {}", expected_path.display(), err),
         };
 
         let outcome = parse_expected_outcome(&json["expected_outcome"]);
@@ -269,7 +269,7 @@ mod tests {
         for case in ground_truth_cases() {
             let config = match FuzzConfig::from_yaml(case.campaign_path) {
                 Ok(config) => config,
-                Err(_) => panic!("Failed to parse {}", case.campaign_path),
+                Err(err) => panic!("Failed to parse {}: {}", case.campaign_path, err),
             };
 
             let mut circuit_paths = vec![config.campaign.target.circuit_path.clone()];
@@ -299,12 +299,12 @@ mod tests {
             let expected_path = expected_path_for_campaign(case.campaign_path);
             let content = match fs::read_to_string(&expected_path) {
                 Ok(content) => content,
-                Err(_) => panic!("Failed to read {}", expected_path.display()),
+                Err(err) => panic!("Failed to read {}: {}", expected_path.display(), err),
             };
 
             let json: serde_json::Value = match serde_json::from_str(&content) {
                 Ok(json) => json,
-                Err(_) => panic!("Failed to parse JSON in {}", expected_path.display()),
+                Err(err) => panic!("Failed to parse JSON in {}: {}", expected_path.display(), err),
             };
 
             // Verify required fields
@@ -319,7 +319,7 @@ mod tests {
                 expected_path.display()
             );
 
-            let _ = load_expected_spec(case.campaign_path);
+            load_expected_spec(case.campaign_path);
         }
     }
 
@@ -353,12 +353,12 @@ mod tests {
         for case in ground_truth_cases() {
             let content = match fs::read_to_string(case.campaign_path) {
                 Ok(content) => content,
-                Err(_) => panic!("Failed to read {}", case.campaign_path),
+                Err(err) => panic!("Failed to read {}: {}", case.campaign_path, err),
             };
 
             let yaml: serde_yaml::Value = match serde_yaml::from_str(&content) {
                 Ok(yaml) => yaml,
-                Err(_) => panic!("Failed to parse YAML in {}", case.campaign_path),
+                Err(err) => panic!("Failed to parse YAML in {}: {}", case.campaign_path, err),
             };
 
             // Verify chains section exists

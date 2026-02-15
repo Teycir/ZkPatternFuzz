@@ -63,7 +63,8 @@ impl ChainSpec {
         }
     }
 
-    /// Create a version with a step removed at the given index
+    /// Create a version with a step removed at the given index.
+    /// Returns `None` if any remaining step wiring becomes invalid.
     pub fn without_step(&self, index: usize) -> Option<Self> {
         if index >= self.steps.len() {
             return None;
@@ -79,7 +80,7 @@ impl ChainSpec {
 
         // Adjust input wiring references for steps after the removed one
         for (i, step) in steps.iter_mut().enumerate() {
-            step.input_wiring = step.input_wiring.adjust_after_removal(index, i);
+            step.input_wiring = step.input_wiring.adjust_after_removal(index, i)?;
         }
 
         // Remap assertion step indices - filter out assertions that become invalid
@@ -247,56 +248,54 @@ pub enum InputWiring {
 
 impl InputWiring {
     /// Adjust step references after a step has been removed
-    pub fn adjust_after_removal(&self, removed_index: usize, _current_index: usize) -> Self {
+    pub fn adjust_after_removal(&self, removed_index: usize, _current_index: usize) -> Option<Self> {
         match self {
-            InputWiring::Fresh => InputWiring::Fresh,
+            InputWiring::Fresh => Some(InputWiring::Fresh),
             InputWiring::FromPriorOutput { step, mapping } => {
                 if *step == removed_index {
-                    // The referenced step was removed, fall back to fresh
-                    InputWiring::Fresh
+                    // The referenced step was removed; wiring is now invalid.
+                    None
                 } else if *step > removed_index {
                     // Adjust the step index down
-                    InputWiring::FromPriorOutput {
+                    Some(InputWiring::FromPriorOutput {
                         step: step - 1,
                         mapping: mapping.clone(),
-                    }
+                    })
                 } else {
                     // No adjustment needed
-                    InputWiring::FromPriorOutput {
+                    Some(InputWiring::FromPriorOutput {
                         step: *step,
                         mapping: mapping.clone(),
-                    }
+                    })
                 }
             }
             InputWiring::Mixed {
                 prior,
                 fresh_indices,
             } => {
+                if prior.iter().any(|(s, _, _)| *s == removed_index) {
+                    return None;
+                }
+
                 let adjusted_prior: Vec<_> = prior
                     .iter()
-                    .filter(|(s, _, _)| *s != removed_index)
                     .map(|(s, out_idx, in_idx)| {
                         let new_s = if *s > removed_index { s - 1 } else { *s };
                         (new_s, *out_idx, *in_idx)
                     })
                     .collect();
-
-                if adjusted_prior.is_empty() {
-                    InputWiring::Fresh
-                } else {
-                    InputWiring::Mixed {
-                        prior: adjusted_prior,
-                        fresh_indices: fresh_indices.clone(),
-                    }
-                }
+                Some(InputWiring::Mixed {
+                    prior: adjusted_prior,
+                    fresh_indices: fresh_indices.clone(),
+                })
             }
             InputWiring::Constant {
                 values,
                 fresh_indices,
-            } => InputWiring::Constant {
+            } => Some(InputWiring::Constant {
                 values: values.clone(),
                 fresh_indices: fresh_indices.clone(),
-            },
+            }),
         }
     }
 

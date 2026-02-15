@@ -127,7 +127,7 @@ fn test_underconstrained_oracle_reset() {
     let output = vec![FieldElement::from_u64(999)];
 
     // Record an output
-    let _ = oracle.check(&test_case, &output);
+    oracle.check(&test_case, &output);
     assert_eq!(oracle.unique_outputs(), 1);
 
     // Reset should clear state
@@ -383,7 +383,7 @@ async fn test_fuzzing_loop_with_timeout() {
 
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let start = std::time::Instant::now();
-    let _ = engine.run(None).await;
+    let _report = engine.run(None).await.expect("fuzzing loop run failed");
     let elapsed = start.elapsed();
 
     // Should respect timeout (with some margin for setup/teardown)

@@ -301,7 +301,12 @@ reporting:
 
             let config: FuzzConfig = match serde_yaml::from_str(&yaml) {
                 Ok(c) => c,
-                Err(_) => continue,
+                Err(err) => panic!(
+                    "Failed to parse FP by-attack config for circuit '{}' and attack '{:?}': {}",
+                    circuit,
+                    attack_type,
+                    err
+                ),
             };
 
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -387,7 +392,11 @@ reporting:
 
         let config: FuzzConfig = match serde_yaml::from_str(&yaml) {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(err) => panic!(
+                "Failed to parse threshold test config for threshold {}: {}",
+                threshold,
+                err
+            ),
         };
 
         let rt = tokio::runtime::Runtime::new().unwrap();

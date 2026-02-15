@@ -673,32 +673,20 @@ impl FuzzingEngine {
         let mut hasher = DefaultHasher::new();
 
         for step in &trace.steps {
-            // Hash the constraints hit in each step (when available).
-            //
-            // Some backends/configs may not provide constraint-level coverage (e.g. performance
-            // modes). In that case, fall back to a stable output hash so we can still measure
-            // "did anything change?" across mutations.
+            // Hash the constraints hit in each step.
             let mut constraints: Vec<_> = step.constraints_hit.iter().copied().collect();
             constraints.sort_unstable();
 
             if constraints.is_empty() {
-                // Stable output signature (do NOT include inputs; that would hide "no behavioral
-                // change" cases by making every iteration look unique).
-                use sha2::{Digest, Sha256};
-                let mut out_hasher = Sha256::new();
-                for fe in &step.outputs {
-                    out_hasher.update(fe.0);
-                }
-                let digest = out_hasher.finalize();
-                let output_hash = u64::from_le_bytes([
-                    digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6],
-                    digest[7],
-                ]);
-                output_hash.hash(&mut hasher);
-            } else {
-                for constraint_id in constraints {
-                    constraint_id.hash(&mut hasher);
-                }
+                panic!(
+                    "Missing constraint coverage for chain step {} ('{}'). \
+                     Constraint-based coverage is required.",
+                    step.step_index, step.circuit_ref
+                );
+            }
+
+            for constraint_id in constraints {
+                constraint_id.hash(&mut hasher);
             }
 
             // Also factor in step success and circuit ref
