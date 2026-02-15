@@ -14,7 +14,7 @@ campaign:
     field: "bn254"
     max_constraints: 120000
     timeout_seconds: 600
-    build_dir_base: "${ZKF_REPORT_ROOT}/build/zk0d"
+    # Build artifacts are written to the global build cache (outside the report folder).
     seed_inputs_path: "campaigns/zk0d/credentialAtomicQueryV3_seed_inputs.json"
 
     # Backend behavior (NOTE: campaign.parameters uses a flattened key/value map; do not nest under

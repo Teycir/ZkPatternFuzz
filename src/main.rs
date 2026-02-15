@@ -219,6 +219,72 @@ fn run_signal_dir() -> PathBuf {
     fallback
 }
 
+fn build_cache_dir() -> PathBuf {
+    // Build artifacts are large and should not live inside engagement report folders.
+    // Default:
+    //   /home/<user>/ZkFuzz/_build_cache/
+    //
+    // Override with:
+    //   ZKF_BUILD_CACHE_DIR=/some/other/path
+    if let Ok(v) = std::env::var("ZKF_BUILD_CACHE_DIR") {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            let path = PathBuf::from(trimmed);
+            let _ = std::fs::create_dir_all(&path);
+            return path;
+        }
+    }
+
+    let path = run_signal_dir().join("_build_cache");
+    let _ = std::fs::create_dir_all(&path);
+    path
+}
+
+fn normalize_build_paths(config: &mut FuzzConfig, run_id: &str) {
+    use std::path::PathBuf;
+
+    let report_dir = engagement_root_dir(run_id);
+    let cache = build_cache_dir();
+    let additional = &mut config.campaign.parameters.additional;
+
+    // Remove any explicit build paths that point inside the engagement folder, then force
+    // build_dir_base to the cache root.
+    let keys = [
+        "build_dir_base",
+        "build_dir",
+        "circom_build_dir",
+        "noir_build_dir",
+        "halo2_build_dir",
+        "cairo_build_dir",
+    ];
+
+    let mut had_in_report = false;
+    for key in keys {
+        if let Some(v) = additional.get(key).and_then(|v| v.as_str()) {
+            let p = PathBuf::from(v);
+            if p.starts_with(&report_dir) {
+                had_in_report = true;
+                additional.remove(key);
+            }
+        }
+    }
+
+    // If build_dir_base is missing, set it. If it existed but pointed into the report dir, replace it.
+    if had_in_report || additional.get("build_dir_base").is_none() {
+        additional.insert(
+            "build_dir_base".to_string(),
+            serde_yaml::Value::String(cache.display().to_string()),
+        );
+        if had_in_report {
+            tracing::info!(
+                "Build artifacts redirected to cache dir {:?} (were inside engagement folder {:?})",
+                cache,
+                report_dir
+            );
+        }
+    }
+}
+
 fn best_effort_append_jsonl(path: &Path, value: &serde_json::Value) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -424,62 +490,31 @@ fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
     let command = get_command_from_doc(value);
     let mode = mode_folder_from_command(&command);
 
-    // Log/event stream (engagement-wide + per-run).
+    // Log/event stream (engagement-wide). Each line includes run_id, so per-run
+    // splitting is redundant and creates unnecessary files.
     let log_dir = report_dir.join("log");
     best_effort_append_jsonl(&log_dir.join("events.jsonl"), value);
-    best_effort_append_jsonl(&log_dir.join(format!("events_{}.jsonl", run_id)), value);
 
     // Latest pointers.
     best_effort_write_json(&report_dir.join("latest.json"), value);
-    best_effort_write_json(&report_dir.join(mode).join("latest.json"), value);
     best_effort_write_json(&base.join("latest.json"), value);
-
-    // Per-run snapshot (stored under its mode).
-    best_effort_write_json(
-        &report_dir
-            .join(mode)
-            .join("runs")
-            .join(run_id)
-            .join("run_event.json"),
-        value,
-    );
+    let _ = mode; // keep for summary rendering logic
 
     update_engagement_summary(&report_dir, value);
 }
 
 fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Value) {
+    // Minimal artifacts contract: avoid redundant run history + mirrored reports.
+    // - `run_outcome.json` is the single authoritative per-mode status file (also used for resume).
+    // - engagement-wide `log/events.jsonl` is the run history (includes run_id).
     best_effort_write_json(&output_dir.join("run_outcome.json"), value);
-    let runs_dir = output_dir.join("_runs");
-    best_effort_write_json(&runs_dir.join(format!("{}.json", run_id)), value);
-    best_effort_write_json(&output_dir.join("run_status.json"), value);
     write_global_run_signal(run_id, value);
-
-    // Best-effort mirror of the "human-facing" reports into the engagement folder, so you can
-    // find mode1/mode2/mode3 outputs in one place.
-    let report_dir = engagement_root_dir(run_id);
-    let command = get_command_from_doc(value);
-    let mode = mode_folder_from_command(&command);
-    let dst_dir = report_dir.join(mode).join("runs").join(run_id);
-    let _ = std::fs::create_dir_all(&dst_dir);
-
-    for name in [
-        "report.json",
-        "report.md",
-        "progress.json",
-        "chain_report.json",
-        "chain_report.md",
-        "run_outcome.json",
-        "run_status.json",
-    ] {
-        let src = output_dir.join(name);
-        if src.exists() {
-            let _ = std::fs::copy(&src, dst_dir.join(name));
-        }
-    }
 }
 
 fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
-    let failed_dir = PathBuf::from("reports/_failed_runs");
+    // Keep failure artifacts within the engagement folder to avoid scattering files.
+    let report_dir = engagement_root_dir(run_id);
+    let failed_dir = report_dir.join("_failed_runs");
     best_effort_write_json(&failed_dir.join(format!("{}.json", run_id)), value);
     write_global_run_signal(run_id, value);
 }
@@ -1239,6 +1274,10 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
 
+    // Ensure build artifacts never land inside the engagement report folder.
+    // This keeps /home/<user>/ZkFuzz/report_<epoch>/ minimal and manageable.
+    normalize_build_paths(&mut config, &run_id);
+
     struct _ClearRunContext;
     impl Drop for _ClearRunContext {
         fn drop(&mut self) {
@@ -1449,14 +1488,18 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 add_run_window_fields(&mut doc, started_utc_for_monitor, timeout_for_monitor, "continuous_phase_only");
                 write_global_run_signal(doc["run_id"].as_str().unwrap_or("unknown"), &doc);
 
-                // Convenience: copy the raw progress.json into the engagement folder.
+                // Convenience: if output_dir is outside the engagement report folder, mirror the
+                // progress snapshot into the engagement folder. When output_dir already lives
+                // under the engagement folder (our default), avoid redundant writes.
                 let report_dir = engagement_root_dir(doc["run_id"].as_str().unwrap_or("unknown"));
                 let mode = mode_folder_from_command(doc["command"].as_str().unwrap_or("unknown"));
                 let dst = report_dir.join(mode).join("progress.json");
-                if let Some(parent) = dst.parent() {
-                    let _ = std::fs::create_dir_all(parent);
+                if dst != progress_path {
+                    if let Some(parent) = dst.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let _ = std::fs::write(dst, progress_raw);
                 }
-                let _ = std::fs::write(dst, progress_raw);
             }
         });
     }
@@ -1902,6 +1945,9 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
 
+    // Ensure build artifacts never land inside the engagement report folder.
+    normalize_build_paths(&mut config, &run_id);
+
     struct _ClearRunContext;
     impl Drop for _ClearRunContext {
         fn drop(&mut self) {
@@ -2048,12 +2094,36 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     }
 
     let corpus_path = output_dir.join("chain_corpus.json");
-    let baseline_corpus = ChainCorpus::load(&corpus_path).unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
-    let baseline_total_entries = baseline_corpus.len();
-    let baseline_unique_coverage_bits: usize = {
-        use std::collections::HashSet;
-        baseline_corpus.entries().iter().map(|e| e.coverage_bits).collect::<HashSet<_>>().len()
+    let corpus_meta_path = output_dir.join("chain_corpus_meta.json");
+    let read_chain_meta = |p: &std::path::Path| -> Option<zk_fuzzer::chain_fuzzer::ChainCorpusMeta> {
+        std::fs::read_to_string(p)
+            .ok()
+            .and_then(|s| serde_json::from_str::<zk_fuzzer::chain_fuzzer::ChainCorpusMeta>(&s).ok())
     };
+
+    let baseline_meta = if corpus_meta_path.exists() {
+        read_chain_meta(&corpus_meta_path)
+    } else {
+        None
+    };
+    let (baseline_total_entries, baseline_unique_coverage_bits): (usize, usize) =
+        if let Some(meta) = &baseline_meta {
+            (meta.total_entries, meta.unique_coverage_bits)
+        } else {
+            let baseline_corpus = ChainCorpus::load(&corpus_path)
+                .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
+            let baseline_total_entries = baseline_corpus.len();
+            let baseline_unique_coverage_bits: usize = {
+                use std::collections::HashSet;
+                baseline_corpus
+                    .entries()
+                    .iter()
+                    .map(|e| e.coverage_bits)
+                    .collect::<HashSet<_>>()
+                    .len()
+            };
+            (baseline_total_entries, baseline_unique_coverage_bits)
+        };
 
     // Create engine directly
     stage = "engine_init";
@@ -2096,18 +2166,36 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let chain_findings: Vec<ChainFinding> = engine.run_chains(&chains, progress.as_ref()).await;
 
     // Load chain corpus for quality/coverage metrics (persistent across runs).
-    let final_corpus = ChainCorpus::load(&corpus_path).unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
-    let final_total_entries = final_corpus.len();
-    let final_unique_coverage_bits: usize = {
-        use std::collections::HashSet;
-        final_corpus.entries().iter().map(|e| e.coverage_bits).collect::<HashSet<_>>().len()
+    // Prefer meta sidecar to avoid parsing a large chain_corpus.json.
+    let final_meta = if corpus_meta_path.exists() {
+        read_chain_meta(&corpus_meta_path)
+    } else {
+        None
     };
-    let final_max_depth = final_corpus
-        .entries()
-        .iter()
-        .map(|e| e.depth_reached)
-        .max()
-        .unwrap_or(0);
+    let (final_total_entries, final_unique_coverage_bits, final_max_depth): (usize, usize, usize) =
+        if let Some(meta) = &final_meta {
+            (meta.total_entries, meta.unique_coverage_bits, meta.max_depth)
+        } else {
+            let final_corpus = ChainCorpus::load(&corpus_path)
+                .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
+            let final_total_entries = final_corpus.len();
+            let final_unique_coverage_bits: usize = {
+                use std::collections::HashSet;
+                final_corpus
+                    .entries()
+                    .iter()
+                    .map(|e| e.coverage_bits)
+                    .collect::<HashSet<_>>()
+                    .len()
+            };
+            let final_max_depth = final_corpus
+                .entries()
+                .iter()
+                .map(|e| e.depth_reached)
+                .max()
+                .unwrap_or(0);
+            (final_total_entries, final_unique_coverage_bits, final_max_depth)
+        };
 
     // Engagement contract for Mode 3: refuse to report a "clean" run when exploration is too narrow.
     let engagement_strict = config
@@ -2131,15 +2219,29 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let mut quality_failures: Vec<String> = Vec::new();
     for chain in &chains {
-        let entries: Vec<_> = final_corpus
-            .entries()
-            .iter()
-            .filter(|e| e.spec_name == chain.name)
-            .collect();
-        let completed = entries.len();
-        let unique_cov: usize = {
-            use std::collections::HashSet;
-            entries.iter().map(|e| e.coverage_bits).collect::<HashSet<_>>().len()
+        let (completed, unique_cov): (usize, usize) = if let Some(meta) = &final_meta {
+            meta.per_chain
+                .get(&chain.name)
+                .map(|m| (m.completed_traces, m.unique_coverage_bits))
+                .unwrap_or((0, 0))
+        } else {
+            let final_corpus = ChainCorpus::load(&corpus_path)
+                .unwrap_or_else(|_| ChainCorpus::with_storage(&corpus_path));
+            let entries: Vec<_> = final_corpus
+                .entries()
+                .iter()
+                .filter(|e| e.spec_name == chain.name)
+                .collect();
+            let completed = entries.len();
+            let unique_cov: usize = {
+                use std::collections::HashSet;
+                entries
+                    .iter()
+                    .map(|e| e.coverage_bits)
+                    .collect::<HashSet<_>>()
+                    .len()
+            };
+            (completed, unique_cov)
         };
         if completed < min_completed_per_chain {
             quality_failures.push(format!(
@@ -2285,29 +2387,14 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         },
         "chain_findings": chain_findings,
     });
-    let chain_report_json = match serde_json::to_string_pretty(&chain_report) {
-        Ok(s) => s,
-        Err(err) => {
-            let ended_utc = Utc::now();
-            let doc = serde_json::json!({
-                "status": "failed",
-                "command": command,
-                "run_id": run_id.clone(),
-                "stage": stage,
-                "pid": std::process::id(),
-                "campaign_path": config_path,
-                "campaign_name": campaign_name.clone(),
-                "output_dir": output_dir.display().to_string(),
-                "started_utc": started_utc.to_rfc3339(),
-                "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                "error": format!("{:#}", err),
-            });
-            write_run_artifacts(&output_dir, &run_id, &doc);
-            return Err(err.into());
-        }
-    };
-    if let Err(err) = std::fs::write(&chain_report_path, chain_report_json) {
+    if let Err(err) = (|| -> anyhow::Result<()> {
+        use std::io::{BufWriter, Write};
+        let f = std::fs::File::create(&chain_report_path)?;
+        let mut w = BufWriter::new(f);
+        serde_json::to_writer_pretty(&mut w, &chain_report)?;
+        w.flush()?;
+        Ok(())
+    })() {
         let ended_utc = Utc::now();
         let doc = serde_json::json!({
             "status": "failed",

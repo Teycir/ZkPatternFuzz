@@ -166,16 +166,20 @@ struct BuildDirLock {
 }
 
 impl BuildDirLock {
-    fn acquire(build_dir: &Path) -> Result<Self> {
+    fn open_lock_file(build_dir: &Path) -> Result<(PathBuf, File)> {
         std::fs::create_dir_all(build_dir)?;
         let path = build_dir.join(".zkfuzz_build.lock");
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .truncate(true)
             .open(&path)
             .with_context(|| format!("Failed to open build lock file: {}", path.display()))?;
+        Ok((path, file))
+    }
+
+    fn acquire_exclusive(build_dir: &Path) -> Result<Self> {
+        let (path, mut file) = Self::open_lock_file(build_dir)?;
 
         #[cfg(unix)]
         {
@@ -191,6 +195,22 @@ impl BuildDirLock {
         let _ = file.set_len(0);
         let _ = writeln!(file, "pid={}", std::process::id());
         let _ = file.sync_all();
+
+        Ok(Self { path, file })
+    }
+
+    fn acquire_shared(build_dir: &Path) -> Result<Self> {
+        let (path, file) = Self::open_lock_file(build_dir)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_SH) };
+            if rc != 0 {
+                return Err(std::io::Error::last_os_error())
+                    .with_context(|| format!("Failed to lock build dir: {}", build_dir.display()));
+            }
+        }
 
         Ok(Self { path, file })
     }
@@ -850,14 +870,6 @@ impl CircomTarget {
             return Ok(());
         }
 
-        // Ensure build dir exists and prevent cross-process artifact races/collisions.
-        // This allows running multiple zk-fuzzer processes in parallel as long as they
-        // do not intentionally share the same build dir for different circuits.
-        let _build_lock = BuildDirLock::acquire(&self.build_dir)?;
-
-        // In-process IO lock to avoid concurrent circom/snarkjs calls stepping on each other.
-        let _guard = circom_io_lock().lock().unwrap();
-
         let basename = self.output_basename();
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         let wasm_path = self
@@ -865,6 +877,29 @@ impl CircomTarget {
             .join(format!("{}_js", basename))
             .join(format!("{}.wasm", basename));
 
+        if self.skip_compile_if_artifacts && r1cs_path.exists() && wasm_path.exists() {
+            // Shared lock is enough when reusing existing artifacts. This avoids serializing
+            // per-exec isolation workers on a single exclusive build lock.
+            let _build_lock = BuildDirLock::acquire_shared(&self.build_dir)?;
+            tracing::info!(
+                "Skipping circom compile; using existing artifacts in {:?}",
+                self.build_dir
+            );
+            self.parse_r1cs_info()?;
+            self.witness_calculator = Some(WitnessCalculator::new(
+                wasm_path,
+                r1cs_path,
+                self.snarkjs_path_override.clone(),
+                self.witness_sanity_check,
+            ));
+            self.compiled = true;
+            return Ok(());
+        }
+
+        // Prevent cross-process artifact races/collisions (compilation/emit).
+        let _build_lock = BuildDirLock::acquire_exclusive(&self.build_dir)?;
+
+        // Another process may have finished compilation while we waited for the exclusive lock.
         if self.skip_compile_if_artifacts && r1cs_path.exists() && wasm_path.exists() {
             tracing::info!(
                 "Skipping circom compile; using existing artifacts in {:?}",
@@ -880,6 +915,9 @@ impl CircomTarget {
             self.compiled = true;
             return Ok(());
         }
+
+        // In-process IO lock to avoid concurrent circom/snarkjs calls stepping on each other.
+        let _guard = circom_io_lock().lock().unwrap();
 
         tracing::info!("Compiling Circom circuit: {:?}", self.circuit_path);
 
@@ -1196,7 +1234,7 @@ impl CircomTarget {
     /// Setup proving and verification keys using Groth16
     pub fn setup_keys(&mut self) -> Result<()> {
         // Prevent cross-process writes to the same build dir (zkey/vkey/ptau).
-        let _build_lock = BuildDirLock::acquire(&self.build_dir)?;
+        let _build_lock = BuildDirLock::acquire_exclusive(&self.build_dir)?;
         let _guard = circom_io_lock().lock().unwrap();
         let basename = self.output_basename();
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
@@ -1316,21 +1354,25 @@ impl CircomTarget {
         if let Some(metadata) = &self.metadata {
             static INPUT_MAP_LOG_ONCE: OnceLock<()> = OnceLock::new();
             if INPUT_MAP_LOG_ONCE.set(()).is_ok() {
-                tracing::info!(
+                // This is extremely verbose for large circuits and becomes catastrophic when
+                // process isolation spawns a fresh exec-worker per execution. Keep it at DEBUG.
+                tracing::debug!(
                     "Circom input mapping: {} values, {} signals (public {}, private {})",
                     inputs.len(),
                     metadata.input_signals.len(),
                     metadata.num_public_inputs,
                     metadata.num_private_inputs
                 );
-                for name in &metadata.input_signals {
-                    let size = metadata
-                        .input_signal_sizes
-                        .get(name)
-                        .copied()
-                        .flatten()
-                        .unwrap_or(1);
-                    tracing::info!("  input '{}' size {}", name, size);
+                if tracing::enabled!(tracing::Level::DEBUG) {
+                    for name in &metadata.input_signals {
+                        let size = metadata
+                            .input_signal_sizes
+                            .get(name)
+                            .copied()
+                            .flatten()
+                            .unwrap_or(1);
+                        tracing::debug!("  input '{}' size {}", name, size);
+                    }
                 }
             }
 

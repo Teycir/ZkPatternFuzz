@@ -2262,6 +2262,18 @@ impl FuzzingEngine {
             .and_then(|v| v.as_u64())
             .unwrap_or(500) as usize;
 
+        // Depth contract: SpecInference must run full depth in Mode 2.
+        // Do not accept YAML knobs that would cap work or reduce attempt depth.
+        if config.get("max_specs").is_some()
+            || config.get("max_wall_clock_secs").is_some()
+            || config.get("violation_attempts").is_some()
+        {
+            anyhow::bail!(
+                "SpecInference depth-limiting knobs are not allowed in evidence mode: \
+                 remove 'max_specs', 'max_wall_clock_secs', and 'violation_attempts' from the campaign YAML"
+            );
+        }
+
         tracing::info!("Running spec inference attack ({} samples)", sample_count);
 
         let oracle = SpecInferenceOracle::new()

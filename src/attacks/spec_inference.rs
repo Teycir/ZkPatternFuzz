@@ -26,6 +26,7 @@
 
 use rand::Rng;
 use std::collections::HashMap;
+use std::time::Instant;
 use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 
 /// Types of specifications that can be inferred
@@ -725,8 +726,19 @@ impl SpecInferenceOracle {
 
         tracing::info!("Inferred {} specifications", specs.len());
 
+        let start = Instant::now();
+
         // Test each spec
-        for spec in &specs {
+        for (spec_idx, spec) in specs.iter().enumerate() {
+            if spec_idx == 0 || (spec_idx % 100 == 0) {
+                tracing::info!(
+                    "Spec inference progress: {}/{} specs tested (elapsed {:?})",
+                    spec_idx,
+                    specs.len(),
+                    start.elapsed()
+                );
+            }
+
             let base_witness = &samples[0].inputs;
             let violations = self.generate_violations(spec, base_witness, &mut rng);
 

@@ -15,7 +15,7 @@ campaign:
     field: "bn254"
     max_constraints: 120000
     timeout_seconds: 1200
-    build_dir_base: "${ZKF_REPORT_ROOT}/build/mode3"
+    # Build artifacts are written to the global build cache (outside the report folder).
 
     # Chain mode needs a valid baseline for downstream circuits; otherwise the second step will
     # often fail and the chain never completes.

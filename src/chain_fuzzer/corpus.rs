@@ -4,9 +4,28 @@
 //! chain corpus entries to avoid losing coverage state between runs.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::io::{BufReader, BufWriter, Write};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use zk_core::FieldElement;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainCorpusMeta {
+    pub total_entries: usize,
+    pub unique_coverage_bits: usize,
+    pub max_depth: usize,
+    #[serde(default)]
+    pub per_chain: HashMap<String, ChainCorpusPerChainMeta>,
+    pub generated_utc: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChainCorpusPerChainMeta {
+    pub completed_traces: usize,
+    pub unique_coverage_bits: usize,
+    pub max_depth: usize,
+}
 
 /// Corpus for chain fuzzing with persistence support
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,8 +242,29 @@ impl ChainCorpus {
             std::fs::create_dir_all(parent)?;
         }
 
-        let json = serde_json::to_string_pretty(&self.entries)?;
-        std::fs::write(path, json)?;
+        // Stream JSON to disk to avoid a giant intermediate string and reduce wall-clock IO.
+        // Also avoid pretty-printing to keep files smaller and faster to parse.
+        let tmp = path.with_extension("json.tmp");
+        {
+            let f = std::fs::File::create(&tmp)?;
+            let mut w = BufWriter::new(f);
+            serde_json::to_writer(&mut w, &self.entries)?;
+            w.flush()?;
+        }
+        std::fs::rename(&tmp, path)?;
+
+        // Persist a small meta sidecar so reporting can avoid reloading the whole corpus.
+        let meta = self.compute_meta();
+        let meta_path = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("chain_corpus_meta.json");
+        {
+            let f = std::fs::File::create(&meta_path)?;
+            let mut w = BufWriter::new(f);
+            serde_json::to_writer_pretty(&mut w, &meta)?;
+            w.flush()?;
+        }
 
         tracing::info!(
             "Saved chain corpus with {} entries to {:?}",
@@ -234,14 +274,56 @@ impl ChainCorpus {
         Ok(())
     }
 
+    pub fn compute_meta(&self) -> ChainCorpusMeta {
+        let mut unique_global: HashSet<u64> = HashSet::new();
+        let mut per_chain_unique: HashMap<String, HashSet<u64>> = HashMap::new();
+        let mut per_chain: HashMap<String, ChainCorpusPerChainMeta> = HashMap::new();
+
+        let mut max_depth = 0usize;
+        for e in &self.entries {
+            unique_global.insert(e.coverage_bits);
+            max_depth = max_depth.max(e.depth_reached);
+
+            per_chain
+                .entry(e.spec_name.clone())
+                .or_insert_with(ChainCorpusPerChainMeta::default)
+                .completed_traces += 1;
+
+            per_chain_unique
+                .entry(e.spec_name.clone())
+                .or_insert_with(HashSet::new)
+                .insert(e.coverage_bits);
+
+            let meta = per_chain.get_mut(&e.spec_name).expect("just inserted");
+            meta.max_depth = meta.max_depth.max(e.depth_reached);
+        }
+
+        for (name, uniq) in per_chain_unique {
+            if let Some(meta) = per_chain.get_mut(&name) {
+                meta.unique_coverage_bits = uniq.len();
+            }
+        }
+
+        let unique_coverage_bits = unique_global.len();
+        ChainCorpusMeta {
+            total_entries: self.entries.len(),
+            unique_coverage_bits,
+            max_depth,
+            per_chain,
+            generated_utc: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
     /// Load a corpus from disk
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         if !path.exists() {
             return Ok(Self::with_storage(path));
         }
 
-        let json = std::fs::read_to_string(path)?;
-        let entries: Vec<ChainCorpusEntry> = serde_json::from_str(&json)?;
+        // Stream parse to avoid loading a potentially large corpus into a single string.
+        let f = std::fs::File::open(path)?;
+        let r = BufReader::new(f);
+        let entries: Vec<ChainCorpusEntry> = serde_json::from_reader(r)?;
 
         tracing::info!(
             "Loaded chain corpus with {} entries from {:?}",

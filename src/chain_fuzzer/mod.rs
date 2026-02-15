@@ -59,7 +59,7 @@ pub mod shrinker;
 pub mod types;
 
 // Re-exports
-pub use corpus::{ChainCorpus, ChainCorpusEntry};
+pub use corpus::{ChainCorpus, ChainCorpusEntry, ChainCorpusMeta, ChainCorpusPerChainMeta};
 pub use invariants::{CrossStepInvariantChecker, CrossStepViolation};
 pub use metrics::DepthMetrics;
 pub use mutator::ChainMutator;
