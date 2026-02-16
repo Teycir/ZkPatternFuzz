@@ -389,13 +389,18 @@ fn maybe_prepare_circom2_source(
         }
     }
 
+    // Modern Circom 2 sources should compile as-is. The compatibility rewrite
+    // pass is intended for missing/legacy pragma and legacy syntax conversion,
+    // and can over-transform valid Circom 2 templates.
+    if has_pragma && !pragma_legacy {
+        return Ok((circuit_path.to_path_buf(), None));
+    }
+
     let mut visited = HashSet::new();
     let needs_include_param_signal_compat_fix =
         has_param_signal_compat_issue_recursive(circuit_path, &mut visited);
 
-    let has_private_inputs = source.contains("signal private input");
-    let needs_rewrite = has_private_inputs
-        || !has_pragma
+    let needs_rewrite = !has_pragma
         || pragma_legacy
         || needs_semicolon_fix
         || needs_param_signal_compat_fix
