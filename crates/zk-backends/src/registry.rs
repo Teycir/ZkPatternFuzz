@@ -5,9 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use zk_core::{
-    CircuitExecutor, CircuitInfo, ExecutionResult, FieldElement, Framework,
-};
+use zk_core::{CircuitExecutor, CircuitInfo, ExecutionResult, FieldElement, Framework};
 
 use crate::TargetCircuit;
 

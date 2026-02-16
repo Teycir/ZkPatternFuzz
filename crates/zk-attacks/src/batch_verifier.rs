@@ -505,8 +505,8 @@ impl BatchVerifier {
     ) -> Result<BatchVerificationResult> {
         let batch_size = proofs.len();
 
-        // Initialize accumulator
-        let initial_state = vec![0u8; 32]; // Placeholder
+        // Deterministic seed state for the accumulation transcript.
+        let initial_state = vec![0u8; 32];
 
         // Accumulate proofs
         let (batch_passed, individual_results, final_state) =
@@ -686,7 +686,10 @@ impl BatchVerifier {
         public_inputs: &[PublicInputs],
         initial_state: &[u8],
     ) -> Result<(bool, Vec<bool>, Vec<u8>)> {
-        // Use individual verification.
+        use sha2::{Digest, Sha256};
+
+        // Verify each proof and build a deterministic transcript digest over
+        // concrete artifacts and verification outcomes.
         let executor = self
             .executor
             .as_ref()
@@ -694,23 +697,28 @@ impl BatchVerifier {
 
         let mut results = Vec::with_capacity(proofs.len());
         let mut all_passed = true;
+        let mut transcript = Sha256::new();
+        transcript.update(initial_state);
 
-        for (proof, inputs) in proofs.iter().zip(public_inputs.iter()) {
+        for (idx, (proof, inputs)) in proofs.iter().zip(public_inputs.iter()).enumerate() {
             let passed = executor
                 .verify(&proof.data, &inputs.inputs)
                 .context("Halo2 accumulation verification failed during individual proof check")?;
             if !passed {
                 all_passed = false;
             }
+
+            transcript.update((idx as u64).to_be_bytes());
+            transcript.update([if passed { 1 } else { 0 }]);
+            transcript.update((proof.data.len() as u64).to_be_bytes());
+            transcript.update(&proof.data);
+            for input in &inputs.inputs {
+                transcript.update(input.0);
+            }
             results.push(passed);
         }
 
-        // Final accumulator state (placeholder)
-        let final_state = if all_passed {
-            vec![1u8; 32]
-        } else {
-            initial_state.to_vec()
-        };
+        let final_state = transcript.finalize().to_vec();
 
         Ok((all_passed, results, final_state))
     }

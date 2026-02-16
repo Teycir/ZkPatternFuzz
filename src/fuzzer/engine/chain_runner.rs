@@ -283,18 +283,13 @@ impl FuzzingEngine {
                     let mut out: HashMap<String, Vec<FieldElement>> = HashMap::new();
                     for (k, v) in map {
                         let Some(circuit_ref) = k.as_str() else {
-                            tracing::warn!(
-                                "chain_seed_inputs has a non-string key; skipping: {:?}",
-                                k
-                            );
-                            continue;
+                            anyhow::bail!("chain_seed_inputs has a non-string key: {:?}", k);
                         };
                         let Some(path_str) = v.as_str() else {
-                            tracing::warn!(
-                                "chain_seed_inputs[{}] is not a string path; skipping",
+                            anyhow::bail!(
+                                "chain_seed_inputs[{}] must be a string path",
                                 circuit_ref
                             );
-                            continue;
                         };
                         let path = std::path::Path::new(path_str);
                         match load_seed_vec_from_json(path) {
@@ -308,7 +303,7 @@ impl FuzzingEngine {
                                 out.insert(circuit_ref.to_string(), vec);
                             }
                             Err(e) => {
-                                tracing::warn!(
+                                anyhow::bail!(
                                     "Failed to load chain seed inputs for '{}' from {}: {:#}",
                                     circuit_ref,
                                     path.display(),
@@ -320,11 +315,10 @@ impl FuzzingEngine {
                     out
                 }
                 Some(other) => {
-                    tracing::warn!(
+                    anyhow::bail!(
                         "chain_seed_inputs must be a mapping of circuit_ref -> json_path; got {:?}",
                         other
                     );
-                    HashMap::new()
                 }
                 None => HashMap::new(),
             }
@@ -355,18 +349,13 @@ impl FuzzingEngine {
                     let mut out: HashMap<String, HashSet<usize>> = HashMap::new();
                     for (k, v) in map {
                         let Some(circuit_ref) = k.as_str() else {
-                            tracing::warn!(
-                                "chain_mutate_indices has a non-string key; skipping: {:?}",
-                                k
-                            );
-                            continue;
+                            anyhow::bail!("chain_mutate_indices has a non-string key: {:?}", k);
                         };
                         let Some(seq) = v.as_sequence() else {
-                            tracing::warn!(
-                                "chain_mutate_indices[{}] must be a list of indices; skipping",
+                            anyhow::bail!(
+                                "chain_mutate_indices[{}] must be a list of indices",
                                 circuit_ref
                             );
-                            continue;
                         };
 
                         let mut indices = HashSet::new();
@@ -376,8 +365,8 @@ impl FuzzingEngine {
                                     indices.insert(i as usize);
                                 }
                                 None => {
-                                    tracing::warn!(
-                                        "chain_mutate_indices[{}] contains non-integer entry; skipping entry",
+                                    anyhow::bail!(
+                                        "chain_mutate_indices[{}] contains non-integer entry",
                                         circuit_ref
                                     );
                                 }
@@ -396,11 +385,10 @@ impl FuzzingEngine {
                     out
                 }
                 Some(other) => {
-                    tracing::warn!(
+                    anyhow::bail!(
                         "chain_mutate_indices must be a mapping of circuit_ref -> [indices]; got {:?}",
                         other
                     );
-                    HashMap::new()
                 }
                 None => HashMap::new(),
             }
@@ -516,8 +504,7 @@ impl FuzzingEngine {
                         let shrink_runner = match ChainRunner::new(runner.executors.clone()) {
                             Ok(value) => value,
                             Err(err) => {
-                                tracing::error!("Failed to initialize shrink runner: {}", err);
-                                continue;
+                                anyhow::bail!("Failed to initialize shrink runner: {}", err);
                             }
                         };
                         let shrinker = ChainShrinker::new(
@@ -634,10 +621,16 @@ impl FuzzingEngine {
                 if !chain_mutate_indices_by_ref.is_empty() {
                     for (circuit_ref, allowed_indices) in &chain_mutate_indices_by_ref {
                         let Some(inputs) = current_inputs.get_mut(circuit_ref) else {
-                            continue;
+                            anyhow::bail!(
+                                "chain_mutate_indices references unknown circuit_ref '{}'",
+                                circuit_ref
+                            );
                         };
                         let Some(seed) = chain_seed_inputs_by_ref.get(circuit_ref) else {
-                            continue;
+                            anyhow::bail!(
+                                "chain_mutate_indices for '{}' requires chain_seed_inputs entry",
+                                circuit_ref
+                            );
                         };
 
                         for idx in 0..inputs.len() {
@@ -682,9 +675,9 @@ impl FuzzingEngine {
         }
 
         // Save corpus
-        if let Err(e) = corpus.save() {
-            tracing::warn!("Failed to save chain corpus: {}", e);
-        }
+        corpus
+            .save()
+            .with_context(|| "Failed to save chain corpus".to_string())?;
 
         // Compute and log metrics
         let metrics = DepthMetrics::new(all_findings.clone());

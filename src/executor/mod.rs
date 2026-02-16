@@ -843,9 +843,9 @@ impl CircomExecutor {
         }
 
         let constraints_cache = OnceLock::new();
-        constraints_cache
-            .set(constraints)
-            .map_err(|_| anyhow::anyhow!("Internal error: failed to initialize Circom constraints cache"))?;
+        constraints_cache.set(constraints).map_err(|_| {
+            anyhow::anyhow!("Internal error: failed to initialize Circom constraints cache")
+        })?;
 
         Ok(Self {
             target,
@@ -1305,7 +1305,8 @@ impl CircuitExecutor for Halo2Executor {
                     Some(value) => value,
                     None => {
                         return ExecutionResult::failure(
-                            "Halo2 constraint coverage unavailable: refusing output-hash fallback".to_string(),
+                            "Halo2 constraint coverage unavailable: refusing output-hash fallback"
+                                .to_string(),
                         )
                         .with_time(start.elapsed().as_micros() as u64);
                     }
@@ -1468,7 +1469,8 @@ impl CircuitExecutor for CairoExecutor {
                     Some(value) => value,
                     None => {
                         return ExecutionResult::failure(
-                            "Cairo constraint coverage unavailable: refusing output-hash fallback".to_string(),
+                            "Cairo constraint coverage unavailable: refusing output-hash fallback"
+                                .to_string(),
                         )
                         .with_time(start.elapsed().as_micros() as u64);
                     }

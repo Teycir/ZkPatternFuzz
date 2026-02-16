@@ -238,8 +238,7 @@ impl FuzzingEngine {
 
         let witnesses = self.collect_corpus_inputs(min_samples.max(1));
         if witnesses.is_empty() {
-            tracing::warn!("Frozen wire detector skipped: no corpus witnesses available");
-            return Ok(());
+            anyhow::bail!("Frozen wire detector requires corpus witnesses, but none are available");
         }
 
         let detector = if constants.is_empty() {
@@ -448,21 +447,19 @@ impl FuzzingEngine {
 
         let num_public = self.executor.num_public_inputs();
         if num_public == 0 {
-            tracing::warn!("Soundness attack skipped: circuit has no public inputs to mutate");
+            anyhow::bail!(
+                "Soundness attack requires at least one public input; circuit exposes 0 public inputs"
+            );
         } else {
             for _ in 0..forge_attempts {
                 let valid_case = self.generate_test_case();
                 let valid_proof = match self.executor.prove(&valid_case.inputs) {
                     Ok(proof) => proof,
                     Err(err) => {
-                        tracing::debug!(
-                            "Skipping soundness attempt: failed to generate proof for witness: {}",
+                        anyhow::bail!(
+                            "Soundness attack failed to generate proof for generated witness: {}",
                             err
                         );
-                        if let Some(p) = progress {
-                            p.inc();
-                        }
-                        continue;
                     }
                 };
 
@@ -484,13 +481,17 @@ impl FuzzingEngine {
                         .collect()
                 };
 
-                // Skip if mutation didn't change public inputs
-                if mutated_public == valid_public {
-                    if let Some(p) = progress {
-                        p.inc();
-                    }
-                    continue;
-                }
+                // Enforce at least one public-input mutation per attempt.
+                let mutated_public = if mutated_public == valid_public {
+                    let mut forced = valid_public.clone();
+                    let idx = self.core.rng_mut().gen_range(0..forced.len());
+                    let mut bytes = forced[idx].0;
+                    bytes[31] ^= 0x01;
+                    forced[idx] = FieldElement(bytes);
+                    forced
+                } else {
+                    mutated_public
+                };
 
                 // Try to verify with mutated inputs
                 let verified = self.executor.verify(&valid_proof, &mutated_public)?;
@@ -572,8 +573,9 @@ impl FuzzingEngine {
 
         let witnesses = self.collect_corpus_inputs(proof_samples.max(1));
         if witnesses.is_empty() {
-            tracing::warn!("Proof malleability scanner skipped: no corpus witnesses available");
-            return Ok(());
+            anyhow::bail!(
+                "Proof malleability scanner requires corpus witnesses, but none are available"
+            );
         }
 
         let scanner = ProofMalleabilityScanner::new()
@@ -613,8 +615,7 @@ impl FuzzingEngine {
 
         let witnesses = self.collect_corpus_inputs(sample_count.max(1));
         if witnesses.is_empty() {
-            tracing::warn!("Determinism oracle skipped: no corpus witnesses available");
-            return Ok(());
+            anyhow::bail!("Determinism oracle requires corpus witnesses, but none are available");
         }
 
         let oracle = DeterminismOracle::new()
@@ -648,7 +649,7 @@ impl FuzzingEngine {
             .and_then(|v| v.as_u64())
             .or_value(10) as usize;
         if attempts == 0 {
-            return Ok(());
+            anyhow::bail!("Trusted setup test requires attempts > 0");
         }
 
         let ptau_a = section
@@ -659,31 +660,20 @@ impl FuzzingEngine {
             .and_then(|v| v.as_str());
 
         let Some(ptau_a) = ptau_a else {
-            tracing::warn!("Trusted setup test skipped: missing ptau_file_a");
-            return Ok(());
+            anyhow::bail!("Trusted setup test missing required key: ptau_file_a");
         };
         let Some(ptau_b) = ptau_b else {
-            tracing::warn!("Trusted setup test skipped: missing ptau_file_b");
-            return Ok(());
+            anyhow::bail!("Trusted setup test missing required key: ptau_file_b");
         };
         if ptau_a == ptau_b {
-            tracing::warn!("Trusted setup test skipped: ptau_file_a == ptau_file_b");
-            return Ok(());
+            anyhow::bail!("Trusted setup test requires distinct ptau_file_a and ptau_file_b");
         }
 
         if !std::path::Path::new(ptau_a).exists() {
-            tracing::warn!(
-                "Trusted setup test skipped: ptau_file_a not found ({})",
-                ptau_a
-            );
-            return Ok(());
+            anyhow::bail!("Trusted setup test ptau_file_a not found: {}", ptau_a);
         }
         if !std::path::Path::new(ptau_b).exists() {
-            tracing::warn!(
-                "Trusted setup test skipped: ptau_file_b not found ({})",
-                ptau_b
-            );
-            return Ok(());
+            anyhow::bail!("Trusted setup test ptau_file_b not found: {}", ptau_b);
         }
 
         let circuit_path = self
@@ -694,8 +684,7 @@ impl FuzzingEngine {
             .to_str()
             .or_value("");
         if circuit_path.is_empty() {
-            tracing::warn!("Trusted setup test skipped: invalid circuit path");
-            return Ok(());
+            anyhow::bail!("Trusted setup test requires a valid UTF-8 circuit path");
         }
 
         let backend = self.config.campaign.target.framework;
@@ -717,11 +706,7 @@ impl FuzzingEngine {
         ) {
             Ok(exec) => exec,
             Err(e) => {
-                tracing::warn!(
-                    "Trusted setup test skipped: failed to create executor A ({})",
-                    e
-                );
-                return Ok(());
+                anyhow::bail!("Trusted setup test failed to create executor A: {}", e);
             }
         };
 
@@ -733,18 +718,13 @@ impl FuzzingEngine {
         ) {
             Ok(exec) => exec,
             Err(e) => {
-                tracing::warn!(
-                    "Trusted setup test skipped: failed to create executor B ({})",
-                    e
-                );
-                return Ok(());
+                anyhow::bail!("Trusted setup test failed to create executor B: {}", e);
             }
         };
 
         let witnesses = self.collect_corpus_inputs(attempts.max(1));
         if witnesses.is_empty() {
-            tracing::warn!("Trusted setup test skipped: no corpus witnesses available");
-            return Ok(());
+            anyhow::bail!("Trusted setup test requires corpus witnesses, but none are available");
         }
 
         let detector = SetupPoisoningDetector::new().with_attempts(attempts);
@@ -789,8 +769,7 @@ impl FuzzingEngine {
                 match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
                     Ok(bytes) => bytes,
                     Err(e) => {
-                        tracing::warn!("Skipping invalid arithmetic test value '{}': {}", value, e);
-                        continue;
+                        anyhow::bail!("Invalid arithmetic test value '{}': {}", value, e);
                     }
                 };
             let mut fe_bytes = [0u8; 32];
@@ -992,8 +971,9 @@ impl FuzzingEngine {
 
         let witnesses = self.collect_corpus_inputs(base_samples.max(1));
         if witnesses.is_empty() {
-            tracing::warn!("Nullifier replay scanner skipped: no corpus witnesses available");
-            return Ok(());
+            anyhow::bail!(
+                "Nullifier replay scanner requires corpus witnesses, but none are available"
+            );
         }
 
         let findings = scanner.run(self.executor.as_ref(), &witnesses);
@@ -1032,8 +1012,7 @@ impl FuzzingEngine {
                 match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
                     Ok(bytes) => bytes,
                     Err(e) => {
-                        tracing::warn!("Skipping invalid boundary test value '{}': {}", value, e);
-                        continue;
+                        anyhow::bail!("Invalid boundary test value '{}': {}", value, e);
                     }
                 };
             let mut fe_bytes = [0u8; 32];
@@ -1096,8 +1075,9 @@ impl FuzzingEngine {
 
         let witnesses = self.collect_corpus_inputs(sample_count.max(1));
         if witnesses.is_empty() {
-            tracing::warn!("Canonicalization checker skipped: no corpus witnesses available");
-            return Ok(());
+            anyhow::bail!(
+                "Canonicalization checker requires corpus witnesses, but none are available"
+            );
         }
 
         let checker = CanonicalizationChecker::new()
@@ -1327,8 +1307,10 @@ impl FuzzingEngine {
         }
 
         if selected_backends.len() < 2 {
-            tracing::warn!("Differential fuzzing skipped: configure at least two backends");
-            return Ok(());
+            anyhow::bail!(
+                "Differential fuzzing requires at least two configured backends; got {}",
+                selected_backends.len()
+            );
         }
 
         let mut diff_fuzzer = DifferentialFuzzer::new(DifferentialConfig {
@@ -1346,7 +1328,7 @@ impl FuzzingEngine {
             compare_timing,
         });
 
-        // Add executors for each backend (skip any that fail to initialize)
+        // Add executors for each backend.
         let mut active_backends = Vec::new();
         let mut cross_backend_execs: Vec<Arc<dyn CircuitExecutor>> = Vec::new();
         for backend in &selected_backends {
@@ -1362,32 +1344,25 @@ impl FuzzingEngine {
                         .or_value("")
                 });
 
-            match ExecutorFactory::create_with_options(
+            let executor = ExecutorFactory::create_with_options(
                 *backend,
                 circuit_path,
                 &self.config.campaign.target.main_component,
                 &self.executor_factory_options,
-            ) {
-                Ok(executor) => {
-                    if cross_backend_enabled && cross_backend_execs.len() < 2 {
-                        cross_backend_execs.push(executor.clone());
-                    }
-                    diff_fuzzer.add_executor(*backend, executor);
-                    active_backends.push(*backend);
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Skipping backend {:?} for differential fuzzing: {}",
-                        backend,
-                        e
-                    );
-                }
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to initialize backend {:?}: {}", backend, e))?;
+            if cross_backend_enabled && cross_backend_execs.len() < 2 {
+                cross_backend_execs.push(executor.clone());
             }
+            diff_fuzzer.add_executor(*backend, executor);
+            active_backends.push(*backend);
         }
 
         if active_backends.len() < 2 {
-            tracing::warn!("Differential fuzzing skipped: fewer than two active backends");
-            return Ok(());
+            anyhow::bail!(
+                "Differential fuzzing requires at least two active backends; got {}",
+                active_backends.len()
+            );
         }
 
         if cross_backend_enabled {
@@ -1400,8 +1375,8 @@ impl FuzzingEngine {
                     progress,
                 )?;
             } else {
-                tracing::warn!(
-                    "Cross-backend differential skipped: fewer than two active executors"
+                anyhow::bail!(
+                    "Cross-backend differential enabled but fewer than two active executors are available"
                 );
             }
         }
@@ -1474,13 +1449,14 @@ impl FuzzingEngine {
         use crate::attacks::CrossBackendDifferential;
 
         if sample_count == 0 {
-            return Ok(());
+            anyhow::bail!("Cross-backend differential requires sample_count > 0");
         }
 
         let witnesses = self.collect_corpus_inputs(sample_count.max(1));
         if witnesses.is_empty() {
-            tracing::warn!("Cross-backend differential skipped: no corpus witnesses available");
-            return Ok(());
+            anyhow::bail!(
+                "Cross-backend differential requires corpus witnesses, but none are available"
+            );
         }
 
         let oracle = CrossBackendDifferential::new()
@@ -1592,15 +1568,9 @@ impl FuzzingEngine {
         let inspector = match self.executor.constraint_inspector() {
             Some(inspector) => inspector,
             None => {
-                tracing::warn!(
-                    "Information leakage attack skipped: constraint inspector unavailable"
+                anyhow::bail!(
+                    "Information leakage attack requires constraint inspector, but none is available"
                 );
-                if let Some(p) = progress {
-                    for _ in 0..num_tests {
-                        p.inc();
-                    }
-                }
-                return Ok(());
             }
         };
 
@@ -1609,24 +1579,16 @@ impl FuzzingEngine {
         let output_indices = inspector.output_indices();
 
         if private_indices.is_empty() {
-            tracing::warn!("Information leakage attack skipped: no private inputs");
-            if let Some(p) = progress {
-                for _ in 0..num_tests {
-                    p.inc();
-                }
-            }
-            return Ok(());
+            anyhow::bail!(
+                "Information leakage attack requires private inputs, but none were discovered"
+            );
         }
 
         let constraints = inspector.get_constraints();
         if constraints.is_empty() {
-            tracing::warn!("Information leakage attack skipped: no constraints available");
-            if let Some(p) = progress {
-                for _ in 0..num_tests {
-                    p.inc();
-                }
-            }
-            return Ok(());
+            anyhow::bail!(
+                "Information leakage attack requires constraint data, but inspector returned none"
+            );
         }
 
         let mut analyzer = TaintAnalyzer::new(public_indices.len(), private_indices.len());
@@ -2238,15 +2200,10 @@ impl FuzzingEngine {
         }
 
         let Some(base_witness) = base_witness else {
-            tracing::warn!(
-                "Constraint slice skipped: no valid base witness after {} attempts",
+            anyhow::bail!(
+                "Constraint slice attack failed to find a valid base witness after {} attempts",
                 attempts
             );
-            if let Some(p) = progress {
-                p.log_finding("WARN", "Constraint slice skipped: no valid base witness");
-                p.inc();
-            }
-            return Ok(());
         };
 
         // Determine output wire indices (prefer inspector-provided outputs)

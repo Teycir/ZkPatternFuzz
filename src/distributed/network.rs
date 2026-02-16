@@ -124,9 +124,7 @@ impl FuzzerNode {
     /// Start the node
     pub fn start(&mut self) -> anyhow::Result<()> {
         if self.config.enable_tls {
-            anyhow::bail!(
-                "Distributed TLS transport is not implemented; set enable_tls=false"
-            );
+            anyhow::bail!("Distributed TLS transport is not implemented; set enable_tls=false");
         }
 
         *self.running.write() = true;
