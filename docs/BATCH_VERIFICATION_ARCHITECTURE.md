@@ -108,7 +108,7 @@ try_real_batch_verification()
 ## Aggregation Methods
 
 ### Naive Batch
-Simple sequential verification of each proof. Used as baseline and reference path.
+Simple one-by-one verification of each proof. Used as baseline and reference path.
 
 ### Groth16 Aggregation
 Uses random linear combination for batch verification:

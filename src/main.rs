@@ -1,6 +1,8 @@
 use anyhow::Context;
 use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
 use clap::{Parser, Subcommand, ValueEnum};
+use regex::RegexBuilder;
+use serde::Deserialize;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -786,8 +788,56 @@ fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Valu
     // - `run_outcome.json` is the single authoritative per-mode status file (also used for resume).
     // - engagement-wide `log/events.jsonl` is the run history (includes run_id).
     best_effort_write_json(&output_dir.join("run_outcome.json"), value);
+    write_scan_timestamp_totals_if_applicable(output_dir, value);
     mirror_mode_output_snapshot(output_dir, run_id, value);
     write_global_run_signal(run_id, value);
+}
+
+fn scan_public_root_from_output_dir(output_dir: &Path) -> Option<PathBuf> {
+    let run_root_dir = output_dir.parent()?;
+    let artifacts_dir = run_root_dir.parent()?;
+    if artifacts_dir.file_name().and_then(|s| s.to_str()) != Some(".scan_run_artifacts") {
+        return None;
+    }
+    let base = artifacts_dir.parent()?;
+    let run_root_name = run_root_dir.file_name()?.to_owned();
+    Some(base.join(run_root_name))
+}
+
+fn write_scan_timestamp_totals_if_applicable(output_dir: &Path, value: &serde_json::Value) {
+    let Some(scan_root) = scan_public_root_from_output_dir(output_dir) else {
+        return;
+    };
+
+    let total_log_path = scan_root.join("log.jsonl");
+    best_effort_append_jsonl(&total_log_path, value);
+}
+
+fn best_effort_append_text_line(path: &Path, line: &str) {
+    if let Some(parent) = path.parent() {
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                "Failed to create parent directory for '{}': {}",
+                path.display(),
+                err
+            );
+            return;
+        }
+    }
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        Ok(mut file) => {
+            if let Err(err) = writeln!(file, "{}", line) {
+                tracing::warn!("Failed to append text line to '{}': {}", path.display(), err);
+            }
+        }
+        Err(err) => {
+            tracing::warn!("Failed to open '{}' for append: {}", path.display(), err);
+        }
+    }
 }
 
 fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
@@ -1164,6 +1214,10 @@ enum Commands {
         /// Custom corpus directory (mono only)
         #[arg(long)]
         corpus_dir: Option<String>,
+
+        /// Optional output suffix for scan isolation (used by batch parallel runs)
+        #[arg(long)]
+        output_suffix: Option<String>,
     },
     /// Validate a campaign configuration
     Validate {
@@ -1339,6 +1393,7 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
             timeout,
             resume,
             corpus_dir,
+            output_suffix,
         }) => {
             run_scan(
                 &pattern,
@@ -1346,6 +1401,7 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
                 &target_circuit,
                 &main_component,
                 &framework,
+                output_suffix.as_deref(),
                 CampaignRunOptions {
                     workers: cli.workers,
                     seed: cli.seed,
@@ -1499,6 +1555,285 @@ fn validate_scan_pattern_complexity(path: &str, family: ScanFamily) -> anyhow::R
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum ScanRegexPatternKind {
+    #[default]
+    Regex,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ScanRegexPatternSpec {
+    id: String,
+    pattern: String,
+    #[serde(default)]
+    kind: ScanRegexPatternKind,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ScanRegexPatternMatch {
+    id: String,
+    lines: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ScanRegexPatternSummary {
+    total_patterns: usize,
+    matched_patterns: usize,
+    matched_ids: Vec<String>,
+    matches: Vec<ScanRegexPatternMatch>,
+}
+
+fn validate_scan_regex_pattern_safety(pattern: &str) -> anyhow::Result<()> {
+    const MAX_PATTERN_LENGTH: usize = 1000;
+    const MAX_ALTERNATIONS: usize = 50;
+    const MAX_GROUPS: usize = 20;
+
+    if pattern.len() > MAX_PATTERN_LENGTH {
+        anyhow::bail!(
+            "Regex pattern too long ({} chars). Maximum allowed: {}",
+            pattern.len(),
+            MAX_PATTERN_LENGTH
+        );
+    }
+
+    let alternation_count = pattern.matches('|').count();
+    if alternation_count > MAX_ALTERNATIONS {
+        anyhow::bail!(
+            "Regex pattern has too many alternations ({}). Maximum allowed: {}",
+            alternation_count,
+            MAX_ALTERNATIONS
+        );
+    }
+
+    // Escape-aware scan for group count and nested quantifiers such as (a+)+.
+    let bytes = pattern.as_bytes();
+    let mut i = 0usize;
+    let mut group_count = 0usize;
+    let mut paren_stack: Vec<bool> = Vec::new(); // bool = has quantifier inside this group
+
+    while i < bytes.len() {
+        let ch = bytes[i];
+
+        if ch == b'\\' && i + 1 < bytes.len() {
+            i += 2;
+            continue;
+        }
+
+        if ch == b'(' {
+            group_count += 1;
+            if group_count > MAX_GROUPS {
+                anyhow::bail!(
+                    "Regex pattern has too many groups ({}). Maximum allowed: {}",
+                    group_count,
+                    MAX_GROUPS
+                );
+            }
+            paren_stack.push(false);
+            i += 1;
+            continue;
+        }
+
+        if ch == b')' {
+            if let Some(has_quant_inside) = paren_stack.pop() {
+                if i + 1 < bytes.len() {
+                    let next = bytes[i + 1];
+                    let has_outer_quant =
+                        next == b'*' || next == b'+' || next == b'{' || next == b'?';
+                    if has_outer_quant && has_quant_inside {
+                        anyhow::bail!(
+                            "Potentially dangerous nested quantifier detected in regex pattern: {}",
+                            pattern
+                        );
+                    }
+                }
+                if has_quant_inside && !paren_stack.is_empty() {
+                    if let Some(parent) = paren_stack.last_mut() {
+                        *parent = true;
+                    }
+                }
+            }
+            i += 1;
+            continue;
+        }
+
+        let is_quantifier = ch == b'*' || ch == b'+' || ch == b'{' || ch == b'?';
+        if is_quantifier && !paren_stack.is_empty() {
+            if let Some(last) = paren_stack.last_mut() {
+                *last = true;
+            }
+        }
+
+        i += 1;
+    }
+
+    Ok(())
+}
+
+fn load_scan_regex_patterns(pattern_path: &str) -> anyhow::Result<Vec<ScanRegexPatternSpec>> {
+    let raw = fs::read_to_string(pattern_path)
+        .with_context(|| format!("Failed to read pattern YAML '{}'", pattern_path))?;
+    let doc: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse pattern YAML '{}'", pattern_path))?;
+    let root = doc
+        .as_mapping()
+        .context("Pattern YAML root must be a mapping")?;
+
+    let Some(patterns_value) = root.get(yaml_key("patterns")) else {
+        return Ok(Vec::new());
+    };
+
+    let sequence = patterns_value
+        .as_sequence()
+        .context("'patterns' must be a YAML sequence when present")?;
+
+    let mut patterns = Vec::with_capacity(sequence.len());
+    for (idx, item) in sequence.iter().enumerate() {
+        let pattern: ScanRegexPatternSpec = serde_yaml::from_value(item.clone()).with_context(|| {
+            format!(
+                "Invalid `patterns[{}]` entry in '{}': expected keys {{id, kind, pattern, message}}",
+                idx, pattern_path
+            )
+        })?;
+
+        if pattern.id.trim().is_empty() {
+            anyhow::bail!(
+                "Invalid `patterns[{}]` in '{}': `id` must be non-empty",
+                idx,
+                pattern_path
+            );
+        }
+        if pattern.pattern.trim().is_empty() {
+            anyhow::bail!(
+                "Invalid `patterns[{}]` in '{}': `pattern` must be non-empty",
+                idx,
+                pattern_path
+            );
+        }
+        if pattern.kind != ScanRegexPatternKind::Regex {
+            anyhow::bail!(
+                "Invalid `patterns[{}]` in '{}': only `kind: regex` is supported",
+                idx,
+                pattern_path
+            );
+        }
+
+        validate_scan_regex_pattern_safety(&pattern.pattern)
+            .with_context(|| format!("Unsafe regex for pattern '{}'", pattern.id))?;
+        RegexBuilder::new(&pattern.pattern)
+            .size_limit(2 * 1024 * 1024)
+            .dfa_size_limit(2 * 1024 * 1024)
+            .build()
+            .with_context(|| {
+                format!("Invalid regex in `patterns[{}]` (id='{}')", idx, pattern.id)
+            })?;
+
+        patterns.push(pattern);
+    }
+
+    Ok(patterns)
+}
+
+fn evaluate_scan_regex_patterns(
+    pattern_path: &str,
+    target_circuit: &Path,
+) -> anyhow::Result<Option<ScanRegexPatternSummary>> {
+    let patterns = load_scan_regex_patterns(pattern_path)?;
+    if patterns.is_empty() {
+        return Ok(None);
+    }
+
+    let summary = evaluate_loaded_scan_regex_patterns(&patterns, target_circuit)?;
+    Ok(Some(summary))
+}
+
+fn evaluate_loaded_scan_regex_patterns(
+    patterns: &[ScanRegexPatternSpec],
+    target_circuit: &Path,
+) -> anyhow::Result<ScanRegexPatternSummary> {
+    if patterns.is_empty() {
+        return Ok(ScanRegexPatternSummary::default());
+    }
+
+    let source = fs::read_to_string(target_circuit).with_context(|| {
+        format!(
+            "Failed to read target circuit '{}' for regex pattern evaluation",
+            target_circuit.display()
+        )
+    })?;
+
+    let mut line_starts = vec![0usize];
+    for (idx, ch) in source.char_indices() {
+        if ch == '\n' {
+            line_starts.push(idx + 1);
+        }
+    }
+
+    println!("PATTERN FILTER START");
+    let mut summary = ScanRegexPatternSummary {
+        total_patterns: patterns.len(),
+        ..Default::default()
+    };
+    for (idx, pattern) in patterns.iter().enumerate() {
+        println!(
+            "pattern filter {}/{} {}",
+            idx + 1,
+            patterns.len(),
+            pattern.id
+        );
+
+        let regex = RegexBuilder::new(&pattern.pattern)
+            .size_limit(2 * 1024 * 1024)
+            .dfa_size_limit(2 * 1024 * 1024)
+            .build()
+            .with_context(|| {
+                format!(
+                    "Invalid regex in pattern '{}' while scanning target '{}'",
+                    pattern.id,
+                    target_circuit.display()
+                )
+            })?;
+
+        if regex.is_match(&source) {
+            let mut lines: Vec<usize> = Vec::new();
+            for m in regex.find_iter(&source) {
+                let line = match line_starts.binary_search(&m.start()) {
+                    Ok(pos) => pos + 1,
+                    Err(pos) => pos,
+                };
+                if lines.last().copied() != Some(line) {
+                    lines.push(line);
+                }
+            }
+            summary.matched_patterns += 1;
+            summary.matched_ids.push(pattern.id.clone());
+            summary.matches.push(ScanRegexPatternMatch {
+                id: pattern.id.clone(),
+                lines: lines.clone(),
+            });
+            if let Some(message) = pattern
+                .message
+                .as_ref()
+                .map(|m| m.trim())
+                .filter(|m| !m.is_empty())
+            {
+                println!("pattern hit {}: {} (lines: {:?})", pattern.id, message, lines);
+            } else {
+                println!("pattern hit {} (lines: {:?})", pattern.id, lines);
+            }
+        }
+    }
+    println!("PATTERN FILTER END");
+    println!(
+        "pattern summary: matched {}/{}",
+        summary.matched_patterns, summary.total_patterns
+    );
+
+    Ok(summary)
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct ScanFindingsSummary {
     findings_total: u64,
@@ -1587,6 +1922,8 @@ fn materialize_scan_pattern_campaign(
     pattern_path: &str,
     family: ScanFamily,
     target: &ScanTarget,
+    output_suffix: Option<&str>,
+    scan_regex_summary: Option<&ScanRegexPatternSummary>,
 ) -> anyhow::Result<PathBuf> {
     use std::hash::{Hash, Hasher};
 
@@ -1597,6 +1934,10 @@ fn materialize_scan_pattern_campaign(
     let root = doc
         .as_mapping_mut()
         .context("Pattern YAML root must be a mapping")?;
+
+    // Regex selector metadata is scan-time only. Remove it from the materialized
+    // campaign so the runtime parser only sees executable fuzzing configuration.
+    root.remove(yaml_key("patterns"));
 
     // Keep includes valid after writing a materialized temp campaign.
     if let Some(includes) = root.get_mut(yaml_key("includes")) {
@@ -1684,6 +2025,28 @@ fn materialize_scan_pattern_campaign(
         yaml_key("timeout_seconds"),
         serde_yaml::Value::Number(serde_yaml::Number::from(600u64)),
     );
+    if let Some(raw_suffix) = output_suffix.map(str::trim).filter(|s| !s.is_empty()) {
+        parameters.insert(
+            yaml_key("scan_output_suffix"),
+            serde_yaml::Value::String(sanitize_slug(raw_suffix)),
+        );
+    }
+    if let Some(summary) = scan_regex_summary {
+        let mut lines: Vec<String> = Vec::new();
+        for hit in &summary.matches {
+            if hit.lines.is_empty() {
+                lines.push(format!("pattern {} found", hit.id));
+            } else {
+                lines.push(format!("pattern {} found in lines {:?}", hit.id, hit.lines));
+            }
+        }
+        if !lines.is_empty() {
+            parameters.insert(
+                yaml_key("scan_pattern_summary_text"),
+                serde_yaml::Value::String(lines.join("\n")),
+            );
+        }
+    }
     campaign.insert(
         yaml_key("parameters"),
         serde_yaml::Value::Mapping(parameters),
@@ -1718,47 +2081,102 @@ async fn run_scan(
     target_circuit: &str,
     main_component: &str,
     framework: &str,
+    output_suffix: Option<&str>,
     mono_options: CampaignRunOptions,
     chain_options: ChainRunOptions,
 ) -> anyhow::Result<()> {
     validate_pattern_only_yaml(pattern_path, "Scan")?;
+    let regex_patterns = load_scan_regex_patterns(pattern_path)?;
+    let regex_mode = !regex_patterns.is_empty();
 
     let has_chains = detect_pattern_has_chains(pattern_path)?;
-    let family = match family_hint {
-        ScanFamily::Auto => {
-            if has_chains {
-                ScanFamily::Multi
-            } else {
+    let family = if regex_mode {
+        if has_chains {
+            tracing::info!(
+                "Regex-focused scan: forcing mono execution and ignoring `chains` in '{}'",
+                pattern_path
+            );
+        }
+        ScanFamily::Mono
+    } else {
+        match family_hint {
+            ScanFamily::Auto => {
+                if has_chains {
+                    ScanFamily::Multi
+                } else {
+                    ScanFamily::Mono
+                }
+            }
+            ScanFamily::Mono => {
+                if has_chains {
+                    anyhow::bail!(
+                        "Scan family set to mono but pattern '{}' contains non-empty `chains`.",
+                        pattern_path
+                    );
+                }
                 ScanFamily::Mono
             }
-        }
-        ScanFamily::Mono => {
-            if has_chains {
-                anyhow::bail!(
-                    "Scan family set to mono but pattern '{}' contains non-empty `chains`.",
-                    pattern_path
-                );
+            ScanFamily::Multi => {
+                if !has_chains {
+                    anyhow::bail!(
+                        "Scan family set to multi but pattern '{}' has no `chains`.",
+                        pattern_path
+                    );
+                }
+                ScanFamily::Multi
             }
-            ScanFamily::Mono
-        }
-        ScanFamily::Multi => {
-            if !has_chains {
-                anyhow::bail!(
-                    "Scan family set to multi but pattern '{}' has no `chains`.",
-                    pattern_path
-                );
-            }
-            ScanFamily::Multi
         }
     };
-    validate_scan_pattern_complexity(pattern_path, family)?;
+    if !regex_mode {
+        validate_scan_pattern_complexity(pattern_path, family)?;
+    } else {
+        tracing::info!(
+            "Regex selectors active: skipping multi-chain complexity checks for '{}'",
+            pattern_path
+        );
+    }
 
     let target = ScanTarget {
         framework: parse_framework_arg(framework)?,
         circuit_path: PathBuf::from(target_circuit),
         main_component: main_component.to_string(),
     };
-    let materialized = materialize_scan_pattern_campaign(pattern_path, family, &target)?;
+    let mut scan_regex_summary: Option<ScanRegexPatternSummary> = None;
+    if regex_mode {
+        let summary = evaluate_loaded_scan_regex_patterns(&regex_patterns, &target.circuit_path)?;
+        if summary.matched_patterns == 0 {
+            anyhow::bail!(
+                "Pattern '{}' has regex selectors but none matched target circuit '{}'. \
+                 Refine `patterns` or choose a matching pattern YAML.",
+                pattern_path,
+                target.circuit_path.display()
+            );
+        }
+        tracing::info!(
+            "Pattern selectors matched {}/{}: [{}]",
+            summary.matched_patterns,
+            summary.total_patterns,
+            summary.matched_ids.join(", ")
+        );
+        scan_regex_summary = Some(summary);
+    } else if let Some(summary) = evaluate_scan_regex_patterns(pattern_path, &target.circuit_path)?
+    {
+        tracing::info!(
+            "Pattern selectors matched {}/{}: [{}]",
+            summary.matched_patterns,
+            summary.total_patterns,
+            summary.matched_ids.join(", ")
+        );
+        scan_regex_summary = Some(summary);
+    }
+
+    let materialized = materialize_scan_pattern_campaign(
+        pattern_path,
+        family,
+        &target,
+        output_suffix,
+        scan_regex_summary.as_ref(),
+    )?;
     let materialized_str = materialized.to_string_lossy().to_string();
 
     tracing::info!(
@@ -1832,6 +2250,7 @@ fn validate_pattern_only_yaml(path: &str, mode_name: &str) -> anyhow::Result<()>
         "includes",
         "profiles",
         "active_profile",
+        "patterns",
         "target_traits",
         "invariants",
         "schedule",
@@ -1861,6 +2280,70 @@ fn validate_pattern_only_yaml(path: &str, mode_name: &str) -> anyhow::Result<()>
         );
     }
     Ok(())
+}
+
+fn apply_scan_output_suffix_if_present(config: &mut FuzzConfig) -> anyhow::Result<()> {
+    let Some(raw_suffix) = config
+        .campaign
+        .parameters
+        .additional
+        .get_string("scan_output_suffix")
+    else {
+        return Ok(());
+    };
+
+    let trimmed = raw_suffix.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("`campaign.parameters.scan_output_suffix` cannot be empty");
+    }
+
+    let slug = sanitize_slug(trimmed);
+    let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+    let run_root = format!("scan_run{}", ts);
+    let public_root = config.reporting.output_dir.join(&run_root);
+    let artifacts_root = config
+        .reporting
+        .output_dir
+        .join(".scan_run_artifacts")
+        .join(&run_root);
+    config.reporting.output_dir = config
+        .reporting
+        .output_dir
+        .join(".scan_run_artifacts")
+        .join(&run_root)
+        .join(&slug);
+    let _ = std::fs::create_dir_all(&public_root);
+    let _ = std::fs::create_dir_all(artifacts_root);
+    write_scan_pattern_summary_if_present(config, &public_root, &slug);
+    tracing::info!(
+        "Scan output isolation enabled: {}",
+        config.reporting.output_dir.display()
+    );
+    Ok(())
+}
+
+fn write_scan_pattern_summary_if_present(config: &FuzzConfig, public_root: &Path, slug: &str) {
+    let summary_text = config
+        .campaign
+        .parameters
+        .additional
+        .get_string("scan_pattern_summary_text");
+
+    let summary_path = public_root.join("summary.txt");
+    if let Some(summary_text) = summary_text {
+        for line in summary_text.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            best_effort_append_text_line(&summary_path, &format!("{}: {}", slug, trimmed));
+        }
+    } else {
+        best_effort_append_text_line(
+            &summary_path,
+            &format!("{}: pattern {} found in lines []", slug, slug),
+        );
+    }
 }
 
 async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow::Result<()> {
@@ -1943,6 +2426,8 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             }
         }
     }
+
+    apply_scan_output_suffix_if_present(&mut config)?;
 
     let campaign_name = config.campaign.name.clone();
 
@@ -2636,6 +3121,12 @@ fn generate_sample_config(output: &str, framework: &str) -> anyhow::Result<()> {
 # Generated sample for {} framework.
 # This file is pattern-only and is used with `zk-fuzzer scan`.
 
+patterns:
+  - id: "contains_main_component"
+    kind: regex
+    pattern: "template\\s+Main|fn\\s+main|struct\\s+ExampleCircuit"
+    message: "Target source has an expected main entrypoint pattern"
+
 attacks:
   - type: underconstrained
     description: "Find inputs that satisfy constraints but produce wrong outputs"
@@ -2843,6 +3334,8 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             return Err(err);
         }
     };
+
+    apply_scan_output_suffix_if_present(&mut config)?;
 
     let campaign_name = config.campaign.name.clone();
 

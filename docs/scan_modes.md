@@ -13,31 +13,40 @@ This document defines how scanning works in this repo.
 `zk-fuzzer scan` is a single scanner entry point driven by pattern YAML.
 
 - No built-in Mode 1 pre-pass.
-- Every run is selected by YAML family and target topology.
+- Every run is selected by YAML templates and regex selectors.
 - Universal/simple checks are represented as always-run YAML templates.
 - Deeper/less-common checks are added by collection/alias based on the target.
 
 ## Pattern Classes
 
 - Always-run simple patterns:
-  - Typically `_mono.yaml`
   - Safe baseline checks to run for most targets
-- Deep target-dependent patterns:
-  - `_mono.yaml` for deeper single-circuit logic
-  - `_multi.yaml` for multi-stage chain logic
+- Optional additional patterns:
+  - Enabled by collection/alias when needed
+
+## Regex Pattern Selectors
+
+Pattern YAML may include an optional SCPF-style selector block:
+
+```yaml
+patterns:
+  - id: contains_nullifier
+    kind: regex
+    pattern: "\\bnullifier\\b"
+    message: "Target contains nullifier logic"
+```
+
+- `kind` currently supports only `regex`.
+- Selectors are evaluated against the target circuit source before scan execution.
+- If `patterns` is present, at least one selector must match or the scan aborts.
+- Selector metadata is scan-time only and is not injected into the materialized runtime campaign.
 
 ## Family Dispatch
 
 `zk-fuzzer scan <pattern.yaml> --family <auto|mono|multi> ...`
 
-- `auto`:
-  - non-empty `chains` => multi engine
-  - no `chains` => mono engine
-- `mono`: enforces mono pattern execution
-- `multi`: enforces chain/multi execution
-
-Compatibility rule:
-- Multi patterns must not be run on mono targets.
+- Regex-focused selectors are the primary dispatch mechanism.
+- When `patterns:` is present, scan may force mono execution and ignore chain topology.
 
 ## Catalog Concept (SCPF-Style, Applied to Fuzzer)
 
@@ -52,18 +61,16 @@ Run via batch catalog runner (`zk0d_batch`):
 # Inspect catalog
 cargo run --release --bin zk0d_batch -- --list-catalog
 
-# Run always-on mono collection against a mono target
+# Run always-on collection
 cargo run --release --bin zk0d_batch -- \
   --alias always \
-  --target-topology mono \
   --target-circuit /path/to/target.circom \
   --main-component Main \
   --framework circom
 
-# Run deep multi collection against a multi target
+# Run selected collection
 cargo run --release --bin zk0d_batch -- \
-  --collection deep_multi \
-  --target-topology multi \
+  --collection always \
   --target-circuit /path/to/target.circom \
   --main-component Main \
   --framework circom

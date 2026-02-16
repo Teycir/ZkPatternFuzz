@@ -8,150 +8,150 @@ collections:
   deep_all:
     description: Run every deep attack target.
     targets:
-      - soundness_forge_deep_mono
-      - frozenheart_proofforgery_deep_mono
-      - trustedsetup_vksubstitution_deep_mono
-      - underconstrained_witness_deep_mono
-      - nondeterministic_nullifier_deep_mono
-      - nullifier_rangecheck_deep_mono
-      - arithmetic_overflow_deep_mono
-      - bitlength_mismatch_deep_mono
-      - assigned_notconstrained_deep_mono
-      - unusedpubinputs_optimizedout_deep_mono
-      - regex_header_spoofing_deep_mono
-      - chain_atomicity_deep_multi
-      - execution_hijack_deep_multi
+      - soundness_forge_deep
+      - frozenheart_proofforgery_deep
+      - trustedsetup_vksubstitution_deep
+      - underconstrained_witness_deep
+      - nondeterministic_nullifier_deep
+      - nullifier_rangecheck_deep
+      - arithmetic_overflow_deep
+      - bitlength_mismatch_deep
+      - assigned_notconstrained_deep
+      - unusedpubinputs_optimizedout_deep
+      - regex_header_spoofing_deep
+      - chain_atomicity_deep
+      - execution_hijack_deep
 
-  deep_mono:
+  deep:
     description: Deep single-circuit attack targets.
     targets:
-      - soundness_forge_deep_mono
-      - frozenheart_proofforgery_deep_mono
-      - trustedsetup_vksubstitution_deep_mono
-      - underconstrained_witness_deep_mono
-      - nondeterministic_nullifier_deep_mono
-      - nullifier_rangecheck_deep_mono
-      - arithmetic_overflow_deep_mono
-      - bitlength_mismatch_deep_mono
-      - assigned_notconstrained_deep_mono
-      - unusedpubinputs_optimizedout_deep_mono
-      - regex_header_spoofing_deep_mono
+      - soundness_forge_deep
+      - frozenheart_proofforgery_deep
+      - trustedsetup_vksubstitution_deep
+      - underconstrained_witness_deep
+      - nondeterministic_nullifier_deep
+      - nullifier_rangecheck_deep
+      - arithmetic_overflow_deep
+      - bitlength_mismatch_deep
+      - assigned_notconstrained_deep
+      - unusedpubinputs_optimizedout_deep
+      - regex_header_spoofing_deep
 
-  deep_multi:
+  deep_extra:
     description: Deep chained/multi-step attack targets.
     targets:
-      - chain_atomicity_deep_multi
-      - execution_hijack_deep_multi
+      - chain_atomicity_deep
+      - execution_hijack_deep
 
   common_underconstrained:
     description: Under-constrained circuit class.
     targets:
-      - underconstrained_witness_deep_mono
+      - underconstrained_witness_deep
 
   common_nondeterministic:
     description: Nondeterministic circuit/nullifier class.
     targets:
-      - nondeterministic_nullifier_deep_mono
+      - nondeterministic_nullifier_deep
 
   common_arithmetic_overflow:
     description: Arithmetic over/underflow class.
     targets:
-      - arithmetic_overflow_deep_mono
+      - arithmetic_overflow_deep
 
   common_mismatching_bit_lengths:
     description: Mismatching bit-length class.
     targets:
-      - bitlength_mismatch_deep_mono
+      - bitlength_mismatch_deep
 
   common_unused_public_inputs:
     description: Unused public inputs optimized out class.
     targets:
-      - unusedpubinputs_optimizedout_deep_mono
+      - unusedpubinputs_optimizedout_deep
 
   common_frozen_heart:
     description: Frozen-heart proof forgery class.
     targets:
-      - frozenheart_proofforgery_deep_mono
+      - frozenheart_proofforgery_deep
 
   common_trusted_setup_leak:
     description: Trusted setup leakage/substitution class.
     targets:
-      - trustedsetup_vksubstitution_deep_mono
+      - trustedsetup_vksubstitution_deep
 
   common_assigned_not_constrained:
     description: Assigned-but-not-constrained class.
     targets:
-      - assigned_notconstrained_deep_mono
+      - assigned_notconstrained_deep
 
 aliases:
   known_cve_all:
-    - bitlength_mismatch_deep_mono
-    - assigned_notconstrained_deep_mono
-    - nullifier_rangecheck_deep_mono
-    - nondeterministic_nullifier_deep_mono
-    - soundness_forge_deep_mono
-    - underconstrained_witness_deep_mono
-    - frozenheart_proofforgery_deep_mono
-    - trustedsetup_vksubstitution_deep_mono
-    - arithmetic_overflow_deep_mono
-    - regex_header_spoofing_deep_mono
-    - chain_atomicity_deep_multi
-    - execution_hijack_deep_multi
+    - bitlength_mismatch_deep
+    - assigned_notconstrained_deep
+    - nullifier_rangecheck_deep
+    - nondeterministic_nullifier_deep
+    - soundness_forge_deep
+    - underconstrained_witness_deep
+    - frozenheart_proofforgery_deep
+    - trustedsetup_vksubstitution_deep
+    - arithmetic_overflow_deep
+    - regex_header_spoofing_deep
+    - chain_atomicity_deep
+    - execution_hijack_deep
 
   cve_01_dark_forest_missing_bit_length:
-    - bitlength_mismatch_deep_mono
+    - bitlength_mismatch_deep
   cve_02_bigint_missing_bit_length:
-    - bitlength_mismatch_deep_mono
+    - bitlength_mismatch_deep
   cve_03_circom_pairing_missing_output_check:
-    - assigned_notconstrained_deep_mono
+    - assigned_notconstrained_deep
   cve_04_semaphore_missing_range_check:
-    - nullifier_rangecheck_deep_mono
+    - nullifier_rangecheck_deep
   cve_05_zk_kit_missing_range_check:
-    - nullifier_rangecheck_deep_mono
+    - nullifier_rangecheck_deep
   cve_06_aztec_missing_bit_length_nondeterministic_nullifier:
-    - nondeterministic_nullifier_deep_mono
+    - nondeterministic_nullifier_deep
   cve_07_aztec_plonk_zero_bug:
-    - soundness_forge_deep_mono
+    - soundness_forge_deep
   cve_08_stealthdrop_nondeterministic_nullifier:
-    - nondeterministic_nullifier_deep_mono
+    - nondeterministic_nullifier_deep
   cve_09_zkdrops_missing_nullifier_range_check:
-    - nullifier_rangecheck_deep_mono
+    - nullifier_rangecheck_deep
   cve_10_maci_underconstrained_circuit:
-    - underconstrained_witness_deep_mono
+    - underconstrained_witness_deep
   cve_11_bulletproofs_frozen_heart:
-    - frozenheart_proofforgery_deep_mono
+    - frozenheart_proofforgery_deep
   cve_12_plonk_frozen_heart:
-    - frozenheart_proofforgery_deep_mono
+    - frozenheart_proofforgery_deep
   cve_13_zcash_trusted_setup_leak:
-    - trustedsetup_vksubstitution_deep_mono
+    - trustedsetup_vksubstitution_deep
   cve_14_mimc_assigned_not_constrained:
-    - assigned_notconstrained_deep_mono
+    - assigned_notconstrained_deep
   cve_15_scroll_missing_overflow_constraint:
-    - arithmetic_overflow_deep_mono
+    - arithmetic_overflow_deep
   cve_16_scroll_missing_constraint:
-    - underconstrained_witness_deep_mono
+    - underconstrained_witness_deep
   cve_17_dusk_missing_blinding_factors:
-    - soundness_forge_deep_mono
+    - soundness_forge_deep
   cve_18_nightfall_missing_nullifier_range_check:
-    - nullifier_rangecheck_deep_mono
+    - nullifier_rangecheck_deep
   cve_19_summa_unconstrained_constants:
-    - assigned_notconstrained_deep_mono
+    - assigned_notconstrained_deep
   cve_20_polygon_missing_remainder_constraint:
-    - arithmetic_overflow_deep_mono
+    - arithmetic_overflow_deep
   cve_21_polygon_fake_smt_inclusion:
-    - execution_hijack_deep_multi
+    - execution_hijack_deep
   cve_22_polygon_incorrect_ctx_assignation:
-    - arithmetic_overflow_deep_mono
+    - arithmetic_overflow_deep
   cve_23_polygon_execution_flow_hijack:
-    - execution_hijack_deep_multi
+    - execution_hijack_deep
   cve_24_zendoo_polynomial_normalization:
-    - arithmetic_overflow_deep_mono
+    - arithmetic_overflow_deep
   cve_25_aleo_non_committing_encryption:
-    - soundness_forge_deep_mono
+    - soundness_forge_deep
   cve_26_light_protocol_non_atomic_state:
-    - chain_atomicity_deep_multi
+    - chain_atomicity_deep
   cve_27_zkemail_underconstrained_spoofing:
-    - regex_header_spoofing_deep_mono
+    - regex_header_spoofing_deep
 
 known_cve_map:
   source: targets/zk-bug-tracker/README.md

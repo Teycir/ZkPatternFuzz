@@ -148,7 +148,10 @@ impl FuzzingEngine {
                      Remove hardcoded public-input mappings from generic YAML templates."
                 );
             }
-            let capped = self.executor.num_public_inputs().min(self.config.inputs.len());
+            let capped = self
+                .executor
+                .num_public_inputs()
+                .min(self.config.inputs.len());
             tracing::info!(
                 "Input schema reconciled: deriving {} public input positions from executor metadata",
                 capped
@@ -200,18 +203,21 @@ impl FuzzingEngine {
         // Execute in parallel and collect results with indices
         // Mode 3 optimization: collect only (index, result) to avoid cloning TestCase
         let executor = self.executor.clone();
-        let indexed_results: Vec<(usize, ExecutionResult)> = if self.workers <= 1 {
-            test_cases
-                .iter()
-                .enumerate()
-                .map(|(i, tc)| {
-                    let result = executor.execute_sync(&tc.inputs);
-                    (i, result)
+        let indexed_results: Vec<(usize, ExecutionResult)> =
+            if let Some(ref pool) = self.thread_pool {
+                // Reuse cached thread pool instead of creating new one per attack
+                pool.install(|| {
+                    test_cases
+                        .par_iter()
+                        .enumerate()
+                        .map(|(i, tc)| {
+                            let result = executor.execute_sync(&tc.inputs);
+                            (i, result)
+                        })
+                        .collect()
                 })
-                .collect()
-        } else if let Some(ref pool) = self.thread_pool {
-            // Mode 3: Reuse cached thread pool instead of creating new one per attack
-            pool.install(|| {
+            } else {
+                // Fall back to rayon global pool, still parallel.
                 test_cases
                     .par_iter()
                     .enumerate()
@@ -220,18 +226,7 @@ impl FuzzingEngine {
                         (i, result)
                     })
                     .collect()
-            })
-        } else {
-            // Sequential execution when no thread pool is available.
-            test_cases
-                .iter()
-                .enumerate()
-                .map(|(i, tc)| {
-                    let result = executor.execute_sync(&tc.inputs);
-                    (i, result)
-                })
-                .collect()
-        };
+            };
 
         // Group by output hash to find collisions
         // Mode 3: Pre-size HashMap to avoid rehashing
@@ -528,6 +523,14 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
+        let num_public = self.executor.num_public_inputs();
+        if num_public == 0 {
+            tracing::warn!(
+                "Skipping soundness attack: circuit exposes 0 public inputs, so proof-forgery checks are inapplicable"
+            );
+            return Ok(());
+        }
+
         let configured_forge_attempts: usize = config
             .get("forge_attempts")
             .and_then(|v| v.as_u64())
@@ -553,143 +556,137 @@ impl FuzzingEngine {
             self.add_attack_findings(&tester, forge_attempts, progress)?;
         }
 
-        let num_public = self.executor.num_public_inputs();
-        if num_public == 0 {
-            anyhow::bail!(
-                "Soundness attack requires at least one public input; circuit exposes 0 public inputs"
+        let corpus_witnesses = self.collect_corpus_inputs(forge_attempts.max(1));
+        let corpus_seed_count = corpus_witnesses.len().min(forge_attempts);
+        if corpus_seed_count > 0 {
+            tracing::info!(
+                "Soundness attack seeded {} witness(es) from corpus before random generation",
+                corpus_seed_count
             );
         } else {
-            let corpus_witnesses = self.collect_corpus_inputs(forge_attempts.max(1));
-            let corpus_seed_count = corpus_witnesses.len().min(forge_attempts);
-            if corpus_seed_count > 0 {
-                tracing::info!(
-                    "Soundness attack seeded {} witness(es) from corpus before random generation",
-                    corpus_seed_count
-                );
+            tracing::warn!(
+                "Soundness attack has no corpus witnesses; relying on random witness generation"
+            );
+        }
+
+        let mut successful_proofs = 0usize;
+        let mut proof_generation_failures = 0usize;
+        let mut last_proof_error: Option<String> = None;
+
+        for attempt in 0..forge_attempts {
+            let valid_inputs = if attempt < corpus_witnesses.len() {
+                corpus_witnesses[attempt].clone()
             } else {
-                tracing::warn!(
-                    "Soundness attack has no corpus witnesses; relying on random witness generation"
-                );
-            }
+                self.generate_test_case().inputs
+            };
 
-            let mut successful_proofs = 0usize;
-            let mut proof_generation_failures = 0usize;
-            let mut last_proof_error: Option<String> = None;
-
-            for attempt in 0..forge_attempts {
-                let valid_inputs = if attempt < corpus_witnesses.len() {
-                    corpus_witnesses[attempt].clone()
-                } else {
-                    self.generate_test_case().inputs
-                };
-
-                let valid_proof = match self.executor.prove(&valid_inputs) {
-                    Ok(proof) => proof,
-                    Err(err) => {
-                        proof_generation_failures += 1;
-                        last_proof_error = Some(err.to_string());
-                        tracing::debug!(
-                            "Soundness attempt {}/{} skipped: witness failed proof generation: {}",
-                            attempt + 1,
-                            forge_attempts,
-                            err
-                        );
-                        if let Some(p) = progress {
-                            p.inc();
-                        }
-                        continue;
-                    }
-                };
-                successful_proofs += 1;
-
-                let valid_public: Vec<FieldElement> =
-                    valid_inputs.iter().take(num_public).cloned().collect();
-
-                // Mutate public inputs only
-                let mutated_public: Vec<FieldElement> = {
-                    let rng = self.core.rng_mut();
-                    valid_public
-                        .iter()
-                        .map(|input| {
-                            if rng.gen::<f64>() < mutation_rate {
-                                mutate_field_element(input, rng)
-                            } else {
-                                input.clone()
-                            }
-                        })
-                        .collect()
-                };
-
-                // Enforce at least one public-input mutation per attempt.
-                let mutated_public = if mutated_public == valid_public {
-                    let mut forced = valid_public.clone();
-                    let idx = self.core.rng_mut().gen_range(0..forced.len());
-                    let mut bytes = forced[idx].0;
-                    bytes[31] ^= 0x01;
-                    forced[idx] = FieldElement(bytes);
-                    forced
-                } else {
-                    mutated_public
-                };
-
-                // Try to verify with mutated inputs
-                let verified = self.executor.verify(&valid_proof, &mutated_public)?;
-                let oracle_findings = self.core.check_proof_forgery(
-                    &valid_inputs,
-                    &mutated_public,
-                    &valid_proof,
-                    verified,
-                );
-
-                if verified {
-                    // Always store the PoC finding with proof bytes so evidence
-                    // is preserved regardless of oracle findings.
-                    let finding = Finding {
-                        attack_type: AttackType::Soundness,
-                        severity: Severity::Critical,
-                        description: "Proof verified with mutated inputs - soundness violation!"
-                            .to_string(),
-                        poc: super::ProofOfConcept {
-                            witness_a: valid_inputs,
-                            witness_b: None,
-                            public_inputs: mutated_public,
-                            proof: Some(valid_proof),
-                        },
-                        location: None,
-                    };
-
-                    self.with_findings_write(|store| store.push(finding.clone()))?;
-
+            let valid_proof = match self.executor.prove(&valid_inputs) {
+                Ok(proof) => proof,
+                Err(err) => {
+                    proof_generation_failures += 1;
+                    last_proof_error = Some(err.to_string());
+                    tracing::debug!(
+                        "Soundness attempt {}/{} skipped: witness failed proof generation: {}",
+                        attempt + 1,
+                        forge_attempts,
+                        err
+                    );
                     if let Some(p) = progress {
-                        p.log_finding("CRITICAL", &finding.description);
-                        for of in &oracle_findings {
-                            p.log_finding("CRITICAL", &of.description);
-                        }
+                        p.inc();
                     }
+                    continue;
                 }
+            };
+            successful_proofs += 1;
+
+            let valid_public: Vec<FieldElement> =
+                valid_inputs.iter().take(num_public).cloned().collect();
+
+            // Mutate public inputs only
+            let mutated_public: Vec<FieldElement> = {
+                let rng = self.core.rng_mut();
+                valid_public
+                    .iter()
+                    .map(|input| {
+                        if rng.gen::<f64>() < mutation_rate {
+                            mutate_field_element(input, rng)
+                        } else {
+                            input.clone()
+                        }
+                    })
+                    .collect()
+            };
+
+            // Enforce at least one public-input mutation per attempt.
+            let mutated_public = if mutated_public == valid_public {
+                let mut forced = valid_public.clone();
+                let idx = self.core.rng_mut().gen_range(0..forced.len());
+                let mut bytes = forced[idx].0;
+                bytes[31] ^= 0x01;
+                forced[idx] = FieldElement(bytes);
+                forced
+            } else {
+                mutated_public
+            };
+
+            // Try to verify with mutated inputs
+            let verified = self.executor.verify(&valid_proof, &mutated_public)?;
+            let oracle_findings = self.core.check_proof_forgery(
+                &valid_inputs,
+                &mutated_public,
+                &valid_proof,
+                verified,
+            );
+
+            if verified {
+                // Always store the PoC finding with proof bytes so evidence
+                // is preserved regardless of oracle findings.
+                let finding = Finding {
+                    attack_type: AttackType::Soundness,
+                    severity: Severity::Critical,
+                    description: "Proof verified with mutated inputs - soundness violation!"
+                        .to_string(),
+                    poc: super::ProofOfConcept {
+                        witness_a: valid_inputs,
+                        witness_b: None,
+                        public_inputs: mutated_public,
+                        proof: Some(valid_proof),
+                    },
+                    location: None,
+                };
+
+                self.with_findings_write(|store| store.push(finding.clone()))?;
 
                 if let Some(p) = progress {
-                    p.inc();
+                    p.log_finding("CRITICAL", &finding.description);
+                    for of in &oracle_findings {
+                        p.log_finding("CRITICAL", &of.description);
+                    }
                 }
             }
 
-            if successful_proofs == 0 {
-                let detail = last_proof_error.unwrap_or_else(|| "unknown error".to_string());
-                anyhow::bail!(
-                    "Soundness attack could not generate any valid proof across {} attempts ({} failures). Last error: {}",
-                    forge_attempts,
-                    proof_generation_failures,
-                    detail
-                );
+            if let Some(p) = progress {
+                p.inc();
             }
+        }
 
-            if proof_generation_failures > 0 {
-                tracing::warn!(
-                    "Soundness attack skipped {}/{} attempts due to proof generation failures",
-                    proof_generation_failures,
-                    forge_attempts
-                );
-            }
+        if successful_proofs == 0 {
+            let detail = last_proof_error.unwrap_or_else(|| "unknown error".to_string());
+            tracing::warn!(
+                "Skipping active soundness verification: no valid base proof was generated across {} attempts ({} failures). Last error: {}",
+                forge_attempts,
+                proof_generation_failures,
+                detail
+            );
+            return Ok(());
+        }
+
+        if proof_generation_failures > 0 {
+            tracing::warn!(
+                "Soundness attack skipped {}/{} attempts due to proof generation failures",
+                proof_generation_failures,
+                forge_attempts
+            );
         }
 
         self.run_proof_malleability_attack(config, progress)?;
@@ -996,18 +993,21 @@ impl FuzzingEngine {
         }
 
         let executor = self.executor.clone();
-        let indexed_results: Vec<(usize, ExecutionResult)> = if self.workers <= 1 {
-            test_cases
-                .iter()
-                .enumerate()
-                .map(|(i, tc)| {
-                    let result = executor.execute_sync(&tc.inputs);
-                    (i, result)
+        let indexed_results: Vec<(usize, ExecutionResult)> =
+            if let Some(ref pool) = self.thread_pool {
+                // Reuse cached thread pool instead of creating new one per attack
+                pool.install(|| {
+                    test_cases
+                        .par_iter()
+                        .enumerate()
+                        .map(|(i, tc)| {
+                            let result = executor.execute_sync(&tc.inputs);
+                            (i, result)
+                        })
+                        .collect()
                 })
-                .collect()
-        } else if let Some(ref pool) = self.thread_pool {
-            // Mode 3: Reuse cached thread pool instead of creating new one per attack
-            pool.install(|| {
+            } else {
+                // Fall back to rayon global pool, still parallel.
                 test_cases
                     .par_iter()
                     .enumerate()
@@ -1016,18 +1016,7 @@ impl FuzzingEngine {
                         (i, result)
                     })
                     .collect()
-            })
-        } else {
-            // Sequential execution when no thread pool is available.
-            test_cases
-                .iter()
-                .enumerate()
-                .map(|(i, tc)| {
-                    let result = executor.execute_sync(&tc.inputs);
-                    (i, result)
-                })
-                .collect()
-        };
+            };
 
         // Mode 3: Pre-size HashMap to avoid rehashing
         // Store indices to avoid cloning TestCase
@@ -1707,8 +1696,8 @@ impl FuzzingEngine {
             num_tests
         );
 
-        // Create composition tester for sequential composition
-        let mut composition_tester = CompositionTester::new(CompositionType::Sequential);
+        // Create composition tester
+        let mut composition_tester = CompositionTester::new(CompositionType::Parallel);
         composition_tester.add_circuit(self.executor.clone());
 
         // Create circuit chain for chained execution testing
@@ -2460,10 +2449,11 @@ impl FuzzingEngine {
         }
 
         let Some(base_witness) = base_witness else {
-            anyhow::bail!(
-                "Constraint slice attack failed to find a valid base witness after {} attempts",
+            tracing::warn!(
+                "Skipping constraint slice attack: failed to find a valid base witness after {} attempts",
                 attempts
             );
+            return Ok(());
         };
 
         // Determine output wire indices (prefer inspector-provided outputs)

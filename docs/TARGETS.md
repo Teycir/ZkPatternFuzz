@@ -16,23 +16,21 @@ List collections, aliases, and templates:
 cargo run --release --bin zk0d_batch -- --list-catalog
 ```
 
-Run always-on patterns for a mono target:
+Run always-on patterns:
 
 ```bash
 cargo run --release --bin zk0d_batch -- \
   --alias always \
-  --target-topology mono \
   --target-circuit /media/elements/Repos/zk0d/path/to/target.circom \
   --main-component Main \
   --framework circom
 ```
 
-Run deep patterns for a multi target:
+Run additional patterns:
 
 ```bash
 cargo run --release --bin zk0d_batch -- \
   --alias deep \
-  --target-topology multi \
   --target-circuit /media/elements/Repos/zk0d/path/to/target.circom \
   --main-component Main \
   --framework circom
@@ -42,7 +40,6 @@ cargo run --release --bin zk0d_batch -- \
 
 Template filenames must follow:
 
-- `<attacktype>_<attack>_mono.yaml`
-- `<attacktype>_<attack>_multi.yaml`
+- `<attacktype>_<attack>.yaml`
 
-This enables strict mono/multi compatibility checks in the batch runner.
+The runner always executes in parallel and supports regex-focused dispatch.

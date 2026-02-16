@@ -9,8 +9,6 @@ use zk_core::FieldElement;
 /// Composition type for testing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompositionType {
-    /// Sequential: output of A feeds into B
-    Sequential,
     /// Parallel: A and B run independently, outputs combined
     Parallel,
     /// Recursive: A calls itself
@@ -35,46 +33,6 @@ impl CompositionTester {
 
     pub fn add_circuit(&mut self, executor: Arc<dyn CircuitExecutor>) {
         self.circuits.push(executor);
-    }
-
-    /// Test sequential composition
-    pub fn test_sequential(
-        &self,
-        inputs: &[FieldElement],
-    ) -> Result<Vec<FieldElement>, CompositionError> {
-        if self.circuits.is_empty() {
-            return Err(CompositionError::NoCircuits);
-        }
-
-        let mut current = inputs.to_vec();
-
-        for (i, circuit) in self.circuits.iter().enumerate() {
-            let expected = circuit.num_private_inputs();
-            if current.len() != expected {
-                return Err(CompositionError::SizeMismatch {
-                    step: i,
-                    expected,
-                    got: current.len(),
-                });
-            }
-
-            let result = circuit.execute_sync(&current);
-
-            if !result.success {
-                let error = match result.error {
-                    Some(err) => err,
-                    None => format!(
-                        "Sequential composition step {} failed without backend error message",
-                        i
-                    ),
-                };
-                return Err(CompositionError::StepFailed { step: i, error });
-            }
-
-            current = result.outputs;
-        }
-
-        Ok(current)
     }
 
     /// Test parallel composition
@@ -134,10 +92,7 @@ impl CompositionTester {
             });
         }
 
-        if matches!(
-            self.composition_type,
-            CompositionType::Sequential | CompositionType::Recursive
-        ) {
+        if matches!(self.composition_type, CompositionType::Recursive) {
             // Check for type mismatches between circuits
             for i in 0..self.circuits.len().saturating_sub(1) {
                 let current = &self.circuits[i];
@@ -187,19 +142,8 @@ impl CompositionTester {
 #[derive(Debug, Clone)]
 pub enum CompositionError {
     NoCircuits,
-    StepFailed {
-        step: usize,
-        error: String,
-    },
-    InputMismatch {
-        expected: usize,
-        got: usize,
-    },
-    SizeMismatch {
-        step: usize,
-        expected: usize,
-        got: usize,
-    },
+    StepFailed { step: usize, error: String },
+    InputMismatch { expected: usize, got: usize },
 }
 
 /// Vulnerability found in composition
@@ -230,25 +174,13 @@ mod tests {
 
     #[test]
     fn test_composition_tester_creation() {
-        let tester = CompositionTester::new(CompositionType::Sequential);
+        let tester = CompositionTester::new(CompositionType::Parallel);
         assert!(tester.circuits.is_empty());
     }
 
     #[test]
-    fn test_sequential_composition() {
-        let mut tester = CompositionTester::new(CompositionType::Sequential);
-        tester.add_circuit(Arc::new(FixtureCircuitExecutor::new("c1", 2, 1)));
-        tester.add_circuit(Arc::new(FixtureCircuitExecutor::new("c2", 1, 1)));
-
-        let inputs = vec![FieldElement::one(), FieldElement::zero()];
-        let result = tester.test_sequential(&inputs);
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
     fn test_vulnerability_detection() {
-        let mut tester = CompositionTester::new(CompositionType::Sequential);
+        let mut tester = CompositionTester::new(CompositionType::Recursive);
         // Mismatched circuits (2 outputs, 5 inputs)
         tester.add_circuit(Arc::new(
             FixtureCircuitExecutor::new("c1", 2, 1).with_outputs(2),
@@ -257,27 +189,5 @@ mod tests {
 
         let vulnerabilities = tester.check_vulnerabilities();
         assert!(!vulnerabilities.is_empty());
-    }
-
-    #[test]
-    fn test_sequential_size_mismatch_returns_error() {
-        let mut tester = CompositionTester::new(CompositionType::Sequential);
-        tester.add_circuit(Arc::new(FixtureCircuitExecutor::new("c1", 2, 1)));
-        tester.add_circuit(Arc::new(FixtureCircuitExecutor::new("c2", 2, 1)));
-
-        let inputs = vec![FieldElement::one(), FieldElement::zero()];
-        let err = tester.test_sequential(&inputs).unwrap_err();
-        match err {
-            CompositionError::SizeMismatch {
-                step,
-                expected,
-                got,
-            } => {
-                assert_eq!(step, 1);
-                assert_eq!(expected, 2);
-                assert_eq!(got, 1);
-            }
-            _ => panic!("Expected size mismatch error"),
-        }
     }
 }

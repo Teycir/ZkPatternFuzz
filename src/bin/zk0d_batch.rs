@@ -45,10 +45,6 @@ struct Args {
     #[arg(long, default_value = "auto")]
     family: String,
 
-    /// Target topology: mono targets reject multi templates
-    #[arg(long, default_value = "mono")]
-    target_topology: String,
-
     /// Build release binary if missing
     #[arg(long, default_value_t = true)]
     build: bool,
@@ -60,6 +56,10 @@ struct Args {
     /// Dry run (print commands only)
     #[arg(long, default_value_t = false)]
     dry_run: bool,
+
+    /// Maximum number of templates to execute in parallel
+    #[arg(long, default_value_t = num_cpus::get())]
+    jobs: usize,
 
     /// Worker count per run
     #[arg(long, default_value_t = 8)]
@@ -93,12 +93,6 @@ impl Family {
             Family::Multi => "multi",
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Topology {
-    Mono,
-    Multi,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -170,42 +164,23 @@ fn parse_family(value: &str) -> anyhow::Result<Family> {
     }
 }
 
-fn parse_topology(value: &str) -> anyhow::Result<Topology> {
-    match value {
-        "mono" => Ok(Topology::Mono),
-        "multi" => Ok(Topology::Multi),
-        other => anyhow::bail!(
-            "Unsupported target_topology '{}'. Expected one of: mono, multi",
-            other
-        ),
-    }
-}
-
 fn template_family_from_name(name: &str) -> anyhow::Result<Family> {
-    if name.ends_with("_mono.yaml") {
-        return Ok(Family::Mono);
+    if name.ends_with(".yaml") || name.ends_with(".yml") {
+        return Ok(Family::Auto);
     }
-    if name.ends_with("_multi.yaml") {
-        return Ok(Family::Multi);
-    }
-
     anyhow::bail!(
-        "Invalid template filename '{}': expected suffix '_mono.yaml' or '_multi.yaml'",
+        "Invalid template filename '{}': expected .yaml or .yml extension",
         name
     )
 }
 
 fn validate_template_name(name: &str) -> anyhow::Result<()> {
-    let family = template_family_from_name(name)?;
-    let prefix = match family {
-        Family::Mono => name.trim_end_matches("_mono.yaml"),
-        Family::Multi => name.trim_end_matches("_multi.yaml"),
-        Family::Auto => unreachable!("template family comes from filename suffix"),
-    };
+    let _family = template_family_from_name(name)?;
+    let prefix = name.trim_end_matches(".yaml").trim_end_matches(".yml");
 
     if prefix.is_empty() {
         anyhow::bail!(
-            "Invalid template filename '{}': missing attack identifier before family suffix",
+            "Invalid template filename '{}': missing attack identifier before extension",
             name
         );
     }
@@ -222,7 +197,7 @@ fn validate_template_name(name: &str) -> anyhow::Result<()> {
 
     if !prefix.contains('_') {
         anyhow::bail!(
-            "Invalid template filename '{}': expected pattern '<attacktype>_<attack>_mono|multi.yaml'",
+            "Invalid template filename '{}': expected pattern '<attacktype>_<attack>.yaml'",
             name
         );
     }
@@ -325,6 +300,7 @@ fn validate_pattern_only_yaml(path: &Path) -> anyhow::Result<()> {
         "includes",
         "profiles",
         "active_profile",
+        "patterns",
         "target_traits",
         "invariants",
         "schedule",
@@ -631,6 +607,7 @@ fn run_scan(
     template: &TemplateInfo,
     family: Family,
     validate_only: bool,
+    output_suffix: &str,
 ) -> anyhow::Result<bool> {
     let family_str = family.as_str();
     let mut cmd = Command::new(run_cfg.bin_path);
@@ -654,13 +631,15 @@ fn run_scan(
         .arg(run_cfg.timeout.to_string())
         .arg("--simple-progress");
 
+    cmd.arg("--output-suffix").arg(output_suffix);
+
     if validate_only {
         cmd.arg("--dry-run");
     }
 
     if run_cfg.dry_run {
         println!(
-            "[DRY RUN] {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}",
+            "[DRY RUN] {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}",
             run_cfg.bin_path.display(),
             template.path.display(),
             family_str,
@@ -671,6 +650,7 @@ fn run_scan(
             run_cfg.seed,
             run_cfg.iterations,
             run_cfg.timeout,
+            format!(" --output-suffix {}", output_suffix),
             if validate_only { " --dry-run" } else { "" }
         );
         return Ok(true);
@@ -691,17 +671,8 @@ fn effective_family(template_family: Family, family_override: Family) -> Family 
 fn validate_template_compatibility(
     template: &TemplateInfo,
     family_override: Family,
-    target_topology: Topology,
 ) -> anyhow::Result<Family> {
     let effective = effective_family(template.family, family_override);
-
-    if target_topology == Topology::Mono && effective == Family::Multi {
-        anyhow::bail!(
-            "Template '{}' resolved to multi but target_topology is mono. Multi templates require multi-circuit targets.",
-            template.file_name
-        );
-    }
-
     Ok(effective)
 }
 
@@ -710,6 +681,7 @@ fn run_template(
     template: &TemplateInfo,
     family: Family,
     skip_validate: bool,
+    output_suffix: &str,
 ) -> anyhow::Result<bool> {
     if !template.path.exists() {
         eprintln!(
@@ -730,12 +702,12 @@ fn run_template(
         return Ok(false);
     }
 
-    if !skip_validate && !run_scan(run_cfg, template, family, true)? {
+    if !skip_validate && !run_scan(run_cfg, template, family, true, output_suffix)? {
         eprintln!("Template '{}' failed validation", template.file_name);
         return Ok(false);
     }
 
-    if !run_scan(run_cfg, template, family, false)? {
+    if !run_scan(run_cfg, template, family, false, output_suffix)? {
         eprintln!("Template '{}' failed", template.file_name);
         return Ok(false);
     }
@@ -743,11 +715,29 @@ fn run_template(
     Ok(true)
 }
 
+fn scan_output_suffix(template: &TemplateInfo, family: Family) -> String {
+    let stem = template
+        .file_name
+        .strip_suffix(".yaml")
+        .unwrap_or(template.file_name.as_str());
+    let mut normalized = String::with_capacity(stem.len() + 8);
+    for ch in stem.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            normalized.push(ch);
+        } else {
+            normalized.push('_');
+        }
+    }
+    if normalized.is_empty() {
+        normalized = "pattern".to_string();
+    }
+    format!("{}__{}", family.as_str(), normalized)
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let family_override = parse_family(&args.family)?;
-    let target_topology = parse_topology(&args.target_topology)?;
 
     let registry_path = PathBuf::from(&args.registry);
     let registry_dir = registry_path
@@ -795,8 +785,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut selected_with_family: Vec<(TemplateInfo, Family)> = Vec::with_capacity(selected.len());
     for template in selected {
-        let chosen_family =
-            validate_template_compatibility(&template, family_override, target_topology)?;
+        let chosen_family = validate_template_compatibility(&template, family_override)?;
         selected_with_family.push((template, chosen_family));
     }
 
@@ -810,8 +799,6 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    let mut failures = 0usize;
-    let mut executed = 0usize;
     let run_cfg = ScanRunConfig {
         bin_path: &bin_path,
         target_circuit: &target_circuit,
@@ -824,13 +811,43 @@ fn main() -> anyhow::Result<()> {
         dry_run: args.dry_run,
     };
 
-    for (template, family) in selected_with_family {
-        executed += 1;
-        let ok = run_template(run_cfg, &template, family, args.skip_validate)?;
-        if !ok {
-            failures += 1;
-        }
-    }
+    use rayon::prelude::*;
+
+    let jobs = args.jobs.max(1);
+    println!(
+        "Running {} templates in parallel (jobs={})",
+        selected_with_family.len(),
+        jobs
+    );
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(jobs)
+        .build()
+        .map_err(|err| anyhow::anyhow!("Failed to build rayon thread pool: {}", err))?;
+
+    let outcomes = pool.install(|| {
+        selected_with_family
+            .par_iter()
+            .map(|(template, family)| {
+                let suffix = scan_output_suffix(template, *family);
+                match run_template(
+                    run_cfg,
+                    template,
+                    *family,
+                    args.skip_validate,
+                    suffix.as_str(),
+                ) {
+                    Ok(ok) => ok,
+                    Err(err) => {
+                        eprintln!("Template '{}' failed: {}", template.file_name, err);
+                        false
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+    });
+
+    let executed = outcomes.len();
+    let failures = outcomes.iter().filter(|ok| !**ok).count();
 
     println!(
         "Batch complete. Templates executed: {}, failures: {}",

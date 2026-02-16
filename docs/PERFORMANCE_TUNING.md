@@ -287,8 +287,8 @@ Benchmark: corpus_contention_8_workers
 ### Pipeline Impact
 
 ```
-Benchmark: pipeline_vs_sequential
-  Sequential: 10,000 execs in 45s (222 exec/sec)
+Benchmark: pipeline_vs_single_loop
+  Single-loop baseline: 10,000 execs in 45s (222 exec/sec)
   Pipeline:   10,000 execs in 12s (833 exec/sec)
   Speedup: 3.75x
 ```

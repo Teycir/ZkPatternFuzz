@@ -233,7 +233,7 @@ impl MultiCircuitFuzzer {
     }
 }
 
-/// Circuit chain for testing sequential composition
+/// Circuit chain for testing chained composition
 pub struct CircuitChain {
     circuits: Vec<(String, Arc<dyn CircuitExecutor>)>,
 }
