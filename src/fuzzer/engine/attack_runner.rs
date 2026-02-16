@@ -451,20 +451,51 @@ impl FuzzingEngine {
                 "Soundness attack requires at least one public input; circuit exposes 0 public inputs"
             );
         } else {
-            for _ in 0..forge_attempts {
-                let valid_case = self.generate_test_case();
-                let valid_proof = match self.executor.prove(&valid_case.inputs) {
-                    Ok(proof) => proof,
-                    Err(err) => {
-                        anyhow::bail!(
-                            "Soundness attack failed to generate proof for generated witness: {}",
-                            err
-                        );
-                    }
+            let corpus_witnesses = self.collect_corpus_inputs(forge_attempts.max(1));
+            let corpus_seed_count = corpus_witnesses.len().min(forge_attempts);
+            if corpus_seed_count > 0 {
+                tracing::info!(
+                    "Soundness attack seeded {} witness(es) from corpus before random generation",
+                    corpus_seed_count
+                );
+            } else {
+                tracing::warn!(
+                    "Soundness attack has no corpus witnesses; relying on random witness generation"
+                );
+            }
+
+            let mut successful_proofs = 0usize;
+            let mut proof_generation_failures = 0usize;
+            let mut last_proof_error: Option<String> = None;
+
+            for attempt in 0..forge_attempts {
+                let valid_inputs = if attempt < corpus_witnesses.len() {
+                    corpus_witnesses[attempt].clone()
+                } else {
+                    self.generate_test_case().inputs
                 };
 
+                let valid_proof = match self.executor.prove(&valid_inputs) {
+                    Ok(proof) => proof,
+                    Err(err) => {
+                        proof_generation_failures += 1;
+                        last_proof_error = Some(err.to_string());
+                        tracing::debug!(
+                            "Soundness attempt {}/{} skipped: witness failed proof generation: {}",
+                            attempt + 1,
+                            forge_attempts,
+                            err
+                        );
+                        if let Some(p) = progress {
+                            p.inc();
+                        }
+                        continue;
+                    }
+                };
+                successful_proofs += 1;
+
                 let valid_public: Vec<FieldElement> =
-                    valid_case.inputs.iter().take(num_public).cloned().collect();
+                    valid_inputs.iter().take(num_public).cloned().collect();
 
                 // Mutate public inputs only
                 let mutated_public: Vec<FieldElement> = {
@@ -496,7 +527,7 @@ impl FuzzingEngine {
                 // Try to verify with mutated inputs
                 let verified = self.executor.verify(&valid_proof, &mutated_public)?;
                 let oracle_findings = self.core.check_proof_forgery(
-                    &valid_case.inputs,
+                    &valid_inputs,
                     &mutated_public,
                     &valid_proof,
                     verified,
@@ -511,7 +542,7 @@ impl FuzzingEngine {
                         description: "Proof verified with mutated inputs - soundness violation!"
                             .to_string(),
                         poc: super::ProofOfConcept {
-                            witness_a: valid_case.inputs,
+                            witness_a: valid_inputs,
                             witness_b: None,
                             public_inputs: mutated_public,
                             proof: Some(valid_proof),
@@ -532,6 +563,24 @@ impl FuzzingEngine {
                 if let Some(p) = progress {
                     p.inc();
                 }
+            }
+
+            if successful_proofs == 0 {
+                let detail = last_proof_error.unwrap_or_else(|| "unknown error".to_string());
+                anyhow::bail!(
+                    "Soundness attack could not generate any valid proof across {} attempts ({} failures). Last error: {}",
+                    forge_attempts,
+                    proof_generation_failures,
+                    detail
+                );
+            }
+
+            if proof_generation_failures > 0 {
+                tracing::warn!(
+                    "Soundness attack skipped {}/{} attempts due to proof generation failures",
+                    proof_generation_failures,
+                    forge_attempts
+                );
             }
         }
 

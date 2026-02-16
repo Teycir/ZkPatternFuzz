@@ -1350,6 +1350,45 @@ impl CircomTarget {
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 vkey path: {}", vkey_path.display()))?;
 
+        let zkey_ready = file_has_nonzero_size(&zkey_path)?;
+        let vkey_ready = file_has_nonzero_size(&vkey_path)?;
+        if zkey_ready && vkey_ready {
+            tracing::info!(
+                "Reusing existing proving/verification keys in '{}'",
+                self.build_dir.display()
+            );
+            self.proving_key_path = Some(zkey_path);
+            self.verification_key_path = Some(vkey_path);
+            return Ok(());
+        }
+
+        if zkey_path.exists() && !zkey_ready {
+            tracing::warn!(
+                "Removing stale or empty proving key before regeneration: {}",
+                zkey_path.display()
+            );
+            if let Err(err) = std::fs::remove_file(&zkey_path) {
+                tracing::warn!(
+                    "Failed to remove stale proving key '{}': {}",
+                    zkey_path.display(),
+                    err
+                );
+            }
+        }
+        if vkey_path.exists() && !vkey_ready {
+            tracing::warn!(
+                "Removing stale or empty verification key before regeneration: {}",
+                vkey_path.display()
+            );
+            if let Err(err) = std::fs::remove_file(&vkey_path) {
+                tracing::warn!(
+                    "Failed to remove stale verification key '{}': {}",
+                    vkey_path.display(),
+                    err
+                );
+            }
+        }
+
         // Generate zkey (proving key)
         tracing::info!("Generating proving key...");
         let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
@@ -2212,6 +2251,15 @@ fn field_element_to_decimal(fe: &FieldElement) -> String {
     value.to_string()
 }
 
+fn file_has_nonzero_size(path: &Path) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let metadata = std::fs::metadata(path)
+        .with_context(|| format!("Failed to read metadata for '{}'", path.display()))?;
+    Ok(metadata.is_file() && metadata.len() > 0)
+}
+
 /// Circom-specific analysis utilities
 pub mod analysis {
     use super::*;
@@ -2472,5 +2520,19 @@ mod tests {
 
         let constraints = target.load_constraints().unwrap();
         assert!(!constraints.is_empty());
+    }
+
+    #[test]
+    fn test_file_has_nonzero_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("empty.bin");
+        let full = dir.path().join("full.bin");
+
+        std::fs::write(&empty, []).unwrap();
+        std::fs::write(&full, [1u8, 2u8]).unwrap();
+
+        assert!(!file_has_nonzero_size(&dir.path().join("missing.bin")).unwrap());
+        assert!(!file_has_nonzero_size(&empty).unwrap());
+        assert!(file_has_nonzero_size(&full).unwrap());
     }
 }
