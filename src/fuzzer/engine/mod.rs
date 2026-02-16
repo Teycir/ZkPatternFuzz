@@ -902,8 +902,17 @@ impl FuzzingEngine {
                         attack_executed = true;
                     }
                     AttackType::SpecInference => {
-                        self.run_spec_inference_attack(&attack_config.config, progress)
-                            .await?;
+                        self.run_spec_inference_attack(
+                            &attack_config.config,
+                            progress,
+                            Some((
+                                phases_total,
+                                phases_completed,
+                                attack_idx as u64,
+                                attacks_total,
+                            )),
+                        )
+                        .await?;
                         attack_executed = true;
                     }
                     AttackType::WitnessCollision => {

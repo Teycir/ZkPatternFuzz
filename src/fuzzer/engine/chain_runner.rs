@@ -33,6 +33,17 @@ impl FuzzingEngine {
             Some(value) => value,
             None => 1000,
         } as usize;
+        let chain_resume = match Self::additional_bool(additional, "chain_resume") {
+            Some(value) => value,
+            None => false,
+        };
+        let chain_step_timeout = Self::additional_u64(additional, "chain_step_timeout_ms")
+            .map(Duration::from_millis)
+            .or_else(|| {
+                Self::additional_u64(additional, "chain_step_timeout_seconds")
+                    .map(Duration::from_secs)
+            })
+            .unwrap_or(Duration::from_secs(30));
 
         // Build executor map from circuit configurations
         let mut executors = std::collections::HashMap::new();
@@ -119,7 +130,7 @@ impl FuzzingEngine {
         }
 
         let runner = match ChainRunner::new(executors) {
-            Ok(runner) => runner.with_timeout(Duration::from_secs(30)),
+            Ok(runner) => runner.with_timeout(chain_step_timeout),
             Err(err) => {
                 tracing::error!("Failed to initialize chain runner: {}", err);
                 return Vec::new();
@@ -159,7 +170,7 @@ impl FuzzingEngine {
         // Initialize corpus for persistence
         let output_dir = self.config.reporting.output_dir.clone();
         let corpus_path = std::path::PathBuf::from(&output_dir).join("chain_corpus.json");
-        let mut corpus = if corpus_path.exists() {
+        let mut corpus = if chain_resume && corpus_path.exists() {
             match ChainCorpus::load(&corpus_path) {
                 Ok(corpus) => corpus,
                 Err(err) => {
@@ -172,6 +183,12 @@ impl FuzzingEngine {
                 }
             }
         } else {
+            if !chain_resume && corpus_path.exists() {
+                tracing::info!(
+                    "Mode 3 resume disabled: starting a fresh chain corpus at '{}'",
+                    corpus_path.display()
+                );
+            }
             ChainCorpus::with_storage(&corpus_path)
         };
 
@@ -413,13 +430,30 @@ impl FuzzingEngine {
             None => Vec::new(),
         };
         let mut seed_index: usize = 0;
+        let global_budget = Duration::from_secs(chain_budget_secs);
+        let global_start = Instant::now();
+        let mut abort_remaining_chains = false;
 
         // Run chains according to schedule
         let allocations = scheduler.allocate();
 
         for allocation in &allocations {
+            if abort_remaining_chains {
+                tracing::warn!("Stopping chain campaign early after timeout-safe abort condition");
+                break;
+            }
+            if global_start.elapsed() >= global_budget {
+                tracing::info!("Global chain budget exhausted before scheduling next chain");
+                break;
+            }
+
             let chain = &allocation.spec;
-            let chain_budget = allocation.budget;
+            let remaining_global = global_budget.saturating_sub(global_start.elapsed());
+            let chain_budget = allocation.budget.min(remaining_global);
+            if chain_budget.is_zero() {
+                tracing::info!("No remaining global chain budget for '{}'", chain.name);
+                break;
+            }
             let chain_start = Instant::now();
 
             if let Some(p) = progress {
@@ -462,7 +496,10 @@ impl FuzzingEngine {
             let mut iterations = 0;
             let mut current_spec: Option<crate::chain_fuzzer::ChainSpec> = None;
 
-            while chain_start.elapsed() < chain_budget && iterations < chain_iterations {
+            while chain_start.elapsed() < chain_budget
+                && iterations < chain_iterations
+                && global_start.elapsed() < global_budget
+            {
                 let spec_to_use = match current_spec.as_ref() {
                     Some(spec) => spec,
                     None => chain,
@@ -572,6 +609,14 @@ impl FuzzingEngine {
                             if let Some(step) = result.trace.steps.get(failed_at) {
                                 if let Some(err) = &step.error {
                                     sample_errors.insert(err.clone());
+                                    if err.contains("Step timed out") {
+                                        tracing::error!(
+                                            "Chain '{}' hit a step timeout; aborting remaining chains \
+                                             to avoid detached timeout-worker buildup",
+                                            chain.name
+                                        );
+                                        abort_remaining_chains = true;
+                                    }
                                 }
                             }
                         }
@@ -627,6 +672,9 @@ impl FuzzingEngine {
                     chain.name,
                     sample_errors
                 );
+            }
+            if abort_remaining_chains {
+                break;
             }
         }
 
@@ -694,15 +742,21 @@ impl FuzzingEngine {
             constraints.sort_unstable();
 
             if constraints.is_empty() {
-                panic!(
-                    "Missing constraint coverage for chain step {} ('{}'). \
-                     Constraint-based coverage is required.",
-                    step.step_index, step.circuit_ref
+                tracing::warn!(
+                    "Missing constraint coverage for chain step {} ('{}'); \
+                     using fallback output-based hashing for this step",
+                    step.step_index,
+                    step.circuit_ref
                 );
-            }
-
-            for constraint_id in constraints {
-                constraint_id.hash(&mut hasher);
+                "__no_constraint_coverage__".hash(&mut hasher);
+                step.step_index.hash(&mut hasher);
+                for output in &step.outputs {
+                    output.hash(&mut hasher);
+                }
+            } else {
+                for constraint_id in constraints {
+                    constraint_id.hash(&mut hasher);
+                }
             }
 
             // Also factor in step success and circuit ref

@@ -25,7 +25,7 @@
 //! ```
 
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 
@@ -196,6 +196,12 @@ impl SpecInferenceOracle {
     /// Set confidence threshold
     pub fn with_confidence_threshold(mut self, threshold: f64) -> Self {
         self.confidence_threshold = threshold;
+        self
+    }
+
+    /// Set violation attempts per spec (clamped to at least 1)
+    pub fn with_violation_attempts(mut self, attempts: usize) -> Self {
+        self.violation_attempts = attempts.max(1);
         self
     }
 
@@ -495,15 +501,40 @@ impl SpecInferenceOracle {
         rng: &mut impl Rng,
     ) -> Vec<Vec<FieldElement>> {
         let mut violations = Vec::new();
+        let mut seen = HashSet::new();
+        let mut duplicate_streak = 0usize;
+        let attempt_budget = self
+            .violation_attempts
+            .min(self.max_useful_attempts(spec))
+            .max(1);
 
-        for _ in 0..self.violation_attempts {
+        for _ in 0..attempt_budget {
             let violation = self.generate_single_violation(spec, base_witness, rng);
             if let Some(v) = violation {
-                violations.push(v);
+                if seen.insert(v.clone()) {
+                    violations.push(v);
+                    duplicate_streak = 0;
+                } else {
+                    duplicate_streak = duplicate_streak.saturating_add(1);
+                    if duplicate_streak >= 4 {
+                        break;
+                    }
+                }
             }
         }
 
         violations
+    }
+
+    fn max_useful_attempts(&self, spec: &InferredSpec) -> usize {
+        match spec {
+            InferredSpec::RangeCheck { .. } | InferredSpec::BitwiseConstraint { .. } => 16,
+            InferredSpec::LinearRelation { .. } => 8,
+            InferredSpec::NonZero { .. }
+            | InferredSpec::ConstantValue { .. }
+            | InferredSpec::Equality { .. }
+            | InferredSpec::Inequality { .. } => 2,
+        }
     }
 
     /// Generate a single violation attempt
@@ -717,6 +748,20 @@ impl SpecInferenceOracle {
         executor: &dyn CircuitExecutor,
         initial_witnesses: &[Vec<FieldElement>],
     ) -> Vec<Finding> {
+        self.run_with_progress(executor, initial_witnesses, |_spec_idx, _specs_total| {})
+            .await
+    }
+
+    /// Run the full spec inference attack with periodic progress callbacks.
+    pub async fn run_with_progress<F>(
+        &self,
+        executor: &dyn CircuitExecutor,
+        initial_witnesses: &[Vec<FieldElement>],
+        mut on_progress: F,
+    ) -> Vec<Finding>
+    where
+        F: FnMut(usize, usize),
+    {
         let mut findings = Vec::new();
         let mut rng = rand::thread_rng();
 
@@ -745,17 +790,28 @@ impl SpecInferenceOracle {
 
         // Test each spec
         for (spec_idx, spec) in specs.iter().enumerate() {
-            if spec_idx == 0 || (spec_idx % 100 == 0) {
+            on_progress(spec_idx, specs.len());
+
+            if spec_idx == 0 || (spec_idx % 25 == 0) || spec_idx + 1 == specs.len() {
+                let elapsed = start.elapsed();
+                let tested = spec_idx.max(1) as f64;
+                let rate = elapsed.as_secs_f64() / tested;
+                let remaining_specs = specs.len().saturating_sub(spec_idx);
+                let eta = std::time::Duration::from_secs_f64(rate * (remaining_specs as f64));
                 tracing::info!(
-                    "Spec inference progress: {}/{} specs tested (elapsed {:?})",
+                    "Spec inference progress: {}/{} specs tested (elapsed {:?}, eta {:?})",
                     spec_idx,
                     specs.len(),
-                    start.elapsed()
+                    elapsed,
+                    eta
                 );
             }
 
             let base_witness = &samples[0].inputs;
             let violations = self.generate_violations(spec, base_witness, &mut rng);
+            if violations.is_empty() {
+                continue;
+            }
 
             for violation in violations {
                 // If circuit accepts the violation, we found a bug
@@ -820,6 +876,21 @@ mod tests {
 
         assert_eq!(oracle.sample_count, 1000);
         assert!((oracle.confidence_threshold - 0.85).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_nonzero_violations_are_deduplicated() {
+        let oracle = SpecInferenceOracle::new().with_violation_attempts(100);
+        let spec = InferredSpec::NonZero {
+            wire_index: 0,
+            confidence: 0.99,
+        };
+        let base = vec![FieldElement::from_u64(7)];
+        let mut rng = rand::rngs::StdRng::seed_from_u64(123);
+        let violations = oracle.generate_violations(&spec, &base, &mut rng);
+
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0][0], FieldElement::zero());
     }
 
     #[test]

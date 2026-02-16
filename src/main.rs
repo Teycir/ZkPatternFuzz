@@ -2463,6 +2463,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         "chain_iterations".to_string(),
         serde_yaml::Value::Number(serde_yaml::Number::from(options.iterations)),
     );
+    config.campaign.parameters.additional.insert(
+        "chain_resume".to_string(),
+        serde_yaml::Value::Bool(options.resume),
+    );
 
     // Pre-flight readiness check (chains need assertions; strict mode blocks silent runs).
     stage = "preflight_readiness";

@@ -61,7 +61,24 @@ impl ChainRunner {
                     Self::elapsed_ms(exec_start),
                 )),
             },
-            Err(RecvTimeoutError::Timeout) => Err(Self::elapsed_ms(exec_start)),
+            Err(RecvTimeoutError::Timeout) => {
+                // We cannot forcibly cancel execute_sync. If the worker has already
+                // finished, join to release resources; otherwise it will detach.
+                if handle.is_finished() {
+                    if let Err(panic_payload) = handle.join() {
+                        tracing::warn!(
+                            "Timed-out worker panicked during join: {}",
+                            Self::panic_message(panic_payload)
+                        );
+                    }
+                } else {
+                    tracing::error!(
+                        "Step execution timed out while worker thread is still running; \
+                         worker is detached and may continue in background"
+                    );
+                }
+                Err(Self::elapsed_ms(exec_start))
+            }
             Err(RecvTimeoutError::Disconnected) => {
                 let failure = match handle.join() {
                     Ok(()) => {

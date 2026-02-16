@@ -102,10 +102,17 @@ impl ChainScheduler {
                 .collect();
         }
 
-        // Calculate minimum guaranteed budget
-        let min_total = self.min_budget_per_chain.as_millis() as u64 * self.chains.len() as u64;
-        let remaining =
-            self.budget.as_millis() as u64 - min_total.min(self.budget.as_millis() as u64);
+        // Calculate minimum guaranteed budget while respecting total wall-clock budget.
+        let budget_ms = self.budget.as_millis() as u64;
+        let chain_count = self.chains.len() as u64;
+        let guaranteed_per_chain = if chain_count == 0 {
+            0
+        } else {
+            let equal_share = budget_ms / chain_count;
+            equal_share.min(self.min_budget_per_chain.as_millis() as u64)
+        };
+        let min_total = guaranteed_per_chain.saturating_mul(chain_count);
+        let remaining = budget_ms.saturating_sub(min_total);
 
         self.chains
             .iter()
@@ -119,8 +126,7 @@ impl ChainScheduler {
                     .expect("default priority injected");
                 let priority_share = priority / total_priority;
                 let allocated_remaining = (remaining as f64 * priority_share) as u64;
-                let total_budget =
-                    self.min_budget_per_chain.as_millis() as u64 + allocated_remaining;
+                let total_budget = guaranteed_per_chain + allocated_remaining;
 
                 ChainAllocation {
                     spec: chain.clone(),
@@ -298,6 +304,17 @@ mod tests {
             assert!(alloc.budget >= Duration::from_secs(90));
             assert!(alloc.budget <= Duration::from_secs(110));
         }
+    }
+
+    #[test]
+    fn test_allocation_never_exceeds_total_budget() {
+        let chains = create_test_chains();
+        let scheduler = ChainScheduler::new(chains, Duration::from_secs(5))
+            .with_min_budget(Duration::from_secs(10));
+        let allocations = scheduler.allocate();
+
+        let allocated_ms: u128 = allocations.iter().map(|a| a.budget.as_millis()).sum();
+        assert!(allocated_ms <= Duration::from_secs(5).as_millis());
     }
 
     #[test]

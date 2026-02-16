@@ -174,14 +174,15 @@ impl ChainCorpus {
 
     /// Add an entry to the corpus
     pub fn add(&mut self, entry: ChainCorpusEntry) {
-        // Check for duplicates based on inputs hash
+        // Check for duplicates based on (spec_name, inputs hash).
+        // The same inputs can appear in different chains and must remain distinct.
         let inputs_hash = Self::hash_inputs(&entry.inputs);
 
         // Update if exists with same inputs, otherwise add
         if let Some(existing) = self
             .entries
             .iter_mut()
-            .find(|e| Self::hash_inputs(&e.inputs) == inputs_hash)
+            .find(|e| e.spec_name == entry.spec_name && Self::hash_inputs(&e.inputs) == inputs_hash)
         {
             existing.execution_count += 1;
             // Update coverage if better
@@ -509,6 +510,24 @@ mod tests {
 
         let loaded = ChainCorpus::load(&path).unwrap();
         assert_eq!(loaded.len(), 2);
+    }
+
+    #[test]
+    fn test_dedup_is_scoped_per_chain() {
+        let mut corpus = ChainCorpus::new();
+
+        let mut shared_inputs = HashMap::new();
+        shared_inputs.insert("circuit_a".to_string(), vec![FieldElement::from_u64(42)]);
+
+        corpus.add(ChainCorpusEntry::new(
+            "chain_a",
+            shared_inputs.clone(),
+            1,
+            1,
+        ));
+        corpus.add(ChainCorpusEntry::new("chain_b", shared_inputs, 2, 1));
+
+        assert_eq!(corpus.len(), 2);
     }
 
     #[test]

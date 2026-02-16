@@ -2296,6 +2296,7 @@ impl FuzzingEngine {
         &mut self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
+        phase_context: Option<(u64, u64, u64, u64)>,
     ) -> anyhow::Result<()> {
         use crate::attacks::spec_inference::SpecInferenceOracle;
 
@@ -2329,7 +2330,60 @@ impl FuzzingEngine {
             initial_witnesses.push(self.generate_test_case().inputs);
         }
 
-        let findings = oracle.run(self.executor.as_ref(), &initial_witnesses).await;
+        let evidence_mode = match Self::additional_bool(
+            &self.config.campaign.parameters.additional,
+            "evidence_mode",
+        ) {
+            Some(value) => value,
+            None => false,
+        };
+        let mode_label = if evidence_mode { "evidence" } else { "run" };
+
+        let findings = if let Some((phases_total, phases_completed, attack_idx, attacks_total)) =
+            phase_context
+        {
+            let mut last_snapshot = std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(60))
+                .unwrap_or_else(std::time::Instant::now);
+            oracle
+                .run_with_progress(
+                    self.executor.as_ref(),
+                    &initial_witnesses,
+                    |spec_idx, specs_total| {
+                        let now = std::time::Instant::now();
+                        let is_last = spec_idx.saturating_add(1) >= specs_total;
+                        let should_emit = spec_idx == 0
+                            || is_last
+                            || now.duration_since(last_snapshot)
+                                >= std::time::Duration::from_secs(15);
+                        if !should_emit {
+                            return;
+                        }
+                        last_snapshot = now;
+
+                        let denom = specs_total.max(1) as f64;
+                        let phase_progress =
+                            ((spec_idx.saturating_add(1) as f64) / denom).clamp(0.0, 1.0);
+                        self.write_progress_snapshot(
+                            mode_label,
+                            "attack_progress",
+                            phases_total,
+                            phases_completed,
+                            Some(phase_progress),
+                            serde_json::json!({
+                                "attack_idx": attack_idx,
+                                "attacks_total": attacks_total,
+                                "attack_type": "SpecInference",
+                                "specs_total": specs_total,
+                                "specs_tested": spec_idx.saturating_add(1),
+                            }),
+                        );
+                    },
+                )
+                .await
+        } else {
+            oracle.run(self.executor.as_ref(), &initial_witnesses).await
+        };
 
         if !findings.is_empty() {
             self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
