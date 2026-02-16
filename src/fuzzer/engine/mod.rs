@@ -251,7 +251,7 @@ impl FuzzingEngine {
         let additional = &config.campaign.parameters.additional;
 
         // Create executor based on framework (with optional build dir overrides)
-        let executor_factory_options = Self::parse_executor_factory_options(&config);
+        let executor_factory_options = Self::parse_executor_factory_options(&config)?;
         let circuit_path_str = config
             .campaign
             .target

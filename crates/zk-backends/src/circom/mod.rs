@@ -1735,7 +1735,11 @@ impl CircomTarget {
         if !constraints_path.exists() {
             let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
             if !r1cs_path.exists() {
-                return Ok(Vec::new());
+                anyhow::bail!(
+                    "Circom constraints unavailable: missing R1CS artifact '{}' (expected constraints JSON '{}')",
+                    r1cs_path.display(),
+                    constraints_path.display()
+                );
             }
 
             if let Some(parent) = constraints_path.parent() {

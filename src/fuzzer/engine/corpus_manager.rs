@@ -32,7 +32,7 @@ impl FuzzingEngine {
 
         // Generate seeds from extracted constraints (R1CS/ACIR/PLONK) when available
         if let Some(inspector) = self.executor.constraint_inspector() {
-            if let Some(config) = self.constraint_guided_config() {
+            if let Some(config) = self.constraint_guided_config()? {
                 let expected_len = self.config.inputs.len().max(1);
                 let input_wire_indices = collect_input_wire_indices(inspector, expected_len);
                 let mut generator = ConstraintSeedGenerator::new(config);

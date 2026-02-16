@@ -23,6 +23,7 @@ use crate::analysis::{
     UnknownLookupPolicy, WireRef,
 };
 use crate::targets::TargetCircuit;
+use anyhow::Context as _;
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -709,7 +710,6 @@ impl ExecutorFactory {
 pub struct CircomExecutor {
     target: crate::targets::CircomTarget,
     constraints: OnceLock<Vec<ConstraintEquation>>,
-    skip_constraint_check: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -800,6 +800,12 @@ impl CircomExecutor {
             witness_sanity_check,
         } = options;
 
+        if skip_constraint_check {
+            anyhow::bail!(
+                "circom_skip_constraint_check=true is disallowed because it disables real constraint coverage"
+            );
+        }
+
         if include_paths.is_empty() {
             include_paths = Self::default_include_paths();
         }
@@ -820,10 +826,30 @@ impl CircomExecutor {
             target = target.with_snarkjs_path(path);
         }
         target.compile()?;
+
+        let constraints = target.load_constraints().with_context(|| {
+            format!(
+                "Failed to load Circom constraints for '{}' (component '{}')",
+                circuit_path, main_component
+            )
+        })?;
+        if constraints.is_empty() {
+            anyhow::bail!(
+                "No Circom constraints available for '{}' (component '{}'). \
+                 Ensure .r1cs and exported constraints are present; real coverage is required.",
+                circuit_path,
+                main_component
+            );
+        }
+
+        let constraints_cache = OnceLock::new();
+        constraints_cache
+            .set(constraints)
+            .map_err(|_| anyhow::anyhow!("Internal error: failed to initialize Circom constraints cache"))?;
+
         Ok(Self {
             target,
-            constraints: OnceLock::new(),
-            skip_constraint_check,
+            constraints: constraints_cache,
         })
     }
 
@@ -859,12 +885,13 @@ impl CircuitExecutor for CircomExecutor {
         match self.target.calculate_witness(inputs) {
             Ok(witness) => {
                 let outputs = self.target.outputs_from_witness(&witness);
-                let coverage = if self.skip_constraint_check {
-                    ExecutionCoverage::with_output_hash(&outputs)
-                } else {
-                    match coverage_from_results(self.check_constraints(&witness)) {
-                        Some(coverage) => coverage,
-                        None => ExecutionCoverage::with_output_hash(&outputs),
+                let coverage = match coverage_from_results(self.check_constraints(&witness)) {
+                    Some(coverage) => coverage,
+                    None => {
+                        return ExecutionResult::failure(
+                            "Constraint coverage unavailable: Circom execution requires real constraint checks".to_string(),
+                        )
+                        .with_time(start.elapsed().as_micros() as u64);
                     }
                 };
                 ExecutionResult::success(outputs, coverage)
@@ -900,13 +927,8 @@ impl CircuitExecutor for CircomExecutor {
 impl ConstraintInspector for CircomExecutor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
         self.constraints
-            .get_or_init(|| match self.target.load_constraints() {
-                Ok(constraints) => constraints,
-                Err(err) => {
-                    tracing::error!("Failed to load Circom constraints: {}", err);
-                    Vec::new()
-                }
-            })
+            .get()
+            .expect("Circom constraints cache not initialized; executor construction must preload constraints")
             .clone()
     }
 

@@ -587,7 +587,13 @@ impl FuzzingEngine {
                         }
                     }
 
-                    let coverage_bits = Self::compute_chain_coverage_bits(&result.trace);
+                    let coverage_bits = Self::compute_chain_coverage_bits(&result.trace)
+                        .with_context(|| {
+                            format!(
+                                "CHAIN COVERAGE ERROR: unable to compute coverage for chain '{}'",
+                                chain.name
+                            )
+                        })?;
                     corpus.add(crate::chain_fuzzer::ChainCorpusEntry::new(
                         &chain.name,
                         current_inputs.clone(),
@@ -727,7 +733,9 @@ impl FuzzingEngine {
 
     /// Compute coverage bits from a chain trace
     /// Combines coverage from all steps into a single u64 hash
-    pub(super) fn compute_chain_coverage_bits(trace: &crate::chain_fuzzer::ChainTrace) -> u64 {
+    pub(super) fn compute_chain_coverage_bits(
+        trace: &crate::chain_fuzzer::ChainTrace,
+    ) -> anyhow::Result<u64> {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
@@ -739,17 +747,17 @@ impl FuzzingEngine {
             constraints.sort_unstable();
 
             if constraints.is_empty() {
-                tracing::warn!(
-                    "Missing constraint coverage for chain step {} ('{}'); \
-                     using fallback output-based hashing for this step",
+                tracing::error!(
+                    "Missing constraint coverage for chain step {} ('{}'); refusing fallback hashing",
                     step.step_index,
                     step.circuit_ref
                 );
-                "__no_constraint_coverage__".hash(&mut hasher);
-                step.step_index.hash(&mut hasher);
-                for output in &step.outputs {
-                    output.hash(&mut hasher);
-                }
+                anyhow::bail!(
+                    "Missing constraint coverage for chain step {} ('{}'). \
+                     Chain coverage requires real constraint hits and cannot fall back to output hashing.",
+                    step.step_index,
+                    step.circuit_ref
+                );
             } else {
                 for constraint_id in constraints {
                     constraint_id.hash(&mut hasher);
@@ -761,6 +769,6 @@ impl FuzzingEngine {
             step.circuit_ref.hash(&mut hasher);
         }
 
-        hasher.finish()
+        Ok(hasher.finish())
     }
 }

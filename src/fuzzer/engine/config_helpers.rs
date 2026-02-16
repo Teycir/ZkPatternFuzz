@@ -184,7 +184,9 @@ impl FuzzingEngine {
         PowerSchedule::Mmopt
     }
 
-    pub(super) fn parse_executor_factory_options(config: &FuzzConfig) -> ExecutorFactoryOptions {
+    pub(super) fn parse_executor_factory_options(
+        config: &FuzzConfig,
+    ) -> anyhow::Result<ExecutorFactoryOptions> {
         let additional = &config.campaign.parameters.additional;
         let mut options = ExecutorFactoryOptions::default();
 
@@ -221,7 +223,16 @@ impl FuzzingEngine {
         }
         if let Some(skip_check) = Self::additional_bool(additional, "circom_skip_constraint_check")
         {
-            options.circom_skip_constraint_check = skip_check;
+            if skip_check {
+                tracing::error!(
+                    "Invalid config: circom_skip_constraint_check=true is not allowed because it removes constraint-level coverage"
+                );
+                anyhow::bail!(
+                    "Invalid config: circom_skip_constraint_check=true is disallowed. \
+                     Mode 2/3 require real constraint coverage. Set circom_skip_constraint_check: false."
+                );
+            }
+            options.circom_skip_constraint_check = false;
         }
         if let Some(sanity_check) = Self::additional_bool(additional, "circom_witness_sanity_check")
         {
@@ -256,7 +267,7 @@ impl FuzzingEngine {
             }
         }
 
-        options
+        Ok(options)
     }
 
     pub(super) fn oracle_validation_config(&self) -> OracleValidationConfig {
@@ -368,12 +379,14 @@ impl FuzzingEngine {
         }
     }
 
-    pub(super) fn constraint_guided_config(&self) -> Option<EnhancedSymbolicConfig> {
+    pub(super) fn constraint_guided_config(
+        &self,
+    ) -> anyhow::Result<Option<EnhancedSymbolicConfig>> {
         let additional = &self.config.campaign.parameters.additional;
 
         if let Some(enabled) = Self::additional_bool(additional, "constraint_guided_enabled") {
             if !enabled {
-                return None;
+                return Ok(None);
             }
         }
 
@@ -422,35 +435,41 @@ impl FuzzingEngine {
             Self::additional_string(additional, "constraint_guided_pruning_strategy")
                 .or_else(|| Self::additional_string(additional, "constraint_guided_pruning"))
         {
-            config.pruning_strategy = Self::parse_pruning_strategy(&strategy);
+            config.pruning_strategy = Self::parse_pruning_strategy(&strategy)?;
         }
 
-        Some(config)
+        Ok(Some(config))
     }
 
-    pub(super) fn parse_pruning_strategy(value: &str) -> PruningStrategy {
+    pub(super) fn parse_pruning_strategy(value: &str) -> anyhow::Result<PruningStrategy> {
         let normalized = value.trim().to_lowercase();
         match normalized.as_str() {
-            "none" | "off" => PruningStrategy::None,
-            "depth" | "depth_bounded" | "depthbounded" => PruningStrategy::DepthBounded,
+            "none" | "off" => Ok(PruningStrategy::None),
+            "depth" | "depth_bounded" | "depthbounded" => Ok(PruningStrategy::DepthBounded),
             "constraint" | "constraint_bounded" | "constraintbounded" => {
-                PruningStrategy::ConstraintBounded
+                Ok(PruningStrategy::ConstraintBounded)
             }
-            "coverage" | "coverage_guided" | "coverageguided" => PruningStrategy::CoverageGuided,
-            "random" | "random_sampling" | "randomsampling" => PruningStrategy::RandomSampling,
-            "loop" | "loop_bounded" | "loopbounded" => PruningStrategy::LoopBounded,
+            "coverage" | "coverage_guided" | "coverageguided" => {
+                Ok(PruningStrategy::CoverageGuided)
+            }
+            "random" | "random_sampling" | "randomsampling" => Ok(PruningStrategy::RandomSampling),
+            "loop" | "loop_bounded" | "loopbounded" => Ok(PruningStrategy::LoopBounded),
             "similarity" | "similarity_based" | "similaritybased" => {
-                PruningStrategy::SimilarityBased
+                Ok(PruningStrategy::SimilarityBased)
             }
             "subsumption" | "subsumption_based" | "subsumptionbased" => {
-                PruningStrategy::SubsumptionBased
+                Ok(PruningStrategy::SubsumptionBased)
             }
             _ => {
-                tracing::warn!(
-                    "Unknown pruning strategy '{}', defaulting to DepthBounded",
+                tracing::error!(
+                    "Invalid pruning strategy '{}'; refusing to apply fallback",
                     value
                 );
-                PruningStrategy::DepthBounded
+                anyhow::bail!(
+                    "Invalid constraint-guided pruning strategy '{}'. \
+                     Allowed values: none/off, depth, constraint, coverage, random, loop, similarity, subsumption.",
+                    value
+                );
             }
         }
     }
