@@ -218,6 +218,27 @@ fn default_formats() -> Vec<String> {
     vec!["json".to_string(), "markdown".to_string()]
 }
 
+fn env_output_dir_override() -> Option<PathBuf> {
+    let path = std::env::var("ZKF_OUTPUT_DIR").ok()?;
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let has_parent = Path::new(trimmed)
+        .components()
+        .any(|component| matches!(component, Component::ParentDir));
+    if has_parent {
+        tracing::warn!(
+            "Ignoring ZKF_OUTPUT_DIR='{}': parent-directory components ('..') are not allowed",
+            trimmed
+        );
+        return None;
+    }
+
+    Some(PathBuf::from(trimmed))
+}
+
 impl Default for ReportingConfig {
     fn default() -> Self {
         Self {
@@ -234,8 +255,11 @@ impl FuzzConfig {
     pub fn from_yaml(path: &str) -> anyhow::Result<Self> {
         let mut config = Self::from_yaml_v2(path)
             .with_context(|| format!("Failed to load config (v2) from {}", path))?;
-        // Enforce a single output destination for all campaigns.
-        config.reporting.output_dir = default_output_dir();
+        // Respect campaign YAML `reporting.output_dir` by default.
+        // If explicitly provided, an environment override still wins.
+        if let Some(override_dir) = env_output_dir_override() {
+            config.reporting.output_dir = override_dir;
+        }
         // Backward-compat: hoist legacy `campaign.parameters.additional: { ... }` into the
         // flattened `parameters` key/value map so older templates don't silently no-op.
         if config
@@ -273,6 +297,23 @@ impl FuzzConfig {
         // Validate inputs (chain-only campaigns may omit inputs)
         if self.inputs.is_empty() && !has_chains {
             anyhow::bail!("At least one input must be specified");
+        }
+
+        // Chain assertions must be parseable. Unsupported relations are rejected at config-load
+        // time so Mode 3 doesn't silently skip them at runtime.
+        for chain in &self.chains {
+            for assertion in &chain.assertions {
+                if !crate::chain_fuzzer::CrossStepInvariantChecker::relation_supported(
+                    &assertion.relation,
+                ) {
+                    anyhow::bail!(
+                        "Unsupported chain assertion relation in chain '{}', assertion '{}': {}",
+                        chain.name,
+                        assertion.name,
+                        assertion.relation
+                    );
+                }
+            }
         }
 
         Ok(())

@@ -15,8 +15,6 @@ use zk_core::FieldElement;
 pub struct ChainShrinker {
     /// Chain runner for re-execution
     runner: ChainRunner,
-    /// Invariant checker for verification
-    checker: CrossStepInvariantChecker,
     /// Maximum shrinking attempts
     max_attempts: usize,
     /// Seed for deterministic shrinking
@@ -48,10 +46,9 @@ pub struct ShrinkResult {
 
 impl ChainShrinker {
     /// Create a new chain shrinker
-    pub fn new(runner: ChainRunner, checker: CrossStepInvariantChecker) -> Self {
+    pub fn new(runner: ChainRunner, _checker: CrossStepInvariantChecker) -> Self {
         Self {
             runner,
-            checker,
             max_attempts: 100,
             seed: 42,
             strategy_budgets: [0.4, 0.4, 0.2], // 40% prefix, 40% dropout, 20% input
@@ -135,7 +132,12 @@ impl ChainShrinker {
                     let mut test_indices = current_indices.clone();
                     test_indices.drain(i..end);
 
-                    let test_spec = self.build_spec_from_indices(&best_spec, &test_indices);
+                    let Some(test_spec) = self.build_spec_from_indices(&best_spec, &test_indices)
+                    else {
+                        i += chunk_size;
+                        total_attempts += 1;
+                        continue;
+                    };
 
                     if let Some((trace, violation)) = self.try_reproduce(
                         &test_spec,
@@ -209,8 +211,9 @@ impl ChainShrinker {
             return None;
         }
 
-        // Check if the same violation is triggered
-        let violations = self.checker.check(&result.trace);
+        // Rebuild checker from the candidate spec to avoid validating against stale assertion sets.
+        let checker = CrossStepInvariantChecker::from_spec(spec);
+        let violations = checker.check(&result.trace);
 
         violations
             .into_iter()
@@ -284,12 +287,27 @@ impl ChainShrinker {
     }
 
     /// Build a spec from selected step indices
-    fn build_spec_from_indices(&self, spec: &ChainSpec, indices: &[usize]) -> ChainSpec {
-        let steps = indices
-            .iter()
-            .filter_map(|&i| spec.steps.get(i).cloned())
-            .collect();
-        ChainSpec::new(&spec.name, steps)
+    fn build_spec_from_indices(&self, spec: &ChainSpec, indices: &[usize]) -> Option<ChainSpec> {
+        if indices.is_empty() {
+            return None;
+        }
+
+        let mut keep = vec![false; spec.len()];
+        for &idx in indices {
+            if idx >= spec.len() {
+                return None;
+            }
+            keep[idx] = true;
+        }
+
+        let mut candidate = spec.clone();
+        for remove_idx in (0..spec.len()).rev() {
+            if !keep[remove_idx] {
+                candidate = candidate.without_step(remove_idx)?;
+            }
+        }
+
+        Some(candidate)
     }
 
     /// Compute L_min for a given chain and violation

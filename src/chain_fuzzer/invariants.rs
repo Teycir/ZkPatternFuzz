@@ -117,6 +117,11 @@ enum FieldType {
 }
 
 impl CrossStepInvariantChecker {
+    /// Return true when a relation is supported by the runtime assertion parser.
+    pub fn relation_supported(relation: &str) -> bool {
+        !matches!(Self::parse_assertion(relation), AssertionType::Unknown)
+    }
+
     /// Create a new checker from a chain spec
     pub fn from_spec(spec: &ChainSpec) -> Self {
         let assertions = spec

@@ -288,6 +288,22 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
             )
             .with_fix("Add `assertions:` to each chain (or remove `chains:` and use v2 invariants)"),
         );
+    } else {
+        for chain in &config.chains {
+            for assertion in &chain.assertions {
+                if !crate::chain_fuzzer::CrossStepInvariantChecker::relation_supported(
+                    &assertion.relation,
+                ) {
+                    warnings.push(ReadinessWarning::high(
+                        "Chains",
+                        &format!(
+                            "Chain '{}' assertion '{}' is not parseable: {}",
+                            chain.name, assertion.name, assertion.relation
+                        ),
+                    ));
+                }
+            }
+        }
     }
 
     // 4. Check symbolic execution depth

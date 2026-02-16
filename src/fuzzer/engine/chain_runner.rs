@@ -8,8 +8,8 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<Vec<crate::chain_fuzzer::ChainFinding>> {
         use crate::chain_fuzzer::{
-            ChainCorpus, ChainFinding, ChainMutator, ChainRunner, ChainScheduler, ChainShrinker,
-            CrossStepInvariantChecker, DepthMetrics,
+            scheduler::ChainRunStats, ChainCorpus, ChainFinding, ChainMutator, ChainRunner,
+            ChainScheduler, ChainShrinker, CrossStepInvariantChecker, DepthMetrics,
         };
         use anyhow::Context as _;
         use rand::SeedableRng;
@@ -49,7 +49,7 @@ impl FuzzingEngine {
         let mut executors = std::collections::HashMap::new();
 
         // Collect all circuit_refs and their path configurations from chains
-        let circuit_configs = self.collect_circuit_configs(chains);
+        let circuit_configs = self.collect_circuit_configs(chains)?;
 
         // Load an executor for each unique circuit_ref
         for (circuit_ref, path_config) in &circuit_configs {
@@ -159,7 +159,7 @@ impl FuzzingEngine {
         };
 
         // Initialize scheduler with budget
-        let scheduler =
+        let mut scheduler =
             ChainScheduler::new(chains.to_vec(), Duration::from_secs(chain_budget_secs));
 
         // Initialize corpus for persistence
@@ -183,6 +183,58 @@ impl FuzzingEngine {
             }
             ChainCorpus::with_storage(&corpus_path)
         };
+
+        // Resume seeds and schedule priors from persisted corpus.
+        let mut resume_inputs_by_chain: std::collections::HashMap<
+            String,
+            Vec<std::collections::HashMap<String, Vec<FieldElement>>>,
+        > = std::collections::HashMap::new();
+        if chain_resume && !corpus.is_empty() {
+            for entry in corpus.entries() {
+                resume_inputs_by_chain
+                    .entry(entry.spec_name.clone())
+                    .or_default()
+                    .push(entry.get_inputs());
+            }
+
+            for chain in chains {
+                let entries = corpus.entries_for_chain(&chain.name);
+                if entries.is_empty() {
+                    continue;
+                }
+
+                let mut found_violation = false;
+                let mut near_miss_score = 0.0f64;
+                let mut executions = 0usize;
+                let mut unique_coverage: std::collections::HashSet<u64> =
+                    std::collections::HashSet::new();
+
+                for entry in entries {
+                    found_violation |= entry.triggered_violation;
+                    near_miss_score = near_miss_score.max(entry.near_miss_score);
+                    executions = executions.saturating_add(entry.execution_count.max(1));
+                    unique_coverage.insert(entry.coverage_bits);
+                }
+
+                scheduler.update_priority(&ChainRunStats {
+                    chain_name: chain.name.clone(),
+                    found_violation,
+                    new_coverage: unique_coverage.len() as u64,
+                    near_miss_score,
+                    executions,
+                    time_spent: Duration::from_millis(0),
+                });
+            }
+
+            tracing::info!(
+                "Mode 3 resume: loaded {} corpus seed entries across {} chains",
+                resume_inputs_by_chain
+                    .values()
+                    .map(|v| v.len())
+                    .sum::<usize>(),
+                resume_inputs_by_chain.len()
+            );
+        }
 
         let mut all_findings = Vec::new();
         let mut rng = match self.seed {
@@ -410,6 +462,8 @@ impl FuzzingEngine {
             None => Vec::new(),
         };
         let mut seed_index: usize = 0;
+        let mut resume_seed_index: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         let global_budget = Duration::from_secs(chain_budget_secs);
         let global_start = Instant::now();
         let mut abort_remaining_chains = false;
@@ -445,6 +499,18 @@ impl FuzzingEngine {
 
             // Initial inputs (seeded if available; otherwise generated fresh)
             let mut current_inputs = chain_seed_inputs_by_ref.clone();
+            if let Some(entries) = resume_inputs_by_chain.get(&chain.name) {
+                if !entries.is_empty() {
+                    let cursor = resume_seed_index
+                        .entry(chain.name.clone())
+                        .or_insert(0usize);
+                    let resume_inputs = &entries[*cursor % entries.len()];
+                    for (circuit_ref, values) in resume_inputs {
+                        current_inputs.insert(circuit_ref.clone(), values.clone());
+                    }
+                    *cursor = cursor.wrapping_add(1);
+                }
+            }
             if !seed_inputs.is_empty() {
                 if let Some(first_step) = chain.steps.first() {
                     if let Some(executor) = runner.executors.get(&first_step.circuit_ref) {
@@ -506,7 +572,8 @@ impl FuzzingEngine {
                             Err(err) => {
                                 anyhow::bail!("Failed to initialize shrink runner: {}", err);
                             }
-                        };
+                        }
+                        .with_timeout(chain_step_timeout);
                         let shrinker = ChainShrinker::new(
                             shrink_runner,
                             CrossStepInvariantChecker::from_spec(spec_to_use),
@@ -697,11 +764,14 @@ impl FuzzingEngine {
     pub(super) fn collect_circuit_configs(
         &self,
         chains: &[crate::chain_fuzzer::ChainSpec],
-    ) -> std::collections::HashMap<String, Option<crate::config::v2::CircuitPathConfig>> {
+    ) -> anyhow::Result<
+        std::collections::HashMap<String, Option<crate::config::v2::CircuitPathConfig>>,
+    > {
         use std::collections::HashMap;
 
         let mut circuit_configs: HashMap<String, Option<crate::config::v2::CircuitPathConfig>> =
             HashMap::new();
+        let mut owner_chain_by_ref: HashMap<String, String> = HashMap::new();
 
         // First, collect all unique circuit_refs from chains
         for chain in chains {
@@ -716,12 +786,41 @@ impl FuzzingEngine {
         for chain_config in &self.config.chains {
             for (ref_name, path_config) in &chain_config.circuits {
                 if circuit_configs.contains_key(ref_name) {
-                    circuit_configs.insert(ref_name.clone(), Some(path_config.clone()));
+                    match circuit_configs
+                        .get(ref_name)
+                        .and_then(|value| value.as_ref())
+                    {
+                        Some(existing) => {
+                            let same_path = existing.path == path_config.path;
+                            let same_component =
+                                existing.main_component == path_config.main_component;
+                            let same_framework = existing.framework == path_config.framework;
+                            if !same_path || !same_component || !same_framework {
+                                let owner = owner_chain_by_ref
+                                    .get(ref_name)
+                                    .cloned()
+                                    .unwrap_or_else(|| "<unknown>".to_string());
+                                anyhow::bail!(
+                                    "Conflicting circuit config for ref '{}': chain '{}' sets {:?} but chain '{}' sets {:?}. \
+                                     Use unique circuit_ref aliases per distinct circuit.",
+                                    ref_name,
+                                    owner,
+                                    existing.path,
+                                    chain_config.name,
+                                    path_config.path
+                                );
+                            }
+                        }
+                        None => {
+                            owner_chain_by_ref.insert(ref_name.clone(), chain_config.name.clone());
+                            circuit_configs.insert(ref_name.clone(), Some(path_config.clone()));
+                        }
+                    }
                 }
             }
         }
 
-        circuit_configs
+        Ok(circuit_configs)
     }
 
     /// Compute coverage bits from a chain trace

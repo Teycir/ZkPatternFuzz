@@ -227,14 +227,34 @@ impl ChainRunner {
             }
 
             // Resolve inputs for this step
-            let inputs = self.resolve_inputs(
+            let inputs = match self.resolve_inputs(
                 &step.input_wiring,
                 &step.circuit_ref,
                 executor.num_private_inputs() + executor.num_public_inputs(),
                 &trace,
                 initial_inputs,
                 rng,
-            );
+            ) {
+                Ok(inputs) => inputs,
+                Err(err) => {
+                    tracing::error!(
+                        "Input wiring resolution failed for chain '{}' step {} ({}): {}",
+                        spec.name,
+                        step_index,
+                        step.circuit_ref,
+                        err
+                    );
+                    let step_trace = StepTrace::failure(
+                        step_index,
+                        &step.circuit_ref,
+                        vec![],
+                        format!("Input wiring error: {}", err),
+                    );
+                    trace.add_step(step_trace);
+                    trace.execution_time_ms = Self::elapsed_ms(start_time);
+                    return ChainRunResult::failure(trace, step_index);
+                }
+            };
 
             // Execute the circuit with preemptive timeout enforcement.
             // This guarantees the chain contract fails fast instead of waiting for
@@ -363,25 +383,25 @@ impl ChainRunner {
         trace: &ChainTrace,
         initial_inputs: &HashMap<String, Vec<FieldElement>>,
         rng: &mut impl Rng,
-    ) -> Vec<FieldElement> {
+    ) -> Result<Vec<FieldElement>, String> {
         match wiring {
             InputWiring::Fresh => {
                 // Check if we have initial inputs for this circuit
                 if let Some(inputs) = initial_inputs.get(circuit_ref) {
                     if inputs.len() >= expected_count {
-                        return inputs[..expected_count].to_vec();
+                        return Ok(inputs[..expected_count].to_vec());
                     }
                     // Pad with random if not enough
                     let mut result = inputs.clone();
                     while result.len() < expected_count {
                         result.push(FieldElement::random(rng));
                     }
-                    return result;
+                    return Ok(result);
                 }
                 // Generate fresh random inputs
-                (0..expected_count)
+                Ok((0..expected_count)
                     .map(|_| FieldElement::random(rng))
-                    .collect()
+                    .collect())
             }
 
             InputWiring::FromPriorOutput { step, mapping } => {
@@ -407,14 +427,38 @@ impl ChainRunner {
                     mapping.iter().map(|(_, in_idx)| *in_idx).collect();
 
                 // Get outputs from the prior step
-                if let Some(prior_outputs) = trace.step_outputs(*step) {
-                    for (out_idx, in_idx) in mapping {
-                        if let Some(output) = prior_outputs.get(*out_idx) {
-                            if *in_idx < inputs.len() {
-                                inputs[*in_idx] = output.clone();
-                            }
-                        }
+                if *step >= trace.steps.len() {
+                    return Err(format!(
+                        "from_prior_output references step {} but only {} prior steps exist",
+                        step,
+                        trace.steps.len()
+                    ));
+                }
+                let prior_outputs = trace.step_outputs(*step).ok_or_else(|| {
+                    format!(
+                        "from_prior_output references step {} but no outputs are available",
+                        step
+                    )
+                })?;
+                for (out_idx, in_idx) in mapping {
+                    if *in_idx >= inputs.len() {
+                        return Err(format!(
+                            "from_prior_output maps output {} -> input {} but input {} is out of range (expected {})",
+                            out_idx,
+                            in_idx,
+                            in_idx,
+                            expected_count
+                        ));
                     }
+                    let output = prior_outputs.get(*out_idx).ok_or_else(|| {
+                        format!(
+                            "from_prior_output references step {} output {} but that step has only {} outputs",
+                            step,
+                            out_idx,
+                            prior_outputs.len()
+                        )
+                    })?;
+                    inputs[*in_idx] = output.clone();
                 }
 
                 // If we did not have a baseline seed for this step, fill unmapped inputs with
@@ -430,7 +474,7 @@ impl ChainRunner {
                     }
                 }
 
-                inputs
+                Ok(inputs)
             }
 
             InputWiring::Mixed {
@@ -444,22 +488,48 @@ impl ChainRunner {
 
                 // Fill in values from prior steps
                 for (step, out_idx, in_idx) in prior {
-                    if let Some(prior_outputs) = trace.step_outputs(*step) {
-                        if let Some(output) = prior_outputs.get(*out_idx) {
-                            if *in_idx < inputs.len() {
-                                inputs[*in_idx] = output.clone();
-                                set_indices.insert(*in_idx);
-                            }
-                        }
+                    if *in_idx >= inputs.len() {
+                        return Err(format!(
+                            "mixed wiring maps prior output into input {} but expected input range is 0..{}",
+                            in_idx,
+                            expected_count
+                        ));
                     }
+                    if *step >= trace.steps.len() {
+                        return Err(format!(
+                            "mixed wiring references step {} but only {} prior steps exist",
+                            step,
+                            trace.steps.len()
+                        ));
+                    }
+                    let prior_outputs = trace.step_outputs(*step).ok_or_else(|| {
+                        format!(
+                            "mixed wiring references step {} but no outputs are available",
+                            step
+                        )
+                    })?;
+                    let output = prior_outputs.get(*out_idx).ok_or_else(|| {
+                        format!(
+                            "mixed wiring references step {} output {} but that step has only {} outputs",
+                            step,
+                            out_idx,
+                            prior_outputs.len()
+                        )
+                    })?;
+                    inputs[*in_idx] = output.clone();
+                    set_indices.insert(*in_idx);
                 }
 
                 // Fill fresh indices with random values
                 for idx in fresh_indices {
-                    if *idx < inputs.len() {
-                        inputs[*idx] = FieldElement::random(rng);
-                        set_indices.insert(*idx);
+                    if *idx >= inputs.len() {
+                        return Err(format!(
+                            "mixed wiring fresh index {} is out of range for expected input count {}",
+                            idx, expected_count
+                        ));
                     }
+                    inputs[*idx] = FieldElement::random(rng);
+                    set_indices.insert(*idx);
                 }
 
                 // CRITICAL FIX: Fill any remaining unset indices with random
@@ -470,7 +540,7 @@ impl ChainRunner {
                     }
                 }
 
-                inputs
+                Ok(inputs)
             }
 
             InputWiring::Constant {
@@ -484,20 +554,32 @@ impl ChainRunner {
 
                 // Fill in constant values
                 for (idx, hex_value) in values {
-                    if *idx < inputs.len() {
-                        if let Ok(fe) = FieldElement::from_hex(hex_value) {
-                            inputs[*idx] = fe;
-                            set_indices.insert(*idx);
-                        }
+                    if *idx >= inputs.len() {
+                        return Err(format!(
+                            "constant wiring index {} is out of range for expected input count {}",
+                            idx, expected_count
+                        ));
                     }
+                    let fe = FieldElement::from_hex(hex_value).map_err(|err| {
+                        format!(
+                            "constant wiring value at index {} is invalid hex: {}",
+                            idx, err
+                        )
+                    })?;
+                    inputs[*idx] = fe;
+                    set_indices.insert(*idx);
                 }
 
                 // Fill fresh indices with random values
                 for idx in fresh_indices {
-                    if *idx < inputs.len() {
-                        inputs[*idx] = FieldElement::random(rng);
-                        set_indices.insert(*idx);
+                    if *idx >= inputs.len() {
+                        return Err(format!(
+                            "constant wiring fresh index {} is out of range for expected input count {}",
+                            idx, expected_count
+                        ));
                     }
+                    inputs[*idx] = FieldElement::random(rng);
+                    set_indices.insert(*idx);
                 }
 
                 // CRITICAL FIX: Fill any remaining unset indices with random
@@ -508,7 +590,7 @@ impl ChainRunner {
                     }
                 }
 
-                inputs
+                Ok(inputs)
             }
         }
     }
@@ -741,6 +823,60 @@ mod tests {
             "preemptive timeout should return quickly; elapsed {:?}",
             wall_elapsed
         );
+    }
+
+    #[test]
+    fn test_chain_runner_rejects_invalid_from_prior_step_reference() {
+        let mut executors = HashMap::new();
+        executors.insert("a".to_string(), create_fixture_executor("a", 2, 2));
+        executors.insert("b".to_string(), create_fixture_executor("b", 2, 1));
+        let runner = ChainRunner::new(executors).expect("failed to create chain runner");
+
+        // Step 1 references step 3, which does not exist.
+        let spec = ChainSpec::new(
+            "invalid_wiring_step",
+            vec![
+                StepSpec::fresh("a"),
+                StepSpec::from_prior("b", 3, vec![(0, 0)]),
+            ],
+        );
+        let mut rng = rand::thread_rng();
+        let result = runner.execute(&spec, &HashMap::new(), &mut rng);
+
+        assert!(!result.completed);
+        assert_eq!(result.failed_at, Some(1));
+        assert!(result.trace.steps[1]
+            .error
+            .as_ref()
+            .expect("missing error")
+            .contains("references step 3"));
+    }
+
+    #[test]
+    fn test_chain_runner_rejects_invalid_from_prior_output_index() {
+        let mut executors = HashMap::new();
+        executors.insert("a".to_string(), create_fixture_executor("a", 2, 1));
+        executors.insert("b".to_string(), create_fixture_executor("b", 2, 1));
+        let runner = ChainRunner::new(executors).expect("failed to create chain runner");
+
+        // Step 0 emits one output; step 1 requests output index 4.
+        let spec = ChainSpec::new(
+            "invalid_wiring_output",
+            vec![
+                StepSpec::fresh("a"),
+                StepSpec::from_prior("b", 0, vec![(4, 0)]),
+            ],
+        );
+        let mut rng = rand::thread_rng();
+        let result = runner.execute(&spec, &HashMap::new(), &mut rng);
+
+        assert!(!result.completed);
+        assert_eq!(result.failed_at, Some(1));
+        assert!(result.trace.steps[1]
+            .error
+            .as_ref()
+            .expect("missing error")
+            .contains("has only 1 outputs"));
     }
 
     use super::super::types::StepSpec;

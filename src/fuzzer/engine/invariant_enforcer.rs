@@ -119,7 +119,13 @@ impl FuzzingEngine {
                 None => continue,
             };
 
-            let mut witness = vec![FieldElement::zero(); self.config.inputs.len().max(1)];
+            let witness_len = input_ranges
+                .values()
+                .map(|(start, len)| start.saturating_add(*len))
+                .max()
+                .unwrap_or(1)
+                .max(1);
+            let mut witness = vec![FieldElement::zero(); witness_len];
             for idx in target_indices {
                 if idx < witness.len() {
                     witness[idx] = violation_value.clone();

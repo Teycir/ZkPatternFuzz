@@ -323,7 +323,11 @@ impl SpecInferenceOracle {
             };
 
             // Check if all values fit in power of 2 range
-            let expected_max = (1u64 << bit_length) - 1;
+            let expected_max = if bit_length >= 64 {
+                u64::MAX
+            } else {
+                (1u64 << bit_length) - 1
+            };
             let fits_power_of_2 = max <= expected_max;
             let coverage_ratio = if expected_max > 0 {
                 (max as f64) / (expected_max as f64)

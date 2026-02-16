@@ -154,6 +154,12 @@ pub struct StepConfig {
     /// Optional label for debugging
     #[serde(default)]
     pub label: Option<String>,
+    /// Optional contract for expected total input count (public + private)
+    #[serde(default)]
+    pub expected_inputs: Option<usize>,
+    /// Optional contract for expected output count
+    #[serde(default)]
+    pub expected_outputs: Option<usize>,
 }
 
 /// Configuration for input wiring
@@ -1334,6 +1340,8 @@ impl StepConfig {
         if let Some(label) = &self.label {
             spec = spec.with_label(label);
         }
+        spec.expected_inputs = self.expected_inputs;
+        spec.expected_outputs = self.expected_outputs;
         spec
     }
 }
