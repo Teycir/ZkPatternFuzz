@@ -2304,12 +2304,20 @@ impl FuzzingEngine {
             .get("sample_count")
             .and_then(|v| v.as_u64())
             .or_value(500) as usize;
+        let evidence_mode = match Self::additional_bool(
+            &self.config.campaign.parameters.additional,
+            "evidence_mode",
+        ) {
+            Some(value) => value,
+            None => false,
+        };
 
         // Depth contract: SpecInference must run full depth in Mode 2.
         // Do not accept YAML knobs that would cap work or reduce attempt depth.
-        if config.get("max_specs").is_some()
-            || config.get("max_wall_clock_secs").is_some()
-            || config.get("violation_attempts").is_some()
+        if evidence_mode
+            && (config.get("max_specs").is_some()
+                || config.get("max_wall_clock_secs").is_some()
+                || config.get("violation_attempts").is_some())
         {
             anyhow::bail!(
                 "SpecInference depth-limiting knobs are not allowed in evidence mode: \
@@ -2330,13 +2338,6 @@ impl FuzzingEngine {
             initial_witnesses.push(self.generate_test_case().inputs);
         }
 
-        let evidence_mode = match Self::additional_bool(
-            &self.config.campaign.parameters.additional,
-            "evidence_mode",
-        ) {
-            Some(value) => value,
-            None => false,
-        };
         let mode_label = if evidence_mode { "evidence" } else { "run" };
 
         let findings = if let Some((phases_total, phases_completed, attack_idx, attacks_total)) =

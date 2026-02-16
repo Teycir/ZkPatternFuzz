@@ -2631,29 +2631,48 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 Ok(ChainCorpus::with_storage(p))
             }
         };
+    let read_chain_execution_count = |p: &std::path::Path| -> anyhow::Result<u64> {
+        if !p.exists() {
+            return Ok(0);
+        }
+        let corpus = load_chain_corpus(p)?;
+        let total = corpus
+            .entries()
+            .iter()
+            .map(|entry| entry.execution_count as u64)
+            .sum();
+        Ok(total)
+    };
+    let baseline_execution_count = if options.resume {
+        read_chain_execution_count(&corpus_path)?
+    } else {
+        0
+    };
 
-    let baseline_meta = if corpus_meta_path.exists() {
+    let baseline_meta = if options.resume && corpus_meta_path.exists() {
         read_chain_meta(&corpus_meta_path)
     } else {
         None
     };
-    let (baseline_total_entries, baseline_unique_coverage_bits): (usize, usize) =
-        if let Some(meta) = &baseline_meta {
-            (meta.total_entries, meta.unique_coverage_bits)
-        } else {
-            let baseline_corpus = load_chain_corpus(&corpus_path)?;
-            let baseline_total_entries = baseline_corpus.len();
-            let baseline_unique_coverage_bits: usize = {
-                use std::collections::HashSet;
-                baseline_corpus
-                    .entries()
-                    .iter()
-                    .map(|e| e.coverage_bits)
-                    .collect::<HashSet<_>>()
-                    .len()
-            };
-            (baseline_total_entries, baseline_unique_coverage_bits)
+    let (baseline_total_entries, baseline_unique_coverage_bits): (usize, usize) = if !options.resume
+    {
+        (0, 0)
+    } else if let Some(meta) = &baseline_meta {
+        (meta.total_entries, meta.unique_coverage_bits)
+    } else {
+        let baseline_corpus = load_chain_corpus(&corpus_path)?;
+        let baseline_total_entries = baseline_corpus.len();
+        let baseline_unique_coverage_bits: usize = {
+            use std::collections::HashSet;
+            baseline_corpus
+                .entries()
+                .iter()
+                .map(|e| e.coverage_bits)
+                .collect::<HashSet<_>>()
+                .len()
         };
+        (baseline_total_entries, baseline_unique_coverage_bits)
+    };
 
     // Create engine directly
     stage = "engine_init";
@@ -2693,7 +2712,30 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         ))
     };
 
-    let chain_findings: Vec<ChainFinding> = engine.run_chains(&chains, progress.as_ref()).await;
+    stage = "engine_run_chains";
+    let chain_findings: Vec<ChainFinding> =
+        match engine.run_chains(&chains, progress.as_ref()).await {
+            Ok(findings) => findings,
+            Err(err) => {
+                let ended_utc = Utc::now();
+                let doc = serde_json::json!({
+                    "status": "failed",
+                    "command": command,
+                    "run_id": run_id.clone(),
+                    "stage": stage,
+                    "pid": std::process::id(),
+                    "campaign_path": config_path,
+                    "campaign_name": campaign_name.clone(),
+                    "output_dir": output_dir.display().to_string(),
+                    "started_utc": started_utc.to_rfc3339(),
+                    "ended_utc": ended_utc.to_rfc3339(),
+                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                    "error": format!("{:#}", err),
+                });
+                write_run_artifacts(&output_dir, &run_id, &doc);
+                return Err(err);
+            }
+        };
 
     // Load chain corpus for quality/coverage metrics (persistent across runs).
     // Prefer meta sidecar to avoid parsing a large chain_corpus.json.
@@ -2732,6 +2774,8 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 final_max_depth,
             )
         };
+    let final_execution_count = read_chain_execution_count(&corpus_path)?;
+    let run_execution_count = final_execution_count.saturating_sub(baseline_execution_count);
 
     // Engagement contract for Mode 3: refuse to report a "clean" run when exploration is too narrow.
     let engagement_strict = config
@@ -3125,7 +3169,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         zk_core::CoverageMap::default(),
         config.reporting.clone(),
     );
-    report.statistics.total_executions = options.iterations * chains.len() as u64;
+    report.statistics.total_executions = run_execution_count;
     stage = "save_standard_report";
     if let Err(err) = report.save_to_files() {
         let ended_utc = Utc::now();

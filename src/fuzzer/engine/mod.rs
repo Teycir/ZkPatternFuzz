@@ -750,6 +750,31 @@ impl FuzzingEngine {
 
         // Run attacks
         let attacks_total = self.config.attacks.len() as u64;
+        let run_id_for_snapshots =
+            Self::additional_string(&self.config.campaign.parameters.additional, "run_id");
+        let command_for_snapshots = match Self::additional_string(
+            &self.config.campaign.parameters.additional,
+            "run_command",
+        ) {
+            Some(value) => value,
+            None => {
+                if mode_label == "evidence" {
+                    "evidence".to_string()
+                } else {
+                    "run".to_string()
+                }
+            }
+        };
+
+        struct _StopAttackHeartbeat(tokio::sync::watch::Sender<bool>);
+        impl Drop for _StopAttackHeartbeat {
+            fn drop(&mut self) {
+                if let Err(err) = self.0.send(true) {
+                    tracing::warn!("Failed to stop attack progress heartbeat: {}", err);
+                }
+            }
+        }
+
         for (attack_idx, attack_config) in self.config.attacks.clone().into_iter().enumerate() {
             let phases_completed = 1u64.saturating_add(attack_idx as u64);
             self.write_progress_snapshot(
@@ -772,6 +797,112 @@ impl FuzzingEngine {
             if let Some(p) = progress {
                 p.log_attack_start(&format!("{:?}", attack_config.attack_type));
             }
+
+            // Keep machine-readable progress alive for long-running attacks that do not
+            // emit internal progress updates (e.g. non-SpecInference attacks).
+            let _attack_heartbeat_guard =
+                if !matches!(attack_config.attack_type, AttackType::SpecInference) {
+                    let (hb_stop_tx, mut hb_stop_rx) = tokio::sync::watch::channel(false);
+                    let output_dir = self.config.reporting.output_dir.clone();
+                    let campaign_name = self.config.campaign.name.clone();
+                    let mode_label_owned = mode_label.to_string();
+                    let command_owned = command_for_snapshots.clone();
+                    let run_id_owned = run_id_for_snapshots.clone();
+                    let attack_idx_u64 = attack_idx as u64;
+                    let attack_type_label = format!("{:?}", attack_config.attack_type);
+
+                    tokio::spawn(async move {
+                        let heartbeat_start = std::time::Instant::now();
+                        let progress_path = output_dir.join("progress.json");
+                        loop {
+                            if *hb_stop_rx.borrow() {
+                                break;
+                            }
+
+                            tokio::select! {
+                                _ = hb_stop_rx.changed() => {},
+                                _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {},
+                            }
+
+                            if *hb_stop_rx.borrow() {
+                                break;
+                            }
+
+                            let now_epoch = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0);
+                            let overall = if phases_total == 0 {
+                                0.0
+                            } else {
+                                (phases_completed as f64 / phases_total as f64).clamp(0.0, 1.0)
+                            };
+                            let steps_total = phases_total.max(1);
+                            let steps_done = phases_completed.min(steps_total);
+                            let step_current = (steps_done.saturating_add(1)).min(steps_total);
+                            let elapsed = heartbeat_start.elapsed().as_secs();
+
+                            let snapshot = serde_json::json!({
+                                "updated_unix_seconds": now_epoch,
+                                "run_id": run_id_owned.clone(),
+                                "command": command_owned.clone(),
+                                "mode_label": mode_label_owned.clone(),
+                                "campaign_name": campaign_name.clone(),
+                                "output_dir": output_dir.display().to_string(),
+                                "stage": "attack_progress",
+                                "progress": {
+                                    "steps_total": steps_total,
+                                    "steps_done": steps_done,
+                                    "step_current": step_current,
+                                    "step_fraction": format!("{}/{}", step_current, steps_total),
+                                    "overall_fraction": overall,
+                                    "overall_percent": (overall * 100.0),
+                                    "phase_progress": serde_json::Value::Null,
+                                },
+                                "details": {
+                                    "attack_idx": attack_idx_u64,
+                                    "attacks_total": attacks_total,
+                                    "attack_type": attack_type_label,
+                                    "heartbeat": true,
+                                    "elapsed_seconds": elapsed,
+                                },
+                            });
+
+                            if let Some(parent) = progress_path.parent() {
+                                if let Err(err) = std::fs::create_dir_all(parent) {
+                                    tracing::warn!(
+                                        "Failed to create attack heartbeat progress dir '{}': {}",
+                                        parent.display(),
+                                        err
+                                    );
+                                    continue;
+                                }
+                            }
+                            let data = match serde_json::to_vec_pretty(&snapshot) {
+                                Ok(data) => data,
+                                Err(err) => {
+                                    tracing::warn!(
+                                        "Failed serializing attack heartbeat snapshot: {}",
+                                        err
+                                    );
+                                    continue;
+                                }
+                            };
+                            if let Err(err) = crate::util::write_file_atomic(&progress_path, &data)
+                            {
+                                tracing::warn!(
+                                    "Failed writing attack heartbeat progress '{}': {}",
+                                    progress_path.display(),
+                                    err
+                                );
+                            }
+                        }
+                    });
+
+                    Some(_StopAttackHeartbeat(hb_stop_tx))
+                } else {
+                    None
+                };
 
             let findings_before = self.with_findings_read(|store| store.len())?;
             let (plugin_name, plugin_explicit) = Self::resolve_attack_plugin(&attack_config);

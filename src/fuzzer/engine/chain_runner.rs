@@ -6,7 +6,7 @@ impl FuzzingEngine {
         &mut self,
         chains: &[crate::chain_fuzzer::ChainSpec],
         progress: Option<&ProgressReporter>,
-    ) -> Vec<crate::chain_fuzzer::ChainFinding> {
+    ) -> anyhow::Result<Vec<crate::chain_fuzzer::ChainFinding>> {
         use crate::chain_fuzzer::{
             ChainCorpus, ChainFinding, ChainMutator, ChainRunner, ChainScheduler, ChainShrinker,
             CrossStepInvariantChecker, DepthMetrics,
@@ -18,7 +18,7 @@ impl FuzzingEngine {
 
         if chains.is_empty() {
             tracing::info!("No chain specifications provided");
-            return Vec::new();
+            return Ok(Vec::new());
         }
 
         tracing::info!("Starting Mode 3 chain fuzzing with {} chains", chains.len());
@@ -69,12 +69,11 @@ impl FuzzingEngine {
                     let circuit_path = match config.path.to_str() {
                         Some(path) => path,
                         None => {
-                            tracing::error!(
+                            anyhow::bail!(
                                 "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' path contains invalid UTF-8: {:?}",
                                 circuit_ref,
                                 config.path
                             );
-                            return Vec::new();
                         }
                     };
 
@@ -86,14 +85,13 @@ impl FuzzingEngine {
                     ) {
                         Ok(exec) => exec,
                         Err(e) => {
-                            tracing::error!(
+                            anyhow::bail!(
                                 "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' at {:?} failed to load: {}. \
                                  Chain fuzzing cannot proceed without a valid executor.",
                                 circuit_ref,
                                 config.path,
                                 e
                             );
-                            return Vec::new();
                         }
                     }
                 }
@@ -107,22 +105,20 @@ impl FuzzingEngine {
                         ) {
                             Ok(exec) => exec,
                             Err(e) => {
-                                tracing::error!(
+                                anyhow::bail!(
                                     "CHAIN CIRCUIT LOAD FAILED: Circuit '{}' failed to load: {}. \
                                      Chain fuzzing cannot proceed without a valid executor.",
                                     circuit_ref,
                                     e
                                 );
-                                return Vec::new();
                             }
                         }
                     } else {
-                        tracing::error!(
+                        anyhow::bail!(
                             "CHAIN CIRCUIT MISSING: No circuit path configured for '{}' and no file found. \
                              Add a 'circuits' mapping in your chain config to specify circuit paths.",
                             circuit_ref
                         );
-                        return Vec::new();
                     }
                 }
             };
@@ -132,8 +128,7 @@ impl FuzzingEngine {
         let runner = match ChainRunner::new(executors) {
             Ok(runner) => runner.with_timeout(chain_step_timeout),
             Err(err) => {
-                tracing::error!("Failed to initialize chain runner: {}", err);
-                return Vec::new();
+                return Err(err.context("Failed to initialize chain runner"));
             }
         };
 
@@ -174,12 +169,9 @@ impl FuzzingEngine {
             match ChainCorpus::load(&corpus_path) {
                 Ok(corpus) => corpus,
                 Err(err) => {
-                    tracing::error!(
-                        "Failed to load chain corpus '{}': {}",
-                        corpus_path.display(),
-                        err
-                    );
-                    return Vec::new();
+                    return Err(err).with_context(|| {
+                        format!("Failed to load chain corpus '{}'", corpus_path.display())
+                    });
                 }
             }
         } else {
@@ -499,6 +491,7 @@ impl FuzzingEngine {
             while chain_start.elapsed() < chain_budget
                 && iterations < chain_iterations
                 && global_start.elapsed() < global_budget
+                && !abort_remaining_chains
             {
                 let spec_to_use = match current_spec.as_ref() {
                     Some(spec) => spec,
@@ -605,22 +598,26 @@ impl FuzzingEngine {
                     failed += 1;
                     if let Some(failed_at) = result.failed_at {
                         *failed_by_step.entry(failed_at).or_insert(0) += 1;
-                        if sample_errors.len() < 3 {
-                            if let Some(step) = result.trace.steps.get(failed_at) {
-                                if let Some(err) = &step.error {
+                        if let Some(step) = result.trace.steps.get(failed_at) {
+                            if let Some(err) = &step.error {
+                                if sample_errors.len() < 3 {
                                     sample_errors.insert(err.clone());
-                                    if err.contains("Step timed out") {
-                                        tracing::error!(
-                                            "Chain '{}' hit a step timeout; aborting remaining chains \
-                                             to avoid detached timeout-worker buildup",
-                                            chain.name
-                                        );
-                                        abort_remaining_chains = true;
-                                    }
+                                }
+                                if err.contains("Step timed out") {
+                                    tracing::error!(
+                                        "Chain '{}' hit a step timeout; aborting remaining chains \
+                                         to avoid detached timeout-worker buildup",
+                                        chain.name
+                                    );
+                                    abort_remaining_chains = true;
                                 }
                             }
                         }
                     }
+                }
+
+                if abort_remaining_chains {
+                    break;
                 }
 
                 // Mutate for next iteration (may produce a modified spec)
@@ -693,7 +690,7 @@ impl FuzzingEngine {
             summary.p_deep * 100.0
         );
 
-        all_findings
+        Ok(all_findings)
     }
 
     /// Collect circuit configurations from all chain specs
