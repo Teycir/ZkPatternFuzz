@@ -1978,16 +1978,10 @@ fn materialize_scan_pattern_campaign(
         .and_then(|s| s.to_str())
         .map(sanitize_slug)
         .unwrap_or_else(|| "pattern".to_string());
-    let family_slug = match family {
-        ScanFamily::Auto => "auto",
-        ScanFamily::Mono => "mono",
-        ScanFamily::Multi => "multi",
-    };
-
     let mut campaign = serde_yaml::Mapping::new();
     campaign.insert(
         yaml_key("name"),
-        serde_yaml::Value::String(format!("scan_{}_{}", family_slug, stem)),
+        serde_yaml::Value::String(format!("scan_{}", stem)),
     );
     campaign.insert(
         yaml_key("version"),
@@ -2056,7 +2050,7 @@ fn materialize_scan_pattern_campaign(
 
     let out = std::env::temp_dir()
         .join("zkfuzz_scan")
-        .join(format!("{}__{}__{:016x}.yaml", family_slug, stem, digest));
+        .join(format!("{}__{:016x}.yaml", stem, digest));
     if let Some(parent) = out.parent() {
         fs::create_dir_all(parent).with_context(|| {
             format!(
