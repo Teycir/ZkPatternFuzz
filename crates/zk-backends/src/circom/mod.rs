@@ -154,6 +154,14 @@ pub struct CircomMetadata {
     pub prime: String,
 }
 
+const CIRCOM_METADATA_CACHE_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedCircomMetadata {
+    version: u32,
+    metadata: CircomMetadata,
+}
+
 #[derive(Default)]
 struct CircomIoInfo {
     input_signals: Vec<analysis::SignalInfo>,
@@ -1057,9 +1065,15 @@ impl CircomTarget {
     fn parse_r1cs_info(&mut self) -> Result<()> {
         let basename = self.output_basename();
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
+        let sym_path = self.build_dir.join(format!("{}.sym", basename));
+        let metadata_cache_path = self.metadata_cache_path();
 
         if !r1cs_path.exists() {
             tracing::warn!("R1CS file not found: {:?}", r1cs_path);
+            return Ok(());
+        }
+
+        if self.try_load_cached_metadata(&metadata_cache_path, &r1cs_path, &sym_path)? {
             return Ok(());
         }
 
@@ -1067,9 +1081,9 @@ impl CircomTarget {
         let r1cs_path_str = r1cs_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 r1cs path: {}", r1cs_path.display()))?;
-        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
-            .args(["r1cs", "info", r1cs_path_str])
-            .output()
+        let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
+        cmd.args(["r1cs", "info", r1cs_path_str]);
+        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
             .context("Failed to get R1CS info")?;
 
         if !output.status.success() {
@@ -1118,7 +1132,6 @@ impl CircomTarget {
         }
 
         // Also parse the symbols file for signal names
-        let sym_path = self.build_dir.join(format!("{}.sym", basename));
         let (signals, sym_list) = if sym_path.exists() {
             (
                 self.parse_symbols_file(&sym_path)?,
@@ -1245,6 +1258,13 @@ impl CircomTarget {
             num_private_inputs,
             num_public_inputs
         );
+        if let Err(err) = self.persist_metadata_cache(&metadata_cache_path) {
+            tracing::warn!(
+                "Failed to persist Circom metadata cache '{}': {}",
+                metadata_cache_path.display(),
+                err
+            );
+        }
 
         Ok(())
     }
@@ -1566,9 +1586,150 @@ impl CircomTarget {
             .join(format!("{}_constraints.json", basename))
     }
 
+    fn metadata_cache_path(&self) -> PathBuf {
+        let basename = self.output_basename();
+        self.build_dir.join(format!("{}_metadata.json", basename))
+    }
+
+    fn try_load_cached_metadata(
+        &mut self,
+        cache_path: &Path,
+        r1cs_path: &Path,
+        sym_path: &Path,
+    ) -> Result<bool> {
+        if !cache_path.exists() {
+            return Ok(false);
+        }
+        if !Self::is_cache_fresh(
+            cache_path,
+            &[r1cs_path, &self.circuit_path],
+            if sym_path.exists() {
+                Some(sym_path)
+            } else {
+                None
+            },
+        ) {
+            return Ok(false);
+        }
+
+        let raw = match std::fs::read_to_string(cache_path) {
+            Ok(value) => value,
+            Err(err) => {
+                tracing::warn!(
+                    "Failed reading Circom metadata cache '{}': {}",
+                    cache_path.display(),
+                    err
+                );
+                return Ok(false);
+            }
+        };
+
+        let cached: CachedCircomMetadata = match serde_json::from_str(&raw) {
+            Ok(value) => value,
+            Err(err) => {
+                tracing::warn!(
+                    "Failed parsing Circom metadata cache '{}': {}",
+                    cache_path.display(),
+                    err
+                );
+                return Ok(false);
+            }
+        };
+
+        if cached.version != CIRCOM_METADATA_CACHE_VERSION {
+            tracing::debug!(
+                "Ignoring Circom metadata cache '{}' with unsupported version {}",
+                cache_path.display(),
+                cached.version
+            );
+            return Ok(false);
+        }
+
+        let metadata = cached.metadata;
+        tracing::info!(
+            "Loaded cached Circom metadata from '{}' (constraints={}, private_inputs={}, public_inputs={})",
+            cache_path.display(),
+            metadata.num_constraints,
+            metadata.num_private_inputs,
+            metadata.num_public_inputs
+        );
+        self.metadata = Some(metadata);
+        Ok(true)
+    }
+
+    fn persist_metadata_cache(&self, cache_path: &Path) -> Result<()> {
+        let Some(metadata) = &self.metadata else {
+            return Ok(());
+        };
+
+        let payload = CachedCircomMetadata {
+            version: CIRCOM_METADATA_CACHE_VERSION,
+            metadata: metadata.clone(),
+        };
+        let bytes = serde_json::to_vec_pretty(&payload)?;
+        let tmp_path = cache_path.with_extension(format!(
+            "tmp.{}.{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+
+        if let Some(parent) = cache_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&tmp_path, bytes)?;
+        match std::fs::rename(&tmp_path, cache_path) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                if cache_path.exists() {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    Ok(())
+                } else {
+                    Err(err).context(format!(
+                        "Failed to atomically publish metadata cache '{}'",
+                        cache_path.display()
+                    ))
+                }
+            }
+        }
+    }
+
+    fn is_cache_fresh(
+        cache_path: &Path,
+        mandatory_deps: &[&Path],
+        optional_dep: Option<&Path>,
+    ) -> bool {
+        let cache_mtime = match std::fs::metadata(cache_path).and_then(|m| m.modified()) {
+            Ok(time) => time,
+            Err(_) => return false,
+        };
+
+        for dep in mandatory_deps {
+            let dep_mtime = match std::fs::metadata(dep).and_then(|m| m.modified()) {
+                Ok(time) => time,
+                Err(_) => return false,
+            };
+            if dep_mtime > cache_mtime {
+                return false;
+            }
+        }
+
+        if let Some(dep) = optional_dep {
+            if let Ok(dep_mtime) = std::fs::metadata(dep).and_then(|m| m.modified()) {
+                if dep_mtime > cache_mtime {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
     /// Load constraint equations from Circom-generated JSON
     pub fn load_constraints(&self) -> Result<Vec<ConstraintEquation>> {
-        let mut constraints_path = self.constraints_json_path();
+        let constraints_path = self.constraints_json_path();
         let basename = self.output_basename();
 
         if !constraints_path.exists() {
@@ -1577,8 +1738,17 @@ impl CircomTarget {
                 return Ok(Vec::new());
             }
 
-            let temp_dir = create_temp_dir()?;
-            let temp_path = temp_dir.path().join("constraints.json");
+            if let Some(parent) = constraints_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let temp_path = constraints_path.with_extension(format!(
+                "json.tmp.{}.{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0)
+            ));
             let r1cs_path_str = r1cs_path
                 .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Non-UTF8 r1cs path: {}", r1cs_path.display()))?;
@@ -1586,17 +1756,29 @@ impl CircomTarget {
                 .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Non-UTF8 temp path: {}", temp_path.display()))?;
 
-            let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
-                .args(["r1cs", "export", "json", r1cs_path_str, temp_path_str])
-                .output()
+            let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
+            cmd.args(["r1cs", "export", "json", r1cs_path_str, temp_path_str]);
+            let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
                 .context("Failed to export R1CS constraints")?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
+                let _ = std::fs::remove_file(&temp_path);
                 anyhow::bail!("Constraint export failed: {}", stderr);
             }
-
-            constraints_path = temp_path;
+            match std::fs::rename(&temp_path, &constraints_path) {
+                Ok(_) => {}
+                Err(err) => {
+                    if constraints_path.exists() {
+                        let _ = std::fs::remove_file(&temp_path);
+                    } else {
+                        return Err(err).context(format!(
+                            "Failed to persist exported constraints at '{}'",
+                            constraints_path.display()
+                        ));
+                    }
+                }
+            }
         }
 
         let contents = std::fs::read_to_string(&constraints_path)?;
