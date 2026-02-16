@@ -213,7 +213,9 @@ impl FuzzingEngine {
                     found_violation |= entry.triggered_violation;
                     near_miss_score = near_miss_score.max(entry.near_miss_score);
                     executions = executions.saturating_add(entry.execution_count.max(1));
-                    unique_coverage.insert(entry.coverage_bits);
+                    if entry.coverage_bits > 0 {
+                        unique_coverage.insert(entry.coverage_bits);
+                    }
                 }
 
                 scheduler.update_priority(&ChainRunStats {
