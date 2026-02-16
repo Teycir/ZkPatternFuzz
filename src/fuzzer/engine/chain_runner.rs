@@ -1,6 +1,41 @@
 use super::prelude::*;
 use super::FuzzingEngine;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ResumeAggregation {
+    found_violation: bool,
+    near_miss_score: f64,
+    executions: usize,
+    new_coverage: u64,
+}
+
+fn aggregate_resume_entries(
+    entries: &[&crate::chain_fuzzer::ChainCorpusEntry],
+) -> ResumeAggregation {
+    let mut found_violation = false;
+    let mut near_miss_score = 0.0f64;
+    let mut executions = 0usize;
+    let mut unique_coverage: std::collections::HashSet<u64> = std::collections::HashSet::new();
+
+    for entry in entries {
+        found_violation |= entry.triggered_violation;
+        near_miss_score = near_miss_score.max(entry.near_miss_score);
+        executions = executions.saturating_add(entry.execution_count.max(1));
+        // Failed traces are persisted with coverage_bits=0; this sentinel must not
+        // contribute to resume coverage boosts.
+        if entry.coverage_bits > 0 {
+            unique_coverage.insert(entry.coverage_bits);
+        }
+    }
+
+    ResumeAggregation {
+        found_violation,
+        near_miss_score,
+        executions,
+        new_coverage: unique_coverage.len() as u64,
+    }
+}
+
 impl FuzzingEngine {
     pub async fn run_chains(
         &mut self,
@@ -203,27 +238,14 @@ impl FuzzingEngine {
                     continue;
                 }
 
-                let mut found_violation = false;
-                let mut near_miss_score = 0.0f64;
-                let mut executions = 0usize;
-                let mut unique_coverage: std::collections::HashSet<u64> =
-                    std::collections::HashSet::new();
-
-                for entry in entries {
-                    found_violation |= entry.triggered_violation;
-                    near_miss_score = near_miss_score.max(entry.near_miss_score);
-                    executions = executions.saturating_add(entry.execution_count.max(1));
-                    if entry.coverage_bits > 0 {
-                        unique_coverage.insert(entry.coverage_bits);
-                    }
-                }
+                let resume = aggregate_resume_entries(&entries);
 
                 scheduler.update_priority(&ChainRunStats {
                     chain_name: chain.name.clone(),
-                    found_violation,
-                    new_coverage: unique_coverage.len() as u64,
-                    near_miss_score,
-                    executions,
+                    found_violation: resume.found_violation,
+                    new_coverage: resume.new_coverage,
+                    near_miss_score: resume.near_miss_score,
+                    executions: resume.executions,
                     time_spent: Duration::from_millis(0),
                 });
             }
@@ -888,5 +910,48 @@ impl FuzzingEngine {
         }
 
         Ok(hasher.finish())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::aggregate_resume_entries;
+    use crate::chain_fuzzer::ChainCorpusEntry;
+    use std::collections::HashMap;
+    use zk_core::FieldElement;
+
+    fn mk_entry(
+        coverage_bits: u64,
+        near_miss_score: f64,
+        violation: bool,
+        executions: usize,
+    ) -> ChainCorpusEntry {
+        let mut inputs = HashMap::new();
+        inputs.insert("c".to_string(), vec![FieldElement::from_u64(1)]);
+        let mut entry = ChainCorpusEntry::new("chain_a", inputs, coverage_bits, 1)
+            .with_near_miss(near_miss_score);
+        if violation {
+            entry = entry.with_violation();
+        }
+        entry.execution_count = executions;
+        entry
+    }
+
+    #[test]
+    fn test_resume_aggregation_ignores_zero_coverage_bits() {
+        let entries = vec![
+            mk_entry(0, 0.2, false, 1),
+            mk_entry(0, 0.7, true, 2),
+            mk_entry(11, 0.3, false, 4),
+            mk_entry(11, 0.4, false, 3),
+            mk_entry(42, 0.1, false, 1),
+        ];
+        let refs: Vec<&ChainCorpusEntry> = entries.iter().collect();
+        let agg = aggregate_resume_entries(&refs);
+
+        assert_eq!(agg.new_coverage, 2);
+        assert!(agg.found_violation);
+        assert_eq!(agg.near_miss_score, 0.7);
+        assert_eq!(agg.executions, 11);
     }
 }
