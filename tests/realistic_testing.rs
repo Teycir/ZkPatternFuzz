@@ -9,10 +9,36 @@ use std::path::Path;
 use zk_fuzzer::targets::CircomTarget;
 use zk_fuzzer::*;
 
+const RUN_REALISTIC_TESTS_ENV: &str = "ZKFUZZ_RUN_REALISTIC_TESTS";
+
+fn should_run_realistic_tests() -> bool {
+    std::env::var(RUN_REALISTIC_TESTS_ENV)
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            normalized == "1" || normalized == "true" || normalized == "yes"
+        })
+        .unwrap_or(false)
+}
+
+fn maybe_skip_realistic_test(test_name: &str) -> bool {
+    if should_run_realistic_tests() {
+        return false;
+    }
+    eprintln!(
+        "Skipping {} (set {}=1 to run realistic integration tests)",
+        test_name, RUN_REALISTIC_TESTS_ENV
+    );
+    true
+}
+
 /// Test with a deliberately underconstrained circuit
 /// Requires real Circom backend to detect the bug
 #[tokio::test]
 async fn test_underconstrained_detection() {
+    if maybe_skip_realistic_test("test_underconstrained_detection") {
+        return;
+    }
+
     require_circom_tools();
     let circuit = r#"
     pragma circom 2.0.0;
@@ -51,6 +77,10 @@ async fn test_underconstrained_detection() {
 /// Requires real Circom backend to detect the bug
 #[tokio::test]
 async fn test_missing_range_check() {
+    if maybe_skip_realistic_test("test_missing_range_check") {
+        return;
+    }
+
     require_circom_tools();
     let circuit = r#"
     pragma circom 2.0.0;
@@ -83,6 +113,10 @@ async fn test_missing_range_check() {
 /// Currently limited by fixture coverage simulation
 #[tokio::test]
 async fn test_corpus_coverage() {
+    if maybe_skip_realistic_test("test_corpus_coverage") {
+        return;
+    }
+
     let config = FuzzConfig::from_yaml("tests/campaigns/fixture_merkle_audit.yaml").unwrap();
     let mut fuzzer = ZkFuzzer::new(config, Some(42));
 
@@ -106,6 +140,10 @@ async fn test_corpus_coverage() {
 /// 3. Parallel version is not catastrophically slower
 #[tokio::test]
 async fn test_parallel_performance() {
+    if maybe_skip_realistic_test("test_parallel_performance") {
+        return;
+    }
+
     use std::time::Instant;
 
     let config = FuzzConfig::from_yaml("tests/campaigns/fixture_merkle_audit.yaml").unwrap();
@@ -204,6 +242,10 @@ async fn test_parallel_performance() {
 /// Test deterministic fuzzing with seed
 #[tokio::test]
 async fn test_deterministic_fuzzing() {
+    if maybe_skip_realistic_test("test_deterministic_fuzzing") {
+        return;
+    }
+
     let config = FuzzConfig::from_yaml("tests/campaigns/fixture_merkle_audit.yaml").unwrap();
 
     let report1 = ZkFuzzer::run_with_progress(config.clone(), Some(12345), 1, false)

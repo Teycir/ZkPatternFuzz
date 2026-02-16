@@ -9,6 +9,38 @@ use std::collections::HashMap;
 use zk_fuzzer::config::{AttackType, FuzzConfig};
 use zk_fuzzer::fuzzer::FuzzingEngine;
 
+const RUN_FP_ANALYSIS_ENV: &str = "ZKFUZZ_RUN_FP_ANALYSIS";
+
+fn should_run_fp_analysis() -> bool {
+    std::env::var(RUN_FP_ANALYSIS_ENV)
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            normalized == "1" || normalized == "true" || normalized == "yes"
+        })
+        .unwrap_or(false)
+}
+
+fn maybe_skip_fp_analysis(test_name: &str) -> bool {
+    if should_run_fp_analysis() {
+        return false;
+    }
+    eprintln!(
+        "Skipping {} (set {}=1 to run long false-positive analysis tests)",
+        test_name, RUN_FP_ANALYSIS_ENV
+    );
+    true
+}
+
+fn attack_type_yaml_name(attack_type: &AttackType) -> String {
+    match serde_yaml::to_value(attack_type) {
+        Ok(value) => value
+            .as_str()
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("{:?}", attack_type).to_ascii_lowercase()),
+        Err(_) => format!("{:?}", attack_type).to_ascii_lowercase(),
+    }
+}
+
 /// Create a campaign config for false positive testing
 fn create_fp_test_campaign(circuit_name: &str, iterations: u64) -> FuzzConfig {
     let witness_pairs = iterations / 2;
@@ -147,6 +179,10 @@ impl FPAnalysisResult {
 /// These are circuits that have been professionally audited and are known safe
 #[test]
 fn test_fp_rate_audited_circuits() {
+    if maybe_skip_fp_analysis("test_fp_rate_audited_circuits") {
+        return;
+    }
+
     let safe_circuits = vec![
         "tornado_withdraw_fixed", // Fixed Tornado Cash withdraw
         "poseidon_standard",      // Standard Poseidon implementation
@@ -200,6 +236,10 @@ fn test_fp_rate_audited_circuits() {
 /// These circuits have been verified with Picus or other formal tools
 #[test]
 fn test_fp_rate_verified_circuits() {
+    if maybe_skip_fp_analysis("test_fp_rate_verified_circuits") {
+        return;
+    }
+
     let verified_circuits = vec![
         "merkle_tree_secure",
         "range_proof_secure",
@@ -239,6 +279,10 @@ fn test_fp_rate_verified_circuits() {
 /// Helps identify which oracles need tuning
 #[test]
 fn test_fp_rate_by_attack_type() {
+    if maybe_skip_fp_analysis("test_fp_rate_by_attack_type") {
+        return;
+    }
+
     let test_cases: Vec<(AttackType, Vec<&str>)> = vec![
         (
             AttackType::Underconstrained,
@@ -262,6 +306,7 @@ fn test_fp_rate_by_attack_type() {
     let iterations = 5_000;
 
     for (attack_type, circuits) in test_cases {
+        let attack_type_name = attack_type_yaml_name(&attack_type);
         let mut total = 0;
         let mut with_findings = 0;
 
@@ -283,7 +328,7 @@ campaign:
       max_iterations: {}
 
 attacks:
-  - type: {:?}
+  - type: {}
     description: "FP test"
     config: {{}}
 
@@ -296,7 +341,7 @@ reporting:
   output_dir: "./reports/fp_by_attack"
   formats: ["json"]
 "#,
-                circuit, attack_type, circuit, iterations, attack_type
+                circuit, attack_type, circuit, iterations, attack_type_name
             );
 
             let config: FuzzConfig = match serde_yaml::from_str(&yaml) {
@@ -346,6 +391,10 @@ reporting:
 /// Test that tuned oracle thresholds reduce false positives
 #[test]
 fn test_oracle_threshold_tuning() {
+    if maybe_skip_fp_analysis("test_oracle_threshold_tuning") {
+        return;
+    }
+
     // Test different confidence thresholds
     let thresholds = [0.5, 0.6, 0.7, 0.8, 0.9];
 

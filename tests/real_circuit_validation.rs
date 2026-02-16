@@ -8,6 +8,27 @@ use zk_fuzzer::analysis::opus::{OpusAnalyzer, OpusConfig};
 use zk_fuzzer::config::generator::PatternType;
 
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+const RUN_REAL_VALIDATION_ENV: &str = "ZKFUZZ_RUN_REAL_CIRCUIT_VALIDATION";
+
+fn should_run_real_validation() -> bool {
+    std::env::var(RUN_REAL_VALIDATION_ENV)
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            normalized == "1" || normalized == "true" || normalized == "yes"
+        })
+        .unwrap_or(false)
+}
+
+fn maybe_skip_real_validation(test_name: &str) -> bool {
+    if should_run_real_validation() {
+        return false;
+    }
+    eprintln!(
+        "Skipping {} (set {}=1 to run external zk0d real-circuit validation)",
+        test_name, RUN_REAL_VALIDATION_ENV
+    );
+    true
+}
 
 fn zk0d_base() -> PathBuf {
     match std::env::var("ZK0D_BASE") {
@@ -26,6 +47,10 @@ fn zk0d_available() -> bool {
 #[test]
 // Requires zk0d repository
 fn test_real_privacy_circuits() {
+    if maybe_skip_real_validation("test_real_privacy_circuits") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!("Skipping: zk0d repository not available");
         return;
@@ -79,6 +104,10 @@ fn test_real_privacy_circuits() {
 #[test]
 // Requires zk0d repository
 fn test_real_noir_circuits() {
+    if maybe_skip_real_validation("test_real_noir_circuits") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!("Skipping: zk0d repository not available");
         return;
@@ -118,6 +147,10 @@ fn test_real_noir_circuits() {
 #[test]
 // Requires zk0d repository
 fn test_real_cairo_circuits() {
+    if maybe_skip_real_validation("test_real_cairo_circuits") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!("Skipping: zk0d repository not available");
         return;
@@ -149,6 +182,10 @@ fn test_real_cairo_circuits() {
 #[test]
 // Requires zk0d repository
 fn test_pattern_detection_accuracy() {
+    if maybe_skip_real_validation("test_pattern_detection_accuracy") {
+        return;
+    }
+
     if !zk0d_available() {
         return;
     }
@@ -208,6 +245,10 @@ fn test_pattern_detection_accuracy() {
 #[test]
 // Requires zk0d repository
 fn test_adaptive_scheduling_real_circuits() {
+    if maybe_skip_real_validation("test_adaptive_scheduling_real_circuits") {
+        return;
+    }
+
     if !zk0d_available() {
         return;
     }
@@ -278,6 +319,10 @@ fn test_adaptive_scheduling_real_circuits() {
 #[test]
 // Requires zk0d repository
 fn test_generated_configs_validity() {
+    if maybe_skip_real_validation("test_generated_configs_validity") {
+        return;
+    }
+
     if !zk0d_available() {
         return;
     }

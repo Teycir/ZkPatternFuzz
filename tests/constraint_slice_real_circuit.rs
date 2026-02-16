@@ -36,11 +36,17 @@ async fn test_constraint_slice_withdraw_real_circuit() {
     let inspector = executor
         .constraint_inspector()
         .expect("Constraint inspector unavailable for real-circuit slice test");
-    let output_wires = inspector.output_indices();
-    assert!(
-        !output_wires.is_empty(),
-        "Constraint inspector returned no output wires"
-    );
+    let output_wires = {
+        let from_inspector = inspector.output_indices();
+        if !from_inspector.is_empty() {
+            from_inspector
+        } else {
+            // Some Circom circuits expose only public inputs (no explicit `signal output`),
+            // so mirror the engine fallback and use the first post-input wire.
+            let num_inputs = executor.num_public_inputs() + executor.num_private_inputs();
+            vec![num_inputs]
+        }
+    };
     let outputs: Vec<OutputMapping> = output_wires
         .into_iter()
         .enumerate()

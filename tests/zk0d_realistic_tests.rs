@@ -21,6 +21,27 @@
 use std::path::PathBuf;
 
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+const RUN_ZK0D_REALISTIC_TESTS_ENV: &str = "ZKFUZZ_RUN_ZK0D_REALISTIC_TESTS";
+
+fn should_run_zk0d_realistic_tests() -> bool {
+    std::env::var(RUN_ZK0D_REALISTIC_TESTS_ENV)
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            normalized == "1" || normalized == "true" || normalized == "yes"
+        })
+        .unwrap_or(false)
+}
+
+fn maybe_skip_zk0d_realistic(test_name: &str) -> bool {
+    if should_run_zk0d_realistic_tests() {
+        return false;
+    }
+    eprintln!(
+        "Skipping {} (set {}=1 to run zk0d realistic integration tests)",
+        test_name, RUN_ZK0D_REALISTIC_TESTS_ENV
+    );
+    true
+}
 
 fn zk0d_base() -> PathBuf {
     match std::env::var("ZK0D_BASE") {
@@ -57,6 +78,10 @@ fn polygon_id_path() -> PathBuf {
 #[test]
 // Requires zk0d repository and circom compiler
 fn test_tornado_withdraw_underconstrained_detection() {
+    if maybe_skip_zk0d_realistic("test_tornado_withdraw_underconstrained_detection") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
         return;
@@ -89,6 +114,10 @@ fn test_tornado_withdraw_underconstrained_detection() {
 #[test]
 // Requires zk0d repository and circom compiler
 fn test_semaphore_nullifier_oracle() {
+    if maybe_skip_zk0d_realistic("test_semaphore_nullifier_oracle") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
         return;
@@ -120,6 +149,10 @@ fn test_semaphore_nullifier_oracle() {
 #[test]
 // Requires zk0d repository and circom compiler
 fn test_polygon_id_constraint_inference() {
+    if maybe_skip_zk0d_realistic("test_polygon_id_constraint_inference") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!("Skipping: zk0d not available at {}", zk0d_base().display());
         return;
@@ -177,6 +210,10 @@ fn test_field_modulus_circuit_specific() {
 
 #[tokio::test]
 async fn test_continuous_fuzzing_realistic_iteration_count() {
+    if maybe_skip_zk0d_realistic("test_continuous_fuzzing_realistic_iteration_count") {
+        return;
+    }
+
     use zk_fuzzer::config::*;
     use zk_fuzzer::fuzzer::FuzzingEngine;
 
@@ -252,6 +289,10 @@ async fn test_continuous_fuzzing_realistic_iteration_count() {
 
 #[tokio::test]
 async fn test_all_five_novel_attacks_dispatch() {
+    if maybe_skip_zk0d_realistic("test_all_five_novel_attacks_dispatch") {
+        return;
+    }
+
     use zk_fuzzer::config::*;
     use zk_fuzzer::fuzzer::FuzzingEngine;
 

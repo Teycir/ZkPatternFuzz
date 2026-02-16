@@ -46,6 +46,27 @@ use std::path::PathBuf;
 use zk_fuzzer::analysis::opus::{OpusAnalyzer, OpusConfig, ZeroDayCategory};
 
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+const RUN_ZK0D_VALIDATION_ENV: &str = "ZKFUZZ_RUN_ZK0D_VALIDATION";
+
+fn should_run_zk0d_validation() -> bool {
+    std::env::var(RUN_ZK0D_VALIDATION_ENV)
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            normalized == "1" || normalized == "true" || normalized == "yes"
+        })
+        .unwrap_or(false)
+}
+
+fn maybe_skip_zk0d_validation(test_name: &str) -> bool {
+    if should_run_zk0d_validation() {
+        return false;
+    }
+    eprintln!(
+        "Skipping {} (set {}=1 to run external zk0d validation tests)",
+        test_name, RUN_ZK0D_VALIDATION_ENV
+    );
+    true
+}
 
 fn zk0d_base() -> PathBuf {
     match std::env::var("ZK0D_BASE") {
@@ -66,6 +87,10 @@ fn zk0d_available() -> bool {
 #[test]
 // Requires zk0d repository - run manually
 fn test_tornado_withdraw_invariant_detection() {
+    if maybe_skip_zk0d_validation("test_tornado_withdraw_invariant_detection") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!(
             "⚠️  zk0d not found at {}",
@@ -149,6 +174,10 @@ fn test_tornado_withdraw_invariant_detection() {
 #[test]
 // Requires zk0d repository - run manually
 fn test_semaphore_invariant_detection() {
+    if maybe_skip_zk0d_validation("test_semaphore_invariant_detection") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!("⚠️  zk0d not found");
         return;
@@ -205,6 +234,10 @@ fn test_semaphore_invariant_detection() {
 #[test]
 // Requires zk0d repository - run manually
 fn test_nullify_circuits_edge_cases() {
+    if maybe_skip_zk0d_validation("test_nullify_circuits_edge_cases") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!("⚠️  zk0d not found");
         return;
@@ -262,6 +295,10 @@ fn test_nullify_circuits_edge_cases() {
 #[test]
 // Requires zk0d repository and circom - comprehensive test
 fn test_comprehensive_zk0d_scan() {
+    if maybe_skip_zk0d_validation("test_comprehensive_zk0d_scan") {
+        return;
+    }
+
     if !zk0d_available() {
         eprintln!("⚠️  zk0d not found");
         return;

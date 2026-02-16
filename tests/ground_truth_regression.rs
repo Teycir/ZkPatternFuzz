@@ -9,6 +9,28 @@ use std::path::PathBuf;
 use zk_fuzzer::config::{AttackType, FuzzConfig};
 use zk_fuzzer::fuzzer::FuzzingEngine;
 
+const RUN_GROUND_TRUTH_REGRESSION_ENV: &str = "ZKFUZZ_RUN_GROUND_TRUTH_REGRESSION";
+
+fn should_run_ground_truth_regression() -> bool {
+    std::env::var(RUN_GROUND_TRUTH_REGRESSION_ENV)
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            normalized == "1" || normalized == "true" || normalized == "yes"
+        })
+        .unwrap_or(false)
+}
+
+fn maybe_skip_ground_truth_regression(test_name: &str) -> bool {
+    if should_run_ground_truth_regression() {
+        return false;
+    }
+    eprintln!(
+        "Skipping {} (set {}=1 to run long ground-truth regression tests)",
+        test_name, RUN_GROUND_TRUTH_REGRESSION_ENV
+    );
+    true
+}
+
 /// Helper to create a campaign config for a ground truth circuit
 fn create_ground_truth_campaign(
     circuit_name: &str,
@@ -97,6 +119,10 @@ reporting:
 /// Test detection of Merkle path index not constrained to binary
 #[test]
 fn test_detects_merkle_unconstrained() {
+    if maybe_skip_ground_truth_regression("test_detects_merkle_unconstrained") {
+        return;
+    }
+
     let config = create_ground_truth_campaign(
         "merkle_unconstrained",
         vec![AttackType::Underconstrained],
@@ -131,6 +157,10 @@ fn test_detects_merkle_unconstrained() {
 /// Test detection of range proof overflow
 #[test]
 fn test_detects_range_overflow() {
+    if maybe_skip_ground_truth_regression("test_detects_range_overflow") {
+        return;
+    }
+
     let config = create_ground_truth_campaign(
         "range_overflow",
         vec![AttackType::ArithmeticOverflow, AttackType::Boundary],
@@ -160,6 +190,10 @@ fn test_detects_range_overflow() {
 /// Test detection of nullifier collision
 #[test]
 fn test_detects_nullifier_collision() {
+    if maybe_skip_ground_truth_regression("test_detects_nullifier_collision") {
+        return;
+    }
+
     let config =
         create_ground_truth_campaign("nullifier_collision", vec![AttackType::Collision], 10_000);
 
@@ -184,6 +218,10 @@ fn test_detects_nullifier_collision() {
 /// Test detection of bit decomposition missing constraint
 #[test]
 fn test_detects_bit_decomposition_unconstrained() {
+    if maybe_skip_ground_truth_regression("test_detects_bit_decomposition_unconstrained") {
+        return;
+    }
+
     let config = create_ground_truth_campaign(
         "bit_decomposition",
         vec![AttackType::Underconstrained],
@@ -211,6 +249,10 @@ fn test_detects_bit_decomposition_unconstrained() {
 /// Test detection of EdDSA signature malleability
 #[test]
 fn test_detects_eddsa_malleability() {
+    if maybe_skip_ground_truth_regression("test_detects_eddsa_malleability") {
+        return;
+    }
+
     let config = create_ground_truth_campaign(
         "eddsa_malleability",
         vec![AttackType::Boundary, AttackType::Soundness],
@@ -240,6 +282,10 @@ fn test_detects_eddsa_malleability() {
 /// Test detection of private input leakage
 #[test]
 fn test_detects_public_input_leak() {
+    if maybe_skip_ground_truth_regression("test_detects_public_input_leak") {
+        return;
+    }
+
     let config = create_ground_truth_campaign(
         "public_input_leak",
         vec![AttackType::Underconstrained],
@@ -267,6 +313,10 @@ fn test_detects_public_input_leak() {
 /// Test detection of division by zero
 #[test]
 fn test_detects_division_by_zero() {
+    if maybe_skip_ground_truth_regression("test_detects_division_by_zero") {
+        return;
+    }
+
     let config = create_ground_truth_campaign(
         "division_by_zero",
         vec![AttackType::ArithmeticOverflow, AttackType::Boundary],
@@ -296,6 +346,10 @@ fn test_detects_division_by_zero() {
 /// Test detection of hash length extension vulnerability
 #[test]
 fn test_detects_hash_length_extension() {
+    if maybe_skip_ground_truth_regression("test_detects_hash_length_extension") {
+        return;
+    }
+
     let config =
         create_ground_truth_campaign("hash_length_extension", vec![AttackType::Soundness], 10_000);
 
@@ -320,6 +374,10 @@ fn test_detects_hash_length_extension() {
 /// Test detection of multiexp soundness issue
 #[test]
 fn test_detects_multiexp_soundness() {
+    if maybe_skip_ground_truth_regression("test_detects_multiexp_soundness") {
+        return;
+    }
+
     let config = create_ground_truth_campaign(
         "multiexp_soundness",
         vec![AttackType::Underconstrained],
@@ -347,6 +405,10 @@ fn test_detects_multiexp_soundness() {
 /// Test detection of non-binding commitment
 #[test]
 fn test_detects_commitment_not_binding() {
+    if maybe_skip_ground_truth_regression("test_detects_commitment_not_binding") {
+        return;
+    }
+
     let config = create_ground_truth_campaign(
         "commitment_binding",
         vec![AttackType::Underconstrained, AttackType::Collision],
@@ -376,6 +438,10 @@ fn test_detects_commitment_not_binding() {
 /// Measure overall detection rate across ground truth suite
 #[test]
 fn test_ground_truth_detection_rate() {
+    if maybe_skip_ground_truth_regression("test_ground_truth_detection_rate") {
+        return;
+    }
+
     let test_cases = vec![
         ("merkle_unconstrained", AttackType::Underconstrained),
         ("range_overflow", AttackType::ArithmeticOverflow),

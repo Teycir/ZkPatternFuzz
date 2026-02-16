@@ -55,4 +55,4 @@ template SecureNullifierWithBinding() {
     nullifierHash <== hasher.out;
 }
 
-component main {public [nullifierHash, identityCommitment]} = SecureNullifier();
+component main = SecureNullifier();
