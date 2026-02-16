@@ -29,7 +29,7 @@ pub use v2::parse_chains;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 pub use zk_core::{AttackType, Framework, Severity};
 
@@ -191,7 +191,18 @@ fn default_output_dir() -> PathBuf {
     if let Ok(path) = std::env::var("ZKF_OUTPUT_DIR") {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
+            let parsed = PathBuf::from(trimmed);
+            let has_parent = Path::new(trimmed)
+                .components()
+                .any(|component| matches!(component, Component::ParentDir));
+            if has_parent {
+                tracing::warn!(
+                    "Ignoring ZKF_OUTPUT_DIR='{}': parent-directory components ('..') are not allowed",
+                    trimmed
+                );
+            } else {
+                return parsed;
+            }
         }
     }
     if let Ok(home) = std::env::var("HOME") {

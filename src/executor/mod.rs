@@ -228,11 +228,16 @@ fn value_bucket_for(value_bytes: &[u8]) -> u8 {
         Some(value) => value,
         None => value_bytes.len(),
     };
+    let index_bucket = if first_nonzero > u8::MAX as usize {
+        u8::MAX
+    } else {
+        first_nonzero as u8
+    };
     let byte = match value_bytes.get(first_nonzero).copied() {
         Some(byte) => byte,
-        None => return first_nonzero as u8,
+        None => return index_bucket,
     };
-    (first_nonzero as u8).wrapping_add(byte)
+    index_bucket.wrapping_add(byte)
 }
 
 /// Upper bound for synthetic witness vector size when mapping backend wire indices.
