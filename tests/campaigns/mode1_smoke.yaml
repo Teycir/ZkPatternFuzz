@@ -1,0 +1,44 @@
+campaign:
+  name: "Mode 1 Smoke Non-Regression"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "./tests/ground_truth/chains/mode123_smoke/mode123_main.circom"
+    main_component: "Mode123Main"
+  parameters:
+    field: "bn254"
+    max_constraints: 2048
+    timeout_seconds: 20
+    strict_backend: true
+    symbolic_enabled: false
+    constraint_guided_enabled: false
+    max_iterations: 8
+    fuzzing_iterations: 8
+    fuzzing_timeout_seconds: 3
+
+attacks:
+  - type: "underconstrained"
+    description: "Minimal underconstrained smoke check"
+    config:
+      witness_pairs: 8
+      public_input_count: 1
+
+  - type: "boundary"
+    description: "Minimal boundary smoke check"
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "2"
+
+inputs:
+  - name: "a"
+    type: "field"
+    fuzz_strategy: "random"
+  - name: "b"
+    type: "field"
+    fuzz_strategy: "random"
+
+reporting:
+  output_dir: "./reports/mode1_smoke"
+  formats: ["json"]

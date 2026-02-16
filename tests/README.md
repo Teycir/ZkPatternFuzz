@@ -43,6 +43,29 @@ for campaign in tests/campaigns/*_audit.yaml; do
 done
 ```
 
+### Mode 1/2/3 Non-Regression Smoke
+
+Use the minimal end-to-end mode smoke test to catch regressions in CLI mode wiring:
+
+```bash
+cargo test --test mode123_nonregression -- --nocapture
+```
+
+To skip this smoke in constrained environments:
+
+```bash
+ZKFUZZ_SKIP_MODE123_SMOKE=1 cargo test --test mode123_nonregression
+```
+
+Optional campaign overrides (if you want to run the smoke on specific target YAMLs):
+
+```bash
+ZKFUZZ_MODE1_CAMPAIGN=campaigns/zk0d/your_mode1.yaml \
+ZKFUZZ_MODE2_CAMPAIGN=campaigns/zk0d/your_mode2.yaml \
+ZKFUZZ_MODE3_CAMPAIGN=campaigns/zk0d/your_mode3.yaml \
+cargo test --test mode123_nonregression -- --nocapture
+```
+
 ## Campaign Structure
 
 Each campaign YAML follows this structure:
