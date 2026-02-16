@@ -1,6 +1,6 @@
 # ZK-Fuzzer Test Campaigns
 
-This directory contains fuzzing campaign configurations for testing real-world ZK circuits.
+This directory contains fuzzing configs for testing real-world ZK circuits.
 
 ## Real-World Test Targets
 
@@ -18,32 +18,48 @@ The campaigns in this directory target circuits from `${ZK0D_BASE:-/media/elemen
 |----------|--------|----------|
 | `polygon_zkevm_audit.yaml` | Polygon zkEVM circuits | Critical |
 
-## Running Campaigns
+## Running Scans
 
 ### Quick Start
 
 ```bash
-# Run a single campaign
-cargo run --release -- run tests/campaigns/semaphore_audit.yaml
+# Run a single pattern with auto family selection
+cargo run --release -- scan tests/patterns/scan_smoke_mono.yaml \
+  --target-circuit tests/ground_truth/chains/mode123_smoke/mode123_main.circom \
+  --main-component Mode123Main \
+  --framework circom
 
-# Validate configuration without executing
-cargo run -- validate tests/campaigns/tornado_core_audit.yaml
+# Validate scan wiring without executing
+cargo run --release -- scan tests/patterns/scan_smoke_mono.yaml \
+  --target-circuit tests/ground_truth/chains/mode123_smoke/mode123_main.circom \
+  --main-component Mode123Main \
+  --framework circom \
+  --dry-run
 
 # Run with verbose output and custom seed
-cargo run --release -- run tests/campaigns/iden3_auth_audit.yaml --verbose --seed 42
+cargo run --release -- scan tests/patterns/scan_smoke_mono.yaml \
+  --target-circuit tests/ground_truth/chains/mode123_smoke/mode123_main.circom \
+  --main-component Mode123Main \
+  --framework circom \
+  --verbose --seed 42
 ```
 
-### Running All Campaigns
+### Running Catalog Selections
 
 ```bash
-# Run all real-world campaigns
-for campaign in tests/campaigns/*_audit.yaml; do
-    echo "Running: $campaign"
-    cargo run --release -- run "$campaign" --workers 8
-done
+# List collections/aliases/templates
+cargo run --release --bin zk0d_batch -- --list-catalog
+
+# Run always-on mono templates for a mono target
+cargo run --release --bin zk0d_batch -- \
+  --alias always \
+  --target-topology mono \
+  --target-circuit tests/ground_truth/chains/mode123_smoke/mode123_main.circom \
+  --main-component Mode123Main \
+  --framework circom
 ```
 
-### Mode 1/2/3 Non-Regression Smoke
+### Scan Mono/Multi Non-Regression Smoke
 
 Use the minimal end-to-end mode smoke test to catch regressions in CLI mode wiring:
 
@@ -59,27 +75,21 @@ ZKFUZZ_SKIP_MODE123_SMOKE=1 cargo test --test mode123_nonregression
 
 The smoke test also skips automatically when `circom` or `snarkjs` is missing from `PATH`.
 
-Optional campaign overrides (if you want to run the smoke on specific target YAMLs):
+Optional smoke overrides:
 
 ```bash
-ZKFUZZ_MODE1_CAMPAIGN=campaigns/zk0d/your_mode1.yaml \
-ZKFUZZ_MODE2_CAMPAIGN=campaigns/zk0d/your_mode2.yaml \
-ZKFUZZ_MODE3_CAMPAIGN=campaigns/zk0d/your_mode3.yaml \
+ZKFUZZ_SCAN_MONO_PATTERN=tests/patterns/scan_smoke_mono.yaml \
+ZKFUZZ_SCAN_MULTI_PATTERN=tests/patterns/scan_smoke_multi.yaml \
+ZKFUZZ_SCAN_TARGET_CIRCUIT=tests/ground_truth/chains/mode123_smoke/mode123_main.circom \
+ZKFUZZ_SCAN_MAIN_COMPONENT=Mode123Main \
 cargo test --test mode123_nonregression -- --nocapture
 ```
 
-## Campaign Structure
+## Pattern Structure
 
-Each campaign YAML follows this structure:
+Each pattern YAML follows this structure:
 
 ```yaml
-campaign:
-  name: "Human readable name"
-  target:
-    framework: circom | noir | halo2
-    circuit_path: "/path/to/circuit"
-    main_component: "MainComponent"
-
 attacks:
   - type: underconstrained | soundness | collision | arithmetic_overflow | boundary
     description: "What this attack tests"
@@ -89,6 +99,12 @@ inputs:
   - name: "input_name"
     type: field | array[N] | bytes
     fuzz_strategy: random | mutation | interesting_values
+
+invariants:
+  - name: "invariant_name"
+    invariant_type: range | constraint | uniqueness | relation
+    relation: "..."
+    severity: low | medium | high | critical
 ```
 
 ## Attack Types
@@ -101,12 +117,12 @@ inputs:
 | `arithmetic_overflow` | Tests field arithmetic boundaries | High |
 | `boundary` | Tests input/parameter boundaries | Medium |
 
-## Adding New Campaigns
+## Adding New Patterns
 
 1. Identify the circuit in `${ZK0D_BASE:-/media/elements/Repos/zk0d}/`
 2. Analyze the circuit's inputs and outputs
-3. Create a campaign YAML with appropriate attacks
-4. Test with `validate` command first
+3. Create a pattern YAML with appropriate attacks/invariants
+4. Test with `scan --dry-run`
 5. Run and iterate on configuration
 
 ## Backend Execution
@@ -121,7 +137,7 @@ See `src/executor/mod.rs` for backend status.
 
 ## Reports
 
-Reports are generated in the configured `output_dir` with:
+Reports are generated under `~/ZkFuzz` (or OS equivalent) with:
 - `findings.json` - Machine-readable vulnerability data
 - `report.md` - Human-readable summary
 - `corpus/` - Interesting test cases for further analysis

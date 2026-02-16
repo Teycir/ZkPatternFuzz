@@ -1,0 +1,186 @@
+version: 1
+
+catalog:
+  name: zk0d_known_cve_deep_catalog
+  description: Deep-only attack catalog. Mode 1 performs shallow skimming first; all listed targets are deep campaigns mapped from known ZK bug classes.
+
+collections:
+  deep_all:
+    description: Run every deep attack target.
+    targets:
+      - soundness_forge_deep_mono
+      - frozenheart_proofforgery_deep_mono
+      - trustedsetup_vksubstitution_deep_mono
+      - underconstrained_witness_deep_mono
+      - nondeterministic_nullifier_deep_mono
+      - nullifier_rangecheck_deep_mono
+      - arithmetic_overflow_deep_mono
+      - bitlength_mismatch_deep_mono
+      - assigned_notconstrained_deep_mono
+      - unusedpubinputs_optimizedout_deep_mono
+      - regex_header_spoofing_deep_mono
+      - chain_atomicity_deep_multi
+      - execution_hijack_deep_multi
+
+  deep_mono:
+    description: Deep single-circuit attack targets.
+    targets:
+      - soundness_forge_deep_mono
+      - frozenheart_proofforgery_deep_mono
+      - trustedsetup_vksubstitution_deep_mono
+      - underconstrained_witness_deep_mono
+      - nondeterministic_nullifier_deep_mono
+      - nullifier_rangecheck_deep_mono
+      - arithmetic_overflow_deep_mono
+      - bitlength_mismatch_deep_mono
+      - assigned_notconstrained_deep_mono
+      - unusedpubinputs_optimizedout_deep_mono
+      - regex_header_spoofing_deep_mono
+
+  deep_multi:
+    description: Deep chained/multi-step attack targets.
+    targets:
+      - chain_atomicity_deep_multi
+      - execution_hijack_deep_multi
+
+  common_underconstrained:
+    description: Under-constrained circuit class.
+    targets:
+      - underconstrained_witness_deep_mono
+
+  common_nondeterministic:
+    description: Nondeterministic circuit/nullifier class.
+    targets:
+      - nondeterministic_nullifier_deep_mono
+
+  common_arithmetic_overflow:
+    description: Arithmetic over/underflow class.
+    targets:
+      - arithmetic_overflow_deep_mono
+
+  common_mismatching_bit_lengths:
+    description: Mismatching bit-length class.
+    targets:
+      - bitlength_mismatch_deep_mono
+
+  common_unused_public_inputs:
+    description: Unused public inputs optimized out class.
+    targets:
+      - unusedpubinputs_optimizedout_deep_mono
+
+  common_frozen_heart:
+    description: Frozen-heart proof forgery class.
+    targets:
+      - frozenheart_proofforgery_deep_mono
+
+  common_trusted_setup_leak:
+    description: Trusted setup leakage/substitution class.
+    targets:
+      - trustedsetup_vksubstitution_deep_mono
+
+  common_assigned_not_constrained:
+    description: Assigned-but-not-constrained class.
+    targets:
+      - assigned_notconstrained_deep_mono
+
+aliases:
+  known_cve_all:
+    - bitlength_mismatch_deep_mono
+    - assigned_notconstrained_deep_mono
+    - nullifier_rangecheck_deep_mono
+    - nondeterministic_nullifier_deep_mono
+    - soundness_forge_deep_mono
+    - underconstrained_witness_deep_mono
+    - frozenheart_proofforgery_deep_mono
+    - trustedsetup_vksubstitution_deep_mono
+    - arithmetic_overflow_deep_mono
+    - regex_header_spoofing_deep_mono
+    - chain_atomicity_deep_multi
+    - execution_hijack_deep_multi
+
+  cve_01_dark_forest_missing_bit_length:
+    - bitlength_mismatch_deep_mono
+  cve_02_bigint_missing_bit_length:
+    - bitlength_mismatch_deep_mono
+  cve_03_circom_pairing_missing_output_check:
+    - assigned_notconstrained_deep_mono
+  cve_04_semaphore_missing_range_check:
+    - nullifier_rangecheck_deep_mono
+  cve_05_zk_kit_missing_range_check:
+    - nullifier_rangecheck_deep_mono
+  cve_06_aztec_missing_bit_length_nondeterministic_nullifier:
+    - nondeterministic_nullifier_deep_mono
+  cve_07_aztec_plonk_zero_bug:
+    - soundness_forge_deep_mono
+  cve_08_stealthdrop_nondeterministic_nullifier:
+    - nondeterministic_nullifier_deep_mono
+  cve_09_zkdrops_missing_nullifier_range_check:
+    - nullifier_rangecheck_deep_mono
+  cve_10_maci_underconstrained_circuit:
+    - underconstrained_witness_deep_mono
+  cve_11_bulletproofs_frozen_heart:
+    - frozenheart_proofforgery_deep_mono
+  cve_12_plonk_frozen_heart:
+    - frozenheart_proofforgery_deep_mono
+  cve_13_zcash_trusted_setup_leak:
+    - trustedsetup_vksubstitution_deep_mono
+  cve_14_mimc_assigned_not_constrained:
+    - assigned_notconstrained_deep_mono
+  cve_15_scroll_missing_overflow_constraint:
+    - arithmetic_overflow_deep_mono
+  cve_16_scroll_missing_constraint:
+    - underconstrained_witness_deep_mono
+  cve_17_dusk_missing_blinding_factors:
+    - soundness_forge_deep_mono
+  cve_18_nightfall_missing_nullifier_range_check:
+    - nullifier_rangecheck_deep_mono
+  cve_19_summa_unconstrained_constants:
+    - assigned_notconstrained_deep_mono
+  cve_20_polygon_missing_remainder_constraint:
+    - arithmetic_overflow_deep_mono
+  cve_21_polygon_fake_smt_inclusion:
+    - execution_hijack_deep_multi
+  cve_22_polygon_incorrect_ctx_assignation:
+    - arithmetic_overflow_deep_mono
+  cve_23_polygon_execution_flow_hijack:
+    - execution_hijack_deep_multi
+  cve_24_zendoo_polynomial_normalization:
+    - arithmetic_overflow_deep_mono
+  cve_25_aleo_non_committing_encryption:
+    - soundness_forge_deep_mono
+  cve_26_light_protocol_non_atomic_state:
+    - chain_atomicity_deep_multi
+  cve_27_zkemail_underconstrained_spoofing:
+    - regex_header_spoofing_deep_mono
+
+known_cve_map:
+  source: targets/zk-bug-tracker/README.md
+  bugs_in_the_wild_count: 27
+  mapping:
+    dark_forest_1: cve_01_dark_forest_missing_bit_length
+    bigint_1: cve_02_bigint_missing_bit_length
+    circom_pairing_1: cve_03_circom_pairing_missing_output_check
+    semaphore_1: cve_04_semaphore_missing_range_check
+    zk_kit_1: cve_05_zk_kit_missing_range_check
+    aztec_1: cve_06_aztec_missing_bit_length_nondeterministic_nullifier
+    aztec_2: cve_07_aztec_plonk_zero_bug
+    stealthdrop_1: cve_08_stealthdrop_nondeterministic_nullifier
+    zkdrops_1: cve_09_zkdrops_missing_nullifier_range_check
+    maci_1: cve_10_maci_underconstrained_circuit
+    bulletproofs_1: cve_11_bulletproofs_frozen_heart
+    plonk_1: cve_12_plonk_frozen_heart
+    zcash_1: cve_13_zcash_trusted_setup_leak
+    mimc_1: cve_14_mimc_assigned_not_constrained
+    pse_zkevm_1: cve_15_scroll_missing_overflow_constraint
+    pse_zkevm_2: cve_16_scroll_missing_constraint
+    dusk_1: cve_17_dusk_missing_blinding_factors
+    nightfall_1: cve_18_nightfall_missing_nullifier_range_check
+    summa_1: cve_19_summa_unconstrained_constants
+    polygon_zkevm_1: cve_20_polygon_missing_remainder_constraint
+    hexens_polygonzkevm_1: cve_21_polygon_fake_smt_inclusion
+    hexens_polygonzkevm_2: cve_22_polygon_incorrect_ctx_assignation
+    hexens_polygonzkevm_3: cve_23_polygon_execution_flow_hijack
+    zendoo_polynomial_1: cve_24_zendoo_polynomial_normalization
+    aleo_encryption_1: cve_25_aleo_non_committing_encryption
+    light_protocol_1: cve_26_light_protocol_non_atomic_state
+    zkemail_1: cve_27_zkemail_underconstrained_spoofing

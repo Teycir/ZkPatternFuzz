@@ -171,10 +171,7 @@ impl FuzzingEngine {
         let mut offset = 0usize;
         for input in &self.config.inputs {
             let len = if input.input_type.starts_with("array") {
-                match input.length {
-                    Some(value) => value,
-                    None => 1,
-                }
+                input.length.unwrap_or(1)
             } else {
                 1
             };

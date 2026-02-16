@@ -660,10 +660,10 @@ pub fn filter_validated_findings(
                         "Oracle validation skipped for '{:?}' ({}): execution failed ({})",
                         finding.attack_type,
                         label,
-                        match exec_result.error.as_deref() {
-                            Some(err) => err,
-                            None => "execution failed without backend error message",
-                        }
+                        exec_result
+                            .error
+                            .as_deref()
+                            .unwrap_or("execution failed without backend error message")
                     );
                     return;
                 }

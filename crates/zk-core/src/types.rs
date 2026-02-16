@@ -317,10 +317,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     }
                 };
 
-                let witness_a = match poc_witness_a {
-                    Some(value) => value,
-                    None => Vec::new(),
-                };
+                let witness_a = poc_witness_a.unwrap_or_default();
                 let mut parsed_witness_a: Vec<FieldElement> = Vec::with_capacity(witness_a.len());
                 for hex in &witness_a {
                     let field = FieldElement::from_hex(hex).map_err(|e| {
@@ -334,10 +331,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     severity: severity.ok_or_else(|| de::Error::missing_field("severity"))?,
                     description: description
                         .ok_or_else(|| de::Error::missing_field("description"))?,
-                    location: match location {
-                        Some(value) => value,
-                        None => None,
-                    },
+                    location: location.unwrap_or_default(),
                     poc: ProofOfConcept {
                         witness_a: parsed_witness_a,
                         witness_b: None,

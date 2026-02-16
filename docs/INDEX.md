@@ -16,9 +16,9 @@ Complete guide to all documentation files, ordered by use case and reading level
 ### 0b. [scan_modes.md](scan_modes.md) - **Required**
 **For:** Any AI agent selecting a scan mode  
 **Contains:**
-- Definitions for Mode 1, Mode 2, and Mode 3
-- Scope constraints for targets
-- Switching guidance
+- YAML-only scanner model
+- Pattern classes (always-run simple + target-dependent deep)
+- Catalog/alias execution guidance and mono/multi compatibility
 
 **Start here if:** You need to pick a scan mode
 
@@ -184,7 +184,7 @@ docs/
 │   └── Navigation hub for all docs
 │
 ├── scan_modes.md
-│   └── Definitions for the three scan modes
+│   └── YAML scanner model and catalog execution rules
 │
 ├── scan_metrics.md
 │   └── Metrics to compare modes and maturity

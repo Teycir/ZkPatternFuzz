@@ -1,0 +1,45 @@
+invariants:
+  - name: a_small_range
+    invariant_type: range
+    relation: "0 <= a < 16"
+    severity: medium
+
+attacks: []
+
+inputs:
+  - name: a
+    type: field
+    fuzz_strategy: random
+  - name: b
+    type: field
+    fuzz_strategy: random
+
+chains:
+  - name: mode123_smoke_chain
+    description: Simple two-step chain for multi-flow regression
+    circuits:
+      chain_step0:
+        path: "./tests/ground_truth/chains/mode123_smoke/mode123_chain_step0.circom"
+        main_component: "Mode123ChainStep0"
+      chain_step1:
+        path: "./tests/ground_truth/chains/mode123_smoke/mode123_chain_step1.circom"
+        main_component: "Mode123ChainStep1"
+    steps:
+      - circuit_ref: chain_step0
+        input_wiring: fresh
+        label: Produce (a+b, b)
+      - circuit_ref: chain_step1
+        input_wiring:
+          from_prior_output:
+            step: 0
+            mapping:
+              - [0, 0]
+              - [1, 1]
+        label: Consume prior outputs
+    assertions:
+      - name: sum_wired_forward
+        relation: "step[0].out[0] == step[1].in[0]"
+        severity: high
+      - name: second_step_success
+        relation: "step[1].success == true"
+        severity: high

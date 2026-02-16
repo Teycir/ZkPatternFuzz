@@ -178,11 +178,7 @@ impl SemanticDeduplicator {
                 "other"
             }
         });
-        let location_category = match location_category {
-            Some(value) => value,
-            None => "unknown",
-        }
-        .to_string();
+        let location_category = location_category.unwrap_or("unknown").to_string();
 
         SemanticFingerprint {
             oracle_type: finding.attack_type.clone(),

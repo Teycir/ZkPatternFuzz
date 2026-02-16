@@ -80,9 +80,6 @@ pub struct ForgeryStats {
 pub struct ProofForgeryDetector {
     /// R1CS parsed from circuit
     r1cs: R1CS,
-    /// Build directory for artifacts
-    #[allow(dead_code)]
-    build_dir: String,
     /// Proving key path (.zkey)
     zkey_path: Option<String>,
     /// Verification key path
@@ -116,7 +113,6 @@ impl ProofForgeryDetector {
 
         Ok(Self {
             r1cs,
-            build_dir,
             zkey_path: if Path::new(&zkey_path).exists() {
                 Some(zkey_path)
             } else {
@@ -137,10 +133,9 @@ impl ProofForgeryDetector {
     }
 
     /// Create detector from R1CS struct
-    pub fn from_r1cs(r1cs: R1CS, build_dir: &str) -> Self {
+    pub fn from_r1cs(r1cs: R1CS, _build_dir: &str) -> Self {
         Self {
             r1cs,
-            build_dir: build_dir.to_string(),
             zkey_path: None,
             vkey_path: None,
             wasm_path: None,
@@ -232,11 +227,10 @@ impl ProofForgeryDetector {
             None
         };
 
-        let forgery_verified = verification_result.as_ref().map(|r| r.passed).map(|v| v);
-        let forgery_verified = match forgery_verified {
-            Some(value) => value,
-            None => false,
-        };
+        let forgery_verified: bool = verification_result
+            .as_ref()
+            .map(|r| r.passed)
+            .unwrap_or_default();
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
 
@@ -303,11 +297,10 @@ impl ProofForgeryDetector {
             None
         };
 
-        let forgery_verified = verification_result.as_ref().map(|r| r.passed).map(|v| v);
-        let forgery_verified = match forgery_verified {
-            Some(value) => value,
-            None => false,
-        };
+        let forgery_verified: bool = verification_result
+            .as_ref()
+            .map(|r| r.passed)
+            .unwrap_or_default();
 
         stats.total_time_ms = start.elapsed().as_millis() as u64;
 

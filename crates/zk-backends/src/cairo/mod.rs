@@ -146,7 +146,7 @@ impl CairoTarget {
         }
 
         // Check file extension
-        if !path.extension().is_some_and(|ext| ext == "cairo") {
+        if path.extension().is_none_or(|ext| ext != "cairo") {
             anyhow::bail!(
                 "Unsupported Cairo source extension for '{}'; expected .cairo",
                 path.display()
@@ -390,10 +390,7 @@ impl CairoTarget {
                 .get("hints")
                 .and_then(|v| v.as_object())
                 .map(|h| h.len());
-            let num_hints = match num_hints {
-                Some(count) => count,
-                None => 0usize,
-            };
+            let num_hints = num_hints.unwrap_or_default();
 
             self.metadata = Some(CairoMetadata {
                 name: self.name.clone(),

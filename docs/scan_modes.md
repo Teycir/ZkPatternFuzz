@@ -1,89 +1,74 @@
 # Scan Modes
 
-This document defines the three scanning modes used in this repo. Read this before starting a new session so the chosen mode, scope, and expected outputs are explicit. For measurement and comparisons, also read `docs/scan_metrics.md`.
+This document defines how scanning works in this repo.
 
-**Global Constraints**
-- Targets are read-only and must come from `/media/elements/Repos/zk0d`.
+## Global Constraints
+
+- Targets are read-only and must come from `/media/elements/Repos/zk0d` unless explicitly approved.
 - No mocks or synthetic targets unless explicitly approved.
+- Pattern YAML is strictly attack logic only (no hardcoded target/runtime/output fields).
 
-**Mode 1: Fast Skimmer**
+## Scanner Model (YAML-Only)
 
-Purpose: rapid surface coverage to identify obvious issues and prioritize where to go deeper.
+`zk-fuzzer scan` is a single scanner entry point driven by pattern YAML.
 
-Inputs
-- Minimal YAML config.
-- Broad oracles, low iteration counts.
+- No built-in Mode 1 pre-pass.
+- Every run is selected by YAML family and target topology.
+- Universal/simple checks are represented as always-run YAML templates.
+- Deeper/less-common checks are added by collection/alias based on the target.
 
-Outputs
-- Short list of high-signal findings or suspicious areas.
-- Quick stats: coverage hints, failure types, oracles firing.
+## Pattern Classes
 
-Use When
-- First pass on a new target.
-- You need to triage or compare multiple targets quickly.
+- Always-run simple patterns:
+  - Typically `_mono.yaml`
+  - Safe baseline checks to run for most targets
+- Deep target-dependent patterns:
+  - `_mono.yaml` for deeper single-circuit logic
+  - `_multi.yaml` for multi-stage chain logic
 
-Limits
-- Low depth; misses multi-step logic bugs and chained invariants.
+## Family Dispatch
 
-**Mode 2: YAML Deeper Searcher**
+`zk-fuzzer scan <pattern.yaml> --family <auto|mono|multi> ...`
 
-Purpose: deeper, configurable fuzzing with targeted oracles and richer witness exploration.
+- `auto`:
+  - non-empty `chains` => multi engine
+  - no `chains` => mono engine
+- `mono`: enforces mono pattern execution
+- `multi`: enforces chain/multi execution
 
-Inputs
-- Target-specific YAML with explicit signals, constraints, and invariants.
-- Increased iterations and sampling.
+Compatibility rule:
+- Multi patterns must not be run on mono targets.
 
-Outputs
-- Evidence runs with repro inputs and oracle traces.
-- Candidate PoCs for manual validation.
+## Catalog Concept (SCPF-Style, Applied to Fuzzer)
 
-Use When
-- Fast Skimmer finds promising areas.
-- You need better signal-to-noise and more confidence in findings.
+Use a registry file (`targets/fuzzer_registry.yaml`) with:
+- `registries`
+- `collections`
+- `aliases`
 
-Limits
-- Still mostly single-stage; may miss bugs that require chained events.
+Run via batch catalog runner (`zk0d_batch`):
 
-**Mode 3: YAML Deepest Searcher (Multi-Step)**
+```bash
+# Inspect catalog
+cargo run --release --bin zk0d_batch -- --list-catalog
 
-Purpose: find logic-based 0day class bugs that are not obvious to shallow fuzzing, using multi-step event chains.
+# Run always-on mono collection against a mono target
+cargo run --release --bin zk0d_batch -- \
+  --alias always \
+  --target-topology mono \
+  --target-circuit /path/to/target.circom \
+  --main-component Main \
+  --framework circom
 
-Core Idea
-- A first phase performs a code read to identify precise fuzz points and invariants.
-- A second phase generates modular YAML to drive chained events and multi-step state transitions.
+# Run deep multi collection against a multi target
+cargo run --release --bin zk0d_batch -- \
+  --collection deep_multi \
+  --target-topology multi \
+  --target-circuit /path/to/target.circom \
+  --main-component Main \
+  --framework circom
+```
 
-Inputs
-- Modular YAML with explicit event chains, state transitions, and cross-invariant checks.
-- Oracles tuned for semantic violations and protocol-level invariants.
+## Output Organization
 
-Outputs
-- High-confidence PoCs with minimal repro YAML and clear impact notes.
-- Evidence that links inputs, state transitions, and violated invariants.
-
-Use When
-- The goal is logic-based 0day discovery.
-- The target has complex state or multi-step workflows.
-
-Limits
-- Highest cost; requires careful setup and validation.
-
-**Switching Guidance**
-- Start with Fast Skimmer to find candidate surfaces.
-- Escalate to YAML Deeper Searcher for targeted evidence.
-- Use YAML Deepest Searcher when multi-step logic or protocol-level invariants are likely.
-
-**Skimmer-First Rule**
-- Always run a **short Fast Skimmer** before Mode 2 or Mode 3 to validate wiring, inputs, and basic constraints.
-- Goal: catch misconfigurations early and avoid wasted deep runs.
-- Suggested budget: 5–10 minutes per target, low iterations, broad oracles.
-- Exception: skip only if the user explicitly requests it in writing.
-
-## Parallel Execution
-
-Mode 2 (evidence) and Mode 3 (chains) may be run **in parallel** as separate `zk-fuzzer` processes
-to reduce wall-clock time.
-
-Rules:
-- Use distinct `reporting.output_dir` per process (reports/corpus files must not be shared).
-- Do not use `--kill-existing` when parallelizing.
-- Keep the total `--workers` across processes within CPU limits.
+Output paths and report format are code-managed and unchanged.

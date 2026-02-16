@@ -141,9 +141,6 @@ pub struct EvidenceGenerator {
     config: FuzzConfig,
     /// Path to snarkjs CLI (for Circom)
     snarkjs_path: Option<PathBuf>,
-    /// Path to ptau file (for Circom setup) - reserved for future trusted setup
-    #[allow(dead_code)]
-    ptau_path: Option<PathBuf>,
     /// Path to circuit zkey file
     zkey_path: Option<PathBuf>,
     /// Path to verification key
@@ -159,11 +156,6 @@ impl EvidenceGenerator {
 
         let snarkjs_path = additional
             .get("circom_snarkjs_path")
-            .and_then(|v| v.as_str())
-            .map(PathBuf::from);
-
-        let ptau_path = additional
-            .get("circom_ptau_path")
             .and_then(|v| v.as_str())
             .map(PathBuf::from);
 
@@ -186,7 +178,6 @@ impl EvidenceGenerator {
             output_dir,
             config,
             snarkjs_path,
-            ptau_path,
             zkey_path,
             vkey_path,
             wasm_path,
@@ -230,10 +221,7 @@ impl EvidenceGenerator {
 
         // Circom emits artifacts using the *circuit file stem* (not the main component name).
         // Example: circom foo-bar.circom -o build => build/foo-bar_js/foo-bar.wasm
-        let circuit_stem = circuit_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .map(|value| value);
+        let circuit_stem = circuit_path.file_stem().and_then(|s| s.to_str());
         let circuit_stem = match circuit_stem {
             Some(value) => value,
             None => main_component.as_str(),
@@ -461,8 +449,7 @@ impl EvidenceGenerator {
             .target
             .circuit_path
             .file_stem()
-            .and_then(|s| s.to_str())
-            .map(|value| value);
+            .and_then(|s| s.to_str());
         let circuit_stem = match circuit_stem {
             Some(value) => value,
             None => main_component.as_str(),

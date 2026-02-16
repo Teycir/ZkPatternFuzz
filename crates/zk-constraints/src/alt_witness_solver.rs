@@ -305,10 +305,7 @@ impl<'ctx> AltWitnessSolver<'ctx> {
         let mut witness = Vec::with_capacity(self.wire_vars.len());
 
         for wire in &self.wire_vars {
-            let value = model
-                .eval(wire, true)
-                .and_then(|v| int_to_biguint(&v))
-                .map(|v| v);
+            let value = model.eval(wire, true).and_then(|v| int_to_biguint(&v));
             let value = match value {
                 Some(v) => v,
                 None => BigUint::from(0u32),

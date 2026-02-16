@@ -529,10 +529,7 @@ fn estimate_test_case_size(test_case: &TestCase) -> usize {
         .expected_output
         .as_ref()
         .map(|v| v.len() * std::mem::size_of::<FieldElement>());
-    let expected = match expected {
-        Some(value) => value,
-        None => 0,
-    };
+    let expected = expected.unwrap_or_default();
     base + inputs + expected
 }
 

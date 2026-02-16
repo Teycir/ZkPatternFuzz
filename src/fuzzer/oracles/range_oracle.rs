@@ -18,8 +18,6 @@ const BN254_MODULUS: &str =
 
 /// Oracle for detecting range proof vulnerabilities
 pub struct RangeProofOracle {
-    #[allow(dead_code)]
-    config: OracleConfig,
     /// Expected range bounds (if known)
     expected_min: Option<BigUint>,
     expected_max: Option<BigUint>,
@@ -48,9 +46,8 @@ impl RangeProofOracle {
         Self::new_with_biguint(config, modulus)
     }
 
-    fn new_with_biguint(config: OracleConfig, field_modulus: BigUint) -> Self {
+    fn new_with_biguint(_config: OracleConfig, field_modulus: BigUint) -> Self {
         Self {
-            config,
             expected_min: None,
             expected_max: None,
             field_modulus,

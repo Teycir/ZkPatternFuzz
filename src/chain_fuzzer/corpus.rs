@@ -298,12 +298,12 @@ impl ChainCorpus {
 
             per_chain
                 .entry(e.spec_name.clone())
-                .or_insert_with(ChainCorpusPerChainMeta::default)
+                .or_default()
                 .completed_traces += 1;
 
             per_chain_unique
                 .entry(e.spec_name.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(e.coverage_bits);
 
             let meta = per_chain.get_mut(&e.spec_name).expect("just inserted");
@@ -419,10 +419,7 @@ impl ChainCorpus {
             0.0
         };
         let max_depth = self.entries.iter().map(|e| e.depth_reached).max();
-        let max_depth = match max_depth {
-            Some(value) => value,
-            None => 0,
-        };
+        let max_depth = max_depth.unwrap_or_default();
 
         CorpusStats {
             total_entries,

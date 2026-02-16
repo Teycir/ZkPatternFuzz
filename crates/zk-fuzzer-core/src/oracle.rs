@@ -134,10 +134,7 @@ impl UnderconstrainedOracle {
     }
 
     fn public_inputs<'a>(&self, test_case: &'a TestCase) -> &'a [FieldElement] {
-        let num_public = match self.num_public_inputs {
-            Some(value) => value,
-            None => 0,
-        };
+        let num_public = self.num_public_inputs.unwrap_or_default();
         if num_public == 0 || test_case.inputs.is_empty() {
             &test_case.inputs[..0]
         } else {
@@ -189,10 +186,7 @@ impl Default for UnderconstrainedOracle {
 
 impl BugOracle for UnderconstrainedOracle {
     fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
-        let num_public = match self.num_public_inputs {
-            Some(value) => value,
-            None => 0,
-        };
+        let num_public = self.num_public_inputs.unwrap_or_default();
         if !self.matches_fixed_public_inputs(test_case, num_public) {
             return None;
         }
@@ -384,14 +378,8 @@ impl ConstraintCountOracle {
             executions: self.check_count,
             findings: self.finding_count,
             unique_outputs_seen: if self.min_count.is_some() {
-                let max_count = match self.max_count {
-                    Some(value) => value,
-                    None => 0,
-                };
-                let min_count = match self.min_count {
-                    Some(value) => value,
-                    None => 0,
-                };
+                let max_count = self.max_count.unwrap_or_default();
+                let min_count = self.min_count.unwrap_or_default();
                 (max_count - min_count + 1) as u64
             } else {
                 0

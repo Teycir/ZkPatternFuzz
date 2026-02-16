@@ -10,7 +10,6 @@ use std::path::Path;
 
 /// Ground truth test case definition
 #[derive(Debug)]
-#[allow(dead_code)]
 struct ChainGroundTruth {
     /// Name of the test case
     name: &'static str,
@@ -58,11 +57,9 @@ fn ground_truth_cases() -> Vec<ChainGroundTruth> {
 
 /// Result of running a ground truth test
 #[derive(Debug)]
-#[allow(dead_code)]
 struct GroundTruthResult {
     name: String,
     passed: bool,
-    expected: ExpectedOutcome,
     actual_findings: usize,
     actual_assertion: Option<String>,
     actual_l_min: Option<usize>,
@@ -429,7 +426,6 @@ mod tests {
                     results.push(GroundTruthResult {
                         name: case.name.to_string(),
                         passed: false,
-                        expected: expected_spec.outcome,
                         actual_findings: 0,
                         actual_assertion: None,
                         actual_l_min: None,
@@ -444,7 +440,6 @@ mod tests {
                 results.push(GroundTruthResult {
                     name: case.name.to_string(),
                     passed: false,
-                    expected: expected_spec.outcome,
                     actual_findings: 0,
                     actual_assertion: None,
                     actual_l_min: None,
@@ -539,7 +534,6 @@ mod tests {
                 results.push(GroundTruthResult {
                     name: case.name.to_string(),
                     passed: false,
-                    expected: expected_spec.outcome,
                     actual_findings: 0,
                     actual_assertion: None,
                     actual_l_min: None,
@@ -558,7 +552,6 @@ mod tests {
                 results.push(GroundTruthResult {
                     name: case.name.to_string(),
                     passed: false,
-                    expected: expected_spec.outcome,
                     actual_findings: 0,
                     actual_assertion: None,
                     actual_l_min: None,
@@ -693,7 +686,6 @@ mod tests {
                     results.push(GroundTruthResult {
                         name: case.name.to_string(),
                         passed: false,
-                        expected: expected_spec.outcome,
                         actual_findings: all_findings.len(),
                         actual_assertion: all_findings
                             .first()
@@ -764,7 +756,6 @@ mod tests {
             results.push(GroundTruthResult {
                 name: case.name.to_string(),
                 passed,
-                expected: expected_spec.outcome,
                 actual_findings: all_findings.len(),
                 actual_assertion: first_finding.and_then(|f| f.violated_assertion.clone()),
                 actual_l_min: first_finding.map(|f| f.l_min),

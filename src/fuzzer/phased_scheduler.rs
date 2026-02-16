@@ -104,10 +104,7 @@ impl PhaseCallback for LoggingPhaseCallback {
             if result.early_terminated {
                 format!(
                     " [early: {}]",
-                    match result.termination_reason.as_deref() {
-                        Some(reason) => reason,
-                        None => "unknown",
-                    }
+                    result.termination_reason.as_deref().unwrap_or("unknown")
                 )
             } else {
                 String::new()
@@ -367,8 +364,6 @@ pub struct PhaseExecutionResult {
 /// Early termination checker
 pub struct EarlyTerminationChecker {
     condition: EarlyTerminateCondition,
-    #[allow(dead_code)]
-    start_time: Instant,
     last_coverage_time: Instant,
     last_coverage: f64,
     critical_findings: usize,
@@ -379,7 +374,6 @@ impl EarlyTerminationChecker {
         let now = Instant::now();
         Self {
             condition,
-            start_time: now,
             last_coverage_time: now,
             last_coverage: 0.0,
             critical_findings: 0,

@@ -232,10 +232,10 @@ impl WitnessFuzzer {
             if !exec_result.success {
                 tracing::warn!(
                     "Timing probe execution failed: {}",
-                    match exec_result.error.as_deref() {
-                        Some(err) => err,
-                        None => "execution failed without backend error message",
-                    }
+                    exec_result
+                        .error
+                        .as_deref()
+                        .unwrap_or("execution failed without backend error message")
                 );
             }
             let elapsed_us = start.elapsed().as_micros() as u64;
@@ -267,20 +267,11 @@ impl WitnessFuzzer {
                         mean,
                         std_dev,
                         cv,
-                        match fastest.map(|(_, t)| *t) {
-                            Some(value) => value,
-                            None => 0,
-                        },
-                        match slowest.map(|(_, t)| *t) {
-                            Some(value) => value,
-                            None => 0,
-                        }
+                        fastest.map(|(_, t)| *t).unwrap_or_default(),
+                        slowest.map(|(_, t)| *t).unwrap_or_default()
                     ),
                     poc: ProofOfConcept {
-                        witness_a: match slowest.map(|(i, _)| i.clone()) {
-                            Some(value) => value,
-                            None => Vec::new(),
-                        },
+                        witness_a: slowest.map(|(i, _)| i.clone()).unwrap_or_default(),
                         witness_b: fastest.map(|(i, _)| i.clone()),
                         public_inputs: vec![],
                         proof: None,

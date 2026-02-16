@@ -54,6 +54,8 @@ pub struct ChainRunStats {
 }
 
 impl ChainScheduler {
+    const DEFAULT_PRIORITY: f64 = 1.0;
+
     /// Create a new scheduler with the given chains and budget
     pub fn new(chains: Vec<ChainSpec>, budget: Duration) -> Self {
         let mut priorities = HashMap::new();
@@ -97,7 +99,7 @@ impl ChainScheduler {
                 .map(|chain| ChainAllocation {
                     spec: chain.clone(),
                     budget: Duration::from_millis(per_chain),
-                    priority: 1.0,
+                    priority: Self::DEFAULT_PRIORITY,
                 })
                 .collect();
         }
@@ -117,13 +119,7 @@ impl ChainScheduler {
         self.chains
             .iter()
             .map(|chain| {
-                let priority = self
-                    .priorities
-                    .get(&chain.name)
-                    .copied()
-                    .map(|value| value)
-                    .or_else(|| Some(1.0))
-                    .expect("default priority injected");
+                let priority = self.get_priority(&chain.name);
                 let priority_share = priority / total_priority;
                 let allocated_remaining = (remaining as f64 * priority_share) as u64;
                 let total_budget = guaranteed_per_chain + allocated_remaining;
@@ -139,13 +135,7 @@ impl ChainScheduler {
 
     /// Update priorities based on run results
     pub fn update_priority(&mut self, stats: &ChainRunStats) {
-        let current = self
-            .priorities
-            .get(&stats.chain_name)
-            .copied()
-            .map(|value| value)
-            .or_else(|| Some(1.0))
-            .expect("default priority injected");
+        let current = self.get_priority(&stats.chain_name);
 
         // Priority heuristics:
         // 1. Chains with violations get boost
@@ -197,14 +187,13 @@ impl ChainScheduler {
         self.priorities
             .get(chain_name)
             .copied()
-            .map(|value| value)
-            .or_else(|| Some(1.0))
-            .expect("default priority injected")
+            .unwrap_or(Self::DEFAULT_PRIORITY)
     }
 
     /// Add a new chain to the scheduler
     pub fn add_chain(&mut self, chain: ChainSpec) {
-        self.priorities.insert(chain.name.clone(), 1.0);
+        self.priorities
+            .insert(chain.name.clone(), Self::DEFAULT_PRIORITY);
         self.chains.push(chain);
     }
 
@@ -218,20 +207,8 @@ impl ChainScheduler {
     pub fn chains_by_priority(&self) -> Vec<&ChainSpec> {
         let mut chains: Vec<_> = self.chains.iter().collect();
         chains.sort_by(|a, b| {
-            let pa = self
-                .priorities
-                .get(&a.name)
-                .copied()
-                .map(|value| value)
-                .or_else(|| Some(1.0))
-                .expect("default priority injected");
-            let pb = self
-                .priorities
-                .get(&b.name)
-                .copied()
-                .map(|value| value)
-                .or_else(|| Some(1.0))
-                .expect("default priority injected");
+            let pa = self.get_priority(&a.name);
+            let pb = self.get_priority(&b.name);
             match pb.partial_cmp(&pa) {
                 Some(ordering) => ordering,
                 None => std::cmp::Ordering::Equal,
@@ -255,7 +232,8 @@ impl ChainScheduler {
     /// Reset priorities to initial state
     pub fn reset_priorities(&mut self) {
         for chain in &self.chains {
-            self.priorities.insert(chain.name.clone(), 1.0);
+            self.priorities
+                .insert(chain.name.clone(), Self::DEFAULT_PRIORITY);
         }
         self.coverage_gains.clear();
         self.near_miss_scores.clear();

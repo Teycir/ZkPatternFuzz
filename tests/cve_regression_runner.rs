@@ -46,10 +46,7 @@ fn test_cve_regression_tests_execute() {
 
         for tc_result in &result.test_results {
             let status = if tc_result.passed { "✓" } else { "✗" };
-            let message = match tc_result.message.as_deref() {
-                Some(message) => message,
-                None => "OK",
-            };
+            let message = tc_result.message.as_deref().unwrap_or("OK");
             println!("    {} {}: {}", status, tc_result.name, message);
         }
 

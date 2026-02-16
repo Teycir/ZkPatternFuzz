@@ -326,10 +326,7 @@ pub struct RecursiveAttack {
 impl RecursiveAttack {
     /// Create a new recursive attack detector
     pub fn new(config: RecursiveAttackConfig) -> Self {
-        let seed = match config.seed {
-            Some(value) => value,
-            None => 42,
-        };
+        let seed = config.seed.unwrap_or(42);
         Self {
             config,
             rng: ChaCha8Rng::seed_from_u64(seed),
@@ -1069,10 +1066,10 @@ impl RecursiveAttack {
         let witness_a: Vec<FieldElement> = if steps.is_empty() {
             vec![FieldElement::zero()]
         } else {
-            match steps.first().map(|s| s.public_inputs.clone()) {
-                Some(value) => value,
-                None => Vec::new(),
-            }
+            steps
+                .first()
+                .map(|s| s.public_inputs.clone())
+                .unwrap_or_default()
         };
 
         Finding {

@@ -1,33 +1,48 @@
-# zk0d Targets (Discovery Set)
+# Target Execution Model
 
-**Single success metric:** discoveries on `${ZK0D_BASE:-/media/elements/Repos/zk0d}`
+This document describes how to run reusable attack-pattern YAML against concrete targets.
 
-This document lists the **target circuits** for evidence runs.  
-The machine-readable list used by the batch runner is in:
+## Key Separation
 
-`targets/zk0d_targets.yaml`
+- Pattern YAML: attack logic only (reusable)
+- Runtime target: passed at execution (`--target-circuit`, `--main-component`, `--framework`)
+- Catalog: pattern grouping via `targets/fuzzer_registry.yaml`
 
----
+## Catalog-Driven Batch Runs
 
-## How to Use
-
-1. Create a campaign YAML per target (manual invariants required).
-2. Enable the target in `targets/zk0d_targets.yaml`.
-3. Run the batch runner:
+List collections, aliases, and templates:
 
 ```bash
-scripts/run_ai_campaign.sh --targets targets/zk0d_targets.yaml
+cargo run --release --bin zk0d_batch -- --list-catalog
 ```
 
----
+Run always-on patterns for a mono target:
 
-## Initial Target Set (Example)
+```bash
+cargo run --release --bin zk0d_batch -- \
+  --alias always \
+  --target-topology mono \
+  --target-circuit /media/elements/Repos/zk0d/path/to/target.circom \
+  --main-component Main \
+  --framework circom
+```
 
-| Name | Circuit Path | Framework | Campaign YAML |
-|---|---|---|---|
-| tornado_withdraw | `zk0d/cat3_privacy/tornado-core/circuits/withdraw.circom` | circom | `campaigns/zk0d/tornado_withdraw.yaml` |
-| semaphore | `zk0d/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom` | circom | `campaigns/zk0d/semaphore.yaml` |
-| iden3_authv3 | `zk0d/cat3_privacy/iden3/.../authV3.circom` | circom | `campaigns/zk0d/iden3_authv3.yaml` |
+Run deep patterns for a multi target:
 
-> Update this list as you add more targets.  
-> The batch runner will only execute entries marked `enabled: true`.
+```bash
+cargo run --release --bin zk0d_batch -- \
+  --alias deep \
+  --target-topology multi \
+  --target-circuit /media/elements/Repos/zk0d/path/to/target.circom \
+  --main-component Main \
+  --framework circom
+```
+
+## Naming Rule
+
+Template filenames must follow:
+
+- `<attacktype>_<attack>_mono.yaml`
+- `<attacktype>_<attack>_multi.yaml`
+
+This enables strict mono/multi compatibility checks in the batch runner.

@@ -767,10 +767,7 @@ impl MetamorphicOracle {
                 description: format!(
                     "Metamorphic relation '{}' violated: {}",
                     r.relation_name,
-                    match r.violation_reason.as_deref() {
-                        Some(reason) => reason,
-                        None => "unknown",
-                    }
+                    r.violation_reason.as_deref().unwrap_or("unknown")
                 ),
                 poc: ProofOfConcept {
                     witness_a: r.base_witness.clone(),

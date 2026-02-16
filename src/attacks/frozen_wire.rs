@@ -85,13 +85,10 @@ impl FrozenWireDetector {
         let output_wire_indices = executor
             .constraint_inspector()
             .map(|inspector| inspector.output_indices());
-        let apply_known_constants = match output_wire_indices
+        let apply_known_constants = output_wire_indices
             .as_ref()
             .map(|indices| !indices.is_empty())
-        {
-            Some(value) => value,
-            None => false,
-        };
+            .unwrap_or_default();
 
         let mut findings = Vec::new();
         for (idx, values) in &value_sets {
@@ -128,10 +125,7 @@ impl FrozenWireDetector {
                 let constrained = constraint_wires
                     .as_ref()
                     .map(|wires| wires.contains(&wire_idx));
-                let constrained = match constrained {
-                    Some(value) => value,
-                    None => true,
-                };
+                let constrained = constrained.unwrap_or(true);
 
                 findings.push(Finding {
                     attack_type: AttackType::Underconstrained,

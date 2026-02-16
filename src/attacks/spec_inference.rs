@@ -274,9 +274,7 @@ impl SpecInferenceOracle {
             specs.retain(|spec| {
                 self.spec_support_ratio(spec, validation_samples, num_inputs)
                     .map(|ratio| ratio >= self.validation_threshold)
-                    .map(|value| value)
-                    .or_else(|| Some(false))
-                    .expect("default support ratio injected")
+                    .unwrap_or(false)
             });
         }
 
@@ -352,11 +350,7 @@ impl SpecInferenceOracle {
     /// Infer non-zero constraints
     fn infer_non_zero(&self, samples: &[ExecutionSample], total_wires: usize) -> Vec<InferredSpec> {
         let mut specs = Vec::new();
-        let num_inputs = samples.first().map(|s| s.inputs.len());
-        let num_inputs = match num_inputs {
-            Some(value) => value,
-            None => 0,
-        };
+        let num_inputs = samples.first().map(|s| s.inputs.len()).unwrap_or(0);
         if self.wire_labels.is_empty() {
             return specs;
         }
@@ -388,9 +382,7 @@ impl SpecInferenceOracle {
                 s.inputs
                     .get(wire_idx)
                     .map(|fe| !fe.is_zero())
-                    .map(|value| value)
-                    .or_else(|| Some(true))
-                    .expect("default non-zero injected")
+                    .unwrap_or(true)
             });
 
             if all_nonzero && samples.len() >= self.min_samples {
@@ -423,9 +415,7 @@ impl SpecInferenceOracle {
                     s.outputs
                         .get(output_idx)
                         .map(|v| v == expected)
-                        .map(|value| value)
-                        .or_else(|| Some(false))
-                        .expect("default all-same injected")
+                        .unwrap_or(false)
                 });
 
                 if all_same && samples.len() >= 10 {
@@ -561,9 +551,7 @@ impl SpecInferenceOracle {
                     // Set to a value outside the range
                     let overflow_value = 1u64
                         .checked_shl(*inferred_bits as u32)
-                        .map(|value| value)
-                        .or_else(|| Some(u64::MAX))
-                        .expect("default overflow value injected")
+                        .unwrap_or(u64::MAX)
                         .saturating_add(rng.gen_range(1..1000));
                     witness[*input_index] = FieldElement::from_u64(overflow_value);
                     modified = true;

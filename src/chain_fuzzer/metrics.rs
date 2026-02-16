@@ -89,18 +89,20 @@ impl DepthMetrics {
 
     /// Get the maximum L_min across all findings
     pub fn max_depth(&self) -> usize {
-        match self.findings.iter().map(|f| f.l_min).max() {
-            Some(v) => v,
-            None => 0,
-        }
+        self.findings
+            .iter()
+            .map(|f| f.l_min)
+            .max()
+            .unwrap_or_default()
     }
 
     /// Get the minimum L_min across all findings
     pub fn min_depth(&self) -> usize {
-        match self.findings.iter().map(|f| f.l_min).min() {
-            Some(v) => v,
-            None => 0,
-        }
+        self.findings
+            .iter()
+            .map(|f| f.l_min)
+            .min()
+            .unwrap_or_default()
     }
 
     /// Compute the standard deviation of L_min

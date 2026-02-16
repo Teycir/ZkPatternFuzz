@@ -192,8 +192,7 @@ impl InferenceContext {
             .into_iter()
             .chain(max_from_labels)
             .max()
-            .map(|max_wire| max_wire.saturating_add(1))
-            .map(|v| v);
+            .map(|max_wire| max_wire.saturating_add(1));
         let inferred_wires = match inferred_wires {
             Some(value) => value,
             None => num_wires,
@@ -311,10 +310,7 @@ impl InferenceRule for BitDecompositionInference {
 
         for (i, &bit_wire) in bit_wires.iter().enumerate() {
             if bit_wire < num_wires {
-                let bit_value = match different_value.checked_shr(i as u32) {
-                    Some(value) => value,
-                    None => 0,
-                } & 1;
+                let bit_value = different_value.checked_shr(i as u32).unwrap_or_default() & 1;
                 witness[bit_wire] = FieldElement::from_u64(bit_value);
             }
         }
@@ -867,8 +863,7 @@ impl ConstraintInferenceEngine {
                 for &wire in &constraint.involved_wires {
                     let input_idx = wire_to_input
                         .as_ref()
-                        .and_then(|map| map.get(&wire).copied())
-                        .map(|v| v);
+                        .and_then(|map| map.get(&wire).copied());
                     let input_idx = match input_idx {
                         Some(value) => value,
                         None => wire,
@@ -960,10 +955,7 @@ impl ConstraintInferenceEngine {
                     description
                 },
                 poc: ProofOfConcept {
-                    witness_a: match ic.violation_witness.clone() {
-                        Some(value) => value,
-                        None => Vec::new(),
-                    },
+                    witness_a: ic.violation_witness.clone().unwrap_or_default(),
                     witness_b: None,
                     public_inputs: vec![],
                     proof: None,

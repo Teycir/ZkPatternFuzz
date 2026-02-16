@@ -29,7 +29,7 @@ pub use v2::parse_chains;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 
 pub use zk_core::{AttackType, Framework, Severity};
 
@@ -188,55 +188,14 @@ pub struct ReportingConfig {
 }
 
 fn default_output_dir() -> PathBuf {
-    if let Ok(path) = std::env::var("ZKF_OUTPUT_DIR") {
-        let trimmed = path.trim();
-        if !trimmed.is_empty() {
-            let parsed = PathBuf::from(trimmed);
-            let has_parent = Path::new(trimmed)
-                .components()
-                .any(|component| matches!(component, Component::ParentDir));
-            if has_parent {
-                tracing::warn!(
-                    "Ignoring ZKF_OUTPUT_DIR='{}': parent-directory components ('..') are not allowed",
-                    trimmed
-                );
-            } else {
-                return parsed;
-            }
-        }
+    match dirs::home_dir() {
+        Some(home) => home.join("ZkFuzz"),
+        None => PathBuf::from("./ZkFuzz"),
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let trimmed = home.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed).join("ZkFuzz");
-        }
-    }
-    PathBuf::from("./reports")
 }
 
 fn default_formats() -> Vec<String> {
     vec!["json".to_string(), "markdown".to_string()]
-}
-
-fn env_output_dir_override() -> Option<PathBuf> {
-    let path = std::env::var("ZKF_OUTPUT_DIR").ok()?;
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let has_parent = Path::new(trimmed)
-        .components()
-        .any(|component| matches!(component, Component::ParentDir));
-    if has_parent {
-        tracing::warn!(
-            "Ignoring ZKF_OUTPUT_DIR='{}': parent-directory components ('..') are not allowed",
-            trimmed
-        );
-        return None;
-    }
-
-    Some(PathBuf::from(trimmed))
 }
 
 impl Default for ReportingConfig {
@@ -255,11 +214,9 @@ impl FuzzConfig {
     pub fn from_yaml(path: &str) -> anyhow::Result<Self> {
         let mut config = Self::from_yaml_v2(path)
             .with_context(|| format!("Failed to load config (v2) from {}", path))?;
-        // Respect campaign YAML `reporting.output_dir` by default.
-        // If explicitly provided, an environment override still wins.
-        if let Some(override_dir) = env_output_dir_override() {
-            config.reporting.output_dir = override_dir;
-        }
+        // Policy: output artifacts always go under the user-home ZkFuzz directory
+        // (cross-platform equivalent). Ignore YAML/env custom output dirs.
+        config.reporting.output_dir = default_output_dir();
         // Backward-compat: hoist legacy `campaign.parameters.additional: { ... }` into the
         // flattened `parameters` key/value map so older templates don't silently no-op.
         if config

@@ -187,12 +187,8 @@ fn main() -> Result<()> {
                 let remove_file_res = fs::remove_file(&link_path);
                 let remove_dir_res = fs::remove_dir_all(&link_path);
                 if remove_file_res.is_err() && remove_dir_res.is_err() {
-                    let file_err = remove_file_res
-                        .err()
-                        .expect("remove_file_res.is_err() checked");
-                    let dir_err = remove_dir_res
-                        .err()
-                        .expect("remove_dir_res.is_err() checked");
+                    let file_err = remove_file_res.expect_err("remove_file_res.is_err() checked");
+                    let dir_err = remove_dir_res.expect_err("remove_dir_res.is_err() checked");
                     anyhow::bail!(
                         "Failed to remove existing symlink target '{}': remove_file={}, remove_dir_all={}",
                         link_path.display(),

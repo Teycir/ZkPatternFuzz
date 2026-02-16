@@ -208,10 +208,7 @@ impl OracleDiversityTracker {
 
         // Calculate elapsed time
         let elapsed_ms = self.start_time.map(|t| t.elapsed().as_millis() as u64);
-        let elapsed_ms = match elapsed_ms {
-            Some(value) => value,
-            None => 0,
-        };
+        let elapsed_ms = elapsed_ms.unwrap_or_default();
 
         // Update pattern details
         if is_new_pattern {

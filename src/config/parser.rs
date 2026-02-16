@@ -31,10 +31,7 @@ pub fn parse_test_values(config: &serde_yaml::Value) -> Vec<String> {
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()
         });
-    match values {
-        Some(value) => value,
-        None => Vec::new(),
-    }
+    values.unwrap_or_default()
 }
 
 /// Error type for value expansion failures

@@ -170,15 +170,11 @@ impl CoverageTracker {
         if value_bytes.is_empty() {
             return 0;
         }
-        let first_nonzero = value_bytes.iter().position(|&b| b != 0).map(|v| v);
-        let first_nonzero = match first_nonzero {
-            Some(value) => value,
-            None => value_bytes.len(),
-        };
-        let byte = match value_bytes.get(first_nonzero).copied() {
-            Some(value) => value,
-            None => 0,
-        };
+        let first_nonzero = value_bytes
+            .iter()
+            .position(|&b| b != 0)
+            .unwrap_or(value_bytes.len());
+        let byte: u8 = value_bytes.get(first_nonzero).copied().unwrap_or_default();
         (first_nonzero as u8).wrapping_add(byte)
     }
 

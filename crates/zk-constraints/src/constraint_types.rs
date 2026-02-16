@@ -1624,10 +1624,7 @@ fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {
                     lookup
                         .get("table")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| match s.parse() {
-                            Ok(v) => Some(v),
-                            Err(_err) => None,
-                        })
+                        .and_then(|s| s.parse().ok())
                 })
                 .or_else(|| lookup.get("id").and_then(|v| v.as_u64()))
                 .map(|v| v as usize);
@@ -1698,10 +1695,7 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                             continue;
                         };
                         let Some(num_columns) =
-                            kv.get("columns").and_then(|v| match v.parse::<usize>() {
-                                Ok(parsed) => Some(parsed),
-                                Err(_err) => None,
-                            })
+                            kv.get("columns").and_then(|v| v.parse::<usize>().ok())
                         else {
                             continue;
                         };
@@ -1723,10 +1717,7 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                 }
             }
             "lookup" => {
-                let Some(table_id) = kv.get("table").and_then(|v| match v.parse::<usize>() {
-                    Ok(parsed) => Some(parsed),
-                    Err(_err) => None,
-                }) else {
+                let Some(table_id) = kv.get("table").and_then(|v| v.parse::<usize>().ok()) else {
                     continue;
                 };
                 let Some(inputs_raw) = kv.get("inputs").or_else(|| kv.get("input")) else {
@@ -1770,18 +1761,9 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
             }
             "gate" | "plonk" => {
                 if let (Some(a), Some(b), Some(c)) = (
-                    kv.get("a").and_then(|v| match v.parse::<usize>() {
-                        Ok(parsed) => Some(parsed),
-                        Err(_err) => None,
-                    }),
-                    kv.get("b").and_then(|v| match v.parse::<usize>() {
-                        Ok(parsed) => Some(parsed),
-                        Err(_err) => None,
-                    }),
-                    kv.get("c").and_then(|v| match v.parse::<usize>() {
-                        Ok(parsed) => Some(parsed),
-                        Err(_err) => None,
-                    }),
+                    kv.get("a").and_then(|v| v.parse::<usize>().ok()),
+                    kv.get("b").and_then(|v| v.parse::<usize>().ok()),
+                    kv.get("c").and_then(|v| v.parse::<usize>().ok()),
                 ) {
                     let Some(q_l) = kv.get("ql").and_then(|v| parse_field_element_str(v)) else {
                         continue;
@@ -2639,10 +2621,7 @@ fn parse_air_expression_text(input: &str) -> Option<AirExpression> {
     if trimmed.starts_with("col(") {
         let inner = trimmed.trim_start_matches("col(").trim_end_matches(')');
         let mut parts = inner.split(',');
-        let index = parts.next().and_then(|s| match s.trim().parse::<usize>() {
-            Ok(parsed) => Some(parsed),
-            Err(_err) => None,
-        })?;
+        let index = parts.next().and_then(|s| s.trim().parse::<usize>().ok())?;
         let offset = match parts.next() {
             Some(raw) => match raw.trim().parse::<i32>() {
                 Ok(parsed) => parsed,

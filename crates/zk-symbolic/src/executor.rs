@@ -765,9 +765,6 @@ pub struct SymbolicExecutor {
     config: SymbolicConfig,
     /// Generated test cases
     generated_tests: Vec<Vec<FieldElement>>,
-    /// Path counter for unique IDs
-    #[allow(dead_code)]
-    path_counter: u64,
     /// Number of inputs
     num_inputs: usize,
 }
@@ -786,7 +783,6 @@ impl SymbolicExecutor {
             solver,
             config,
             generated_tests: Vec::new(),
-            path_counter: 0,
             num_inputs,
         }
     }
@@ -899,7 +895,6 @@ impl SymbolicExecutor {
         self.worklist.clear();
         self.completed_paths.clear();
         self.generated_tests.clear();
-        self.path_counter = 0;
         self.worklist.push_back(SymbolicState::new(self.num_inputs));
     }
 }

@@ -228,10 +228,7 @@ impl CollisionDetector {
         }
 
         // Scale to full output length estimate
-        let output_len = match outputs.first().map(|o| o.len()) {
-            Some(value) => value,
-            None => 32,
-        };
+        let output_len = outputs.first().map(|o| o.len()).unwrap_or(32);
         entropy * (output_len as f64)
     }
 

@@ -1,0 +1,64 @@
+---
+invariants:
+  - name: nullifier_session_nonnegative
+    invariant_type: range
+    relation: "nullifierSessionID >= 0"
+    oracle: must_hold
+    severity: medium
+    description: Nullifier session identifier must stay in the field domain.
+
+attacks: []
+
+inputs:
+  - name: genesisID
+    type: field
+    fuzz_strategy: random
+  - name: claimSubjectProfileNonce
+    type: field
+    fuzz_strategy: random
+  - name: claimSchema
+    type: field
+    fuzz_strategy: random
+  - name: verifierID
+    type: field
+    fuzz_strategy: random
+  - name: nullifierSessionID
+    type: field
+    fuzz_strategy: random
+
+chains:
+  - name: nullify_to_query
+    description: Cross-circuit bridge from Nullify() outputs into credentialAtomicQueryV3 inputs.
+    circuits:
+      nullify:
+        path: "targets/zk0d/wrappers/nullify_passthrough_wrapper.circom"
+        main_component: "main"
+        framework: "circom"
+      query:
+        path: "${ZK0D_CHAINLOGIC_CIRCUIT}"
+        main_component: "main"
+        framework: "circom"
+    steps:
+      - circuit_ref: "nullify"
+        input_wiring: fresh
+        label: "Nullify seed inputs"
+      - circuit_ref: "query"
+        input_wiring:
+          from_prior_output:
+            step: 0
+            mapping:
+              - [0, 77]
+              - [1, 79]
+              - [2, 6]
+              - [3, 75]
+              - [4, 76]
+        label: "Query with wired Nullify outputs"
+    assertions:
+      - name: nullifier_matches
+        relation: "step[0].out[5] == step[1].out[4]"
+        severity: critical
+        description: Query nullifier must match standalone Nullify() output.
+      - name: wired_session_id
+        relation: "step[0].out[4] == step[1].in[76]"
+        severity: high
+        description: Query nullifierSessionID input must come from step 0 output.

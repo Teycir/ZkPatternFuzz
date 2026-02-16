@@ -1,0 +1,229 @@
+version: 1
+
+source: targets/zk-bug-tracker/README.md
+bugs_in_the_wild_count: 27
+
+scanner_policy:
+  mode1_removed: true
+  scanner: yaml_only
+  always_run_yaml_patterns: true
+  add_deep_patterns_by_target: true
+  multi_requires_multi_target: true
+
+cves:
+  - id: cveX01_dark_forest_missing_bit_length
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX01_dark_forest_missing_bit_length_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX01_dark_forest_missing_bit_length_multi.yaml
+        requires_multi_target: true
+  - id: cveX02_bigint_missing_bit_length
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX02_bigint_missing_bit_length_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX02_bigint_missing_bit_length_multi.yaml
+        requires_multi_target: true
+  - id: cveX03_circom_pairing_missing_output_check
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX03_circom_pairing_missing_output_check_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX03_circom_pairing_missing_output_check_multi.yaml
+        requires_multi_target: true
+  - id: cveX04_semaphore_missing_range_check
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX04_semaphore_missing_range_check_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX04_semaphore_missing_range_check_multi.yaml
+        requires_multi_target: true
+  - id: cveX05_zk_kit_missing_range_check
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX05_zk_kit_missing_range_check_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX05_zk_kit_missing_range_check_multi.yaml
+        requires_multi_target: true
+  - id: cveX06_aztec_missing_bit_length_nondeterministic_nullifier
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX06_aztec_missing_bit_length_nondeterministic_nullifier_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX06_aztec_missing_bit_length_nondeterministic_nullifier_multi.yaml
+        requires_multi_target: true
+  - id: cveX07_aztec_plonk_zero_bug
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX07_aztec_plonk_zero_bug_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX07_aztec_plonk_zero_bug_multi.yaml
+        requires_multi_target: true
+  - id: cveX08_stealthdrop_nondeterministic_nullifier
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX08_stealthdrop_nondeterministic_nullifier_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX08_stealthdrop_nondeterministic_nullifier_multi.yaml
+        requires_multi_target: true
+  - id: cveX09_zkdrops_missing_nullifier_range_check
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX09_zkdrops_missing_nullifier_range_check_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX09_zkdrops_missing_nullifier_range_check_multi.yaml
+        requires_multi_target: true
+  - id: cveX10_maci_underconstrained_circuit
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX10_maci_underconstrained_circuit_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX10_maci_underconstrained_circuit_multi.yaml
+        requires_multi_target: true
+  - id: cveX11_bulletproofs_frozen_heart
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX11_bulletproofs_frozen_heart_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX11_bulletproofs_frozen_heart_multi.yaml
+        requires_multi_target: true
+  - id: cveX12_plonk_frozen_heart
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX12_plonk_frozen_heart_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX12_plonk_frozen_heart_multi.yaml
+        requires_multi_target: true
+  - id: cveX13_zcash_trusted_setup_leak
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX13_zcash_trusted_setup_leak_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX13_zcash_trusted_setup_leak_multi.yaml
+        requires_multi_target: true
+  - id: cveX14_mimc_assigned_not_constrained
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX14_mimc_assigned_not_constrained_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX14_mimc_assigned_not_constrained_multi.yaml
+        requires_multi_target: true
+  - id: cveX15_scroll_missing_overflow_constraint
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX15_scroll_missing_overflow_constraint_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX15_scroll_missing_overflow_constraint_multi.yaml
+        requires_multi_target: true
+  - id: cveX16_scroll_missing_constraint
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX16_scroll_missing_constraint_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX16_scroll_missing_constraint_multi.yaml
+        requires_multi_target: true
+  - id: cveX17_dusk_missing_blinding_factors
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX17_dusk_missing_blinding_factors_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX17_dusk_missing_blinding_factors_multi.yaml
+        requires_multi_target: true
+  - id: cveX18_nightfall_missing_nullifier_range_check
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX18_nightfall_missing_nullifier_range_check_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX18_nightfall_missing_nullifier_range_check_multi.yaml
+        requires_multi_target: true
+  - id: cveX19_summa_unconstrained_constants
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX19_summa_unconstrained_constants_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX19_summa_unconstrained_constants_multi.yaml
+        requires_multi_target: true
+  - id: cveX20_polygon_missing_remainder_constraint
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX20_polygon_missing_remainder_constraint_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX20_polygon_missing_remainder_constraint_multi.yaml
+        requires_multi_target: true
+  - id: cveX21_polygon_fake_smt_inclusion
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX21_polygon_fake_smt_inclusion_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX21_polygon_fake_smt_inclusion_multi.yaml
+        requires_multi_target: true
+  - id: cveX22_polygon_incorrect_ctx_assignation
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX22_polygon_incorrect_ctx_assignation_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX22_polygon_incorrect_ctx_assignation_multi.yaml
+        requires_multi_target: true
+  - id: cveX23_polygon_execution_flow_hijack
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX23_polygon_execution_flow_hijack_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX23_polygon_execution_flow_hijack_multi.yaml
+        requires_multi_target: true
+  - id: cveX24_zendoo_polynomial_normalization
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX24_zendoo_polynomial_normalization_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX24_zendoo_polynomial_normalization_multi.yaml
+        requires_multi_target: true
+  - id: cveX25_aleo_non_committing_encryption
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX25_aleo_non_committing_encryption_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX25_aleo_non_committing_encryption_multi.yaml
+        requires_multi_target: true
+  - id: cveX26_light_protocol_non_atomic_state
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX26_light_protocol_non_atomic_state_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX26_light_protocol_non_atomic_state_multi.yaml
+        requires_multi_target: true
+  - id: cveX27_zkemail_underconstrained_spoofing
+    always_run_yaml:
+      family: mono
+      pattern: campaigns/cve/patterns/cveX27_zkemail_underconstrained_spoofing_mono.yaml
+    deep_yaml_candidates:
+      - family: multi
+        pattern: campaigns/cve/patterns/cveX27_zkemail_underconstrained_spoofing_multi.yaml
+        requires_multi_target: true

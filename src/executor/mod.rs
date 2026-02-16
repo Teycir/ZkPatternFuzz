@@ -1028,10 +1028,7 @@ impl NoirExecutor {
             .chain(output_indices.iter())
             .copied()
             .max();
-        let max_idx = match max_idx {
-            Some(value) => value,
-            None => 0,
-        };
+        let max_idx = max_idx.unwrap_or_default();
         if max_idx > MAX_SYNTHETIC_WITNESS_WIRES {
             anyhow::bail!(
                 "Noir metadata reported wire index {} above safety cap {}",

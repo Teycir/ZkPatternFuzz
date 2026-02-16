@@ -1,11 +1,13 @@
 use anyhow::Context;
 use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::{collections::BTreeSet, fs};
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName, ReadinessReport};
 use zk_fuzzer::fuzzer::ZkFuzzer;
+use zk_fuzzer::Framework;
 
 #[derive(Debug, Clone)]
 struct RunLogContext {
@@ -15,6 +17,13 @@ struct RunLogContext {
     campaign_name: Option<String>,
     output_dir: Option<PathBuf>,
     started_utc: String,
+}
+
+#[derive(Debug, Clone)]
+struct ScanTarget {
+    framework: Framework,
+    circuit_path: PathBuf,
+    main_component: String,
 }
 
 static RUN_LOG_CONTEXT: OnceLock<Mutex<Option<RunLogContext>>> = OnceLock::new();
@@ -53,13 +62,10 @@ impl DynamicTeeWriter {
         if need_reopen {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).map_err(|err| {
-                    io::Error::new(
-                        io::ErrorKind::Other,
-                        format!(
-                            "Failed to create log directory '{}': {err}",
-                            parent.display()
-                        ),
-                    )
+                    io::Error::other(format!(
+                        "Failed to create log directory '{}': {err}",
+                        parent.display()
+                    ))
                 })?;
             }
             match std::fs::OpenOptions::new()
@@ -80,7 +86,7 @@ impl DynamicTeeWriter {
         if let Some((_, ref mut file)) = guard.as_mut() {
             f(file)
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, "log file unavailable"))
+            Err(io::Error::other("log file unavailable"))
         }
     }
 }
@@ -418,7 +424,7 @@ fn engagement_dir_name(run_id: &str) -> String {
     // Example:
     //   export ZKF_ENGAGEMENT_EPOCH=176963063
     //   ... run mode1, mode2, mode3 ...
-    //   => /home/teycir/ZkFuzzReports/report_176963063/
+    //   => /home/<user>/ZkFuzz/report_176963063/
     if let Some(epoch) = read_optional_env("ZKF_ENGAGEMENT_EPOCH") {
         let trimmed = epoch.trim();
         if !trimmed.is_empty() {
@@ -463,10 +469,106 @@ fn mode_folder_from_command(command: &str) -> &'static str {
     }
 }
 
+fn ensure_engagement_layout(report_dir: &Path) {
+    for dir in [
+        report_dir.to_path_buf(),
+        report_dir.join("log"),
+        report_dir.join("mode1"),
+        report_dir.join("mode2"),
+        report_dir.join("mode3"),
+    ] {
+        if let Err(err) = std::fs::create_dir_all(&dir) {
+            tracing::warn!(
+                "Failed to create engagement directory '{}': {}",
+                dir.display(),
+                err
+            );
+        }
+    }
+}
+
 fn get_command_from_doc(value: &serde_json::Value) -> String {
     match value.get("command").and_then(|v| v.as_str()) {
         Some(command) => command.to_string(),
         None => panic!("Missing required 'command' in run document"),
+    }
+}
+
+fn mirror_mode_output_snapshot(output_dir: &Path, run_id: &str, value: &serde_json::Value) {
+    let command = get_command_from_doc(value);
+    let mode = mode_folder_from_command(&command);
+    let report_dir = engagement_root_dir(run_id);
+    let mode_dir = report_dir.join(mode);
+    if let Err(err) = std::fs::create_dir_all(&mode_dir) {
+        tracing::warn!(
+            "Failed to create mode output directory '{}': {}",
+            mode_dir.display(),
+            err
+        );
+        return;
+    }
+
+    let files = [
+        "report.json",
+        "report.md",
+        "findings.json",
+        "progress.json",
+        "chain_report.json",
+        "chain_report.md",
+        "run_outcome.json",
+    ];
+    for name in files {
+        let src = output_dir.join(name);
+        if !src.is_file() {
+            continue;
+        }
+        let data = match std::fs::read(&src) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to read output snapshot file '{}': {}",
+                    src.display(),
+                    err
+                );
+                continue;
+            }
+        };
+        let dst = mode_dir.join(name);
+        if let Err(err) = zk_fuzzer::util::write_file_atomic(&dst, &data) {
+            tracing::warn!(
+                "Failed to mirror output snapshot '{}' -> '{}': {}",
+                src.display(),
+                dst.display(),
+                err
+            );
+        }
+    }
+
+    let extra_files = [
+        ("evidence/summary.md", "evidence_summary.md"),
+        ("evidence/summary.json", "evidence_summary.json"),
+    ];
+    for (src_rel, dst_name) in extra_files {
+        let src = output_dir.join(src_rel);
+        if !src.is_file() {
+            continue;
+        }
+        let data = match std::fs::read(&src) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                tracing::warn!("Failed to read extra snapshot '{}': {}", src.display(), err);
+                continue;
+            }
+        };
+        let dst = mode_dir.join(dst_name);
+        if let Err(err) = zk_fuzzer::util::write_file_atomic(&dst, &data) {
+            tracing::warn!(
+                "Failed to mirror extra snapshot '{}' -> '{}': {}",
+                src.display(),
+                dst.display(),
+                err
+            );
+        }
     }
 }
 
@@ -537,30 +639,26 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
             let v = modes.get(key);
             md.push_str(&format!("## {}\n\n", key));
             if let Some(v) = v {
-                let status = v.get("status").and_then(|s| s.as_str());
-                let status = match status {
-                    Some(value) => value,
-                    None => "unknown",
-                };
-                let run_id = v.get("run_id").and_then(|s| s.as_str());
-                let run_id = match run_id {
-                    Some(value) => value,
-                    None => "unknown",
-                };
-                let campaign = v.get("campaign_name").and_then(|s| s.as_str());
-                let campaign = match campaign {
-                    Some(value) => value,
-                    None => "unknown",
-                };
-                let started = v.get("started_utc").and_then(|s| s.as_str());
-                let started = match started {
-                    Some(value) => value,
-                    None => "unknown",
-                };
-                let ended = match v.get("ended_utc").and_then(|s| s.as_str()) {
-                    Some(value) => value,
-                    None => "",
-                };
+                let status = v
+                    .get("status")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+                let run_id = v
+                    .get("run_id")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+                let campaign = v
+                    .get("campaign_name")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+                let started = v
+                    .get("started_utc")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+                let ended: &str = v
+                    .get("ended_utc")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default();
                 md.push_str(&format!("- Status: `{}`\n", status));
                 md.push_str(&format!("- Run ID: `{}`\n", run_id));
                 md.push_str(&format!("- Campaign: `{}`\n", campaign));
@@ -596,7 +694,7 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
             } else {
                 md.push_str("- Not run in this engagement yet.\n");
             }
-            md.push_str("\n");
+            md.push('\n');
         }
     }
 
@@ -661,14 +759,23 @@ fn add_run_window_fields(
 fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
     let base = run_signal_dir();
     let report_dir = engagement_root_dir(run_id);
+    ensure_engagement_layout(&report_dir);
+    let command = get_command_from_doc(value);
+    let mode = mode_folder_from_command(&command);
+    let mode_dir = report_dir.join(mode);
 
     // Log/event stream (engagement-wide). Each line includes run_id, so per-run
     // splitting is redundant and creates unnecessary files.
     let log_dir = report_dir.join("log");
     best_effort_append_jsonl(&log_dir.join("events.jsonl"), value);
+    // SCPF-style incremental feed: one engagement-wide file plus one per mode.
+    best_effort_append_jsonl(&report_dir.join("incremental_results.jsonl"), value);
+    best_effort_append_jsonl(&mode_dir.join("events.jsonl"), value);
+    best_effort_append_jsonl(&mode_dir.join("incremental_results.jsonl"), value);
 
     // Latest pointers.
     best_effort_write_json(&report_dir.join("latest.json"), value);
+    best_effort_write_json(&mode_dir.join("latest.json"), value);
     best_effort_write_json(&base.join("latest.json"), value);
 
     update_engagement_summary(&report_dir, value);
@@ -679,6 +786,7 @@ fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Valu
     // - `run_outcome.json` is the single authoritative per-mode status file (also used for resume).
     // - engagement-wide `log/events.jsonl` is the run history (includes run_id).
     best_effort_write_json(&output_dir.join("run_outcome.json"), value);
+    mirror_mode_output_snapshot(output_dir, run_id, value);
     write_global_run_signal(run_id, value);
 }
 
@@ -1020,64 +1128,42 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run a fuzzing campaign
-    Run {
-        /// Path to campaign YAML file
-        campaign: String,
+    /// Unified scan command: auto-dispatch mono/multi pattern YAML
+    Scan {
+        /// Path to pattern YAML (pattern-only schema)
+        pattern: String,
 
-        /// Number of continuous fuzzing iterations (Phase 0)
+        /// Pattern family hint (auto/mono/multi)
+        #[arg(long, default_value = "auto")]
+        family: ScanFamily,
+
+        /// Target circuit path used to materialize runtime campaign metadata
+        #[arg(long)]
+        target_circuit: String,
+
+        /// Main component name for target circuit
+        #[arg(long, default_value = "main")]
+        main_component: String,
+
+        /// Framework for target circuit (circom, noir, halo2, cairo)
+        #[arg(long, default_value = "circom")]
+        framework: String,
+
+        /// Number of iterations
         #[arg(short, long, default_value = "100000")]
         iterations: u64,
 
-        /// Timeout in seconds for continuous fuzzing phase
+        /// Timeout in seconds (mono: optional, multi: defaults to 600 if omitted)
         #[arg(short, long)]
         timeout: Option<u64>,
 
-        /// Resume from existing corpus (loads from reports/<campaign>/corpus/)
+        /// Resume from existing corpus
         #[arg(long)]
         resume: bool,
 
-        /// Custom corpus directory for resume (default: reports/<campaign>/corpus/)
+        /// Custom corpus directory (mono only)
         #[arg(long)]
         corpus_dir: Option<String>,
-    },
-    /// Run an evidence-focused campaign (requires invariants)
-    Evidence {
-        /// Path to campaign YAML file
-        campaign: String,
-
-        /// Number of continuous fuzzing iterations (Phase 0)
-        #[arg(short, long, default_value = "100000")]
-        iterations: u64,
-
-        /// Timeout in seconds for continuous fuzzing phase
-        #[arg(short, long)]
-        timeout: Option<u64>,
-
-        /// Resume from existing corpus (loads from reports/<campaign>/corpus/)
-        #[arg(long)]
-        resume: bool,
-
-        /// Custom corpus directory for resume (default: reports/<campaign>/corpus/)
-        #[arg(long)]
-        corpus_dir: Option<String>,
-    },
-    /// Run multi-step chain fuzzing (Mode 3: Deepest)
-    Chains {
-        /// Path to campaign YAML file with chain definitions
-        campaign: String,
-
-        /// Number of chain fuzzing iterations
-        #[arg(short, long, default_value = "100000")]
-        iterations: u64,
-
-        /// Timeout in seconds for chain fuzzing
-        #[arg(short, long, default_value = "600")]
-        timeout: u64,
-
-        /// Resume from existing chain corpus
-        #[arg(long)]
-        resume: bool,
     },
     /// Validate a campaign configuration
     Validate {
@@ -1103,6 +1189,13 @@ enum Commands {
     },
     #[command(hide = true)]
     ExecWorker,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Hash)]
+enum ScanFamily {
+    Auto,
+    Mono,
+    Multi,
 }
 
 #[derive(Debug, Clone)]
@@ -1236,66 +1329,37 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
     start_signal_watchers();
 
     match cli.command {
-        Some(Commands::Run {
-            campaign,
+        Some(Commands::Scan {
+            pattern,
+            family,
+            target_circuit,
+            main_component,
+            framework,
             iterations,
             timeout,
             resume,
             corpus_dir,
         }) => {
-            run_campaign(
-                &campaign,
+            run_scan(
+                &pattern,
+                family,
+                &target_circuit,
+                &main_component,
+                &framework,
                 CampaignRunOptions {
                     workers: cli.workers,
                     seed: cli.seed,
                     verbose: cli.verbose,
                     dry_run: cli.dry_run,
                     simple_progress: cli.simple_progress,
-                    real_only: cli.real_only,
-                    iterations,
-                    timeout,
-                    require_invariants: false,
-                    resume,
-                    corpus_dir,
-                    profile: cli.profile.clone(),
-                },
-            )
-            .await
-        }
-        Some(Commands::Evidence {
-            campaign,
-            iterations,
-            timeout,
-            resume,
-            corpus_dir,
-        }) => {
-            run_campaign(
-                &campaign,
-                CampaignRunOptions {
-                    workers: cli.workers,
-                    seed: cli.seed,
-                    verbose: cli.verbose,
-                    dry_run: cli.dry_run,
-                    simple_progress: cli.simple_progress,
-                    real_only: true, // Evidence mode always requires real backend
+                    real_only: true,
                     iterations,
                     timeout,
                     require_invariants: true,
                     resume,
-                    corpus_dir,
+                    corpus_dir: corpus_dir.clone(),
                     profile: cli.profile.clone(),
                 },
-            )
-            .await
-        }
-        Some(Commands::Chains {
-            campaign,
-            iterations,
-            timeout,
-            resume,
-        }) => {
-            run_chain_campaign(
-                &campaign,
                 ChainRunOptions {
                     workers: cli.workers,
                     seed: cli.seed,
@@ -1303,7 +1367,7 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
                     dry_run: cli.dry_run,
                     simple_progress: cli.simple_progress,
                     iterations,
-                    timeout,
+                    timeout: timeout.unwrap_or(600),
                     resume,
                 },
             )
@@ -1316,34 +1380,487 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
         Some(Commands::Init { output, framework }) => generate_sample_config(&output, &framework),
         Some(Commands::ExecWorker) => zk_fuzzer::executor::run_exec_worker(),
         None => {
-            // Default behavior: run with config if provided
-            if let Some(config_path) = cli.config {
-                // Use default values for iterations and timeout
-                run_campaign(
-                    &config_path,
-                    CampaignRunOptions {
-                        workers: cli.workers,
-                        seed: cli.seed,
-                        verbose: cli.verbose,
-                        dry_run: cli.dry_run,
-                        simple_progress: cli.simple_progress,
-                        real_only: cli.real_only,
-                        iterations: 1000,
-                        timeout: None,
-                        require_invariants: false,
-                        resume: false, // resume
-                        corpus_dir: None,
-                        profile: cli.profile.clone(),
-                    },
-                )
-                .await
-            } else {
+            anyhow::bail!(
+                "No command provided. Use `zk-fuzzer scan <pattern.yaml> --target-circuit <path> --main-component <name> --framework <fw>`."
+            );
+        }
+    }
+}
+
+fn parse_framework_arg(value: &str) -> anyhow::Result<Framework> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "circom" => Ok(Framework::Circom),
+        "noir" => Ok(Framework::Noir),
+        "halo2" => Ok(Framework::Halo2),
+        "cairo" => Ok(Framework::Cairo),
+        other => anyhow::bail!(
+            "Unsupported --framework '{}'. Expected one of: circom, noir, halo2, cairo",
+            other
+        ),
+    }
+}
+
+fn yaml_key(name: &str) -> serde_yaml::Value {
+    serde_yaml::Value::String(name.to_string())
+}
+
+fn detect_pattern_has_chains(path: &str) -> anyhow::Result<bool> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read pattern YAML '{}'", path))?;
+    let doc: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse pattern YAML '{}'", path))?;
+    let root = doc
+        .as_mapping()
+        .context("Pattern YAML root must be a mapping")?;
+    let chains_key = yaml_key("chains");
+    let chains = match root.get(&chains_key) {
+        Some(v) => v,
+        None => return Ok(false),
+    };
+    let seq = chains
+        .as_sequence()
+        .context("'chains' must be a YAML sequence when present")?;
+    Ok(!seq.is_empty())
+}
+
+fn validate_scan_pattern_complexity(path: &str, family: ScanFamily) -> anyhow::Result<()> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read pattern YAML '{}'", path))?;
+    let doc: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse pattern YAML '{}'", path))?;
+    let root = doc
+        .as_mapping()
+        .context("Pattern YAML root must be a mapping")?;
+
+    match family {
+        ScanFamily::Mono => {}
+        ScanFamily::Multi => {
+            let chains = root
+                .get(yaml_key("chains"))
+                .and_then(|v| v.as_sequence())
+                .context("Mode 3 (multi deep) requires non-empty `chains` in pattern YAML")?;
+            if chains.is_empty() {
+                anyhow::bail!("Mode 3 (multi deep) requires non-empty `chains` in pattern YAML");
+            }
+
+            let mut has_multistage_chain = false;
+            let mut has_multi_circuit_chain = false;
+            for chain in chains {
+                let Some(chain_map) = chain.as_mapping() else {
+                    anyhow::bail!("Each `chains` entry must be a mapping");
+                };
+                let steps_len = chain_map
+                    .get(yaml_key("steps"))
+                    .and_then(|v| v.as_sequence())
+                    .map(|s| s.len())
+                    .unwrap_or(0);
+                if steps_len >= 2 {
+                    has_multistage_chain = true;
+                }
+
+                let mut distinct_refs = std::collections::BTreeSet::new();
+                if let Some(steps) = chain_map
+                    .get(yaml_key("steps"))
+                    .and_then(|v| v.as_sequence())
+                {
+                    for step in steps {
+                        if let Some(step_map) = step.as_mapping() {
+                            if let Some(circuit_ref) = step_map
+                                .get(yaml_key("circuit_ref"))
+                                .and_then(|v| v.as_str())
+                            {
+                                distinct_refs.insert(circuit_ref.to_string());
+                            }
+                        }
+                    }
+                }
+                if distinct_refs.len() >= 2 {
+                    has_multi_circuit_chain = true;
+                }
+
+                if has_multistage_chain && has_multi_circuit_chain {
+                    break;
+                }
+            }
+            if !has_multistage_chain {
                 anyhow::bail!(
-                    "No campaign configuration provided. Use `zk-fuzzer --config <path>` or `zk-fuzzer run <path>`."
+                    "Mode 3 (multi deep) requires multi-stage chains (at least one chain with 2+ steps)"
+                );
+            }
+            if !has_multi_circuit_chain {
+                anyhow::bail!(
+                    "Mode 3 (multi deep) requires at least two distinct circuit refs in a chain. Mono-circuit targets cannot run multi."
                 );
             }
         }
+        ScanFamily::Auto => {}
     }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct ScanFindingsSummary {
+    findings_total: u64,
+    critical_findings: bool,
+}
+
+fn scan_default_output_dir() -> PathBuf {
+    match dirs::home_dir() {
+        Some(home) => home.join("ZkFuzz"),
+        None => PathBuf::from("./ZkFuzz"),
+    }
+}
+
+fn read_scan_progress_step_fraction(progress_path: &Path) -> Option<String> {
+    let raw = std::fs::read_to_string(progress_path).ok()?;
+    let doc: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    doc.get("progress")
+        .and_then(|v| v.get("step_fraction"))
+        .and_then(|v| v.as_str())
+        .map(|value| value.to_string())
+}
+
+fn read_scan_findings_summary_since(
+    output_dir: &Path,
+    phase_started_at: std::time::SystemTime,
+) -> Option<ScanFindingsSummary> {
+    let run_outcome_path = output_dir.join("run_outcome.json");
+    let modified = std::fs::metadata(&run_outcome_path).ok()?.modified().ok()?;
+    if modified < phase_started_at {
+        return None;
+    }
+    let raw = std::fs::read_to_string(run_outcome_path).ok()?;
+    let doc: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let metrics = doc.get("metrics")?;
+
+    let findings_total = metrics
+        .get("findings_total")
+        .and_then(|v| v.as_u64())
+        .or_else(|| metrics.get("chain_findings_total").and_then(|v| v.as_u64()))
+        .or_else(|| metrics.get("total_findings").and_then(|v| v.as_u64()))
+        .unwrap_or(0);
+    let critical_findings = metrics
+        .get("critical_findings")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    Some(ScanFindingsSummary {
+        findings_total,
+        critical_findings,
+    })
+}
+
+async fn run_scan_phase_with_progress<F>(
+    phase_label: &str,
+    output_dir: &Path,
+    phase_future: F,
+) -> anyhow::Result<()>
+where
+    F: std::future::Future<Output = anyhow::Result<()>>,
+{
+    let progress_path = output_dir.join("progress.json");
+    let mut last_fraction: Option<String> = read_scan_progress_step_fraction(&progress_path);
+    let mut phase_future = std::pin::pin!(phase_future);
+
+    loop {
+        tokio::select! {
+            result = &mut phase_future => return result,
+            _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {
+                let fraction = read_scan_progress_step_fraction(&progress_path);
+                if let Some(fraction) = fraction {
+                    let changed = match &last_fraction {
+                        Some(prev) => prev != &fraction,
+                        None => true,
+                    };
+                    if changed {
+                        println!("{} {}", phase_label, fraction);
+                        last_fraction = Some(fraction);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn materialize_scan_pattern_campaign(
+    pattern_path: &str,
+    family: ScanFamily,
+    target: &ScanTarget,
+) -> anyhow::Result<PathBuf> {
+    use std::hash::{Hash, Hasher};
+
+    let raw = fs::read_to_string(pattern_path)
+        .with_context(|| format!("Failed to read pattern YAML '{}'", pattern_path))?;
+    let mut doc: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse pattern YAML '{}'", pattern_path))?;
+    let root = doc
+        .as_mapping_mut()
+        .context("Pattern YAML root must be a mapping")?;
+
+    // Keep includes valid after writing a materialized temp campaign.
+    if let Some(includes) = root.get_mut(yaml_key("includes")) {
+        let seq = includes
+            .as_sequence_mut()
+            .context("'includes' must be a YAML sequence")?;
+        let pattern_dir = Path::new(pattern_path)
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        for item in seq.iter_mut() {
+            let include = match item.as_str() {
+                Some(v) => v,
+                None => continue,
+            };
+            if include.starts_with("${") {
+                continue;
+            }
+            let include_path = Path::new(include);
+            if include_path.is_absolute() {
+                continue;
+            }
+            let rewritten = pattern_dir.join(include_path);
+            *item = serde_yaml::Value::String(rewritten.to_string_lossy().to_string());
+        }
+    }
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    pattern_path.hash(&mut hasher);
+    target.framework.hash(&mut hasher);
+    target.circuit_path.to_string_lossy().hash(&mut hasher);
+    target.main_component.hash(&mut hasher);
+    family.hash(&mut hasher);
+    let digest = hasher.finish();
+
+    let stem = Path::new(pattern_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(sanitize_slug)
+        .unwrap_or_else(|| "pattern".to_string());
+    let family_slug = match family {
+        ScanFamily::Auto => "auto",
+        ScanFamily::Mono => "mono",
+        ScanFamily::Multi => "multi",
+    };
+
+    let mut campaign = serde_yaml::Mapping::new();
+    campaign.insert(
+        yaml_key("name"),
+        serde_yaml::Value::String(format!("scan_{}_{}", family_slug, stem)),
+    );
+    campaign.insert(
+        yaml_key("version"),
+        serde_yaml::Value::String("2.0".to_string()),
+    );
+
+    let mut campaign_target = serde_yaml::Mapping::new();
+    campaign_target.insert(
+        yaml_key("framework"),
+        serde_yaml::to_value(target.framework).context("Failed to serialize framework")?,
+    );
+    campaign_target.insert(
+        yaml_key("circuit_path"),
+        serde_yaml::Value::String(target.circuit_path.to_string_lossy().to_string()),
+    );
+    campaign_target.insert(
+        yaml_key("main_component"),
+        serde_yaml::Value::String(target.main_component.clone()),
+    );
+    campaign.insert(
+        yaml_key("target"),
+        serde_yaml::Value::Mapping(campaign_target),
+    );
+
+    let mut parameters = serde_yaml::Mapping::new();
+    parameters.insert(
+        yaml_key("field"),
+        serde_yaml::Value::String("bn254".to_string()),
+    );
+    parameters.insert(
+        yaml_key("max_constraints"),
+        serde_yaml::Value::Number(serde_yaml::Number::from(120000u64)),
+    );
+    parameters.insert(
+        yaml_key("timeout_seconds"),
+        serde_yaml::Value::Number(serde_yaml::Number::from(600u64)),
+    );
+    campaign.insert(
+        yaml_key("parameters"),
+        serde_yaml::Value::Mapping(parameters),
+    );
+
+    root.insert(yaml_key("campaign"), serde_yaml::Value::Mapping(campaign));
+
+    let out = std::env::temp_dir()
+        .join("zkfuzz_scan")
+        .join(format!("{}__{}__{:016x}.yaml", family_slug, stem, digest));
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create temp scan materialization directory '{}'",
+                parent.display()
+            )
+        })?;
+    }
+    let yaml = serde_yaml::to_string(&doc)?;
+    fs::write(&out, yaml).with_context(|| {
+        format!(
+            "Failed to write materialized scan campaign '{}'",
+            out.display()
+        )
+    })?;
+    Ok(out)
+}
+
+async fn run_scan(
+    pattern_path: &str,
+    family_hint: ScanFamily,
+    target_circuit: &str,
+    main_component: &str,
+    framework: &str,
+    mono_options: CampaignRunOptions,
+    chain_options: ChainRunOptions,
+) -> anyhow::Result<()> {
+    validate_pattern_only_yaml(pattern_path, "Scan")?;
+
+    let has_chains = detect_pattern_has_chains(pattern_path)?;
+    let family = match family_hint {
+        ScanFamily::Auto => {
+            if has_chains {
+                ScanFamily::Multi
+            } else {
+                ScanFamily::Mono
+            }
+        }
+        ScanFamily::Mono => {
+            if has_chains {
+                anyhow::bail!(
+                    "Scan family set to mono but pattern '{}' contains non-empty `chains`.",
+                    pattern_path
+                );
+            }
+            ScanFamily::Mono
+        }
+        ScanFamily::Multi => {
+            if !has_chains {
+                anyhow::bail!(
+                    "Scan family set to multi but pattern '{}' has no `chains`.",
+                    pattern_path
+                );
+            }
+            ScanFamily::Multi
+        }
+    };
+    validate_scan_pattern_complexity(pattern_path, family)?;
+
+    let target = ScanTarget {
+        framework: parse_framework_arg(framework)?,
+        circuit_path: PathBuf::from(target_circuit),
+        main_component: main_component.to_string(),
+    };
+    let materialized = materialize_scan_pattern_campaign(pattern_path, family, &target)?;
+    let materialized_str = materialized.to_string_lossy().to_string();
+
+    tracing::info!(
+        "Scan dispatch: pattern='{}' family={:?} materialized='{}'",
+        pattern_path,
+        family,
+        materialized.display()
+    );
+
+    let output_dir = scan_default_output_dir();
+
+    match family {
+        ScanFamily::Mono => {
+            tracing::info!("Scan (yaml mono run)");
+            println!("\nSCAN START");
+            let started_at = std::time::SystemTime::now();
+            let run_result = run_scan_phase_with_progress(
+                "scan",
+                &output_dir,
+                run_campaign(&materialized_str, mono_options),
+            )
+            .await;
+            let summary =
+                read_scan_findings_summary_since(&output_dir, started_at).unwrap_or_default();
+            println!("SCAN END");
+            println!(
+                "scan findings: {} (critical: {})",
+                summary.findings_total, summary.critical_findings
+            );
+            run_result
+        }
+        ScanFamily::Multi => {
+            if mono_options.corpus_dir.is_some() {
+                anyhow::bail!(
+                    "--corpus-dir is mono-only. Multi/chain scans use chain corpus under ~/ZkFuzz."
+                );
+            }
+
+            tracing::info!("Scan (yaml multi run)");
+            println!("\nSCAN START");
+            let started_at = std::time::SystemTime::now();
+            let run_result = run_scan_phase_with_progress(
+                "scan",
+                &output_dir,
+                run_chain_campaign(&materialized_str, chain_options),
+            )
+            .await;
+            let summary =
+                read_scan_findings_summary_since(&output_dir, started_at).unwrap_or_default();
+            println!("SCAN END");
+            println!(
+                "scan findings: {} (critical: {})",
+                summary.findings_total, summary.critical_findings
+            );
+            run_result
+        }
+        ScanFamily::Auto => unreachable!("auto resolved above"),
+    }
+}
+
+fn validate_pattern_only_yaml(path: &str, mode_name: &str) -> anyhow::Result<()> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {} pattern YAML '{}'", mode_name, path))?;
+    let doc: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse {} pattern YAML '{}'", mode_name, path))?;
+    let root = doc
+        .as_mapping()
+        .context("Pattern YAML root must be a mapping")?;
+
+    let allowed: BTreeSet<&'static str> = BTreeSet::from([
+        "includes",
+        "profiles",
+        "active_profile",
+        "target_traits",
+        "invariants",
+        "schedule",
+        "attacks",
+        "inputs",
+        "mutations",
+        "oracles",
+        "chains",
+    ]);
+
+    let mut unexpected = Vec::new();
+    for key in root.keys() {
+        let key = key
+            .as_str()
+            .context("Pattern YAML contains a non-string top-level key")?;
+        if !allowed.contains(key) {
+            unexpected.push(key.to_string());
+        }
+    }
+    if !unexpected.is_empty() {
+        unexpected.sort();
+        anyhow::bail!(
+            "{} YAML must be pattern-only. Unsupported top-level keys: [{}]. Allowed keys: [{}].",
+            mode_name,
+            unexpected.join(", "),
+            allowed.iter().cloned().collect::<Vec<_>>().join(", ")
+        );
+    }
+    Ok(())
 }
 
 async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow::Result<()> {
@@ -1354,7 +1871,9 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         "run"
     };
     let run_id = make_run_id(command, Some(config_path));
+    let report_dir = engagement_root_dir(&run_id);
     let mut stage = "load_config";
+    tracing::info!("Report directory: {}", report_dir.display());
 
     // Put `session.log` under the engagement folder from the very start (even if YAML parsing
     // fails). This avoids scattering logs across multiple locations.
@@ -1437,6 +1956,25 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         .parameters
         .additional
         .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
+    // Soundness for Circom requires proving/verification keys. In strict live runs, ensure
+    // prerequisites are satisfied by auto-running trusted setup when needed.
+    let needs_soundness_keys = config
+        .attacks
+        .iter()
+        .any(|attack| matches!(attack.attack_type, zk_fuzzer::config::AttackType::Soundness));
+    if config.campaign.target.framework == Framework::Circom && needs_soundness_keys {
+        config.campaign.parameters.additional.insert(
+            "circom_auto_setup_keys".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+        config.campaign.parameters.additional.insert(
+            "circom_skip_compile_if_artifacts".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+        tracing::info!(
+            "Circom prerequisites: enabling automatic trusted setup/key generation for soundness"
+        );
+    }
 
     // Inject CLI fuzzing parameters into config
     config.campaign.parameters.additional.insert(
@@ -2094,24 +2632,9 @@ fn generate_sample_config(output: &str, framework: &str) -> anyhow::Result<()> {
     };
 
     let sample = format!(
-        r#"# ZK-Fuzzer Campaign Configuration
-# Generated sample for {} framework
-
-campaign:
-  name: "Sample {} Audit"
-  version: "1.0"
-  target:
-    framework: "{}"
-    circuit_path: "{}"
-    main_component: "{}"
-
-  parameters:
-    field: "bn254"
-    max_constraints: 100000
-    timeout_seconds: 300
-    # NOTE: campaign.parameters is a flattened key/value map.
-    # Do NOT nest under `additional:` (legacy templates used that shape).
-    strict_backend: true
+        r#"# ZK-Fuzzer Pattern Configuration
+# Generated sample for {} framework.
+# This file is pattern-only and is used with `zk-fuzzer scan`.
 
 attacks:
   - type: underconstrained
@@ -2157,20 +2680,21 @@ inputs:
       - "0x1"
       - "0xdead"
 
-reporting:
-  output_dir: "./reports"
-  formats:
-    - json
-    - markdown
-  include_poc: true
-  crash_reproduction: true
+invariants:
+  - name: "input1_nonzero"
+    invariant_type: "constraint"
+    relation: "input1 != 0"
+    severity: "medium"
 "#,
-        framework, framework, framework, circuit_path, main_component
+        framework
     );
 
     std::fs::write(output, sample)?;
-    println!("Generated sample configuration: {}", output);
-    println!("Edit this file and run: zk-fuzzer run {}", output);
+    println!("Generated sample pattern: {}", output);
+    println!(
+        "Run with: zk-fuzzer scan {} --target-circuit {} --main-component {} --framework {}",
+        output, circuit_path, main_component, framework
+    );
 
     Ok(())
 }
@@ -2281,7 +2805,9 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let started_utc = Utc::now();
     let command = "chains";
     let run_id = make_run_id(command, Some(config_path));
+    let report_dir = engagement_root_dir(&run_id);
     let mut stage = "load_config";
+    tracing::info!("Report directory: {}", report_dir.display());
 
     // Put `session.log` under the engagement folder from the very start (even if YAML parsing
     // fails). This avoids scattering logs across multiple locations.
@@ -2764,10 +3290,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                     .len()
             };
             let final_max_depth = final_corpus.entries().iter().map(|e| e.depth_reached).max();
-            let final_max_depth = match final_max_depth {
-                Some(value) => value,
-                None => 0,
-            };
+            let final_max_depth: usize = final_max_depth.unwrap_or_default();
             (
                 final_total_entries,
                 final_unique_coverage_bits,
@@ -2782,29 +3305,20 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         .campaign
         .parameters
         .additional
-        .get_bool("engagement_strict");
-    let engagement_strict = match engagement_strict {
-        Some(value) => value,
-        None => true,
-    };
+        .get_bool("engagement_strict")
+        .unwrap_or(true);
     let min_unique_coverage_bits = config
         .campaign
         .parameters
         .additional
-        .get_usize("engagement_min_chain_unique_coverage_bits");
-    let min_unique_coverage_bits = match min_unique_coverage_bits {
-        Some(value) => value,
-        None => 2,
-    };
+        .get_usize("engagement_min_chain_unique_coverage_bits")
+        .unwrap_or(2);
     let min_completed_per_chain = config
         .campaign
         .parameters
         .additional
-        .get_usize("engagement_min_chain_completed_per_chain");
-    let min_completed_per_chain = match min_completed_per_chain {
-        Some(value) => value,
-        None => 1,
-    };
+        .get_usize("engagement_min_chain_completed_per_chain")
+        .unwrap_or(1);
 
     let mut quality_failures: Vec<String> = Vec::new();
     for chain in &chains {
@@ -2921,28 +3435,23 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             println!(
                 "       cargo run --release -- chains {} --seed {}",
                 config_path,
-                match options.seed {
-                    Some(seed) => seed,
-                    None => 42,
-                }
+                options.seed.unwrap_or(42)
             );
         }
+    } else if run_valid {
+        println!(
+            "\n{}",
+            "  ✓ No chain vulnerabilities found!".bright_green().bold()
+        );
     } else {
-        if run_valid {
-            println!(
-                "\n{}",
-                "  ✓ No chain vulnerabilities found!".bright_green().bold()
-            );
-        } else {
-            println!(
-                "\n{}",
-                "  ✗ Run invalid: exploration too narrow to treat as 'clean'"
-                    .bright_red()
-                    .bold()
-            );
-            for failure in &quality_failures {
-                println!("     - {}", failure);
-            }
+        println!(
+            "\n{}",
+            "  ✗ Run invalid: exploration too narrow to treat as 'clean'"
+                .bright_red()
+                .bold()
+        );
+        for failure in &quality_failures {
+            println!("     - {}", failure);
         }
     }
 
@@ -3026,7 +3535,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             "error": format!("{:#}", err),
         });
         write_run_artifacts(&output_dir, &run_id, &doc);
-        return Err(err.into());
+        return Err(err);
     }
     tracing::info!("Saved chain report to {:?}", chain_report_path);
 
@@ -3116,10 +3625,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                     if step.success {
                         "success"
                     } else {
-                        match step.error.as_deref() {
-                            Some(err) => err,
-                            None => "failed",
-                        }
+                        step.error.as_deref().unwrap_or("failed")
                     }
                 ));
             }
@@ -3130,10 +3636,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             md.push_str(&format!(
                 "```bash\ncargo run --release -- chains {} --seed {}\n```\n\n",
                 config_path,
-                match options.seed {
-                    Some(seed) => seed,
-                    None => 42,
-                }
+                options.seed.unwrap_or(42)
             ));
         }
     }

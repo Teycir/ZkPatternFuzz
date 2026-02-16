@@ -404,10 +404,7 @@ impl GlobalCorpusManager {
             .node_corpora
             .get(node_id)
             .map(|entries| entries.iter().map(|e| e.coverage_hash).collect());
-        let node_hashes = match node_hashes {
-            Some(value) => value,
-            None => HashSet::new(),
-        };
+        let node_hashes: HashSet<u64> = node_hashes.unwrap_or_default();
 
         self.global_corpus
             .iter()

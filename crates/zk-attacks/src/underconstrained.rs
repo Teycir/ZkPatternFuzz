@@ -226,10 +226,7 @@ impl UnderconstrainedDetector {
         let labels = inspector.wire_labels();
 
         for idx in private_indices {
-            let count = match counts.get(&idx).copied() {
-                Some(value) => value,
-                None => 0,
-            };
+            let count: usize = counts.get(&idx).copied().unwrap_or_default();
             if count == 0 || count > threshold {
                 continue;
             }

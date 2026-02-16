@@ -372,10 +372,7 @@ pub fn minimize_test_case<F>(
 where
     F: Fn(&[FieldElement]) -> OracleResult,
 {
-    let config = match config {
-        Some(value) => value,
-        None => DeltaDebugConfig::default(),
-    };
+    let config = config.unwrap_or_default();
     let debugger = DeltaDebugger::with_config(oracle, config);
 
     let (minimized_inputs, stats) = debugger.minimize(&test_case.inputs)?;

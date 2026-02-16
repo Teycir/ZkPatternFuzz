@@ -270,24 +270,15 @@ impl FuzzingEngine {
             &executor_factory_options,
         )?;
 
-        let evidence_mode = match Self::additional_bool(additional, "evidence_mode") {
-            Some(value) => value,
-            None => false,
-        };
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
 
         // Phase 3A: Enable per_exec_isolation by default in evidence mode for hang safety
-        let mut isolate_exec = match Self::additional_bool(additional, "per_exec_isolation")
+        let mut isolate_exec = Self::additional_bool(additional, "per_exec_isolation")
             .or_else(|| Self::additional_bool(additional, "exec_isolation"))
-        {
-            Some(value) => value,
-            None => false,
-        };
+            .unwrap_or(false);
 
         let allow_no_isolation =
-            match Self::additional_bool(additional, "evidence_allow_no_isolation") {
-                Some(value) => value,
-                None => false,
-            };
+            Self::additional_bool(additional, "evidence_allow_no_isolation").unwrap_or(false);
 
         if evidence_mode && !isolate_exec {
             if allow_no_isolation {
@@ -302,19 +293,15 @@ impl FuzzingEngine {
         }
 
         if isolate_exec {
-            let execution_timeout_ms =
-                match Self::additional_u64(additional, "execution_timeout_ms").or_else(|| {
+            let execution_timeout_ms = Self::additional_u64(additional, "execution_timeout_ms")
+                .or_else(|| {
                     Self::additional_u64(additional, "timeout_per_execution").map(|v| v * 1000)
-                }) {
-                    Some(value) => value,
-                    None => 30_000,
-                }
+                })
+                .unwrap_or(30_000)
                 .max(1);
 
-            let kill_on_timeout = match Self::additional_bool(additional, "kill_on_timeout") {
-                Some(value) => value,
-                None => true,
-            };
+            let kill_on_timeout =
+                Self::additional_bool(additional, "kill_on_timeout").unwrap_or(true);
 
             let mut isolated_executor = IsolatedExecutor::new(
                 executor,
@@ -354,11 +341,9 @@ impl FuzzingEngine {
 
         // Phase 0 Fix: Make corpus size configurable instead of hardcoded 10000
         // Allows tuning based on circuit complexity and available memory
-        let corpus_max_size = match Self::additional_u64(additional, "corpus_max_size") {
-            Some(value) => value,
-            None => 100_000,
-        }
-        .max(1) as usize; // Increased default from 10k to 100k
+        let corpus_max_size = Self::additional_u64(additional, "corpus_max_size")
+            .unwrap_or(100_000)
+            .max(1) as usize; // Increased default from 10k to 100k
         let corpus = create_corpus(corpus_max_size);
 
         // Initialize symbolic execution integration
@@ -366,28 +351,20 @@ impl FuzzingEngine {
         // Previous: max_paths=100, max_depth=20 (too shallow for complex circuits)
         // Now: max_paths=1000, max_depth=200 (closer to KLEE-level exploration)
         let num_inputs = config.inputs.len().max(1);
-        let symbolic_enabled = match Self::additional_bool(additional, "symbolic_enabled") {
-            Some(value) => value,
-            None => true,
-        };
+        let symbolic_enabled =
+            Self::additional_bool(additional, "symbolic_enabled").unwrap_or(true);
         let symbolic = if symbolic_enabled {
-            let symbolic_max_paths = match Self::additional_u64(additional, "symbolic_max_paths") {
-                Some(value) => value,
-                None => 1000,
-            }
-            .max(1) as usize;
-            let symbolic_max_depth = match Self::additional_u64(additional, "symbolic_max_depth") {
-                Some(value) => value,
-                None => 200,
-            }
-            .max(1) as usize;
+            let symbolic_max_paths = Self::additional_u64(additional, "symbolic_max_paths")
+                .unwrap_or(1000)
+                .max(1) as usize;
+            let symbolic_max_depth = Self::additional_u64(additional, "symbolic_max_depth")
+                .unwrap_or(200)
+                .max(1) as usize;
             let symbolic_solver_timeout =
-                match Self::additional_u64(additional, "symbolic_solver_timeout_ms") {
-                    Some(value) => value,
-                    None => 5000,
-                }
-                .max(1)
-                .min(u32::MAX as u64) as u32;
+                Self::additional_u64(additional, "symbolic_solver_timeout_ms")
+                    .unwrap_or(5000)
+                    .max(1)
+                    .min(u32::MAX as u64) as u32;
             Some(
                 SymbolicFuzzerIntegration::new(num_inputs).with_config(SymbolicConfig {
                     max_paths: symbolic_max_paths,
@@ -636,16 +613,11 @@ impl FuzzingEngine {
         self.core.set_start_time(start_time);
 
         let additional = &self.config.campaign.parameters.additional;
-        let evidence_mode = match Self::additional_bool(additional, "evidence_mode") {
-            Some(value) => value,
-            None => false,
-        };
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
         // Engagement contract: in evidence mode, fail fast on misconfiguration that would cause
         // patterns/attacks to be silently skipped.
-        let engagement_strict = match Self::additional_bool(additional, "engagement_strict") {
-            Some(value) => value,
-            None => evidence_mode,
-        };
+        let engagement_strict =
+            Self::additional_bool(additional, "engagement_strict").unwrap_or(evidence_mode);
         let mode_label = if evidence_mode { "evidence" } else { "run" };
         let phases_total = 1u64
             .saturating_add(self.config.attacks.len() as u64)
@@ -1115,7 +1087,7 @@ impl FuzzingEngine {
         }
 
         // Phase 0 Fix: Run continuous fuzzing phase after attacks
-        let iterations = match self
+        let iterations = self
             .config
             .campaign
             .parameters
@@ -1129,10 +1101,8 @@ impl FuzzingEngine {
                     .additional
                     .get("fuzzing_iterations")
                     .and_then(|v| v.as_u64())
-            }) {
-            Some(value) => value,
-            None => 1000,
-        };
+            })
+            .unwrap_or(1000);
 
         let timeout = self
             .config
@@ -1201,15 +1171,9 @@ impl FuzzingEngine {
         let mut findings = self.with_findings_read(Clone::clone)?;
 
         let additional = &self.config.campaign.parameters.additional;
-        let evidence_mode = match Self::additional_bool(additional, "evidence_mode") {
-            Some(value) => value,
-            None => false,
-        };
-        let oracle_validation_enabled = match Self::additional_bool(additional, "oracle_validation")
-        {
-            Some(value) => value,
-            None => evidence_mode,
-        };
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        let oracle_validation_enabled =
+            Self::additional_bool(additional, "oracle_validation").unwrap_or(evidence_mode);
 
         if oracle_validation_enabled {
             let validation_config = self.oracle_validation_config();

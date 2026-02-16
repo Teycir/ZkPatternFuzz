@@ -227,23 +227,18 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
 
     // 1. Check strict_backend
     let additional = &config.campaign.parameters.additional;
-    let evidence_mode = additional.get("evidence_mode").and_then(|v| v.as_bool());
-    let evidence_mode = match evidence_mode {
-        Some(value) => value,
-        None => false,
-    };
+    let evidence_mode = additional
+        .get("evidence_mode")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let engagement_strict = additional
         .get("engagement_strict")
-        .and_then(|v| v.as_bool());
-    let engagement_strict = match engagement_strict {
-        Some(value) => value,
-        None => evidence_mode,
-    };
-    let strict_backend = additional.get("strict_backend").and_then(|v| v.as_bool());
-    let strict_backend = match strict_backend {
-        Some(value) => value,
-        None => false,
-    };
+        .and_then(|v| v.as_bool())
+        .unwrap_or(evidence_mode);
+    let strict_backend = additional
+        .get("strict_backend")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     if !strict_backend {
         warnings.push(
@@ -309,11 +304,8 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     // 4. Check symbolic execution depth
     let symbolic_max_depth = additional
         .get("symbolic_max_depth")
-        .and_then(|v| v.as_u64());
-    let symbolic_max_depth = match symbolic_max_depth {
-        Some(value) => value,
-        None => 200,
-    };
+        .and_then(|v| v.as_u64())
+        .unwrap_or(200);
 
     if symbolic_max_depth < 50 {
         warnings.push(
@@ -331,11 +323,8 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     // 5. Check constraint-guided fuzzing
     let constraint_guided = additional
         .get("constraint_guided_enabled")
-        .and_then(|v| v.as_bool());
-    let constraint_guided = match constraint_guided {
-        Some(value) => value,
-        None => true,
-    };
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     if !constraint_guided {
         warnings.push(
@@ -373,17 +362,10 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     }
 
     // 7. Check per-execution isolation
-    let per_exec_isolation = match additional.get_bool("per_exec_isolation") {
-        Some(value) => value,
-        None => false,
-    };
+    let per_exec_isolation = additional.get_bool("per_exec_isolation").unwrap_or(false);
     let allow_no_isolation = additional
         .get_bool("evidence_allow_no_isolation")
-        .map(|value| value);
-    let allow_no_isolation = match allow_no_isolation {
-        Some(value) => value,
-        None => false,
-    };
+        .unwrap_or(false);
 
     if !per_exec_isolation && !allow_no_isolation {
         warnings.push(
@@ -398,11 +380,8 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     // 8. Check execution timeout
     let execution_timeout_ms = additional
         .get("execution_timeout_ms")
-        .and_then(|v| v.as_u64());
-    let execution_timeout_ms = match execution_timeout_ms {
-        Some(value) => value,
-        None => 30_000,
-    };
+        .and_then(|v| v.as_u64())
+        .unwrap_or(30_000);
 
     if execution_timeout_ms < 1000 {
         warnings.push(ReadinessWarning::low(
@@ -459,10 +438,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     for attack in &config.attacks {
         if matches!(attack.attack_type, crate::config::AttackType::Soundness) {
             let forge_attempts = attack.config.get("forge_attempts").and_then(|v| v.as_u64());
-            let forge_attempts = match forge_attempts {
-                Some(value) => value,
-                None => 0,
-            };
+            let forge_attempts = forge_attempts.unwrap_or(0);
 
             if forge_attempts == 0 {
                 warnings.push(if engagement_strict {
@@ -489,10 +465,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
 
     // 11. Check corpus size
     let corpus_max_size = additional.get("corpus_max_size").and_then(|v| v.as_u64());
-    let corpus_max_size = match corpus_max_size {
-        Some(value) => value,
-        None => 100_000,
-    };
+    let corpus_max_size = corpus_max_size.unwrap_or(100_000);
 
     if corpus_max_size < 10_000 {
         warnings.push(ReadinessWarning::low(
@@ -521,10 +494,7 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     // `max_iterations` (profile-style). Report the effective key for clarity.
     let (iterations_key, max_iterations) = if !config.chains.is_empty() {
         let v = additional.get("chain_iterations").and_then(|v| v.as_u64());
-        let v = match v {
-            Some(value) => value,
-            None => 1000,
-        };
+        let v = v.unwrap_or(1000);
         ("chain_iterations", v)
     } else if let Some(v) = additional.get("max_iterations").and_then(|v| v.as_u64()) {
         ("max_iterations", v)

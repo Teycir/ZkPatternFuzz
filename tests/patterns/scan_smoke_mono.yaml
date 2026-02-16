@@ -1,0 +1,27 @@
+invariants:
+  - name: a_small_range
+    invariant_type: range
+    relation: "0 <= a < 16"
+    severity: medium
+
+attacks:
+  - type: underconstrained
+    description: Minimal underconstrained smoke check
+    config:
+      witness_pairs: 8
+      public_input_count: 1
+  - type: boundary
+    description: Minimal boundary smoke check
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "2"
+
+inputs:
+  - name: a
+    type: field
+    fuzz_strategy: random
+  - name: b
+    type: field
+    fuzz_strategy: random

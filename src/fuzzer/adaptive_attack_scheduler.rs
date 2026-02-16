@@ -317,10 +317,11 @@ impl AdaptiveScheduler {
 
         // Suggest removing low-performing attacks
         for (attack_type, &score) in &self.attack_scores {
-            let findings_count = match self.findings_per_attack.get(attack_type).copied() {
-                Some(value) => value,
-                None => 0,
-            };
+            let findings_count: usize = self
+                .findings_per_attack
+                .get(attack_type)
+                .copied()
+                .unwrap_or_default();
             if score < 5.0 && findings_count == 0 {
                 suggestions.push(YamlSuggestion {
                     suggestion_type: SuggestionType::DecreaseBudget,

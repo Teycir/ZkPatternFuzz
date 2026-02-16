@@ -116,21 +116,15 @@ impl ZkFuzzer {
                 a.config
                     .get("witness_pairs")
                     .and_then(|v| v.as_u64())
-                    .map(|value| value)
-                    .or_else(|| Some(1000))
-                    .expect("default witness_pairs injected")
+                    .unwrap_or(1000)
                     + a.config
                         .get("forge_attempts")
                         .and_then(|v| v.as_u64())
-                        .map(|value| value)
-                        .or_else(|| Some(0))
-                        .expect("default forge_attempts injected")
+                        .unwrap_or(0)
                     + a.config
                         .get("samples")
                         .and_then(|v| v.as_u64())
-                        .map(|value| value)
-                        .or_else(|| Some(0))
-                        .expect("default samples injected")
+                        .unwrap_or(0)
             })
             .sum();
 
@@ -175,9 +169,7 @@ impl ZkFuzzer {
             .additional
             .get("phase_corpus_limit")
             .and_then(|v| v.as_u64())
-            .map(|value| value)
-            .or_else(|| Some(500))
-            .expect("default phase corpus limit injected") as usize;
+            .unwrap_or(500) as usize;
 
         scheduler
             .execute(&config, {

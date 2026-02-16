@@ -5,10 +5,7 @@ impl FuzzingEngine {
     pub(super) fn generate_report(&self, findings: Vec<Finding>, duration: u64) -> FuzzReport {
         // Phase 6A: Apply cross-oracle correlation for confidence scoring
         let additional = &self.config.campaign.parameters.additional;
-        let evidence_mode = match Self::additional_bool(additional, "evidence_mode") {
-            Some(value) => value,
-            None => false,
-        };
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
 
         let processed_findings = if evidence_mode && !findings.is_empty() {
             // In evidence mode, filter to only HIGH+ confidence findings
@@ -50,11 +47,7 @@ impl FuzzingEngine {
                     "low" => ConfidenceLevel::Low,
                     _ => ConfidenceLevel::Medium,
                 })
-                .map(|value| value);
-            let min_confidence = match min_confidence {
-                Some(value) => value,
-                None => ConfidenceLevel::Medium,
-            };
+                .unwrap_or(ConfidenceLevel::Medium);
 
             let filtered: Vec<Finding> = correlated
                 .into_iter()
@@ -172,19 +165,12 @@ impl FuzzingEngine {
         let now_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|duration| duration.as_secs());
-        let now_epoch = match now_epoch {
-            Ok(value) => value,
-            Err(err) => panic!("System clock is before UNIX_EPOCH: {}", err),
-        };
+        let now_epoch = now_epoch.expect("System clock is before UNIX_EPOCH");
 
         let overall = if phases_total == 0 {
             0.0
         } else {
-            let sub = match phase_progress {
-                Some(value) => value,
-                None => 0.0,
-            }
-            .clamp(0.0, 1.0);
+            let sub = phase_progress.unwrap_or(0.0).clamp(0.0, 1.0);
             ((phases_completed as f64) + sub) / (phases_total as f64)
         }
         .clamp(0.0, 1.0);
@@ -310,10 +296,7 @@ impl FuzzingEngine {
                         "{:?}: {} at line {}",
                         h.hint_type,
                         h.description,
-                        match h.line {
-                            Some(value) => value,
-                            None => 0,
-                        }
+                        h.line.unwrap_or(0)
                     )
                 })
                 .collect(),
@@ -324,10 +307,7 @@ impl FuzzingEngine {
                         "{:?}: {} at line {}",
                         h.hint_type,
                         h.description,
-                        match h.line {
-                            Some(value) => value,
-                            None => 0,
-                        }
+                        h.line.unwrap_or(0)
                     )
                 })
                 .collect(),

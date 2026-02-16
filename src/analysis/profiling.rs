@@ -317,10 +317,10 @@ impl Profiler {
             let start = Instant::now();
             let result = executor.execute_sync(inputs);
             if !result.success {
-                let error_msg = match result.error.as_deref() {
-                    Some(err) => err,
-                    None => "execution failed without backend error message",
-                };
+                let error_msg = result
+                    .error
+                    .as_deref()
+                    .unwrap_or("execution failed without backend error message");
                 tracing::warn!(
                     "Profiling execution failed for test_case_{}: {}",
                     i,

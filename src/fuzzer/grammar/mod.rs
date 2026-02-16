@@ -189,14 +189,8 @@ impl InputGrammar {
                 vec![value]
             }
             InputType::Array => {
-                let len = match spec.length {
-                    Some(value) => value,
-                    None => 1,
-                };
-                let elem_type = match spec.element_type {
-                    Some(value) => value,
-                    None => InputType::Field,
-                };
+                let len = spec.length.unwrap_or(1);
+                let elem_type = spec.element_type.unwrap_or(InputType::Field);
                 (0..len)
                     .map(|_| match elem_type {
                         InputType::Bool => {
@@ -211,15 +205,7 @@ impl InputGrammar {
                     .collect()
             }
             InputType::MerklePath => {
-                let depth = self
-                    .merkle_config
-                    .as_ref()
-                    .map(|c| c.depth)
-                    .map(|value| value);
-                let depth = match depth {
-                    Some(value) => value,
-                    None => 20,
-                };
+                let depth = self.merkle_config.as_ref().map(|c| c.depth).unwrap_or(20);
                 // Generate path elements
                 let path_elements: Vec<_> = (0..depth).map(|_| FieldElement::random(rng)).collect();
                 // Generate path indices (binary)
@@ -262,10 +248,7 @@ impl InputGrammar {
                 vec![r, s]
             }
             InputType::Bytes => {
-                let len = match spec.length {
-                    Some(value) => value,
-                    None => 32,
-                };
+                let len = spec.length.unwrap_or(32);
                 let mut bytes = vec![0u8; len];
                 rng.fill(&mut bytes[..]);
                 // Pack into field elements (32 bytes each)
@@ -382,16 +365,10 @@ impl InputSpec {
     /// Get flattened count (for arrays, includes all elements)
     pub fn flattened_count(&self) -> usize {
         match self.input_type {
-            InputType::Array => match self.length {
-                Some(value) => value,
-                None => 1,
-            },
+            InputType::Array => self.length.unwrap_or(1),
             InputType::MerklePath => {
                 // path elements + path indices
-                (match self.length {
-                    Some(value) => value,
-                    None => 20,
-                }) * 2
+                self.length.unwrap_or(20) * 2
             }
             InputType::Signature => 2, // (R, s)
             _ => 1,
@@ -413,11 +390,6 @@ impl GenerationContext {
 
     fn set(&mut self, name: &str, value: FieldElement) {
         self.values.insert(name.to_string(), value);
-    }
-
-    #[allow(dead_code)]
-    fn get(&self, name: &str) -> Option<&FieldElement> {
-        self.values.get(name)
     }
 }
 

@@ -27,16 +27,89 @@ impl<T> OptionValueExt<T> for Option<T> {
     }
 }
 
+fn deterministic_attack_cap(
+    additional: &crate::config::AdditionalConfig,
+    evidence_mode: bool,
+    floor: usize,
+    per_attack_cap_key: &str,
+) -> Option<(usize, usize, usize)> {
+    let deterministic =
+        super::FuzzingEngine::additional_bool(additional, "evidence_deterministic_runtime")
+            .unwrap_or(evidence_mode);
+    if !deterministic {
+        return None;
+    }
+
+    let iterations = super::FuzzingEngine::additional_u64(additional, "max_iterations")
+        .or_else(|| super::FuzzingEngine::additional_u64(additional, "fuzzing_iterations"))
+        .unwrap_or(1000)
+        .max(1) as usize;
+    let multiplier =
+        super::FuzzingEngine::additional_usize(additional, "evidence_attack_budget_multiplier")
+            .unwrap_or(4)
+            .max(1);
+
+    let auto_cap = iterations.saturating_mul(multiplier).max(floor);
+    let global_cap =
+        super::FuzzingEngine::additional_usize(additional, "evidence_attack_budget_cap")
+            .unwrap_or(auto_cap)
+            .max(floor);
+    let cap = super::FuzzingEngine::additional_usize(additional, per_attack_cap_key)
+        .unwrap_or(global_cap)
+        .max(floor);
+
+    Some((cap, iterations, multiplier))
+}
+
 impl FuzzingEngine {
+    fn bounded_attack_units(
+        &self,
+        configured: usize,
+        floor: usize,
+        per_attack_cap_key: &str,
+        label: &str,
+    ) -> usize {
+        let configured = configured.max(floor);
+        let additional = &self.config.campaign.parameters.additional;
+        let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+
+        let Some((cap, iterations, multiplier)) =
+            deterministic_attack_cap(additional, evidence_mode, floor, per_attack_cap_key)
+        else {
+            return configured;
+        };
+
+        let effective = configured.min(cap).max(floor);
+        if effective < configured {
+            tracing::warn!(
+                "Deterministic attack budget applied: {} {} -> {} (cap={}, iterations={}, multiplier={}, key={})",
+                label,
+                configured,
+                effective,
+                cap,
+                iterations,
+                multiplier,
+                per_attack_cap_key
+            );
+        }
+        effective
+    }
+
     pub(super) async fn run_underconstrained_attack(
         &mut self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        let witness_pairs: usize = config
+        let configured_witness_pairs: usize = config
             .get("witness_pairs")
             .and_then(|v| v.as_u64())
             .or_value(1000) as usize;
+        let witness_pairs = self.bounded_attack_units(
+            configured_witness_pairs,
+            1,
+            "underconstrained_witness_pairs_cap",
+            "underconstrained.witness_pairs",
+        );
 
         tracing::info!(
             "Testing {} witness pairs for underconstrained circuits",
@@ -426,10 +499,16 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        let forge_attempts: usize = config
+        let configured_forge_attempts: usize = config
             .get("forge_attempts")
             .and_then(|v| v.as_u64())
             .or_value(1000) as usize;
+        let forge_attempts = self.bounded_attack_units(
+            configured_forge_attempts,
+            1,
+            "soundness_forge_attempts_cap",
+            "soundness.forge_attempts",
+        );
 
         let mutation_rate: f64 = config
             .get("mutation_rate")
@@ -863,10 +942,16 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        let samples: usize = config
+        let configured_samples: usize = config
             .get("samples")
             .and_then(|v| v.as_u64())
             .or_value(10000) as usize;
+        let samples = self.bounded_attack_units(
+            configured_samples,
+            1,
+            "collision_samples_cap",
+            "collision.samples",
+        );
 
         tracing::info!("Running collision detection with {} samples", samples);
         {
@@ -1147,18 +1232,36 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::attacks::verification::VerificationFuzzer;
 
-        let malleability_tests = config
+        let configured_malleability_tests = config
             .get("malleability_tests")
             .and_then(|v| v.as_u64())
             .or_value(1000) as usize;
-        let malformed_tests = config
+        let configured_malformed_tests = config
             .get("malformed_tests")
             .and_then(|v| v.as_u64())
             .or_value(1000) as usize;
-        let edge_case_tests = config
+        let configured_edge_case_tests = config
             .get("edge_case_tests")
             .and_then(|v| v.as_u64())
             .or_value(500) as usize;
+        let malleability_tests = self.bounded_attack_units(
+            configured_malleability_tests,
+            1,
+            "verification_malleability_tests_cap",
+            "verification.malleability_tests",
+        );
+        let malformed_tests = self.bounded_attack_units(
+            configured_malformed_tests,
+            1,
+            "verification_malformed_tests_cap",
+            "verification.malformed_tests",
+        );
+        let edge_case_tests = self.bounded_attack_units(
+            configured_edge_case_tests,
+            1,
+            "verification_edge_case_tests_cap",
+            "verification.edge_case_tests",
+        );
         let mutation_rate = config
             .get("mutation_rate")
             .and_then(|v| v.as_f64())
@@ -1177,8 +1280,10 @@ impl FuzzingEngine {
             .with_edge_case_tests(edge_case_tests)
             .with_mutation_rate(mutation_rate);
 
-        let mut rng = rand::thread_rng();
-        let findings = fuzzer.fuzz(&self.executor, &mut rng);
+        let findings = {
+            let rng = self.core.rng_mut();
+            fuzzer.fuzz(&self.executor, rng)
+        };
 
         if !findings.is_empty() {
             self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
@@ -1199,18 +1304,36 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::attacks::witness::WitnessFuzzer;
 
-        let determinism_tests = config
+        let configured_determinism_tests = config
             .get("determinism_tests")
             .and_then(|v| v.as_u64())
             .or_value(100) as usize;
-        let timing_tests = config
+        let configured_timing_tests = config
             .get("timing_tests")
             .and_then(|v| v.as_u64())
             .or_value(500) as usize;
-        let stress_tests = config
+        let configured_stress_tests = config
             .get("stress_tests")
             .and_then(|v| v.as_u64())
             .or_value(1000) as usize;
+        let determinism_tests = self.bounded_attack_units(
+            configured_determinism_tests,
+            1,
+            "witness_determinism_tests_cap",
+            "witness.determinism_tests",
+        );
+        let timing_tests = self.bounded_attack_units(
+            configured_timing_tests,
+            1,
+            "witness_timing_tests_cap",
+            "witness.timing_tests",
+        );
+        let stress_tests = self.bounded_attack_units(
+            configured_stress_tests,
+            1,
+            "witness_stress_tests_cap",
+            "witness.stress_tests",
+        );
         let timing_threshold_us = config
             .get("timing_threshold_us")
             .and_then(|v| v.as_u64())
@@ -1234,8 +1357,10 @@ impl FuzzingEngine {
             .with_timing_threshold_us(timing_threshold_us)
             .with_timing_cv_threshold(timing_cv_threshold);
 
-        let mut rng = rand::thread_rng();
-        let findings = fuzzer.fuzz(&self.executor, &mut rng);
+        let findings = {
+            let rng = self.core.rng_mut();
+            fuzzer.fuzz(&self.executor, rng)
+        };
 
         if !findings.is_empty() {
             self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
@@ -1258,10 +1383,16 @@ impl FuzzingEngine {
         use crate::differential::{DifferentialConfig, DifferentialFuzzer};
         use std::collections::{HashMap, HashSet};
 
-        let num_tests = config
+        let configured_num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .or_value(500) as usize;
+        let num_tests = self.bounded_attack_units(
+            configured_num_tests,
+            1,
+            "differential_num_tests_cap",
+            "differential.num_tests",
+        );
         let compare_coverage = config
             .get("compare_coverage")
             .and_then(|v| v.as_bool())
@@ -1304,10 +1435,16 @@ impl FuzzingEngine {
             .and_then(|v| v.get("enabled"))
             .and_then(|v| v.as_bool())
             .or_value(false);
-        let cross_backend_samples = cross_backend_section
+        let configured_cross_backend_samples = cross_backend_section
             .and_then(|v| v.get("sample_count"))
             .and_then(|v| v.as_u64())
             .or_value(100) as usize;
+        let cross_backend_samples = self.bounded_attack_units(
+            configured_cross_backend_samples,
+            1,
+            "differential_cross_backend_sample_count_cap",
+            "differential.cross_backend.sample_count",
+        );
         let cross_backend_tolerance_bits = cross_backend_section
             .and_then(|v| v.get("tolerance_bits"))
             .and_then(|v| v.as_u64())
@@ -1525,10 +1662,16 @@ impl FuzzingEngine {
         use crate::multi_circuit::composition::{CompositionTester, CompositionType};
         use crate::multi_circuit::{CircuitChain, MultiCircuitFuzzer};
 
-        let num_tests = config
+        let configured_num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .or_value(200) as usize;
+        let num_tests = self.bounded_attack_units(
+            configured_num_tests,
+            1,
+            "circuit_composition_num_tests_cap",
+            "circuit_composition.num_tests",
+        );
 
         tracing::info!(
             "Running circuit composition fuzzing with {} tests",
@@ -1576,8 +1719,10 @@ impl FuzzingEngine {
 
         multi_fuzzer.add_circuit("main", self.executor.clone());
 
-        let mut rng = rand::thread_rng();
-        let findings = multi_fuzzer.run(&mut rng);
+        let findings = {
+            let rng = self.core.rng_mut();
+            multi_fuzzer.run(rng)
+        };
 
         if !findings.is_empty() {
             self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
@@ -1604,10 +1749,16 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::analysis::taint::TaintAnalyzer;
 
-        let num_tests = config
+        let configured_num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .or_value(300) as usize;
+        let num_tests = self.bounded_attack_units(
+            configured_num_tests,
+            1,
+            "information_leakage_num_tests_cap",
+            "information_leakage.num_tests",
+        );
 
         tracing::info!(
             "Running information leakage detection with {} tests",
@@ -1679,10 +1830,16 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::analysis::profiling::Profiler;
 
-        let num_samples = config
+        let configured_num_samples = config
             .get("num_samples")
             .and_then(|v| v.as_u64())
             .or_value(1000) as usize;
+        let num_samples = self.bounded_attack_units(
+            configured_num_samples,
+            1,
+            "timing_sidechannel_num_samples_cap",
+            "timing_sidechannel.num_samples",
+        );
 
         tracing::info!(
             "Running timing side-channel detection with {} samples",
@@ -1690,9 +1847,10 @@ impl FuzzingEngine {
         );
 
         let profiler = Profiler::new().with_samples(num_samples);
-        let mut rng = rand::thread_rng();
-
-        let profile = profiler.profile(&self.executor, &mut rng);
+        let profile = {
+            let rng = self.core.rng_mut();
+            profiler.profile(&self.executor, rng)
+        };
 
         if profile.execution_stats.has_timing_variation() {
             let finding = Finding {
@@ -1733,10 +1891,16 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::multi_circuit::recursive::{RecursionResult, RecursiveTester};
 
-        let num_tests = config
+        let configured_num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .or_value(100) as usize;
+        let num_tests = self.bounded_attack_units(
+            configured_num_tests,
+            1,
+            "recursive_proof_num_tests_cap",
+            "recursive_proof.num_tests",
+        );
 
         let max_depth = config.get("max_depth").and_then(|v| v.as_u64()).or_value(3) as usize;
 
@@ -2171,10 +2335,16 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::attacks::metamorphic::MetamorphicOracle;
 
-        let num_tests = config
+        let configured_num_tests = config
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .or_value(100) as usize;
+        let num_tests = self.bounded_attack_units(
+            configured_num_tests,
+            1,
+            "metamorphic_num_tests_cap",
+            "metamorphic.num_tests",
+        );
 
         tracing::info!(
             "Running metamorphic testing with {} base witnesses",
@@ -2219,15 +2389,27 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::attacks::constraint_slice::{ConstraintSliceOracle, OutputMapping};
 
-        let samples_per_cone = config
+        let configured_samples_per_cone = config
             .get("samples_per_cone")
             .and_then(|v| v.as_u64())
             .or_value(100) as usize;
+        let samples_per_cone = self.bounded_attack_units(
+            configured_samples_per_cone,
+            1,
+            "constraint_slice_samples_per_cone_cap",
+            "constraint_slice.samples_per_cone",
+        );
 
-        let base_witness_attempts = config
+        let configured_base_witness_attempts = config
             .get("base_witness_attempts")
             .and_then(|v| v.as_u64())
             .or_value(5) as usize;
+        let base_witness_attempts = self.bounded_attack_units(
+            configured_base_witness_attempts,
+            1,
+            "constraint_slice_base_witness_attempts_cap",
+            "constraint_slice.base_witness_attempts",
+        );
 
         tracing::info!(
             "Running constraint slice analysis ({} samples/cone)",
@@ -2306,17 +2488,19 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::attacks::spec_inference::SpecInferenceOracle;
 
-        let sample_count = config
+        let configured_sample_count = config
             .get("sample_count")
             .and_then(|v| v.as_u64())
             .or_value(500) as usize;
-        let evidence_mode = match Self::additional_bool(
-            &self.config.campaign.parameters.additional,
-            "evidence_mode",
-        ) {
-            Some(value) => value,
-            None => false,
-        };
+        let sample_count = self.bounded_attack_units(
+            configured_sample_count,
+            1,
+            "spec_inference_sample_count_cap",
+            "spec_inference.sample_count",
+        );
+        let evidence_mode =
+            Self::additional_bool(&self.config.campaign.parameters.additional, "evidence_mode")
+                .unwrap_or_default();
 
         // Depth contract: SpecInference must run full depth in Mode 2.
         // Do not accept YAML knobs that would cap work or reduce attempt depth.
@@ -2415,10 +2599,16 @@ impl FuzzingEngine {
     ) -> anyhow::Result<()> {
         use crate::attacks::witness_collision::WitnessCollisionDetector;
 
-        let samples = config
+        let configured_samples = config
             .get("samples")
             .and_then(|v| v.as_u64())
             .or_value(10000) as usize;
+        let samples = self.bounded_attack_units(
+            configured_samples,
+            1,
+            "witness_collision_samples_cap",
+            "witness_collision.samples",
+        );
 
         let scope_public_inputs = config
             .get("scope_public_inputs")
@@ -2485,5 +2675,61 @@ impl FuzzingEngine {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::deterministic_attack_cap;
+
+    #[test]
+    fn deterministic_cap_enabled_by_default_in_evidence_mode() {
+        let mut additional = crate::config::AdditionalConfig::default();
+        additional.insert(
+            "fuzzing_iterations".to_string(),
+            serde_yaml::Value::Number(serde_yaml::Number::from(20)),
+        );
+
+        let (cap, iterations, multiplier) =
+            deterministic_attack_cap(&additional, true, 1, "underconstrained_witness_pairs_cap")
+                .expect("cap should be enabled");
+        assert_eq!(iterations, 20);
+        assert_eq!(multiplier, 4);
+        assert_eq!(cap, 80);
+    }
+
+    #[test]
+    fn deterministic_cap_can_be_disabled_explicitly() {
+        let mut additional = crate::config::AdditionalConfig::default();
+        additional.insert(
+            "evidence_deterministic_runtime".to_string(),
+            serde_yaml::Value::Bool(false),
+        );
+        additional.insert(
+            "fuzzing_iterations".to_string(),
+            serde_yaml::Value::Number(serde_yaml::Number::from(20)),
+        );
+
+        let cap =
+            deterministic_attack_cap(&additional, true, 1, "underconstrained_witness_pairs_cap");
+        assert!(cap.is_none());
+    }
+
+    #[test]
+    fn per_attack_cap_overrides_global_cap() {
+        let mut additional = crate::config::AdditionalConfig::default();
+        additional.insert(
+            "fuzzing_iterations".to_string(),
+            serde_yaml::Value::Number(serde_yaml::Number::from(20)),
+        );
+        additional.insert(
+            "underconstrained_witness_pairs_cap".to_string(),
+            serde_yaml::Value::Number(serde_yaml::Number::from(33)),
+        );
+
+        let (cap, _, _) =
+            deterministic_attack_cap(&additional, true, 1, "underconstrained_witness_pairs_cap")
+                .expect("cap should be enabled");
+        assert_eq!(cap, 33);
     }
 }

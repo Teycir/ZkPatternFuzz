@@ -198,10 +198,7 @@ impl PathPruner {
             *pattern_counts.entry(hash).or_insert(0) += 1;
         }
 
-        match pattern_counts.values().max().copied() {
-            Some(value) => value,
-            None => 0,
-        }
+        pattern_counts.values().max().copied().unwrap_or_default()
     }
 
     /// Compute hash for similarity detection

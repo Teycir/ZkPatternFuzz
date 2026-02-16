@@ -321,10 +321,7 @@ impl<'de> serde::Deserialize<'de> for InputWiringConfig {
                 if let Some(v) = values {
                     return Ok(InputWiringConfig::Constant {
                         values: v,
-                        fresh_indices: match fresh_indices {
-                            Some(indices) => indices,
-                            None => Vec::new(),
-                        },
+                        fresh_indices: fresh_indices.unwrap_or_default(),
                     });
                 }
 
@@ -581,7 +578,7 @@ impl ConfigResolver {
             return Err(ConfigV2Error::MaxIncludeDepth);
         }
 
-        let canonical = config_path.canonicalize().map(|value| value);
+        let canonical = config_path.canonicalize();
         let canonical = match canonical {
             Ok(value) => value,
             Err(err) => {
@@ -1002,9 +999,7 @@ impl FuzzConfig {
                     None
                 }
             })
-            .map(|value| value)
-            .or_else(|| Some(Vec::new()))
-            .expect("default vector injected")
+            .unwrap_or_default()
     }
 
     /// Extract v2 schedule from config
@@ -1020,9 +1015,7 @@ impl FuzzConfig {
                     None
                 }
             })
-            .map(|value| value)
-            .or_else(|| Some(Vec::new()))
-            .expect("default vector injected")
+            .unwrap_or_default()
     }
 
     /// Extract v2 target traits from config
@@ -1038,9 +1031,7 @@ impl FuzzConfig {
                     None
                 }
             })
-            .map(|value| value)
-            .or_else(|| Some(TargetTraits::default()))
-            .expect("default traits injected")
+            .unwrap_or_default()
     }
 
     /// Check if config uses v2 features

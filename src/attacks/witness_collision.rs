@@ -111,10 +111,7 @@ impl EquivalenceClass {
                         va.to_bytes() == vb.to_bytes()
                             || va.mul(&FieldElement::from_u64(2)).to_bytes() == vb.to_bytes()
                     });
-                match ratio {
-                    Some(value) => value,
-                    None => false,
-                }
+                ratio.unwrap_or_default()
             }
             EquivalencePredicate::Custom(_) => false,
         }

@@ -456,10 +456,7 @@ impl AdaptiveOrchestrator {
                     hint: hint.clone(),
                     finding: finding.clone(),
                     circuit: circuit_name.to_string(),
-                    time_to_discovery: match self.start_time.map(|s| s.elapsed()) {
-                        Some(value) => value,
-                        None => std::time::Duration::default(),
-                    },
+                    time_to_discovery: self.start_time.map(|s| s.elapsed()).unwrap_or_default(),
                 });
             }
         }
@@ -485,13 +482,9 @@ impl AdaptiveOrchestrator {
 
     /// Check if campaign should stop (timeout)
     fn should_stop(&self) -> bool {
-        match self
-            .start_time
+        self.start_time
             .map(|s| s.elapsed() >= self.config.max_duration)
-        {
-            Some(value) => value,
-            None => false,
-        }
+            .unwrap_or_default()
     }
 
     /// Log campaign summary

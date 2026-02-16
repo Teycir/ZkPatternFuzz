@@ -167,10 +167,7 @@ impl StructureAwareMutator {
 
     fn extract_signal_name(line: &str) -> String {
         let token = line.split_whitespace().last();
-        let token = match token {
-            Some(value) => value,
-            None => "",
-        };
+        let token = token.unwrap_or_default();
         token
             .trim_end_matches(';')
             .trim_end_matches('[')

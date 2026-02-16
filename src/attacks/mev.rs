@@ -413,14 +413,8 @@ impl MevAttack {
         let mut total_val = 0u128;
 
         for (x, y) in a.iter().zip(b.iter()) {
-            let x_val = match x.to_u64() {
-                Some(value) => value,
-                None => 0,
-            } as u128;
-            let y_val = match y.to_u64() {
-                Some(value) => value,
-                None => 0,
-            } as u128;
+            let x_val = x.to_u64().unwrap_or(0) as u128;
+            let y_val = y.to_u64().unwrap_or(0) as u128;
             total_diff += (x_val as i128 - y_val as i128).unsigned_abs();
             total_val += x_val.max(1);
         }
@@ -447,24 +441,9 @@ impl MevAttack {
         }
 
         // Assume first output is "value" being traded
-        let front_val = front_outputs
-            .first()
-            .and_then(|f| f.to_u64())
-            .map(|value| value)
-            .or_else(|| Some(0))
-            .expect("default front value injected") as f64;
-        let back_val = back_outputs
-            .first()
-            .and_then(|f| f.to_u64())
-            .map(|value| value)
-            .or_else(|| Some(0))
-            .expect("default back value injected") as f64;
-        let victim_val = victim_outputs
-            .first()
-            .and_then(|f| f.to_u64())
-            .map(|value| value)
-            .or_else(|| Some(0))
-            .expect("default victim value injected") as f64;
+        let front_val = front_outputs.first().and_then(|f| f.to_u64()).unwrap_or(0) as f64;
+        let back_val = back_outputs.first().and_then(|f| f.to_u64()).unwrap_or(0) as f64;
+        let victim_val = victim_outputs.first().and_then(|f| f.to_u64()).unwrap_or(0) as f64;
 
         if victim_val == 0.0 {
             return 0.0;

@@ -60,18 +60,11 @@ impl FuzzingEngine {
 
         // Get chain fuzzing budget from config
         let additional = &self.config.campaign.parameters.additional;
-        let chain_budget_secs = match Self::additional_u64(additional, "chain_budget_seconds") {
-            Some(value) => value,
-            None => 300,
-        };
-        let chain_iterations = match Self::additional_u64(additional, "chain_iterations") {
-            Some(value) => value,
-            None => 1000,
-        } as usize;
-        let chain_resume = match Self::additional_bool(additional, "chain_resume") {
-            Some(value) => value,
-            None => false,
-        };
+        let chain_budget_secs =
+            Self::additional_u64(additional, "chain_budget_seconds").unwrap_or(300);
+        let chain_iterations =
+            Self::additional_u64(additional, "chain_iterations").unwrap_or(1000) as usize;
+        let chain_resume = Self::additional_bool(additional, "chain_resume").unwrap_or(false);
         let chain_step_timeout = Self::additional_u64(additional, "chain_step_timeout_ms")
             .map(Duration::from_millis)
             .or_else(|| {
@@ -91,15 +84,13 @@ impl FuzzingEngine {
             let executor = match path_config {
                 Some(config) => {
                     // Load the circuit from the specified path
-                    let framework = config.framework.map(|value| value);
-                    let framework = match framework {
-                        Some(value) => value,
-                        None => self.config.campaign.target.framework,
-                    };
-                    let main_component = match config.main_component.clone() {
-                        Some(value) => value,
-                        None => circuit_ref.clone(),
-                    };
+                    let framework = config
+                        .framework
+                        .unwrap_or(self.config.campaign.target.framework);
+                    let main_component = config
+                        .main_component
+                        .clone()
+                        .unwrap_or_else(|| circuit_ref.clone());
 
                     let circuit_path = match config.path.to_str() {
                         Some(path) => path,
@@ -171,10 +162,7 @@ impl FuzzingEngine {
         // Previously used ChainMutator::new() default settings,
         // causing reduced mutation validity for real circuits.
         let allow_spec_mutations =
-            match Self::additional_bool(additional, "chain_allow_spec_mutations") {
-                Some(value) => value,
-                None => false,
-            };
+            Self::additional_bool(additional, "chain_allow_spec_mutations").unwrap_or(false);
 
         let mutator = if allow_spec_mutations {
             tracing::info!("Chain spec mutations: enabled");
@@ -603,10 +591,7 @@ impl FuzzingEngine {
                             shrink_runner,
                             CrossStepInvariantChecker::from_spec(spec_to_use),
                         )
-                        .with_seed(match self.seed {
-                            Some(seed) => seed,
-                            None => 42,
-                        });
+                        .with_seed(self.seed.unwrap_or(42));
 
                         let shrink_result =
                             shrinker.minimize(spec_to_use, &current_inputs, &violation);
@@ -628,15 +613,12 @@ impl FuzzingEngine {
                                 violation.description
                             ),
                             poc: ProofOfConcept {
-                                witness_a: match result
+                                witness_a: result
                                     .trace
                                     .steps
                                     .first()
                                     .map(|s| s.inputs.clone())
-                                {
-                                    Some(inputs) => inputs,
-                                    None => Vec::new(),
-                                },
+                                    .unwrap_or_default(),
                                 witness_b: result.trace.steps.get(1).map(|s| s.inputs.clone()),
                                 public_inputs: vec![],
                                 proof: None,

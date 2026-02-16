@@ -228,14 +228,8 @@ impl DependencyGraph {
             .map(|c| {
                 let in_degree = self.constraint_depends.get(&c).map(|s| s.len());
                 let out_degree = self.constraint_graph.get(&c).map(|s| s.len());
-                let in_degree = match in_degree {
-                    Some(v) => v,
-                    None => 0,
-                };
-                let out_degree = match out_degree {
-                    Some(v) => v,
-                    None => 0,
-                };
+                let in_degree = in_degree.unwrap_or_default();
+                let out_degree = out_degree.unwrap_or_default();
                 (c, in_degree + out_degree)
             })
             .collect();

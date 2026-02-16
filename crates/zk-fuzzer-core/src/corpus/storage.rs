@@ -41,14 +41,10 @@ pub fn load_test_case(path: &Path) -> anyhow::Result<CorpusEntry> {
     let coverage_hash = data["coverage_hash"]
         .as_u64()
         .ok_or_else(|| anyhow::anyhow!("Missing or invalid coverage_hash"))?;
-    let discovered_new_coverage = match data["discovered_new_coverage"].as_bool() {
-        Some(value) => value,
-        None => false,
-    };
-    let execution_count = match data["execution_count"].as_u64() {
-        Some(value) => value as usize,
-        None => 0,
-    };
+    let discovered_new_coverage = data["discovered_new_coverage"]
+        .as_bool()
+        .unwrap_or_default();
+    let execution_count = data["execution_count"].as_u64().unwrap_or_default() as usize;
 
     let test_case = TestCase {
         inputs,

@@ -90,9 +90,6 @@ pub struct InvariantChecker {
     /// For uniqueness invariants: tracks seen values per key
     /// Key: invariant_name + key_hash, Value: set of value_hashes
     uniqueness_tracker: HashMap<String, HashSet<Vec<u8>>>,
-    /// Total number of input elements (reserved for future use)
-    #[allow(dead_code)]
-    total_inputs: usize,
 }
 
 impl InvariantChecker {
@@ -102,18 +99,13 @@ impl InvariantChecker {
         let mut offset = 0usize;
         for input in inputs {
             let len = if input.input_type.starts_with("array") {
-                match input.length {
-                    Some(value) => value,
-                    None => 1,
-                }
+                input.length.unwrap_or(1)
             } else {
                 1
             };
             input_map.insert(input.name.to_lowercase(), (offset, len));
             offset += len;
         }
-        let total_inputs = offset;
-
         let parsed = invariants
             .into_iter()
             .filter_map(|inv| Self::parse_invariant(&inv, &input_map))
@@ -123,7 +115,6 @@ impl InvariantChecker {
             invariants: parsed,
             input_map,
             uniqueness_tracker: HashMap::new(),
-            total_inputs,
         }
     }
 

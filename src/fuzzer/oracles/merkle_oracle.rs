@@ -31,9 +31,6 @@ pub struct MerkleOracle {
 struct ProofPath {
     /// Path elements (siblings)
     elements: Vec<FieldElement>,
-    /// Path indices (left/right choices)
-    #[allow(dead_code)]
-    indices: Vec<bool>,
     /// Input witness for reproduction
     witness: Vec<FieldElement>,
 }
@@ -327,7 +324,6 @@ impl SemanticOracle for MerkleOracle {
         // Check 3: Multiple valid paths
         let proof_path = ProofPath {
             elements: path_elements,
-            indices: path_indices,
             witness: test_case.inputs.clone(),
         };
 

@@ -171,7 +171,6 @@ struct CircomIoInfo {
 
 #[derive(Debug)]
 struct BuildDirLock {
-    #[allow(dead_code)]
     path: PathBuf,
     file: File,
 }
@@ -184,6 +183,7 @@ impl BuildDirLock {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(&path)
             .with_context(|| format!("Failed to open build lock file: {}", path.display()))?;
         Ok((path, file))
@@ -501,7 +501,7 @@ fn convert_circom_file(
     path: &Path,
     temp_dir: &tempfile::TempDir,
     cache: &mut HashMap<PathBuf, PathBuf>,
-    main_component: &str,
+    _main_component: &str,
     public_inputs: Option<&[String]>,
     is_root: bool,
 ) -> Result<PathBuf> {
@@ -582,7 +582,7 @@ fn convert_circom_file(
                     include_path.to_path_buf()
                 };
                 let converted =
-                    convert_circom_file(&resolved, temp_dir, cache, main_component, None, false)?;
+                    convert_circom_file(&resolved, temp_dir, cache, _main_component, None, false)?;
                 let converted_str = converted.to_string_lossy();
                 let needle = format!("{quote}{path_str}{quote}");
                 let replacement = format!("{quote}{converted_str}{quote}");
