@@ -57,6 +57,8 @@ To skip this smoke in constrained environments:
 ZKFUZZ_SKIP_MODE123_SMOKE=1 cargo test --test mode123_nonregression
 ```
 
+The smoke test also skips automatically when `circom` or `snarkjs` is missing from `PATH`.
+
 Optional campaign overrides (if you want to run the smoke on specific target YAMLs):
 
 ```bash

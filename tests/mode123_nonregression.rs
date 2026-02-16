@@ -30,7 +30,23 @@ fn maybe_skip(test_name: &str) -> bool {
         );
         return true;
     }
+
+    // This smoke executes real Circom backend paths and requires both tools.
+    if !command_available("circom") || !command_available("snarkjs") {
+        eprintln!(
+            "Skipping {} (requires both 'circom' and 'snarkjs' on PATH)",
+            test_name
+        );
+        return true;
+    }
     false
+}
+
+fn command_available(cmd: &str) -> bool {
+    std::process::Command::new(cmd)
+        .arg("--help")
+        .output()
+        .is_ok()
 }
 
 fn campaign_path_for(env_name: &str, default_path: &str, repo_root: &Path) -> PathBuf {

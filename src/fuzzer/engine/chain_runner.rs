@@ -565,6 +565,7 @@ impl FuzzingEngine {
                     };
 
                     let violations = active_checker.check(&result.trace);
+                    let triggered_violation = !violations.is_empty();
 
                     for violation in violations {
                         let shrink_runner = match ChainRunner::new(runner.executors.clone()) {
@@ -648,12 +649,16 @@ impl FuzzingEngine {
                                 chain.name
                             )
                         })?;
-                    corpus.add(crate::chain_fuzzer::ChainCorpusEntry::new(
+                    let mut corpus_entry = crate::chain_fuzzer::ChainCorpusEntry::new(
                         &chain.name,
                         current_inputs.clone(),
                         coverage_bits,
                         result.trace.depth(),
-                    ));
+                    );
+                    if triggered_violation {
+                        corpus_entry = corpus_entry.with_violation().with_near_miss(1.0);
+                    }
+                    corpus.add(corpus_entry);
                 } else {
                     failed += 1;
                     if let Some(failed_at) = result.failed_at {
@@ -673,6 +678,25 @@ impl FuzzingEngine {
                                 }
                             }
                         }
+                    }
+
+                    // Preserve failed-chain attempts in corpus with near-miss signal based on how
+                    // far execution progressed. This allows resume scheduling to prioritize chains
+                    // that consistently reach deep steps but still fail to satisfy full contracts.
+                    let depth = result.trace.depth();
+                    let denom = spec_to_use.len().max(1) as f64;
+                    let progress_ratio = ((depth as f64) / denom).clamp(0.0, 1.0);
+                    let near_miss_score = (progress_ratio * 0.9).clamp(0.0, 0.99);
+                    if near_miss_score > 0.0 {
+                        corpus.add(
+                            crate::chain_fuzzer::ChainCorpusEntry::new(
+                                &chain.name,
+                                current_inputs.clone(),
+                                0,
+                                depth,
+                            )
+                            .with_near_miss(near_miss_score),
+                        );
                     }
                 }
 
