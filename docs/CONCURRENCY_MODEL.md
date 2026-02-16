@@ -219,8 +219,8 @@ pub struct IsolatedExecutor {
 
 **Usage:**
 ```rust
-// Automatically enabled for non-mock backends in evidence mode
-if !executor.is_mock() && config.evidence_mode {
+// Automatically enabled for real backends in evidence mode
+if config.evidence_mode {
     executor = IsolatedExecutor::new(executor, ...);
 }
 ```

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use zk_core::{
-    CircuitExecutor, CircuitInfo, ExecutionCoverage, ExecutionResult, FieldElement, Framework,
+    CircuitExecutor, CircuitInfo, ExecutionResult, FieldElement, Framework,
 };
 
 use crate::TargetCircuit;
@@ -131,9 +131,10 @@ impl<T: TargetCircuit + Send + Sync> CircuitExecutor for TargetExecutor<T> {
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
         let start = std::time::Instant::now();
         match self.target.execute(inputs) {
-            Ok(outputs) => ExecutionResult::success(
-                outputs.clone(),
-                ExecutionCoverage::with_output_hash(&outputs),
+            Ok(_outputs) => ExecutionResult::failure(
+                "BackendRegistry TargetExecutor does not provide constraint-level coverage; \
+                 use framework-specific executors for real runs."
+                    .to_string(),
             )
             .with_time(start.elapsed().as_micros() as u64),
             Err(e) => ExecutionResult::failure(e.to_string()),

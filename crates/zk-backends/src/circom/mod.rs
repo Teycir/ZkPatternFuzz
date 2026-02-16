@@ -2344,11 +2344,12 @@ pub mod analysis {
         inputs
     }
 
-    /// Extract constraints from compiled R1CS (placeholder - requires binary parsing)
+    /// Legacy analysis entrypoint retained for API compatibility.
+    /// Use `CircomTarget::load_constraints()` on a compiled target instead.
     pub fn extract_constraints(_r1cs_path: &str) -> Result<Vec<Constraint>> {
-        // R1CS is a binary format, would need full parser
-        // For now, return empty
-        Ok(vec![])
+        anyhow::bail!(
+            "analysis::extract_constraints is not implemented; use load_constraints() on a compiled target instead"
+        )
     }
 
     /// Representation of an R1CS constraint

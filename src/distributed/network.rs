@@ -40,7 +40,7 @@ pub struct NetworkConfig {
     pub write_timeout: Duration,
     /// Maximum message size in bytes
     pub max_message_size: usize,
-    /// Enable TLS (placeholder for future)
+    /// Request TLS transport. Currently unsupported; `start()` rejects `true`.
     pub enable_tls: bool,
 }
 
@@ -123,6 +123,12 @@ impl FuzzerNode {
 
     /// Start the node
     pub fn start(&mut self) -> anyhow::Result<()> {
+        if self.config.enable_tls {
+            anyhow::bail!(
+                "Distributed TLS transport is not implemented; set enable_tls=false"
+            );
+        }
+
         *self.running.write() = true;
 
         match self.role {

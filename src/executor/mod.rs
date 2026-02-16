@@ -1097,14 +1097,19 @@ impl CircuitExecutor for NoirExecutor {
                 let coverage = match self.build_witness_with_outputs(inputs, &outputs) {
                     Ok(witness) => match coverage_from_results(self.check_constraints(&witness)) {
                         Some(coverage) => coverage,
-                        None => ExecutionCoverage::with_output_hash(&outputs),
+                        None => {
+                            return ExecutionResult::failure(
+                                "Noir constraint coverage unavailable: refusing output-hash fallback".to_string(),
+                            )
+                            .with_time(start.elapsed().as_micros() as u64);
+                        }
                     },
                     Err(err) => {
-                        tracing::warn!(
-                            "Skipping Noir constraint checks due to witness safety validation: {}",
+                        return ExecutionResult::failure(format!(
+                            "Noir witness mapping failed for constraint checking: {}",
                             err
-                        );
-                        ExecutionCoverage::with_output_hash(&outputs)
+                        ))
+                        .with_time(start.elapsed().as_micros() as u64);
                     }
                 };
                 ExecutionResult::success(outputs, coverage)
@@ -1296,11 +1301,14 @@ impl CircuitExecutor for Halo2Executor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = coverage_from_results(self.check_constraints(inputs))
-                    .or_else(|| Some(ExecutionCoverage::with_output_hash(&outputs)));
-                let coverage = match coverage {
+                let coverage = match coverage_from_results(self.check_constraints(inputs)) {
                     Some(value) => value,
-                    None => ExecutionCoverage::with_output_hash(&outputs),
+                    None => {
+                        return ExecutionResult::failure(
+                            "Halo2 constraint coverage unavailable: refusing output-hash fallback".to_string(),
+                        )
+                        .with_time(start.elapsed().as_micros() as u64);
+                    }
                 };
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
@@ -1456,11 +1464,14 @@ impl CircuitExecutor for CairoExecutor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = coverage_from_results(self.check_constraints(inputs))
-                    .or_else(|| Some(ExecutionCoverage::with_output_hash(&outputs)));
-                let coverage = match coverage {
+                let coverage = match coverage_from_results(self.check_constraints(inputs)) {
                     Some(value) => value,
-                    None => ExecutionCoverage::with_output_hash(&outputs),
+                    None => {
+                        return ExecutionResult::failure(
+                            "Cairo constraint coverage unavailable: refusing output-hash fallback".to_string(),
+                        )
+                        .with_time(start.elapsed().as_micros() as u64);
+                    }
                 };
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)

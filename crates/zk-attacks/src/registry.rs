@@ -86,7 +86,7 @@ impl AttackPluginLoader for NoopPluginLoader {
     }
 }
 
-/// Dynamic loader placeholder (useful for wiring, not implemented here).
+/// Dynamic loader for external attack plugins (requires `plugin-loader` feature).
 pub struct DynamicLibraryLoader {
     paths: Vec<PathBuf>,
 }

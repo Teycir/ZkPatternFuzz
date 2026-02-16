@@ -53,17 +53,17 @@ Verify installation:
 ### Step 1: Generate a Sample Configuration
 
 ```bash
-cargo run --release -- init --output my_first_campaign.yaml --framework mock
+cargo run --release -- init --output my_first_campaign.yaml --framework circom
 ```
 
 This creates `my_first_campaign.yaml`:
 
 ```yaml
 campaign:
-  name: "Sample Mock Audit"
+  name: "Sample Circom Audit"
   version: "1.0"
   target:
-    framework: "mock"
+    framework: "circom"
     circuit_path: "./circuits/example.circom"
     main_component: "Main"
   parameters:
@@ -605,7 +605,7 @@ This is good! But to verify the fuzzer is working:
 ## Best Practices
 
 ### 1. Start Small
-Begin with mock backend, then move to real circuits.
+Begin with a small real circuit, then scale to production circuits.
 
 ### 2. Use Deterministic Seeds
 For reproducible results:

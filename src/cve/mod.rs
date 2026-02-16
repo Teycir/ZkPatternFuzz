@@ -361,7 +361,7 @@ impl RegressionTest {
         }
     }
 
-    /// Run regression test (placeholder for actual implementation)
+    /// Run regression test against the configured real backend.
     pub fn run(&self) -> RegressionTestResult {
         let mut rng = StdRng::seed_from_u64(42);
         let mut test_results = Vec::new();

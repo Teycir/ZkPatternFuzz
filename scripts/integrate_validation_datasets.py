@@ -167,38 +167,12 @@ class DatasetIntegrator:
             print("⚠️  README.md not found in zk-bug-tracker")
             return targets
         
-        # Parse README to extract bug information
-        # For now, create synthetic targets based on known bugs
-        known_bugs = [
-            ("Dark Forest", "Missing Bit Length Check", "Under-Constrained"),
-            ("Circom-Pairing", "Missing Output Check", "Under-Constrained"),
-            ("Semaphore", "Missing Range Check", "Under-Constrained"),
-            ("Aztec 2.0", "Nondeterministic Nullifier", "Under-Constrained"),
-            ("0xPARC StealthDrop", "Nondeterministic Nullifier", "Under-Constrained"),
-            ("MACI 1.0", "Under-constrained Circuit", "Under-Constrained"),
-            ("MiMC Hash", "Assigned but not Constrained", "Under-Constrained"),
-            ("Polygon zkEVM", "Missing Remainder Constraint", "Under-Constrained"),
-            ("ZK Email", "Under-constrained Circuit", "Under-Constrained"),
-        ]
-        
-        for i, (project, bug_type, vuln_type) in enumerate(known_bugs):
-            target = ValidationTarget(
-                id=f"0xparc-{i+1}",
-                name=f"{project}: {bug_type}",
-                dsl="circom",
-                project=project.lower().replace(" ", "_"),
-                vulnerability_type=vuln_type,
-                impact="Soundness",
-                circuit_path=f"synthetic/{project.lower().replace(' ', '_')}.circom",
-                config_path=None,
-                source="0xparc",
-                severity="Critical",
-                reproduced=False
-            )
-            targets.append(target)
-            self.stats["0xparc"] += 1
-        
-        print(f"✅ Created {len(targets)} synthetic targets from 0xPARC tracker")
+        # Do not inject synthetic circuits into validation fitness datasets.
+        # 0xPARC entries are references unless reproducible local targets are mapped.
+        print(
+            "⚠️  0xPARC tracker parsed as reference-only; skipping synthetic target generation "
+            "(no reproducible local circuit mapping configured)."
+        )
         return targets
     
     def parse_zk0d(self) -> List[ValidationTarget]:

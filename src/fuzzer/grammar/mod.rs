@@ -31,6 +31,7 @@ pub use generator::GrammarGenerator;
 pub use parser::GrammarParser;
 
 use rand::Rng;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use zk_core::{FieldElement, TestCase, TestMetadata};
 
@@ -248,8 +249,11 @@ impl InputGrammar {
                 let blinding = FieldElement::random(rng);
                 context.set(&format!("{}_secret", spec.name), secret.clone());
                 context.set(&format!("{}_blinding", spec.name), blinding.clone());
-                // Simplified: return the secret as commitment placeholder
-                vec![secret]
+                let mut hasher = Sha256::new();
+                hasher.update(secret.to_bytes());
+                hasher.update(blinding.to_bytes());
+                let digest = hasher.finalize();
+                vec![FieldElement::from_bytes(&digest)]
             }
             InputType::Signature => {
                 // EdDSA signature: (R, s)

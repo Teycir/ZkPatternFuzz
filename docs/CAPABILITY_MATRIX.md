@@ -104,7 +104,6 @@
 | Noir | ✅ | `crates/zk-backends/` | ACIR via Barretenberg |
 | Halo2 | ✅ | `crates/zk-backends/` | PLONK circuits |
 | Cairo | ✅ | `crates/zk-backends/` | STARK programs |
-| Mock | ✅ | `src/executor/mock.rs` | Testing backend |
 
 ---
 

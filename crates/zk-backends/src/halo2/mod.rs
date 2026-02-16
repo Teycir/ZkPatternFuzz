@@ -464,14 +464,10 @@ impl Halo2Target {
     fn execute_from_json_spec(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
         let parsed = self.load_plonk_constraints();
         if parsed.constraints.is_empty() {
-            // Metadata-only specs are still useful for smoke/integration tests.
-            // In that case, return the public-input projection as a deterministic
-            // placeholder execution result.
-            let public = self.num_public_inputs();
-            if public > 0 {
-                return Ok(inputs.iter().take(public).cloned().collect());
-            }
-            return Ok(vec![FieldElement::one()]);
+            anyhow::bail!(
+                "Halo2 JSON execution requires parsed constraints; refusing placeholder execution for metadata-only spec '{}'",
+                self.circuit_path.display()
+            );
         }
 
         let mut wire_values: HashMap<usize, FieldElement> = inputs
