@@ -64,7 +64,8 @@ impl VerificationFuzzer {
         let mut findings = Vec::new();
 
         // Generate a valid proof first
-        let valid_inputs: Vec<FieldElement> = (0..executor.num_private_inputs())
+        let total_inputs = executor.num_public_inputs() + executor.num_private_inputs();
+        let valid_inputs: Vec<FieldElement> = (0..total_inputs)
             .map(|_| FieldElement::random(rng))
             .collect();
 

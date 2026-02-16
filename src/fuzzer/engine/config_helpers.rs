@@ -2,6 +2,208 @@ use super::prelude::*;
 use super::FuzzingEngine;
 
 impl FuzzingEngine {
+    fn split_bracket_index(name: &str) -> Option<(&str, usize)> {
+        let open = name.rfind('[')?;
+        let close = name.rfind(']')?;
+        if close <= open {
+            return None;
+        }
+        let idx = name[open + 1..close].parse::<usize>().ok()?;
+        Some((&name[..open], idx))
+    }
+
+    fn split_underscore_index(name: &str) -> Option<(&str, usize)> {
+        let (base, idx_str) = name.rsplit_once('_')?;
+        if !idx_str.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        let idx = idx_str.parse::<usize>().ok()?;
+        Some((base, idx))
+    }
+
+    fn normalize_input_name_key(name: &str) -> String {
+        name.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect()
+    }
+
+    fn input_name_aliases(name: &str) -> std::collections::HashSet<String> {
+        let mut aliases = std::collections::HashSet::new();
+        let clean = name.strip_prefix("main.").unwrap_or(name);
+
+        aliases.insert(Self::normalize_input_name_key(clean));
+
+        if let Some((base, idx)) = Self::split_bracket_index(clean) {
+            aliases.insert(Self::normalize_input_name_key(base));
+            aliases.insert(Self::normalize_input_name_key(&format!("{}[{}]", base, idx)));
+            aliases.insert(Self::normalize_input_name_key(&format!("{}_{}", base, idx)));
+        }
+
+        if let Some((base, idx)) = Self::split_underscore_index(clean) {
+            aliases.insert(Self::normalize_input_name_key(base));
+            aliases.insert(Self::normalize_input_name_key(&format!("{}[{}]", base, idx)));
+            aliases.insert(Self::normalize_input_name_key(&format!("{}_{}", base, idx)));
+        }
+
+        aliases
+    }
+
+    fn canonical_input_label(raw: &str, fallback_idx: usize) -> String {
+        let trimmed = raw.trim();
+        let label = trimmed.strip_prefix("main.").unwrap_or(trimmed).trim();
+        if label.is_empty() {
+            format!("input_{}", fallback_idx)
+        } else {
+            label.to_string()
+        }
+    }
+
+    fn infer_ordered_input_labels(
+        executor: &dyn CircuitExecutor,
+        expected: usize,
+    ) -> anyhow::Result<Vec<String>> {
+        let inspector = executor.constraint_inspector().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Cannot reconcile inputs strictly: constraint inspector is unavailable \
+                 for framework {:?}",
+                executor.framework()
+            )
+        })?;
+
+        let mut indices = inspector.public_input_indices();
+        indices.extend(inspector.private_input_indices());
+
+        let mut seen_indices = std::collections::HashSet::new();
+        indices.retain(|idx| seen_indices.insert(*idx));
+
+        if indices.len() != expected {
+            anyhow::bail!(
+                "Cannot reconcile inputs strictly: inspector exposed {} input indices, \
+                 executor reports {} total inputs",
+                indices.len(),
+                expected
+            );
+        }
+
+        let wire_labels = inspector.wire_labels();
+        let mut seen_labels = std::collections::HashSet::new();
+        let mut labels = Vec::with_capacity(expected);
+        for (position, idx) in indices.into_iter().enumerate() {
+            let candidate = wire_labels.get(&idx).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cannot reconcile inputs strictly: missing wire label for input index {} \
+                     (position {})",
+                    idx,
+                    position
+                )
+            })?;
+            let candidate = Self::canonical_input_label(candidate, position);
+            if !seen_labels.insert(candidate.clone()) {
+                anyhow::bail!(
+                    "Cannot reconcile inputs strictly: duplicate input label '{}'",
+                    candidate
+                );
+            }
+            labels.push(candidate);
+        }
+
+        Ok(labels)
+    }
+
+    pub(super) fn reconcile_inputs_with_executor(
+        config: &mut FuzzConfig,
+        executor: &dyn CircuitExecutor,
+    ) -> anyhow::Result<()> {
+        let expected = executor
+            .num_public_inputs()
+            .saturating_add(executor.num_private_inputs());
+        if expected == 0 {
+            config.campaign.parameters.additional.insert(
+                "inputs_reconciled".to_string(),
+                serde_yaml::Value::Bool(false),
+            );
+            return Ok(());
+        }
+
+        // Fast path: if count already matches, keep the existing YAML-defined labels.
+        if config.inputs.len() == expected {
+            config.campaign.parameters.additional.insert(
+                "inputs_reconciled".to_string(),
+                serde_yaml::Value::Bool(false),
+            );
+            return Ok(());
+        }
+
+        let inferred_labels = Self::infer_ordered_input_labels(executor, expected)?;
+
+        let is_already_aligned = config.inputs.len() == expected
+            && config
+                .inputs
+                .iter()
+                .zip(inferred_labels.iter())
+                .all(|(spec, inferred)| {
+                    Self::normalize_input_name_key(&spec.name)
+                        == Self::normalize_input_name_key(inferred)
+                });
+        if is_already_aligned {
+            config.campaign.parameters.additional.insert(
+                "inputs_reconciled".to_string(),
+                serde_yaml::Value::Bool(false),
+            );
+            return Ok(());
+        }
+
+        let mut existing_by_alias = std::collections::HashMap::new();
+        for spec in &config.inputs {
+            for alias in Self::input_name_aliases(&spec.name) {
+                existing_by_alias
+                    .entry(alias)
+                    .or_insert_with(|| spec.clone());
+            }
+        }
+
+        let mut rebuilt = Vec::with_capacity(expected);
+        for label in inferred_labels {
+            let mut chosen = None;
+            for alias in Self::input_name_aliases(&label) {
+                if let Some(spec) = existing_by_alias.get(&alias) {
+                    chosen = Some(spec.clone());
+                    break;
+                }
+            }
+
+            let mut spec = chosen.unwrap_or_else(|| Input {
+                name: label.clone(),
+                input_type: "field".to_string(),
+                fuzz_strategy: FuzzStrategy::Random,
+                constraints: Vec::new(),
+                interesting: Vec::new(),
+                length: None,
+            });
+
+            spec.name = label;
+            if spec.input_type.trim().is_empty() {
+                spec.input_type = "field".to_string();
+            }
+            rebuilt.push(spec);
+        }
+
+        tracing::warn!(
+            "Input schema mismatch detected for target '{}': config has {}, executor expects {}. \
+             Reconciled inputs to target-derived ordering for this run.",
+            config.campaign.target.circuit_path.display(),
+            config.inputs.len(),
+            expected
+        );
+        config.inputs = rebuilt;
+        config.campaign.parameters.additional.insert(
+            "inputs_reconciled".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+        Ok(())
+    }
+
     pub(super) fn normalize_oracle_name(name: &str) -> String {
         name.chars()
             .filter(|c| c.is_ascii_alphanumeric())

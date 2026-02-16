@@ -16,9 +16,6 @@ attacks:
   description: Deep underconstraint cross-check
   config:
     witness_pairs: 1200
-    public_input_positions:
-    - 0
-    - 1
 - type: constraint_inference
   description: Deep inference
   config:

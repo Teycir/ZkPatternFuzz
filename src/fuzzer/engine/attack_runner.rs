@@ -126,12 +126,41 @@ impl FuzzingEngine {
             self.add_attack_findings(&detector, witness_pairs, progress)?;
         }
 
-        // Determine public input positions in the test_case.inputs vector
-        let public_input_positions = Self::resolve_public_input_positions(
-            config,
-            &self.config.inputs,
-            self.executor.num_public_inputs(),
-        );
+        let inputs_reconciled = self
+            .config
+            .campaign
+            .parameters
+            .additional
+            .get("inputs_reconciled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Determine public input positions in the test_case.inputs vector.
+        // If input schema was reconciled at runtime, ignore stale per-template
+        // public_input_* overrides and derive positions from the live executor.
+        let public_input_positions = if inputs_reconciled {
+            if config.get("public_input_names").is_some()
+                || config.get("public_input_positions").is_some()
+            {
+                anyhow::bail!(
+                    "Underconstrained attack config contains public_input_names/public_input_positions, \
+                     but inputs were reconciled to the live target interface. \
+                     Remove hardcoded public-input mappings from generic YAML templates."
+                );
+            }
+            let capped = self.executor.num_public_inputs().min(self.config.inputs.len());
+            tracing::info!(
+                "Input schema reconciled: deriving {} public input positions from executor metadata",
+                capped
+            );
+            (0..capped).collect()
+        } else {
+            Self::resolve_public_input_positions(
+                config,
+                &self.config.inputs,
+                self.executor.num_public_inputs(),
+            )
+        };
 
         tracing::debug!(
             "Using public input positions: {:?} (out of {} total inputs)",

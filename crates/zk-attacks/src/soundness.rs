@@ -81,7 +81,8 @@ impl Attack for SoundnessTester {
         };
 
         let mut rng = StdRng::seed_from_u64(42);
-        let valid_inputs: Vec<FieldElement> = (0..executor.num_private_inputs())
+        let total_inputs = executor.num_public_inputs() + executor.num_private_inputs();
+        let valid_inputs: Vec<FieldElement> = (0..total_inputs)
             .map(|_| FieldElement::random(&mut rng))
             .collect();
 

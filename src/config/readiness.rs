@@ -623,29 +623,18 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
             attack.attack_type,
             crate::config::AttackType::Underconstrained
         ) {
-            let has_public_config = attack.config.get("public_input_names").is_some()
-                || attack.config.get("public_input_positions").is_some()
-                || attack.config.get("public_input_count").is_some();
+            let has_hardcoded_public_config = attack.config.get("public_input_names").is_some()
+                || attack.config.get("public_input_positions").is_some();
 
-            if !has_public_config {
+            if has_hardcoded_public_config {
                 warnings.push(
-                    if engagement_strict {
-                        ReadinessWarning::critical(
-                            "Attacks",
-                            "Underconstrained attack missing public input configuration (strict engagement requires explicit public wiring)",
-                        )
-                        .with_fix(
-                            "Add public_input_names or public_input_positions to underconstrained attack config",
-                        )
-                    } else {
-                        ReadinessWarning::high(
-                            "Attacks",
-                            "Underconstrained attack missing public input configuration",
-                        )
-                        .with_fix(
-                            "Add public_input_names or public_input_positions to underconstrained attack config",
-                        )
-                    },
+                    ReadinessWarning::medium(
+                        "Attacks",
+                        "Underconstrained attack uses hardcoded public input wiring, reducing cross-circuit portability",
+                    )
+                    .with_fix(
+                        "Remove public_input_names/public_input_positions from generic YAML patterns and rely on executor metadata",
+                    ),
                 );
             }
         }

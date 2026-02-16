@@ -246,7 +246,7 @@ impl FuzzingEngine {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(config: FuzzConfig, seed: Option<u64>, workers: usize) -> anyhow::Result<Self> {
+    pub fn new(mut config: FuzzConfig, seed: Option<u64>, workers: usize) -> anyhow::Result<Self> {
         // Phase 0 Fix: Extract additional config early for use throughout initialization
         let additional = &config.campaign.parameters.additional;
 
@@ -335,6 +335,11 @@ impl FuzzingEngine {
                 kill_on_timeout
             );
         }
+
+        // Scan patterns are target-reusable; if their input schema does not match the actual
+        // circuit interface, reconcile inputs to the live executor shape for this run.
+        Self::reconcile_inputs_with_executor(&mut config, executor.as_ref())?;
+        let additional = &config.campaign.parameters.additional;
 
         let num_constraints = executor.num_constraints().max(100);
         let coverage = create_coverage_tracker(num_constraints);
