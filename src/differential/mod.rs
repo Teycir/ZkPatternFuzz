@@ -152,6 +152,13 @@ impl DifferentialFuzzer {
             let result = executor.execute_sync(inputs);
             outputs.insert(*framework, result);
         }
+        if outputs.len() < 2 {
+            tracing::warn!(
+                "Differential comparison skipped: need at least 2 executors, got {}",
+                outputs.len()
+            );
+            return None;
+        }
 
         // Check for disagreements
         let frameworks: Vec<_> = outputs.keys().cloned().collect();
@@ -274,8 +281,11 @@ impl DifferentialFuzzer {
         }
         let s1 = &r1.coverage.satisfied_constraints;
         let s2 = &r2.coverage.satisfied_constraints;
-        if s1.is_empty() || s2.is_empty() {
+        if s1.is_empty() && s2.is_empty() {
             return false;
+        }
+        if s1.is_empty() != s2.is_empty() {
+            return true;
         }
         let min_constraints = self.config.coverage_min_constraints;
         if s1.len().min(s2.len()) < min_constraints {
@@ -311,7 +321,7 @@ impl DifferentialFuzzer {
         if diff < self.config.timing_abs_threshold_us {
             return false;
         }
-        let diff_pct = (diff as f64 / max_t as f64) * 100.0;
+        let diff_pct = (diff as f64 / min_t.max(1) as f64) * 100.0;
         diff_pct > self.config.timing_tolerance_percent
     }
 
@@ -352,6 +362,7 @@ fn coverage_stats(a: &[usize], b: &[usize]) -> (f64, usize, f64) {
 mod tests {
     use super::*;
     use crate::executor::FixtureCircuitExecutor;
+    use zk_core::ExecutionCoverage;
 
     #[test]
     fn test_differential_fuzzer_creation() {
@@ -391,5 +402,58 @@ mod tests {
         assert!((jaccard - 0.3333).abs() < 0.01);
         assert_eq!(abs_delta, 0);
         assert!((rel_delta - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_coverage_mismatch_detects_one_empty_side() {
+        let config = DifferentialConfig {
+            coverage_min_constraints: 1,
+            ..Default::default()
+        };
+        let fuzzer = DifferentialFuzzer::new(config);
+        let with_coverage = ExecutionResult {
+            outputs: vec![],
+            coverage: ExecutionCoverage::with_constraints(vec![1, 2], vec![1, 2]),
+            execution_time_us: 0,
+            success: true,
+            error: None,
+        };
+        let empty_coverage = ExecutionResult {
+            outputs: vec![],
+            coverage: ExecutionCoverage::default(),
+            execution_time_us: 0,
+            success: true,
+            error: None,
+        };
+
+        assert!(fuzzer.coverage_mismatch(&with_coverage, &empty_coverage));
+        assert!(!fuzzer.coverage_mismatch(&empty_coverage, &empty_coverage));
+    }
+
+    #[test]
+    fn test_timing_variation_uses_fast_side_as_baseline() {
+        let config = DifferentialConfig {
+            timing_tolerance_percent: 200.0,
+            timing_min_us: 0,
+            timing_abs_threshold_us: 1,
+            ..Default::default()
+        };
+        let fuzzer = DifferentialFuzzer::new(config);
+        let fast = ExecutionResult {
+            outputs: vec![],
+            coverage: ExecutionCoverage::default(),
+            execution_time_us: 100,
+            success: true,
+            error: None,
+        };
+        let slow = ExecutionResult {
+            outputs: vec![],
+            coverage: ExecutionCoverage::default(),
+            execution_time_us: 10_000,
+            success: true,
+            error: None,
+        };
+
+        assert!(fuzzer.timing_variation(&fast, &slow));
     }
 }

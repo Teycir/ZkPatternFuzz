@@ -6,7 +6,7 @@
 //!
 //! # Quick Start
 //!
-//! ```rust
+//! ```rust,no_run
 //! use zk_fuzzer::{FuzzConfig, ZkFuzzer};
 //!
 //! # fn main() -> anyhow::Result<()> {

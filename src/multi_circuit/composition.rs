@@ -49,11 +49,13 @@ impl CompositionTester {
         let mut current = inputs.to_vec();
 
         for (i, circuit) in self.circuits.iter().enumerate() {
-            // Adjust input size
-            if current.len() < circuit.num_private_inputs() {
-                current.resize(circuit.num_private_inputs(), FieldElement::zero());
-            } else if current.len() > circuit.num_private_inputs() {
-                current.truncate(circuit.num_private_inputs());
+            let expected = circuit.num_private_inputs();
+            if current.len() != expected {
+                return Err(CompositionError::SizeMismatch {
+                    step: i,
+                    expected,
+                    got: current.len(),
+                });
             }
 
             let result = circuit.execute_sync(&current);
@@ -80,6 +82,8 @@ impl CompositionTester {
         &self,
         inputs: &[Vec<FieldElement>],
     ) -> Result<Vec<Vec<FieldElement>>, CompositionError> {
+        use rayon::prelude::*;
+
         if self.circuits.len() != inputs.len() {
             return Err(CompositionError::InputMismatch {
                 expected: self.circuits.len(),
@@ -87,11 +91,17 @@ impl CompositionTester {
             });
         }
 
-        let mut outputs = Vec::new();
+        let mut indexed_results: Vec<(usize, zk_core::ExecutionResult)> = self
+            .circuits
+            .par_iter()
+            .zip(inputs.par_iter())
+            .enumerate()
+            .map(|(i, (circuit, input))| (i, circuit.execute_sync(input)))
+            .collect();
+        indexed_results.sort_by_key(|(i, _)| *i);
 
-        for (i, (circuit, input)) in self.circuits.iter().zip(inputs.iter()).enumerate() {
-            let result = circuit.execute_sync(input);
-
+        let mut outputs = Vec::with_capacity(indexed_results.len());
+        for (i, result) in indexed_results {
             if !result.success {
                 let error = match result.error {
                     Some(err) => err,
@@ -177,8 +187,19 @@ impl CompositionTester {
 #[derive(Debug, Clone)]
 pub enum CompositionError {
     NoCircuits,
-    StepFailed { step: usize, error: String },
-    InputMismatch { expected: usize, got: usize },
+    StepFailed {
+        step: usize,
+        error: String,
+    },
+    InputMismatch {
+        expected: usize,
+        got: usize,
+    },
+    SizeMismatch {
+        step: usize,
+        expected: usize,
+        got: usize,
+    },
 }
 
 /// Vulnerability found in composition
@@ -236,5 +257,27 @@ mod tests {
 
         let vulnerabilities = tester.check_vulnerabilities();
         assert!(!vulnerabilities.is_empty());
+    }
+
+    #[test]
+    fn test_sequential_size_mismatch_returns_error() {
+        let mut tester = CompositionTester::new(CompositionType::Sequential);
+        tester.add_circuit(Arc::new(FixtureCircuitExecutor::new("c1", 2, 1)));
+        tester.add_circuit(Arc::new(FixtureCircuitExecutor::new("c2", 2, 1)));
+
+        let inputs = vec![FieldElement::one(), FieldElement::zero()];
+        let err = tester.test_sequential(&inputs).unwrap_err();
+        match err {
+            CompositionError::SizeMismatch {
+                step,
+                expected,
+                got,
+            } => {
+                assert_eq!(step, 1);
+                assert_eq!(expected, 2);
+                assert_eq!(got, 1);
+            }
+            _ => panic!("Expected size mismatch error"),
+        }
     }
 }

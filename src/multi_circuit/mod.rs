@@ -108,15 +108,29 @@ impl MultiCircuitFuzzer {
             }
 
             // Use outputs as inputs to second circuit (if compatible)
-            let inputs2 = if result1.outputs.len() >= circuit2.num_private_inputs() {
-                result1.outputs[..circuit2.num_private_inputs()].to_vec()
+            let required_inputs = circuit2.num_private_inputs();
+            let inputs2 = if result1.outputs.len() >= required_inputs {
+                result1.outputs[..required_inputs].to_vec()
             } else {
-                // Pad with random values
-                let mut inputs = result1.outputs.clone();
-                while inputs.len() < circuit2.num_private_inputs() {
-                    inputs.push(FieldElement::random(rng));
-                }
-                inputs
+                findings.push(Finding {
+                    attack_type: AttackType::Boundary,
+                    severity: Severity::High,
+                    description: format!(
+                        "Circuit composition size mismatch: {} produced {} outputs but {} expects {} inputs",
+                        circuit_names[idx1],
+                        result1.outputs.len(),
+                        circuit_names[idx2],
+                        required_inputs
+                    ),
+                    poc: ProofOfConcept {
+                        witness_a: inputs1,
+                        witness_b: Some(result1.outputs.clone()),
+                        public_inputs: vec![],
+                        proof: None,
+                    },
+                    location: None,
+                });
+                continue;
             };
 
             // Execute second circuit
@@ -241,17 +255,35 @@ impl CircuitChain {
         let mut current_inputs = initial_inputs.to_vec();
         let mut results = Vec::new();
 
-        for (name, executor) in &self.circuits {
-            // Ensure we have enough inputs
-            while current_inputs.len() < executor.num_private_inputs() {
-                current_inputs.push(FieldElement::zero());
+        for (step_idx, (name, executor)) in self.circuits.iter().enumerate() {
+            let expected = executor.num_private_inputs();
+            if current_inputs.len() != expected {
+                let error = format!(
+                    "Chain step {} ('{}') input size mismatch: expected {}, got {}",
+                    step_idx,
+                    name,
+                    expected,
+                    current_inputs.len()
+                );
+                tracing::warn!("{}", error);
+                results.push(ChainStepResult {
+                    circuit_name: name.clone(),
+                    inputs: current_inputs.clone(),
+                    result: ExecutionResult::failure(error),
+                });
+                return ChainResult {
+                    success: false,
+                    steps: results,
+                    final_outputs: vec![],
+                };
             }
 
-            let result = executor.execute_sync(&current_inputs[..executor.num_private_inputs()]);
+            let step_inputs = current_inputs.clone();
+            let result = executor.execute_sync(&step_inputs);
 
             results.push(ChainStepResult {
                 circuit_name: name.clone(),
-                inputs: current_inputs[..executor.num_private_inputs()].to_vec(),
+                inputs: step_inputs,
                 result: result.clone(),
             });
 
@@ -346,5 +378,24 @@ mod tests {
 
         // May or may not find issues depending on fixture behavior
         println!("Found {} issues", findings.len());
+    }
+
+    #[test]
+    fn test_circuit_chain_fails_on_input_size_mismatch() {
+        let mut chain = CircuitChain::new();
+        chain.add(
+            "circuit1",
+            Arc::new(FixtureCircuitExecutor::new("c1", 2, 1)),
+        );
+        chain.add(
+            "circuit2",
+            Arc::new(FixtureCircuitExecutor::new("c2", 2, 1)),
+        );
+
+        let inputs = vec![FieldElement::one(), FieldElement::zero()];
+        let result = chain.execute(&inputs);
+        assert!(!result.success);
+        assert_eq!(result.steps.len(), 2);
+        assert!(!result.steps[1].result.success);
     }
 }

@@ -32,7 +32,7 @@
 //!
 //! # Example
 //!
-//! ```rust
+//! ```rust,no_run
 //! use zk_fuzzer::fuzzer::FuzzingEngine;
 //! use zk_fuzzer::config::FuzzConfig;
 //!
@@ -210,7 +210,7 @@ impl FuzzingEngine {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
     /// use zk_fuzzer::config::FuzzConfig;
     /// use zk_fuzzer::fuzzer::FuzzingEngine;
     ///
@@ -575,7 +575,7 @@ impl FuzzingEngine {
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```rust,no_run
     /// use zk_fuzzer::config::FuzzConfig;
     /// use zk_fuzzer::fuzzer::FuzzingEngine;
     /// use zk_fuzzer::progress::ProgressReporter;

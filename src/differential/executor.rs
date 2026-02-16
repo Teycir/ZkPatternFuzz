@@ -12,11 +12,10 @@ pub struct MultiBackendExecutor {
 }
 
 impl MultiBackendExecutor {
-    pub fn new(primary: Framework) -> Self {
-        Self {
-            backends: HashMap::new(),
-            primary,
-        }
+    pub fn new(primary: Framework, primary_executor: Arc<dyn CircuitExecutor>) -> Self {
+        let mut backends = HashMap::new();
+        backends.insert(primary, primary_executor);
+        Self { backends, primary }
     }
 
     pub fn add_backend(&mut self, framework: Framework, executor: Arc<dyn CircuitExecutor>) {
@@ -78,17 +77,16 @@ impl MultiBackendExecutor {
     }
 
     /// Get the primary backend's executor
-    pub fn primary_executor(&self) -> Option<&Arc<dyn CircuitExecutor>> {
-        self.backends.get(&self.primary)
-    }
-
-    fn require_primary_executor(&self) -> &Arc<dyn CircuitExecutor> {
+    pub fn primary_executor(&self) -> &Arc<dyn CircuitExecutor> {
         match self.backends.get(&self.primary) {
             Some(executor) => executor,
-            None => panic!(
-                "MultiBackendExecutor misconfigured: primary backend {:?} was not registered",
-                self.primary
-            ),
+            None => {
+                tracing::error!(
+                    "MultiBackendExecutor invariant violation: primary backend {:?} missing",
+                    self.primary
+                );
+                panic!("primary backend missing from executor map");
+            }
         }
     }
 }
@@ -113,29 +111,23 @@ impl CircuitExecutor for MultiBackendExecutor {
     }
 
     fn name(&self) -> &str {
-        self.require_primary_executor().name()
+        self.primary_executor().name()
     }
 
     fn circuit_info(&self) -> CircuitInfo {
-        self.require_primary_executor().circuit_info()
+        self.primary_executor().circuit_info()
     }
 
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
-        self.require_primary_executor().execute_sync(inputs)
+        self.primary_executor().execute_sync(inputs)
     }
 
     fn prove(&self, witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
-        self.backends
-            .get(&self.primary)
-            .ok_or_else(|| anyhow::anyhow!("No primary backend"))?
-            .prove(witness)
+        self.primary_executor().prove(witness)
     }
 
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
-        self.backends
-            .get(&self.primary)
-            .ok_or_else(|| anyhow::anyhow!("No primary backend"))?
-            .verify(proof, public_inputs)
+        self.primary_executor().verify(proof, public_inputs)
     }
 }
 
@@ -146,8 +138,7 @@ mod tests {
 
     #[test]
     fn test_multi_backend_executor() {
-        let mut multi = MultiBackendExecutor::new(Framework::Circom);
-        multi.add_backend(
+        let mut multi = MultiBackendExecutor::new(
             Framework::Circom,
             Arc::new(FixtureCircuitExecutor::new("test", 2, 1)),
         );
@@ -161,5 +152,14 @@ mod tests {
 
         assert_eq!(results.len(), 2);
         assert!(results.values().all(|r| r.success));
+    }
+
+    #[test]
+    fn test_primary_backend_registered_at_construction() {
+        let multi = MultiBackendExecutor::new(
+            Framework::Noir,
+            Arc::new(FixtureCircuitExecutor::new("test", 2, 1).with_framework(Framework::Noir)),
+        );
+        assert_eq!(multi.primary_executor().framework(), Framework::Noir);
     }
 }
