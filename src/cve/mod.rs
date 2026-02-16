@@ -1152,9 +1152,7 @@ impl CveOracle {
             database,
             active_patterns,
             nullifier_oracle: Mutex::new(NullifierOracle::new(oracle_config.clone())),
-            merkle_oracle: Mutex::new(
-                MerkleOracle::new(oracle_config.clone()).with_expected_depth(20),
-            ),
+            merkle_oracle: Mutex::new(MerkleOracle::new(oracle_config.clone())),
             range_oracle: Mutex::new(RangeProofOracle::new(oracle_config.clone())),
             commitment_oracle: Mutex::new(CommitmentOracle::new(oracle_config)),
         }

@@ -37,7 +37,6 @@ tests/r1cs_parser_test.rs
 tests/semantic_oracles_test.rs
 
 # Experimental modules
-src/fuzzer/oracles/
 circuits
 .npm-cache
 third_party

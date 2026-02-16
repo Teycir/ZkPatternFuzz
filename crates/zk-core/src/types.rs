@@ -154,6 +154,12 @@ impl Finding {
     /// Phase 3C: Classify this finding based on its characteristics
     pub fn classify(&self) -> FindingClass {
         let desc_lower = self.description.to_lowercase();
+        let has_cross_witness_evidence = self
+            .poc
+            .witness_b
+            .as_ref()
+            .map(|witness| !witness.is_empty())
+            .unwrap_or(false);
 
         if desc_lower.contains("hang") || desc_lower.contains("timeout") {
             FindingClass::Hang
@@ -161,7 +167,10 @@ impl Finding {
             FindingClass::Crash
         } else if desc_lower.contains("invariant") && desc_lower.contains("violated") {
             FindingClass::InvariantViolation
-        } else if desc_lower.contains("oracle") || !self.poc.witness_a.is_empty() {
+        } else if has_cross_witness_evidence
+            || desc_lower.contains("oracle violation")
+            || desc_lower.contains("oracle-confirmed")
+        {
             FindingClass::OracleViolation
         } else {
             FindingClass::Heuristic
@@ -357,6 +366,47 @@ pub struct ProofOfConcept {
     pub witness_b: Option<Vec<FieldElement>>,
     pub public_inputs: Vec<FieldElement>,
     pub proof: Option<Vec<u8>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_finding(description: &str, witness_b: Option<Vec<FieldElement>>) -> Finding {
+        Finding {
+            attack_type: AttackType::Underconstrained,
+            severity: Severity::High,
+            description: description.to_string(),
+            location: None,
+            poc: ProofOfConcept {
+                witness_a: vec![FieldElement::from_u64(1)],
+                witness_b,
+                public_inputs: vec![],
+                proof: None,
+            },
+        }
+    }
+
+    #[test]
+    fn classify_single_witness_is_heuristic() {
+        let finding = make_finding("Potential semantic check fired", None);
+        assert_eq!(finding.classify(), FindingClass::Heuristic);
+    }
+
+    #[test]
+    fn classify_cross_witness_evidence_as_oracle_violation() {
+        let finding = make_finding(
+            "Different witnesses produce identical output",
+            Some(vec![FieldElement::from_u64(2)]),
+        );
+        assert_eq!(finding.classify(), FindingClass::OracleViolation);
+    }
+
+    #[test]
+    fn classify_invariant_violation() {
+        let finding = make_finding("Invariant violated: output uniqueness", None);
+        assert_eq!(finding.classify(), FindingClass::InvariantViolation);
+    }
 }
 
 /// Coverage tracking

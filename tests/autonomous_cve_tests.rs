@@ -2,13 +2,51 @@ use std::path::Path;
 use zk_fuzzer::cve::CveDatabase;
 
 const AUTONOMOUS_CVE_DB: &str = "templates/autonomous_cve_tests.yaml";
+const REQUIRE_DATASET_ENV: &str = "ZKFUZZ_REQUIRE_CVE_DATASET";
 
 fn repo_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
 
+fn zkbugs_dataset_dir() -> std::path::PathBuf {
+    repo_root().join("targets/zkbugs/dataset")
+}
+
+fn should_require_dataset() -> bool {
+    std::env::var(REQUIRE_DATASET_ENV)
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            normalized == "1" || normalized == "true" || normalized == "yes"
+        })
+        .unwrap_or(false)
+}
+
+fn ensure_dataset_available(test_name: &str) -> bool {
+    let dataset_dir = zkbugs_dataset_dir();
+    if dataset_dir.exists() {
+        return true;
+    }
+
+    let message = format!(
+        "{}: dataset missing at {}. Populate targets and rerun:\n  python3 scripts/integrate_validation_datasets.py",
+        test_name,
+        dataset_dir.display()
+    );
+    if should_require_dataset() {
+        panic!("{message}");
+    }
+
+    println!("⚠️  Skipping {test_name}: {message}");
+    println!("   Set {REQUIRE_DATASET_ENV}=1 to require this dataset in CI.");
+    false
+}
+
 #[test]
 fn test_autonomous_cve_regression_tests() {
+    if !ensure_dataset_available("test_autonomous_cve_regression_tests") {
+        return;
+    }
+
     println!("Loading autonomous CVE database...");
 
     let db = CveDatabase::load_strict(AUTONOMOUS_CVE_DB)
@@ -146,6 +184,10 @@ fn test_autonomous_cve_database_structure() {
 
 #[test]
 fn test_cve_circuits_exist_in_repo() {
+    if !ensure_dataset_available("test_cve_circuits_exist_in_repo") {
+        return;
+    }
+
     let db = CveDatabase::load_strict(AUTONOMOUS_CVE_DB)
         .expect("Failed to load autonomous CVE database");
 

@@ -13,8 +13,6 @@ Usage:
 
 import json
 import os
-import subprocess
-import sys
 import yaml
 from pathlib import Path
 from dataclasses import dataclass, asdict
@@ -22,11 +20,21 @@ from typing import List, Dict, Optional
 from datetime import datetime
 
 # Configuration
-TARGETS_DIR = Path("/home/teycir/Repos/ZkPatternFuzz/targets")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _env_path(name: str, default: Path) -> Path:
+    value = os.environ.get(name)
+    if not value:
+        return default
+    return Path(value).expanduser().resolve()
+
+
+TARGETS_DIR = _env_path("ZKFUZZ_TARGETS_DIR", REPO_ROOT / "targets")
 ZKBUGS_DIR = TARGETS_DIR / "zkbugs" / "dataset"
 ZKBUGTRACKER_DIR = TARGETS_DIR / "zk-bug-tracker"
 ZK0D_DIR = TARGETS_DIR / "zk0d"
-OUTPUT_DIR = Path("/home/teycir/Repos/ZkPatternFuzz/tests/validation")
+OUTPUT_DIR = _env_path("ZKFUZZ_VALIDATION_OUTPUT_DIR", REPO_ROOT / "tests" / "validation")
 
 @dataclass
 class ValidationTarget:
@@ -63,6 +71,14 @@ class DatasetIntegrator:
             "0xparc": 0,
             "zk0d": 0
         }
+
+    def normalize_path(self, path: Path) -> str:
+        """Normalize a filesystem path for reproducible JSON/YAML output."""
+        resolved = path.resolve()
+        try:
+            return resolved.relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            return resolved.as_posix()
         
     def parse_zkbugs(self) -> List[ValidationTarget]:
         """Parse zkBugs dataset."""
@@ -123,8 +139,8 @@ class DatasetIntegrator:
                                     project=project,
                                     vulnerability_type=bug_data.get("Vulnerability", "Unknown"),
                                     impact=bug_data.get("Impact", "Unknown"),
-                                    circuit_path=circuit_path or str(bug_dir),
-                                    config_path=str(config_file),
+                                    circuit_path=self.normalize_path(Path(circuit_path)) if circuit_path else self.normalize_path(bug_dir),
+                                    config_path=self.normalize_path(config_file),
                                     source="zkbugs",
                                     severity="Critical" if bug_data.get("Vulnerability") == "Under-Constrained" else "High",
                                     reproduced=bug_data.get("Reproduced", False)
@@ -210,8 +226,8 @@ class DatasetIntegrator:
                     project="iden3",
                     vulnerability_type="Unknown",
                     impact="Unknown",
-                    circuit_path=str(ZK0D_DIR),
-                    config_path=str(targets_yaml),
+                    circuit_path=self.normalize_path(ZK0D_DIR),
+                    config_path=self.normalize_path(targets_yaml),
                     source="zk0d",
                     severity="High",
                     reproduced=False
@@ -228,7 +244,7 @@ class DatasetIntegrator:
                 project="custom",
                 vulnerability_type="Unknown",
                 impact="Unknown",
-                circuit_path=str(circuit_file),
+                circuit_path=self.normalize_path(circuit_file),
                 config_path=None,
                 source="zk0d",
                 severity="Unknown",
