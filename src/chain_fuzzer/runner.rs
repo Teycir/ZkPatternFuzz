@@ -12,6 +12,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use zk_core::{CircuitExecutor, ExecutionResult, FieldElement};
 
+const MAX_CHAIN_EXECUTORS: usize = 1024;
+
 /// Executes chain specifications against circuit executors
 pub struct ChainRunner {
     /// Named executors for different circuits
@@ -23,6 +25,10 @@ pub struct ChainRunner {
 }
 
 impl ChainRunner {
+    fn elapsed_ms(start: Instant) -> u64 {
+        start.elapsed().as_millis().min(u64::MAX as u128) as u64
+    }
+
     fn execute_step_with_timeout(
         &self,
         executor: Arc<dyn CircuitExecutor>,
@@ -31,36 +37,73 @@ impl ChainRunner {
         let exec_start = Instant::now();
         if self.timeout_per_step.is_zero() {
             let result = executor.execute_sync(inputs);
-            return Ok((result, exec_start.elapsed().as_millis() as u64));
+            return Ok((result, Self::elapsed_ms(exec_start)));
         }
 
         let (tx, rx) = mpsc::channel();
         let thread_executor = Arc::clone(&executor);
         let thread_inputs = inputs.to_vec();
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
             let result = thread_executor.execute_sync(&thread_inputs);
-            let _ = tx.send(result);
+            if tx.send(result).is_err() {
+                tracing::warn!("Step worker finished but result receiver was dropped");
+            }
         });
 
         match rx.recv_timeout(self.timeout_per_step) {
-            Ok(result) => Ok((result, exec_start.elapsed().as_millis() as u64)),
-            Err(RecvTimeoutError::Timeout) => Err(exec_start.elapsed().as_millis() as u64),
-            Err(RecvTimeoutError::Disconnected) => Ok((
-                ExecutionResult::failure(
-                    "Step execution worker disconnected before sending a result".to_string(),
-                ),
-                exec_start.elapsed().as_millis() as u64,
-            )),
+            Ok(result) => match handle.join() {
+                Ok(()) => Ok((result, Self::elapsed_ms(exec_start))),
+                Err(panic_payload) => Ok((
+                    ExecutionResult::failure(format!(
+                        "Step execution worker panicked: {}",
+                        Self::panic_message(panic_payload)
+                    )),
+                    Self::elapsed_ms(exec_start),
+                )),
+            },
+            Err(RecvTimeoutError::Timeout) => Err(Self::elapsed_ms(exec_start)),
+            Err(RecvTimeoutError::Disconnected) => {
+                let failure = match handle.join() {
+                    Ok(()) => {
+                        "Step execution worker disconnected before sending a result".to_string()
+                    }
+                    Err(panic_payload) => format!(
+                        "Step execution worker panicked: {}",
+                        Self::panic_message(panic_payload)
+                    ),
+                };
+                Ok((
+                    ExecutionResult::failure(failure),
+                    Self::elapsed_ms(exec_start),
+                ))
+            }
         }
     }
 
+    fn panic_message(payload: Box<dyn std::any::Any + Send + 'static>) -> String {
+        if let Some(message) = payload.downcast_ref::<String>() {
+            return message.clone();
+        }
+        if let Some(message) = payload.downcast_ref::<&'static str>() {
+            return (*message).to_string();
+        }
+        "unknown panic payload".to_string()
+    }
+
     /// Create a new chain runner with the given executors
-    pub fn new(executors: HashMap<String, Arc<dyn CircuitExecutor>>) -> Self {
-        Self {
+    pub fn new(executors: HashMap<String, Arc<dyn CircuitExecutor>>) -> anyhow::Result<Self> {
+        if executors.len() > MAX_CHAIN_EXECUTORS {
+            anyhow::bail!(
+                "too many chain executors: {} (max {})",
+                executors.len(),
+                MAX_CHAIN_EXECUTORS
+            );
+        }
+        Ok(Self {
             executors,
             timeout_per_step: Duration::from_secs(30),
             max_chain_length: 100,
-        }
+        })
     }
 
     /// Set the timeout per step
@@ -76,8 +119,16 @@ impl ChainRunner {
     }
 
     /// Add an executor for a circuit
-    pub fn add_executor(&mut self, name: impl Into<String>, executor: Arc<dyn CircuitExecutor>) {
+    pub fn add_executor(
+        &mut self,
+        name: impl Into<String>,
+        executor: Arc<dyn CircuitExecutor>,
+    ) -> anyhow::Result<()> {
+        if self.executors.len() >= MAX_CHAIN_EXECUTORS {
+            anyhow::bail!("cannot add executor: reached max {}", MAX_CHAIN_EXECUTORS);
+        }
         self.executors.insert(name.into(), executor);
+        Ok(())
     }
 
     /// Execute a chain spec with the given initial inputs
@@ -187,19 +238,16 @@ impl ChainRunner {
                             step_index,
                             &step.circuit_ref,
                             inputs,
-                            format!(
-                                "Step timed out: exceeded {} ms limit",
-                                timeout_ms
-                            ),
+                            format!("Step timed out: exceeded {} ms limit", timeout_ms),
                         )
                         .with_time(step_time);
                         trace.add_step(step_trace);
-                        trace.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                        trace.execution_time_ms = Self::elapsed_ms(start_time);
                         return ChainRunResult::failure(trace, step_index);
                     }
                 };
 
-            let step_time = step_start.elapsed().as_millis() as u64;
+            let step_time = Self::elapsed_ms(step_start);
             let timeout_ms = self.timeout_per_step.as_millis();
             if timeout_ms > 0 && u128::from(execution_time_ms) > timeout_ms {
                 tracing::warn!(
@@ -220,7 +268,7 @@ impl ChainRunner {
                 )
                 .with_time(step_time);
                 trace.add_step(step_trace);
-                trace.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                trace.execution_time_ms = Self::elapsed_ms(start_time);
                 return ChainRunResult::failure(trace, step_index);
             }
 
@@ -246,7 +294,7 @@ impl ChainRunner {
                         )
                         .with_time(step_time);
                         trace.add_step(step_trace);
-                        trace.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                        trace.execution_time_ms = Self::elapsed_ms(start_time);
                         return ChainRunResult::failure(trace, step_index);
                     }
                 }
@@ -279,13 +327,13 @@ impl ChainRunner {
                         .with_time(step_time);
 
                 trace.add_step(step_trace);
-                trace.execution_time_ms = start_time.elapsed().as_millis() as u64;
+                trace.execution_time_ms = Self::elapsed_ms(start_time);
                 return ChainRunResult::failure(trace, step_index);
             }
         }
 
         trace.success = true;
-        trace.execution_time_ms = start_time.elapsed().as_millis() as u64;
+        trace.execution_time_ms = Self::elapsed_ms(start_time);
         ChainRunResult::success(trace)
     }
 
@@ -537,7 +585,7 @@ mod tests {
             create_fixture_executor("circuit_b", 2, 1),
         );
 
-        let runner = ChainRunner::new(executors);
+        let runner = ChainRunner::new(executors).expect("failed to create chain runner");
 
         let spec = ChainSpec::new(
             "test_chain",
@@ -563,7 +611,7 @@ mod tests {
             create_fixture_executor("withdraw", 2, 1),
         );
 
-        let runner = ChainRunner::new(executors);
+        let runner = ChainRunner::new(executors).expect("failed to create chain runner");
 
         let spec = ChainSpec::new(
             "deposit_withdraw",
@@ -590,7 +638,7 @@ mod tests {
     #[test]
     fn test_chain_runner_missing_executor() {
         let executors = HashMap::new(); // Empty
-        let runner = ChainRunner::new(executors);
+        let runner = ChainRunner::new(executors).expect("failed to create chain runner");
 
         let spec = ChainSpec::new("test_chain", vec![StepSpec::fresh("nonexistent")]);
 
@@ -609,7 +657,7 @@ mod tests {
             create_fixture_executor("circuit_a", 2, 1),
         );
 
-        let runner = ChainRunner::new(executors);
+        let runner = ChainRunner::new(executors).expect("failed to create chain runner");
         let mut step = StepSpec::fresh("circuit_a");
         step.expected_outputs = Some(2);
         let spec = ChainSpec::new("outputs_contract", vec![step]);
@@ -634,7 +682,9 @@ mod tests {
             Arc::new(SlowExecutor::new("slow", 2, 1, Duration::from_millis(25)))
                 as Arc<dyn CircuitExecutor>,
         );
-        let runner = ChainRunner::new(executors).with_timeout(Duration::from_millis(5));
+        let runner = ChainRunner::new(executors)
+            .expect("failed to create chain runner")
+            .with_timeout(Duration::from_millis(5));
         let spec = ChainSpec::new("timeout_contract", vec![StepSpec::fresh("slow")]);
 
         let mut rng = rand::thread_rng();
@@ -657,7 +707,9 @@ mod tests {
             Arc::new(SlowExecutor::new("slow", 2, 1, Duration::from_millis(300)))
                 as Arc<dyn CircuitExecutor>,
         );
-        let runner = ChainRunner::new(executors).with_timeout(Duration::from_millis(20));
+        let runner = ChainRunner::new(executors)
+            .expect("failed to create chain runner")
+            .with_timeout(Duration::from_millis(20));
         let spec = ChainSpec::new("timeout_preemptive", vec![StepSpec::fresh("slow")]);
 
         let mut rng = rand::thread_rng();

@@ -16,10 +16,11 @@ use crate::enhanced::{ConstraintSimplifier, PathPruner, PruningStrategy};
 use crate::executor::{
     PathCondition, SolverResult, SymbolicConstraint, SymbolicState, SymbolicValue, Z3Solver,
 };
+use parking_lot::RwLock;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 use zk_core::FieldElement;
 
@@ -332,13 +333,13 @@ impl ConstraintCache {
         let hash = self.hash_path(path);
 
         // Check unsat cache first (cheap)
-        if self.unsat_cache.read().unwrap().contains(&hash) {
+        if self.unsat_cache.read().contains(&hash) {
             self.hits.fetch_add(1, AtomicOrdering::Relaxed);
             return Some(SolverResult::Unsat);
         }
 
         // Check solution cache
-        let solutions = self.solutions.read().unwrap();
+        let solutions = self.solutions.read();
         if let Some(cached) = solutions.get(&hash) {
             // Check TTL
             if cached.timestamp.elapsed().as_secs() < self.ttl_seconds {
@@ -357,10 +358,10 @@ impl ConstraintCache {
 
         match &result {
             SolverResult::Unsat => {
-                self.unsat_cache.write().unwrap().insert(hash);
+                self.unsat_cache.write().insert(hash);
             }
             _ => {
-                let mut solutions = self.solutions.write().unwrap();
+                let mut solutions = self.solutions.write();
 
                 // Evict if over capacity
                 if solutions.len() >= self.max_size {
@@ -409,12 +410,12 @@ impl ConstraintCache {
     pub fn get_subproblem(&self, constraints: &[SymbolicConstraint]) -> Option<SolverResult> {
         let hash = self.hash_constraints(constraints);
 
-        if self.unsat_cache.read().unwrap().contains(&hash) {
+        if self.unsat_cache.read().contains(&hash) {
             self.hits.fetch_add(1, AtomicOrdering::Relaxed);
             return Some(SolverResult::Unsat);
         }
 
-        let solutions = self.solutions.read().unwrap();
+        let solutions = self.solutions.read();
         if let Some(cached) = solutions.get(&hash) {
             if cached.timestamp.elapsed().as_secs() < self.ttl_seconds {
                 self.hits.fetch_add(1, AtomicOrdering::Relaxed);
@@ -450,8 +451,8 @@ impl ConstraintCache {
     }
 
     pub fn clear(&self) {
-        self.solutions.write().unwrap().clear();
-        self.unsat_cache.write().unwrap().clear();
+        self.solutions.write().clear();
+        self.unsat_cache.write().clear();
         self.hits.store(0, AtomicOrdering::Relaxed);
         self.misses.store(0, AtomicOrdering::Relaxed);
     }

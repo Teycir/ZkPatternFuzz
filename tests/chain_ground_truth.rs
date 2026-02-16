@@ -572,6 +572,7 @@ mod tests {
 
             let case_deadline = Instant::now() + settings.chain_timeout;
             let runner = ChainRunner::new(executors.clone())
+                .expect("failed to create chain runner")
                 .with_timeout(std::time::Duration::from_secs(30));
             let mutator = ChainMutator::new();
             let mut rng = ChaCha8Rng::seed_from_u64(seed_from_name(case.name));
@@ -612,6 +613,7 @@ mod tests {
 
                             let shrinker = shrinker.get_or_insert_with(|| {
                                 let shrink_runner = ChainRunner::new(executors.clone())
+                                    .expect("failed to create chain runner")
                                     .with_timeout(std::time::Duration::from_secs(30));
                                 let shrink_seed =
                                     seed_from_name(&format!("{}::{}", case.name, chain.name));

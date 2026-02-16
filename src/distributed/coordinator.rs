@@ -8,8 +8,9 @@ use super::{
     SerializableCorpusEntry, WorkResults, WorkUnitId,
 };
 use crate::config::FuzzConfig;
+use anyhow::Result;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 use zk_core::Finding;
 
@@ -112,6 +113,20 @@ pub struct DistributedCoordinator {
 }
 
 impl DistributedCoordinator {
+    fn read_lock<'a, T>(&self, lock: &'a RwLock<T>, name: &str) -> Result<RwLockReadGuard<'a, T>> {
+        lock.read()
+            .map_err(|e| anyhow::anyhow!("{} lock poisoned (read): {}", name, e))
+    }
+
+    fn write_lock<'a, T>(
+        &self,
+        lock: &'a RwLock<T>,
+        name: &str,
+    ) -> Result<RwLockWriteGuard<'a, T>> {
+        lock.write()
+            .map_err(|e| anyhow::anyhow!("{} lock poisoned (write): {}", name, e))
+    }
+
     pub fn new(config: DistributedConfig) -> Self {
         Self {
             config,
@@ -135,66 +150,69 @@ impl DistributedCoordinator {
     }
 
     /// Handle a message from a worker
-    pub fn handle_message(&self, message: DistributedMessage) -> Option<DistributedMessage> {
+    pub fn handle_message(
+        &self,
+        message: DistributedMessage,
+    ) -> Result<Option<DistributedMessage>> {
         match message {
             DistributedMessage::Register {
                 node_id,
                 role: _,
                 capabilities,
             } => {
-                self.register_worker(node_id.clone(), capabilities);
-                Some(DistributedMessage::Heartbeat {
+                self.register_worker(node_id.clone(), capabilities)?;
+                Ok(Some(DistributedMessage::Heartbeat {
                     node_id: "coordinator".to_string(),
                     stats: NodeStats::default(),
-                })
+                }))
             }
 
             DistributedMessage::Heartbeat { node_id, stats } => {
-                self.update_worker_stats(&node_id, stats);
-                None
+                self.update_worker_stats(&node_id, stats)?;
+                Ok(None)
             }
 
-            DistributedMessage::RequestWork { node_id } => self
-                .assign_work(&node_id)
-                .map(|wu| DistributedMessage::AssignWork { work_unit: wu }),
+            DistributedMessage::RequestWork { node_id } => Ok(self
+                .assign_work(&node_id)?
+                .map(|wu| DistributedMessage::AssignWork { work_unit: wu })),
 
             DistributedMessage::WorkComplete {
                 node_id,
                 work_unit_id,
                 results,
             } => {
-                self.handle_work_completion(&node_id, work_unit_id, results);
-                None
+                self.handle_work_completion(&node_id, work_unit_id, results)?;
+                Ok(None)
             }
 
             DistributedMessage::ShareCorpus { entries } => {
                 // Infer node_id from context or require it
-                self.handle_corpus_share("unknown", entries);
-                None
+                self.handle_corpus_share("unknown", entries)?;
+                Ok(None)
             }
 
             DistributedMessage::ReportFinding {
                 node_id: _,
                 finding,
             } => {
-                self.findings.write().unwrap().push(finding);
-                None
+                self.write_lock(&self.findings, "findings")?.push(finding);
+                Ok(None)
             }
 
             DistributedMessage::CoverageUpdate {
                 node_id,
                 coverage_bitmap,
             } => {
-                self.merge_coverage(&node_id, &coverage_bitmap);
-                None
+                self.merge_coverage(&node_id, &coverage_bitmap)?;
+                Ok(None)
             }
 
-            _ => None,
+            _ => Ok(None),
         }
     }
 
     /// Register a new worker
-    fn register_worker(&self, node_id: NodeId, _capabilities: NodeCapabilities) {
+    fn register_worker(&self, node_id: NodeId, _capabilities: NodeCapabilities) -> Result<()> {
         let worker = WorkerInfo {
             status: NodeStatus::Idle,
             last_heartbeat: Instant::now(),
@@ -202,54 +220,59 @@ impl DistributedCoordinator {
             work_history: Vec::new(),
         };
 
-        self.workers.write().unwrap().insert(node_id, worker);
-        self.update_cluster_stats();
+        self.write_lock(&self.workers, "workers")?
+            .insert(node_id, worker);
+        self.update_cluster_stats()?;
 
         tracing::info!(
             "Worker registered, total workers: {}",
-            self.workers.read().unwrap().len()
+            self.read_lock(&self.workers, "workers")?.len()
         );
+        Ok(())
     }
 
     /// Update worker statistics
-    fn update_worker_stats(&self, node_id: &str, stats: NodeStats) {
-        if let Some(worker) = self.workers.write().unwrap().get_mut(node_id) {
+    fn update_worker_stats(&self, node_id: &str, stats: NodeStats) -> Result<()> {
+        if let Some(worker) = self.write_lock(&self.workers, "workers")?.get_mut(node_id) {
             worker.last_heartbeat = Instant::now();
             worker.stats = stats;
         }
-        self.update_cluster_stats();
+        self.update_cluster_stats()?;
+        Ok(())
     }
 
     /// Assign work to a worker
-    fn assign_work(&self, node_id: &str) -> Option<WorkUnit> {
+    fn assign_work(&self, node_id: &str) -> Result<Option<WorkUnit>> {
         // Check if worker exists and is idle
         {
-            let workers = self.workers.read().unwrap();
-            let worker = workers.get(node_id)?;
+            let workers = self.read_lock(&self.workers, "workers")?;
+            let Some(worker) = workers.get(node_id) else {
+                return Ok(None);
+            };
             if !matches!(worker.status, NodeStatus::Idle) {
-                return None;
+                return Ok(None);
             }
         }
 
         // Get next work unit from queue
-        let work_unit = self.work_queue.write().unwrap().pop_front()?;
+        let Some(work_unit) = self.write_lock(&self.work_queue, "work_queue")?.pop_front() else {
+            return Ok(None);
+        };
 
         // Mark worker as working
-        if let Some(worker) = self.workers.write().unwrap().get_mut(node_id) {
+        if let Some(worker) = self.write_lock(&self.workers, "workers")?.get_mut(node_id) {
             worker.status = NodeStatus::Working {
                 work_unit_id: work_unit.id,
             };
         }
 
         // Track active work
-        self.active_work
-            .write()
-            .unwrap()
+        self.write_lock(&self.active_work, "active_work")?
             .insert(work_unit.id, node_id.to_string());
 
         tracing::debug!("Assigned work unit {} to {}", work_unit.id, node_id);
 
-        Some(work_unit)
+        Ok(Some(work_unit))
     }
 
     /// Handle work completion from a worker
@@ -258,26 +281,26 @@ impl DistributedCoordinator {
         node_id: &str,
         work_unit_id: WorkUnitId,
         results: WorkResults,
-    ) {
+    ) -> Result<()> {
         // Update worker status
-        if let Some(worker) = self.workers.write().unwrap().get_mut(node_id) {
+        if let Some(worker) = self.write_lock(&self.workers, "workers")?.get_mut(node_id) {
             worker.status = NodeStatus::Idle;
             worker.work_history.push(work_unit_id);
         }
 
         // Remove from active work
-        self.active_work.write().unwrap().remove(&work_unit_id);
+        self.write_lock(&self.active_work, "active_work")?
+            .remove(&work_unit_id);
 
         // Process results
-        self.process_work_results(node_id, work_unit_id, &results);
+        self.process_work_results(node_id, work_unit_id, &results)?;
 
         // Store completion
-        self.completed_work
-            .write()
-            .unwrap()
+        self.write_lock(&self.completed_work, "completed_work")?
             .push((work_unit_id, results));
 
-        self.update_cluster_stats();
+        self.update_cluster_stats()?;
+        Ok(())
     }
 
     /// Process results from a work unit
@@ -286,36 +309,41 @@ impl DistributedCoordinator {
         node_id: &str,
         _work_unit_id: WorkUnitId,
         results: &WorkResults,
-    ) {
+    ) -> Result<()> {
         // Add findings
-        for finding in &results.findings {
-            self.findings.write().unwrap().push(finding.clone());
+        if !results.findings.is_empty() {
+            self.write_lock(&self.findings, "findings")?
+                .extend(results.findings.clone());
         }
 
         // Add corpus entries
         if !results.interesting_cases.is_empty() {
-            self.handle_corpus_share(node_id, results.interesting_cases.clone());
+            self.handle_corpus_share(node_id, results.interesting_cases.clone())?;
         }
 
         // Merge coverage
         if !results.coverage_delta.is_empty() {
-            self.merge_coverage(node_id, &results.coverage_delta);
+            self.merge_coverage(node_id, &results.coverage_delta)?;
         }
+        Ok(())
     }
 
     /// Handle corpus sharing from a worker
-    fn handle_corpus_share(&self, node_id: &str, entries: Vec<SerializableCorpusEntry>) {
+    fn handle_corpus_share(
+        &self,
+        node_id: &str,
+        entries: Vec<SerializableCorpusEntry>,
+    ) -> Result<()> {
         let corpus_entries: Vec<_> = entries.iter().filter_map(|e| e.to_corpus_entry()).collect();
 
-        self.corpus_manager
-            .write()
-            .unwrap()
+        self.write_lock(&self.corpus_manager, "corpus_manager")?
             .add_from_node(node_id, corpus_entries);
+        Ok(())
     }
 
     /// Merge coverage from a worker
-    fn merge_coverage(&self, _node_id: &str, bitmap: &[u8]) {
-        let mut global = self.global_coverage.write().unwrap();
+    fn merge_coverage(&self, _node_id: &str, bitmap: &[u8]) -> Result<()> {
+        let mut global = self.write_lock(&self.global_coverage, "global_coverage")?;
 
         // Resize if needed
         if global.len() < bitmap.len() {
@@ -328,21 +356,24 @@ impl DistributedCoordinator {
                 global[i] |= byte;
             }
         }
+        Ok(())
     }
 
     /// Add work to the queue
-    pub fn add_work(&self, work_unit: WorkUnit) {
-        self.work_queue.write().unwrap().push_back(work_unit);
+    pub fn add_work(&self, work_unit: WorkUnit) -> Result<()> {
+        self.write_lock(&self.work_queue, "work_queue")?
+            .push_back(work_unit);
+        Ok(())
     }
 
     /// Generate work units from campaign configuration
-    pub fn generate_work_from_config(&self) -> Vec<WorkUnit> {
+    pub fn generate_work_from_config(&self) -> Result<Vec<WorkUnit>> {
         let Some(ref config) = self.fuzz_config else {
-            return Vec::new();
+            return Ok(Vec::new());
         };
 
         let mut work_units = Vec::new();
-        let mut next_id = *self.next_work_id.read().unwrap();
+        let mut next_id = *self.read_lock(&self.next_work_id, "next_work_id")?;
 
         for attack in &config.attacks {
             // Split attack into multiple work units based on iterations
@@ -350,10 +381,10 @@ impl DistributedCoordinator {
             let iterations = match iterations {
                 Some(value) => value as usize,
                 None => {
-                    panic!(
+                    anyhow::bail!(
                         "Attack {:?} is missing required numeric 'iterations' in distributed mode",
                         attack.attack_type
-                    )
+                    );
                 }
             };
 
@@ -379,19 +410,19 @@ impl DistributedCoordinator {
             }
         }
 
-        *self.next_work_id.write().unwrap() = next_id;
+        *self.write_lock(&self.next_work_id, "next_work_id")? = next_id;
 
         // Add to queue
         for unit in &work_units {
-            self.add_work(unit.clone());
+            self.add_work(unit.clone())?;
         }
 
-        work_units
+        Ok(work_units)
     }
 
     /// Update cluster statistics
-    fn update_cluster_stats(&self) {
-        let workers = self.workers.read().unwrap();
+    fn update_cluster_stats(&self) -> Result<()> {
+        let workers = self.read_lock(&self.workers, "workers")?;
 
         let total_nodes = workers.len();
         let active_nodes = workers
@@ -411,11 +442,14 @@ impl DistributedCoordinator {
             combined_exec_per_second += worker.stats.exec_per_second;
         }
 
-        let total_findings = self.findings.read().unwrap().len();
-        let global_corpus_size = self.corpus_manager.read().unwrap().stats().unique_entries;
+        let total_findings = self.read_lock(&self.findings, "findings")?.len();
+        let global_corpus_size = self
+            .read_lock(&self.corpus_manager, "corpus_manager")?
+            .stats()
+            .unique_entries;
 
         // Calculate global coverage
-        let coverage = self.global_coverage.read().unwrap();
+        let coverage = self.read_lock(&self.global_coverage, "global_coverage")?;
         let global_coverage = if !coverage.is_empty() {
             let total_bits = coverage.len() * 8;
             let set_bits: usize = coverage.iter().map(|b| b.count_ones() as usize).sum();
@@ -424,7 +458,7 @@ impl DistributedCoordinator {
             0.0
         };
 
-        *self.stats.write().unwrap() = ClusterStats {
+        *self.write_lock(&self.stats, "stats")? = ClusterStats {
             total_nodes,
             active_nodes,
             total_executions,
@@ -434,12 +468,13 @@ impl DistributedCoordinator {
             global_coverage,
             ..Default::default()
         };
+        Ok(())
     }
 
     /// Check for and handle timed-out workers
-    pub fn check_timeouts(&self) {
+    pub fn check_timeouts(&self) -> Result<()> {
         let timeout = self.config.node_timeout;
-        let mut workers = self.workers.write().unwrap();
+        let mut workers = self.write_lock(&self.workers, "workers")?;
         let mut timed_out = Vec::new();
 
         for (node_id, worker) in workers.iter_mut() {
@@ -453,8 +488,9 @@ impl DistributedCoordinator {
 
         // Reassign work from timed-out workers
         for node_id in timed_out {
-            self.reassign_work_from_node(&node_id);
+            self.reassign_work_from_node(&node_id)?;
         }
+        Ok(())
     }
 
     /// Reassign work from a failed / timed-out node.
@@ -462,8 +498,8 @@ impl DistributedCoordinator {
     /// Any work units that were assigned to `node_id` are removed from the
     /// active-work map and pushed back onto the front of the work queue with
     /// elevated priority so they are picked up next.
-    fn reassign_work_from_node(&self, node_id: &str) {
-        let mut active = self.active_work.write().unwrap();
+    fn reassign_work_from_node(&self, node_id: &str) -> Result<()> {
+        let mut active = self.write_lock(&self.active_work, "active_work")?;
         let to_reassign: Vec<WorkUnitId> = active
             .iter()
             .filter(|(_, assigned)| *assigned == node_id)
@@ -471,19 +507,17 @@ impl DistributedCoordinator {
             .collect();
 
         if to_reassign.is_empty() {
-            return;
+            return Ok(());
         }
 
         // Collect the completed set so we don't re-queue already-finished work.
         let completed: HashSet<WorkUnitId> = self
-            .completed_work
-            .read()
-            .unwrap()
+            .read_lock(&self.completed_work, "completed_work")?
             .iter()
             .map(|(id, _)| *id)
             .collect();
 
-        let mut queue = self.work_queue.write().unwrap();
+        let mut queue = self.write_lock(&self.work_queue, "work_queue")?;
 
         for work_id in &to_reassign {
             active.remove(work_id);
@@ -509,39 +543,39 @@ impl DistributedCoordinator {
         }
 
         // Update stats
-        let mut stats = self.stats.write().unwrap();
+        let mut stats = self.write_lock(&self.stats, "stats")?;
         stats.requeued_work_units += to_reassign.len();
+        Ok(())
     }
 
     /// Get cluster statistics
-    pub fn stats(&self) -> ClusterStats {
-        self.stats.read().unwrap().clone()
+    pub fn stats(&self) -> Result<ClusterStats> {
+        Ok(self.read_lock(&self.stats, "stats")?.clone())
     }
 
     /// Get all findings
-    pub fn findings(&self) -> Vec<Finding> {
-        self.findings.read().unwrap().clone()
+    pub fn findings(&self) -> Result<Vec<Finding>> {
+        Ok(self.read_lock(&self.findings, "findings")?.clone())
     }
 
     /// Get global corpus
-    pub fn global_corpus(&self) -> Vec<SerializableCorpusEntry> {
-        self.corpus_manager
-            .read()
-            .unwrap()
+    pub fn global_corpus(&self) -> Result<Vec<SerializableCorpusEntry>> {
+        Ok(self
+            .read_lock(&self.corpus_manager, "corpus_manager")?
             .global_corpus()
             .iter()
             .map(SerializableCorpusEntry::from)
-            .collect()
+            .collect())
     }
 
     /// Get number of connected workers
-    pub fn worker_count(&self) -> usize {
-        self.workers.read().unwrap().len()
+    pub fn worker_count(&self) -> Result<usize> {
+        Ok(self.read_lock(&self.workers, "workers")?.len())
     }
 
     /// Get pending work count
-    pub fn pending_work_count(&self) -> usize {
-        self.work_queue.read().unwrap().len()
+    pub fn pending_work_count(&self) -> Result<usize> {
+        Ok(self.read_lock(&self.work_queue, "work_queue")?.len())
     }
 
     /// Get runtime duration
@@ -558,7 +592,7 @@ mod tests {
     fn test_coordinator_creation() {
         let config = DistributedConfig::default();
         let coordinator = DistributedCoordinator::new(config);
-        assert_eq!(coordinator.worker_count(), 0);
+        assert_eq!(coordinator.worker_count().expect("worker count failed"), 0);
     }
 
     #[test]
@@ -579,7 +613,9 @@ mod tests {
             capabilities: NodeCapabilities::default(),
         };
 
-        coordinator.handle_message(msg);
-        assert_eq!(coordinator.worker_count(), 1);
+        coordinator
+            .handle_message(msg)
+            .expect("message handling failed");
+        assert_eq!(coordinator.worker_count().expect("worker count failed"), 1);
     }
 }

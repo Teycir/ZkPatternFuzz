@@ -3,8 +3,9 @@
 //! Implements coverage-guided fuzzing by tracking which constraints
 //! are exercised during circuit execution.
 
+use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use zk_core::ExecutionCoverage;
 
 /// Global coverage tracker for the fuzzing campaign
@@ -51,12 +52,12 @@ impl CoverageTracker {
 
     /// Record a constraint hit
     pub fn record_hit(&self, constraint_id: usize) {
-        let mut hits = self.constraint_hits.write().unwrap();
+        let mut hits = self.constraint_hits.write();
         *hits.entry(constraint_id).or_insert(0) += 1;
 
         // Update max coverage
         let current_coverage = hits.len();
-        let mut max = self.max_coverage.write().unwrap();
+        let mut max = self.max_coverage.write();
         if current_coverage > *max {
             *max = current_coverage;
         }
@@ -78,14 +79,14 @@ impl CoverageTracker {
 
         // Record individual hits
         {
-            let mut hits = self.constraint_hits.write().unwrap();
+            let mut hits = self.constraint_hits.write();
             for &constraint_id in satisfied_constraints {
                 *hits.entry(constraint_id).or_insert(0) += 1;
             }
 
             // Update max coverage
             let current_coverage = hits.len();
-            let mut max = self.max_coverage.write().unwrap();
+            let mut max = self.max_coverage.write();
             if current_coverage > *max {
                 *max = current_coverage;
             }
@@ -115,7 +116,7 @@ impl CoverageTracker {
             return false;
         }
 
-        let mut edges = self.edge_hits.write().unwrap();
+        let mut edges = self.edge_hits.write();
         let mut found_new = false;
 
         for window in constraints.windows(2) {
@@ -146,7 +147,7 @@ impl CoverageTracker {
             hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ]);
 
-        let mut paths = self.path_hashes.write().unwrap();
+        let mut paths = self.path_hashes.write();
         paths.insert(path_hash)
     }
 
@@ -160,7 +161,7 @@ impl CoverageTracker {
     }
 
     fn record_value_bucket(&self, constraint_id: usize, bucket: u8) -> bool {
-        let mut buckets = self.value_buckets.write().unwrap();
+        let mut buckets = self.value_buckets.write();
         let constraint_buckets = buckets.entry(constraint_id).or_default();
         constraint_buckets.insert(bucket)
     }
@@ -185,9 +186,9 @@ impl CoverageTracker {
     ///
     /// Returns true if this hash represents new coverage.
     pub fn record_coverage_hash(&self, coverage_hash: u64) -> bool {
-        let mut unique = self.unique_coverages.write().unwrap();
+        let mut unique = self.unique_coverages.write();
         if unique.insert(coverage_hash) {
-            *self.new_coverage_count.write().unwrap() += 1;
+            *self.new_coverage_count.write() += 1;
             true
         } else {
             false
@@ -200,33 +201,28 @@ impl CoverageTracker {
             return 0.0;
         }
 
-        let hits = self.constraint_hits.read().unwrap();
+        let hits = self.constraint_hits.read();
         (hits.len() as f64 / self.total_constraints as f64) * 100.0
     }
 
     /// Get the number of unique constraints hit
     pub fn unique_constraints_hit(&self) -> usize {
-        self.constraint_hits.read().unwrap().len()
+        self.constraint_hits.read().len()
     }
 
     /// Get the list of constraint IDs that have been hit
     pub fn constraint_ids(&self) -> Vec<usize> {
-        self.constraint_hits
-            .read()
-            .unwrap()
-            .keys()
-            .copied()
-            .collect()
+        self.constraint_hits.read().keys().copied().collect()
     }
 
     /// Get the total number of constraint evaluations
     pub fn total_hits(&self) -> u64 {
-        self.constraint_hits.read().unwrap().values().sum()
+        self.constraint_hits.read().values().sum()
     }
 
     /// Get constraints that have never been hit
     pub fn uncovered_constraints(&self) -> Vec<usize> {
-        let hits = self.constraint_hits.read().unwrap();
+        let hits = self.constraint_hits.read();
         (0..self.total_constraints)
             .filter(|id| !hits.contains_key(id))
             .collect()
@@ -234,12 +230,12 @@ impl CoverageTracker {
 
     /// Get the number of unique coverage patterns seen
     pub fn unique_coverage_patterns(&self) -> usize {
-        self.unique_coverages.read().unwrap().len()
+        self.unique_coverages.read().len()
     }
 
     /// Get the number of times new coverage was discovered
     pub fn new_coverage_count(&self) -> u64 {
-        *self.new_coverage_count.read().unwrap()
+        *self.new_coverage_count.read()
     }
 
     /// Get a snapshot of current coverage stats
@@ -259,42 +255,37 @@ impl CoverageTracker {
 
     /// Reset the coverage tracker
     pub fn reset(&self) {
-        *self.constraint_hits.write().unwrap() = HashMap::new();
-        *self.unique_coverages.write().unwrap() = HashSet::new();
-        *self.max_coverage.write().unwrap() = 0;
-        *self.new_coverage_count.write().unwrap() = 0;
+        *self.constraint_hits.write() = HashMap::new();
+        *self.unique_coverages.write() = HashSet::new();
+        *self.max_coverage.write() = 0;
+        *self.new_coverage_count.write() = 0;
         // Phase 0 Fix: Reset extended coverage
-        *self.edge_hits.write().unwrap() = HashMap::new();
-        *self.path_hashes.write().unwrap() = HashSet::new();
-        *self.value_buckets.write().unwrap() = HashMap::new();
+        *self.edge_hits.write() = HashMap::new();
+        *self.path_hashes.write() = HashSet::new();
+        *self.value_buckets.write() = HashMap::new();
     }
 
     // Phase 0 Fix: Extended coverage accessors
 
     /// Get number of unique edges (constraint transitions) discovered
     pub fn unique_edges(&self) -> usize {
-        self.edge_hits.read().unwrap().len()
+        self.edge_hits.read().len()
     }
 
     /// Get number of unique execution paths discovered
     pub fn unique_paths(&self) -> usize {
-        self.path_hashes.read().unwrap().len()
+        self.path_hashes.read().len()
     }
 
     /// Get total number of value buckets hit across all constraints
     pub fn total_value_buckets(&self) -> usize {
-        self.value_buckets
-            .read()
-            .unwrap()
-            .values()
-            .map(|s| s.len())
-            .sum()
+        self.value_buckets.read().values().map(|s| s.len()).sum()
     }
 
     /// Get edges that have never been hit (sparse representation)
     /// Returns edges with hit count > 0 for analysis
     pub fn edge_coverage(&self) -> HashMap<(usize, usize), u64> {
-        self.edge_hits.read().unwrap().clone()
+        self.edge_hits.read().clone()
     }
 }
 

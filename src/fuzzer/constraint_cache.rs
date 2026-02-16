@@ -11,9 +11,10 @@
 //! Expected 2-3x speedup on constraint-heavy circuits by avoiding
 //! redundant evaluations of the same constraint configurations.
 
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 use zk_core::FieldElement;
 
@@ -85,7 +86,7 @@ impl ConstraintEvalCache {
         let input_hash = Self::hash_inputs(inputs);
         let key = (constraint_id, input_hash);
 
-        let cache = self.cache.read().unwrap();
+        let cache = self.cache.read();
         if let Some(entry) = cache.get(&key) {
             // Check TTL
             if self.ttl_seconds > 0 && entry.timestamp.elapsed().as_secs() > self.ttl_seconds {
@@ -112,7 +113,7 @@ impl ConstraintEvalCache {
         let input_hash = Self::hash_inputs(inputs);
         let key = (constraint_id, input_hash);
 
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = self.cache.write();
 
         // Evict if necessary
         if cache.len() >= self.max_size {
@@ -134,7 +135,7 @@ impl ConstraintEvalCache {
         &self,
         queries: &[(usize, Vec<FieldElement>)],
     ) -> Vec<Option<ConstraintEvalResult>> {
-        let cache = self.cache.read().unwrap();
+        let cache = self.cache.read();
 
         queries
             .iter()
@@ -159,7 +160,7 @@ impl ConstraintEvalCache {
 
     /// Batch insert multiple results
     pub fn insert_batch(&self, entries: Vec<(usize, Vec<FieldElement>, ConstraintEvalResult)>) {
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = self.cache.write();
 
         // Pre-evict if necessary
         let needed_space = entries.len();
@@ -229,14 +230,14 @@ impl ConstraintEvalCache {
             misses,
             hit_rate,
             evictions: self.evictions.load(AtomicOrdering::Relaxed),
-            current_size: self.cache.read().unwrap().len(),
+            current_size: self.cache.read().len(),
             max_size: self.max_size,
         }
     }
 
     /// Clear the cache
     pub fn clear(&self) {
-        self.cache.write().unwrap().clear();
+        self.cache.write().clear();
         self.hits.store(0, AtomicOrdering::Relaxed);
         self.misses.store(0, AtomicOrdering::Relaxed);
         self.evictions.store(0, AtomicOrdering::Relaxed);
@@ -244,7 +245,7 @@ impl ConstraintEvalCache {
 
     /// Invalidate entries for a specific constraint
     pub fn invalidate_constraint(&self, constraint_id: usize) {
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = self.cache.write();
         cache.retain(|(id, _), _| *id != constraint_id);
     }
 }

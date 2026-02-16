@@ -118,7 +118,13 @@ impl FuzzingEngine {
             executors.insert(circuit_ref.clone(), executor);
         }
 
-        let runner = ChainRunner::new(executors).with_timeout(Duration::from_secs(30));
+        let runner = match ChainRunner::new(executors) {
+            Ok(runner) => runner.with_timeout(Duration::from_secs(30)),
+            Err(err) => {
+                tracing::error!("Failed to initialize chain runner: {}", err);
+                return Vec::new();
+            }
+        };
 
         // Phase 5 Fix (Milestone 5.3): Use framework-aware chain mutator
         // Previously used ChainMutator::new() default settings,
@@ -477,8 +483,15 @@ impl FuzzingEngine {
                     let violations = active_checker.check(&result.trace);
 
                     for violation in violations {
+                        let shrink_runner = match ChainRunner::new(runner.executors.clone()) {
+                            Ok(value) => value,
+                            Err(err) => {
+                                tracing::error!("Failed to initialize shrink runner: {}", err);
+                                continue;
+                            }
+                        };
                         let shrinker = ChainShrinker::new(
-                            ChainRunner::new(runner.executors.clone()),
+                            shrink_runner,
                             CrossStepInvariantChecker::from_spec(spec_to_use),
                         )
                         .with_seed(match self.seed {

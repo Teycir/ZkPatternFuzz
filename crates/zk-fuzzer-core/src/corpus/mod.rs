@@ -23,8 +23,9 @@ pub use delta_debug::{
     OracleResult,
 };
 
+use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use zk_core::{FieldElement, TestCase, TestMetadata};
 
 /// Corpus entry with additional metadata
@@ -117,8 +118,8 @@ impl Corpus {
         // Acquire write locks upfront to prevent TOCTOU race condition
         // Previously, we checked with a read lock, released it, then acquired
         // a write lock - allowing another thread to insert the same hash
-        let mut entries = self.entries.write().unwrap();
-        let mut index = self.coverage_index.write().unwrap();
+        let mut entries = self.entries.write();
+        let mut index = self.coverage_index.write();
 
         // Check for duplicate coverage AFTER acquiring write locks
         if index.contains_key(&coverage_hash) {
@@ -164,7 +165,7 @@ impl Corpus {
     /// This function will panic if the invariant `total_energy > 0` is violated,
     /// which should never happen given the `.max(1)` guarantee.
     pub fn get_random(&self, rng: &mut impl rand::Rng) -> Option<CorpusEntry> {
-        let entries = self.entries.read().unwrap();
+        let entries = self.entries.read();
         if entries.is_empty() {
             return None;
         }
@@ -196,24 +197,23 @@ impl Corpus {
 
     /// Get corpus size
     pub fn len(&self) -> usize {
-        self.entries.read().unwrap().len()
+        self.entries.read().len()
     }
 
     /// Check if corpus is empty
     pub fn is_empty(&self) -> bool {
-        self.entries.read().unwrap().is_empty()
+        self.entries.read().is_empty()
     }
 
     /// Get all entries (for persistence)
     pub fn all_entries(&self) -> Vec<CorpusEntry> {
-        self.entries.read().unwrap().clone()
+        self.entries.read().clone()
     }
 
     /// Get entries that discovered new coverage
     pub fn interesting_entries(&self) -> Vec<CorpusEntry> {
         self.entries
             .read()
-            .unwrap()
             .iter()
             .filter(|e| e.discovered_new_coverage)
             .cloned()
@@ -222,7 +222,7 @@ impl Corpus {
 
     /// Decay energy of all entries (called periodically)
     pub fn decay_energy(&self, factor: f64) {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = self.entries.write();
         for entry in entries.iter_mut() {
             entry.energy = ((entry.energy as f64) * factor) as usize;
         }
@@ -231,7 +231,7 @@ impl Corpus {
     /// Save corpus to disk
     pub fn save(&self) -> anyhow::Result<()> {
         if let Some(ref path) = self.persistence_path {
-            let entries = self.entries.read().unwrap();
+            let entries = self.entries.read();
             let data = serde_json::to_string_pretty(&SerializableCorpus::from_entries(&entries))?;
             std::fs::create_dir_all(path)?;
             std::fs::write(path.join("corpus.json"), data)?;
@@ -248,8 +248,8 @@ impl Corpus {
                 let data = std::fs::read_to_string(&corpus_file)?;
                 let serializable: SerializableCorpus = serde_json::from_str(&data)?;
 
-                let mut entries = self.entries.write().unwrap();
-                let mut index = self.coverage_index.write().unwrap();
+                let mut entries = self.entries.write();
+                let mut index = self.coverage_index.write();
 
                 for (i, entry) in serializable.to_entries().into_iter().enumerate() {
                     index.insert(entry.coverage_hash, i);
@@ -267,7 +267,7 @@ impl Corpus {
     /// Uses greedy set cover algorithm to remove redundant test cases.
     /// Returns statistics about the minimization.
     pub fn minimize(&self) -> minimizer::MinimizationStats {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = self.entries.write();
         let original_size = entries.len();
 
         if original_size == 0 {
@@ -281,7 +281,7 @@ impl Corpus {
         let minimized_size = minimized.len();
 
         // Rebuild the corpus with minimized entries
-        let mut index = self.coverage_index.write().unwrap();
+        let mut index = self.coverage_index.write();
         entries.clear();
         index.clear();
 

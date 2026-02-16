@@ -50,7 +50,7 @@ impl FuzzingEngine {
             } else {
                 UnderconstrainedDetector::new(witness_pairs)
             };
-            self.add_attack_findings(&detector, witness_pairs, progress);
+            self.add_attack_findings(&detector, witness_pairs, progress)?;
         }
 
         // Determine public input positions in the test_case.inputs vector
@@ -174,7 +174,7 @@ impl FuzzingEngine {
                     location: None,
                 };
 
-                self.core.findings().write().unwrap().push(finding.clone());
+                self.with_findings_write(|store| store.push(finding.clone()))?;
 
                 if let Some(p) = progress {
                     p.log_finding("CRITICAL", &finding.description);
@@ -182,7 +182,7 @@ impl FuzzingEngine {
             }
         }
 
-        self.run_frozen_wire_detector(config, progress);
+        self.run_frozen_wire_detector(config, progress)?;
 
         Ok(())
     }
@@ -191,7 +191,7 @@ impl FuzzingEngine {
         &self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
-    ) {
+    ) -> anyhow::Result<()> {
         use crate::attacks::FrozenWireDetector;
         use std::collections::HashSet;
 
@@ -201,7 +201,7 @@ impl FuzzingEngine {
             .and_then(|v| v.as_bool())
             .or_value(false);
         if !enabled {
-            return;
+            return Ok(());
         }
 
         let min_samples = section
@@ -239,7 +239,7 @@ impl FuzzingEngine {
         let witnesses = self.collect_corpus_inputs(min_samples.max(1));
         if witnesses.is_empty() {
             tracing::warn!("Frozen wire detector skipped: no corpus witnesses available");
-            return;
+            return Ok(());
         }
 
         let detector = if constants.is_empty() {
@@ -251,7 +251,8 @@ impl FuzzingEngine {
         };
 
         let findings = detector.run(self.executor.as_ref(), &witnesses);
-        self.record_custom_findings(findings, AttackType::Underconstrained, progress);
+        self.record_custom_findings(findings, AttackType::Underconstrained, progress)?;
+        Ok(())
     }
 
     pub(super) fn resolve_public_input_positions(
@@ -442,7 +443,7 @@ impl FuzzingEngine {
             let tester = SoundnessTester::new()
                 .with_forge_attempts(forge_attempts)
                 .with_mutation_rate(mutation_rate);
-            self.add_attack_findings(&tester, forge_attempts, progress);
+            self.add_attack_findings(&tester, forge_attempts, progress)?;
         }
 
         let num_public = self.executor.num_public_inputs();
@@ -517,7 +518,7 @@ impl FuzzingEngine {
                         location: None,
                     };
 
-                    self.core.findings().write().unwrap().push(finding.clone());
+                    self.with_findings_write(|store| store.push(finding.clone()))?;
 
                     if let Some(p) = progress {
                         p.log_finding("CRITICAL", &finding.description);
@@ -533,9 +534,9 @@ impl FuzzingEngine {
             }
         }
 
-        self.run_proof_malleability_attack(config, progress);
-        self.run_determinism_check(config, progress);
-        self.run_setup_poisoning_attack(config, progress);
+        self.run_proof_malleability_attack(config, progress)?;
+        self.run_determinism_check(config, progress)?;
+        self.run_setup_poisoning_attack(config, progress)?;
 
         Ok(())
     }
@@ -544,7 +545,7 @@ impl FuzzingEngine {
         &self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
-    ) {
+    ) -> anyhow::Result<()> {
         use crate::attacks::ProofMalleabilityScanner;
 
         let section = config.get("proof_malleability");
@@ -553,7 +554,7 @@ impl FuzzingEngine {
             .and_then(|v| v.as_bool())
             .or_value(false);
         if !enabled {
-            return;
+            return Ok(());
         }
 
         let proof_samples = section
@@ -572,7 +573,7 @@ impl FuzzingEngine {
         let witnesses = self.collect_corpus_inputs(proof_samples.max(1));
         if witnesses.is_empty() {
             tracing::warn!("Proof malleability scanner skipped: no corpus witnesses available");
-            return;
+            return Ok(());
         }
 
         let scanner = ProofMalleabilityScanner::new()
@@ -581,14 +582,15 @@ impl FuzzingEngine {
             .with_structured_mutations(structured_mutations);
 
         let findings = scanner.run(self.executor.as_ref(), &witnesses);
-        self.record_custom_findings(findings, AttackType::Soundness, progress);
+        self.record_custom_findings(findings, AttackType::Soundness, progress)?;
+        Ok(())
     }
 
     pub(super) fn run_determinism_check(
         &self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
-    ) {
+    ) -> anyhow::Result<()> {
         use crate::attacks::DeterminismOracle;
 
         let section = config.get("determinism");
@@ -597,7 +599,7 @@ impl FuzzingEngine {
             .and_then(|v| v.as_bool())
             .or_value(false);
         if !enabled {
-            return;
+            return Ok(());
         }
 
         let repetitions = section
@@ -612,7 +614,7 @@ impl FuzzingEngine {
         let witnesses = self.collect_corpus_inputs(sample_count.max(1));
         if witnesses.is_empty() {
             tracing::warn!("Determinism oracle skipped: no corpus witnesses available");
-            return;
+            return Ok(());
         }
 
         let oracle = DeterminismOracle::new()
@@ -620,14 +622,15 @@ impl FuzzingEngine {
             .with_sample_count(sample_count);
 
         let findings = oracle.run(self.executor.as_ref(), &witnesses);
-        self.record_custom_findings(findings, AttackType::Soundness, progress);
+        self.record_custom_findings(findings, AttackType::Soundness, progress)?;
+        Ok(())
     }
 
     pub(super) fn run_setup_poisoning_attack(
         &self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
-    ) {
+    ) -> anyhow::Result<()> {
         use crate::attacks::SetupPoisoningDetector;
         use std::path::PathBuf;
 
@@ -637,7 +640,7 @@ impl FuzzingEngine {
             .and_then(|v| v.as_bool())
             .or_value(false);
         if !enabled {
-            return;
+            return Ok(());
         }
 
         let attempts = section
@@ -645,7 +648,7 @@ impl FuzzingEngine {
             .and_then(|v| v.as_u64())
             .or_value(10) as usize;
         if attempts == 0 {
-            return;
+            return Ok(());
         }
 
         let ptau_a = section
@@ -657,15 +660,15 @@ impl FuzzingEngine {
 
         let Some(ptau_a) = ptau_a else {
             tracing::warn!("Trusted setup test skipped: missing ptau_file_a");
-            return;
+            return Ok(());
         };
         let Some(ptau_b) = ptau_b else {
             tracing::warn!("Trusted setup test skipped: missing ptau_file_b");
-            return;
+            return Ok(());
         };
         if ptau_a == ptau_b {
             tracing::warn!("Trusted setup test skipped: ptau_file_a == ptau_file_b");
-            return;
+            return Ok(());
         }
 
         if !std::path::Path::new(ptau_a).exists() {
@@ -673,14 +676,14 @@ impl FuzzingEngine {
                 "Trusted setup test skipped: ptau_file_a not found ({})",
                 ptau_a
             );
-            return;
+            return Ok(());
         }
         if !std::path::Path::new(ptau_b).exists() {
             tracing::warn!(
                 "Trusted setup test skipped: ptau_file_b not found ({})",
                 ptau_b
             );
-            return;
+            return Ok(());
         }
 
         let circuit_path = self
@@ -692,7 +695,7 @@ impl FuzzingEngine {
             .or_value("");
         if circuit_path.is_empty() {
             tracing::warn!("Trusted setup test skipped: invalid circuit path");
-            return;
+            return Ok(());
         }
 
         let backend = self.config.campaign.target.framework;
@@ -718,7 +721,7 @@ impl FuzzingEngine {
                     "Trusted setup test skipped: failed to create executor A ({})",
                     e
                 );
-                return;
+                return Ok(());
             }
         };
 
@@ -734,19 +737,20 @@ impl FuzzingEngine {
                     "Trusted setup test skipped: failed to create executor B ({})",
                     e
                 );
-                return;
+                return Ok(());
             }
         };
 
         let witnesses = self.collect_corpus_inputs(attempts.max(1));
         if witnesses.is_empty() {
             tracing::warn!("Trusted setup test skipped: no corpus witnesses available");
-            return;
+            return Ok(());
         }
 
         let detector = SetupPoisoningDetector::new().with_attempts(attempts);
         let findings = detector.run(executor_a.as_ref(), executor_b.as_ref(), &witnesses);
-        self.record_custom_findings(findings, AttackType::Soundness, progress);
+        self.record_custom_findings(findings, AttackType::Soundness, progress)?;
+        Ok(())
     }
 
     pub(super) async fn run_arithmetic_attack(
@@ -775,7 +779,7 @@ impl FuzzingEngine {
         {
             use crate::attacks::ArithmeticTester;
             let tester = ArithmeticTester::new().with_test_values(test_values.clone());
-            self.add_attack_findings(&tester, test_values.len(), progress);
+            self.add_attack_findings(&tester, test_values.len(), progress)?;
         }
 
         let field_modulus = self.get_field_modulus();
@@ -811,7 +815,7 @@ impl FuzzingEngine {
                     location: None,
                 };
 
-                self.core.findings().write().unwrap().push(finding.clone());
+                self.with_findings_write(|store| store.push(finding.clone()))?;
 
                 if let Some(p) = progress {
                     p.log_finding("HIGH", &finding.description);
@@ -840,7 +844,7 @@ impl FuzzingEngine {
         {
             use crate::attacks::CollisionDetector;
             let detector = CollisionDetector::new(samples);
-            self.add_attack_findings(&detector, samples, progress);
+            self.add_attack_findings(&detector, samples, progress)?;
         }
 
         // Generate and execute in parallel
@@ -910,7 +914,7 @@ impl FuzzingEngine {
                             location: None,
                         };
 
-                        self.core.findings().write().unwrap().push(finding.clone());
+                        self.with_findings_write(|store| store.push(finding.clone()))?;
 
                         if let Some(p) = progress {
                             p.log_finding("CRITICAL", &finding.description);
@@ -926,7 +930,7 @@ impl FuzzingEngine {
             }
         }
 
-        self.run_nullifier_replay_attack(config, progress);
+        self.run_nullifier_replay_attack(config, progress)?;
 
         Ok(())
     }
@@ -935,7 +939,7 @@ impl FuzzingEngine {
         &self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
-    ) {
+    ) -> anyhow::Result<()> {
         use crate::attacks::NullifierReplayScanner;
 
         let section = config.get("nullifier_replay");
@@ -944,7 +948,7 @@ impl FuzzingEngine {
             .and_then(|v| v.as_bool())
             .or_value(false);
         if !enabled {
-            return;
+            return Ok(());
         }
 
         let replay_attempts = section
@@ -989,11 +993,12 @@ impl FuzzingEngine {
         let witnesses = self.collect_corpus_inputs(base_samples.max(1));
         if witnesses.is_empty() {
             tracing::warn!("Nullifier replay scanner skipped: no corpus witnesses available");
-            return;
+            return Ok(());
         }
 
         let findings = scanner.run(self.executor.as_ref(), &witnesses);
-        self.record_custom_findings(findings, AttackType::Collision, progress);
+        self.record_custom_findings(findings, AttackType::Collision, progress)?;
+        Ok(())
     }
 
     pub(super) async fn run_boundary_attack(
@@ -1017,7 +1022,7 @@ impl FuzzingEngine {
             let tester = BoundaryTester::new()
                 .with_modulus(self.get_field_modulus())
                 .with_custom_values(test_values.clone());
-            self.add_attack_findings(&tester, test_values.len(), progress);
+            self.add_attack_findings(&tester, test_values.len(), progress)?;
         }
 
         let field_modulus = self.get_field_modulus();
@@ -1051,7 +1056,7 @@ impl FuzzingEngine {
             }
         }
 
-        self.run_canonicalization_attack(config, progress);
+        self.run_canonicalization_attack(config, progress)?;
 
         Ok(())
     }
@@ -1060,7 +1065,7 @@ impl FuzzingEngine {
         &self,
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
-    ) {
+    ) -> anyhow::Result<()> {
         use crate::attacks::CanonicalizationChecker;
 
         let section = config.get("canonicalization");
@@ -1069,7 +1074,7 @@ impl FuzzingEngine {
             .and_then(|v| v.as_bool())
             .or_value(false);
         if !enabled {
-            return;
+            return Ok(());
         }
 
         let sample_count = section
@@ -1092,7 +1097,7 @@ impl FuzzingEngine {
         let witnesses = self.collect_corpus_inputs(sample_count.max(1));
         if witnesses.is_empty() {
             tracing::warn!("Canonicalization checker skipped: no corpus witnesses available");
-            return;
+            return Ok(());
         }
 
         let checker = CanonicalizationChecker::new()
@@ -1102,7 +1107,8 @@ impl FuzzingEngine {
             .with_negative_zero(test_negative_zero);
 
         let findings = checker.run(self.executor.as_ref(), &witnesses);
-        self.record_custom_findings(findings, AttackType::Boundary, progress);
+        self.record_custom_findings(findings, AttackType::Boundary, progress)?;
+        Ok(())
     }
 
     pub(super) async fn run_verification_fuzzing_attack(
@@ -1146,11 +1152,7 @@ impl FuzzingEngine {
         let findings = fuzzer.fuzz(&self.executor, &mut rng);
 
         if !findings.is_empty() {
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(findings.iter().cloned());
-            }
+            self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
             if let Some(p) = progress {
                 for finding in &findings {
                     p.log_finding(&format!("{:?}", finding.severity), &finding.description);
@@ -1207,11 +1209,7 @@ impl FuzzingEngine {
         let findings = fuzzer.fuzz(&self.executor, &mut rng);
 
         if !findings.is_empty() {
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(findings.iter().cloned());
-            }
+            self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
             if let Some(p) = progress {
                 for finding in &findings {
                     p.log_finding(&format!("{:?}", finding.severity), &finding.description);
@@ -1400,7 +1398,7 @@ impl FuzzingEngine {
                     cross_backend_samples,
                     cross_backend_tolerance_bits,
                     progress,
-                );
+                )?;
             } else {
                 tracing::warn!(
                     "Cross-backend differential skipped: fewer than two active executors"
@@ -1448,11 +1446,7 @@ impl FuzzingEngine {
                     location: None,
                 })
                 .collect();
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(findings.iter().cloned());
-            }
+            self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
             if let Some(p) = progress {
                 for finding in &findings {
                     p.log_finding("MEDIUM", &finding.description);
@@ -1476,17 +1470,17 @@ impl FuzzingEngine {
         sample_count: usize,
         tolerance_bits: usize,
         progress: Option<&ProgressReporter>,
-    ) {
+    ) -> anyhow::Result<()> {
         use crate::attacks::CrossBackendDifferential;
 
         if sample_count == 0 {
-            return;
+            return Ok(());
         }
 
         let witnesses = self.collect_corpus_inputs(sample_count.max(1));
         if witnesses.is_empty() {
             tracing::warn!("Cross-backend differential skipped: no corpus witnesses available");
-            return;
+            return Ok(());
         }
 
         let oracle = CrossBackendDifferential::new()
@@ -1494,7 +1488,8 @@ impl FuzzingEngine {
             .with_tolerance_bits(tolerance_bits);
 
         let findings = oracle.run(executor_a.as_ref(), executor_b.as_ref(), &witnesses);
-        self.record_custom_findings(findings, AttackType::Differential, progress);
+        self.record_custom_findings(findings, AttackType::Differential, progress)?;
+        Ok(())
     }
 
     pub(super) async fn run_circuit_composition_attack(
@@ -1560,11 +1555,7 @@ impl FuzzingEngine {
         let findings = multi_fuzzer.run(&mut rng);
 
         if !findings.is_empty() {
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(findings.iter().cloned());
-            }
+            self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
             if let Some(p) = progress {
                 for finding in &findings {
                     p.log_finding(&format!("{:?}", finding.severity), &finding.description);
@@ -1653,11 +1644,7 @@ impl FuzzingEngine {
 
         let findings = analyzer.to_findings();
         if !findings.is_empty() {
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(findings.iter().cloned());
-            }
+            self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
             if let Some(p) = progress {
                 for finding in &findings {
                     p.log_finding(&format!("{:?}", finding.severity), &finding.description);
@@ -1713,7 +1700,7 @@ impl FuzzingEngine {
                 location: None,
             };
 
-            self.core.findings().write().unwrap().push(finding.clone());
+            self.with_findings_write(|store| store.push(finding.clone()))?;
             if let Some(p) = progress {
                 p.log_finding("MEDIUM", &finding.description);
             }
@@ -1772,7 +1759,7 @@ impl FuzzingEngine {
                         location: None,
                     };
 
-                    self.core.findings().write().unwrap().push(finding.clone());
+                    self.with_findings_write(|store| store.push(finding.clone()))?;
                     if let Some(p) = progress {
                         p.log_finding("HIGH", &finding.description);
                     }
@@ -1796,7 +1783,7 @@ impl FuzzingEngine {
         attack: &dyn AttackTrait,
         samples: usize,
         progress: Option<&ProgressReporter>,
-    ) -> usize {
+    ) -> anyhow::Result<usize> {
         let context = AttackContext::new(
             self.get_circuit_info(),
             samples,
@@ -1836,17 +1823,17 @@ impl FuzzingEngine {
 
         let count = findings.len();
         if count > 0 {
-            let findings_store = self.core.findings();
-            let mut store = findings_store.write().unwrap();
-            for finding in findings {
-                if let Some(p) = progress {
-                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            self.with_findings_write(|store| {
+                for finding in findings {
+                    if let Some(p) = progress {
+                        p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                    }
+                    store.push(finding);
                 }
-                store.push(finding);
-            }
+            })?;
         }
 
-        count
+        Ok(count)
     }
 
     pub(super) fn record_custom_findings(
@@ -1854,7 +1841,7 @@ impl FuzzingEngine {
         mut findings: Vec<Finding>,
         attack_type: AttackType,
         progress: Option<&ProgressReporter>,
-    ) -> usize {
+    ) -> anyhow::Result<usize> {
         let evidence_mode =
             Self::additional_bool(&self.config.campaign.parameters.additional, "evidence_mode")
                 .or_value(false);
@@ -1885,17 +1872,17 @@ impl FuzzingEngine {
 
         let count = findings.len();
         if count > 0 {
-            let findings_store = self.core.findings();
-            let mut store = findings_store.write().unwrap();
-            for finding in findings {
-                if let Some(p) = progress {
-                    p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+            self.with_findings_write(|store| {
+                for finding in findings {
+                    if let Some(p) = progress {
+                        p.log_finding(&format!("{:?}", finding.severity), &finding.description);
+                    }
+                    store.push(finding);
                 }
-                store.push(finding);
-            }
+            })?;
         }
 
-        count
+        Ok(count)
     }
 
     pub(super) fn poc_is_empty(poc: &ProofOfConcept) -> bool {
@@ -2125,7 +2112,7 @@ impl FuzzingEngine {
 
         if !findings.is_empty() {
             let kept =
-                self.record_custom_findings(findings, AttackType::ConstraintInference, progress);
+                self.record_custom_findings(findings, AttackType::ConstraintInference, progress)?;
             tracing::info!("Generated {} findings from constraint inference", kept);
         }
 
@@ -2154,7 +2141,7 @@ impl FuzzingEngine {
                 invariant_findings,
                 AttackType::ConstraintInference,
                 progress,
-            );
+            )?;
             tracing::info!("Generated {} findings from invariant enforcement", kept);
         }
 
@@ -2198,11 +2185,7 @@ impl FuzzingEngine {
 
             let findings = oracle.to_findings(&results);
             if !findings.is_empty() {
-                {
-                    let findings_store = self.core.findings();
-                    let mut store = findings_store.write().unwrap();
-                    store.extend(findings.iter().cloned());
-                }
+                self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
                 if let Some(p) = progress {
                     for finding in &findings {
                         p.log_finding(&format!("{:?}", finding.severity), &finding.description);
@@ -2300,7 +2283,7 @@ impl FuzzingEngine {
             .run(self.executor.as_ref(), &base_witness.inputs, &outputs)
             .await;
 
-        let _kept = self.record_custom_findings(findings, AttackType::ConstraintSlice, progress);
+        let _kept = self.record_custom_findings(findings, AttackType::ConstraintSlice, progress)?;
 
         if let Some(p) = progress {
             p.inc();
@@ -2349,11 +2332,7 @@ impl FuzzingEngine {
         let findings = oracle.run(self.executor.as_ref(), &initial_witnesses).await;
 
         if !findings.is_empty() {
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(findings.iter().cloned());
-            }
+            self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
             if let Some(p) = progress {
                 for finding in &findings {
                     p.log_finding(&format!("{:?}", finding.severity), &finding.description);
@@ -2432,11 +2411,7 @@ impl FuzzingEngine {
         let findings = detector.to_findings(&collisions);
 
         if !findings.is_empty() {
-            {
-                let findings_store = self.core.findings();
-                let mut store = findings_store.write().unwrap();
-                store.extend(findings.iter().cloned());
-            }
+            self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
             if let Some(p) = progress {
                 for finding in &findings {
                     p.log_finding(&format!("{:?}", finding.severity), &finding.description);

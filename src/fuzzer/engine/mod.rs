@@ -616,6 +616,21 @@ impl FuzzingEngine {
     /// # Ok(())
     /// # }
     /// ```
+    fn with_findings_write<R>(
+        &self,
+        apply: impl FnOnce(&mut Vec<Finding>) -> R,
+    ) -> anyhow::Result<R> {
+        let findings_store = self.core.findings();
+        let mut store = findings_store.write();
+        Ok(apply(&mut store))
+    }
+
+    fn with_findings_read<R>(&self, apply: impl FnOnce(&Vec<Finding>) -> R) -> anyhow::Result<R> {
+        let findings_store = self.core.findings();
+        let store = findings_store.read();
+        Ok(apply(&store))
+    }
+
     pub async fn run(&mut self, progress: Option<&ProgressReporter>) -> anyhow::Result<FuzzReport> {
         let start_time = Instant::now();
         self.core.set_start_time(start_time);
@@ -677,12 +692,12 @@ impl FuzzingEngine {
                     "Taint analysis found {} potential issues",
                     taint_findings.len()
                 );
-                for finding in taint_findings {
+                for finding in &taint_findings {
                     if let Some(p) = progress {
                         p.log_finding(&format!("{:?}", finding.severity), &finding.description);
                     }
-                    self.core.findings().write().unwrap().push(finding);
                 }
+                self.with_findings_write(|store| store.extend(taint_findings))?;
             }
         }
 
@@ -758,7 +773,7 @@ impl FuzzingEngine {
                 p.log_attack_start(&format!("{:?}", attack_config.attack_type));
             }
 
-            let findings_before = self.core.findings().read().unwrap().len();
+            let findings_before = self.with_findings_read(|store| store.len())?;
             let (plugin_name, plugin_explicit) = Self::resolve_attack_plugin(&attack_config);
             let mut plugin_ran = false;
             let mut attack_executed = false;
@@ -772,7 +787,7 @@ impl FuzzingEngine {
 
                 if let Some(plugin) = plugin {
                     let samples = Self::attack_samples(&attack_config.config);
-                    self.add_attack_findings(plugin, samples, progress);
+                    self.add_attack_findings(plugin, samples, progress)?;
                     plugin_ran = true;
                     attack_executed = true;
                 } else {
@@ -915,7 +930,7 @@ impl FuzzingEngine {
                 );
             }
 
-            let findings_after = self.core.findings().read().unwrap().len();
+            let findings_after = self.with_findings_read(|store| store.len())?;
             let new_findings = findings_after - findings_before;
 
             if let Some(p) = progress {
@@ -1043,7 +1058,7 @@ impl FuzzingEngine {
 
         // Generate report
         let elapsed = start_time.elapsed();
-        let mut findings = self.core.findings().read().unwrap().clone();
+        let mut findings = self.with_findings_read(Clone::clone)?;
 
         let additional = &self.config.campaign.parameters.additional;
         let evidence_mode = match Self::additional_bool(additional, "evidence_mode") {

@@ -329,7 +329,7 @@ mod tests {
             Arc::new(FixtureCircuitExecutor::new("circuit_c", 2, 0).with_outputs(2))
                 as Arc<dyn zk_core::CircuitExecutor>,
         );
-        ChainRunner::new(executors)
+        ChainRunner::new(executors).expect("failed to create chain runner")
     }
 
     #[test]

@@ -4,8 +4,9 @@
 
 use super::{NodeId, SerializableCorpusEntry};
 use crate::corpus::{CorpusEntry, SharedCorpus};
+use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 
 /// Strategy for corpus synchronization
@@ -73,6 +74,20 @@ pub struct CorpusSyncManager {
 }
 
 impl CorpusSyncManager {
+    fn read_lock<'a, T>(&self, lock: &'a RwLock<T>, name: &str) -> Result<RwLockReadGuard<'a, T>> {
+        lock.read()
+            .map_err(|e| anyhow::anyhow!("{} lock poisoned (read): {}", name, e))
+    }
+
+    fn write_lock<'a, T>(
+        &self,
+        lock: &'a RwLock<T>,
+        name: &str,
+    ) -> Result<RwLockWriteGuard<'a, T>> {
+        lock.write()
+            .map_err(|e| anyhow::anyhow!("{} lock poisoned (write): {}", name, e))
+    }
+
     pub fn new(corpus: SharedCorpus) -> Self {
         Self {
             corpus,
@@ -93,19 +108,19 @@ impl CorpusSyncManager {
     }
 
     /// Get entries to share with other nodes
-    pub fn get_entries_to_share(&self) -> Vec<SerializableCorpusEntry> {
-        let last_sync = *self.last_local_sync.read().unwrap();
+    pub fn get_entries_to_share(&self) -> Result<Vec<SerializableCorpusEntry>> {
+        let last_sync = *self.read_lock(&self.last_local_sync, "last_local_sync")?;
         let now = Instant::now();
 
         if now.duration_since(last_sync) < self.config.interval {
             // Not time to sync yet
-            return Vec::new();
+            return Ok(Vec::new());
         }
 
-        *self.last_local_sync.write().unwrap() = now;
+        *self.write_lock(&self.last_local_sync, "last_local_sync")? = now;
 
         let entries = self.corpus.all_entries();
-        let seen = self.seen_hashes.read().unwrap();
+        let seen = self.read_lock(&self.seen_hashes, "seen_hashes")?;
 
         let to_share: Vec<SerializableCorpusEntry> = match self.config.strategy {
             SyncStrategy::Full => entries.iter().map(SerializableCorpusEntry::from).collect(),
@@ -143,21 +158,24 @@ impl CorpusSyncManager {
 
         // Mark these as seen
         drop(seen);
-        let mut seen = self.seen_hashes.write().unwrap();
+        let mut seen = self.write_lock(&self.seen_hashes, "seen_hashes")?;
         for entry in &limited {
             seen.insert(entry.coverage_hash);
         }
 
         // Update stats
-        self.stats.write().unwrap().entries_shared += limited.len();
+        self.write_lock(&self.stats, "stats")?.entries_shared += limited.len();
 
-        limited
+        Ok(limited)
     }
 
     /// Receive entries from another node
-    pub fn receive_entries(&self, node_id: &str, entries: Vec<SerializableCorpusEntry>) {
-        let mut stats = self.stats.write().unwrap();
-        stats.entries_received += entries.len();
+    pub fn receive_entries(
+        &self,
+        node_id: &str,
+        entries: Vec<SerializableCorpusEntry>,
+    ) -> Result<()> {
+        self.write_lock(&self.stats, "stats")?.entries_received += entries.len();
 
         let mut added = 0;
         let mut duplicates = 0;
@@ -165,7 +183,7 @@ impl CorpusSyncManager {
         for serializable in entries {
             // Check for duplicates
             {
-                let seen = self.seen_hashes.read().unwrap();
+                let seen = self.read_lock(&self.seen_hashes, "seen_hashes")?;
                 if seen.contains(&serializable.coverage_hash) {
                     duplicates += 1;
                     continue;
@@ -175,9 +193,7 @@ impl CorpusSyncManager {
             // Convert and add to corpus
             if let Some(entry) = serializable.to_corpus_entry() {
                 // Mark as seen
-                self.seen_hashes
-                    .write()
-                    .unwrap()
+                self.write_lock(&self.seen_hashes, "seen_hashes")?
                     .insert(entry.coverage_hash);
 
                 // Add to corpus (will check for duplicates again internally)
@@ -185,9 +201,7 @@ impl CorpusSyncManager {
                     added += 1;
 
                     // Track remote entries
-                    self.remote_entries
-                        .write()
-                        .unwrap()
+                    self.write_lock(&self.remote_entries, "remote_entries")?
                         .entry(node_id.to_string())
                         .or_default()
                         .push(entry);
@@ -195,13 +209,14 @@ impl CorpusSyncManager {
             }
         }
 
-        stats.new_entries_from_sync += added;
-        stats.duplicate_entries += duplicates;
+        {
+            let mut stats = self.write_lock(&self.stats, "stats")?;
+            stats.new_entries_from_sync += added;
+            stats.duplicate_entries += duplicates;
+        }
 
         // Update last sync time for this node
-        self.last_sync
-            .write()
-            .unwrap()
+        self.write_lock(&self.last_sync, "last_sync")?
             .insert(node_id.to_string(), Instant::now());
 
         tracing::debug!(
@@ -211,6 +226,7 @@ impl CorpusSyncManager {
             added,
             duplicates
         );
+        Ok(())
     }
 
     /// Merge coverage bitmaps from remote nodes.
@@ -218,18 +234,20 @@ impl CorpusSyncManager {
     /// Performs a byte-level OR of `bitmap` into the local corpus coverage
     /// tracker.  Any newly-set bits are recorded so downstream scheduling can
     /// prioritise inputs that expanded global coverage.
-    pub fn merge_coverage(&self, node_id: &str, bitmap: &[u8]) {
+    pub fn merge_coverage(&self, node_id: &str, bitmap: &[u8]) -> Result<()> {
         if bitmap.is_empty() {
-            return;
+            return Ok(());
         }
 
-        let mut stats = self.stats.write().unwrap();
+        let mut stats = self.write_lock(&self.stats, "stats")?;
 
         // Build / extend the global bitmap inside the sync manager.
         // The corpus itself stores per-entry coverage hashes; the bitmap
         // here is the union across all remote nodes.
         let global = self.remote_coverage.get_or_init(|| RwLock::new(Vec::new()));
-        let mut global_bitmap = global.write().unwrap();
+        let mut global_bitmap = global
+            .write()
+            .map_err(|e| anyhow::anyhow!("remote_coverage lock poisoned (write): {}", e))?;
 
         if global_bitmap.len() < bitmap.len() {
             global_bitmap.resize(bitmap.len(), 0);
@@ -254,54 +272,61 @@ impl CorpusSyncManager {
             new_bits,
             global_bitmap.len(),
         );
+        Ok(())
     }
 
     /// Return the current global merged coverage bitmap (if any).
-    pub fn global_coverage_bitmap(&self) -> Vec<u8> {
+    pub fn global_coverage_bitmap(&self) -> Result<Vec<u8>> {
         match self.remote_coverage.get() {
-            Some(bitmap) => bitmap
+            Some(bitmap) => Ok(bitmap
                 .read()
-                .expect("remote coverage bitmap lock poisoned")
-                .clone(),
-            None => Vec::new(),
+                .map_err(|e| anyhow::anyhow!("remote_coverage lock poisoned (read): {}", e))?
+                .clone()),
+            None => Ok(Vec::new()),
         }
     }
 
     /// Get entries received from a specific node
-    pub fn get_remote_entries(&self, node_id: &str) -> Vec<CorpusEntry> {
-        let entries = self.remote_entries.read().unwrap().get(node_id).cloned();
+    pub fn get_remote_entries(&self, node_id: &str) -> Result<Vec<CorpusEntry>> {
+        let entries = self
+            .read_lock(&self.remote_entries, "remote_entries")?
+            .get(node_id)
+            .cloned();
         match entries {
-            Some(value) => value,
-            None => Vec::new(),
+            Some(value) => Ok(value),
+            None => Ok(Vec::new()),
         }
     }
 
     /// Get synchronization statistics
-    pub fn stats(&self) -> SyncStats {
-        self.stats.read().unwrap().clone()
+    pub fn stats(&self) -> Result<SyncStats> {
+        Ok(self.read_lock(&self.stats, "stats")?.clone())
     }
 
     /// Reset synchronization state
-    pub fn reset(&self) {
-        self.remote_entries.write().unwrap().clear();
-        self.seen_hashes.write().unwrap().clear();
-        self.last_sync.write().unwrap().clear();
-        self.pending_share.write().unwrap().clear();
-        *self.stats.write().unwrap() = SyncStats::default();
+    pub fn reset(&self) -> Result<()> {
+        self.write_lock(&self.remote_entries, "remote_entries")?
+            .clear();
+        self.write_lock(&self.seen_hashes, "seen_hashes")?.clear();
+        self.write_lock(&self.last_sync, "last_sync")?.clear();
+        self.write_lock(&self.pending_share, "pending_share")?
+            .clear();
+        *self.write_lock(&self.stats, "stats")? = SyncStats::default();
+        Ok(())
     }
 
     /// Check if should sync with a node
-    pub fn should_sync_with(&self, node_id: &str) -> bool {
-        let last_sync = self.last_sync.read().unwrap();
+    pub fn should_sync_with(&self, node_id: &str) -> Result<bool> {
+        let last_sync = self.read_lock(&self.last_sync, "last_sync")?;
         match last_sync.get(node_id) {
-            Some(last) => last.elapsed() >= self.config.interval,
-            None => true,
+            Some(last) => Ok(last.elapsed() >= self.config.interval),
+            None => Ok(true),
         }
     }
 
     /// Get number of unique entries across all nodes
-    pub fn global_corpus_size(&self) -> usize {
-        self.seen_hashes.read().unwrap().len()
+    pub fn global_corpus_size(&self) -> Result<usize> {
+        Ok(self.read_lock(&self.seen_hashes, "seen_hashes")?.len())
     }
 }
 
@@ -424,7 +449,7 @@ mod tests {
     fn test_sync_manager_creation() {
         let corpus = create_corpus(1000);
         let manager = CorpusSyncManager::new(corpus);
-        assert_eq!(manager.global_corpus_size(), 0);
+        assert_eq!(manager.global_corpus_size().expect("size failed"), 0);
     }
 
     #[test]
@@ -447,8 +472,10 @@ mod tests {
             },
         ];
 
-        manager.receive_entries("node-1", entries);
-        assert_eq!(manager.global_corpus_size(), 2);
+        manager
+            .receive_entries("node-1", entries)
+            .expect("receive failed");
+        assert_eq!(manager.global_corpus_size().expect("size failed"), 2);
     }
 
     #[test]

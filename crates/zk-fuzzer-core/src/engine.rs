@@ -8,11 +8,12 @@ use crate::power_schedule::{PowerScheduler, TestCaseMetrics};
 use crate::structure_aware::{Splicer, StructureAwareMutator};
 use crate::FuzzingStats;
 use anyhow::{anyhow, Result};
+use parking_lot::RwLock;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc, RwLock,
+    Arc,
 };
 use std::time::{Duration, Instant};
 use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Finding, TestCase, TestMetadata};
@@ -85,18 +86,11 @@ impl FuzzingEngineCore {
     }
 
     pub fn stats(&self) -> FuzzingStats {
-        match self.stats.read() {
-            Ok(stats) => stats.clone(),
-            Err(err) => panic!("stats lock poisoned: {}", err),
-        }
+        self.stats.read().clone()
     }
 
     pub fn update_power_scheduler_globals(&mut self) {
-        let avg_time = self.avg_exec_time.read();
-        let avg_time = match avg_time {
-            Ok(value) => *value,
-            Err(err) => panic!("avg_exec_time lock poisoned: {}", err),
-        };
+        let avg_time = *self.avg_exec_time.read();
         let total_edges = self.coverage.unique_constraints_hit() as u64;
         self.power_scheduler.update_globals(avg_time, total_edges);
     }
@@ -229,18 +223,20 @@ impl FuzzingEngineCore {
 
         self.execution_count.fetch_add(1, Ordering::Relaxed);
 
-        if let Ok(mut avg_time) = self.avg_exec_time.write() {
+        {
+            let mut avg_time = self.avg_exec_time.write();
             let current_avg_micros = avg_time.as_micros() as f64;
             let new_exec_micros = exec_time.as_micros() as f64;
             let updated_avg = current_avg_micros * 0.9 + new_exec_micros * 0.1;
             *avg_time = Duration::from_micros(updated_avg as u64);
         }
 
-        if let Ok(mut stats) = self.stats.write() {
+        {
+            let mut stats = self.stats.write();
             stats.executions = self.execution_count.load(Ordering::Relaxed);
             stats.corpus_size = self.corpus.len();
-            stats.crashes = self.findings.read().unwrap().len() as u64;
-            stats.unique_crashes = self.findings.read().unwrap().len() as u64;
+            stats.crashes = self.findings.read().len() as u64;
+            stats.unique_crashes = self.findings.read().len() as u64;
             stats.coverage_percentage = self.coverage.coverage_percentage();
             if let Some(start) = self.start_time {
                 stats.update_exec_rate(start);
@@ -264,9 +260,8 @@ impl FuzzingEngineCore {
             let entry = CorpusEntry::new(test_case.clone(), result.coverage.coverage_hash)
                 .with_new_coverage();
             if self.corpus.add(entry) {
-                if let Ok(mut stats) = self.stats.write() {
-                    stats.new_coverage_count += 1;
-                }
+                let mut stats = self.stats.write();
+                stats.new_coverage_count += 1;
             }
         }
 
@@ -296,7 +291,7 @@ impl FuzzingEngineCore {
 
             let oracle_findings = self.run_oracles(test_case, &result.outputs, constraint_count);
             if !oracle_findings.is_empty() {
-                let mut findings = self.findings.write().unwrap();
+                let mut findings = self.findings.write();
                 findings.extend(oracle_findings);
             }
         }
@@ -340,7 +335,7 @@ impl FuzzingEngineCore {
         }
 
         if !findings.is_empty() {
-            let mut stored = self.findings.write().unwrap();
+            let mut stored = self.findings.write();
             stored.extend(findings.clone());
         }
 

@@ -6,7 +6,7 @@ impl FuzzingEngine {
         &self,
         violation: &crate::fuzzer::invariant_checker::Violation,
         test_case: &TestCase,
-    ) {
+    ) -> anyhow::Result<()> {
         use zk_core::{Finding, ProofOfConcept};
 
         let severity = match violation.severity.to_lowercase().as_str() {
@@ -40,9 +40,8 @@ impl FuzzingEngine {
             location: Some(format!("Invariant: {}", violation.invariant_name)),
         };
 
-        if let Ok(mut findings) = self.core.findings().write() {
-            findings.push(finding);
-        }
+        self.with_findings_write(|findings| findings.push(finding))?;
+        Ok(())
     }
 
     pub(super) fn severity_from_invariant(

@@ -1073,12 +1073,10 @@ impl CircuitExecutor for NoirExecutor {
         match self.target.execute(inputs) {
             Ok(outputs) => {
                 let coverage = match self.build_witness_with_outputs(inputs, &outputs) {
-                    Ok(witness) => {
-                        match coverage_from_results(self.check_constraints(&witness)) {
-                            Some(coverage) => coverage,
-                            None => ExecutionCoverage::with_output_hash(&outputs),
-                        }
-                    }
+                    Ok(witness) => match coverage_from_results(self.check_constraints(&witness)) {
+                        Some(coverage) => coverage,
+                        None => ExecutionCoverage::with_output_hash(&outputs),
+                    },
                     Err(err) => {
                         tracing::warn!(
                             "Skipping Noir constraint checks due to witness safety validation: {}",

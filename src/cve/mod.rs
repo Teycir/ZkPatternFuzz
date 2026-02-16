@@ -1152,7 +1152,9 @@ impl CveOracle {
             database,
             active_patterns,
             nullifier_oracle: Mutex::new(NullifierOracle::new(oracle_config.clone())),
-            merkle_oracle: Mutex::new(MerkleOracle::new(oracle_config.clone()).with_expected_depth(20)),
+            merkle_oracle: Mutex::new(
+                MerkleOracle::new(oracle_config.clone()).with_expected_depth(20),
+            ),
             range_oracle: Mutex::new(RangeProofOracle::new(oracle_config.clone())),
             commitment_oracle: Mutex::new(CommitmentOracle::new(oracle_config)),
         }
@@ -1267,21 +1269,36 @@ impl CveOracle {
     ) -> Option<Finding> {
         match pattern.detection.oracle.as_str() {
             "signature_malleability" => self.check_signature_malleability(pattern, test_case),
-            "nullifier_collision" | "replay_protection" | "randomness_reuse"
-            | "linkability_analysis" => self.check_with_nullifier_oracle(pattern, test_case, output),
-            "merkle_soundness" | "state_transition" | "ordering_dependency" | "batch_soundness"
-            | "recursive_soundness" | "recursive_base_case" | "storage_soundness" => {
-                self.check_with_merkle_oracle(pattern, test_case, output)
+            "nullifier_collision"
+            | "replay_protection"
+            | "randomness_reuse"
+            | "linkability_analysis" => {
+                self.check_with_nullifier_oracle(pattern, test_case, output)
             }
-            "range_overflow" | "arithmetic_boundary" | "opcode_boundary" | "opcode_bounds"
-            | "accumulator_overflow" | "lookup_soundness" | "gate_activation"
-            | "gas_accounting" | "gas_analysis" | "price_manipulation" => {
-                self.check_with_range_oracle(pattern, test_case, output)
-            }
-            "vk_binding" | "fiat_shamir_binding" | "point_validation" | "cofactor_attack"
-            | "oracle_manipulation" | "information_leakage" | "timing_analysis" => {
-                self.check_with_commitment_oracle(pattern, test_case, output)
-            }
+            "merkle_soundness"
+            | "state_transition"
+            | "ordering_dependency"
+            | "batch_soundness"
+            | "recursive_soundness"
+            | "recursive_base_case"
+            | "storage_soundness" => self.check_with_merkle_oracle(pattern, test_case, output),
+            "range_overflow"
+            | "arithmetic_boundary"
+            | "opcode_boundary"
+            | "opcode_bounds"
+            | "accumulator_overflow"
+            | "lookup_soundness"
+            | "gate_activation"
+            | "gas_accounting"
+            | "gas_analysis"
+            | "price_manipulation" => self.check_with_range_oracle(pattern, test_case, output),
+            "vk_binding"
+            | "fiat_shamir_binding"
+            | "point_validation"
+            | "cofactor_attack"
+            | "oracle_manipulation"
+            | "information_leakage"
+            | "timing_analysis" => self.check_with_commitment_oracle(pattern, test_case, output),
             _ => None,
         }
     }
@@ -1315,7 +1332,6 @@ impl CveOracle {
         }
         None
     }
-
 }
 
 #[cfg(test)]

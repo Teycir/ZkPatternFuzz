@@ -84,7 +84,7 @@ impl FuzzingEngine {
                     execution_timeout
                 );
                 // Add to findings as potential DoS vulnerability
-                self.record_hang_finding(&test_case, exec_duration);
+                self.record_hang_finding(&test_case, exec_duration)?;
             }
 
             // Phase 0 Fix: Detect crashes (execution returned error/panic indicators)
@@ -96,13 +96,13 @@ impl FuzzingEngine {
                     result.error_message()
                 );
                 // Add to findings as potential crash vulnerability
-                self.record_crash_finding(&test_case, &result);
+                self.record_crash_finding(&test_case, &result)?;
             }
 
             // Phase 2A: Check invariants against every accepted witness
             if result.success {
                 accepted_count += 1;
-                self.check_invariants_against(&test_case, &result);
+                self.check_invariants_against(&test_case, &result)?;
             } else {
                 failed_count += 1;
                 if sample_errors.len() < 3 {
@@ -193,7 +193,7 @@ impl FuzzingEngine {
             "Continuous fuzzing complete: {} iterations in {:.2}s, {} findings, {} hangs, {} crashes, accepted={}, failed={}, corpus: {}",
             completed,
             start.elapsed().as_secs_f64(),
-            self.core.findings().read().unwrap().len(),
+            self.with_findings_read(|findings| findings.len())?,
             hang_count,
             crash_count,
             accepted_count,
@@ -235,7 +235,11 @@ impl FuzzingEngine {
     }
 
     /// Phase 0 Fix: Record a hang as a potential DoS finding
-    pub(super) fn record_hang_finding(&mut self, test_case: &TestCase, duration: Duration) {
+    pub(super) fn record_hang_finding(
+        &mut self,
+        test_case: &TestCase,
+        duration: Duration,
+    ) -> anyhow::Result<()> {
         use zk_core::{Finding, ProofOfConcept, Severity};
 
         let finding = Finding {
@@ -258,13 +262,16 @@ impl FuzzingEngine {
             )),
         };
 
-        if let Ok(mut findings) = self.core.findings().write() {
-            findings.push(finding);
-        }
+        self.with_findings_write(|findings| findings.push(finding))?;
+        Ok(())
     }
 
     /// Phase 0 Fix: Record a crash as a finding
-    pub(super) fn record_crash_finding(&mut self, test_case: &TestCase, result: &ExecutionResult) {
+    pub(super) fn record_crash_finding(
+        &mut self,
+        test_case: &TestCase,
+        result: &ExecutionResult,
+    ) -> anyhow::Result<()> {
         use zk_core::{Finding, ProofOfConcept, Severity};
 
         let error_msg = result
@@ -293,9 +300,8 @@ impl FuzzingEngine {
             )),
         };
 
-        if let Ok(mut findings) = self.core.findings().write() {
-            findings.push(finding);
-        }
+        self.with_findings_write(|findings| findings.push(finding))?;
+        Ok(())
     }
 
     /// Phase 2A: Check invariants against every accepted witness
@@ -311,10 +317,10 @@ impl FuzzingEngine {
         &mut self,
         test_case: &TestCase,
         result: &ExecutionResult,
-    ) {
+    ) -> anyhow::Result<()> {
         // Use cached checker to maintain uniqueness tracking state
         let Some(checker) = self.invariant_checker.as_mut() else {
-            return;
+            return Ok(());
         };
 
         // Check all invariants using cached state
@@ -322,7 +328,8 @@ impl FuzzingEngine {
 
         // Record violations as findings
         for violation in violations {
-            self.record_invariant_violation(&violation, test_case);
+            self.record_invariant_violation(&violation, test_case)?;
         }
+        Ok(())
     }
 }

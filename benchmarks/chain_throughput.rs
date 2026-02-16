@@ -22,7 +22,7 @@ fn create_chain_runner(num_circuits: usize, inputs_per_circuit: usize) -> ChainR
         executors.insert(name, Arc::new(executor));
     }
 
-    ChainRunner::new(executors)
+    ChainRunner::new(executors).expect("failed to create chain runner")
 }
 
 /// Create a chain spec with given length

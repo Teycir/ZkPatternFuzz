@@ -59,9 +59,8 @@ pub fn write_file_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
         }
     }
 
-    Err(last_err.unwrap_or_else(|| {
-        io::Error::other("failed to allocate temporary file for atomic write")
-    }))
+    Err(last_err
+        .unwrap_or_else(|| io::Error::other("failed to allocate temporary file for atomic write")))
 }
 
 #[cfg(test)]

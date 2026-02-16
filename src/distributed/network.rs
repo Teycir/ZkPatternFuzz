@@ -6,10 +6,11 @@ use super::{
     DistributedMessage, NodeCapabilities, NodeId, NodeStats, SerializableCorpusEntry, WorkResults,
     WorkUnitId,
 };
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -122,7 +123,7 @@ impl FuzzerNode {
 
     /// Start the node
     pub fn start(&mut self) -> anyhow::Result<()> {
-        *self.running.write().unwrap() = true;
+        *self.running.write() = true;
 
         match self.role {
             NodeRole::Coordinator => self.start_coordinator(),
@@ -148,7 +149,7 @@ impl FuzzerNode {
         let max_message_size = self.config.max_message_size;
 
         thread::spawn(move || {
-            while *running.read().unwrap() {
+            while *running.read() {
                 match listener.accept() {
                     Ok((stream, addr)) => {
                         tracing::info!("New worker connection from {}", addr);
@@ -225,7 +226,7 @@ impl FuzzerNode {
                 heartbeat_age_ms
             );
 
-            workers.write().unwrap().insert(node_id, connection);
+            workers.write().insert(node_id, connection);
         }
     }
 
@@ -347,12 +348,12 @@ impl FuzzerNode {
 
     /// Get number of connected workers (for coordinator)
     pub fn worker_count(&self) -> usize {
-        self.workers.read().unwrap().len()
+        self.workers.read().len()
     }
 
     /// Stop the node
     pub fn stop(&mut self) {
-        *self.running.write().unwrap() = false;
+        *self.running.write() = false;
         self.coordinator_connection = None;
     }
 

@@ -30,10 +30,11 @@
 //! ```
 
 use anyhow::{Context, Result};
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Framework};
 
@@ -165,19 +166,17 @@ impl IsolationTelemetry {
             _ => {}
         }
 
-        if let Ok(mut events) = self.events.lock() {
-            if events.len() >= self.max_events {
-                events.pop_front();
-            }
-            events.push_back(event);
+        let mut events = self.events.lock();
+        if events.len() >= self.max_events {
+            events.pop_front();
         }
+        events.push_back(event);
     }
 
     /// Get recent events
     pub fn recent_events(&self, count: usize) -> Vec<IsolationEvent> {
         self.events
             .lock()
-            .expect("isolation telemetry events mutex poisoned")
             .iter()
             .rev()
             .take(count)
@@ -231,7 +230,7 @@ impl CrashRecoveryState {
 
     /// Record a crash for a circuit
     pub fn record_crash(&self, circuit_id: &str) -> usize {
-        let mut crashes = self.consecutive_crashes.write().unwrap();
+        let mut crashes = self.consecutive_crashes.write();
         let count = crashes.entry(circuit_id.to_string()).or_insert(0);
         *count += 1;
         *count
@@ -239,25 +238,25 @@ impl CrashRecoveryState {
 
     /// Reset crash count for a circuit (on successful execution)
     pub fn reset_crashes(&self, circuit_id: &str) {
-        let mut crashes = self.consecutive_crashes.write().unwrap();
+        let mut crashes = self.consecutive_crashes.write();
         crashes.remove(circuit_id);
     }
 
     /// Blacklist a circuit
     pub fn blacklist(&self, circuit_id: &str) {
-        let mut blacklisted = self.blacklisted.write().unwrap();
+        let mut blacklisted = self.blacklisted.write();
         blacklisted.insert(circuit_id.to_string());
     }
 
     /// Check if a circuit is blacklisted
     pub fn is_blacklisted(&self, circuit_id: &str) -> bool {
-        let blacklisted = self.blacklisted.read().unwrap();
+        let blacklisted = self.blacklisted.read();
         blacklisted.contains(circuit_id)
     }
 
     /// Check if we can restart (rate limiting)
     pub fn can_restart(&self, max_per_minute: usize) -> bool {
-        let mut times = self.restart_times.lock().unwrap();
+        let mut times = self.restart_times.lock();
         let now = Instant::now();
         let one_minute_ago = now - Duration::from_secs(60);
 
@@ -274,7 +273,7 @@ impl CrashRecoveryState {
 
     /// Record a restart
     pub fn record_restart(&self) {
-        let mut times = self.restart_times.lock().unwrap();
+        let mut times = self.restart_times.lock();
         times.push_back(Instant::now());
     }
 }
