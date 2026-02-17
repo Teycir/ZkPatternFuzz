@@ -2,6 +2,7 @@ use anyhow::Context;
 use clap::Parser;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -734,6 +735,71 @@ fn scan_output_suffix(template: &TemplateInfo, family: Family) -> String {
     format!("{}__{}", family.as_str(), normalized)
 }
 
+fn scan_output_root() -> PathBuf {
+    match dirs::home_dir() {
+        Some(home) => home.join("ZkFuzz"),
+        None => PathBuf::from("./ZkFuzz"),
+    }
+}
+
+fn list_scan_run_roots(artifacts_root: &Path) -> anyhow::Result<BTreeSet<String>> {
+    if !artifacts_root.exists() {
+        return Ok(BTreeSet::new());
+    }
+
+    let mut roots = BTreeSet::new();
+    for entry in fs::read_dir(artifacts_root).with_context(|| {
+        format!(
+            "Failed to read artifacts root '{}'",
+            artifacts_root.display()
+        )
+    })? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if !name.starts_with("scan_run") {
+            continue;
+        }
+        if entry.file_type()?.is_dir() {
+            roots.insert(name.to_string());
+        }
+    }
+
+    Ok(roots)
+}
+
+fn collect_observed_suffixes_for_roots(
+    artifacts_root: &Path,
+    run_roots: &BTreeSet<String>,
+) -> anyhow::Result<BTreeSet<String>> {
+    let mut observed = BTreeSet::new();
+    for run_root in run_roots {
+        let run_root_path = artifacts_root.join(run_root);
+        if !run_root_path.exists() {
+            continue;
+        }
+        for entry in fs::read_dir(&run_root_path).with_context(|| {
+            format!(
+                "Failed to read run artifact root '{}'",
+                run_root_path.display()
+            )
+        })? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else {
+                continue;
+            };
+            observed.insert(name.to_string());
+        }
+    }
+    Ok(observed)
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -788,6 +854,16 @@ fn main() -> anyhow::Result<()> {
         let chosen_family = validate_template_compatibility(&template, family_override)?;
         selected_with_family.push((template, chosen_family));
     }
+    let expected_suffixes: BTreeSet<String> = selected_with_family
+        .iter()
+        .map(|(template, family)| scan_output_suffix(template, *family))
+        .collect();
+    let expected_count = expected_suffixes.len();
+
+    println!(
+        "Gate 1/3 (expected templates): {}",
+        expected_count
+    );
 
     let bin_path = PathBuf::from("target/release/zk-fuzzer");
     if args.build && !bin_path.exists() {
@@ -809,6 +885,13 @@ fn main() -> anyhow::Result<()> {
         iterations: args.iterations,
         timeout: args.timeout,
         dry_run: args.dry_run,
+    };
+
+    let artifacts_root = scan_output_root().join(".scan_run_artifacts");
+    let baseline_roots = if args.dry_run {
+        BTreeSet::new()
+    } else {
+        list_scan_run_roots(&artifacts_root)?
     };
 
     use rayon::prelude::*;
@@ -853,8 +936,51 @@ fn main() -> anyhow::Result<()> {
         "Batch complete. Templates executed: {}, failures: {}",
         executed, failures
     );
+    let gate2_ok = executed == expected_count && failures == 0;
+    println!(
+        "Gate 2/3 (completion line): {}",
+        if gate2_ok {
+            format!("PASS (executed={}, failures=0)", executed)
+        } else {
+            format!(
+                "FAIL (expected={}, executed={}, failures={})",
+                expected_count, executed, failures
+            )
+        }
+    );
 
-    if failures > 0 {
+    let gate3_ok = if args.dry_run {
+        println!("Gate 3/3 (artifact reconciliation): SKIP (dry run)");
+        true
+    } else {
+        let after_roots = list_scan_run_roots(&artifacts_root)?;
+        let new_roots: BTreeSet<String> = after_roots
+            .difference(&baseline_roots)
+            .cloned()
+            .collect();
+        let observed_suffixes = collect_observed_suffixes_for_roots(&artifacts_root, &new_roots)?;
+        let missing: Vec<String> = expected_suffixes
+            .difference(&observed_suffixes)
+            .cloned()
+            .collect();
+        if missing.is_empty() {
+            println!(
+                "Gate 3/3 (artifact reconciliation): PASS (new run roots={}, observed={})",
+                new_roots.len(),
+                observed_suffixes.len()
+            );
+            true
+        } else {
+            eprintln!(
+                "Gate 3/3 (artifact reconciliation): FAIL (missing={})",
+                missing.len()
+            );
+            eprintln!("Missing suffixes: {}", missing.join(", "));
+            false
+        }
+    };
+
+    if !gate2_ok || !gate3_ok {
         std::process::exit(1);
     }
 
