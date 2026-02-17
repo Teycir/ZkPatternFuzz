@@ -22,6 +22,7 @@ Thumbs.db
 
 # Reports and outputs
 /reports/
+artifacts/
 *.log
 
 # Development tools
