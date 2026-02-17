@@ -21,6 +21,28 @@ fn should_require_dataset() -> bool {
         .unwrap_or(false)
 }
 
+fn cve_limit_from_env() -> Option<usize> {
+    std::env::var("ZKFUZZ_CVE_LIMIT")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|limit| *limit > 0)
+}
+
+fn cve_ids_from_env() -> Option<Vec<String>> {
+    let raw = std::env::var("ZKFUZZ_CVE_IDS").ok()?;
+    let ids: Vec<String> = raw
+        .split(',')
+        .map(|id| id.trim())
+        .filter(|id| !id.is_empty())
+        .map(|id| id.to_string())
+        .collect();
+    if ids.is_empty() {
+        None
+    } else {
+        Some(ids)
+    }
+}
+
 fn ensure_dataset_available(test_name: &str) -> bool {
     let dataset_dir = zkbugs_dataset_dir();
     if dataset_dir.exists() {
@@ -54,8 +76,23 @@ fn test_autonomous_cve_regression_tests() {
 
     let tests = db.generate_regression_tests();
     assert!(!tests.is_empty(), "Should have autonomous CVE tests");
+    let total_tests = tests.len();
+    let selected_tests: Vec<_> = if let Some(ids) = cve_ids_from_env() {
+        tests
+            .into_iter()
+            .filter(|test| ids.iter().any(|id| id == &test.cve_id))
+            .collect()
+    } else if let Some(limit) = cve_limit_from_env() {
+        tests.into_iter().take(limit).collect()
+    } else {
+        tests
+    };
 
-    println!("Found {} autonomous CVE regression tests", tests.len());
+    println!(
+        "Found {} autonomous CVE regression tests (running {})",
+        total_tests,
+        selected_tests.len()
+    );
     println!();
 
     let mut executed = 0;
@@ -63,7 +100,7 @@ fn test_autonomous_cve_regression_tests() {
     let mut failed = 0;
     let mut circuit_not_found = 0;
 
-    for test in &tests {
+    for test in &selected_tests {
         println!("Testing: {} - {}", test.cve_id, test.cve_name);
 
         let circuit_full_path = repo_root().join(&test.circuit_path);
@@ -109,7 +146,7 @@ fn test_autonomous_cve_regression_tests() {
     println!("========================================");
     println!("Autonomous CVE Test Summary");
     println!("========================================");
-    println!("Total CVE patterns: {}", tests.len());
+    println!("Total CVE patterns run: {}", selected_tests.len());
     println!("Executed: {}", executed);
     println!("Passed: {}", passed);
     println!("Failed: {}", failed);
@@ -131,7 +168,7 @@ fn test_autonomous_cve_regression_tests() {
     }
 
     assert!(
-        circuit_not_found < tests.len(),
+        circuit_not_found < selected_tests.len(),
         "At least some CVE test circuits should be available"
     );
 }

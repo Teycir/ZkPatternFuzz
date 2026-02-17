@@ -1,725 +1,85 @@
 ---
-invariants:
-- name: proof_type_nonzero
-  invariant_type: constraint
-  relation: proofType != 0
-  oracle: must_hold
-  severity: high
-  description: proofType should not be zero for valid query proofs.
-- name: proof_type_upper_bound
-  invariant_type: range
-  relation: proofType < 3
-  oracle: must_hold
-  severity: high
-  description: proofType must be in supported domain (signature/MTP selector family).
-- name: revocation_flag_binary
-  invariant_type: range
-  relation: isRevocationChecked < 2
-  oracle: must_hold
-  severity: high
-  description: Revocation check selector must be binary.
-- name: issuer_nonrev_noaux_binary
-  invariant_type: range
-  relation: issuerClaimNonRevMtpNoAux < 2
-  oracle: must_hold
-  severity: high
-  description: Issuer non-rev aux selector must be binary.
-- name: issuer_auth_nonrev_noaux_binary
-  invariant_type: range
-  relation: issuerAuthClaimNonRevMtpNoAux < 2
-  oracle: must_hold
-  severity: high
-  description: Issuer auth non-rev aux selector must be binary.
-- name: claim_path_noaux_binary
-  invariant_type: range
-  relation: claimPathMtpNoAux < 2
-  oracle: must_hold
-  severity: high
-  description: Claim path aux selector must be binary.
-- name: value_array_size_upper_bound
-  invariant_type: range
-  relation: valueArraySize <= 64
-  oracle: must_hold
-  severity: high
-  description: valueArraySize must stay within configured circuit bound.
-- name: nullifier_scope_uniqueness
-  invariant_type: uniqueness
-  relation: unique(nullifierSessionID) for each (userGenesisID, verifierID)
-  oracle: must_hold
-  severity: medium
-  description: Session nullifier should avoid repeated values per user/verifier scope.
-attacks:
-- type: underconstrained
-  description: Search for alternate witnesses with same public behavior.
-  config:
-    witness_pairs: 6000
-- type: soundness
-  description: 'Proof/verification soundness: try verifying a proof against mutated
-    public inputs.'
-  config:
-    forge_attempts: 200
-    mutation_rate: 0.1
-- type: constraint_inference
-  description: Infer missing semantic constraints with confirmation.
-  config:
-    confidence_threshold: 0.7
-    confirm_violations: true
-- type: constraint_slice
-  description: Cone-based dependency slicing.
-  config:
-    samples_per_cone: 8
-    base_witness_attempts: 8
-- type: spec_inference
-  description: Infer high-level specification constraints from IO behavior and test
-    violations.
-  config:
-    sample_count: 500
-- type: witness_collision
-  description: Detect distinct witnesses mapping to same public outputs.
-  config:
-    samples: 300
-    scope_public_inputs: true
-- type: metamorphic
-  description: Transform-based semantic consistency checks.
-  config:
-    num_tests: 120
-- type: boundary
-  description: Boundary value testing
-  config:
-    test_values:
-    - '0'
-    - '1'
-    - '2'
-    - '3'
-    - '4'
-    - '5'
-    - '6'
-    - '7'
-    - '8'
-    - '9'
-    - '10'
-    - '11'
-    - '15'
-    - '16'
-    - '31'
-    - '32'
-    - '63'
-    - '64'
-    - '65'
-    - p-1
-inputs:
-- name: proofType
-  type: field
-  fuzz_strategy: random
-- name: requestID
-  type: field
-  fuzz_strategy: random
-- name: issuerID
-  type: field
-  fuzz_strategy: random
-- name: isRevocationChecked
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevState
-  type: field
-  fuzz_strategy: random
-- name: timestamp
-  type: field
-  fuzz_strategy: random
-- name: claimSchema
-  type: field
-  fuzz_strategy: random
-- name: claimPathKey
-  type: field
-  fuzz_strategy: random
-- name: slotIndex
-  type: field
-  fuzz_strategy: random
-- name: operator
-  type: field
-  fuzz_strategy: random
-- name: value_0
-  type: field
-  fuzz_strategy: random
-- name: value_1
-  type: field
-  fuzz_strategy: random
-- name: value_2
-  type: field
-  fuzz_strategy: random
-- name: value_3
-  type: field
-  fuzz_strategy: random
-- name: value_4
-  type: field
-  fuzz_strategy: random
-- name: value_5
-  type: field
-  fuzz_strategy: random
-- name: value_6
-  type: field
-  fuzz_strategy: random
-- name: value_7
-  type: field
-  fuzz_strategy: random
-- name: value_8
-  type: field
-  fuzz_strategy: random
-- name: value_9
-  type: field
-  fuzz_strategy: random
-- name: value_10
-  type: field
-  fuzz_strategy: random
-- name: value_11
-  type: field
-  fuzz_strategy: random
-- name: value_12
-  type: field
-  fuzz_strategy: random
-- name: value_13
-  type: field
-  fuzz_strategy: random
-- name: value_14
-  type: field
-  fuzz_strategy: random
-- name: value_15
-  type: field
-  fuzz_strategy: random
-- name: value_16
-  type: field
-  fuzz_strategy: random
-- name: value_17
-  type: field
-  fuzz_strategy: random
-- name: value_18
-  type: field
-  fuzz_strategy: random
-- name: value_19
-  type: field
-  fuzz_strategy: random
-- name: value_20
-  type: field
-  fuzz_strategy: random
-- name: value_21
-  type: field
-  fuzz_strategy: random
-- name: value_22
-  type: field
-  fuzz_strategy: random
-- name: value_23
-  type: field
-  fuzz_strategy: random
-- name: value_24
-  type: field
-  fuzz_strategy: random
-- name: value_25
-  type: field
-  fuzz_strategy: random
-- name: value_26
-  type: field
-  fuzz_strategy: random
-- name: value_27
-  type: field
-  fuzz_strategy: random
-- name: value_28
-  type: field
-  fuzz_strategy: random
-- name: value_29
-  type: field
-  fuzz_strategy: random
-- name: value_30
-  type: field
-  fuzz_strategy: random
-- name: value_31
-  type: field
-  fuzz_strategy: random
-- name: value_32
-  type: field
-  fuzz_strategy: random
-- name: value_33
-  type: field
-  fuzz_strategy: random
-- name: value_34
-  type: field
-  fuzz_strategy: random
-- name: value_35
-  type: field
-  fuzz_strategy: random
-- name: value_36
-  type: field
-  fuzz_strategy: random
-- name: value_37
-  type: field
-  fuzz_strategy: random
-- name: value_38
-  type: field
-  fuzz_strategy: random
-- name: value_39
-  type: field
-  fuzz_strategy: random
-- name: value_40
-  type: field
-  fuzz_strategy: random
-- name: value_41
-  type: field
-  fuzz_strategy: random
-- name: value_42
-  type: field
-  fuzz_strategy: random
-- name: value_43
-  type: field
-  fuzz_strategy: random
-- name: value_44
-  type: field
-  fuzz_strategy: random
-- name: value_45
-  type: field
-  fuzz_strategy: random
-- name: value_46
-  type: field
-  fuzz_strategy: random
-- name: value_47
-  type: field
-  fuzz_strategy: random
-- name: value_48
-  type: field
-  fuzz_strategy: random
-- name: value_49
-  type: field
-  fuzz_strategy: random
-- name: value_50
-  type: field
-  fuzz_strategy: random
-- name: value_51
-  type: field
-  fuzz_strategy: random
-- name: value_52
-  type: field
-  fuzz_strategy: random
-- name: value_53
-  type: field
-  fuzz_strategy: random
-- name: value_54
-  type: field
-  fuzz_strategy: random
-- name: value_55
-  type: field
-  fuzz_strategy: random
-- name: value_56
-  type: field
-  fuzz_strategy: random
-- name: value_57
-  type: field
-  fuzz_strategy: random
-- name: value_58
-  type: field
-  fuzz_strategy: random
-- name: value_59
-  type: field
-  fuzz_strategy: random
-- name: value_60
-  type: field
-  fuzz_strategy: random
-- name: value_61
-  type: field
-  fuzz_strategy: random
-- name: value_62
-  type: field
-  fuzz_strategy: random
-- name: value_63
-  type: field
-  fuzz_strategy: random
-- name: valueArraySize
-  type: field
-  fuzz_strategy: random
-- name: verifierID
-  type: field
-  fuzz_strategy: random
-- name: nullifierSessionID
-  type: field
-  fuzz_strategy: random
-- name: userGenesisID
-  type: field
-  fuzz_strategy: random
-- name: profileNonce
-  type: field
-  fuzz_strategy: random
-- name: claimSubjectProfileNonce
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_0
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_1
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_2
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_3
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_4
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_5
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_6
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_7
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_8
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_9
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_10
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_11
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_12
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_13
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_14
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtp_15
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtpNoAux
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtpAuxHi
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevMtpAuxHv
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevClaimsTreeRoot
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevRevTreeRoot
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimNonRevRootsTreeRoot
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_0
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_1
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_2
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_3
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_4
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_5
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_6
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_7
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_8
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_9
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_10
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_11
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_12
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_13
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_14
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtp_15
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtpNoAux
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtpAuxHi
-  type: field
-  fuzz_strategy: random
-- name: claimPathMtpAuxHv
-  type: field
-  fuzz_strategy: random
-- name: claimPathValue
-  type: field
-  fuzz_strategy: random
-- name: issuerClaim_0
-  type: field
-  fuzz_strategy: random
-- name: issuerClaim_1
-  type: field
-  fuzz_strategy: random
-- name: issuerClaim_2
-  type: field
-  fuzz_strategy: random
-- name: issuerClaim_3
-  type: field
-  fuzz_strategy: random
-- name: issuerClaim_4
-  type: field
-  fuzz_strategy: random
-- name: issuerClaim_5
-  type: field
-  fuzz_strategy: random
-- name: issuerClaim_6
-  type: field
-  fuzz_strategy: random
-- name: issuerClaim_7
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_0
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_1
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_2
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_3
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_4
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_5
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_6
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_7
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_8
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_9
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_10
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_11
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_12
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_13
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_14
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimMtp_15
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimClaimsTreeRoot
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimRevTreeRoot
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimRootsTreeRoot
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimIdenState
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaim_0
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaim_1
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaim_2
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaim_3
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaim_4
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaim_5
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaim_6
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaim_7
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_0
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_1
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_2
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_3
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_4
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_5
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_6
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_7
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_8
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_9
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_10
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_11
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_12
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_13
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_14
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimMtp_15
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimsTreeRoot
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthRevTreeRoot
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthRootsTreeRoot
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthState
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_0
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_1
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_2
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_3
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_4
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_5
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_6
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_7
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_8
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_9
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_10
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_11
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_12
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_13
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_14
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtp_15
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtpNoAux
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtpAuxHi
-  type: field
-  fuzz_strategy: random
-- name: issuerAuthClaimNonRevMtpAuxHv
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimSignatureR8x
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimSignatureR8y
-  type: field
-  fuzz_strategy: random
-- name: issuerClaimSignatureS
-  type: field
-  fuzz_strategy: random
-- name: linkNonce
-  type: field
-  fuzz_strategy: random
+patterns:
+  - id: stealthdrop_nullifier_signature_binding
+    kind: regex
+    pattern: 'nullifier.*signature|signature.*nullifier'
+    message: 'Nullifier derived from signature context detected'
+  - id: stealthdrop_ecdsa_usage
+    kind: regex
+    pattern: '\bECDSA\b|\becdsa\b'
+    message: 'ECDSA usage detected'
+  - id: stealthdrop_airdrop_claim_context
+    kind: regex
+    pattern: '\bairdrop\b|\bclaim\b'
+    message: 'Airdrop claim flow detected'
 
-active_profile: fast_runtime
-profiles:
-  fast_runtime:
-    description: "Runtime profile for common-error batch runs"
-    constraint_guided_enabled: false
-    symbolic_enabled: false
-    oracle_validation: true
-    evidence_attack_budget_multiplier: 1
-    evidence_attack_budget_cap: 32
-    underconstrained_witness_pairs_cap: 32
-    circom_ptau_path: "/home/teycir/Repos/ZkPatternFuzz/reports/ptau/pot17_final.ptau"
+invariants:
+  - name: placeholder_output_reflexive
+    invariant_type: constraint
+    relation: output_0 == output_0
+    oracle: must_hold
+    severity: low
+    description: "Placeholder invariant for regex-driven CVE templates."
+
+attacks:
+  - type: underconstrained
+    description: Search for alternate witnesses with same public behavior.
+    config:
+      witness_pairs: 6000
+  - type: soundness
+    description: Proof/verification soundness checks.
+    config:
+      forge_attempts: 200
+      mutation_rate: 0.1
+  - type: constraint_inference
+    description: Infer missing semantic constraints with confirmation.
+    config:
+      confidence_threshold: 0.7
+      confirm_violations: true
+  - type: constraint_slice
+    description: Cone-based dependency slicing.
+    config:
+      samples_per_cone: 8
+      base_witness_attempts: 8
+  - type: spec_inference
+    description: Infer high-level specification constraints from IO behavior and test violations.
+    config:
+      sample_count: 500
+  - type: witness_collision
+    description: Detect distinct witnesses mapping to same public outputs.
+    config:
+      samples: 300
+      scope_public_inputs: true
+  - type: metamorphic
+    description: Transform-based semantic consistency checks.
+    config:
+      num_tests: 120
+  - type: boundary
+    description: Boundary value testing
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+        - "6"
+        - "7"
+        - "8"
+        - "9"
+        - "10"
+        - "11"
+        - "15"
+        - "16"
+        - "31"
+        - "32"
+        - "63"
+        - "64"
+        - "65"
+        - "255"
+
+inputs:
+  - name: input_0
+    type: field
+    fuzz_strategy: random

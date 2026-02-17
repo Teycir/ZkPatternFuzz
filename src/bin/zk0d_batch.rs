@@ -1,10 +1,13 @@
 use anyhow::Context;
+use chrono::Utc;
 use clap::Parser;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
 
 #[derive(Parser, Debug)]
 #[command(name = "zk0d_batch")]
@@ -150,6 +153,7 @@ struct ScanRunConfig<'a> {
     seed: u64,
     iterations: u64,
     timeout: u64,
+    scan_run_root: Option<&'a str>,
     dry_run: bool,
 }
 
@@ -612,6 +616,9 @@ fn run_scan(
 ) -> anyhow::Result<bool> {
     let family_str = family.as_str();
     let mut cmd = Command::new(run_cfg.bin_path);
+    if let Some(run_root) = run_cfg.scan_run_root {
+        cmd.env(SCAN_RUN_ROOT_ENV, run_root);
+    }
     cmd.arg("scan")
         .arg(&template.path)
         .arg("--family")
@@ -632,13 +639,21 @@ fn run_scan(
         .arg(run_cfg.timeout.to_string())
         .arg("--simple-progress");
 
-    cmd.arg("--output-suffix").arg(output_suffix);
+    // Validation dry-runs should not materialize scan output roots.
+    if !validate_only {
+        cmd.arg("--output-suffix").arg(output_suffix);
+    }
 
     if validate_only {
         cmd.arg("--dry-run");
     }
 
     if run_cfg.dry_run {
+        let suffix_arg = if !validate_only {
+            format!(" --output-suffix {}", output_suffix)
+        } else {
+            String::new()
+        };
         println!(
             "[DRY RUN] {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}",
             run_cfg.bin_path.display(),
@@ -651,7 +666,7 @@ fn run_scan(
             run_cfg.seed,
             run_cfg.iterations,
             run_cfg.timeout,
-            format!(" --output-suffix {}", output_suffix),
+            suffix_arg,
             if validate_only { " --dry-run" } else { "" }
         );
         return Ok(true);
@@ -884,7 +899,19 @@ fn main() -> anyhow::Result<()> {
         seed: args.seed,
         iterations: args.iterations,
         timeout: args.timeout,
+        scan_run_root: None,
         dry_run: args.dry_run,
+    };
+
+    // One batch command -> one scan_run root.
+    let batch_run_root = if args.dry_run {
+        None
+    } else {
+        Some(format!("scan_run{}", Utc::now().format("%Y%m%d_%H%M%S")))
+    };
+    let run_cfg = ScanRunConfig {
+        scan_run_root: batch_run_root.as_deref(),
+        ..run_cfg
     };
 
     let artifacts_root = scan_output_root().join(".scan_run_artifacts");

@@ -25,6 +25,7 @@ use crate::fuzzer::oracles::{
 use num_bigint::BigUint;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -189,16 +190,9 @@ pub struct CvePattern {
 impl CvePattern {
     /// Check if this CVE affects the given circuit
     pub fn affects_circuit(&self, circuit_name: &str) -> bool {
-        self.affected_circuits.iter().any(|ac| {
-            let pattern = &ac.pattern;
-            if pattern.contains('*') {
-                // Wildcard matching
-                let prefix = pattern.trim_end_matches('*');
-                circuit_name.contains(prefix)
-            } else {
-                circuit_name.contains(pattern)
-            }
-        })
+        self.affected_circuits
+            .iter()
+            .any(|ac| ac.matches_circuit(circuit_name))
     }
 
     /// Convert severity string to enum
@@ -250,6 +244,84 @@ pub struct AffectedCircuit {
     pub pattern: String,
     #[serde(default)]
     pub versions: Vec<String>,
+}
+
+impl AffectedCircuit {
+    fn matches_circuit(&self, circuit_name: &str) -> bool {
+        let pattern = self.pattern.trim();
+        if pattern.is_empty() {
+            return false;
+        }
+
+        if let Some(raw_regex) = parse_regex_pattern(pattern) {
+            return matches_regex(raw_regex, circuit_name);
+        }
+
+        if pattern.contains('*') || pattern.contains('?') {
+            let glob_regex = glob_like_to_regex(pattern);
+            return matches_regex(&glob_regex, circuit_name);
+        }
+
+        let pattern_lc = pattern.to_ascii_lowercase();
+        let circuit_lc = circuit_name.to_ascii_lowercase();
+        if circuit_lc.contains(&pattern_lc) {
+            return true;
+        }
+
+        // Resilient fallback for small naming/path differences such as
+        // `tornado-core` vs `tornado_core` vs `tornado/core`.
+        let normalized_pattern = normalize_circuit_token(pattern);
+        let normalized_circuit = normalize_circuit_token(circuit_name);
+        !normalized_pattern.is_empty() && normalized_circuit.contains(&normalized_pattern)
+    }
+}
+
+fn parse_regex_pattern(pattern: &str) -> Option<&str> {
+    let trimmed = pattern.trim();
+    if let Some(regex) = trimmed.strip_prefix("regex:") {
+        return Some(regex.trim());
+    }
+    if let Some(regex) = trimmed.strip_prefix("re:") {
+        return Some(regex.trim());
+    }
+    if trimmed.len() >= 2 && trimmed.starts_with('/') && trimmed.ends_with('/') {
+        return Some(&trimmed[1..trimmed.len() - 1]);
+    }
+    None
+}
+
+fn glob_like_to_regex(pattern: &str) -> String {
+    let mut out = String::with_capacity(pattern.len() + 8);
+    for ch in pattern.chars() {
+        match ch {
+            '*' => out.push_str(".*"),
+            '?' => out.push('.'),
+            '.' | '+' | '(' | ')' | '[' | ']' | '{' | '}' | '^' | '$' | '|' | '\\' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn matches_regex(pattern: &str, value: &str) -> bool {
+    match RegexBuilder::new(pattern).case_insensitive(true).build() {
+        Ok(re) => re.is_match(value),
+        Err(err) => {
+            tracing::warn!("Skipping invalid CVE affected_circuits regex '{}': {}", pattern, err);
+            false
+        }
+    }
+}
+
+fn normalize_circuit_token(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
 }
 
 /// Detection configuration for a CVE
@@ -1404,6 +1476,117 @@ vulnerabilities:
         assert!(pattern.affects_circuit("tornado-core"));
         assert!(pattern.affects_circuit("tornado-cash"));
         assert!(!pattern.affects_circuit("semaphore"));
+    }
+
+    #[test]
+    fn test_pattern_matching_supports_regex_prefix() {
+        let pattern = CvePattern {
+            id: "ZK-TEST-REGEX".to_string(),
+            name: "Regex Test".to_string(),
+            severity: "high".to_string(),
+            cvss_score: Some(8.0),
+            affected_circuits: vec![AffectedCircuit {
+                pattern: "regex:tornado[-_/]?core".to_string(),
+                versions: vec!["*".to_string()],
+            }],
+            sources: vec![],
+            description: "Test".to_string(),
+            detection: DetectionConfig {
+                oracle: "test".to_string(),
+                attack_type: "boundary".to_string(),
+                procedure: vec![],
+            },
+            regression_test: RegressionTestConfig {
+                enabled: true,
+                circuit_path: "test.circom".to_string(),
+                test_cases: vec![],
+                assertion: "".to_string(),
+            },
+            remediation: RemediationInfo {
+                description: "Test".to_string(),
+                code_example: None,
+                recommendations: vec![],
+                references: vec![],
+            },
+        };
+
+        assert!(pattern.affects_circuit("tornado-core"));
+        assert!(pattern.affects_circuit("Tornado_Core"));
+        assert!(pattern.affects_circuit("cat3_privacy/tornado/core/withdraw.circom"));
+    }
+
+    #[test]
+    fn test_pattern_matching_supports_glob_wildcards() {
+        let pattern = CvePattern {
+            id: "ZK-TEST-GLOB".to_string(),
+            name: "Glob Test".to_string(),
+            severity: "high".to_string(),
+            cvss_score: Some(8.0),
+            affected_circuits: vec![AffectedCircuit {
+                pattern: "circomlib/*eddsa*".to_string(),
+                versions: vec!["*".to_string()],
+            }],
+            sources: vec![],
+            description: "Test".to_string(),
+            detection: DetectionConfig {
+                oracle: "test".to_string(),
+                attack_type: "boundary".to_string(),
+                procedure: vec![],
+            },
+            regression_test: RegressionTestConfig {
+                enabled: true,
+                circuit_path: "test.circom".to_string(),
+                test_cases: vec![],
+                assertion: "".to_string(),
+            },
+            remediation: RemediationInfo {
+                description: "Test".to_string(),
+                code_example: None,
+                recommendations: vec![],
+                references: vec![],
+            },
+        };
+
+        assert!(pattern.affects_circuit("circomlib/eddsa.circom"));
+        assert!(pattern.affects_circuit("CIRCOMLIB/v2/eddsa_utils.circom"));
+        assert!(!pattern.affects_circuit("circomlib/poseidon.circom"));
+    }
+
+    #[test]
+    fn test_pattern_matching_is_resilient_to_separator_changes() {
+        let pattern = CvePattern {
+            id: "ZK-TEST-NORMALIZED".to_string(),
+            name: "Normalized Test".to_string(),
+            severity: "high".to_string(),
+            cvss_score: Some(8.0),
+            affected_circuits: vec![AffectedCircuit {
+                pattern: "zkevm-circuits".to_string(),
+                versions: vec!["*".to_string()],
+            }],
+            sources: vec![],
+            description: "Test".to_string(),
+            detection: DetectionConfig {
+                oracle: "test".to_string(),
+                attack_type: "boundary".to_string(),
+                procedure: vec![],
+            },
+            regression_test: RegressionTestConfig {
+                enabled: true,
+                circuit_path: "test.circom".to_string(),
+                test_cases: vec![],
+                assertion: "".to_string(),
+            },
+            remediation: RemediationInfo {
+                description: "Test".to_string(),
+                code_example: None,
+                recommendations: vec![],
+                references: vec![],
+            },
+        };
+
+        assert!(pattern.affects_circuit("zkevm_circuits"));
+        assert!(pattern.affects_circuit("cat2/rollups/zkevm.circuits/main.circom"));
+        assert!(!pattern.affects_circuit("tornado_core"));
     }
 
     #[test]

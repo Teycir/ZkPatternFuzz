@@ -36,13 +36,19 @@ impl FuzzingEngine {
 
         if let Some((base, idx)) = Self::split_bracket_index(clean) {
             aliases.insert(Self::normalize_input_name_key(base));
-            aliases.insert(Self::normalize_input_name_key(&format!("{}[{}]", base, idx)));
+            aliases.insert(Self::normalize_input_name_key(&format!(
+                "{}[{}]",
+                base, idx
+            )));
             aliases.insert(Self::normalize_input_name_key(&format!("{}_{}", base, idx)));
         }
 
         if let Some((base, idx)) = Self::split_underscore_index(clean) {
             aliases.insert(Self::normalize_input_name_key(base));
-            aliases.insert(Self::normalize_input_name_key(&format!("{}[{}]", base, idx)));
+            aliases.insert(Self::normalize_input_name_key(&format!(
+                "{}[{}]",
+                base, idx
+            )));
             aliases.insert(Self::normalize_input_name_key(&format!("{}_{}", base, idx)));
         }
 

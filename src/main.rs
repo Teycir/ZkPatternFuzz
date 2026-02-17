@@ -1576,12 +1576,14 @@ struct ScanRegexPatternSpec {
 struct ScanRegexPatternMatch {
     id: String,
     lines: Vec<usize>,
+    occurrences: usize,
 }
 
 #[derive(Debug, Clone, Default)]
 struct ScanRegexPatternSummary {
     total_patterns: usize,
     matched_patterns: usize,
+    total_occurrences: usize,
     matched_ids: Vec<String>,
     matches: Vec<ScanRegexPatternMatch>,
 }
@@ -1723,6 +1725,7 @@ fn load_scan_regex_patterns(pattern_path: &str) -> anyhow::Result<Vec<ScanRegexP
         validate_scan_regex_pattern_safety(&pattern.pattern)
             .with_context(|| format!("Unsafe regex for pattern '{}'", pattern.id))?;
         RegexBuilder::new(&pattern.pattern)
+            .case_insensitive(true)
             .size_limit(2 * 1024 * 1024)
             .dfa_size_limit(2 * 1024 * 1024)
             .build()
@@ -1785,6 +1788,7 @@ fn evaluate_loaded_scan_regex_patterns(
         );
 
         let regex = RegexBuilder::new(&pattern.pattern)
+            .case_insensitive(true)
             .size_limit(2 * 1024 * 1024)
             .dfa_size_limit(2 * 1024 * 1024)
             .build()
@@ -1798,7 +1802,9 @@ fn evaluate_loaded_scan_regex_patterns(
 
         if regex.is_match(&source) {
             let mut lines: Vec<usize> = Vec::new();
+            let mut occurrences = 0usize;
             for m in regex.find_iter(&source) {
+                occurrences += 1;
                 let line = match line_starts.binary_search(&m.start()) {
                     Ok(pos) => pos + 1,
                     Err(pos) => pos,
@@ -1808,10 +1814,12 @@ fn evaluate_loaded_scan_regex_patterns(
                 }
             }
             summary.matched_patterns += 1;
+            summary.total_occurrences += occurrences;
             summary.matched_ids.push(pattern.id.clone());
             summary.matches.push(ScanRegexPatternMatch {
                 id: pattern.id.clone(),
                 lines: lines.clone(),
+                occurrences,
             });
             if let Some(message) = pattern
                 .message
@@ -1819,17 +1827,39 @@ fn evaluate_loaded_scan_regex_patterns(
                 .map(|m| m.trim())
                 .filter(|m| !m.is_empty())
             {
-                println!("pattern hit {}: {} (lines: {:?})", pattern.id, message, lines);
+                println!(
+                    "pattern hit {}: {} (matches: {}, lines: {:?})",
+                    pattern.id, message, occurrences, lines
+                );
             } else {
-                println!("pattern hit {} (lines: {:?})", pattern.id, lines);
+                println!(
+                    "pattern hit {} (matches: {}, lines: {:?})",
+                    pattern.id, occurrences, lines
+                );
             }
         }
     }
     println!("PATTERN FILTER END");
+    let match_ratio = if summary.total_patterns == 0 {
+        0.0
+    } else {
+        (summary.matched_patterns as f64 / summary.total_patterns as f64) * 100.0
+    };
     println!(
-        "pattern summary: matched {}/{}",
-        summary.matched_patterns, summary.total_patterns
+        "pattern summary: matched {}/{} ({:.1}%), total regex hits: {}",
+        summary.matched_patterns, summary.total_patterns, match_ratio, summary.total_occurrences
     );
+    for hit in &summary.matches {
+        let frequency = if summary.total_occurrences == 0 {
+            0.0
+        } else {
+            (hit.occurrences as f64 / summary.total_occurrences as f64) * 100.0
+        };
+        println!(
+            "pattern frequency {}: {} hits ({:.1}%)",
+            hit.id, hit.occurrences, frequency
+        );
+    }
 
     Ok(summary)
 }
@@ -1837,7 +1867,6 @@ fn evaluate_loaded_scan_regex_patterns(
 #[derive(Debug, Clone, Copy, Default)]
 struct ScanFindingsSummary {
     findings_total: u64,
-    critical_findings: bool,
 }
 
 fn scan_default_output_dir() -> PathBuf {
@@ -1875,15 +1904,7 @@ fn read_scan_findings_summary_since(
         .or_else(|| metrics.get("chain_findings_total").and_then(|v| v.as_u64()))
         .or_else(|| metrics.get("total_findings").and_then(|v| v.as_u64()))
         .unwrap_or(0);
-    let critical_findings = metrics
-        .get("critical_findings")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    Some(ScanFindingsSummary {
-        findings_total,
-        critical_findings,
-    })
+    Some(ScanFindingsSummary { findings_total })
 }
 
 async fn run_scan_phase_with_progress<F>(
@@ -2029,15 +2050,27 @@ fn materialize_scan_pattern_campaign(
         let mut lines: Vec<String> = Vec::new();
         for hit in &summary.matches {
             if hit.lines.is_empty() {
-                lines.push(format!("pattern {} found", hit.id));
+                lines.push(format!(
+                    "pattern {} found ({} matches)",
+                    hit.id, hit.occurrences
+                ));
             } else {
-                lines.push(format!("pattern {} found in lines {:?}", hit.id, hit.lines));
+                lines.push(format!(
+                    "pattern {} found ({} matches) in lines {:?}",
+                    hit.id, hit.occurrences, hit.lines
+                ));
             }
         }
         if !lines.is_empty() {
             parameters.insert(
                 yaml_key("scan_pattern_summary_text"),
                 serde_yaml::Value::String(lines.join("\n")),
+            );
+            // Regex selector scans intentionally preserve static findings as scan evidence.
+            // Without this, strict evidence-mode filtering can hide valid selector hits.
+            parameters.insert(
+                yaml_key("min_evidence_confidence"),
+                serde_yaml::Value::String("low".to_string()),
             );
         }
     }
@@ -2196,10 +2229,7 @@ async fn run_scan(
             let summary =
                 read_scan_findings_summary_since(&output_dir, started_at).unwrap_or_default();
             println!("SCAN END");
-            println!(
-                "scan findings: {} (critical: {})",
-                summary.findings_total, summary.critical_findings
-            );
+            println!("scan findings: {}", summary.findings_total);
             run_result
         }
         ScanFamily::Multi => {
@@ -2221,10 +2251,7 @@ async fn run_scan(
             let summary =
                 read_scan_findings_summary_since(&output_dir, started_at).unwrap_or_default();
             println!("SCAN END");
-            println!(
-                "scan findings: {} (critical: {})",
-                summary.findings_total, summary.critical_findings
-            );
+            println!("scan findings: {}", summary.findings_total);
             run_result
         }
         ScanFamily::Auto => unreachable!("auto resolved above"),
@@ -2292,8 +2319,31 @@ fn apply_scan_output_suffix_if_present(config: &mut FuzzConfig) -> anyhow::Resul
     }
 
     let slug = sanitize_slug(trimmed);
-    let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-    let run_root = format!("scan_run{}", ts);
+    let run_root = if let Some(v) = read_optional_env("ZKF_SCAN_RUN_ROOT") {
+        let candidate = v.trim();
+        if candidate.is_empty() {
+            anyhow::bail!("ZKF_SCAN_RUN_ROOT is set but empty");
+        }
+        if !candidate.starts_with("scan_run") {
+            anyhow::bail!(
+                "ZKF_SCAN_RUN_ROOT must start with 'scan_run' (got '{}')",
+                candidate
+            );
+        }
+        if !candidate
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
+            anyhow::bail!(
+                "ZKF_SCAN_RUN_ROOT contains invalid characters: '{}'",
+                candidate
+            );
+        }
+        candidate.to_string()
+    } else {
+        let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        format!("scan_run{}", ts)
+    };
     let public_root = config.reporting.output_dir.join(&run_root);
     let artifacts_root = config
         .reporting

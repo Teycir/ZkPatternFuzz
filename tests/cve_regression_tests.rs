@@ -101,6 +101,35 @@ fn test_cve_pattern_matching() {
 }
 
 #[test]
+fn test_cve_pattern_matching_resilient_to_minor_target_changes() {
+    let db = CveDatabase::load(CVE_DATABASE_PATH).expect("Failed to load CVE database");
+
+    let tornado_variants = [
+        "Tornado_Core",
+        "cat3_privacy/tornado/core/circuits/withdraw.circom",
+        "cat3-privacy/tornado_core/withdraw",
+    ];
+    for variant in tornado_variants {
+        let matched = db.patterns_for_circuit(variant);
+        assert!(
+            !matched.is_empty(),
+            "Expected CVE matches for tornado variant: {}",
+            variant
+        );
+    }
+
+    let zkevm_variants = ["zkevm_circuits", "cat2/rollups/zkevm.circuits/main.circom"];
+    for variant in zkevm_variants {
+        let matched = db.patterns_for_circuit(variant);
+        assert!(
+            !matched.is_empty(),
+            "Expected CVE matches for zkevm variant: {}",
+            variant
+        );
+    }
+}
+
+#[test]
 fn test_cve_by_severity() {
     let db = CveDatabase::load(CVE_DATABASE_PATH).expect("Failed to load CVE database");
 

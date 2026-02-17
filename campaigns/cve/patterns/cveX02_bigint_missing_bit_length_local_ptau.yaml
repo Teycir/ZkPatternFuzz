@@ -1,17 +1,17 @@
 ---
 patterns:
-  - id: polygon_ctx_bug_context
+  - id: bigint_long_div_mod_unconstrained_assignment
     kind: regex
-    pattern: 'Polygon\s*zkEVM|polygon\s*zkevm|zkEVM'
-    message: 'Polygon zkEVM context detected'
-  - id: polygon_ctx_register_terms
+    pattern: 'mod\s*\[\s*i\s*\]\s*<--\s*longdiv\s*\[\s*1\s*\]\s*\[\s*i\s*\]'
+    message: 'BigInt mod limb is assigned with <-- from long_div result'
+  - id: bigint_long_div_div_only_range_checked
     kind: regex
-    pattern: '\bCTX\b|\bctx\b'
-    message: 'CTX register/variable context detected'
-  - id: polygon_balance_update_terms
+    pattern: 'range_checks\s*\[\s*i\s*\]\.in\s*<==\s*div\s*\[\s*i\s*\]'
+    message: 'Range checks are wired to div limbs (mod limb range checks may be missing)'
+  - id: bigint_template_scope
     kind: regex
-    pattern: 'balance|sequencer'
-    message: 'Balance/sequencer accounting context detected'
+    pattern: '\bBigMod\s*\('
+    message: 'BigMod usage detected'
 
 invariants:
   - name: placeholder_output_reflexive
@@ -83,3 +83,9 @@ inputs:
   - name: input_0
     type: field
     fuzz_strategy: random
+
+profiles:
+  local_ptau:
+    description: "Use local ptau to avoid network download during scan"
+    circom_ptau_path: "tests/circuits/build/pot12_final.ptau"
+active_profile: local_ptau

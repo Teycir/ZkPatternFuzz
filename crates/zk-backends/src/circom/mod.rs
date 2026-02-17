@@ -1350,8 +1350,8 @@ impl CircomTarget {
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 vkey path: {}", vkey_path.display()))?;
 
-        let zkey_ready = file_has_nonzero_size(&zkey_path)?;
-        let vkey_ready = file_has_nonzero_size(&vkey_path)?;
+        let zkey_ready = is_valid_zkey_file(&zkey_path)?;
+        let vkey_ready = is_valid_json_file(&vkey_path)?;
         if zkey_ready && vkey_ready {
             tracing::info!(
                 "Reusing existing proving/verification keys in '{}'",
@@ -1362,9 +1362,9 @@ impl CircomTarget {
             return Ok(());
         }
 
-        if zkey_path.exists() && !zkey_ready {
+        if zkey_path.exists() {
             tracing::warn!(
-                "Removing stale or empty proving key before regeneration: {}",
+                "Removing stale/incomplete proving key before regeneration: {}",
                 zkey_path.display()
             );
             if let Err(err) = std::fs::remove_file(&zkey_path) {
@@ -1375,9 +1375,9 @@ impl CircomTarget {
                 );
             }
         }
-        if vkey_path.exists() && !vkey_ready {
+        if vkey_path.exists() {
             tracing::warn!(
-                "Removing stale or empty verification key before regeneration: {}",
+                "Removing stale/incomplete verification key before regeneration: {}",
                 vkey_path.display()
             );
             if let Err(err) = std::fs::remove_file(&vkey_path) {
@@ -1402,9 +1402,15 @@ impl CircomTarget {
             .output()
             .context("Failed to generate proving key")?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Key generation failed: {}", stderr);
+        if !output.status.success() || snarkjs_output_reports_error(&output) {
+            anyhow::bail!("Key generation failed: {}", format_command_failure(&output));
+        }
+        if !is_valid_zkey_file(&zkey_path)? {
+            anyhow::bail!(
+                "Generated proving key is invalid (bad header): {}. {}",
+                zkey_path.display(),
+                format_command_failure(&output)
+            );
         }
 
         // Export verification key
@@ -1420,9 +1426,17 @@ impl CircomTarget {
             .output()
             .context("Failed to export verification key")?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Verification key export failed: {}", stderr);
+        if !output.status.success() || snarkjs_output_reports_error(&output) {
+            anyhow::bail!(
+                "Verification key export failed: {}",
+                format_command_failure(&output)
+            );
+        }
+        if !is_valid_json_file(&vkey_path)? {
+            anyhow::bail!(
+                "Generated verification key is invalid JSON: {}",
+                vkey_path.display()
+            );
         }
 
         self.proving_key_path = Some(zkey_path);
@@ -1435,10 +1449,13 @@ impl CircomTarget {
     /// Find existing powers of tau file or download a small one
     fn find_or_download_ptau(&self) -> Result<PathBuf> {
         if let Some(path) = &self.ptau_path_override {
-            if path.exists() {
+            if is_valid_ptau_file(path)? {
                 return Ok(path.clone());
             }
-            anyhow::bail!("Configured ptau file not found: {:?}", path);
+            anyhow::bail!(
+                "Configured ptau file is missing or invalid (bad header): {}",
+                path.display()
+            );
         }
         // Check for existing ptau files
         let ptau_dirs = vec![self.build_dir.clone(), PathBuf::from(".")];
@@ -1471,14 +1488,69 @@ impl CircomTarget {
                 };
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "ptau") {
-                    tracing::info!("Found existing ptau file: {:?}", path);
-                    return Ok(path);
+                    if is_valid_ptau_file(&path)? {
+                        tracing::info!("Found existing valid ptau file: {:?}", path);
+                        return Ok(path);
+                    }
+                    tracing::warn!(
+                        "Ignoring invalid ptau candidate (bad header): {}",
+                        path.display()
+                    );
                 }
             }
         }
 
+        // Prefer the largest local valid ptau fixture before network download.
+        let local_candidate_dirs = [
+            PathBuf::from("reports/ptau"),
+            PathBuf::from("targets/zkbugs/misc/circom"),
+            PathBuf::from("tests/circuits/build"),
+        ];
+        let mut best_local: Option<(u64, PathBuf)> = None;
+        for dir in &local_candidate_dirs {
+            let entries = match std::fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(_) => continue,
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.extension().is_some_and(|e| e == "ptau") {
+                    continue;
+                }
+                if !is_valid_ptau_file(&path)? {
+                    continue;
+                }
+                let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                match &best_local {
+                    Some((best_size, _)) if size <= *best_size => {}
+                    _ => best_local = Some((size, path)),
+                }
+            }
+        }
+        if let Some((size, candidate)) = best_local {
+            tracing::info!(
+                "Using local fallback ptau file: {:?} ({} bytes)",
+                candidate,
+                size
+            );
+            return Ok(candidate);
+        }
+
         // Download a small ptau file for testing
         let ptau_path = self.build_dir.join("pot12_final.ptau");
+        if ptau_path.exists() && !is_valid_ptau_file(&ptau_path)? {
+            tracing::warn!(
+                "Removing invalid cached ptau before download: {}",
+                ptau_path.display()
+            );
+            if let Err(err) = std::fs::remove_file(&ptau_path) {
+                tracing::warn!(
+                    "Failed to remove invalid ptau '{}': {}",
+                    ptau_path.display(),
+                    err
+                );
+            }
+        }
         if !ptau_path.exists() {
             tracing::info!("Downloading powers of tau file...");
             let ptau_path_str = ptau_path
@@ -1497,6 +1569,13 @@ impl CircomTarget {
             if !output.status.success() {
                 anyhow::bail!("Failed to download powers of tau file");
             }
+        }
+
+        if !is_valid_ptau_file(&ptau_path)? {
+            anyhow::bail!(
+                "Downloaded ptau file is invalid (bad header): {}",
+                ptau_path.display()
+            );
         }
 
         Ok(ptau_path)
@@ -2258,6 +2337,83 @@ fn file_has_nonzero_size(path: &Path) -> Result<bool> {
     let metadata = std::fs::metadata(path)
         .with_context(|| format!("Failed to read metadata for '{}'", path.display()))?;
     Ok(metadata.is_file() && metadata.len() > 0)
+}
+
+fn has_bin_magic(path: &Path, magic: &[u8; 4]) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+
+    let metadata = std::fs::metadata(path)
+        .with_context(|| format!("Failed to read metadata for '{}'", path.display()))?;
+    if !metadata.is_file() || metadata.len() < 4 {
+        return Ok(false);
+    }
+
+    let mut file = std::fs::File::open(path)
+        .with_context(|| format!("Failed to open file '{}'", path.display()))?;
+    let mut header = [0u8; 4];
+    file.read_exact(&mut header)
+        .with_context(|| format!("Failed to read header '{}'", path.display()))?;
+
+    Ok(&header == magic)
+}
+
+fn is_valid_ptau_file(path: &Path) -> Result<bool> {
+    has_bin_magic(path, b"ptau")
+}
+
+fn is_valid_zkey_file(path: &Path) -> Result<bool> {
+    has_bin_magic(path, b"zkey")
+}
+
+fn is_valid_json_file(path: &Path) -> Result<bool> {
+    if !file_has_nonzero_size(path)? {
+        return Ok(false);
+    }
+
+    let raw = std::fs::read(path)
+        .with_context(|| format!("Failed to read json file '{}'", path.display()))?;
+    Ok(serde_json::from_slice::<serde_json::Value>(&raw).is_ok())
+}
+
+fn format_command_failure(output: &Output) -> String {
+    const MAX_LEN: usize = 1200;
+
+    fn compact(bytes: &[u8]) -> String {
+        let text = String::from_utf8_lossy(bytes);
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    let mut parts = vec![format!("exit={}", output.status)];
+    let stderr = compact(&output.stderr);
+    let stdout = compact(&output.stdout);
+
+    if !stderr.is_empty() {
+        parts.push(format!("stderr={}", stderr));
+    }
+    if !stdout.is_empty() {
+        parts.push(format!("stdout={}", stdout));
+    }
+    if parts.len() == 1 {
+        parts.push("no stdout/stderr".to_string());
+    }
+
+    let mut message = parts.join("; ");
+    if message.len() > MAX_LEN {
+        message.truncate(MAX_LEN);
+        message.push_str("...");
+    }
+    message
+}
+
+fn snarkjs_output_reports_error(output: &Output) -> bool {
+    fn contains_error_marker(bytes: &[u8]) -> bool {
+        let text = String::from_utf8_lossy(bytes).to_lowercase();
+        text.contains("[error]") || text.contains("snarkjs: error")
+    }
+
+    contains_error_marker(&output.stdout) || contains_error_marker(&output.stderr)
 }
 
 /// Circom-specific analysis utilities
