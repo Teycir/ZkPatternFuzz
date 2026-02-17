@@ -190,6 +190,10 @@ pub struct FuzzingEngine {
     invariant_checker: Option<InvariantChecker>,
     /// Mode 3: Reusable thread pool for parallel execution (avoids per-attack allocation)
     thread_pool: Option<rayon::ThreadPool>,
+    /// Optional wall-clock deadline for the entire run.
+    ///
+    /// When present, attacks and continuous fuzzing stop once this deadline is reached.
+    wall_clock_deadline: Option<Instant>,
 }
 
 impl FuzzingEngine {
@@ -514,6 +518,7 @@ impl FuzzingEngine {
             simple_tracker: None,
             invariant_checker,
             thread_pool,
+            wall_clock_deadline: None,
         })
     }
 
@@ -620,6 +625,12 @@ impl FuzzingEngine {
         let attempts = max_attempts.max(1);
 
         for inputs in self.collect_corpus_inputs(attempts) {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping pattern witness selection early: wall-clock timeout reached"
+                );
+                return None;
+            }
             let result = self.executor.execute_sync(&inputs);
             if result.success {
                 return Some(inputs);
@@ -627,6 +638,12 @@ impl FuzzingEngine {
         }
 
         for _ in 0..attempts {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping pattern witness probing early: wall-clock timeout reached"
+                );
+                return None;
+            }
             let candidate = self.generate_test_case().inputs;
             let result = self.executor.execute_sync(&candidate);
             if result.success {
@@ -714,9 +731,52 @@ impl FuzzingEngine {
         Ok(inserted)
     }
 
+    fn configure_wall_clock_deadline(&mut self, start_time: Instant) -> Option<u64> {
+        let timeout_seconds = self
+            .config
+            .campaign
+            .parameters
+            .additional
+            .get("fuzzing_timeout_seconds")
+            .and_then(|v| v.as_u64());
+
+        self.wall_clock_deadline = timeout_seconds.and_then(|seconds| {
+            let bounded = seconds.max(1);
+            start_time.checked_add(Duration::from_secs(bounded))
+        });
+
+        if let Some(seconds) = timeout_seconds {
+            if self.wall_clock_deadline.is_some() {
+                tracing::info!(
+                    "Global wall-clock timeout enabled for this run: {}s",
+                    seconds.max(1)
+                );
+            } else {
+                tracing::warn!(
+                    "Failed to configure global wall-clock timeout from {}s (overflow)",
+                    seconds
+                );
+            }
+        }
+
+        timeout_seconds
+    }
+
+    pub(super) fn wall_clock_timeout_reached(&self) -> bool {
+        self.wall_clock_deadline
+            .map(|deadline| Instant::now() >= deadline)
+            .unwrap_or(false)
+    }
+
+    pub(super) fn wall_clock_remaining(&self) -> Option<Duration> {
+        self.wall_clock_deadline
+            .map(|deadline| deadline.saturating_duration_since(Instant::now()))
+    }
+
     pub async fn run(&mut self, progress: Option<&ProgressReporter>) -> anyhow::Result<FuzzReport> {
         let start_time = Instant::now();
         self.core.set_start_time(start_time);
+        let _configured_wall_clock_timeout = self.configure_wall_clock_deadline(start_time);
 
         let additional = &self.config.campaign.parameters.additional;
         let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
@@ -864,7 +924,31 @@ impl FuzzingEngine {
             }
         }
 
+        let mut wall_clock_timed_out = false;
         for (attack_idx, attack_config) in self.config.attacks.clone().into_iter().enumerate() {
+            if self.wall_clock_timeout_reached() {
+                wall_clock_timed_out = true;
+                let phases_completed = 1u64.saturating_add(attack_idx as u64);
+                tracing::warn!(
+                    "Global wall-clock timeout reached before attack {:?}; ending run early",
+                    attack_config.attack_type
+                );
+                self.write_progress_snapshot(
+                    mode_label,
+                    "timeout_reached",
+                    phases_total,
+                    phases_completed,
+                    Some(0.0),
+                    serde_json::json!({
+                        "reason": "wall_clock_timeout",
+                        "elapsed_seconds": start_time.elapsed().as_secs_f64(),
+                        "remaining_seconds": self.wall_clock_remaining().map(|d| d.as_secs_f64()),
+                        "next_attack_type": format!("{:?}", attack_config.attack_type),
+                    }),
+                );
+                break;
+            }
+
             let phases_completed = 1u64.saturating_add(attack_idx as u64);
             self.write_progress_snapshot(
                 mode_label,
@@ -1196,6 +1280,29 @@ impl FuzzingEngine {
             if let Some(ref mut tracker) = self.simple_tracker {
                 tracker.update(current_stats);
             }
+
+            if self.wall_clock_timeout_reached() {
+                wall_clock_timed_out = true;
+                let phases_completed = 1u64.saturating_add((attack_idx as u64).saturating_add(1));
+                tracing::warn!(
+                    "Global wall-clock timeout reached after attack {:?}; ending run early",
+                    attack_config.attack_type
+                );
+                self.write_progress_snapshot(
+                    mode_label,
+                    "timeout_reached",
+                    phases_total,
+                    phases_completed,
+                    Some(0.0),
+                    serde_json::json!({
+                        "reason": "wall_clock_timeout",
+                        "elapsed_seconds": start_time.elapsed().as_secs_f64(),
+                        "remaining_seconds": self.wall_clock_remaining().map(|d| d.as_secs_f64()),
+                        "last_attack_type": format!("{:?}", attack_config.attack_type),
+                    }),
+                );
+                break;
+            }
         }
 
         // Finish simple tracker
@@ -1229,7 +1336,7 @@ impl FuzzingEngine {
             .get("fuzzing_timeout_seconds")
             .and_then(|v| v.as_u64());
 
-        if iterations > 0 {
+        if iterations > 0 && !wall_clock_timed_out && !self.wall_clock_timeout_reached() {
             let phases_completed = 1u64.saturating_add(attacks_total);
             self.write_progress_snapshot(
                 mode_label,
@@ -1269,6 +1376,22 @@ impl FuzzingEngine {
                 phases_completed,
                 Some(0.0),
                 serde_json::json!({}),
+            );
+        } else if iterations > 0 {
+            tracing::warn!(
+                "Skipping continuous fuzzing phase: global wall-clock timeout already reached"
+            );
+            let phases_completed = 1u64.saturating_add(attacks_total);
+            self.write_progress_snapshot(
+                mode_label,
+                "continuous_skipped_timeout",
+                phases_total,
+                phases_completed,
+                Some(0.0),
+                serde_json::json!({
+                    "reason": "wall_clock_timeout",
+                    "elapsed_seconds": start_time.elapsed().as_secs_f64(),
+                }),
             );
         }
 

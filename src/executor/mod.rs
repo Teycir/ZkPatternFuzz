@@ -592,6 +592,8 @@ impl ExecutorFactory {
     ) -> anyhow::Result<Arc<dyn CircuitExecutor>> {
         use crate::targets::CircomTarget;
 
+        CircomExecutor::ensure_bins_on_path();
+
         // Check if circom is available
         match CircomTarget::check_circom_available() {
             Ok(version) => {
@@ -622,7 +624,12 @@ impl ExecutorFactory {
                 )?;
                 if options.circom_auto_setup_keys {
                     tracing::info!("Auto-generating Circom proving/verification keys");
-                    executor.setup_keys()?;
+                    if let Err(err) = executor.setup_keys() {
+                        tracing::warn!(
+                            "Circom key setup failed (continuing without prove/verify-dependent checks): {}",
+                            err
+                        );
+                    }
                 }
                 Ok(Arc::new(executor))
             }
@@ -738,8 +745,68 @@ impl Default for CircomExecutorOptions {
 }
 
 impl CircomExecutor {
-    fn default_include_paths() -> Vec<PathBuf> {
+    fn local_bins_search_paths() -> Vec<PathBuf> {
         let mut paths = Vec::new();
+        if let Ok(cwd) = std::env::current_dir() {
+            paths.push(cwd.join("bins"));
+            paths.push(cwd.join("bins").join("bin"));
+            paths.push(cwd.join("bins").join("node_modules").join(".bin"));
+            paths.push(cwd.join("bins").join("node_modules"));
+        }
+        paths
+    }
+
+    fn ensure_bins_on_path() {
+        let separator = if cfg!(windows) { ';' } else { ':' };
+        let mut current = std::env::var("PATH").unwrap_or_default();
+        let mut prepend = Vec::new();
+        for p in Self::local_bins_search_paths() {
+            if p.exists() {
+                let s = p.to_string_lossy().to_string();
+                if !current.split(separator).any(|x| x == s) {
+                    prepend.push(s);
+                }
+            }
+        }
+        if !prepend.is_empty() {
+            let prefix = prepend.join(&separator.to_string());
+            if current.is_empty() {
+                current = prefix;
+            } else {
+                current = format!("{}{}{}", prefix, separator, current);
+            }
+            std::env::set_var("PATH", current);
+        }
+    }
+
+    fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+        use std::collections::HashSet;
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        for path in paths {
+            if seen.insert(path.clone()) {
+                out.push(path);
+            }
+        }
+        out
+    }
+
+    fn circuit_ancestor_paths(circuit_path: &str) -> Vec<PathBuf> {
+        let path = Path::new(circuit_path);
+        let mut roots = Vec::new();
+        if let Some(parent) = path.parent() {
+            for ancestor in parent.ancestors() {
+                roots.push(ancestor.to_path_buf());
+            }
+        }
+        roots
+    }
+
+    fn default_include_paths_for(circuit_path: &str) -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        let preferred_bins_node_modules = std::env::current_dir()
+            .ok()
+            .map(|cwd| cwd.join("bins").join("node_modules"));
 
         match std::env::var("CIRCOM_INCLUDE_PATHS") {
             Ok(raw) => {
@@ -755,19 +822,110 @@ impl CircomExecutor {
             Err(e) => panic!("Invalid CIRCOM_INCLUDE_PATHS value: {}", e),
         }
 
-        for candidate in ["third_party", "third_party/node_modules", "node_modules"] {
-            let base = PathBuf::from(candidate);
-            if base.join("circomlib").exists() {
-                paths.push(base);
+        for root in Self::circuit_ancestor_paths(circuit_path) {
+            paths.push(root.join("node_modules"));
+        }
+        for local in Self::local_bins_search_paths() {
+            paths.push(local);
+        }
+
+        for candidate in ["node_modules"] {
+            paths.push(PathBuf::from(candidate));
+        }
+
+        let filtered = paths.into_iter().filter(|p| p.exists()).collect::<Vec<_>>();
+        let mut filtered = Self::dedupe_paths(filtered);
+
+        if let Some(preferred) = preferred_bins_node_modules.as_ref() {
+            if preferred.join("circomlib").exists() {
+                filtered.retain(|p| p == preferred || !p.join("circomlib").exists());
+            }
+            if preferred.join("@zk-email").exists() {
+                filtered.retain(|p| p == preferred || !p.join("@zk-email").exists());
+            }
+            if preferred.join("circom-grumpkin").exists() {
+                filtered.retain(|p| p == preferred || !p.join("circom-grumpkin").exists());
             }
         }
 
-        paths
+        filtered
+    }
+
+    fn autodetect_snarkjs_path(circuit_path: &str) -> Option<PathBuf> {
+        for root in Self::circuit_ancestor_paths(circuit_path) {
+            let local_cli = root
+                .join("node_modules")
+                .join("snarkjs")
+                .join("build")
+                .join("cli.cjs");
+            if local_cli.exists() {
+                return Some(local_cli);
+            }
+            let local_bin = root.join("node_modules").join(".bin").join("snarkjs");
+            if local_bin.exists() {
+                return Some(local_bin);
+            }
+        }
+        if let Ok(cwd) = std::env::current_dir() {
+            for candidate in [
+                cwd.join("bins")
+                    .join("node_modules")
+                    .join("snarkjs")
+                    .join("build")
+                    .join("cli.cjs"),
+                cwd.join("bins")
+                    .join("node_modules")
+                    .join(".bin")
+                    .join("snarkjs"),
+                cwd.join("bins").join("snarkjs"),
+            ] {
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+            }
+        }
+        None
+    }
+
+    fn autodetect_ptau_path(circuit_path: &str) -> Option<PathBuf> {
+        let candidates = [
+            "reports/ptau/pot21_final.ptau",
+            "reports/ptau/pot20_final.ptau",
+            "reports/ptau/pot19_final.ptau",
+            "ptau/pot21_final.ptau",
+            "ptau/pot20_final.ptau",
+            "ptau/pot19_final.ptau",
+            "bins/ptau/pot21_final.ptau",
+            "bins/ptau/pot20_final.ptau",
+            "bins/ptau/pot19_final.ptau",
+            "bins/pot21_final.ptau",
+            "bins/pot20_final.ptau",
+            "bins/pot19_final.ptau",
+            "pot21_final.ptau",
+            "pot20_final.ptau",
+            "pot19_final.ptau",
+        ];
+
+        for root in Self::circuit_ancestor_paths(circuit_path) {
+            for rel in candidates {
+                let p = root.join(rel);
+                if p.exists() {
+                    return Some(p);
+                }
+            }
+        }
+        for rel in candidates {
+            let p = PathBuf::from(rel);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        None
     }
 
     pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
         let options = CircomExecutorOptions {
-            include_paths: Self::default_include_paths(),
+            include_paths: Self::default_include_paths_for(circuit_path),
             ..CircomExecutorOptions::default()
         };
         Self::new_with_options(circuit_path, main_component, options)
@@ -807,8 +965,12 @@ impl CircomExecutor {
         }
 
         if include_paths.is_empty() {
-            include_paths = Self::default_include_paths();
+            include_paths = Self::default_include_paths_for(circuit_path);
+        } else {
+            include_paths = Self::dedupe_paths(include_paths);
         }
+        let ptau_path = ptau_path.or_else(|| Self::autodetect_ptau_path(circuit_path));
+        let snarkjs_path = snarkjs_path.or_else(|| Self::autodetect_snarkjs_path(circuit_path));
 
         let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?
             .with_skip_compile_if_artifacts(skip_compile_if_artifacts)

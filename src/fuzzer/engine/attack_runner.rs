@@ -188,6 +188,12 @@ impl FuzzingEngine {
 
         let mut test_cases = Vec::with_capacity(witness_pairs);
         for _ in 0..witness_pairs {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping underconstrained attack witness generation early: wall-clock timeout reached"
+                );
+                break;
+            }
             let mut tc = self.generate_test_case();
             // Fix public inputs at their correct positions
             if let Some(ref fixed) = fixed_public {
@@ -574,6 +580,14 @@ impl FuzzingEngine {
         let mut last_proof_error: Option<String> = None;
 
         for attempt in 0..forge_attempts {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping soundness attack at attempt {}/{}: wall-clock timeout reached",
+                    attempt,
+                    forge_attempts
+                );
+                break;
+            }
             let valid_inputs = if attempt < corpus_witnesses.len() {
                 corpus_witnesses[attempt].clone()
             } else {
@@ -989,6 +1003,12 @@ impl FuzzingEngine {
         // Generate and execute in parallel
         let mut test_cases = Vec::with_capacity(samples);
         for _ in 0..samples {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping collision attack witness generation early: wall-clock timeout reached"
+                );
+                break;
+            }
             test_cases.push(self.generate_test_case());
         }
 
@@ -1587,6 +1607,12 @@ impl FuzzingEngine {
 
         let mut test_cases = Vec::with_capacity(num_tests);
         for _ in 0..num_tests {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping differential attack witness generation early: wall-clock timeout reached"
+                );
+                break;
+            }
             test_cases.push(self.generate_random_test_case());
         }
 
@@ -1706,6 +1732,12 @@ impl FuzzingEngine {
 
         // Test chain execution with random inputs
         for _ in 0..num_tests.min(10) {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping circuit composition smoke checks early: wall-clock timeout reached"
+                );
+                break;
+            }
             let inputs: Vec<FieldElement> = {
                 let rng = self.core.rng_mut();
                 (0..self.executor.num_private_inputs())
@@ -1931,6 +1963,10 @@ impl FuzzingEngine {
         let tester = RecursiveTester::new(max_depth).with_verifier(self.executor.clone());
 
         for _ in 0..num_tests {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!("Stopping recursive proof attack early: wall-clock timeout reached");
+                break;
+            }
             let test_case = self.generate_random_test_case();
             let result = tester.test_recursion(&test_case.inputs, max_depth);
 
@@ -2377,6 +2413,10 @@ impl FuzzingEngine {
 
         // Generate base witnesses and test metamorphic relations
         for _ in 0..num_tests {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!("Stopping metamorphic attack early: wall-clock timeout reached");
+                break;
+            }
             let base_witness = self.generate_test_case();
             let results = oracle
                 .test_all(self.executor.as_ref(), &base_witness.inputs)
@@ -2440,6 +2480,12 @@ impl FuzzingEngine {
         let mut base_witness = None;
         let attempts = base_witness_attempts.max(1);
         for _ in 0..attempts {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping constraint-slice base witness search early: wall-clock timeout reached"
+                );
+                break;
+            }
             let candidate = self.generate_test_case();
             let result = self.executor.execute_sync(&candidate.inputs);
             if result.success {
@@ -2544,6 +2590,12 @@ impl FuzzingEngine {
         // Generate initial witnesses
         let mut initial_witnesses = Vec::with_capacity(sample_count.max(1));
         for _ in 0..sample_count.max(1) {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping spec-inference witness seeding early: wall-clock timeout reached"
+                );
+                break;
+            }
             initial_witnesses.push(self.generate_test_case().inputs);
         }
 
@@ -2674,6 +2726,12 @@ impl FuzzingEngine {
         // Generate witnesses
         let mut witnesses = Vec::with_capacity(samples);
         for _ in 0..samples {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping witness-collision sample generation early: wall-clock timeout reached"
+                );
+                break;
+            }
             witnesses.push(self.generate_test_case().inputs);
         }
 

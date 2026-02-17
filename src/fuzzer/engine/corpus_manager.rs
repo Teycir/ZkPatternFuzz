@@ -3,6 +3,11 @@ use super::FuzzingEngine;
 
 impl FuzzingEngine {
     pub(super) fn seed_corpus(&mut self) -> anyhow::Result<()> {
+        if self.wall_clock_timeout_reached() {
+            tracing::warn!("Skipping corpus seeding: wall-clock timeout already reached");
+            return Ok(());
+        }
+
         // Add zero case
         self.add_to_corpus(self.create_test_case_with_value(FieldElement::zero()));
 
@@ -33,6 +38,12 @@ impl FuzzingEngine {
         // Generate seeds from extracted constraints (R1CS/ACIR/PLONK) when available
         if let Some(inspector) = self.executor.constraint_inspector() {
             if let Some(config) = self.constraint_guided_config()? {
+                if self.wall_clock_timeout_reached() {
+                    tracing::warn!(
+                        "Skipping constraint-guided seed generation: wall-clock timeout reached"
+                    );
+                    return Ok(());
+                }
                 let expected_len = self.config.inputs.len().max(1);
                 let input_wire_indices = collect_input_wire_indices(inspector, expected_len);
                 let mut generator = ConstraintSeedGenerator::new(config);
@@ -59,6 +70,12 @@ impl FuzzingEngine {
                     );
 
                     for inputs in output.seeds {
+                        if self.wall_clock_timeout_reached() {
+                            tracing::warn!(
+                                "Stopping constraint-guided corpus seeding early: wall-clock timeout reached"
+                            );
+                            return Ok(());
+                        }
                         if inputs.len() == expected_len {
                             self.add_to_corpus(TestCase {
                                 inputs,
@@ -76,7 +93,18 @@ impl FuzzingEngine {
         }
 
         // Generate seeds from symbolic execution
+        let wall_clock_deadline = self.wall_clock_deadline;
         let symbolic_test_cases = if let Some(ref mut symbolic) = self.symbolic {
+            let timeout_reached = || {
+                wall_clock_deadline
+                    .map(|deadline| Instant::now() >= deadline)
+                    .unwrap_or(false)
+            };
+
+            if timeout_reached() {
+                tracing::warn!("Skipping symbolic seed generation: wall-clock timeout reached");
+                return Ok(());
+            }
             tracing::info!("Generating symbolic execution seeds...");
 
             let mut test_cases = Vec::new();
@@ -85,6 +113,12 @@ impl FuzzingEngine {
             let symbolic_seeds = symbolic.generate_seeds(20);
             let expected_len = self.config.inputs.len();
             for inputs in symbolic_seeds {
+                if timeout_reached() {
+                    tracing::warn!(
+                        "Stopping symbolic seed collection early: wall-clock timeout reached"
+                    );
+                    break;
+                }
                 if inputs.len() == expected_len {
                     test_cases.push(TestCase {
                         inputs,
@@ -103,8 +137,20 @@ impl FuzzingEngine {
             ];
 
             for pattern in vuln_patterns {
+                if timeout_reached() {
+                    tracing::warn!(
+                        "Stopping symbolic vulnerability seed generation early: wall-clock timeout reached"
+                    );
+                    break;
+                }
                 let targeted_tests = symbolic.generate_vulnerability_tests(pattern);
                 for inputs in targeted_tests {
+                    if timeout_reached() {
+                        tracing::warn!(
+                            "Stopping symbolic vulnerability seed collection early: wall-clock timeout reached"
+                        );
+                        break;
+                    }
                     if inputs.len() >= expected_len {
                         let truncated: Vec<_> = inputs.into_iter().take(expected_len).collect();
                         test_cases.push(TestCase {
@@ -130,11 +176,21 @@ impl FuzzingEngine {
 
         // Add symbolic test cases to corpus
         for test_case in symbolic_test_cases {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping symbolic corpus insertion early: wall-clock timeout reached"
+                );
+                return Ok(());
+            }
             self.add_to_corpus(test_case);
         }
 
         // Add random cases
         for _ in 0..10 {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!("Stopping random corpus seeding early: wall-clock timeout reached");
+                return Ok(());
+            }
             let test_case = self.generate_random_test_case();
             self.add_to_corpus(test_case);
         }

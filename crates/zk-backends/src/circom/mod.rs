@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, OnceLock};
 use tempfile::Builder;
+use zk_constraints::r1cs_parser::R1CS;
 use zk_core::ConstraintEquation;
 use zk_core::FieldElement;
 use zk_core::Framework;
@@ -1082,59 +1083,50 @@ impl CircomTarget {
             return Ok(());
         }
 
-        // Use snarkjs to get R1CS info
+        // Prefer snarkjs for metadata parity; fall back to direct R1CS parsing when unavailable.
         let r1cs_path_str = r1cs_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 r1cs path: {}", r1cs_path.display()))?;
         let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
         cmd.args(["r1cs", "info", r1cs_path_str]);
-        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
-            .context("Failed to get R1CS info")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Failed to parse R1CS info: {}", stderr);
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-
-        // Parse the output to extract constraint count
-        let mut num_constraints = 0;
-        let mut num_private_inputs = 0;
-        let mut num_public_inputs = 0;
-        let mut num_outputs = 0;
-
-        // Parse the snarkjs output which looks like:
-        // [INFO]  snarkJS: # of Constraints: 1
-        // [INFO]  snarkJS: # of Private Inputs: 2
-        // We need to extract the last colon-separated value
-        for line in stdout.lines() {
-            // Get the value after the last colon
-            if let Some(last_colon_idx) = line.rfind(':') {
-                let value_str = line[last_colon_idx + 1..].trim();
-
-                if line.contains("Constraints") {
-                    num_constraints = value_str.parse().with_context(|| {
-                        format!("Failed parsing constraint count from '{}'", line)
-                    })?;
-                } else if line.contains("Private Inputs") {
-                    num_private_inputs = value_str.parse().with_context(|| {
-                        format!("Failed parsing private input count from '{}'", line)
-                    })?;
-                } else if line.contains("Public Inputs") {
-                    num_public_inputs = value_str.parse().with_context(|| {
-                        format!("Failed parsing public input count from '{}'", line)
-                    })?;
-                } else if line.contains("Outputs")
-                    && !line.contains("Public")
-                    && !line.contains("Private")
-                {
-                    num_outputs = value_str
-                        .parse()
-                        .with_context(|| format!("Failed parsing output count from '{}'", line))?;
+        let (num_constraints, num_private_inputs, num_public_inputs, num_outputs) =
+            match run_with_timeout(&mut cmd, circom_external_command_timeout()) {
+                Ok(output) if output.status.success() => {
+                    match Self::parse_snarkjs_r1cs_info_stdout(&String::from_utf8_lossy(
+                        &output.stdout,
+                    )) {
+                        Ok(parsed) => parsed,
+                        Err(err) => {
+                            tracing::warn!(
+                                "Failed to parse snarkjs r1cs info output for '{}': {}. Falling back to direct .r1cs parsing.",
+                                r1cs_path.display(),
+                                err
+                            );
+                            Self::parse_r1cs_counts_fallback(&r1cs_path)?
+                        }
+                    }
                 }
-            }
-        }
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    tracing::warn!(
+                        "snarkjs r1cs info failed for '{}': status={} stderr='{}' stdout='{}'. Falling back to direct .r1cs parsing.",
+                        r1cs_path.display(),
+                        output.status,
+                        stderr.trim(),
+                        stdout.trim()
+                    );
+                    Self::parse_r1cs_counts_fallback(&r1cs_path)?
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to run snarkjs r1cs info for '{}': {}. Falling back to direct .r1cs parsing.",
+                        r1cs_path.display(),
+                        err
+                    );
+                    Self::parse_r1cs_counts_fallback(&r1cs_path)?
+                }
+            };
 
         // Also parse the symbols file for signal names
         let (signals, sym_list) = if sym_path.exists() {
@@ -1274,6 +1266,65 @@ impl CircomTarget {
         Ok(())
     }
 
+    fn parse_snarkjs_r1cs_info_stdout(stdout: &str) -> Result<(usize, usize, usize, usize)> {
+        let mut num_constraints = None;
+        let mut num_private_inputs = None;
+        let mut num_public_inputs = None;
+        let mut num_outputs = None;
+
+        for line in stdout.lines() {
+            if let Some(last_colon_idx) = line.rfind(':') {
+                let value_str = line[last_colon_idx + 1..].trim();
+                if line.contains("Constraints") {
+                    num_constraints = Some(value_str.parse().with_context(|| {
+                        format!("Failed parsing constraint count from '{}'", line)
+                    })?);
+                } else if line.contains("Private Inputs") {
+                    num_private_inputs = Some(value_str.parse().with_context(|| {
+                        format!("Failed parsing private input count from '{}'", line)
+                    })?);
+                } else if line.contains("Public Inputs") {
+                    num_public_inputs = Some(value_str.parse().with_context(|| {
+                        format!("Failed parsing public input count from '{}'", line)
+                    })?);
+                } else if line.contains("Outputs")
+                    && !line.contains("Public")
+                    && !line.contains("Private")
+                {
+                    num_outputs =
+                        Some(value_str.parse().with_context(|| {
+                            format!("Failed parsing output count from '{}'", line)
+                        })?);
+                }
+            }
+        }
+
+        let constraints = num_constraints
+            .ok_or_else(|| anyhow::anyhow!("Missing constraint count in snarkjs output"))?;
+        let private_inputs = num_private_inputs
+            .ok_or_else(|| anyhow::anyhow!("Missing private input count in snarkjs output"))?;
+        let public_inputs = num_public_inputs
+            .ok_or_else(|| anyhow::anyhow!("Missing public input count in snarkjs output"))?;
+        let outputs = num_outputs.unwrap_or(0);
+
+        Ok((constraints, private_inputs, public_inputs, outputs))
+    }
+
+    fn parse_r1cs_counts_fallback(r1cs_path: &Path) -> Result<(usize, usize, usize, usize)> {
+        let r1cs = R1CS::from_file(r1cs_path).with_context(|| {
+            format!(
+                "Failed to parse fallback R1CS file '{}'",
+                r1cs_path.display()
+            )
+        })?;
+        Ok((
+            r1cs.constraints.len(),
+            r1cs.num_private_inputs,
+            r1cs.num_public_inputs,
+            r1cs.num_public_outputs,
+        ))
+    }
+
     /// Parse the symbols file to get signal names
     fn parse_symbols_file(&self, path: &Path) -> Result<HashMap<String, usize>> {
         let file = std::fs::File::open(path)?;
@@ -1391,15 +1442,15 @@ impl CircomTarget {
 
         // Generate zkey (proving key)
         tracing::info!("Generating proving key...");
-        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
-            .args([
-                "groth16",
-                "setup",
-                r1cs_path_str,
-                ptau_path_str,
-                zkey_path_str,
-            ])
-            .output()
+        let mut setup_cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
+        setup_cmd.args([
+            "groth16",
+            "setup",
+            r1cs_path_str,
+            ptau_path_str,
+            zkey_path_str,
+        ]);
+        let output = run_with_timeout(&mut setup_cmd, circom_external_command_timeout())
             .context("Failed to generate proving key")?;
 
         if !output.status.success() || snarkjs_output_reports_error(&output) {
@@ -1415,15 +1466,15 @@ impl CircomTarget {
 
         // Export verification key
         tracing::info!("Exporting verification key...");
-        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
-            .args([
-                "zkey",
-                "export",
-                "verificationkey",
-                zkey_path_str,
-                vkey_path_str,
-            ])
-            .output()
+        let mut export_cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
+        export_cmd.args([
+            "zkey",
+            "export",
+            "verificationkey",
+            zkey_path_str,
+            vkey_path_str,
+        ]);
+        let output = run_with_timeout(&mut export_cmd, circom_external_command_timeout())
             .context("Failed to export verification key")?;
 
         if !output.status.success() || snarkjs_output_reports_error(&output) {

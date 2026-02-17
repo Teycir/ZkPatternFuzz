@@ -47,6 +47,15 @@ impl FuzzingEngine {
         let mut last_progress_write = Instant::now();
 
         while completed < iterations {
+            // Check run-level wall-clock timeout (shared across setup + attacks + continuous).
+            if self.wall_clock_timeout_reached() {
+                tracing::info!(
+                    "Global wall-clock timeout reached after {} continuous iterations",
+                    completed
+                );
+                break;
+            }
+
             // Check overall timeout
             if let Some(t) = timeout {
                 if start.elapsed() >= t {

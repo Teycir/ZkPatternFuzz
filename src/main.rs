@@ -749,8 +749,7 @@ fn add_run_window_fields(
                 "expected_latest_end_utc": expected_end_utc.map(|dt| dt.to_rfc3339()),
                 "expected_latest_end_local": expected_end_local.map(|dt| dt.to_rfc3339()),
                 "note": match timeout_semantics {
-                    "continuous_phase_only" => "In run/evidence modes, --timeout applies to the continuous fuzzing phase only; setup + attacks may extend wall time.",
-                    "wall_clock" => "In chains mode, --timeout is the total wall-clock budget for the chain fuzzing run.",
+                    "wall_clock" => "For this command, --timeout is enforced as a total wall-clock budget for the run.",
                     _ => "",
                 },
             }),
@@ -2515,6 +2514,26 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "fuzzing_timeout_seconds".to_string(),
             serde_yaml::Value::Number(serde_yaml::Number::from(t)),
         );
+
+        // Align Circom external command timeout with the run timeout so backend setup/metadata
+        // steps cannot silently run far beyond the requested wall-clock budget.
+        if config.campaign.target.framework == Framework::Circom {
+            let desired = t.max(1);
+            let current = std::env::var("ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS")
+                .ok()
+                .and_then(|raw| raw.trim().parse::<u64>().ok())
+                .map(|secs| secs.max(1));
+            let effective = current.map(|secs| secs.min(desired)).unwrap_or(desired);
+            std::env::set_var(
+                "ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS",
+                effective.to_string(),
+            );
+            tracing::info!(
+                "Circom external command timeout set to {}s (run timeout {}s)",
+                effective,
+                desired
+            );
+        }
     }
 
     // Provide a stable identifier for the engine to emit progress snapshots into output_dir.
@@ -2609,12 +2628,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "dry_run": options.dry_run,
             }
         });
-        add_run_window_fields(
-            &mut doc,
-            started_utc,
-            options.timeout,
-            "continuous_phase_only",
-        );
+        add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
 
@@ -2650,12 +2664,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
                 "reason": "Evidence mode requires v2 invariants in the YAML (invariants: ...).",
             });
-            add_run_window_fields(
-                &mut doc,
-                started_utc,
-                options.timeout,
-                "continuous_phase_only",
-            );
+            add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
             if !options.dry_run {
                 write_run_artifacts(&output_dir, &run_id, &doc);
             }
@@ -2676,6 +2685,46 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             .parameters
             .additional
             .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
+
+        // Slight recall bias for evidence scans: prefer not missing true positives.
+        // Keep YAML authority by only applying when user did not set explicit values.
+        let additional = &mut config.campaign.parameters.additional;
+        if additional.get("min_evidence_confidence").is_none() {
+            additional.insert(
+                "min_evidence_confidence".to_string(),
+                serde_yaml::Value::String("low".to_string()),
+            );
+        }
+        if additional
+            .get("oracle_validation_min_agreement_ratio")
+            .is_none()
+        {
+            additional.insert(
+                "oracle_validation_min_agreement_ratio".to_string(),
+                serde_yaml::Value::String("0.45".to_string()),
+            );
+        }
+        if additional
+            .get("oracle_validation_cross_attack_weight")
+            .is_none()
+        {
+            additional.insert(
+                "oracle_validation_cross_attack_weight".to_string(),
+                serde_yaml::Value::String("0.65".to_string()),
+            );
+        }
+        if additional
+            .get("oracle_validation_mutation_test_count")
+            .is_none()
+        {
+            additional.insert(
+                "oracle_validation_mutation_test_count".to_string(),
+                serde_yaml::Value::Number(serde_yaml::Number::from(8u64)),
+            );
+        }
+        tracing::info!(
+            "Evidence recall bias active (min_conf=low, agreement_ratio<=0.45, cross_attack_weight>=0.65 unless overridden in YAML)"
+        );
 
         // Pre-flight readiness check for strict evidence engagements.
         stage = "preflight_readiness";
@@ -2699,12 +2748,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "reason": "Campaign has critical issues; refusing to start strict evidence run",
                 "readiness": readiness_report_to_json(&readiness),
             });
-            add_run_window_fields(
-                &mut doc,
-                started_utc,
-                options.timeout,
-                "continuous_phase_only",
-            );
+            add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
             if !options.dry_run {
                 write_run_artifacts(&output_dir, &run_id, &doc);
             }
@@ -2741,12 +2785,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "dry_run": options.dry_run,
             }
         });
-        add_run_window_fields(
-            &mut doc,
-            started_utc,
-            options.timeout,
-            "continuous_phase_only",
-        );
+        add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
 
@@ -2874,7 +2913,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                     &mut doc,
                     started_utc_for_monitor,
                     timeout_for_monitor,
-                    "continuous_phase_only",
+                    "wall_clock",
                 );
                 let run_id_for_signal = match doc.get("run_id").and_then(|v| v.as_str()) {
                     Some(run_id) => run_id,
@@ -2941,12 +2980,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "output_dir": output_dir.display().to_string(),
             "started_utc": started_utc.to_rfc3339(),
         });
-        add_run_window_fields(
-            &mut doc,
-            started_utc,
-            options.timeout,
-            "continuous_phase_only",
-        );
+        add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
     let report = match if options.simple_progress {
@@ -2972,12 +3006,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
                 "error": format!("{:#}", err),
             });
-            add_run_window_fields(
-                &mut doc,
-                started_utc,
-                options.timeout,
-                "continuous_phase_only",
-            );
+            add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
             write_run_artifacts(&output_dir, &run_id, &doc);
             return Err(err);
         }
@@ -3002,12 +3031,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
             "error": format!("{:#}", err),
         });
-        add_run_window_fields(
-            &mut doc,
-            started_utc,
-            options.timeout,
-            "continuous_phase_only",
-        );
+        add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
         write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err);
     }
@@ -3032,12 +3056,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "total_executions": report.statistics.total_executions,
         },
     });
-    add_run_window_fields(
-        &mut doc,
-        started_utc,
-        options.timeout,
-        "continuous_phase_only",
-    );
+    add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
     write_run_artifacts(&output_dir, &run_id, &doc);
 
     if critical {
