@@ -505,3 +505,30 @@ impl Cli {
         }
     }
 }
+
+pub fn campaign_run_options_doc(options: &CampaignRunOptions) -> serde_json::Value {
+    serde_json::json!({
+        "command": options.command_label,
+        "workers": options.workers,
+        "seed": options.seed,
+        "iterations": options.iterations,
+        "timeout_seconds": options.timeout,
+        "resume": options.resume,
+        "corpus_dir": options.corpus_dir,
+        "profile": options.profile,
+        "simple_progress": options.simple_progress,
+        "dry_run": options.dry_run,
+    })
+}
+
+pub fn chain_run_options_doc(options: &ChainRunOptions) -> serde_json::Value {
+    serde_json::json!({
+        "workers": options.workers,
+        "seed": options.seed,
+        "iterations": options.iterations,
+        "timeout_seconds": options.timeout,
+        "resume": options.resume,
+        "simple_progress": options.simple_progress,
+        "dry_run": options.dry_run,
+    })
+}

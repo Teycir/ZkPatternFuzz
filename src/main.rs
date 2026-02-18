@@ -40,8 +40,8 @@ use scan_progress::{
     read_scan_findings_summary_since, run_scan_phase_with_progress, scan_default_output_dir,
 };
 use cli::{
-    BinsBootstrapRequest, CampaignRunOptions, ChainRunOptions, Cli, CommandRequest, ScanFamily,
-    ScanRequest,
+    campaign_run_options_doc, chain_run_options_doc, BinsBootstrapRequest, CampaignRunOptions,
+    ChainRunOptions, Cli, CommandRequest, ScanFamily, ScanRequest,
 };
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName, ReadinessReport};
 use zk_fuzzer::fuzzer::ZkFuzzer;
@@ -742,33 +742,6 @@ fn initialize_campaign_run_lifecycle(
     normalize_build_paths(config, run_id);
 
     Ok((output_dir, output_lock))
-}
-
-fn campaign_run_options_doc(options: &CampaignRunOptions) -> serde_json::Value {
-    serde_json::json!({
-        "command": options.command_label,
-        "workers": options.workers,
-        "seed": options.seed,
-        "iterations": options.iterations,
-        "timeout_seconds": options.timeout,
-        "resume": options.resume,
-        "corpus_dir": options.corpus_dir.clone(),
-        "profile": options.profile.clone(),
-        "simple_progress": options.simple_progress,
-        "dry_run": options.dry_run,
-    })
-}
-
-fn chain_run_options_doc(options: &ChainRunOptions) -> serde_json::Value {
-    serde_json::json!({
-        "workers": options.workers,
-        "seed": options.seed,
-        "iterations": options.iterations,
-        "timeout_seconds": options.timeout,
-        "resume": options.resume,
-        "simple_progress": options.simple_progress,
-        "dry_run": options.dry_run,
-    })
 }
 
 fn best_effort_append_text_line(path: &Path, line: &str) {
