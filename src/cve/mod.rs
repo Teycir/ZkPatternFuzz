@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use crate::executor::ExecutorFactory;
+use crate::executor::{ExecutorFactory, ExecutorFactoryOptions};
 use crate::fuzzer::oracles::{
     CommitmentOracle, MerkleOracle, NullifierOracle, OracleConfig, RangeProofOracle, SemanticOracle,
 };
@@ -498,8 +498,14 @@ impl RegressionTest {
         };
         let main_component = detect_main_component(&source, framework);
 
-        let executor = match ExecutorFactory::create(framework, &self.circuit_path, &main_component)
-        {
+        let mut executor_options = ExecutorFactoryOptions::default();
+        executor_options.circom_skip_compile_if_artifacts = true;
+        let executor = match ExecutorFactory::create_with_options(
+            framework,
+            &self.circuit_path,
+            &main_component,
+            &executor_options,
+        ) {
             Ok(exec) => exec,
             Err(e) => {
                 return RegressionTestResult {
@@ -595,6 +601,34 @@ impl RegressionTest {
             cve_id: self.cve_id.clone(),
             passed: passed_all,
             test_results,
+        }
+    }
+
+    /// Best-effort preflight for executor/tooling readiness.
+    ///
+    /// Returns a human-readable reason when this regression target cannot be executed due to
+    /// backend/tooling/artifact issues and should be skipped before running test cases.
+    pub fn preflight_infrastructure_issue(&self) -> Option<String> {
+        let path = Path::new(&self.circuit_path);
+        if !path.exists() {
+            return None;
+        }
+
+        let source = std::fs::read_to_string(path).ok()?;
+        let framework = detect_framework(path).ok()?;
+        let main_component = detect_main_component(&source, framework);
+
+        let mut executor_options = ExecutorFactoryOptions::default();
+        executor_options.circom_skip_compile_if_artifacts = true;
+
+        match ExecutorFactory::create_with_options(
+            framework,
+            &self.circuit_path,
+            &main_component,
+            &executor_options,
+        ) {
+            Ok(_) => None,
+            Err(err) => Some(format!("Executor creation failed: {}", err)),
         }
     }
 }

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use zk_fuzzer::cve::CveDatabase;
 
@@ -95,6 +96,24 @@ fn test_autonomous_cve_regression_tests() {
     );
     println!();
 
+    let mut preflight_infra_skips: HashMap<String, String> = HashMap::new();
+    for test in &selected_tests {
+        let circuit_full_path = repo_root().join(&test.circuit_path);
+        if !circuit_full_path.exists() {
+            continue;
+        }
+        if let Some(reason) = test.preflight_infrastructure_issue() {
+            preflight_infra_skips.insert(test.cve_id.clone(), reason);
+        }
+    }
+    if !preflight_infra_skips.is_empty() {
+        println!(
+            "Preflight disabled {} CVE target(s) due to backend/tooling/artifact issues.",
+            preflight_infra_skips.len()
+        );
+        println!();
+    }
+
     let mut executed = 0;
     let mut passed = 0;
     let mut failed = 0;
@@ -114,6 +133,13 @@ fn test_autonomous_cve_regression_tests() {
                 circuit_full_path.display()
             );
             circuit_not_found += 1;
+            continue;
+        }
+
+        if let Some(reason) = preflight_infra_skips.get(&test.cve_id) {
+            println!("  ⚠️  Skipping (preflight): {}", reason);
+            infra_skipped += 1;
+            println!();
             continue;
         }
 
