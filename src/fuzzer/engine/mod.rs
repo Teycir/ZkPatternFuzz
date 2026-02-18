@@ -1151,6 +1151,14 @@ impl FuzzingEngine {
                         )?;
                         attack_executed = true;
                     }
+                    AttackType::BitDecomposition => {
+                        tracing::info!(
+                            "Routing BitDecomposition attack to underconstrained runner"
+                        );
+                        self.run_underconstrained_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
                     AttackType::Malleability => {
                         self.run_proof_malleability_attack(
                             &attack_config.config,
@@ -1304,12 +1312,6 @@ impl FuzzingEngine {
                         self.run_witness_collision_attack(&attack_config.config, progress)
                             .await?;
                         attack_executed = true;
-                    }
-                    _ => {
-                        tracing::warn!(
-                            "Attack type {:?} not yet implemented",
-                            attack_config.attack_type
-                        );
                     }
                 }
             }

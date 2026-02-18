@@ -82,6 +82,19 @@ fn strict_attack_floor_keeps_higher_configured_values() {
 }
 
 #[test]
+fn engine_dispatch_has_no_not_yet_implemented_fallback() {
+    let source = include_str!("mod.rs");
+    assert!(
+        !source.contains("not yet implemented"),
+        "engine dispatch should not rely on generic 'not yet implemented' fallback"
+    );
+    assert!(
+        source.contains("AttackType::BitDecomposition =>"),
+        "BitDecomposition should be routed explicitly in engine dispatch"
+    );
+}
+
+#[test]
 fn has_static_source_evidence_accepts_quantum_and_circom_lint() {
     let quantum = Finding {
         attack_type: AttackType::QuantumResistance,
