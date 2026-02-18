@@ -83,6 +83,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
 - Started `main.rs` decomposition with zero-behavior-change extraction:
   - Moved CLI structs/enums and run option types into `src/cli/mod.rs` (`Cli`, `Commands`, `BinsCommands`, `ScanFamily`, `CampaignRunOptions`, `ChainRunOptions`).
   - Added `CommandRequest` normalization in `src/cli/mod.rs` so command-shape resolution (including legacy `--config` fallback) is centralized outside `main.rs`.
+  - Began scan-dispatch extraction by moving framework parsing and scan-shape validation helpers into `src/scan_dispatch.rs` (`parse_framework_arg`, `detect_pattern_has_chains`, `validate_scan_pattern_complexity`).
   - Kept command-parity regression green (`tests/cli_command_parity_tests.rs`) after extraction.
 - Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
 - Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
