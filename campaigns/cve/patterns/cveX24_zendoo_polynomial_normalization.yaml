@@ -29,7 +29,7 @@ attacks:
   - type: soundness
     description: Proof/verification soundness checks.
     config:
-      forge_attempts: 200
+      forge_attempts: 1000
       mutation_rate: 0.1
   - type: constraint_inference
     description: Infer missing semantic constraints with confirmation.
@@ -39,12 +39,12 @@ attacks:
   - type: constraint_slice
     description: Cone-based dependency slicing.
     config:
-      samples_per_cone: 8
-      base_witness_attempts: 8
+      samples_per_cone: 32
+      base_witness_attempts: 32
   - type: spec_inference
     description: Infer high-level specification constraints from IO behavior and test violations.
     config:
-      sample_count: 500
+      sample_count: 1000
   - type: witness_collision
     description: Detect distinct witnesses mapping to same public outputs.
     config:
@@ -53,7 +53,7 @@ attacks:
   - type: metamorphic
     description: Transform-based semantic consistency checks.
     config:
-      num_tests: 120
+      num_tests: 256
   - type: boundary
     description: Boundary value testing
     config:
