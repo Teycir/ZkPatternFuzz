@@ -67,6 +67,42 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
 - Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
 - Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
 
+## 2026-02-18 External Review Triage (Validated)
+
+Accepted additions (roadmap-valid):
+
+1. `P0` Main binary decomposition:
+   - Split `src/main.rs` into focused modules (`cli`, `scan_dispatch`, `campaign_run`, `signal_handling`), while preserving CLI behavior.
+   - Add regression tests for command parity (`scan`, `run`, `chains`, `evidence`) before and after refactor.
+
+2. `P0` Eliminate residual "not yet implemented" attack paths:
+   - Audit attack dispatch fallthroughs and either implement handlers or fail with explicit unsupported-attack errors.
+   - Add strict-mode regression test that fails if required/declared attacks hit the generic not-implemented warning path.
+
+3. `P1` Real-backend integration matrix expansion:
+   - Add environment-gated integration coverage for Circom, Noir, Halo2, and Cairo execution/prove/verify smoke paths.
+   - Standardize pass/skip/fail reporting so infrastructure skips are clearly separated from detection misses.
+
+4. `P1` Plugin system documentation and safety contract:
+   - Add a dedicated plugin guide covering discovery paths, strict-mode behavior, and operational safeguards.
+   - Document recommended hardening defaults for plugin loading in production engagements.
+
+5. `P1` Config migration ergonomics:
+   - Add a migration command/workflow for legacy config shapes to reduce multi-layer configuration friction.
+   - Include compatibility report output showing rewritten keys and deprecated constructs.
+
+Accepted with constrained scope:
+
+1. Async executor improvements:
+   - Evaluate async/process orchestration only for backend I/O and external command wait paths.
+   - Proceed beyond prototype only with measurable throughput or wall-clock gains on benchmark suites.
+
+Not added as new implementation work (already present):
+
+1. SARIF output implementation:
+   - SARIF generation is already implemented and wired (`src/reporting/sarif.rs`, `src/reporting/mod.rs`).
+   - Follow-up retained: add schema-validation CI check and explicit CI upload example in docs.
+
 ---
 
 ## 1. Trusted Setup Analysis
