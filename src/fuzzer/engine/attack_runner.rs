@@ -3192,7 +3192,7 @@ impl FuzzingEngine {
         let configured_base_witness_attempts = config
             .get("base_witness_attempts")
             .and_then(|v| v.as_u64())
-            .or_value(5) as usize;
+            .or_value(16) as usize;
         let base_witness_attempts = self.bounded_attack_units(
             configured_base_witness_attempts,
             1,
@@ -3207,8 +3207,9 @@ impl FuzzingEngine {
 
         let oracle = ConstraintSliceOracle::new().with_samples(samples_per_cone);
 
-        // Generate a base witness that successfully executes
-        let mut base_witness = None;
+        // Generate a base witness that successfully executes.
+        // Start with fresh generation, then fall back to corpus-derived witnesses.
+        let mut base_witness_inputs: Option<Vec<FieldElement>> = None;
         let attempts = base_witness_attempts.max(1);
         for _ in 0..attempts {
             if self.wall_clock_timeout_reached() {
@@ -3220,15 +3221,36 @@ impl FuzzingEngine {
             let candidate = self.generate_test_case();
             let result = self.executor.execute_sync(&candidate.inputs);
             if result.success {
-                base_witness = Some(candidate);
+                base_witness_inputs = Some(candidate.inputs);
                 break;
             }
         }
 
-        let Some(base_witness) = base_witness else {
+        if base_witness_inputs.is_none() {
+            let corpus_probe_count = attempts.saturating_mul(4).max(16);
+            for witness in self.collect_corpus_inputs(corpus_probe_count) {
+                if self.wall_clock_timeout_reached() {
+                    tracing::warn!(
+                        "Stopping constraint-slice corpus witness fallback early: wall-clock timeout reached"
+                    );
+                    break;
+                }
+                let result = self.executor.execute_sync(&witness);
+                if result.success {
+                    tracing::info!(
+                        "Constraint-slice base witness recovered via corpus fallback (probe_count={})",
+                        corpus_probe_count
+                    );
+                    base_witness_inputs = Some(witness);
+                    break;
+                }
+            }
+        }
+
+        let Some(base_witness_inputs) = base_witness_inputs else {
             tracing::warn!(
-                "Skipping constraint slice attack: failed to find a valid base witness after {} attempts",
-                attempts
+                "Skipping constraint slice attack: failed to find a valid base witness after {} generated attempts plus corpus fallback",
+                attempts,
             );
             return Ok(());
         };
@@ -3264,7 +3286,7 @@ impl FuzzingEngine {
         };
 
         let findings = oracle
-            .run(self.executor.as_ref(), &base_witness.inputs, &outputs)
+            .run(self.executor.as_ref(), &base_witness_inputs, &outputs)
             .await;
 
         let _kept = self.record_custom_findings(findings, AttackType::ConstraintSlice, progress)?;
