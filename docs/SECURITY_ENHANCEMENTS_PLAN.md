@@ -44,6 +44,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added persistent preflight cache (`target/autonomous_cve_preflight_cache.json`) plus refresh flag (`ZKFUZZ_CVE_PREFLIGHT_REFRESH=1`) to avoid repeated probing of known infrastructure-broken targets.
   - Regression failures now surface backend execution errors directly in testcase output (`Expected valid but execution failed: <backend error>`), speeding root-cause triage.
   - Constraint-slice now uses a stronger base-witness search (higher default attempts + corpus fallback) so the attack is less likely to skip on difficult circuits.
+  - Autonomous CVE summary now reports normalized top failure reasons and expected-valid/expected-invalid mismatch counters to speed recall triage.
 - Improved Noir backend prove/verify path parity:
   - Unified proof artifact handling to use both `<project>.proof` and `main.proof` candidate paths for read/write compatibility across Noir toolchain variations.
 - Completed first-class trusted setup module wiring:

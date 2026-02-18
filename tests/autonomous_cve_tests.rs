@@ -207,6 +207,10 @@ fn test_autonomous_cve_regression_tests() {
     let mut failed = 0;
     let mut circuit_not_found = 0;
     let mut infra_skipped = 0;
+    let mut failed_test_cases = 0usize;
+    let mut expected_valid_execution_failures = 0usize;
+    let mut expected_invalid_execution_successes = 0usize;
+    let mut failure_reason_counts: HashMap<String, usize> = HashMap::new();
 
     for test in &selected_tests {
         println!("Testing: {} - {}", test.cve_id, test.cve_name);
@@ -264,6 +268,23 @@ fn test_autonomous_cve_regression_tests() {
             let status = if tc_result.passed { "✓" } else { "✗" };
             let msg = tc_result.message.as_deref().unwrap_or("OK");
             println!("    {} {}: {}", status, tc_result.name, msg);
+            if !tc_result.passed {
+                failed_test_cases += 1;
+                if let Some(message) = tc_result.message.as_deref() {
+                    if message.starts_with("Expected valid but execution failed") {
+                        expected_valid_execution_failures += 1;
+                    }
+                    if message.contains("Expected invalid but execution succeeded") {
+                        expected_invalid_execution_successes += 1;
+                    }
+                    let normalized = normalize_failure_reason(message);
+                    *failure_reason_counts.entry(normalized).or_insert(0) += 1;
+                } else {
+                    *failure_reason_counts
+                        .entry("unknown_failure".to_string())
+                        .or_insert(0) += 1;
+                }
+            }
         }
         println!();
     }
@@ -277,6 +298,23 @@ fn test_autonomous_cve_regression_tests() {
     println!("Failed: {}", failed);
     println!("Circuits not found: {}", circuit_not_found);
     println!("Infrastructure skipped: {}", infra_skipped);
+    println!("Failed test cases: {}", failed_test_cases);
+    println!(
+        "Expected-valid execution failures: {}",
+        expected_valid_execution_failures
+    );
+    println!(
+        "Expected-invalid execution successes: {}",
+        expected_invalid_execution_successes
+    );
+    if !failure_reason_counts.is_empty() {
+        let mut ranked_reasons: Vec<(String, usize)> = failure_reason_counts.into_iter().collect();
+        ranked_reasons.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        println!("Top failure reasons:");
+        for (reason, count) in ranked_reasons.into_iter().take(5) {
+            println!("  - {} ({})", reason, count);
+        }
+    }
     println!();
 
     if executed > 0 {
@@ -340,6 +378,19 @@ fn test_autonomous_cve_database_structure() {
     }
 
     println!("\n✅ All autonomous CVE patterns have valid structure");
+}
+
+fn normalize_failure_reason(message: &str) -> String {
+    if message.starts_with("Expected valid but execution failed:") {
+        return "expected_valid_execution_failed".to_string();
+    }
+    if message.contains("Expected invalid but execution succeeded") {
+        return "expected_invalid_execution_succeeded".to_string();
+    }
+    if let Some((prefix, _)) = message.split_once(':') {
+        return prefix.trim().to_ascii_lowercase().replace(' ', "_");
+    }
+    message.trim().to_ascii_lowercase().replace(' ', "_")
 }
 
 #[test]
