@@ -237,8 +237,16 @@ ZkPatternFuzz/
 - **[TUTORIAL.md](docs/TUTORIAL.md)** - Step-by-step guide
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Internal design
 - **[ROADMAP.md](ROADMAP.md)** - Development roadmap
+- **[RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)** - Production release gate checklist
+- **[TROUBLESHOOTING_PLAYBOOK.md](docs/TROUBLESHOOTING_PLAYBOOK.md)** - Keygen/includes/locks/timeouts playbook
 - **[TRIAGE_SYSTEM.md](docs/TRIAGE_SYSTEM.md)** - Automated triage
 - **[DEFI_ATTACK_GUIDE.md](docs/DEFI_ATTACK_GUIDE.md)** - MEV/front-running detection
+
+## Release Ops
+
+- Use **[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)** as the source of truth before tagging a release.
+- Use **[docs/TARGETS.md](docs/TARGETS.md)** for exact `gh workflow run "Release Validation"` command templates.
+- Use **[docs/TROUBLESHOOTING_PLAYBOOK.md](docs/TROUBLESHOOTING_PLAYBOOK.md)** when release gates fail (keygen, includes, lock contention, timeout tuning).
 
 ## Development
 

@@ -151,6 +151,37 @@ cargo run --release --bin zk0d_benchmark -- \
   --workers 2
 ```
 
+## Release Validation Workflow (Manual Trigger)
+
+Use the dedicated GitHub Actions workflow to validate Phase 5 exit criteria
+(consecutive benchmark passes + rollback validation).
+
+Trigger from CLI:
+
+```bash
+gh workflow run "Release Validation" \
+  -f stable_ref=<previous_stable_tag_or_commit> \
+  -f config_profile=prod \
+  -f iterations=400 \
+  -f timeout=180 \
+  -f required_passes=2
+```
+
+Watch the run:
+
+```bash
+gh run list --workflow "Release Validation" --limit 1
+gh run watch <run_id> --exit-status
+```
+
+Notes:
+- `stable_ref` is required and should point to the previous production-stable
+  tag/commit used for rollback validation.
+- `required_passes=2` matches the release checklist requirement for consecutive
+  release-candidate gate passes.
+- If `gh` is unavailable, run the same workflow via GitHub Actions UI using
+  `workflow_dispatch` inputs.
+
 ## Naming Rule
 
 Template filenames must follow:

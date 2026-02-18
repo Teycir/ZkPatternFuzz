@@ -94,6 +94,101 @@ fn campaign_path_for(env_name: &str, default_path: &str, repo_root: &Path) -> Pa
     }
 }
 
+fn read_json(path: &Path) -> serde_json::Value {
+    let raw = std::fs::read_to_string(path)
+        .unwrap_or_else(|err| panic!("Failed to read JSON '{}': {}", path.display(), err));
+    serde_json::from_str(&raw)
+        .unwrap_or_else(|err| panic!("Invalid JSON in '{}': {}", path.display(), err))
+}
+
+fn assert_exists(path: &Path, label: &str, run_label: &str) {
+    assert!(
+        path.exists(),
+        "Scan '{}' missing {} at {}",
+        run_label,
+        label,
+        path.display()
+    );
+}
+
+fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
+    // Public contract files for scan-mode engagement output.
+    let required = [
+        ("engagement latest pointer", engagement_dir.join("latest.json")),
+        ("engagement summary json", engagement_dir.join("summary.json")),
+        ("engagement summary markdown", engagement_dir.join("summary.md")),
+        ("engagement event stream", engagement_dir.join("log/events.jsonl")),
+        (
+            "engagement incremental results stream",
+            engagement_dir.join("incremental_results.jsonl"),
+        ),
+        ("scan mode latest pointer", engagement_dir.join("misc/latest.json")),
+        ("scan mode event stream", engagement_dir.join("misc/events.jsonl")),
+        (
+            "scan mode incremental results stream",
+            engagement_dir.join("misc/incremental_results.jsonl"),
+        ),
+        ("scan mode run outcome", engagement_dir.join("misc/run_outcome.json")),
+    ];
+    for (label, path) in required {
+        assert_exists(&path, label, run_label);
+    }
+
+    let summary_path = engagement_dir.join("summary.json");
+    let summary = read_json(&summary_path);
+    let modes = summary
+        .get("modes")
+        .and_then(|v| v.as_object())
+        .unwrap_or_else(|| panic!("summary.json missing object field 'modes'"));
+    let misc = modes
+        .get("misc")
+        .and_then(|v| v.as_object())
+        .unwrap_or_else(|| panic!("summary.json missing object field 'modes.misc'"));
+
+    for key in ["status", "command", "run_id", "stage", "started_utc", "output_dir"] {
+        assert!(
+            misc.contains_key(key),
+            "Scan '{}' summary contract missing 'modes.misc.{}'",
+            run_label,
+            key
+        );
+    }
+    assert_eq!(
+        misc.get("command").and_then(|v| v.as_str()),
+        Some("scan"),
+        "Scan '{}' expected modes.misc.command=scan",
+        run_label
+    );
+
+    let latest_path = engagement_dir.join("latest.json");
+    let latest = read_json(&latest_path);
+    let latest_run_id = latest
+        .get("run_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("latest.json missing run_id"));
+    let summary_run_id = misc
+        .get("run_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("summary.json modes.misc missing run_id"));
+    assert_eq!(
+        latest_run_id, summary_run_id,
+        "Scan '{}' run_id mismatch between latest.json and summary.json",
+        run_label
+    );
+
+    let run_outcome_path = engagement_dir.join("misc/run_outcome.json");
+    let run_outcome = read_json(&run_outcome_path);
+    let run_outcome_run_id = run_outcome
+        .get("run_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("misc/run_outcome.json missing run_id"));
+    assert_eq!(
+        run_outcome_run_id, summary_run_id,
+        "Scan '{}' run_id mismatch between misc/run_outcome.json and summary.json",
+        run_label
+    );
+}
+
 struct ScanRun<'a> {
     label: &'a str,
     family: &'a str,
@@ -159,14 +254,61 @@ fn run_scan(bin: &Path, repo_root: &Path, temp_root: &Path, run: ScanRun<'_>) {
         );
     }
 
-    let report_path = engagement_dir.join("latest.json");
-    let run_outcome_path = engagement_dir.join("summary.json");
-    assert!(
-        report_path.exists() || run_outcome_path.exists(),
-        "Scan '{}' completed but no engagement artifacts were found in {}",
-        run.label,
-        engagement_dir.display()
-    );
+    assert_engagement_contract(&engagement_dir, run.label);
+}
+
+#[test]
+fn scan_engagement_contract_fixture_passes() {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let engagement_dir = temp_dir.path();
+    std::fs::create_dir_all(engagement_dir.join("log")).expect("mkdir log");
+    std::fs::create_dir_all(engagement_dir.join("misc")).expect("mkdir misc");
+
+    std::fs::write(engagement_dir.join("summary.md"), "# Summary\n").expect("write summary.md");
+    std::fs::write(engagement_dir.join("log/events.jsonl"), "{}\n").expect("write log events");
+    std::fs::write(engagement_dir.join("incremental_results.jsonl"), "{}\n")
+        .expect("write incremental events");
+    std::fs::write(engagement_dir.join("misc/events.jsonl"), "{}\n").expect("write misc events");
+    std::fs::write(engagement_dir.join("misc/incremental_results.jsonl"), "{}\n")
+        .expect("write misc incremental events");
+
+    let run_doc = serde_json::json!({
+        "status": "completed",
+        "command": "scan",
+        "run_id": "scan_123",
+        "stage": "completed",
+        "started_utc": "2026-02-18T12:00:00Z",
+        "output_dir": "/tmp/out"
+    });
+    std::fs::write(
+        engagement_dir.join("misc/run_outcome.json"),
+        serde_json::to_vec_pretty(&run_doc).expect("serialize run outcome"),
+    )
+    .expect("write misc/run_outcome.json");
+    std::fs::write(
+        engagement_dir.join("misc/latest.json"),
+        serde_json::to_vec_pretty(&run_doc).expect("serialize misc latest"),
+    )
+    .expect("write misc/latest.json");
+    std::fs::write(
+        engagement_dir.join("latest.json"),
+        serde_json::to_vec_pretty(&run_doc).expect("serialize latest"),
+    )
+    .expect("write latest.json");
+    std::fs::write(
+        engagement_dir.join("summary.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "updated_utc": "2026-02-18T12:00:01Z",
+            "report_dir": engagement_dir.display().to_string(),
+            "modes": {
+                "misc": run_doc
+            }
+        }))
+        .expect("serialize summary"),
+    )
+    .expect("write summary.json");
+
+    assert_engagement_contract(engagement_dir, "fixture");
 }
 
 #[test]

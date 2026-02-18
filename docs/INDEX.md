@@ -105,6 +105,25 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+### 5b. [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) - **Release Gate**
+**For:** RC and production releases  
+**Contains:**
+- release readiness checklist
+- benchmark/stability gate commands
+- rollback sign-off requirements
+
+---
+
+### 5c. [TROUBLESHOOTING_PLAYBOOK.md](TROUBLESHOOTING_PLAYBOOK.md) - **Operations Guide**
+**For:** Debugging failing runs quickly  
+**Contains:**
+- keygen failure recovery
+- include path fixes
+- lock contention mitigation
+- timeout tuning and reason-code triage
+
+---
+
 ## 🏗️ Architecture & Development
 
 ### 6. [ARCHITECTURE.md](../ARCHITECTURE.md) - **45 min read**
@@ -200,6 +219,12 @@ docs/
 │   ├── Best practices
 │   └── Performance tips
 │
+├── RELEASE_CHECKLIST.md
+│   └── Release readiness + rollback checklist
+│
+├── TROUBLESHOOTING_PLAYBOOK.md
+│   └── Keygen/includes/locks/timeouts triage
+│
 └── (See root directory for more)
     ├── README.md
     ├── ARCHITECTURE.md
@@ -235,6 +260,7 @@ docs/
 - [src/](../src/) - Source code
 
 **Troubleshooting**
+- [TROUBLESHOOTING_PLAYBOOK.md](TROUBLESHOOTING_PLAYBOOK.md) - Production troubleshooting flows
 - [TUTORIAL.md](TUTORIAL.md) - Common issues
 
 ---

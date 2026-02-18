@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BENCH_ROOT="${1:-$ROOT_DIR/artifacts/benchmark_runs}"
+SUMMARY_PATH_OVERRIDE="${2:-}"
 
 MIN_COMPLETION_RATE="${MIN_COMPLETION_RATE:-0.95}"
 MIN_VULNERABLE_RECALL="${MIN_VULNERABLE_RECALL:-0.20}"
@@ -14,9 +15,17 @@ if [ ! -d "$BENCH_ROOT" ]; then
   exit 1
 fi
 
-SUMMARY_PATH="$(find "$BENCH_ROOT" -type f -path '*/benchmark_*/summary.json' | sort | tail -n 1)"
-if [ -z "$SUMMARY_PATH" ]; then
-  echo "::error::No benchmark summary.json found under $BENCH_ROOT"
+if [ -n "$SUMMARY_PATH_OVERRIDE" ]; then
+  SUMMARY_PATH="$SUMMARY_PATH_OVERRIDE"
+else
+  SUMMARY_PATH="$(find "$BENCH_ROOT" -type f -path '*/benchmark_*/summary.json' | sort | tail -n 1)"
+fi
+if [ -z "$SUMMARY_PATH" ] || [ ! -f "$SUMMARY_PATH" ]; then
+  if [ -n "$SUMMARY_PATH_OVERRIDE" ]; then
+    echo "::error::Benchmark summary override not found: $SUMMARY_PATH_OVERRIDE"
+  else
+    echo "::error::No benchmark summary.json found under $BENCH_ROOT"
+  fi
   exit 1
 fi
 
@@ -65,4 +74,3 @@ if failures:
 
 print("Benchmark regression gate passed.")
 PY
-

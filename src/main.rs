@@ -500,10 +500,18 @@ fn ensure_engagement_layout(report_dir: &Path) {
 }
 
 fn get_command_from_doc(value: &serde_json::Value) -> String {
-    match value.get("command").and_then(|v| v.as_str()) {
-        Some(command) => command.to_string(),
-        None => panic!("Missing required 'command' in run document"),
+    if let Some(command) = value.get("command").and_then(|v| v.as_str()) {
+        return command.to_string();
     }
+    if let Some(command) = value
+        .get("context")
+        .and_then(|ctx| ctx.get("command"))
+        .and_then(|v| v.as_str())
+    {
+        return command.to_string();
+    }
+    tracing::warn!("Run document missing 'command' field; routing as misc");
+    "unknown".to_string()
 }
 
 fn mirror_mode_output_snapshot(output_dir: &Path, run_id: &str, value: &serde_json::Value) {
@@ -5476,5 +5484,24 @@ patterns:
         let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
             .expect_err("unknown synonym bundle must fail");
         assert!(format!("{err:#}").contains("Unknown synonym bundle"));
+    }
+
+    #[test]
+    fn run_doc_command_extraction_uses_context_fallback() {
+        let doc = serde_json::json!({
+            "status": "panic",
+            "context": {
+                "command": "scan"
+            }
+        });
+        assert_eq!(get_command_from_doc(&doc), "scan");
+    }
+
+    #[test]
+    fn run_doc_command_extraction_defaults_to_unknown_when_missing() {
+        let doc = serde_json::json!({
+            "status": "panic"
+        });
+        assert_eq!(get_command_from_doc(&doc), "unknown");
     }
 }

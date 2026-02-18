@@ -44,6 +44,21 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - `zk0d_benchmark --config-profile <dev|prod>` suites/registry defaults (`targets/benchmark_suites.{dev,prod}.yaml`, `targets/benchmark_registry.{dev,prod}.yaml`)
    - Dev profile wired as CI default for fast/stable regression gating.
 32. Hardened ptau validation to reject truncated/corrupt files by size + header in Circom backend (`crates/zk-backends/src/circom/mod.rs`), preventing false-valid 263-byte ptau cache entries from causing repeated keygen failures.
+33. Added scan/report contract compatibility assertions in CLI smoke regression (`tests/mode123_nonregression.rs`) to lock stable scan-mode artifact filenames and required JSON fields in `summary.json` + `misc/run_outcome.json`.
+34. Hardened run-document command extraction (`src/main.rs`) to avoid panic-on-missing-`command` in panic/signal artifacts by falling back to `context.command` (or `unknown`), with regression tests.
+35. Added production release checklist (`docs/RELEASE_CHECKLIST.md`) covering toolchain gates, regression/benchmark gates, migration notes, artifact verification, and rollback readiness.
+36. Added troubleshooting playbook (`docs/TROUBLESHOOTING_PLAYBOOK.md`) for keygen failures, include-path errors, output-lock contention, timeout tuning, and reason-code triage.
+37. Replaced split benchmark/nightly jobs with a unified release-hardening CI matrix in `.github/workflows/ci.yml`:
+   - `fast-smoke` lane for push/PR (blocking regression gate, dev profile).
+   - `deep-scheduled` lane for nightly schedule (prod profile, trend artifacts + warning alerts on regression).
+38. Added release-candidate consecutive-pass gate script (`scripts/release_candidate_gate.sh`) to enforce "last N benchmark summaries pass" checks (default `N=2`).
+39. Added rollback validation script (`scripts/rollback_validate.sh`) using isolated git worktree build/smoke checks for a previous stable ref.
+40. Extended benchmark gate script (`scripts/ci_benchmark_gate.sh`) with optional explicit summary path override to support multi-summary release gating.
+41. Added dedicated manual release validation workflow (`.github/workflows/release_validation.yml`) to run:
+   - consecutive benchmark pass gate (`required_passes=2` by default),
+   - rollback validation against a specified stable ref.
+42. Added release-validation invocation docs in `docs/TARGETS.md` with `gh workflow run` + `gh run watch` command templates and required `workflow_dispatch` inputs.
+43. Added `README.md` "Release Ops" section linking release checklist, release-validation workflow docs, and troubleshooting playbook for gate failures.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -71,6 +86,46 @@ Validation:
     - `cargo run --quiet --bin zk0d_batch -- --config-profile prod --list-catalog`
     - `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --dry-run --trials 1 --jobs 1 --batch-jobs 1 --workers 1`
     - `cargo run --quiet --bin zk0d_benchmark -- --config-profile prod --dry-run --trials 1 --jobs 1 --batch-jobs 1 --workers 1`
+22. Scan/report contract compatibility test command:
+    - `cargo test -q --test mode123_nonregression mode123_cli_smoke_non_regression -- --test-threads=1`
+23. Deterministic contract + command-fallback regression commands:
+    - `cargo test -q --test mode123_nonregression scan_engagement_contract_fixture_passes -- --test-threads=1`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+24. CI matrix validation command:
+    - `python3 -c "import yaml, pathlib; yaml.safe_load(pathlib.Path('.github/workflows/ci.yml').read_text())"`
+25. Release-exit scripts syntax validation:
+    - `bash -n scripts/ci_benchmark_gate.sh`
+    - `bash -n scripts/release_candidate_gate.sh`
+    - `bash -n scripts/rollback_validate.sh`
+26. Release-validation workflow YAML validation:
+    - `python3 -c "import yaml, pathlib; yaml.safe_load(pathlib.Path('.github/workflows/release_validation.yml').read_text())"`
+
+## Status Checklist (2026-02-18)
+
+Phase implementation progress:
+- [x] Phase 0: Reliability Blockers (implementation items completed)
+- [x] Phase 1: Detection Recall Upgrade (implementation items completed)
+- [x] Phase 2: Real Backend Internalization (implementation items completed)
+- [x] Phase 3: Multi-Target Execution Engine (implementation items completed)
+- [x] Phase 3A: Logic Correctness Hardening (implementation items completed)
+- [x] Phase 4: Validation/Stats tooling implementation (harness + CI gate + reason codes)
+- [x] Phase 5: Release Hardening (implementation items completed; exit criteria pending)
+
+Exit criteria progress:
+- [ ] Phase 0 exit criteria fully met on 20-run matrix
+- [ ] Phase 1 exit criteria fully met (recall uplift and bounded high-confidence FP)
+- [ ] Phase 2 exit criteria fully met on fresh clone baseline
+- [ ] Phase 3 exit criteria fully met on 10-target wall-clock benchmark
+- [ ] Phase 3A exit criteria fully met in integrated campaign runs
+- [ ] Phase 4 exit criteria fully met (`recall >= 80%`, `safe high-confidence FPR <= 5%`)
+- [ ] Phase 5 exit criteria met (release candidate pass twice + rollback validation)
+
+Definition of Done progress:
+- [ ] Stability: >=95% scan completion on production multi-target runs
+- [ ] Multi-target: 10+ target matrix with `jobs=2`/`workers=2` without collisions
+- [ ] Detection: measurable recall uplift on known vulnerable targets
+- [ ] Operability: single bootstrap path validated on fresh environments
+- [ ] Quality gates: nightly regression dashboard with pass/fail by failure class
 
 ## Audit Intake (2026-02-18)
 Source: `LOGIC_AUDIT.md` (13 findings total: High=3, Medium=5, Low=3, Info=2).
@@ -205,10 +260,16 @@ Implementation:
 3. Add troubleshooting playbook for keygen, includes, lock contention, and timeout tuning.
 4. Add nightly CI matrix (fast smoke + deep scheduled).
 
+Progress:
+- [x] Add release checklist (toolchain, regression matrix, docs, migration notes).
+- [x] Freeze public scan/report contract and add compatibility tests (`tests/mode123_nonregression.rs`).
+- [x] Add troubleshooting playbook for keygen, includes, lock contention, and timeout tuning.
+- [x] Add nightly CI matrix (fast smoke + deep scheduled).
+
 Exit Criteria:
 1. Versioned release candidate passes all gates twice consecutively.
 2. Rollback strategy documented and tested.
 
 ## Execution Backlog (Immediate Top 12)
-1. Add CI gates for stability/recall regression using `zk0d_benchmark` summary metrics.
-2. Add nightly benchmark trend artifacts (completion, recall, precision, safe FPR) and regression alerts.
+- [x] Add CI gates for stability/recall regression using `zk0d_benchmark` summary metrics.
+- [x] Add nightly benchmark trend artifacts (completion, recall, precision, safe FPR) and regression alerts.

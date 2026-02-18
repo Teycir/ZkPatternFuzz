@@ -1,0 +1,131 @@
+name: Release Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      stable_ref:
+        description: Previous stable tag/commit for rollback validation
+        required: true
+        type: string
+      config_profile:
+        description: Benchmark config profile
+        required: false
+        type: choice
+        default: prod
+        options:
+          - dev
+          - prod
+      iterations:
+        description: Iterations per benchmark run
+        required: false
+        default: "400"
+        type: string
+      timeout:
+        description: Timeout seconds per benchmark run
+        required: false
+        default: "180"
+        type: string
+      required_passes:
+        description: Consecutive benchmark summaries required
+        required: false
+        default: "2"
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  release-candidate-gate:
+    name: Release Candidate Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
+
+      - name: Install Z3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libz3-dev z3
+
+      - name: Install Circom and snarkjs
+        run: npm install -g circom snarkjs
+
+      - name: Build benchmark binaries
+        run: cargo build --release --bin zk0d_batch --bin zk0d_benchmark
+
+      - name: Run benchmark suite for consecutive-pass validation
+        env:
+          CIRCOM_INCLUDE_PATHS: third_party:node_modules
+        run: |
+          for pass in $(seq 1 "${{ inputs.required_passes }}"); do
+            echo "Running benchmark pass ${pass}/${{ inputs.required_passes }}"
+            cargo run --release --bin zk0d_benchmark -- \
+              --config-profile ${{ inputs.config_profile }} \
+              --suite vulnerable_ground_truth,safe_regression \
+              --trials 1 \
+              --jobs 2 \
+              --batch-jobs 1 \
+              --workers 2 \
+              --iterations ${{ inputs.iterations }} \
+              --timeout ${{ inputs.timeout }}
+          done
+
+      - name: Validate release candidate gate
+        env:
+          MIN_COMPLETION_RATE: "0.95"
+          MIN_VULNERABLE_RECALL: "0.00"
+          MIN_PRECISION: "0.00"
+          MAX_SAFE_FPR: "0.20"
+        run: |
+          bash ./scripts/release_candidate_gate.sh \
+            --bench-root artifacts/benchmark_runs \
+            --required-passes ${{ inputs.required_passes }}
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-validation-benchmark-${{ github.run_id }}
+          path: artifacts/benchmark_runs/
+          retention-days: 30
+
+  rollback-validation:
+    name: Rollback Validation
+    runs-on: ubuntu-latest
+    needs: release-candidate-gate
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
+
+      - name: Install Z3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libz3-dev z3
+
+      - name: Run rollback validation against stable ref
+        run: |
+          bash ./scripts/rollback_validate.sh --stable-ref "${{ inputs.stable_ref }}"
