@@ -255,13 +255,5 @@ impl AttackRegistry {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_registry_defaults() {
-        let registry = AttackRegistry::new();
-        assert!(!registry.is_empty());
-        assert!(registry.get("underconstrained").is_some());
-    }
-}
+#[path = "registry_tests.rs"]
+mod tests;

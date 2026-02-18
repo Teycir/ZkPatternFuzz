@@ -1207,34 +1207,5 @@ pub mod analysis {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_noir_field() {
-        let fe = parse_noir_field("12345").unwrap();
-        assert_eq!(fe, FieldElement::from_u64(12345));
-
-        let fe_hex = parse_noir_field("0x1234").unwrap();
-        assert_eq!(fe_hex.0[30], 0x12);
-        assert_eq!(fe_hex.0[31], 0x34);
-    }
-
-    #[test]
-    fn test_function_extraction() {
-        let source = r#"
-            fn main(x: Field, y: pub Field) -> Field {
-                x + y
-            }
-            
-            fn helper(a: u64) {
-                // ...
-            }
-        "#;
-
-        let functions = analysis::extract_functions(source);
-        assert_eq!(functions.len(), 2);
-        assert!(functions[0].is_main);
-        assert_eq!(functions[0].params.len(), 2);
-    }
-}
+#[path = "mod_tests.rs"]
+mod tests;

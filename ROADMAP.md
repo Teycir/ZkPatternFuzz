@@ -123,6 +123,26 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Refactored `seed_running_run_artifact(...)` to reuse `running_run_doc_with_window(...)`.
    - Replaced remaining inline `status="running"` doc builders (`engine_progress`, `engine_run`) with `running_run_doc_with_window(...)`.
    - Replaced duplicated completion doc builders in both `run_campaign` and `run_chain_campaign` with `completed_run_doc_with_window(...)`.
+69. Batched failure-emission helper extraction to remove repeated post-lock boilerplate (`src/main.rs`):
+   - Added `write_failed_mode_run_artifact_with_error(...)` for standard `failed + error` artifact emission with run-window fields.
+   - Added `write_failed_mode_run_artifact_with_reason(...)` for standard `failed + reason (+ readiness)` artifact emission with run-window fields.
+   - Replaced duplicated post-lock failure emitters across run/chain stages (`preflight_*`, `engine_*`, `save_*`, and chain-parse checks) with helper calls.
+70. Continued multi-task lifecycle deduplication with shared strict-readiness and backend-preflight gates (`src/main.rs`):
+   - Added `require_evidence_readiness_or_emit_failure(...)` to centralize strict readiness fail/emit/bail behavior.
+   - Added `run_backend_preflight_or_emit_failure(...)` to centralize backend preflight fail/emit behavior.
+   - Replaced duplicated readiness and backend-preflight gate blocks in both `run_campaign` and `run_chain_campaign` with helper calls.
+71. Continued lifecycle deduplication with shared pre-run setup orchestration (`src/main.rs`):
+   - Added `initialize_campaign_run_lifecycle(...)` to centralize output lock acquisition, stale-run marking, run-context binding, running-artifact seeding, and build-path normalization.
+   - Replaced duplicated pre-run setup blocks in both `run_campaign` and `run_chain_campaign` with helper calls returning `(output_dir, output_lock)`.
+72. Separated production and test concerns for CLI selector/command regressions (`src/main.rs`, `src/scan_selector_tests.rs`):
+   - Moved `scan_selector_tests` module out of `src/main.rs` into dedicated test file `src/scan_selector_tests.rs`.
+   - Kept production `src/main.rs` lean by replacing the inline test module with `#[cfg(test)] mod scan_selector_tests;`.
+   - Preserved existing test names/coverage (including `run_doc_command_extraction_*`) while removing test bodies from production source.
+73. Enforced strict repository-wide separation of test bodies from production source (`src/`, `crates/`):
+   - Extracted inline `#[cfg(test)] mod ... { ... }` blocks into dedicated sibling `*_tests.rs` files across the workspace.
+   - Replaced in-source test bodies with lightweight `#[cfg(test)]` module declarations using explicit `#[path = \"...\"]` links.
+   - Fixed bin-target edge cases by relocating extracted bin tests to `src/bin/<bin_name>/<bin_name>_tests.rs` so Cargo does not treat them as extra binaries.
+   - Verified no production file outside `*_tests.rs` contains inline `#[test]` functions or `mod tests { ... }` bodies.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -212,6 +232,25 @@ Validation:
 47. Main binary + command-fallback regression checks after running/completed doc-helper batch:
     - `cargo check -q --bin zk-fuzzer`
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+48. Main binary + command-fallback regression checks after failed-emitter helper batch:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+49. Main binary + command-fallback regression checks after readiness/preflight gate helper batch:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+50. Main binary + command-fallback regression checks after pre-run lifecycle helper extraction:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+51. Main binary + selector/command regression checks after test-file separation:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+52. Workspace compile + test-target compile checks after strict test-body separation:
+    - `cargo check -q --workspace`
+    - `cargo test -q --workspace --no-run`
+53. Repository audit checks confirming no inline test bodies outside dedicated `*_tests.rs` files:
+    - `rg -n --glob '!target/**' --glob '!tests/**' --glob '!**/tests/**' --glob '!**/*_tests.rs' '^\\s*#\\[test\\]' src crates`
+    - `rg -n --glob '!target/**' --glob '!tests/**' --glob '!**/tests/**' --glob '!**/*_tests.rs' '^\\s*mod\\s+tests\\s*\\{' src crates`
 
 ## Status Checklist (2026-02-18)
 

@@ -1326,6 +1326,190 @@ fn failed_run_doc_with_window(
     doc
 }
 
+fn write_failed_mode_run_artifact_with_error(
+    output_dir: &Path,
+    command: &str,
+    run_id: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+    error: String,
+) {
+    let mut doc = failed_run_doc_with_window(
+        command,
+        run_id,
+        stage,
+        config_path,
+        campaign_name,
+        output_dir,
+        started_utc,
+        timeout_seconds,
+    );
+    doc["error"] = serde_json::Value::String(error);
+    write_run_artifacts(output_dir, run_id, &doc);
+}
+
+fn write_failed_mode_run_artifact_with_reason(
+    output_dir: &Path,
+    command: &str,
+    run_id: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+    reason: String,
+    readiness: Option<serde_json::Value>,
+) {
+    let mut doc = failed_run_doc_with_window(
+        command,
+        run_id,
+        stage,
+        config_path,
+        campaign_name,
+        output_dir,
+        started_utc,
+        timeout_seconds,
+    );
+    doc["reason"] = serde_json::Value::String(reason);
+    if let Some(readiness) = readiness {
+        doc["readiness"] = readiness;
+    }
+    write_run_artifacts(output_dir, run_id, &doc);
+}
+
+fn require_evidence_readiness_or_emit_failure(
+    dry_run: bool,
+    output_dir: &Path,
+    command: &str,
+    run_id: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+    readiness: &ReadinessReport,
+    failure_reason: &str,
+) -> anyhow::Result<()> {
+    if readiness.ready_for_evidence {
+        return Ok(());
+    }
+
+    if !dry_run {
+        write_failed_mode_run_artifact_with_reason(
+            output_dir,
+            command,
+            run_id,
+            stage,
+            config_path,
+            campaign_name,
+            started_utc,
+            timeout_seconds,
+            failure_reason.to_string(),
+            Some(readiness_report_to_json(readiness)),
+        );
+    }
+
+    anyhow::bail!("{}", failure_reason);
+}
+
+fn run_backend_preflight_or_emit_failure(
+    dry_run: bool,
+    config: &FuzzConfig,
+    output_dir: &Path,
+    command: &str,
+    run_id: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+) -> anyhow::Result<()> {
+    if dry_run {
+        return Ok(());
+    }
+
+    if let Err(err) = run_backend_preflight(config) {
+        write_failed_mode_run_artifact_with_error(
+            output_dir,
+            command,
+            run_id,
+            stage,
+            config_path,
+            campaign_name,
+            started_utc,
+            timeout_seconds,
+            format!("{:#}", err),
+        );
+        return Err(err);
+    }
+
+    Ok(())
+}
+
+fn initialize_campaign_run_lifecycle(
+    dry_run: bool,
+    config: &mut FuzzConfig,
+    command: &str,
+    run_id: &str,
+    config_path: &str,
+    campaign_name: &str,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+    options_doc: serde_json::Value,
+) -> anyhow::Result<(PathBuf, Option<zk_fuzzer::util::file_lock::FileLock>)> {
+    // Prevent multi-process collisions on the same output dir.
+    // Skip locking/writes in --dry-run since no files are written.
+    let stage = "acquire_output_lock";
+    let output_dir = config.reporting.output_dir.clone();
+    let output_lock = acquire_output_lock_or_write_failure(
+        dry_run,
+        &output_dir,
+        command,
+        run_id,
+        stage,
+        config_path,
+        campaign_name,
+        &started_utc,
+    )?;
+
+    if !dry_run {
+        // If a previous run died without updating run_outcome.json, mark it as stale so it does
+        // not look like "still running forever".
+        mark_stale_previous_run_if_any(&output_dir, std::process::id());
+
+        set_run_log_context_for_campaign(
+            dry_run,
+            run_id,
+            command,
+            config_path,
+            Some(campaign_name),
+            Some(&output_dir),
+            &started_utc,
+        );
+
+        // Seed a persistent status file early so interrupted runs still leave artifacts.
+        seed_running_run_artifact(
+            &output_dir,
+            command,
+            run_id,
+            stage,
+            config_path,
+            campaign_name,
+            started_utc,
+            timeout_seconds,
+            options_doc,
+        );
+    }
+
+    // Ensure build artifacts never land inside the engagement report folder.
+    normalize_build_paths(config, run_id);
+
+    Ok((output_dir, output_lock))
+}
+
 fn scan_public_root_from_output_dir(output_dir: &Path) -> Option<PathBuf> {
     let run_root_dir = output_dir.parent()?;
     let artifacts_dir = run_root_dir.parent()?;
@@ -3723,65 +3907,27 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         serde_yaml::Value::String(command.to_string()),
     );
 
-    // Prevent multi-process collisions on the same output dir (reports/corpus/report.json, etc.).
-    // Skip in --dry-run since no files are written.
-    stage = "acquire_output_lock";
-    let output_dir = config.reporting.output_dir.clone();
-    let _output_lock = acquire_output_lock_or_write_failure(
+    let (output_dir, _output_lock) = initialize_campaign_run_lifecycle(
         options.dry_run,
-        &output_dir,
+        &mut config,
         command,
         &run_id,
-        stage,
         config_path,
         &campaign_name,
-        &started_utc,
+        started_utc,
+        options.timeout,
+        serde_json::json!({
+            "workers": options.workers,
+            "seed": options.seed,
+            "iterations": options.iterations,
+            "timeout_seconds": options.timeout,
+            "resume": options.resume,
+            "corpus_dir": options.corpus_dir.clone(),
+            "profile": options.profile.clone(),
+            "simple_progress": options.simple_progress,
+            "dry_run": options.dry_run,
+        }),
     )?;
-
-    if !options.dry_run {
-        // If a previous run died without updating run_outcome.json, mark it as stale so it doesn't
-        // look like "still running forever".
-        mark_stale_previous_run_if_any(&output_dir, std::process::id());
-    }
-
-    if !options.dry_run {
-        set_run_log_context_for_campaign(
-            options.dry_run,
-            &run_id,
-            command,
-            config_path,
-            Some(&config.campaign.name),
-            Some(&output_dir),
-            &started_utc,
-        );
-
-        // Seed a persistent status file early so "it stopped" cases always leave artifacts.
-        seed_running_run_artifact(
-            &output_dir,
-            command,
-            &run_id,
-            stage,
-            config_path,
-            &campaign_name,
-            started_utc,
-            options.timeout,
-            serde_json::json!({
-                "workers": options.workers,
-                "seed": options.seed,
-                "iterations": options.iterations,
-                "timeout_seconds": options.timeout,
-                "resume": options.resume,
-                "corpus_dir": options.corpus_dir.clone(),
-                "profile": options.profile.clone(),
-                "simple_progress": options.simple_progress,
-                "dry_run": options.dry_run,
-            }),
-        );
-    }
-
-    // Ensure build artifacts never land inside the engagement report folder.
-    // This keeps /home/<user>/ZkFuzz/report_<epoch>/ minimal and manageable.
-    normalize_build_paths(&mut config, &run_id);
 
     let _ctx_guard = RunLogContextGuard::new();
 
@@ -3790,21 +3936,19 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         stage = "preflight_invariants";
         let invariants = config.get_invariants();
         if invariants.is_empty() {
-            let mut doc = failed_run_doc_with_window(
-                command,
-                &run_id,
-                stage,
-                config_path,
-                &campaign_name,
-                &output_dir,
-                started_utc,
-                options.timeout,
-            );
-            doc["reason"] = serde_json::Value::String(
-                "Evidence mode requires v2 invariants in the YAML (invariants: ...).".to_string(),
-            );
             if !options.dry_run {
-                write_run_artifacts(&output_dir, &run_id, &doc);
+                write_failed_mode_run_artifact_with_reason(
+                    &output_dir,
+                    command,
+                    &run_id,
+                    stage,
+                    config_path,
+                    &campaign_name,
+                    started_utc,
+                    options.timeout,
+                    "Evidence mode requires v2 invariants in the YAML (invariants: ...).".to_string(),
+                    None,
+                );
             }
             anyhow::bail!("Evidence mode requires v2 invariants in the YAML (invariants: ...).");
         }
@@ -3869,46 +4013,34 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         println!();
         let readiness = zk_fuzzer::config::check_0day_readiness(&config);
         print!("{}", readiness.format());
-        if !readiness.ready_for_evidence {
-            let mut doc = failed_run_doc_with_window(
-                command,
-                &run_id,
-                stage,
-                config_path,
-                &campaign_name,
-                &output_dir,
-                started_utc,
-                options.timeout,
-            );
-            doc["reason"] = serde_json::Value::String(
-                "Campaign has critical issues; refusing to start strict evidence run".to_string(),
-            );
-            doc["readiness"] = readiness_report_to_json(&readiness);
-            if !options.dry_run {
-                write_run_artifacts(&output_dir, &run_id, &doc);
-            }
-            anyhow::bail!("Campaign has critical issues; refusing to start strict evidence run");
-        }
+        require_evidence_readiness_or_emit_failure(
+            options.dry_run,
+            &output_dir,
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            started_utc,
+            options.timeout,
+            &readiness,
+            "Campaign has critical issues; refusing to start strict evidence run",
+        )?;
     }
 
     stage = "preflight_backend";
-    if !options.dry_run {
-        if let Err(err) = run_backend_preflight(&config) {
-            let mut doc = failed_run_doc_with_window(
-                command,
-                &run_id,
-                stage,
-                config_path,
-                &campaign_name,
-                &output_dir,
-                started_utc,
-                options.timeout,
-            );
-            doc["error"] = serde_json::Value::String(format!("{:#}", err));
-            write_run_artifacts(&output_dir, &run_id, &doc);
-            return Err(err);
-        }
-    }
+    run_backend_preflight_or_emit_failure(
+        options.dry_run,
+        &config,
+        &output_dir,
+        command,
+        &run_id,
+        stage,
+        config_path,
+        &campaign_name,
+        started_utc,
+        options.timeout,
+    )?;
 
     // Print banner
     print_banner(&config);
@@ -4132,18 +4264,17 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     } {
         Ok(r) => r,
         Err(err) => {
-            let mut doc = failed_run_doc_with_window(
+            write_failed_mode_run_artifact_with_error(
+                &output_dir,
                 command,
                 &run_id,
                 stage,
                 config_path,
                 &campaign_name,
-                &output_dir,
                 started_utc,
                 options.timeout,
+                format!("{:#}", err),
             );
-            doc["error"] = serde_json::Value::String(format!("{:#}", err));
-            write_run_artifacts(&output_dir, &run_id, &doc);
             return Err(err);
         }
     };
@@ -4152,18 +4283,17 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     stage = "save_report";
     report.print_summary();
     if let Err(err) = report.save_to_files() {
-        let mut doc = failed_run_doc_with_window(
+        write_failed_mode_run_artifact_with_error(
+            &output_dir,
             command,
             &run_id,
             stage,
             config_path,
             &campaign_name,
-            &output_dir,
             started_utc,
             options.timeout,
+            format!("{:#}", err),
         );
-        doc["error"] = serde_json::Value::String(format!("{:#}", err));
-        write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err);
     }
 
@@ -4529,60 +4659,25 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let campaign_name = config.campaign.name.clone();
 
-    // Prevent multi-process collisions on the same output dir (chain_corpus.json, reports, etc.).
-    // Skip in --dry-run since no files are written.
-    stage = "acquire_output_lock";
-    let output_dir = config.reporting.output_dir.clone();
-    let _output_lock = acquire_output_lock_or_write_failure(
+    let (output_dir, _output_lock) = initialize_campaign_run_lifecycle(
         options.dry_run,
-        &output_dir,
+        &mut config,
         command,
         &run_id,
-        stage,
         config_path,
         &campaign_name,
-        &started_utc,
+        started_utc,
+        Some(options.timeout),
+        serde_json::json!({
+            "workers": options.workers,
+            "seed": options.seed,
+            "iterations": options.iterations,
+            "timeout_seconds": options.timeout,
+            "resume": options.resume,
+            "simple_progress": options.simple_progress,
+            "dry_run": options.dry_run,
+        }),
     )?;
-
-    if !options.dry_run {
-        // If a previous chain run died without updating run_outcome.json, mark it as stale.
-        mark_stale_previous_run_if_any(&output_dir, std::process::id());
-    }
-
-    if !options.dry_run {
-        set_run_log_context_for_campaign(
-            options.dry_run,
-            &run_id,
-            command,
-            config_path,
-            Some(&campaign_name),
-            Some(&output_dir),
-            &started_utc,
-        );
-
-        seed_running_run_artifact(
-            &output_dir,
-            command,
-            &run_id,
-            stage,
-            config_path,
-            &campaign_name,
-            started_utc,
-            Some(options.timeout),
-            serde_json::json!({
-                "workers": options.workers,
-                "seed": options.seed,
-                "iterations": options.iterations,
-                "timeout_seconds": options.timeout,
-                "resume": options.resume,
-                "simple_progress": options.simple_progress,
-                "dry_run": options.dry_run,
-            }),
-        );
-    }
-
-    // Ensure build artifacts never land inside the engagement report folder.
-    normalize_build_paths(&mut config, &run_id);
 
     let _ctx_guard = RunLogContextGuard::new();
 
@@ -4590,20 +4685,19 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     stage = "parse_chains";
     let chains = parse_chains(&config);
     if chains.is_empty() {
-        let mut doc = failed_run_doc_with_window(
-            command,
-            &run_id,
-            stage,
-            config_path,
-            &campaign_name,
-            &output_dir,
-            started_utc,
-            Some(options.timeout),
-        );
-        doc["reason"] =
-            serde_json::Value::String("Chain mode requires chains: definitions in the YAML.".to_string());
         if !options.dry_run {
-            write_run_artifacts(&output_dir, &run_id, &doc);
+            write_failed_mode_run_artifact_with_reason(
+                &output_dir,
+                command,
+                &run_id,
+                stage,
+                config_path,
+                &campaign_name,
+                started_utc,
+                Some(options.timeout),
+                "Chain mode requires chains: definitions in the YAML.".to_string(),
+                None,
+            );
         }
         anyhow::bail!(
             "Chain mode requires chains: definitions in the YAML. \
@@ -4644,45 +4738,33 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     println!();
     let readiness = zk_fuzzer::config::check_0day_readiness(&config);
     print!("{}", readiness.format());
-    if !readiness.ready_for_evidence {
-        let mut doc = failed_run_doc_with_window(
-            command,
-            &run_id,
-            stage,
-            config_path,
-            &campaign_name,
-            &output_dir,
-            started_utc,
-            Some(options.timeout),
-        );
-        doc["reason"] = serde_json::Value::String(
-            "Campaign has critical issues; refusing to start strict chain run".to_string(),
-        );
-        doc["readiness"] = readiness_report_to_json(&readiness);
-        if !options.dry_run {
-            write_run_artifacts(&output_dir, &run_id, &doc);
-        }
-        anyhow::bail!("Campaign has critical issues; refusing to start strict chain run");
-    }
+    require_evidence_readiness_or_emit_failure(
+        options.dry_run,
+        &output_dir,
+        command,
+        &run_id,
+        stage,
+        config_path,
+        &campaign_name,
+        started_utc,
+        Some(options.timeout),
+        &readiness,
+        "Campaign has critical issues; refusing to start strict chain run",
+    )?;
 
     stage = "preflight_backend";
-    if !options.dry_run {
-        if let Err(err) = run_backend_preflight(&config) {
-            let mut doc = failed_run_doc_with_window(
-                command,
-                &run_id,
-                stage,
-                config_path,
-                &campaign_name,
-                &output_dir,
-                started_utc,
-                Some(options.timeout),
-            );
-            doc["error"] = serde_json::Value::String(format!("{:#}", err));
-            write_run_artifacts(&output_dir, &run_id, &doc);
-            return Err(err);
-        }
-    }
+    run_backend_preflight_or_emit_failure(
+        options.dry_run,
+        &config,
+        &output_dir,
+        command,
+        &run_id,
+        stage,
+        config_path,
+        &campaign_name,
+        started_utc,
+        Some(options.timeout),
+    )?;
 
     // Print chain-specific banner
     println!();
@@ -4864,18 +4946,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let mut engine = match FuzzingEngine::new(config.clone(), options.seed, options.workers) {
         Ok(e) => e,
         Err(err) => {
-            let mut doc = failed_run_doc_with_window(
+            write_failed_mode_run_artifact_with_error(
+                &output_dir,
                 command,
                 &run_id,
                 stage,
                 config_path,
                 &campaign_name,
-                &output_dir,
                 started_utc,
                 Some(options.timeout),
+                format!("{:#}", err),
             );
-            doc["error"] = serde_json::Value::String(format!("{:#}", err));
-            write_run_artifacts(&output_dir, &run_id, &doc);
             return Err(err);
         }
     };
@@ -4898,18 +4979,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         match engine.run_chains(&chains, progress.as_ref()).await {
             Ok(findings) => findings,
             Err(err) => {
-                let mut doc = failed_run_doc_with_window(
+                write_failed_mode_run_artifact_with_error(
+                    &output_dir,
                     command,
                     &run_id,
                     stage,
                     config_path,
                     &campaign_name,
-                    &output_dir,
                     started_utc,
                     Some(options.timeout),
+                    format!("{:#}", err),
                 );
-                doc["error"] = serde_json::Value::String(format!("{:#}", err));
-                write_run_artifacts(&output_dir, &run_id, &doc);
                 return Err(err);
             }
         };
@@ -5111,18 +5191,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     // Save reports
     stage = "save_chain_reports";
     if let Err(err) = std::fs::create_dir_all(&output_dir) {
-        let mut doc = failed_run_doc_with_window(
+        write_failed_mode_run_artifact_with_error(
+            &output_dir,
             command,
             &run_id,
             stage,
             config_path,
             &campaign_name,
-            &output_dir,
             started_utc,
             Some(options.timeout),
+            format!("{:#}", err),
         );
-        doc["error"] = serde_json::Value::String(format!("{:#}", err));
-        write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err.into());
     }
 
@@ -5166,18 +5245,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         w.flush()?;
         Ok(())
     })() {
-        let mut doc = failed_run_doc_with_window(
+        write_failed_mode_run_artifact_with_error(
+            &output_dir,
             command,
             &run_id,
             stage,
             config_path,
             &campaign_name,
-            &output_dir,
             started_utc,
             Some(options.timeout),
+            format!("{:#}", err),
         );
-        doc["error"] = serde_json::Value::String(format!("{:#}", err));
-        write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err);
     }
     tracing::info!("Saved chain report to {:?}", chain_report_path);
@@ -5285,18 +5363,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     }
 
     if let Err(err) = std::fs::write(&chain_md_path, md) {
-        let mut doc = failed_run_doc_with_window(
+        write_failed_mode_run_artifact_with_error(
+            &output_dir,
             command,
             &run_id,
             stage,
             config_path,
             &campaign_name,
-            &output_dir,
             started_utc,
             Some(options.timeout),
+            format!("{:#}", err),
         );
-        doc["error"] = serde_json::Value::String(format!("{:#}", err));
-        write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err.into());
     }
     tracing::info!("Saved chain markdown report to {:?}", chain_md_path);
@@ -5314,18 +5391,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     report.statistics.total_executions = run_execution_count;
     stage = "save_standard_report";
     if let Err(err) = report.save_to_files() {
-        let mut doc = failed_run_doc_with_window(
+        write_failed_mode_run_artifact_with_error(
+            &output_dir,
             command,
             &run_id,
             stage,
             config_path,
             &campaign_name,
-            &output_dir,
             started_utc,
             Some(options.timeout),
+            format!("{:#}", err),
         );
-        doc["error"] = serde_json::Value::String(format!("{:#}", err));
-        write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err);
     }
 
@@ -5385,232 +5461,4 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 }
 
 #[cfg(test)]
-mod scan_selector_tests {
-    use super::*;
-
-    fn evaluate_selector_summary(
-        pattern_yaml: &str,
-        target_source: &str,
-    ) -> ScanRegexPatternSummary {
-        let temp_dir = tempfile::tempdir().expect("tempdir");
-        let pattern_path = temp_dir.path().join("pattern.yaml");
-        let target_path = temp_dir.path().join("target.circom");
-
-        fs::write(&pattern_path, pattern_yaml).expect("write pattern");
-        fs::write(&target_path, target_source).expect("write target");
-
-        let selector_config =
-            load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
-                .expect("load selector config")
-                .expect("selector config should exist");
-        evaluate_loaded_scan_regex_patterns(&selector_config, &target_path)
-            .expect("evaluate selector config")
-    }
-
-    #[test]
-    fn scan_selector_default_policy_matches_any_single_pattern() {
-        let pattern_yaml = r#"
-patterns:
-  - id: contains_alpha
-    kind: regex
-    pattern: "\\balpha\\b"
-  - id: contains_beta
-    kind: regex
-    pattern: "\\bbeta\\b"
-"#;
-        let summary = evaluate_selector_summary(pattern_yaml, "signal input alpha;");
-
-        assert_eq!(summary.required_k_of_n, 1);
-        assert_eq!(summary.matched_patterns, 1);
-        assert!(summary.selector_passed);
-    }
-
-    #[test]
-    fn scan_selector_policy_supports_k_of_n_and_min_score() {
-        let pattern_yaml = r#"
-patterns:
-  - id: alpha_context
-    kind: regex
-    pattern: "\\balpha\\b"
-    group: "core"
-    weight: 1.0
-  - id: beta_context
-    kind: regex
-    pattern: "\\bbeta\\b"
-    group: "core"
-    weight: 1.0
-  - id: gamma_hint
-    kind: regex
-    pattern: "\\bgamma\\b"
-    group: "aux"
-    weight: 0.5
-selector_policy:
-  k_of_n: 2
-  min_score: 1.5
-  groups:
-    - name: core
-      k_of_n: 1
-"#;
-        let summary = evaluate_selector_summary(pattern_yaml, "alpha gamma");
-
-        assert_eq!(summary.matched_patterns, 2);
-        assert!((summary.matched_score - 1.5).abs() < 1e-9);
-        assert!(summary.selector_passed);
-    }
-
-    #[test]
-    fn scan_selector_policy_fails_when_group_requirement_is_not_met() {
-        let pattern_yaml = r#"
-patterns:
-  - id: alpha_context
-    kind: regex
-    pattern: "\\balpha\\b"
-    group: "core"
-    weight: 1.0
-  - id: beta_context
-    kind: regex
-    pattern: "\\bbeta\\b"
-    group: "core"
-    weight: 1.0
-  - id: gamma_hint
-    kind: regex
-    pattern: "\\bgamma\\b"
-    group: "aux"
-    weight: 0.5
-selector_policy:
-  k_of_n: 2
-  min_score: 1.5
-  groups:
-    - name: core
-      k_of_n: 2
-"#;
-        let summary = evaluate_selector_summary(pattern_yaml, "alpha gamma");
-
-        assert!(!summary.selector_passed);
-        assert_eq!(summary.group_matches.len(), 1);
-        assert!(!summary.group_matches[0].passed);
-    }
-
-    #[test]
-    fn scan_selector_policy_rejects_invalid_global_k_of_n() {
-        let temp_dir = tempfile::tempdir().expect("tempdir");
-        let pattern_path = temp_dir.path().join("pattern.yaml");
-        fs::write(
-            &pattern_path,
-            r#"
-patterns:
-  - id: one
-    kind: regex
-    pattern: "one"
-  - id: two
-    kind: regex
-    pattern: "two"
-selector_policy:
-  k_of_n: 3
-"#,
-        )
-        .expect("write pattern");
-
-        let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
-            .expect_err("invalid k_of_n should fail");
-        assert!(format!("{err:#}").contains("selector_policy.k_of_n"));
-    }
-
-    #[test]
-    fn scan_selector_synonym_bundle_matches_separator_and_case_variants() {
-        let pattern_yaml = r#"
-selector_synonyms:
-  zkevm:
-    - "zkEVM"
-patterns:
-  - id: zkevm_context
-    kind: regex
-    pattern: "{{zkevm}}"
-"#;
-        let summary = evaluate_selector_summary(pattern_yaml, "component zk_evm_main {}");
-        assert!(summary.selector_passed);
-        assert_eq!(summary.matched_patterns, 1);
-    }
-
-    #[test]
-    fn scan_selector_synonym_bundle_can_disable_flexible_separator_normalization() {
-        let pattern_yaml = r#"
-selector_synonyms:
-  zkevm:
-    - "zkEVM"
-selector_normalization:
-  synonym_flexible_separators: false
-patterns:
-  - id: zkevm_context
-    kind: regex
-    pattern: "{{zkevm}}"
-"#;
-        let summary = evaluate_selector_summary(pattern_yaml, "component zk_evm_main {}");
-        assert!(!summary.selector_passed);
-        assert_eq!(summary.matched_patterns, 0);
-    }
-
-    #[test]
-    fn scan_selector_synonym_bundle_rejects_unknown_placeholder_bundle() {
-        let temp_dir = tempfile::tempdir().expect("tempdir");
-        let pattern_path = temp_dir.path().join("pattern.yaml");
-        fs::write(
-            &pattern_path,
-            r#"
-selector_synonyms:
-  known:
-    - "abc"
-patterns:
-  - id: bad_ref
-    kind: regex
-    pattern: "{{missing_bundle}}"
-"#,
-        )
-        .expect("write pattern");
-
-        let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
-            .expect_err("unknown synonym bundle must fail");
-        assert!(format!("{err:#}").contains("Unknown synonym bundle"));
-    }
-
-    #[test]
-    fn scan_selector_regex_safety_allows_optional_group_quantifier() {
-        validate_scan_regex_pattern_safety(r"(zk[-_ ]?evm)?")
-            .expect("optional group quantifier should be allowed");
-    }
-
-    #[test]
-    fn scan_selector_regex_safety_rejects_nested_dangerous_quantifier() {
-        let err = validate_scan_regex_pattern_safety(r"(a+)+")
-            .expect_err("nested quantifier must be rejected");
-        assert!(format!("{err:#}").contains("nested quantifier"));
-    }
-
-    #[test]
-    fn run_doc_command_extraction_uses_context_fallback() {
-        let doc = serde_json::json!({
-            "status": "panic",
-            "context": {
-                "command": "scan"
-            }
-        });
-        assert_eq!(get_command_from_doc(&doc), "scan");
-    }
-
-    #[test]
-    fn run_doc_command_extraction_defaults_to_unknown_when_missing() {
-        let doc = serde_json::json!({
-            "status": "panic"
-        });
-        assert_eq!(get_command_from_doc(&doc), "unknown");
-    }
-
-    #[test]
-    fn engagement_dir_name_invalid_run_id_never_panics() {
-        assert!(run_id_epoch_dir("invalid").is_none());
-        let result = std::panic::catch_unwind(|| engagement_dir_name("invalid"));
-        assert!(result.is_ok(), "engagement_dir_name should not panic");
-        let dir = result.expect("string");
-        assert!(!dir.trim().is_empty());
-    }
-}
+mod scan_selector_tests;
