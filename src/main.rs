@@ -171,6 +171,43 @@ fn get_run_log_context() -> Option<RunLogContext> {
     }
 }
 
+struct RunLogContextGuard;
+
+impl RunLogContextGuard {
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl Drop for RunLogContextGuard {
+    fn drop(&mut self) {
+        set_run_log_context(None);
+    }
+}
+
+fn set_run_log_context_for_campaign(
+    dry_run: bool,
+    run_id: &str,
+    command: &str,
+    config_path: &str,
+    campaign_name: Option<&str>,
+    output_dir: Option<&Path>,
+    started_utc: &DateTime<Utc>,
+) {
+    if dry_run {
+        return;
+    }
+
+    set_run_log_context(Some(RunLogContext {
+        run_id: run_id.to_string(),
+        command: command.to_string(),
+        campaign_path: Some(config_path.to_string()),
+        campaign_name: campaign_name.map(|name| name.to_string()),
+        output_dir: output_dir.map(Path::to_path_buf),
+        started_utc: started_utc.to_rfc3339(),
+    }));
+}
+
 fn sanitize_slug(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -972,6 +1009,50 @@ fn acquire_output_dir_lock(
     }
 }
 
+fn acquire_output_lock_or_write_failure(
+    dry_run: bool,
+    output_dir: &Path,
+    command: &str,
+    run_id: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    started_utc: &DateTime<Utc>,
+) -> anyhow::Result<Option<zk_fuzzer::util::file_lock::FileLock>> {
+    if dry_run {
+        return Ok(None);
+    }
+
+    match acquire_output_dir_lock(output_dir) {
+        Ok(lock) => Ok(Some(lock)),
+        Err(err) => {
+            let err_text = format!("{:#}", err);
+            let ended_utc = Utc::now();
+            let doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id,
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "campaign_name": campaign_name,
+                "output_dir": output_dir.display().to_string(),
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "error": err_text.clone(),
+                "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
+            });
+            write_failed_run_artifact(run_id, &doc);
+            Err(anyhow::anyhow!(
+                "Output directory is already in use (locked): {}. Error: {}",
+                output_dir.display(),
+                err_text
+            ))
+        }
+    }
+}
+
 fn parse_preflight_executor_options(
     config: &FuzzConfig,
 ) -> anyhow::Result<zk_fuzzer::executor::ExecutorFactoryOptions> {
@@ -1138,6 +1219,113 @@ fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Valu
     write_global_run_signal(run_id, value);
 }
 
+fn running_run_doc_with_window(
+    command: &str,
+    run_id: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    output_dir: &Path,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+) -> serde_json::Value {
+    let mut doc = serde_json::json!({
+        "status": "running",
+        "command": command,
+        "run_id": run_id,
+        "stage": stage,
+        "pid": std::process::id(),
+        "campaign_path": config_path,
+        "campaign_name": campaign_name,
+        "output_dir": output_dir.display().to_string(),
+        "started_utc": started_utc.to_rfc3339(),
+    });
+    add_run_window_fields(&mut doc, started_utc, timeout_seconds, "wall_clock");
+    doc
+}
+
+fn seed_running_run_artifact(
+    output_dir: &Path,
+    command: &str,
+    run_id: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+    options: serde_json::Value,
+) {
+    let mut doc = running_run_doc_with_window(
+        command,
+        run_id,
+        stage,
+        config_path,
+        campaign_name,
+        output_dir,
+        started_utc,
+        timeout_seconds,
+    );
+    doc["options"] = options;
+    write_run_artifacts(output_dir, run_id, &doc);
+}
+
+fn completed_run_doc_with_window(
+    command: &str,
+    run_id: &str,
+    status: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    output_dir: &Path,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+) -> serde_json::Value {
+    let ended_utc = Utc::now();
+    let mut doc = serde_json::json!({
+        "status": status,
+        "command": command,
+        "run_id": run_id,
+        "stage": stage,
+        "pid": std::process::id(),
+        "campaign_path": config_path,
+        "campaign_name": campaign_name,
+        "output_dir": output_dir.display().to_string(),
+        "started_utc": started_utc.to_rfc3339(),
+        "ended_utc": ended_utc.to_rfc3339(),
+        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+    });
+    add_run_window_fields(&mut doc, started_utc, timeout_seconds, "wall_clock");
+    doc
+}
+
+fn failed_run_doc_with_window(
+    command: &str,
+    run_id: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    output_dir: &Path,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+) -> serde_json::Value {
+    let ended_utc = Utc::now();
+    let mut doc = serde_json::json!({
+        "status": "failed",
+        "command": command,
+        "run_id": run_id,
+        "stage": stage,
+        "pid": std::process::id(),
+        "campaign_path": config_path,
+        "campaign_name": campaign_name,
+        "output_dir": output_dir.display().to_string(),
+        "started_utc": started_utc.to_rfc3339(),
+        "ended_utc": ended_utc.to_rfc3339(),
+        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+    });
+    add_run_window_fields(&mut doc, started_utc, timeout_seconds, "wall_clock");
+    doc
+}
+
 fn scan_public_root_from_output_dir(output_dir: &Path) -> Option<PathBuf> {
     let run_root_dir = output_dir.parent()?;
     let artifacts_dir = run_root_dir.parent()?;
@@ -1197,6 +1385,34 @@ fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
     let failed_dir = report_dir.join("_failed_runs");
     best_effort_write_json(&failed_dir.join(format!("{}.json", run_id)), value);
     write_global_run_signal(run_id, value);
+}
+
+fn write_failed_run_artifact_with_error(
+    run_id: &str,
+    command: &str,
+    stage: &str,
+    config_path: &str,
+    started_utc: &DateTime<Utc>,
+    ended_utc: &DateTime<Utc>,
+    error: String,
+    output_dir: Option<&Path>,
+) {
+    let mut doc = serde_json::json!({
+        "status": "failed",
+        "command": command,
+        "run_id": run_id,
+        "stage": stage,
+        "pid": std::process::id(),
+        "campaign_path": config_path,
+        "started_utc": started_utc.to_rfc3339(),
+        "ended_utc": ended_utc.to_rfc3339(),
+        "duration_seconds": (*ended_utc - *started_utc).num_seconds().max(0),
+        "error": error,
+    });
+    if let Some(path) = output_dir {
+        doc["output_dir"] = serde_json::Value::String(path.display().to_string());
+    }
+    write_failed_run_artifact(run_id, &doc);
 }
 
 fn pid_is_alive(pid: u32) -> Option<bool> {
@@ -3375,35 +3591,31 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
     // Put `session.log` under the engagement folder from the very start (even if YAML parsing
     // fails). This avoids scattering logs across multiple locations.
-    if !options.dry_run {
-        set_run_log_context(Some(RunLogContext {
-            run_id: run_id.clone(),
-            command: command.to_string(),
-            campaign_path: Some(config_path.to_string()),
-            campaign_name: None,
-            output_dir: None,
-            started_utc: started_utc.to_rfc3339(),
-        }));
-    }
+    set_run_log_context_for_campaign(
+        options.dry_run,
+        &run_id,
+        command,
+        config_path,
+        None,
+        None,
+        &started_utc,
+    );
 
     tracing::info!("Loading campaign from: {}", config_path);
     let mut config = match FuzzConfig::from_yaml(config_path) {
         Ok(cfg) => cfg,
         Err(err) => {
             let ended_utc = Utc::now();
-            let doc = serde_json::json!({
-                "status": "failed",
-                "command": command,
-                "run_id": run_id.clone(),
-                "stage": stage,
-                "pid": std::process::id(),
-                "campaign_path": config_path,
-                "started_utc": started_utc.to_rfc3339(),
-                "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                "error": format!("{:#}", err),
-            });
-            write_failed_run_artifact(&run_id, &doc);
+            write_failed_run_artifact_with_error(
+                &run_id,
+                command,
+                stage,
+                config_path,
+                &started_utc,
+                &ended_utc,
+                format!("{:#}", err),
+                None,
+            );
             return Err(err);
         }
     };
@@ -3415,24 +3627,17 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             Ok(parsed_profile) => apply_profile(&mut config, parsed_profile),
             Err(e) => {
                 let ended_utc = Utc::now();
-                let doc = serde_json::json!({
-                    "status": "failed",
-                    "command": command,
-                    "run_id": run_id.clone(),
-                    "stage": stage,
-                    "pid": std::process::id(),
-                    "campaign_path": config_path,
-                    "output_dir": config.reporting.output_dir.display().to_string(),
-                    "started_utc": started_utc.to_rfc3339(),
-                    "ended_utc": ended_utc.to_rfc3339(),
-                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                    "error": e,
-                });
-                write_failed_run_artifact(&run_id, &doc);
-                let parse_error = match doc.get("error").and_then(|v| v.as_str()) {
-                    Some(err) => err.to_string(),
-                    None => e.to_string(),
-                };
+                let parse_error = e.to_string();
+                write_failed_run_artifact_with_error(
+                    &run_id,
+                    command,
+                    stage,
+                    config_path,
+                    &started_utc,
+                    &ended_utc,
+                    parse_error.clone(),
+                    Some(config.reporting.output_dir.as_path()),
+                );
                 return Err(anyhow::anyhow!(
                     "Invalid --profile '{}': {}",
                     profile_name,
@@ -3522,37 +3727,16 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     // Skip in --dry-run since no files are written.
     stage = "acquire_output_lock";
     let output_dir = config.reporting.output_dir.clone();
-    let _output_lock = if options.dry_run {
-        None
-    } else {
-        Some(match acquire_output_dir_lock(&output_dir) {
-            Ok(lock) => lock,
-            Err(err) => {
-                let ended_utc = Utc::now();
-                let doc = serde_json::json!({
-                    "status": "failed",
-                    "command": command,
-                    "run_id": run_id.clone(),
-                    "stage": stage,
-                    "pid": std::process::id(),
-                    "campaign_path": config_path,
-                    "campaign_name": campaign_name.clone(),
-                    "output_dir": output_dir.display().to_string(),
-                    "started_utc": started_utc.to_rfc3339(),
-                    "ended_utc": ended_utc.to_rfc3339(),
-                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                    "error": format!("{:#}", err),
-                    "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
-                });
-                write_failed_run_artifact(&run_id, &doc);
-                return Err(anyhow::anyhow!(
-                    "Output directory is already in use (locked): {}. Error: {:#}",
-                    output_dir.display(),
-                    err
-                ));
-            }
-        })
-    };
+    let _output_lock = acquire_output_lock_or_write_failure(
+        options.dry_run,
+        &output_dir,
+        command,
+        &run_id,
+        stage,
+        config_path,
+        &campaign_name,
+        &started_utc,
+    )?;
 
     if !options.dry_run {
         // If a previous run died without updating run_outcome.json, mark it as stale so it doesn't
@@ -3561,27 +3745,27 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     }
 
     if !options.dry_run {
-        set_run_log_context(Some(RunLogContext {
-            run_id: run_id.clone(),
-            command: command.to_string(),
-            campaign_path: Some(config_path.to_string()),
-            campaign_name: Some(config.campaign.name.clone()),
-            output_dir: Some(output_dir.clone()),
-            started_utc: started_utc.to_rfc3339(),
-        }));
+        set_run_log_context_for_campaign(
+            options.dry_run,
+            &run_id,
+            command,
+            config_path,
+            Some(&config.campaign.name),
+            Some(&output_dir),
+            &started_utc,
+        );
 
         // Seed a persistent status file early so "it stopped" cases always leave artifacts.
-        let mut doc = serde_json::json!({
-            "status": "running",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "options": {
+        seed_running_run_artifact(
+            &output_dir,
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            started_utc,
+            options.timeout,
+            serde_json::json!({
                 "workers": options.workers,
                 "seed": options.seed,
                 "iterations": options.iterations,
@@ -3591,45 +3775,34 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "profile": options.profile.clone(),
                 "simple_progress": options.simple_progress,
                 "dry_run": options.dry_run,
-            }
-        });
-        add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
-        write_run_artifacts(&output_dir, &run_id, &doc);
+            }),
+        );
     }
 
     // Ensure build artifacts never land inside the engagement report folder.
     // This keeps /home/<user>/ZkFuzz/report_<epoch>/ minimal and manageable.
     normalize_build_paths(&mut config, &run_id);
 
-    struct _ClearRunContext;
-    impl Drop for _ClearRunContext {
-        fn drop(&mut self) {
-            set_run_log_context(None);
-        }
-    }
-    let _ctx_guard = _ClearRunContext;
+    let _ctx_guard = RunLogContextGuard::new();
 
     // Evidence mode settings + preflight checks.
     if options.require_invariants {
         stage = "preflight_invariants";
         let invariants = config.get_invariants();
         if invariants.is_empty() {
-            let ended_utc = Utc::now();
-            let mut doc = serde_json::json!({
-                "status": "failed",
-                "command": command,
-                "run_id": run_id.clone(),
-                "stage": stage,
-                "pid": std::process::id(),
-                "campaign_path": config_path,
-                "campaign_name": campaign_name.clone(),
-                "output_dir": output_dir.display().to_string(),
-                "started_utc": started_utc.to_rfc3339(),
-                "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                "reason": "Evidence mode requires v2 invariants in the YAML (invariants: ...).",
-            });
-            add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
+            let mut doc = failed_run_doc_with_window(
+                command,
+                &run_id,
+                stage,
+                config_path,
+                &campaign_name,
+                &output_dir,
+                started_utc,
+                options.timeout,
+            );
+            doc["reason"] = serde_json::Value::String(
+                "Evidence mode requires v2 invariants in the YAML (invariants: ...).".to_string(),
+            );
             if !options.dry_run {
                 write_run_artifacts(&output_dir, &run_id, &doc);
             }
@@ -3697,23 +3870,20 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         let readiness = zk_fuzzer::config::check_0day_readiness(&config);
         print!("{}", readiness.format());
         if !readiness.ready_for_evidence {
-            let ended_utc = Utc::now();
-            let mut doc = serde_json::json!({
-                "status": "failed",
-                "command": command,
-                "run_id": run_id.clone(),
-                "stage": stage,
-                "pid": std::process::id(),
-                "campaign_path": config_path,
-                "campaign_name": campaign_name.clone(),
-                "output_dir": output_dir.display().to_string(),
-                "started_utc": started_utc.to_rfc3339(),
-                "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                "reason": "Campaign has critical issues; refusing to start strict evidence run",
-                "readiness": readiness_report_to_json(&readiness),
-            });
-            add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
+            let mut doc = failed_run_doc_with_window(
+                command,
+                &run_id,
+                stage,
+                config_path,
+                &campaign_name,
+                &output_dir,
+                started_utc,
+                options.timeout,
+            );
+            doc["reason"] = serde_json::Value::String(
+                "Campaign has critical issues; refusing to start strict evidence run".to_string(),
+            );
+            doc["readiness"] = readiness_report_to_json(&readiness);
             if !options.dry_run {
                 write_run_artifacts(&output_dir, &run_id, &doc);
             }
@@ -3724,22 +3894,17 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     stage = "preflight_backend";
     if !options.dry_run {
         if let Err(err) = run_backend_preflight(&config) {
-            let ended_utc = Utc::now();
-            let mut doc = serde_json::json!({
-                "status": "failed",
-                "command": command,
-                "run_id": run_id.clone(),
-                "stage": stage,
-                "pid": std::process::id(),
-                "campaign_path": config_path,
-                "campaign_name": campaign_name.clone(),
-                "output_dir": output_dir.display().to_string(),
-                "started_utc": started_utc.to_rfc3339(),
-                "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                "error": format!("{:#}", err),
-            });
-            add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
+            let mut doc = failed_run_doc_with_window(
+                command,
+                &run_id,
+                stage,
+                config_path,
+                &campaign_name,
+                &output_dir,
+                started_utc,
+                options.timeout,
+            );
+            doc["error"] = serde_json::Value::String(format!("{:#}", err));
             write_run_artifacts(&output_dir, &run_id, &doc);
             return Err(err);
         }
@@ -3752,17 +3917,16 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
     if !options.dry_run {
         // Update run artifacts with a more informative stage than the initial lock acquisition.
-        let mut doc = serde_json::json!({
-            "status": "running",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": "starting_engine",
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "options": {
+        seed_running_run_artifact(
+            &output_dir,
+            command,
+            &run_id,
+            "starting_engine",
+            config_path,
+            &campaign_name,
+            started_utc,
+            options.timeout,
+            serde_json::json!({
                 "workers": options.workers,
                 "seed": options.seed,
                 "iterations": options.iterations,
@@ -3772,10 +3936,8 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "profile": options.profile.clone(),
                 "simple_progress": options.simple_progress,
                 "dry_run": options.dry_run,
-            }
-        });
-        add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
-        write_run_artifacts(&output_dir, &run_id, &doc);
+            }),
+        );
     }
 
     // Handle resume mode
@@ -3843,7 +4005,6 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         let campaign_path_for_monitor = config_path.to_string();
         let started_utc_for_monitor = started_utc;
         let timeout_for_monitor = options.timeout;
-        let pid = std::process::id();
 
         tokio::spawn(async move {
             let progress_path = output_dir_for_monitor.join("progress.json");
@@ -3886,24 +4047,17 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                     }
                 };
 
-                let mut doc = serde_json::json!({
-                    "status": "running",
-                    "command": command_for_monitor,
-                    "run_id": run_id_for_monitor,
-                    "stage": "engine_progress",
-                    "pid": pid,
-                    "campaign_path": campaign_path_for_monitor,
-                    "campaign_name": campaign_name_for_monitor,
-                    "output_dir": output_dir_for_monitor.display().to_string(),
-                    "started_utc": started_utc_for_monitor.to_rfc3339(),
-                    "progress": progress_json,
-                });
-                add_run_window_fields(
-                    &mut doc,
+                let mut doc = running_run_doc_with_window(
+                    &command_for_monitor,
+                    &run_id_for_monitor,
+                    "engine_progress",
+                    &campaign_path_for_monitor,
+                    &campaign_name_for_monitor,
+                    &output_dir_for_monitor,
                     started_utc_for_monitor,
                     timeout_for_monitor,
-                    "wall_clock",
                 );
+                doc["progress"] = progress_json;
                 let run_id_for_signal = match doc.get("run_id").and_then(|v| v.as_str()) {
                     Some(run_id) => run_id,
                     None => {
@@ -3958,18 +4112,16 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     // Run with new engine if not using simple progress
     stage = "engine_run";
     if !options.dry_run {
-        let mut doc = serde_json::json!({
-            "status": "running",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-        });
-        add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
+        let doc = running_run_doc_with_window(
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            &output_dir,
+            started_utc,
+            options.timeout,
+        );
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
     let report = match if options.simple_progress {
@@ -3980,22 +4132,17 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     } {
         Ok(r) => r,
         Err(err) => {
-            let ended_utc = Utc::now();
-            let mut doc = serde_json::json!({
-                "status": "failed",
-                "command": command,
-                "run_id": run_id.clone(),
-                "stage": stage,
-                "pid": std::process::id(),
-                "campaign_path": config_path,
-                "campaign_name": campaign_name.clone(),
-                "output_dir": output_dir.display().to_string(),
-                "started_utc": started_utc.to_rfc3339(),
-                "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                "error": format!("{:#}", err),
-            });
-            add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
+            let mut doc = failed_run_doc_with_window(
+                command,
+                &run_id,
+                stage,
+                config_path,
+                &campaign_name,
+                &output_dir,
+                started_utc,
+                options.timeout,
+            );
+            doc["error"] = serde_json::Value::String(format!("{:#}", err));
             write_run_artifacts(&output_dir, &run_id, &doc);
             return Err(err);
         }
@@ -4005,47 +4152,42 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     stage = "save_report";
     report.print_summary();
     if let Err(err) = report.save_to_files() {
-        let ended_utc = Utc::now();
-        let mut doc = serde_json::json!({
-            "status": "failed",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "ended_utc": ended_utc.to_rfc3339(),
-            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-            "error": format!("{:#}", err),
-        });
-        add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
+        let mut doc = failed_run_doc_with_window(
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            &output_dir,
+            started_utc,
+            options.timeout,
+        );
+        doc["error"] = serde_json::Value::String(format!("{:#}", err));
         write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err);
     }
 
-    let ended_utc = Utc::now();
     let critical = report.has_critical_findings();
-    let mut doc = serde_json::json!({
-        "status": if critical { "completed_with_critical_findings" } else { "completed" },
-        "command": command,
-        "run_id": run_id.clone(),
-        "stage": "completed",
-        "pid": std::process::id(),
-        "campaign_path": config_path,
-        "campaign_name": campaign_name.clone(),
-        "output_dir": output_dir.display().to_string(),
-        "started_utc": started_utc.to_rfc3339(),
-        "ended_utc": ended_utc.to_rfc3339(),
-        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-        "metrics": {
-            "findings_total": report.findings.len(),
-            "critical_findings": critical,
-            "total_executions": report.statistics.total_executions,
+    let mut doc = completed_run_doc_with_window(
+        command,
+        &run_id,
+        if critical {
+            "completed_with_critical_findings"
+        } else {
+            "completed"
         },
+        "completed",
+        config_path,
+        &campaign_name,
+        &output_dir,
+        started_utc,
+        options.timeout,
+    );
+    doc["metrics"] = serde_json::json!({
+        "findings_total": report.findings.len(),
+        "critical_findings": critical,
+        "total_executions": report.statistics.total_executions,
     });
-    add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
     write_run_artifacts(&output_dir, &run_id, &doc);
 
     if critical {
@@ -4354,35 +4496,31 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     // Put `session.log` under the engagement folder from the very start (even if YAML parsing
     // fails). This avoids scattering logs across multiple locations.
-    if !options.dry_run {
-        set_run_log_context(Some(RunLogContext {
-            run_id: run_id.clone(),
-            command: command.to_string(),
-            campaign_path: Some(config_path.to_string()),
-            campaign_name: None,
-            output_dir: None,
-            started_utc: started_utc.to_rfc3339(),
-        }));
-    }
+    set_run_log_context_for_campaign(
+        options.dry_run,
+        &run_id,
+        command,
+        config_path,
+        None,
+        None,
+        &started_utc,
+    );
 
     tracing::info!("Loading chain campaign from: {}", config_path);
     let mut config = match FuzzConfig::from_yaml(config_path) {
         Ok(cfg) => cfg,
         Err(err) => {
             let ended_utc = Utc::now();
-            let doc = serde_json::json!({
-                "status": "failed",
-                "command": command,
-                "run_id": run_id.clone(),
-                "stage": stage,
-                "pid": std::process::id(),
-                "campaign_path": config_path,
-                "started_utc": started_utc.to_rfc3339(),
-                "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                "error": format!("{:#}", err),
-            });
-            write_failed_run_artifact(&run_id, &doc);
+            write_failed_run_artifact_with_error(
+                &run_id,
+                command,
+                stage,
+                config_path,
+                &started_utc,
+                &ended_utc,
+                format!("{:#}", err),
+                None,
+            );
             return Err(err);
         }
     };
@@ -4395,37 +4533,16 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     // Skip in --dry-run since no files are written.
     stage = "acquire_output_lock";
     let output_dir = config.reporting.output_dir.clone();
-    let _output_lock = if options.dry_run {
-        None
-    } else {
-        Some(match acquire_output_dir_lock(&output_dir) {
-            Ok(lock) => lock,
-            Err(err) => {
-                let ended_utc = Utc::now();
-                let doc = serde_json::json!({
-                    "status": "failed",
-                    "command": command,
-                    "run_id": run_id.clone(),
-                    "stage": stage,
-                    "pid": std::process::id(),
-                    "campaign_path": config_path,
-                    "campaign_name": campaign_name.clone(),
-                    "output_dir": output_dir.display().to_string(),
-                    "started_utc": started_utc.to_rfc3339(),
-                    "ended_utc": ended_utc.to_rfc3339(),
-                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                    "error": format!("{:#}", err),
-                    "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
-                });
-                write_failed_run_artifact(&run_id, &doc);
-                return Err(anyhow::anyhow!(
-                    "Output directory is already in use (locked): {}. Error: {:#}",
-                    output_dir.display(),
-                    err
-                ));
-            }
-        })
-    };
+    let _output_lock = acquire_output_lock_or_write_failure(
+        options.dry_run,
+        &output_dir,
+        command,
+        &run_id,
+        stage,
+        config_path,
+        &campaign_name,
+        &started_utc,
+    )?;
 
     if !options.dry_run {
         // If a previous chain run died without updating run_outcome.json, mark it as stale.
@@ -4433,26 +4550,26 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     }
 
     if !options.dry_run {
-        set_run_log_context(Some(RunLogContext {
-            run_id: run_id.clone(),
-            command: command.to_string(),
-            campaign_path: Some(config_path.to_string()),
-            campaign_name: Some(campaign_name.clone()),
-            output_dir: Some(output_dir.clone()),
-            started_utc: started_utc.to_rfc3339(),
-        }));
+        set_run_log_context_for_campaign(
+            options.dry_run,
+            &run_id,
+            command,
+            config_path,
+            Some(&campaign_name),
+            Some(&output_dir),
+            &started_utc,
+        );
 
-        let mut doc = serde_json::json!({
-            "status": "running",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "options": {
+        seed_running_run_artifact(
+            &output_dir,
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            started_utc,
+            Some(options.timeout),
+            serde_json::json!({
                 "workers": options.workers,
                 "seed": options.seed,
                 "iterations": options.iterations,
@@ -4460,42 +4577,31 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 "resume": options.resume,
                 "simple_progress": options.simple_progress,
                 "dry_run": options.dry_run,
-            }
-        });
-        add_run_window_fields(&mut doc, started_utc, Some(options.timeout), "wall_clock");
-        write_run_artifacts(&output_dir, &run_id, &doc);
+            }),
+        );
     }
 
     // Ensure build artifacts never land inside the engagement report folder.
     normalize_build_paths(&mut config, &run_id);
 
-    struct _ClearRunContext;
-    impl Drop for _ClearRunContext {
-        fn drop(&mut self) {
-            set_run_log_context(None);
-        }
-    }
-    let _ctx_guard = _ClearRunContext;
+    let _ctx_guard = RunLogContextGuard::new();
 
     // Get chains from config
     stage = "parse_chains";
     let chains = parse_chains(&config);
     if chains.is_empty() {
-        let ended_utc = Utc::now();
-        let doc = serde_json::json!({
-            "status": "failed",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "ended_utc": ended_utc.to_rfc3339(),
-            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-            "reason": "Chain mode requires chains: definitions in the YAML.",
-        });
+        let mut doc = failed_run_doc_with_window(
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            &output_dir,
+            started_utc,
+            Some(options.timeout),
+        );
+        doc["reason"] =
+            serde_json::Value::String("Chain mode requires chains: definitions in the YAML.".to_string());
         if !options.dry_run {
             write_run_artifacts(&output_dir, &run_id, &doc);
         }
@@ -4539,22 +4645,20 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let readiness = zk_fuzzer::config::check_0day_readiness(&config);
     print!("{}", readiness.format());
     if !readiness.ready_for_evidence {
-        let ended_utc = Utc::now();
-        let doc = serde_json::json!({
-            "status": "failed",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "ended_utc": ended_utc.to_rfc3339(),
-            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-            "reason": "Campaign has critical issues; refusing to start strict chain run",
-            "readiness": readiness_report_to_json(&readiness),
-        });
+        let mut doc = failed_run_doc_with_window(
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            &output_dir,
+            started_utc,
+            Some(options.timeout),
+        );
+        doc["reason"] = serde_json::Value::String(
+            "Campaign has critical issues; refusing to start strict chain run".to_string(),
+        );
+        doc["readiness"] = readiness_report_to_json(&readiness);
         if !options.dry_run {
             write_run_artifacts(&output_dir, &run_id, &doc);
         }
@@ -4564,22 +4668,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     stage = "preflight_backend";
     if !options.dry_run {
         if let Err(err) = run_backend_preflight(&config) {
-            let ended_utc = Utc::now();
-            let mut doc = serde_json::json!({
-                "status": "failed",
-                "command": command,
-                "run_id": run_id.clone(),
-                "stage": stage,
-                "pid": std::process::id(),
-                "campaign_path": config_path,
-                "campaign_name": campaign_name.clone(),
-                "output_dir": output_dir.display().to_string(),
-                "started_utc": started_utc.to_rfc3339(),
-                "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                "error": format!("{:#}", err),
-            });
-            add_run_window_fields(&mut doc, started_utc, Some(options.timeout), "wall_clock");
+            let mut doc = failed_run_doc_with_window(
+                command,
+                &run_id,
+                stage,
+                config_path,
+                &campaign_name,
+                &output_dir,
+                started_utc,
+                Some(options.timeout),
+            );
+            doc["error"] = serde_json::Value::String(format!("{:#}", err));
             write_run_artifacts(&output_dir, &run_id, &doc);
             return Err(err);
         }
@@ -4640,17 +4739,16 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     print_run_window(run_start, Some(options.timeout));
 
     if !options.dry_run {
-        let mut doc = serde_json::json!({
-            "status": "running",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": "starting_engine",
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "options": {
+        seed_running_run_artifact(
+            &output_dir,
+            command,
+            &run_id,
+            "starting_engine",
+            config_path,
+            &campaign_name,
+            started_utc,
+            Some(options.timeout),
+            serde_json::json!({
                 "workers": options.workers,
                 "seed": options.seed,
                 "iterations": options.iterations,
@@ -4658,10 +4756,8 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 "resume": options.resume,
                 "simple_progress": options.simple_progress,
                 "dry_run": options.dry_run,
-            }
-        });
-        add_run_window_fields(&mut doc, started_utc, Some(options.timeout), "wall_clock");
-        write_run_artifacts(&output_dir, &run_id, &doc);
+            }),
+        );
     }
 
     // List chains
@@ -4768,21 +4864,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let mut engine = match FuzzingEngine::new(config.clone(), options.seed, options.workers) {
         Ok(e) => e,
         Err(err) => {
-            let ended_utc = Utc::now();
-            let doc = serde_json::json!({
-                "status": "failed",
-                "command": command,
-                "run_id": run_id.clone(),
-                "stage": stage,
-                "pid": std::process::id(),
-                "campaign_path": config_path,
-                "campaign_name": campaign_name.clone(),
-                "output_dir": output_dir.display().to_string(),
-                "started_utc": started_utc.to_rfc3339(),
-                "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                "error": format!("{:#}", err),
-            });
+            let mut doc = failed_run_doc_with_window(
+                command,
+                &run_id,
+                stage,
+                config_path,
+                &campaign_name,
+                &output_dir,
+                started_utc,
+                Some(options.timeout),
+            );
+            doc["error"] = serde_json::Value::String(format!("{:#}", err));
             write_run_artifacts(&output_dir, &run_id, &doc);
             return Err(err);
         }
@@ -4806,21 +4898,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         match engine.run_chains(&chains, progress.as_ref()).await {
             Ok(findings) => findings,
             Err(err) => {
-                let ended_utc = Utc::now();
-                let doc = serde_json::json!({
-                    "status": "failed",
-                    "command": command,
-                    "run_id": run_id.clone(),
-                    "stage": stage,
-                    "pid": std::process::id(),
-                    "campaign_path": config_path,
-                    "campaign_name": campaign_name.clone(),
-                    "output_dir": output_dir.display().to_string(),
-                    "started_utc": started_utc.to_rfc3339(),
-                    "ended_utc": ended_utc.to_rfc3339(),
-                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                    "error": format!("{:#}", err),
-                });
+                let mut doc = failed_run_doc_with_window(
+                    command,
+                    &run_id,
+                    stage,
+                    config_path,
+                    &campaign_name,
+                    &output_dir,
+                    started_utc,
+                    Some(options.timeout),
+                );
+                doc["error"] = serde_json::Value::String(format!("{:#}", err));
                 write_run_artifacts(&output_dir, &run_id, &doc);
                 return Err(err);
             }
@@ -5023,21 +5111,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     // Save reports
     stage = "save_chain_reports";
     if let Err(err) = std::fs::create_dir_all(&output_dir) {
-        let ended_utc = Utc::now();
-        let doc = serde_json::json!({
-            "status": "failed",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "ended_utc": ended_utc.to_rfc3339(),
-            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-            "error": format!("{:#}", err),
-        });
+        let mut doc = failed_run_doc_with_window(
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            &output_dir,
+            started_utc,
+            Some(options.timeout),
+        );
+        doc["error"] = serde_json::Value::String(format!("{:#}", err));
         write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err.into());
     }
@@ -5082,21 +5166,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         w.flush()?;
         Ok(())
     })() {
-        let ended_utc = Utc::now();
-        let doc = serde_json::json!({
-            "status": "failed",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "ended_utc": ended_utc.to_rfc3339(),
-            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-            "error": format!("{:#}", err),
-        });
+        let mut doc = failed_run_doc_with_window(
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            &output_dir,
+            started_utc,
+            Some(options.timeout),
+        );
+        doc["error"] = serde_json::Value::String(format!("{:#}", err));
         write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err);
     }
@@ -5205,21 +5285,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     }
 
     if let Err(err) = std::fs::write(&chain_md_path, md) {
-        let ended_utc = Utc::now();
-        let doc = serde_json::json!({
-            "status": "failed",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "ended_utc": ended_utc.to_rfc3339(),
-            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-            "error": format!("{:#}", err),
-        });
+        let mut doc = failed_run_doc_with_window(
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            &output_dir,
+            started_utc,
+            Some(options.timeout),
+        );
+        doc["error"] = serde_json::Value::String(format!("{:#}", err));
         write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err.into());
     }
@@ -5238,21 +5314,17 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     report.statistics.total_executions = run_execution_count;
     stage = "save_standard_report";
     if let Err(err) = report.save_to_files() {
-        let ended_utc = Utc::now();
-        let doc = serde_json::json!({
-            "status": "failed",
-            "command": command,
-            "run_id": run_id.clone(),
-            "stage": stage,
-            "pid": std::process::id(),
-            "campaign_path": config_path,
-            "campaign_name": campaign_name.clone(),
-            "output_dir": output_dir.display().to_string(),
-            "started_utc": started_utc.to_rfc3339(),
-            "ended_utc": ended_utc.to_rfc3339(),
-            "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-            "error": format!("{:#}", err),
-        });
+        let mut doc = failed_run_doc_with_window(
+            command,
+            &run_id,
+            stage,
+            config_path,
+            &campaign_name,
+            &output_dir,
+            started_utc,
+            Some(options.timeout),
+        );
+        doc["error"] = serde_json::Value::String(format!("{:#}", err));
         write_run_artifacts(&output_dir, &run_id, &doc);
         return Err(err);
     }
@@ -5260,7 +5332,6 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let critical = chain_findings
         .iter()
         .any(|f| f.finding.severity.to_lowercase() == "critical");
-    let ended_utc = Utc::now();
     let status = if critical {
         "completed_with_critical_findings"
     } else if engagement_strict && !run_valid {
@@ -5270,38 +5341,35 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     };
 
     stage = "completed";
-    let mut doc = serde_json::json!({
-        "status": status,
-        "command": command,
-        "run_id": run_id.clone(),
-        "stage": stage,
-        "pid": std::process::id(),
-        "campaign_path": config_path,
-        "campaign_name": campaign_name.clone(),
-        "output_dir": output_dir.display().to_string(),
-        "started_utc": started_utc.to_rfc3339(),
-        "ended_utc": ended_utc.to_rfc3339(),
-        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-        "metrics": {
-            "chain_findings_total": summary.total_findings,
-            "critical_findings": critical,
-            "corpus_entries": final_total_entries,
-            "unique_coverage_bits": final_unique_coverage_bits,
-            "max_depth": final_max_depth,
-            "d_mean": summary.d_mean,
-            "p_deep": summary.p_deep,
-        },
-        "engagement": {
-            "strict": engagement_strict,
-            "valid_run": run_valid,
-            "failures": quality_failures,
-            "thresholds": {
-                "min_unique_coverage_bits": min_unique_coverage_bits,
-                "min_completed_per_chain": min_completed_per_chain,
-            }
+    let mut doc = completed_run_doc_with_window(
+        command,
+        &run_id,
+        status,
+        stage,
+        config_path,
+        &campaign_name,
+        &output_dir,
+        started_utc,
+        Some(options.timeout),
+    );
+    doc["metrics"] = serde_json::json!({
+        "chain_findings_total": summary.total_findings,
+        "critical_findings": critical,
+        "corpus_entries": final_total_entries,
+        "unique_coverage_bits": final_unique_coverage_bits,
+        "max_depth": final_max_depth,
+        "d_mean": summary.d_mean,
+        "p_deep": summary.p_deep,
+    });
+    doc["engagement"] = serde_json::json!({
+        "strict": engagement_strict,
+        "valid_run": run_valid,
+        "failures": quality_failures,
+        "thresholds": {
+            "min_unique_coverage_bits": min_unique_coverage_bits,
+            "min_completed_per_chain": min_completed_per_chain,
         }
     });
-    add_run_window_fields(&mut doc, started_utc, Some(options.timeout), "wall_clock");
     write_run_artifacts(&output_dir, &run_id, &doc);
 
     if critical {

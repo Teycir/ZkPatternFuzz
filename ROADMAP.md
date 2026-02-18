@@ -94,6 +94,35 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 60. Closed remaining panic-path hardening item (`M-1`, `L-2`) with explicit regression coverage:
    - Added `engagement_dir_name` invalid-run-id non-panicking regression in `src/main.rs`.
    - Added invalid UTF-8 `CIRCOM_INCLUDE_PATHS` non-panicking regression in `src/executor/mod.rs` (Unix).
+61. Started run lifecycle deduplication for CLI campaign modes (`src/main.rs`) as groundwork for `I-1`/`I-2`:
+   - Extracted shared run-log context helpers (`set_run_log_context_for_campaign`, `RunLogContextGuard`) used by both `run_campaign` and `run_chain_campaign`.
+   - Extracted shared output-lock acquisition + failure artifact handling (`acquire_output_lock_or_write_failure`) used by both modes.
+62. Continued run lifecycle deduplication (`src/main.rs`) by extracting shared running-artifact seeding:
+   - Added `seed_running_run_artifact(...)` helper for common `status=running` artifact shape + run-window fields.
+   - Replaced duplicated initial running-artifact blocks in `run_campaign` and `run_chain_campaign` with helper calls.
+63. Continued run lifecycle deduplication (`src/main.rs`) by extracting shared early failure artifact emission:
+   - Added `write_failed_run_artifact_with_error(...)` helper for common early-failure metadata fields.
+   - Replaced duplicated load-config failure paths in `run_campaign` and `run_chain_campaign`.
+   - Replaced duplicated profile-parse failure path in `run_campaign`.
+64. Continued run lifecycle deduplication (`src/main.rs`) by extracting shared post-lock failure doc construction:
+   - Added `failed_run_doc_with_window(...)` helper for common failed-run metadata + run-window fields.
+   - Replaced duplicated preflight/readiness/backend failure doc builders in `run_campaign`.
+   - Replaced duplicated backend-preflight failure doc builder in `run_chain_campaign`.
+65. Continued run lifecycle deduplication (`src/main.rs`) by reusing shared running-artifact seeding for stage transitions:
+   - Replaced duplicated `stage="starting_engine"` running-artifact builders in `run_campaign` and `run_chain_campaign`.
+   - Reused `seed_running_run_artifact(...)` while preserving each mode's options payload shape.
+66. Continued run lifecycle deduplication (`src/main.rs`) by extracting chain-parse failure doc construction:
+   - Replaced duplicated `parse_chains` failed-run doc builder in `run_chain_campaign` with `failed_run_doc_with_window(...)`.
+   - Preserved existing operator-facing reason text and dry-run artifact behavior.
+67. Continued run lifecycle deduplication (`src/main.rs`) by collapsing remaining runtime/report failure doc builders:
+   - Replaced duplicated chain preflight-readiness failure doc builder with `failed_run_doc_with_window(...)`.
+   - Replaced duplicated chain runtime/report failure doc builders (`engine_init`, `engine_run_chains`, `save_chain_reports`, `save_standard_report`) with `failed_run_doc_with_window(...)`.
+   - Replaced duplicated run-mode runtime/report failure doc builders (`engine_run`, `save_report`) with `failed_run_doc_with_window(...)`.
+68. Accelerated run lifecycle deduplication with shared running/completed doc helpers (`src/main.rs`):
+   - Added `running_run_doc_with_window(...)` and `completed_run_doc_with_window(...)` for common status metadata + run-window fields.
+   - Refactored `seed_running_run_artifact(...)` to reuse `running_run_doc_with_window(...)`.
+   - Replaced remaining inline `status="running"` doc builders (`engine_progress`, `engine_run`) with `running_run_doc_with_window(...)`.
+   - Replaced duplicated completion doc builders in both `run_campaign` and `run_chain_campaign` with `completed_run_doc_with_window(...)`.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -160,6 +189,29 @@ Validation:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 39. `CIRCOM_INCLUDE_PATHS` invalid UTF-8 panic-path regression:
     - `cargo test -q test_circom_include_paths_invalid_utf8_does_not_panic -- --test-threads=1`
+40. Main binary compile verification after lifecycle dedup helper extraction:
+    - `cargo check -q --bin zk-fuzzer`
+41. Main binary + command-fallback regression checks after running-artifact dedup:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+42. Main binary + command-fallback regression checks after early-failure helper extraction:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+43. Main binary + command-fallback regression checks after post-lock failure helper extraction:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+44. Main binary + command-fallback regression checks after starting-engine artifact dedup:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+45. Main binary + command-fallback regression checks after chain parse failure dedup:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+46. Main binary + command-fallback regression checks after runtime/report failure-doc dedup batch:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+47. Main binary + command-fallback regression checks after running/completed doc-helper batch:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 
@@ -205,7 +257,7 @@ P2/P3 (defensive + maintainability):
 1. Remove panic fallback in `engagement_dir_name` and env parsing panic paths (`M-1`, `L-2`) — Completed.
 2. Improve zero-day confirmation matching from category-only to content-aware (`L-3`) — Completed.
 3. Document/contain dynamic log file routing edge window (`M-5`) — Completed.
-4. CLI modularization and run lifecycle deduplication (`I-1`, `I-2`).
+4. CLI modularization and run lifecycle deduplication (`I-1`, `I-2`) — In progress (shared run-lifecycle helpers extracted in `src/main.rs`).
 
 ## Product Principles
 1. YAML-first scanning remains the primary interface.
