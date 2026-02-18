@@ -1,36 +1,188 @@
 use super::prelude::*;
 use super::FuzzingEngine;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+
+#[derive(Debug, Clone)]
+struct CorrelationTag {
+    confidence: ConfidenceLevel,
+    oracle_count: usize,
+    independent_group_count: usize,
+    oracle_names: Vec<String>,
+    corroborating_count: usize,
+}
+
+fn confidence_rank(level: ConfidenceLevel) -> u8 {
+    match level {
+        ConfidenceLevel::Low => 0,
+        ConfidenceLevel::Medium => 1,
+        ConfidenceLevel::High => 2,
+        ConfidenceLevel::Critical => 3,
+    }
+}
+
+fn finding_fingerprint(finding: &Finding) -> String {
+    let mut hasher = DefaultHasher::new();
+    format!("{:?}", finding.attack_type).hash(&mut hasher);
+    finding.severity.to_string().hash(&mut hasher);
+    finding.description.hash(&mut hasher);
+    finding.location.hash(&mut hasher);
+    for value in &finding.poc.witness_a {
+        value.0.hash(&mut hasher);
+    }
+    if let Some(witness_b) = &finding.poc.witness_b {
+        for value in witness_b {
+            value.0.hash(&mut hasher);
+        }
+    }
+    for value in &finding.poc.public_inputs {
+        value.0.hash(&mut hasher);
+    }
+    if let Some(proof) = &finding.poc.proof {
+        proof.hash(&mut hasher);
+    }
+    format!("{:x}", hasher.finish())
+}
+
+fn correlation_marker(tag: &CorrelationTag) -> String {
+    format!(
+        "Correlation: {} (groups={}, oracles={}, corroborating={}, sources=[{}])",
+        tag.confidence.as_str(),
+        tag.independent_group_count,
+        tag.oracle_count,
+        tag.corroborating_count,
+        tag.oracle_names.join(", ")
+    )
+}
+
+fn annotate_finding_with_correlation(mut finding: Finding, tag: &CorrelationTag) -> Finding {
+    let should_annotate = tag.confidence > ConfidenceLevel::Low
+        || tag.oracle_count > 1
+        || tag.independent_group_count > 1
+        || tag.corroborating_count > 0;
+
+    if !should_annotate {
+        return finding;
+    }
+
+    let marker = correlation_marker(tag);
+    if !finding.description.contains("Correlation: ") {
+        finding.description = format!("{}\n\n{}", finding.description, marker);
+    }
+
+    finding
+}
+
+fn annotate_primary_from_group(
+    correlated: crate::fuzzer::oracle_correlation::CorrelatedFinding,
+) -> Finding {
+    let tag = CorrelationTag {
+        confidence: correlated.confidence,
+        oracle_count: correlated.oracle_count,
+        independent_group_count: correlated.independent_group_count,
+        oracle_names: correlated.oracle_names.clone(),
+        corroborating_count: correlated.corroborating.len(),
+    };
+
+    annotate_finding_with_correlation(correlated.primary, &tag)
+}
+
+fn build_correlation_index(
+    correlated: &[crate::fuzzer::oracle_correlation::CorrelatedFinding],
+) -> HashMap<String, CorrelationTag> {
+    let mut index: HashMap<String, CorrelationTag> = HashMap::new();
+
+    for group in correlated {
+        let tag = CorrelationTag {
+            confidence: group.confidence,
+            oracle_count: group.oracle_count,
+            independent_group_count: group.independent_group_count,
+            oracle_names: group.oracle_names.clone(),
+            corroborating_count: group.corroborating.len(),
+        };
+
+        let mut all_findings: Vec<&Finding> = Vec::with_capacity(1 + group.corroborating.len());
+        all_findings.push(&group.primary);
+        all_findings.extend(group.corroborating.iter());
+
+        for finding in all_findings {
+            let key = finding_fingerprint(finding);
+            let replace = match index.get(&key) {
+                Some(existing) => {
+                    confidence_rank(tag.confidence) > confidence_rank(existing.confidence)
+                }
+                None => true,
+            };
+            if replace {
+                index.insert(key, tag.clone());
+            }
+        }
+    }
+
+    index
+}
+
+fn apply_correlation_annotations(
+    findings: Vec<Finding>,
+    correlated: &[crate::fuzzer::oracle_correlation::CorrelatedFinding],
+) -> Vec<Finding> {
+    let correlation_index = build_correlation_index(correlated);
+    let mut ranked = Vec::with_capacity(findings.len());
+
+    for finding in findings {
+        let key = finding_fingerprint(&finding);
+        let tag = correlation_index.get(&key);
+        let confidence_score = tag.map(|t| confidence_rank(t.confidence)).unwrap_or(0);
+        let finding = match tag {
+            Some(tag) => annotate_finding_with_correlation(finding, tag),
+            None => finding,
+        };
+        ranked.push((confidence_score, finding));
+    }
+
+    ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.severity.cmp(&a.1.severity)));
+    ranked.into_iter().map(|(_, finding)| finding).collect()
+}
+
+fn confidence_distribution(
+    correlated: &[crate::fuzzer::oracle_correlation::CorrelatedFinding],
+) -> (usize, usize, usize, usize) {
+    let mut critical_count = 0;
+    let mut high_count = 0;
+    let mut medium_count = 0;
+    let mut low_count = 0;
+    for cf in correlated {
+        match cf.confidence {
+            ConfidenceLevel::Critical => critical_count += 1,
+            ConfidenceLevel::High => high_count += 1,
+            ConfidenceLevel::Medium => medium_count += 1,
+            ConfidenceLevel::Low => low_count += 1,
+        }
+    }
+    (critical_count, high_count, medium_count, low_count)
+}
 
 impl FuzzingEngine {
     pub(super) fn generate_report(&self, findings: Vec<Finding>, duration: u64) -> FuzzReport {
         // Phase 6A: Apply cross-oracle correlation for confidence scoring
         let additional = &self.config.campaign.parameters.additional;
         let evidence_mode = Self::additional_bool(additional, "evidence_mode").unwrap_or(false);
+        let correlator = OracleCorrelator::new();
+        let correlated = if findings.is_empty() {
+            Vec::new()
+        } else {
+            correlator.correlate(&findings)
+        };
 
-        let processed_findings = if evidence_mode && !findings.is_empty() {
-            // In evidence mode, filter to only HIGH+ confidence findings
-            let correlator = OracleCorrelator::new();
-            let correlated = correlator.correlate(&findings);
-
+        if !correlated.is_empty() {
             tracing::info!(
                 "Cross-oracle correlation: {} raw findings → {} correlation groups",
                 findings.len(),
                 correlated.len()
             );
-
-            // Log confidence breakdown
-            let mut critical_count = 0;
-            let mut high_count = 0;
-            let mut medium_count = 0;
-            let mut low_count = 0;
-            for cf in &correlated {
-                match cf.confidence {
-                    ConfidenceLevel::Critical => critical_count += 1,
-                    ConfidenceLevel::High => high_count += 1,
-                    ConfidenceLevel::Medium => medium_count += 1,
-                    ConfidenceLevel::Low => low_count += 1,
-                }
-            }
+            let (critical_count, high_count, medium_count, low_count) =
+                confidence_distribution(&correlated);
             tracing::info!(
                 "Confidence distribution: CRITICAL={}, HIGH={}, MEDIUM={}, LOW={}",
                 critical_count,
@@ -38,7 +190,9 @@ impl FuzzingEngine {
                 medium_count,
                 low_count
             );
+        }
 
+        let processed_findings = if evidence_mode && !correlated.is_empty() {
             // Filter to only MEDIUM+ confidence in evidence mode
             let min_confidence = Self::additional_string(additional, "min_evidence_confidence")
                 .map(|s| match s.to_lowercase().as_str() {
@@ -52,7 +206,7 @@ impl FuzzingEngine {
             let filtered: Vec<Finding> = correlated
                 .into_iter()
                 .filter(|cf| cf.confidence >= min_confidence)
-                .map(|cf| cf.primary)
+                .map(annotate_primary_from_group)
                 .collect();
 
             if filtered.len() < findings.len() {
@@ -64,6 +218,10 @@ impl FuzzingEngine {
             }
 
             filtered
+        } else if !correlated.is_empty() {
+            // Outside evidence mode we keep all findings, but annotate and rank by
+            // cross-oracle confidence so corroborated issues rise to the top.
+            apply_correlation_annotations(findings, &correlated)
         } else {
             findings
         };
@@ -330,5 +488,115 @@ impl FuzzingEngine {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
+
+    fn make_finding(
+        attack_type: AttackType,
+        severity: Severity,
+        description: &str,
+        witness: Vec<FieldElement>,
+    ) -> Finding {
+        Finding {
+            attack_type,
+            severity,
+            description: description.to_string(),
+            poc: ProofOfConcept {
+                witness_a: witness,
+                witness_b: None,
+                public_inputs: vec![],
+                proof: None,
+            },
+            location: None,
+        }
+    }
+
+    #[test]
+    fn apply_correlation_annotations_marks_cross_group_findings() {
+        let witness = vec![FieldElement::from_u64(7)];
+        let findings = vec![
+            make_finding(
+                AttackType::Underconstrained,
+                Severity::Critical,
+                "uc finding",
+                witness.clone(),
+            ),
+            make_finding(
+                AttackType::Soundness,
+                Severity::High,
+                "snd finding",
+                witness.clone(),
+            ),
+        ];
+
+        let correlated = OracleCorrelator::new().correlate(&findings);
+        let annotated = apply_correlation_annotations(findings, &correlated);
+
+        assert!(annotated
+            .iter()
+            .all(|finding| finding.description.contains("Correlation: HIGH")));
+    }
+
+    #[test]
+    fn apply_correlation_annotations_prioritizes_high_confidence_findings() {
+        let correlated_witness = vec![FieldElement::from_u64(11)];
+        let low_witness = vec![FieldElement::from_u64(42)];
+        let findings = vec![
+            make_finding(
+                AttackType::Boundary,
+                Severity::Low,
+                "low confidence boundary",
+                low_witness,
+            ),
+            make_finding(
+                AttackType::Soundness,
+                Severity::High,
+                "cross-group semantic",
+                correlated_witness.clone(),
+            ),
+            make_finding(
+                AttackType::Underconstrained,
+                Severity::Critical,
+                "cross-group structural",
+                correlated_witness,
+            ),
+        ];
+
+        let correlated = OracleCorrelator::new().correlate(&findings);
+        let annotated = apply_correlation_annotations(findings, &correlated);
+
+        assert_eq!(annotated[0].attack_type, AttackType::Underconstrained);
+        assert!(annotated[0].description.contains("Correlation: HIGH"));
+    }
+
+    #[test]
+    fn annotation_marker_is_not_duplicated() {
+        let witness = vec![FieldElement::from_u64(9)];
+        let findings = vec![
+            make_finding(
+                AttackType::Underconstrained,
+                Severity::Critical,
+                "uc finding",
+                witness.clone(),
+            ),
+            make_finding(
+                AttackType::Soundness,
+                Severity::High,
+                "snd finding",
+                witness,
+            ),
+        ];
+
+        let correlated = OracleCorrelator::new().correlate(&findings);
+        let once = apply_correlation_annotations(findings, &correlated);
+        let twice = apply_correlation_annotations(once, &correlated);
+
+        let marker_count = twice[0].description.matches("Correlation: ").count();
+        assert_eq!(marker_count, 1);
     }
 }
