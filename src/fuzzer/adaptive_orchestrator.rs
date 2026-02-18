@@ -328,76 +328,112 @@ impl AdaptiveOrchestrator {
             }
         }
 
-        // Create and run engine
-        let mut engine = FuzzingEngine::new(base_config.clone(), Some(42), self.config.workers)?;
-
         // Run with adaptive scheduling
         let start = Instant::now();
         let mut accumulated_report: Option<FuzzReport> = None;
+        let mut early_terminated = false;
 
         while start.elapsed() < budget {
-            // Get budget allocation from scheduler
             let remaining = budget.saturating_sub(start.elapsed());
-            let allocations = scheduler.allocate_budget(remaining.min(Duration::from_secs(60)));
-
-            if allocations.is_empty() {
+            if remaining.is_zero() {
                 break;
             }
 
-            // Run engine for a phase
-            let phase_report = engine.run(None).await?;
+            let phase_budget = remaining.min(Duration::from_secs(60));
 
-            // Update scheduler with results
-            for attack in &base_config.attacks {
+            // Non-adaptive mode: run exactly one full attack sweep.
+            if !self.config.adaptive_budget {
+                let phase_config = Self::with_phase_timeout(base_config.clone(), phase_budget);
+                let mut phase_engine =
+                    FuzzingEngine::new(phase_config, Some(42), self.config.workers)?;
+                let phase_report = phase_engine.run(None).await?;
+
+                for attack in &base_config.attacks {
+                    let findings: Vec<Finding> = phase_report
+                        .findings
+                        .iter()
+                        .filter(|f| f.attack_type == attack.attack_type)
+                        .cloned()
+                        .collect();
+
+                    let attack_results = AttackResults {
+                        attack_type: attack.attack_type.clone(),
+                        new_coverage: (phase_report.statistics.coverage_percentage as usize).max(1),
+                        findings,
+                        near_misses: vec![], // Would be populated from near-miss detector
+                        iterations: phase_report.statistics.total_executions as usize,
+                        duration: Duration::from_secs(phase_report.duration_seconds),
+                    };
+                    scheduler.update_scores(&attack_results);
+                }
+
+                Self::merge_phase_report(&mut accumulated_report, phase_report);
+                break;
+            }
+
+            let allocations = scheduler.allocate_budget(phase_budget);
+            if allocations.is_empty() {
+                break;
+            }
+            let phase_plan = Self::build_attack_phase_plan(&base_config.attacks, &allocations);
+            if phase_plan.is_empty() {
+                break;
+            }
+
+            let mut executed_any = false;
+            for (attack, attack_budget) in phase_plan {
+                let remaining_before_attack = budget.saturating_sub(start.elapsed());
+                if remaining_before_attack.is_zero() {
+                    break;
+                }
+                let effective_budget = attack_budget.min(remaining_before_attack);
+                if effective_budget.is_zero() {
+                    continue;
+                }
+                let phase_config = Self::with_phase_timeout(
+                    Self::single_attack_config(base_config.clone(), attack.clone()),
+                    effective_budget,
+                );
+                let mut phase_engine =
+                    FuzzingEngine::new(phase_config, Some(42), self.config.workers)?;
+                let phase_report = phase_engine.run(None).await?;
+                executed_any = true;
+
                 let findings: Vec<Finding> = phase_report
                     .findings
                     .iter()
                     .filter(|f| f.attack_type == attack.attack_type)
                     .cloned()
                     .collect();
-
                 let attack_results = AttackResults {
-                    attack_type: attack.attack_type.clone(),
+                    attack_type: attack.attack_type,
                     new_coverage: (phase_report.statistics.coverage_percentage as usize).max(1),
-                    findings: findings.clone(),
+                    findings,
                     near_misses: vec![], // Would be populated from near-miss detector
                     iterations: phase_report.statistics.total_executions as usize,
                     duration: Duration::from_secs(phase_report.duration_seconds),
                 };
-
                 scheduler.update_scores(&attack_results);
-            }
 
-            // Merge reports
-            match accumulated_report {
-                Some(ref mut acc) => {
-                    acc.findings.extend(phase_report.findings);
-                    acc.duration_seconds += phase_report.duration_seconds;
-                    acc.statistics.total_executions += phase_report.statistics.total_executions;
-                }
-                None => {
-                    accumulated_report = Some(phase_report);
-                }
-            }
+                Self::merge_phase_report(&mut accumulated_report, phase_report);
 
-            // Check for early termination on critical findings
-            if let Some(ref report) = accumulated_report {
-                let critical_count = report
-                    .findings
-                    .iter()
-                    .filter(|f| f.severity == Severity::Critical)
-                    .count();
-                if critical_count >= 3 {
-                    tracing::info!(
-                        "Found {} critical findings, early terminating",
-                        critical_count
-                    );
-                    break;
+                if let Some(ref report) = accumulated_report {
+                    let critical_count = Self::critical_findings_count(report);
+                    if critical_count >= 3 {
+                        tracing::info!(
+                            "Found {} critical findings, early terminating",
+                            critical_count
+                        );
+                        early_terminated = true;
+                        break;
+                    }
                 }
             }
 
-            // Only run one iteration if not using adaptive budget
-            if !self.config.adaptive_budget {
+            if early_terminated {
+                break;
+            }
+            if !executed_any {
                 break;
             }
         }
@@ -413,6 +449,80 @@ impl AdaptiveOrchestrator {
         };
 
         Ok((report, scheduler))
+    }
+
+    fn single_attack_config(
+        mut base_config: crate::config::FuzzConfig,
+        attack: crate::config::Attack,
+    ) -> crate::config::FuzzConfig {
+        base_config.attacks = vec![attack];
+        base_config
+    }
+
+    fn with_phase_timeout(
+        mut config: crate::config::FuzzConfig,
+        timeout: Duration,
+    ) -> crate::config::FuzzConfig {
+        let timeout_secs = timeout.as_secs().max(1);
+        config.campaign.parameters.additional.insert(
+            "fuzzing_timeout_seconds".to_string(),
+            serde_yaml::Value::Number(serde_yaml::Number::from(timeout_secs)),
+        );
+        config
+    }
+
+    fn build_attack_phase_plan(
+        attacks: &[crate::config::Attack],
+        allocations: &HashMap<AttackType, Duration>,
+    ) -> Vec<(crate::config::Attack, Duration)> {
+        let mut planned: Vec<(usize, crate::config::Attack, Duration)> = attacks
+            .iter()
+            .cloned()
+            .enumerate()
+            .filter_map(|(idx, attack)| {
+                let allocated = allocations
+                    .get(&attack.attack_type)
+                    .copied()
+                    .unwrap_or_default();
+                if allocated.is_zero() {
+                    None
+                } else {
+                    Some((idx, attack, allocated))
+                }
+            })
+            .collect();
+
+        // Prefer higher-budget attacks first while preserving source order for ties.
+        planned.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+        planned
+            .into_iter()
+            .map(|(_, attack, budget)| (attack, budget))
+            .collect()
+    }
+
+    fn merge_phase_report(accumulated_report: &mut Option<FuzzReport>, phase_report: FuzzReport) {
+        match accumulated_report {
+            Some(acc) => {
+                acc.findings.extend(phase_report.findings);
+                acc.duration_seconds += phase_report.duration_seconds;
+                acc.statistics.total_executions += phase_report.statistics.total_executions;
+                acc.statistics.coverage_percentage = acc
+                    .statistics
+                    .coverage_percentage
+                    .max(phase_report.statistics.coverage_percentage);
+            }
+            None => {
+                *accumulated_report = Some(phase_report);
+            }
+        }
+    }
+
+    fn critical_findings_count(report: &FuzzReport) -> usize {
+        report
+            .findings
+            .iter()
+            .filter(|f| f.severity == Severity::Critical)
+            .count()
     }
 
     /// Check if any zero-day hints were confirmed by findings
@@ -600,6 +710,7 @@ pub async fn run_from_cli(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_orchestrator_creation() {
@@ -626,5 +737,62 @@ mod tests {
         assert!(config.adaptive_budget);
         assert!(config.zero_day_hunt_mode);
         assert!(config.workers >= 1);
+    }
+
+    #[test]
+    fn test_build_attack_phase_plan_prefers_higher_budget() {
+        let attacks = vec![
+            crate::config::Attack {
+                attack_type: AttackType::Underconstrained,
+                description: "under".to_string(),
+                plugin: None,
+                config: serde_yaml::Value::Null,
+            },
+            crate::config::Attack {
+                attack_type: AttackType::Soundness,
+                description: "sound".to_string(),
+                plugin: None,
+                config: serde_yaml::Value::Null,
+            },
+        ];
+        let mut allocations = HashMap::new();
+        allocations.insert(AttackType::Underconstrained, Duration::from_secs(2));
+        allocations.insert(AttackType::Soundness, Duration::from_secs(9));
+
+        let plan = AdaptiveOrchestrator::build_attack_phase_plan(&attacks, &allocations);
+        assert_eq!(plan.len(), 2);
+        assert_eq!(plan[0].0.attack_type, AttackType::Soundness);
+        assert_eq!(plan[1].0.attack_type, AttackType::Underconstrained);
+    }
+
+    #[test]
+    fn test_with_phase_timeout_sets_budget_key() {
+        let base = crate::config::FuzzConfig {
+            campaign: crate::config::Campaign {
+                name: "test".to_string(),
+                version: "1.0".to_string(),
+                target: crate::config::Target {
+                    framework: zk_core::Framework::Circom,
+                    circuit_path: std::path::PathBuf::from("dummy.circom"),
+                    main_component: "Main".to_string(),
+                },
+                parameters: crate::config::Parameters::default(),
+            },
+            attacks: vec![],
+            inputs: vec![],
+            mutations: vec![],
+            oracles: vec![],
+            reporting: crate::config::ReportingConfig::default(),
+            chains: vec![],
+        };
+
+        let updated = AdaptiveOrchestrator::with_phase_timeout(base, Duration::from_secs(7));
+        let timeout = updated
+            .campaign
+            .parameters
+            .additional
+            .get("fuzzing_timeout_seconds")
+            .and_then(|v| v.as_u64());
+        assert_eq!(timeout, Some(7));
     }
 }

@@ -448,10 +448,15 @@ fn engagement_dir_name(run_id: &str) -> String {
 
     match run_id_epoch_dir(run_id) {
         Some(dir_name) => dir_name,
-        None => panic!(
-            "Run id '{}' does not contain a valid timestamp prefix",
-            run_id
-        ),
+        None => {
+            let fallback = format!("report_{}", sanitize_slug(run_id));
+            tracing::warn!(
+                "Run id '{}' does not contain a valid timestamp prefix; using fallback engagement dir '{}'",
+                run_id,
+                fallback
+            );
+            fallback
+        }
     }
 }
 
@@ -3463,14 +3468,13 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 .ok()
                 .and_then(|raw| raw.trim().parse::<u64>().ok())
                 .map(|secs| secs.max(1));
-            let effective = current.map(|secs| secs.min(desired)).unwrap_or(desired);
-            std::env::set_var(
-                "ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS",
-                effective.to_string(),
-            );
+            let effective = current.map(|secs| secs.min(desired));
             tracing::info!(
-                "Circom external command timeout set to {}s (run timeout {}s)",
-                effective,
+                "Circom external command timeout {} (run timeout {}s)",
+                match effective {
+                    Some(value) => format!("derived from env: {}s", value),
+                    None => "using backend default".to_string(),
+                },
                 desired
             );
         }

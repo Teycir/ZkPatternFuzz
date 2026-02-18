@@ -1,0 +1,20 @@
+version: "1.0"
+
+registries:
+  local_dev_patterns:
+    path: "campaigns/benchmark/patterns"
+    description: "Fast strict patterns for development"
+    maintainer: "ZkPatternFuzz"
+
+collections:
+  dev_fast:
+    registry: local_dev_patterns
+    description: "Fast development-safe template set"
+    templates:
+      - underconstrained_strict_probe.yaml
+
+aliases:
+  all: ["dev_fast"]
+  always: ["dev_fast"]
+  deep: ["dev_fast"]
+  dev: ["dev_fast"]

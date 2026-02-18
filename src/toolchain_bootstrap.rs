@@ -198,8 +198,8 @@ fn bootstrap_snarkjs(
     }
 
     replace_with_link_or_copy(&source, &snarkjs_path)?;
-    let version = probe_snarkjs_version(&snarkjs_path)
-        .unwrap_or_else(|_| "version probe failed".to_string());
+    let version =
+        probe_snarkjs_version(&snarkjs_path).unwrap_or_else(|_| "version probe failed".to_string());
     println!(
         "snarkjs: installed '{}' ({})",
         snarkjs_path.display(),

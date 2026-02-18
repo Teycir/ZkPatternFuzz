@@ -1,0 +1,9 @@
+version: 1
+
+targets:
+  - name: semaphore_20
+    target_circuit: targets/zk0d/semaphore_20.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true

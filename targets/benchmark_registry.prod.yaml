@@ -1,0 +1,18 @@
+version: "1.0"
+
+registries:
+  local_benchmark_patterns_prod:
+    path: "campaigns/benchmark/patterns"
+    description: "Thorough strict benchmark patterns for production"
+    maintainer: "ZkPatternFuzz"
+
+collections:
+  benchmark_prod:
+    registry: local_benchmark_patterns_prod
+    description: "Production-depth strict benchmark template set"
+    templates:
+      - underconstrained_strict_probe_prod.yaml
+
+aliases:
+  benchmark: ["benchmark_prod"]
+  benchmark_prod: ["benchmark_prod"]

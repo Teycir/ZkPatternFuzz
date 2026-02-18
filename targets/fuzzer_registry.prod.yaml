@@ -1,0 +1,72 @@
+version: "1.0"
+
+registries:
+  local_cve_patterns:
+    path: "campaigns/cve/patterns"
+    description: "Local CVE pattern pack for zk-fuzzer"
+    maintainer: "ZkPatternFuzz"
+
+collections:
+  always:
+    registry: local_cve_patterns
+    description: "Always-run YAML patterns (regex-focused)"
+    templates:
+      - cveX01_dark_forest_missing_bit_length.yaml
+      - cveX02_bigint_missing_bit_length.yaml
+      - cveX03_circom_pairing_missing_output_check.yaml
+      - cveX04_semaphore_missing_range_check.yaml
+      - cveX05_zk_kit_missing_range_check.yaml
+      - cveX06_aztec_missing_bit_length_nondeterministic_nullifier.yaml
+      - cveX07_aztec_plonk_zero_bug.yaml
+      - cveX08_stealthdrop_nondeterministic_nullifier.yaml
+      - cveX09_zkdrops_missing_nullifier_range_check.yaml
+      - cveX10_maci_underconstrained_circuit.yaml
+      - cveX11_bulletproofs_frozen_heart.yaml
+      - cveX12_plonk_frozen_heart.yaml
+      - cveX13_zcash_trusted_setup_leak.yaml
+      - cveX14_mimc_assigned_not_constrained.yaml
+      - cveX15_scroll_missing_overflow_constraint.yaml
+      - cveX16_scroll_missing_constraint.yaml
+      - cveX17_dusk_missing_blinding_factors.yaml
+      - cveX18_nightfall_missing_nullifier_range_check.yaml
+      - cveX19_summa_unconstrained_constants.yaml
+      - cveX20_polygon_missing_remainder_constraint.yaml
+      - cveX21_polygon_fake_smt_inclusion.yaml
+      - cveX22_polygon_incorrect_ctx_assignation.yaml
+      - cveX23_polygon_execution_flow_hijack.yaml
+      - cveX24_zendoo_polynomial_normalization.yaml
+      - cveX25_aleo_non_committing_encryption.yaml
+      - cveX26_light_protocol_non_atomic_state.yaml
+      - cveX27_zkemail_underconstrained_spoofing.yaml
+
+aliases:
+  all: ["always"]
+  always: ["always"]
+  deep: ["always"]
+  cveX01_dark_forest_missing_bit_length: ["cveX01_dark_forest_missing_bit_length.yaml"]
+  cveX02_bigint_missing_bit_length: ["cveX02_bigint_missing_bit_length.yaml"]
+  cveX03_circom_pairing_missing_output_check: ["cveX03_circom_pairing_missing_output_check.yaml"]
+  cveX04_semaphore_missing_range_check: ["cveX04_semaphore_missing_range_check.yaml"]
+  cveX05_zk_kit_missing_range_check: ["cveX05_zk_kit_missing_range_check.yaml"]
+  cveX06_aztec_missing_bit_length_nondeterministic_nullifier: ["cveX06_aztec_missing_bit_length_nondeterministic_nullifier.yaml"]
+  cveX07_aztec_plonk_zero_bug: ["cveX07_aztec_plonk_zero_bug.yaml"]
+  cveX08_stealthdrop_nondeterministic_nullifier: ["cveX08_stealthdrop_nondeterministic_nullifier.yaml"]
+  cveX09_zkdrops_missing_nullifier_range_check: ["cveX09_zkdrops_missing_nullifier_range_check.yaml"]
+  cveX10_maci_underconstrained_circuit: ["cveX10_maci_underconstrained_circuit.yaml"]
+  cveX11_bulletproofs_frozen_heart: ["cveX11_bulletproofs_frozen_heart.yaml"]
+  cveX12_plonk_frozen_heart: ["cveX12_plonk_frozen_heart.yaml"]
+  cveX13_zcash_trusted_setup_leak: ["cveX13_zcash_trusted_setup_leak.yaml"]
+  cveX14_mimc_assigned_not_constrained: ["cveX14_mimc_assigned_not_constrained.yaml"]
+  cveX15_scroll_missing_overflow_constraint: ["cveX15_scroll_missing_overflow_constraint.yaml"]
+  cveX16_scroll_missing_constraint: ["cveX16_scroll_missing_constraint.yaml"]
+  cveX17_dusk_missing_blinding_factors: ["cveX17_dusk_missing_blinding_factors.yaml"]
+  cveX18_nightfall_missing_nullifier_range_check: ["cveX18_nightfall_missing_nullifier_range_check.yaml"]
+  cveX19_summa_unconstrained_constants: ["cveX19_summa_unconstrained_constants.yaml"]
+  cveX20_polygon_missing_remainder_constraint: ["cveX20_polygon_missing_remainder_constraint.yaml"]
+  cveX21_polygon_fake_smt_inclusion: ["cveX21_polygon_fake_smt_inclusion.yaml"]
+  cveX22_polygon_incorrect_ctx_assignation: ["cveX22_polygon_incorrect_ctx_assignation.yaml"]
+  cveX23_polygon_execution_flow_hijack: ["cveX23_polygon_execution_flow_hijack.yaml"]
+  cveX24_zendoo_polynomial_normalization: ["cveX24_zendoo_polynomial_normalization.yaml"]
+  cveX25_aleo_non_committing_encryption: ["cveX25_aleo_non_committing_encryption.yaml"]
+  cveX26_light_protocol_non_atomic_state: ["cveX26_light_protocol_non_atomic_state.yaml"]
+  cveX27_zkemail_underconstrained_spoofing: ["cveX27_zkemail_underconstrained_spoofing.yaml"]

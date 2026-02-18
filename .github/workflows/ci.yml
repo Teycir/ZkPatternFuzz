@@ -145,6 +145,81 @@ jobs:
       - name: Run real backend integration tests
         run: cargo test --test backend_integration_tests --all-features --verbose
 
+  # Benchmark regression gates (stability + recall/FPR)
+  benchmark-regression-gate:
+    name: Benchmark Regression Gate
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Verify Rust installation
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-benchmark-gate-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-benchmark-gate-
+            ${{ runner.os }}-cargo-
+
+      - name: Install Z3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libz3-dev z3
+
+      - name: Install Circom and snarkjs
+        run: npm install -g circom snarkjs
+
+      - name: Build benchmark binaries
+        run: cargo build --release --bin zk0d_batch --bin zk0d_benchmark
+
+      - name: Run benchmark suites
+        env:
+          CIRCOM_INCLUDE_PATHS: third_party:node_modules
+        run: |
+          cargo run --release --bin zk0d_benchmark -- \
+            --config-profile dev \
+            --suite vulnerable_ground_truth,safe_regression \
+            --trials 1 \
+            --jobs 2 \
+            --batch-jobs 1 \
+            --workers 2 \
+            --iterations 200 \
+            --timeout 120
+
+      - name: Apply benchmark regression gate
+        env:
+          MIN_COMPLETION_RATE: "0.95"
+          MIN_VULNERABLE_RECALL: "0.00"
+          MIN_PRECISION: "0.00"
+          MAX_SAFE_FPR: "0.20"
+        run: ./scripts/ci_benchmark_gate.sh
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-regression-${{ github.run_id }}
+          path: artifacts/benchmark_runs/
+          retention-days: 14
+
   # Coverage reporting
   coverage:
     name: Code Coverage

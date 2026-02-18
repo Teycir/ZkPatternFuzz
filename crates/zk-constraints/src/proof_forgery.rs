@@ -11,6 +11,8 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::process::Stdio;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -337,6 +339,10 @@ impl ProofForgeryDetector {
         let proof_path = temp_path.join("proof.json");
         let public_path = temp_path.join("public.json");
         let wtns_path = temp_path.join("witness.wtns");
+        let witness_path_str = witness_path.to_string_lossy().to_string();
+        let proof_path_str = proof_path.to_string_lossy().to_string();
+        let public_path_str = public_path.to_string_lossy().to_string();
+        let wtns_path_str = wtns_path.to_string_lossy().to_string();
 
         // Write witness as JSON array
         let witness_values: Vec<String> = witness.iter().map(|fe| fe.to_decimal_string()).collect();
@@ -346,34 +352,42 @@ impl ProofForgeryDetector {
         // Strategy: prefer importing the full Z3 witness directly.
         // WASM wtns calculate would recompute the witness from inputs,
         // erasing the Z3-found degrees of freedom that prove underconstraint.
-        let import_output = Command::new("npx")
-            .args([
-                "snarkjs",
-                "wtns",
-                "import",
-                witness_path.to_str().unwrap(),
-                wtns_path.to_str().unwrap(),
-            ])
-            .output()
-            .context("Failed to run snarkjs wtns import")?;
+        let mut import_cmd = Command::new("npx");
+        import_cmd.args([
+            "snarkjs",
+            "wtns",
+            "import",
+            &witness_path_str,
+            &wtns_path_str,
+        ]);
+        let import_output = Self::run_command_with_timeout(
+            import_cmd,
+            Duration::from_millis(self.solver_timeout_ms as u64),
+            "snarkjs wtns import",
+        )
+        .context("Failed to run snarkjs wtns import")?;
         if !import_output.status.success() {
             let stderr = String::from_utf8_lossy(&import_output.stderr);
             anyhow::bail!("wtns import failed: {}", stderr);
         }
 
         // Generate proof
-        let output = Command::new("npx")
-            .args([
-                "snarkjs",
-                "groth16",
-                "prove",
-                zkey,
-                wtns_path.to_str().unwrap(),
-                proof_path.to_str().unwrap(),
-                public_path.to_str().unwrap(),
-            ])
-            .output()
-            .context("Failed to generate proof")?;
+        let mut prove_cmd = Command::new("npx");
+        prove_cmd.args([
+            "snarkjs",
+            "groth16",
+            "prove",
+            zkey,
+            &wtns_path_str,
+            &proof_path_str,
+            &public_path_str,
+        ]);
+        let output = Self::run_command_with_timeout(
+            prove_cmd,
+            Duration::from_millis(self.solver_timeout_ms as u64),
+            "snarkjs groth16 prove",
+        )
+        .context("Failed to generate proof")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -385,17 +399,21 @@ impl ProofForgeryDetector {
         }
 
         // Verify proof
-        let output = Command::new("npx")
-            .args([
-                "snarkjs",
-                "groth16",
-                "verify",
-                vkey,
-                public_path.to_str().unwrap(),
-                proof_path.to_str().unwrap(),
-            ])
-            .output()
-            .context("Failed to verify proof")?;
+        let mut verify_cmd = Command::new("npx");
+        verify_cmd.args([
+            "snarkjs",
+            "groth16",
+            "verify",
+            vkey,
+            &public_path_str,
+            &proof_path_str,
+        ]);
+        let output = Self::run_command_with_timeout(
+            verify_cmd,
+            Duration::from_millis(self.solver_timeout_ms as u64),
+            "snarkjs groth16 verify",
+        )
+        .context("Failed to verify proof")?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let passed = output.status.success() && stdout.contains("OK");
@@ -405,6 +423,60 @@ impl ProofForgeryDetector {
             passed,
             output: stdout.to_string(),
         })
+    }
+
+    fn run_command_with_timeout(
+        mut command: Command,
+        timeout: Duration,
+        label: &str,
+    ) -> Result<std::process::Output> {
+        let poll_interval = Duration::from_millis(50);
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+
+        let mut child = command
+            .spawn()
+            .with_context(|| format!("Failed to spawn {}", label))?;
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            match child
+                .try_wait()
+                .with_context(|| format!("Failed while waiting for {}", label))?
+            {
+                Some(_status) => {
+                    return child
+                        .wait_with_output()
+                        .with_context(|| format!("Failed to collect output for {}", label));
+                }
+                None => {
+                    if Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let output = child.wait_with_output().ok();
+                        let stderr_preview = output
+                            .as_ref()
+                            .map(|o| {
+                                String::from_utf8_lossy(&o.stderr)
+                                    .chars()
+                                    .take(200)
+                                    .collect::<String>()
+                            })
+                            .unwrap_or_default();
+                        anyhow::bail!(
+                            "{} timed out after {} ms{}",
+                            label,
+                            timeout.as_millis(),
+                            if stderr_preview.is_empty() {
+                                "".to_string()
+                            } else {
+                                format!(" (stderr: {})", stderr_preview)
+                            }
+                        );
+                    }
+                    std::thread::sleep(poll_interval);
+                }
+            }
+        }
     }
 
     fn extract_public_inputs(&self, witness: &[FieldElement]) -> Vec<String> {

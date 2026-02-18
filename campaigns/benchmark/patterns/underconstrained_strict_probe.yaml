@@ -1,0 +1,63 @@
+invariants:
+  - name: field_input_domain
+    invariant_type: range
+    relation: "0 <= input_0"
+    oracle: must_hold
+    severity: low
+    description: "Baseline domain guard for strict evidence runs"
+
+attacks:
+  - type: underconstrained
+    description: "Primary underconstraint discovery sweep"
+    config:
+      witness_pairs: 64
+
+  - type: soundness
+    description: "Proof/verification soundness checks required by strict readiness"
+    config:
+      forge_attempts: 2
+      mutation_rate: 0.05
+
+  - type: constraint_inference
+    description: "Infer likely missing semantic constraints"
+    config:
+      confidence_threshold: 0.60
+      confirm_violations: true
+
+  - type: metamorphic
+    description: "Transform-based semantic consistency checks"
+    config:
+      num_tests: 8
+
+  - type: constraint_slice
+    description: "Cone-based dependency slice probing"
+    config:
+      samples_per_cone: 2
+      base_witness_attempts: 2
+
+  - type: spec_inference
+    description: "Infer IO-level rules and probe violations"
+    config:
+      sample_count: 16
+
+  - type: witness_collision
+    description: "Search for distinct witnesses mapping to equivalent public behavior"
+    config:
+      samples: 16
+      scope_public_inputs: true
+
+  - type: boundary
+    description: "Boundary-value probing with field edges"
+    config:
+      test_values: ["0", "1", "p-1"]
+
+inputs:
+  - name: input_0
+    type: field
+    fuzz_strategy: random
+    interesting: ["0", "1", "p-1"]
+
+  - name: input_1
+    type: field
+    fuzz_strategy: random
+    interesting: ["0", "1", "2"]

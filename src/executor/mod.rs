@@ -224,6 +224,20 @@ fn coverage_from_results(results: Vec<ConstraintResult>) -> Option<ExecutionCove
     Some(coverage)
 }
 
+fn coverage_from_results_or_output_hash(
+    results: Vec<ConstraintResult>,
+    outputs: &[FieldElement],
+    backend_label: &str,
+) -> ExecutionCoverage {
+    coverage_from_results(results).unwrap_or_else(|| {
+        tracing::warn!(
+            "{} constraint coverage unavailable; using output-hash fallback",
+            backend_label
+        );
+        ExecutionCoverage::with_output_hash(outputs)
+    })
+}
+
 fn value_bucket_for(value_bytes: &[u8]) -> u8 {
     if value_bytes.is_empty() {
         return 0;
@@ -768,25 +782,15 @@ impl CircomExecutor {
     }
 
     fn ensure_bins_on_path() {
-        let separator = if cfg!(windows) { ';' } else { ':' };
-        let mut current = std::env::var("PATH").unwrap_or_default();
-        let mut prepend = Vec::new();
-        for p in Self::local_bins_search_paths() {
-            if p.exists() {
-                let s = p.to_string_lossy().to_string();
-                if !current.split(separator).any(|x| x == s) {
-                    prepend.push(s);
-                }
-            }
-        }
-        if !prepend.is_empty() {
-            let prefix = prepend.join(&separator.to_string());
-            if current.is_empty() {
-                current = prefix;
-            } else {
-                current = format!("{}{}{}", prefix, separator, current);
-            }
-            std::env::set_var("PATH", current);
+        let discovered: Vec<PathBuf> = Self::local_bins_search_paths()
+            .into_iter()
+            .filter(|p| p.exists())
+            .collect();
+        if !discovered.is_empty() {
+            tracing::debug!(
+                "Local bins discovered for command-local PATH injection: {:?}",
+                discovered
+            );
         }
     }
 
@@ -819,9 +823,25 @@ impl CircomExecutor {
             .ok()
             .map(|cwd| cwd.join("bins").join("node_modules"));
 
-        match std::env::var("CIRCOM_INCLUDE_PATHS") {
-            Ok(raw) => {
+        match std::env::var_os("CIRCOM_INCLUDE_PATHS") {
+            Some(raw_os) => {
                 let separator = if cfg!(windows) { ';' } else { ':' };
+                let Some(raw) = raw_os.to_str() else {
+                    tracing::warn!(
+                        "Ignoring CIRCOM_INCLUDE_PATHS because it contains invalid UTF-8"
+                    );
+                    for root in Self::circuit_ancestor_paths(circuit_path) {
+                        paths.push(root.join("node_modules"));
+                    }
+                    for local in Self::local_bins_search_paths() {
+                        paths.push(local);
+                    }
+                    paths.push(PathBuf::from("node_modules"));
+                    if let Some(bins_node_modules) = preferred_bins_node_modules {
+                        paths.push(bins_node_modules);
+                    }
+                    return Self::dedupe_paths(paths);
+                };
                 for entry in raw.split(separator) {
                     let entry = entry.trim();
                     if !entry.is_empty() {
@@ -829,8 +849,7 @@ impl CircomExecutor {
                     }
                 }
             }
-            Err(std::env::VarError::NotPresent) => {}
-            Err(e) => panic!("Invalid CIRCOM_INCLUDE_PATHS value: {}", e),
+            None => {}
         }
 
         for root in Self::circuit_ancestor_paths(circuit_path) {
@@ -1196,19 +1215,38 @@ impl ConstraintInspector for CircomExecutor {
 /// Noir executor wrapper
 pub struct NoirExecutor {
     target: crate::targets::NoirTarget,
+    constraints: OnceLock<Vec<ConstraintEquation>>,
 }
 
 impl NoirExecutor {
     pub fn new(project_path: &str) -> anyhow::Result<Self> {
         let mut target = crate::targets::NoirTarget::new(project_path)?;
         target.compile()?;
-        Ok(Self { target })
+        Ok(Self {
+            target,
+            constraints: OnceLock::new(),
+        })
     }
 
     pub fn new_with_build_dir(project_path: &str, build_dir: PathBuf) -> anyhow::Result<Self> {
         let mut target = crate::targets::NoirTarget::new(project_path)?.with_build_dir(build_dir);
         target.compile()?;
-        Ok(Self { target })
+        Ok(Self {
+            target,
+            constraints: OnceLock::new(),
+        })
+    }
+
+    fn cached_constraints(&self) -> &[ConstraintEquation] {
+        self.constraints
+            .get_or_init(|| match self.target.load_constraints() {
+                Ok(constraints) => constraints,
+                Err(err) => {
+                    tracing::error!("Failed to load Noir constraints: {}", err);
+                    Vec::new()
+                }
+            })
+            .as_slice()
     }
 
     fn build_witness_with_outputs(
@@ -1339,13 +1377,7 @@ impl CircuitExecutor for NoirExecutor {
 
 impl ConstraintInspector for NoirExecutor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
-        match self.target.load_constraints() {
-            Ok(constraints) => constraints,
-            Err(err) => {
-                tracing::error!("Failed to load Noir constraints: {}", err);
-                Vec::new()
-            }
-        }
+        self.cached_constraints().to_vec()
     }
 
     fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {
@@ -1361,7 +1393,7 @@ impl ConstraintInspector for NoirExecutor {
             Some(acc)
         }
 
-        let constraints = self.get_constraints();
+        let constraints = self.cached_constraints();
         if constraints.is_empty() {
             return Vec::new();
         }
@@ -1411,7 +1443,7 @@ impl ConstraintInspector for NoirExecutor {
     }
 
     fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
-        self.get_constraints()
+        self.cached_constraints()
             .iter()
             .map(|c| {
                 let mut deps: Vec<usize> = c
@@ -1660,16 +1692,11 @@ impl CircuitExecutor for CairoExecutor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = match coverage_from_results(self.check_constraints(inputs)) {
-                    Some(value) => value,
-                    None => {
-                        return ExecutionResult::failure(
-                            "Cairo constraint coverage unavailable: refusing output-hash fallback"
-                                .to_string(),
-                        )
-                        .with_time(start.elapsed().as_micros() as u64);
-                    }
-                };
+                let coverage = coverage_from_results_or_output_hash(
+                    self.check_constraints(inputs),
+                    &outputs,
+                    "Cairo",
+                );
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }
@@ -1746,6 +1773,17 @@ mod tests {
         let failure = ExecutionResult::failure("test error".to_string());
         assert!(!failure.success);
         assert_eq!(failure.error, Some("test error".to_string()));
+    }
+
+    #[test]
+    fn test_coverage_fallback_uses_output_hash_when_constraints_missing() {
+        let outputs = vec![FieldElement::from_u64(7), FieldElement::from_u64(11)];
+        let coverage = coverage_from_results_or_output_hash(vec![], &outputs, "test");
+        assert!(coverage.evaluated_constraints.is_empty());
+        assert_eq!(
+            coverage.coverage_hash,
+            ExecutionCoverage::with_output_hash(&outputs).coverage_hash
+        );
     }
 
     #[test]

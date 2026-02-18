@@ -26,6 +26,18 @@ cargo run --release --bin zk0d_batch -- \
   --framework circom
 ```
 
+To enable one-shot transient setup retries (keygen/preflight/lock classes):
+
+```bash
+cargo run --release --bin zk0d_batch -- \
+  --alias always \
+  --target-circuit /media/elements/Repos/zk0d/path/to/target.circom \
+  --main-component Main \
+  --framework circom \
+  --retry-transient-setup \
+  --retry-backoff-secs 3
+```
+
 ### Strict 3-Check Gate (Enforced by `zk0d_batch`)
 
 Every batch run enforces:
@@ -53,6 +65,90 @@ cargo run --release --bin zk0d_batch -- \
   --target-circuit /media/elements/Repos/zk0d/path/to/target.circom \
   --main-component Main \
   --framework circom
+```
+
+## Matrix Runs Across Multiple Targets
+
+For multi-target campaigns (parallel-safe target matrix + per-target reason-code aggregation):
+
+```bash
+cargo run --release --bin zk0d_matrix -- \
+  --matrix targets/zk0d_matrix.yaml \
+  --alias always \
+  --jobs 2 \
+  --batch-jobs 1 \
+  --workers 2 \
+  --summary-tsv artifacts/zk0d_matrix_summary.tsv
+```
+
+Guardrail model:
+- `jobs` = parallel targets
+- `batch-jobs` = template parallelism inside each target's `zk0d_batch`
+- `workers` = scan workers per template run
+
+The runner enforces a CPU-based guardrail on `jobs * batch_jobs * workers` unless
+`--allow-oversubscription` is explicitly set.
+
+## Repeated-Trial Benchmark Suites
+
+Use `zk0d_benchmark` to run vulnerable/safe suites with repeated trials and
+aggregate recall/precision/FPR metrics (with 95% Wilson confidence intervals):
+
+```bash
+cargo run --release --bin zk0d_benchmark -- \
+  --config-profile dev \
+  --trials 3 \
+  --jobs 2 \
+  --batch-jobs 1 \
+  --workers 2
+```
+
+Outputs are written under:
+
+- `artifacts/benchmark_runs/benchmark_<timestamp>/summary.json`
+- `artifacts/benchmark_runs/benchmark_<timestamp>/outcomes.json`
+- `artifacts/benchmark_runs/benchmark_<timestamp>/summary.md`
+
+The default suites file includes:
+
+- `vulnerable_ground_truth` (positive suite, 5 known vulnerable circuits)
+- `safe_regression` (negative suite, 5 known safe circuits)
+- `real_world_examples` (disabled by default, `/media/elements/Repos/zk0d` examples)
+
+Config profiles:
+
+- `dev`:
+  - `targets/benchmark_suites.dev.yaml`
+  - `targets/benchmark_registry.dev.yaml`
+  - Fast, stable local validation defaults.
+- `prod`:
+  - `targets/benchmark_suites.prod.yaml`
+  - `targets/benchmark_registry.prod.yaml`
+  - Heavier production-depth pattern budgets.
+- No profile:
+  - Backward-compatible defaults (`targets/benchmark_suites.yaml`, `targets/benchmark_registry.yaml`).
+
+`zk0d_batch` also supports profile-based registry selection:
+
+```bash
+# Fast development catalog
+cargo run --release --bin zk0d_batch -- --config-profile dev --list-catalog
+
+# Production CVE catalog
+cargo run --release --bin zk0d_batch -- --config-profile prod --list-catalog
+```
+
+To run only real-world suite entries, first enable those targets in
+`targets/benchmark_suites.yaml`, then select the suite explicitly:
+
+```bash
+cargo run --release --bin zk0d_benchmark -- \
+  --suites targets/benchmark_suites.yaml \
+  --suite real_world_examples \
+  --trials 5 \
+  --jobs 2 \
+  --batch-jobs 1 \
+  --workers 2
 ```
 
 ## Naming Rule

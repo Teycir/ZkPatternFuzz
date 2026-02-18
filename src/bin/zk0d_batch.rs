@@ -1,6 +1,6 @@
 use anyhow::Context;
 use chrono::Utc;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -8,14 +8,21 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
+const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
+const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
+const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
 
 #[derive(Parser, Debug)]
 #[command(name = "zk0d_batch")]
 #[command(about = "Batch runner for YAML attack-pattern catalogs")]
 struct Args {
     /// Path to fuzzer registry YAML
-    #[arg(long, default_value = "targets/fuzzer_registry.yaml")]
-    registry: String,
+    #[arg(long)]
+    registry: Option<String>,
+
+    /// Config profile for default registry path selection
+    #[arg(long, value_enum)]
+    config_profile: Option<ConfigProfile>,
 
     /// List available collections/aliases/templates and exit
     #[arg(long, default_value_t = false)]
@@ -84,6 +91,20 @@ struct Args {
     /// Emit per-template reason codes as TSV to stdout (for external harness ingestion)
     #[arg(long, default_value_t = false)]
     emit_reason_tsv: bool,
+
+    /// Retry once on transient setup failures (key setup/lock/readiness) with backoff
+    #[arg(long, default_value_t = true)]
+    retry_transient_setup: bool,
+
+    /// Backoff before retrying a transient setup failure (seconds)
+    #[arg(long, default_value_t = 3)]
+    retry_backoff_secs: u64,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum ConfigProfile {
+    Dev,
+    Prod,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +121,14 @@ impl Family {
             Family::Mono => "mono",
             Family::Multi => "multi",
         }
+    }
+}
+
+fn default_registry_for_profile(profile: Option<ConfigProfile>) -> &'static str {
+    match profile {
+        Some(ConfigProfile::Dev) => DEV_REGISTRY_PATH,
+        Some(ConfigProfile::Prod) => PROD_REGISTRY_PATH,
+        None => DEFAULT_REGISTRY_PATH,
     }
 }
 
@@ -159,6 +188,9 @@ struct ScanRunConfig<'a> {
     timeout: u64,
     scan_run_root: Option<&'a str>,
     dry_run: bool,
+    artifacts_root: &'a Path,
+    retry_transient_setup: bool,
+    retry_backoff_secs: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -737,11 +769,60 @@ fn run_template(
     }
 
     if !run_scan(run_cfg, template, family, false, output_suffix)? {
+        if run_cfg.retry_transient_setup && !run_cfg.dry_run {
+            let reason_code = read_template_reason_code(
+                run_cfg.artifacts_root,
+                run_cfg.scan_run_root,
+                output_suffix,
+            );
+            if let Some(reason_code) = reason_code {
+                if is_transient_setup_reason(&reason_code) {
+                    eprintln!(
+                        "Template '{}' transient setup failure (reason_code={}); retrying once after {}s",
+                        template.file_name, reason_code, run_cfg.retry_backoff_secs
+                    );
+                    std::thread::sleep(std::time::Duration::from_secs(
+                        run_cfg.retry_backoff_secs.max(1),
+                    ));
+                    if run_scan(run_cfg, template, family, false, output_suffix)? {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
         eprintln!("Template '{}' failed", template.file_name);
         return Ok(false);
     }
 
     Ok(true)
+}
+
+fn read_template_reason_code(
+    artifacts_root: &Path,
+    run_root: Option<&str>,
+    output_suffix: &str,
+) -> Option<String> {
+    let run_root = run_root?;
+    let run_outcome_path = artifacts_root
+        .join(run_root)
+        .join(output_suffix)
+        .join("run_outcome.json");
+    let raw = fs::read_to_string(run_outcome_path).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    Some(classify_run_reason_code(&parsed).to_string())
+}
+
+fn is_transient_setup_reason(reason_code: &str) -> bool {
+    matches!(
+        reason_code,
+        "output_dir_locked"
+            | "key_generation_failed"
+            | "backend_preflight_failed"
+            | "run_outcome_missing"
+            | "run_outcome_unreadable"
+            | "run_outcome_invalid_json"
+            | "stale_interrupted"
+    )
 }
 
 fn scan_output_suffix(template: &TemplateInfo, family: Family) -> String {
@@ -1092,7 +1173,11 @@ fn main() -> anyhow::Result<()> {
 
     let family_override = parse_family(&args.family)?;
 
-    let registry_path = PathBuf::from(&args.registry);
+    let registry_path_raw = args
+        .registry
+        .clone()
+        .unwrap_or_else(|| default_registry_for_profile(args.config_profile).to_string());
+    let registry_path = PathBuf::from(&registry_path_raw);
     let registry_dir = registry_path
         .parent()
         .map(|p| p.to_path_buf())
@@ -1159,6 +1244,8 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    let artifacts_root = scan_output_root().join(".scan_run_artifacts");
+
     let run_cfg_base = ScanRunConfig {
         bin_path: &bin_path,
         target_circuit: &target_circuit,
@@ -1170,9 +1257,11 @@ fn main() -> anyhow::Result<()> {
         timeout: args.timeout,
         scan_run_root: None,
         dry_run: args.dry_run,
+        artifacts_root: &artifacts_root,
+        retry_transient_setup: args.retry_transient_setup,
+        retry_backoff_secs: args.retry_backoff_secs,
     };
 
-    let artifacts_root = scan_output_root().join(".scan_run_artifacts");
     let baseline_roots = if args.dry_run {
         BTreeSet::new()
     } else {
@@ -1290,4 +1379,19 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transient_setup_reason_classifier() {
+        assert!(is_transient_setup_reason("key_generation_failed"));
+        assert!(is_transient_setup_reason("output_dir_locked"));
+        assert!(is_transient_setup_reason("backend_preflight_failed"));
+        assert!(!is_transient_setup_reason("backend_tooling_missing"));
+        assert!(!is_transient_setup_reason("circom_compilation_failed"));
+        assert!(!is_transient_setup_reason("completed"));
+    }
 }

@@ -231,16 +231,56 @@ impl AdaptiveScheduler {
             return HashMap::new();
         }
 
+        let total_millis = total_time.as_millis() as u64;
+        if total_millis == 0 {
+            return HashMap::new();
+        }
+
+        // Phase 3A correctness fix:
+        // Clamp per-attack fractions, then renormalize so the final allocation
+        // always sums to the requested total budget.
+        let mut fractions: Vec<(AttackType, f64)> = self
+            .attack_scores
+            .iter()
+            .map(|(attack_type, score)| {
+                let clamped = (score / total_score)
+                    .max(self.config.min_budget_fraction)
+                    .min(self.config.max_budget_fraction);
+                (attack_type.clone(), clamped)
+            })
+            .collect();
+
+        let clamped_sum: f64 = fractions.iter().map(|(_, value)| *value).sum();
+        if clamped_sum <= f64::EPSILON {
+            return HashMap::new();
+        }
+        for (_, value) in &mut fractions {
+            *value /= clamped_sum;
+        }
+
+        // Use largest-remainder rounding so integer milliseconds sum exactly.
+        let mut base_allocations: Vec<(AttackType, u64, f64)> = fractions
+            .into_iter()
+            .map(|(attack_type, fraction)| {
+                let exact = fraction * total_millis as f64;
+                let whole = exact.floor() as u64;
+                let remainder = exact - whole as f64;
+                (attack_type, whole, remainder)
+            })
+            .collect();
+
+        let used_millis: u64 = base_allocations.iter().map(|(_, millis, _)| *millis).sum();
+        let leftover = total_millis.saturating_sub(used_millis) as usize;
+        base_allocations.sort_by(|a, b| b.2.total_cmp(&a.2));
+        for (idx, (_, millis, _)) in base_allocations.iter_mut().enumerate() {
+            if idx < leftover {
+                *millis += 1;
+            }
+        }
+
         let mut allocations = HashMap::new();
-        let total_millis = total_time.as_millis() as f64;
-
-        for (attack_type, score) in &self.attack_scores {
-            let fraction = (score / total_score)
-                .max(self.config.min_budget_fraction)
-                .min(self.config.max_budget_fraction);
-
-            let millis = (fraction * total_millis) as u64;
-            allocations.insert(attack_type.clone(), Duration::from_millis(millis));
+        for (attack_type, millis, _) in base_allocations {
+            allocations.insert(attack_type, Duration::from_millis(millis));
         }
 
         allocations
@@ -463,9 +503,27 @@ mod tests {
         let budget = scheduler.allocate_budget(Duration::from_secs(300));
 
         assert_eq!(budget.len(), 3);
-        let total: Duration = budget.values().sum();
-        // Total should be close to 300 seconds (allow for rounding)
-        assert!(total.as_secs() > 200);
+        let total_ms: u128 = budget.values().map(Duration::as_millis).sum();
+        assert_eq!(total_ms, Duration::from_secs(300).as_millis());
+    }
+
+    #[test]
+    fn test_budget_allocation_normalizes_when_min_fraction_oversubscribed() {
+        let mut scheduler = AdaptiveScheduler::with_config(AdaptiveSchedulerConfig {
+            min_budget_fraction: 0.40,
+            max_budget_fraction: 0.90,
+            ..AdaptiveSchedulerConfig::default()
+        });
+        scheduler.initialize(&[
+            AttackType::Underconstrained,
+            AttackType::Soundness,
+            AttackType::Collision,
+        ]);
+
+        let budget = scheduler.allocate_budget(Duration::from_secs(10));
+        assert_eq!(budget.len(), 3);
+        let total_ms: u128 = budget.values().map(Duration::as_millis).sum();
+        assert_eq!(total_ms, Duration::from_secs(10).as_millis());
     }
 
     #[test]

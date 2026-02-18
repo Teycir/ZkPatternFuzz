@@ -28,16 +28,25 @@ fn circom_external_command_timeout() -> std::time::Duration {
     match std::env::var("ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS") {
         Ok(raw) => match raw.trim().parse::<u64>() {
             Ok(secs) => std::time::Duration::from_secs(secs.max(1)),
-            Err(err) => panic!(
-                "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS='{}': {}",
-                raw, err
-            ),
+            Err(err) => {
+                tracing::warn!(
+                    "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS='{}': {}; using default {}s",
+                    raw,
+                    err,
+                    DEFAULT_SECS
+                );
+                std::time::Duration::from_secs(DEFAULT_SECS)
+            }
         },
         Err(std::env::VarError::NotPresent) => std::time::Duration::from_secs(DEFAULT_SECS),
-        Err(e) => panic!(
-            "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS value: {}",
-            e
-        ),
+        Err(e) => {
+            tracing::warn!(
+                "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS value: {}; using default {}s",
+                e,
+                DEFAULT_SECS
+            );
+            std::time::Duration::from_secs(DEFAULT_SECS)
+        }
     }
 }
 
@@ -675,8 +684,39 @@ fn is_js_cli(path: &Path) -> bool {
     )
 }
 
+fn local_bins_search_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        paths.push(cwd.join("bins"));
+        paths.push(cwd.join("bins").join("bin"));
+        paths.push(cwd.join("bins").join("node_modules").join(".bin"));
+        paths.push(cwd.join("bins").join("node_modules"));
+    }
+    paths
+}
+
+fn apply_local_bins_path(cmd: &mut Command) {
+    let separator = if cfg!(windows) { ';' } else { ':' };
+    let mut prepend = Vec::new();
+    for candidate in local_bins_search_paths() {
+        if candidate.exists() {
+            prepend.push(candidate.to_string_lossy().to_string());
+        }
+    }
+    if prepend.is_empty() {
+        return;
+    }
+
+    let current = std::env::var("PATH").unwrap_or_default();
+    let mut path_parts = prepend;
+    if !current.is_empty() {
+        path_parts.push(current);
+    }
+    cmd.env("PATH", path_parts.join(&separator.to_string()));
+}
+
 fn snarkjs_command_for(path: Option<&Path>) -> Command {
-    match path {
+    let mut cmd = match path {
         Some(path) if is_js_cli(path) => {
             let mut cmd = Command::new("node");
             cmd.arg(path);
@@ -688,7 +728,9 @@ fn snarkjs_command_for(path: Option<&Path>) -> Command {
             cmd.arg("snarkjs");
             cmd
         }
-    }
+    };
+    apply_local_bins_path(&mut cmd);
+    cmd
 }
 
 fn circom_io_lock() -> &'static Mutex<()> {
@@ -913,6 +955,7 @@ impl CircomTarget {
     /// Check if circom is available
     pub fn check_circom_available() -> Result<String> {
         let mut cmd = Command::new("circom");
+        apply_local_bins_path(&mut cmd);
         cmd.arg("--version");
         let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
             .context("circom not found in PATH")?;
@@ -1010,6 +1053,7 @@ impl CircomTarget {
 
         // Compile circuit
         let mut cmd = Command::new("circom");
+        apply_local_bins_path(&mut cmd);
         for include in &self.include_paths {
             cmd.arg("-l").arg(include);
         }
@@ -1532,7 +1576,7 @@ impl CircomTarget {
                 return Ok(path.clone());
             }
             anyhow::bail!(
-                "Configured ptau file is missing or invalid (bad header): {}",
+                "Configured ptau file is missing or invalid (bad header/size): {}",
                 path.display()
             );
         }
@@ -1572,7 +1616,7 @@ impl CircomTarget {
                         return Ok(path);
                     }
                     tracing::warn!(
-                        "Ignoring invalid ptau candidate (bad header): {}",
+                        "Ignoring invalid ptau candidate (bad header/size): {}",
                         path.display()
                     );
                 }
@@ -1657,7 +1701,7 @@ impl CircomTarget {
 
         if !is_valid_ptau_file(&ptau_path)? {
             anyhow::bail!(
-                "Downloaded ptau file is invalid (bad header): {}",
+                "Downloaded ptau file is invalid (bad header/size): {}",
                 ptau_path.display()
             );
         }
@@ -2422,6 +2466,9 @@ fn file_has_nonzero_size(path: &Path) -> Result<bool> {
     Ok(metadata.is_file() && metadata.len() > 0)
 }
 
+// Powers of Tau files smaller than this are almost certainly truncated/corrupt.
+const MIN_PTAU_BYTES: u64 = 1_000_000;
+
 fn has_bin_magic(path: &Path, magic: &[u8; 4]) -> Result<bool> {
     if !path.exists() {
         return Ok(false);
@@ -2443,7 +2490,12 @@ fn has_bin_magic(path: &Path, magic: &[u8; 4]) -> Result<bool> {
 }
 
 fn is_valid_ptau_file(path: &Path) -> Result<bool> {
-    has_bin_magic(path, b"ptau")
+    if !has_bin_magic(path, b"ptau")? {
+        return Ok(false);
+    }
+    let metadata = std::fs::metadata(path)
+        .with_context(|| format!("Failed to read metadata for '{}'", path.display()))?;
+    Ok(metadata.is_file() && metadata.len() >= MIN_PTAU_BYTES)
 }
 
 fn is_valid_zkey_file(path: &Path) -> Result<bool> {

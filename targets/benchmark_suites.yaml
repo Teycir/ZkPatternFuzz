@@ -1,0 +1,77 @@
+suites:
+  vulnerable_ground_truth:
+    positive: true
+    description: "Known-vulnerable ground-truth circuits for recall benchmarking (lightweight set)"
+    targets:
+      - name: merkle_unconstrained
+        target_circuit: tests/ground_truth_circuits/merkle_unconstrained.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: nullifier_collision
+        target_circuit: tests/ground_truth_circuits/nullifier_collision.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: range_overflow
+        target_circuit: tests/ground_truth_circuits/range_overflow.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: bit_decomposition
+        target_circuit: tests/ground_truth_circuits/bit_decomposition.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: division_by_zero
+        target_circuit: tests/ground_truth_circuits/division_by_zero.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+
+  safe_regression:
+    positive: false
+    description: "Known-safe circuits for false-positive benchmarking (lightweight set)"
+    targets:
+      - name: multiplier_safe
+        target_circuit: tests/circuits/multiplier.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: range_check_safe
+        target_circuit: tests/circuits/range_check.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: nullifier_secure
+        target_circuit: tests/safe_circuits/nullifier_secure.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: range_proof_secure
+        target_circuit: tests/safe_circuits/range_proof_secure.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: poseidon_standard
+        target_circuit: tests/safe_circuits/poseidon_standard.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+
+  real_world_examples:
+    positive: true
+    description: "Disabled examples for real-world targets under ${ZK0D_BASE:-/media/elements/Repos/zk0d}"
+    targets:
+      - name: tornado_withdraw_real
+        target_circuit: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/tornado-core/circuits/withdraw.circom"
+        main_component: main
+        framework: circom
+        alias: benchmark
+        enabled: false
+      - name: semaphore_real
+        target_circuit: "${ZK0D_BASE:-/media/elements/Repos/zk0d}/cat3_privacy/semaphore/packages/circuits/src/semaphore.circom"
+        main_component: main
+        framework: circom
+        alias: benchmark
+        enabled: false

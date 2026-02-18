@@ -1,0 +1,18 @@
+version: "1.0"
+
+registries:
+  local_benchmark_patterns:
+    path: "campaigns/benchmark/patterns"
+    description: "Strict generic benchmark patterns (no selector gating)"
+    maintainer: "ZkPatternFuzz"
+
+collections:
+  benchmark_generic:
+    registry: local_benchmark_patterns
+    description: "Generic strict benchmark template set"
+    templates:
+      - underconstrained_strict_probe.yaml
+
+aliases:
+  benchmark: ["benchmark_generic"]
+  benchmark_generic: ["benchmark_generic"]
