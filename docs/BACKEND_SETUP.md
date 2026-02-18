@@ -7,6 +7,19 @@
 ✅ **Halo2** - Test circuits built (~/halo2-circuits/)  
 ✅ **Cairo** - 2.15.0 via Scarb 2.15.1 (Production)  
 
+## Quick Local Bootstrap (Circom + snarkjs + ptau)
+
+Use the built-in bootstrap command to internalize Circom tooling under `./bins`:
+
+```bash
+cargo run --release --bin zk-fuzzer -- bins bootstrap
+```
+
+Notes:
+- Circom is pulled from official GitHub release assets with SHA-256 verification.
+- snarkjs is installed locally under `bins/node_modules` and linked to `bins/bin/snarkjs`.
+- ptau is copied from the local fixture (or downloaded via `--ptau-url` with `--ptau-sha256`).
+
 ---
 
 ## 1. Cairo Backend (STARK) ✅

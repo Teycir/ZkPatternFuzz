@@ -19,6 +19,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 11. Added selector-policy regression tests in `src/main.rs` for default compatibility, pass/fail gating, and invalid-policy rejection.
 12. Implemented selector synonym bundles (`selector_synonyms` / `synonym_bundles`) with placeholder expansion (`{{bundle}}`) and optional normalization controls (`selector_normalization.synonym_flexible_separators`) for style-tolerant matching.
 13. Added selector normalization/synonym regression tests in `src/main.rs` (bundle expansion pass, normalization toggle, unknown-bundle validation).
+14. Added `zk-fuzzer bins bootstrap` command to internalize local Circom dependencies under `bins/`:
+   - Circom release download from GitHub assets with SHA-256 digest verification.
+   - Local `snarkjs` install/link under `bins/node_modules` and `bins/bin`.
+   - ptau install from verified local fixture or URL+checksum.
+15. Added deterministic ptau autodiscovery precedence in Circom executor (`ZKF_PTAU_PATH` override, local `bins/ptau` first) with regression tests.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -129,8 +134,7 @@ Exit Criteria:
 
 ## Execution Backlog (Immediate Top 10)
 1. Extend batch reason-code aggregation into external real-run TSV harness (without changing report schema).
-2. Add bootstrap command for `bins` and `ptau`.
-3. Add matrix runner for zk0d target lists with `jobs` + `workers` guardrails.
-4. Add retry-on-transient-setup policy.
-5. Add vulnerable/safe benchmark suites with repeated-trial harness.
-6. Add CI gates for stability and recall regression.
+2. Add matrix runner for zk0d target lists with `jobs` + `workers` guardrails.
+3. Add retry-on-transient-setup policy.
+4. Add vulnerable/safe benchmark suites with repeated-trial harness.
+5. Add CI gates for stability and recall regression.

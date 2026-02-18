@@ -11,6 +11,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
 };
+mod toolchain_bootstrap;
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName, ReadinessReport};
 use zk_fuzzer::fuzzer::ZkFuzzer;
 use zk_fuzzer::Framework;
@@ -1549,6 +1550,11 @@ enum Commands {
         /// Path to campaign YAML file
         campaign: String,
     },
+    /// Local toolchain bootstrap utilities
+    Bins {
+        #[command(subcommand)]
+        command: BinsCommands,
+    },
     /// Minimize a corpus
     Minimize {
         /// Path to corpus directory
@@ -1568,6 +1574,43 @@ enum Commands {
     },
     #[command(hide = true)]
     ExecWorker,
+}
+
+#[derive(Subcommand)]
+enum BinsCommands {
+    /// Install/update local circom/snarkjs/ptau assets under bins/
+    Bootstrap {
+        /// Local bins directory root
+        #[arg(long, default_value = "bins")]
+        bins_dir: String,
+        /// Circom release version (tag or semver, e.g. v2.2.3 or 2.2.3)
+        #[arg(long, default_value = "v2.2.3")]
+        circom_version: String,
+        /// snarkjs npm version
+        #[arg(long, default_value = "0.7.5")]
+        snarkjs_version: String,
+        /// Output filename under <bins_dir>/ptau/
+        #[arg(long, default_value = "pot12_final.ptau")]
+        ptau_file: String,
+        /// Optional ptau download URL (when omitted, uses local fixture)
+        #[arg(long)]
+        ptau_url: Option<String>,
+        /// Expected SHA-256 for ptau file (required when --ptau-url is used)
+        #[arg(long)]
+        ptau_sha256: Option<String>,
+        /// Skip circom bootstrap
+        #[arg(long, default_value_t = false)]
+        skip_circom: bool,
+        /// Skip snarkjs bootstrap
+        #[arg(long, default_value_t = false)]
+        skip_snarkjs: bool,
+        /// Skip ptau bootstrap
+        #[arg(long, default_value_t = false)]
+        skip_ptau: bool,
+        /// Force re-download/reinstall even when local artifacts already exist
+        #[arg(long, default_value_t = false)]
+        force: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Hash)]
@@ -1759,6 +1802,34 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
             setup_keys,
         }) => preflight_campaign(&campaign, setup_keys),
         Some(Commands::Validate { campaign }) => validate_campaign(&campaign),
+        Some(Commands::Bins { command }) => match command {
+            BinsCommands::Bootstrap {
+                bins_dir,
+                circom_version,
+                snarkjs_version,
+                ptau_file,
+                ptau_url,
+                ptau_sha256,
+                skip_circom,
+                skip_snarkjs,
+                skip_ptau,
+                force,
+            } => toolchain_bootstrap::run_bins_bootstrap(
+                &toolchain_bootstrap::BinsBootstrapOptions {
+                    bins_dir: PathBuf::from(bins_dir),
+                    circom_version,
+                    snarkjs_version,
+                    ptau_file_name: ptau_file,
+                    ptau_url,
+                    ptau_sha256,
+                    skip_circom,
+                    skip_snarkjs,
+                    skip_ptau,
+                    force,
+                    dry_run: cli.dry_run,
+                },
+            ),
+        },
         Some(Commands::Minimize { corpus_dir, output }) => {
             minimize_corpus(&corpus_dir, output.as_deref())
         }

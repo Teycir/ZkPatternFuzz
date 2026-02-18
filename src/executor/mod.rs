@@ -900,22 +900,46 @@ impl CircomExecutor {
     }
 
     fn autodetect_ptau_path(circuit_path: &str) -> Option<PathBuf> {
+        if let Ok(raw) = std::env::var("ZKF_PTAU_PATH") {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                let explicit = PathBuf::from(trimmed);
+                if explicit.exists() {
+                    return Some(explicit);
+                }
+                tracing::warn!(
+                    "ZKF_PTAU_PATH is set to '{}' but file was not found; continuing with autodetection",
+                    explicit.display()
+                );
+            }
+        }
+
         let candidates = [
-            "reports/ptau/pot21_final.ptau",
-            "reports/ptau/pot20_final.ptau",
-            "reports/ptau/pot19_final.ptau",
-            "ptau/pot21_final.ptau",
-            "ptau/pot20_final.ptau",
-            "ptau/pot19_final.ptau",
             "bins/ptau/pot21_final.ptau",
             "bins/ptau/pot20_final.ptau",
             "bins/ptau/pot19_final.ptau",
+            "bins/ptau/pot12_final.ptau",
+            "bins/ptau/powersOfTau28_hez_final_12.ptau",
+            "ptau/pot21_final.ptau",
+            "ptau/pot20_final.ptau",
+            "ptau/pot19_final.ptau",
+            "ptau/pot12_final.ptau",
+            "ptau/powersOfTau28_hez_final_12.ptau",
+            "reports/ptau/pot21_final.ptau",
+            "reports/ptau/pot20_final.ptau",
+            "reports/ptau/pot19_final.ptau",
+            "reports/ptau/pot12_final.ptau",
+            "tests/circuits/build/pot12_final.ptau",
             "bins/pot21_final.ptau",
             "bins/pot20_final.ptau",
             "bins/pot19_final.ptau",
+            "bins/pot12_final.ptau",
+            "bins/powersOfTau28_hez_final_12.ptau",
             "pot21_final.ptau",
             "pot20_final.ptau",
             "pot19_final.ptau",
+            "pot12_final.ptau",
+            "powersOfTau28_hez_final_12.ptau",
         ];
 
         for root in Self::circuit_ancestor_paths(circuit_path) {
@@ -1810,5 +1834,48 @@ mod tests {
         let checks = inspector.check_constraints(&inputs);
         assert_eq!(checks.len(), 2);
         assert!(checks.iter().all(|c| c.satisfied));
+    }
+
+    #[test]
+    fn test_circom_ptau_autodetect_prefers_env_override() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let ptau = temp.path().join("custom.ptau");
+        std::fs::write(&ptau, b"ptau-test").expect("write");
+
+        let previous = std::env::var("ZKF_PTAU_PATH").ok();
+        std::env::set_var("ZKF_PTAU_PATH", &ptau);
+        let detected = CircomExecutor::autodetect_ptau_path("circuits/example.circom");
+
+        match previous {
+            Some(value) => std::env::set_var("ZKF_PTAU_PATH", value),
+            None => std::env::remove_var("ZKF_PTAU_PATH"),
+        }
+
+        assert_eq!(detected.as_deref(), Some(ptau.as_path()));
+    }
+
+    #[test]
+    fn test_circom_ptau_autodetect_finds_bins_ptau_fixture() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let circuit_dir = temp.path().join("project").join("circuits");
+        std::fs::create_dir_all(&circuit_dir).expect("mkdir circuits");
+        let circuit_path = circuit_dir.join("sample.circom");
+        std::fs::write(&circuit_path, "pragma circom 2.0.0;").expect("write circuit");
+
+        let bins_ptau_dir = temp.path().join("project").join("bins").join("ptau");
+        std::fs::create_dir_all(&bins_ptau_dir).expect("mkdir ptau");
+        let ptau_path = bins_ptau_dir.join("pot12_final.ptau");
+        std::fs::write(&ptau_path, b"ptau-test").expect("write ptau");
+
+        let previous = std::env::var("ZKF_PTAU_PATH").ok();
+        std::env::remove_var("ZKF_PTAU_PATH");
+        let detected =
+            CircomExecutor::autodetect_ptau_path(circuit_path.to_str().expect("utf8 circuit path"));
+        match previous {
+            Some(value) => std::env::set_var("ZKF_PTAU_PATH", value),
+            None => std::env::remove_var("ZKF_PTAU_PATH"),
+        }
+
+        assert_eq!(detected.as_deref(), Some(ptau_path.as_path()));
     }
 }

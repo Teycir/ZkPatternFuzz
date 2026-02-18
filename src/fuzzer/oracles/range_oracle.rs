@@ -76,7 +76,7 @@ impl RangeProofOracle {
     }
 
     fn has_expected_range(&self) -> bool {
-        self.expected_min.is_some() && self.expected_max.is_some()
+        matches!((&self.expected_min, &self.expected_max), (Some(_), Some(_)))
     }
 
     /// Check if value is outside expected range

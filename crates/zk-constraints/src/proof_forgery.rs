@@ -206,26 +206,27 @@ impl ProofForgeryDetector {
         let alt_private = self.extract_private_inputs(alt_witness);
 
         // Step 2: If we have proving infrastructure, generate and verify proof
-        let verification_result = if self.zkey_path.is_some() && self.vkey_path.is_some() {
-            match self.verify_forged_proof(alt_witness) {
-                Ok(result) => Some(result),
-                Err(e) => {
-                    stats.total_time_ms = start.elapsed().as_millis() as u64;
-                    return ProofForgeryResult {
-                        is_underconstrained: true, // Still underconstrained even if proof fails
-                        forgery_verified: false,
-                        original_public_inputs: self.extract_public_inputs(witness),
-                        original_public_outputs: self.extract_public_outputs(witness),
-                        alternative_private_inputs: Some(alt_private),
-                        verification_result: None,
-                        stats,
-                        error: Some(format!("Proof verification failed: {}", e)),
-                    };
+        let verification_result =
+            if matches!((&self.zkey_path, &self.vkey_path), (Some(_), Some(_))) {
+                match self.verify_forged_proof(alt_witness) {
+                    Ok(result) => Some(result),
+                    Err(e) => {
+                        stats.total_time_ms = start.elapsed().as_millis() as u64;
+                        return ProofForgeryResult {
+                            is_underconstrained: true, // Still underconstrained even if proof fails
+                            forgery_verified: false,
+                            original_public_inputs: self.extract_public_inputs(witness),
+                            original_public_outputs: self.extract_public_outputs(witness),
+                            alternative_private_inputs: Some(alt_private),
+                            verification_result: None,
+                            stats,
+                            error: Some(format!("Proof verification failed: {}", e)),
+                        };
+                    }
                 }
-            }
-        } else {
-            None
-        };
+            } else {
+                None
+            };
 
         let forgery_verified: bool = verification_result
             .as_ref()
@@ -285,17 +286,18 @@ impl ProofForgeryDetector {
 
         let alt_private = self.extract_private_inputs(alternative);
 
-        let verification_result = if self.zkey_path.is_some() && self.vkey_path.is_some() {
-            match self.verify_forged_proof(alternative) {
-                Ok(result) => Some(result),
-                Err(err) => {
-                    tracing::warn!("Forged proof verification errored: {}", err);
-                    None
+        let verification_result =
+            if matches!((&self.zkey_path, &self.vkey_path), (Some(_), Some(_))) {
+                match self.verify_forged_proof(alternative) {
+                    Ok(result) => Some(result),
+                    Err(err) => {
+                        tracing::warn!("Forged proof verification errored: {}", err);
+                        None
+                    }
                 }
-            }
-        } else {
-            None
-        };
+            } else {
+                None
+            };
 
         let forgery_verified: bool = verification_result
             .as_ref()
