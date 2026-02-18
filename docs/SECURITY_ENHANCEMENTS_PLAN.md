@@ -23,6 +23,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
 - Added static-first acceleration primitives for earlier issue surfacing:
   - New `CircomStaticLint` attack family with static checks for unused signals, unconstrained outputs, division-by-signal patterns, and missing constraints around `<--`.
   - Added branch-dependent assignment detection in Circom static lint to flag likely path-dependent/conditionally unconstrained signals during static prepass.
+  - Improved Circom static lint comment handling to strip both line and block comments, reducing false positives from commented-out code.
   - New phase-level fail-fast severity gating (`fail_on_findings`) and enabled static prepass fail-fast on `critical`/`high`.
   - Upgraded `quantum_resistance` matching to word-boundary regexes to reduce substring false positives.
 - Completed generator automation + static evidence handling:

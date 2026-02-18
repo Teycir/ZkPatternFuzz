@@ -102,7 +102,7 @@ impl CircomStaticLint {
 
     /// Scan source text and return findings.
     pub fn scan_source(&self, source: &str, location_prefix: Option<String>) -> Vec<Finding> {
-        let source_no_comments = strip_line_comments(source);
+        let source_no_comments = strip_comments(source);
         let decls = parse_signal_declarations(&source_no_comments, self.config.case_sensitive);
 
         let mut findings = Vec::new();
@@ -303,12 +303,66 @@ fn with_line(location_prefix: &Option<String>, line: usize) -> Option<String> {
         .map(|prefix| format!("{}:{}", prefix, line))
 }
 
-fn strip_line_comments(source: &str) -> String {
-    source
-        .lines()
-        .map(|line| line.split_once("//").map(|(head, _)| head).unwrap_or(line))
-        .collect::<Vec<_>>()
-        .join("\n")
+fn strip_comments(source: &str) -> String {
+    let mut result = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    let mut in_line_comment = false;
+    let mut in_block_comment = false;
+
+    while let Some(ch) = chars.next() {
+        if in_line_comment {
+            if ch == '\n' {
+                in_line_comment = false;
+                result.push('\n');
+            } else if ch == '\r' {
+                // Keep CRLF layout stable when present.
+                result.push('\r');
+            } else {
+                result.push(' ');
+            }
+            continue;
+        }
+
+        if in_block_comment {
+            if ch == '*' && chars.peek().copied() == Some('/') {
+                let _ = chars.next();
+                in_block_comment = false;
+                result.push(' ');
+                result.push(' ');
+            } else if ch == '\n' {
+                result.push('\n');
+            } else if ch == '\r' {
+                result.push('\r');
+            } else {
+                result.push(' ');
+            }
+            continue;
+        }
+
+        if ch == '/' {
+            match chars.peek().copied() {
+                Some('/') => {
+                    let _ = chars.next();
+                    in_line_comment = true;
+                    result.push(' ');
+                    result.push(' ');
+                    continue;
+                }
+                Some('*') => {
+                    let _ = chars.next();
+                    in_block_comment = true;
+                    result.push(' ');
+                    result.push(' ');
+                    continue;
+                }
+                _ => {}
+            }
+        }
+
+        result.push(ch);
+    }
+
+    result
 }
 
 fn compile_regex(pattern: &str, case_sensitive: bool) -> Option<Regex> {

@@ -87,3 +87,39 @@ component main = Main();
             .contains("assigned with '<--' inside conditional")
     }));
 }
+
+#[test]
+fn circom_static_lint_ignores_commented_patterns() {
+    let source = r#"
+template Main() {
+    signal input a;
+    signal output out;
+    // out <-- a / divisor;
+    /*
+      tmp <-- a / divisor;
+      out <-- tmp;
+    */
+    out <== a;
+}
+component main = Main();
+"#;
+
+    let lint = CircomStaticLint::new(CircomStaticLintConfig {
+        enabled_checks: vec![
+            StaticCheck::UnconstrainedOutput,
+            StaticCheck::DivisionBySignal,
+            StaticCheck::MissingConstraint,
+        ],
+        max_findings_per_check: 10,
+        case_sensitive: false,
+    });
+    let findings = lint.scan_source(source, Some("mock.circom".to_string()));
+    assert!(
+        findings.is_empty(),
+        "commented-out risky patterns should not trigger findings, got {:?}",
+        findings
+            .iter()
+            .map(|finding| finding.description.clone())
+            .collect::<Vec<_>>()
+    );
+}
