@@ -43,8 +43,11 @@ pub mod frozen_wire;
 pub mod metamorphic;
 pub mod mev; // Phase 3: MEV attacks
 pub mod nullifier_replay;
+pub mod privacy_advanced; // Advanced privacy attack helpers
 pub mod proof_malleability;
+pub mod quantum_resistance; // Post-quantum posture checks
 pub mod recursive; // Phase 3: Recursive SNARK attacks
+pub mod sidechannel_advanced; // Advanced side-channel helpers
 pub mod setup_poisoning;
 pub mod soundness;
 pub mod spec_inference;
@@ -54,6 +57,7 @@ pub mod witness;
 pub mod witness_collision;
 pub mod zkevm; // Phase 3: zkEVM-specific attacks
 pub mod zkevm_differential; // Phase 5: zkEVM differential testing with reference EVM
+pub mod defi_advanced; // Advanced DeFi protocol helpers
 
 pub use arithmetic::ArithmeticTester;
 pub use batch_verification::{
@@ -94,12 +98,15 @@ pub use mev::{
     PriceImpactAnalyzer,
 };
 pub use nullifier_replay::{NullifierHeuristic, NullifierReplayScanner};
+pub use privacy_advanced::{PrivacyAdvancedAttack, PrivacyAdvancedConfig};
 pub use proof_malleability::{MalleabilityResult, ProofMalleabilityScanner, ProofMutation};
+pub use quantum_resistance::{PrimitivePattern, QuantumResistanceAttack, QuantumResistanceConfig};
 pub use recursive::{
     AccumulatorState, Halo2AccumulationAnalyzer, NovaAnalyzer, RecursiveAttack,
     RecursiveAttackConfig, RecursiveStep, RecursiveSystem, RecursiveVulnerabilityType,
     SupernovaAnalyzer,
 };
+pub use sidechannel_advanced::{SidechannelAdvancedAttack, SidechannelAdvancedConfig};
 pub use setup_poisoning::SetupPoisoningDetector;
 pub use soundness::SoundnessTester;
 pub use spec_inference::{ExecutionSample, InferredSpec, SpecInferenceOracle, SpecInferenceStats};
@@ -119,6 +126,7 @@ pub use zkevm_differential::{
     ExecutionTrace, LocalReferenceEvm, MismatchType, PrecompileTestGenerator, ReferenceEvm,
     StateDifference, TestTransaction, ZkEvmDifferentialConfig, ZkEvmDifferentialTester,
 };
+pub use defi_advanced::{DefiAdvancedAttack, DefiAdvancedConfig};
 
 pub use zk_attacks::{
     Attack, AttackContext, AttackMetadata, AttackPlugin, AttackPluginLoader, AttackRegistry,

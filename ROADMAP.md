@@ -183,6 +183,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added runtime runner implementations for the four advanced families and bridged them to existing lower-level detectors for immediate execution coverage.
    - Completed all five planned YAML attack templates and all five example audit campaigns under `campaigns/examples/`.
    - Added targeted integration dispatch coverage for Phase-3 + advanced families and expanded finding-deserialization coverage.
+82. Implemented dedicated advanced attack modules in `zk-attacks` and switched engine advanced runners to these reusable primitives (`crates/zk-attacks/src/{sidechannel_advanced.rs,quantum_resistance.rs,privacy_advanced.rs,defi_advanced.rs}`, `src/oracles/mod.rs`, `src/fuzzer/engine/attack_runner.rs`):
+   - Added first-class module APIs + unit tests for side-channel advanced, quantum-resistance, privacy advanced, and DeFi advanced.
+   - Added thin `src/oracles/` re-export wrappers so runtime/import surface stays consistent with existing module organization.
+   - Refactored engine advanced attack runners to use these module APIs rather than inlined ad-hoc logic.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -336,6 +340,14 @@ Validation:
     - `cargo test test_parse_attack_type -- --test-threads=1`
     - `cargo test -p zk-core deserialize_finding_supports_phase3_and_advanced_attack_variants -- --test-threads=1`
     - `cargo test --test phase0_integration_tests test_phase3_and_advanced_attack_dispatch -- --test-threads=1`
+64. Advanced attack module extraction + runner refactor validation:
+    - `cargo check`
+    - `cargo test -p zk-attacks sidechannel_advanced_ -- --test-threads=1`
+    - `cargo test -p zk-attacks privacy_advanced_ -- --test-threads=1`
+    - `cargo test -p zk-attacks quantum_resistance_ -- --test-threads=1`
+    - `cargo test -p zk-attacks defi_advanced_ -- --test-threads=1`
+    - `cargo test --test phase0_integration_tests test_phase3_and_advanced_attack_dispatch -- --test-threads=1`
+    - `cargo test -p zk-core deserialize_finding_supports_phase3_and_advanced_attack_variants -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 

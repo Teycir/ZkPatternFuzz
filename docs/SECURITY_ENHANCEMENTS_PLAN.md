@@ -17,6 +17,9 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
 - Completed advanced-family runtime wiring for this plan's attack types:
   - Added `SidechannelAdvanced`, `QuantumResistance`, `PrivacyAdvanced`, and `DefiAdvanced` across core type system, scheduler parsing, oracle grouping/validation, SARIF rule mapping, and engine dispatch.
   - Added runtime runner implementations for all four advanced families using existing detector primitives and YAML-driven configuration.
+- Added dedicated advanced attack modules in `crates/zk-attacks/src/` and wired runtime to use them:
+  - `sidechannel_advanced.rs`, `quantum_resistance.rs`, `privacy_advanced.rs`, `defi_advanced.rs`.
+  - Added focused unit tests for each new module and thin re-export wrappers under `src/oracles/`.
 - Completed Phase-2 YAML scaffolding:
   - Added missing templates: `quantum_resistance.yaml`, `privacy_advanced.yaml`, `defi_advanced.yaml` (with existing `trusted_setup.yaml` and `sidechannel_advanced.yaml`).
   - Added runnable examples in `campaigns/examples/`: `trusted_setup_audit.yaml`, `sidechannel_audit.yaml`, `quantum_resistance_audit.yaml`, `privacy_audit.yaml`, `defi_audit.yaml`.
@@ -589,7 +592,7 @@ impl Attack for DefiAdvancedAttack {
 
 ### Phase 1: Core Infrastructure (Week 1)
 - [x] Add new `AttackType` variants to `crates/zk-core/src/attack.rs`
-- [ ] Update attack registry in `crates/zk-attacks/src/lib.rs`
+- [x] Update attack registry in `crates/zk-attacks/src/lib.rs`
 - [ ] Add config deserialization support in `src/config/mod.rs`
 
 ### Phase 2: YAML Templates (Week 1-2)
@@ -599,10 +602,10 @@ impl Attack for DefiAdvancedAttack {
 
 ### Phase 3: Rust Implementations (Week 2-3)
 - [ ] Implement `TrustedSetupAttack` (~150 lines)
-- [ ] Implement `SidechannelAdvancedAttack` (~200 lines)
-- [ ] Implement `QuantumResistanceAttack` (~180 lines)
-- [ ] Implement `PrivacyAdvancedAttack` (~250 lines)
-- [ ] Implement `DefiAdvancedAttack` (~300 lines)
+- [x] Implement `SidechannelAdvancedAttack` (~200 lines)
+- [x] Implement `QuantumResistanceAttack` (~180 lines)
+- [x] Implement `PrivacyAdvancedAttack` (~250 lines)
+- [x] Implement `DefiAdvancedAttack` (~300 lines)
 
 ### Phase 4: Pattern Matchers (Week 3)
 - [ ] Add pattern matchers to `src/config/generator.rs`
@@ -610,7 +613,7 @@ impl Attack for DefiAdvancedAttack {
 - [ ] Add auto-detection for new attack types
 
 ### Phase 5: Testing (Week 4)
-- [ ] Unit tests for each attack module
+- [x] Unit tests for each attack module
 - [ ] Integration tests with example circuits
 - [ ] Add to CVE test suite where applicable
 - [ ] Performance benchmarks

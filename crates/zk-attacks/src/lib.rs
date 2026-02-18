@@ -14,9 +14,13 @@ pub mod batch_verifier;
 pub mod boundary;
 pub mod collision;
 pub mod constraint_inference;
+pub mod defi_advanced;
 pub mod metamorphic;
+pub mod privacy_advanced;
+pub mod quantum_resistance;
 pub mod recursive;
 pub mod registry;
+pub mod sidechannel_advanced;
 pub mod soundness;
 pub mod underconstrained;
 pub mod verification;
@@ -30,10 +34,14 @@ pub use boundary::{
     RangeSpec,
 };
 pub use collision::{CollisionAnalysis, CollisionDetector, CollisionPair, HashType};
+pub use defi_advanced::{DefiAdvancedAttack, DefiAdvancedConfig};
+pub use privacy_advanced::{PrivacyAdvancedAttack, PrivacyAdvancedConfig};
+pub use quantum_resistance::{PrimitivePattern, QuantumResistanceAttack, QuantumResistanceConfig};
 pub use registry::{
     AttackMetadata, AttackPlugin, AttackPluginLoader, AttackRegistry, DynamicLibraryLoader,
     NoopPluginLoader,
 };
+pub use sidechannel_advanced::{SidechannelAdvancedAttack, SidechannelAdvancedConfig};
 pub use soundness::SoundnessTester;
 pub use underconstrained::UnderconstrainedDetector;
 pub use zk_core::{Attack, AttackContext, CircuitInfo};
