@@ -1,5 +1,6 @@
 use crate::cli::ScanFamily;
 use anyhow::Context;
+use std::collections::BTreeSet;
 use std::fs;
 use zk_fuzzer::Framework;
 
@@ -112,5 +113,54 @@ pub fn validate_scan_pattern_complexity(path: &str, family: ScanFamily) -> anyho
         ScanFamily::Auto => {}
     }
 
+    Ok(())
+}
+
+pub fn validate_pattern_only_yaml(path: &str, mode_name: &str) -> anyhow::Result<()> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {} pattern YAML '{}'", mode_name, path))?;
+    let doc: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse {} pattern YAML '{}'", mode_name, path))?;
+    let root = doc
+        .as_mapping()
+        .context("Pattern YAML root must be a mapping")?;
+
+    let allowed: BTreeSet<&'static str> = BTreeSet::from([
+        "includes",
+        "profiles",
+        "active_profile",
+        "patterns",
+        "selector_policy",
+        "selector_synonyms",
+        "synonym_bundles",
+        "selector_normalization",
+        "target_traits",
+        "invariants",
+        "schedule",
+        "attacks",
+        "inputs",
+        "mutations",
+        "oracles",
+        "chains",
+    ]);
+
+    let mut unexpected = Vec::new();
+    for key in root.keys() {
+        let key = key
+            .as_str()
+            .context("Pattern YAML contains a non-string top-level key")?;
+        if !allowed.contains(key) {
+            unexpected.push(key.to_string());
+        }
+    }
+    if !unexpected.is_empty() {
+        unexpected.sort();
+        anyhow::bail!(
+            "{} YAML must be pattern-only. Unsupported top-level keys: [{}]. Allowed keys: [{}].",
+            mode_name,
+            unexpected.join(", "),
+            allowed.iter().cloned().collect::<Vec<_>>().join(", ")
+        );
+    }
     Ok(())
 }

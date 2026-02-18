@@ -3,7 +3,7 @@ use chrono::{DateTime, Local, Utc};
 use clap::Parser;
 use regex::RegexBuilder;
 use serde::Deserialize;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::{
@@ -43,7 +43,8 @@ use runtime_misc::{
     validate_campaign,
 };
 use scan_dispatch::{
-    detect_pattern_has_chains, parse_framework_arg, validate_scan_pattern_complexity,
+    detect_pattern_has_chains, parse_framework_arg, validate_pattern_only_yaml,
+    validate_scan_pattern_complexity,
 };
 use scan_output::apply_scan_output_suffix_if_present;
 use scan_progress::{
@@ -475,37 +476,6 @@ fn engagement_root_dir(run_id: &str) -> PathBuf {
     }
 
     run_signal_dir().join(engagement_dir_name(run_id))
-}
-
-fn best_effort_append_text_line(path: &Path, line: &str) {
-    if let Some(parent) = path.parent() {
-        if let Err(err) = std::fs::create_dir_all(parent) {
-            tracing::warn!(
-                "Failed to create parent directory for '{}': {}",
-                path.display(),
-                err
-            );
-            return;
-        }
-    }
-    match std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        Ok(mut file) => {
-            if let Err(err) = writeln!(file, "{}", line) {
-                tracing::warn!(
-                    "Failed to append text line to '{}': {}",
-                    path.display(),
-                    err
-                );
-            }
-        }
-        Err(err) => {
-            tracing::warn!("Failed to open '{}' for append: {}", path.display(), err);
-        }
-    }
 }
 
 fn install_panic_hook() {
@@ -1960,55 +1930,6 @@ async fn run_scan(
         }
         ScanFamily::Auto => unreachable!("auto resolved above"),
     }
-}
-
-fn validate_pattern_only_yaml(path: &str, mode_name: &str) -> anyhow::Result<()> {
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("Failed to read {} pattern YAML '{}'", mode_name, path))?;
-    let doc: serde_yaml::Value = serde_yaml::from_str(&raw)
-        .with_context(|| format!("Failed to parse {} pattern YAML '{}'", mode_name, path))?;
-    let root = doc
-        .as_mapping()
-        .context("Pattern YAML root must be a mapping")?;
-
-    let allowed: BTreeSet<&'static str> = BTreeSet::from([
-        "includes",
-        "profiles",
-        "active_profile",
-        "patterns",
-        "selector_policy",
-        "selector_synonyms",
-        "synonym_bundles",
-        "selector_normalization",
-        "target_traits",
-        "invariants",
-        "schedule",
-        "attacks",
-        "inputs",
-        "mutations",
-        "oracles",
-        "chains",
-    ]);
-
-    let mut unexpected = Vec::new();
-    for key in root.keys() {
-        let key = key
-            .as_str()
-            .context("Pattern YAML contains a non-string top-level key")?;
-        if !allowed.contains(key) {
-            unexpected.push(key.to_string());
-        }
-    }
-    if !unexpected.is_empty() {
-        unexpected.sort();
-        anyhow::bail!(
-            "{} YAML must be pattern-only. Unsupported top-level keys: [{}]. Allowed keys: [{}].",
-            mode_name,
-            unexpected.join(", "),
-            allowed.iter().cloned().collect::<Vec<_>>().join(", ")
-        );
-    }
-    Ok(())
 }
 
 async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow::Result<()> {

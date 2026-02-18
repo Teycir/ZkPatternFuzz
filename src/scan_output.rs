@@ -118,12 +118,44 @@ fn write_scan_pattern_summary_if_present(config: &FuzzConfig, public_root: &Path
             if trimmed.is_empty() {
                 continue;
             }
-            crate::best_effort_append_text_line(&summary_path, &format!("{}: {}", slug, trimmed));
+            best_effort_append_text_line(&summary_path, &format!("{}: {}", slug, trimmed));
         }
     } else {
-        crate::best_effort_append_text_line(
+        best_effort_append_text_line(
             &summary_path,
             &format!("{}: pattern {} found in lines []", slug, slug),
         );
+    }
+}
+
+fn best_effort_append_text_line(path: &Path, line: &str) {
+    if let Some(parent) = path.parent() {
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                "Failed to create parent directory for '{}': {}",
+                path.display(),
+                err
+            );
+            return;
+        }
+    }
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        Ok(mut file) => {
+            use std::io::Write as _;
+            if let Err(err) = writeln!(file, "{}", line) {
+                tracing::warn!(
+                    "Failed to append text line to '{}': {}",
+                    path.display(),
+                    err
+                );
+            }
+        }
+        Err(err) => {
+            tracing::warn!("Failed to open '{}' for append: {}", path.display(), err);
+        }
     }
 }

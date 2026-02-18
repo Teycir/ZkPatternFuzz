@@ -218,6 +218,14 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Moved `initialize_campaign_run_lifecycle` from `main.rs` into `run_lifecycle`.
    - Kept run-log context binding + stale-run marking behavior unchanged by reusing shared hooks (`set_run_log_context_for_campaign`, `normalize_build_paths`).
    - Preserved existing callsites in `run_campaign` and `run_chain_campaign` while reducing orchestration code in `main.rs`.
+90. Continued main-surface reduction by localizing scan summary append helper (`src/main.rs`, `src/scan_output.rs`):
+   - Moved `best_effort_append_text_line` from `main.rs` into `scan_output`.
+   - Replaced cross-module `crate::best_effort_append_text_line(...)` calls with module-local helper usage.
+   - Removed now-unused `std::io::Write` import from `main.rs`.
+91. Continued main-surface reduction by extracting pattern-only YAML validation (`src/main.rs`, `src/scan_dispatch.rs`):
+   - Moved `validate_pattern_only_yaml` from `main.rs` into `scan_dispatch`.
+   - Kept scan command behavior unchanged by importing and reusing the extracted helper at existing callsites.
+   - Reduced scan dispatch validation logic remaining in `main.rs` without changing pattern contract checks.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -407,6 +415,10 @@ Validation:
 70. Main CLI compile verification after output-lock helper extraction:
     - `cargo check -q`
 71. Main CLI compile verification after lifecycle initialization helper extraction:
+    - `cargo check -q`
+72. Main CLI compile verification after scan-output helper localization:
+    - `cargo check -q`
+73. Main CLI compile verification after pattern-only validation helper extraction:
     - `cargo check -q`
 
 ## Status Checklist (2026-02-18)
