@@ -51,6 +51,11 @@ patterns:
     pattern: "\\bnullifier\\b"
     weight: 1.0
     group: core
+  - id: zkevm_context
+    kind: regex
+    pattern: "{{zkevm}}"
+    weight: 0.8
+    group: context
   - id: contains_smt
     kind: regex
     pattern: "\\bSMT\\b|inclusion"
@@ -64,11 +69,23 @@ selector_policy:
     - name: core
       k_of_n: 1      # group-local minimum matches (default: 1)
       min_score: 0.0 # group-local minimum score (default: 0.0)
+
+selector_synonyms:
+  zkevm:
+    - "zkEVM"
+    - "zk evm"
+    - "zk-evm"
+
+selector_normalization:
+  synonym_flexible_separators: true
 ```
 
 - If `selector_policy` is omitted, behavior stays backward-compatible: at least one selector must match.
 - Group rules are optional and apply only to patterns that declare that `group`.
 - Invalid policies (for example `k_of_n` larger than available patterns) fail fast at scan startup.
+- Synonym bundles are optional and are referenced from selector regexes via `{{bundle_name}}`.
+- With `synonym_flexible_separators: true`, synonym terms are normalized to tolerate style changes
+  (for example camelCase/snake_case/kebab-case/space-separated variants).
 
 ## Family Dispatch
 

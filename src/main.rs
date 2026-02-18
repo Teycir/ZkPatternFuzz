@@ -1917,6 +1917,24 @@ struct ScanRegexSelectorPolicySpec {
     groups: Vec<ScanRegexSelectorGroupPolicySpec>,
 }
 
+fn default_selector_synonym_flexible_separators() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+struct ScanRegexSelectorNormalizationSpec {
+    synonym_flexible_separators: bool,
+}
+
+impl Default for ScanRegexSelectorNormalizationSpec {
+    fn default() -> Self {
+        Self {
+            synonym_flexible_separators: default_selector_synonym_flexible_separators(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 struct ScanRegexSelectorGroupPolicySpec {
@@ -2050,6 +2068,162 @@ fn validate_scan_regex_pattern_safety(pattern: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn normalize_synonym_term_to_regex(
+    term: &str,
+    normalization: &ScanRegexSelectorNormalizationSpec,
+) -> String {
+    if !normalization.synonym_flexible_separators {
+        return regex::escape(term.trim());
+    }
+
+    let mut tokens: Vec<String> = Vec::new();
+    for raw_chunk in term
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+    {
+        let mut current = String::new();
+        let mut prev: Option<char> = None;
+        for ch in raw_chunk.chars() {
+            let boundary = match prev {
+                Some(prev_ch) => {
+                    (prev_ch.is_ascii_lowercase() && ch.is_ascii_uppercase())
+                        || (prev_ch.is_ascii_alphabetic() && ch.is_ascii_digit())
+                        || (prev_ch.is_ascii_digit() && ch.is_ascii_alphabetic())
+                }
+                None => false,
+            };
+            if boundary && !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            current.push(ch);
+            prev = Some(ch);
+        }
+        if !current.is_empty() {
+            tokens.push(current);
+        }
+    }
+    let tokens: Vec<String> = tokens
+        .into_iter()
+        .map(|token| regex::escape(&token))
+        .collect();
+    if tokens.len() >= 2 {
+        return tokens.join(r"(?:[\s_\-./]*)");
+    }
+
+    regex::escape(term.trim())
+}
+
+fn validate_scan_regex_synonym_bundles(
+    pattern_path: &str,
+    bundles: &BTreeMap<String, Vec<String>>,
+) -> anyhow::Result<()> {
+    for (bundle_name, variants) in bundles {
+        let bundle_name = bundle_name.trim();
+        if bundle_name.is_empty() {
+            anyhow::bail!(
+                "Invalid `selector_synonyms` in '{}': bundle names must be non-empty",
+                pattern_path
+            );
+        }
+        if variants.is_empty() {
+            anyhow::bail!(
+                "Invalid `selector_synonyms.{}` in '{}': bundle must contain at least one synonym",
+                bundle_name,
+                pattern_path
+            );
+        }
+        for (idx, variant) in variants.iter().enumerate() {
+            if variant.trim().is_empty() {
+                anyhow::bail!(
+                    "Invalid `selector_synonyms.{}[{}]` in '{}': synonym values must be non-empty",
+                    bundle_name,
+                    idx,
+                    pattern_path
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn build_scan_regex_synonym_regexes(
+    pattern_path: &str,
+    bundles: &BTreeMap<String, Vec<String>>,
+    normalization: &ScanRegexSelectorNormalizationSpec,
+) -> anyhow::Result<BTreeMap<String, String>> {
+    let mut regexes: BTreeMap<String, String> = BTreeMap::new();
+    for (bundle_name, variants) in bundles {
+        let mut bundle_variants: Vec<String> = Vec::with_capacity(variants.len());
+        for variant in variants {
+            bundle_variants.push(normalize_synonym_term_to_regex(variant, normalization));
+        }
+        if bundle_variants.is_empty() {
+            anyhow::bail!(
+                "Invalid `selector_synonyms.{}` in '{}': bundle must contain at least one synonym",
+                bundle_name,
+                pattern_path
+            );
+        }
+        regexes.insert(
+            bundle_name.trim().to_string(),
+            format!("(?:{})", bundle_variants.join("|")),
+        );
+    }
+
+    Ok(regexes)
+}
+
+fn expand_scan_regex_synonym_placeholders(
+    pattern_path: &str,
+    pattern_id: &str,
+    raw_pattern: &str,
+    synonym_regexes: &BTreeMap<String, String>,
+) -> anyhow::Result<String> {
+    if !raw_pattern.contains("{{") {
+        return Ok(raw_pattern.to_string());
+    }
+
+    let mut expanded = String::new();
+    let mut cursor = 0usize;
+    while let Some(start_rel) = raw_pattern[cursor..].find("{{") {
+        let start = cursor + start_rel;
+        expanded.push_str(&raw_pattern[cursor..start]);
+
+        let tail = &raw_pattern[start + 2..];
+        let Some(end_rel) = tail.find("}}") else {
+            anyhow::bail!(
+                "Invalid synonym placeholder in pattern '{}' from '{}': missing closing '}}'",
+                pattern_id,
+                pattern_path
+            );
+        };
+
+        let bundle_name = tail[..end_rel].trim();
+        if bundle_name.is_empty() {
+            anyhow::bail!(
+                "Invalid synonym placeholder in pattern '{}' from '{}': empty bundle name",
+                pattern_id,
+                pattern_path
+            );
+        }
+        let Some(bundle_regex) = synonym_regexes.get(bundle_name) else {
+            anyhow::bail!(
+                "Unknown synonym bundle '{}' referenced by pattern '{}' in '{}'",
+                bundle_name,
+                pattern_id,
+                pattern_path
+            );
+        };
+        expanded.push_str(bundle_regex);
+        cursor = start + 2 + end_rel + 2;
+    }
+    expanded.push_str(&raw_pattern[cursor..]);
+
+    Ok(expanded)
+}
+
 fn validate_scan_regex_selector_config(
     pattern_path: &str,
     patterns: &[ScanRegexPatternSpec],
@@ -2171,6 +2345,32 @@ fn load_scan_regex_selector_config(
         .as_sequence()
         .context("'patterns' must be a YAML sequence when present")?;
 
+    let normalization = match root.get(yaml_key("selector_normalization")) {
+        Some(value) => serde_yaml::from_value(value.clone()).with_context(|| {
+            format!(
+                "Invalid `selector_normalization` in '{}': expected key `synonym_flexible_separators`",
+                pattern_path
+            )
+        })?,
+        None => ScanRegexSelectorNormalizationSpec::default(),
+    };
+
+    let synonyms: BTreeMap<String, Vec<String>> = match root
+        .get(yaml_key("selector_synonyms"))
+        .or_else(|| root.get(yaml_key("synonym_bundles")))
+    {
+        Some(value) => serde_yaml::from_value(value.clone()).with_context(|| {
+            format!(
+                "Invalid `selector_synonyms` in '{}': expected mapping of bundle -> list of strings",
+                pattern_path
+            )
+        })?,
+        None => BTreeMap::new(),
+    };
+    validate_scan_regex_synonym_bundles(pattern_path, &synonyms)?;
+    let synonym_regexes =
+        build_scan_regex_synonym_regexes(pattern_path, &synonyms, &normalization)?;
+
     let mut patterns: Vec<ScanRegexPatternSpec> = Vec::with_capacity(sequence.len());
     for (idx, item) in sequence.iter().enumerate() {
         let mut pattern: ScanRegexPatternSpec =
@@ -2217,6 +2417,13 @@ fn load_scan_regex_selector_config(
             .group
             .map(|group| group.trim().to_string())
             .filter(|group| !group.is_empty());
+
+        pattern.pattern = expand_scan_regex_synonym_placeholders(
+            pattern_path,
+            &pattern.id,
+            &pattern.pattern,
+            &synonym_regexes,
+        )?;
 
         validate_scan_regex_pattern_safety(&pattern.pattern)
             .with_context(|| format!("Unsafe regex for pattern '{}'", pattern.id))?;
@@ -2538,6 +2745,10 @@ fn materialize_scan_pattern_campaign(
     // Regex selector metadata is scan-time only. Remove it from the materialized
     // campaign so the runtime parser only sees executable fuzzing configuration.
     root.remove(yaml_key("patterns"));
+    root.remove(yaml_key("selector_policy"));
+    root.remove(yaml_key("selector_synonyms"));
+    root.remove(yaml_key("synonym_bundles"));
+    root.remove(yaml_key("selector_normalization"));
 
     // Keep includes valid after writing a materialized temp campaign.
     if let Some(includes) = root.get_mut(yaml_key("includes")) {
@@ -2888,6 +3099,10 @@ fn validate_pattern_only_yaml(path: &str, mode_name: &str) -> anyhow::Result<()>
         "profiles",
         "active_profile",
         "patterns",
+        "selector_policy",
+        "selector_synonyms",
+        "synonym_bundles",
+        "selector_normalization",
         "target_traits",
         "invariants",
         "schedule",
@@ -5129,5 +5344,62 @@ selector_policy:
         let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
             .expect_err("invalid k_of_n should fail");
         assert!(format!("{err:#}").contains("selector_policy.k_of_n"));
+    }
+
+    #[test]
+    fn scan_selector_synonym_bundle_matches_separator_and_case_variants() {
+        let pattern_yaml = r#"
+selector_synonyms:
+  zkevm:
+    - "zkEVM"
+patterns:
+  - id: zkevm_context
+    kind: regex
+    pattern: "{{zkevm}}"
+"#;
+        let summary = evaluate_selector_summary(pattern_yaml, "component zk_evm_main {}");
+        assert!(summary.selector_passed);
+        assert_eq!(summary.matched_patterns, 1);
+    }
+
+    #[test]
+    fn scan_selector_synonym_bundle_can_disable_flexible_separator_normalization() {
+        let pattern_yaml = r#"
+selector_synonyms:
+  zkevm:
+    - "zkEVM"
+selector_normalization:
+  synonym_flexible_separators: false
+patterns:
+  - id: zkevm_context
+    kind: regex
+    pattern: "{{zkevm}}"
+"#;
+        let summary = evaluate_selector_summary(pattern_yaml, "component zk_evm_main {}");
+        assert!(!summary.selector_passed);
+        assert_eq!(summary.matched_patterns, 0);
+    }
+
+    #[test]
+    fn scan_selector_synonym_bundle_rejects_unknown_placeholder_bundle() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let pattern_path = temp_dir.path().join("pattern.yaml");
+        fs::write(
+            &pattern_path,
+            r#"
+selector_synonyms:
+  known:
+    - "abc"
+patterns:
+  - id: bad_ref
+    kind: regex
+    pattern: "{{missing_bundle}}"
+"#,
+        )
+        .expect("write pattern");
+
+        let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
+            .expect_err("unknown synonym bundle must fail");
+        assert!(format!("{err:#}").contains("Unknown synonym bundle"));
     }
 }
