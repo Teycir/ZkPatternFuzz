@@ -167,6 +167,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Moved output lock wait/retry policy from `main.rs` to `output_lock`.
    - Moved backend preflight option parsing and campaign preflight execution from `main.rs` to `preflight_backend`.
    - Kept run orchestration callsites in `main.rs` behavior-preserving while reducing mixed concerns.
+79. Continued CLI factorization by extracting engagement artifact/signal/snapshot helpers into dedicated module (`src/main.rs`, `src/engagement_artifacts.rs`):
+   - Moved run artifact JSON/JSONL writers, mode-folder routing, output snapshot mirroring, and engagement summary generation from `main.rs` to `engagement_artifacts`.
+   - Moved run-signal + run-artifact emission wrappers (including scan timestamp total log update) into `engagement_artifacts`.
+   - Kept lifecycle/orchestration callsites in `main.rs` behavior-preserving while shrinking mixed I/O/reporting logic.
+   - Updated selector/command regression tests to import `get_command_from_doc` from the extracted module boundary.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -301,6 +306,11 @@ Validation:
     - `cargo test -q test_missing_circuit_path_is_critical -- --test-threads=1`
     - `cargo test -q test_parse_equals_invariant -- --test-threads=1`
 60. Main CLI compile + selector/command regression checks after helper-module extraction batch:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo check -q --workspace`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+61. Main CLI compile + selector/command regression checks after engagement-artifact helper extraction batch:
     - `cargo check -q --bin zk-fuzzer`
     - `cargo check -q --workspace`
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`

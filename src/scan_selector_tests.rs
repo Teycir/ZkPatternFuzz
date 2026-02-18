@@ -1,4 +1,5 @@
     use super::*;
+    use super::engagement_artifacts::get_command_from_doc;
 
     fn evaluate_selector_summary(
         pattern_yaml: &str,

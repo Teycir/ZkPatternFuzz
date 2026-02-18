@@ -977,11 +977,14 @@ impl CircomTarget {
         let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
             .context("snarkjs not found")?;
 
-        // snarkjs may return version on stdout or stderr
-        let version = if output.status.success() {
-            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        // snarkjs may print version/help text to stdout even when returning a
+        // non-zero status (observed with some npm-distributed builds).
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let version = if !stdout.is_empty() {
+            stdout
         } else {
-            String::from_utf8_lossy(&output.stderr).trim().to_string()
+            stderr
         };
 
         if version.is_empty() {
@@ -991,7 +994,12 @@ impl CircomTarget {
             );
         }
 
-        Ok(version)
+        Ok(version
+            .lines()
+            .next()
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string())
     }
 
     /// Compile the circuit to R1CS and generate WASM witness calculator

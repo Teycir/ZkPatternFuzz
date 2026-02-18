@@ -9,13 +9,24 @@ use zk_fuzzer::oracles::{ConstraintSliceOracle, OutputMapping};
 use zk_fuzzer::executor::{CircomExecutor, CircuitExecutor};
 use zk_fuzzer::targets::CircomTarget;
 
+fn require_circom_and_snarkjs() -> bool {
+    if let Err(err) = CircomTarget::check_circom_available() {
+        eprintln!("Skipping real-circuit slice test: circom unavailable: {}", err);
+        return false;
+    }
+    if let Err(err) = CircomTarget::check_snarkjs_available() {
+        eprintln!("Skipping real-circuit slice test: snarkjs unavailable: {}", err);
+        return false;
+    }
+    true
+}
+
 #[tokio::test]
 // Requires circom + snarkjs (real circuit)
 async fn test_constraint_slice_withdraw_real_circuit() {
-    CircomTarget::check_circom_available()
-        .expect("Circom not available. Install with: npm install -g circom");
-    CircomTarget::check_snarkjs_available()
-        .expect("snarkjs not available. Install with: npm install -g snarkjs");
+    if !require_circom_and_snarkjs() {
+        return;
+    }
 
     let circuit_path = PathBuf::from("tests/bench/known_bugs/range_bypass/circuit.circom");
     assert!(

@@ -1,0 +1,729 @@
+# Security Enhancements Implementation Plan
+
+**Version:** 1.0  
+**Date:** 2024  
+**Approach:** YAML-Driven Configuration with Minimal Rust Changes
+
+## Overview
+
+This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using a YAML-first approach that leverages the existing configuration system. This minimizes code changes and allows users to customize detection patterns without recompiling.
+
+---
+
+## 1. Trusted Setup Analysis
+
+### Objective
+Detect toxic waste vulnerabilities in trusted setup ceremonies (Powers of Tau, MPC ceremonies).
+
+### YAML Templates
+
+**File:** `templates/attacks/trusted_setup.yaml`
+
+```yaml
+attack:
+  type: "trusted_setup"
+  description: "Toxic waste and setup ceremony vulnerability detection"
+  
+  config:
+    # Toxic waste detection
+    toxic_waste:
+      enabled: true
+      patterns:
+        - "tau"
+        - "secret_randomness"
+        - "setup_params"
+        - "ceremony"
+      check_deletion: true
+      check_entropy: true
+      min_entropy_bits: 256
+    
+    # Parameter verification
+    parameter_verification:
+      enabled: true
+      verify_ptau: true
+      verify_contributions: true
+      check_signatures: true
+    
+    # Multi-party computation
+    mpc_analysis:
+      enabled: true
+      min_participants: 2
+      check_independence: true
+      verify_transcripts: true
+```
+
+**File:** `campaigns/examples/trusted_setup_audit.yaml`
+
+```yaml
+campaign:
+  name: "Trusted Setup Security Audit"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/groth16_setup.circom"
+    main_component: "Main"
+    ptau_path: "./setup/powersOfTau28_hez_final.ptau"
+
+attacks:
+  - type: "trusted_setup"
+    config:
+      toxic_waste:
+        enabled: true
+        check_deletion: true
+      parameter_verification:
+        enabled: true
+        verify_ptau: true
+```
+
+### Rust Changes (Minimal)
+
+**File:** `crates/zk-core/src/attack.rs`
+```rust
+// Add to AttackType enum
+pub enum AttackType {
+    // ... existing variants
+    TrustedSetup,
+}
+```
+
+**File:** `crates/zk-attacks/src/trusted_setup.rs` (new, ~150 lines)
+```rust
+// Minimal implementation that reads YAML config
+pub struct TrustedSetupAttack {
+    config: TrustedSetupConfig,
+}
+
+#[derive(Deserialize)]
+pub struct TrustedSetupConfig {
+    toxic_waste: Option<ToxicWasteConfig>,
+    parameter_verification: Option<ParameterVerificationConfig>,
+    mpc_analysis: Option<MpcAnalysisConfig>,
+}
+
+impl Attack for TrustedSetupAttack {
+    fn execute(&self, ctx: &AttackContext) -> Result<AttackResult> {
+        // Pattern matching from YAML config
+    }
+}
+```
+
+**File:** `src/config/generator.rs`
+```rust
+// Add pattern matcher (~30 lines)
+struct TrustedSetupPatternMatcher;
+
+impl PatternMatcher for TrustedSetupPatternMatcher {
+    fn detect(&self, source: &str, _framework: Framework) -> Option<DetectedPattern> {
+        let keywords = ["tau", "setup", "ceremony", "ptau"];
+        // ... pattern matching logic
+    }
+}
+```
+
+---
+
+## 2. Enhanced Side-Channel Coverage
+
+### Objective
+Detect cache-timing, power analysis, and memory access pattern vulnerabilities.
+
+### YAML Templates
+
+**File:** `templates/attacks/sidechannel_advanced.yaml`
+
+```yaml
+attack:
+  type: "sidechannel_advanced"
+  description: "Advanced side-channel vulnerability detection"
+  
+  config:
+    # Cache timing attacks
+    cache_timing:
+      enabled: true
+      sample_size: 1000
+      threshold_ns: 100
+      patterns:
+        - "lookup_table"
+        - "conditional_access"
+        - "array_index"
+      detect_secret_dependent: true
+    
+    # Power analysis
+    power_analysis:
+      enabled: true
+      hamming_weight_analysis: true
+      detect_unbalanced_ops: true
+      patterns:
+        - "multiplication"
+        - "exponentiation"
+        - "bit_operations"
+    
+    # Memory access patterns
+    memory_patterns:
+      enabled: true
+      detect_secret_addresses: true
+      check_constant_time: true
+      patterns:
+        - "if.*secret"
+        - "switch.*private"
+```
+
+**File:** `campaigns/examples/sidechannel_audit.yaml`
+
+```yaml
+campaign:
+  name: "Side-Channel Security Audit"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/ecdsa_verify.circom"
+    main_component: "ECDSAVerify"
+
+attacks:
+  - type: "sidechannel_advanced"
+    config:
+      cache_timing:
+        enabled: true
+        threshold_ns: 50
+      power_analysis:
+        enabled: true
+        hamming_weight_analysis: true
+```
+
+### Rust Changes (Minimal)
+
+**File:** `crates/zk-core/src/attack.rs`
+```rust
+pub enum AttackType {
+    // ... existing variants
+    SidechannelAdvanced,
+}
+```
+
+**File:** `crates/zk-attacks/src/sidechannel_advanced.rs` (new, ~200 lines)
+```rust
+// Extends existing timing_sidechannel.rs
+pub struct SidechannelAdvancedAttack {
+    config: SidechannelAdvancedConfig,
+}
+
+#[derive(Deserialize)]
+pub struct SidechannelAdvancedConfig {
+    cache_timing: Option<CacheTimingConfig>,
+    power_analysis: Option<PowerAnalysisConfig>,
+    memory_patterns: Option<MemoryPatternsConfig>,
+}
+```
+
+---
+
+## 3. Quantum Resistance Testing
+
+### Objective
+Detect use of quantum-vulnerable cryptographic primitives.
+
+### YAML Templates
+
+**File:** `templates/attacks/quantum_resistance.yaml`
+
+```yaml
+attack:
+  type: "quantum_resistance"
+  description: "Post-quantum cryptography vulnerability detection"
+  
+  config:
+    # Vulnerable primitives
+    vulnerable_primitives:
+      enabled: true
+      detect:
+        - name: "RSA"
+          severity: "critical"
+          patterns: ["RSA", "rsa_verify", "modexp"]
+        - name: "ECDSA"
+          severity: "critical"
+          patterns: ["ECDSA", "ecdsa_verify", "secp256"]
+        - name: "ECDH"
+          severity: "high"
+          patterns: ["ECDH", "ecdh_", "shared_secret"]
+        - name: "DH"
+          severity: "high"
+          patterns: ["DiffieHellman", "dh_exchange"]
+    
+    # Key size analysis
+    key_size_analysis:
+      enabled: true
+      min_symmetric_bits: 256  # Post-quantum security level
+      min_hash_bits: 384
+    
+    # Recommended alternatives
+    suggest_alternatives:
+      enabled: true
+      alternatives:
+        RSA: ["Dilithium", "Falcon", "SPHINCS+"]
+        ECDSA: ["Dilithium", "Falcon"]
+        ECDH: ["Kyber", "NTRU"]
+```
+
+**File:** `campaigns/examples/quantum_resistance_audit.yaml`
+
+```yaml
+campaign:
+  name: "Quantum Resistance Audit"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/signature_verify.circom"
+    main_component: "SignatureVerify"
+
+attacks:
+  - type: "quantum_resistance"
+    config:
+      vulnerable_primitives:
+        enabled: true
+      suggest_alternatives:
+        enabled: true
+```
+
+### Rust Changes (Minimal)
+
+**File:** `crates/zk-core/src/attack.rs`
+```rust
+pub enum AttackType {
+    // ... existing variants
+    QuantumResistance,
+}
+```
+
+**File:** `crates/zk-attacks/src/quantum_resistance.rs` (new, ~180 lines)
+```rust
+pub struct QuantumResistanceAttack {
+    config: QuantumResistanceConfig,
+}
+
+#[derive(Deserialize)]
+pub struct QuantumResistanceConfig {
+    vulnerable_primitives: Option<VulnerablePrimitivesConfig>,
+    key_size_analysis: Option<KeySizeAnalysisConfig>,
+    suggest_alternatives: Option<SuggestAlternativesConfig>,
+}
+
+impl Attack for QuantumResistanceAttack {
+    fn execute(&self, ctx: &AttackContext) -> Result<AttackResult> {
+        // Pattern matching from YAML
+        // Report findings with severity and alternatives
+    }
+}
+```
+
+**File:** `src/config/generator.rs`
+```rust
+// Add pattern matcher (~25 lines)
+struct QuantumVulnerablePatternMatcher;
+
+impl PatternMatcher for QuantumVulnerablePatternMatcher {
+    fn detect(&self, source: &str, _framework: Framework) -> Option<DetectedPattern> {
+        let vulnerable = ["RSA", "ECDSA", "ECDH", "secp256"];
+        // ... detection logic
+    }
+}
+```
+
+---
+
+## 4. Improved Privacy Leakage Detection
+
+### Objective
+Advanced taint analysis and information flow tracking across circuit boundaries.
+
+### YAML Templates
+
+**File:** `templates/attacks/privacy_advanced.yaml`
+
+```yaml
+attack:
+  type: "privacy_advanced"
+  description: "Advanced privacy leakage and information flow analysis"
+  
+  config:
+    # Taint analysis
+    taint_analysis:
+      enabled: true
+      sources:
+        - "private_key"
+        - "secret"
+        - "witness"
+        - "nullifier_secret"
+      sinks:
+        - "public_output"
+        - "commitment"
+        - "hash_output"
+      track_implicit_flows: true
+      track_timing_channels: true
+    
+    # Information flow policies
+    information_flow:
+      enabled: true
+      policies:
+        - name: "no_secret_to_public"
+          source: "secret"
+          sink: "public"
+          allowed: false
+        - name: "commitment_only"
+          source: "private_key"
+          sink: "commitment"
+          allowed: true
+          require_hash: true
+    
+    # Cross-circuit analysis
+    cross_circuit:
+      enabled: true
+      track_state_leakage: true
+      check_composition: true
+    
+    # Constraint-based analysis
+    constraint_analysis:
+      enabled: true
+      detect_underconstrained_secrets: true
+      verify_hiding_properties: true
+```
+
+**File:** `campaigns/examples/privacy_audit.yaml`
+
+```yaml
+campaign:
+  name: "Privacy Leakage Audit"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/private_transfer.circom"
+    main_component: "PrivateTransfer"
+
+attacks:
+  - type: "privacy_advanced"
+    config:
+      taint_analysis:
+        enabled: true
+        sources: ["private_key", "amount"]
+        sinks: ["public_output"]
+        track_implicit_flows: true
+      information_flow:
+        enabled: true
+```
+
+### Rust Changes (Minimal)
+
+**File:** `crates/zk-core/src/attack.rs`
+```rust
+pub enum AttackType {
+    // ... existing variants
+    PrivacyAdvanced,
+}
+```
+
+**File:** `crates/zk-attacks/src/privacy_advanced.rs` (new, ~250 lines)
+```rust
+// Extends existing information_leakage.rs
+pub struct PrivacyAdvancedAttack {
+    config: PrivacyAdvancedConfig,
+}
+
+#[derive(Deserialize)]
+pub struct PrivacyAdvancedConfig {
+    taint_analysis: Option<TaintAnalysisConfig>,
+    information_flow: Option<InformationFlowConfig>,
+    cross_circuit: Option<CrossCircuitConfig>,
+    constraint_analysis: Option<ConstraintAnalysisConfig>,
+}
+
+impl Attack for PrivacyAdvancedAttack {
+    fn execute(&self, ctx: &AttackContext) -> Result<AttackResult> {
+        // Build taint graph from YAML sources/sinks
+        // Check information flow policies
+        // Report violations with data flow paths
+    }
+}
+```
+
+---
+
+## 5. Expanded DeFi Coverage
+
+### Objective
+Detect complex MEV patterns, oracle manipulation, and cross-protocol attacks.
+
+### YAML Templates
+
+**File:** `templates/attacks/defi_advanced.yaml`
+
+```yaml
+attack:
+  type: "defi_advanced"
+  description: "Advanced DeFi attack pattern detection"
+  
+  config:
+    # MEV patterns
+    mev_patterns:
+      enabled: true
+      patterns:
+        - name: "sandwich_attack"
+          detect_price_manipulation: true
+          min_profit_threshold: 0.01
+        - name: "jit_liquidity"
+          detect_flash_liquidity: true
+          check_same_block: true
+        - name: "liquidation_front_run"
+          detect_health_factor_monitoring: true
+        - name: "cross_protocol_arbitrage"
+          track_multi_dex: true
+          protocols: ["uniswap", "curve", "balancer"]
+    
+    # Oracle manipulation
+    oracle_manipulation:
+      enabled: true
+      patterns:
+        - name: "price_oracle_attack"
+          detect_flash_loan_price_manipulation: true
+          check_twap_bypass: true
+        - name: "timestamp_manipulation"
+          detect_block_timestamp_dependency: true
+        - name: "governance_attack"
+          detect_flash_loan_voting: true
+    
+    # Front-running patterns
+    front_running:
+      enabled: true
+      patterns:
+        - name: "transaction_ordering"
+          detect_mempool_monitoring: true
+        - name: "priority_gas_auction"
+          detect_gas_price_manipulation: true
+        - name: "uncle_bandit"
+          detect_uncle_block_attacks: true
+    
+    # Cross-protocol attacks
+    cross_protocol:
+      enabled: true
+      detect_reentrancy_chains: true
+      detect_composability_exploits: true
+      max_call_depth: 10
+```
+
+**File:** `campaigns/examples/defi_audit.yaml`
+
+```yaml
+campaign:
+  name: "DeFi Protocol Security Audit"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/dex_swap.circom"
+    main_component: "DEXSwap"
+
+attacks:
+  - type: "defi_advanced"
+    config:
+      mev_patterns:
+        enabled: true
+        patterns:
+          - name: "sandwich_attack"
+            detect_price_manipulation: true
+          - name: "jit_liquidity"
+            detect_flash_liquidity: true
+      oracle_manipulation:
+        enabled: true
+        patterns:
+          - name: "price_oracle_attack"
+            detect_flash_loan_price_manipulation: true
+      front_running:
+        enabled: true
+```
+
+### Rust Changes (Minimal)
+
+**File:** `crates/zk-core/src/attack.rs`
+```rust
+pub enum AttackType {
+    // ... existing variants
+    DefiAdvanced,
+}
+```
+
+**File:** `crates/zk-attacks/src/defi_advanced.rs` (new, ~300 lines)
+```rust
+// Extends existing mev.rs and front_running.rs
+pub struct DefiAdvancedAttack {
+    config: DefiAdvancedConfig,
+}
+
+#[derive(Deserialize)]
+pub struct DefiAdvancedConfig {
+    mev_patterns: Option<MevPatternsConfig>,
+    oracle_manipulation: Option<OracleManipulationConfig>,
+    front_running: Option<FrontRunningConfig>,
+    cross_protocol: Option<CrossProtocolConfig>,
+}
+
+impl Attack for DefiAdvancedAttack {
+    fn execute(&self, ctx: &AttackContext) -> Result<AttackResult> {
+        // Pattern matching from YAML
+        // Simulate attack scenarios
+        // Report vulnerabilities with exploit paths
+    }
+}
+```
+
+---
+
+## Implementation Phases
+
+### Phase 1: Core Infrastructure (Week 1)
+- [ ] Add new `AttackType` variants to `crates/zk-core/src/attack.rs`
+- [ ] Update attack registry in `crates/zk-attacks/src/lib.rs`
+- [ ] Add config deserialization support in `src/config/mod.rs`
+
+### Phase 2: YAML Templates (Week 1-2)
+- [ ] Create all 5 YAML template files in `templates/attacks/`
+- [ ] Create example campaign files in `campaigns/examples/`
+- [ ] Add documentation for each attack type
+
+### Phase 3: Rust Implementations (Week 2-3)
+- [ ] Implement `TrustedSetupAttack` (~150 lines)
+- [ ] Implement `SidechannelAdvancedAttack` (~200 lines)
+- [ ] Implement `QuantumResistanceAttack` (~180 lines)
+- [ ] Implement `PrivacyAdvancedAttack` (~250 lines)
+- [ ] Implement `DefiAdvancedAttack` (~300 lines)
+
+### Phase 4: Pattern Matchers (Week 3)
+- [ ] Add pattern matchers to `src/config/generator.rs`
+- [ ] Integrate with existing detection pipeline
+- [ ] Add auto-detection for new attack types
+
+### Phase 5: Testing (Week 4)
+- [ ] Unit tests for each attack module
+- [ ] Integration tests with example circuits
+- [ ] Add to CVE test suite where applicable
+- [ ] Performance benchmarks
+
+### Phase 6: Documentation (Week 4)
+- [ ] Update README.md attack table
+- [ ] Add to TUTORIAL.md
+- [ ] Create attack-specific guides in `docs/`
+- [ ] Update ARCHITECTURE.md
+
+---
+
+## File Structure
+
+```
+ZkPatternFuzz/
+├── templates/attacks/
+│   ├── trusted_setup.yaml              # New
+│   ├── sidechannel_advanced.yaml       # New
+│   ├── quantum_resistance.yaml         # New
+│   ├── privacy_advanced.yaml           # New
+│   └── defi_advanced.yaml              # New
+├── campaigns/examples/
+│   ├── trusted_setup_audit.yaml        # New
+│   ├── sidechannel_audit.yaml          # New
+│   ├── quantum_resistance_audit.yaml   # New
+│   ├── privacy_audit.yaml              # New
+│   └── defi_audit.yaml                 # New
+├── crates/zk-attacks/src/
+│   ├── trusted_setup.rs                # New (~150 lines)
+│   ├── sidechannel_advanced.rs         # New (~200 lines)
+│   ├── quantum_resistance.rs           # New (~180 lines)
+│   ├── privacy_advanced.rs             # New (~250 lines)
+│   └── defi_advanced.rs                # New (~300 lines)
+├── docs/
+│   ├── TRUSTED_SETUP_GUIDE.md          # New
+│   ├── SIDECHANNEL_GUIDE.md            # New
+│   ├── QUANTUM_RESISTANCE_GUIDE.md     # New
+│   ├── PRIVACY_GUIDE.md                # New
+│   └── DEFI_ATTACK_GUIDE.md            # Update existing
+└── tests/
+    └── attacks/
+        ├── test_trusted_setup.rs       # New
+        ├── test_sidechannel_advanced.rs # New
+        ├── test_quantum_resistance.rs  # New
+        ├── test_privacy_advanced.rs    # New
+        └── test_defi_advanced.rs       # New
+```
+
+---
+
+## Code Size Estimate
+
+| Component | Lines of Code | Complexity |
+|-----------|---------------|------------|
+| Trusted Setup | ~150 | Low |
+| Sidechannel Advanced | ~200 | Medium |
+| Quantum Resistance | ~180 | Low |
+| Privacy Advanced | ~250 | High |
+| DeFi Advanced | ~300 | High |
+| Pattern Matchers | ~150 | Low |
+| Tests | ~500 | Medium |
+| **Total** | **~1,730** | **Medium** |
+
+---
+
+## Benefits of YAML-Driven Approach
+
+1. **User Customization**: Users can modify detection patterns without recompiling
+2. **Rapid Iteration**: Add new patterns by editing YAML files
+3. **Configuration Sharing**: Teams can share attack configurations
+4. **Version Control**: Track pattern changes in git
+5. **Minimal Code**: ~1,730 lines vs ~5,000+ for hardcoded approach
+6. **Maintainability**: Easier to update and extend
+7. **Documentation**: YAML serves as self-documenting configuration
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+```rust
+#[test]
+fn test_trusted_setup_toxic_waste_detection() {
+    let config = load_yaml("templates/attacks/trusted_setup.yaml");
+    let attack = TrustedSetupAttack::new(config);
+    // Test pattern matching
+}
+```
+
+### Integration Tests
+```bash
+# Run with example campaigns
+cargo run -- --config campaigns/examples/trusted_setup_audit.yaml
+cargo run -- --config campaigns/examples/quantum_resistance_audit.yaml
+```
+
+### CVE Coverage
+- Add relevant CVEs to test suite
+- Verify detection of known vulnerabilities
+- Measure false positive/negative rates
+
+---
+
+## Success Metrics
+
+- [ ] All 5 attack types implemented and tested
+- [ ] YAML templates validated and documented
+- [ ] Pattern detection accuracy >90%
+- [ ] Performance overhead <10%
+- [ ] Zero breaking changes to existing API
+- [ ] Full test coverage (>80%)
+- [ ] Documentation complete
+
+---
+
+## Future Enhancements
+
+1. **Machine Learning Integration**: Train models on YAML patterns
+2. **Community Patterns**: Allow users to submit custom YAML patterns
+3. **Pattern Marketplace**: Share and download attack patterns
+4. **Auto-tuning**: Automatically adjust thresholds based on results
+5. **Visual Pattern Editor**: GUI for creating YAML patterns
+
+---
+
+## References
+
+- [Trail of Bits: Trusted Setup Security](https://blog.trailofbits.com/)
+- [NIST Post-Quantum Cryptography](https://csrc.nist.gov/projects/post-quantum-cryptography)
+- [Flashbots: MEV Research](https://docs.flashbots.net/)
+- [ZK Security Best Practices](https://github.com/0xPARC/zk-bug-tracker)

@@ -117,7 +117,7 @@ impl ConfigGenerator {
         let profiles = self.suggest_profiles(&patterns);
 
         // Detect main component
-        let main_component = detect_main_component(source, framework);
+        let main_component = detect_main_component(source, framework)?;
 
         // Build attacks based on patterns
         let attacks = self.generate_attacks(&patterns);
@@ -672,7 +672,7 @@ fn detect_framework(path: &Path) -> anyhow::Result<Framework> {
 }
 
 /// Detect main component name from source
-fn detect_main_component(source: &str, framework: Framework) -> String {
+fn detect_main_component(source: &str, framework: Framework) -> anyhow::Result<String> {
     match framework {
         Framework::Circom => {
             // Look for "template X" or "component main = X"
@@ -681,25 +681,25 @@ fn detect_main_component(source: &str, framework: Framework) -> String {
                     if let Some(start) = line.find('=') {
                         let rest = &line[start + 1..];
                         if let Some(end) = rest.find('(') {
-                            return rest[..end].trim().to_string();
+                            return Ok(rest[..end].trim().to_string());
                         }
                     }
                 }
             }
-            panic!("Circom source missing explicit `component main = ...`; implicit template selection removed");
+            anyhow::bail!("Circom source missing explicit `component main = ...`; implicit template selection removed");
         }
         Framework::Noir => {
             // Look for "fn main"
             for line in source.lines() {
                 if line.contains("fn main") {
-                    return "main".to_string();
+                    return Ok("main".to_string());
                 }
             }
-            panic!("Noir source missing `fn main`; implicit defaults removed");
+            anyhow::bail!("Noir source missing `fn main`; implicit defaults removed");
         }
         _ => {}
     }
-    panic!(
+    anyhow::bail!(
         "Unsupported framework for main component detection: {:?}",
         framework
     )
