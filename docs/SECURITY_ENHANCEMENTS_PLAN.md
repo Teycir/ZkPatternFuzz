@@ -20,6 +20,14 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
 - Added dedicated advanced attack modules in `crates/zk-attacks/src/` and wired runtime to use them:
   - `sidechannel_advanced.rs`, `quantum_resistance.rs`, `privacy_advanced.rs`, `defi_advanced.rs`.
   - Added focused unit tests for each new module and thin re-export wrappers under `src/oracles/`.
+- Added static-first acceleration primitives for earlier issue surfacing:
+  - New `CircomStaticLint` attack family with static checks for unused signals, unconstrained outputs, division-by-signal patterns, and missing constraints around `<--`.
+  - New phase-level fail-fast severity gating (`fail_on_findings`) and enabled static prepass fail-fast on `critical`/`high`.
+  - Upgraded `quantum_resistance` matching to word-boundary regexes to reduce substring false positives.
+- Completed generator automation + static evidence handling:
+  - Added generator pattern matchers for `quantum_resistance` and `trusted_setup` signals in source.
+  - Added auto-attack and schedule injection so generated configs include these families when detected.
+  - Treated `CircomStaticLint` source-located findings as static evidence to avoid hint-only downgrades in static-first lanes.
 - Completed Phase-2 YAML scaffolding:
   - Added missing templates: `quantum_resistance.yaml`, `privacy_advanced.yaml`, `defi_advanced.yaml` (with existing `trusted_setup.yaml` and `sidechannel_advanced.yaml`).
   - Added runnable examples in `campaigns/examples/`: `trusted_setup_audit.yaml`, `sidechannel_audit.yaml`, `quantum_resistance_audit.yaml`, `privacy_audit.yaml`, `defi_audit.yaml`.
@@ -608,9 +616,9 @@ impl Attack for DefiAdvancedAttack {
 - [x] Implement `DefiAdvancedAttack` (~300 lines)
 
 ### Phase 4: Pattern Matchers (Week 3)
-- [ ] Add pattern matchers to `src/config/generator.rs`
-- [ ] Integrate with existing detection pipeline
-- [ ] Add auto-detection for new attack types
+- [x] Add pattern matchers to `src/config/generator.rs`
+- [x] Integrate with existing detection pipeline
+- [x] Add auto-detection for new attack types
 
 ### Phase 5: Testing (Week 4)
 - [x] Unit tests for each attack module

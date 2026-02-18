@@ -1,0 +1,29 @@
+campaign:
+  name: "Circom Static Lint Audit"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/main.circom"
+    main_component: "Main"
+  parameters:
+    field: "bn254"
+    max_constraints: 100000
+    timeout_seconds: 120
+
+attacks:
+  - type: "circom_static_lint"
+    description: "Static lint checks before dynamic fuzzing"
+    config:
+      circom_static_lint:
+        enabled_checks:
+          - "unused_signal"
+          - "unconstrained_output"
+          - "division_by_signal"
+          - "missing_constraint"
+        max_findings_per_check: 20
+        case_sensitive: false
+
+inputs:
+  - name: "input_0"
+    type: "field"
+    fuzz_strategy: "random"

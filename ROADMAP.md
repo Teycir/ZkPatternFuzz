@@ -187,6 +187,16 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added first-class module APIs + unit tests for side-channel advanced, quantum-resistance, privacy advanced, and DeFi advanced.
    - Added thin `src/oracles/` re-export wrappers so runtime/import surface stays consistent with existing module organization.
    - Refactored engine advanced attack runners to use these module APIs rather than inlined ad-hoc logic.
+83. Added static-first Circom lint lane and fail-fast severity gating to accelerate early detection (`crates/zk-attacks/src/circom_static_lint.rs`, `src/fuzzer/engine/attack_runner.rs`, `src/config/v2.rs`, `src/fuzzer/phased_scheduler.rs`, `templates/traits/static_first_pass.yaml`):
+   - Added new `AttackType::CircomStaticLint` with full runtime wiring (scheduler parsing, engine dispatch, SARIF mapping, finding deserialization).
+   - Implemented heuristic Circom static checks: `UnusedSignal`, `UnconstrainedOutput`, `DivisionBySignal`, `MissingConstraint`.
+   - Added schedule-level fail-fast severities (`fail_on_findings`) and enabled static prepass fail-fast on `critical`/`high`.
+   - Hardened static quantum scan to use word-boundary matching and avoid unnecessary witness generation.
+84. Accelerated generator-driven adoption and static-evidence handling for early-pass attacks (`src/config/generator.rs`, `src/fuzzer/engine/attack_runner.rs`, `src/config/tests/generator_tests.rs`, `src/fuzzer/engine/attack_runner_tests.rs`):
+   - Added first-class generator pattern matchers for `quantum_resistance` and `trusted_setup` indicators.
+   - Added auto-attack injection + phase scheduling hooks so generator output includes these attacks when patterns are detected.
+   - Updated static-evidence retention to treat `CircomStaticLint` findings with source locations as concrete evidence (not downgraded/dropped heuristic hints).
+   - Added targeted regression coverage for both matcher detection and static evidence classification.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -348,6 +358,21 @@ Validation:
     - `cargo test -p zk-attacks defi_advanced_ -- --test-threads=1`
     - `cargo test --test phase0_integration_tests test_phase3_and_advanced_attack_dispatch -- --test-threads=1`
     - `cargo test -p zk-core deserialize_finding_supports_phase3_and_advanced_attack_variants -- --test-threads=1`
+65. Static-first lint/fail-fast acceleration validation:
+    - `cargo check`
+    - `cargo test -p zk-attacks circom_static_lint_ -- --test-threads=1`
+    - `cargo test -p zk-attacks quantum_resistance_ -- --test-threads=1`
+    - `cargo test test_schedule_fail_on_findings_severity -- --test-threads=1`
+    - `cargo test test_parse_attack_type -- --test-threads=1`
+    - `cargo test --test phase0_integration_tests test_phase3_and_advanced_attack_dispatch -- --test-threads=1`
+    - `cargo test -p zk-core deserialize_finding_supports_phase3_and_advanced_attack_variants -- --test-threads=1`
+66. Generator + static-evidence acceleration validation:
+    - `cargo check -q`
+    - `cargo test -q test_quantum_vulnerable_pattern_detection -- --test-threads=1`
+    - `cargo test -q test_quantum_pattern_detection_uses_word_tokens -- --test-threads=1`
+    - `cargo test -q test_trusted_setup_pattern_detection -- --test-threads=1`
+    - `cargo test -q test_generate_from_source_adds_quantum_and_trusted_setup_attacks -- --test-threads=1`
+    - `cargo test -q has_static_source_evidence_ -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 

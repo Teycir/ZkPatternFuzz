@@ -70,6 +70,8 @@ pub enum AttackType {
     PrivacyAdvanced,
     /// Advanced DeFi/protocol-level analysis
     DefiAdvanced,
+    /// Circom-specific static linting checks
+    CircomStaticLint,
 }
 
 /// Severity levels for findings
@@ -301,6 +303,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     "QuantumResistance" => AttackType::QuantumResistance,
                     "PrivacyAdvanced" => AttackType::PrivacyAdvanced,
                     "DefiAdvanced" => AttackType::DefiAdvanced,
+                    "CircomStaticLint" => AttackType::CircomStaticLint,
                     _ => {
                         return Err(de::Error::unknown_variant(
                             &attack_type_str,
@@ -336,6 +339,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                                 "QuantumResistance",
                                 "PrivacyAdvanced",
                                 "DefiAdvanced",
+                                "CircomStaticLint",
                             ],
                         ))
                     }

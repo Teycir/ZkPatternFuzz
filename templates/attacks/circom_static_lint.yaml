@@ -1,0 +1,12 @@
+attack:
+  type: "circom_static_lint"
+  description: "Circom static lint checks for missing constraints and unsafe patterns"
+  config:
+    circom_static_lint:
+      enabled_checks:
+        - "unused_signal"
+        - "unconstrained_output"
+        - "division_by_signal"
+        - "missing_constraint"
+      max_findings_per_check: 20
+      case_sensitive: false

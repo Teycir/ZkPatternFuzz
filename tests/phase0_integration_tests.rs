@@ -440,6 +440,17 @@ quantum_resistance:
             ),
         ),
         (
+            AttackType::CircomStaticLint,
+            "Circom static lint dispatch",
+            yaml_value(
+                r#"
+circom_static_lint:
+  enabled_checks: ["unused_signal", "unconstrained_output"]
+  max_findings_per_check: 4
+"#,
+            ),
+        ),
+        (
             AttackType::PrivacyAdvanced,
             "Privacy advanced dispatch",
             yaml_value(

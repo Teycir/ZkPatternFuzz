@@ -1246,6 +1246,11 @@ impl FuzzingEngine {
                             .await?;
                         attack_executed = true;
                     }
+                    AttackType::CircomStaticLint => {
+                        self.run_circom_static_lint_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
                     // Phase 4: Novel Oracle Attacks - Now Implemented!
                     AttackType::ConstraintInference => {
                         match self

@@ -33,10 +33,12 @@ pub mod arithmetic;
 pub mod batch_verification; // Phase 3: Batch verification bypass attacks
 pub mod boundary;
 pub mod canonicalization;
+pub mod circom_static_lint; // Circom-specific static lint checks
 pub mod collision;
 pub mod constraint_inference;
 pub mod constraint_slice;
 pub mod cross_backend;
+pub mod defi_advanced;
 pub mod determinism;
 pub mod front_running; // Phase 3: Front-running attacks
 pub mod frozen_wire;
@@ -47,8 +49,8 @@ pub mod privacy_advanced; // Advanced privacy attack helpers
 pub mod proof_malleability;
 pub mod quantum_resistance; // Post-quantum posture checks
 pub mod recursive; // Phase 3: Recursive SNARK attacks
-pub mod sidechannel_advanced; // Advanced side-channel helpers
 pub mod setup_poisoning;
+pub mod sidechannel_advanced; // Advanced side-channel helpers
 pub mod soundness;
 pub mod spec_inference;
 pub mod underconstrained;
@@ -56,8 +58,7 @@ pub mod verification;
 pub mod witness;
 pub mod witness_collision;
 pub mod zkevm; // Phase 3: zkEVM-specific attacks
-pub mod zkevm_differential; // Phase 5: zkEVM differential testing with reference EVM
-pub mod defi_advanced; // Advanced DeFi protocol helpers
+pub mod zkevm_differential; // Phase 5: zkEVM differential testing with reference EVM // Advanced DeFi protocol helpers
 
 pub use arithmetic::ArithmeticTester;
 pub use batch_verification::{
@@ -71,6 +72,7 @@ pub use boundary::{
     BoundaryVulnerability, RangeSpec,
 };
 pub use canonicalization::CanonicalizationChecker;
+pub use circom_static_lint::{CircomStaticLint, CircomStaticLintConfig, StaticCheck};
 pub use collision::{CollisionAnalysis, CollisionDetector, CollisionPair, HashType};
 pub use constraint_inference::{
     BitDecompositionInference, ConstraintCategory, ConstraintInferenceEngine,
@@ -83,6 +85,7 @@ pub use constraint_slice::{
     LeakingConstraint, OutputMapping,
 };
 pub use cross_backend::CrossBackendDifferential;
+pub use defi_advanced::{DefiAdvancedAttack, DefiAdvancedConfig};
 pub use determinism::DeterminismOracle;
 pub use front_running::{
     FrontRunningAttack, FrontRunningConfig, FrontRunningResult, FrontRunningVulnerability,
@@ -106,8 +109,8 @@ pub use recursive::{
     RecursiveAttackConfig, RecursiveStep, RecursiveSystem, RecursiveVulnerabilityType,
     SupernovaAnalyzer,
 };
-pub use sidechannel_advanced::{SidechannelAdvancedAttack, SidechannelAdvancedConfig};
 pub use setup_poisoning::SetupPoisoningDetector;
+pub use sidechannel_advanced::{SidechannelAdvancedAttack, SidechannelAdvancedConfig};
 pub use soundness::SoundnessTester;
 pub use spec_inference::{ExecutionSample, InferredSpec, SpecInferenceOracle, SpecInferenceStats};
 pub use underconstrained::UnderconstrainedDetector;
@@ -126,7 +129,6 @@ pub use zkevm_differential::{
     ExecutionTrace, LocalReferenceEvm, MismatchType, PrecompileTestGenerator, ReferenceEvm,
     StateDifference, TestTransaction, ZkEvmDifferentialConfig, ZkEvmDifferentialTester,
 };
-pub use defi_advanced::{DefiAdvancedAttack, DefiAdvancedConfig};
 
 pub use zk_attacks::{
     Attack, AttackContext, AttackMetadata, AttackPlugin, AttackPluginLoader, AttackRegistry,

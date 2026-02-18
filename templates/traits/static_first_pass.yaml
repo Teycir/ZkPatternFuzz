@@ -10,6 +10,18 @@
 
 # Static pre-pass attack(s)
 attacks:
+  - type: circom_static_lint
+    description: "Static Circom lint checks (unused/unconstrained/unsafe assignment patterns)"
+    config:
+      circom_static_lint:
+        enabled_checks:
+          - "unused_signal"
+          - "unconstrained_output"
+          - "division_by_signal"
+          - "missing_constraint"
+        max_findings_per_check: 20
+        case_sensitive: false
+
   - type: quantum_resistance
     description: "Static source scan for quantum-vulnerable primitives"
     config:
@@ -28,6 +40,7 @@ schedule:
   - phase: "static_prepass"
     duration_sec: 15
     attacks:
+      - "circom_static_lint"
       - "quantum_resistance"
     max_iterations: 1
     fail_on_findings: ["critical", "high"]

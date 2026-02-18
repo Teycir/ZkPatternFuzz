@@ -2415,10 +2415,7 @@ impl FuzzingEngine {
         if let Some(v) = section.get("detect_leakage").and_then(|v| v.as_bool()) {
             advanced_config.detect_leakage = v;
         }
-        if let Some(v) = section
-            .get("timing_cv_threshold")
-            .and_then(|v| v.as_f64())
-        {
+        if let Some(v) = section.get("timing_cv_threshold").and_then(|v| v.as_f64()) {
             advanced_config.timing_cv_threshold = v;
         }
         if let Some(v) = section
@@ -2441,6 +2438,66 @@ impl FuzzingEngine {
         let findings = attack.run(self.executor.as_ref(), &base_inputs)?;
         self.record_custom_findings(findings, AttackType::SidechannelAdvanced, progress)?;
 
+        if let Some(p) = progress {
+            p.inc();
+        }
+        Ok(())
+    }
+
+    pub(super) async fn run_circom_static_lint_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::oracles::{CircomStaticLint, CircomStaticLintConfig};
+
+        if self.config.campaign.target.framework != Framework::Circom {
+            tracing::warn!(
+                "CircomStaticLint skipped: framework is {:?} (requires Circom)",
+                self.config.campaign.target.framework
+            );
+            return Ok(());
+        }
+
+        let section = config.get("circom_static_lint").unwrap_or(config);
+        let mut lint_config = CircomStaticLintConfig::default();
+
+        if let Some(values) = section.get("enabled_checks").and_then(|v| v.as_sequence()) {
+            let check_names: Vec<String> = values
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect();
+            let parsed_checks = CircomStaticLint::parse_checks(&check_names);
+            if !parsed_checks.is_empty() {
+                lint_config.enabled_checks = parsed_checks;
+            }
+        }
+
+        if let Some(v) = section
+            .get("max_findings_per_check")
+            .and_then(|v| v.as_u64())
+        {
+            lint_config.max_findings_per_check = v as usize;
+        }
+        if let Some(v) = section.get("case_sensitive").and_then(|v| v.as_bool()) {
+            lint_config.case_sensitive = v;
+        }
+
+        let lint = CircomStaticLint::new(lint_config);
+        let source_path = self.config.campaign.target.circuit_path.clone();
+        let findings = match lint.scan_file(&source_path) {
+            Ok(findings) => findings,
+            Err(err) => {
+                tracing::warn!(
+                    "CircomStaticLint skipped source read '{}': {}",
+                    source_path.display(),
+                    err
+                );
+                return Ok(());
+            }
+        };
+
+        self.record_custom_findings(findings, AttackType::CircomStaticLint, progress)?;
         if let Some(p) = progress {
             p.inc();
         }
@@ -2563,10 +2620,7 @@ impl FuzzingEngine {
         {
             privacy_config.entropy_threshold_bits = v;
         }
-        if let Some(v) = section
-            .get("timing_cv_threshold")
-            .and_then(|v| v.as_f64())
-        {
+        if let Some(v) = section.get("timing_cv_threshold").and_then(|v| v.as_f64()) {
             privacy_config.timing_cv_threshold = v;
         }
         if let Some(v) = section
@@ -2633,10 +2687,7 @@ impl FuzzingEngine {
                 "defi_advanced.ordering_permutations",
             );
         }
-        if let Some(v) = mev_section
-            .get("profit_threshold")
-            .and_then(|v| v.as_f64())
-        {
+        if let Some(v) = mev_section.get("profit_threshold").and_then(|v| v.as_f64()) {
             defi_config.ordering_delta_threshold = v;
         }
         if let Some(v) = mev_section.get("detect_ordering").and_then(|v| v.as_bool()) {
@@ -2657,7 +2708,10 @@ impl FuzzingEngine {
         {
             defi_config.entropy_threshold_bits = v;
         }
-        if let Some(v) = front_section.get("detect_leakage").and_then(|v| v.as_bool()) {
+        if let Some(v) = front_section
+            .get("detect_leakage")
+            .and_then(|v| v.as_bool())
+        {
             defi_config.detect_front_running_signals = v;
         }
         if let Some(v) = section.get("seed").and_then(|v| v.as_u64()) {
@@ -2701,9 +2755,7 @@ impl FuzzingEngine {
 
         if evidence_mode {
             let before = findings.len();
-            findings.retain(|f| {
-                !Self::poc_is_empty(&f.poc) || Self::has_static_source_evidence(f)
-            });
+            findings.retain(|f| !Self::poc_is_empty(&f.poc) || Self::has_static_source_evidence(f));
             let dropped = before.saturating_sub(findings.len());
             if dropped > 0 {
                 tracing::info!(
@@ -2752,9 +2804,7 @@ impl FuzzingEngine {
 
         if evidence_mode {
             let before = findings.len();
-            findings.retain(|f| {
-                !Self::poc_is_empty(&f.poc) || Self::has_static_source_evidence(f)
-            });
+            findings.retain(|f| !Self::poc_is_empty(&f.poc) || Self::has_static_source_evidence(f));
             let dropped = before.saturating_sub(findings.len());
             if dropped > 0 {
                 tracing::info!(
@@ -2799,12 +2849,14 @@ impl FuzzingEngine {
     }
 
     pub(super) fn has_static_source_evidence(finding: &Finding) -> bool {
-        matches!(finding.attack_type, AttackType::QuantumResistance)
-            && finding
-                .location
-                .as_ref()
-                .map(|value| !value.trim().is_empty())
-                .unwrap_or(false)
+        matches!(
+            finding.attack_type,
+            AttackType::QuantumResistance | AttackType::CircomStaticLint
+        ) && finding
+            .location
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
     }
 
     pub(super) fn get_circuit_info(&self) -> zk_core::CircuitInfo {

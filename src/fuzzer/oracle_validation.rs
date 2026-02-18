@@ -216,7 +216,8 @@ fn attack_family(attack_type: AttackType) -> AttackFamily {
         | AttackType::WitnessCollision
         | AttackType::Metamorphic
         | AttackType::SpecInference
-        | AttackType::Collision => AttackFamily::ConstraintIntegrity,
+        | AttackType::Collision
+        | AttackType::CircomStaticLint => AttackFamily::ConstraintIntegrity,
         AttackType::Soundness
         | AttackType::VerificationFuzzing
         | AttackType::Differential

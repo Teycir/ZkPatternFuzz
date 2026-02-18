@@ -370,12 +370,13 @@ impl PhasedScheduler {
             "front_running" | "frontrunning" => Some(AttackType::FrontRunning),
             "zkevm" | "zk_evm" => Some(AttackType::ZkEvm),
             "batch_verification" | "batchverification" => Some(AttackType::BatchVerification),
-            "sidechannel_advanced" | "sidechanneladvanced" => {
-                Some(AttackType::SidechannelAdvanced)
-            }
+            "sidechannel_advanced" | "sidechanneladvanced" => Some(AttackType::SidechannelAdvanced),
             "quantum_resistance" | "quantumresistance" => Some(AttackType::QuantumResistance),
             "privacy_advanced" | "privacyadvanced" => Some(AttackType::PrivacyAdvanced),
             "defi_advanced" | "defiadvanced" => Some(AttackType::DefiAdvanced),
+            "circom_static_lint" | "circomstaticlint" | "static_lint" | "staticlint" => {
+                Some(AttackType::CircomStaticLint)
+            }
             _ => None,
         }
     }

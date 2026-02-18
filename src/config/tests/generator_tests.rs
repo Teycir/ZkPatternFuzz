@@ -41,6 +41,65 @@ fn test_hash_pattern_detection() {
 }
 
 #[test]
+fn test_quantum_vulnerable_pattern_detection() {
+    let source = r#"
+            include "circomlib/ecdsa.circom";
+            template Verify() {
+                signal input msg;
+                // uses secp256 curve logic
+            }
+            component main = Verify();
+        "#;
+
+    let generator = ConfigGenerator::new();
+    let patterns = generator.detect_patterns(source, Framework::Circom);
+
+    assert!(patterns
+        .iter()
+        .any(|p| p.pattern_type == PatternType::QuantumVulnerablePrimitive));
+}
+
+#[test]
+fn test_quantum_pattern_detection_uses_word_tokens() {
+    let source = r#"
+            template Main() {
+                signal input parse_value;
+                signal output out;
+                out <== parse_value;
+            }
+            component main = Main();
+        "#;
+
+    let generator = ConfigGenerator::new();
+    let patterns = generator.detect_patterns(source, Framework::Circom);
+
+    assert!(!patterns
+        .iter()
+        .any(|p| p.pattern_type == PatternType::QuantumVulnerablePrimitive));
+}
+
+#[test]
+fn test_trusted_setup_pattern_detection() {
+    let source = r#"
+            // powersOfTau ceremony transcript reference
+            // ptau: ./setup/pot12_final.ptau
+            template Main() {
+                signal input a;
+                signal output out;
+                out <== a;
+            }
+            component main = Main();
+        "#;
+
+    let generator = ConfigGenerator::new();
+    let patterns = generator.detect_patterns(source, Framework::Circom);
+
+    assert!(patterns
+        .iter()
+        .any(|p| p.pattern_type == PatternType::TrustedSetupArtifact));
+}
+
+#[test]
 fn test_detect_main_component() {
     let source = r#"
             template MerkleProof() {
@@ -136,4 +195,36 @@ fn test_generate_from_source_includes_static_first_pass_template() {
         .includes
         .iter()
         .any(|include| include == "templates/traits/base.yaml"));
+}
+
+#[test]
+fn test_generate_from_source_adds_quantum_and_trusted_setup_attacks() {
+    let source = r#"
+            // setup uses powersOfTau and ptau artifacts
+            include "circomlib/ecdsa.circom";
+            template Main() {
+                signal input msg;
+                signal output out;
+                // secp256 verify placeholder
+                out <== msg;
+            }
+            component main = Main();
+        "#;
+
+    let generator = ConfigGenerator::new();
+    let config = generator
+        .generate_from_source(source, Framework::Circom, Path::new("main.circom"))
+        .expect("config generation should succeed");
+
+    let attacks = config
+        .base
+        .as_ref()
+        .expect("base config should be present")
+        .attacks
+        .iter()
+        .map(|attack| attack.attack_type.clone())
+        .collect::<Vec<_>>();
+
+    assert!(attacks.contains(&AttackType::QuantumResistance));
+    assert!(attacks.contains(&AttackType::TrustedSetup));
 }

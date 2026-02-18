@@ -55,7 +55,8 @@ impl OracleGroup {
             | AttackType::ConstraintBypass
             | AttackType::ConstraintSlice
             | AttackType::WitnessCollision
-            | AttackType::Collision => OracleGroup::Structural,
+            | AttackType::Collision
+            | AttackType::CircomStaticLint => OracleGroup::Structural,
 
             // Semantic group - circuit semantics and logic
             AttackType::Soundness

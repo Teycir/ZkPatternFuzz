@@ -41,6 +41,8 @@ pub enum PatternType {
     HashFunction(String), // poseidon, mimc, pedersen, sha256
     Nullifier,
     Signature,
+    QuantumVulnerablePrimitive,
+    TrustedSetupArtifact,
     Commitment,
     BitDecomposition,
     ArrayAccess,
@@ -71,6 +73,8 @@ impl ConfigGenerator {
                 Box::new(NullifierPatternMatcher),
                 Box::new(SignaturePatternMatcher),
                 Box::new(BitDecompPatternMatcher),
+                Box::new(QuantumVulnerablePatternMatcher),
+                Box::new(TrustedSetupPatternMatcher),
             ],
         }
     }
@@ -286,6 +290,16 @@ impl ConfigGenerator {
                         deep_attacks.push("arithmetic_overflow".to_string());
                     }
                 }
+                PatternType::QuantumVulnerablePrimitive => {
+                    if !deep_attacks.contains(&"quantum_resistance".to_string()) {
+                        deep_attacks.push("quantum_resistance".to_string());
+                    }
+                }
+                PatternType::TrustedSetupArtifact => {
+                    if !deep_attacks.contains(&"trusted_setup".to_string()) {
+                        deep_attacks.push("trusted_setup".to_string());
+                    }
+                }
                 _ => {}
             }
         }
@@ -436,6 +450,34 @@ impl ConfigGenerator {
                         plugin: None,
                         config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
                     });
+                }
+                PatternType::QuantumVulnerablePrimitive => {
+                    if !attacks
+                        .iter()
+                        .any(|a| a.attack_type == AttackType::QuantumResistance)
+                    {
+                        attacks.push(Attack {
+                            attack_type: AttackType::QuantumResistance,
+                            description: "Auto-detected: Quantum-vulnerable primitive source scan"
+                                .to_string(),
+                            plugin: None,
+                            config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+                        });
+                    }
+                }
+                PatternType::TrustedSetupArtifact => {
+                    if !attacks
+                        .iter()
+                        .any(|a| a.attack_type == AttackType::TrustedSetup)
+                    {
+                        attacks.push(Attack {
+                            attack_type: AttackType::TrustedSetup,
+                            description: "Auto-detected: Trusted setup poisoning checks"
+                                .to_string(),
+                            plugin: None,
+                            config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+                        });
+                    }
                 }
                 _ => {}
             }
@@ -660,6 +702,90 @@ impl PatternMatcher for BitDecompPatternMatcher {
             None
         }
     }
+}
+
+/// Quantum-vulnerable primitive pattern matcher
+struct QuantumVulnerablePatternMatcher;
+
+impl PatternMatcher for QuantumVulnerablePatternMatcher {
+    fn detect(&self, source: &str, _framework: Framework) -> Option<DetectedPattern> {
+        let keywords = ["rsa", "ecdsa", "ecdh", "diffiehellman", "secp256", "modexp"];
+        let mut matches = 0;
+        let mut locations = Vec::new();
+
+        for (i, line) in source.lines().enumerate() {
+            let line_lower = line.to_ascii_lowercase();
+            for keyword in &keywords {
+                if line_contains_keyword(&line_lower, keyword) {
+                    matches += 1;
+                    locations.push(i + 1);
+                    break;
+                }
+            }
+        }
+
+        if matches >= 1 {
+            Some(DetectedPattern {
+                pattern_type: PatternType::QuantumVulnerablePrimitive,
+                confidence: (matches as f64 / 3.0).min(1.0),
+                locations,
+                suggested_trait: None,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Trusted setup artifact pattern matcher
+struct TrustedSetupPatternMatcher;
+
+impl PatternMatcher for TrustedSetupPatternMatcher {
+    fn detect(&self, source: &str, _framework: Framework) -> Option<DetectedPattern> {
+        let keywords = [
+            "ptau",
+            "powersoftau",
+            "trusted setup",
+            "toxic waste",
+            "ceremony",
+            "setup_params",
+            "secret_randomness",
+        ];
+        let mut matches = 0;
+        let mut locations = Vec::new();
+
+        for (i, line) in source.lines().enumerate() {
+            let line_lower = line.to_ascii_lowercase();
+            for keyword in &keywords {
+                if line_contains_keyword(&line_lower, keyword) {
+                    matches += 1;
+                    locations.push(i + 1);
+                    break;
+                }
+            }
+        }
+
+        if matches >= 1 {
+            Some(DetectedPattern {
+                pattern_type: PatternType::TrustedSetupArtifact,
+                confidence: (matches as f64 / 2.0).min(1.0),
+                locations,
+                suggested_trait: None,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+fn line_contains_keyword(line_lower: &str, keyword: &str) -> bool {
+    if keyword.contains(' ') {
+        return line_lower.contains(keyword);
+    }
+
+    line_lower
+        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .any(|token| token == keyword)
 }
 
 /// Detect framework from file extension

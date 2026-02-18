@@ -12,6 +12,7 @@ pub mod arithmetic;
 pub mod batch_verification;
 pub mod batch_verifier;
 pub mod boundary;
+pub mod circom_static_lint;
 pub mod collision;
 pub mod constraint_inference;
 pub mod defi_advanced;
@@ -33,6 +34,7 @@ pub use boundary::{
     common_ranges, BoundaryCategory, BoundaryTestResult, BoundaryTestSummary, BoundaryTester,
     RangeSpec,
 };
+pub use circom_static_lint::{CircomStaticLint, CircomStaticLintConfig, StaticCheck};
 pub use collision::{CollisionAnalysis, CollisionDetector, CollisionPair, HashType};
 pub use defi_advanced::{DefiAdvancedAttack, DefiAdvancedConfig};
 pub use privacy_advanced::{PrivacyAdvancedAttack, PrivacyAdvancedConfig};

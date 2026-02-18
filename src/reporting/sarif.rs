@@ -1081,6 +1081,18 @@ fn generate_rules() -> Vec<SarifRule> {
             "Add ordering-invariant checks, anti-MEV constraints, and stronger commit/reveal flows.",
             (Some("CWE-362"), Severity::High),
         ),
+        create_rule(
+            AttackType::CircomStaticLint,
+            "ZK032",
+            "Circom Static Lint Finding",
+            "Circom source linting identified potentially dangerous patterns",
+            "Static lint checks found Circom-specific anti-patterns such as unconstrained outputs, \
+             unused signals, and potentially unsafe assignments that often correlate with missing \
+             constraints.",
+            "Review flagged lines and convert suspicious `<--` assignments into constrained \
+             relations with `===` or `<==` as appropriate.",
+            (Some("CWE-754"), Severity::High),
+        ),
     ]
 }
 
@@ -1303,6 +1315,7 @@ fn attack_type_to_rule_id(attack_type: &AttackType) -> String {
         AttackType::QuantumResistance => "ZK029",
         AttackType::PrivacyAdvanced => "ZK030",
         AttackType::DefiAdvanced => "ZK031",
+        AttackType::CircomStaticLint => "ZK032",
     }
     .to_string()
 }

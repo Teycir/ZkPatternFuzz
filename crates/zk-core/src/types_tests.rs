@@ -133,4 +133,16 @@ fn deserialize_finding_supports_phase3_and_advanced_attack_variants() {
     )
     .expect("deserialize DefiAdvanced finding");
     assert_eq!(defi.attack_type, AttackType::DefiAdvanced);
+
+    let circom_static: Finding = serde_json::from_str(
+        r#"{
+                "attack_type":"CircomStaticLint",
+                "severity":"high",
+                "description":"circom static lint test",
+                "location":"mock.circom:10",
+                "poc_witness_a":[]
+            }"#,
+    )
+    .expect("deserialize CircomStaticLint finding");
+    assert_eq!(circom_static.attack_type, AttackType::CircomStaticLint);
 }

@@ -38,28 +38,32 @@ fn test_parse_attack_type() {
         PhasedScheduler::parse_attack_type("front_running"),
         Some(AttackType::FrontRunning)
     );
-        assert_eq!(
-            PhasedScheduler::parse_attack_type("batch_verification"),
-            Some(AttackType::BatchVerification)
-        );
-        assert_eq!(
-            PhasedScheduler::parse_attack_type("sidechannel_advanced"),
-            Some(AttackType::SidechannelAdvanced)
-        );
-        assert_eq!(
-            PhasedScheduler::parse_attack_type("quantum_resistance"),
-            Some(AttackType::QuantumResistance)
-        );
-        assert_eq!(
-            PhasedScheduler::parse_attack_type("privacy_advanced"),
-            Some(AttackType::PrivacyAdvanced)
-        );
-        assert_eq!(
-            PhasedScheduler::parse_attack_type("defi_advanced"),
-            Some(AttackType::DefiAdvanced)
-        );
-        assert_eq!(PhasedScheduler::parse_attack_type("unknown"), None);
-    }
+    assert_eq!(
+        PhasedScheduler::parse_attack_type("batch_verification"),
+        Some(AttackType::BatchVerification)
+    );
+    assert_eq!(
+        PhasedScheduler::parse_attack_type("sidechannel_advanced"),
+        Some(AttackType::SidechannelAdvanced)
+    );
+    assert_eq!(
+        PhasedScheduler::parse_attack_type("quantum_resistance"),
+        Some(AttackType::QuantumResistance)
+    );
+    assert_eq!(
+        PhasedScheduler::parse_attack_type("privacy_advanced"),
+        Some(AttackType::PrivacyAdvanced)
+    );
+    assert_eq!(
+        PhasedScheduler::parse_attack_type("defi_advanced"),
+        Some(AttackType::DefiAdvanced)
+    );
+    assert_eq!(
+        PhasedScheduler::parse_attack_type("circom_static_lint"),
+        Some(AttackType::CircomStaticLint)
+    );
+    assert_eq!(PhasedScheduler::parse_attack_type("unknown"), None);
+}
 
 #[test]
 fn test_early_termination_critical_findings() {

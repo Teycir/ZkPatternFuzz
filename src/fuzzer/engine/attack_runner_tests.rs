@@ -1,4 +1,6 @@
 use super::deterministic_attack_cap;
+use super::FuzzingEngine;
+use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 
 #[test]
 fn deterministic_cap_enabled_by_default_in_evidence_mode() {
@@ -48,4 +50,52 @@ fn per_attack_cap_overrides_global_cap() {
         deterministic_attack_cap(&additional, true, 1, "underconstrained_witness_pairs_cap")
             .expect("cap should be enabled");
     assert_eq!(cap, 33);
+}
+
+#[test]
+fn has_static_source_evidence_accepts_quantum_and_circom_lint() {
+    let quantum = Finding {
+        attack_type: AttackType::QuantumResistance,
+        severity: Severity::High,
+        description: "quantum source match".to_string(),
+        poc: ProofOfConcept {
+            witness_a: Vec::new(),
+            witness_b: None,
+            public_inputs: Vec::new(),
+            proof: None,
+        },
+        location: Some("circuit.circom:12".to_string()),
+    };
+    assert!(FuzzingEngine::has_static_source_evidence(&quantum));
+
+    let circom_lint = Finding {
+        attack_type: AttackType::CircomStaticLint,
+        severity: Severity::Critical,
+        description: "missing constraint".to_string(),
+        poc: ProofOfConcept {
+            witness_a: Vec::new(),
+            witness_b: None,
+            public_inputs: Vec::new(),
+            proof: None,
+        },
+        location: Some("circuit.circom:22".to_string()),
+    };
+    assert!(FuzzingEngine::has_static_source_evidence(&circom_lint));
+}
+
+#[test]
+fn has_static_source_evidence_requires_location() {
+    let finding = Finding {
+        attack_type: AttackType::CircomStaticLint,
+        severity: Severity::High,
+        description: "missing constraint".to_string(),
+        poc: ProofOfConcept {
+            witness_a: Vec::new(),
+            witness_b: None,
+            public_inputs: Vec::new(),
+            proof: None,
+        },
+        location: None,
+    };
+    assert!(!FuzzingEngine::has_static_source_evidence(&finding));
 }
