@@ -85,18 +85,18 @@ attacks:
   - type: "metamorphic"
     description: "Transform-based invariant violation testing"
     config:
-      num_tests: 100
+      num_tests: 256
 
   - type: "constraint_slice"
     description: "Dependency-cone mutation and leak detection"
     config:
       samples_per_cone: 100
-      base_witness_attempts: 5
+      base_witness_attempts: 32
 
   - type: "spec_inference"
     description: "Learn and violate inferred behavioral specs"
     config:
-      sample_count: 500
+      sample_count: 1000
 
   - type: "witness_collision"
     description: "Enhanced witness collision discovery"
