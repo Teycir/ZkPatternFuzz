@@ -50,6 +50,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added missing templates: `quantum_resistance.yaml`, `privacy_advanced.yaml`, `defi_advanced.yaml` (with existing `trusted_setup.yaml` and `sidechannel_advanced.yaml`).
   - Added runnable examples in `campaigns/examples/`: `trusted_setup_audit.yaml`, `sidechannel_audit.yaml`, `quantum_resistance_audit.yaml`, `privacy_audit.yaml`, `defi_audit.yaml`.
 - Added integration dispatch coverage for newly wired families in `tests/phase0_integration_tests.rs`.
+- Added integration coverage for example campaign configs in `tests/example_campaign_configs_tests.rs` to ensure all `campaigns/examples/*_audit.yaml` templates parse and retain expected attack wiring.
 - Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
 - Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
 
