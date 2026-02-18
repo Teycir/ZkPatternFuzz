@@ -116,7 +116,7 @@ impl FuzzingEngine {
             witness_pairs
         );
         {
-            use crate::attacks::UnderconstrainedDetector;
+            use crate::oracles::UnderconstrainedDetector;
             let tolerance = config.get("tolerance").and_then(|v| v.as_f64());
             let detector = if let Some(tol) = tolerance {
                 UnderconstrainedDetector::new(witness_pairs).with_tolerance(tol)
@@ -295,7 +295,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::FrozenWireDetector;
+        use crate::oracles::FrozenWireDetector;
         use std::collections::HashSet;
 
         let section = config.get("frozen_wire");
@@ -555,7 +555,7 @@ impl FuzzingEngine {
 
         tracing::info!("Attempting {} proof forgeries", forge_attempts);
         {
-            use crate::attacks::SoundnessTester;
+            use crate::oracles::SoundnessTester;
             let tester = SoundnessTester::new()
                 .with_forge_attempts(forge_attempts)
                 .with_mutation_rate(mutation_rate);
@@ -715,7 +715,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::ProofMalleabilityScanner;
+        use crate::oracles::ProofMalleabilityScanner;
 
         let section = config.get("proof_malleability");
         let enabled = section
@@ -761,7 +761,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::DeterminismOracle;
+        use crate::oracles::DeterminismOracle;
 
         let section = config.get("determinism");
         let enabled = section
@@ -800,7 +800,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::SetupPoisoningDetector;
+        use crate::oracles::SetupPoisoningDetector;
         use std::path::PathBuf;
 
         let section = config.get("trusted_setup_test");
@@ -925,7 +925,7 @@ impl FuzzingEngine {
 
         tracing::info!("Testing {} arithmetic edge cases", test_values.len());
         {
-            use crate::attacks::ArithmeticTester;
+            use crate::oracles::ArithmeticTester;
             let tester = ArithmeticTester::new().with_test_values(test_values.clone());
             self.add_attack_findings(&tester, test_values.len(), progress)?;
         }
@@ -995,7 +995,7 @@ impl FuzzingEngine {
 
         tracing::info!("Running collision detection with {} samples", samples);
         {
-            use crate::attacks::CollisionDetector;
+            use crate::oracles::CollisionDetector;
             let detector = CollisionDetector::new(samples);
             self.add_attack_findings(&detector, samples, progress)?;
         }
@@ -1091,7 +1091,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::NullifierReplayScanner;
+        use crate::oracles::NullifierReplayScanner;
 
         let section = config.get("nullifier_replay");
         let enabled = section
@@ -1170,7 +1170,7 @@ impl FuzzingEngine {
 
         tracing::info!("Testing {} boundary values", test_values.len());
         {
-            use crate::attacks::BoundaryTester;
+            use crate::oracles::BoundaryTester;
             let tester = BoundaryTester::new()
                 .with_modulus(self.get_field_modulus())
                 .with_custom_values(test_values.clone());
@@ -1217,7 +1217,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::CanonicalizationChecker;
+        use crate::oracles::CanonicalizationChecker;
 
         let section = config.get("canonicalization");
         let enabled = section
@@ -1268,7 +1268,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::verification::VerificationFuzzer;
+        use crate::oracles::verification::VerificationFuzzer;
 
         let configured_malleability_tests = config
             .get("malleability_tests")
@@ -1340,7 +1340,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::witness::WitnessFuzzer;
+        use crate::oracles::witness::WitnessFuzzer;
 
         let configured_determinism_tests = config
             .get("determinism_tests")
@@ -1676,7 +1676,7 @@ impl FuzzingEngine {
         tolerance_bits: usize,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::CrossBackendDifferential;
+        use crate::oracles::CrossBackendDifferential;
 
         if sample_count == 0 {
             anyhow::bail!("Cross-backend differential requires sample_count > 0");
@@ -2247,7 +2247,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::constraint_inference::{ConstraintInferenceEngine, InferenceContext};
+        use crate::oracles::constraint_inference::{ConstraintInferenceEngine, InferenceContext};
         use crate::config::v2::InvariantType;
 
         let confidence_threshold = config
@@ -2319,7 +2319,7 @@ impl FuzzingEngine {
         }
 
         // Filter to only confirmed violations (eliminate false positives)
-        use crate::attacks::constraint_inference::ViolationConfirmation;
+        use crate::oracles::constraint_inference::ViolationConfirmation;
         let before_filter = implied.len();
         implied.retain(|c| c.confirmation == ViolationConfirmation::Confirmed);
         tracing::info!(
@@ -2387,7 +2387,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::metamorphic::MetamorphicOracle;
+        use crate::oracles::metamorphic::MetamorphicOracle;
 
         let configured_num_tests = config
             .get("num_tests")
@@ -2445,7 +2445,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::constraint_slice::{ConstraintSliceOracle, OutputMapping};
+        use crate::oracles::constraint_slice::{ConstraintSliceOracle, OutputMapping};
 
         let configured_samples_per_cone = config
             .get("samples_per_cone")
@@ -2551,7 +2551,7 @@ impl FuzzingEngine {
         progress: Option<&ProgressReporter>,
         phase_context: Option<(u64, u64, u64, u64)>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::spec_inference::SpecInferenceOracle;
+        use crate::oracles::spec_inference::SpecInferenceOracle;
 
         let configured_sample_count = config
             .get("sample_count")
@@ -2668,7 +2668,7 @@ impl FuzzingEngine {
         config: &serde_yaml::Value,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::attacks::witness_collision::WitnessCollisionDetector;
+        use crate::oracles::witness_collision::WitnessCollisionDetector;
 
         let configured_samples = config
             .get("samples")

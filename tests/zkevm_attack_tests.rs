@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use zk_core::FieldElement;
-use zk_fuzzer::attacks::zkevm::{
+use zk_fuzzer::oracles::zkevm::{
     ZkEvmAttack, ZkEvmCallDetector, ZkEvmConfig, ZkEvmPriceAnalyzer, ZkEvmTestResult,
     ZkEvmVulnerabilityType, EVM_OPCODES,
 };

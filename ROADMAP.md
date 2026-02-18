@@ -152,6 +152,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Moved scan progress polling + findings-summary readers into `scan_progress`.
    - Moved scan output-suffix isolation/allocation/summary helpers into `scan_output`.
    - Kept `main.rs` focused on command dispatch and run orchestration by importing these modules.
+76. Deleted legacy attack-module and mode naming surfaces instead of hiding them (`src/lib.rs`, `src/oracles/`, `src/main.rs`, `tests/mode123_nonregression.rs`):
+   - Removed `src/attacks` module path by renaming it to `src/oracles` and updating all internal/external imports from `attacks` to `oracles`.
+   - Removed hardcoded legacy engagement folders `mode1/mode2/mode3`; runtime now uses command-native folders `scan/chains/misc`.
+   - Updated scan campaign command labeling to emit `command="scan"` in run artifacts so engagement summaries route to `modes.scan`.
+   - Updated non-regression engagement contract fixture to assert `scan/` paths and `modes.scan` instead of legacy `misc` fallback.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -269,6 +274,14 @@ Validation:
     - `cargo test -q scan_selector_regex_safety_ -- --test-threads=1`
 56. Full selector regression suite spot-check after runtime helper module extraction:
     - `cargo test -q scan_selector_tests:: -- --test-threads=1`
+57. Compile + contract checks after deleting legacy `attacks` module path and mode folder names:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q --test mode123_nonregression scan_engagement_contract_fixture_passes -- --test-threads=1`
+    - `cargo test -q --test integration_tests test_underconstrained_detector -- --test-threads=1`
+58. Workspace + oracle import regression checks after `attacks` -> `oracles` migration:
+    - `cargo check -q --workspace`
+    - `cargo test -q --test new_scanners_tests test_canonicalization_checker_detects_non_canonical -- --test-threads=1`
+    - `cargo test -q --test batch_verification_tests test_batch_mixing_detection_integration -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 

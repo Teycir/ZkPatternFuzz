@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::spec_inference::SpecInferenceOracle;
+//! use zk_fuzzer::oracles::spec_inference::SpecInferenceOracle;
 //!
 //! let oracle = SpecInferenceOracle::new()
 //!     .with_sample_count(1000);

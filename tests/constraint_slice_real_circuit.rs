@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use zk_core::FieldElement;
-use zk_fuzzer::attacks::{ConstraintSliceOracle, OutputMapping};
+use zk_fuzzer::oracles::{ConstraintSliceOracle, OutputMapping};
 use zk_fuzzer::executor::{CircomExecutor, CircuitExecutor};
 use zk_fuzzer::targets::CircomTarget;
 

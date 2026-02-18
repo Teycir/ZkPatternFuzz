@@ -22,7 +22,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::mev::{MevAttack, MevConfig};
+//! use zk_fuzzer::oracles::mev::{MevAttack, MevConfig};
 //!
 //! let config = MevConfig::default();
 //! let mut attack = MevAttack::new(config);

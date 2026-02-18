@@ -33,7 +33,7 @@ DeFi protocols using ZK proofs can be vulnerable to:
 ### Usage
 
 ```rust
-use zk_fuzzer::attacks::mev::{MevAttack, MevConfig};
+use zk_fuzzer::oracles::mev::{MevAttack, MevConfig};
 
 let config = MevConfig {
     ordering_permutations: 100,
@@ -94,7 +94,7 @@ pub struct MevConfig {
 ### Usage
 
 ```rust
-use zk_fuzzer::attacks::front_running::{FrontRunningAttack, FrontRunningConfig};
+use zk_fuzzer::oracles::front_running::{FrontRunningAttack, FrontRunningConfig};
 
 let config = FrontRunningConfig {
     leakage_tests: 100,
@@ -117,7 +117,7 @@ let findings = attack.run(&executor, &inputs)?;
 For DEX circuits, analyze price impact:
 
 ```rust
-use zk_fuzzer::attacks::mev::PriceImpactAnalyzer;
+use zk_fuzzer::oracles::mev::PriceImpactAnalyzer;
 
 let mut analyzer = PriceImpactAnalyzer::new(0.05); // 5% max slippage
 
@@ -138,7 +138,7 @@ if let Some(finding) = analyzer.analyze() {
 For multi-circuit protocols:
 
 ```rust
-use zk_fuzzer::attacks::mev::ArbitrageDetector;
+use zk_fuzzer::oracles::mev::ArbitrageDetector;
 
 let mut detector = ArbitrageDetector::new();
 
@@ -159,7 +159,7 @@ for finding in findings {
 For privacy circuits:
 
 ```rust
-use zk_fuzzer::attacks::front_running::StateLeakageAnalyzer;
+use zk_fuzzer::oracles::front_running::StateLeakageAnalyzer;
 
 let mut analyzer = StateLeakageAnalyzer::new(50);
 

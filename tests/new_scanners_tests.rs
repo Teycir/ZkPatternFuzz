@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use zk_core::{CircuitInfo, ExecutionCoverage, ExecutionResult, Framework};
-use zk_fuzzer::attacks::{
+use zk_fuzzer::oracles::{
     CanonicalizationChecker, CrossBackendDifferential, DeterminismOracle, FrozenWireDetector,
     NullifierReplayScanner, ProofMalleabilityScanner, SetupPoisoningDetector,
 };

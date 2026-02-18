@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::constraint_inference::ConstraintInferenceEngine;
+//! use zk_fuzzer::oracles::constraint_inference::ConstraintInferenceEngine;
 //!
 //! let engine = ConstraintInferenceEngine::new()
 //!     .with_category(ConstraintCategory::BitDecompositionRoundTrip)

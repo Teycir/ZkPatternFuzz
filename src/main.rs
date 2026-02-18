@@ -494,11 +494,11 @@ fn run_id_epoch_dir(run_id: &str) -> Option<String> {
 }
 
 fn engagement_dir_name(run_id: &str) -> String {
-    // Allow grouping multiple processes (mode1 + mode2 + mode3) into the same report folder.
+    // Allow grouping multiple processes (scan/chains/misc) into the same report folder.
     //
     // Example:
     //   export ZKF_ENGAGEMENT_EPOCH=176963063
-    //   ... run mode1, mode2, mode3 ...
+    //   ... run scan and chains ...
     //   => /home/<user>/ZkFuzz/report_176963063/
     if let Some(epoch) = read_optional_env("ZKF_ENGAGEMENT_EPOCH") {
         let trimmed = epoch.trim();
@@ -542,9 +542,8 @@ fn engagement_root_dir(run_id: &str) -> PathBuf {
 
 fn mode_folder_from_command(command: &str) -> &'static str {
     match command {
-        "run" => "mode1",
-        "evidence" => "mode2",
-        "chains" => "mode3",
+        "scan" => "scan",
+        "chains" => "chains",
         _ => "misc",
     }
 }
@@ -553,9 +552,9 @@ fn ensure_engagement_layout(report_dir: &Path) {
     for dir in [
         report_dir.to_path_buf(),
         report_dir.join("log"),
-        report_dir.join("mode1"),
-        report_dir.join("mode2"),
-        report_dir.join("mode3"),
+        report_dir.join("scan"),
+        report_dir.join("chains"),
+        report_dir.join("misc"),
     ] {
         if let Err(err) = std::fs::create_dir_all(&dir) {
             tracing::warn!(
@@ -723,9 +722,14 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
     md.push_str(&format!("Updated (UTC): `{}`\n\n", now));
 
     if let Some(modes) = summary.get("modes").and_then(|m| m.as_object()) {
-        for key in ["mode1", "mode2", "mode3"] {
-            let v = modes.get(key);
-            md.push_str(&format!("## {}\n\n", key));
+        let sections: [(&str, &[&str]); 3] = [
+            ("scan", &["scan"]),
+            ("chains", &["chains"]),
+            ("misc", &["misc"]),
+        ];
+        for (section_name, aliases) in sections {
+            let v = aliases.iter().find_map(|key| modes.get(*key));
+            md.push_str(&format!("## {}\n\n", section_name));
             if let Some(v) = v {
                 let status = v
                     .get("status")
@@ -1523,6 +1527,7 @@ fn initialize_campaign_run_lifecycle(
 
 fn campaign_run_options_doc(options: &CampaignRunOptions) -> serde_json::Value {
     serde_json::json!({
+        "command": options.command_label,
         "workers": options.workers,
         "seed": options.seed,
         "iterations": options.iterations,
@@ -2092,6 +2097,7 @@ enum ScanFamily {
 
 #[derive(Debug, Clone)]
 struct CampaignRunOptions {
+    command_label: &'static str,
     workers: usize,
     seed: Option<u64>,
     verbose: bool,
@@ -2241,6 +2247,7 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
                 &framework,
                 output_suffix.as_deref(),
                 CampaignRunOptions {
+                    command_label: "scan",
                     workers: cli.workers,
                     seed: cli.seed,
                     verbose: cli.verbose,
@@ -3601,11 +3608,7 @@ fn validate_pattern_only_yaml(path: &str, mode_name: &str) -> anyhow::Result<()>
 
 async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow::Result<()> {
     let started_utc = Utc::now();
-    let command = if options.require_invariants {
-        "evidence"
-    } else {
-        "run"
-    };
+    let command = options.command_label;
     let run_id = make_run_id(command, Some(config_path));
     let report_dir = engagement_root_dir(&run_id);
     let mut stage = "load_config";
@@ -3735,7 +3738,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     }
 
     // Provide a stable identifier for the engine to emit progress snapshots into output_dir.
-    // This also allows the "engagement report" to group mode1/mode2/mode3 runs together.
+    // This allows the engagement report to group scan/chains activity consistently.
     config.campaign.parameters.additional.insert(
         "run_id".to_string(),
         serde_yaml::Value::String(run_id.clone()),

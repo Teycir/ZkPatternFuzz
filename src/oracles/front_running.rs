@@ -20,7 +20,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::front_running::{FrontRunningAttack, FrontRunningConfig};
+//! use zk_fuzzer::oracles::front_running::{FrontRunningAttack, FrontRunningConfig};
 //!
 //! let config = FrontRunningConfig::default();
 //! let mut attack = FrontRunningAttack::new(config);

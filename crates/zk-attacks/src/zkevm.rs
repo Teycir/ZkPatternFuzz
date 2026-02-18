@@ -24,7 +24,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::zkevm::{ZkEvmAttack, ZkEvmConfig};
+//! use zk_fuzzer::oracles::zkevm::{ZkEvmAttack, ZkEvmConfig};
 //!
 //! let config = ZkEvmConfig::default();
 //! let mut attack = ZkEvmAttack::new(config);

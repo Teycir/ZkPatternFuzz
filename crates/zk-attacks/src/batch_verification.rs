@@ -24,7 +24,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::batch_verification::{BatchVerificationAttack, BatchVerificationConfig};
+//! use zk_fuzzer::oracles::batch_verification::{BatchVerificationAttack, BatchVerificationConfig};
 //!
 //! let config = BatchVerificationConfig::default();
 //! let mut attack = BatchVerificationAttack::new(config);

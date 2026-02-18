@@ -11,7 +11,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use zk_core::FieldElement;
-use zk_fuzzer::attacks::constraint_inference::{
+use zk_fuzzer::oracles::constraint_inference::{
     ConstraintCategory, ConstraintInferenceEngine, ViolationConfirmation,
 };
 use zk_fuzzer::executor::{CircomExecutor, CircuitExecutor};
@@ -236,7 +236,7 @@ async fn test_constraint_inference_merkle() {
 #[test]
 fn test_constraint_inference_to_findings() {
     use zk_core::{AttackType, Severity};
-    use zk_fuzzer::attacks::constraint_inference::{ConstraintInferenceEngine, ImpliedConstraint};
+    use zk_fuzzer::oracles::constraint_inference::{ConstraintInferenceEngine, ImpliedConstraint};
 
     let engine = ConstraintInferenceEngine::new();
 

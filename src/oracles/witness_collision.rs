@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::witness_collision::WitnessCollisionDetector;
+//! use zk_fuzzer::oracles::witness_collision::WitnessCollisionDetector;
 //!
 //! let detector = WitnessCollisionDetector::new()
 //!     .with_samples(100000);

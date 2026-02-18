@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 use zk_core::{FieldElement, Severity};
-use zk_fuzzer::attacks::recursive::{
+use zk_fuzzer::oracles::recursive::{
     AccumulatorState, Halo2AccumulationAnalyzer, NovaAnalyzer, RecursiveAttack,
     RecursiveAttackConfig, RecursiveStep, RecursiveSystem, RecursiveVulnerabilityType,
     SupernovaAnalyzer,

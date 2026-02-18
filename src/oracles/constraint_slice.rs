@@ -14,7 +14,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::constraint_slice::ConstraintSlicer;
+//! use zk_fuzzer::oracles::constraint_slice::ConstraintSlicer;
 //!
 //! let slicer = ConstraintSlicer::new();
 //! let cone = slicer.slice_to_output(&inspector, output_idx)?;

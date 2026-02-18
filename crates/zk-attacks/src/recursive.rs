@@ -32,7 +32,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::recursive::{RecursiveAttack, RecursiveAttackConfig};
+//! use zk_fuzzer::oracles::recursive::{RecursiveAttack, RecursiveAttackConfig};
 //!
 //! let config = RecursiveAttackConfig::default();
 //! let mut attack = RecursiveAttack::new(config);

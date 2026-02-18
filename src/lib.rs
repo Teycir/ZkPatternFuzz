@@ -135,7 +135,7 @@
 //!
 //! - [`executor`] - Circuit execution abstraction layer
 //! - [`fuzzer`] - Core fuzzing engine with mutation strategies
-//! - [`attacks`] - Vulnerability-specific attack implementations
+//! - [`oracles`] - Vulnerability-specific attack implementations
 //! - [`corpus`] - Test case storage and minimization
 //! - [`analysis`] - Symbolic execution, taint analysis, profiling
 //! - [`differential`] - Cross-backend differential testing
@@ -210,7 +210,7 @@
 //! - [Circom Documentation](https://docs.circom.io/)
 //! - [Noir Documentation](https://noir-lang.org/)
 
-pub mod attacks;
+pub mod oracles;
 pub mod config;
 pub mod corpus;
 pub mod cve;

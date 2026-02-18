@@ -252,7 +252,7 @@ docs/
 
 **Attack Types**
 - [README.md](../README.md) - Attack type summary
-- [src/attacks/](../src/attacks/) - Implementation details
+- [src/oracles/](../src/oracles/) - Implementation details
 
 **Development**
 - [ARCHITECTURE.md](../ARCHITECTURE.md) - System design

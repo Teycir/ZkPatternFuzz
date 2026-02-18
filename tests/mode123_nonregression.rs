@@ -122,13 +122,13 @@ fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
             "engagement incremental results stream",
             engagement_dir.join("incremental_results.jsonl"),
         ),
-        ("scan mode latest pointer", engagement_dir.join("misc/latest.json")),
-        ("scan mode event stream", engagement_dir.join("misc/events.jsonl")),
+        ("scan mode latest pointer", engagement_dir.join("scan/latest.json")),
+        ("scan mode event stream", engagement_dir.join("scan/events.jsonl")),
         (
             "scan mode incremental results stream",
-            engagement_dir.join("misc/incremental_results.jsonl"),
+            engagement_dir.join("scan/incremental_results.jsonl"),
         ),
-        ("scan mode run outcome", engagement_dir.join("misc/run_outcome.json")),
+        ("scan mode run outcome", engagement_dir.join("scan/run_outcome.json")),
     ];
     for (label, path) in required {
         assert_exists(&path, label, run_label);
@@ -140,23 +140,23 @@ fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
         .get("modes")
         .and_then(|v| v.as_object())
         .unwrap_or_else(|| panic!("summary.json missing object field 'modes'"));
-    let misc = modes
-        .get("misc")
+    let scan = modes
+        .get("scan")
         .and_then(|v| v.as_object())
-        .unwrap_or_else(|| panic!("summary.json missing object field 'modes.misc'"));
+        .unwrap_or_else(|| panic!("summary.json missing object field 'modes.scan'"));
 
     for key in ["status", "command", "run_id", "stage", "started_utc", "output_dir"] {
         assert!(
-            misc.contains_key(key),
-            "Scan '{}' summary contract missing 'modes.misc.{}'",
+            scan.contains_key(key),
+            "Scan '{}' summary contract missing 'modes.scan.{}'",
             run_label,
             key
         );
     }
     assert_eq!(
-        misc.get("command").and_then(|v| v.as_str()),
+        scan.get("command").and_then(|v| v.as_str()),
         Some("scan"),
-        "Scan '{}' expected modes.misc.command=scan",
+        "Scan '{}' expected modes.scan.command=scan",
         run_label
     );
 
@@ -166,25 +166,25 @@ fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
         .get("run_id")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("latest.json missing run_id"));
-    let summary_run_id = misc
+    let summary_run_id = scan
         .get("run_id")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("summary.json modes.misc missing run_id"));
+        .unwrap_or_else(|| panic!("summary.json modes.scan missing run_id"));
     assert_eq!(
         latest_run_id, summary_run_id,
         "Scan '{}' run_id mismatch between latest.json and summary.json",
         run_label
     );
 
-    let run_outcome_path = engagement_dir.join("misc/run_outcome.json");
+    let run_outcome_path = engagement_dir.join("scan/run_outcome.json");
     let run_outcome = read_json(&run_outcome_path);
     let run_outcome_run_id = run_outcome
         .get("run_id")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("misc/run_outcome.json missing run_id"));
+        .unwrap_or_else(|| panic!("scan/run_outcome.json missing run_id"));
     assert_eq!(
         run_outcome_run_id, summary_run_id,
-        "Scan '{}' run_id mismatch between misc/run_outcome.json and summary.json",
+        "Scan '{}' run_id mismatch between scan/run_outcome.json and summary.json",
         run_label
     );
 }
@@ -262,15 +262,15 @@ fn scan_engagement_contract_fixture_passes() {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let engagement_dir = temp_dir.path();
     std::fs::create_dir_all(engagement_dir.join("log")).expect("mkdir log");
-    std::fs::create_dir_all(engagement_dir.join("misc")).expect("mkdir misc");
+    std::fs::create_dir_all(engagement_dir.join("scan")).expect("mkdir scan");
 
     std::fs::write(engagement_dir.join("summary.md"), "# Summary\n").expect("write summary.md");
     std::fs::write(engagement_dir.join("log/events.jsonl"), "{}\n").expect("write log events");
     std::fs::write(engagement_dir.join("incremental_results.jsonl"), "{}\n")
         .expect("write incremental events");
-    std::fs::write(engagement_dir.join("misc/events.jsonl"), "{}\n").expect("write misc events");
-    std::fs::write(engagement_dir.join("misc/incremental_results.jsonl"), "{}\n")
-        .expect("write misc incremental events");
+    std::fs::write(engagement_dir.join("scan/events.jsonl"), "{}\n").expect("write scan events");
+    std::fs::write(engagement_dir.join("scan/incremental_results.jsonl"), "{}\n")
+        .expect("write scan incremental events");
 
     let run_doc = serde_json::json!({
         "status": "completed",
@@ -281,15 +281,15 @@ fn scan_engagement_contract_fixture_passes() {
         "output_dir": "/tmp/out"
     });
     std::fs::write(
-        engagement_dir.join("misc/run_outcome.json"),
+        engagement_dir.join("scan/run_outcome.json"),
         serde_json::to_vec_pretty(&run_doc).expect("serialize run outcome"),
     )
-    .expect("write misc/run_outcome.json");
+    .expect("write scan/run_outcome.json");
     std::fs::write(
-        engagement_dir.join("misc/latest.json"),
-        serde_json::to_vec_pretty(&run_doc).expect("serialize misc latest"),
+        engagement_dir.join("scan/latest.json"),
+        serde_json::to_vec_pretty(&run_doc).expect("serialize scan latest"),
     )
-    .expect("write misc/latest.json");
+    .expect("write scan/latest.json");
     std::fs::write(
         engagement_dir.join("latest.json"),
         serde_json::to_vec_pretty(&run_doc).expect("serialize latest"),
@@ -301,7 +301,7 @@ fn scan_engagement_contract_fixture_passes() {
             "updated_utc": "2026-02-18T12:00:01Z",
             "report_dir": engagement_dir.display().to_string(),
             "modes": {
-                "misc": run_doc
+                "scan": run_doc
             }
         }))
         .expect("serialize summary"),

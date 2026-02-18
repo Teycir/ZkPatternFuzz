@@ -26,7 +26,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use zk_fuzzer::attacks::metamorphic::{MetamorphicOracle, CircuitType};
+//! use zk_fuzzer::oracles::metamorphic::{MetamorphicOracle, CircuitType};
 //!
 //! // Circuit-type-aware oracle (Phase 0 fix)
 //! let oracle = MetamorphicOracle::new()

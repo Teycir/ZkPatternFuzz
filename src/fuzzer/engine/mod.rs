@@ -112,7 +112,7 @@ mod prelude {
         collect_input_wire_indices, ConstraintSeedGenerator, ConstraintSeedOutput,
         EnhancedSymbolicConfig, PruningStrategy,
     };
-    pub(super) use crate::attacks::{
+    pub(super) use crate::oracles::{
         Attack as AttackTrait, AttackContext, AttackRegistry, DynamicLibraryLoader,
     };
     pub(super) use crate::config::*;

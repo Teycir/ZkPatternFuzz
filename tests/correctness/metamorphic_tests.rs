@@ -11,7 +11,7 @@
 //! - Signature circuits: Message binding
 //! - Range/Arithmetic: Scaling, boundary testing
 
-use zk_fuzzer::attacks::metamorphic::{CircuitType, MetamorphicOracle};
+use zk_fuzzer::oracles::metamorphic::{CircuitType, MetamorphicOracle};
 
 /// Test circuit type detection from name
 #[test]

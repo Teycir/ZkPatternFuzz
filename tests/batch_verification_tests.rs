@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 use zk_core::{FieldElement, Severity};
-use zk_fuzzer::attacks::batch_verification::{
+use zk_fuzzer::oracles::batch_verification::{
     AggregationMethod, BatchVerificationAnalyzer, BatchVerificationAttack, BatchVerificationConfig,
     BatchVerificationFinding, BatchVerificationResult, BatchVulnerabilityType, InvalidPosition,
 };
@@ -316,7 +316,7 @@ fn test_finding_to_generic_conversion() {
 
 #[test]
 fn test_finding_with_poc() {
-    use zk_fuzzer::attacks::batch_verification::BatchProofOfConcept;
+    use zk_fuzzer::oracles::batch_verification::BatchProofOfConcept;
 
     let poc = BatchProofOfConcept {
         inputs: vec![FieldElement::one(), FieldElement::zero()],

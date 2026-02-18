@@ -4,8 +4,8 @@ use super::FuzzingEngine;
 impl FuzzingEngine {
     pub(super) fn build_metamorphic_relations(
         &self,
-    ) -> Vec<crate::attacks::metamorphic::MetamorphicRelation> {
-        use crate::attacks::metamorphic::MetamorphicRelation;
+    ) -> Vec<crate::oracles::metamorphic::MetamorphicRelation> {
+        use crate::oracles::metamorphic::MetamorphicRelation;
         use crate::config::v2::InvariantType;
 
         let invariants = self.config.get_invariants();
@@ -45,8 +45,8 @@ impl FuzzingEngine {
 
     pub(super) fn auto_metamorphic_relations(
         &self,
-    ) -> Vec<crate::attacks::metamorphic::MetamorphicRelation> {
-        use crate::attacks::metamorphic::{ExpectedBehavior, MetamorphicRelation, Transform};
+    ) -> Vec<crate::oracles::metamorphic::MetamorphicRelation> {
+        use crate::oracles::metamorphic::{ExpectedBehavior, MetamorphicRelation, Transform};
         let traits = self.config.get_target_traits();
         if Self::traits_are_empty(&traits) {
             return Vec::new();
@@ -217,8 +217,8 @@ impl FuzzingEngine {
         &self,
         transform: &str,
         input_map: &std::collections::HashMap<String, usize>,
-    ) -> Option<crate::attacks::metamorphic::Transform> {
-        use crate::attacks::metamorphic::Transform;
+    ) -> Option<crate::oracles::metamorphic::Transform> {
+        use crate::oracles::metamorphic::Transform;
 
         let raw = transform.trim();
         if raw.eq_ignore_ascii_case("swap_sibling_order") {
@@ -321,8 +321,8 @@ impl FuzzingEngine {
     pub(super) fn parse_expected_behavior(
         &self,
         expected: Option<&str>,
-    ) -> crate::attacks::metamorphic::ExpectedBehavior {
-        use crate::attacks::metamorphic::ExpectedBehavior;
+    ) -> crate::oracles::metamorphic::ExpectedBehavior {
+        use crate::oracles::metamorphic::ExpectedBehavior;
 
         let Some(raw) = expected else {
             return ExpectedBehavior::OutputChanged;
