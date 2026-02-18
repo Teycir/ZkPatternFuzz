@@ -1302,6 +1302,77 @@ impl CveOracle {
             .map(|finding| self.adapt_semantic_finding(pattern, finding))
     }
 
+    fn check_with_semantic_ensemble(
+        &self,
+        pattern: &CvePattern,
+        test_case: &TestCase,
+        output: &[FieldElement],
+    ) -> Option<Finding> {
+        self.check_with_nullifier_oracle(pattern, test_case, output)
+            .or_else(|| self.check_with_merkle_oracle(pattern, test_case, output))
+            .or_else(|| self.check_with_range_oracle(pattern, test_case, output))
+            .or_else(|| self.check_with_commitment_oracle(pattern, test_case, output))
+    }
+
+    fn normalize_route_key(raw: &str) -> String {
+        raw.trim()
+            .to_ascii_lowercase()
+            .replace('-', "_")
+            .replace(' ', "_")
+    }
+
+    fn route_pattern_key(
+        &self,
+        key: &str,
+        pattern: &CvePattern,
+        test_case: &TestCase,
+        output: &[FieldElement],
+    ) -> Option<Finding> {
+        match key {
+            "signature_malleability" => self.check_signature_malleability(pattern, test_case),
+            "nullifier_collision"
+            | "replay_protection"
+            | "randomness_reuse"
+            | "linkability_analysis"
+            | "witness_collision"
+            | "collision" => self.check_with_nullifier_oracle(pattern, test_case, output),
+            "merkle_soundness"
+            | "state_transition"
+            | "ordering_dependency"
+            | "batch_soundness"
+            | "recursive_soundness"
+            | "recursive_base_case"
+            | "storage_soundness" => self.check_with_merkle_oracle(pattern, test_case, output),
+            "range_overflow"
+            | "arithmetic_boundary"
+            | "opcode_boundary"
+            | "opcode_bounds"
+            | "accumulator_overflow"
+            | "lookup_soundness"
+            | "gate_activation"
+            | "gas_accounting"
+            | "gas_analysis"
+            | "price_manipulation"
+            | "boundary"
+            | "arithmetic_overflow" => self.check_with_range_oracle(pattern, test_case, output),
+            "vk_binding"
+            | "fiat_shamir_binding"
+            | "point_validation"
+            | "cofactor_attack"
+            | "oracle_manipulation"
+            | "information_leakage"
+            | "timing_analysis" => self.check_with_commitment_oracle(pattern, test_case, output),
+            "underconstrained"
+            | "soundness"
+            | "assigned_not_constrained"
+            | "constraint_inference"
+            | "constraint_slice"
+            | "spec_inference"
+            | "metamorphic" => self.check_with_semantic_ensemble(pattern, test_case, output),
+            _ => None,
+        }
+    }
+
     /// Create oracle with all patterns active
     pub fn new(database: CveDatabase) -> Self {
         let active_patterns = database
@@ -1341,40 +1412,25 @@ impl CveOracle {
         test_case: &TestCase,
         output: &[FieldElement],
     ) -> Option<Finding> {
-        match pattern.detection.oracle.as_str() {
-            "signature_malleability" => self.check_signature_malleability(pattern, test_case),
-            "nullifier_collision"
-            | "replay_protection"
-            | "randomness_reuse"
-            | "linkability_analysis" => {
-                self.check_with_nullifier_oracle(pattern, test_case, output)
-            }
-            "merkle_soundness"
-            | "state_transition"
-            | "ordering_dependency"
-            | "batch_soundness"
-            | "recursive_soundness"
-            | "recursive_base_case"
-            | "storage_soundness" => self.check_with_merkle_oracle(pattern, test_case, output),
-            "range_overflow"
-            | "arithmetic_boundary"
-            | "opcode_boundary"
-            | "opcode_bounds"
-            | "accumulator_overflow"
-            | "lookup_soundness"
-            | "gate_activation"
-            | "gas_accounting"
-            | "gas_analysis"
-            | "price_manipulation" => self.check_with_range_oracle(pattern, test_case, output),
-            "vk_binding"
-            | "fiat_shamir_binding"
-            | "point_validation"
-            | "cofactor_attack"
-            | "oracle_manipulation"
-            | "information_leakage"
-            | "timing_analysis" => self.check_with_commitment_oracle(pattern, test_case, output),
-            _ => None,
+        let oracle_key = Self::normalize_route_key(&pattern.detection.oracle);
+        if let Some(finding) = self.route_pattern_key(&oracle_key, pattern, test_case, output) {
+            return Some(finding);
         }
+
+        let attack_key = Self::normalize_route_key(&pattern.detection.attack_type);
+        if attack_key != oracle_key {
+            if let Some(finding) = self.route_pattern_key(&attack_key, pattern, test_case, output) {
+                return Some(finding);
+            }
+        }
+
+        tracing::debug!(
+            "No CVE oracle route for pattern {} (oracle='{}', attack_type='{}')",
+            pattern.id,
+            pattern.detection.oracle,
+            pattern.detection.attack_type
+        );
+        None
     }
 
     /// Check for signature malleability

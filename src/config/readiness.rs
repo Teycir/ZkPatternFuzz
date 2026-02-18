@@ -438,9 +438,10 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     for attack in &config.attacks {
         if matches!(attack.attack_type, crate::config::AttackType::Soundness) {
             let forge_attempts = attack.config.get("forge_attempts").and_then(|v| v.as_u64());
-            let forge_attempts = forge_attempts.unwrap_or(0);
 
-            if forge_attempts == 0 {
+            // Runner defaults to 1000 forge attempts when this field is absent.
+            // Only flag explicit low/zero values here.
+            if forge_attempts == Some(0) {
                 warnings.push(if engagement_strict {
                     ReadinessWarning::critical("Attacks", "Soundness attack has 0 forge_attempts")
                         .with_fix("Set forge_attempts >= 1000")
@@ -448,13 +449,13 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
                     ReadinessWarning::high("Attacks", "Soundness attack has 0 forge_attempts")
                         .with_fix("Set forge_attempts >= 1000")
                 });
-            } else if forge_attempts < 100 {
+            } else if matches!(forge_attempts, Some(value) if value < 100) {
                 warnings.push(
                     ReadinessWarning::medium(
                         "Attacks",
                         &format!(
                             "Soundness attack has only {} forge_attempts",
-                            forge_attempts
+                            forge_attempts.unwrap_or_default()
                         ),
                     )
                     .with_fix("Set forge_attempts >= 1000 for thorough testing"),

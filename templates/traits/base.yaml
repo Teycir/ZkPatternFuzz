@@ -48,6 +48,62 @@ invariants:
     severity: "critical"
     description: "Same inputs must produce same outputs"
 
+# Baseline attacks required for strict engagement and phased schedules
+attacks:
+  - type: "underconstrained"
+    description: "Baseline missing-constraint discovery"
+    config:
+      witness_pairs: 1000
+
+  - type: "soundness"
+    description: "Baseline proof-forgery and verification soundness testing"
+    config:
+      forge_attempts: 1000
+      mutation_rate: 0.1
+
+  - type: "boundary"
+    description: "Boundary and edge-value probing"
+    config:
+      test_values: ["0", "1", "p-1", "p"]
+
+  - type: "arithmetic_overflow"
+    description: "Arithmetic overflow/underflow probing"
+    config:
+      test_values: ["0", "1", "p-1", "p"]
+
+  - type: "collision"
+    description: "Collision and equivalence-class probing"
+    config:
+      num_tests: 1000
+
+  - type: "constraint_inference"
+    description: "Infer and validate implied constraints"
+    config:
+      confidence_threshold: 0.7
+      confirm_violations: true
+
+  - type: "metamorphic"
+    description: "Transform-based invariant violation testing"
+    config:
+      num_tests: 100
+
+  - type: "constraint_slice"
+    description: "Dependency-cone mutation and leak detection"
+    config:
+      samples_per_cone: 100
+      base_witness_attempts: 5
+
+  - type: "spec_inference"
+    description: "Learn and violate inferred behavioral specs"
+    config:
+      sample_count: 500
+
+  - type: "witness_collision"
+    description: "Enhanced witness collision discovery"
+    config:
+      samples: 10000
+      scope_public_inputs: true
+
 # Default attack schedule
 schedule:
   - phase: "exploration"
@@ -74,6 +130,16 @@ schedule:
       - "soundness"
       - "collision"
       - "boundary"
+    carry_corpus: true
+
+  - phase: "novel_oracles"
+    duration_sec: 180
+    attacks:
+      - "constraint_inference"
+      - "metamorphic"
+      - "constraint_slice"
+      - "spec_inference"
+      - "witness_collision"
     carry_corpus: true
 
 # Base mutations

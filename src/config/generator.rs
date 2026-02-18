@@ -18,7 +18,7 @@ use super::v2::{
 use super::{Attack, Campaign, FuzzConfig, Input, Parameters, ReportingConfig, Target};
 use std::collections::HashMap;
 use std::path::Path;
-use zk_core::{AttackType, Framework};
+use zk_core::{AttackType, Framework, Severity};
 
 /// Pattern detection result
 #[derive(Debug, Clone)]
@@ -109,7 +109,7 @@ impl ConfigGenerator {
         let invariants = self.generate_invariants(&patterns);
 
         // Generate attack schedule based on detected patterns
-        let schedule = self.generate_schedule(&patterns);
+        let schedule = self.generate_schedule(&patterns, framework);
 
         // Detect inputs from source
         let inputs = self.detect_inputs(source, framework);
@@ -124,7 +124,7 @@ impl ConfigGenerator {
         let main_component = detect_main_component(source, framework)?;
 
         // Build attacks based on patterns
-        let attacks = self.generate_attacks(&patterns);
+        let attacks = self.generate_attacks(&patterns, framework);
 
         let config = FuzzConfigV2 {
             includes,
@@ -260,9 +260,29 @@ impl ConfigGenerator {
     }
 
     /// Generate attack schedule based on detected patterns
-    fn generate_schedule(&self, patterns: &[DetectedPattern]) -> Vec<SchedulePhase> {
+    fn generate_schedule(
+        &self,
+        patterns: &[DetectedPattern],
+        framework: Framework,
+    ) -> Vec<SchedulePhase> {
+        let mut static_attacks = vec!["quantum_resistance".to_string()];
+        if framework == Framework::Circom {
+            static_attacks.push("circom_static_lint".to_string());
+        }
+
         let mut phases = vec![
-            // Always start with exploration
+            // Always run a cheap static prepass before dynamic exploration.
+            SchedulePhase {
+                phase: "static_prepass".to_string(),
+                duration_sec: 15,
+                attacks: static_attacks,
+                max_iterations: Some(1),
+                early_terminate: None,
+                fail_on_findings: vec![Severity::Critical, Severity::High],
+                carry_corpus: true,
+                mutation_weights: HashMap::new(),
+            },
+            // Follow with dynamic exploration.
             SchedulePhase {
                 phase: "exploration".to_string(),
                 duration_sec: 60,
@@ -308,6 +328,23 @@ impl ConfigGenerator {
             phase: "deep_testing".to_string(),
             duration_sec: 300,
             attacks: deep_attacks,
+            max_iterations: None,
+            early_terminate: None,
+            fail_on_findings: Vec::new(),
+            carry_corpus: true,
+            mutation_weights: HashMap::new(),
+        });
+
+        phases.push(SchedulePhase {
+            phase: "novel_oracles".to_string(),
+            duration_sec: 180,
+            attacks: vec![
+                "constraint_inference".to_string(),
+                "metamorphic".to_string(),
+                "constraint_slice".to_string(),
+                "spec_inference".to_string(),
+                "witness_collision".to_string(),
+            ],
             max_iterations: None,
             early_terminate: None,
             fail_on_findings: Vec::new(),
@@ -399,7 +436,13 @@ impl ConfigGenerator {
     }
 
     /// Generate attacks based on detected patterns
-    fn generate_attacks(&self, patterns: &[DetectedPattern]) -> Vec<Attack> {
+    fn generate_attacks(&self, patterns: &[DetectedPattern], framework: Framework) -> Vec<Attack> {
+        let mut soundness_config = serde_yaml::Mapping::new();
+        soundness_config.insert(
+            serde_yaml::Value::String("forge_attempts".to_string()),
+            serde_yaml::Value::Number(serde_yaml::Number::from(1000u64)),
+        );
+
         let mut attacks = vec![
             Attack {
                 attack_type: AttackType::Underconstrained,
@@ -408,12 +451,33 @@ impl ConfigGenerator {
                 config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
             },
             Attack {
+                attack_type: AttackType::Soundness,
+                description: "Auto-detected: Proof soundness testing".to_string(),
+                plugin: None,
+                config: serde_yaml::Value::Mapping(soundness_config),
+            },
+            Attack {
                 attack_type: AttackType::Boundary,
                 description: "Auto-detected: Boundary value testing".to_string(),
                 plugin: None,
                 config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
             },
+            Attack {
+                attack_type: AttackType::QuantumResistance,
+                description: "Baseline static scan for quantum-vulnerable primitives".to_string(),
+                plugin: None,
+                config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+            },
         ];
+
+        if framework == Framework::Circom {
+            attacks.push(Attack {
+                attack_type: AttackType::CircomStaticLint,
+                description: "Baseline static lint checks for Circom constraints".to_string(),
+                plugin: None,
+                config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+            });
+        }
 
         for pattern in patterns {
             match &pattern.pattern_type {
@@ -444,12 +508,19 @@ impl ConfigGenerator {
                     }
                 }
                 PatternType::Signature => {
-                    attacks.push(Attack {
-                        attack_type: AttackType::Soundness,
-                        description: "Auto-detected: Signature forgery testing".to_string(),
-                        plugin: None,
-                        config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-                    });
+                    if !attacks
+                        .iter()
+                        .any(|a| a.attack_type == AttackType::Soundness)
+                    {
+                        attacks.push(Attack {
+                            attack_type: AttackType::Soundness,
+                            description: "Auto-detected: Signature forgery testing".to_string(),
+                            plugin: None,
+                            config: serde_yaml::from_str("forge_attempts: 1000").unwrap_or_else(
+                                |_| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+                            ),
+                        });
+                    }
                 }
                 PatternType::QuantumVulnerablePrimitive => {
                     if !attacks
@@ -481,6 +552,44 @@ impl ConfigGenerator {
                 }
                 _ => {}
             }
+        }
+
+        let strict_required = [
+            (
+                AttackType::ConstraintInference,
+                "Auto-enabled: Novel oracle constraint inference",
+            ),
+            (
+                AttackType::Metamorphic,
+                "Auto-enabled: Novel oracle metamorphic testing",
+            ),
+            (
+                AttackType::ConstraintSlice,
+                "Auto-enabled: Novel oracle constraint slicing",
+            ),
+            (
+                AttackType::SpecInference,
+                "Auto-enabled: Novel oracle spec inference",
+            ),
+            (
+                AttackType::WitnessCollision,
+                "Auto-enabled: Novel oracle witness collision",
+            ),
+        ];
+
+        for (attack_type, description) in strict_required {
+            if attacks
+                .iter()
+                .any(|attack| attack.attack_type == attack_type)
+            {
+                continue;
+            }
+            attacks.push(Attack {
+                attack_type,
+                description: description.to_string(),
+                plugin: None,
+                config: serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+            });
         }
 
         attacks

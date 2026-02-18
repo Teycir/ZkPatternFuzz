@@ -28,6 +28,13 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added generator pattern matchers for `quantum_resistance` and `trusted_setup` signals in source.
   - Added auto-attack and schedule injection so generated configs include these families when detected.
   - Treated `CircomStaticLint` source-located findings as static evidence to avoid hint-only downgrades in static-first lanes.
+- Completed strict-readiness schedule hardening in generator:
+  - Auto-generated schedules now start with `static_prepass` (max iteration 1) before dynamic exploration.
+  - `static_prepass` now uses phase-level fail-fast severities (`critical`/`high`) by default.
+  - Auto-generated baseline attacks now always include `soundness` (with `forge_attempts: 1000`) plus static scanners (`quantum_resistance`, and `circom_static_lint` for Circom).
+- Improved CVE oracle routing for recall:
+  - Added routing aliases for generic labels such as `underconstrained`, `soundness`, `boundary`, `arithmetic_overflow`, and `assigned_not_constrained`.
+  - Added fallback from `detection.oracle` to `detection.attack_type` plus debug logging for unmapped routes.
 - Completed first-class trusted setup module wiring:
   - Added `crates/zk-attacks/src/trusted_setup.rs` with `TrustedSetupAttack` + YAML-friendly `TrustedSetupConfig`.
   - Replaced local setup-poisoning implementation with `src/oracles/setup_poisoning.rs` re-exports from `zk-attacks`.

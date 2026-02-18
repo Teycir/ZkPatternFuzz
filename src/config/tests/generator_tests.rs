@@ -1,5 +1,6 @@
 use super::*;
 use std::path::Path;
+use zk_core::Severity;
 
 #[test]
 fn test_merkle_pattern_detection() {
@@ -227,4 +228,87 @@ fn test_generate_from_source_adds_quantum_and_trusted_setup_attacks() {
 
     assert!(attacks.contains(&AttackType::QuantumResistance));
     assert!(attacks.contains(&AttackType::TrustedSetup));
+}
+
+#[test]
+fn test_generate_from_source_includes_strict_required_attacks() {
+    let source = r#"
+            template Main() {
+                signal input a;
+                signal output out;
+                out <== a;
+            }
+            component main = Main();
+        "#;
+
+    let generator = ConfigGenerator::new();
+    let config = generator
+        .generate_from_source(source, Framework::Circom, Path::new("main.circom"))
+        .expect("config generation should succeed");
+
+    let attacks = config
+        .base
+        .as_ref()
+        .expect("base config should be present")
+        .attacks
+        .iter()
+        .map(|attack| attack.attack_type.clone())
+        .collect::<Vec<_>>();
+
+    assert!(attacks.contains(&AttackType::Underconstrained));
+    assert!(attacks.contains(&AttackType::Soundness));
+    assert!(attacks.contains(&AttackType::QuantumResistance));
+    assert!(attacks.contains(&AttackType::CircomStaticLint));
+    assert!(attacks.contains(&AttackType::ConstraintInference));
+    assert!(attacks.contains(&AttackType::Metamorphic));
+    assert!(attacks.contains(&AttackType::ConstraintSlice));
+    assert!(attacks.contains(&AttackType::SpecInference));
+    assert!(attacks.contains(&AttackType::WitnessCollision));
+}
+
+#[test]
+fn test_generate_schedule_includes_novel_oracle_phase() {
+    let source = r#"
+            template Main() {
+                signal input a;
+                signal output out;
+                out <== a;
+            }
+            component main = Main();
+        "#;
+
+    let generator = ConfigGenerator::new();
+    let config = generator
+        .generate_from_source(source, Framework::Circom, Path::new("main.circom"))
+        .expect("config generation should succeed");
+
+    let schedule = config.schedule;
+    let static_phase = schedule
+        .iter()
+        .find(|phase| phase.phase == "static_prepass")
+        .expect("static_prepass phase should exist");
+    assert_eq!(static_phase.max_iterations, Some(1));
+    assert!(static_phase.fail_on_findings.contains(&Severity::Critical));
+    assert!(static_phase.fail_on_findings.contains(&Severity::High));
+    assert!(static_phase
+        .attacks
+        .iter()
+        .any(|name| name == "quantum_resistance"));
+    assert!(static_phase
+        .attacks
+        .iter()
+        .any(|name| name == "circom_static_lint"));
+
+    let novel_phase = schedule
+        .iter()
+        .find(|phase| phase.phase == "novel_oracles")
+        .expect("novel_oracles phase should exist");
+    assert!(novel_phase
+        .attacks
+        .iter()
+        .any(|name| name == "constraint_inference"));
+    assert!(novel_phase
+        .attacks
+        .iter()
+        .any(|name| name == "witness_collision"));
 }

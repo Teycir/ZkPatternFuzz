@@ -10,6 +10,11 @@ attacks:
     config:
       witness_pairs: 8
       public_input_count: 1
+  - type: soundness
+    description: Minimal soundness smoke check
+    config:
+      forge_attempts: 10
+      mutation_rate: 0.1
   - type: boundary
     description: Minimal boundary smoke check
     config:
@@ -17,6 +22,27 @@ attacks:
         - "0"
         - "1"
         - "2"
+  - type: constraint_inference
+    description: Minimal constraint inference smoke check
+    config:
+      confidence_threshold: 0.7
+  - type: metamorphic
+    description: Minimal metamorphic smoke check
+    config:
+      num_tests: 10
+  - type: constraint_slice
+    description: Minimal constraint slice smoke check
+    config:
+      samples_per_cone: 10
+      base_witness_attempts: 3
+  - type: spec_inference
+    description: Minimal spec inference smoke check
+    config:
+      num_tests: 10
+  - type: witness_collision
+    description: Minimal witness collision smoke check
+    config:
+      samples: 10
 
 inputs:
   - name: a

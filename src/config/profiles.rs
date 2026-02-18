@@ -145,7 +145,11 @@ impl EmbeddedProfile {
                 "boundary".to_string(),
                 "arithmetic_overflow".to_string(),
                 "collision".to_string(),
-                "witness_validation".to_string(),
+                "constraint_inference".to_string(),
+                "metamorphic".to_string(),
+                "constraint_slice".to_string(),
+                "spec_inference".to_string(),
+                "witness_collision".to_string(),
             ],
             constraint_guided_enabled: true,
             symbolic_enabled: true,
@@ -290,6 +294,7 @@ impl EmbeddedProfile {
 pub fn apply_profile(config: &mut super::FuzzConfig, profile_name: ProfileName) {
     let profile = EmbeddedProfile::by_name(profile_name);
     profile.merge_into(&mut config.campaign.parameters.additional);
+    merge_profile_attacks(config, &profile);
 
     tracing::info!(
         "Applied profile '{}': {} iterations, strict_backend={}, evidence_mode={}",
@@ -298,6 +303,90 @@ pub fn apply_profile(config: &mut super::FuzzConfig, profile_name: ProfileName) 
         profile.strict_backend,
         profile.evidence_mode,
     );
+}
+
+fn merge_profile_attacks(config: &mut super::FuzzConfig, profile: &EmbeddedProfile) {
+    let requested = expand_profile_attack_names(profile);
+    for attack_name in requested {
+        let Some(attack_type) = profile_attack_type(attack_name) else {
+            tracing::warn!(
+                "Ignoring unknown profile attack '{}' in profile '{}'",
+                attack_name,
+                profile.name
+            );
+            continue;
+        };
+
+        if config
+            .attacks
+            .iter()
+            .any(|attack| attack.attack_type == attack_type)
+        {
+            continue;
+        }
+
+        config.attacks.push(super::Attack {
+            attack_type: attack_type.clone(),
+            description: format!("Profile-enabled attack: {}", attack_name),
+            plugin: None,
+            config: default_profile_attack_config(&attack_type),
+        });
+    }
+}
+
+fn expand_profile_attack_names(profile: &EmbeddedProfile) -> Vec<&str> {
+    if profile
+        .attacks
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case("all"))
+    {
+        return vec![
+            "underconstrained",
+            "soundness",
+            "boundary",
+            "arithmetic_overflow",
+            "collision",
+            "constraint_inference",
+            "metamorphic",
+            "constraint_slice",
+            "spec_inference",
+            "witness_collision",
+        ];
+    }
+
+    profile.attacks.iter().map(String::as_str).collect()
+}
+
+fn profile_attack_type(name: &str) -> Option<super::AttackType> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "underconstrained" => Some(super::AttackType::Underconstrained),
+        "soundness" => Some(super::AttackType::Soundness),
+        "boundary" => Some(super::AttackType::Boundary),
+        "arithmetic_overflow" | "arithmeticoverflow" => Some(super::AttackType::ArithmeticOverflow),
+        "collision" => Some(super::AttackType::Collision),
+        "constraint_inference" | "constraintinference" => {
+            Some(super::AttackType::ConstraintInference)
+        }
+        "metamorphic" => Some(super::AttackType::Metamorphic),
+        "constraint_slice" | "constraintslice" => Some(super::AttackType::ConstraintSlice),
+        "spec_inference" | "specinference" => Some(super::AttackType::SpecInference),
+        "witness_collision" | "witnesscollision" => Some(super::AttackType::WitnessCollision),
+        "witness_validation" | "witness_fuzzing" | "witnessfuzzing" => {
+            Some(super::AttackType::WitnessFuzzing)
+        }
+        _ => None,
+    }
+}
+
+fn default_profile_attack_config(attack_type: &super::AttackType) -> serde_yaml::Value {
+    let mut mapping = serde_yaml::Mapping::new();
+    if matches!(attack_type, super::AttackType::Soundness) {
+        mapping.insert(
+            serde_yaml::Value::String("forge_attempts".to_string()),
+            serde_yaml::Value::Number(serde_yaml::Number::from(1000u64)),
+        );
+    }
+    serde_yaml::Value::Mapping(mapping)
 }
 
 #[cfg(test)]
