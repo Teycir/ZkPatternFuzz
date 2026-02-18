@@ -90,3 +90,41 @@ fn test_early_termination_coverage() {
     assert!(checker.check(75.0, 0).is_none());
     assert!(checker.check(80.0, 0).is_some()); // Coverage target reached
 }
+
+#[test]
+fn test_schedule_fail_on_findings_severity() {
+    let scheduler = PhasedScheduler::new(vec![]);
+    let phase = SchedulePhase {
+        phase: "static_prepass".to_string(),
+        duration_sec: 15,
+        attacks: vec!["quantum_resistance".to_string()],
+        max_iterations: Some(1),
+        early_terminate: None,
+        fail_on_findings: vec![zk_core::Severity::Critical, zk_core::Severity::High],
+        carry_corpus: true,
+        mutation_weights: HashMap::new(),
+    };
+
+    let result = PhaseResult {
+        phase_name: "static_prepass".to_string(),
+        duration: std::time::Duration::from_secs(1),
+        findings: vec![Finding {
+            attack_type: AttackType::QuantumResistance,
+            severity: zk_core::Severity::High,
+            description: "static finding".to_string(),
+            poc: zk_core::ProofOfConcept {
+                witness_a: Vec::new(),
+                witness_b: None,
+                public_inputs: Vec::new(),
+                proof: None,
+            },
+            location: Some("mock.circom".to_string()),
+        }],
+        coverage_percentage: 0.0,
+        corpus_size: 0,
+        early_terminated: false,
+        termination_reason: None,
+    };
+
+    assert!(scheduler.should_terminate_schedule(&result, &phase));
+}

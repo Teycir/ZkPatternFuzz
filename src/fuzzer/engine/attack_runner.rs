@@ -2506,11 +2506,7 @@ impl FuzzingEngine {
         }
 
         let source_path = self.config.campaign.target.circuit_path.clone();
-        let witness = self
-            .collect_corpus_inputs(1)
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| self.generate_test_case().inputs);
+        let witness: Vec<FieldElement> = Vec::new();
         let attack = QuantumResistanceAttack::new(quantum_config);
         let findings = match attack.scan_file(&source_path, &witness) {
             Ok(findings) => findings,
@@ -2705,7 +2701,9 @@ impl FuzzingEngine {
 
         if evidence_mode {
             let before = findings.len();
-            findings.retain(|f| !Self::poc_is_empty(&f.poc));
+            findings.retain(|f| {
+                !Self::poc_is_empty(&f.poc) || Self::has_static_source_evidence(f)
+            });
             let dropped = before.saturating_sub(findings.len());
             if dropped > 0 {
                 tracing::info!(
@@ -2716,7 +2714,7 @@ impl FuzzingEngine {
             }
         } else {
             for finding in findings.iter_mut() {
-                if Self::poc_is_empty(&finding.poc) {
+                if Self::poc_is_empty(&finding.poc) && !Self::has_static_source_evidence(finding) {
                     if !finding.description.starts_with("HINT:") {
                         finding.description = format!("HINT: {}", finding.description);
                     }
@@ -2754,7 +2752,9 @@ impl FuzzingEngine {
 
         if evidence_mode {
             let before = findings.len();
-            findings.retain(|f| !Self::poc_is_empty(&f.poc));
+            findings.retain(|f| {
+                !Self::poc_is_empty(&f.poc) || Self::has_static_source_evidence(f)
+            });
             let dropped = before.saturating_sub(findings.len());
             if dropped > 0 {
                 tracing::info!(
@@ -2765,7 +2765,7 @@ impl FuzzingEngine {
             }
         } else {
             for finding in findings.iter_mut() {
-                if Self::poc_is_empty(&finding.poc) {
+                if Self::poc_is_empty(&finding.poc) && !Self::has_static_source_evidence(finding) {
                     if !finding.description.starts_with("HINT:") {
                         finding.description = format!("HINT: {}", finding.description);
                     }
@@ -2796,6 +2796,15 @@ impl FuzzingEngine {
             && poc.witness_b.is_none()
             && poc.public_inputs.is_empty()
             && poc.proof.is_none()
+    }
+
+    pub(super) fn has_static_source_evidence(finding: &Finding) -> bool {
+        matches!(finding.attack_type, AttackType::QuantumResistance)
+            && finding
+                .location
+                .as_ref()
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false)
     }
 
     pub(super) fn get_circuit_info(&self) -> zk_core::CircuitInfo {

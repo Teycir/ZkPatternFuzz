@@ -160,6 +160,7 @@ impl PhasedScheduler {
                     .collect(),
                 max_iterations: None,
                 early_terminate: None,
+                fail_on_findings: Vec::new(),
                 carry_corpus: true,
                 mutation_weights: HashMap::new(),
             }])
@@ -314,6 +315,15 @@ impl PhasedScheduler {
 
     /// Check if entire schedule should terminate
     fn should_terminate_schedule(&self, result: &PhaseResult, phase: &SchedulePhase) -> bool {
+        if !phase.fail_on_findings.is_empty()
+            && result
+                .findings
+                .iter()
+                .any(|finding| phase.fail_on_findings.contains(&finding.severity))
+        {
+            return true;
+        }
+
         if let Some(ref early) = phase.early_terminate {
             // Check critical findings
             if let Some(threshold) = early.on_critical_findings {
@@ -462,6 +472,7 @@ impl ScheduleBuilder {
                 on_coverage_percent: None,
                 on_stale_seconds: Some(30),
             }),
+            fail_on_findings: Vec::new(),
             carry_corpus: true,
             mutation_weights: HashMap::new(),
         });
@@ -480,6 +491,7 @@ impl ScheduleBuilder {
             ],
             max_iterations: None,
             early_terminate: None,
+            fail_on_findings: Vec::new(),
             carry_corpus: true,
             mutation_weights: HashMap::new(),
         });

@@ -85,6 +85,7 @@
                 on_coverage_percent: None,
                 on_stale_seconds: None,
             }),
+            fail_on_findings: vec![Severity::Critical, Severity::High],
             carry_corpus: true,
             mutation_weights: HashMap::new(),
         };
@@ -93,4 +94,5 @@
         let parsed: SchedulePhase = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(parsed.phase, "seed");
         assert_eq!(parsed.duration_sec, 60);
+        assert_eq!(parsed.fail_on_findings.len(), 2);
     }

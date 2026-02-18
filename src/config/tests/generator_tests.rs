@@ -111,3 +111,29 @@ fn test_parse_circom_array_input() {
     assert_eq!(input.input_type, "array<field>");
     assert_eq!(input.length, Some(20));
 }
+
+#[test]
+fn test_generate_from_source_includes_static_first_pass_template() {
+    let source = r#"
+            template Main() {
+                signal input a;
+                signal output out;
+                out <== a;
+            }
+            component main = Main();
+        "#;
+
+    let generator = ConfigGenerator::new();
+    let config = generator
+        .generate_from_source(source, Framework::Circom, Path::new("main.circom"))
+        .expect("config generation should succeed");
+
+    assert_eq!(
+        config.includes.first().map(String::as_str),
+        Some("templates/traits/static_first_pass.yaml")
+    );
+    assert!(config
+        .includes
+        .iter()
+        .any(|include| include == "templates/traits/base.yaml"));
+}

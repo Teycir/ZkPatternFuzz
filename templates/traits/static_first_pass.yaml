@@ -1,0 +1,34 @@
+# Static-First Trait Template
+# Include this template first to run a low-cost static pass before dynamic fuzzing.
+#
+# Usage:
+#   includes:
+#     - "templates/traits/static_first_pass.yaml"
+#     - "templates/traits/base.yaml"
+
+---
+
+# Static pre-pass attack(s)
+attacks:
+  - type: quantum_resistance
+    description: "Static source scan for quantum-vulnerable primitives"
+    config:
+      quantum_resistance:
+        vulnerable_primitives:
+          detect:
+            - name: "RSA"
+              severity: "critical"
+              patterns: ["rsa", "modexp"]
+            - name: "ECDSA"
+              severity: "critical"
+              patterns: ["ecdsa", "secp256"]
+
+# Static-first schedule
+schedule:
+  - phase: "static_prepass"
+    duration_sec: 15
+    attacks:
+      - "quantum_resistance"
+    max_iterations: 1
+    fail_on_findings: ["critical", "high"]
+    carry_corpus: true

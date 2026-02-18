@@ -872,6 +872,7 @@ impl OpusAnalyzer {
                 on_coverage_percent: None,
                 on_stale_seconds: None,
             }),
+            fail_on_findings: Vec::new(),
             carry_corpus: true,
             mutation_weights: HashMap::new(),
         });
@@ -891,6 +892,7 @@ impl OpusAnalyzer {
                 attacks: pattern_attacks,
                 max_iterations: None,
                 early_terminate: None,
+                fail_on_findings: Vec::new(),
                 carry_corpus: true,
                 mutation_weights: HashMap::new(),
             });
@@ -912,6 +914,7 @@ impl OpusAnalyzer {
                     on_coverage_percent: None,
                     on_stale_seconds: Some(120),
                 }),
+                fail_on_findings: Vec::new(),
                 carry_corpus: true,
                 mutation_weights: HashMap::new(),
             });
@@ -928,6 +931,7 @@ impl OpusAnalyzer {
             ],
             max_iterations: None,
             early_terminate: None,
+            fail_on_findings: Vec::new(),
             carry_corpus: true,
             mutation_weights: HashMap::new(),
         });

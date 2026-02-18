@@ -18,6 +18,7 @@ num_cpus = "1.16"
 hex = "0.4"
 tracing = "0.1"
 libloading = { version = "0.8", optional = true }
+regex = "1.11"
 
 [dev-dependencies]
 zk-backends = { path = "../zk-backends" }

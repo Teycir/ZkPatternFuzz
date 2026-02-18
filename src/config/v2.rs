@@ -40,7 +40,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use super::{AdditionalConfig, FuzzConfig, ReportingConfig};
+use super::{AdditionalConfig, FuzzConfig, ReportingConfig, Severity};
 
 /// Errors that can occur during v2 config processing
 #[derive(Debug, Error)]
@@ -508,6 +508,11 @@ pub struct SchedulePhase {
     /// Early termination conditions
     #[serde(default)]
     pub early_terminate: Option<EarlyTerminateCondition>,
+
+    /// Fail-fast severities: terminate schedule when any finding at these
+    /// severities is produced in this phase.
+    #[serde(default)]
+    pub fail_on_findings: Vec<Severity>,
 
     /// Carry corpus to next phase
     #[serde(default = "default_true")]

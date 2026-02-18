@@ -3,6 +3,7 @@
 //! The detector is source-oriented: it scans circuit source text for usage
 //! patterns tied to quantum-vulnerable primitives.
 
+use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
@@ -88,21 +89,12 @@ impl QuantumResistanceAttack {
         location: Option<String>,
         witness: &[FieldElement],
     ) -> Vec<Finding> {
-        let source_cmp = if self.config.case_sensitive {
-            source.to_string()
-        } else {
-            source.to_ascii_lowercase()
-        };
-
         let mut findings = Vec::new();
         for primitive in &self.config.vulnerable_primitives {
-            let matched = primitive.patterns.iter().any(|pattern| {
-                if self.config.case_sensitive {
-                    source_cmp.contains(pattern)
-                } else {
-                    source_cmp.contains(&pattern.to_ascii_lowercase())
-                }
-            });
+            let matched = primitive
+                .patterns
+                .iter()
+                .any(|pattern| pattern_matches_word_boundary(source, pattern, self.config.case_sensitive));
 
             if !matched {
                 continue;
@@ -126,6 +118,28 @@ impl QuantumResistanceAttack {
         }
 
         findings
+    }
+}
+
+fn pattern_matches_word_boundary(source: &str, pattern: &str, case_sensitive: bool) -> bool {
+    let escaped = regex::escape(pattern);
+    let word_boundary_pattern = format!(r"\b{}\b", escaped);
+
+    let regex = RegexBuilder::new(&word_boundary_pattern)
+        .case_insensitive(!case_sensitive)
+        .build();
+
+    match regex {
+        Ok(regex) => regex.is_match(source),
+        Err(_) => {
+            if case_sensitive {
+                source.contains(pattern)
+            } else {
+                source
+                    .to_ascii_lowercase()
+                    .contains(&pattern.to_ascii_lowercase())
+            }
+        }
     }
 }
 

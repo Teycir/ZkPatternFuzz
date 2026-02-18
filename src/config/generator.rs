@@ -265,6 +265,7 @@ impl ConfigGenerator {
                 attacks: vec!["underconstrained".to_string(), "boundary".to_string()],
                 max_iterations: None,
                 early_terminate: None,
+                fail_on_findings: Vec::new(),
                 carry_corpus: true,
                 mutation_weights: HashMap::new(),
             },
@@ -295,6 +296,7 @@ impl ConfigGenerator {
             attacks: deep_attacks,
             max_iterations: None,
             early_terminate: None,
+            fail_on_findings: Vec::new(),
             carry_corpus: true,
             mutation_weights: HashMap::new(),
         });
@@ -304,7 +306,10 @@ impl ConfigGenerator {
 
     /// Suggest include files based on detected patterns
     fn suggest_includes(&self, patterns: &[DetectedPattern]) -> Vec<String> {
-        let mut includes = vec!["templates/traits/base.yaml".to_string()];
+        let mut includes = vec![
+            "templates/traits/static_first_pass.yaml".to_string(),
+            "templates/traits/base.yaml".to_string(),
+        ];
 
         for pattern in patterns {
             if let Some(ref trait_name) = pattern.suggested_trait {
