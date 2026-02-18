@@ -696,6 +696,12 @@ fn circom_io_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn circom_io_guard(op: &str) -> Result<std::sync::MutexGuard<'static, ()>> {
+    circom_io_lock()
+        .lock()
+        .map_err(|err| anyhow::anyhow!("circom IO lock poisoned during {}: {}", op, err))
+}
+
 impl WitnessCalculator {
     fn new(wasm_path: PathBuf, sanity_check: bool) -> Self {
         Self {
@@ -795,7 +801,8 @@ wc(wasm).then(async (calc) => {{\n\
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!(
-                "witness_calculator.js failed: {}",
+                "witness_calculator.js failed for '{}': {}",
+                self.wasm_path.display(),
                 stderr.chars().take(200).collect::<String>()
             );
         }
@@ -852,12 +859,19 @@ impl CircomTarget {
     }
 
     /// Get the base name for output files (derived from source filename)
-    fn output_basename(&self) -> String {
-        self.circuit_path
+    fn output_basename(&self) -> Result<String> {
+        let stem = self
+            .circuit_path
             .file_stem()
-            .and_then(|s| s.to_str())
-            .expect("Circom circuit path has no valid UTF-8 file stem for output basename")
-            .to_string()
+            .ok_or_else(|| anyhow::anyhow!("Circuit path has no file stem"))?;
+        let basename = stem.to_string_lossy().trim().to_string();
+        if basename.is_empty() {
+            anyhow::bail!(
+                "Circuit path has an empty file stem for output basename: {}",
+                self.circuit_path.display()
+            );
+        }
+        Ok(basename)
     }
 
     /// Create with custom build directory
@@ -898,13 +912,16 @@ impl CircomTarget {
 
     /// Check if circom is available
     pub fn check_circom_available() -> Result<String> {
-        let output = Command::new("circom")
-            .arg("--version")
-            .output()
+        let mut cmd = Command::new("circom");
+        cmd.arg("--version");
+        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
             .context("circom not found in PATH")?;
 
         if !output.status.success() {
-            anyhow::bail!("circom --version failed");
+            anyhow::bail!(
+                "circom --version failed: {}",
+                format_command_failure(&output)
+            );
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -912,9 +929,9 @@ impl CircomTarget {
 
     /// Check if snarkjs is available
     pub fn check_snarkjs_available() -> Result<String> {
-        let output = snarkjs_command_for(None)
-            .arg("--version")
-            .output()
+        let mut cmd = snarkjs_command_for(None);
+        cmd.arg("--version");
+        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
             .context("snarkjs not found")?;
 
         // snarkjs may return version on stdout or stderr
@@ -923,6 +940,13 @@ impl CircomTarget {
         } else {
             String::from_utf8_lossy(&output.stderr).trim().to_string()
         };
+
+        if version.is_empty() {
+            anyhow::bail!(
+                "snarkjs --version failed: {}",
+                format_command_failure(&output)
+            );
+        }
 
         Ok(version)
     }
@@ -933,7 +957,7 @@ impl CircomTarget {
             return Ok(());
         }
 
-        let basename = self.output_basename();
+        let basename = self.output_basename()?;
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         let wasm_path = self
             .build_dir
@@ -972,9 +996,7 @@ impl CircomTarget {
         }
 
         // In-process IO lock to avoid concurrent circom/snarkjs calls stepping on each other.
-        let _guard = circom_io_lock()
-            .lock()
-            .expect("circom IO lock poisoned during compile");
+        let _guard = circom_io_guard("compile")?;
 
         tracing::info!("Compiling Circom circuit: {:?}", self.circuit_path);
 
@@ -998,22 +1020,30 @@ impl CircomTarget {
             .build_dir
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 build dir: {}", self.build_dir.display()))?;
-        let output = cmd
-            .args([
-                compile_path_str,
-                "--r1cs",
-                "--wasm",
-                "--sym",
-                "--json",
-                "-o",
-                build_dir_str,
-            ])
-            .output()
-            .context("Failed to run circom compiler")?;
+        cmd.args([
+            compile_path_str,
+            "--r1cs",
+            "--wasm",
+            "--sym",
+            "--json",
+            "-o",
+            build_dir_str,
+        ]);
+        let output =
+            run_with_timeout(&mut cmd, circom_external_command_timeout()).with_context(|| {
+                format!(
+                    "Failed to run circom compiler for '{}'",
+                    compile_path.display()
+                )
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Circom compilation failed: {}", stderr);
+            anyhow::bail!(
+                "Circom compilation failed for '{}': {}",
+                compile_path.display(),
+                stderr
+            );
         }
 
         tracing::info!("Circom compilation successful");
@@ -1069,10 +1099,10 @@ impl CircomTarget {
 
     /// Parse R1CS info to extract metadata
     fn parse_r1cs_info(&mut self) -> Result<()> {
-        let basename = self.output_basename();
+        let basename = self.output_basename()?;
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         let sym_path = self.build_dir.join(format!("{}.sym", basename));
-        let metadata_cache_path = self.metadata_cache_path();
+        let metadata_cache_path = self.metadata_cache_path()?;
 
         if !r1cs_path.exists() {
             tracing::warn!("R1CS file not found: {:?}", r1cs_path);
@@ -1379,10 +1409,8 @@ impl CircomTarget {
     pub fn setup_keys(&mut self) -> Result<()> {
         // Prevent cross-process writes to the same build dir (zkey/vkey/ptau).
         let _build_lock = BuildDirLock::acquire_exclusive(&self.build_dir)?;
-        let _guard = circom_io_lock()
-            .lock()
-            .expect("circom IO lock poisoned during setup_keys");
-        let basename = self.output_basename();
+        let _guard = circom_io_guard("setup_keys")?;
+        let basename = self.output_basename()?;
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
         let ptau_path = self.find_or_download_ptau()?;
 
@@ -1607,18 +1635,23 @@ impl CircomTarget {
             let ptau_path_str = ptau_path
                 .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Non-UTF8 ptau path: {}", ptau_path.display()))?;
-            let output = Command::new("curl")
-                .args([
-                    "-L",
-                    "-o",
-                    ptau_path_str,
-                    "https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_12.ptau",
-                ])
-                .output()
+            let download_timeout =
+                circom_external_command_timeout().max(std::time::Duration::from_secs(300));
+            let mut cmd = Command::new("curl");
+            cmd.args([
+                "-L",
+                "-o",
+                ptau_path_str,
+                "https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_12.ptau",
+            ]);
+            let output = run_with_timeout(&mut cmd, download_timeout)
                 .context("Failed to download ptau file")?;
 
             if !output.status.success() {
-                anyhow::bail!("Failed to download powers of tau file");
+                anyhow::bail!(
+                    "Failed to download powers of tau file: {}",
+                    format_command_failure(&output)
+                );
             }
         }
 
@@ -1634,9 +1667,7 @@ impl CircomTarget {
 
     /// Calculate witness for given inputs
     pub fn calculate_witness(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
-        let _guard = circom_io_lock()
-            .lock()
-            .expect("circom IO lock poisoned during witness calculation");
+        let _guard = circom_io_guard("witness calculation")?;
         let calculator = self
             .witness_calculator
             .as_ref()
@@ -1754,15 +1785,16 @@ impl CircomTarget {
         Ok(map)
     }
 
-    fn constraints_json_path(&self) -> PathBuf {
-        let basename = self.output_basename();
-        self.build_dir
-            .join(format!("{}_constraints.json", basename))
+    fn constraints_json_path(&self) -> Result<PathBuf> {
+        let basename = self.output_basename()?;
+        Ok(self
+            .build_dir
+            .join(format!("{}_constraints.json", basename)))
     }
 
-    fn metadata_cache_path(&self) -> PathBuf {
-        let basename = self.output_basename();
-        self.build_dir.join(format!("{}_metadata.json", basename))
+    fn metadata_cache_path(&self) -> Result<PathBuf> {
+        let basename = self.output_basename()?;
+        Ok(self.build_dir.join(format!("{}_metadata.json", basename)))
     }
 
     fn try_load_cached_metadata(
@@ -1903,8 +1935,8 @@ impl CircomTarget {
 
     /// Load constraint equations from Circom-generated JSON
     pub fn load_constraints(&self) -> Result<Vec<ConstraintEquation>> {
-        let constraints_path = self.constraints_json_path();
-        let basename = self.output_basename();
+        let constraints_path = self.constraints_json_path()?;
+        let basename = self.output_basename()?;
 
         if !constraints_path.exists() {
             let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
@@ -2201,9 +2233,7 @@ impl TargetCircuit for CircomTarget {
     }
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
-        let _guard = circom_io_lock()
-            .lock()
-            .expect("circom IO lock poisoned during prove");
+        let _guard = circom_io_guard("prove")?;
         let zkey_path = self
             .proving_key_path
             .as_ref()
@@ -2242,39 +2272,43 @@ impl TargetCircuit for CircomTarget {
             let input_path_str = input_path
                 .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Non-UTF8 input path: {}", input_path.display()))?;
-            let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
-                .args([
-                    "wtns",
-                    "calculate",
-                    calc_wasm_path_str,
-                    input_path_str,
-                    witness_path_str,
-                ])
-                .output()
+            let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
+            cmd.args([
+                "wtns",
+                "calculate",
+                calc_wasm_path_str,
+                input_path_str,
+                witness_path_str,
+            ]);
+            let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
                 .context("Failed to calculate witness for proof")?;
 
             if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                anyhow::bail!("Witness calculation failed: {}", stderr);
+                anyhow::bail!(
+                    "Witness calculation failed: {}",
+                    format_command_failure(&output)
+                );
             }
         }
 
         // Generate proof
-        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
-            .args([
-                "groth16",
-                "prove",
-                zkey_path_str,
-                witness_path_str,
-                proof_path_str,
-                public_path_str,
-            ])
-            .output()
+        let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
+        cmd.args([
+            "groth16",
+            "prove",
+            zkey_path_str,
+            witness_path_str,
+            proof_path_str,
+            public_path_str,
+        ]);
+        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
             .context("Failed to generate proof")?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Proof generation failed: {}", stderr);
+            anyhow::bail!(
+                "Proof generation failed: {}",
+                format_command_failure(&output)
+            );
         }
 
         // Read proof JSON
@@ -2284,9 +2318,7 @@ impl TargetCircuit for CircomTarget {
     }
 
     fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
-        let _guard = circom_io_lock()
-            .lock()
-            .expect("circom IO lock poisoned during verify");
+        let _guard = circom_io_guard("verify")?;
         let vkey_path = self
             .verification_key_path
             .as_ref()
@@ -2317,15 +2349,15 @@ impl TargetCircuit for CircomTarget {
         std::fs::write(&public_path, &public_json)?;
 
         // Verify
-        let output = snarkjs_command_for(self.snarkjs_path_override.as_deref())
-            .args([
-                "groth16",
-                "verify",
-                vkey_path_str,
-                public_path_str,
-                proof_path_str,
-            ])
-            .output()
+        let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
+        cmd.args([
+            "groth16",
+            "verify",
+            vkey_path_str,
+            public_path_str,
+            proof_path_str,
+        ]);
+        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
             .context("Failed to verify proof")?;
 
         // snarkjs outputs "OK!" on success

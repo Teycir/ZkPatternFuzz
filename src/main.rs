@@ -6,6 +6,7 @@ use serde::Deserialize;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use std::{collections::BTreeSet, fs};
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName, ReadinessReport};
 use zk_fuzzer::fuzzer::ZkFuzzer;
@@ -757,6 +758,282 @@ fn add_run_window_fields(
     }
 }
 
+fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'static str> {
+    let obj = doc.as_object()?;
+    let status = obj
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let stage = obj
+        .get("stage")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let error_lc = obj
+        .get("error")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let reason_lc = obj
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if status == "completed_with_critical_findings" {
+        return Some("critical_findings_detected");
+    }
+    if status == "completed" {
+        return Some("completed");
+    }
+    if status == "failed_engagement_contract" {
+        return Some("engagement_contract_failed");
+    }
+    if status == "stale_interrupted" {
+        return Some("stale_interrupted");
+    }
+    if status == "running" {
+        return None;
+    }
+    if error_lc.contains("permission denied") {
+        return Some("filesystem_permission_denied");
+    }
+    if stage == "preflight_backend"
+        && (error_lc.contains("backend required but not available")
+            || error_lc.contains("not found in path")
+            || error_lc.contains("snarkjs not found")
+            || error_lc.contains("circom not found")
+            || error_lc.contains("install circom"))
+    {
+        return Some("backend_tooling_missing");
+    }
+    if error_lc.contains("circom compilation failed") {
+        return Some("circom_compilation_failed");
+    }
+    if error_lc.contains("key generation failed")
+        || error_lc.contains("key setup failed")
+        || error_lc.contains("proving key")
+    {
+        return Some("key_generation_failed");
+    }
+    if error_lc.contains("wall-clock timeout") || reason_lc.contains("wall-clock timeout") {
+        return Some("wall_clock_timeout");
+    }
+    if stage == "acquire_output_lock" {
+        return Some("output_dir_locked");
+    }
+    if stage == "preflight_backend" {
+        return Some("backend_preflight_failed");
+    }
+    if stage == "preflight_invariants" {
+        return Some("missing_invariants");
+    }
+    if stage == "preflight_readiness" {
+        return Some("readiness_failed");
+    }
+    if stage == "parse_chains" && reason_lc.contains("requires chains") {
+        return Some("missing_chains_definition");
+    }
+    if status == "failed" {
+        return Some("runtime_error");
+    }
+    None
+}
+
+fn log_run_reason_code(doc: &serde_json::Value) {
+    if doc
+        .get("status")
+        .and_then(|v| v.as_str())
+        .map(|s| s == "running")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Some(code) = classify_run_reason_code(doc) else {
+        return;
+    };
+    let status = doc
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let stage = doc
+        .get("stage")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    tracing::info!(
+        "run_outcome_classified: reason_code={} status={} stage={}",
+        code,
+        status,
+        stage
+    );
+}
+
+fn output_lock_wait_seconds() -> u64 {
+    let default_wait_secs = 2u64;
+    let Some(raw) = read_optional_env("ZKF_OUTPUT_LOCK_WAIT_SECS") else {
+        return default_wait_secs;
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return default_wait_secs;
+    }
+    match trimmed.parse::<u64>() {
+        Ok(value) => value,
+        Err(err) => {
+            tracing::warn!(
+                "Invalid ZKF_OUTPUT_LOCK_WAIT_SECS='{}' ({}); using default {}",
+                trimmed,
+                err,
+                default_wait_secs
+            );
+            default_wait_secs
+        }
+    }
+}
+
+fn acquire_output_dir_lock(
+    output_dir: &Path,
+) -> anyhow::Result<zk_fuzzer::util::file_lock::FileLock> {
+    let max_wait = Duration::from_secs(output_lock_wait_seconds());
+    let started = Instant::now();
+    let mut attempts: u32 = 0;
+
+    loop {
+        attempts += 1;
+        match zk_fuzzer::util::file_lock::lock_dir_exclusive(
+            output_dir,
+            ".zkfuzz.lock",
+            zk_fuzzer::util::file_lock::LockMode::NonBlocking,
+        ) {
+            Ok(lock) => {
+                if attempts > 1 {
+                    tracing::info!(
+                        "Acquired output lock after {} attempts (waited {:.2}s): {}",
+                        attempts,
+                        started.elapsed().as_secs_f64(),
+                        output_dir.display()
+                    );
+                }
+                return Ok(lock);
+            }
+            Err(err) => {
+                let err_lc = format!("{:#}", err).to_ascii_lowercase();
+                if max_wait.is_zero()
+                    || started.elapsed() >= max_wait
+                    || err_lc.contains("permission denied")
+                {
+                    return Err(err.context(format!(
+                        "Output lock acquisition exhausted after {} attempt(s), waited {:.2}s",
+                        attempts,
+                        started.elapsed().as_secs_f64()
+                    )));
+                }
+
+                let backoff_ms = 100u64.saturating_mul(u64::from(attempts.min(20)));
+                std::thread::sleep(Duration::from_millis(backoff_ms));
+            }
+        }
+    }
+}
+
+fn parse_preflight_executor_options(
+    config: &FuzzConfig,
+) -> anyhow::Result<zk_fuzzer::executor::ExecutorFactoryOptions> {
+    let additional = &config.campaign.parameters.additional;
+    let mut options = zk_fuzzer::executor::ExecutorFactoryOptions::default();
+
+    options.build_dir_base = additional
+        .get_path("build_dir_base")
+        .or_else(|| additional.get_path("build_dir"));
+    options.circom_build_dir = additional.get_path("circom_build_dir");
+    options.noir_build_dir = additional.get_path("noir_build_dir");
+    options.halo2_build_dir = additional.get_path("halo2_build_dir");
+    options.cairo_build_dir = additional.get_path("cairo_build_dir");
+
+    // Runtime hardening: strict backend stays enforced.
+    options.strict_backend = true;
+
+    if let Some(auto_setup) = additional.get_bool("circom_auto_setup_keys") {
+        options.circom_auto_setup_keys = auto_setup;
+    }
+    options.circom_ptau_path = additional.get_path("circom_ptau_path");
+    options.circom_snarkjs_path = additional.get_path("circom_snarkjs_path");
+    if let Some(skip_compile) = additional.get_bool("circom_skip_compile_if_artifacts") {
+        options.circom_skip_compile_if_artifacts = skip_compile;
+    }
+    if let Some(skip_check) = additional.get_bool("circom_skip_constraint_check") {
+        if skip_check {
+            anyhow::bail!(
+                "Invalid config: circom_skip_constraint_check=true is disallowed. \
+                 Mode 2/3 require real constraint coverage. Set circom_skip_constraint_check: false."
+            );
+        }
+        options.circom_skip_constraint_check = false;
+    }
+    if let Some(sanity_check) = additional.get_bool("circom_witness_sanity_check") {
+        options.circom_witness_sanity_check = sanity_check;
+    }
+
+    if let Some(value) = additional.get("include_paths") {
+        let mut paths = Vec::new();
+        match value {
+            serde_yaml::Value::Sequence(items) => {
+                for item in items {
+                    if let Some(raw) = item.as_str() {
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            paths.push(PathBuf::from(trimmed));
+                        }
+                    }
+                }
+            }
+            serde_yaml::Value::String(s) => {
+                for part in s.split(',') {
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        paths.push(PathBuf::from(trimmed));
+                    }
+                }
+            }
+            _ => {}
+        }
+        if !paths.is_empty() {
+            options.circom_include_paths = paths;
+        }
+    }
+
+    Ok(options)
+}
+
+fn run_backend_preflight(config: &FuzzConfig) -> anyhow::Result<()> {
+    let framework = config.campaign.target.framework;
+    let circuit_path = config
+        .campaign
+        .target
+        .circuit_path
+        .to_string_lossy()
+        .to_string();
+    let main_component = config.campaign.target.main_component.clone();
+    let options = parse_preflight_executor_options(config)?;
+
+    tracing::info!(
+        "Backend preflight: framework={:?}, target='{}', component='{}'",
+        framework,
+        circuit_path,
+        main_component
+    );
+
+    let _executor = zk_fuzzer::executor::ExecutorFactory::create_with_options(
+        framework,
+        &circuit_path,
+        &main_component,
+        &options,
+    )
+    .context("Backend preflight failed while initializing executor")?;
+
+    tracing::info!("Backend preflight passed");
+    Ok(())
+}
+
 fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
     let base = run_signal_dir();
     let report_dir = engagement_root_dir(run_id);
@@ -783,6 +1060,8 @@ fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
 }
 
 fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Value) {
+    log_run_reason_code(value);
+
     // Minimal artifacts contract: avoid redundant run history + mirrored reports.
     // - `run_outcome.json` is the single authoritative per-mode status file (also used for resume).
     // - engagement-wide `log/events.jsonl` is the run history (includes run_id).
@@ -830,7 +1109,11 @@ fn best_effort_append_text_line(path: &Path, line: &str) {
     {
         Ok(mut file) => {
             if let Err(err) = writeln!(file, "{}", line) {
-                tracing::warn!("Failed to append text line to '{}': {}", path.display(), err);
+                tracing::warn!(
+                    "Failed to append text line to '{}': {}",
+                    path.display(),
+                    err
+                );
             }
         }
         Err(err) => {
@@ -840,6 +1123,8 @@ fn best_effort_append_text_line(path: &Path, line: &str) {
 }
 
 fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
+    log_run_reason_code(value);
+
     // Keep failure artifacts within the engagement folder to avoid scattering files.
     let report_dir = engagement_root_dir(run_id);
     let failed_dir = report_dir.join("_failed_runs");
@@ -2554,39 +2839,33 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     let _output_lock = if options.dry_run {
         None
     } else {
-        Some(
-            match zk_fuzzer::util::file_lock::lock_dir_exclusive(
-                &output_dir,
-                ".zkfuzz.lock",
-                zk_fuzzer::util::file_lock::LockMode::NonBlocking,
-            ) {
-                Ok(lock) => lock,
-                Err(err) => {
-                    let ended_utc = Utc::now();
-                    let doc = serde_json::json!({
-                        "status": "failed",
-                        "command": command,
-                        "run_id": run_id.clone(),
-                        "stage": stage,
-                        "pid": std::process::id(),
-                        "campaign_path": config_path,
-                        "campaign_name": campaign_name.clone(),
-                        "output_dir": output_dir.display().to_string(),
-                        "started_utc": started_utc.to_rfc3339(),
-                        "ended_utc": ended_utc.to_rfc3339(),
-                        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                        "error": format!("{:#}", err),
-                        "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
-                    });
-                    write_failed_run_artifact(&run_id, &doc);
-                    return Err(anyhow::anyhow!(
-                        "Output directory is already in use (locked): {}. Error: {:#}",
-                        output_dir.display(),
-                        err
-                    ));
-                }
-            },
-        )
+        Some(match acquire_output_dir_lock(&output_dir) {
+            Ok(lock) => lock,
+            Err(err) => {
+                let ended_utc = Utc::now();
+                let doc = serde_json::json!({
+                    "status": "failed",
+                    "command": command,
+                    "run_id": run_id.clone(),
+                    "stage": stage,
+                    "pid": std::process::id(),
+                    "campaign_path": config_path,
+                    "campaign_name": campaign_name.clone(),
+                    "output_dir": output_dir.display().to_string(),
+                    "started_utc": started_utc.to_rfc3339(),
+                    "ended_utc": ended_utc.to_rfc3339(),
+                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                    "error": format!("{:#}", err),
+                    "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
+                });
+                write_failed_run_artifact(&run_id, &doc);
+                return Err(anyhow::anyhow!(
+                    "Output directory is already in use (locked): {}. Error: {:#}",
+                    output_dir.display(),
+                    err
+                ));
+            }
+        })
     };
 
     if !options.dry_run {
@@ -2753,6 +3032,30 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 write_run_artifacts(&output_dir, &run_id, &doc);
             }
             anyhow::bail!("Campaign has critical issues; refusing to start strict evidence run");
+        }
+    }
+
+    stage = "preflight_backend";
+    if !options.dry_run {
+        if let Err(err) = run_backend_preflight(&config) {
+            let ended_utc = Utc::now();
+            let mut doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id.clone(),
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "campaign_name": campaign_name.clone(),
+                "output_dir": output_dir.display().to_string(),
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "error": format!("{:#}", err),
+            });
+            add_run_window_fields(&mut doc, started_utc, options.timeout, "wall_clock");
+            write_run_artifacts(&output_dir, &run_id, &doc);
+            return Err(err);
         }
     }
 
@@ -3409,39 +3712,33 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let _output_lock = if options.dry_run {
         None
     } else {
-        Some(
-            match zk_fuzzer::util::file_lock::lock_dir_exclusive(
-                &output_dir,
-                ".zkfuzz.lock",
-                zk_fuzzer::util::file_lock::LockMode::NonBlocking,
-            ) {
-                Ok(lock) => lock,
-                Err(err) => {
-                    let ended_utc = Utc::now();
-                    let doc = serde_json::json!({
-                        "status": "failed",
-                        "command": command,
-                        "run_id": run_id.clone(),
-                        "stage": stage,
-                        "pid": std::process::id(),
-                        "campaign_path": config_path,
-                        "campaign_name": campaign_name.clone(),
-                        "output_dir": output_dir.display().to_string(),
-                        "started_utc": started_utc.to_rfc3339(),
-                        "ended_utc": ended_utc.to_rfc3339(),
-                        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-                        "error": format!("{:#}", err),
-                        "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
-                    });
-                    write_failed_run_artifact(&run_id, &doc);
-                    return Err(anyhow::anyhow!(
-                        "Output directory is already in use (locked): {}. Error: {:#}",
-                        output_dir.display(),
-                        err
-                    ));
-                }
-            },
-        )
+        Some(match acquire_output_dir_lock(&output_dir) {
+            Ok(lock) => lock,
+            Err(err) => {
+                let ended_utc = Utc::now();
+                let doc = serde_json::json!({
+                    "status": "failed",
+                    "command": command,
+                    "run_id": run_id.clone(),
+                    "stage": stage,
+                    "pid": std::process::id(),
+                    "campaign_path": config_path,
+                    "campaign_name": campaign_name.clone(),
+                    "output_dir": output_dir.display().to_string(),
+                    "started_utc": started_utc.to_rfc3339(),
+                    "ended_utc": ended_utc.to_rfc3339(),
+                    "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                    "error": format!("{:#}", err),
+                    "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
+                });
+                write_failed_run_artifact(&run_id, &doc);
+                return Err(anyhow::anyhow!(
+                    "Output directory is already in use (locked): {}. Error: {:#}",
+                    output_dir.display(),
+                    err
+                ));
+            }
+        })
     };
 
     if !options.dry_run {
@@ -3576,6 +3873,30 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             write_run_artifacts(&output_dir, &run_id, &doc);
         }
         anyhow::bail!("Campaign has critical issues; refusing to start strict chain run");
+    }
+
+    stage = "preflight_backend";
+    if !options.dry_run {
+        if let Err(err) = run_backend_preflight(&config) {
+            let ended_utc = Utc::now();
+            let mut doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id.clone(),
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "campaign_name": campaign_name.clone(),
+                "output_dir": output_dir.display().to_string(),
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "error": format!("{:#}", err),
+            });
+            add_run_window_fields(&mut doc, started_utc, Some(options.timeout), "wall_clock");
+            write_run_artifacts(&output_dir, &run_id, &doc);
+            return Err(err);
+        }
     }
 
     // Print chain-specific banner

@@ -3,177 +3,88 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-BSL%201.1-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
-[![Documentation](https://img.shields.io/badge/docs-architecture-purple.svg)](ARCHITECTURE.md)
 
 A Zero-Knowledge Proof Security Testing Framework written in Rust.
 
-**AI Pentest Rule (Read First):** `docs/AI_PENTEST_RULES.md`
-
 ## Overview
 
-ZkPatternFuzz is a fuzzing and security testing framework for ZK circuits across multiple backends:
+ZkPatternFuzz fuzzes ZK circuits to find security vulnerabilities across multiple backends:
 
-- **Circom** - R1CS-based circuits with snarkjs (most mature, tested)
-- **Noir** - ACIR-based circuits with Nargo/Barretenberg (partial support)
-- **Halo2** - PLONK-based circuits with halo2_proofs (partial support)
-- **Cairo** - STARK-based programs with cairo-compile/scarb (experimental)
-- **Mock** - In-process testing backend for development
-
-**Evidence Mode:** Framework for strict backend verification (full cryptographic proof generation pending).
-
-**Runtime Rules:** Runtime alternate-path behavior is removed. Backend/tooling failures and unsupported CVE expectations/inputs are treated as hard errors, not warnings.
-
-## Validation Results
-
-Validation artifacts are tracked in:
-
-- `docs/VALIDATION_RESULTS.md` (consolidated status)
-- `reports/validation/0xparc_summary.md`
-- `reports/validation/false_positive_report.md`
-- `reports/validation/ground_truth_report.md`
-- `reports/validation/cve_detection_report.md`
-
-## Features
-
-### Core Attack Detection
-
-- 🔍 **Underconstrained Detection** - Finds circuits accepting multiple witnesses for same public inputs via parallel execution and output collision analysis
-- 🛡️ **Soundness Testing** - Proof forgery attempts through public input mutation with cryptographic verification
-- 🧮 **Arithmetic Analysis** - Field boundary testing (0, 1, p-1, p) with overflow detection
-- 🎯 **Collision Detection** - Hash/nullifier collision search using parallel witness generation
-- 📏 **Boundary Testing** - Systematic edge case exploration at field boundaries
-- ✅ **Verification Fuzzing** - Proof malleability and malformed proof testing
-- 🔄 **Witness Fuzzing** - Determinism, timing variation, and stress testing
-- 🧪 **Proof Malleability Scanner** - Mutated proofs that still verify (opt-in under `soundness`)
-- 🎲 **Determinism Oracle** - Re-executes identical witnesses to detect non-determinism (opt-in under `soundness`)
-- 🧊 **Frozen Wire Detector** - Output wires stuck at constant values (opt-in under `underconstrained`)
-- ♻️ **Nullifier Replay Scanner** - Same nullifier with different private inputs (opt-in under `collision`)
-- 🧷 **Input Canonicalization Checker** - x vs x+p, negative zero handling (opt-in under `boundary`)
-- ☣️ **Trusted Setup Poisoning Detector** - Cross-setup verification checks (opt-in under `soundness`)
-- 🔀 **Cross-Backend Differential Oracle** - Strict output comparison across backends (opt-in under `differential`)
-- 💰 **MEV & Front-Running** - Ordering dependency, sandwich attacks, state leakage detection for DeFi circuits
-- 🎯 **Automated Triage** - Confidence-based ranking with cross-oracle validation and deduplication
-
-### Advanced Analysis
-
-- 🔬 **Symbolic Execution** - Z3-based constraint solving with path pruning (max_depth: 200, max_paths: 1000)
-- 📊 **Constraint-Level Coverage** - Tracks satisfied R1CS/ACIR/PLONK constraints, not just output hashes
-- 🧪 **Differential Testing** - Cross-backend comparison (Circom vs Noir vs Halo2) with timing/coverage analysis
-- 🔗 **Multi-Circuit Composition** - Chain fuzzing for protocol-level bugs across circuit sequences
-- 🎯 **Taint Analysis** - Information flow tracking from private inputs to public outputs
-- ⚡ **Power Scheduling** - FAST/COE/EXPLORE/MMOPT/RARE/SEEK strategies for intelligent test case prioritization
-
-### Novel Oracles (Phase 4)
-- 🧠 **Constraint Inference** - Learns missing constraints from execution patterns (confidence threshold: 70%)
-- 🔄 **Metamorphic Testing** - Transform-based oracles (scale, negate, swap, bit-flip) with expected behavior validation
-- ✂️ **Constraint Slicing** - Dependency cone mutation to isolate vulnerable sub-circuits
-- 📚 **Spec Inference** - Auto-learns circuit properties from 500+ samples, then violates them
-- 💥 **Witness Collision** - Enhanced collision detection with equivalence class analysis
-
-### Semantic Oracles
-- 🌳 **Merkle Oracle** - Path consistency and soundness verification
-- 🔒 **Nullifier Oracle** - Uniqueness and determinism checks
-- 📦 **Commitment Oracle** - Binding and hiding property validation
-- 📊 **Range Oracle** - Boundary enforcement and overflow detection
-
-### Infrastructure
-- 📝 **Multiple Report Formats** - JSON, Markdown, SARIF with evidence bundles
-- 🎲 **Advanced Fuzzing** - Corpus management (100K max), structure-aware mutations, automatic minimization
-- 🔌 **Attack Plugins** - Dynamic loading via `cdylib` with ABI-stable trait objects
-- 🚀 **Parallel Execution** - Rayon-based thread pool with configurable worker count
-- 💾 **Corpus Persistence** - Automatic export/import with coverage-guided selection
-- 🎯 **Constraint-Guided Seeding** - Generates inputs from R1CS/ACIR constraints using Z3
-- 🔐 **Evidence Mode** - Strict backend verification, oracle validation, cross-oracle correlation
-- 🏆 **Automated Triage** - Confidence scoring (0.0-1.0), cross-oracle validation, deduplication, priority ranking
+- **Circom** - R1CS-based circuits (most mature)
+- **Noir** - ACIR-based circuits (partial support)
+- **Halo2** - PLONK-based circuits (partial support)
+- **Cairo** - STARK-based programs (experimental)
+- **Mock** - In-process testing backend
 
 ## Installation
 
 ### Prerequisites
 
-- Rust 1.70+ (2021 edition)
-- Z3 SMT solver (for symbolic execution features)
+- Rust 1.70+
+- Z3 SMT solver (optional, for symbolic execution)
 
 ### Build
 
 ```bash
-# Clone the repository
 git clone https://github.com/yourusername/ZkPatternFuzz.git
 cd ZkPatternFuzz
-
-# Build release version
 cargo build --release
-
-# Run tests
 cargo test
 ```
 
-## Usage
-
-### Basic Usage
+## Quick Start
 
 ```bash
-# Run a fuzzing campaign
+# Run a campaign
 cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml
 
 # With verbose output
 cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --verbose
 
-# Dry run (validate config only)
-cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --dry-run
-
-# Run with custom worker count
+# Custom worker count
 cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --workers 8
-
-# Run with specific seed for reproducibility
-cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --seed 12345
 ```
 
-### CLI Options
+## Attack Types
 
-```
-Options:
-  -c, --config <CONFIG>    Path to YAML campaign configuration
-  -w, --workers <WORKERS>  Number of parallel workers [default: 4]
-  -s, --seed <SEED>        Seed for reproducibility
-  -v, --verbose            Verbose output
-      --quiet              Minimal output
-      --simple-progress    Use simple progress output (no terminal UI)
-      --real-only          Fail if a real backend is unavailable (no mock backend substitution)
-      --profile <PROFILE>  Apply profile (quick | standard | deep | perf)
-      --kill-existing      Kill other zk-fuzzer instances on startup (use with caution)
-      --dry-run            Validate config without executing
-  -h, --help               Print help
-```
+| Attack | Description | Status |
+|--------|-------------|--------|
+| `underconstrained` | Multiple valid witnesses for same public inputs | ✅ |
+| `soundness` | Proof forgery attempts | ✅ |
+| `arithmetic_overflow` | Field boundary testing | ✅ |
+| `collision` | Hash/nullifier collision search | ✅ |
+| `boundary` | Edge case exploration | ✅ |
+| `verification_fuzzing` | Proof malleability testing | ✅ |
+| `witness_fuzzing` | Determinism and consistency checks | ✅ |
+| `differential` | Cross-backend comparison | ✅ |
+| `circuit_composition` | Multi-circuit chain analysis | ✅ |
+| `information_leakage` | Taint analysis | ✅ |
+| `timing_sidechannel` | Timing variation detection | ✅ |
+| `constraint_inference` | Infer missing constraints | ✅ |
+| `metamorphic` | Transform-based oracles | ✅ |
+| `spec_inference` | Auto-learn circuit properties | ✅ |
+| `mev` | MEV attack detection | ✅ |
+| `front_running` | Front-running detection | ✅ |
 
 ## Campaign Configuration
 
-Campaigns are defined in YAML files. See `tests/campaigns/` for examples.
-
-### Basic Structure
+Create a YAML file:
 
 ```yaml
 campaign:
   name: "My Circuit Audit"
-  version: "1.0"
   target:
-    framework: "circom"  # circom | noir | halo2 | mock
+    framework: "circom"
     circuit_path: "./circuits/my_circuit.circom"
     main_component: "MyCircuit"
   parameters:
-    field: "bn254"
-    max_constraints: 100000
     timeout_seconds: 300
-    additional:
-      strict_backend: true    # fail if real backend tooling is missing
-      kill_on_timeout: true   # kill process on timeout (default: true)
 
 attacks:
   - type: "underconstrained"
-    description: "Find multiple valid witnesses"
     config:
       witness_pairs: 1000
-      public_input_names: ["root", "nullifier"]  # optional
-      fixed_public_inputs: ["0x0", "0x0"]        # optional
+      public_input_names: ["root", "nullifier"]
 
 inputs:
   - name: "input1"
@@ -185,849 +96,174 @@ reporting:
   formats: ["json", "markdown"]
 ```
 
-### Attack Types
+## Key Features
 
-| Attack Type | Description | Implementation Details | Status |
-|-------------|-------------|------------------------|--------|
-| `underconstrained` | Find circuits allowing multiple valid witnesses | Parallel execution, output collision detection, public input scoping | ✅ Production |
-| `soundness` | Attempt to forge proofs | Public input mutation, cryptographic verification, optional proof malleability/determinism/setup checks | ✅ Production |
-| `arithmetic_overflow` | Test field arithmetic edge cases | Boundary values (0, 1, p-1, p), overflow indicators | ✅ Production |
-| `witness_fuzzing` | Verify witness consistency | Determinism (100 tests), timing analysis (500 tests), stress testing (1000 tests) | ✅ Production |
-| `verification_fuzzing` | Test proof verification edge cases | Malleability (1000 tests), malformed proofs (1000 tests), edge cases (500 tests) | ✅ Production |
-| `collision` | Find hash/nullifier collisions | Parallel witness generation (10K samples), SHA256 output hashing, optional nullifier replay | ✅ Production |
-| `boundary` | Test boundary values | Field modulus boundaries, optional canonicalization checks | ✅ Production |
-| `differential` | Cross-backend comparison | Timing tolerance (50%), coverage Jaccard (0.5), output comparison, optional strict cross-backend oracle | ✅ Production |
-| `circuit_composition` | Multi-circuit chain analysis | Sequential composition, state propagation, chain execution | ✅ Production |
-| `recursive_proof` | Recursive verification testing | Max depth 3, verification at each level | ✅ Production |
-| `information_leakage` | Taint analysis | Private→public flow tracking via constraint propagation | ✅ Production |
-| `timing_sidechannel` | Timing variation detection | 1000 samples, coefficient of variation analysis | ✅ Production |
-| `constraint_inference` | Infer missing constraints from patterns | Confidence threshold 70%, violation confirmation, AST parsing | ✅ Production |
-| `constraint_slice` | Dependency cone mutation | Per-cone sampling (100), backward slicing from outputs | ✅ Production |
-| `metamorphic` | Transform-based oracles | Scale/negate/swap/bit-flip transforms, 100 base witnesses | ✅ Production |
-| `spec_inference` | Auto-learn and violate properties | 500 samples, 90% confidence, wire label inference | ✅ Production |
-| `witness_collision` | Equivalence-class collision search | 10K samples, public input scoping, SHA256 keying | ✅ Production |
-| `mev` | MEV attack detection | Ordering dependency, sandwich attacks, price impact analysis | ✅ Production |
-| `front_running` | Front-running detection | Information leakage, commitment bypass, delay attacks | ✅ Production |
+### Detection Techniques
 
-### Underconstrained Attack Options
+- **Parallel Execution** - Rayon-based thread pool
+- **Coverage-Guided Fuzzing** - Constraint-level tracking
+- **Symbolic Execution** - Z3-based constraint solving
+- **Structure-Aware Mutations** - Understands Merkle paths, signatures
+- **Power Scheduling** - FAST/EXPLORE/MMOPT strategies
+- **Corpus Management** - Automatic minimization, 100K max size
 
-- `witness_pairs`: number of witness pairs to test (default: 1000)
-- `tolerance`: DOF ratio tolerance for quick heuristic (optional)
-- `public_input_names`: list of input names to treat as public (preferred method)
-- `public_input_positions`: list of input indices to treat as public (alternative)
-- `public_input_count`: number of leading inputs to treat as public (legacy compatibility option)
-- `fixed_public_inputs`: values to hold constant for public inputs (must match public input list)
+### Evidence Mode
 
-### Optional Scanner Configs (Opt-In)
+```yaml
+campaign:
+  parameters:
+    additional:
+      evidence_mode: true
+      strict_backend: true
+      oracle_validation: true
+      min_evidence_confidence: "high"
+```
 
-These scanners live under the parent attack's `config` section.
+**Confidence Levels:**
+- **CRITICAL:** 3+ oracles agree
+- **HIGH:** 2+ oracles agree
+- **MEDIUM:** Single oracle detection
+- **LOW:** Heuristic detection
+
+### Optional Scanners
 
 ```yaml
 attacks:
   - type: soundness
-    description: "Proof malleability + determinism + trusted setup"
     config:
       proof_malleability:
         enabled: true
         proof_samples: 10
-        random_mutations: 100
-        structured_mutations: true
       determinism:
         enabled: true
         repetitions: 5
-        sample_count: 50
-      trusted_setup_test:
-        enabled: true
-        attempts: 10
-        ptau_file_a: "pot12_original.ptau"
-        ptau_file_b: "pot12_alternative.ptau"
 
   - type: underconstrained
-    description: "Frozen wire detector"
     config:
       frozen_wire:
         enabled: true
         min_samples: 100
-        known_constants: [0]
 
   - type: collision
-    description: "Nullifier replay"
     config:
       nullifier_replay:
         enabled: true
         replay_attempts: 50
-        base_samples: 10
 
   - type: boundary
-    description: "Input canonicalization"
     config:
       canonicalization:
         enabled: true
         sample_count: 20
-        test_field_wrap: true
-        test_negative_zero: true
-        test_additive_inverse: false
 
   - type: differential
-    description: "Cross-backend differential"
     config:
       backends: ["circom", "noir"]
       cross_backend:
         enabled: true
         sample_count: 100
-        tolerance_bits: 0
 ```
 
-**How it works:**
-1. Generates N witness pairs with identical public inputs (fixed or randomly chosen)
-2. Executes all witnesses in parallel using Rayon thread pool
-3. Hashes outputs using SHA256 and groups by (output_hash, public_input_hash)
-4. Reports collisions where different private witnesses produce identical outputs
-5. Uses executor's constraint inspector to map public input indices correctly
+## CVE Test Suite
 
-**Example:**
-```yaml
-attacks:
-  - type: "underconstrained"
-    config:
-      witness_pairs: 5000
-      public_input_names: ["root", "nullifier"]  # Preferred
-      fixed_public_inputs: ["0x123...", "0x456..."]  # Optional: fix public inputs
+22 real-world vulnerabilities from zkBugs dataset:
+
+```bash
+# Verify circuits exist
+cargo test --test autonomous_cve_tests test_cve_circuits_exist_in_repo -- --nocapture
+
+# Run full suite
+cargo test --test autonomous_cve_tests -- --nocapture
 ```
 
-### Evidence Mode
+**Coverage:**
+- 11 Critical severity
+- 11 High severity
+- 9 projects (Iden3, Self.xyz, SuccinctLabs, etc.)
+- Includes CVE-2024-42459 (EdDSA malleability)
 
-Evidence mode ensures all findings are cryptographically verified, not heuristic hints:
+See `CVErefs/AUTONOMOUS_TEST_SUITE.md` for details.
 
-```yaml
-campaign:
-  parameters:
-    additional:
-      evidence_mode: true              # Enable strict verification
-      strict_backend: true             # Fail if real backend unavailable (no mock backend substitution)
-      oracle_validation: true          # Cross-validate findings with multiple oracles
-      min_evidence_confidence: "high"  # Filter to HIGH+ confidence (critical/high/medium/low)
-      per_exec_isolation: true         # Isolate each execution (hang/crash safety)
-      execution_timeout_ms: 30000      # Per-execution timeout (default: 30s)
-      kill_on_timeout: true            # Kill process on timeout (default: true)
+## CLI Options
+
 ```
-
-**Evidence Mode Framework:**
-- **Backend Verification:** Attempts to use real backends (Circom/Noir/Halo2/Cairo)
-- **Oracle Validation:** Re-executes findings with multiple oracles
-- **Cross-Oracle Correlation:** Groups findings by attack type, assigns confidence scores
-- **Proof-Level Evidence:** Generates witnesses and execution traces (cryptographic proof generation pending)
-- **Confidence Filtering:** Filters findings by confidence level
-
-**Confidence Levels:**
-- **CRITICAL:** 3+ oracles agree, executable proof-of-concept
-- **HIGH:** 2+ oracles agree, reproducible with mutation testing
-- **MEDIUM:** Single oracle detection, passes validation
-- **LOW:** Heuristic detection, no cross-validation
-
-## How ZkPatternFuzz Finds 0-Days
-
-### 1. Underconstrained Circuit Detection
-
-**The Problem:** Circuits that accept multiple valid witnesses for the same public inputs allow attackers to forge proofs.
-
-**How We Find It:**
-```rust
-// Generate 1000 witnesses with IDENTICAL public inputs
-for _ in 0..1000 {
-    let mut witness = generate_random();
-    witness[public_indices] = fixed_public_values;  // Fix public inputs
-    witnesses.push(witness);
-}
-
-// Execute in parallel, hash outputs
-let results: HashMap<(OutputHash, PublicHash), Vec<Witness>> = 
-    witnesses.par_iter()
-        .map(|w| (hash(executor.execute(w)), w))
-        .group_by_key();
-
-// Report collisions
-for (key, witnesses) in results {
-    if witnesses.len() > 1 && witnesses_differ(witnesses) {
-        report_critical("Different witnesses produce identical output");
-    }
-}
+Options:
+  -c, --config <CONFIG>    Path to YAML campaign configuration
+  -w, --workers <WORKERS>  Number of parallel workers [default: 4]
+  -s, --seed <SEED>        Seed for reproducibility
+  -v, --verbose            Verbose output
+      --quiet              Minimal output
+      --dry-run            Validate config without executing
+  -h, --help               Print help
 ```
-
-**Target Use Cases:** Detecting underconstrained circuits, witness collisions
-
-### 2. Symbolic Execution with Z3
-
-**The Problem:** Edge cases in constraint logic that humans miss.
-
-**How We Find It:**
-```rust
-// Extract constraints from R1CS/ACIR/PLONK
-let constraints = inspector.get_constraints();
-
-// Convert to Z3 SMT formulas
-for constraint in constraints {
-    let (a, b, c) = constraint.to_r1cs();
-    solver.assert(a * b == c);  // R1CS: A * B = C
-}
-
-// Add vulnerability patterns
-solver.assert(input[0] == field_modulus - 1);  // Overflow
-solver.assert(input[1] == 0);                   // Division by zero
-
-// Solve for satisfying inputs
-if solver.check() == SAT {
-    let witness = solver.get_model();
-    if executor.execute(witness).success {
-        report_high("Circuit accepts overflow value");
-    }
-}
-```
-
-**Configuration:**
-- `max_depth: 200` - Explores 200 constraint layers deep (vs KLEE's typical 100)
-- `max_paths: 1000` - Tests 1000 execution paths
-- `solver_timeout_ms: 5000` - 5s per SMT query
-- `pruning_strategy: DepthBounded` - Prunes infeasible paths early
-
-**Target Use Cases:** Boundary conditions, bit decomposition bugs, range check bypasses
-
-### 3. Coverage-Guided Fuzzing
-
-**The Problem:** Random testing misses rare input combinations.
-
-**How We Find It:**
-```rust
-// Track which constraints are satisfied
-let mut coverage = CoverageMap::new(num_constraints);
-
-loop {
-    // Power scheduler picks interesting test cases
-    let test_case = scheduler.select_from_corpus();  // MMOPT/FAST/EXPLORE
-    
-    // Structure-aware mutation (understands Merkle paths, signatures)
-    let mutated = mutator.mutate(test_case);
-    
-    // Execute and track coverage
-    let result = executor.execute(mutated);
-    let new_constraints = result.satisfied_constraints;
-    
-    // Add to corpus if new coverage
-    if coverage.is_new(new_constraints) {
-        corpus.add(mutated, new_constraints);
-        coverage.update(new_constraints);
-    }
-    
-    // Check oracles
-    for oracle in oracles {
-        if let Some(finding) = oracle.check(mutated, result.outputs) {
-            report(finding);
-        }
-    }
-}
-```
-
-**Power Scheduling Strategies:**
-- **MMOPT** (default): Balanced min-max optimal
-- **FAST**: Prioritizes fast-executing test cases
-- **EXPLORE**: Maximizes new constraint coverage
-- **RARE**: Focuses on rarely-hit constraints
-
-**Target Use Cases:** Rare state transitions, protocol-level bugs
-
-### 4. Constraint Inference
-
-**The Problem:** Missing constraints that should exist but don't.
-
-**How We Find It:**
-```rust
-// Learn patterns from valid executions
-for _ in 0..500 {
-    let witness = generate_valid();
-    let result = executor.execute(witness);
-    
-    // Infer relationships: "input[0] should always be binary"
-    if result.success {
-        patterns.observe(witness, result.outputs);
-    }
-}
-
-// Infer constraints with confidence scoring
-let implied = patterns.infer_constraints(confidence_threshold=0.7);
-
-// Generate violation witnesses
-for constraint in implied {
-    let violation = generate_violation(constraint);
-    if executor.execute(violation).success {
-        report_critical("Circuit accepts violation of inferred constraint");
-    }
-}
-```
-
-**Example Inferred Constraints:**
-- `pathIndices[i] ∈ {0,1}` (Merkle path indices should be binary)
-- `amount < 2^64` (Range checks should exist)
-- `nullifier != prev_nullifier` (Uniqueness should be enforced)
-
-**Target Use Cases:** Missing range checks, uniqueness violations
-
-### 5. Metamorphic Testing
-
-**The Problem:** Circuits that don't respect mathematical properties.
-
-**How We Find It:**
-```rust
-// Define metamorphic relations
-let relations = vec![
-    // Relation: Flipping Merkle leaf should change root
-    MetamorphicRelation::new(
-        "merkle_leaf_flip",
-        Transform::BitFlip { input: "leaf", bit: 0 },
-        ExpectedBehavior::OutputChanged
-    ),
-    
-    // Relation: Nullifier change should affect output
-    MetamorphicRelation::new(
-        "nullifier_variation",
-        Transform::AddToInput { input: "nullifier", value: 1 },
-        ExpectedBehavior::OutputChanged
-    ),
-];
-
-// Test each relation
-for relation in relations {
-    let base_witness = generate_valid();
-    let base_output = executor.execute(base_witness);
-    
-    let transformed = relation.transform.apply(base_witness);
-    let transformed_output = executor.execute(transformed);
-    
-    if !relation.expected.check(base_output, transformed_output) {
-        report_high("Metamorphic relation violated");
-    }
-}
-```
-
-**Supported Transforms:**
-- `scale_input(x, k)` - Multiply input by constant
-- `negate_input(x)` - Negate field element
-- `swap_inputs(x, y)` - Swap two inputs
-- `bit_flip(x, bit)` - Flip specific bit
-- `set_input(x, value)` - Set to specific value
-
-**Target Use Cases:** Determinism bugs, commitment malleability
-
-### 6. Differential Testing
-
-**The Problem:** Implementation bugs specific to one backend.
-
-**How We Find It:**
-```rust
-// Same circuit logic in Circom and Noir
-let circom_executor = ExecutorFactory::create(Framework::Circom, circuit);
-let noir_executor = ExecutorFactory::create(Framework::Noir, circuit);
-
-for test_case in corpus {
-    let circom_output = circom_executor.execute(test_case);
-    let noir_output = noir_executor.execute(test_case);
-    
-    // Compare outputs
-    if circom_output != noir_output {
-        report_critical("Backend discrepancy: Circom vs Noir");
-    }
-    
-    // Compare timing (side-channel detection)
-    if abs(circom_time - noir_time) > threshold {
-        report_medium("Timing discrepancy detected");
-    }
-    
-    // Compare coverage
-    let jaccard = coverage_similarity(circom_cov, noir_cov);
-    if jaccard < 0.5 {
-        report_medium("Coverage divergence");
-    }
-}
-```
-
-**Real-World Impact:** Catches backend-specific bugs, optimization errors
-
-### 7. Multi-Step Chain Fuzzing (Mode 3)
-
-**The Problem:** Bugs that only appear across multiple circuit invocations.
-
-**How We Find It:**
-```rust
-// Define chain: deposit → withdraw → nullifier_check
-let chain = ChainSpec::new("protocol_flow")
-    .add_step("deposit", deposit_circuit)
-    .add_step("withdraw", withdraw_circuit, |
-        // Wire deposit output to withdraw input
-        mapping: [(0, 2)]  // deposit.out[0] → withdraw.in[2]
-    )
-    .add_assertion("nullifier_unique", |trace| {
-        let nullifiers: Vec<_> = trace.steps.map(|s| s.outputs[0]).collect();
-        nullifiers.len() == nullifiers.iter().unique().count()
-    });
-
-// Fuzz the chain
-for _ in 0..1000 {
-    let result = chain_runner.execute(chain, inputs);
-    
-    // Check cross-step invariants
-    for violation in invariant_checker.check(result.trace) {
-        // Minimize to L_min (minimum chain length to reproduce)
-        let minimized = shrinker.minimize(chain, violation);
-        report_critical(f"Chain violation at L_min={minimized.l_min}");
-    }
-}
-```
-
-**Metrics:**
-- **L_min**: Minimum chain length to reproduce finding
-- **D**: Mean L_min across all findings (measures "depth")
-- **P_deep**: Probability that L_min ≥ 2 (protocol-level bugs)
-
-**Target Use Cases:** Reentrancy-like bugs, state inconsistencies, protocol composition issues
-
-### Why Traditional Audits Miss These
-
-1. **Scale:** Manual review can't test millions of input combinations
-2. **Depth:** Symbolic execution explores 200+ constraint layers
-3. **Automation:** Runs 24/7, doesn't get tired or miss patterns
-4. **Mathematical Proof:** Z3 proves bugs exist before testing
-5. **Adversarial Mindset:** Explicitly tries to break invariants
-
-### Current Status
-
-**Implemented:**
-- 17 attack types with framework definitions
-- 5 novel oracles (constraint inference, metamorphic, spec inference, etc.)
-- 4 backend integrations (Circom most mature, others partial)
-- 22 real CVE test cases from zkBugs dataset (see Autonomous CVE Test Suite below)
-- Automated triage system with confidence scoring
-
-**In Progress:**
-- Full evidence mode verification (cryptographic proof generation pending)
-- Complete attack implementations (some heuristic-only)
-- False positive rate measurement
-
-**Target Vulnerability Classes:**
-- Underconstrained circuits
-- Soundness violations
-- Range check bypasses
-- Signature malleability
-- Hash collisions
 
 ## Project Structure
 
 ```
 ZkPatternFuzz/
-├── Cargo.toml               # Workspace root
-├── src/                     # Main application code
-│   ├── main.rs              # CLI entry point
-│   ├── lib.rs               # Library exports
-│   └── ...
+├── src/                     # Main application
 ├── crates/                  # Workspace crates
-│   ├── zk-core/             # Core types and traits
+│   ├── zk-core/             # Core types
 │   ├── zk-attacks/          # Attack implementations
 │   ├── zk-fuzzer-core/      # Fuzzing engine
-│   ├── zk-symbolic/         # Symbolic execution (Z3)
+│   ├── zk-symbolic/         # Symbolic execution
 │   ├── zk-backends/         # Backend integrations
-│   ├── zk-constraints/      # Constraint analysis
-│   └── zk-attacks-plugin-example/  # Plugin example
+│   └── zk-constraints/      # Constraint analysis
 ├── tests/                   # Test suite
-│   ├── autonomous_cve_tests.rs     # 22 CVE regression tests
-│   ├── cve_regression_runner.rs    # CVE test runner
-│   └── ...
-├── campaigns/               # Campaign configurations
+├── campaigns/               # Campaign configs
 ├── circuits/                # Test circuits
-├── targets/                 # Downloaded vulnerability datasets
-│   └── zkbugs/              # zkBugs dataset (110 vulnerabilities)
-├── CVErefs/                 # CVE circuit references
-│   ├── AUTONOMOUS_TEST_SUITE.md
-│   └── circuit_references.json
+├── targets/zkbugs/          # zkBugs dataset (110 vulnerabilities)
 ├── templates/               # YAML templates
-│   ├── autonomous_cve_tests.yaml   # 22 CVE definitions
-│   └── attack_patterns.yaml
-├── scripts/                 # Utility scripts
-├── docs/                    # Documentation
-├── reports/                 # Generated reports
-└── benches/                 # Benchmarks
+└── docs/                    # Documentation
 ```
 
 ## Documentation
 
-- **[README.md](README.md)** - Quick start and feature overview (this file)
-- **[TUTORIAL.md](docs/TUTORIAL.md)** - Step-by-step guide for beginners
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Deep dive into internal design and extension points
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
-- **[TRIAGE_SYSTEM.md](docs/TRIAGE_SYSTEM.md)** - Automated triage and confidence scoring
-- **[DEFI_ATTACK_GUIDE.md](docs/DEFI_ATTACK_GUIDE.md)** - MEV and front-running attack detection
-- **[API Documentation](https://docs.rs/zk-fuzzer)** - Generated from source code
+- **[TUTORIAL.md](docs/TUTORIAL.md)** - Step-by-step guide
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Internal design
+- **[ROADMAP.md](ROADMAP.md)** - Development roadmap
+- **[TRIAGE_SYSTEM.md](docs/TRIAGE_SYSTEM.md)** - Automated triage
+- **[DEFI_ATTACK_GUIDE.md](docs/DEFI_ATTACK_GUIDE.md)** - MEV/front-running detection
 
 ## Development
 
 ```bash
-# Run all tests
+# Run tests
 cargo test
-
-# Run specific test
-cargo test test_name
 
 # Run with logging
 RUST_LOG=debug cargo run -- --config tests/campaigns/mock_merkle_audit.yaml
 
-# Run integration tests
-cargo test --test integration_tests
-
-# Format code
+# Format and lint
 cargo fmt
-
-# Lint
 cargo clippy -- -D warnings
 
-# Generate documentation
+# Generate docs
 cargo doc --open
-
-# Build with symbolic execution features
-cargo build --features symbolic
 ```
-
-## Report Formats
-
-### JSON
-
-Machine-readable format for integration with other tools. Includes:
-- Campaign metadata
-- Attack results
-- Findings with severity levels
-- Proof-of-concept test cases
-- Coverage statistics
-
-### Markdown
-
-Human-readable report with:
-- Executive summary
-- Detailed findings
-- PoC reproduction steps
-- Recommendations
-
-### SARIF
-
-Static Analysis Results Interchange Format for IDE integration (VS Code, GitHub Code Scanning).
-
-## Example Campaigns
-
-The `tests/campaigns/` directory contains example configurations:
-
-- **mock_merkle_audit.yaml** - Merkle tree proof verification
-- **mock_nullifier_test.yaml** - Nullifier uniqueness testing
-- **mock_range_proof.yaml** - Range proof validation
-- **semaphore_audit.yaml** - Semaphore protocol analysis
-- **tornado_core_audit.yaml** - Tornado Cash core circuit
-- **iden3_auth_audit.yaml** - Iden3 authentication
-- **polygon_zkevm_audit.yaml** - Polygon zkEVM patterns
-
-## Advanced Features
-
-## Advanced Features
-
-### Constraint-Guided Seeding
-
-Use Z3 SMT solver to generate inputs from circuit constraints:
-
-```yaml
-campaign:
-  parameters:
-    additional:
-      constraint_guided_enabled: true
-      constraint_guided_max_depth: 200          # Constraint exploration depth
-      constraint_guided_max_paths: 1000         # Maximum paths to explore
-      constraint_guided_solver_timeout_ms: 5000 # Z3 timeout per query
-      constraint_guided_solutions_per_path: 4   # Solutions to generate per path
-      constraint_guided_pruning_strategy: "DepthBounded"  # none/depth/coverage/random
-```
-
-**How it works:**
-1. Extracts R1CS/ACIR/PLONK constraints from circuit
-2. Converts to Z3 SMT formulas
-3. Solves for satisfying inputs using symbolic execution
-4. Seeds corpus with generated test cases
-
-**Pruning Strategies:**
-- `DepthBounded`: Prune paths exceeding max_depth
-- `ConstraintBounded`: Limit constraint complexity
-- `CoverageGuided`: Prioritize unexplored constraints
-- `RandomSampling`: Random path selection
-- `LoopBounded`: Limit loop iterations
-- `SimilarityBased`: Prune similar paths
-- `SubsumptionBased`: Remove subsumed paths
-
-### Differential Testing
-
-Compare implementations across backends:
-
-```yaml
-differential:
-  enabled: true
-  backends: ["circom", "noir"]
-  tolerance: 0.0001
-```
-
-### Corpus Management
-
-Automatic test case minimization and corpus storage:
-
-```yaml
-corpus:
-  enabled: true
-  minimize: true
-  max_size: 100000  # Increased from 10K default
-```
-
-**Features:**
-- Coverage-guided selection (keeps test cases that hit new constraints)
-- Automatic minimization every 10K iterations
-- Persistent storage to `reports/corpus/`
-- Power scheduling prioritizes interesting test cases
-
-### Attack Plugins
-
-Dynamic attack plugins loaded at runtime:
-
-```bash
-# Build plugin
-cargo build -p zk-attacks-plugin-example --release
-
-# Run with plugins
-cargo run --features attack-plugins -- --config campaign.yaml
-```
-
-**Config:**
-```yaml
-campaign:
-  parameters:
-    attack_plugin_dirs: ["./plugins"]
-
-attacks:
-  - type: boundary
-    plugin: example_plugin  # Uses plugin instead of built-in
-```
-
-### Fuzzing Strategies
-
-| Strategy | Description |
-|----------|-------------|
-| `random` | Generate random field elements |
-| `interesting_values` | Use predefined values (0, 1, p-1, p) |
-| `mutation` | Structure-aware mutations (Merkle paths, signatures) |
-| `exhaustive_if_small` | Enumerate small domains (binary inputs) |
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-**Quick Start for Contributors:**
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes and add tests
-4. Ensure `cargo test` and `cargo clippy` pass
-5. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Areas Needing Help:**
-- Cairo real-circuit integration testing and tooling
-- YAML v2 profiles/invariants/includes
+- Cairo real-circuit integration
 - Additional attack patterns
 - Documentation and examples
 - Performance optimizations
-
-## Roadmap
-
-### Completed ✅
-- [x] Complete Circom backend integration with R1CS constraint extraction
-- [x] Complete Noir backend integration with ACIR bytecode parsing
-- [x] Complete Halo2 backend integration with PLONK constraint system
-- [x] Cairo support with stone-prover integration (proof generation complete)
-- [x] Coverage-guided fuzzing with constraint-level tracking
-- [x] Power scheduling algorithms (FAST/COE/EXPLORE/MMOPT/RARE/SEEK)
-- [x] Structure-aware mutations (Merkle paths, signatures, nullifiers)
-- [x] Symbolic execution with Z3 (max_depth: 1000, max_paths: 10000)
-- [x] Enhanced symbolic execution (R1CS/ACIR extraction, path pruning, path merging)
-- [x] Taint analysis for information flow tracking
-- [x] Complexity analysis with optimization suggestions
-- [x] Parallel execution with Rayon thread pools
-- [x] Corpus management with automatic minimization
-- [x] JSON, Markdown, and SARIF reports
-- [x] Collision detection attacks (10K samples)
-- [x] Boundary value attacks (field modulus boundaries)
-- [x] Novel oracles: constraint inference, metamorphic, spec inference, constraint slice, witness collision
-- [x] Evidence mode with strict backend verification
-- [x] Oracle validation and cross-oracle correlation
-- [x] Multi-step chain fuzzing (Mode 3) with YAML configuration
-- [x] Attack plugin system with dynamic loading
-- [x] **Phase 5 Production Hardening** (COMPLETE - Feb 2026):
-  - [x] Batch verification with real cryptographic proofs (5 aggregation methods)
-  - [x] zkEVM differential testing with reference EVM (revm integration)
-  - [x] Chain mutator framework fix (framework-aware mutations)
-  - [x] Process isolation hardening (crash recovery, telemetry, retry logic)
-  - [x] Concurrency model validation (stress tests, 32+ workers)
-  - [x] Differential testing translation layer (50+ circuit patterns)
-  - [x] Oracle state management (bloom filters, LRU eviction, bounded memory)
-- [x] **Phase 3.1 DeFi Security** (COMPLETE - Feb 2026):
-  - [x] MEV attack detection (ordering dependency, sandwich attacks, state leakage)
-  - [x] Front-running detection (information leakage, commitment bypass, delay attacks)
-  - [x] Price impact analyzer for DEX circuits
-  - [x] Arbitrage detector for cross-circuit opportunities
-  - [x] DeFi audit campaign templates
-- [x] **Phase 2.4 Automated Triage** (COMPLETE - Feb 2026):
-  - [x] Confidence-based ranking (0.0-1.0 scoring)
-  - [x] Cross-oracle validation bonus
-  - [x] Formal verification integration (Picus bonus)
-  - [x] Reproduction success tracking
-  - [x] Code coverage correlation
-  - [x] Finding deduplication
-  - [x] Priority ranking system (High/Medium/Low)
-  - [x] Evidence mode filtering
-
-### In Progress 🚧
-- [ ] Real-circuit coverage automation (Cairo real-circuit testing)
-- [ ] YAML v2 profiles/includes/invariants (partial implementation)
-
----
-
-## Autonomous CVE Test Suite
-
-ZkPatternFuzz includes a **comprehensive autonomous CVE test suite** with **22 real-world vulnerabilities** from the zkBugs dataset (110 vulnerabilities) and CVE-2024-42459.
-
-### Quick Start
-
-```bash
-# Verify all CVE test circuits exist
-cargo test --test autonomous_cve_tests test_cve_circuits_exist_in_repo -- --nocapture
-
-# Run full CVE regression suite
-cargo test --test autonomous_cve_tests -- --nocapture
-```
-
-### CVE Test Inventory (22 Total)
-
-#### Critical Severity (11)
-
-| ID | Vulnerability | Project | Type |
-|----|--------------|---------|------|
-| ZK-CVE-AUTO-001 | Unsound Left Rotation | Reclaim Protocol | Under-Constrained |
-| ZK-CVE-AUTO-002 | Merkle Tree Missing Boolean Constraints | Self.xyz | Under-Constrained |
-| ZK-CVE-AUTO-005 | MIMC Hash Not Constrained | Iden3 Circomlib | Assigned Not Constrained |
-| ZK-CVE-AUTO-007 | Range Check Bypass | Dark Forest | Boundary |
-| ZK-CVE-AUTO-010 | ArrayXOR Not Constrained | SuccinctLabs | Assigned Not Constrained |
-| ZK-CVE-AUTO-014 | MontgomeryDouble Underconstrained | Iden3 Circomlib | Under-Constrained |
-| ZK-CVE-AUTO-015 | MontgomeryAdd Underconstrained | Iden3 Circomlib | Under-Constrained |
-| ZK-CVE-AUTO-017 | Second Preimage Attack | Self.xyz | Collision |
-| ZK-CVE-AUTO-018 | Fake Non-Inclusion Proof | Self.xyz | Soundness |
-| **CVE-2024-42459** | **EdDSA Signature Malleability** | **Multiple** | **Malleability** |
-| ZK-CVE-AUTO-020 | Incorrect Point Doubling | SuccinctLabs | Soundness |
-
-#### High Severity (11)
-
-| ID | Vulnerability | Project | Type |
-|----|--------------|---------|------|
-| ZK-CVE-AUTO-003 | Packed Byte Overflow | Self.xyz | Boundary |
-| ZK-CVE-AUTO-004 | Big Integer Zero Check | Self.xyz | Soundness |
-| ZK-CVE-AUTO-006 | Missing Byte Range Checks | Self.xyz | Boundary |
-| ZK-CVE-AUTO-008 | Semaphore Zero Value | Semaphore Protocol | Under-Constrained |
-| ZK-CVE-AUTO-009 | BitElementMulAny Underconstrained | Iden3 Circomlib | Under-Constrained |
-| ZK-CVE-AUTO-011 | BigMod Range Checks | 0xbok Circom-BigInt | Boundary |
-| ZK-CVE-AUTO-013 | Decoder Bogus Output | Iden3 Circomlib | Under-Constrained |
-| ZK-CVE-AUTO-016 | Window4 Underconstrained | Iden3 Circomlib | Under-Constrained |
-| ZK-CVE-AUTO-019 | Incorrect Initialization | Tangle Network | Under-Constrained |
-| ZK-CVE-AUTO-021 | SHA256 Padding Overflow | SuccinctLabs | Boundary |
-| ZK-CVE-AUTO-022 | Non-Reduced Y Values | SuccinctLabs | Boundary |
-
-### Projects Covered (9)
-
-- **Iden3 Circomlib** (7 CVEs) - Core cryptographic library
-- **Self.xyz** (6 CVEs) - Identity protocol
-- **SuccinctLabs** (5 CVEs) - Telepathy circuits
-- **Reclaim Protocol** (1 CVE) - ChaCha20 circuits
-- **Dark Forest** (1 CVE) - Gaming protocol
-- **Semaphore Protocol** (1 CVE) - Anonymous signaling
-- **0xbok Circom-BigInt** (1 CVE) - Big integer library
-- **Unirep** (1 CVE) - Reputation protocol
-- **Tangle Network** (1 CVE) - Membership circuits
-
-### Vulnerability Categories
-
-| Category | Count | % |
-|----------|-------|---|
-| Under-Constrained | 13 | 59% |
-| Boundary | 6 | 27% |
-| Assigned Not Constrained | 2 | 9% |
-| Soundness | 3 | 14% |
-| Collision | 1 | 5% |
-| Malleability | 1 | 5% |
-
-### Test Suite Features
-
-✅ **100% Autonomous** - All circuits in repo, no external dependencies  
-✅ **Real CVE** - Includes CVE-2024-42459 (EdDSA malleability)  
-✅ **Production Vulnerabilities** - From zkSecurity, Veridise, Trail of Bits audits  
-✅ **All Circuits Verified** - 23/23 circuits exist and compile  
-✅ **CI/CD Ready** - Fully automated testing  
-
-### Files
-
-- `templates/autonomous_cve_tests.yaml` - 22 CVE test definitions
-- `tests/autonomous_cve_tests.rs` - Test runner
-- `CVErefs/AUTONOMOUS_TEST_SUITE.md` - Complete documentation
-- `targets/zkbugs/` - Downloaded vulnerability dataset (110 bugs)
-
-### Adding More CVEs
-
-From the zkBugs dataset:
-```bash
-# 41 Circom vulnerabilities total
-# 22 currently in test suite
-# 19 still available to add
-
-find targets/zkbugs/dataset/circom -name "zkbugs_config.json" | wc -l
-```
-
-See `CVErefs/AUTONOMOUS_TEST_SUITE.md` for full details.
-
----
-
-## References
-
-- [Circom Documentation](https://docs.circom.io/)
-- [Noir Documentation](https://noir-lang.org/)
-- [Halo2 Documentation](https://zcash.github.io/halo2/)
-- [Trail of Bits ZK Security](https://blog.trailofbits.com/tag/zero-knowledge-proofs/)
 
 ## License
 
 Business Source License 1.1 - See [LICENSE](LICENSE) for details.
 
-The Licensed Work will convert to Apache License 2.0 on 2028-02-04.
+Converts to Apache License 2.0 on 2028-02-04.
 
 ## Acknowledgments
 
-Built with:
-- [arkworks](https://github.com/arkworks-rs) - ZK cryptography primitives
-- [Z3](https://github.com/Z3Prover/z3) - SMT solver for symbolic execution
-- [Tokio](https://tokio.rs/) - Async runtime
-- [Rayon](https://github.com/rayon-rs/rayon) - Data parallelism
+Built with: [arkworks](https://github.com/arkworks-rs), [Z3](https://github.com/Z3Prover/z3), [Tokio](https://tokio.rs/), [Rayon](https://github.com/rayon-rs/rayon)
 
-Inspired by:
-- [AFL](https://github.com/google/AFL) - Coverage-guided fuzzing
-- [LibFuzzer](https://llvm.org/docs/LibFuzzer.html) - Corpus management
-- [Trail of Bits](https://www.trailofbits.com/) - ZK security research
-- [0xPARC](https://0xparc.org/) - ZK bug tracking
+Inspired by: [AFL](https://github.com/google/AFL), [LibFuzzer](https://llvm.org/docs/LibFuzzer.html), [Trail of Bits](https://www.trailofbits.com/), [0xPARC](https://0xparc.org/)
 
 ## Citation
 
-If you use ZkPatternFuzz in your research, please cite:
-teycirbensoltane.tn
+If you use ZkPatternFuzz in your research: teycirbensoltane.tn
