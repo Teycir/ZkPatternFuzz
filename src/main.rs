@@ -142,10 +142,8 @@ impl io::Write for DynamicTeeWriter {
             eprintln!("[zk-fuzzer] WARN: failed writing to stderr: {}", err);
         }
 
-        // Best-effort file output.
-        if let Err(err) = Self::with_log_file(|file| file.write_all(buf).map(|_| ())) {
-            eprintln!("[zk-fuzzer] WARN: failed writing session log: {}", err);
-        }
+        // Best-effort file output with non-blocking approach
+        let _ = Self::with_log_file(|file| file.write_all(buf).map(|_| ()));
 
         Ok(buf.len())
     }
@@ -154,9 +152,7 @@ impl io::Write for DynamicTeeWriter {
         if let Err(err) = io::stderr().flush() {
             eprintln!("[zk-fuzzer] WARN: failed flushing stderr: {}", err);
         }
-        if let Err(err) = Self::with_log_file(|file| file.flush()) {
-            eprintln!("[zk-fuzzer] WARN: failed flushing session log: {}", err);
-        }
+        let _ = Self::with_log_file(|file| file.flush());
         Ok(())
     }
 }
@@ -188,9 +184,9 @@ fn get_run_log_context() -> Option<RunLogContext> {
     let slot = RUN_LOG_CONTEXT.get_or_init(|| Mutex::new(None));
     match slot.lock() {
         Ok(guard) => guard.clone(),
-        Err(err) => {
-            eprintln!("[zk-fuzzer] WARN: failed to lock run log context: {}", err);
-            None
+        Err(poisoned) => {
+            tracing::warn!("Run log context mutex poisoned, recovering data");
+            poisoned.into_inner().clone()
         }
     }
 }
@@ -1816,7 +1812,7 @@ fn normalize_synonym_term_to_regex(
         .map(str::trim)
         .filter(|token| !token.is_empty())
     {
-        let mut current = String::new();
+        let mut current = String::with_capacity(raw_chunk.len());
         let mut prev: Option<char> = None;
         for ch in raw_chunk.chars() {
             let boundary = match prev {
@@ -1829,6 +1825,7 @@ fn normalize_synonym_term_to_regex(
             };
             if boundary && !current.is_empty() {
                 tokens.push(std::mem::take(&mut current));
+                current = String::with_capacity(raw_chunk.len());
             }
             current.push(ch);
             prev = Some(ch);
@@ -1842,7 +1839,15 @@ fn normalize_synonym_term_to_regex(
         .map(|token| regex::escape(&token))
         .collect();
     if tokens.len() >= 2 {
-        return tokens.join(r"(?:[\s_\-./]*)");
+        let total_len = tokens.iter().map(|s| s.len()).sum::<usize>() + tokens.len() * 20;
+        let mut result = String::with_capacity(total_len);
+        for (i, token) in tokens.iter().enumerate() {
+            if i > 0 {
+                result.push_str(r"(?:[\s_\-./]*)");
+            }
+            result.push_str(token);
+        }
+        return result;
     }
 
     regex::escape(term.trim())

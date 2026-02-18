@@ -1145,7 +1145,9 @@ impl ConstraintInspector for CircomExecutor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
         self.constraints
             .get()
-            .expect("Circom constraints cache not initialized; executor construction must preload constraints")
+            .expect(
+                "Circom constraints cache not initialized; executor construction must preload constraints",
+            )
             .clone()
     }
 
@@ -1258,6 +1260,17 @@ impl NoirExecutor {
         let private = self.target.private_input_indices();
         let output_indices = self.target.output_signal_indices();
 
+        // Validate indices before computing max to prevent malicious metadata
+        for idx in public.iter().chain(private.iter()).chain(output_indices.iter()) {
+            if *idx > MAX_SYNTHETIC_WITNESS_WIRES {
+                anyhow::bail!(
+                    "Noir metadata contains wire index {} above safety cap {}",
+                    idx,
+                    MAX_SYNTHETIC_WITNESS_WIRES
+                );
+            }
+        }
+
         let max_idx = public
             .iter()
             .chain(private.iter())
@@ -1265,13 +1278,6 @@ impl NoirExecutor {
             .copied()
             .max();
         let max_idx = max_idx.unwrap_or_default();
-        if max_idx > MAX_SYNTHETIC_WITNESS_WIRES {
-            anyhow::bail!(
-                "Noir metadata reported wire index {} above safety cap {}",
-                max_idx,
-                MAX_SYNTHETIC_WITNESS_WIRES
-            );
-        }
 
         let witness_len = max_idx
             .max(1)

@@ -40,6 +40,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Named-input fixture mismatches now zero-fill missing declared signals instead of hard-failing regression execution.
   - Autonomous CVE harness now classifies backend/tooling artifact failures as infrastructure skips (with explicit per-test reasons) instead of counting them as detection misses.
   - Added up-front CVE preflight to disable non-compiling/non-loadable targets before execution begins, reducing noisy failures and speeding triage feedback.
+  - Added persistent preflight cache (`target/autonomous_cve_preflight_cache.json`) plus refresh flag (`ZKFUZZ_CVE_PREFLIGHT_REFRESH=1`) to avoid repeated probing of known infrastructure-broken targets.
   - Regression failures now surface backend execution errors directly in testcase output (`Expected valid but execution failed: <backend error>`), speeding root-cause triage.
 - Completed first-class trusted setup module wiring:
   - Added `crates/zk-attacks/src/trusted_setup.rs` with `TrustedSetupAttack` + YAML-friendly `TrustedSetupConfig`.

@@ -1,9 +1,17 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::path::Path;
 use zk_fuzzer::cve::CveDatabase;
 
 const AUTONOMOUS_CVE_DB: &str = "templates/autonomous_cve_tests.yaml";
 const REQUIRE_DATASET_ENV: &str = "ZKFUZZ_REQUIRE_CVE_DATASET";
+const PREFLIGHT_CACHE_ENV: &str = "ZKFUZZ_CVE_PREFLIGHT_CACHE";
+const PREFLIGHT_REFRESH_ENV: &str = "ZKFUZZ_CVE_PREFLIGHT_REFRESH";
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+struct PreflightCache {
+    entries: HashMap<String, String>,
+}
 
 fn repo_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -64,6 +72,63 @@ fn ensure_dataset_available(test_name: &str) -> bool {
     false
 }
 
+fn preflight_cache_path() -> PathBuf {
+    std::env::var(PREFLIGHT_CACHE_ENV)
+        .map(|p| PathBuf::from(p.trim()))
+        .ok()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| {
+            repo_root()
+                .join("target")
+                .join("autonomous_cve_preflight_cache.json")
+        })
+}
+
+fn should_refresh_preflight_cache() -> bool {
+    std::env::var(PREFLIGHT_REFRESH_ENV)
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            normalized == "1" || normalized == "true" || normalized == "yes"
+        })
+        .unwrap_or(false)
+}
+
+fn load_preflight_cache(path: &Path) -> PreflightCache {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return PreflightCache::default();
+    };
+    serde_json::from_str::<PreflightCache>(&raw).unwrap_or_default()
+}
+
+fn save_preflight_cache(path: &Path, cache: &PreflightCache) {
+    if let Some(parent) = path.parent() {
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            println!(
+                "⚠️  Could not create preflight cache directory '{}': {}",
+                parent.display(),
+                err
+            );
+            return;
+        }
+    }
+
+    let serialized = match serde_json::to_string_pretty(cache) {
+        Ok(s) => s,
+        Err(err) => {
+            println!("⚠️  Could not serialize preflight cache: {}", err);
+            return;
+        }
+    };
+
+    if let Err(err) = std::fs::write(path, serialized) {
+        println!(
+            "⚠️  Could not write preflight cache '{}': {}",
+            path.display(),
+            err
+        );
+    }
+}
+
 #[test]
 fn test_autonomous_cve_regression_tests() {
     if !ensure_dataset_available("test_autonomous_cve_regression_tests") {
@@ -96,21 +161,44 @@ fn test_autonomous_cve_regression_tests() {
     );
     println!();
 
+    let preflight_cache_path = preflight_cache_path();
+    let refresh_preflight = should_refresh_preflight_cache();
+    let mut preflight_cache = if refresh_preflight {
+        PreflightCache::default()
+    } else {
+        load_preflight_cache(&preflight_cache_path)
+    };
+    let mut preflight_cache_updated = false;
+
     let mut preflight_infra_skips: HashMap<String, String> = HashMap::new();
     for test in &selected_tests {
         let circuit_full_path = repo_root().join(&test.circuit_path);
         if !circuit_full_path.exists() {
             continue;
         }
+        if !refresh_preflight {
+            if let Some(reason) = preflight_cache.entries.get(&test.cve_id) {
+                preflight_infra_skips.insert(test.cve_id.clone(), reason.clone());
+                continue;
+            }
+        }
         if let Some(reason) = test.preflight_infrastructure_issue() {
+            preflight_cache
+                .entries
+                .insert(test.cve_id.clone(), reason.clone());
+            preflight_cache_updated = true;
             preflight_infra_skips.insert(test.cve_id.clone(), reason);
         }
+    }
+    if refresh_preflight || preflight_cache_updated {
+        save_preflight_cache(&preflight_cache_path, &preflight_cache);
     }
     if !preflight_infra_skips.is_empty() {
         println!(
             "Preflight disabled {} CVE target(s) due to backend/tooling/artifact issues.",
             preflight_infra_skips.len()
         );
+        println!("  Cache file: {}", preflight_cache_path.display());
         println!();
     }
 
