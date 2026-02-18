@@ -1,8 +1,8 @@
 use chrono::Utc;
 use std::path::{Path, PathBuf};
 
-use super::{engagement_root_dir, run_signal_dir};
 use super::run_outcome_docs::log_run_reason_code;
+use super::{engagement_root_dir, run_signal_dir};
 
 pub(crate) fn best_effort_write_json(path: &Path, value: &serde_json::Value) {
     if let Some(parent) = path.parent() {
@@ -41,7 +41,11 @@ pub(crate) fn best_effort_append_jsonl(path: &Path, value: &serde_json::Value) {
     let mut line = match serde_json::to_string(value) {
         Ok(s) => s,
         Err(err) => {
-            tracing::warn!("Failed to serialize JSONL for '{}': {}", path.display(), err);
+            tracing::warn!(
+                "Failed to serialize JSONL for '{}': {}",
+                path.display(),
+                err
+            );
             return;
         }
     };
@@ -104,7 +108,11 @@ pub(crate) fn get_command_from_doc(value: &serde_json::Value) -> String {
     "unknown".to_string()
 }
 
-pub(crate) fn mirror_mode_output_snapshot(output_dir: &Path, run_id: &str, value: &serde_json::Value) {
+pub(crate) fn mirror_mode_output_snapshot(
+    output_dir: &Path,
+    run_id: &str,
+    value: &serde_json::Value,
+) {
     let command = get_command_from_doc(value);
     let mode = mode_folder_from_command(&command);
     let report_dir = engagement_root_dir(run_id);
@@ -245,8 +253,11 @@ pub(crate) fn update_engagement_summary(report_dir: &Path, value: &serde_json::V
     md.push_str(&format!("Updated (UTC): `{}`\n\n", now));
 
     if let Some(modes) = summary.get("modes").and_then(|m| m.as_object()) {
-        let sections: [(&str, &[&str]); 3] =
-            [("scan", &["scan"]), ("chains", &["chains"]), ("misc", &["misc"])];
+        let sections: [(&str, &[&str]); 3] = [
+            ("scan", &["scan"]),
+            ("chains", &["chains"]),
+            ("misc", &["misc"]),
+        ];
         for (section_name, aliases) in sections {
             let v = aliases.iter().find_map(|key| modes.get(*key));
             md.push_str(&format!("## {}\n\n", section_name));
@@ -299,8 +310,7 @@ pub(crate) fn update_engagement_summary(report_dir: &Path, value: &serde_json::V
                     {
                         md.push_str(&format!("- Findings: `{}`\n", total));
                     }
-                    if let Some(crit) = metrics.get("critical_findings").and_then(|b| b.as_bool())
-                    {
+                    if let Some(crit) = metrics.get("critical_findings").and_then(|b| b.as_bool()) {
                         md.push_str(&format!("- Critical: `{}`\n", crit));
                     }
                 }
@@ -340,7 +350,10 @@ pub(crate) fn scan_public_root_from_output_dir(output_dir: &Path) -> Option<Path
     Some(run_root_dir.join("scan"))
 }
 
-pub(crate) fn write_scan_timestamp_totals_if_applicable(output_dir: &Path, value: &serde_json::Value) {
+pub(crate) fn write_scan_timestamp_totals_if_applicable(
+    output_dir: &Path,
+    value: &serde_json::Value,
+) {
     let Some(scan_root) = scan_public_root_from_output_dir(output_dir) else {
         return;
     };

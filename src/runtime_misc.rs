@@ -44,7 +44,10 @@ pub(crate) fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
     println!("  Version: {}", config.campaign.version);
     println!("  Framework: {:?}", config.campaign.target.framework);
     println!("  Circuit: {:?}", config.campaign.target.circuit_path);
-    println!("  Main Component: {}", config.campaign.target.main_component);
+    println!(
+        "  Main Component: {}",
+        config.campaign.target.main_component
+    );
     println!();
     println!("Attacks ({}):", config.attacks.len());
     for attack in &config.attacks {

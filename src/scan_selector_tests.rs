@@ -1,28 +1,25 @@
-    use super::*;
-    use super::engagement_artifacts::get_command_from_doc;
+use super::engagement_artifacts::get_command_from_doc;
+use super::*;
 
-    fn evaluate_selector_summary(
-        pattern_yaml: &str,
-        target_source: &str,
-    ) -> ScanRegexPatternSummary {
-        let temp_dir = tempfile::tempdir().expect("tempdir");
-        let pattern_path = temp_dir.path().join("pattern.yaml");
-        let target_path = temp_dir.path().join("target.circom");
+fn evaluate_selector_summary(pattern_yaml: &str, target_source: &str) -> ScanRegexPatternSummary {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let pattern_path = temp_dir.path().join("pattern.yaml");
+    let target_path = temp_dir.path().join("target.circom");
 
-        fs::write(&pattern_path, pattern_yaml).expect("write pattern");
-        fs::write(&target_path, target_source).expect("write target");
+    fs::write(&pattern_path, pattern_yaml).expect("write pattern");
+    fs::write(&target_path, target_source).expect("write target");
 
-        let selector_config =
-            load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
-                .expect("load selector config")
-                .expect("selector config should exist");
-        evaluate_loaded_scan_regex_patterns(&selector_config, &target_path)
-            .expect("evaluate selector config")
-    }
+    let selector_config =
+        load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
+            .expect("load selector config")
+            .expect("selector config should exist");
+    evaluate_loaded_scan_regex_patterns(&selector_config, &target_path)
+        .expect("evaluate selector config")
+}
 
-    #[test]
-    fn scan_selector_default_policy_matches_any_single_pattern() {
-        let pattern_yaml = r#"
+#[test]
+fn scan_selector_default_policy_matches_any_single_pattern() {
+    let pattern_yaml = r#"
 patterns:
   - id: contains_alpha
     kind: regex
@@ -31,16 +28,16 @@ patterns:
     kind: regex
     pattern: "\\bbeta\\b"
 "#;
-        let summary = evaluate_selector_summary(pattern_yaml, "signal input alpha;");
+    let summary = evaluate_selector_summary(pattern_yaml, "signal input alpha;");
 
-        assert_eq!(summary.required_k_of_n, 1);
-        assert_eq!(summary.matched_patterns, 1);
-        assert!(summary.selector_passed);
-    }
+    assert_eq!(summary.required_k_of_n, 1);
+    assert_eq!(summary.matched_patterns, 1);
+    assert!(summary.selector_passed);
+}
 
-    #[test]
-    fn scan_selector_policy_supports_k_of_n_and_min_score() {
-        let pattern_yaml = r#"
+#[test]
+fn scan_selector_policy_supports_k_of_n_and_min_score() {
+    let pattern_yaml = r#"
 patterns:
   - id: alpha_context
     kind: regex
@@ -64,16 +61,16 @@ selector_policy:
     - name: core
       k_of_n: 1
 "#;
-        let summary = evaluate_selector_summary(pattern_yaml, "alpha gamma");
+    let summary = evaluate_selector_summary(pattern_yaml, "alpha gamma");
 
-        assert_eq!(summary.matched_patterns, 2);
-        assert!((summary.matched_score - 1.5).abs() < 1e-9);
-        assert!(summary.selector_passed);
-    }
+    assert_eq!(summary.matched_patterns, 2);
+    assert!((summary.matched_score - 1.5).abs() < 1e-9);
+    assert!(summary.selector_passed);
+}
 
-    #[test]
-    fn scan_selector_policy_fails_when_group_requirement_is_not_met() {
-        let pattern_yaml = r#"
+#[test]
+fn scan_selector_policy_fails_when_group_requirement_is_not_met() {
+    let pattern_yaml = r#"
 patterns:
   - id: alpha_context
     kind: regex
@@ -97,20 +94,20 @@ selector_policy:
     - name: core
       k_of_n: 2
 "#;
-        let summary = evaluate_selector_summary(pattern_yaml, "alpha gamma");
+    let summary = evaluate_selector_summary(pattern_yaml, "alpha gamma");
 
-        assert!(!summary.selector_passed);
-        assert_eq!(summary.group_matches.len(), 1);
-        assert!(!summary.group_matches[0].passed);
-    }
+    assert!(!summary.selector_passed);
+    assert_eq!(summary.group_matches.len(), 1);
+    assert!(!summary.group_matches[0].passed);
+}
 
-    #[test]
-    fn scan_selector_policy_rejects_invalid_global_k_of_n() {
-        let temp_dir = tempfile::tempdir().expect("tempdir");
-        let pattern_path = temp_dir.path().join("pattern.yaml");
-        fs::write(
-            &pattern_path,
-            r#"
+#[test]
+fn scan_selector_policy_rejects_invalid_global_k_of_n() {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let pattern_path = temp_dir.path().join("pattern.yaml");
+    fs::write(
+        &pattern_path,
+        r#"
 patterns:
   - id: one
     kind: regex
@@ -121,17 +118,17 @@ patterns:
 selector_policy:
   k_of_n: 3
 "#,
-        )
-        .expect("write pattern");
+    )
+    .expect("write pattern");
 
-        let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
-            .expect_err("invalid k_of_n should fail");
-        assert!(format!("{err:#}").contains("selector_policy.k_of_n"));
-    }
+    let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
+        .expect_err("invalid k_of_n should fail");
+    assert!(format!("{err:#}").contains("selector_policy.k_of_n"));
+}
 
-    #[test]
-    fn scan_selector_synonym_bundle_matches_separator_and_case_variants() {
-        let pattern_yaml = r#"
+#[test]
+fn scan_selector_synonym_bundle_matches_separator_and_case_variants() {
+    let pattern_yaml = r#"
 selector_synonyms:
   zkevm:
     - "zkEVM"
@@ -140,14 +137,14 @@ patterns:
     kind: regex
     pattern: "{{zkevm}}"
 "#;
-        let summary = evaluate_selector_summary(pattern_yaml, "component zk_evm_main {}");
-        assert!(summary.selector_passed);
-        assert_eq!(summary.matched_patterns, 1);
-    }
+    let summary = evaluate_selector_summary(pattern_yaml, "component zk_evm_main {}");
+    assert!(summary.selector_passed);
+    assert_eq!(summary.matched_patterns, 1);
+}
 
-    #[test]
-    fn scan_selector_synonym_bundle_can_disable_flexible_separator_normalization() {
-        let pattern_yaml = r#"
+#[test]
+fn scan_selector_synonym_bundle_can_disable_flexible_separator_normalization() {
+    let pattern_yaml = r#"
 selector_synonyms:
   zkevm:
     - "zkEVM"
@@ -158,18 +155,18 @@ patterns:
     kind: regex
     pattern: "{{zkevm}}"
 "#;
-        let summary = evaluate_selector_summary(pattern_yaml, "component zk_evm_main {}");
-        assert!(!summary.selector_passed);
-        assert_eq!(summary.matched_patterns, 0);
-    }
+    let summary = evaluate_selector_summary(pattern_yaml, "component zk_evm_main {}");
+    assert!(!summary.selector_passed);
+    assert_eq!(summary.matched_patterns, 0);
+}
 
-    #[test]
-    fn scan_selector_synonym_bundle_rejects_unknown_placeholder_bundle() {
-        let temp_dir = tempfile::tempdir().expect("tempdir");
-        let pattern_path = temp_dir.path().join("pattern.yaml");
-        fs::write(
-            &pattern_path,
-            r#"
+#[test]
+fn scan_selector_synonym_bundle_rejects_unknown_placeholder_bundle() {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let pattern_path = temp_dir.path().join("pattern.yaml");
+    fs::write(
+        &pattern_path,
+        r#"
 selector_synonyms:
   known:
     - "abc"
@@ -178,51 +175,51 @@ patterns:
     kind: regex
     pattern: "{{missing_bundle}}"
 "#,
-        )
-        .expect("write pattern");
+    )
+    .expect("write pattern");
 
-        let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
-            .expect_err("unknown synonym bundle must fail");
-        assert!(format!("{err:#}").contains("Unknown synonym bundle"));
-    }
+    let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
+        .expect_err("unknown synonym bundle must fail");
+    assert!(format!("{err:#}").contains("Unknown synonym bundle"));
+}
 
-    #[test]
-    fn scan_selector_regex_safety_allows_optional_group_quantifier() {
-        validate_scan_regex_pattern_safety(r"(zk[-_ ]?evm)?")
-            .expect("optional group quantifier should be allowed");
-    }
+#[test]
+fn scan_selector_regex_safety_allows_optional_group_quantifier() {
+    validate_scan_regex_pattern_safety(r"(zk[-_ ]?evm)?")
+        .expect("optional group quantifier should be allowed");
+}
 
-    #[test]
-    fn scan_selector_regex_safety_rejects_nested_dangerous_quantifier() {
-        let err = validate_scan_regex_pattern_safety(r"(a+)+")
-            .expect_err("nested quantifier must be rejected");
-        assert!(format!("{err:#}").contains("nested quantifier"));
-    }
+#[test]
+fn scan_selector_regex_safety_rejects_nested_dangerous_quantifier() {
+    let err = validate_scan_regex_pattern_safety(r"(a+)+")
+        .expect_err("nested quantifier must be rejected");
+    assert!(format!("{err:#}").contains("nested quantifier"));
+}
 
-    #[test]
-    fn run_doc_command_extraction_uses_context_fallback() {
-        let doc = serde_json::json!({
-            "status": "panic",
-            "context": {
-                "command": "scan"
-            }
-        });
-        assert_eq!(get_command_from_doc(&doc), "scan");
-    }
+#[test]
+fn run_doc_command_extraction_uses_context_fallback() {
+    let doc = serde_json::json!({
+        "status": "panic",
+        "context": {
+            "command": "scan"
+        }
+    });
+    assert_eq!(get_command_from_doc(&doc), "scan");
+}
 
-    #[test]
-    fn run_doc_command_extraction_defaults_to_unknown_when_missing() {
-        let doc = serde_json::json!({
-            "status": "panic"
-        });
-        assert_eq!(get_command_from_doc(&doc), "unknown");
-    }
+#[test]
+fn run_doc_command_extraction_defaults_to_unknown_when_missing() {
+    let doc = serde_json::json!({
+        "status": "panic"
+    });
+    assert_eq!(get_command_from_doc(&doc), "unknown");
+}
 
-    #[test]
-    fn engagement_dir_name_invalid_run_id_never_panics() {
-        assert!(run_id_epoch_dir("invalid").is_none());
-        let result = std::panic::catch_unwind(|| engagement_dir_name("invalid"));
-        assert!(result.is_ok(), "engagement_dir_name should not panic");
-        let dir = result.expect("string");
-        assert!(!dir.trim().is_empty());
-    }
+#[test]
+fn engagement_dir_name_invalid_run_id_never_panics() {
+    assert!(run_id_epoch_dir("invalid").is_none());
+    let result = std::panic::catch_unwind(|| engagement_dir_name("invalid"));
+    assert!(result.is_ok(), "engagement_dir_name should not panic");
+    let dir = result.expect("string");
+    assert!(!dir.trim().is_empty());
+}
