@@ -27,7 +27,7 @@ use crate::fuzzer::adaptive_attack_scheduler::{
 use crate::fuzzer::near_miss::{NearMissConfig, NearMissDetector, RangeConstraint};
 use crate::fuzzer::FuzzingEngine;
 use crate::reporting::FuzzReport;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use zk_core::{AttackType, Finding, Severity};
@@ -263,16 +263,21 @@ impl AdaptiveOrchestrator {
             }
         }
 
-        // Determine unconfirmed hints
-        let confirmed_categories: std::collections::HashSet<_> = results
-            .confirmed_zero_days
-            .iter()
-            .map(|c| (&c.hint.category, &c.circuit))
-            .collect();
+        // Determine unconfirmed hints while preserving one-to-one hint confirmations.
+        let mut confirmed_hint_counts: HashMap<(String, String), usize> = HashMap::new();
+        for confirmed in &results.confirmed_zero_days {
+            let key = (
+                confirmed.circuit.clone(),
+                Self::hint_identity_key(&confirmed.hint),
+            );
+            *confirmed_hint_counts.entry(key).or_insert(0) += 1;
+        }
 
         for (circuit, hint) in all_hints {
-            if !confirmed_categories.contains(&(&hint.category, &circuit)) {
-                results.unconfirmed_hints.push(hint);
+            let key = (circuit.clone(), Self::hint_identity_key(&hint));
+            match confirmed_hint_counts.get_mut(&key) {
+                Some(count) if *count > 0 => *count -= 1,
+                _ => results.unconfirmed_hints.push(hint),
             }
         }
 
@@ -533,38 +538,30 @@ impl AdaptiveOrchestrator {
         circuit_name: &str,
     ) -> Vec<ConfirmedZeroDay> {
         let mut confirmed = Vec::new();
+        let mut used_findings = HashSet::new();
 
         for hint in hints {
-            // Match hint category to finding attack types
-            let matching_finding = findings.iter().find(|f| {
-                matches!(
-                    (&hint.category, &f.attack_type),
-                    (
-                        ZeroDayCategory::MissingConstraint,
-                        AttackType::Underconstrained
-                    ) | (
-                        ZeroDayCategory::IncorrectRangeCheck,
-                        AttackType::ArithmeticOverflow
-                    ) | (
-                        ZeroDayCategory::SignatureMalleability,
-                        AttackType::Soundness
-                    ) | (ZeroDayCategory::NullifierReuse, AttackType::Collision)
-                        | (ZeroDayCategory::HashMisuse, AttackType::Collision)
-                        | (
-                            ZeroDayCategory::BitDecompositionBypass,
-                            AttackType::ArithmeticOverflow
-                        )
-                        | (
-                            ZeroDayCategory::ArithmeticOverflow,
-                            AttackType::ArithmeticOverflow
-                        )
-                )
-            });
+            let mut best_match: Option<(usize, usize)> = None;
+            for (idx, finding) in findings.iter().enumerate() {
+                if used_findings.contains(&idx) {
+                    continue;
+                }
+                let score = Self::hint_finding_match_score(hint, finding);
+                if score < 2 {
+                    continue;
+                }
+                match best_match {
+                    Some((_, best_score)) if score <= best_score => {}
+                    _ => best_match = Some((idx, score)),
+                }
+            }
 
-            if let Some(finding) = matching_finding {
+            if let Some((finding_idx, _score)) = best_match {
+                used_findings.insert(finding_idx);
+                let finding = findings[finding_idx].clone();
                 confirmed.push(ConfirmedZeroDay {
                     hint: hint.clone(),
-                    finding: finding.clone(),
+                    finding,
                     circuit: circuit_name.to_string(),
                     time_to_discovery: self.start_time.map(|s| s.elapsed()).unwrap_or_default(),
                 });
@@ -572,6 +569,218 @@ impl AdaptiveOrchestrator {
         }
 
         confirmed
+    }
+
+    fn hint_finding_match_score(hint: &ZeroDayHint, finding: &Finding) -> usize {
+        if !Self::hint_category_matches_attack(&hint.category, &finding.attack_type) {
+            return 0;
+        }
+
+        let hint_text = format!(
+            "{} {}",
+            hint.description,
+            hint.mutation_focus.as_deref().unwrap_or_default()
+        );
+        let finding_text = format!(
+            "{} {}",
+            finding.description,
+            finding.location.as_deref().unwrap_or_default()
+        )
+        .to_ascii_lowercase();
+
+        let hint_tokens = Self::content_tokens(&hint_text);
+        let finding_tokens = Self::content_tokens(&finding_text);
+        let token_overlap = Self::fuzzy_overlap_count(&hint_tokens, &finding_tokens);
+        let keyword_hits = Self::category_keywords(&hint.category)
+            .iter()
+            .filter(|kw| finding_text.contains(**kw))
+            .count();
+        let location_match = Self::hint_location_matches_finding(hint, &finding_text);
+
+        let mut score = token_overlap.saturating_mul(2);
+        score += keyword_hits.min(2);
+        if location_match {
+            score += 4;
+        }
+        score
+    }
+
+    fn hint_category_matches_attack(category: &ZeroDayCategory, attack_type: &AttackType) -> bool {
+        matches!(
+            (category, attack_type),
+            (ZeroDayCategory::MissingConstraint, AttackType::Underconstrained)
+                | (
+                    ZeroDayCategory::IncorrectRangeCheck,
+                    AttackType::ArithmeticOverflow
+                )
+                | (ZeroDayCategory::SignatureMalleability, AttackType::Soundness)
+                | (ZeroDayCategory::NullifierReuse, AttackType::Collision)
+                | (ZeroDayCategory::HashMisuse, AttackType::Collision)
+                | (
+                    ZeroDayCategory::BitDecompositionBypass,
+                    AttackType::ArithmeticOverflow
+                )
+                | (
+                    ZeroDayCategory::ArithmeticOverflow,
+                    AttackType::ArithmeticOverflow
+                )
+        )
+    }
+
+    fn category_keywords(category: &ZeroDayCategory) -> &'static [&'static str] {
+        match category {
+            ZeroDayCategory::MissingConstraint => {
+                &["constraint", "underconstrain", "signal", "wire", "dof"]
+            }
+            ZeroDayCategory::IncorrectRangeCheck => {
+                &["range", "bound", "num2bits", "overflow", "underflow"]
+            }
+            ZeroDayCategory::SignatureMalleability => {
+                &["signature", "malleab", "forge", "proof", "verifier"]
+            }
+            ZeroDayCategory::NullifierReuse => &["nullif", "reuse", "collision", "uniq", "nonce"],
+            ZeroDayCategory::HashMisuse => &["hash", "domain", "prefix", "tag", "collision"],
+            ZeroDayCategory::BitDecompositionBypass => {
+                &["bit", "decompos", "binary", "num2bits", "range"]
+            }
+            ZeroDayCategory::ArithmeticOverflow => {
+                &["overflow", "underflow", "arithmetic", "range", "bound"]
+            }
+            _ => &[],
+        }
+    }
+
+    fn hint_location_matches_finding(hint: &ZeroDayHint, finding_text: &str) -> bool {
+        if hint.locations.is_empty() {
+            return false;
+        }
+        let location_numbers = Self::extract_numbers(finding_text);
+        hint.locations
+            .iter()
+            .any(|loc| location_numbers.contains(loc))
+    }
+
+    fn extract_numbers(text: &str) -> HashSet<usize> {
+        let mut numbers = HashSet::new();
+        let mut current = String::new();
+        for ch in text.chars() {
+            if ch.is_ascii_digit() {
+                current.push(ch);
+            } else if !current.is_empty() {
+                if let Ok(value) = current.parse::<usize>() {
+                    numbers.insert(value);
+                }
+                current.clear();
+            }
+        }
+        if !current.is_empty() {
+            if let Ok(value) = current.parse::<usize>() {
+                numbers.insert(value);
+            }
+        }
+        numbers
+    }
+
+    fn hint_identity_key(hint: &ZeroDayHint) -> String {
+        let mut locations = hint.locations.clone();
+        locations.sort_unstable();
+        format!(
+            "{:?}|{}|{}|{}",
+            hint.category,
+            hint.description.to_ascii_lowercase(),
+            locations
+                .iter()
+                .map(|loc| loc.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+            hint.mutation_focus
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+        )
+    }
+
+    fn content_tokens(text: &str) -> Vec<String> {
+        text.split(|c: char| !c.is_ascii_alphanumeric())
+            .filter_map(|raw| Self::normalize_token(raw))
+            .collect()
+    }
+
+    fn normalize_token(token: &str) -> Option<String> {
+        if token.is_empty() {
+            return None;
+        }
+        let mut value = token.to_ascii_lowercase();
+        if value.len() < 4 || Self::is_common_stop_word(&value) {
+            return None;
+        }
+
+        if value.ends_with("ies") && value.len() > 4 {
+            value.truncate(value.len() - 3);
+            value.push('y');
+        } else {
+            for suffix in ["ing", "ers", "er", "ed", "es", "s"] {
+                if value.ends_with(suffix) && value.len() > suffix.len() + 2 {
+                    value.truncate(value.len() - suffix.len());
+                    break;
+                }
+            }
+        }
+
+        if value.len() < 4 || Self::is_common_stop_word(&value) {
+            None
+        } else {
+            Some(value)
+        }
+    }
+
+    fn is_common_stop_word(token: &str) -> bool {
+        matches!(
+            token,
+            "about"
+                | "after"
+                | "before"
+                | "could"
+                | "found"
+                | "from"
+                | "have"
+                | "into"
+                | "likely"
+                | "may"
+                | "might"
+                | "this"
+                | "that"
+                | "without"
+                | "with"
+        )
+    }
+
+    fn fuzzy_overlap_count(a_tokens: &[String], b_tokens: &[String]) -> usize {
+        let mut matched = 0usize;
+        let mut used_b = HashSet::new();
+
+        for a in a_tokens {
+            if let Some((idx, _)) = b_tokens.iter().enumerate().find(|(idx, b)| {
+                !used_b.contains(idx) && Self::tokens_roughly_match(a, b.as_str())
+            }) {
+                used_b.insert(idx);
+                matched += 1;
+            }
+        }
+
+        matched
+    }
+
+    fn tokens_roughly_match(left: &str, right: &str) -> bool {
+        if left == right || left.starts_with(right) || right.starts_with(left) {
+            return true;
+        }
+        let prefix = left
+            .chars()
+            .zip(right.chars())
+            .take_while(|(a, b)| a == b)
+            .count();
+        prefix >= 5
     }
 
     /// Save generated configs to disk
@@ -711,6 +920,7 @@ pub async fn run_from_cli(
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use zk_core::ProofOfConcept;
 
     #[test]
     fn test_orchestrator_creation() {
@@ -794,5 +1004,81 @@ mod tests {
             .get("fuzzing_timeout_seconds")
             .and_then(|v| v.as_u64());
         assert_eq!(timeout, Some(7));
+    }
+
+    #[test]
+    fn test_zero_day_confirmation_requires_content_signal() {
+        let orchestrator = AdaptiveOrchestrator::new();
+        let hints = vec![ZeroDayHint {
+            category: ZeroDayCategory::MissingConstraint,
+            confidence: 0.8,
+            description: "assignment without constraint on signal balance".to_string(),
+            locations: vec![44],
+            mutation_focus: Some("assigned_but_unconstrained".to_string()),
+        }];
+        let findings = vec![Finding {
+            attack_type: AttackType::Underconstrained,
+            severity: Severity::Low,
+            description: "Generic anomaly in witness ordering".to_string(),
+            poc: ProofOfConcept::default(),
+            location: None,
+        }];
+
+        let confirmed = orchestrator.check_confirmed_zero_days(&hints, &findings, "test");
+        assert!(confirmed.is_empty());
+    }
+
+    #[test]
+    fn test_zero_day_confirmation_is_one_to_one_per_finding() {
+        let orchestrator = AdaptiveOrchestrator::new();
+        let hints = vec![
+            ZeroDayHint {
+                category: ZeroDayCategory::MissingConstraint,
+                confidence: 0.8,
+                description: "wire alpha appears unconstrained".to_string(),
+                locations: vec![],
+                mutation_focus: None,
+            },
+            ZeroDayHint {
+                category: ZeroDayCategory::MissingConstraint,
+                confidence: 0.8,
+                description: "wire beta appears unconstrained".to_string(),
+                locations: vec![],
+                mutation_focus: None,
+            },
+        ];
+        let findings = vec![Finding {
+            attack_type: AttackType::Underconstrained,
+            severity: Severity::High,
+            description: "Unused private input wire alpha (index 5) in circuit".to_string(),
+            poc: ProofOfConcept::default(),
+            location: Some("constraint 11".to_string()),
+        }];
+
+        let confirmed = orchestrator.check_confirmed_zero_days(&hints, &findings, "test");
+        assert_eq!(confirmed.len(), 1);
+        assert!(confirmed[0].hint.description.contains("alpha"));
+    }
+
+    #[test]
+    fn test_zero_day_confirmation_uses_location_overlap() {
+        let orchestrator = AdaptiveOrchestrator::new();
+        let hints = vec![ZeroDayHint {
+            category: ZeroDayCategory::ArithmeticOverflow,
+            confidence: 0.7,
+            description: "possible overflow in multiplication path".to_string(),
+            locations: vec![128],
+            mutation_focus: None,
+        }];
+        let findings = vec![Finding {
+            attack_type: AttackType::ArithmeticOverflow,
+            severity: Severity::High,
+            description: "Range enforcement bypass with large field value".to_string(),
+            poc: ProofOfConcept::default(),
+            location: Some("src/circuit.circom:128".to_string()),
+        }];
+
+        let confirmed = orchestrator.check_confirmed_zero_days(&hints, &findings, "test");
+        assert_eq!(confirmed.len(), 1);
     }
 }

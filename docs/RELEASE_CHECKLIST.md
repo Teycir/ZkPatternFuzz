@@ -64,6 +64,7 @@ Use this for `rc` and final tags. Each item is a hard gate unless explicitly wai
 - [ ] `CHANGELOG.md` updated with user-facing changes and fixes.
 - [ ] `README.md` and docs updated for new flags/workflows.
 - [ ] Migration notes added for any behavior change (config keys, defaults, thresholds, gates).
+- [ ] Dynamic session-log routing behavior documented (including transition-window caveat + containment).
 - [ ] Known risks and deferred items listed clearly.
 
 ## 7. Release Artifact Validation

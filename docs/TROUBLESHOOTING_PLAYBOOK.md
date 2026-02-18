@@ -114,6 +114,24 @@ export ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS=300
 2. Increase run wall-clock timeout second.
 3. Increase per-exec timeout only if witness/prove operations are legitimately slow.
 
+## 5A. Session Log Routing Edge Window
+
+### Typical signal
+- A small number of lines from a new run appear in the previous `session.log` (or vice versa) during rapid run transitions.
+
+### Why this can happen
+- Log path selection is dynamic and tied to run context.
+- Context changes and subscriber writes are concurrent; a narrow transition window can still exist.
+
+### Current containment
+1. Context updates now force an immediate best-effort log-file rebind.
+2. Per-write path checks keep the file target aligned even if context changes after startup.
+
+### Operator guidance
+1. Treat run artifacts (`run_outcome.json`, summary/report files) as source-of-truth for run status.
+2. For strict per-run log separation, avoid overlapping runs that share the same process.
+3. If needed, split logs by run id post-hoc using `started_utc`/run metadata from artifacts.
+
 ## 6. Readiness / Invariant Failures
 
 ### Typical signals
@@ -155,4 +173,3 @@ export ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS=300
 - `ZKF_RUN_SIGNAL_DIR`: engagement signal root.
 - `ZKF_ENGAGEMENT_DIR`: explicit engagement report folder.
 - `ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS`: timeout for external Circom/snarkjs subprocesses.
-

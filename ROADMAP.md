@@ -83,6 +83,17 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Chain scheduler largest-remainder allocation now has exact-budget/fairness assertion.
    - Near-miss detector min-boundary proximity + arithmetic-distance semantics are covered by dedicated tests.
    - Regex safety tests now explicitly allow optional quantifiers while still rejecting truly nested quantifiers.
+58. Hardened adaptive zero-day confirmation matching (`src/fuzzer/adaptive_orchestrator.rs`) from category-only to content-aware scoring:
+   - Added token/keyword/location-based hint-to-finding match scoring.
+   - Enforced one-to-one matching so one finding cannot confirm multiple hints.
+   - Fixed unconfirmed-hint accounting to track hint identity instead of category-only keys.
+59. Documented and contained dynamic log routing transition window (`src/main.rs`, `docs/TROUBLESHOOTING_PLAYBOOK.md`):
+   - Added immediate best-effort log-file rebind on run-log context updates to reduce cross-run spillover.
+   - Added explicit operator guidance on residual transition-window behavior and run-artifact source-of-truth.
+   - Added release checklist gate item for session-log routing caveat documentation.
+60. Closed remaining panic-path hardening item (`M-1`, `L-2`) with explicit regression coverage:
+   - Added `engagement_dir_name` invalid-run-id non-panicking regression in `src/main.rs`.
+   - Added invalid UTF-8 `CIRCOM_INCLUDE_PATHS` non-panicking regression in `src/executor/mod.rs` (Unix).
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -141,6 +152,14 @@ Validation:
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 35. Workspace compile verification after regex safety fix:
     - `cargo check -q`
+36. Adaptive zero-day confirmation regression tests:
+    - `cargo test -q adaptive_orchestrator::tests:: -- --test-threads=1`
+37. Main binary compile verification after log-routing containment:
+    - `cargo check -q --bin zk-fuzzer`
+38. `engagement_dir_name` invalid run-id panic-path regression:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+39. `CIRCOM_INCLUDE_PATHS` invalid UTF-8 panic-path regression:
+    - `cargo test -q test_circom_include_paths_invalid_utf8_does_not_panic -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 
@@ -183,9 +202,9 @@ P1 (next correctness/stability wave) — Completed:
 4. Remove runtime `std::env::set_var` hazards in multi-threaded paths (`M-2`).
 
 P2/P3 (defensive + maintainability):
-1. Remove panic fallback in `engagement_dir_name` and env parsing panic paths (`M-1`, `L-2`).
-2. Improve zero-day confirmation matching from category-only to content-aware (`L-3`).
-3. Document/contain dynamic log file routing edge window (`M-5`).
+1. Remove panic fallback in `engagement_dir_name` and env parsing panic paths (`M-1`, `L-2`) — Completed.
+2. Improve zero-day confirmation matching from category-only to content-aware (`L-3`) — Completed.
+3. Document/contain dynamic log file routing edge window (`M-5`) — Completed.
 4. CLI modularization and run lifecycle deduplication (`I-1`, `I-2`).
 
 ## Product Principles

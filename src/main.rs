@@ -96,6 +96,19 @@ impl DynamicTeeWriter {
             Err(io::Error::other("log file unavailable"))
         }
     }
+
+    /// Best-effort synchronization hook used when run-log context changes.
+    ///
+    /// This pre-opens/rebinds the file target immediately so most subsequent log lines
+    /// are routed to the new engagement log path without waiting for the next write call.
+    fn sync_to_current_context() {
+        if let Err(err) = Self::with_log_file(|_| Ok(())) {
+            eprintln!(
+                "[zk-fuzzer] WARN: failed to sync session log path to current context: {}",
+                err
+            );
+        }
+    }
 }
 
 impl io::Write for DynamicTeeWriter {
@@ -134,9 +147,16 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for DynamicLogWriter {
 
 fn set_run_log_context(ctx: Option<RunLogContext>) {
     let slot = RUN_LOG_CONTEXT.get_or_init(|| Mutex::new(None));
+    let mut should_sync_file = false;
     match slot.lock() {
-        Ok(mut guard) => *guard = ctx,
+        Ok(mut guard) => {
+            *guard = ctx;
+            should_sync_file = true;
+        }
         Err(err) => eprintln!("[zk-fuzzer] WARN: failed to lock run log context: {}", err),
+    }
+    if should_sync_file {
+        DynamicTeeWriter::sync_to_current_context();
     }
 }
 
@@ -5515,5 +5535,14 @@ patterns:
             "status": "panic"
         });
         assert_eq!(get_command_from_doc(&doc), "unknown");
+    }
+
+    #[test]
+    fn engagement_dir_name_invalid_run_id_never_panics() {
+        assert!(run_id_epoch_dir("invalid").is_none());
+        let result = std::panic::catch_unwind(|| engagement_dir_name("invalid"));
+        assert!(result.is_ok(), "engagement_dir_name should not panic");
+        let dir = result.expect("string");
+        assert!(!dir.trim().is_empty());
     }
 }

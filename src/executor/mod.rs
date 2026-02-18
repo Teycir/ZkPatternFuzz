@@ -1916,4 +1916,44 @@ mod tests {
 
         assert_eq!(detected.as_deref(), Some(ptau_path.as_path()));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_circom_include_paths_invalid_utf8_does_not_panic() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        struct EnvRestore {
+            previous: Option<OsString>,
+        }
+
+        impl Drop for EnvRestore {
+            fn drop(&mut self) {
+                match self.previous.take() {
+                    Some(value) => std::env::set_var("CIRCOM_INCLUDE_PATHS", value),
+                    None => std::env::remove_var("CIRCOM_INCLUDE_PATHS"),
+                }
+            }
+        }
+
+        let mut restore = EnvRestore {
+            previous: std::env::var_os("CIRCOM_INCLUDE_PATHS"),
+        };
+
+        let invalid = OsString::from_vec(vec![0xff, b'x', b':', b'y']);
+        std::env::set_var("CIRCOM_INCLUDE_PATHS", invalid);
+
+        let result =
+            std::panic::catch_unwind(|| CircomExecutor::default_include_paths_for("dummy.circom"));
+        assert!(
+            result.is_ok(),
+            "default_include_paths_for should gracefully handle invalid UTF-8 env values"
+        );
+
+        // Explicitly restore before assertion exits to keep global env clean in this process.
+        match restore.previous.take() {
+            Some(value) => std::env::set_var("CIRCOM_INCLUDE_PATHS", value),
+            None => std::env::remove_var("CIRCOM_INCLUDE_PATHS"),
+        }
+    }
 }
