@@ -91,3 +91,102 @@ fn test_soundness_explicit_zero_forge_attempts_is_critical_in_strict_mode() {
         w.level == ReadinessLevel::Critical && w.message.contains("0 forge_attempts")
     }));
 }
+
+#[test]
+fn test_strict_readiness_accepts_required_attacks_from_schedule() {
+    let mut config = FuzzConfig::default_v2();
+    config.campaign.parameters.additional.insert(
+        "engagement_strict".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    config.campaign.parameters.additional.insert(
+        "strict_backend".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    config.campaign.parameters.additional.insert(
+        "oracle_validation".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    config.campaign.parameters.additional.insert(
+        "v2_schedule".to_string(),
+        serde_yaml::from_str(
+            r#"
+- phase: strict
+  duration_sec: 60
+  attacks:
+    - underconstrained
+    - soundness
+    - constraint_inference
+    - metamorphic
+    - constraint_slice
+    - spec_inference
+    - witness_collision
+"#,
+        )
+        .expect("schedule yaml should parse"),
+    );
+
+    let report = check_0day_readiness(&config);
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("Missing required attack: soundness")),
+    );
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("Missing required attack: underconstrained")),
+    );
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("Missing required novel attack:")),
+    );
+}
+
+#[test]
+fn test_strict_readiness_accepts_schedule_attack_aliases() {
+    let mut config = FuzzConfig::default_v2();
+    config.campaign.parameters.additional.insert(
+        "engagement_strict".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    config.campaign.parameters.additional.insert(
+        "strict_backend".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    config.campaign.parameters.additional.insert(
+        "oracle_validation".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    config.campaign.parameters.additional.insert(
+        "v2_schedule".to_string(),
+        serde_yaml::from_str(
+            r#"
+- phase: strict
+  duration_sec: 60
+  attacks:
+    - underconstrained
+    - soundness
+    - constraintinference
+    - metamorphic
+    - constraintslice
+    - specinference
+    - witnesscollision
+"#,
+        )
+        .expect("schedule yaml should parse"),
+    );
+
+    let report = check_0day_readiness(&config);
+    assert!(
+        !report
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("Missing required novel attack:")),
+        "schedule aliases should satisfy strict novel-attack requirements"
+    );
+}

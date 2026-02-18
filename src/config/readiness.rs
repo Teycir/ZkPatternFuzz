@@ -5,7 +5,7 @@
 //! potential misconfigurations that could lead to false findings or missed bugs.
 
 use crate::config::FuzzConfig;
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 /// Readiness warning severity levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -221,6 +221,60 @@ impl ReadinessReport {
     }
 }
 
+fn normalize_attack_name(name: &str) -> String {
+    name.trim()
+        .to_ascii_lowercase()
+        .replace('-', "_")
+        .replace(' ', "_")
+}
+
+fn canonical_attack_key_from_name(name: &str) -> Option<&'static str> {
+    match normalize_attack_name(name).as_str() {
+        "soundness" => Some("soundness"),
+        "underconstrained" => Some("underconstrained"),
+        "constraint_inference" | "constraintinference" => Some("constraint_inference"),
+        "metamorphic" => Some("metamorphic"),
+        "constraint_slice" | "constraintslice" => Some("constraint_slice"),
+        "spec_inference" | "specinference" => Some("spec_inference"),
+        "witness_collision" | "witnesscollision" => Some("witness_collision"),
+        _ => None,
+    }
+}
+
+fn canonical_attack_key_from_type(attack_type: &crate::config::AttackType) -> Option<&'static str> {
+    use crate::config::AttackType;
+    match attack_type {
+        AttackType::Soundness => Some("soundness"),
+        AttackType::Underconstrained => Some("underconstrained"),
+        AttackType::ConstraintInference => Some("constraint_inference"),
+        AttackType::Metamorphic => Some("metamorphic"),
+        AttackType::ConstraintSlice => Some("constraint_slice"),
+        AttackType::SpecInference => Some("spec_inference"),
+        AttackType::WitnessCollision => Some("witness_collision"),
+        _ => None,
+    }
+}
+
+fn collect_configured_attack_keys(config: &FuzzConfig) -> HashSet<&'static str> {
+    let mut keys = HashSet::new();
+
+    for attack in &config.attacks {
+        if let Some(key) = canonical_attack_key_from_type(&attack.attack_type) {
+            keys.insert(key);
+        }
+    }
+
+    for phase in config.get_schedule() {
+        for attack_name in phase.attacks {
+            if let Some(key) = canonical_attack_key_from_name(&attack_name) {
+                keys.insert(key);
+            }
+        }
+    }
+
+    keys
+}
+
 /// Check a campaign configuration for 0-day readiness
 pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     let mut warnings = Vec::new();
@@ -393,16 +447,13 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         ));
     }
 
-    // 9. Check attacks configuration (skip for chain-only campaigns)
-    if !config.attacks.is_empty() {
-        let has_soundness = config
-            .attacks
-            .iter()
-            .any(|a| matches!(a.attack_type, crate::config::AttackType::Soundness));
-        let has_underconstrained = config
-            .attacks
-            .iter()
-            .any(|a| matches!(a.attack_type, crate::config::AttackType::Underconstrained));
+    let configured_attack_keys = collect_configured_attack_keys(config);
+    let has_configured_attacks = !configured_attack_keys.is_empty();
+
+    // 9. Check attacks configuration (consider both top-level attacks and v2 schedule attacks)
+    if has_configured_attacks {
+        let has_soundness = configured_attack_keys.contains("soundness");
+        let has_underconstrained = configured_attack_keys.contains("underconstrained");
 
         if engagement_strict {
             if !has_soundness {
@@ -540,30 +591,13 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         );
     }
 
-    // 15. Check novel oracle attacks are enabled (skip for chain-only campaigns)
-    if !config.attacks.is_empty() {
-        let has_constraint_inference = config.attacks.iter().any(|a| {
-            matches!(
-                a.attack_type,
-                crate::config::AttackType::ConstraintInference
-            )
-        });
-        let has_metamorphic = config
-            .attacks
-            .iter()
-            .any(|a| matches!(a.attack_type, crate::config::AttackType::Metamorphic));
-        let has_constraint_slice = config
-            .attacks
-            .iter()
-            .any(|a| matches!(a.attack_type, crate::config::AttackType::ConstraintSlice));
-        let has_spec_inference = config
-            .attacks
-            .iter()
-            .any(|a| matches!(a.attack_type, crate::config::AttackType::SpecInference));
-        let has_witness_collision = config
-            .attacks
-            .iter()
-            .any(|a| matches!(a.attack_type, crate::config::AttackType::WitnessCollision));
+    // 15. Check novel oracle attacks are enabled (consider schedule-driven configs too)
+    if has_configured_attacks {
+        let has_constraint_inference = configured_attack_keys.contains("constraint_inference");
+        let has_metamorphic = configured_attack_keys.contains("metamorphic");
+        let has_constraint_slice = configured_attack_keys.contains("constraint_slice");
+        let has_spec_inference = configured_attack_keys.contains("spec_inference");
+        let has_witness_collision = configured_attack_keys.contains("witness_collision");
 
         if engagement_strict {
             let required = [
