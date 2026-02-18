@@ -108,6 +108,9 @@ Outputs are written under:
 - `artifacts/benchmark_runs/benchmark_<timestamp>/summary.json`
 - `artifacts/benchmark_runs/benchmark_<timestamp>/outcomes.json`
 - `artifacts/benchmark_runs/benchmark_<timestamp>/summary.md`
+- `artifacts/benchmark_trends/latest_trend.json` (nightly trend snapshot)
+- `artifacts/benchmark_trends/latest_failure_dashboard.json` (nightly failure-class dashboard)
+- `artifacts/benchmark_trends/latest_failure_dashboard.md` (human-readable failure-class pass/fail table)
 
 The default suites file includes:
 

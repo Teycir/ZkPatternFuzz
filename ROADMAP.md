@@ -59,6 +59,7 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - rollback validation against a specified stable ref.
 42. Added release-validation invocation docs in `docs/TARGETS.md` with `gh workflow run` + `gh run watch` command templates and required `workflow_dispatch` inputs.
 43. Added `README.md` "Release Ops" section linking release checklist, release-validation workflow docs, and troubleshooting playbook for gate failures.
+44. Added nightly failure-class dashboard generation (`scripts/benchmark_failure_dashboard.py`) and wired it into deep-scheduled CI matrix runs to emit pass/fail by failure class under `artifacts/benchmark_trends/`.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -99,6 +100,8 @@ Validation:
     - `bash -n scripts/rollback_validate.sh`
 26. Release-validation workflow YAML validation:
     - `python3 -c "import yaml, pathlib; yaml.safe_load(pathlib.Path('.github/workflows/release_validation.yml').read_text())"`
+27. Failure dashboard script validation:
+    - `python3 scripts/benchmark_failure_dashboard.py --benchmark-root artifacts/benchmark_runs --output-dir artifacts/benchmark_trends`
 
 ## Status Checklist (2026-02-18)
 
@@ -125,7 +128,7 @@ Definition of Done progress:
 - [ ] Multi-target: 10+ target matrix with `jobs=2`/`workers=2` without collisions
 - [ ] Detection: measurable recall uplift on known vulnerable targets
 - [ ] Operability: single bootstrap path validated on fresh environments
-- [ ] Quality gates: nightly regression dashboard with pass/fail by failure class
+- [x] Quality gates: nightly regression dashboard with pass/fail by failure class (implemented; pending sustained production evidence)
 
 ## Audit Intake (2026-02-18)
 Source: `LOGIC_AUDIT.md` (13 findings total: High=3, Medium=5, Low=3, Info=2).

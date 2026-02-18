@@ -266,6 +266,9 @@ jobs:
             --benchmark-root artifacts/benchmark_runs \
             --output-dir artifacts/benchmark_trends \
             --history-file artifacts/benchmark_trends/history.jsonl
+          python3 scripts/benchmark_failure_dashboard.py \
+            --benchmark-root artifacts/benchmark_runs \
+            --output-dir artifacts/benchmark_trends
 
       - name: Emit nightly regression alert
         if: matrix.track == 'deep-scheduled' && steps.matrix_gate.outcome == 'failure'
