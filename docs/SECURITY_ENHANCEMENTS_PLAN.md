@@ -22,6 +22,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added focused unit tests for each new module and thin re-export wrappers under `src/oracles/`.
 - Added static-first acceleration primitives for earlier issue surfacing:
   - New `CircomStaticLint` attack family with static checks for unused signals, unconstrained outputs, division-by-signal patterns, and missing constraints around `<--`.
+  - Added branch-dependent assignment detection in Circom static lint to flag likely path-dependent/conditionally unconstrained signals during static prepass.
   - New phase-level fail-fast severity gating (`fail_on_findings`) and enabled static prepass fail-fast on `critical`/`high`.
   - Upgraded `quantum_resistance` matching to word-boundary regexes to reduce substring false positives.
 - Completed generator automation + static evidence handling:
@@ -46,6 +47,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added `crates/zk-attacks/src/trusted_setup.rs` with `TrustedSetupAttack` + YAML-friendly `TrustedSetupConfig`.
   - Replaced local setup-poisoning implementation with `src/oracles/setup_poisoning.rs` re-exports from `zk-attacks`.
   - Updated runner mapping so `trusted_setup` execution records findings under the configured attack family instead of always defaulting to soundness.
+  - Added trusted-setup artifact fingerprint sanity checks (byte-identical ptau detection, small-file and low-entropy warnings) before cross-setup verification attempts.
 - Completed Phase-2 YAML scaffolding:
   - Added missing templates: `quantum_resistance.yaml`, `privacy_advanced.yaml`, `defi_advanced.yaml` (with existing `trusted_setup.yaml` and `sidechannel_advanced.yaml`).
   - Added runnable examples in `campaigns/examples/`: `trusted_setup_audit.yaml`, `sidechannel_audit.yaml`, `quantum_resistance_audit.yaml`, `privacy_audit.yaml`, `defi_audit.yaml`.

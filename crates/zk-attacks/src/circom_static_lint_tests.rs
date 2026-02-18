@@ -13,6 +13,9 @@ fn circom_static_lint_default_checks_enabled() {
     assert!(config
         .enabled_checks
         .contains(&StaticCheck::MissingConstraint));
+    assert!(config
+        .enabled_checks
+        .contains(&StaticCheck::BranchDependentConstraint));
 }
 
 #[test]
@@ -46,9 +49,41 @@ fn circom_static_lint_parse_checks() {
     let parsed = CircomStaticLint::parse_checks(&[
         "unused_signal".to_string(),
         "division_by_signal".to_string(),
+        "branch_dependent_constraint".to_string(),
         "unknown".to_string(),
     ]);
-    assert_eq!(parsed.len(), 2);
+    assert_eq!(parsed.len(), 3);
     assert!(parsed.contains(&StaticCheck::UnusedSignal));
     assert!(parsed.contains(&StaticCheck::DivisionBySignal));
+    assert!(parsed.contains(&StaticCheck::BranchDependentConstraint));
+}
+
+#[test]
+fn circom_static_lint_detects_branch_dependent_assignments() {
+    let source = r#"
+template Main() {
+    signal input selector;
+    signal input a;
+    signal output out;
+    if (selector == 1) {
+        out <-- a;
+    } else {
+        out <-- 0;
+    }
+}
+component main = Main();
+"#;
+
+    let lint = CircomStaticLint::new(CircomStaticLintConfig {
+        enabled_checks: vec![StaticCheck::BranchDependentConstraint],
+        max_findings_per_check: 10,
+        case_sensitive: false,
+    });
+    let findings = lint.scan_source(source, Some("mock.circom".to_string()));
+
+    assert!(findings.iter().any(|finding| {
+        finding
+            .description
+            .contains("assigned with '<--' inside conditional")
+    }));
 }

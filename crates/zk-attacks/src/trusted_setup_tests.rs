@@ -1,4 +1,7 @@
 use super::*;
+use std::fs;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use zk_core::{CircuitInfo, ExecutionCoverage, ExecutionResult, Framework};
 
 struct LenientProofExecutor {
@@ -48,6 +51,7 @@ trusted_setup_test:
   attempts: 3
   ptau_file_a: a.ptau
   ptau_file_b: b.ptau
+  verify_artifact_integrity: false
 "#,
     )
     .expect("yaml parse");
@@ -57,6 +61,7 @@ trusted_setup_test:
     assert_eq!(config.attempts, 3);
     assert_eq!(config.ptau_file_a.as_deref(), Some("a.ptau"));
     assert_eq!(config.ptau_file_b.as_deref(), Some("b.ptau"));
+    assert!(!config.verify_artifact_integrity);
 }
 
 #[test]
@@ -91,4 +96,49 @@ fn setup_poisoning_detector_compatibility_api_still_works() {
         &[witness],
     );
     assert!(!findings.is_empty());
+}
+
+#[test]
+fn trusted_setup_attack_flags_identical_artifacts() {
+    let ptau_a = write_temp_file("trusted_setup_a", vec![42u8; 4096]);
+    let ptau_b = write_temp_file("trusted_setup_b", vec![42u8; 4096]);
+
+    let attack = TrustedSetupAttack::new(TrustedSetupConfig {
+        enabled: true,
+        attempts: 1,
+        ptau_file_a: Some(ptau_a.to_string_lossy().to_string()),
+        ptau_file_b: Some(ptau_b.to_string_lossy().to_string()),
+        verify_artifact_integrity: true,
+    });
+
+    let findings = attack.run(
+        &LenientProofExecutor::new("setup_a"),
+        &LenientProofExecutor::new("setup_b"),
+        &[],
+    );
+
+    assert!(findings.iter().any(|finding| {
+        finding
+            .description
+            .contains("Trusted setup artifacts are byte-identical")
+    }));
+
+    let _ = fs::remove_file(&ptau_a);
+    let _ = fs::remove_file(&ptau_b);
+}
+
+fn write_temp_file(prefix: &str, bytes: Vec<u8>) -> PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock should be monotonic")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "{}_{}_{}_{}.ptau",
+        prefix,
+        std::process::id(),
+        timestamp,
+        rand::random::<u32>()
+    ));
+    fs::write(&path, bytes).expect("write temp ptau");
+    path
 }

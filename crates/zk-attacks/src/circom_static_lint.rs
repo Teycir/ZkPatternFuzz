@@ -5,6 +5,7 @@
 
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::Path;
 use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 
@@ -20,6 +21,8 @@ pub enum StaticCheck {
     DivisionBySignal,
     /// `<--` assignment without a matching constraint.
     MissingConstraint,
+    /// Signal assignment inside conditional branches (possible path-dependent constraints).
+    BranchDependentConstraint,
 }
 
 impl StaticCheck {
@@ -29,6 +32,10 @@ impl StaticCheck {
             "unconstrained_output" | "unconstrainedoutput" => Some(Self::UnconstrainedOutput),
             "division_by_signal" | "divisionbysignal" => Some(Self::DivisionBySignal),
             "missing_constraint" | "missingconstraint" => Some(Self::MissingConstraint),
+            "branch_dependent_constraint"
+            | "branchdependentconstraint"
+            | "conditional_assignment"
+            | "conditionalassignment" => Some(Self::BranchDependentConstraint),
             _ => None,
         }
     }
@@ -53,6 +60,7 @@ impl Default for CircomStaticLintConfig {
                 StaticCheck::UnconstrainedOutput,
                 StaticCheck::DivisionBySignal,
                 StaticCheck::MissingConstraint,
+                StaticCheck::BranchDependentConstraint,
             ],
             max_findings_per_check: 20,
             case_sensitive: false,
@@ -231,6 +239,45 @@ impl CircomStaticLint {
             }
         }
 
+        if self
+            .config
+            .enabled_checks
+            .contains(&StaticCheck::BranchDependentConstraint)
+        {
+            let mut count = 0usize;
+            let mut seen = HashSet::new();
+            for assignment in collect_conditional_assignments(
+                &source_no_comments,
+                self.config.case_sensitive,
+            ) {
+                if count >= max_per_check {
+                    break;
+                }
+                if !condition_appears_dynamic(&assignment.condition) {
+                    continue;
+                }
+                // Avoid duplicate findings for the same signal within one conditional block.
+                if !seen.insert((assignment.if_line, assignment.signal.clone())) {
+                    continue;
+                }
+
+                let severity = if assignment.operator == "<--" {
+                    Severity::Critical
+                } else {
+                    Severity::High
+                };
+                findings.push(make_finding(
+                    severity,
+                    format!(
+                        "Signal '{}' is assigned with '{}' inside conditional at line {}; ensure both branches are fully constrained",
+                        assignment.signal, assignment.operator, assignment.if_line
+                    ),
+                    with_line(&location_prefix, assignment.line),
+                ));
+                count += 1;
+            }
+        }
+
         findings
     }
 }
@@ -350,6 +397,96 @@ fn has_division_by_identifier(line: &str) -> bool {
         return true;
     }
     false
+}
+
+#[derive(Debug, Clone)]
+struct ConditionalAssignment {
+    signal: String,
+    operator: String,
+    condition: String,
+    line: usize,
+    if_line: usize,
+}
+
+fn collect_conditional_assignments(source: &str, case_sensitive: bool) -> Vec<ConditionalAssignment> {
+    let Some(if_re) = compile_regex(r"^\s*if\s*\(([^)]*)\)\s*\{", case_sensitive) else {
+        return Vec::new();
+    };
+    let Some(assign_re) = compile_regex(
+        r"^\s*([A-Za-z_][A-Za-z0-9_]*)(?:\[[^\]]+\])?\s*(<--|<==)",
+        case_sensitive,
+    ) else {
+        return Vec::new();
+    };
+
+    let lines: Vec<&str> = source.lines().collect();
+    let mut findings = Vec::new();
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let line = lines[idx];
+        let Some(if_caps) = if_re.captures(line) else {
+            idx += 1;
+            continue;
+        };
+
+        let condition = if_caps
+            .get(1)
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default();
+        let if_line = idx + 1;
+        let mut depth = brace_delta(line);
+        idx += 1;
+
+        while idx < lines.len() && depth > 0 {
+            let current = lines[idx];
+            if let Some(assign_caps) = assign_re.captures(current) {
+                let signal = assign_caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default();
+                let operator = assign_caps
+                    .get(2)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default();
+                if !signal.is_empty() && !operator.is_empty() {
+                    findings.push(ConditionalAssignment {
+                        signal,
+                        operator,
+                        condition: condition.clone(),
+                        line: idx + 1,
+                        if_line,
+                    });
+                }
+            }
+            depth += brace_delta(current);
+            idx += 1;
+        }
+    }
+
+    findings
+}
+
+fn brace_delta(line: &str) -> i32 {
+    let open = line.chars().filter(|ch| *ch == '{').count() as i32;
+    let close = line.chars().filter(|ch| *ch == '}').count() as i32;
+    open - close
+}
+
+fn condition_appears_dynamic(condition: &str) -> bool {
+    let Some(identifier_re) = Regex::new(r"[A-Za-z_][A-Za-z0-9_]*").ok() else {
+        return false;
+    };
+    let mut has_identifier = false;
+    for ident in identifier_re.find_iter(condition).map(|m| m.as_str()) {
+        let lower = ident.to_ascii_lowercase();
+        if matches!(lower.as_str(), "if" | "true" | "false") {
+            continue;
+        }
+        has_identifier = true;
+        break;
+    }
+    has_identifier
 }
 
 #[cfg(test)]

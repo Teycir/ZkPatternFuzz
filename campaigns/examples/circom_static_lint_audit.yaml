@@ -20,6 +20,7 @@ attacks:
           - "unconstrained_output"
           - "division_by_signal"
           - "missing_constraint"
+          - "branch_dependent_constraint"
         max_findings_per_check: 20
         case_sensitive: false
 

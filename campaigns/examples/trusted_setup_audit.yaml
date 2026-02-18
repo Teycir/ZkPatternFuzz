@@ -17,6 +17,7 @@ attacks:
       trusted_setup_test:
         enabled: true
         attempts: 8
+        verify_artifact_integrity: true
         ptau_file_a: "./bins/ptau/powersOfTau28_hez_final.ptau"
         ptau_file_b: "./bins/ptau/powersOfTau28_hez_final.ptau.alt"
 
@@ -24,4 +25,3 @@ inputs:
   - name: "input_0"
     type: "field"
     fuzz_strategy: "random"
-
