@@ -410,6 +410,43 @@ fn test_cve_oracle_falls_back_to_attack_type_route() {
 }
 
 #[test]
+fn test_regression_result_infra_failure_detection() {
+    let result = RegressionTestResult {
+        cve_id: "ZK-INFRA-001".to_string(),
+        passed: false,
+        test_results: vec![
+            TestCaseResult {
+                name: "a".to_string(),
+                passed: false,
+                message: Some(
+                    "Executor creation failed: No Circom constraints available".to_string(),
+                ),
+            },
+            TestCaseResult {
+                name: "b".to_string(),
+                passed: false,
+                message: Some("Executor creation failed: snarkjs not found".to_string()),
+            },
+        ],
+    };
+    assert!(result.is_infrastructure_failure());
+}
+
+#[test]
+fn test_regression_result_infra_failure_rejects_semantic_failures() {
+    let result = RegressionTestResult {
+        cve_id: "ZK-INFRA-002".to_string(),
+        passed: false,
+        test_results: vec![TestCaseResult {
+            name: "a".to_string(),
+            passed: false,
+            message: Some("Expected valid but execution failed".to_string()),
+        }],
+    };
+    assert!(!result.is_infrastructure_failure());
+}
+
+#[test]
 fn test_build_inputs_for_test_zero_fills_when_fixture_is_partial() {
     let mut rng = StdRng::seed_from_u64(11);
     let tc = GeneratedTestCase {
@@ -452,4 +489,35 @@ fn test_build_inputs_for_test_truncates_oversized_fixture() {
     assert_eq!(inputs.len(), 2);
     assert_eq!(inputs[0], FieldElement::from_u64(1));
     assert_eq!(inputs[1], FieldElement::from_u64(2));
+}
+
+#[test]
+fn test_build_inputs_for_test_zero_fills_missing_named_spec_inputs() {
+    let mut rng = StdRng::seed_from_u64(23);
+    let tc = GeneratedTestCase {
+        name: "named_partial_fixture".to_string(),
+        inputs: vec![("a".to_string(), serde_yaml::Value::Number(7.into()))],
+        expected_result: "valid_proof".to_string(),
+        expected_valid: Some(true),
+    };
+
+    let input_specs = vec![
+        InputSpec {
+            name: "a".to_string(),
+            length: None,
+            is_array: false,
+        },
+        InputSpec {
+            name: "b".to_string(),
+            length: None,
+            is_array: false,
+        },
+    ];
+
+    let modulus = [0u8; 32];
+    let inputs = build_inputs_for_test(&tc, &input_specs, 2, &modulus, &mut rng)
+        .expect("missing named inputs should be zero-filled");
+    assert_eq!(inputs.len(), 2);
+    assert_eq!(inputs[0], FieldElement::from_u64(7));
+    assert_eq!(inputs[1], FieldElement::zero());
 }

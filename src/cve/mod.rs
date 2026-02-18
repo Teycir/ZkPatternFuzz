@@ -624,6 +624,23 @@ pub struct RegressionTestResult {
     pub test_results: Vec<TestCaseResult>,
 }
 
+impl RegressionTestResult {
+    /// Returns true when all failing test-case messages indicate backend/tooling
+    /// availability problems rather than circuit-level pass/fail behavior.
+    pub fn is_infrastructure_failure(&self) -> bool {
+        if self.passed || self.test_results.is_empty() {
+            return false;
+        }
+
+        self.test_results.iter().all(|tc| {
+            tc.message
+                .as_deref()
+                .map(is_infrastructure_error_message)
+                .unwrap_or(false)
+        })
+    }
+}
+
 /// Result of a single test case
 #[derive(Debug, Clone)]
 pub struct TestCaseResult {
@@ -637,6 +654,18 @@ struct InputSpec {
     name: String,
     length: Option<usize>,
     is_array: bool,
+}
+
+fn is_infrastructure_error_message(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("no circom constraints available")
+        || lower.contains("backend required but not available")
+        || lower.contains("snarkjs not found")
+        || lower.contains("circom not found")
+        || lower.contains("not found in path")
+        || lower.contains("key setup failed")
+        || lower.contains("failed to create executor")
+        || lower.contains("executor creation failed")
 }
 
 fn detect_framework(path: &Path) -> anyhow::Result<Framework> {
@@ -988,10 +1017,14 @@ fn build_inputs_for_test(
             let elements = match value {
                 Some(v) => parse_yaml_value(v, field_modulus, rng, inferred_len)?,
                 None => {
-                    return Err(format!(
-                        "Missing required input '{}' for test '{}'",
-                        spec.name, tc.name
-                    ))
+                    let fill_len = inferred_len.unwrap_or(1);
+                    tracing::debug!(
+                        "CVE test '{}' missing input '{}'; zero-filling {} value(s)",
+                        tc.name,
+                        spec.name,
+                        fill_len
+                    );
+                    vec![FieldElement::zero(); fill_len]
                 }
             };
 

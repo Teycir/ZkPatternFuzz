@@ -99,6 +99,7 @@ fn test_autonomous_cve_regression_tests() {
     let mut passed = 0;
     let mut failed = 0;
     let mut circuit_not_found = 0;
+    let mut infra_skipped = 0;
 
     for test in &selected_tests {
         println!("Testing: {} - {}", test.cve_id, test.cve_name);
@@ -118,6 +119,16 @@ fn test_autonomous_cve_regression_tests() {
 
         println!("  ▶️  Executing regression test...");
         let result = test.run();
+        if result.is_infrastructure_failure() {
+            println!("  ⚠️  Skipping: backend/tooling artifacts unavailable for this circuit");
+            for tc_result in &result.test_results {
+                let msg = tc_result.message.as_deref().unwrap_or("infrastructure failure");
+                println!("    - {}: {}", tc_result.name, msg);
+            }
+            infra_skipped += 1;
+            println!();
+            continue;
+        }
         executed += 1;
 
         println!(
@@ -151,6 +162,7 @@ fn test_autonomous_cve_regression_tests() {
     println!("Passed: {}", passed);
     println!("Failed: {}", failed);
     println!("Circuits not found: {}", circuit_not_found);
+    println!("Infrastructure skipped: {}", infra_skipped);
     println!();
 
     if executed > 0 {

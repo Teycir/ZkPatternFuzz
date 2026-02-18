@@ -37,6 +37,8 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added fallback from `detection.oracle` to `detection.attack_type` plus debug logging for unmapped routes.
 - Improved autonomous CVE regression execution recall and diagnostics:
   - CVE fixture input synthesis now reconciles partial/no-spec fixtures to executor arity by truncating surplus fields and zero-filling missing values.
+  - Named-input fixture mismatches now zero-fill missing declared signals instead of hard-failing regression execution.
+  - Autonomous CVE harness now classifies backend/tooling artifact failures as infrastructure skips (with explicit per-test reasons) instead of counting them as detection misses.
   - Regression failures now surface backend execution errors directly in testcase output (`Expected valid but execution failed: <backend error>`), speeding root-cause triage.
 - Completed first-class trusted setup module wiring:
   - Added `crates/zk-attacks/src/trusted_setup.rs` with `TrustedSetupAttack` + YAML-friendly `TrustedSetupConfig`.
