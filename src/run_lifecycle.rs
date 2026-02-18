@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use zk_fuzzer::config::{FuzzConfig, ReadinessReport};
 
 use crate::engagement_artifacts::{best_effort_write_json, write_global_run_signal, write_run_artifacts};
 use crate::engagement_root_dir;
+use crate::{normalize_build_paths, set_run_log_context_for_campaign};
 use crate::output_lock::acquire_output_dir_lock;
 use crate::preflight_backend::run_backend_preflight;
 use crate::run_outcome_docs::{
@@ -220,6 +221,67 @@ pub(crate) fn acquire_output_lock_or_write_failure(
             ))
         }
     }
+}
+
+pub(crate) fn initialize_campaign_run_lifecycle(
+    dry_run: bool,
+    config: &mut FuzzConfig,
+    command: &str,
+    run_id: &str,
+    config_path: &str,
+    campaign_name: &str,
+    started_utc: DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+    options_doc: serde_json::Value,
+) -> anyhow::Result<(PathBuf, Option<zk_fuzzer::util::file_lock::FileLock>)> {
+    // Prevent multi-process collisions on the same output dir.
+    // Skip locking/writes in --dry-run since no files are written.
+    let stage = "acquire_output_lock";
+    let output_dir = config.reporting.output_dir.clone();
+    let output_lock = acquire_output_lock_or_write_failure(
+        dry_run,
+        &output_dir,
+        command,
+        run_id,
+        stage,
+        config_path,
+        campaign_name,
+        &started_utc,
+    )?;
+
+    if !dry_run {
+        // If a previous run died without updating run_outcome.json, mark it as stale so it does
+        // not look like "still running forever".
+        mark_stale_previous_run_if_any(&output_dir, std::process::id());
+
+        set_run_log_context_for_campaign(
+            dry_run,
+            run_id,
+            command,
+            config_path,
+            Some(campaign_name),
+            Some(&output_dir),
+            &started_utc,
+        );
+
+        // Seed a persistent status file early so interrupted runs still leave artifacts.
+        seed_running_run_artifact(
+            &output_dir,
+            command,
+            run_id,
+            stage,
+            config_path,
+            campaign_name,
+            started_utc,
+            timeout_seconds,
+            options_doc,
+        );
+    }
+
+    // Ensure build artifacts never land inside the engagement report folder.
+    normalize_build_paths(config, run_id);
+
+    Ok((output_dir, output_lock))
 }
 
 pub(crate) fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {

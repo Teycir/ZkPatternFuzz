@@ -30,8 +30,7 @@ use engagement_artifacts::{
 };
 use preflight_backend::preflight_campaign;
 use run_lifecycle::{
-    acquire_output_lock_or_write_failure, mark_stale_previous_run_if_any,
-    require_evidence_readiness_or_emit_failure,
+    initialize_campaign_run_lifecycle, require_evidence_readiness_or_emit_failure,
     run_backend_preflight_or_emit_failure, seed_running_run_artifact,
     write_failed_mode_run_artifact_with_error, write_failed_mode_run_artifact_with_reason,
     write_failed_run_artifact, write_failed_run_artifact_with_error,
@@ -219,7 +218,7 @@ impl Drop for RunLogContextGuard {
     }
 }
 
-fn set_run_log_context_for_campaign(
+pub(crate) fn set_run_log_context_for_campaign(
     dry_run: bool,
     run_id: &str,
     command: &str,
@@ -369,7 +368,7 @@ fn build_cache_dir() -> PathBuf {
     path
 }
 
-fn normalize_build_paths(config: &mut FuzzConfig, run_id: &str) {
+pub(crate) fn normalize_build_paths(config: &mut FuzzConfig, run_id: &str) {
     use std::path::PathBuf;
 
     let report_dir = engagement_root_dir(run_id);
@@ -476,67 +475,6 @@ fn engagement_root_dir(run_id: &str) -> PathBuf {
     }
 
     run_signal_dir().join(engagement_dir_name(run_id))
-}
-
-fn initialize_campaign_run_lifecycle(
-    dry_run: bool,
-    config: &mut FuzzConfig,
-    command: &str,
-    run_id: &str,
-    config_path: &str,
-    campaign_name: &str,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
-    options_doc: serde_json::Value,
-) -> anyhow::Result<(PathBuf, Option<zk_fuzzer::util::file_lock::FileLock>)> {
-    // Prevent multi-process collisions on the same output dir.
-    // Skip locking/writes in --dry-run since no files are written.
-    let stage = "acquire_output_lock";
-    let output_dir = config.reporting.output_dir.clone();
-    let output_lock = acquire_output_lock_or_write_failure(
-        dry_run,
-        &output_dir,
-        command,
-        run_id,
-        stage,
-        config_path,
-        campaign_name,
-        &started_utc,
-    )?;
-
-    if !dry_run {
-        // If a previous run died without updating run_outcome.json, mark it as stale so it does
-        // not look like "still running forever".
-        mark_stale_previous_run_if_any(&output_dir, std::process::id());
-
-        set_run_log_context_for_campaign(
-            dry_run,
-            run_id,
-            command,
-            config_path,
-            Some(campaign_name),
-            Some(&output_dir),
-            &started_utc,
-        );
-
-        // Seed a persistent status file early so interrupted runs still leave artifacts.
-        seed_running_run_artifact(
-            &output_dir,
-            command,
-            run_id,
-            stage,
-            config_path,
-            campaign_name,
-            started_utc,
-            timeout_seconds,
-            options_doc,
-        );
-    }
-
-    // Ensure build artifacts never land inside the engagement report folder.
-    normalize_build_paths(config, run_id);
-
-    Ok((output_dir, output_lock))
 }
 
 fn best_effort_append_text_line(path: &Path, line: &str) {

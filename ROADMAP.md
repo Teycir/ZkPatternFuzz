@@ -24,7 +24,7 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Local `snarkjs` install/link under `bins/node_modules` and `bins/bin`.
    - ptau install from verified local fixture or URL+checksum.
 15. Added deterministic ptau autodiscovery precedence in Circom executor (`ZKF_PTAU_PATH` override, local `bins/ptau` first) with regression tests.
-16. Added full logic audit report (`LOGIC_AUDIT.md`) with severity-ranked findings and prioritized remediation queue.
+16. Added full logic audit report (2026-02-18 snapshot) with severity-ranked findings and prioritized remediation queue.
 17. Fixed adaptive orchestrator budget wiring (`src/fuzzer/adaptive_orchestrator.rs`): scheduler allocations are now enforced through per-attack phase execution instead of being computed and ignored.
 18. Fixed adaptive scheduler budget semantics (`src/fuzzer/adaptive_attack_scheduler.rs`): clamped fractions are normalized and rounded with largest-remainder allocation so total allocated time equals requested budget exactly.
 19. Added timeout-wrapped external command execution in proof forgery detector (`crates/zk-constraints/src/proof_forgery.rs`) for `snarkjs wtns import`, `groth16 prove`, and `groth16 verify` with kill-on-timeout behavior.
@@ -214,6 +214,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Moved `acquire_output_lock_or_write_failure` from `main.rs` into `run_lifecycle`.
    - Reused the shared early-failure artifact emitter from lifecycle module for lock-failure reporting.
    - Kept pre-run lifecycle initialization flow unchanged in `initialize_campaign_run_lifecycle`.
+89. Continued CLI modularization by extracting lifecycle initialization helper (`src/main.rs`, `src/run_lifecycle.rs`):
+   - Moved `initialize_campaign_run_lifecycle` from `main.rs` into `run_lifecycle`.
+   - Kept run-log context binding + stale-run marking behavior unchanged by reusing shared hooks (`set_run_log_context_for_campaign`, `normalize_build_paths`).
+   - Preserved existing callsites in `run_campaign` and `run_chain_campaign` while reducing orchestration code in `main.rs`.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -402,6 +406,8 @@ Validation:
     - `cargo check -q`
 70. Main CLI compile verification after output-lock helper extraction:
     - `cargo check -q`
+71. Main CLI compile verification after lifecycle initialization helper extraction:
+    - `cargo check -q`
 
 ## Status Checklist (2026-02-18)
 
@@ -431,7 +437,7 @@ Definition of Done progress:
 - [x] Quality gates: nightly regression dashboard with pass/fail by failure class (implemented; pending sustained production evidence)
 
 ## Audit Intake (2026-02-18)
-Source: `LOGIC_AUDIT.md` (13 findings total: High=3, Medium=5, Low=3, Info=2).
+Source: 2026-02-18 logic audit snapshot (13 findings total: High=3, Medium=5, Low=3, Info=2).
 
 P0 (must-fix before broader tuning) — Completed:
 1. Wire adaptive scheduler allocations into engine execution (`H-2`).
