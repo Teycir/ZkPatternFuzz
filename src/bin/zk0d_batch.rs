@@ -80,6 +80,10 @@ struct Args {
     /// Timeout per run (seconds)
     #[arg(long, default_value_t = 1_800)]
     timeout: u64,
+
+    /// Emit per-template reason codes as TSV to stdout (for external harness ingestion)
+    #[arg(long, default_value_t = false)]
+    emit_reason_tsv: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1063,6 +1067,26 @@ fn print_reason_summary(reasons: &[TemplateOutcomeReason]) {
     }
 }
 
+fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
+    if reasons.is_empty() {
+        return;
+    }
+
+    println!("REASON_TSV_START");
+    println!("template\tsuffix\treason_code\tstatus\tstage");
+    for reason in reasons {
+        println!(
+            "{}\t{}\t{}\t{}\t{}",
+            reason.template_file,
+            reason.suffix,
+            reason.reason_code,
+            reason.status.as_deref().unwrap_or("unknown"),
+            reason.stage.as_deref().unwrap_or("unknown"),
+        );
+    }
+    println!("REASON_TSV_END");
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -1256,6 +1280,9 @@ fn main() -> anyhow::Result<()> {
             &selected_with_family,
         );
         print_reason_summary(&reasons);
+        if args.emit_reason_tsv {
+            print_reason_tsv(&reasons);
+        }
     }
 
     if !gate2_ok || !gate3_ok {

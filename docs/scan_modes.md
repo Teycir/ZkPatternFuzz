@@ -41,6 +41,35 @@ patterns:
 - If `patterns` is present, at least one selector must match or the scan aborts.
 - Selector metadata is scan-time only and is not injected into the materialized runtime campaign.
 
+Optional selector tuning is supported via per-pattern `weight`, optional per-pattern `group`,
+and top-level `selector_policy`:
+
+```yaml
+patterns:
+  - id: contains_nullifier
+    kind: regex
+    pattern: "\\bnullifier\\b"
+    weight: 1.0
+    group: core
+  - id: contains_smt
+    kind: regex
+    pattern: "\\bSMT\\b|inclusion"
+    weight: 0.6
+    group: context
+
+selector_policy:
+  k_of_n: 1          # required matched selector count (default: 1)
+  min_score: 1.0     # required sum of matched weights (default: 0.0)
+  groups:
+    - name: core
+      k_of_n: 1      # group-local minimum matches (default: 1)
+      min_score: 0.0 # group-local minimum score (default: 0.0)
+```
+
+- If `selector_policy` is omitted, behavior stays backward-compatible: at least one selector must match.
+- Group rules are optional and apply only to patterns that declare that `group`.
+- Invalid policies (for example `k_of_n` larger than available patterns) fail fast at scan startup.
+
 ## Family Dispatch
 
 `zk-fuzzer scan <pattern.yaml> --family <auto|mono|multi> ...`

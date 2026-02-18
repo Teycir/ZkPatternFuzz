@@ -7,7 +7,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use std::{collections::BTreeSet, fs};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+};
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName, ReadinessReport};
 use zk_fuzzer::fuzzer::ZkFuzzer;
 use zk_fuzzer::Framework;
@@ -1888,6 +1891,10 @@ enum ScanRegexPatternKind {
     Regex,
 }
 
+fn default_scan_regex_pattern_weight() -> f64 {
+    1.0
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct ScanRegexPatternSpec {
     id: String,
@@ -1896,6 +1903,33 @@ struct ScanRegexPatternSpec {
     kind: ScanRegexPatternKind,
     #[serde(default)]
     message: Option<String>,
+    #[serde(default)]
+    group: Option<String>,
+    #[serde(default = "default_scan_regex_pattern_weight")]
+    weight: f64,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct ScanRegexSelectorPolicySpec {
+    k_of_n: Option<usize>,
+    min_score: Option<f64>,
+    groups: Vec<ScanRegexSelectorGroupPolicySpec>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct ScanRegexSelectorGroupPolicySpec {
+    #[serde(alias = "group")]
+    name: String,
+    k_of_n: Option<usize>,
+    min_score: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+struct ScanRegexSelectorConfig {
+    patterns: Vec<ScanRegexPatternSpec>,
+    policy: ScanRegexSelectorPolicySpec,
 }
 
 #[derive(Debug, Clone)]
@@ -1905,13 +1939,29 @@ struct ScanRegexPatternMatch {
     occurrences: usize,
 }
 
+#[derive(Debug, Clone)]
+struct ScanRegexPatternGroupMatch {
+    name: String,
+    total_patterns: usize,
+    matched_patterns: usize,
+    matched_score: f64,
+    required_k_of_n: usize,
+    required_min_score: f64,
+    passed: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 struct ScanRegexPatternSummary {
     total_patterns: usize,
     matched_patterns: usize,
     total_occurrences: usize,
+    matched_score: f64,
+    required_k_of_n: usize,
+    required_min_score: f64,
+    selector_passed: bool,
     matched_ids: Vec<String>,
     matches: Vec<ScanRegexPatternMatch>,
+    group_matches: Vec<ScanRegexPatternGroupMatch>,
 }
 
 fn validate_scan_regex_pattern_safety(pattern: &str) -> anyhow::Result<()> {
@@ -2000,7 +2050,111 @@ fn validate_scan_regex_pattern_safety(pattern: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn load_scan_regex_patterns(pattern_path: &str) -> anyhow::Result<Vec<ScanRegexPatternSpec>> {
+fn validate_scan_regex_selector_config(
+    pattern_path: &str,
+    patterns: &[ScanRegexPatternSpec],
+    policy: &ScanRegexSelectorPolicySpec,
+) -> anyhow::Result<()> {
+    if patterns.is_empty() {
+        return Ok(());
+    }
+
+    let global_k = policy.k_of_n.unwrap_or(1);
+    if global_k == 0 {
+        anyhow::bail!(
+            "Invalid `selector_policy.k_of_n` in '{}': value must be >= 1",
+            pattern_path
+        );
+    }
+    if global_k > patterns.len() {
+        anyhow::bail!(
+            "Invalid `selector_policy.k_of_n` in '{}': value {} exceeds total patterns {}",
+            pattern_path,
+            global_k,
+            patterns.len()
+        );
+    }
+
+    if let Some(min_score) = policy.min_score {
+        if !min_score.is_finite() || min_score < 0.0 {
+            anyhow::bail!(
+                "Invalid `selector_policy.min_score` in '{}': expected a non-negative finite number",
+                pattern_path
+            );
+        }
+    }
+
+    let mut patterns_by_group: BTreeMap<String, usize> = BTreeMap::new();
+    for pattern in patterns {
+        if let Some(group) = pattern.group.as_ref() {
+            *patterns_by_group.entry(group.clone()).or_insert(0usize) += 1;
+        }
+    }
+
+    let mut seen_groups = BTreeSet::new();
+    for (idx, group_rule) in policy.groups.iter().enumerate() {
+        let group_name = group_rule.name.trim();
+        if group_name.is_empty() {
+            anyhow::bail!(
+                "Invalid `selector_policy.groups[{}]` in '{}': `name` must be non-empty",
+                idx,
+                pattern_path
+            );
+        }
+        if !seen_groups.insert(group_name.to_string()) {
+            anyhow::bail!(
+                "Invalid `selector_policy.groups[{}]` in '{}': duplicate group '{}'",
+                idx,
+                pattern_path,
+                group_name
+            );
+        }
+
+        let Some(total_patterns) = patterns_by_group.get(group_name).copied() else {
+            anyhow::bail!(
+                "Invalid `selector_policy.groups[{}]` in '{}': group '{}' has no matching patterns",
+                idx,
+                pattern_path,
+                group_name
+            );
+        };
+
+        let group_k = group_rule.k_of_n.unwrap_or(1);
+        if group_k == 0 {
+            anyhow::bail!(
+                "Invalid `selector_policy.groups[{}].k_of_n` in '{}': value must be >= 1",
+                idx,
+                pattern_path
+            );
+        }
+        if group_k > total_patterns {
+            anyhow::bail!(
+                "Invalid `selector_policy.groups[{}].k_of_n` in '{}': value {} exceeds group pattern count {} for '{}'",
+                idx,
+                pattern_path,
+                group_k,
+                total_patterns,
+                group_name
+            );
+        }
+
+        if let Some(min_score) = group_rule.min_score {
+            if !min_score.is_finite() || min_score < 0.0 {
+                anyhow::bail!(
+                    "Invalid `selector_policy.groups[{}].min_score` in '{}': expected a non-negative finite number",
+                    idx,
+                    pattern_path
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn load_scan_regex_selector_config(
+    pattern_path: &str,
+) -> anyhow::Result<Option<ScanRegexSelectorConfig>> {
     let raw = fs::read_to_string(pattern_path)
         .with_context(|| format!("Failed to read pattern YAML '{}'", pattern_path))?;
     let doc: serde_yaml::Value = serde_yaml::from_str(&raw)
@@ -2010,30 +2164,33 @@ fn load_scan_regex_patterns(pattern_path: &str) -> anyhow::Result<Vec<ScanRegexP
         .context("Pattern YAML root must be a mapping")?;
 
     let Some(patterns_value) = root.get(yaml_key("patterns")) else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
 
     let sequence = patterns_value
         .as_sequence()
         .context("'patterns' must be a YAML sequence when present")?;
 
-    let mut patterns = Vec::with_capacity(sequence.len());
+    let mut patterns: Vec<ScanRegexPatternSpec> = Vec::with_capacity(sequence.len());
     for (idx, item) in sequence.iter().enumerate() {
-        let pattern: ScanRegexPatternSpec = serde_yaml::from_value(item.clone()).with_context(|| {
-            format!(
-                "Invalid `patterns[{}]` entry in '{}': expected keys {{id, kind, pattern, message}}",
-                idx, pattern_path
-            )
-        })?;
+        let mut pattern: ScanRegexPatternSpec =
+            serde_yaml::from_value(item.clone()).with_context(|| {
+                format!(
+                    "Invalid `patterns[{}]` entry in '{}': expected keys {{id, kind, pattern, message, group, weight}}",
+                    idx, pattern_path
+                )
+            })?;
 
-        if pattern.id.trim().is_empty() {
+        pattern.id = pattern.id.trim().to_string();
+        if pattern.id.is_empty() {
             anyhow::bail!(
                 "Invalid `patterns[{}]` in '{}': `id` must be non-empty",
                 idx,
                 pattern_path
             );
         }
-        if pattern.pattern.trim().is_empty() {
+        pattern.pattern = pattern.pattern.trim().to_string();
+        if pattern.pattern.is_empty() {
             anyhow::bail!(
                 "Invalid `patterns[{}]` in '{}': `pattern` must be non-empty",
                 idx,
@@ -2047,6 +2204,19 @@ fn load_scan_regex_patterns(pattern_path: &str) -> anyhow::Result<Vec<ScanRegexP
                 pattern_path
             );
         }
+
+        if !pattern.weight.is_finite() || pattern.weight <= 0.0 {
+            anyhow::bail!(
+                "Invalid `patterns[{}]` in '{}': `weight` must be a positive finite number",
+                idx,
+                pattern_path
+            );
+        }
+
+        pattern.group = pattern
+            .group
+            .map(|group| group.trim().to_string())
+            .filter(|group| !group.is_empty());
 
         validate_scan_regex_pattern_safety(&pattern.pattern)
             .with_context(|| format!("Unsafe regex for pattern '{}'", pattern.id))?;
@@ -2062,26 +2232,26 @@ fn load_scan_regex_patterns(pattern_path: &str) -> anyhow::Result<Vec<ScanRegexP
         patterns.push(pattern);
     }
 
-    Ok(patterns)
-}
+    let policy = match root.get(yaml_key("selector_policy")) {
+        Some(value) => serde_yaml::from_value(value.clone()).with_context(|| {
+            format!(
+                "Invalid `selector_policy` in '{}': expected keys {{k_of_n, min_score, groups}}",
+                pattern_path
+            )
+        })?,
+        None => ScanRegexSelectorPolicySpec::default(),
+    };
 
-fn evaluate_scan_regex_patterns(
-    pattern_path: &str,
-    target_circuit: &Path,
-) -> anyhow::Result<Option<ScanRegexPatternSummary>> {
-    let patterns = load_scan_regex_patterns(pattern_path)?;
-    if patterns.is_empty() {
-        return Ok(None);
-    }
+    validate_scan_regex_selector_config(pattern_path, &patterns, &policy)?;
 
-    let summary = evaluate_loaded_scan_regex_patterns(&patterns, target_circuit)?;
-    Ok(Some(summary))
+    Ok(Some(ScanRegexSelectorConfig { patterns, policy }))
 }
 
 fn evaluate_loaded_scan_regex_patterns(
-    patterns: &[ScanRegexPatternSpec],
+    selector_config: &ScanRegexSelectorConfig,
     target_circuit: &Path,
 ) -> anyhow::Result<ScanRegexPatternSummary> {
+    let patterns = &selector_config.patterns;
     if patterns.is_empty() {
         return Ok(ScanRegexPatternSummary::default());
     }
@@ -2103,8 +2273,11 @@ fn evaluate_loaded_scan_regex_patterns(
     println!("PATTERN FILTER START");
     let mut summary = ScanRegexPatternSummary {
         total_patterns: patterns.len(),
+        required_k_of_n: selector_config.policy.k_of_n.unwrap_or(1),
+        required_min_score: selector_config.policy.min_score.unwrap_or(0.0),
         ..Default::default()
     };
+    let mut matched_pattern_ids: BTreeSet<String> = BTreeSet::new();
     for (idx, pattern) in patterns.iter().enumerate() {
         println!(
             "pattern filter {}/{} {}",
@@ -2141,7 +2314,9 @@ fn evaluate_loaded_scan_regex_patterns(
             }
             summary.matched_patterns += 1;
             summary.total_occurrences += occurrences;
+            summary.matched_score += pattern.weight;
             summary.matched_ids.push(pattern.id.clone());
+            matched_pattern_ids.insert(pattern.id.clone());
             summary.matches.push(ScanRegexPatternMatch {
                 id: pattern.id.clone(),
                 lines: lines.clone(),
@@ -2154,17 +2329,62 @@ fn evaluate_loaded_scan_regex_patterns(
                 .filter(|m| !m.is_empty())
             {
                 println!(
-                    "pattern hit {}: {} (matches: {}, lines: {:?})",
-                    pattern.id, message, occurrences, lines
+                    "pattern hit {}: {} (matches: {}, weight: {:.2}, lines: {:?})",
+                    pattern.id, message, occurrences, pattern.weight, lines
                 );
             } else {
                 println!(
-                    "pattern hit {} (matches: {}, lines: {:?})",
-                    pattern.id, occurrences, lines
+                    "pattern hit {} (matches: {}, weight: {:.2}, lines: {:?})",
+                    pattern.id, occurrences, pattern.weight, lines
                 );
             }
         }
     }
+
+    let mut grouped_stats: BTreeMap<String, (usize, usize, f64)> = BTreeMap::new();
+    for pattern in patterns {
+        let Some(group_name) = pattern.group.as_ref() else {
+            continue;
+        };
+        let entry = grouped_stats
+            .entry(group_name.clone())
+            .or_insert((0usize, 0usize, 0.0f64));
+        entry.0 += 1;
+        if matched_pattern_ids.contains(&pattern.id) {
+            entry.1 += 1;
+            entry.2 += pattern.weight;
+        }
+    }
+
+    for group_rule in &selector_config.policy.groups {
+        let group_name = group_rule.name.trim();
+        if group_name.is_empty() {
+            continue;
+        }
+        let (total_patterns, matched_patterns, matched_score) = grouped_stats
+            .get(group_name)
+            .copied()
+            .unwrap_or((0usize, 0usize, 0.0f64));
+        let required_k_of_n = group_rule.k_of_n.unwrap_or(1);
+        let required_min_score = group_rule.min_score.unwrap_or(0.0);
+        let passed = matched_patterns >= required_k_of_n
+            && matched_score + f64::EPSILON >= required_min_score;
+        summary.group_matches.push(ScanRegexPatternGroupMatch {
+            name: group_name.to_string(),
+            total_patterns,
+            matched_patterns,
+            matched_score,
+            required_k_of_n,
+            required_min_score,
+            passed,
+        });
+    }
+
+    let global_k_pass = summary.matched_patterns >= summary.required_k_of_n;
+    let global_score_pass = summary.matched_score + f64::EPSILON >= summary.required_min_score;
+    let groups_pass = summary.group_matches.iter().all(|group| group.passed);
+    summary.selector_passed = global_k_pass && global_score_pass && groups_pass;
+
     println!("PATTERN FILTER END");
     let match_ratio = if summary.total_patterns == 0 {
         0.0
@@ -2175,6 +2395,31 @@ fn evaluate_loaded_scan_regex_patterns(
         "pattern summary: matched {}/{} ({:.1}%), total regex hits: {}",
         summary.matched_patterns, summary.total_patterns, match_ratio, summary.total_occurrences
     );
+    println!(
+        "pattern gate: k_of_n {}/{} (required {}), score {:.2}/{:.2} => {}",
+        summary.matched_patterns,
+        summary.total_patterns,
+        summary.required_k_of_n,
+        summary.matched_score,
+        summary.required_min_score,
+        if global_k_pass && global_score_pass {
+            "PASS"
+        } else {
+            "FAIL"
+        }
+    );
+    for group in &summary.group_matches {
+        println!(
+            "pattern group {}: k_of_n {}/{} (required {}), score {:.2}/{:.2} => {}",
+            group.name,
+            group.matched_patterns,
+            group.total_patterns,
+            group.required_k_of_n,
+            group.matched_score,
+            group.required_min_score,
+            if group.passed { "PASS" } else { "FAIL" }
+        );
+    }
     for hit in &summary.matches {
         let frequency = if summary.total_occurrences == 0 {
             0.0
@@ -2186,6 +2431,14 @@ fn evaluate_loaded_scan_regex_patterns(
             hit.id, hit.occurrences, frequency
         );
     }
+    println!(
+        "pattern selector verdict: {}",
+        if summary.selector_passed {
+            "PASS"
+        } else {
+            "FAIL"
+        }
+    );
 
     Ok(summary)
 }
@@ -2451,8 +2704,8 @@ async fn run_scan(
     chain_options: ChainRunOptions,
 ) -> anyhow::Result<()> {
     validate_pattern_only_yaml(pattern_path, "Scan")?;
-    let regex_patterns = load_scan_regex_patterns(pattern_path)?;
-    let regex_mode = !regex_patterns.is_empty();
+    let regex_selector_config = load_scan_regex_selector_config(pattern_path)?;
+    let regex_mode = regex_selector_config.is_some();
 
     let has_chains = detect_pattern_has_chains(pattern_path)?;
     let family = if regex_mode {
@@ -2507,29 +2760,54 @@ async fn run_scan(
         main_component: main_component.to_string(),
     };
     let mut scan_regex_summary: Option<ScanRegexPatternSummary> = None;
-    if regex_mode {
-        let summary = evaluate_loaded_scan_regex_patterns(&regex_patterns, &target.circuit_path)?;
-        if summary.matched_patterns == 0 {
+    if let Some(selector_config) = regex_selector_config.as_ref() {
+        let summary = evaluate_loaded_scan_regex_patterns(selector_config, &target.circuit_path)?;
+        if !summary.selector_passed {
+            let mut reasons: Vec<String> = Vec::new();
+            if summary.matched_patterns < summary.required_k_of_n {
+                reasons.push(format!(
+                    "k_of_n not met (matched {} of {}, required >= {})",
+                    summary.matched_patterns, summary.total_patterns, summary.required_k_of_n
+                ));
+            }
+            if summary.matched_score + f64::EPSILON < summary.required_min_score {
+                reasons.push(format!(
+                    "score threshold not met (matched {:.2}, required >= {:.2})",
+                    summary.matched_score, summary.required_min_score
+                ));
+            }
+            for group in &summary.group_matches {
+                if !group.passed {
+                    reasons.push(format!(
+                        "group '{}' unmet (k_of_n {}/{}, required >= {}; score {:.2}, required >= {:.2})",
+                        group.name,
+                        group.matched_patterns,
+                        group.total_patterns,
+                        group.required_k_of_n,
+                        group.matched_score,
+                        group.required_min_score
+                    ));
+                }
+            }
+            let detail = if reasons.is_empty() {
+                "selector policy thresholds not satisfied".to_string()
+            } else {
+                reasons.join("; ")
+            };
             anyhow::bail!(
-                "Pattern '{}' has regex selectors but none matched target circuit '{}'. \
-                 Refine `patterns` or choose a matching pattern YAML.",
+                "Pattern '{}' selectors did not match target circuit '{}': {}. \
+                 Refine `patterns`/`selector_policy` or choose a matching pattern YAML.",
                 pattern_path,
-                target.circuit_path.display()
+                target.circuit_path.display(),
+                detail
             );
         }
         tracing::info!(
-            "Pattern selectors matched {}/{}: [{}]",
+            "Pattern selectors matched {}/{} (score {:.2}, required {:.2}): [{}]",
             summary.matched_patterns,
             summary.total_patterns,
-            summary.matched_ids.join(", ")
-        );
-        scan_regex_summary = Some(summary);
-    } else if let Some(summary) = evaluate_scan_regex_patterns(pattern_path, &target.circuit_path)?
-    {
-        tracing::info!(
-            "Pattern selectors matched {}/{}: [{}]",
-            summary.matched_patterns,
-            summary.total_patterns,
+            summary.matched_score,
+            summary.required_min_score,
             summary.matched_ids.join(", ")
         );
         scan_regex_summary = Some(summary);
@@ -4719,4 +4997,137 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod scan_selector_tests {
+    use super::*;
+
+    fn evaluate_selector_summary(
+        pattern_yaml: &str,
+        target_source: &str,
+    ) -> ScanRegexPatternSummary {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let pattern_path = temp_dir.path().join("pattern.yaml");
+        let target_path = temp_dir.path().join("target.circom");
+
+        fs::write(&pattern_path, pattern_yaml).expect("write pattern");
+        fs::write(&target_path, target_source).expect("write target");
+
+        let selector_config =
+            load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
+                .expect("load selector config")
+                .expect("selector config should exist");
+        evaluate_loaded_scan_regex_patterns(&selector_config, &target_path)
+            .expect("evaluate selector config")
+    }
+
+    #[test]
+    fn scan_selector_default_policy_matches_any_single_pattern() {
+        let pattern_yaml = r#"
+patterns:
+  - id: contains_alpha
+    kind: regex
+    pattern: "\\balpha\\b"
+  - id: contains_beta
+    kind: regex
+    pattern: "\\bbeta\\b"
+"#;
+        let summary = evaluate_selector_summary(pattern_yaml, "signal input alpha;");
+
+        assert_eq!(summary.required_k_of_n, 1);
+        assert_eq!(summary.matched_patterns, 1);
+        assert!(summary.selector_passed);
+    }
+
+    #[test]
+    fn scan_selector_policy_supports_k_of_n_and_min_score() {
+        let pattern_yaml = r#"
+patterns:
+  - id: alpha_context
+    kind: regex
+    pattern: "\\balpha\\b"
+    group: "core"
+    weight: 1.0
+  - id: beta_context
+    kind: regex
+    pattern: "\\bbeta\\b"
+    group: "core"
+    weight: 1.0
+  - id: gamma_hint
+    kind: regex
+    pattern: "\\bgamma\\b"
+    group: "aux"
+    weight: 0.5
+selector_policy:
+  k_of_n: 2
+  min_score: 1.5
+  groups:
+    - name: core
+      k_of_n: 1
+"#;
+        let summary = evaluate_selector_summary(pattern_yaml, "alpha gamma");
+
+        assert_eq!(summary.matched_patterns, 2);
+        assert!((summary.matched_score - 1.5).abs() < 1e-9);
+        assert!(summary.selector_passed);
+    }
+
+    #[test]
+    fn scan_selector_policy_fails_when_group_requirement_is_not_met() {
+        let pattern_yaml = r#"
+patterns:
+  - id: alpha_context
+    kind: regex
+    pattern: "\\balpha\\b"
+    group: "core"
+    weight: 1.0
+  - id: beta_context
+    kind: regex
+    pattern: "\\bbeta\\b"
+    group: "core"
+    weight: 1.0
+  - id: gamma_hint
+    kind: regex
+    pattern: "\\bgamma\\b"
+    group: "aux"
+    weight: 0.5
+selector_policy:
+  k_of_n: 2
+  min_score: 1.5
+  groups:
+    - name: core
+      k_of_n: 2
+"#;
+        let summary = evaluate_selector_summary(pattern_yaml, "alpha gamma");
+
+        assert!(!summary.selector_passed);
+        assert_eq!(summary.group_matches.len(), 1);
+        assert!(!summary.group_matches[0].passed);
+    }
+
+    #[test]
+    fn scan_selector_policy_rejects_invalid_global_k_of_n() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let pattern_path = temp_dir.path().join("pattern.yaml");
+        fs::write(
+            &pattern_path,
+            r#"
+patterns:
+  - id: one
+    kind: regex
+    pattern: "one"
+  - id: two
+    kind: regex
+    pattern: "two"
+selector_policy:
+  k_of_n: 3
+"#,
+        )
+        .expect("write pattern");
+
+        let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
+            .expect_err("invalid k_of_n should fail");
+        assert!(format!("{err:#}").contains("selector_policy.k_of_n"));
+    }
 }

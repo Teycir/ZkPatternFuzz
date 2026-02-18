@@ -15,6 +15,8 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 7. Added collision-safe automatic scan run-root allocation for parallel scans (atomic reservation under `.scan_run_artifacts`, keeping `scan_runYYYYMMDD_HHMMSS` naming).
 8. Added backend preflight hardening for Circom key setup (`circom_require_setup_keys`) and wired scan materialization to enforce key-setup/toolchain readiness up front.
 9. Added `zk-fuzzer preflight <campaign.yaml> [--setup-keys]` command for explicit backend/keygen readiness checks.
+10. Implemented regex selector policy controls (`selector_policy`) with weighted matching, `k_of_n` thresholds, and optional group-level gates while preserving default behavior (`>=1` match).
+11. Added selector-policy regression tests in `src/main.rs` for default compatibility, pass/fail gating, and invalid-policy rejection.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -125,10 +127,9 @@ Exit Criteria:
 
 ## Execution Backlog (Immediate Top 10)
 1. Extend batch reason-code aggregation into external real-run TSV harness (without changing report schema).
-2. Implement weighted regex groups + `k-of-n` selector support.
-3. Implement selector normalization and synonym bundles.
-4. Add bootstrap command for `bins` and `ptau`.
-5. Add matrix runner for zk0d target lists with `jobs` + `workers` guardrails.
-6. Add retry-on-transient-setup policy.
-7. Add vulnerable/safe benchmark suites with repeated-trial harness.
-8. Add CI gates for stability and recall regression.
+2. Implement selector normalization and synonym bundles.
+3. Add bootstrap command for `bins` and `ptau`.
+4. Add matrix runner for zk0d target lists with `jobs` + `workers` guardrails.
+5. Add retry-on-transient-setup policy.
+6. Add vulnerable/safe benchmark suites with repeated-trial harness.
+7. Add CI gates for stability and recall regression.
