@@ -202,6 +202,14 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Preserved backward compatibility via `SetupPoisoningDetector` compatibility wrapper.
    - Switched runtime oracle surface to re-export trusted-setup primitives from `zk-attacks` instead of maintaining a separate local implementation.
    - Fixed trusted-setup runner finding-family mapping so configured `trusted_setup` runs emit findings under the expected attack type.
+86. Continued CLI modularization for run lifecycle helpers (`src/main.rs`, `src/run_lifecycle.rs`):
+   - Extracted lifecycle artifact emitters (`running`, `failed/error`, `failed/reason`) from `main.rs` into a dedicated module.
+   - Extracted strict-readiness and backend-preflight fail/emit wrappers into the same module.
+   - Kept `run_campaign`/`run_chain_campaign` behavior unchanged while shrinking orchestration surface in `main.rs`.
+87. Continued CLI modularization by extracting stale-run and early-failure helpers (`src/main.rs`, `src/run_lifecycle.rs`):
+   - Moved stale-run detection/marker emission (`pid_is_alive`, `mark_stale_previous_run_if_any`) into `run_lifecycle`.
+   - Moved early failure artifact emitters (`write_failed_run_artifact`, `write_failed_run_artifact_with_error`) into `run_lifecycle`.
+   - Updated panic/signal and early-config-failure callsites to use shared lifecycle helper module.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -384,6 +392,10 @@ Validation:
     - `cargo test -q -p zk-attacks setup_poisoning_detector_compatibility_api_still_works -- --test-threads=1`
     - `cargo test -q test_setup_poisoning_detector_detects_cross_setup -- --test-threads=1`
     - `cargo test -q --test phase0_integration_tests test_phase3_and_advanced_attack_dispatch -- --test-threads=1`
+68. Main CLI compile verification after run-lifecycle helper module extraction:
+    - `cargo check -q`
+69. Main CLI compile verification after stale-run/early-failure helper extraction:
+    - `cargo check -q`
 
 ## Status Checklist (2026-02-18)
 

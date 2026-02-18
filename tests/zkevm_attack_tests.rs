@@ -8,11 +8,11 @@
 
 use std::collections::HashMap;
 use zk_core::FieldElement;
+use zk_fuzzer::config::Severity;
 use zk_fuzzer::oracles::zkevm::{
     ZkEvmAttack, ZkEvmCallDetector, ZkEvmConfig, ZkEvmPriceAnalyzer, ZkEvmTestResult,
     ZkEvmVulnerabilityType, EVM_OPCODES,
 };
-use zk_fuzzer::config::Severity;
 
 // ============================================================================
 // Configuration Tests

@@ -134,7 +134,10 @@ fn migrate_attack_plugin_fields(root: &mut Value, report: &mut MigrationReport) 
             continue;
         }
 
-        if let Some(config_map) = attack_map.get_mut(&config_key).and_then(Value::as_mapping_mut) {
+        if let Some(config_map) = attack_map
+            .get_mut(&config_key)
+            .and_then(Value::as_mapping_mut)
+        {
             config_map.insert(plugin_key, plugin_value);
         }
         report.add_deprecated(

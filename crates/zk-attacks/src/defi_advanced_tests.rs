@@ -17,10 +17,7 @@ impl CircuitExecutor for OrderSensitiveExecutor {
     }
 
     fn execute_sync(&self, inputs: &[FieldElement]) -> ExecutionResult {
-        let first = inputs
-            .first()
-            .cloned()
-            .unwrap_or_else(FieldElement::zero);
+        let first = inputs.first().cloned().unwrap_or_else(FieldElement::zero);
         ExecutionResult::success(vec![first], ExecutionCoverage::default())
     }
 
@@ -64,9 +61,7 @@ fn defi_advanced_detects_ordering_sensitivity() {
         .expect("defi run");
 
     assert!(!findings.is_empty());
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.attack_type == AttackType::DefiAdvanced)
-    );
+    assert!(findings
+        .iter()
+        .any(|f| f.attack_type == AttackType::DefiAdvanced));
 }

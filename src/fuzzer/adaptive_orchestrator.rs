@@ -349,8 +349,7 @@ impl AdaptiveOrchestrator {
             // Non-adaptive mode: run exactly one full attack sweep.
             if !self.config.adaptive_budget {
                 let phase_config = Self::with_phase_timeout(base_config.clone(), phase_budget);
-                let mut phase_engine =
-                    FuzzingEngine::new(phase_config, None, self.config.workers)?;
+                let mut phase_engine = FuzzingEngine::new(phase_config, None, self.config.workers)?;
                 let phase_report = phase_engine.run(None).await?;
 
                 for attack in &base_config.attacks {
@@ -399,8 +398,7 @@ impl AdaptiveOrchestrator {
                     Self::single_attack_config(base_config.clone(), attack.clone()),
                     effective_budget,
                 );
-                let mut phase_engine =
-                    FuzzingEngine::new(phase_config, None, self.config.workers)?;
+                let mut phase_engine = FuzzingEngine::new(phase_config, None, self.config.workers)?;
                 let phase_report = phase_engine.run(None).await?;
                 executed_any = true;
 
@@ -608,13 +606,16 @@ impl AdaptiveOrchestrator {
     fn hint_category_matches_attack(category: &ZeroDayCategory, attack_type: &AttackType) -> bool {
         matches!(
             (category, attack_type),
-            (ZeroDayCategory::MissingConstraint, AttackType::Underconstrained)
-                | (
-                    ZeroDayCategory::IncorrectRangeCheck,
-                    AttackType::ArithmeticOverflow
-                )
-                | (ZeroDayCategory::SignatureMalleability, AttackType::Soundness)
-                | (ZeroDayCategory::NullifierReuse, AttackType::Collision)
+            (
+                ZeroDayCategory::MissingConstraint,
+                AttackType::Underconstrained
+            ) | (
+                ZeroDayCategory::IncorrectRangeCheck,
+                AttackType::ArithmeticOverflow
+            ) | (
+                ZeroDayCategory::SignatureMalleability,
+                AttackType::Soundness
+            ) | (ZeroDayCategory::NullifierReuse, AttackType::Collision)
                 | (ZeroDayCategory::HashMisuse, AttackType::Collision)
                 | (
                     ZeroDayCategory::BitDecompositionBypass,
@@ -760,9 +761,11 @@ impl AdaptiveOrchestrator {
         let mut used_b = HashSet::new();
 
         for a in a_tokens {
-            if let Some((idx, _)) = b_tokens.iter().enumerate().find(|(idx, b)| {
-                !used_b.contains(idx) && Self::tokens_roughly_match(a, b.as_str())
-            }) {
+            if let Some((idx, _)) = b_tokens
+                .iter()
+                .enumerate()
+                .find(|(idx, b)| !used_b.contains(idx) && Self::tokens_roughly_match(a, b.as_str()))
+            {
                 used_b.insert(idx);
                 matched += 1;
             }

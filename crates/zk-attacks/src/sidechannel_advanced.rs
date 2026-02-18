@@ -152,7 +152,9 @@ impl SidechannelAdvancedAttack {
     ) -> Vec<FieldElement> {
         let mut inputs = base_inputs.to_vec();
         let start = executor.num_public_inputs().min(inputs.len());
-        let end = start.saturating_add(executor.num_private_inputs()).min(inputs.len());
+        let end = start
+            .saturating_add(executor.num_private_inputs())
+            .min(inputs.len());
 
         if start < end {
             for value in &mut inputs[start..end] {

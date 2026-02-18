@@ -3,18 +3,11 @@ use super::*;
 #[test]
 fn quantum_resistance_default_config_includes_common_primitives() {
     let config = QuantumResistanceConfig::default();
-    assert!(
-        config
-            .vulnerable_primitives
-            .iter()
-            .any(|p| p.name == "RSA")
-    );
-    assert!(
-        config
-            .vulnerable_primitives
-            .iter()
-            .any(|p| p.name == "ECDSA")
-    );
+    assert!(config.vulnerable_primitives.iter().any(|p| p.name == "RSA"));
+    assert!(config
+        .vulnerable_primitives
+        .iter()
+        .any(|p| p.name == "ECDSA"));
 }
 
 #[test]
@@ -27,11 +20,9 @@ fn quantum_resistance_scans_source_patterns() {
     );
 
     assert!(!findings.is_empty());
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.attack_type == AttackType::QuantumResistance)
-    );
+    assert!(findings
+        .iter()
+        .any(|f| f.attack_type == AttackType::QuantumResistance));
 }
 
 #[test]

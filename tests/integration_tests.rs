@@ -5,9 +5,9 @@
 
 use std::io::Write;
 use tempfile::NamedTempFile;
-use zk_fuzzer::oracles::{Attack, AttackContext, CircuitInfo, UnderconstrainedDetector};
 use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
 use zk_fuzzer::fuzzer::FieldElement;
+use zk_fuzzer::oracles::{Attack, AttackContext, CircuitInfo, UnderconstrainedDetector};
 use zk_fuzzer::FuzzConfig;
 
 // ============================================================================

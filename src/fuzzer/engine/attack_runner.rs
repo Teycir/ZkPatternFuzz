@@ -67,10 +67,10 @@ fn strict_attack_floor(
     minimum: usize,
     label: &str,
 ) -> usize {
-    let evidence_mode = super::FuzzingEngine::additional_bool(additional, "evidence_mode")
-        .unwrap_or(false);
-    let engagement_strict =
-        super::FuzzingEngine::additional_bool(additional, "engagement_strict").unwrap_or(evidence_mode);
+    let evidence_mode =
+        super::FuzzingEngine::additional_bool(additional, "evidence_mode").unwrap_or(false);
+    let engagement_strict = super::FuzzingEngine::additional_bool(additional, "engagement_strict")
+        .unwrap_or(evidence_mode);
 
     if !engagement_strict || configured >= minimum {
         return configured;

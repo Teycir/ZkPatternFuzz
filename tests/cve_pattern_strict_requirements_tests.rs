@@ -9,11 +9,15 @@ fn cve_pattern_dir() -> PathBuf {
 }
 
 fn load_pattern_yaml(path: &PathBuf) -> serde_yaml::Value {
-    let source = fs::read_to_string(path).unwrap_or_else(|err| {
-        panic!("failed to read CVE pattern '{}': {:#}", path.display(), err)
-    });
-    serde_yaml::from_str(&source)
-        .unwrap_or_else(|err| panic!("failed to parse CVE pattern '{}': {:#}", path.display(), err))
+    let source = fs::read_to_string(path)
+        .unwrap_or_else(|err| panic!("failed to read CVE pattern '{}': {:#}", path.display(), err));
+    serde_yaml::from_str(&source).unwrap_or_else(|err| {
+        panic!(
+            "failed to parse CVE pattern '{}': {:#}",
+            path.display(),
+            err
+        )
+    })
 }
 
 fn collect_pattern_files() -> Vec<PathBuf> {
@@ -82,7 +86,12 @@ fn cve_pattern_campaigns_meet_minimum_attack_budgets() {
         let soundness = find_attack(&yaml, "soundness");
         let forge_attempts = soundness["config"]["forge_attempts"]
             .as_u64()
-            .unwrap_or_else(|| panic!("{}: missing soundness.config.forge_attempts", pattern_file.display()));
+            .unwrap_or_else(|| {
+                panic!(
+                    "{}: missing soundness.config.forge_attempts",
+                    pattern_file.display()
+                )
+            });
         assert!(
             forge_attempts >= 1000,
             "{}: forge_attempts={} is below minimum 1000",
@@ -121,9 +130,12 @@ fn cve_pattern_campaigns_meet_minimum_attack_budgets() {
         );
 
         let spec = find_attack(&yaml, "spec_inference");
-        let spec_samples = spec["config"]["sample_count"]
-            .as_u64()
-            .unwrap_or_else(|| panic!("{}: missing spec_inference.config.sample_count", pattern_file.display()));
+        let spec_samples = spec["config"]["sample_count"].as_u64().unwrap_or_else(|| {
+            panic!(
+                "{}: missing spec_inference.config.sample_count",
+                pattern_file.display()
+            )
+        });
         assert!(
             spec_samples >= 1000,
             "{}: spec_inference sample_count={} is below minimum 1000",
@@ -134,7 +146,12 @@ fn cve_pattern_campaigns_meet_minimum_attack_budgets() {
         let metamorphic = find_attack(&yaml, "metamorphic");
         let metamorphic_tests = metamorphic["config"]["num_tests"]
             .as_u64()
-            .unwrap_or_else(|| panic!("{}: missing metamorphic.config.num_tests", pattern_file.display()));
+            .unwrap_or_else(|| {
+                panic!(
+                    "{}: missing metamorphic.config.num_tests",
+                    pattern_file.display()
+                )
+            });
         assert!(
             metamorphic_tests >= 256,
             "{}: metamorphic num_tests={} is below minimum 256",
@@ -145,7 +162,12 @@ fn cve_pattern_campaigns_meet_minimum_attack_budgets() {
         let witness_collision = find_attack(&yaml, "witness_collision");
         let witness_samples = witness_collision["config"]["samples"]
             .as_u64()
-            .unwrap_or_else(|| panic!("{}: missing witness_collision.config.samples", pattern_file.display()));
+            .unwrap_or_else(|| {
+                panic!(
+                    "{}: missing witness_collision.config.samples",
+                    pattern_file.display()
+                )
+            });
         assert!(
             witness_samples >= 2000,
             "{}: witness_collision samples={} is below minimum 2000",

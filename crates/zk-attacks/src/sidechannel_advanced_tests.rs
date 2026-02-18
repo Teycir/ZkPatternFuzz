@@ -17,7 +17,10 @@ impl CircuitExecutor for ConstantOutputExecutor {
     }
 
     fn execute_sync(&self, _inputs: &[FieldElement]) -> ExecutionResult {
-        ExecutionResult::success(vec![FieldElement::from_u64(7)], ExecutionCoverage::default())
+        ExecutionResult::success(
+            vec![FieldElement::from_u64(7)],
+            ExecutionCoverage::default(),
+        )
     }
 
     fn prove(&self, _witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
@@ -57,9 +60,7 @@ fn sidechannel_advanced_detects_low_uniqueness() {
         .expect("sidechannel run");
 
     assert!(!findings.is_empty());
-    assert!(
-        findings
-            .iter()
-            .any(|f| f.attack_type == AttackType::SidechannelAdvanced)
-    );
+    assert!(findings
+        .iter()
+        .any(|f| f.attack_type == AttackType::SidechannelAdvanced));
 }

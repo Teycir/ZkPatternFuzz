@@ -1,4 +1,3 @@
-
 use super::aggregate_resume_entries;
 use crate::chain_fuzzer::ChainCorpusEntry;
 use std::collections::HashMap;

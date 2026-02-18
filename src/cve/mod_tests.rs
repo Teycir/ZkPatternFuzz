@@ -451,7 +451,10 @@ fn test_build_inputs_for_test_zero_fills_when_fixture_is_partial() {
     let mut rng = StdRng::seed_from_u64(11);
     let tc = GeneratedTestCase {
         name: "partial_fixture".to_string(),
-        inputs: vec![("pathIndices".to_string(), serde_yaml::Value::Number(1.into()))],
+        inputs: vec![(
+            "pathIndices".to_string(),
+            serde_yaml::Value::Number(1.into()),
+        )],
         expected_result: "valid_proof".to_string(),
         expected_valid: Some(true),
     };

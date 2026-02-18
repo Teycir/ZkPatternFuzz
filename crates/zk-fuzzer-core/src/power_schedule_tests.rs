@@ -1,73 +1,73 @@
-    use super::*;
 
-    #[test]
-    fn test_power_schedule_none() {
-        let scheduler = PowerScheduler::new(PowerSchedule::None);
-        let metrics = TestCaseMetrics::default();
-        assert_eq!(scheduler.calculate_energy(&metrics), 100);
-    }
+use super::*;
 
-    #[test]
-    fn test_power_schedule_explore() {
-        let mut scheduler = PowerScheduler::new(PowerSchedule::Explore);
-        scheduler.update_globals(Duration::from_micros(100), 1000);
+#[test]
+fn test_power_schedule_none() {
+    let scheduler = PowerScheduler::new(PowerSchedule::None);
+    let metrics = TestCaseMetrics::default();
+    assert_eq!(scheduler.calculate_energy(&metrics), 100);
+}
 
-        // Rare path should get more energy
-        let rare = TestCaseMetrics {
-            path_frequency: 10,
-            ..Default::default()
-        };
-        let common = TestCaseMetrics {
-            path_frequency: 500,
-            ..Default::default()
-        };
+#[test]
+fn test_power_schedule_explore() {
+    let mut scheduler = PowerScheduler::new(PowerSchedule::Explore);
+    scheduler.update_globals(Duration::from_micros(100), 1000);
 
-        assert!(scheduler.calculate_energy(&rare) > scheduler.calculate_energy(&common));
-    }
+    // Rare path should get more energy
+    let rare = TestCaseMetrics {
+        path_frequency: 10,
+        ..Default::default()
+    };
+    let common = TestCaseMetrics {
+        path_frequency: 500,
+        ..Default::default()
+    };
 
-    #[test]
-    fn test_power_schedule_exploit() {
-        let scheduler = PowerScheduler::new(PowerSchedule::Exploit);
+    assert!(scheduler.calculate_energy(&rare) > scheduler.calculate_energy(&common));
+}
 
-        // Test case with findings should get more energy
-        let with_findings = TestCaseMetrics {
-            findings_count: 5,
-            ..Default::default()
-        };
-        let without_findings = TestCaseMetrics::default();
+#[test]
+fn test_power_schedule_exploit() {
+    let scheduler = PowerScheduler::new(PowerSchedule::Exploit);
 
-        assert!(
-            scheduler.calculate_energy(&with_findings)
-                > scheduler.calculate_energy(&without_findings)
-        );
-    }
+    // Test case with findings should get more energy
+    let with_findings = TestCaseMetrics {
+        findings_count: 5,
+        ..Default::default()
+    };
+    let without_findings = TestCaseMetrics::default();
 
-    #[test]
-    fn test_power_schedule_coe() {
-        let scheduler = PowerScheduler::new(PowerSchedule::Coe);
+    assert!(
+        scheduler.calculate_energy(&with_findings) > scheduler.calculate_energy(&without_findings)
+    );
+}
 
-        // Frequently selected cases should get less energy
-        let fresh = TestCaseMetrics {
-            selection_count: 5,
-            ..Default::default()
-        };
-        let overused = TestCaseMetrics {
-            selection_count: 100,
-            ..Default::default()
-        };
+#[test]
+fn test_power_schedule_coe() {
+    let scheduler = PowerScheduler::new(PowerSchedule::Coe);
 
-        assert!(scheduler.calculate_energy(&fresh) > scheduler.calculate_energy(&overused));
-    }
+    // Frequently selected cases should get less energy
+    let fresh = TestCaseMetrics {
+        selection_count: 5,
+        ..Default::default()
+    };
+    let overused = TestCaseMetrics {
+        selection_count: 100,
+        ..Default::default()
+    };
 
-    #[test]
-    fn test_energy_clamping() {
-        let scheduler = PowerScheduler::new(PowerSchedule::Explore);
+    assert!(scheduler.calculate_energy(&fresh) > scheduler.calculate_energy(&overused));
+}
 
-        // Even with extreme metrics, energy should be clamped
-        let extreme = TestCaseMetrics {
-            path_frequency: 0,
-            ..Default::default()
-        };
+#[test]
+fn test_energy_clamping() {
+    let scheduler = PowerScheduler::new(PowerSchedule::Explore);
 
-        assert!(scheduler.calculate_energy(&extreme) <= scheduler.max_energy);
-    }
+    // Even with extreme metrics, energy should be clamped
+    let extreme = TestCaseMetrics {
+        path_frequency: 0,
+        ..Default::default()
+    };
+
+    assert!(scheduler.calculate_energy(&extreme) <= scheduler.max_energy);
+}

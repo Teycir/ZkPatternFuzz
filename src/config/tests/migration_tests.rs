@@ -58,12 +58,9 @@ inputs:
         Some(true)
     );
     assert!(report.changed);
-    assert!(
-        report
-            .rewritten_keys
-            .iter()
-            .any(|change| change.path.contains("campaign.parameters.additional.engagement_strict"))
-    );
+    assert!(report.rewritten_keys.iter().any(|change| change
+        .path
+        .contains("campaign.parameters.additional.engagement_strict")));
 }
 
 #[test]
@@ -107,12 +104,10 @@ inputs:
         .and_then(serde_yaml::Value::as_mapping)
         .expect("config mapping");
     assert!(config.get(yaml_key("plugin")).is_none());
-    assert!(
-        report
-            .rewritten_keys
-            .iter()
-            .any(|change| change.path == "attacks[0].config.plugin")
-    );
+    assert!(report
+        .rewritten_keys
+        .iter()
+        .any(|change| change.path == "attacks[0].config.plugin"));
 }
 
 #[test]
@@ -147,12 +142,10 @@ inputs:
     assert_eq!(plugin_dirs[0].as_str(), Some("/opt/plugins"));
     assert_eq!(plugin_dirs[1].as_str(), Some("/var/lib/plugins"));
     assert_eq!(plugin_dirs[2].as_str(), Some("./target/release"));
-    assert!(
-        report
-            .rewritten_keys
-            .iter()
-            .any(|change| change.path == "campaign.parameters.attack_plugin_dirs")
-    );
+    assert!(report
+        .rewritten_keys
+        .iter()
+        .any(|change| change.path == "campaign.parameters.attack_plugin_dirs"));
 }
 
 #[test]

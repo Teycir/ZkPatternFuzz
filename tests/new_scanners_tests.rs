@@ -3,12 +3,12 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use zk_core::{CircuitInfo, ExecutionCoverage, ExecutionResult, Framework};
+use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
+use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::oracles::{
     CanonicalizationChecker, CrossBackendDifferential, DeterminismOracle, FrozenWireDetector,
     NullifierReplayScanner, ProofMalleabilityScanner, SetupPoisoningDetector,
 };
-use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
-use zk_fuzzer::fuzzer::FieldElement;
 
 struct LenientProofExecutor {
     name: String,

@@ -246,10 +246,9 @@ impl CircomStaticLint {
         {
             let mut count = 0usize;
             let mut seen = HashSet::new();
-            for assignment in collect_conditional_assignments(
-                &source_no_comments,
-                self.config.case_sensitive,
-            ) {
+            for assignment in
+                collect_conditional_assignments(&source_no_comments, self.config.case_sensitive)
+            {
                 if count >= max_per_check {
                     break;
                 }
@@ -462,7 +461,10 @@ struct ConditionalAssignment {
     if_line: usize,
 }
 
-fn collect_conditional_assignments(source: &str, case_sensitive: bool) -> Vec<ConditionalAssignment> {
+fn collect_conditional_assignments(
+    source: &str,
+    case_sensitive: bool,
+) -> Vec<ConditionalAssignment> {
     let Some(if_re) = compile_regex(r"^\s*if\s*\(([^)]*)\)\s*\{", case_sensitive) else {
         return Vec::new();
     };

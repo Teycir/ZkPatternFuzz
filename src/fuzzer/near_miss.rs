@@ -329,11 +329,11 @@ impl NearMissDetector {
     fn field_difference(&self, a: &FieldElement, b: &FieldElement) -> f64 {
         let a_u64 = a.to_u64().unwrap_or(0);
         let b_u64 = b.to_u64().unwrap_or(0);
-        
+
         if a_u64 == b_u64 {
             return 0.0;
         }
-        
+
         let diff = a_u64.abs_diff(b_u64) as f64;
         let max_val = a_u64.max(b_u64).max(1) as f64;
         diff / max_val

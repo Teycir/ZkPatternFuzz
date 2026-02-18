@@ -5,17 +5,23 @@
 use std::path::PathBuf;
 
 use zk_core::FieldElement;
-use zk_fuzzer::oracles::{ConstraintSliceOracle, OutputMapping};
 use zk_fuzzer::executor::{CircomExecutor, CircuitExecutor};
+use zk_fuzzer::oracles::{ConstraintSliceOracle, OutputMapping};
 use zk_fuzzer::targets::CircomTarget;
 
 fn require_circom_and_snarkjs() -> bool {
     if let Err(err) = CircomTarget::check_circom_available() {
-        eprintln!("Skipping real-circuit slice test: circom unavailable: {}", err);
+        eprintln!(
+            "Skipping real-circuit slice test: circom unavailable: {}",
+            err
+        );
         return false;
     }
     if let Err(err) = CircomTarget::check_snarkjs_available() {
-        eprintln!("Skipping real-circuit slice test: snarkjs unavailable: {}", err);
+        eprintln!(
+            "Skipping real-circuit slice test: snarkjs unavailable: {}",
+            err
+        );
         return false;
     }
     true

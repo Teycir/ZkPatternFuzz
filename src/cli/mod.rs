@@ -476,7 +476,9 @@ impl Cli {
             Some(Commands::Minimize { corpus_dir, output }) => {
                 CommandRequest::Minimize { corpus_dir, output }
             }
-            Some(Commands::Init { output, framework }) => CommandRequest::Init { output, framework },
+            Some(Commands::Init { output, framework }) => {
+                CommandRequest::Init { output, framework }
+            }
             Some(Commands::ExecWorker) => CommandRequest::ExecWorker,
             None => {
                 if let Some(config_path) = self.config {

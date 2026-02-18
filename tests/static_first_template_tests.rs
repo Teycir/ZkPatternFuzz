@@ -28,7 +28,9 @@ fn static_first_template_enables_branch_dependent_constraint_check() {
         .as_sequence()
         .expect("circom_static_lint.enabled_checks should be a YAML sequence");
     assert!(
-        checks.iter().any(|value| value.as_str() == Some("branch_dependent_constraint")),
+        checks
+            .iter()
+            .any(|value| value.as_str() == Some("branch_dependent_constraint")),
         "static-first template should enable branch_dependent_constraint check, got {:?}",
         checks
     );
@@ -46,11 +48,15 @@ fn static_first_template_keeps_fail_fast_severity_gating() {
         .as_sequence()
         .expect("static_prepass.fail_on_findings should be a YAML sequence");
     assert!(
-        fail_levels.iter().any(|value| value.as_str() == Some("critical")),
+        fail_levels
+            .iter()
+            .any(|value| value.as_str() == Some("critical")),
         "static_prepass should fail-fast on critical findings"
     );
     assert!(
-        fail_levels.iter().any(|value| value.as_str() == Some("high")),
+        fail_levels
+            .iter()
+            .any(|value| value.as_str() == Some("high")),
         "static_prepass should fail-fast on high findings"
     );
 }

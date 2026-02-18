@@ -30,7 +30,11 @@ impl Default for QuantumResistanceConfig {
                 PrimitivePattern {
                     name: "RSA".to_string(),
                     severity: Severity::Critical,
-                    patterns: vec!["rsa".to_string(), "rsa_verify".to_string(), "modexp".to_string()],
+                    patterns: vec![
+                        "rsa".to_string(),
+                        "rsa_verify".to_string(),
+                        "modexp".to_string(),
+                    ],
                 },
                 PrimitivePattern {
                     name: "ECDSA".to_string(),
@@ -75,11 +79,7 @@ impl QuantumResistanceAttack {
         witness: &[FieldElement],
     ) -> anyhow::Result<Vec<Finding>> {
         let source = std::fs::read_to_string(source_path)?;
-        Ok(self.scan_source(
-            &source,
-            Some(source_path.display().to_string()),
-            witness,
-        ))
+        Ok(self.scan_source(&source, Some(source_path.display().to_string()), witness))
     }
 
     /// Scan source text and return findings.
@@ -91,10 +91,9 @@ impl QuantumResistanceAttack {
     ) -> Vec<Finding> {
         let mut findings = Vec::new();
         for primitive in &self.config.vulnerable_primitives {
-            let matched = primitive
-                .patterns
-                .iter()
-                .any(|pattern| pattern_matches_word_boundary(source, pattern, self.config.case_sensitive));
+            let matched = primitive.patterns.iter().any(|pattern| {
+                pattern_matches_word_boundary(source, pattern, self.config.case_sensitive)
+            });
 
             if !matched {
                 continue;

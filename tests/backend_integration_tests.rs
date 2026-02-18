@@ -159,8 +159,13 @@ fn describe_status(status: &MatrixStatus) -> String {
 
 fn configure_halo2_real_env() -> Result<(), String> {
     let cargo_home = std::env::temp_dir().join("zk0d_halo2_cargo_home");
-    std::fs::create_dir_all(&cargo_home)
-        .map_err(|err| format!("failed to create CARGO_HOME '{}': {}", cargo_home.display(), err))?;
+    std::fs::create_dir_all(&cargo_home).map_err(|err| {
+        format!(
+            "failed to create CARGO_HOME '{}': {}",
+            cargo_home.display(),
+            err
+        )
+    })?;
     std::env::set_var("CARGO_HOME", &cargo_home);
     std::env::set_var("RUSTUP_SKIP_UPDATE_CHECK", "1");
     std::env::set_var("RUSTUP_TOOLCHAIN", "nightly");
@@ -219,8 +224,9 @@ fn run_circom_matrix_row() -> BackendMatrixRow {
                     "execute output mismatch: expected 12, got {:?}",
                     outputs.first()
                 ));
-                row.prove_verify =
-                    MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+                row.prove_verify = MatrixStatus::SkipInfra(
+                    "prove/verify skipped because execute failed".to_string(),
+                );
                 return row;
             }
         }
@@ -258,7 +264,10 @@ fn run_noir_matrix_row() -> BackendMatrixRow {
     let mut row = BackendMatrixRow::new("noir");
 
     if let Err(err) = NoirTarget::check_nargo_available() {
-        row.set_all(MatrixStatus::SkipInfra(format!("nargo unavailable: {}", err)));
+        row.set_all(MatrixStatus::SkipInfra(format!(
+            "nargo unavailable: {}",
+            err
+        )));
         return row;
     }
 
@@ -295,8 +304,9 @@ fn run_noir_matrix_row() -> BackendMatrixRow {
                     "execute output mismatch: expected 15, got {:?}",
                     outputs.first()
                 ));
-                row.prove_verify =
-                    MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+                row.prove_verify = MatrixStatus::SkipInfra(
+                    "prove/verify skipped because execute failed".to_string(),
+                );
                 return row;
             }
         }
@@ -432,8 +442,9 @@ fn run_cairo_matrix_row() -> BackendMatrixRow {
                     "execute output mismatch: expected 12, got {:?}",
                     outputs.first()
                 ));
-                row.prove_verify =
-                    MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+                row.prove_verify = MatrixStatus::SkipInfra(
+                    "prove/verify skipped because execute failed".to_string(),
+                );
                 return row;
             }
         }

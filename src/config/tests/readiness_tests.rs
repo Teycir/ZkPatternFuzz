@@ -99,10 +99,11 @@ fn test_strict_readiness_accepts_required_attacks_from_schedule() {
         "engagement_strict".to_string(),
         serde_yaml::Value::Bool(true),
     );
-    config.campaign.parameters.additional.insert(
-        "strict_backend".to_string(),
-        serde_yaml::Value::Bool(true),
-    );
+    config
+        .campaign
+        .parameters
+        .additional
+        .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
     config.campaign.parameters.additional.insert(
         "oracle_validation".to_string(),
         serde_yaml::Value::Bool(true),
@@ -127,24 +128,17 @@ fn test_strict_readiness_accepts_required_attacks_from_schedule() {
     );
 
     let report = check_0day_readiness(&config);
-    assert!(
-        !report
-            .warnings
-            .iter()
-            .any(|w| w.message.contains("Missing required attack: soundness")),
-    );
-    assert!(
-        !report
-            .warnings
-            .iter()
-            .any(|w| w.message.contains("Missing required attack: underconstrained")),
-    );
-    assert!(
-        !report
-            .warnings
-            .iter()
-            .any(|w| w.message.contains("Missing required novel attack:")),
-    );
+    assert!(!report
+        .warnings
+        .iter()
+        .any(|w| w.message.contains("Missing required attack: soundness")),);
+    assert!(!report.warnings.iter().any(|w| w
+        .message
+        .contains("Missing required attack: underconstrained")),);
+    assert!(!report
+        .warnings
+        .iter()
+        .any(|w| w.message.contains("Missing required novel attack:")),);
 }
 
 #[test]
@@ -154,10 +148,11 @@ fn test_strict_readiness_accepts_schedule_attack_aliases() {
         "engagement_strict".to_string(),
         serde_yaml::Value::Bool(true),
     );
-    config.campaign.parameters.additional.insert(
-        "strict_backend".to_string(),
-        serde_yaml::Value::Bool(true),
-    );
+    config
+        .campaign
+        .parameters
+        .additional
+        .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
     config.campaign.parameters.additional.insert(
         "oracle_validation".to_string(),
         serde_yaml::Value::Bool(true),

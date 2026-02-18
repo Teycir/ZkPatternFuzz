@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::path::Path;
+use std::path::PathBuf;
 use zk_fuzzer::cve::CveDatabase;
 
 const AUTONOMOUS_CVE_DB: &str = "templates/autonomous_cve_tests.yaml";
@@ -240,7 +240,10 @@ fn test_autonomous_cve_regression_tests() {
         if result.is_infrastructure_failure() {
             println!("  ⚠️  Skipping: backend/tooling artifacts unavailable for this circuit");
             for tc_result in &result.test_results {
-                let msg = tc_result.message.as_deref().unwrap_or("infrastructure failure");
+                let msg = tc_result
+                    .message
+                    .as_deref()
+                    .unwrap_or("infrastructure failure");
                 println!("    - {}: {}", tc_result.name, msg);
             }
             infra_skipped += 1;

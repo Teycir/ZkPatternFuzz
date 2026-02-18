@@ -18,7 +18,10 @@ fn load_example_config(file: &str) -> FuzzConfig {
 
 fn assert_has_attack(config: &FuzzConfig, expected: AttackType, file: &str) {
     assert!(
-        config.attacks.iter().any(|attack| attack.attack_type == expected),
+        config
+            .attacks
+            .iter()
+            .any(|attack| attack.attack_type == expected),
         "example '{}' should contain attack {:?}, got {:?}",
         file,
         expected,
@@ -35,10 +38,16 @@ fn test_security_example_campaigns_load_with_expected_attacks() {
     let cases = [
         ("trusted_setup_audit.yaml", AttackType::TrustedSetup),
         ("sidechannel_audit.yaml", AttackType::SidechannelAdvanced),
-        ("quantum_resistance_audit.yaml", AttackType::QuantumResistance),
+        (
+            "quantum_resistance_audit.yaml",
+            AttackType::QuantumResistance,
+        ),
         ("privacy_audit.yaml", AttackType::PrivacyAdvanced),
         ("defi_audit.yaml", AttackType::DefiAdvanced),
-        ("circom_static_lint_audit.yaml", AttackType::CircomStaticLint),
+        (
+            "circom_static_lint_audit.yaml",
+            AttackType::CircomStaticLint,
+        ),
     ];
 
     for (file, expected_attack) in cases {

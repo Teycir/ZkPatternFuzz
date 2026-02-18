@@ -1261,7 +1261,11 @@ impl NoirExecutor {
         let output_indices = self.target.output_signal_indices();
 
         // Validate indices before computing max to prevent malicious metadata
-        for idx in public.iter().chain(private.iter()).chain(output_indices.iter()) {
+        for idx in public
+            .iter()
+            .chain(private.iter())
+            .chain(output_indices.iter())
+        {
             if *idx > MAX_SYNTHETIC_WITNESS_WIRES {
                 anyhow::bail!(
                     "Noir metadata contains wire index {} above safety cap {}",

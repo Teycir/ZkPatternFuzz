@@ -186,10 +186,7 @@ impl TrustedSetupAttack {
             ));
         }
 
-        for (label, path, fp) in [
-            ("A", path_a, &fingerprint_a),
-            ("B", path_b, &fingerprint_b),
-        ] {
+        for (label, path, fp) in [("A", path_a, &fingerprint_a), ("B", path_b, &fingerprint_b)] {
             if fp.size < 1024 {
                 findings.push(artifact_finding(
                     Severity::High,

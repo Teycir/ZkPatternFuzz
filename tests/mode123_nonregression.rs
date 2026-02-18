@@ -114,21 +114,42 @@ fn assert_exists(path: &Path, label: &str, run_label: &str) {
 fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
     // Public contract files for scan-mode engagement output.
     let required = [
-        ("engagement latest pointer", engagement_dir.join("latest.json")),
-        ("engagement summary json", engagement_dir.join("summary.json")),
-        ("engagement summary markdown", engagement_dir.join("summary.md")),
-        ("engagement event stream", engagement_dir.join("log/events.jsonl")),
+        (
+            "engagement latest pointer",
+            engagement_dir.join("latest.json"),
+        ),
+        (
+            "engagement summary json",
+            engagement_dir.join("summary.json"),
+        ),
+        (
+            "engagement summary markdown",
+            engagement_dir.join("summary.md"),
+        ),
+        (
+            "engagement event stream",
+            engagement_dir.join("log/events.jsonl"),
+        ),
         (
             "engagement incremental results stream",
             engagement_dir.join("incremental_results.jsonl"),
         ),
-        ("scan mode latest pointer", engagement_dir.join("scan/latest.json")),
-        ("scan mode event stream", engagement_dir.join("scan/events.jsonl")),
+        (
+            "scan mode latest pointer",
+            engagement_dir.join("scan/latest.json"),
+        ),
+        (
+            "scan mode event stream",
+            engagement_dir.join("scan/events.jsonl"),
+        ),
         (
             "scan mode incremental results stream",
             engagement_dir.join("scan/incremental_results.jsonl"),
         ),
-        ("scan mode run outcome", engagement_dir.join("scan/run_outcome.json")),
+        (
+            "scan mode run outcome",
+            engagement_dir.join("scan/run_outcome.json"),
+        ),
     ];
     for (label, path) in required {
         assert_exists(&path, label, run_label);
@@ -145,7 +166,14 @@ fn assert_engagement_contract(engagement_dir: &Path, run_label: &str) {
         .and_then(|v| v.as_object())
         .unwrap_or_else(|| panic!("summary.json missing object field 'modes.scan'"));
 
-    for key in ["status", "command", "run_id", "stage", "started_utc", "output_dir"] {
+    for key in [
+        "status",
+        "command",
+        "run_id",
+        "stage",
+        "started_utc",
+        "output_dir",
+    ] {
         assert!(
             scan.contains_key(key),
             "Scan '{}' summary contract missing 'modes.scan.{}'",
@@ -269,8 +297,11 @@ fn scan_engagement_contract_fixture_passes() {
     std::fs::write(engagement_dir.join("incremental_results.jsonl"), "{}\n")
         .expect("write incremental events");
     std::fs::write(engagement_dir.join("scan/events.jsonl"), "{}\n").expect("write scan events");
-    std::fs::write(engagement_dir.join("scan/incremental_results.jsonl"), "{}\n")
-        .expect("write scan incremental events");
+    std::fs::write(
+        engagement_dir.join("scan/incremental_results.jsonl"),
+        "{}\n",
+    )
+    .expect("write scan incremental events");
 
     let run_doc = serde_json::json!({
         "status": "completed",

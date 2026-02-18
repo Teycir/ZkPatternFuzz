@@ -210,13 +210,13 @@
 //! - [Circom Documentation](https://docs.circom.io/)
 //! - [Noir Documentation](https://noir-lang.org/)
 
-pub mod oracles;
 pub mod config;
 pub mod corpus;
 pub mod cve;
 pub mod errors;
 pub mod executor;
 pub mod fuzzer;
+pub mod oracles;
 pub mod progress;
 pub mod reporting;
 pub mod targets;

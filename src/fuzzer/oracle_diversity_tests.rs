@@ -1,83 +1,84 @@
-    use super::*;
 
-    #[test]
-    fn test_tracker_creation() {
-        let tracker = OracleDiversityTracker::with_standard_oracles();
-        let stats = tracker.stats();
+use super::*;
 
-        assert!(stats.registered_count >= 10);
-        assert_eq!(stats.fired_count, 0);
-        assert_eq!(stats.coverage_percent, 0.0);
-    }
+#[test]
+fn test_tracker_creation() {
+    let tracker = OracleDiversityTracker::with_standard_oracles();
+    let stats = tracker.stats();
 
-    #[test]
-    fn test_record_fire() {
-        let mut tracker = OracleDiversityTracker::new();
-        tracker.register_oracle("test_oracle");
+    assert!(stats.registered_count >= 10);
+    assert_eq!(stats.fired_count, 0);
+    assert_eq!(stats.coverage_percent, 0.0);
+}
 
-        tracker.record_fire("test_oracle", "pattern_1");
-        tracker.record_fire("test_oracle", "pattern_2");
-        tracker.record_fire("test_oracle", "pattern_1"); // Duplicate
+#[test]
+fn test_record_fire() {
+    let mut tracker = OracleDiversityTracker::new();
+    tracker.register_oracle("test_oracle");
 
-        let stats = tracker.stats();
+    tracker.record_fire("test_oracle", "pattern_1");
+    tracker.record_fire("test_oracle", "pattern_2");
+    tracker.record_fire("test_oracle", "pattern_1"); // Duplicate
 
-        assert_eq!(stats.fired_count, 1);
-        assert_eq!(stats.unique_patterns, 2);
-        assert_eq!(stats.total_fires, 3);
-        assert_eq!(stats.coverage_percent, 100.0);
-    }
+    let stats = tracker.stats();
 
-    #[test]
-    fn test_diversity_score() {
-        let mut tracker = OracleDiversityTracker::new();
-        tracker.register_oracle("oracle_1");
-        tracker.register_oracle("oracle_2");
-        tracker.register_oracle("oracle_3");
+    assert_eq!(stats.fired_count, 1);
+    assert_eq!(stats.unique_patterns, 2);
+    assert_eq!(stats.total_fires, 3);
+    assert_eq!(stats.coverage_percent, 100.0);
+}
 
-        // Fire only one oracle
-        tracker.record_fire("oracle_1", "p1");
-        let stats_1 = tracker.stats();
+#[test]
+fn test_diversity_score() {
+    let mut tracker = OracleDiversityTracker::new();
+    tracker.register_oracle("oracle_1");
+    tracker.register_oracle("oracle_2");
+    tracker.register_oracle("oracle_3");
 
-        // Fire all oracles
-        tracker.record_fire("oracle_2", "p2");
-        tracker.record_fire("oracle_3", "p3");
-        let stats_2 = tracker.stats();
+    // Fire only one oracle
+    tracker.record_fire("oracle_1", "p1");
+    let stats_1 = tracker.stats();
 
-        // Diversity should increase
-        assert!(stats_2.diversity_score > stats_1.diversity_score);
-    }
+    // Fire all oracles
+    tracker.record_fire("oracle_2", "p2");
+    tracker.record_fire("oracle_3", "p3");
+    let stats_2 = tracker.stats();
 
-    #[test]
-    fn test_recommendations() {
-        let mut tracker = OracleDiversityTracker::new();
-        tracker.register_oracle("enabled_oracle");
-        tracker.register_oracle("disabled_oracle");
+    // Diversity should increase
+    assert!(stats_2.diversity_score > stats_1.diversity_score);
+}
 
-        tracker.record_fire("enabled_oracle", "p1");
+#[test]
+fn test_recommendations() {
+    let mut tracker = OracleDiversityTracker::new();
+    tracker.register_oracle("enabled_oracle");
+    tracker.register_oracle("disabled_oracle");
 
-        let recommendations = tracker.recommendations();
+    tracker.record_fire("enabled_oracle", "p1");
 
-        assert!(!recommendations.is_empty());
-        assert!(recommendations
-            .iter()
-            .any(|r| r.description.contains("disabled_oracle")));
-    }
+    let recommendations = tracker.recommendations();
 
-    #[test]
-    fn test_finding_recording() {
-        let mut tracker = OracleDiversityTracker::with_standard_oracles();
+    assert!(!recommendations.is_empty());
+    assert!(recommendations
+        .iter()
+        .any(|r| r.description.contains("disabled_oracle")));
+}
 
-        let finding = Finding {
-            attack_type: AttackType::Underconstrained,
-            severity: Severity::Critical,
-            description: "Test finding".to_string(),
-            poc: zk_core::ProofOfConcept::default(),
-            location: Some("test.circom:42".to_string()),
-        };
+#[test]
+fn test_finding_recording() {
+    let mut tracker = OracleDiversityTracker::with_standard_oracles();
 
-        tracker.record_finding(&finding);
+    let finding = Finding {
+        attack_type: AttackType::Underconstrained,
+        severity: Severity::Critical,
+        description: "Test finding".to_string(),
+        poc: zk_core::ProofOfConcept::default(),
+        location: Some("test.circom:42".to_string()),
+    };
 
-        let stats = tracker.stats();
-        assert!(stats.fired_count > 0);
-        assert!(stats.unique_patterns > 0);
-    }
+    tracker.record_finding(&finding);
+
+    let stats = tracker.stats();
+    assert!(stats.fired_count > 0);
+    assert!(stats.unique_patterns > 0);
+}

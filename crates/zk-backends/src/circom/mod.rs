@@ -981,11 +981,7 @@ impl CircomTarget {
         // non-zero status (observed with some npm-distributed builds).
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let version = if !stdout.is_empty() {
-            stdout
-        } else {
-            stderr
-        };
+        let version = if !stdout.is_empty() { stdout } else { stderr };
 
         if version.is_empty() {
             anyhow::bail!(

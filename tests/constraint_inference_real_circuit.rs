@@ -11,10 +11,10 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use zk_core::FieldElement;
+use zk_fuzzer::executor::{CircomExecutor, CircuitExecutor};
 use zk_fuzzer::oracles::constraint_inference::{
     ConstraintCategory, ConstraintInferenceEngine, ViolationConfirmation,
 };
-use zk_fuzzer::executor::{CircomExecutor, CircuitExecutor};
 use zk_fuzzer::targets::CircomTarget;
 
 /// Test constraint inference on the range_bypass circuit
