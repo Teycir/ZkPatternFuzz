@@ -36,6 +36,8 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
 - Improved CVE oracle routing for recall:
   - Added routing aliases for generic labels such as `underconstrained`, `soundness`, `boundary`, `arithmetic_overflow`, and `assigned_not_constrained`.
   - Added fallback from `detection.oracle` to `detection.attack_type` plus debug logging for unmapped routes.
+- Added strict/evidence runtime floors for key attack budgets to reduce under-sampling in readiness runs:
+  - Floors now enforce minimum depth for `soundness.forge_attempts`, `metamorphic.num_tests`, `constraint_slice.samples_per_cone`, `constraint_slice.base_witness_attempts`, `spec_inference.sample_count`, and `witness_collision.samples`.
 - Improved autonomous CVE regression execution recall and diagnostics:
   - CVE fixture input synthesis now reconciles partial/no-spec fixtures to executor arity by truncating surplus fields and zero-filling missing values.
   - Named-input fixture mismatches now zero-fill missing declared signals instead of hard-failing regression execution.

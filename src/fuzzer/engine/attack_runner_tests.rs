@@ -1,4 +1,5 @@
 use super::deterministic_attack_cap;
+use super::strict_attack_floor;
 use super::FuzzingEngine;
 use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 
@@ -50,6 +51,34 @@ fn per_attack_cap_overrides_global_cap() {
         deterministic_attack_cap(&additional, true, 1, "underconstrained_witness_pairs_cap")
             .expect("cap should be enabled");
     assert_eq!(cap, 33);
+}
+
+#[test]
+fn strict_attack_floor_applies_in_strict_mode() {
+    let mut additional = crate::config::AdditionalConfig::default();
+    additional.insert(
+        "engagement_strict".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+
+    let effective = strict_attack_floor(&additional, 200, 1000, "soundness.forge_attempts");
+    assert_eq!(effective, 1000);
+}
+
+#[test]
+fn strict_attack_floor_does_not_apply_when_not_strict() {
+    let additional = crate::config::AdditionalConfig::default();
+    let effective = strict_attack_floor(&additional, 200, 1000, "soundness.forge_attempts");
+    assert_eq!(effective, 200);
+}
+
+#[test]
+fn strict_attack_floor_keeps_higher_configured_values() {
+    let mut additional = crate::config::AdditionalConfig::default();
+    additional.insert("evidence_mode".to_string(), serde_yaml::Value::Bool(true));
+
+    let effective = strict_attack_floor(&additional, 2500, 1000, "soundness.forge_attempts");
+    assert_eq!(effective, 2500);
 }
 
 #[test]

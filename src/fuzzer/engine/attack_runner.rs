@@ -61,6 +61,30 @@ fn deterministic_attack_cap(
     Some((cap, iterations, multiplier))
 }
 
+fn strict_attack_floor(
+    additional: &crate::config::AdditionalConfig,
+    configured: usize,
+    minimum: usize,
+    label: &str,
+) -> usize {
+    let evidence_mode = super::FuzzingEngine::additional_bool(additional, "evidence_mode")
+        .unwrap_or(false);
+    let engagement_strict =
+        super::FuzzingEngine::additional_bool(additional, "engagement_strict").unwrap_or(evidence_mode);
+
+    if !engagement_strict || configured >= minimum {
+        return configured;
+    }
+
+    tracing::info!(
+        "Strict mode floor applied: {} {} -> {}",
+        label,
+        configured,
+        minimum
+    );
+    minimum
+}
+
 impl FuzzingEngine {
     fn bounded_attack_units(
         &self,
@@ -541,6 +565,12 @@ impl FuzzingEngine {
             .get("forge_attempts")
             .and_then(|v| v.as_u64())
             .or_value(1000) as usize;
+        let configured_forge_attempts = strict_attack_floor(
+            &self.config.campaign.parameters.additional,
+            configured_forge_attempts,
+            1000,
+            "soundness.forge_attempts",
+        );
         let forge_attempts = self.bounded_attack_units(
             configured_forge_attempts,
             1,
@@ -1942,6 +1972,12 @@ impl FuzzingEngine {
             .get("num_tests")
             .and_then(|v| v.as_u64())
             .or_value(100) as usize;
+        let configured_num_tests = strict_attack_floor(
+            &self.config.campaign.parameters.additional,
+            configured_num_tests,
+            256,
+            "metamorphic.num_tests",
+        );
         let num_tests = self.bounded_attack_units(
             configured_num_tests,
             1,
@@ -3182,6 +3218,12 @@ impl FuzzingEngine {
             .get("samples_per_cone")
             .and_then(|v| v.as_u64())
             .or_value(100) as usize;
+        let configured_samples_per_cone = strict_attack_floor(
+            &self.config.campaign.parameters.additional,
+            configured_samples_per_cone,
+            32,
+            "constraint_slice.samples_per_cone",
+        );
         let samples_per_cone = self.bounded_attack_units(
             configured_samples_per_cone,
             1,
@@ -3193,6 +3235,12 @@ impl FuzzingEngine {
             .get("base_witness_attempts")
             .and_then(|v| v.as_u64())
             .or_value(16) as usize;
+        let configured_base_witness_attempts = strict_attack_floor(
+            &self.config.campaign.parameters.additional,
+            configured_base_witness_attempts,
+            32,
+            "constraint_slice.base_witness_attempts",
+        );
         let base_witness_attempts = self.bounded_attack_units(
             configured_base_witness_attempts,
             1,
@@ -3310,6 +3358,12 @@ impl FuzzingEngine {
             .get("sample_count")
             .and_then(|v| v.as_u64())
             .or_value(500) as usize;
+        let configured_sample_count = strict_attack_floor(
+            &self.config.campaign.parameters.additional,
+            configured_sample_count,
+            1000,
+            "spec_inference.sample_count",
+        );
         let sample_count = self.bounded_attack_units(
             configured_sample_count,
             1,
@@ -3427,6 +3481,12 @@ impl FuzzingEngine {
             .get("samples")
             .and_then(|v| v.as_u64())
             .or_value(10000) as usize;
+        let configured_samples = strict_attack_floor(
+            &self.config.campaign.parameters.additional,
+            configured_samples,
+            2000,
+            "witness_collision.samples",
+        );
         let samples = self.bounded_attack_units(
             configured_samples,
             1,
