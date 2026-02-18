@@ -147,6 +147,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `campaign_run_options_doc(...)` and `chain_run_options_doc(...)` helpers to centralize run artifact options-shape construction.
    - Replaced duplicated inline option JSON payload builders in lifecycle initialization and `starting_engine` stage updates for both `run_campaign` and `run_chain_campaign`.
    - Reduced lifecycle orchestration callsites to orchestration intent without embedded payload-building details.
+75. Continued production-path factorization by extracting non-orchestration runtime helpers into focused modules (`src/main.rs`, `src/runtime_misc.rs`, `src/scan_progress.rs`, `src/scan_output.rs`):
+   - Moved config validation/minimization/init-template/banner/run-window helpers from `main.rs` into `runtime_misc`.
+   - Moved scan progress polling + findings-summary readers into `scan_progress`.
+   - Moved scan output-suffix isolation/allocation/summary helpers into `scan_output`.
+   - Kept `main.rs` focused on command dispatch and run orchestration by importing these modules.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -258,6 +263,12 @@ Validation:
 54. Main binary + command-fallback regression checks after run-option payload factorization:
     - `cargo check -q --bin zk-fuzzer`
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+55. Main binary + selector/command regression checks after runtime helper module extraction:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_regex_safety_ -- --test-threads=1`
+56. Full selector regression suite spot-check after runtime helper module extraction:
+    - `cargo test -q scan_selector_tests:: -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 
