@@ -8,6 +8,15 @@
 
 This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using a YAML-first approach that leverages the existing configuration system. This minimizes code changes and allows users to customize detection patterns without recompiling.
 
+## 2026-02-18 Acceleration Update
+
+- Completed a runtime execution-gap hardening batch so configured attacks no longer silently fall through when mapped to existing families:
+  - Wired dispatch/execution for `trusted_setup`, `constraint_bypass`, `malleability`, `replay_attack`, `witness_leakage`, `mev`, `front_running`, `zkevm`, and `batch_verification`.
+  - Added scheduler parsing aliases and finding-deserialization support for the Phase-3 families (`Mev`, `FrontRunning`, `ZkEvm`, `BatchVerification`).
+  - Enabled engine invocation of batch verification with trait-object executors.
+- Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
+- Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
+
 ---
 
 ## 1. Trusted Setup Analysis

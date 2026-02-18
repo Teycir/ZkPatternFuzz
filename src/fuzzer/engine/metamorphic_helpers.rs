@@ -5,8 +5,8 @@ impl FuzzingEngine {
     pub(super) fn build_metamorphic_relations(
         &self,
     ) -> Vec<crate::oracles::metamorphic::MetamorphicRelation> {
-        use crate::oracles::metamorphic::MetamorphicRelation;
         use crate::config::v2::InvariantType;
+        use crate::oracles::metamorphic::MetamorphicRelation;
 
         let invariants = self.config.get_invariants();
         let mut relations = Vec::new();

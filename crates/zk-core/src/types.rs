@@ -285,6 +285,10 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     "ConstraintSlice" => AttackType::ConstraintSlice,
                     "SpecInference" => AttackType::SpecInference,
                     "WitnessCollision" => AttackType::WitnessCollision,
+                    "Mev" => AttackType::Mev,
+                    "FrontRunning" => AttackType::FrontRunning,
+                    "ZkEvm" => AttackType::ZkEvm,
+                    "BatchVerification" => AttackType::BatchVerification,
                     _ => {
                         return Err(de::Error::unknown_variant(
                             &attack_type_str,
@@ -312,6 +316,10 @@ impl<'de> serde::Deserialize<'de> for Finding {
                                 "ConstraintSlice",
                                 "SpecInference",
                                 "WitnessCollision",
+                                "Mev",
+                                "FrontRunning",
+                                "ZkEvm",
+                                "BatchVerification",
                             ],
                         ))
                     }

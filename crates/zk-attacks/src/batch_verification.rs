@@ -413,7 +413,7 @@ impl BatchVerificationAttack {
     }
 
     /// Run all batch verification attacks
-    pub fn run<E: CircuitExecutor>(
+    pub fn run<E: CircuitExecutor + ?Sized>(
         &mut self,
         executor: &E,
         base_inputs: &[Vec<FieldElement>],
@@ -453,7 +453,7 @@ impl BatchVerificationAttack {
     // ========================================================================
 
     /// Test batch mixing vulnerabilities
-    fn run_batch_mixing_attacks<E: CircuitExecutor>(
+    fn run_batch_mixing_attacks<E: CircuitExecutor + ?Sized>(
         &mut self,
         executor: &E,
         base_inputs: &[Vec<FieldElement>],
@@ -469,7 +469,7 @@ impl BatchVerificationAttack {
         }
     }
 
-    fn test_batch_mixing<E: CircuitExecutor>(
+    fn test_batch_mixing<E: CircuitExecutor + ?Sized>(
         &mut self,
         executor: &E,
         base_inputs: &[Vec<FieldElement>],
@@ -612,7 +612,7 @@ impl BatchVerificationAttack {
     // ========================================================================
 
     /// Test aggregation forgery vulnerabilities
-    fn run_aggregation_forgery_attacks<E: CircuitExecutor>(
+    fn run_aggregation_forgery_attacks<E: CircuitExecutor + ?Sized>(
         &mut self,
         executor: &E,
         base_inputs: &[Vec<FieldElement>],
@@ -626,7 +626,7 @@ impl BatchVerificationAttack {
         }
     }
 
-    fn test_aggregation_forgery<E: CircuitExecutor>(
+    fn test_aggregation_forgery<E: CircuitExecutor + ?Sized>(
         &mut self,
         executor: &E,
         base_inputs: &[Vec<FieldElement>],
@@ -769,7 +769,7 @@ impl BatchVerificationAttack {
     // ========================================================================
 
     /// Test cross-circuit batch vulnerabilities
-    fn run_cross_circuit_attacks<E: CircuitExecutor>(
+    fn run_cross_circuit_attacks<E: CircuitExecutor + ?Sized>(
         &mut self,
         executor: &E,
         base_inputs: &[Vec<FieldElement>],
@@ -785,7 +785,7 @@ impl BatchVerificationAttack {
         }
     }
 
-    fn test_cross_circuit_batch<E: CircuitExecutor>(
+    fn test_cross_circuit_batch<E: CircuitExecutor + ?Sized>(
         &mut self,
         executor: &E,
         base_inputs: &[Vec<FieldElement>],
@@ -867,7 +867,7 @@ impl BatchVerificationAttack {
     // ========================================================================
 
     /// Detect randomness reuse across batch elements
-    fn run_randomness_reuse_detection<E: CircuitExecutor>(
+    fn run_randomness_reuse_detection<E: CircuitExecutor + ?Sized>(
         &mut self,
         executor: &E,
         base_inputs: &[Vec<FieldElement>],
@@ -879,7 +879,7 @@ impl BatchVerificationAttack {
         }
     }
 
-    fn test_randomness_reuse<E: CircuitExecutor>(
+    fn test_randomness_reuse<E: CircuitExecutor + ?Sized>(
         &mut self,
         _executor: &E,
         base_inputs: &[Vec<FieldElement>],
@@ -982,7 +982,7 @@ impl BatchVerificationAttack {
     /// - Actual cryptographic verification of proofs
     /// - Proper detection of batch bypass vulnerabilities
     /// - Evidence-grade findings for bug bounties and audits
-    fn execute_batch_verification<E: CircuitExecutor>(
+    fn execute_batch_verification<E: CircuitExecutor + ?Sized>(
         &self,
         executor: &E,
         batch_inputs: &[Vec<FieldElement>],
@@ -1007,7 +1007,7 @@ impl BatchVerificationAttack {
     }
 
     /// Attempt real cryptographic batch verification
-    fn try_real_batch_verification<E: CircuitExecutor>(
+    fn try_real_batch_verification<E: CircuitExecutor + ?Sized>(
         &self,
         executor: &E,
         batch_inputs: &[Vec<FieldElement>],
@@ -1073,7 +1073,7 @@ impl BatchVerificationAttack {
     }
 
     /// Detect the proof system based on executor framework
-    fn detect_proof_system<E: CircuitExecutor>(&self, executor: &E) -> ProofSystem {
+    fn detect_proof_system<E: CircuitExecutor + ?Sized>(&self, executor: &E) -> ProofSystem {
         match executor.framework() {
             zk_core::Framework::Circom => ProofSystem::Groth16,
             zk_core::Framework::Noir => ProofSystem::Plonk,

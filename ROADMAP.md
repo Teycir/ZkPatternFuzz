@@ -172,6 +172,12 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Moved run-signal + run-artifact emission wrappers (including scan timestamp total log update) into `engagement_artifacts`.
    - Kept lifecycle/orchestration callsites in `main.rs` behavior-preserving while shrinking mixed I/O/reporting logic.
    - Updated selector/command regression tests to import `get_command_from_doc` from the extracted module boundary.
+80. Accelerated attack execution coverage by wiring previously non-executed attack families into runtime dispatch (`src/fuzzer/engine/mod.rs`, `src/fuzzer/engine/attack_runner.rs`, `src/fuzzer/phased_scheduler.rs`, `crates/zk-core/src/types.rs`, `crates/zk-attacks/src/batch_verification.rs`):
+   - Added direct engine dispatch for existing variants that previously fell through as "not yet implemented": `TrustedSetup`, `ConstraintBypass`, `Malleability`, `ReplayAttack`, `WitnessLeakage`, `Mev`, `FrontRunning`, `ZkEvm`, and `BatchVerification`.
+   - Added runtime wrappers for MEV/front-running/zkEVM/batch-verification attack execution with YAML-config overrides and evidence-compatible finding emission.
+   - Made batch-verification runner accept trait-object executors (`E: CircuitExecutor + ?Sized`) so engine-level dispatch can invoke it.
+   - Extended phased scheduler string parsing to include broader attack-type aliases so configured phases can schedule these families.
+   - Extended `Finding` deserialization to recognize Phase-3 attack variants (`Mev`, `FrontRunning`, `ZkEvm`, `BatchVerification`) and added regression coverage.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -315,6 +321,11 @@ Validation:
     - `cargo check -q --workspace`
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+62. Runtime attack-dispatch coverage hardening validation:
+    - `cargo check`
+    - `cargo test test_parse_attack_type`
+    - `cargo test -p zk-core deserialize_finding_supports_phase3_attack_variants`
+    - `cargo test -p zk-attacks test_batch_verifier_creation`
 
 ## Status Checklist (2026-02-18)
 

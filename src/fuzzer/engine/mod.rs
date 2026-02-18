@@ -112,9 +112,6 @@ mod prelude {
         collect_input_wire_indices, ConstraintSeedGenerator, ConstraintSeedOutput,
         EnhancedSymbolicConfig, PruningStrategy,
     };
-    pub(super) use crate::oracles::{
-        Attack as AttackTrait, AttackContext, AttackRegistry, DynamicLibraryLoader,
-    };
     pub(super) use crate::config::*;
     pub(super) use crate::corpus::{create_corpus, minimizer, storage as corpus_storage};
     pub(super) use crate::executor::{
@@ -131,6 +128,9 @@ mod prelude {
     };
     pub(super) use crate::fuzzer::power_schedule::{PowerSchedule, PowerScheduler};
     pub(super) use crate::fuzzer::structure_aware::StructureAwareMutator;
+    pub(super) use crate::oracles::{
+        Attack as AttackTrait, AttackContext, AttackRegistry, DynamicLibraryLoader,
+    };
     pub(super) use crate::progress::{FuzzingStats, ProgressReporter, SimpleProgressTracker};
     pub(super) use crate::reporting::FuzzReport;
     pub(super) use rand::Rng;
@@ -1120,6 +1120,14 @@ impl FuzzingEngine {
                             .await?;
                         attack_executed = true;
                     }
+                    AttackType::TrustedSetup => {
+                        self.run_setup_poisoning_attack(
+                            &attack_config.config,
+                            AttackType::TrustedSetup,
+                            progress,
+                        )?;
+                        attack_executed = true;
+                    }
                     AttackType::ArithmeticOverflow => {
                         self.run_arithmetic_attack(&attack_config.config, progress)
                             .await?;
@@ -1133,6 +1141,30 @@ impl FuzzingEngine {
                     AttackType::Boundary => {
                         self.run_boundary_attack(&attack_config.config, progress)
                             .await?;
+                        attack_executed = true;
+                    }
+                    AttackType::ConstraintBypass => {
+                        self.run_canonicalization_attack(
+                            &attack_config.config,
+                            AttackType::ConstraintBypass,
+                            progress,
+                        )?;
+                        attack_executed = true;
+                    }
+                    AttackType::Malleability => {
+                        self.run_proof_malleability_attack(
+                            &attack_config.config,
+                            AttackType::Malleability,
+                            progress,
+                        )?;
+                        attack_executed = true;
+                    }
+                    AttackType::ReplayAttack => {
+                        self.run_nullifier_replay_attack(
+                            &attack_config.config,
+                            AttackType::ReplayAttack,
+                            progress,
+                        )?;
                         attack_executed = true;
                     }
                     AttackType::VerificationFuzzing => {
@@ -1155,6 +1187,11 @@ impl FuzzingEngine {
                             .await?;
                         attack_executed = true;
                     }
+                    AttackType::WitnessLeakage => {
+                        self.run_information_leakage_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
                     AttackType::TimingSideChannel => {
                         self.run_timing_sidechannel_attack(&attack_config.config, progress)
                             .await?;
@@ -1167,6 +1204,25 @@ impl FuzzingEngine {
                     }
                     AttackType::RecursiveProof => {
                         self.run_recursive_proof_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
+                    AttackType::Mev => {
+                        self.run_mev_attack(&attack_config.config, progress).await?;
+                        attack_executed = true;
+                    }
+                    AttackType::FrontRunning => {
+                        self.run_front_running_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
+                    AttackType::ZkEvm => {
+                        self.run_zkevm_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
+                    AttackType::BatchVerification => {
+                        self.run_batch_verification_attack(&attack_config.config, progress)
                             .await?;
                         attack_executed = true;
                     }
