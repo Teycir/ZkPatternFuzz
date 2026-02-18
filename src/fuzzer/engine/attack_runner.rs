@@ -802,32 +802,21 @@ impl FuzzingEngine {
         finding_attack_type: AttackType,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        use crate::oracles::SetupPoisoningDetector;
+        use crate::oracles::{TrustedSetupAttack, TrustedSetupConfig};
         use std::path::PathBuf;
 
-        let section = config.get("trusted_setup_test");
-        let enabled = section
-            .and_then(|v| v.get("enabled"))
-            .and_then(|v| v.as_bool())
-            .or_value(false);
-        if !enabled {
+        let trusted_setup_config = TrustedSetupConfig::from_yaml(config);
+        if !trusted_setup_config.enabled {
             return Ok(());
         }
 
-        let attempts = section
-            .and_then(|v| v.get("attempts"))
-            .and_then(|v| v.as_u64())
-            .or_value(10) as usize;
+        let attempts = trusted_setup_config.attempts.max(1);
         if attempts == 0 {
             anyhow::bail!("Trusted setup test requires attempts > 0");
         }
 
-        let ptau_a = section
-            .and_then(|v| v.get("ptau_file_a"))
-            .and_then(|v| v.as_str());
-        let ptau_b = section
-            .and_then(|v| v.get("ptau_file_b"))
-            .and_then(|v| v.as_str());
+        let ptau_a = trusted_setup_config.ptau_file_a.as_deref();
+        let ptau_b = trusted_setup_config.ptau_file_b.as_deref();
 
         let Some(ptau_a) = ptau_a else {
             anyhow::bail!("Trusted setup test missing required key: ptau_file_a");
@@ -897,8 +886,12 @@ impl FuzzingEngine {
             anyhow::bail!("Trusted setup test requires corpus witnesses, but none are available");
         }
 
-        let detector = SetupPoisoningDetector::new().with_attempts(attempts);
-        let findings = detector.run(executor_a.as_ref(), executor_b.as_ref(), &witnesses);
+        let trusted_setup_attack = TrustedSetupAttack::new(trusted_setup_config);
+        let mut findings =
+            trusted_setup_attack.run(executor_a.as_ref(), executor_b.as_ref(), &witnesses);
+        for finding in &mut findings {
+            finding.attack_type = finding_attack_type.clone();
+        }
         self.record_custom_findings(findings, finding_attack_type, progress)?;
         Ok(())
     }

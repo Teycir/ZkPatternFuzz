@@ -197,6 +197,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added auto-attack injection + phase scheduling hooks so generator output includes these attacks when patterns are detected.
    - Updated static-evidence retention to treat `CircomStaticLint` findings with source locations as concrete evidence (not downgraded/dropped heuristic hints).
    - Added targeted regression coverage for both matcher detection and static evidence classification.
+85. Closed the remaining security-roadmap Rust implementation gap with a first-class trusted-setup module (`crates/zk-attacks/src/trusted_setup.rs`, `src/oracles/setup_poisoning.rs`, `src/fuzzer/engine/attack_runner.rs`):
+   - Added `TrustedSetupAttack` and `TrustedSetupConfig` in `zk-attacks` for reusable cross-setup poisoning checks.
+   - Preserved backward compatibility via `SetupPoisoningDetector` compatibility wrapper.
+   - Switched runtime oracle surface to re-export trusted-setup primitives from `zk-attacks` instead of maintaining a separate local implementation.
+   - Fixed trusted-setup runner finding-family mapping so configured `trusted_setup` runs emit findings under the expected attack type.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -373,6 +378,12 @@ Validation:
     - `cargo test -q test_trusted_setup_pattern_detection -- --test-threads=1`
     - `cargo test -q test_generate_from_source_adds_quantum_and_trusted_setup_attacks -- --test-threads=1`
     - `cargo test -q has_static_source_evidence_ -- --test-threads=1`
+67. Trusted-setup module extraction + runtime mapping validation:
+    - `cargo check -q`
+    - `cargo test -q -p zk-attacks trusted_setup_ -- --test-threads=1`
+    - `cargo test -q -p zk-attacks setup_poisoning_detector_compatibility_api_still_works -- --test-threads=1`
+    - `cargo test -q test_setup_poisoning_detector_detects_cross_setup -- --test-threads=1`
+    - `cargo test -q --test phase0_integration_tests test_phase3_and_advanced_attack_dispatch -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 

@@ -28,6 +28,10 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added generator pattern matchers for `quantum_resistance` and `trusted_setup` signals in source.
   - Added auto-attack and schedule injection so generated configs include these families when detected.
   - Treated `CircomStaticLint` source-located findings as static evidence to avoid hint-only downgrades in static-first lanes.
+- Completed first-class trusted setup module wiring:
+  - Added `crates/zk-attacks/src/trusted_setup.rs` with `TrustedSetupAttack` + YAML-friendly `TrustedSetupConfig`.
+  - Replaced local setup-poisoning implementation with `src/oracles/setup_poisoning.rs` re-exports from `zk-attacks`.
+  - Updated runner mapping so `trusted_setup` execution records findings under the configured attack family instead of always defaulting to soundness.
 - Completed Phase-2 YAML scaffolding:
   - Added missing templates: `quantum_resistance.yaml`, `privacy_advanced.yaml`, `defi_advanced.yaml` (with existing `trusted_setup.yaml` and `sidechannel_advanced.yaml`).
   - Added runnable examples in `campaigns/examples/`: `trusted_setup_audit.yaml`, `sidechannel_audit.yaml`, `quantum_resistance_audit.yaml`, `privacy_audit.yaml`, `defi_audit.yaml`.
@@ -609,7 +613,7 @@ impl Attack for DefiAdvancedAttack {
 - [ ] Add documentation for each attack type
 
 ### Phase 3: Rust Implementations (Week 2-3)
-- [ ] Implement `TrustedSetupAttack` (~150 lines)
+- [x] Implement `TrustedSetupAttack` (~150 lines)
 - [x] Implement `SidechannelAdvancedAttack` (~200 lines)
 - [x] Implement `QuantumResistanceAttack` (~180 lines)
 - [x] Implement `PrivacyAdvancedAttack` (~250 lines)

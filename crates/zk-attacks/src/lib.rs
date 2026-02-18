@@ -23,6 +23,7 @@ pub mod recursive;
 pub mod registry;
 pub mod sidechannel_advanced;
 pub mod soundness;
+pub mod trusted_setup;
 pub mod underconstrained;
 pub mod verification;
 pub mod witness;
@@ -45,5 +46,6 @@ pub use registry::{
 };
 pub use sidechannel_advanced::{SidechannelAdvancedAttack, SidechannelAdvancedConfig};
 pub use soundness::SoundnessTester;
+pub use trusted_setup::{SetupPoisoningDetector, TrustedSetupAttack, TrustedSetupConfig};
 pub use underconstrained::UnderconstrainedDetector;
 pub use zk_core::{Attack, AttackContext, CircuitInfo};
