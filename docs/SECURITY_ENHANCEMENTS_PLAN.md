@@ -76,6 +76,10 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added `src/bin/zk0d_config_migrate.rs` with `--check`, `--in-place`, `--out`, and JSON `--report` support.
   - Added migration transformer + compatibility report model in `src/config/migration.rs` with explicit `rewritten_keys` and `deprecated_constructs`.
   - Added regression coverage in `src/config/tests/migration_tests.rs` for legacy additional hoisting, plugin field migration, and plugin-dir normalization.
+- Added CLI command-parity hardening for roadmap refactor safety:
+  - Restored legacy `run`, `evidence`, and `chains` subcommands in `src/main.rs` as compatibility wrappers over existing execution paths.
+  - Restored legacy default behavior for `--config <campaign.yaml>` without a subcommand (defaults to run-mode execution).
+  - Added regression coverage in `tests/cli_command_parity_tests.rs` for root help parity and legacy command smoke paths.
 - Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
 - Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
 

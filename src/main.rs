@@ -1195,6 +1195,65 @@ enum Commands {
         #[arg(long)]
         output_suffix: Option<String>,
     },
+    /// Legacy run mode (backward-compatible alias for campaign execution)
+    Run {
+        /// Path to campaign YAML file
+        campaign: String,
+
+        /// Number of iterations
+        #[arg(short, long, default_value = "100000")]
+        iterations: u64,
+
+        /// Timeout in seconds
+        #[arg(short, long)]
+        timeout: Option<u64>,
+
+        /// Resume from existing corpus
+        #[arg(long)]
+        resume: bool,
+
+        /// Custom corpus directory
+        #[arg(long)]
+        corpus_dir: Option<String>,
+    },
+    /// Legacy evidence mode (strict evidence campaign execution)
+    Evidence {
+        /// Path to campaign YAML file
+        campaign: String,
+
+        /// Number of iterations
+        #[arg(short, long, default_value = "100000")]
+        iterations: u64,
+
+        /// Timeout in seconds
+        #[arg(short, long)]
+        timeout: Option<u64>,
+
+        /// Resume from existing corpus
+        #[arg(long)]
+        resume: bool,
+
+        /// Custom corpus directory
+        #[arg(long)]
+        corpus_dir: Option<String>,
+    },
+    /// Legacy chains mode (backward-compatible chain execution command)
+    Chains {
+        /// Path to campaign YAML file
+        campaign: String,
+
+        /// Number of iterations
+        #[arg(short, long, default_value = "100000")]
+        iterations: u64,
+
+        /// Chain-mode timeout in seconds
+        #[arg(short, long, default_value = "600")]
+        timeout: u64,
+
+        /// Resume from existing chain corpus
+        #[arg(long)]
+        resume: bool,
+    },
     /// Run backend/key-setup preflight for a campaign and exit
     Preflight {
         /// Path to campaign YAML file
@@ -1457,6 +1516,81 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
             )
             .await
         }
+        Some(Commands::Run {
+            campaign,
+            iterations,
+            timeout,
+            resume,
+            corpus_dir,
+        }) => {
+            run_campaign(
+                &campaign,
+                CampaignRunOptions {
+                    command_label: "run",
+                    workers: cli.workers,
+                    seed: cli.seed,
+                    verbose: cli.verbose,
+                    dry_run: cli.dry_run,
+                    simple_progress: cli.simple_progress,
+                    real_only: true,
+                    iterations,
+                    timeout,
+                    require_invariants: false,
+                    resume,
+                    corpus_dir,
+                    profile: cli.profile.clone(),
+                },
+            )
+            .await
+        }
+        Some(Commands::Evidence {
+            campaign,
+            iterations,
+            timeout,
+            resume,
+            corpus_dir,
+        }) => {
+            run_campaign(
+                &campaign,
+                CampaignRunOptions {
+                    command_label: "evidence",
+                    workers: cli.workers,
+                    seed: cli.seed,
+                    verbose: cli.verbose,
+                    dry_run: cli.dry_run,
+                    simple_progress: cli.simple_progress,
+                    real_only: true,
+                    iterations,
+                    timeout,
+                    require_invariants: true,
+                    resume,
+                    corpus_dir,
+                    profile: cli.profile.clone(),
+                },
+            )
+            .await
+        }
+        Some(Commands::Chains {
+            campaign,
+            iterations,
+            timeout,
+            resume,
+        }) => {
+            run_chain_campaign(
+                &campaign,
+                ChainRunOptions {
+                    workers: cli.workers,
+                    seed: cli.seed,
+                    verbose: cli.verbose,
+                    dry_run: cli.dry_run,
+                    simple_progress: cli.simple_progress,
+                    iterations,
+                    timeout,
+                    resume,
+                },
+            )
+            .await
+        }
         Some(Commands::Preflight {
             campaign,
             setup_keys,
@@ -1496,6 +1630,31 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
         Some(Commands::Init { output, framework }) => generate_sample_config(&output, &framework),
         Some(Commands::ExecWorker) => zk_fuzzer::executor::run_exec_worker(),
         None => {
+            if let Some(config_path) = cli.config.as_deref() {
+                tracing::warn!(
+                    "No subcommand provided; defaulting to legacy run mode for '{}'",
+                    config_path
+                );
+                return run_campaign(
+                    config_path,
+                    CampaignRunOptions {
+                        command_label: "run",
+                        workers: cli.workers,
+                        seed: cli.seed,
+                        verbose: cli.verbose,
+                        dry_run: cli.dry_run,
+                        simple_progress: cli.simple_progress,
+                        real_only: true,
+                        iterations: 100_000,
+                        timeout: None,
+                        require_invariants: false,
+                        resume: false,
+                        corpus_dir: None,
+                        profile: cli.profile.clone(),
+                    },
+                )
+                .await;
+            }
             anyhow::bail!(
                 "No command provided. Use `zk-fuzzer scan <pattern.yaml> --target-circuit <path> --main-component <name> --framework <fw>`."
             );
