@@ -418,6 +418,13 @@ impl FuzzingEngine {
             tracing::info!("Circom auto setup keys: {}", auto_setup);
             options.circom_auto_setup_keys = auto_setup;
         }
+        if let Some(require_setup) = Self::additional_bool(additional, "circom_require_setup_keys")
+        {
+            options.circom_require_setup_keys = require_setup;
+            if require_setup {
+                options.circom_auto_setup_keys = true;
+            }
+        }
         if let Some(ptau_path) = Self::additional_path(additional, "circom_ptau_path") {
             options.circom_ptau_path = Some(ptau_path);
         }

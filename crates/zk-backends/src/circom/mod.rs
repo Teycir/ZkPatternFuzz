@@ -1593,7 +1593,7 @@ impl CircomTarget {
             };
             for entry in entries.flatten() {
                 let path = entry.path();
-                if !path.extension().is_some_and(|e| e == "ptau") {
+                if path.extension().is_none_or(|e| e != "ptau") {
                     continue;
                 }
                 if !is_valid_ptau_file(&path)? {

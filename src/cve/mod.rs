@@ -310,7 +310,11 @@ fn matches_regex(pattern: &str, value: &str) -> bool {
     match RegexBuilder::new(pattern).case_insensitive(true).build() {
         Ok(re) => re.is_match(value),
         Err(err) => {
-            tracing::warn!("Skipping invalid CVE affected_circuits regex '{}': {}", pattern, err);
+            tracing::warn!(
+                "Skipping invalid CVE affected_circuits regex '{}': {}",
+                pattern,
+                err
+            );
             false
         }
     }

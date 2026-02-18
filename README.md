@@ -26,7 +26,7 @@ ZkPatternFuzz fuzzes ZK circuits to find security vulnerabilities across multipl
 ### Build
 
 ```bash
-git clone https://github.com/yourusername/ZkPatternFuzz.git
+git clone https://github.com/<your-username>/ZkPatternFuzz.git
 cd ZkPatternFuzz
 cargo build --release
 cargo test
@@ -266,4 +266,13 @@ Inspired by: [AFL](https://github.com/google/AFL), [LibFuzzer](https://llvm.org/
 
 ## Citation
 
-If you use ZkPatternFuzz in your research: teycirbensoltane.tn
+If you use ZkPatternFuzz in your research, please contact: teycirbensoltane.tn
+
+```bibtex
+@software{zkpatternfuzz2024,
+  title={ZkPatternFuzz: A Zero-Knowledge Proof Security Testing Framework},
+  author={Ben Soltane, Teycir},
+  year={2024},
+  url={https://github.com/<your-username>/ZkPatternFuzz}
+}
+```

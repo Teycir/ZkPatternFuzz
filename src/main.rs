@@ -939,21 +939,26 @@ fn parse_preflight_executor_options(
     config: &FuzzConfig,
 ) -> anyhow::Result<zk_fuzzer::executor::ExecutorFactoryOptions> {
     let additional = &config.campaign.parameters.additional;
-    let mut options = zk_fuzzer::executor::ExecutorFactoryOptions::default();
-
-    options.build_dir_base = additional
-        .get_path("build_dir_base")
-        .or_else(|| additional.get_path("build_dir"));
-    options.circom_build_dir = additional.get_path("circom_build_dir");
-    options.noir_build_dir = additional.get_path("noir_build_dir");
-    options.halo2_build_dir = additional.get_path("halo2_build_dir");
-    options.cairo_build_dir = additional.get_path("cairo_build_dir");
-
-    // Runtime hardening: strict backend stays enforced.
-    options.strict_backend = true;
+    let mut options = zk_fuzzer::executor::ExecutorFactoryOptions {
+        build_dir_base: additional
+            .get_path("build_dir_base")
+            .or_else(|| additional.get_path("build_dir")),
+        circom_build_dir: additional.get_path("circom_build_dir"),
+        noir_build_dir: additional.get_path("noir_build_dir"),
+        halo2_build_dir: additional.get_path("halo2_build_dir"),
+        cairo_build_dir: additional.get_path("cairo_build_dir"),
+        strict_backend: true,
+        ..Default::default()
+    };
 
     if let Some(auto_setup) = additional.get_bool("circom_auto_setup_keys") {
         options.circom_auto_setup_keys = auto_setup;
+    }
+    if let Some(require_setup) = additional.get_bool("circom_require_setup_keys") {
+        options.circom_require_setup_keys = require_setup;
+        if require_setup {
+            options.circom_auto_setup_keys = true;
+        }
     }
     options.circom_ptau_path = additional.get_path("circom_ptau_path");
     options.circom_snarkjs_path = additional.get_path("circom_snarkjs_path");
@@ -1031,6 +1036,31 @@ fn run_backend_preflight(config: &FuzzConfig) -> anyhow::Result<()> {
     .context("Backend preflight failed while initializing executor")?;
 
     tracing::info!("Backend preflight passed");
+    Ok(())
+}
+
+fn preflight_campaign(config_path: &str, setup_keys: bool) -> anyhow::Result<()> {
+    tracing::info!("Running backend preflight for campaign: {}", config_path);
+    let mut config = FuzzConfig::from_yaml(config_path)?;
+
+    if setup_keys {
+        config.campaign.parameters.additional.insert(
+            "circom_auto_setup_keys".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+        config.campaign.parameters.additional.insert(
+            "circom_require_setup_keys".to_string(),
+            serde_yaml::Value::Bool(true),
+        );
+    }
+
+    run_backend_preflight(&config)?;
+
+    println!("✓ Backend preflight passed");
+    if setup_keys {
+        println!("✓ Circom key-setup preflight passed");
+    }
+
     Ok(())
 }
 
@@ -1503,6 +1533,14 @@ enum Commands {
         #[arg(long)]
         output_suffix: Option<String>,
     },
+    /// Run backend/key-setup preflight for a campaign and exit
+    Preflight {
+        /// Path to campaign YAML file
+        campaign: String,
+        /// Require Circom key setup to pass during preflight
+        #[arg(long, default_value_t = false)]
+        setup_keys: bool,
+    },
     /// Validate a campaign configuration
     Validate {
         /// Path to campaign YAML file
@@ -1713,6 +1751,10 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
             )
             .await
         }
+        Some(Commands::Preflight {
+            campaign,
+            setup_keys,
+        }) => preflight_campaign(&campaign, setup_keys),
         Some(Commands::Validate { campaign }) => validate_campaign(&campaign),
         Some(Commands::Minimize { corpus_dir, output }) => {
             minimize_corpus(&corpus_dir, output.as_deref())
@@ -2324,6 +2366,18 @@ fn materialize_scan_pattern_campaign(
         yaml_key("timeout_seconds"),
         serde_yaml::Value::Number(serde_yaml::Number::from(600u64)),
     );
+    if matches!(target.framework, Framework::Circom) {
+        // Scan stability hardening: ensure backend preflight validates not just tool presence
+        // but also proving/verification key setup readiness for Circom targets.
+        parameters.insert(
+            yaml_key("circom_auto_setup_keys"),
+            serde_yaml::Value::Bool(true),
+        );
+        parameters.insert(
+            yaml_key("circom_require_setup_keys"),
+            serde_yaml::Value::Bool(true),
+        );
+    }
     if let Some(raw_suffix) = output_suffix.map(str::trim).filter(|s| !s.is_empty()) {
         parameters.insert(
             yaml_key("scan_output_suffix"),
@@ -2625,8 +2679,7 @@ fn apply_scan_output_suffix_if_present(config: &mut FuzzConfig) -> anyhow::Resul
         }
         candidate.to_string()
     } else {
-        let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-        format!("scan_run{}", ts)
+        reserve_scan_run_root(&config.reporting.output_dir)?
     };
     let public_root = config.reporting.output_dir.join(&run_root);
     let artifacts_root = config
@@ -2648,6 +2701,44 @@ fn apply_scan_output_suffix_if_present(config: &mut FuzzConfig) -> anyhow::Resul
         config.reporting.output_dir.display()
     );
     Ok(())
+}
+
+fn reserve_scan_run_root(output_root: &Path) -> anyhow::Result<String> {
+    let artifacts_base = output_root.join(".scan_run_artifacts");
+    std::fs::create_dir_all(&artifacts_base).with_context(|| {
+        format!(
+            "Failed to create scan artifacts base '{}'",
+            artifacts_base.display()
+        )
+    })?;
+
+    // Keep the existing run-root format (`scan_runYYYYmmdd_HHMMSS`) for compatibility
+    // while making allocation collision-safe across concurrent scan processes.
+    for _ in 0..120 {
+        let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        let candidate = format!("scan_run{}", ts);
+        let reservation = artifacts_base.join(&candidate);
+        match std::fs::create_dir(&reservation) {
+            Ok(_) => return Ok(candidate),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                std::thread::sleep(Duration::from_millis(1100));
+                continue;
+            }
+            Err(err) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to reserve scan run root '{}' under '{}': {}",
+                    candidate,
+                    artifacts_base.display(),
+                    err
+                ));
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "Failed to allocate unique scan run root after repeated collisions under '{}'",
+        artifacts_base.display()
+    )
 }
 
 fn write_scan_pattern_summary_if_present(config: &FuzzConfig, public_root: &Path, slug: &str) {

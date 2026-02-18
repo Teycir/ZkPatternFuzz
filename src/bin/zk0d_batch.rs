@@ -157,6 +157,15 @@ struct ScanRunConfig<'a> {
     dry_run: bool,
 }
 
+#[derive(Debug, Clone)]
+struct TemplateOutcomeReason {
+    template_file: String,
+    suffix: String,
+    status: Option<String>,
+    stage: Option<String>,
+    reason_code: String,
+}
+
 fn parse_family(value: &str) -> anyhow::Result<Family> {
     match value {
         "auto" => Ok(Family::Auto),
@@ -757,6 +766,42 @@ fn scan_output_root() -> PathBuf {
     }
 }
 
+fn reserve_batch_scan_run_root(artifacts_root: &Path) -> anyhow::Result<String> {
+    std::fs::create_dir_all(artifacts_root).with_context(|| {
+        format!(
+            "Failed to create scan artifacts root '{}'",
+            artifacts_root.display()
+        )
+    })?;
+
+    // Keep run-root naming stable while avoiding collisions for concurrent batch invocations.
+    for _ in 0..120 {
+        let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        let candidate = format!("scan_run{}", ts);
+        let reservation = artifacts_root.join(&candidate);
+        match std::fs::create_dir(&reservation) {
+            Ok(_) => return Ok(candidate),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                std::thread::sleep(std::time::Duration::from_millis(1100));
+                continue;
+            }
+            Err(err) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to reserve batch scan run root '{}' under '{}': {}",
+                    candidate,
+                    artifacts_root.display(),
+                    err
+                ));
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "Failed to allocate unique batch scan run root after repeated collisions under '{}'",
+        artifacts_root.display()
+    )
+}
+
 fn list_scan_run_roots(artifacts_root: &Path) -> anyhow::Result<BTreeSet<String>> {
     if !artifacts_root.exists() {
         return Ok(BTreeSet::new());
@@ -813,6 +858,209 @@ fn collect_observed_suffixes_for_roots(
         }
     }
     Ok(observed)
+}
+
+fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
+    let Some(obj) = doc.as_object() else {
+        return "invalid_run_outcome_json";
+    };
+    let status = obj
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let stage = obj
+        .get("stage")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let error_lc = obj
+        .get("error")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let reason_lc = obj
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let panic_message_lc = obj
+        .get("panic")
+        .and_then(|v| v.get("message"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if status == "completed_with_critical_findings" {
+        return "critical_findings_detected";
+    }
+    if status == "completed" {
+        return "completed";
+    }
+    if status == "failed_engagement_contract" {
+        return "engagement_contract_failed";
+    }
+    if status == "stale_interrupted" {
+        return "stale_interrupted";
+    }
+    if status == "panic" {
+        if panic_message_lc.contains("missing required 'command' in run document") {
+            return "artifact_mirror_panic_missing_command";
+        }
+        return "panic";
+    }
+    if status == "running" {
+        return "running";
+    }
+    if error_lc.contains("permission denied") {
+        return "filesystem_permission_denied";
+    }
+    if stage == "preflight_backend"
+        && (error_lc.contains("backend required but not available")
+            || error_lc.contains("not found in path")
+            || error_lc.contains("snarkjs not found")
+            || error_lc.contains("circom not found")
+            || error_lc.contains("install circom"))
+    {
+        return "backend_tooling_missing";
+    }
+    if error_lc.contains("circom compilation failed") {
+        return "circom_compilation_failed";
+    }
+    if error_lc.contains("key generation failed")
+        || error_lc.contains("key setup failed")
+        || error_lc.contains("proving key")
+    {
+        return "key_generation_failed";
+    }
+    if error_lc.contains("wall-clock timeout") || reason_lc.contains("wall-clock timeout") {
+        return "wall_clock_timeout";
+    }
+    if stage == "acquire_output_lock" {
+        return "output_dir_locked";
+    }
+    if stage == "preflight_backend" {
+        return "backend_preflight_failed";
+    }
+    if stage == "preflight_invariants" {
+        return "missing_invariants";
+    }
+    if stage == "preflight_readiness" {
+        return "readiness_failed";
+    }
+    if stage == "parse_chains" && reason_lc.contains("requires chains") {
+        return "missing_chains_definition";
+    }
+    if status == "failed" {
+        return "runtime_error";
+    }
+
+    "unknown"
+}
+
+fn collect_template_outcome_reasons(
+    artifacts_root: &Path,
+    run_root: Option<&str>,
+    selected_with_family: &[(TemplateInfo, Family)],
+) -> Vec<TemplateOutcomeReason> {
+    let Some(run_root) = run_root else {
+        return Vec::new();
+    };
+
+    selected_with_family
+        .iter()
+        .map(|(template, family)| {
+            let suffix = scan_output_suffix(template, *family);
+            let run_outcome_path = artifacts_root
+                .join(run_root)
+                .join(&suffix)
+                .join("run_outcome.json");
+
+            if !run_outcome_path.exists() {
+                return TemplateOutcomeReason {
+                    template_file: template.file_name.clone(),
+                    suffix,
+                    status: None,
+                    stage: None,
+                    reason_code: "run_outcome_missing".to_string(),
+                };
+            }
+
+            let raw = match fs::read_to_string(&run_outcome_path) {
+                Ok(raw) => raw,
+                Err(_) => {
+                    return TemplateOutcomeReason {
+                        template_file: template.file_name.clone(),
+                        suffix,
+                        status: None,
+                        stage: None,
+                        reason_code: "run_outcome_unreadable".to_string(),
+                    };
+                }
+            };
+
+            let parsed: serde_json::Value = match serde_json::from_str(&raw) {
+                Ok(parsed) => parsed,
+                Err(_) => {
+                    return TemplateOutcomeReason {
+                        template_file: template.file_name.clone(),
+                        suffix,
+                        status: None,
+                        stage: None,
+                        reason_code: "run_outcome_invalid_json".to_string(),
+                    };
+                }
+            };
+
+            let status = parsed
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let stage = parsed
+                .get("stage")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            TemplateOutcomeReason {
+                template_file: template.file_name.clone(),
+                suffix,
+                status,
+                stage,
+                reason_code: classify_run_reason_code(&parsed).to_string(),
+            }
+        })
+        .collect()
+}
+
+fn print_reason_summary(reasons: &[TemplateOutcomeReason]) {
+    if reasons.is_empty() {
+        return;
+    }
+
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for reason in reasons {
+        *counts.entry(reason.reason_code.clone()).or_insert(0) += 1;
+    }
+
+    let summary_line = counts
+        .iter()
+        .map(|(code, count)| format!("{}={}", code, count))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    println!("Reason code summary: {}", summary_line);
+
+    for reason in reasons {
+        if reason.reason_code == "completed" || reason.reason_code == "critical_findings_detected" {
+            continue;
+        }
+        println!(
+            "  - {} [{}]: reason_code={} status={} stage={}",
+            reason.template_file,
+            reason.suffix,
+            reason.reason_code,
+            reason.status.as_deref().unwrap_or("unknown"),
+            reason.stage.as_deref().unwrap_or("unknown"),
+        );
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -875,10 +1123,7 @@ fn main() -> anyhow::Result<()> {
         .collect();
     let expected_count = expected_suffixes.len();
 
-    println!(
-        "Gate 1/3 (expected templates): {}",
-        expected_count
-    );
+    println!("Gate 1/3 (expected templates): {}", expected_count);
 
     let bin_path = PathBuf::from("target/release/zk-fuzzer");
     if args.build && !bin_path.exists() {
@@ -890,7 +1135,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    let run_cfg = ScanRunConfig {
+    let run_cfg_base = ScanRunConfig {
         bin_path: &bin_path,
         target_circuit: &target_circuit,
         framework: &args.framework,
@@ -903,22 +1148,21 @@ fn main() -> anyhow::Result<()> {
         dry_run: args.dry_run,
     };
 
-    // One batch command -> one scan_run root.
-    let batch_run_root = if args.dry_run {
-        None
-    } else {
-        Some(format!("scan_run{}", Utc::now().format("%Y%m%d_%H%M%S")))
-    };
-    let run_cfg = ScanRunConfig {
-        scan_run_root: batch_run_root.as_deref(),
-        ..run_cfg
-    };
-
     let artifacts_root = scan_output_root().join(".scan_run_artifacts");
     let baseline_roots = if args.dry_run {
         BTreeSet::new()
     } else {
         list_scan_run_roots(&artifacts_root)?
+    };
+    // One batch command -> one collision-safe scan_run root.
+    let batch_run_root = if args.dry_run {
+        None
+    } else {
+        Some(reserve_batch_scan_run_root(&artifacts_root)?)
+    };
+    let run_cfg = ScanRunConfig {
+        scan_run_root: batch_run_root.as_deref(),
+        ..run_cfg_base
     };
 
     use rayon::prelude::*;
@@ -981,10 +1225,8 @@ fn main() -> anyhow::Result<()> {
         true
     } else {
         let after_roots = list_scan_run_roots(&artifacts_root)?;
-        let new_roots: BTreeSet<String> = after_roots
-            .difference(&baseline_roots)
-            .cloned()
-            .collect();
+        let new_roots: BTreeSet<String> =
+            after_roots.difference(&baseline_roots).cloned().collect();
         let observed_suffixes = collect_observed_suffixes_for_roots(&artifacts_root, &new_roots)?;
         let missing: Vec<String> = expected_suffixes
             .difference(&observed_suffixes)
@@ -1006,6 +1248,15 @@ fn main() -> anyhow::Result<()> {
             false
         }
     };
+
+    if !args.dry_run {
+        let reasons = collect_template_outcome_reasons(
+            &artifacts_root,
+            batch_run_root.as_deref(),
+            &selected_with_family,
+        );
+        print_reason_summary(&reasons);
+    }
 
     if !gate2_ok || !gate3_ok {
         std::process::exit(1);

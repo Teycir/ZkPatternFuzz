@@ -53,6 +53,8 @@ pub struct ExecOptions {
     #[serde(default)]
     pub circom_auto_setup_keys: bool,
     #[serde(default)]
+    pub circom_require_setup_keys: bool,
+    #[serde(default)]
     pub circom_ptau_path: Option<String>,
     #[serde(default)]
     pub circom_snarkjs_path: Option<String>,
@@ -98,6 +100,7 @@ impl ExecOptions {
                 .map(|p| p.to_string_lossy().to_string())
                 .collect(),
             circom_auto_setup_keys: options.circom_auto_setup_keys,
+            circom_require_setup_keys: options.circom_require_setup_keys,
             circom_ptau_path: options
                 .circom_ptau_path
                 .as_ref()
@@ -126,6 +129,7 @@ impl ExecOptions {
                 .map(PathBuf::from)
                 .collect(),
             circom_auto_setup_keys: self.circom_auto_setup_keys,
+            circom_require_setup_keys: self.circom_require_setup_keys,
             circom_ptau_path: self.circom_ptau_path.as_ref().map(PathBuf::from),
             circom_snarkjs_path: self.circom_snarkjs_path.as_ref().map(PathBuf::from),
             circom_skip_compile_if_artifacts: self.circom_skip_compile_if_artifacts,

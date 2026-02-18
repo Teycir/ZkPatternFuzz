@@ -11,6 +11,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 3. Removed panic in output basename derivation by returning structured error instead of `expect`.
 4. Improved backend failure diagnostics with richer command-failure context in critical paths.
 5. Bounded ptau `curl` download with timeout + explicit command-failure diagnostics (min 300s download timeout).
+6. Added batch run reason-code aggregation in `zk0d_batch` from per-template `run_outcome.json` (console scorecard summary + per-template non-success reasons).
+7. Added collision-safe automatic scan run-root allocation for parallel scans (atomic reservation under `.scan_run_artifacts`, keeping `scan_runYYYYMMDD_HHMMSS` naming).
+8. Added backend preflight hardening for Circom key setup (`circom_require_setup_keys`) and wired scan materialization to enforce key-setup/toolchain readiness up front.
+9. Added `zk-fuzzer preflight <campaign.yaml> [--setup-keys]` command for explicit backend/keygen readiness checks.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -120,13 +124,11 @@ Exit Criteria:
 2. Rollback strategy documented and tested.
 
 ## Execution Backlog (Immediate Top 10)
-1. Extend existing run reason codes into batch scan scorecards/TSV aggregation.
-2. Add automatic isolated run root for parallel scans.
-3. Add keygen/toolchain preflight command and integrate into `scan`.
-4. Implement weighted regex groups + `k-of-n` selector support.
-5. Implement selector normalization and synonym bundles.
-6. Add bootstrap command for `bins` and `ptau`.
-7. Add matrix runner for zk0d target lists with `jobs` + `workers` guardrails.
-8. Add retry-on-transient-setup policy.
-9. Add vulnerable/safe benchmark suites with repeated-trial harness.
-10. Add CI gates for stability and recall regression.
+1. Extend batch reason-code aggregation into external real-run TSV harness (without changing report schema).
+2. Implement weighted regex groups + `k-of-n` selector support.
+3. Implement selector normalization and synonym bundles.
+4. Add bootstrap command for `bins` and `ptau`.
+5. Add matrix runner for zk0d target lists with `jobs` + `workers` guardrails.
+6. Add retry-on-transient-setup policy.
+7. Add vulnerable/safe benchmark suites with repeated-trial harness.
+8. Add CI gates for stability and recall regression.

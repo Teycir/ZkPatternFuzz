@@ -47,6 +47,9 @@ pub struct ExecutorFactoryOptions {
     pub circom_include_paths: Vec<PathBuf>,
     /// Auto-generate proving/verification keys for Circom (required for prove/verify)
     pub circom_auto_setup_keys: bool,
+    /// If true, fail executor creation when Circom key setup fails while
+    /// `circom_auto_setup_keys` is enabled.
+    pub circom_require_setup_keys: bool,
     /// Optional path to a powers of tau file for Circom Groth16 setup
     pub circom_ptau_path: Option<PathBuf>,
     /// Optional path to snarkjs CLI (binary or JS file)
@@ -83,6 +86,7 @@ impl Default for ExecutorFactoryOptions {
             cairo_build_dir: None,
             circom_include_paths: Vec::new(),
             circom_auto_setup_keys: false,
+            circom_require_setup_keys: false,
             circom_ptau_path: None,
             circom_snarkjs_path: None,
             circom_skip_compile_if_artifacts: false,
@@ -625,10 +629,17 @@ impl ExecutorFactory {
                 if options.circom_auto_setup_keys {
                     tracing::info!("Auto-generating Circom proving/verification keys");
                     if let Err(err) = executor.setup_keys() {
-                        tracing::warn!(
-                            "Circom key setup failed (continuing without prove/verify-dependent checks): {}",
-                            err
-                        );
+                        if options.circom_require_setup_keys {
+                            anyhow::bail!(
+                                "Circom key setup failed during strict preflight: {}",
+                                err
+                            );
+                        } else {
+                            tracing::warn!(
+                                "Circom key setup failed (continuing without prove/verify-dependent checks): {}",
+                                err
+                            );
+                        }
                     }
                 }
                 Ok(Arc::new(executor))
@@ -829,7 +840,8 @@ impl CircomExecutor {
             paths.push(local);
         }
 
-        for candidate in ["node_modules"] {
+        {
+            let candidate = "node_modules";
             paths.push(PathBuf::from(candidate));
         }
 
