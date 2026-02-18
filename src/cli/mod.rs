@@ -268,3 +268,240 @@ pub struct ChainRunOptions {
     pub timeout: u64,
     pub resume: bool,
 }
+
+#[derive(Debug, Clone)]
+pub struct ScanRequest {
+    pub pattern: String,
+    pub family: ScanFamily,
+    pub target_circuit: String,
+    pub main_component: String,
+    pub framework: String,
+    pub output_suffix: Option<String>,
+    pub mono_options: CampaignRunOptions,
+    pub chain_options: ChainRunOptions,
+}
+
+#[derive(Debug, Clone)]
+pub struct BinsBootstrapRequest {
+    pub bins_dir: String,
+    pub circom_version: String,
+    pub snarkjs_version: String,
+    pub ptau_file: String,
+    pub ptau_url: Option<String>,
+    pub ptau_sha256: Option<String>,
+    pub skip_circom: bool,
+    pub skip_snarkjs: bool,
+    pub skip_ptau: bool,
+    pub force: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum CommandRequest {
+    Scan(ScanRequest),
+    RunCampaign {
+        campaign: String,
+        options: CampaignRunOptions,
+    },
+    RunChainCampaign {
+        campaign: String,
+        options: ChainRunOptions,
+    },
+    Preflight {
+        campaign: String,
+        setup_keys: bool,
+    },
+    Validate {
+        campaign: String,
+    },
+    BinsBootstrap(BinsBootstrapRequest),
+    Minimize {
+        corpus_dir: String,
+        output: Option<String>,
+    },
+    Init {
+        output: String,
+        framework: String,
+    },
+    ExecWorker,
+    MissingCommand,
+}
+
+impl Cli {
+    pub fn into_request(self) -> CommandRequest {
+        match self.command {
+            Some(Commands::Scan {
+                pattern,
+                family,
+                target_circuit,
+                main_component,
+                framework,
+                iterations,
+                timeout,
+                resume,
+                corpus_dir,
+                output_suffix,
+            }) => CommandRequest::Scan(ScanRequest {
+                pattern,
+                family,
+                target_circuit,
+                main_component,
+                framework,
+                output_suffix,
+                mono_options: CampaignRunOptions {
+                    command_label: "scan",
+                    workers: self.workers,
+                    seed: self.seed,
+                    verbose: self.verbose,
+                    dry_run: self.dry_run,
+                    simple_progress: self.simple_progress,
+                    real_only: true,
+                    iterations,
+                    timeout,
+                    require_invariants: true,
+                    resume,
+                    corpus_dir: corpus_dir.clone(),
+                    profile: self.profile.clone(),
+                },
+                chain_options: ChainRunOptions {
+                    workers: self.workers,
+                    seed: self.seed,
+                    verbose: self.verbose,
+                    dry_run: self.dry_run,
+                    simple_progress: self.simple_progress,
+                    iterations,
+                    timeout: timeout.unwrap_or(600),
+                    resume,
+                },
+            }),
+            Some(Commands::Run {
+                campaign,
+                iterations,
+                timeout,
+                resume,
+                corpus_dir,
+            }) => CommandRequest::RunCampaign {
+                campaign,
+                options: CampaignRunOptions {
+                    command_label: "run",
+                    workers: self.workers,
+                    seed: self.seed,
+                    verbose: self.verbose,
+                    dry_run: self.dry_run,
+                    simple_progress: self.simple_progress,
+                    real_only: true,
+                    iterations,
+                    timeout,
+                    require_invariants: false,
+                    resume,
+                    corpus_dir,
+                    profile: self.profile.clone(),
+                },
+            },
+            Some(Commands::Evidence {
+                campaign,
+                iterations,
+                timeout,
+                resume,
+                corpus_dir,
+            }) => CommandRequest::RunCampaign {
+                campaign,
+                options: CampaignRunOptions {
+                    command_label: "evidence",
+                    workers: self.workers,
+                    seed: self.seed,
+                    verbose: self.verbose,
+                    dry_run: self.dry_run,
+                    simple_progress: self.simple_progress,
+                    real_only: true,
+                    iterations,
+                    timeout,
+                    require_invariants: true,
+                    resume,
+                    corpus_dir,
+                    profile: self.profile.clone(),
+                },
+            },
+            Some(Commands::Chains {
+                campaign,
+                iterations,
+                timeout,
+                resume,
+            }) => CommandRequest::RunChainCampaign {
+                campaign,
+                options: ChainRunOptions {
+                    workers: self.workers,
+                    seed: self.seed,
+                    verbose: self.verbose,
+                    dry_run: self.dry_run,
+                    simple_progress: self.simple_progress,
+                    iterations,
+                    timeout,
+                    resume,
+                },
+            },
+            Some(Commands::Preflight {
+                campaign,
+                setup_keys,
+            }) => CommandRequest::Preflight {
+                campaign,
+                setup_keys,
+            },
+            Some(Commands::Validate { campaign }) => CommandRequest::Validate { campaign },
+            Some(Commands::Bins {
+                command:
+                    BinsCommands::Bootstrap {
+                        bins_dir,
+                        circom_version,
+                        snarkjs_version,
+                        ptau_file,
+                        ptau_url,
+                        ptau_sha256,
+                        skip_circom,
+                        skip_snarkjs,
+                        skip_ptau,
+                        force,
+                    },
+            }) => CommandRequest::BinsBootstrap(BinsBootstrapRequest {
+                bins_dir,
+                circom_version,
+                snarkjs_version,
+                ptau_file,
+                ptau_url,
+                ptau_sha256,
+                skip_circom,
+                skip_snarkjs,
+                skip_ptau,
+                force,
+            }),
+            Some(Commands::Minimize { corpus_dir, output }) => {
+                CommandRequest::Minimize { corpus_dir, output }
+            }
+            Some(Commands::Init { output, framework }) => CommandRequest::Init { output, framework },
+            Some(Commands::ExecWorker) => CommandRequest::ExecWorker,
+            None => {
+                if let Some(config_path) = self.config {
+                    CommandRequest::RunCampaign {
+                        campaign: config_path,
+                        options: CampaignRunOptions {
+                            command_label: "run",
+                            workers: self.workers,
+                            seed: self.seed,
+                            verbose: self.verbose,
+                            dry_run: self.dry_run,
+                            simple_progress: self.simple_progress,
+                            real_only: true,
+                            iterations: 100_000,
+                            timeout: None,
+                            require_invariants: false,
+                            resume: false,
+                            corpus_dir: None,
+                            profile: self.profile.clone(),
+                        },
+                    }
+                } else {
+                    CommandRequest::MissingCommand
+                }
+            }
+        }
+    }
+}

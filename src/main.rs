@@ -37,7 +37,10 @@ use scan_output::apply_scan_output_suffix_if_present;
 use scan_progress::{
     read_scan_findings_summary_since, run_scan_phase_with_progress, scan_default_output_dir,
 };
-use cli::{BinsCommands, CampaignRunOptions, ChainRunOptions, Cli, Commands, ScanFamily};
+use cli::{
+    BinsBootstrapRequest, CampaignRunOptions, ChainRunOptions, Cli, CommandRequest, ScanFamily,
+    ScanRequest,
+};
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName, ReadinessReport};
 use zk_fuzzer::fuzzer::ZkFuzzer;
 use zk_fuzzer::Framework;
@@ -1201,18 +1204,20 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
     install_panic_hook();
     start_signal_watchers();
 
-    match cli.command {
-        Some(Commands::Scan {
+    let dry_run = cli.dry_run;
+    let implicit_legacy_run = cli.command.is_none() && cli.config.is_some();
+    let request = cli.into_request();
+
+    match request {
+        CommandRequest::Scan(ScanRequest {
             pattern,
             family,
             target_circuit,
             main_component,
             framework,
-            iterations,
-            timeout,
-            resume,
-            corpus_dir,
             output_suffix,
+            mono_options,
+            chain_options,
         }) => {
             run_scan(
                 &pattern,
@@ -1221,177 +1226,60 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
                 &main_component,
                 &framework,
                 output_suffix.as_deref(),
-                CampaignRunOptions {
-                    command_label: "scan",
-                    workers: cli.workers,
-                    seed: cli.seed,
-                    verbose: cli.verbose,
-                    dry_run: cli.dry_run,
-                    simple_progress: cli.simple_progress,
-                    real_only: true,
-                    iterations,
-                    timeout,
-                    require_invariants: true,
-                    resume,
-                    corpus_dir: corpus_dir.clone(),
-                    profile: cli.profile.clone(),
-                },
-                ChainRunOptions {
-                    workers: cli.workers,
-                    seed: cli.seed,
-                    verbose: cli.verbose,
-                    dry_run: cli.dry_run,
-                    simple_progress: cli.simple_progress,
-                    iterations,
-                    timeout: timeout.unwrap_or(600),
-                    resume,
-                },
+                mono_options,
+                chain_options,
             )
             .await
         }
-        Some(Commands::Run {
-            campaign,
-            iterations,
-            timeout,
-            resume,
-            corpus_dir,
-        }) => {
-            run_campaign(
-                &campaign,
-                CampaignRunOptions {
-                    command_label: "run",
-                    workers: cli.workers,
-                    seed: cli.seed,
-                    verbose: cli.verbose,
-                    dry_run: cli.dry_run,
-                    simple_progress: cli.simple_progress,
-                    real_only: true,
-                    iterations,
-                    timeout,
-                    require_invariants: false,
-                    resume,
-                    corpus_dir,
-                    profile: cli.profile.clone(),
-                },
-            )
-            .await
-        }
-        Some(Commands::Evidence {
-            campaign,
-            iterations,
-            timeout,
-            resume,
-            corpus_dir,
-        }) => {
-            run_campaign(
-                &campaign,
-                CampaignRunOptions {
-                    command_label: "evidence",
-                    workers: cli.workers,
-                    seed: cli.seed,
-                    verbose: cli.verbose,
-                    dry_run: cli.dry_run,
-                    simple_progress: cli.simple_progress,
-                    real_only: true,
-                    iterations,
-                    timeout,
-                    require_invariants: true,
-                    resume,
-                    corpus_dir,
-                    profile: cli.profile.clone(),
-                },
-            )
-            .await
-        }
-        Some(Commands::Chains {
-            campaign,
-            iterations,
-            timeout,
-            resume,
-        }) => {
-            run_chain_campaign(
-                &campaign,
-                ChainRunOptions {
-                    workers: cli.workers,
-                    seed: cli.seed,
-                    verbose: cli.verbose,
-                    dry_run: cli.dry_run,
-                    simple_progress: cli.simple_progress,
-                    iterations,
-                    timeout,
-                    resume,
-                },
-            )
-            .await
-        }
-        Some(Commands::Preflight {
-            campaign,
-            setup_keys,
-        }) => preflight_campaign(&campaign, setup_keys),
-        Some(Commands::Validate { campaign }) => validate_campaign(&campaign),
-        Some(Commands::Bins { command }) => match command {
-            BinsCommands::Bootstrap {
-                bins_dir,
-                circom_version,
-                snarkjs_version,
-                ptau_file,
-                ptau_url,
-                ptau_sha256,
-                skip_circom,
-                skip_snarkjs,
-                skip_ptau,
-                force,
-            } => toolchain_bootstrap::run_bins_bootstrap(
-                &toolchain_bootstrap::BinsBootstrapOptions {
-                    bins_dir: PathBuf::from(bins_dir),
-                    circom_version,
-                    snarkjs_version,
-                    ptau_file_name: ptau_file,
-                    ptau_url,
-                    ptau_sha256,
-                    skip_circom,
-                    skip_snarkjs,
-                    skip_ptau,
-                    force,
-                    dry_run: cli.dry_run,
-                },
-            ),
-        },
-        Some(Commands::Minimize { corpus_dir, output }) => {
-            minimize_corpus(&corpus_dir, output.as_deref())
-        }
-        Some(Commands::Init { output, framework }) => generate_sample_config(&output, &framework),
-        Some(Commands::ExecWorker) => zk_fuzzer::executor::run_exec_worker(),
-        None => {
-            if let Some(config_path) = cli.config.as_deref() {
+        CommandRequest::RunCampaign { campaign, options } => {
+            if implicit_legacy_run {
                 tracing::warn!(
                     "No subcommand provided; defaulting to legacy run mode for '{}'",
-                    config_path
+                    campaign
                 );
-                return run_campaign(
-                    config_path,
-                    CampaignRunOptions {
-                        command_label: "run",
-                        workers: cli.workers,
-                        seed: cli.seed,
-                        verbose: cli.verbose,
-                        dry_run: cli.dry_run,
-                        simple_progress: cli.simple_progress,
-                        real_only: true,
-                        iterations: 100_000,
-                        timeout: None,
-                        require_invariants: false,
-                        resume: false,
-                        corpus_dir: None,
-                        profile: cli.profile.clone(),
-                    },
-                )
-                .await;
             }
-            anyhow::bail!(
-                "No command provided. Use `zk-fuzzer scan <pattern.yaml> --target-circuit <path> --main-component <name> --framework <fw>`."
-            );
+            run_campaign(&campaign, options).await
         }
+        CommandRequest::RunChainCampaign { campaign, options } => {
+            run_chain_campaign(&campaign, options).await
+        }
+        CommandRequest::Preflight {
+            campaign,
+            setup_keys,
+        } => preflight_campaign(&campaign, setup_keys),
+        CommandRequest::Validate { campaign } => validate_campaign(&campaign),
+        CommandRequest::BinsBootstrap(BinsBootstrapRequest {
+            bins_dir,
+            circom_version,
+            snarkjs_version,
+            ptau_file,
+            ptau_url,
+            ptau_sha256,
+            skip_circom,
+            skip_snarkjs,
+            skip_ptau,
+            force,
+        }) => toolchain_bootstrap::run_bins_bootstrap(&toolchain_bootstrap::BinsBootstrapOptions {
+            bins_dir: PathBuf::from(bins_dir),
+            circom_version,
+            snarkjs_version,
+            ptau_file_name: ptau_file,
+            ptau_url,
+            ptau_sha256,
+            skip_circom,
+            skip_snarkjs,
+            skip_ptau,
+            force,
+            dry_run,
+        }),
+        CommandRequest::Minimize { corpus_dir, output } => {
+            minimize_corpus(&corpus_dir, output.as_deref())
+        }
+        CommandRequest::Init { output, framework } => generate_sample_config(&output, &framework),
+        CommandRequest::ExecWorker => zk_fuzzer::executor::run_exec_worker(),
+        CommandRequest::MissingCommand => anyhow::bail!(
+            "No command provided. Use `zk-fuzzer scan <pattern.yaml> --target-circuit <path> --main-component <name> --framework <fw>`."
+        ),
     }
 }
 
