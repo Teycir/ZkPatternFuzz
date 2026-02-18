@@ -143,6 +143,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Replaced in-source test bodies with lightweight `#[cfg(test)]` module declarations using explicit `#[path = \"...\"]` links.
    - Fixed bin-target edge cases by relocating extracted bin tests to `src/bin/<bin_name>/<bin_name>_tests.rs` so Cargo does not treat them as extra binaries.
    - Verified no production file outside `*_tests.rs` contains inline `#[test]` functions or `mod tests { ... }` bodies.
+74. Continued production-path factorization by isolating run-option payload construction (`src/main.rs`):
+   - Added `campaign_run_options_doc(...)` and `chain_run_options_doc(...)` helpers to centralize run artifact options-shape construction.
+   - Replaced duplicated inline option JSON payload builders in lifecycle initialization and `starting_engine` stage updates for both `run_campaign` and `run_chain_campaign`.
+   - Reduced lifecycle orchestration callsites to orchestration intent without embedded payload-building details.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -251,6 +255,9 @@ Validation:
 53. Repository audit checks confirming no inline test bodies outside dedicated `*_tests.rs` files:
     - `rg -n --glob '!target/**' --glob '!tests/**' --glob '!**/tests/**' --glob '!**/*_tests.rs' '^\\s*#\\[test\\]' src crates`
     - `rg -n --glob '!target/**' --glob '!tests/**' --glob '!**/tests/**' --glob '!**/*_tests.rs' '^\\s*mod\\s+tests\\s*\\{' src crates`
+54. Main binary + command-fallback regression checks after run-option payload factorization:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 

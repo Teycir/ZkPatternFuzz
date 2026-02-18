@@ -1510,6 +1510,32 @@ fn initialize_campaign_run_lifecycle(
     Ok((output_dir, output_lock))
 }
 
+fn campaign_run_options_doc(options: &CampaignRunOptions) -> serde_json::Value {
+    serde_json::json!({
+        "workers": options.workers,
+        "seed": options.seed,
+        "iterations": options.iterations,
+        "timeout_seconds": options.timeout,
+        "resume": options.resume,
+        "corpus_dir": options.corpus_dir.clone(),
+        "profile": options.profile.clone(),
+        "simple_progress": options.simple_progress,
+        "dry_run": options.dry_run,
+    })
+}
+
+fn chain_run_options_doc(options: &ChainRunOptions) -> serde_json::Value {
+    serde_json::json!({
+        "workers": options.workers,
+        "seed": options.seed,
+        "iterations": options.iterations,
+        "timeout_seconds": options.timeout,
+        "resume": options.resume,
+        "simple_progress": options.simple_progress,
+        "dry_run": options.dry_run,
+    })
+}
+
 fn scan_public_root_from_output_dir(output_dir: &Path) -> Option<PathBuf> {
     let run_root_dir = output_dir.parent()?;
     let artifacts_dir = run_root_dir.parent()?;
@@ -3916,17 +3942,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         &campaign_name,
         started_utc,
         options.timeout,
-        serde_json::json!({
-            "workers": options.workers,
-            "seed": options.seed,
-            "iterations": options.iterations,
-            "timeout_seconds": options.timeout,
-            "resume": options.resume,
-            "corpus_dir": options.corpus_dir.clone(),
-            "profile": options.profile.clone(),
-            "simple_progress": options.simple_progress,
-            "dry_run": options.dry_run,
-        }),
+        campaign_run_options_doc(&options),
     )?;
 
     let _ctx_guard = RunLogContextGuard::new();
@@ -4058,17 +4074,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             &campaign_name,
             started_utc,
             options.timeout,
-            serde_json::json!({
-                "workers": options.workers,
-                "seed": options.seed,
-                "iterations": options.iterations,
-                "timeout_seconds": options.timeout,
-                "resume": options.resume,
-                "corpus_dir": options.corpus_dir.clone(),
-                "profile": options.profile.clone(),
-                "simple_progress": options.simple_progress,
-                "dry_run": options.dry_run,
-            }),
+            campaign_run_options_doc(&options),
         );
     }
 
@@ -4668,15 +4674,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         &campaign_name,
         started_utc,
         Some(options.timeout),
-        serde_json::json!({
-            "workers": options.workers,
-            "seed": options.seed,
-            "iterations": options.iterations,
-            "timeout_seconds": options.timeout,
-            "resume": options.resume,
-            "simple_progress": options.simple_progress,
-            "dry_run": options.dry_run,
-        }),
+        chain_run_options_doc(&options),
     )?;
 
     let _ctx_guard = RunLogContextGuard::new();
@@ -4830,15 +4828,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             &campaign_name,
             started_utc,
             Some(options.timeout),
-            serde_json::json!({
-                "workers": options.workers,
-                "seed": options.seed,
-                "iterations": options.iterations,
-                "timeout_seconds": options.timeout,
-                "resume": options.resume,
-                "simple_progress": options.simple_progress,
-                "dry_run": options.dry_run,
-            }),
+            chain_run_options_doc(&options),
         );
     }
 
