@@ -178,6 +178,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Made batch-verification runner accept trait-object executors (`E: CircuitExecutor + ?Sized`) so engine-level dispatch can invoke it.
    - Extended phased scheduler string parsing to include broader attack-type aliases so configured phases can schedule these families.
    - Extended `Finding` deserialization to recognize Phase-3 attack variants (`Mev`, `FrontRunning`, `ZkEvm`, `BatchVerification`) and added regression coverage.
+81. Accelerated advanced-security roadmap implementation with first-class runtime wiring and YAML scaffolding (`crates/zk-core/src/types.rs`, `src/fuzzer/engine/{mod.rs,attack_runner.rs}`, `src/fuzzer/{phased_scheduler.rs,oracle_validation.rs,oracle_correlation.rs}`, `src/reporting/sarif.rs`, `templates/attacks/`, `campaigns/examples/`, `tests/phase0_integration_tests.rs`):
+   - Added core/runtime support for `SidechannelAdvanced`, `QuantumResistance`, `PrivacyAdvanced`, and `DefiAdvanced` (type system, scheduler aliases, oracle grouping/validation family mapping, SARIF rule mapping, and engine dispatch).
+   - Added runtime runner implementations for the four advanced families and bridged them to existing lower-level detectors for immediate execution coverage.
+   - Completed all five planned YAML attack templates and all five example audit campaigns under `campaigns/examples/`.
+   - Added targeted integration dispatch coverage for Phase-3 + advanced families and expanded finding-deserialization coverage.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -324,8 +329,13 @@ Validation:
 62. Runtime attack-dispatch coverage hardening validation:
     - `cargo check`
     - `cargo test test_parse_attack_type`
-    - `cargo test -p zk-core deserialize_finding_supports_phase3_attack_variants`
+    - `cargo test -p zk-core deserialize_finding_supports_phase3_and_advanced_attack_variants`
     - `cargo test -p zk-attacks test_batch_verifier_creation`
+63. Advanced attack runtime wiring + scaffolding validation:
+    - `cargo check`
+    - `cargo test test_parse_attack_type -- --test-threads=1`
+    - `cargo test -p zk-core deserialize_finding_supports_phase3_and_advanced_attack_variants -- --test-threads=1`
+    - `cargo test --test phase0_integration_tests test_phase3_and_advanced_attack_dispatch -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 

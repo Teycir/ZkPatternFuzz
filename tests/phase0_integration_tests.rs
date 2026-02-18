@@ -63,6 +63,10 @@ fn create_test_config() -> FuzzConfig {
     }
 }
 
+fn yaml_value(snippet: &str) -> serde_yaml::Value {
+    serde_yaml::from_str(snippet).expect("valid yaml snippet")
+}
+
 // ============================================================================
 // Test 1: Underconstrained Oracle - Stateful Collision Detection
 // ============================================================================
@@ -333,6 +337,173 @@ async fn test_witness_collision_attack_dispatch() {
     let report = engine.run(None).await;
 
     assert!(report.is_ok(), "WitnessCollision attack should not panic");
+}
+
+#[tokio::test]
+async fn test_phase3_and_advanced_attack_dispatch() {
+    let attack_cases: Vec<(AttackType, &str, serde_yaml::Value)> = vec![
+        (
+            AttackType::TrustedSetup,
+            "Trusted setup dispatch",
+            yaml_value(
+                r#"
+trusted_setup_test:
+  enabled: false
+"#,
+            ),
+        ),
+        (
+            AttackType::Mev,
+            "MEV dispatch",
+            yaml_value(
+                r#"
+mev:
+  detect_ordering: false
+  detect_sandwich: false
+  detect_leakage: false
+"#,
+            ),
+        ),
+        (
+            AttackType::FrontRunning,
+            "Front-running dispatch",
+            yaml_value(
+                r#"
+front_running:
+  detect_leakage: false
+  detect_commitment_bypass: false
+  detect_delay_attack: false
+"#,
+            ),
+        ),
+        (
+            AttackType::ZkEvm,
+            "zkEVM dispatch",
+            yaml_value(
+                r#"
+zkevm:
+  state_transition_tests: 1
+  opcode_boundary_tests: 1
+  memory_expansion_tests: 1
+  storage_proof_tests: 1
+  detect_state_transition: false
+  detect_opcode_boundary: false
+  detect_memory_expansion: false
+  detect_storage_proof: false
+"#,
+            ),
+        ),
+        (
+            AttackType::BatchVerification,
+            "Batch verification dispatch",
+            yaml_value(
+                r#"
+batch_verification:
+  batch_mixing_tests: 1
+  aggregation_forgery_tests: 1
+  cross_circuit_tests: 1
+  randomness_reuse_tests: 1
+  batch_sizes: [2]
+  invalid_positions: ["first"]
+  detect_batch_mixing: false
+  detect_aggregation_forgery: false
+  detect_cross_circuit_batch: false
+  detect_randomness_reuse: false
+"#,
+            ),
+        ),
+        (
+            AttackType::SidechannelAdvanced,
+            "Side-channel advanced dispatch",
+            yaml_value(
+                r#"
+sidechannel_advanced:
+  cache_timing:
+    sample_size: 1
+  memory_patterns:
+    sample_count: 1
+"#,
+            ),
+        ),
+        (
+            AttackType::QuantumResistance,
+            "Quantum resistance dispatch",
+            yaml_value(
+                r#"
+quantum_resistance:
+  vulnerable_primitives:
+    detect:
+      - name: "RSA"
+        severity: "critical"
+        patterns: ["rsa", "modexp"]
+"#,
+            ),
+        ),
+        (
+            AttackType::PrivacyAdvanced,
+            "Privacy advanced dispatch",
+            yaml_value(
+                r#"
+privacy_advanced:
+  metadata_leakage:
+    sample_count: 1
+  num_tests: 1
+"#,
+            ),
+        ),
+        (
+            AttackType::DefiAdvanced,
+            "DeFi advanced dispatch",
+            yaml_value(
+                r#"
+defi_advanced:
+  mev_patterns:
+    detect_ordering: false
+    detect_sandwich: false
+    detect_leakage: false
+  front_running_patterns:
+    detect_leakage: false
+    detect_commitment_bypass: false
+    detect_delay_attack: false
+"#,
+            ),
+        ),
+    ];
+
+    for (attack_type, description, attack_config) in attack_cases {
+        let mut config = create_test_config();
+        config.campaign.parameters.timeout_seconds = 1;
+        config.campaign.parameters.additional.insert(
+            "fuzzing_iterations".to_string(),
+            serde_yaml::Value::Number(1.into()),
+        );
+        config.campaign.parameters.additional.insert(
+            "fuzzing_timeout_seconds".to_string(),
+            serde_yaml::Value::Number(1.into()),
+        );
+        config.campaign.parameters.additional.insert(
+            "max_iterations".to_string(),
+            serde_yaml::Value::Number(1.into()),
+        );
+        config.campaign.parameters.additional.insert(
+            "symbolic_enabled".to_string(),
+            serde_yaml::Value::Bool(false),
+        );
+        config.attacks = vec![Attack {
+            attack_type: attack_type.clone(),
+            description: description.to_string(),
+            plugin: None,
+            config: attack_config,
+        }];
+
+        let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
+        let report = engine.run(None).await;
+        assert!(
+            report.is_ok(),
+            "{:?} attack should dispatch without panic",
+            attack_type
+        );
+    }
 }
 
 // ============================================================================

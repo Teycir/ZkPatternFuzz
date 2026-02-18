@@ -1,0 +1,20 @@
+attack:
+  type: "quantum_resistance"
+  description: "Post-quantum cryptography posture and vulnerable primitive detection"
+  config:
+    quantum_resistance:
+      vulnerable_primitives:
+        detect:
+          - name: "RSA"
+            severity: "critical"
+            patterns: ["rsa", "rsa_verify", "modexp"]
+          - name: "ECDSA"
+            severity: "critical"
+            patterns: ["ecdsa", "ecdsa_verify", "secp256"]
+          - name: "ECDH"
+            severity: "high"
+            patterns: ["ecdh", "shared_secret"]
+          - name: "Diffie-Hellman"
+            severity: "high"
+            patterns: ["diffiehellman", "dh_exchange"]
+

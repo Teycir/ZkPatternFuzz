@@ -37,7 +37,7 @@ fn classify_invariant_violation() {
 }
 
 #[test]
-fn deserialize_finding_supports_phase3_attack_variants() {
+fn deserialize_finding_supports_phase3_and_advanced_attack_variants() {
     let mev: Finding = serde_json::from_str(
         r#"{
                 "attack_type":"Mev",
@@ -61,4 +61,76 @@ fn deserialize_finding_supports_phase3_attack_variants() {
     )
     .expect("deserialize BatchVerification finding");
     assert_eq!(batch.attack_type, AttackType::BatchVerification);
+
+    let front_running: Finding = serde_json::from_str(
+        r#"{
+                "attack_type":"FrontRunning",
+                "severity":"high",
+                "description":"front-running test",
+                "location":null,
+                "poc_witness_a":[]
+            }"#,
+    )
+    .expect("deserialize FrontRunning finding");
+    assert_eq!(front_running.attack_type, AttackType::FrontRunning);
+
+    let zkevm: Finding = serde_json::from_str(
+        r#"{
+                "attack_type":"ZkEvm",
+                "severity":"medium",
+                "description":"zkevm test",
+                "location":null,
+                "poc_witness_a":[]
+            }"#,
+    )
+    .expect("deserialize ZkEvm finding");
+    assert_eq!(zkevm.attack_type, AttackType::ZkEvm);
+
+    let sidechannel: Finding = serde_json::from_str(
+        r#"{
+                "attack_type":"SidechannelAdvanced",
+                "severity":"medium",
+                "description":"sidechannel test",
+                "location":null,
+                "poc_witness_a":[]
+            }"#,
+    )
+    .expect("deserialize SidechannelAdvanced finding");
+    assert_eq!(sidechannel.attack_type, AttackType::SidechannelAdvanced);
+
+    let quantum: Finding = serde_json::from_str(
+        r#"{
+                "attack_type":"QuantumResistance",
+                "severity":"high",
+                "description":"quantum test",
+                "location":null,
+                "poc_witness_a":[]
+            }"#,
+    )
+    .expect("deserialize QuantumResistance finding");
+    assert_eq!(quantum.attack_type, AttackType::QuantumResistance);
+
+    let privacy: Finding = serde_json::from_str(
+        r#"{
+                "attack_type":"PrivacyAdvanced",
+                "severity":"medium",
+                "description":"privacy test",
+                "location":null,
+                "poc_witness_a":[]
+            }"#,
+    )
+    .expect("deserialize PrivacyAdvanced finding");
+    assert_eq!(privacy.attack_type, AttackType::PrivacyAdvanced);
+
+    let defi: Finding = serde_json::from_str(
+        r#"{
+                "attack_type":"DefiAdvanced",
+                "severity":"high",
+                "description":"defi test",
+                "location":null,
+                "poc_witness_a":[]
+            }"#,
+    )
+    .expect("deserialize DefiAdvanced finding");
+    assert_eq!(defi.attack_type, AttackType::DefiAdvanced);
 }

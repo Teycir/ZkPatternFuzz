@@ -1,0 +1,26 @@
+campaign:
+  name: "Privacy Analysis Audit"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/privacy_transfer.circom"
+    main_component: "Main"
+  parameters:
+    field: "bn254"
+    max_constraints: 100000
+    timeout_seconds: 300
+
+attacks:
+  - type: "privacy_advanced"
+    description: "Metadata leakage and timing-correlation checks"
+    config:
+      privacy_advanced:
+        metadata_leakage:
+          sample_count: 150
+        num_tests: 150
+
+inputs:
+  - name: "input_0"
+    type: "field"
+    fuzz_strategy: "random"
+

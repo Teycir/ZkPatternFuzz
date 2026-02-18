@@ -62,6 +62,14 @@ pub enum AttackType {
     ZkEvm,
     /// Batch verification bypass attacks (Phase 3.3)
     BatchVerification,
+    /// Advanced side-channel analysis (cache/power/memory patterns)
+    SidechannelAdvanced,
+    /// Post-quantum security posture analysis
+    QuantumResistance,
+    /// Advanced privacy-leakage analysis
+    PrivacyAdvanced,
+    /// Advanced DeFi/protocol-level analysis
+    DefiAdvanced,
 }
 
 /// Severity levels for findings
@@ -289,6 +297,10 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     "FrontRunning" => AttackType::FrontRunning,
                     "ZkEvm" => AttackType::ZkEvm,
                     "BatchVerification" => AttackType::BatchVerification,
+                    "SidechannelAdvanced" => AttackType::SidechannelAdvanced,
+                    "QuantumResistance" => AttackType::QuantumResistance,
+                    "PrivacyAdvanced" => AttackType::PrivacyAdvanced,
+                    "DefiAdvanced" => AttackType::DefiAdvanced,
                     _ => {
                         return Err(de::Error::unknown_variant(
                             &attack_type_str,
@@ -320,6 +332,10 @@ impl<'de> serde::Deserialize<'de> for Finding {
                                 "FrontRunning",
                                 "ZkEvm",
                                 "BatchVerification",
+                                "SidechannelAdvanced",
+                                "QuantumResistance",
+                                "PrivacyAdvanced",
+                                "DefiAdvanced",
                             ],
                         ))
                     }

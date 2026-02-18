@@ -1,0 +1,9 @@
+attack:
+  type: "privacy_advanced"
+  description: "Composite privacy analysis for metadata leakage and timing correlations"
+  config:
+    privacy_advanced:
+      metadata_leakage:
+        sample_count: 200
+      num_tests: 200
+

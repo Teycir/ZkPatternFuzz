@@ -1,0 +1,18 @@
+attack:
+  type: "defi_advanced"
+  description: "Composite DeFi protocol analysis (MEV + front-running)"
+  config:
+    defi_advanced:
+      mev_patterns:
+        ordering_permutations: 12
+        sandwich_attempts: 8
+        detect_ordering: true
+        detect_sandwich: true
+        detect_leakage: true
+      front_running_patterns:
+        leakage_tests: 100
+        commitment_tests: 100
+        detect_leakage: true
+        detect_commitment_bypass: true
+        detect_delay_attack: true
+

@@ -1,0 +1,31 @@
+campaign:
+  name: "Quantum Resistance Audit"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/ecdsa_verify.circom"
+    main_component: "Main"
+  parameters:
+    field: "bn254"
+    max_constraints: 100000
+    timeout_seconds: 300
+
+attacks:
+  - type: "quantum_resistance"
+    description: "Detect quantum-vulnerable primitives in source"
+    config:
+      quantum_resistance:
+        vulnerable_primitives:
+          detect:
+            - name: "RSA"
+              severity: "critical"
+              patterns: ["rsa", "rsa_verify", "modexp"]
+            - name: "ECDSA"
+              severity: "critical"
+              patterns: ["ecdsa", "ecdsa_verify", "secp256"]
+
+inputs:
+  - name: "input_0"
+    type: "field"
+    fuzz_strategy: "random"
+

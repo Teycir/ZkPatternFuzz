@@ -1,0 +1,10 @@
+attack:
+  type: "sidechannel_advanced"
+  description: "Composite side-channel analysis (timing + metadata leakage)"
+  config:
+    sidechannel_advanced:
+      cache_timing:
+        sample_size: 128
+      memory_patterns:
+        sample_count: 128
+

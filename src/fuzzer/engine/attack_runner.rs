@@ -2020,7 +2020,9 @@ impl FuzzingEngine {
 
         let section = config
             .get("mev")
+            .or_else(|| config.get("mev_patterns"))
             .or_else(|| config.get("defi"))
+            .or_else(|| config.get("defi_advanced"))
             .unwrap_or(config);
         let mut mev_config = MevConfig::default();
         if let Some(v) = section
@@ -2079,7 +2081,9 @@ impl FuzzingEngine {
 
         let section = config
             .get("front_running")
+            .or_else(|| config.get("front_running_patterns"))
             .or_else(|| config.get("defi"))
+            .or_else(|| config.get("defi_advanced"))
             .unwrap_or(config);
         let mut front_config = FrontRunningConfig::default();
         if let Some(v) = section.get("leakage_tests").and_then(|v| v.as_u64()) {
@@ -2364,6 +2368,269 @@ impl FuzzingEngine {
         if let Some(p) = progress {
             p.inc();
         }
+        Ok(())
+    }
+
+    pub(super) async fn run_sidechannel_advanced_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        let section = config.get("sidechannel_advanced").unwrap_or(config);
+
+        let timing_samples = section
+            .get("cache_timing")
+            .and_then(|v| v.get("sample_size"))
+            .and_then(|v| v.as_u64())
+            .or_else(|| section.get("num_samples").and_then(|v| v.as_u64()));
+        let leakage_tests = section
+            .get("memory_patterns")
+            .and_then(|v| v.get("sample_count"))
+            .and_then(|v| v.as_u64())
+            .or_else(|| section.get("num_tests").and_then(|v| v.as_u64()));
+
+        let mut timing_mapping = serde_yaml::Mapping::new();
+        if let Some(samples) = timing_samples {
+            timing_mapping.insert(
+                serde_yaml::Value::String("num_samples".to_string()),
+                serde_yaml::Value::Number(samples.into()),
+            );
+        }
+
+        let mut leakage_mapping = serde_yaml::Mapping::new();
+        if let Some(tests) = leakage_tests {
+            leakage_mapping.insert(
+                serde_yaml::Value::String("num_tests".to_string()),
+                serde_yaml::Value::Number(tests.into()),
+            );
+        }
+
+        let timing_result = self
+            .run_timing_sidechannel_attack(&serde_yaml::Value::Mapping(timing_mapping), progress)
+            .await;
+        if let Err(err) = &timing_result {
+            tracing::warn!(
+                "SidechannelAdvanced timing sub-check unavailable/failed: {}",
+                err
+            );
+        }
+
+        let leakage_result = self
+            .run_information_leakage_attack(&serde_yaml::Value::Mapping(leakage_mapping), progress)
+            .await;
+        if let Err(err) = &leakage_result {
+            tracing::warn!(
+                "SidechannelAdvanced leakage sub-check unavailable/failed: {}",
+                err
+            );
+        }
+
+        Ok(())
+    }
+
+    pub(super) async fn run_quantum_resistance_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        #[derive(Clone)]
+        struct PrimitiveSpec {
+            name: String,
+            severity: Severity,
+            patterns: Vec<String>,
+        }
+
+        fn parse_severity(raw: &str) -> Severity {
+            match raw.trim().to_ascii_lowercase().as_str() {
+                "critical" => Severity::Critical,
+                "high" => Severity::High,
+                "medium" => Severity::Medium,
+                "low" => Severity::Low,
+                _ => Severity::Info,
+            }
+        }
+
+        let section = config.get("quantum_resistance").unwrap_or(config);
+        let mut specs = vec![
+            PrimitiveSpec {
+                name: "RSA".to_string(),
+                severity: Severity::Critical,
+                patterns: vec!["rsa".to_string(), "modexp".to_string()],
+            },
+            PrimitiveSpec {
+                name: "ECDSA".to_string(),
+                severity: Severity::Critical,
+                patterns: vec!["ecdsa".to_string(), "secp256".to_string()],
+            },
+            PrimitiveSpec {
+                name: "ECDH".to_string(),
+                severity: Severity::High,
+                patterns: vec!["ecdh".to_string(), "shared_secret".to_string()],
+            },
+            PrimitiveSpec {
+                name: "Diffie-Hellman".to_string(),
+                severity: Severity::High,
+                patterns: vec!["diffiehellman".to_string(), "dh_exchange".to_string()],
+            },
+        ];
+
+        if let Some(entries) = section
+            .get("vulnerable_primitives")
+            .and_then(|v| v.get("detect"))
+            .and_then(|v| v.as_sequence())
+        {
+            let mut custom_specs = Vec::new();
+            for entry in entries {
+                let Some(name) = entry.get("name").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                let severity = entry
+                    .get("severity")
+                    .and_then(|v| v.as_str())
+                    .map(parse_severity)
+                    .unwrap_or(Severity::High);
+                let patterns: Vec<String> = entry
+                    .get("patterns")
+                    .and_then(|v| v.as_sequence())
+                    .map(|seq| {
+                        seq.iter()
+                            .filter_map(|p| p.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_else(|| vec![name.to_ascii_lowercase()]);
+                custom_specs.push(PrimitiveSpec {
+                    name: name.to_string(),
+                    severity,
+                    patterns,
+                });
+            }
+            if !custom_specs.is_empty() {
+                specs = custom_specs;
+            }
+        }
+
+        let source_path = self.config.campaign.target.circuit_path.clone();
+        let source = match std::fs::read_to_string(&source_path) {
+            Ok(s) => s.to_ascii_lowercase(),
+            Err(err) => {
+                tracing::warn!(
+                    "QuantumResistance scan skipped source read '{}': {}",
+                    source_path.display(),
+                    err
+                );
+                return Ok(());
+            }
+        };
+
+        let witness = self
+            .collect_corpus_inputs(1)
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| self.generate_test_case().inputs);
+
+        let mut findings = Vec::new();
+        for spec in specs {
+            let matched = spec
+                .patterns
+                .iter()
+                .any(|pattern| source.contains(&pattern.to_ascii_lowercase()));
+            if !matched {
+                continue;
+            }
+
+            findings.push(Finding {
+                attack_type: AttackType::QuantumResistance,
+                severity: spec.severity,
+                description: format!(
+                    "Quantum-vulnerable primitive detected in source: {}",
+                    spec.name
+                ),
+                poc: ProofOfConcept {
+                    witness_a: witness.clone(),
+                    witness_b: None,
+                    public_inputs: vec![],
+                    proof: None,
+                },
+                location: Some(source_path.display().to_string()),
+            });
+        }
+
+        self.record_custom_findings(findings, AttackType::QuantumResistance, progress)?;
+        if let Some(p) = progress {
+            p.inc();
+        }
+        Ok(())
+    }
+
+    pub(super) async fn run_privacy_advanced_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        let section = config.get("privacy_advanced").unwrap_or(config);
+
+        let leakage_tests = section
+            .get("metadata_leakage")
+            .and_then(|v| v.get("sample_count"))
+            .and_then(|v| v.as_u64())
+            .or_else(|| section.get("num_tests").and_then(|v| v.as_u64()))
+            .unwrap_or(150);
+        let timing_samples = section
+            .get("metadata_leakage")
+            .and_then(|v| v.get("sample_count"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100);
+
+        let mut leakage_mapping = serde_yaml::Mapping::new();
+        leakage_mapping.insert(
+            serde_yaml::Value::String("num_tests".to_string()),
+            serde_yaml::Value::Number(leakage_tests.into()),
+        );
+        if let Err(err) = self
+            .run_information_leakage_attack(&serde_yaml::Value::Mapping(leakage_mapping), progress)
+            .await
+        {
+            tracing::warn!("PrivacyAdvanced leakage sub-check unavailable/failed: {}", err);
+        }
+
+        let mut timing_mapping = serde_yaml::Mapping::new();
+        timing_mapping.insert(
+            serde_yaml::Value::String("num_samples".to_string()),
+            serde_yaml::Value::Number(timing_samples.into()),
+        );
+        if let Err(err) = self
+            .run_timing_sidechannel_attack(&serde_yaml::Value::Mapping(timing_mapping), progress)
+            .await
+        {
+            tracing::warn!(
+                "PrivacyAdvanced timing side-channel sub-check unavailable/failed: {}",
+                err
+            );
+        }
+
+        Ok(())
+    }
+
+    pub(super) async fn run_defi_advanced_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        let section = config
+            .get("defi_advanced")
+            .or_else(|| config.get("defi"))
+            .unwrap_or(config);
+
+        if let Err(err) = self.run_mev_attack(section, progress).await {
+            tracing::warn!("DefiAdvanced MEV sub-check unavailable/failed: {}", err);
+        }
+        if let Err(err) = self.run_front_running_attack(section, progress).await {
+            tracing::warn!(
+                "DefiAdvanced front-running sub-check unavailable/failed: {}",
+                err
+            );
+        }
+
         Ok(())
     }
 

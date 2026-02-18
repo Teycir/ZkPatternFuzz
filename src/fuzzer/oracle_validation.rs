@@ -227,9 +227,12 @@ fn attack_family(attack_type: AttackType) -> AttackFamily {
         }
         AttackType::WitnessLeakage
         | AttackType::InformationLeakage
-        | AttackType::TimingSideChannel => AttackFamily::Leakage,
+        | AttackType::TimingSideChannel
+        | AttackType::SidechannelAdvanced
+        | AttackType::PrivacyAdvanced => AttackFamily::Leakage,
         AttackType::Malleability | AttackType::ReplayAttack => AttackFamily::Authorization,
-        AttackType::TrustedSetup => AttackFamily::Setup,
+        AttackType::TrustedSetup | AttackType::QuantumResistance => AttackFamily::Setup,
+        AttackType::DefiAdvanced => AttackFamily::Soundness,
         _ => AttackFamily::Other,
     }
 }

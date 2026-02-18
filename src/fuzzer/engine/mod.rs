@@ -1226,6 +1226,26 @@ impl FuzzingEngine {
                             .await?;
                         attack_executed = true;
                     }
+                    AttackType::SidechannelAdvanced => {
+                        self.run_sidechannel_advanced_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
+                    AttackType::QuantumResistance => {
+                        self.run_quantum_resistance_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
+                    AttackType::PrivacyAdvanced => {
+                        self.run_privacy_advanced_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
+                    AttackType::DefiAdvanced => {
+                        self.run_defi_advanced_attack(&attack_config.config, progress)
+                            .await?;
+                        attack_executed = true;
+                    }
                     // Phase 4: Novel Oracle Attacks - Now Implemented!
                     AttackType::ConstraintInference => {
                         match self

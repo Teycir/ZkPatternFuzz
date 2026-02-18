@@ -1039,6 +1039,48 @@ fn generate_rules() -> Vec<SarifRule> {
             "Use multi-party computation for setup. Consider transparent alternatives.",
             (Some("CWE-310"), Severity::Critical),
         ),
+        create_rule(
+            AttackType::SidechannelAdvanced,
+            "ZK028",
+            "Advanced Side-Channel Risk",
+            "Circuit/runtime patterns suggest advanced side-channel exposure",
+            "Advanced side-channel vectors (cache timing, memory-access patterns, \
+             operation-dependent behavior) can leak private witness information.",
+            "Reduce secret-dependent control/data flow and enforce constant-time style \
+             execution paths where feasible.",
+            (Some("CWE-208"), Severity::High),
+        ),
+        create_rule(
+            AttackType::QuantumResistance,
+            "ZK029",
+            "Quantum-Vulnerable Primitive",
+            "Potentially quantum-vulnerable primitive detected",
+            "Use of quantum-vulnerable primitives (for example RSA/ECDSA families) \
+             can weaken long-term security assumptions for proofs and signatures.",
+            "Plan migration to post-quantum alternatives and increase cryptographic \
+             agility in circuit interfaces.",
+            (Some("CWE-327"), Severity::High),
+        ),
+        create_rule(
+            AttackType::PrivacyAdvanced,
+            "ZK030",
+            "Advanced Privacy Leakage",
+            "Composite privacy analysis indicates possible metadata leakage",
+            "Correlating leakage channels (timing/output structure/witness behavior) \
+             may reveal private-state information beyond intended disclosures.",
+            "Harden witness-dependent logic and reduce externally observable metadata.",
+            (Some("CWE-200"), Severity::High),
+        ),
+        create_rule(
+            AttackType::DefiAdvanced,
+            "ZK031",
+            "Advanced DeFi Logic Risk",
+            "Protocol-level DeFi behavior indicates MEV/front-running exposure",
+            "Ordering and execution-surface asymmetries can allow protocol-level \
+             value extraction or unfair transaction outcomes.",
+            "Add ordering-invariant checks, anti-MEV constraints, and stronger commit/reveal flows.",
+            (Some("CWE-362"), Severity::High),
+        ),
     ]
 }
 
@@ -1257,6 +1299,10 @@ fn attack_type_to_rule_id(attack_type: &AttackType) -> String {
         AttackType::FrontRunning => "ZK025",
         AttackType::ZkEvm => "ZK026",
         AttackType::BatchVerification => "ZK027",
+        AttackType::SidechannelAdvanced => "ZK028",
+        AttackType::QuantumResistance => "ZK029",
+        AttackType::PrivacyAdvanced => "ZK030",
+        AttackType::DefiAdvanced => "ZK031",
     }
     .to_string()
 }

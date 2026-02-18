@@ -1,0 +1,27 @@
+campaign:
+  name: "Trusted Setup Security Audit"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/groth16_setup.circom"
+    main_component: "Main"
+  parameters:
+    field: "bn254"
+    max_constraints: 100000
+    timeout_seconds: 300
+
+attacks:
+  - type: "trusted_setup"
+    description: "Trusted setup poisoning and toxic-waste checks"
+    config:
+      trusted_setup_test:
+        enabled: true
+        attempts: 8
+        ptau_file_a: "./bins/ptau/powersOfTau28_hez_final.ptau"
+        ptau_file_b: "./bins/ptau/powersOfTau28_hez_final.ptau.alt"
+
+inputs:
+  - name: "input_0"
+    type: "field"
+    fuzz_strategy: "random"
+

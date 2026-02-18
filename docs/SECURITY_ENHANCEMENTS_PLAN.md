@@ -14,6 +14,13 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Wired dispatch/execution for `trusted_setup`, `constraint_bypass`, `malleability`, `replay_attack`, `witness_leakage`, `mev`, `front_running`, `zkevm`, and `batch_verification`.
   - Added scheduler parsing aliases and finding-deserialization support for the Phase-3 families (`Mev`, `FrontRunning`, `ZkEvm`, `BatchVerification`).
   - Enabled engine invocation of batch verification with trait-object executors.
+- Completed advanced-family runtime wiring for this plan's attack types:
+  - Added `SidechannelAdvanced`, `QuantumResistance`, `PrivacyAdvanced`, and `DefiAdvanced` across core type system, scheduler parsing, oracle grouping/validation, SARIF rule mapping, and engine dispatch.
+  - Added runtime runner implementations for all four advanced families using existing detector primitives and YAML-driven configuration.
+- Completed Phase-2 YAML scaffolding:
+  - Added missing templates: `quantum_resistance.yaml`, `privacy_advanced.yaml`, `defi_advanced.yaml` (with existing `trusted_setup.yaml` and `sidechannel_advanced.yaml`).
+  - Added runnable examples in `campaigns/examples/`: `trusted_setup_audit.yaml`, `sidechannel_audit.yaml`, `quantum_resistance_audit.yaml`, `privacy_audit.yaml`, `defi_audit.yaml`.
+- Added integration dispatch coverage for newly wired families in `tests/phase0_integration_tests.rs`.
 - Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
 - Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
 
@@ -581,13 +588,13 @@ impl Attack for DefiAdvancedAttack {
 ## Implementation Phases
 
 ### Phase 1: Core Infrastructure (Week 1)
-- [ ] Add new `AttackType` variants to `crates/zk-core/src/attack.rs`
+- [x] Add new `AttackType` variants to `crates/zk-core/src/attack.rs`
 - [ ] Update attack registry in `crates/zk-attacks/src/lib.rs`
 - [ ] Add config deserialization support in `src/config/mod.rs`
 
 ### Phase 2: YAML Templates (Week 1-2)
-- [ ] Create all 5 YAML template files in `templates/attacks/`
-- [ ] Create example campaign files in `campaigns/examples/`
+- [x] Create all 5 YAML template files in `templates/attacks/`
+- [x] Create example campaign files in `campaigns/examples/`
 - [ ] Add documentation for each attack type
 
 ### Phase 3: Rust Implementations (Week 2-3)

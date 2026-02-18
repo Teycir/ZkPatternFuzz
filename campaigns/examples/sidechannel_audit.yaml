@@ -1,0 +1,27 @@
+campaign:
+  name: "Side-Channel Security Audit"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "./circuits/ecdsa_verify.circom"
+    main_component: "Main"
+  parameters:
+    field: "bn254"
+    max_constraints: 100000
+    timeout_seconds: 300
+
+attacks:
+  - type: "sidechannel_advanced"
+    description: "Advanced side-channel checks (timing + leakage)"
+    config:
+      sidechannel_advanced:
+        cache_timing:
+          sample_size: 128
+        memory_patterns:
+          sample_count: 128
+
+inputs:
+  - name: "input_0"
+    type: "field"
+    fuzz_strategy: "random"
+

@@ -1,0 +1,11 @@
+attack:
+  type: "trusted_setup"
+  description: "Trusted setup toxicity / setup-poisoning checks"
+  config:
+    trusted_setup_test:
+      enabled: true
+      attempts: 8
+      # Replace with real ptau paths for active setup-poisoning checks.
+      ptau_file_a: "./bins/ptau/powersOfTau28_hez_final.ptau"
+      ptau_file_b: "./bins/ptau/powersOfTau28_hez_final.ptau.alt"
+

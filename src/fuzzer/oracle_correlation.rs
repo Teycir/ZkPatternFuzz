@@ -65,7 +65,9 @@ impl OracleGroup {
             | AttackType::VerificationFuzzing
             | AttackType::RecursiveProof
             | AttackType::CircuitComposition
-            | AttackType::TrustedSetup => OracleGroup::Semantic,
+            | AttackType::TrustedSetup
+            | AttackType::QuantumResistance
+            | AttackType::DefiAdvanced => OracleGroup::Semantic,
 
             // Behavioral group - runtime behavior analysis
             AttackType::ArithmeticOverflow
@@ -75,7 +77,9 @@ impl OracleGroup {
             | AttackType::ReplayAttack
             | AttackType::WitnessLeakage
             | AttackType::InformationLeakage
-            | AttackType::TimingSideChannel => OracleGroup::Behavioral,
+            | AttackType::TimingSideChannel
+            | AttackType::SidechannelAdvanced
+            | AttackType::PrivacyAdvanced => OracleGroup::Behavioral,
 
             // Default to Behavioral for unknown attack types
             _ => OracleGroup::Behavioral,
