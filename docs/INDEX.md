@@ -124,6 +124,16 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+### 5d. [PLUGIN_SYSTEM_GUIDE.md](PLUGIN_SYSTEM_GUIDE.md) - **Plugin Safety Guide**
+**For:** Loading external attack plugins safely in strict engagements  
+**Contains:**
+- plugin discovery path rules
+- strict-mode plugin behavior
+- production hardening defaults
+- troubleshooting for load/registry failures
+
+---
+
 ## 🏗️ Architecture & Development
 
 ### 6. [ARCHITECTURE.md](../ARCHITECTURE.md) - **45 min read**
@@ -224,6 +234,9 @@ docs/
 │
 ├── TROUBLESHOOTING_PLAYBOOK.md
 │   └── Keygen/includes/locks/timeouts triage
+│
+├── PLUGIN_SYSTEM_GUIDE.md
+│   └── Dynamic plugin discovery, strict behavior, hardening defaults
 │
 └── (See root directory for more)
     ├── README.md

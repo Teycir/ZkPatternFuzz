@@ -69,6 +69,9 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
 - Expanded real-backend matrix coverage with standardized outcome reporting:
   - Added `test_real_backend_matrix_smoke` in `tests/backend_integration_tests.rs` to run Circom/Noir/Halo2/Cairo execute + prove/verify smoke lanes under `ZKFUZZ_REAL_BACKENDS=1`.
   - Matrix output now separates `PASS`, `SKIP_INFRA`, and `FAIL` statuses so infrastructure/tooling gaps are explicit and do not get conflated with detection regressions.
+- Added dedicated plugin operations + safety documentation:
+  - Created `docs/PLUGIN_SYSTEM_GUIDE.md` covering discovery paths (`attack_plugin_dirs`), per-attack plugin resolution order, strict-mode failure semantics, and production hardening defaults.
+  - Linked plugin guidance from the docs index (`docs/INDEX.md`) for faster operational lookup.
 - Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
 - Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
 
