@@ -141,5 +141,16 @@ fn cve_pattern_campaigns_meet_minimum_attack_budgets() {
             pattern_file.display(),
             metamorphic_tests
         );
+
+        let witness_collision = find_attack(&yaml, "witness_collision");
+        let witness_samples = witness_collision["config"]["samples"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("{}: missing witness_collision.config.samples", pattern_file.display()));
+        assert!(
+            witness_samples >= 2000,
+            "{}: witness_collision samples={} is below minimum 2000",
+            pattern_file.display(),
+            witness_samples
+        );
     }
 }

@@ -48,7 +48,7 @@ attacks:
   - type: witness_collision
     description: Detect distinct witnesses mapping to same public outputs.
     config:
-      samples: 300
+      samples: 2000
       scope_public_inputs: true
   - type: metamorphic
     description: Transform-based semantic consistency checks.

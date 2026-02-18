@@ -40,7 +40,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
 - Added strict/evidence runtime floors for key attack budgets to reduce under-sampling in readiness runs:
   - Floors now enforce minimum depth for `soundness.forge_attempts`, `metamorphic.num_tests`, `constraint_slice.samples_per_cone`, `constraint_slice.base_witness_attempts`, `spec_inference.sample_count`, and `witness_collision.samples`.
 - Upgraded CVE pattern template budgets to stricter defaults aligned with readiness depth:
-  - `forge_attempts: 1000`, `samples_per_cone: 32`, `base_witness_attempts: 32`, `sample_count: 1000`, `num_tests: 256`.
+  - `forge_attempts: 1000`, `samples_per_cone: 32`, `base_witness_attempts: 32`, `sample_count: 1000`, `num_tests: 256`, `witness_collision.samples: 2000`.
   - Added regression checks to enforce these minima in `tests/cve_pattern_strict_requirements_tests.rs`.
 - Improved autonomous CVE regression execution recall and diagnostics:
   - CVE fixture input synthesis now reconciles partial/no-spec fixtures to executor arity by truncating surplus fields and zero-filling missing values.
