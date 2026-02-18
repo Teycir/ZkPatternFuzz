@@ -301,5 +301,5 @@ pub fn apply_profile(config: &mut super::FuzzConfig, profile_name: ProfileName) 
 }
 
 #[cfg(test)]
-#[path = "profiles_tests.rs"]
+#[path = "tests/profiles_tests.rs"]
 mod tests;

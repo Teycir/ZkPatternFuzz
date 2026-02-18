@@ -140,5 +140,5 @@ impl DerefMut for AdditionalConfig {
 }
 
 #[cfg(test)]
-#[path = "additional_tests.rs"]
+#[path = "tests/additional_tests.rs"]
 mod tests;

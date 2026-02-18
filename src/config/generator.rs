@@ -785,5 +785,5 @@ fn parse_noir_input(line: &str) -> Option<Input> {
 }
 
 #[cfg(test)]
-#[path = "generator_tests.rs"]
+#[path = "tests/generator_tests.rs"]
 mod tests;

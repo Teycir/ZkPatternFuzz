@@ -157,6 +157,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Removed hardcoded legacy engagement folders `mode1/mode2/mode3`; runtime now uses command-native folders `scan/chains/misc`.
    - Updated scan campaign command labeling to emit `command="scan"` in run artifacts so engagement summaries route to `modes.scan`.
    - Updated non-regression engagement contract fixture to assert `scan/` paths and `modes.scan` instead of legacy `misc` fallback.
+77. Enforced stricter config test separation under a dedicated config-test module boundary (`src/config/`):
+   - Moved all config test files out of production config root into `src/config/tests/`.
+   - Updated production config modules to reference test files via explicit `#[cfg(test)] #[path = "tests/..."]`.
+   - Added dedicated config test fixture module `src/config/tests/test_config.rs` and wired `suggester` tests to use shared fixture YAML.
+   - Kept production config root (`src/config/*.rs`) focused on runtime config logic while isolating test assets in `src/config/tests/`.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -282,6 +287,14 @@ Validation:
     - `cargo check -q --workspace`
     - `cargo test -q --test new_scanners_tests test_canonicalization_checker_detects_non_canonical -- --test-threads=1`
     - `cargo test -q --test batch_verification_tests test_batch_mixing_detection_integration -- --test-threads=1`
+59. Config test-module separation validation:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo check -q --workspace`
+    - `cargo test -q test_suggester_creation -- --test-threads=1`
+    - `cargo test -q test_expand_zero -- --test-threads=1`
+    - `cargo test -q test_profile_parsing -- --test-threads=1`
+    - `cargo test -q test_missing_circuit_path_is_critical -- --test-threads=1`
+    - `cargo test -q test_parse_equals_invariant -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 

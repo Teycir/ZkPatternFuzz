@@ -228,5 +228,5 @@ pub fn expand_value_placeholder(
 }
 
 #[cfg(test)]
-#[path = "parser_tests.rs"]
+#[path = "tests/parser_tests.rs"]
 mod tests;

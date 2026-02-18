@@ -1388,5 +1388,5 @@ pub fn parse_chains(config: &super::FuzzConfig) -> Vec<crate::chain_fuzzer::Chai
 }
 
 #[cfg(test)]
-#[path = "v2_tests.rs"]
+#[path = "tests/v2_tests.rs"]
 mod tests;

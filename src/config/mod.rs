@@ -276,3 +276,7 @@ impl FuzzConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/test_config.rs"]
+pub(crate) mod test_config;

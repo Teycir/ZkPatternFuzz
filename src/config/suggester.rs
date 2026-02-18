@@ -305,5 +305,5 @@ impl SuggestedConfigBuilder {
 }
 
 #[cfg(test)]
-#[path = "suggester_tests.rs"]
+#[path = "tests/suggester_tests.rs"]
 mod tests;

@@ -671,5 +671,5 @@ pub fn check_critical_only(config: &FuzzConfig) -> Vec<ReadinessWarning> {
 }
 
 #[cfg(test)]
-#[path = "readiness_tests.rs"]
+#[path = "tests/readiness_tests.rs"]
 mod tests;

@@ -1,4 +1,5 @@
     use super::*;
+    use crate::config::test_config::BASIC_CAMPAIGN_YAML;
     use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 
     #[test]
@@ -55,25 +56,6 @@
     fn test_apply_suggestions() {
         let suggester = YamlSuggester::new();
 
-        let original = r#"
-campaign:
-  name: "Test"
-  version: "1.0"
-  target:
-    framework: "circom"
-    circuit_path: "./test.circom"
-    main_component: "Main"
-
-inputs:
-  - name: "x"
-    type: "field"
-    interesting: ["0", "1"]
-
-attacks:
-  - type: "underconstrained"
-    description: "Test"
-"#;
-
         let suggestions = vec![YamlSuggestion {
             suggestion_type: SuggestionType::AddInterestingValue,
             key: "interesting".to_string(),
@@ -81,7 +63,9 @@ attacks:
             reason: "Near-miss detected".to_string(),
         }];
 
-        let result = suggester.apply_suggestions(original, &suggestions).unwrap();
+        let result = suggester
+            .apply_suggestions(BASIC_CAMPAIGN_YAML, &suggestions)
+            .unwrap();
 
         assert!(result.contains("SUGGESTIONS"));
         assert!(result.contains("Near-miss detected"));
