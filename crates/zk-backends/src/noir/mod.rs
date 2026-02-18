@@ -8,7 +8,7 @@
 use crate::TargetCircuit;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -212,6 +212,19 @@ impl NoirTarget {
             .env("CARGO_TARGET_DIR", &self.build_dir);
 
         Ok(command)
+    }
+
+    fn proof_file_candidates(&self) -> Vec<PathBuf> {
+        let proof_dir = self.project_path.join("proofs");
+        let mut candidates = Vec::new();
+        let mut seen = HashSet::new();
+        for stem in [self.name().to_string(), "main".to_string()] {
+            let candidate = proof_dir.join(format!("{}.proof", stem));
+            if seen.insert(candidate.clone()) {
+                candidates.push(candidate);
+            }
+        }
+        candidates
     }
 
     /// Create a new Noir target from a project path
@@ -904,36 +917,33 @@ impl TargetCircuit for NoirTarget {
             anyhow::bail!("Noir proof generation failed: {}", stderr);
         }
 
-        // Read the generated proof
-        let proof_path = self
-            .project_path
-            .join("proofs")
-            .join(format!("{}.proof", self.name()));
-
-        if proof_path.exists() {
-            Ok(std::fs::read(&proof_path)?)
-        } else {
-            // Try default path
-            let default_proof = self.project_path.join("proofs").join("main.proof");
-            if default_proof.exists() {
-                Ok(std::fs::read(&default_proof)?)
-            } else {
-                anyhow::bail!("Proof file not found")
+        // Read generated proof from known nargo output locations.
+        for proof_path in self.proof_file_candidates() {
+            if proof_path.exists() {
+                return Ok(std::fs::read(&proof_path)?);
             }
         }
+        anyhow::bail!("Proof file not found")
     }
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {
+        if !self.compiled {
+            anyhow::bail!("Circuit not compiled. Call compile() first.");
+        }
+
         let _guard = noir_io_lock()
             .lock()
             .expect("noir IO lock poisoned during verify");
         let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
 
-        // Write proof to file
-        let proof_dir = self.project_path.join("proofs");
-        std::fs::create_dir_all(&proof_dir)?;
-        let proof_path = proof_dir.join(format!("{}.proof", self.name()));
-        let _proof_guard = ScopedFileOverwrite::overwrite(proof_path, proof)?;
+        // Write proof to all known nargo lookup paths for compatibility across noir versions.
+        let mut _proof_guards = Vec::new();
+        for proof_path in self.proof_file_candidates() {
+            if let Some(parent) = proof_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            _proof_guards.push(ScopedFileOverwrite::overwrite(proof_path, proof)?);
+        }
 
         // Verify using nargo
         let output = {
