@@ -66,6 +66,9 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added runnable examples in `campaigns/examples/`: `trusted_setup_audit.yaml`, `sidechannel_audit.yaml`, `quantum_resistance_audit.yaml`, `privacy_audit.yaml`, `defi_audit.yaml`.
 - Added integration dispatch coverage for newly wired families in `tests/phase0_integration_tests.rs`.
 - Added integration coverage for example campaign configs in `tests/example_campaign_configs_tests.rs` to ensure all `campaigns/examples/*_audit.yaml` templates parse and retain expected attack wiring.
+- Expanded real-backend matrix coverage with standardized outcome reporting:
+  - Added `test_real_backend_matrix_smoke` in `tests/backend_integration_tests.rs` to run Circom/Noir/Halo2/Cairo execute + prove/verify smoke lanes under `ZKFUZZ_REAL_BACKENDS=1`.
+  - Matrix output now separates `PASS`, `SKIP_INFRA`, and `FAIL` statuses so infrastructure/tooling gaps are explicit and do not get conflated with detection regressions.
 - Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
 - Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
 

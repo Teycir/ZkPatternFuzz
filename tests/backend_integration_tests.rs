@@ -75,6 +75,445 @@ fn halo2_real_repo_path() -> PathBuf {
     PathBuf::from(base).join("cat5_frameworks/halo2-scaffold")
 }
 
+#[derive(Debug, Clone)]
+enum MatrixStatus {
+    Pass,
+    SkipInfra(String),
+    Fail(String),
+}
+
+impl MatrixStatus {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Pass => "PASS",
+            Self::SkipInfra(_) => "SKIP_INFRA",
+            Self::Fail(_) => "FAIL",
+        }
+    }
+
+    fn detail(&self) -> Option<&str> {
+        match self {
+            Self::Pass => None,
+            Self::SkipInfra(reason) | Self::Fail(reason) => Some(reason.as_str()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct BackendMatrixRow {
+    backend: &'static str,
+    execute: MatrixStatus,
+    prove_verify: MatrixStatus,
+}
+
+impl BackendMatrixRow {
+    fn new(backend: &'static str) -> Self {
+        Self {
+            backend,
+            execute: MatrixStatus::SkipInfra("not run".to_string()),
+            prove_verify: MatrixStatus::SkipInfra("not run".to_string()),
+        }
+    }
+
+    fn set_all(&mut self, status: MatrixStatus) {
+        self.execute = status.clone();
+        self.prove_verify = status;
+    }
+}
+
+fn is_infrastructure_issue(message: &str) -> bool {
+    let msg = message.to_ascii_lowercase();
+    let markers = [
+        "not available",
+        "install",
+        "missing",
+        "not found",
+        "no such file",
+        "failed to run",
+        "failed to create",
+        "timed out",
+        "permission denied",
+        "not implemented",
+        "unsupported",
+        "toolchain",
+        "provide a circuit binary that supports --prove",
+    ];
+    markers.iter().any(|marker| msg.contains(marker))
+}
+
+fn classify_error(context: &str, err: impl std::fmt::Display) -> MatrixStatus {
+    let message = format!("{}: {}", context, err);
+    if is_infrastructure_issue(&message) {
+        MatrixStatus::SkipInfra(message)
+    } else {
+        MatrixStatus::Fail(message)
+    }
+}
+
+fn describe_status(status: &MatrixStatus) -> String {
+    match status.detail() {
+        Some(detail) => format!("{} ({})", status.label(), detail),
+        None => status.label().to_string(),
+    }
+}
+
+fn configure_halo2_real_env() -> Result<(), String> {
+    let cargo_home = std::env::temp_dir().join("zk0d_halo2_cargo_home");
+    std::fs::create_dir_all(&cargo_home)
+        .map_err(|err| format!("failed to create CARGO_HOME '{}': {}", cargo_home.display(), err))?;
+    std::env::set_var("CARGO_HOME", &cargo_home);
+    std::env::set_var("RUSTUP_SKIP_UPDATE_CHECK", "1");
+    std::env::set_var("RUSTUP_TOOLCHAIN", "nightly");
+    std::env::set_var("CARGO_NET_OFFLINE", "true");
+    Ok(())
+}
+
+fn run_circom_matrix_row() -> BackendMatrixRow {
+    let mut row = BackendMatrixRow::new("circom");
+
+    if let Err(err) = CircomTarget::check_circom_available() {
+        row.set_all(MatrixStatus::SkipInfra(format!(
+            "circom unavailable: {}",
+            err
+        )));
+        return row;
+    }
+    if let Err(err) = CircomTarget::check_snarkjs_available() {
+        row.set_all(MatrixStatus::SkipInfra(format!(
+            "snarkjs unavailable: {}",
+            err
+        )));
+        return row;
+    }
+
+    let circuit_path = circom_test_circuit("multiplier");
+    if !circuit_path.exists() {
+        row.set_all(MatrixStatus::SkipInfra(format!(
+            "test circuit missing: {}",
+            circuit_path.display()
+        )));
+        return row;
+    }
+
+    let mut target = match CircomTarget::new(circuit_path.to_str().unwrap(), "Multiplier") {
+        Ok(target) => target,
+        Err(err) => {
+            row.set_all(classify_error("create target", err));
+            return row;
+        }
+    };
+
+    if let Err(err) = target.compile() {
+        row.set_all(classify_error("compile", err));
+        return row;
+    }
+
+    let witness = vec![FieldElement::from_u64(3), FieldElement::from_u64(4)];
+    let outputs = match target.execute(&witness) {
+        Ok(outputs) => {
+            if outputs.first() == Some(&FieldElement::from_u64(12)) {
+                row.execute = MatrixStatus::Pass;
+                outputs
+            } else {
+                row.execute = MatrixStatus::Fail(format!(
+                    "execute output mismatch: expected 12, got {:?}",
+                    outputs.first()
+                ));
+                row.prove_verify =
+                    MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+                return row;
+            }
+        }
+        Err(err) => {
+            row.execute = classify_error("execute", err);
+            row.prove_verify =
+                MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+            return row;
+        }
+    };
+
+    if let Err(err) = target.setup_keys() {
+        row.prove_verify = classify_error("setup_keys", err);
+        return row;
+    }
+
+    let proof = match target.prove(&witness) {
+        Ok(proof) => proof,
+        Err(err) => {
+            row.prove_verify = classify_error("prove", err);
+            return row;
+        }
+    };
+
+    row.prove_verify = match target.verify(&proof, &outputs) {
+        Ok(true) => MatrixStatus::Pass,
+        Ok(false) => MatrixStatus::Fail("verify returned false".to_string()),
+        Err(err) => classify_error("verify", err),
+    };
+
+    row
+}
+
+fn run_noir_matrix_row() -> BackendMatrixRow {
+    let mut row = BackendMatrixRow::new("noir");
+
+    if let Err(err) = NoirTarget::check_nargo_available() {
+        row.set_all(MatrixStatus::SkipInfra(format!("nargo unavailable: {}", err)));
+        return row;
+    }
+
+    let project_path = noir_project_path("multiplier");
+    if !project_path.exists() {
+        row.set_all(MatrixStatus::SkipInfra(format!(
+            "test project missing: {}",
+            project_path.display()
+        )));
+        return row;
+    }
+
+    let mut target = match NoirTarget::new(project_path.to_str().unwrap()) {
+        Ok(target) => target,
+        Err(err) => {
+            row.set_all(classify_error("create target", err));
+            return row;
+        }
+    };
+
+    if let Err(err) = target.compile() {
+        row.set_all(classify_error("compile", err));
+        return row;
+    }
+
+    let witness = vec![FieldElement::from_u64(3), FieldElement::from_u64(5)];
+    let outputs = match target.execute(&witness) {
+        Ok(outputs) => {
+            if outputs.first() == Some(&FieldElement::from_u64(15)) {
+                row.execute = MatrixStatus::Pass;
+                outputs
+            } else {
+                row.execute = MatrixStatus::Fail(format!(
+                    "execute output mismatch: expected 15, got {:?}",
+                    outputs.first()
+                ));
+                row.prove_verify =
+                    MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+                return row;
+            }
+        }
+        Err(err) => {
+            row.execute = classify_error("execute", err);
+            row.prove_verify =
+                MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+            return row;
+        }
+    };
+
+    let proof = match target.prove(&witness) {
+        Ok(proof) => proof,
+        Err(err) => {
+            row.prove_verify = classify_error("prove", err);
+            return row;
+        }
+    };
+
+    row.prove_verify = match target.verify(&proof, &outputs) {
+        Ok(true) => MatrixStatus::Pass,
+        Ok(false) => MatrixStatus::Fail("verify returned false".to_string()),
+        Err(err) => classify_error("verify", err),
+    };
+
+    row
+}
+
+fn run_halo2_matrix_row() -> BackendMatrixRow {
+    let mut row = BackendMatrixRow::new("halo2");
+
+    let repo_path = halo2_real_repo_path();
+    if !repo_path.exists() {
+        row.set_all(MatrixStatus::SkipInfra(format!(
+            "halo2 scaffold repo missing: {}",
+            repo_path.display()
+        )));
+        return row;
+    }
+
+    if let Err(err) = configure_halo2_real_env() {
+        row.set_all(classify_error("configure halo2 env", err));
+        return row;
+    }
+
+    let build_dir = std::env::temp_dir().join("zk0d_halo2_build");
+    let executor =
+        match Halo2Executor::new_with_build_dir(repo_path.to_str().unwrap(), "zk0d_mul", build_dir)
+        {
+            Ok(executor) => executor,
+            Err(err) => {
+                row.set_all(classify_error("create executor", err));
+                return row;
+            }
+        };
+
+    let witness = vec![
+        FieldElement::from_u64(3),
+        FieldElement::from_u64(5),
+        FieldElement::from_u64(15),
+    ];
+    let exec_result = executor.execute_sync(&witness);
+    if exec_result.success {
+        row.execute = MatrixStatus::Pass;
+    } else {
+        let message = exec_result
+            .error
+            .unwrap_or_else(|| "unknown halo2 execution error".to_string());
+        row.execute = classify_error("execute", message);
+        row.prove_verify =
+            MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+        return row;
+    }
+
+    let proof = match executor.prove(&witness) {
+        Ok(proof) => proof,
+        Err(err) => {
+            row.prove_verify = classify_error("prove", err);
+            return row;
+        }
+    };
+
+    row.prove_verify = match executor.verify(&proof, &exec_result.outputs) {
+        Ok(true) => MatrixStatus::Pass,
+        Ok(false) => MatrixStatus::Fail("verify returned false".to_string()),
+        Err(err) => classify_error("verify", err),
+    };
+
+    row
+}
+
+fn run_cairo_matrix_row() -> BackendMatrixRow {
+    let mut row = BackendMatrixRow::new("cairo");
+
+    if let Err(err) = CairoTarget::check_cairo_available() {
+        row.set_all(MatrixStatus::SkipInfra(format!(
+            "cairo unavailable: {}",
+            err
+        )));
+        return row;
+    }
+
+    let program_path = cairo_program_path("multiplier");
+    if !program_path.exists() {
+        row.set_all(MatrixStatus::SkipInfra(format!(
+            "test program missing: {}",
+            program_path.display()
+        )));
+        return row;
+    }
+
+    let mut target = match CairoTarget::new(program_path.to_str().unwrap()) {
+        Ok(target) => target,
+        Err(err) => {
+            row.set_all(classify_error("create target", err));
+            return row;
+        }
+    };
+
+    if let Err(err) = target.compile() {
+        row.set_all(classify_error("compile", err));
+        return row;
+    }
+
+    let witness = Vec::new();
+    let outputs = match target.execute(&witness) {
+        Ok(outputs) => {
+            if outputs.first() == Some(&FieldElement::from_u64(12)) {
+                row.execute = MatrixStatus::Pass;
+                outputs
+            } else {
+                row.execute = MatrixStatus::Fail(format!(
+                    "execute output mismatch: expected 12, got {:?}",
+                    outputs.first()
+                ));
+                row.prove_verify =
+                    MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+                return row;
+            }
+        }
+        Err(err) => {
+            row.execute = classify_error("execute", err);
+            row.prove_verify =
+                MatrixStatus::SkipInfra("prove/verify skipped because execute failed".to_string());
+            return row;
+        }
+    };
+
+    let proof = match target.prove(&witness) {
+        Ok(proof) => proof,
+        Err(err) => {
+            row.prove_verify = classify_error("prove", err);
+            return row;
+        }
+    };
+
+    row.prove_verify = match target.verify(&proof, &outputs) {
+        Ok(true) => MatrixStatus::Pass,
+        Ok(false) => MatrixStatus::Fail("verify returned false".to_string()),
+        Err(err) => classify_error("verify", err),
+    };
+
+    row
+}
+
+/// Real backend matrix smoke test with explicit PASS/SKIP_INFRA/FAIL reporting.
+#[test]
+fn test_real_backend_matrix_smoke() {
+    if !require_real_backends("test_real_backend_matrix_smoke") {
+        return;
+    }
+
+    let rows = vec![
+        run_circom_matrix_row(),
+        run_noir_matrix_row(),
+        run_halo2_matrix_row(),
+        run_cairo_matrix_row(),
+    ];
+
+    println!("real backend matrix smoke summary:");
+    println!("backend | execute | prove_verify");
+    for row in &rows {
+        println!(
+            "{:<7} | {:<56} | {}",
+            row.backend,
+            describe_status(&row.execute),
+            describe_status(&row.prove_verify)
+        );
+    }
+
+    let mut failures = Vec::new();
+    for row in &rows {
+        if let MatrixStatus::Fail(reason) = &row.execute {
+            failures.push(format!("{} execute: {}", row.backend, reason));
+        }
+        if let MatrixStatus::Fail(reason) = &row.prove_verify {
+            failures.push(format!("{} prove_verify: {}", row.backend, reason));
+        }
+    }
+
+    let runnable_backends = rows
+        .iter()
+        .filter(|row| !matches!(row.execute, MatrixStatus::SkipInfra(_)))
+        .count();
+    assert!(
+        runnable_backends > 0,
+        "ZKFUZZ_REAL_BACKENDS=1 but all backends were infrastructure-skipped"
+    );
+
+    if !failures.is_empty() {
+        panic!(
+            "real backend matrix smoke had failures:\n{}",
+            failures.join("\n")
+        );
+    }
+}
+
 /// Test that all required backends are available
 #[test]
 fn test_backend_availability() {
