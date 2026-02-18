@@ -116,21 +116,44 @@ impl ChainScheduler {
         let min_total = guaranteed_per_chain.saturating_mul(chain_count);
         let remaining = budget_ms.saturating_sub(min_total);
 
-        self.chains
+        // Use largest-remainder method for fair allocation
+        let mut allocations: Vec<(ChainAllocation, f64)> = self
+            .chains
             .iter()
             .map(|chain| {
                 let priority = self.get_priority(&chain.name);
                 let priority_share = priority / total_priority;
-                let allocated_remaining = (remaining as f64 * priority_share) as u64;
+                let allocated_remaining_f = remaining as f64 * priority_share;
+                let allocated_remaining = allocated_remaining_f as u64;
                 let total_budget = guaranteed_per_chain + allocated_remaining;
+                let remainder = allocated_remaining_f - allocated_remaining as f64;
 
-                ChainAllocation {
-                    spec: chain.clone(),
-                    budget: Duration::from_millis(total_budget),
-                    priority,
-                }
+                (
+                    ChainAllocation {
+                        spec: chain.clone(),
+                        budget: Duration::from_millis(total_budget),
+                        priority,
+                    },
+                    remainder,
+                )
             })
-            .collect()
+            .collect();
+
+        // Distribute leftover milliseconds using largest-remainder
+        let allocated_sum: u64 = allocations
+            .iter()
+            .map(|(a, _)| a.budget.as_millis() as u64)
+            .sum();
+        let leftover = budget_ms.saturating_sub(allocated_sum);
+        if leftover > 0 {
+            allocations.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            for i in 0..(leftover as usize).min(allocations.len()) {
+                let current_ms = allocations[i].0.budget.as_millis() as u64;
+                allocations[i].0.budget = Duration::from_millis(current_ms + 1);
+            }
+        }
+
+        allocations.into_iter().map(|(a, _)| a).collect()
     }
 
     /// Update priorities based on run results
@@ -352,5 +375,36 @@ mod tests {
         assert_eq!(sorted[0].name, "chain_b");
         assert_eq!(sorted[1].name, "chain_c");
         assert_eq!(sorted[2].name, "chain_a");
+    }
+
+    #[test]
+    fn test_largest_remainder_allocation_preserves_total_and_fairness() {
+        let chains = create_test_chains();
+        let mut scheduler = ChainScheduler::new(chains, Duration::from_millis(1001));
+        scheduler.priorities.insert("chain_a".to_string(), 3.0);
+        scheduler.priorities.insert("chain_b".to_string(), 2.0);
+        scheduler.priorities.insert("chain_c".to_string(), 1.0);
+
+        let allocations = scheduler.allocate();
+        let total_allocated_ms: u64 = allocations.iter().map(|a| a.budget.as_millis() as u64).sum();
+        assert_eq!(total_allocated_ms, 1001);
+
+        let alloc_a = allocations
+            .iter()
+            .find(|a| a.spec.name == "chain_a")
+            .expect("chain_a allocation");
+        let alloc_b = allocations
+            .iter()
+            .find(|a| a.spec.name == "chain_b")
+            .expect("chain_b allocation");
+        let alloc_c = allocations
+            .iter()
+            .find(|a| a.spec.name == "chain_c")
+            .expect("chain_c allocation");
+
+        // Remaining 2ms are split proportionally: 1ms direct to chain_a and 1ms leftover to chain_b.
+        assert_eq!(alloc_a.budget, Duration::from_millis(334));
+        assert_eq!(alloc_b.budget, Duration::from_millis(334));
+        assert_eq!(alloc_c.budget, Duration::from_millis(333));
     }
 }

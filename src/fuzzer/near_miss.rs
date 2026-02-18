@@ -217,6 +217,24 @@ impl NearMissDetector {
         value: &FieldElement,
         constraint: &RangeConstraint,
     ) -> Option<NearMiss> {
+        // Check against min value
+        if let Some(ref min_val) = constraint.min_value {
+            let diff = self.field_difference(value, min_val);
+            if diff < self.config.range_threshold {
+                return Some(NearMiss {
+                    miss_type: NearMissType::AlmostOutOfRange {
+                        value: value.clone(),
+                        boundary: min_val.clone(),
+                        is_upper: false,
+                    },
+                    distance: diff,
+                    location: Some(constraint.wire_index),
+                    value: Some(value.clone()),
+                    suggestion: Some(format!("Value is {:.3}% from min boundary", diff * 100.0)),
+                });
+            }
+        }
+
         // Check against bit length
         if let Some(bit_length) = constraint.bit_length {
             let max_value = if bit_length < 64 {
@@ -307,20 +325,18 @@ impl NearMissDetector {
         None
     }
 
-    /// Calculate relative difference between field elements
+    /// Calculate relative difference between field elements using arithmetic distance
     fn field_difference(&self, a: &FieldElement, b: &FieldElement) -> f64 {
-        let a_bytes = a.to_bytes();
-        let b_bytes = b.to_bytes();
-
-        // XOR and count differing bits
-        let total_bits = a_bytes.len() * 8;
-        let differing_bits: usize = a_bytes
-            .iter()
-            .zip(b_bytes.iter())
-            .map(|(x, y)| (x ^ y).count_ones() as usize)
-            .sum();
-
-        differing_bits as f64 / total_bits as f64
+        let a_u64 = a.to_u64().unwrap_or(0);
+        let b_u64 = b.to_u64().unwrap_or(0);
+        
+        if a_u64 == b_u64 {
+            return 0.0;
+        }
+        
+        let diff = a_u64.abs_diff(b_u64) as f64;
+        let max_val = a_u64.max(b_u64).max(1) as f64;
+        diff / max_val
     }
 
     /// Detect collision near-miss between two hashes
@@ -468,5 +484,44 @@ mod tests {
 
         assert!(nm.is_close());
         assert!(nm.suggestion.is_some());
+    }
+
+    #[test]
+    fn test_range_near_miss_detects_min_boundary_proximity() {
+        let detector = NearMissDetector::new()
+            .with_config(NearMissConfig {
+                range_threshold: 0.2,
+                ..Default::default()
+            })
+            .with_range_constraint(RangeConstraint {
+                wire_index: 0,
+                min_value: Some(FieldElement::from_u64(10)),
+                max_value: None,
+                bit_length: None,
+            });
+
+        let witness = vec![FieldElement::from_u64(11)];
+        let near_misses = detector.detect(&witness);
+        assert_eq!(near_misses.len(), 1);
+        match &near_misses[0].miss_type {
+            NearMissType::AlmostOutOfRange { is_upper, .. } => assert!(!is_upper),
+            _ => panic!("expected AlmostOutOfRange"),
+        }
+    }
+
+    #[test]
+    fn test_range_near_miss_uses_arithmetic_distance_not_bit_hamming() {
+        let detector = NearMissDetector::new().with_range_constraint(RangeConstraint {
+            wire_index: 0,
+            min_value: Some(FieldElement::from_u64(9)),
+            max_value: None,
+            bit_length: None,
+        });
+
+        // Arithmetic distance is 1/9 ~= 0.111 > default 0.05 threshold, so no near miss.
+        // This guards against accidental reintroduction of bit-level Hamming distance.
+        let witness = vec![FieldElement::from_u64(8)];
+        let near_misses = detector.detect(&witness);
+        assert!(near_misses.is_empty());
     }
 }

@@ -345,7 +345,7 @@ impl AdaptiveOrchestrator {
             if !self.config.adaptive_budget {
                 let phase_config = Self::with_phase_timeout(base_config.clone(), phase_budget);
                 let mut phase_engine =
-                    FuzzingEngine::new(phase_config, Some(42), self.config.workers)?;
+                    FuzzingEngine::new(phase_config, None, self.config.workers)?;
                 let phase_report = phase_engine.run(None).await?;
 
                 for attack in &base_config.attacks {
@@ -358,7 +358,7 @@ impl AdaptiveOrchestrator {
 
                     let attack_results = AttackResults {
                         attack_type: attack.attack_type.clone(),
-                        new_coverage: (phase_report.statistics.coverage_percentage as usize).max(1),
+                        new_coverage: phase_report.statistics.coverage_percentage as usize,
                         findings,
                         near_misses: vec![], // Would be populated from near-miss detector
                         iterations: phase_report.statistics.total_executions as usize,
@@ -395,7 +395,7 @@ impl AdaptiveOrchestrator {
                     effective_budget,
                 );
                 let mut phase_engine =
-                    FuzzingEngine::new(phase_config, Some(42), self.config.workers)?;
+                    FuzzingEngine::new(phase_config, None, self.config.workers)?;
                 let phase_report = phase_engine.run(None).await?;
                 executed_any = true;
 
@@ -407,7 +407,7 @@ impl AdaptiveOrchestrator {
                     .collect();
                 let attack_results = AttackResults {
                     attack_type: attack.attack_type,
-                    new_coverage: (phase_report.statistics.coverage_percentage as usize).max(1),
+                    new_coverage: phase_report.statistics.coverage_percentage as usize,
                     findings,
                     near_misses: vec![], // Would be populated from near-miss detector
                     iterations: phase_report.statistics.total_executions as usize,

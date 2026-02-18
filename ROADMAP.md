@@ -60,6 +60,29 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 42. Added release-validation invocation docs in `docs/TARGETS.md` with `gh workflow run` + `gh run watch` command templates and required `workflow_dispatch` inputs.
 43. Added `README.md` "Release Ops" section linking release checklist, release-validation workflow docs, and troubleshooting playbook for gate failures.
 44. Added nightly failure-class dashboard generation (`scripts/benchmark_failure_dashboard.py`) and wired it into deep-scheduled CI matrix runs to emit pass/fail by failure class under `artifacts/benchmark_trends/`.
+45. Added configurable failure-class threshold overrides for nightly dashboard gating:
+   - Script supports environment overrides (`ZKF_FAILURE_MAX_RATE_*`) and repeatable CLI overrides (`--threshold class=rate`).
+   - Deep-scheduled CI lane now reads optional GitHub Actions repository variables for threshold tuning.
+   - Dashboard evaluation applies overrides while preserving existing artifact paths and output schema.
+46. Added dashboard threshold and schema regression tests (`tests/test_benchmark_failure_dashboard.py`):
+   - Validates default/env/CLI threshold resolution and CLI-over-env precedence.
+   - Fails fast on invalid threshold inputs.
+   - Locks dashboard payload top-level schema keys to preserve report contract stability.
+47. Wired failure-dashboard regression tests into release-hardening CI matrix (`.github/workflows/ci.yml`) before benchmark execution.
+   - Added explicit malformed-threshold unit test (`--threshold` without `=`) to tighten input contract checks.
+48. Fixed hardcoded seed=42 in adaptive orchestrator phases to use random seed per phase, preserving user seed control.
+49. Removed `.max(1)` floor on new_coverage in adaptive orchestrator to allow scheduler decay branch to function correctly.
+50. Replaced Hamming distance with arithmetic distance in near-miss field_difference() for reliable near-miss detection.
+51. Added min_value boundary check in near-miss detector to catch lower-bound proximity signals.
+52. Applied largest-remainder method to chain scheduler budget allocation to match adaptive scheduler fairness.
+53. Removed `?` from regex safety validator dangerous quantifier list (lazy/optional patterns are safe).
+54. Replaced O(n) Vec::remove(0) with Vec::drain(0..1) in range oracle hot path.
+55. Changed kill_existing_instances to use `pgrep -x` instead of `pgrep -f` to avoid over-matching.
+56. Fixed regex safety validator compile regression in `src/main.rs` by restoring `anyhow::bail!` callsite.
+57. Added targeted regression coverage for recent logic hardening:
+   - Chain scheduler largest-remainder allocation now has exact-budget/fairness assertion.
+   - Near-miss detector min-boundary proximity + arithmetic-distance semantics are covered by dedicated tests.
+   - Regex safety tests now explicitly allow optional quantifiers while still rejecting truly nested quantifiers.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -102,6 +125,22 @@ Validation:
     - `python3 -c "import yaml, pathlib; yaml.safe_load(pathlib.Path('.github/workflows/release_validation.yml').read_text())"`
 27. Failure dashboard script validation:
     - `python3 scripts/benchmark_failure_dashboard.py --benchmark-root artifacts/benchmark_runs --output-dir artifacts/benchmark_trends`
+28. Failure dashboard threshold override validation:
+    - `python3 scripts/benchmark_failure_dashboard.py --benchmark-root artifacts/benchmark_runs --output-dir artifacts/benchmark_trends --threshold setup_tooling=0.20 --threshold timeouts=0.12`
+29. Failure dashboard unit regression tests:
+    - `python3 -m unittest -q tests/test_benchmark_failure_dashboard.py`
+30. Release-hardening CI YAML validation after dashboard-test step wiring:
+    - `python3 -c "import yaml, pathlib; yaml.safe_load(pathlib.Path('.github/workflows/ci.yml').read_text())"`
+31. Chain scheduler largest-remainder regression test:
+    - `cargo test -q chain_fuzzer::scheduler::tests::test_largest_remainder_allocation_preserves_total_and_fairness -- --test-threads=1`
+32. Near-miss min-boundary regression test:
+    - `cargo test -q fuzzer::near_miss::tests::test_range_near_miss_detects_min_boundary_proximity -- --test-threads=1`
+33. Near-miss arithmetic-distance regression test:
+    - `cargo test -q fuzzer::near_miss::tests::test_range_near_miss_uses_arithmetic_distance_not_bit_hamming -- --test-threads=1`
+34. Regex safety selector tests for optional-vs-nested quantifiers:
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+35. Workspace compile verification after regex safety fix:
+    - `cargo check -q`
 
 ## Status Checklist (2026-02-18)
 

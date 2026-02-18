@@ -112,6 +112,18 @@ Outputs are written under:
 - `artifacts/benchmark_trends/latest_failure_dashboard.json` (nightly failure-class dashboard)
 - `artifacts/benchmark_trends/latest_failure_dashboard.md` (human-readable failure-class pass/fail table)
 
+Failure dashboard class thresholds are configurable without changing output paths:
+
+- Environment overrides:
+  - `ZKF_FAILURE_MAX_RATE_LOCK_CONTENTION`
+  - `ZKF_FAILURE_MAX_RATE_SETUP_TOOLING`
+  - `ZKF_FAILURE_MAX_RATE_TIMEOUTS`
+  - `ZKF_FAILURE_MAX_RATE_STABILITY_RUNTIME`
+  - `ZKF_FAILURE_MAX_RATE_CONTRACT_OR_CONFIG`
+  - `ZKF_FAILURE_MAX_RATE_OTHER_FAILURE`
+- Optional script-level CLI overrides:
+  - `python3 scripts/benchmark_failure_dashboard.py --threshold setup_tooling=0.20 --threshold timeouts=0.12`
+
 The default suites file includes:
 
 - `vulnerable_ground_truth` (positive suite, 5 known vulnerable circuits)

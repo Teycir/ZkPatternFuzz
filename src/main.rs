@@ -1666,7 +1666,7 @@ async fn kill_existing_instances() {
     let current_pid = std::process::id();
 
     let pgrep_output = std::process::Command::new("pgrep")
-        .args(["-f", "zk-fuzzer"])
+        .args(["-x", "zk-fuzzer"])
         .output();
 
     if let Ok(output) = pgrep_output {
@@ -2120,8 +2120,7 @@ fn validate_scan_regex_pattern_safety(pattern: &str) -> anyhow::Result<()> {
             if let Some(has_quant_inside) = paren_stack.pop() {
                 if i + 1 < bytes.len() {
                     let next = bytes[i + 1];
-                    let has_outer_quant =
-                        next == b'*' || next == b'+' || next == b'{' || next == b'?';
+                    let has_outer_quant = next == b'*' || next == b'+' || next == b'{';
                     if has_outer_quant && has_quant_inside {
                         anyhow::bail!(
                             "Potentially dangerous nested quantifier detected in regex pattern: {}",
@@ -2139,7 +2138,7 @@ fn validate_scan_regex_pattern_safety(pattern: &str) -> anyhow::Result<()> {
             continue;
         }
 
-        let is_quantifier = ch == b'*' || ch == b'+' || ch == b'{' || ch == b'?';
+        let is_quantifier = ch == b'*' || ch == b'+' || ch == b'{';
         if is_quantifier && !paren_stack.is_empty() {
             if let Some(last) = paren_stack.last_mut() {
                 *last = true;
@@ -5484,6 +5483,19 @@ patterns:
         let err = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
             .expect_err("unknown synonym bundle must fail");
         assert!(format!("{err:#}").contains("Unknown synonym bundle"));
+    }
+
+    #[test]
+    fn scan_selector_regex_safety_allows_optional_group_quantifier() {
+        validate_scan_regex_pattern_safety(r"(zk[-_ ]?evm)?")
+            .expect("optional group quantifier should be allowed");
+    }
+
+    #[test]
+    fn scan_selector_regex_safety_rejects_nested_dangerous_quantifier() {
+        let err = validate_scan_regex_pattern_safety(r"(a+)+")
+            .expect_err("nested quantifier must be rejected");
+        assert!(format!("{err:#}").contains("nested quantifier"));
     }
 
     #[test]

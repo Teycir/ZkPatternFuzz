@@ -260,7 +260,7 @@ impl RangeProofOracle {
 
         // Keep only recent values
         if self.accepted_values.len() > 100 {
-            self.accepted_values.remove(0);
+            self.accepted_values.drain(0..1);
         }
         self.accepted_values.push((value.clone(), inputs.to_vec()));
 

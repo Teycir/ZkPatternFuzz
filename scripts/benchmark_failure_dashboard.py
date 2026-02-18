@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
@@ -67,6 +68,15 @@ CLASS_THRESHOLDS = {
     "other_failure": 0.05,
 }
 
+FAILURE_CLASSES = [
+    "lock_contention",
+    "setup_tooling",
+    "timeouts",
+    "stability_runtime",
+    "contract_or_config",
+    "other_failure",
+]
+
 
 def _latest_benchmark_dir(benchmark_root: Path) -> Path:
     candidates = sorted(p for p in benchmark_root.glob("benchmark_*") if p.is_dir())
@@ -107,11 +117,51 @@ def _pct(value: float) -> str:
     return f"{value * 100.0:.2f}%"
 
 
+def _parse_rate(raw: str, source: str) -> float:
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid threshold value from {source}: {raw!r}") from exc
+    if value < 0.0 or value > 1.0:
+        raise ValueError(f"Threshold from {source} must be between 0.0 and 1.0, got {value}")
+    return value
+
+
+def _env_key_for_class(class_name: str) -> str:
+    return f"ZKF_FAILURE_MAX_RATE_{class_name.upper()}"
+
+
+def _resolve_thresholds(cli_overrides: List[str]) -> Dict[str, float]:
+    thresholds = dict(CLASS_THRESHOLDS)
+
+    for class_name in FAILURE_CLASSES:
+        env_key = _env_key_for_class(class_name)
+        raw_env = os.environ.get(env_key)
+        if raw_env is None or raw_env.strip() == "":
+            continue
+        thresholds[class_name] = _parse_rate(raw_env.strip(), f"${env_key}")
+
+    for override in cli_overrides:
+        if "=" not in override:
+            raise ValueError(f"Invalid --threshold {override!r}; expected CLASS=RATE")
+        class_name_raw, rate_raw = override.split("=", 1)
+        class_name = class_name_raw.strip().lower()
+        if class_name not in thresholds:
+            valid = ", ".join(FAILURE_CLASSES)
+            raise ValueError(f"Unknown failure class {class_name!r}; valid classes: {valid}")
+        thresholds[class_name] = _parse_rate(
+            rate_raw.strip(), f"--threshold {class_name_raw.strip()}={rate_raw.strip()}"
+        )
+
+    return thresholds
+
+
 def _dashboard(
     summary: Dict[str, Any],
     outcomes: List[Dict[str, Any]],
     summary_path: Path,
     outcomes_path: Path,
+    class_thresholds: Dict[str, float],
 ) -> Dict[str, Any]:
     total_runs = int(summary.get("total_runs", len(outcomes)))
     if total_runs <= 0:
@@ -124,17 +174,10 @@ def _dashboard(
         class_counts[cls] = class_counts.get(cls, 0) + count
 
     class_rows: List[Dict[str, Any]] = []
-    for class_name in [
-        "lock_contention",
-        "setup_tooling",
-        "timeouts",
-        "stability_runtime",
-        "contract_or_config",
-        "other_failure",
-    ]:
+    for class_name in FAILURE_CLASSES:
         count = class_counts.get(class_name, 0)
         rate = (count / total_runs) if total_runs > 0 else 0.0
-        threshold = CLASS_THRESHOLDS[class_name]
+        threshold = class_thresholds[class_name]
         status = "PASS" if rate <= threshold else "FAIL"
         class_rows.append(
             {
@@ -203,10 +246,22 @@ def main() -> int:
         default="artifacts/benchmark_trends",
         help="Directory where dashboard artifacts are written",
     )
+    parser.add_argument(
+        "--threshold",
+        action="append",
+        default=[],
+        metavar="CLASS=RATE",
+        help=(
+            "Override class threshold (repeatable). "
+            "Also supports env ZKF_FAILURE_MAX_RATE_<CLASS>, e.g. "
+            "ZKF_FAILURE_MAX_RATE_SETUP_TOOLING=0.20"
+        ),
+    )
     args = parser.parse_args()
 
     benchmark_root = Path(args.benchmark_root)
     output_dir = Path(args.output_dir)
+    class_thresholds = _resolve_thresholds(args.threshold)
     latest_dir = _latest_benchmark_dir(benchmark_root)
     summary_path = latest_dir / "summary.json"
     outcomes_path = latest_dir / "outcomes.json"
@@ -221,7 +276,7 @@ def main() -> int:
     if not isinstance(outcomes, list):
         raise ValueError(f"Expected list in {outcomes_path}")
 
-    payload = _dashboard(summary, outcomes, summary_path, outcomes_path)
+    payload = _dashboard(summary, outcomes, summary_path, outcomes_path, class_thresholds)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     json_path = output_dir / "latest_failure_dashboard.json"

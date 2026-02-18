@@ -229,6 +229,9 @@ jobs:
       - name: Build benchmark binaries
         run: cargo build --release --bin zk0d_batch --bin zk0d_benchmark
 
+      - name: Validate failure dashboard regression tests
+        run: python3 -m unittest -q tests/test_benchmark_failure_dashboard.py
+
       - name: Run benchmark suites
         env:
           CIRCOM_INCLUDE_PATHS: third_party:node_modules
@@ -261,6 +264,13 @@ jobs:
 
       - name: Generate nightly trend artifacts
         if: matrix.track == 'deep-scheduled'
+        env:
+          ZKF_FAILURE_MAX_RATE_LOCK_CONTENTION: ${{ vars.ZKF_FAILURE_MAX_RATE_LOCK_CONTENTION }}
+          ZKF_FAILURE_MAX_RATE_SETUP_TOOLING: ${{ vars.ZKF_FAILURE_MAX_RATE_SETUP_TOOLING }}
+          ZKF_FAILURE_MAX_RATE_TIMEOUTS: ${{ vars.ZKF_FAILURE_MAX_RATE_TIMEOUTS }}
+          ZKF_FAILURE_MAX_RATE_STABILITY_RUNTIME: ${{ vars.ZKF_FAILURE_MAX_RATE_STABILITY_RUNTIME }}
+          ZKF_FAILURE_MAX_RATE_CONTRACT_OR_CONFIG: ${{ vars.ZKF_FAILURE_MAX_RATE_CONTRACT_OR_CONFIG }}
+          ZKF_FAILURE_MAX_RATE_OTHER_FAILURE: ${{ vars.ZKF_FAILURE_MAX_RATE_OTHER_FAILURE }}
         run: |
           python3 scripts/benchmark_trend_report.py \
             --benchmark-root artifacts/benchmark_runs \
