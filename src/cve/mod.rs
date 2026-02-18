@@ -562,7 +562,10 @@ impl RegressionTest {
                     let message = if passed {
                         None
                     } else {
-                        Some("Expected valid but execution failed".to_string())
+                        Some(match result.error.as_deref() {
+                            Some(err) => format!("Expected valid but execution failed: {}", err),
+                            None => "Expected valid but execution failed".to_string(),
+                        })
                     };
                     (passed, message)
                 }
@@ -1019,6 +1022,28 @@ fn build_inputs_for_test(
             let mut elements = parse_yaml_value(value, field_modulus, rng, None)?;
             inputs.append(&mut elements);
         }
+    }
+
+    if inputs.len() > total_inputs {
+        let dropped = inputs.len() - total_inputs;
+        tracing::debug!(
+            "CVE test '{}' provided {} / {} inputs; truncating {} trailing inputs",
+            tc.name,
+            inputs.len(),
+            total_inputs,
+            dropped
+        );
+        inputs.truncate(total_inputs);
+    } else if inputs.len() < total_inputs {
+        let missing = total_inputs - inputs.len();
+        tracing::debug!(
+            "CVE test '{}' provided {} / {} inputs; zero-filling missing {} inputs",
+            tc.name,
+            inputs.len(),
+            total_inputs,
+            missing
+        );
+        inputs.extend(std::iter::repeat_with(FieldElement::zero).take(missing));
     }
 
     Ok(inputs)

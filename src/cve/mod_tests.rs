@@ -408,3 +408,48 @@ fn test_cve_oracle_falls_back_to_attack_type_route() {
         "attack_type should be used as fallback route when oracle label is unknown"
     );
 }
+
+#[test]
+fn test_build_inputs_for_test_zero_fills_when_fixture_is_partial() {
+    let mut rng = StdRng::seed_from_u64(11);
+    let tc = GeneratedTestCase {
+        name: "partial_fixture".to_string(),
+        inputs: vec![("pathIndices".to_string(), serde_yaml::Value::Number(1.into()))],
+        expected_result: "valid_proof".to_string(),
+        expected_valid: Some(true),
+    };
+
+    let modulus = [0u8; 32];
+    let inputs = build_inputs_for_test(&tc, &[], 3, &modulus, &mut rng)
+        .expect("partial fixture should be zero-filled to executor arity");
+
+    assert_eq!(inputs.len(), 3);
+    assert_eq!(inputs[0], FieldElement::from_u64(1));
+    assert_eq!(inputs[1], FieldElement::zero());
+    assert_eq!(inputs[2], FieldElement::zero());
+}
+
+#[test]
+fn test_build_inputs_for_test_truncates_oversized_fixture() {
+    let mut rng = StdRng::seed_from_u64(17);
+    let tc = GeneratedTestCase {
+        name: "oversized_fixture".to_string(),
+        inputs: vec![(
+            "witness".to_string(),
+            serde_yaml::Value::Sequence(vec![
+                serde_yaml::Value::Number(1.into()),
+                serde_yaml::Value::Number(2.into()),
+                serde_yaml::Value::Number(3.into()),
+            ]),
+        )],
+        expected_result: "valid_proof".to_string(),
+        expected_valid: Some(true),
+    };
+
+    let modulus = [0u8; 32];
+    let inputs = build_inputs_for_test(&tc, &[], 2, &modulus, &mut rng)
+        .expect("oversized fixture should be truncated to executor arity");
+    assert_eq!(inputs.len(), 2);
+    assert_eq!(inputs[0], FieldElement::from_u64(1));
+    assert_eq!(inputs[1], FieldElement::from_u64(2));
+}
