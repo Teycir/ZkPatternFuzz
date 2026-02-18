@@ -162,6 +162,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Updated production config modules to reference test files via explicit `#[cfg(test)] #[path = "tests/..."]`.
    - Added dedicated config test fixture module `src/config/tests/test_config.rs` and wired `suggester` tests to use shared fixture YAML.
    - Kept production config root (`src/config/*.rs`) focused on runtime config logic while isolating test assets in `src/config/tests/`.
+78. Continued CLI factorization by extracting run-outcome, output-lock, and backend-preflight helpers into dedicated modules (`src/main.rs`, `src/run_outcome_docs.rs`, `src/output_lock.rs`, `src/preflight_backend.rs`):
+   - Moved run-window/doc builders and reason-code classification logging from `main.rs` to `run_outcome_docs`.
+   - Moved output lock wait/retry policy from `main.rs` to `output_lock`.
+   - Moved backend preflight option parsing and campaign preflight execution from `main.rs` to `preflight_backend`.
+   - Kept run orchestration callsites in `main.rs` behavior-preserving while reducing mixed concerns.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -295,6 +300,11 @@ Validation:
     - `cargo test -q test_profile_parsing -- --test-threads=1`
     - `cargo test -q test_missing_circuit_path_is_critical -- --test-threads=1`
     - `cargo test -q test_parse_equals_invariant -- --test-threads=1`
+60. Main CLI compile + selector/command regression checks after helper-module extraction batch:
+    - `cargo check -q --bin zk-fuzzer`
+    - `cargo check -q --workspace`
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 

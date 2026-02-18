@@ -1,23 +1,31 @@
 use anyhow::Context;
-use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
+use chrono::{DateTime, Local, Utc};
 use clap::{Parser, Subcommand, ValueEnum};
 use regex::RegexBuilder;
 use serde::Deserialize;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
 };
+mod output_lock;
+mod preflight_backend;
+mod run_outcome_docs;
 mod runtime_misc;
 mod scan_output;
 mod scan_progress;
 mod toolchain_bootstrap;
+use output_lock::acquire_output_dir_lock;
+use preflight_backend::{preflight_campaign, run_backend_preflight};
 use runtime_misc::{
     generate_sample_config, minimize_corpus, print_banner, print_run_window, truncate_str,
     validate_campaign,
+};
+use run_outcome_docs::{
+    completed_run_doc_with_window, failed_run_doc_with_window, log_run_reason_code,
+    running_run_doc_with_window,
 };
 use scan_output::apply_scan_output_suffix_if_present;
 use scan_progress::{
@@ -810,220 +818,6 @@ fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
     }
 }
 
-fn add_run_window_fields(
-    doc: &mut serde_json::Value,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
-    timeout_semantics: &'static str,
-) {
-    let started_local = started_utc.with_timezone(&Local);
-    let expected_end_utc = timeout_seconds
-        .and_then(|s| match i64::try_from(s) {
-            Ok(seconds) => Some(seconds),
-            Err(err) => {
-                tracing::warn!("Timeout seconds value '{}' exceeds i64: {}", s, err);
-                None
-            }
-        })
-        .map(|s| started_utc + ChronoDuration::seconds(s));
-    let expected_end_local = expected_end_utc.map(|dt| dt.with_timezone(&Local));
-
-    if let Some(obj) = doc.as_object_mut() {
-        obj.insert(
-            "run_window".to_string(),
-            serde_json::json!({
-                "started_utc": started_utc.to_rfc3339(),
-                "started_local": started_local.to_rfc3339(),
-                "timeout_seconds": timeout_seconds,
-                "timeout_semantics": timeout_semantics,
-                "expected_latest_end_utc": expected_end_utc.map(|dt| dt.to_rfc3339()),
-                "expected_latest_end_local": expected_end_local.map(|dt| dt.to_rfc3339()),
-                "note": match timeout_semantics {
-                    "wall_clock" => "For this command, --timeout is enforced as a total wall-clock budget for the run.",
-                    _ => "",
-                },
-            }),
-        );
-    }
-}
-
-fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'static str> {
-    let obj = doc.as_object()?;
-    let status = obj
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    let stage = obj
-        .get("stage")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    let error_lc = obj
-        .get("error")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let reason_lc = obj
-        .get("reason")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-
-    if status == "completed_with_critical_findings" {
-        return Some("critical_findings_detected");
-    }
-    if status == "completed" {
-        return Some("completed");
-    }
-    if status == "failed_engagement_contract" {
-        return Some("engagement_contract_failed");
-    }
-    if status == "stale_interrupted" {
-        return Some("stale_interrupted");
-    }
-    if status == "running" {
-        return None;
-    }
-    if error_lc.contains("permission denied") {
-        return Some("filesystem_permission_denied");
-    }
-    if stage == "preflight_backend"
-        && (error_lc.contains("backend required but not available")
-            || error_lc.contains("not found in path")
-            || error_lc.contains("snarkjs not found")
-            || error_lc.contains("circom not found")
-            || error_lc.contains("install circom"))
-    {
-        return Some("backend_tooling_missing");
-    }
-    if error_lc.contains("circom compilation failed") {
-        return Some("circom_compilation_failed");
-    }
-    if error_lc.contains("key generation failed")
-        || error_lc.contains("key setup failed")
-        || error_lc.contains("proving key")
-    {
-        return Some("key_generation_failed");
-    }
-    if error_lc.contains("wall-clock timeout") || reason_lc.contains("wall-clock timeout") {
-        return Some("wall_clock_timeout");
-    }
-    if stage == "acquire_output_lock" {
-        return Some("output_dir_locked");
-    }
-    if stage == "preflight_backend" {
-        return Some("backend_preflight_failed");
-    }
-    if stage == "preflight_invariants" {
-        return Some("missing_invariants");
-    }
-    if stage == "preflight_readiness" {
-        return Some("readiness_failed");
-    }
-    if stage == "parse_chains" && reason_lc.contains("requires chains") {
-        return Some("missing_chains_definition");
-    }
-    if status == "failed" {
-        return Some("runtime_error");
-    }
-    None
-}
-
-fn log_run_reason_code(doc: &serde_json::Value) {
-    if doc
-        .get("status")
-        .and_then(|v| v.as_str())
-        .map(|s| s == "running")
-        .unwrap_or(false)
-    {
-        return;
-    }
-    let Some(code) = classify_run_reason_code(doc) else {
-        return;
-    };
-    let status = doc
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    let stage = doc
-        .get("stage")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-    tracing::info!(
-        "run_outcome_classified: reason_code={} status={} stage={}",
-        code,
-        status,
-        stage
-    );
-}
-
-fn output_lock_wait_seconds() -> u64 {
-    let default_wait_secs = 2u64;
-    let Some(raw) = read_optional_env("ZKF_OUTPUT_LOCK_WAIT_SECS") else {
-        return default_wait_secs;
-    };
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return default_wait_secs;
-    }
-    match trimmed.parse::<u64>() {
-        Ok(value) => value,
-        Err(err) => {
-            tracing::warn!(
-                "Invalid ZKF_OUTPUT_LOCK_WAIT_SECS='{}' ({}); using default {}",
-                trimmed,
-                err,
-                default_wait_secs
-            );
-            default_wait_secs
-        }
-    }
-}
-
-fn acquire_output_dir_lock(
-    output_dir: &Path,
-) -> anyhow::Result<zk_fuzzer::util::file_lock::FileLock> {
-    let max_wait = Duration::from_secs(output_lock_wait_seconds());
-    let started = Instant::now();
-    let mut attempts: u32 = 0;
-
-    loop {
-        attempts += 1;
-        match zk_fuzzer::util::file_lock::lock_dir_exclusive(
-            output_dir,
-            ".zkfuzz.lock",
-            zk_fuzzer::util::file_lock::LockMode::NonBlocking,
-        ) {
-            Ok(lock) => {
-                if attempts > 1 {
-                    tracing::info!(
-                        "Acquired output lock after {} attempts (waited {:.2}s): {}",
-                        attempts,
-                        started.elapsed().as_secs_f64(),
-                        output_dir.display()
-                    );
-                }
-                return Ok(lock);
-            }
-            Err(err) => {
-                let err_lc = format!("{:#}", err).to_ascii_lowercase();
-                if max_wait.is_zero()
-                    || started.elapsed() >= max_wait
-                    || err_lc.contains("permission denied")
-                {
-                    return Err(err.context(format!(
-                        "Output lock acquisition exhausted after {} attempt(s), waited {:.2}s",
-                        attempts,
-                        started.elapsed().as_secs_f64()
-                    )));
-                }
-
-                let backoff_ms = 100u64.saturating_mul(u64::from(attempts.min(20)));
-                std::thread::sleep(Duration::from_millis(backoff_ms));
-            }
-        }
-    }
-}
-
 fn acquire_output_lock_or_write_failure(
     dry_run: bool,
     output_dir: &Path,
@@ -1068,135 +862,6 @@ fn acquire_output_lock_or_write_failure(
     }
 }
 
-fn parse_preflight_executor_options(
-    config: &FuzzConfig,
-) -> anyhow::Result<zk_fuzzer::executor::ExecutorFactoryOptions> {
-    let additional = &config.campaign.parameters.additional;
-    let mut options = zk_fuzzer::executor::ExecutorFactoryOptions {
-        build_dir_base: additional
-            .get_path("build_dir_base")
-            .or_else(|| additional.get_path("build_dir")),
-        circom_build_dir: additional.get_path("circom_build_dir"),
-        noir_build_dir: additional.get_path("noir_build_dir"),
-        halo2_build_dir: additional.get_path("halo2_build_dir"),
-        cairo_build_dir: additional.get_path("cairo_build_dir"),
-        strict_backend: true,
-        ..Default::default()
-    };
-
-    if let Some(auto_setup) = additional.get_bool("circom_auto_setup_keys") {
-        options.circom_auto_setup_keys = auto_setup;
-    }
-    if let Some(require_setup) = additional.get_bool("circom_require_setup_keys") {
-        options.circom_require_setup_keys = require_setup;
-        if require_setup {
-            options.circom_auto_setup_keys = true;
-        }
-    }
-    options.circom_ptau_path = additional.get_path("circom_ptau_path");
-    options.circom_snarkjs_path = additional.get_path("circom_snarkjs_path");
-    if let Some(skip_compile) = additional.get_bool("circom_skip_compile_if_artifacts") {
-        options.circom_skip_compile_if_artifacts = skip_compile;
-    }
-    if let Some(skip_check) = additional.get_bool("circom_skip_constraint_check") {
-        if skip_check {
-            anyhow::bail!(
-                "Invalid config: circom_skip_constraint_check=true is disallowed. \
-                 Mode 2/3 require real constraint coverage. Set circom_skip_constraint_check: false."
-            );
-        }
-        options.circom_skip_constraint_check = false;
-    }
-    if let Some(sanity_check) = additional.get_bool("circom_witness_sanity_check") {
-        options.circom_witness_sanity_check = sanity_check;
-    }
-
-    if let Some(value) = additional.get("include_paths") {
-        let mut paths = Vec::new();
-        match value {
-            serde_yaml::Value::Sequence(items) => {
-                for item in items {
-                    if let Some(raw) = item.as_str() {
-                        let trimmed = raw.trim();
-                        if !trimmed.is_empty() {
-                            paths.push(PathBuf::from(trimmed));
-                        }
-                    }
-                }
-            }
-            serde_yaml::Value::String(s) => {
-                for part in s.split(',') {
-                    let trimmed = part.trim();
-                    if !trimmed.is_empty() {
-                        paths.push(PathBuf::from(trimmed));
-                    }
-                }
-            }
-            _ => {}
-        }
-        if !paths.is_empty() {
-            options.circom_include_paths = paths;
-        }
-    }
-
-    Ok(options)
-}
-
-fn run_backend_preflight(config: &FuzzConfig) -> anyhow::Result<()> {
-    let framework = config.campaign.target.framework;
-    let circuit_path = config
-        .campaign
-        .target
-        .circuit_path
-        .to_string_lossy()
-        .to_string();
-    let main_component = config.campaign.target.main_component.clone();
-    let options = parse_preflight_executor_options(config)?;
-
-    tracing::info!(
-        "Backend preflight: framework={:?}, target='{}', component='{}'",
-        framework,
-        circuit_path,
-        main_component
-    );
-
-    let _executor = zk_fuzzer::executor::ExecutorFactory::create_with_options(
-        framework,
-        &circuit_path,
-        &main_component,
-        &options,
-    )
-    .context("Backend preflight failed while initializing executor")?;
-
-    tracing::info!("Backend preflight passed");
-    Ok(())
-}
-
-fn preflight_campaign(config_path: &str, setup_keys: bool) -> anyhow::Result<()> {
-    tracing::info!("Running backend preflight for campaign: {}", config_path);
-    let mut config = FuzzConfig::from_yaml(config_path)?;
-
-    if setup_keys {
-        config.campaign.parameters.additional.insert(
-            "circom_auto_setup_keys".to_string(),
-            serde_yaml::Value::Bool(true),
-        );
-        config.campaign.parameters.additional.insert(
-            "circom_require_setup_keys".to_string(),
-            serde_yaml::Value::Bool(true),
-        );
-    }
-
-    run_backend_preflight(&config)?;
-
-    println!("✓ Backend preflight passed");
-    if setup_keys {
-        println!("✓ Circom key-setup preflight passed");
-    }
-
-    Ok(())
-}
-
 fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
     let base = run_signal_dir();
     let report_dir = engagement_root_dir(run_id);
@@ -1234,31 +899,6 @@ fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Valu
     write_global_run_signal(run_id, value);
 }
 
-fn running_run_doc_with_window(
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    output_dir: &Path,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
-) -> serde_json::Value {
-    let mut doc = serde_json::json!({
-        "status": "running",
-        "command": command,
-        "run_id": run_id,
-        "stage": stage,
-        "pid": std::process::id(),
-        "campaign_path": config_path,
-        "campaign_name": campaign_name,
-        "output_dir": output_dir.display().to_string(),
-        "started_utc": started_utc.to_rfc3339(),
-    });
-    add_run_window_fields(&mut doc, started_utc, timeout_seconds, "wall_clock");
-    doc
-}
-
 fn seed_running_run_artifact(
     output_dir: &Path,
     command: &str,
@@ -1282,63 +922,6 @@ fn seed_running_run_artifact(
     );
     doc["options"] = options;
     write_run_artifacts(output_dir, run_id, &doc);
-}
-
-fn completed_run_doc_with_window(
-    command: &str,
-    run_id: &str,
-    status: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    output_dir: &Path,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
-) -> serde_json::Value {
-    let ended_utc = Utc::now();
-    let mut doc = serde_json::json!({
-        "status": status,
-        "command": command,
-        "run_id": run_id,
-        "stage": stage,
-        "pid": std::process::id(),
-        "campaign_path": config_path,
-        "campaign_name": campaign_name,
-        "output_dir": output_dir.display().to_string(),
-        "started_utc": started_utc.to_rfc3339(),
-        "ended_utc": ended_utc.to_rfc3339(),
-        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-    });
-    add_run_window_fields(&mut doc, started_utc, timeout_seconds, "wall_clock");
-    doc
-}
-
-fn failed_run_doc_with_window(
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    output_dir: &Path,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
-) -> serde_json::Value {
-    let ended_utc = Utc::now();
-    let mut doc = serde_json::json!({
-        "status": "failed",
-        "command": command,
-        "run_id": run_id,
-        "stage": stage,
-        "pid": std::process::id(),
-        "campaign_path": config_path,
-        "campaign_name": campaign_name,
-        "output_dir": output_dir.display().to_string(),
-        "started_utc": started_utc.to_rfc3339(),
-        "ended_utc": ended_utc.to_rfc3339(),
-        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
-    });
-    add_run_window_fields(&mut doc, started_utc, timeout_seconds, "wall_clock");
-    doc
 }
 
 fn write_failed_mode_run_artifact_with_error(
