@@ -255,7 +255,7 @@ impl AdaptiveScheduler {
     pub fn best_attack(&self) -> Option<AttackType> {
         self.attack_scores
             .iter()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(k, _)| k.clone())
     }
 

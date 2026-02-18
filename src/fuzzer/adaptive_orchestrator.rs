@@ -276,7 +276,7 @@ impl AdaptiveOrchestrator {
             }
         }
 
-        results.duration = self.start_time.unwrap().elapsed();
+        results.duration = self.start_time.map(|s| s.elapsed()).unwrap_or_default();
 
         // Log summary
         self.log_summary(&results);
