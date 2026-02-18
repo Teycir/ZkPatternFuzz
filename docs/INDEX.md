@@ -262,6 +262,7 @@ docs/
 
 **YAML Configuration**
 - [tests/campaigns/](../tests/campaigns/) - Real examples
+- `cargo run --bin zk0d_config_migrate -- <config.yaml> --check` - Legacy-shape migration check
 
 **Attack Types**
 - [README.md](../README.md) - Attack type summary

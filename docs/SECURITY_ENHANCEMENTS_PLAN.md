@@ -72,6 +72,10 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
 - Added dedicated plugin operations + safety documentation:
   - Created `docs/PLUGIN_SYSTEM_GUIDE.md` covering discovery paths (`attack_plugin_dirs`), per-attack plugin resolution order, strict-mode failure semantics, and production hardening defaults.
   - Linked plugin guidance from the docs index (`docs/INDEX.md`) for faster operational lookup.
+- Added config migration workflow for legacy YAML ergonomics:
+  - Added `src/bin/zk0d_config_migrate.rs` with `--check`, `--in-place`, `--out`, and JSON `--report` support.
+  - Added migration transformer + compatibility report model in `src/config/migration.rs` with explicit `rewritten_keys` and `deprecated_constructs`.
+  - Added regression coverage in `src/config/tests/migration_tests.rs` for legacy additional hoisting, plugin field migration, and plugin-dir normalization.
 - Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
 - Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
 

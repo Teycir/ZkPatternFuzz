@@ -15,6 +15,7 @@
 
 pub mod additional;
 pub mod generator;
+pub mod migration;
 pub mod parser;
 pub mod profiles; // Phase 0: Embedded configuration profiles
 pub mod readiness; // Phase 4C: 0-day readiness validation
@@ -22,6 +23,7 @@ pub mod suggester;
 pub mod v2;
 
 pub use additional::AdditionalConfig;
+pub use migration::{migrate_config_value, MigrationChange, MigrationReport};
 pub use profiles::{apply_profile, EmbeddedProfile, ProfileName};
 pub use readiness::{check_0day_readiness, ReadinessLevel, ReadinessReport, ReadinessWarning};
 pub use suggester::YamlSuggester;
