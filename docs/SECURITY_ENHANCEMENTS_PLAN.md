@@ -80,6 +80,9 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Restored legacy `run`, `evidence`, and `chains` subcommands in `src/main.rs` as compatibility wrappers over existing execution paths.
   - Restored legacy default behavior for `--config <campaign.yaml>` without a subcommand (defaults to run-mode execution).
   - Added regression coverage in `tests/cli_command_parity_tests.rs` for root help parity and legacy command smoke paths.
+- Started `main.rs` decomposition with zero-behavior-change extraction:
+  - Moved CLI structs/enums and run option types into `src/cli/mod.rs` (`Cli`, `Commands`, `BinsCommands`, `ScanFamily`, `CampaignRunOptions`, `ChainRunOptions`).
+  - Kept command-parity regression green (`tests/cli_command_parity_tests.rs`) after extraction.
 - Net effect: roadmap execution coverage improved immediately while this document's 5 new advanced attack families are still being implemented.
 - Remaining work in this plan remains valid and should now build on top of this runtime baseline instead of parallel one-off wiring.
 
