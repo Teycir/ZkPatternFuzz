@@ -210,6 +210,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Moved stale-run detection/marker emission (`pid_is_alive`, `mark_stale_previous_run_if_any`) into `run_lifecycle`.
    - Moved early failure artifact emitters (`write_failed_run_artifact`, `write_failed_run_artifact_with_error`) into `run_lifecycle`.
    - Updated panic/signal and early-config-failure callsites to use shared lifecycle helper module.
+88. Continued CLI modularization by extracting output-lock failure helper (`src/main.rs`, `src/run_lifecycle.rs`):
+   - Moved `acquire_output_lock_or_write_failure` from `main.rs` into `run_lifecycle`.
+   - Reused the shared early-failure artifact emitter from lifecycle module for lock-failure reporting.
+   - Kept pre-run lifecycle initialization flow unchanged in `initialize_campaign_run_lifecycle`.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -395,6 +399,8 @@ Validation:
 68. Main CLI compile verification after run-lifecycle helper module extraction:
     - `cargo check -q`
 69. Main CLI compile verification after stale-run/early-failure helper extraction:
+    - `cargo check -q`
+70. Main CLI compile verification after output-lock helper extraction:
     - `cargo check -q`
 
 ## Status Checklist (2026-02-18)

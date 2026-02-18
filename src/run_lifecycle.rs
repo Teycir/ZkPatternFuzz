@@ -4,6 +4,7 @@ use zk_fuzzer::config::{FuzzConfig, ReadinessReport};
 
 use crate::engagement_artifacts::{best_effort_write_json, write_global_run_signal, write_run_artifacts};
 use crate::engagement_root_dir;
+use crate::output_lock::acquire_output_dir_lock;
 use crate::preflight_backend::run_backend_preflight;
 use crate::run_outcome_docs::{
     failed_run_doc_with_window, log_run_reason_code, running_run_doc_with_window,
@@ -175,6 +176,50 @@ pub(crate) fn run_backend_preflight_or_emit_failure(
     }
 
     Ok(())
+}
+
+pub(crate) fn acquire_output_lock_or_write_failure(
+    dry_run: bool,
+    output_dir: &Path,
+    command: &str,
+    run_id: &str,
+    stage: &str,
+    config_path: &str,
+    campaign_name: &str,
+    started_utc: &DateTime<Utc>,
+) -> anyhow::Result<Option<zk_fuzzer::util::file_lock::FileLock>> {
+    if dry_run {
+        return Ok(None);
+    }
+
+    match acquire_output_dir_lock(output_dir) {
+        Ok(lock) => Ok(Some(lock)),
+        Err(err) => {
+            let err_text = format!("{:#}", err);
+            let ended_utc = Utc::now();
+            let doc = serde_json::json!({
+                "status": "failed",
+                "command": command,
+                "run_id": run_id,
+                "stage": stage,
+                "pid": std::process::id(),
+                "campaign_path": config_path,
+                "campaign_name": campaign_name,
+                "output_dir": output_dir.display().to_string(),
+                "started_utc": started_utc.to_rfc3339(),
+                "ended_utc": ended_utc.to_rfc3339(),
+                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "error": err_text.clone(),
+                "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
+            });
+            write_failed_run_artifact(run_id, &doc);
+            Err(anyhow::anyhow!(
+                "Output directory is already in use (locked): {}. Error: {}",
+                output_dir.display(),
+                err_text
+            ))
+        }
+    }
 }
 
 pub(crate) fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
