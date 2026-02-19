@@ -1,8 +1,10 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
+use zk_fuzzer::config::ReportingConfig;
 use zk_fuzzer::chain_fuzzer::metrics::DepthMetricsSummary;
 use zk_fuzzer::chain_fuzzer::ChainFinding;
+use zk_fuzzer::reporting::FuzzReport;
 
 use crate::run_outcome_docs::completed_run_doc_with_window;
 
@@ -251,4 +253,21 @@ pub(crate) fn build_chain_completion_doc(ctx: &ChainCompletionDocContext<'_>) ->
         }
     });
     doc
+}
+
+pub(crate) fn save_standard_chain_report(
+    campaign_name: &str,
+    chain_findings: &[ChainFinding],
+    reporting: ReportingConfig,
+    run_execution_count: u64,
+) -> anyhow::Result<()> {
+    let standard_findings: Vec<_> = chain_findings.iter().map(|cf| cf.to_finding()).collect();
+    let mut report = FuzzReport::new(
+        campaign_name.to_string(),
+        standard_findings,
+        zk_core::CoverageMap::default(),
+        reporting,
+    );
+    report.statistics.total_executions = run_execution_count;
+    report.save_to_files()
 }

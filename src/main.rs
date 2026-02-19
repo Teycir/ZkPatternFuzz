@@ -7,6 +7,7 @@ mod output_lock;
 mod preflight_backend;
 mod run_bootstrap;
 mod run_chain_corpus;
+mod run_chain_config;
 mod run_chain_quality;
 mod run_chain_reports;
 mod run_chain_ui;
@@ -39,10 +40,12 @@ use run_chain_corpus::{
     chain_completed_and_unique_cov_from_path, load_chain_baseline_metrics,
     load_chain_final_metrics,
 };
-use run_chain_quality::collect_chain_quality_failures;
+use run_chain_config::apply_chain_mode_overrides;
+use run_chain_quality::{collect_chain_quality_failures, load_chain_engagement_settings};
 use run_chain_reports::{
     build_chain_completion_doc, build_chain_report_json, build_chain_report_markdown,
-    chain_completion_status, write_chain_report_json, write_chain_report_markdown,
+    chain_completion_status, save_standard_chain_report, write_chain_report_json,
+    write_chain_report_markdown,
 };
 use run_chain_ui::{print_chain_mode_banner, print_chain_results, print_chains_to_fuzz};
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
@@ -716,7 +719,6 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics};
     use zk_fuzzer::config::parse_chains;
     use zk_fuzzer::fuzzer::FuzzingEngine;
-    use zk_fuzzer::reporting::FuzzReport;
 
     let started_utc = Utc::now();
     let command = "chains";
@@ -779,33 +781,8 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         );
     }
 
-    // Force evidence mode settings for chain fuzzing
-    config
-        .campaign
-        .parameters
-        .additional
-        .insert("evidence_mode".to_string(), serde_yaml::Value::Bool(true));
-    config.campaign.parameters.additional.insert(
-        "engagement_strict".to_string(),
-        serde_yaml::Value::Bool(true),
-    );
-    config
-        .campaign
-        .parameters
-        .additional
-        .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
-    config.campaign.parameters.additional.insert(
-        "chain_budget_seconds".to_string(),
-        serde_yaml::Value::Number(serde_yaml::Number::from(options.timeout)),
-    );
-    config.campaign.parameters.additional.insert(
-        "chain_iterations".to_string(),
-        serde_yaml::Value::Number(serde_yaml::Number::from(options.iterations)),
-    );
-    config.campaign.parameters.additional.insert(
-        "chain_resume".to_string(),
-        serde_yaml::Value::Bool(options.resume),
-    );
+    // Force evidence mode settings for chain fuzzing.
+    apply_chain_mode_overrides(&mut config, &options);
 
     // Pre-flight readiness check (chains need assertions; strict mode blocks silent runs).
     stage = "preflight_readiness";
@@ -945,24 +922,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let run_execution_count = final_execution_count.saturating_sub(baseline_execution_count);
 
     // Engagement contract for Mode 3: refuse to report a "clean" run when exploration is too narrow.
-    let engagement_strict = config
-        .campaign
-        .parameters
-        .additional
-        .get_bool("engagement_strict")
-        .unwrap_or(true);
-    let min_unique_coverage_bits = config
-        .campaign
-        .parameters
-        .additional
-        .get_usize("engagement_min_chain_unique_coverage_bits")
-        .unwrap_or(2);
-    let min_completed_per_chain = config
-        .campaign
-        .parameters
-        .additional
-        .get_usize("engagement_min_chain_completed_per_chain")
-        .unwrap_or(1);
+    let engagement = load_chain_engagement_settings(&config);
+    let engagement_strict = engagement.strict;
+    let min_unique_coverage_bits = engagement.min_unique_coverage_bits;
+    let min_completed_per_chain = engagement.min_completed_per_chain;
 
     let quality_failures = collect_chain_quality_failures(
         &chains,
@@ -1063,19 +1026,13 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     }
     tracing::info!("Saved chain markdown report to {:?}", chain_md_path);
 
-    // Convert chain findings to regular findings for standard report
-    let standard_findings: Vec<_> = chain_findings.iter().map(|cf| cf.to_finding()).collect();
-
-    // Create standard report with chain findings merged in
-    let mut report = FuzzReport::new(
-        config.campaign.name.clone(),
-        standard_findings,
-        zk_core::CoverageMap::default(),
-        config.reporting.clone(),
-    );
-    report.statistics.total_executions = run_execution_count;
     stage = "save_standard_report";
-    if let Err(err) = report.save_to_files() {
+    if let Err(err) = save_standard_chain_report(
+        &config.campaign.name,
+        &chain_findings,
+        config.reporting.clone(),
+        run_execution_count,
+    ) {
         write_failed_mode_run_artifact_with_error(
             &output_dir,
             command,

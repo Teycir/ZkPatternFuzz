@@ -4,6 +4,37 @@ use zk_fuzzer::chain_fuzzer::{ChainCorpusMeta, ChainSpec};
 
 use crate::chain_completed_and_unique_cov_from_path;
 
+pub(crate) struct ChainEngagementSettings {
+    pub strict: bool,
+    pub min_unique_coverage_bits: usize,
+    pub min_completed_per_chain: usize,
+}
+
+pub(crate) fn load_chain_engagement_settings(
+    config: &zk_fuzzer::config::FuzzConfig,
+) -> ChainEngagementSettings {
+    ChainEngagementSettings {
+        strict: config
+            .campaign
+            .parameters
+            .additional
+            .get_bool("engagement_strict")
+            .unwrap_or(true),
+        min_unique_coverage_bits: config
+            .campaign
+            .parameters
+            .additional
+            .get_usize("engagement_min_chain_unique_coverage_bits")
+            .unwrap_or(2),
+        min_completed_per_chain: config
+            .campaign
+            .parameters
+            .additional
+            .get_usize("engagement_min_chain_completed_per_chain")
+            .unwrap_or(1),
+    }
+}
+
 pub(crate) fn collect_chain_quality_failures(
     chains: &[ChainSpec],
     final_meta: Option<&ChainCorpusMeta>,

@@ -304,6 +304,15 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `ChainBaselineMetrics`/`ChainFinalMetrics` containers and shared loaders (`load_chain_baseline_metrics`, `load_chain_final_metrics`).
    - Centralized resume-aware baseline execution/coverage derivation and metadata-first final corpus metric loading.
    - Replaced duplicated baseline/final corpus metric blocks in `run_chain_campaign` with helper calls while preserving fallback behavior.
+110. Continued chain-mode modularization by extracting forced chain-mode runtime overrides (`src/main.rs`, `src/run_chain_config.rs`):
+   - Added `apply_chain_mode_overrides(...)` to centralize enforced chain-mode parameter injection (evidence/strict backend/engagement and chain runtime knobs).
+   - Replaced the inline override insertion block in `run_chain_campaign` with the shared helper.
+111. Continued chain-mode modularization by extracting engagement-threshold loading (`src/main.rs`, `src/run_chain_quality.rs`):
+   - Added `ChainEngagementSettings` and `load_chain_engagement_settings(...)` to centralize strict mode and threshold reads from campaign parameters.
+   - Replaced repeated per-key reads in `run_chain_campaign` with the typed helper result.
+112. Continued chain-mode modularization by extracting standard report persistence (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Added `save_standard_chain_report(...)` to centralize conversion from chain findings to standard findings and report save flow.
+   - Replaced inline standard-report assembly/save block in `run_chain_campaign` with a single helper call.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -586,6 +595,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 113. Engagement-dir panic-path regression spot-check after chain-corpus metric loader extraction:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+114. Main CLI compile verification after chain setup/engagement/report helper extraction batch:
+    - `cargo check -q`
+115. Selector/command regression spot-check after chain setup/engagement/report helper extraction batch:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+116. Engagement-dir panic-path regression spot-check after chain setup/engagement/report helper extraction batch:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
