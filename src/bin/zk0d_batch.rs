@@ -200,6 +200,30 @@ struct TemplateOutcomeReason {
     status: Option<String>,
     stage: Option<String>,
     reason_code: String,
+    high_confidence_detected: bool,
+}
+
+fn report_has_high_confidence_finding(report_path: &Path) -> bool {
+    let raw = match fs::read_to_string(report_path) {
+        Ok(raw) => raw,
+        Err(_) => return false,
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(parsed) => parsed,
+        Err(_) => return false,
+    };
+    let Some(findings) = parsed.get("findings").and_then(|v| v.as_array()) else {
+        return false;
+    };
+    findings.iter().any(|finding| {
+        let description_lc = finding
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        description_lc.contains("correlation: high")
+            || description_lc.contains("correlation: critical")
+    })
 }
 
 fn parse_family(value: &str) -> anyhow::Result<Family> {
@@ -1066,6 +1090,7 @@ fn collect_template_outcome_reasons(
                     status: None,
                     stage: None,
                     reason_code: "run_outcome_missing".to_string(),
+                    high_confidence_detected: false,
                 };
             }
 
@@ -1078,6 +1103,7 @@ fn collect_template_outcome_reasons(
                         status: None,
                         stage: None,
                         reason_code: "run_outcome_unreadable".to_string(),
+                        high_confidence_detected: false,
                     };
                 }
             };
@@ -1091,6 +1117,7 @@ fn collect_template_outcome_reasons(
                         status: None,
                         stage: None,
                         reason_code: "run_outcome_invalid_json".to_string(),
+                        high_confidence_detected: false,
                     };
                 }
             };
@@ -1103,6 +1130,7 @@ fn collect_template_outcome_reasons(
                 .get("stage")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+            let report_path = artifacts_root.join(run_root).join(&suffix).join("report.json");
 
             TemplateOutcomeReason {
                 template_file: template.file_name.clone(),
@@ -1110,6 +1138,7 @@ fn collect_template_outcome_reasons(
                 status,
                 stage,
                 reason_code: classify_run_reason_code(&parsed).to_string(),
+                high_confidence_detected: report_has_high_confidence_finding(&report_path),
             }
         })
         .collect()
@@ -1154,15 +1183,16 @@ fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
     }
 
     println!("REASON_TSV_START");
-    println!("template\tsuffix\treason_code\tstatus\tstage");
+    println!("template\tsuffix\treason_code\tstatus\tstage\thigh_confidence_detected");
     for reason in reasons {
         println!(
-            "{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}",
             reason.template_file,
             reason.suffix,
             reason.reason_code,
             reason.status.as_deref().unwrap_or("unknown"),
             reason.stage.as_deref().unwrap_or("unknown"),
+            if reason.high_confidence_detected { "1" } else { "0" },
         );
     }
     println!("REASON_TSV_END");

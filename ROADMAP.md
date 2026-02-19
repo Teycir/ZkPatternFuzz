@@ -19,11 +19,11 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ### Exit Criteria Progress
 - ✅ Phase 0 exit criteria (met on 20-run fast matrix: attack-stage reach 90%, no output-lock failures)
-- ❌ Phase 1 exit criteria (in progress: recall improved to 60%, but safe FPR remains 50%)
+- ❌ Phase 1 exit criteria (in progress: recall improved to 60%, but safe high-confidence FPR remains 40%)
 - ❌ Phase 2 exit criteria (pending fresh clone validation)
 - ❌ Phase 3 exit criteria (pending 10-target benchmark)
 - ❌ Phase 3A exit criteria (pending integrated campaign runs)
-- ❌ Phase 4 exit criteria (recall 0%, safe FPR 0%)
+- ❌ Phase 4 exit criteria (recall 60%, safe high-confidence FPR 40%)
 - ❌ Phase 5 exit criteria (pending release candidate validation)
 
 ### Definition of Done Progress
@@ -51,8 +51,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add `zk-fuzzer preflight` command for readiness checks
 
 ### Exit Criteria
-- [ ] 20-run matrix on 5 local targets has 0 output-lock failures
-- [ ] >=90% runs reach attack execution stage (not blocked in setup)
+- [x] 20-run matrix on 5 local targets has 0 output-lock failures
+- [x] >=90% runs reach attack execution stage (not blocked in setup)
 
 **Current Status:** ✅ Met on latest fast 20-run matrix (`benchmark_20260219_154805`): attack-stage reach `90%` with no output-lock failures
 
@@ -77,7 +77,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Recall improves by >=20 percentage points over baseline
 - [ ] High-confidence false positives remain bounded (<=5% on safe suite)
 
-**Current Status:** ⚠️ Recall improved to 60% on latest 20-run matrix, but safe false-positive rate remains high (50%)
+**Current Status:** ⚠️ Recall improved to 60% on latest 20-run matrix, but safe high-confidence false-positive rate remains high (40%)
 
 ---
 
@@ -171,7 +171,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Safe-set high-confidence FPR <=5%
 - [ ] Every miss has machine-readable root-cause category
 
-**Current Status:** ❌ Recall 0%, Safe FPR 0% (no completed runs)
+**Current Status:** ❌ Recall 60%, Safe high-confidence FPR 40% (targets: recall >=80%, safe high-confidence FPR <=5%)
 
 ---
 
@@ -466,10 +466,8 @@ gh run watch
 - Panic blockers addressed in current branch (`wait-timeout` abort path removed, run-doc stale-binary path resolved)
 - Latest smoke benchmark evidence: `artifacts/benchmark_runs_smoke/benchmark_20260219_153249/summary.json`
 - Smoke metrics: `completion_rate=40.0%`, `recall=0.0%`, `safe_fpr=60.0%`
-- Latest 20-run fast matrix evidence: `artifacts/benchmark_runs_fast/benchmark_20260219_154019/summary.json`
-- Fast matrix metrics: `completion_rate=35.0%`, `recall=60.0%`, `precision=54.5%`, `safe_fpr=50.0%`
-- Attack-stage-gate refresh (new benchmark metric): `artifacts/benchmark_runs_fast/benchmark_20260219_154805/summary.json`
-- Attack-stage metrics: `overall_attack_stage_reach_rate=90.0%` (`safe=100%`, `vulnerable=80%`), `completion_rate=35.0%`, `recall=60.0%`, `safe_fpr=50.0%`
+- Latest 20-run fast matrix evidence: `artifacts/benchmark_runs_fast/benchmark_20260219_155901/summary.json`
+- Fast matrix metrics: `completion_rate=35.0%`, `attack_stage_reach_rate=90.0%`, `recall=60.0%`, `recall_high_conf=40.0%`, `precision=54.5%`, `safe_fpr=50.0%`, `safe_high_conf_fpr=40.0%`
 - Once panic is fixed, need to validate all exit criteria systematically
 - Release candidate validation requires two consecutive passes of all gates
 - Nightly CI matrix is operational with fast-smoke and deep-scheduled lanes

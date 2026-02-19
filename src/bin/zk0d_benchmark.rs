@@ -149,6 +149,7 @@ struct TrialOutcome {
     exit_code: i32,
     scan_findings_total: u64,
     detected: bool,
+    high_confidence_detected: bool,
     attack_stage_reached: bool,
     reason_counts: BTreeMap<String, usize>,
     error_message: Option<String>,
@@ -163,6 +164,9 @@ struct SuiteSummary {
     detections: usize,
     detection_rate: f64,
     detection_rate_ci95: ConfidenceInterval,
+    high_confidence_detections: usize,
+    high_confidence_detection_rate: f64,
+    high_confidence_detection_rate_ci95: ConfidenceInterval,
     completion_rate: f64,
     completion_rate_ci95: ConfidenceInterval,
     attack_stage_reach_rate: f64,
@@ -182,10 +186,20 @@ struct BenchmarkSummary {
     overall_attack_stage_reach_rate: f64,
     vulnerable_recall: f64,
     vulnerable_recall_ci95: ConfidenceInterval,
+    vulnerable_high_confidence_recall: f64,
+    vulnerable_high_confidence_recall_ci95: ConfidenceInterval,
     precision: f64,
     precision_ci95: ConfidenceInterval,
     safe_false_positive_rate: f64,
     safe_false_positive_rate_ci95: ConfidenceInterval,
+    safe_high_confidence_false_positive_rate: f64,
+    safe_high_confidence_false_positive_rate_ci95: ConfidenceInterval,
+}
+
+#[derive(Debug, Clone)]
+struct ReasonRow {
+    reason_code: String,
+    high_confidence_detected: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -306,7 +320,7 @@ fn has_unresolved_env_placeholder(input: &str) -> bool {
     input.contains("${") || input.contains('$')
 }
 
-fn parse_reason_tsv(stdout: &str) -> Vec<String> {
+fn parse_reason_tsv(stdout: &str) -> Vec<ReasonRow> {
     let mut in_block = false;
     let mut out = Vec::new();
     for line in stdout.lines() {
@@ -325,7 +339,19 @@ fn parse_reason_tsv(stdout: &str) -> Vec<String> {
         let _template = cols.next();
         let _suffix = cols.next();
         let reason = cols.next().unwrap_or("unknown").trim();
-        out.push(reason.to_string());
+        let _status = cols.next();
+        let _stage = cols.next();
+        let high_confidence_detected = cols
+            .next()
+            .map(|raw| {
+                let normalized = raw.trim().to_ascii_lowercase();
+                normalized == "1" || normalized == "true" || normalized == "yes"
+            })
+            .unwrap_or(false);
+        out.push(ReasonRow {
+            reason_code: reason.to_string(),
+            high_confidence_detected,
+        });
     }
     out
 }
@@ -476,14 +502,15 @@ fn run_trial(
         );
     }
 
-    let reason_codes = parse_reason_tsv(&stdout);
+    let reason_rows = parse_reason_tsv(&stdout);
     let mut reason_counts = BTreeMap::new();
-    for reason in reason_codes {
-        *reason_counts.entry(reason).or_insert(0) += 1;
+    for row in &reason_rows {
+        *reason_counts.entry(row.reason_code.clone()).or_insert(0) += 1;
     }
     if reason_counts.is_empty() {
         reason_counts.insert("none".to_string(), 1);
     }
+    let high_confidence_detected = reason_rows.iter().any(|row| row.high_confidence_detected);
 
     let scan_findings_total = parse_scan_findings_total(&stdout);
     let detected =
@@ -500,6 +527,7 @@ fn run_trial(
         exit_code,
         scan_findings_total,
         detected,
+        high_confidence_detected,
         attack_stage_reached,
         reason_counts,
         error_message: None,
@@ -519,6 +547,7 @@ fn trial_error_outcome(item: &WorkItem, err: &anyhow::Error) -> TrialOutcome {
         exit_code: 1,
         scan_findings_total: 0,
         detected: false,
+        high_confidence_detected: false,
         attack_stage_reached: false,
         reason_counts,
         error_message: Some(format!("{:#}", err)),
@@ -559,6 +588,10 @@ fn compute_suite_summaries(outcomes: &[TrialOutcome]) -> Vec<SuiteSummary> {
     for (suite_name, items) in grouped {
         let runs_total = items.len();
         let detections = items.iter().filter(|o| o.detected).count();
+        let high_confidence_detections = items
+            .iter()
+            .filter(|o| o.high_confidence_detected)
+            .count();
         let completions = items.iter().filter(|o| o.exit_code == 0).count();
         let attack_stage_reached = items.iter().filter(|o| o.attack_stage_reached).count();
         let mean_scan_findings = if runs_total == 0 {
@@ -590,6 +623,16 @@ fn compute_suite_summaries(outcomes: &[TrialOutcome]) -> Vec<SuiteSummary> {
                 detections as f64 / runs_total as f64
             },
             detection_rate_ci95: wilson_interval(detections, runs_total),
+            high_confidence_detections,
+            high_confidence_detection_rate: if runs_total == 0 {
+                0.0
+            } else {
+                high_confidence_detections as f64 / runs_total as f64
+            },
+            high_confidence_detection_rate_ci95: wilson_interval(
+                high_confidence_detections,
+                runs_total,
+            ),
             completion_rate: if runs_total == 0 {
                 0.0
             } else {
@@ -634,9 +677,18 @@ fn write_markdown(
         summary.vulnerable_recall * 100.0
     ));
     md.push_str(&format!(
+        "| Vulnerable recall (high-confidence) | {:.1}% |\n",
+        summary.vulnerable_high_confidence_recall * 100.0
+    ));
+    md.push_str(&format!(
         "| Vulnerable recall (95% CI) | {:.1}% - {:.1}% |\n",
         summary.vulnerable_recall_ci95.lower * 100.0,
         summary.vulnerable_recall_ci95.upper * 100.0
+    ));
+    md.push_str(&format!(
+        "| Vulnerable recall (high-confidence, 95% CI) | {:.1}% - {:.1}% |\n",
+        summary.vulnerable_high_confidence_recall_ci95.lower * 100.0,
+        summary.vulnerable_high_confidence_recall_ci95.upper * 100.0
     ));
     md.push_str(&format!(
         "| Precision | {:.1}% |\n",
@@ -652,25 +704,37 @@ fn write_markdown(
         summary.safe_false_positive_rate * 100.0
     ));
     md.push_str(&format!(
-        "| Safe false-positive rate (95% CI) | {:.1}% - {:.1}% |\n\n",
+        "| Safe high-confidence false-positive rate | {:.1}% |\n",
+        summary.safe_high_confidence_false_positive_rate * 100.0
+    ));
+    md.push_str(&format!(
+        "| Safe false-positive rate (95% CI) | {:.1}% - {:.1}% |\n",
         summary.safe_false_positive_rate_ci95.lower * 100.0,
         summary.safe_false_positive_rate_ci95.upper * 100.0
+    ));
+    md.push_str(&format!(
+        "| Safe high-confidence false-positive rate (95% CI) | {:.1}% - {:.1}% |\n\n",
+        summary.safe_high_confidence_false_positive_rate_ci95.lower * 100.0,
+        summary.safe_high_confidence_false_positive_rate_ci95.upper * 100.0
     ));
 
     md.push_str("## Suite Metrics\n\n");
     md.push_str(
-        "| Suite | Positive | Runs | Detection Rate (95% CI) | Completion Rate (95% CI) | Attack-Stage Reach (95% CI) | Mean Findings |\n",
+        "| Suite | Positive | Runs | Detection Rate (95% CI) | High-Conf Detection Rate (95% CI) | Completion Rate (95% CI) | Attack-Stage Reach (95% CI) | Mean Findings |\n",
     );
-    md.push_str("|---|---|---:|---:|---:|---:|\n");
+    md.push_str("|---|---|---:|---:|---:|---:|---:|---:|\n");
     for suite in &summary.suites {
         md.push_str(&format!(
-            "| {} | {} | {} | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.2} |\n",
+            "| {} | {} | {} | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.2} |\n",
             suite.suite_name,
             suite.positive,
             suite.runs_total,
             suite.detection_rate * 100.0,
             suite.detection_rate_ci95.lower * 100.0,
             suite.detection_rate_ci95.upper * 100.0,
+            suite.high_confidence_detection_rate * 100.0,
+            suite.high_confidence_detection_rate_ci95.lower * 100.0,
+            suite.high_confidence_detection_rate_ci95.upper * 100.0,
             suite.completion_rate * 100.0,
             suite.completion_rate_ci95.lower * 100.0,
             suite.completion_rate_ci95.upper * 100.0,
@@ -683,11 +747,11 @@ fn write_markdown(
     md.push('\n');
 
     md.push_str("## Trial Outcomes\n\n");
-    md.push_str("| Suite | Target | Trial | Seed | Exit | Findings | Detected | Attack Stage | Error |\n");
-    md.push_str("|---|---|---:|---:|---:|---:|---|---|\n");
+    md.push_str("| Suite | Target | Trial | Seed | Exit | Findings | Detected | High-Conf Detected | Attack Stage | Error |\n");
+    md.push_str("|---|---|---:|---:|---:|---:|---|---|---|---|\n");
     for o in outcomes {
         md.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             o.suite_name,
             o.target_name,
             o.trial_idx,
@@ -695,6 +759,7 @@ fn write_markdown(
             o.exit_code,
             o.scan_findings_total,
             o.detected,
+            o.high_confidence_detected,
             o.attack_stage_reached,
             if o.error_message.is_some() {
                 "yes"
@@ -854,13 +919,14 @@ fn main() -> anyhow::Result<()> {
             );
         } else {
             println!(
-                "{}::{}::trial{} exit={} findings={} detected={}",
+                "{}::{}::trial{} exit={} findings={} detected={} high_conf_detected={}",
                 outcome.suite_name,
                 outcome.target_name,
                 outcome.trial_idx,
                 outcome.exit_code,
                 outcome.scan_findings_total,
-                outcome.detected
+                outcome.detected,
+                outcome.high_confidence_detected
             );
         }
         outcomes.push(outcome);
@@ -879,10 +945,28 @@ fn main() -> anyhow::Result<()> {
     } else {
         vulnerable_runs.iter().filter(|o| o.detected).count() as f64 / vulnerable_runs.len() as f64
     };
+    let vulnerable_high_confidence_recall = if vulnerable_runs.is_empty() {
+        0.0
+    } else {
+        vulnerable_runs
+            .iter()
+            .filter(|o| o.high_confidence_detected)
+            .count() as f64
+            / vulnerable_runs.len() as f64
+    };
     let safe_false_positive_rate = if safe_runs.is_empty() {
         0.0
     } else {
         safe_runs.iter().filter(|o| o.detected).count() as f64 / safe_runs.len() as f64
+    };
+    let safe_high_confidence_false_positive_rate = if safe_runs.is_empty() {
+        0.0
+    } else {
+        safe_runs
+            .iter()
+            .filter(|o| o.high_confidence_detected)
+            .count() as f64
+            / safe_runs.len() as f64
     };
     let true_positives = vulnerable_runs.iter().filter(|o| o.detected).count();
     let false_positives = safe_runs.iter().filter(|o| o.detected).count();
@@ -917,11 +1001,27 @@ fn main() -> anyhow::Result<()> {
             vulnerable_runs.iter().filter(|o| o.detected).count(),
             vulnerable_runs.len(),
         ),
+        vulnerable_high_confidence_recall,
+        vulnerable_high_confidence_recall_ci95: wilson_interval(
+            vulnerable_runs
+                .iter()
+                .filter(|o| o.high_confidence_detected)
+                .count(),
+            vulnerable_runs.len(),
+        ),
         precision,
         precision_ci95: wilson_interval(true_positives, precision_denom),
         safe_false_positive_rate,
         safe_false_positive_rate_ci95: wilson_interval(
             safe_runs.iter().filter(|o| o.detected).count(),
+            safe_runs.len(),
+        ),
+        safe_high_confidence_false_positive_rate,
+        safe_high_confidence_false_positive_rate_ci95: wilson_interval(
+            safe_runs
+                .iter()
+                .filter(|o| o.high_confidence_detected)
+                .count(),
             safe_runs.len(),
         ),
     };
@@ -946,11 +1046,14 @@ fn main() -> anyhow::Result<()> {
 
     println!("Saved benchmark summary: {}", summary_json_path.display());
     println!(
-        "Metrics: completion_rate={:.1}% recall={:.1}% precision={:.1}% safe_fpr={:.1}%",
+        "Metrics: completion_rate={:.1}% attack_stage={:.1}% recall={:.1}% recall_high_conf={:.1}% precision={:.1}% safe_fpr={:.1}% safe_high_conf_fpr={:.1}%",
         summary.overall_completion_rate * 100.0,
+        summary.overall_attack_stage_reach_rate * 100.0,
         summary.vulnerable_recall * 100.0,
+        summary.vulnerable_high_confidence_recall * 100.0,
         summary.precision * 100.0,
-        summary.safe_false_positive_rate * 100.0
+        summary.safe_false_positive_rate * 100.0,
+        summary.safe_high_confidence_false_positive_rate * 100.0
     );
 
     Ok(())
