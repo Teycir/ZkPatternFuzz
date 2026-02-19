@@ -1547,8 +1547,14 @@ impl FuzzingEngine {
 
         let mut report = self.generate_report(findings.clone(), elapsed.as_secs());
 
+        let generate_evidence_bundles = Self::additional_bool(
+            &self.config.campaign.parameters.additional,
+            "generate_evidence_bundles",
+        )
+        .unwrap_or(true);
+
         // Phase 5B: Generate evidence bundles in evidence mode
-        if evidence_mode && !findings.is_empty() {
+        if evidence_mode && generate_evidence_bundles && !findings.is_empty() {
             tracing::info!("Evidence mode: generating proof-level evidence bundles...");
 
             let evidence_dir = self.config.reporting.output_dir.join("evidence");
@@ -1603,6 +1609,10 @@ impl FuzzingEngine {
                     report.statistics.unique_crashes = confirmed as u64;
                 }
             }
+        } else if evidence_mode && !generate_evidence_bundles {
+            tracing::info!(
+                "Evidence mode: skipping proof-level evidence bundle generation (generate_evidence_bundles=false)"
+            );
         }
 
         self.write_progress_snapshot(

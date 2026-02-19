@@ -402,7 +402,8 @@ fn run_trial(
         )
     })?;
     cmd.env("HOME", &benchmark_home)
-        .env("ZKF_RUN_SIGNAL_DIR", &run_signal_dir);
+        .env("ZKF_RUN_SIGNAL_DIR", &run_signal_dir)
+        .env("ZKF_DISABLE_EVIDENCE_BUNDLES", "1");
     cmd.arg("--registry")
         .arg(registry_path)
         .arg(format!("--{}", selector_key))

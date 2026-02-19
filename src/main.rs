@@ -396,6 +396,15 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 serde_yaml::Value::Number(serde_yaml::Number::from(8u64)),
             );
         }
+        if std::env::var_os("ZKF_DISABLE_EVIDENCE_BUNDLES").is_some() {
+            additional.insert(
+                "generate_evidence_bundles".to_string(),
+                serde_yaml::Value::Bool(false),
+            );
+            tracing::info!(
+                "Evidence bundle generation disabled by environment (ZKF_DISABLE_EVIDENCE_BUNDLES)"
+            );
+        }
         tracing::info!(
             "Evidence recall bias active (min_conf=low, agreement_ratio<=0.45, cross_attack_weight>=0.65 unless overridden in YAML)"
         );

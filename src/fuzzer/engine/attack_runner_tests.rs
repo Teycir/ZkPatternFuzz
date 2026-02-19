@@ -82,6 +82,23 @@ fn strict_attack_floor_keeps_higher_configured_values() {
 }
 
 #[test]
+fn strict_attack_floor_is_skipped_in_deterministic_runtime_mode() {
+    let mut additional = crate::config::AdditionalConfig::default();
+    additional.insert("evidence_mode".to_string(), serde_yaml::Value::Bool(true));
+    additional.insert(
+        "engagement_strict".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+    additional.insert(
+        "evidence_deterministic_runtime".to_string(),
+        serde_yaml::Value::Bool(true),
+    );
+
+    let effective = strict_attack_floor(&additional, 200, 1000, "soundness.forge_attempts");
+    assert_eq!(effective, 200);
+}
+
+#[test]
 fn engine_dispatch_has_no_not_yet_implemented_fallback() {
     let source = include_str!("mod.rs");
     assert!(
