@@ -37,19 +37,16 @@ use runtime_misc::{
     generate_sample_config, minimize_corpus, print_banner, print_run_window, truncate_str,
     validate_campaign,
 };
-use scan_dispatch::{
-    build_scan_target, materialize_scan_pattern_campaign, resolve_scan_family,
-    validate_pattern_only_yaml,
-};
+use scan_dispatch::prepare_scan_dispatch;
 use scan_output::apply_scan_output_suffix_if_present;
 use scan_progress::{
     dispatch_scan_family_run, scan_default_output_dir,
 };
-use scan_selector::{
-    evaluate_scan_selectors_or_bail, load_scan_regex_selector_config, ScanRegexPatternSummary,
-};
 #[cfg(test)]
-use scan_selector::{evaluate_loaded_scan_regex_patterns, validate_scan_regex_pattern_safety};
+use scan_selector::{
+    evaluate_loaded_scan_regex_patterns, load_scan_regex_selector_config,
+    validate_scan_regex_pattern_safety, ScanRegexPatternSummary,
+};
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName};
 use zk_fuzzer::fuzzer::ZkFuzzer;
 use zk_fuzzer::Framework;
@@ -797,38 +794,20 @@ async fn run_scan(
     mono_options: CampaignRunOptions,
     chain_options: ChainRunOptions,
 ) -> anyhow::Result<()> {
-    validate_pattern_only_yaml(pattern_path, "Scan")?;
-    let regex_selector_config = load_scan_regex_selector_config(pattern_path)?;
-    let regex_mode = regex_selector_config.is_some();
-
-    let family = resolve_scan_family(pattern_path, family_hint, regex_mode)?;
-    let target = build_scan_target(framework, target_circuit, main_component)?;
-    let scan_regex_summary: Option<ScanRegexPatternSummary> = evaluate_scan_selectors_or_bail(
+    let prepared = prepare_scan_dispatch(
         pattern_path,
-        regex_selector_config.as_ref(),
-        &target.circuit_path,
-    )?;
-
-    let materialized = materialize_scan_pattern_campaign(
-        pattern_path,
-        family,
-        &target,
+        family_hint,
+        target_circuit,
+        main_component,
+        framework,
         output_suffix,
-        scan_regex_summary.as_ref(),
     )?;
-    let materialized_str = materialized.to_string_lossy().to_string();
-
-    tracing::info!(
-        "Scan dispatch: pattern='{}' family={:?} materialized='{}'",
-        pattern_path,
-        family,
-        materialized.display()
-    );
+    let materialized_str = prepared.materialized_campaign_path.to_string_lossy().to_string();
 
     let output_dir = scan_default_output_dir();
     let mono_has_explicit_corpus_dir = mono_options.corpus_dir.is_some();
     dispatch_scan_family_run(
-        family,
+        prepared.family,
         &output_dir,
         mono_has_explicit_corpus_dir,
         || run_campaign(&materialized_str, mono_options),

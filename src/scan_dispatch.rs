@@ -1,5 +1,7 @@
 use crate::cli::ScanFamily;
-use crate::scan_selector::ScanRegexPatternSummary;
+use crate::scan_selector::{
+    evaluate_scan_selectors_or_bail, load_scan_regex_selector_config, ScanRegexPatternSummary,
+};
 use anyhow::Context;
 use std::collections::BTreeSet;
 use std::fs;
@@ -16,6 +18,12 @@ pub struct ScanTarget {
     pub framework: Framework,
     pub circuit_path: PathBuf,
     pub main_component: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedScanDispatch {
+    pub family: ScanFamily,
+    pub materialized_campaign_path: PathBuf,
 }
 
 pub fn build_scan_target(
@@ -418,4 +426,45 @@ pub fn materialize_scan_pattern_campaign(
         )
     })?;
     Ok(out)
+}
+
+pub fn prepare_scan_dispatch(
+    pattern_path: &str,
+    family_hint: ScanFamily,
+    target_circuit: &str,
+    main_component: &str,
+    framework: &str,
+    output_suffix: Option<&str>,
+) -> anyhow::Result<PreparedScanDispatch> {
+    validate_pattern_only_yaml(pattern_path, "Scan")?;
+    let regex_selector_config = load_scan_regex_selector_config(pattern_path)?;
+    let regex_mode = regex_selector_config.is_some();
+
+    let family = resolve_scan_family(pattern_path, family_hint, regex_mode)?;
+    let target = build_scan_target(framework, target_circuit, main_component)?;
+    let scan_regex_summary = evaluate_scan_selectors_or_bail(
+        pattern_path,
+        regex_selector_config.as_ref(),
+        &target.circuit_path,
+    )?;
+
+    let materialized = materialize_scan_pattern_campaign(
+        pattern_path,
+        family,
+        &target,
+        output_suffix,
+        scan_regex_summary.as_ref(),
+    )?;
+
+    tracing::info!(
+        "Scan dispatch: pattern='{}' family={:?} materialized='{}'",
+        pattern_path,
+        family,
+        materialized.display()
+    );
+
+    Ok(PreparedScanDispatch {
+        family,
+        materialized_campaign_path: materialized,
+    })
 }
