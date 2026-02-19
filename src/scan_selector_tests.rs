@@ -1,5 +1,6 @@
 use super::engagement_artifacts::get_command_from_doc;
 use super::*;
+use std::fs;
 
 fn evaluate_selector_summary(pattern_yaml: &str, target_source: &str) -> ScanRegexPatternSummary {
     let temp_dir = tempfile::tempdir().expect("tempdir");

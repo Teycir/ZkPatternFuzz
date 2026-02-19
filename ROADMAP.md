@@ -226,6 +226,14 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Moved `validate_pattern_only_yaml` from `main.rs` into `scan_dispatch`.
    - Kept scan command behavior unchanged by importing and reusing the extracted helper at existing callsites.
    - Reduced scan dispatch validation logic remaining in `main.rs` without changing pattern contract checks.
+92. Continued scan modularization by wiring `main.rs` to the dedicated selector module (`src/main.rs`, `src/scan_selector.rs`):
+   - Removed duplicated in-file selector type/function implementations from `main.rs`.
+   - Imported selector loading/evaluation and summary types from `scan_selector`.
+   - Preserved scan behavior and selector test surface while materially shrinking `main.rs`.
+93. Continued scan modularization by extracting scan campaign materialization into dispatch module (`src/main.rs`, `src/scan_dispatch.rs`):
+   - Moved `ScanTarget` and `materialize_scan_pattern_campaign(...)` from `main.rs` to `scan_dispatch`.
+   - Kept regex-selector metadata stripping, include-path rewriting, and scan parameter injection behavior unchanged.
+   - Updated selector regression tests to use explicit `std::fs` import instead of relying on `main.rs` wildcard imports.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -420,6 +428,14 @@ Validation:
     - `cargo check -q`
 73. Main CLI compile verification after pattern-only validation helper extraction:
     - `cargo check -q`
+74. Main CLI compile verification after selector-module wiring:
+    - `cargo check -q`
+75. Selector safety regression spot-check after selector-module wiring:
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+76. Main CLI compile verification after scan materialization extraction:
+    - `cargo check -q`
+77. Selector safety regression spot-check after scan materialization extraction:
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 

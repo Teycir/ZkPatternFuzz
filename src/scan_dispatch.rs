@@ -1,11 +1,21 @@
 use crate::cli::ScanFamily;
+use crate::scan_selector::ScanRegexPatternSummary;
 use anyhow::Context;
 use std::collections::BTreeSet;
 use std::fs;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
 use zk_fuzzer::Framework;
 
 fn yaml_key(name: &str) -> serde_yaml::Value {
     serde_yaml::Value::String(name.to_string())
+}
+
+#[derive(Debug, Clone)]
+pub struct ScanTarget {
+    pub framework: Framework,
+    pub circuit_path: PathBuf,
+    pub main_component: String,
 }
 
 pub fn parse_framework_arg(value: &str) -> anyhow::Result<Framework> {
@@ -163,4 +173,181 @@ pub fn validate_pattern_only_yaml(path: &str, mode_name: &str) -> anyhow::Result
         );
     }
     Ok(())
+}
+
+pub fn materialize_scan_pattern_campaign(
+    pattern_path: &str,
+    family: ScanFamily,
+    target: &ScanTarget,
+    output_suffix: Option<&str>,
+    scan_regex_summary: Option<&ScanRegexPatternSummary>,
+) -> anyhow::Result<PathBuf> {
+    let raw = fs::read_to_string(pattern_path)
+        .with_context(|| format!("Failed to read pattern YAML '{}'", pattern_path))?;
+    let mut doc: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse pattern YAML '{}'", pattern_path))?;
+    let root = doc
+        .as_mapping_mut()
+        .context("Pattern YAML root must be a mapping")?;
+
+    // Regex selector metadata is scan-time only. Remove it from the materialized
+    // campaign so the runtime parser only sees executable fuzzing configuration.
+    root.remove(yaml_key("patterns"));
+    root.remove(yaml_key("selector_policy"));
+    root.remove(yaml_key("selector_synonyms"));
+    root.remove(yaml_key("synonym_bundles"));
+    root.remove(yaml_key("selector_normalization"));
+
+    // Keep includes valid after writing a materialized temp campaign.
+    if let Some(includes) = root.get_mut(yaml_key("includes")) {
+        let seq = includes
+            .as_sequence_mut()
+            .context("'includes' must be a YAML sequence")?;
+        let pattern_dir = Path::new(pattern_path)
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        for item in seq.iter_mut() {
+            let include = match item.as_str() {
+                Some(v) => v,
+                None => continue,
+            };
+            if include.starts_with("${") {
+                continue;
+            }
+            let include_path = Path::new(include);
+            if include_path.is_absolute() {
+                continue;
+            }
+            let rewritten = pattern_dir.join(include_path);
+            *item = serde_yaml::Value::String(rewritten.to_string_lossy().to_string());
+        }
+    }
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    pattern_path.hash(&mut hasher);
+    target.framework.hash(&mut hasher);
+    target.circuit_path.to_string_lossy().hash(&mut hasher);
+    target.main_component.hash(&mut hasher);
+    family.hash(&mut hasher);
+    let digest = hasher.finish();
+
+    let stem = Path::new(pattern_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(crate::sanitize_slug)
+        .unwrap_or_else(|| "pattern".to_string());
+    let mut campaign = serde_yaml::Mapping::new();
+    campaign.insert(
+        yaml_key("name"),
+        serde_yaml::Value::String(format!("scan_{}", stem)),
+    );
+    campaign.insert(
+        yaml_key("version"),
+        serde_yaml::Value::String("2.0".to_string()),
+    );
+
+    let mut campaign_target = serde_yaml::Mapping::new();
+    campaign_target.insert(
+        yaml_key("framework"),
+        serde_yaml::to_value(target.framework).context("Failed to serialize framework")?,
+    );
+    campaign_target.insert(
+        yaml_key("circuit_path"),
+        serde_yaml::Value::String(target.circuit_path.to_string_lossy().to_string()),
+    );
+    campaign_target.insert(
+        yaml_key("main_component"),
+        serde_yaml::Value::String(target.main_component.clone()),
+    );
+    campaign.insert(
+        yaml_key("target"),
+        serde_yaml::Value::Mapping(campaign_target),
+    );
+
+    let mut parameters = serde_yaml::Mapping::new();
+    parameters.insert(
+        yaml_key("field"),
+        serde_yaml::Value::String("bn254".to_string()),
+    );
+    parameters.insert(
+        yaml_key("max_constraints"),
+        serde_yaml::Value::Number(serde_yaml::Number::from(120000u64)),
+    );
+    parameters.insert(
+        yaml_key("timeout_seconds"),
+        serde_yaml::Value::Number(serde_yaml::Number::from(600u64)),
+    );
+    if matches!(target.framework, Framework::Circom) {
+        // Scan stability hardening: ensure backend preflight validates not just tool presence
+        // but also proving/verification key setup readiness for Circom targets.
+        parameters.insert(
+            yaml_key("circom_auto_setup_keys"),
+            serde_yaml::Value::Bool(true),
+        );
+        parameters.insert(
+            yaml_key("circom_require_setup_keys"),
+            serde_yaml::Value::Bool(true),
+        );
+    }
+    if let Some(raw_suffix) = output_suffix.map(str::trim).filter(|s| !s.is_empty()) {
+        parameters.insert(
+            yaml_key("scan_output_suffix"),
+            serde_yaml::Value::String(crate::sanitize_slug(raw_suffix)),
+        );
+    }
+    if let Some(summary) = scan_regex_summary {
+        let mut lines: Vec<String> = Vec::new();
+        for hit in &summary.matches {
+            if hit.lines.is_empty() {
+                lines.push(format!(
+                    "pattern {} found ({} matches)",
+                    hit.id, hit.occurrences
+                ));
+            } else {
+                lines.push(format!(
+                    "pattern {} found ({} matches) in lines {:?}",
+                    hit.id, hit.occurrences, hit.lines
+                ));
+            }
+        }
+        if !lines.is_empty() {
+            parameters.insert(
+                yaml_key("scan_pattern_summary_text"),
+                serde_yaml::Value::String(lines.join("\n")),
+            );
+            // Regex selector scans intentionally preserve static findings as scan evidence.
+            // Without this, strict evidence-mode filtering can hide valid selector hits.
+            parameters.insert(
+                yaml_key("min_evidence_confidence"),
+                serde_yaml::Value::String("low".to_string()),
+            );
+        }
+    }
+    campaign.insert(
+        yaml_key("parameters"),
+        serde_yaml::Value::Mapping(parameters),
+    );
+
+    root.insert(yaml_key("campaign"), serde_yaml::Value::Mapping(campaign));
+
+    let out = std::env::temp_dir()
+        .join("zkfuzz_scan")
+        .join(format!("{}__{:016x}.yaml", stem, digest));
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create temp scan materialization directory '{}'",
+                parent.display()
+            )
+        })?;
+    }
+    let yaml = serde_yaml::to_string(&doc)?;
+    fs::write(&out, yaml).with_context(|| {
+        format!(
+            "Failed to write materialized scan campaign '{}'",
+            out.display()
+        )
+    })?;
+    Ok(out)
 }
