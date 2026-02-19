@@ -42,6 +42,9 @@ __pycache__/
 
 # Test artifacts
 tests/noir_projects/multiplier/target/noir_multiplier.gz
+tests/noir_projects/*/.zkfuzz_build.lock
+tests/noir_projects/*/target/.zkfuzz_build.lock
+tests/noir_projects/*/tests/
 tests/halo2_specs/target/
 tests/r1cs_parser_test.rs
 tests/semantic_oracles_test.rs
