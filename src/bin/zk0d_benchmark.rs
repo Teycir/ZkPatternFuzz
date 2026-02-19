@@ -149,6 +149,7 @@ struct TrialOutcome {
     exit_code: i32,
     scan_findings_total: u64,
     detected: bool,
+    attack_stage_reached: bool,
     reason_counts: BTreeMap<String, usize>,
     error_message: Option<String>,
 }
@@ -164,6 +165,8 @@ struct SuiteSummary {
     detection_rate_ci95: ConfidenceInterval,
     completion_rate: f64,
     completion_rate_ci95: ConfidenceInterval,
+    attack_stage_reach_rate: f64,
+    attack_stage_reach_rate_ci95: ConfidenceInterval,
     mean_scan_findings: f64,
     reason_counts: BTreeMap<String, usize>,
 }
@@ -176,6 +179,7 @@ struct BenchmarkSummary {
     total_runs: usize,
     total_detected: usize,
     overall_completion_rate: f64,
+    overall_attack_stage_reach_rate: f64,
     vulnerable_recall: f64,
     vulnerable_recall_ci95: ConfidenceInterval,
     precision: f64,
@@ -334,6 +338,10 @@ fn parse_scan_findings_total(stdout: &str) -> u64 {
         .sum()
 }
 
+fn reached_attack_stage(reason_counts: &BTreeMap<String, usize>) -> bool {
+    reason_counts.contains_key("completed") || reason_counts.contains_key("critical_findings_detected")
+}
+
 fn selector_for_target(target: &BenchmarkTarget) -> anyhow::Result<(&'static str, String)> {
     let mut selected: Vec<(&'static str, String)> = Vec::new();
     if let Some(value) = target.alias.clone() {
@@ -480,6 +488,7 @@ fn run_trial(
     let scan_findings_total = parse_scan_findings_total(&stdout);
     let detected =
         scan_findings_total > 0 || reason_counts.contains_key("critical_findings_detected");
+    let attack_stage_reached = reached_attack_stage(&reason_counts);
 
     Ok(TrialOutcome {
         suite_name: item.suite_name.clone(),
@@ -491,6 +500,7 @@ fn run_trial(
         exit_code,
         scan_findings_total,
         detected,
+        attack_stage_reached,
         reason_counts,
         error_message: None,
     })
@@ -509,6 +519,7 @@ fn trial_error_outcome(item: &WorkItem, err: &anyhow::Error) -> TrialOutcome {
         exit_code: 1,
         scan_findings_total: 0,
         detected: false,
+        attack_stage_reached: false,
         reason_counts,
         error_message: Some(format!("{:#}", err)),
     }
@@ -549,6 +560,7 @@ fn compute_suite_summaries(outcomes: &[TrialOutcome]) -> Vec<SuiteSummary> {
         let runs_total = items.len();
         let detections = items.iter().filter(|o| o.detected).count();
         let completions = items.iter().filter(|o| o.exit_code == 0).count();
+        let attack_stage_reached = items.iter().filter(|o| o.attack_stage_reached).count();
         let mean_scan_findings = if runs_total == 0 {
             0.0
         } else {
@@ -584,6 +596,12 @@ fn compute_suite_summaries(outcomes: &[TrialOutcome]) -> Vec<SuiteSummary> {
                 completions as f64 / runs_total as f64
             },
             completion_rate_ci95: wilson_interval(completions, runs_total),
+            attack_stage_reach_rate: if runs_total == 0 {
+                0.0
+            } else {
+                attack_stage_reached as f64 / runs_total as f64
+            },
+            attack_stage_reach_rate_ci95: wilson_interval(attack_stage_reached, runs_total),
             mean_scan_findings,
             reason_counts,
         });
@@ -606,6 +624,10 @@ fn write_markdown(
     md.push_str(&format!(
         "| Overall completion rate | {:.1}% |\n",
         summary.overall_completion_rate * 100.0
+    ));
+    md.push_str(&format!(
+        "| Attack-stage reach rate | {:.1}% |\n",
+        summary.overall_attack_stage_reach_rate * 100.0
     ));
     md.push_str(&format!(
         "| Vulnerable recall | {:.1}% |\n",
@@ -637,12 +659,12 @@ fn write_markdown(
 
     md.push_str("## Suite Metrics\n\n");
     md.push_str(
-        "| Suite | Positive | Runs | Detection Rate (95% CI) | Completion Rate (95% CI) | Mean Findings |\n",
+        "| Suite | Positive | Runs | Detection Rate (95% CI) | Completion Rate (95% CI) | Attack-Stage Reach (95% CI) | Mean Findings |\n",
     );
     md.push_str("|---|---|---:|---:|---:|---:|\n");
     for suite in &summary.suites {
         md.push_str(&format!(
-            "| {} | {} | {} | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.2} |\n",
+            "| {} | {} | {} | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.2} |\n",
             suite.suite_name,
             suite.positive,
             suite.runs_total,
@@ -652,17 +674,20 @@ fn write_markdown(
             suite.completion_rate * 100.0,
             suite.completion_rate_ci95.lower * 100.0,
             suite.completion_rate_ci95.upper * 100.0,
+            suite.attack_stage_reach_rate * 100.0,
+            suite.attack_stage_reach_rate_ci95.lower * 100.0,
+            suite.attack_stage_reach_rate_ci95.upper * 100.0,
             suite.mean_scan_findings
         ));
     }
     md.push('\n');
 
     md.push_str("## Trial Outcomes\n\n");
-    md.push_str("| Suite | Target | Trial | Seed | Exit | Findings | Detected | Error |\n");
+    md.push_str("| Suite | Target | Trial | Seed | Exit | Findings | Detected | Attack Stage | Error |\n");
     md.push_str("|---|---|---:|---:|---:|---:|---|---|\n");
     for o in outcomes {
         md.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             o.suite_name,
             o.target_name,
             o.trial_idx,
@@ -670,6 +695,7 @@ fn write_markdown(
             o.exit_code,
             o.scan_findings_total,
             o.detected,
+            o.attack_stage_reached,
             if o.error_message.is_some() {
                 "yes"
             } else {
@@ -843,6 +869,7 @@ fn main() -> anyhow::Result<()> {
     let suite_summaries = compute_suite_summaries(&outcomes);
     let total_runs = outcomes.len();
     let completed = outcomes.iter().filter(|o| o.exit_code == 0).count();
+    let attack_stage_reached = outcomes.iter().filter(|o| o.attack_stage_reached).count();
     let total_detected = outcomes.iter().filter(|o| o.detected).count();
 
     let vulnerable_runs: Vec<&TrialOutcome> = outcomes.iter().filter(|o| o.positive).collect();
@@ -884,6 +911,7 @@ fn main() -> anyhow::Result<()> {
         total_runs,
         total_detected,
         overall_completion_rate: completed as f64 / total_runs as f64,
+        overall_attack_stage_reach_rate: attack_stage_reached as f64 / total_runs as f64,
         vulnerable_recall,
         vulnerable_recall_ci95: wilson_interval(
             vulnerable_runs.iter().filter(|o| o.detected).count(),

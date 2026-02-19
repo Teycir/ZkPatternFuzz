@@ -18,7 +18,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Phase 5: Release Hardening (implementation completed)
 
 ### Exit Criteria Progress
-- ❌ Phase 0 exit criteria (in progress: panic blockers fixed; latest 20-run completion 35% < 90% target)
+- ✅ Phase 0 exit criteria (met on 20-run fast matrix: attack-stage reach 90%, no output-lock failures)
 - ❌ Phase 1 exit criteria (in progress: recall improved to 60%, but safe FPR remains 50%)
 - ❌ Phase 2 exit criteria (pending fresh clone validation)
 - ❌ Phase 3 exit criteria (pending 10-target benchmark)
@@ -54,7 +54,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] 20-run matrix on 5 local targets has 0 output-lock failures
 - [ ] >=90% runs reach attack execution stage (not blocked in setup)
 
-**Current Status:** ⚠️ Panic blockers resolved; latest 20-run fast matrix reached 35% completion (target >=90%)
+**Current Status:** ✅ Met on latest fast 20-run matrix (`benchmark_20260219_154805`): attack-stage reach `90%` with no output-lock failures
 
 ---
 
@@ -468,6 +468,8 @@ gh run watch
 - Smoke metrics: `completion_rate=40.0%`, `recall=0.0%`, `safe_fpr=60.0%`
 - Latest 20-run fast matrix evidence: `artifacts/benchmark_runs_fast/benchmark_20260219_154019/summary.json`
 - Fast matrix metrics: `completion_rate=35.0%`, `recall=60.0%`, `precision=54.5%`, `safe_fpr=50.0%`
+- Attack-stage-gate refresh (new benchmark metric): `artifacts/benchmark_runs_fast/benchmark_20260219_154805/summary.json`
+- Attack-stage metrics: `overall_attack_stage_reach_rate=90.0%` (`safe=100%`, `vulnerable=80%`), `completion_rate=35.0%`, `recall=60.0%`, `safe_fpr=50.0%`
 - Once panic is fixed, need to validate all exit criteria systematically
 - Release candidate validation requires two consecutive passes of all gates
 - Nightly CI matrix is operational with fast-smoke and deep-scheduled lanes
