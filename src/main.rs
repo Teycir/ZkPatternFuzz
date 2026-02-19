@@ -1,4 +1,3 @@
-use anyhow::Context;
 use chrono::{Local, Utc};
 use clap::Parser;
 use std::path::PathBuf;
@@ -7,6 +6,8 @@ mod engagement_artifacts;
 mod output_lock;
 mod preflight_backend;
 mod run_bootstrap;
+mod run_chain_corpus;
+mod run_chain_ui;
 mod run_identity;
 mod run_interrupts;
 mod run_lifecycle;
@@ -32,6 +33,11 @@ use preflight_backend::preflight_campaign;
 use run_bootstrap::{
     announce_report_dir_and_bind_log_context, load_campaign_config_with_optional_profile,
 };
+use run_chain_corpus::{
+    chain_completed_and_unique_cov_from_path, chain_unique_coverage_bits, load_chain_corpus,
+    read_chain_execution_count, read_chain_meta,
+};
+use run_chain_ui::{print_chain_mode_banner, print_chains_to_fuzz};
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
 use run_interrupts::{install_panic_hook, start_signal_watchers};
 use run_lifecycle::{
@@ -701,7 +707,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 /// Run a chain-focused fuzzing campaign (Mode 3: Deepest)
 async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyhow::Result<()> {
     use colored::*;
-    use zk_fuzzer::chain_fuzzer::{ChainCorpus, ChainFinding, DepthMetrics};
+    use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics};
     use zk_fuzzer::config::parse_chains;
     use zk_fuzzer::fuzzer::FuzzingEngine;
     use zk_fuzzer::reporting::FuzzReport;
@@ -828,57 +834,13 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         Some(options.timeout),
     )?;
 
-    // Print chain-specific banner
-    println!();
-    println!(
-        "{}",
-        "╔═══════════════════════════════════════════════════════════╗".bright_magenta()
+    // Print chain-specific banner.
+    print_chain_mode_banner(
+        &config.campaign.name,
+        chains.len(),
+        options.timeout,
+        options.resume,
     );
-    println!(
-        "{}",
-        "║         ZK-FUZZER v0.1.0 — MODE 3: CHAIN FUZZING          ║".bright_magenta()
-    );
-    println!(
-        "{}",
-        "║               Multi-Step Deep Bug Discovery               ║".bright_magenta()
-    );
-    println!(
-        "{}",
-        "╠═══════════════════════════════════════════════════════════╣".bright_magenta()
-    );
-    println!(
-        "{}  Campaign: {:<45} {}",
-        "║".bright_magenta(),
-        truncate_str(&config.campaign.name, 45).white(),
-        "║".bright_magenta()
-    );
-    println!(
-        "{}  Chains:   {:<45} {}",
-        "║".bright_magenta(),
-        format!("{} defined", chains.len()).cyan(),
-        "║".bright_magenta()
-    );
-    println!(
-        "{}  Budget:   {:<45} {}",
-        "║".bright_magenta(),
-        format!("{}s total", options.timeout).yellow(),
-        "║".bright_magenta()
-    );
-    println!(
-        "{}  Resume:   {:<45} {}",
-        "║".bright_magenta(),
-        if options.resume {
-            "yes".green()
-        } else {
-            "no".white()
-        },
-        "║".bright_magenta()
-    );
-    println!(
-        "{}",
-        "╚═══════════════════════════════════════════════════════════╝".bright_magenta()
-    );
-    println!();
     let run_start = Local::now();
     print_run_window(run_start, Some(options.timeout));
 
@@ -896,18 +858,8 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         );
     }
 
-    // List chains
-    println!("{}", "CHAINS TO FUZZ:".bright_yellow().bold());
-    for chain in &chains {
-        println!(
-            "  {} {} ({} steps, {} assertions)",
-            "→".bright_cyan(),
-            chain.name.white(),
-            chain.steps.len(),
-            chain.assertions.len()
-        );
-    }
-    println!();
+    // List chains.
+    print_chains_to_fuzz(&chains);
 
     if options.dry_run {
         tracing::info!("Dry run mode - configuration validated successfully");
@@ -917,53 +869,6 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let corpus_path = output_dir.join("chain_corpus.json");
     let corpus_meta_path = output_dir.join("chain_corpus_meta.json");
-    let read_chain_meta =
-        |p: &std::path::Path| -> Option<zk_fuzzer::chain_fuzzer::ChainCorpusMeta> {
-            match std::fs::read_to_string(p) {
-                Ok(raw) => {
-                    match serde_json::from_str::<zk_fuzzer::chain_fuzzer::ChainCorpusMeta>(&raw) {
-                        Ok(meta) => Some(meta),
-                        Err(err) => {
-                            tracing::warn!(
-                                "Invalid chain corpus metadata '{}': {}",
-                                p.display(),
-                                err
-                            );
-                            None
-                        }
-                    }
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        "Failed to read chain corpus metadata '{}': {}",
-                        p.display(),
-                        err
-                    );
-                    None
-                }
-            }
-        };
-    let load_chain_corpus =
-        |p: &std::path::Path| -> anyhow::Result<zk_fuzzer::chain_fuzzer::ChainCorpus> {
-            if p.exists() {
-                ChainCorpus::load(p)
-                    .with_context(|| format!("Failed to load chain corpus from '{}'", p.display()))
-            } else {
-                Ok(ChainCorpus::with_storage(p))
-            }
-        };
-    let read_chain_execution_count = |p: &std::path::Path| -> anyhow::Result<u64> {
-        if !p.exists() {
-            return Ok(0);
-        }
-        let corpus = load_chain_corpus(p)?;
-        let total = corpus
-            .entries()
-            .iter()
-            .map(|entry| entry.execution_count as u64)
-            .sum();
-        Ok(total)
-    };
     let baseline_execution_count = if options.resume {
         read_chain_execution_count(&corpus_path)?
     } else {
@@ -983,15 +888,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     } else {
         let baseline_corpus = load_chain_corpus(&corpus_path)?;
         let baseline_total_entries = baseline_corpus.len();
-        let baseline_unique_coverage_bits: usize = {
-            use std::collections::HashSet;
-            baseline_corpus
-                .entries()
-                .iter()
-                .map(|e| e.coverage_bits)
-                .collect::<HashSet<_>>()
-                .len()
-        };
+        let baseline_unique_coverage_bits = chain_unique_coverage_bits(&baseline_corpus);
         (baseline_total_entries, baseline_unique_coverage_bits)
     };
 
@@ -1065,15 +962,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         } else {
             let final_corpus = load_chain_corpus(&corpus_path)?;
             let final_total_entries = final_corpus.len();
-            let final_unique_coverage_bits: usize = {
-                use std::collections::HashSet;
-                final_corpus
-                    .entries()
-                    .iter()
-                    .map(|e| e.coverage_bits)
-                    .collect::<HashSet<_>>()
-                    .len()
-            };
+            let final_unique_coverage_bits = chain_unique_coverage_bits(&final_corpus);
             let final_max_depth = final_corpus.entries().iter().map(|e| e.depth_reached).max();
             let final_max_depth: usize = final_max_depth.unwrap_or_default();
             (
@@ -1119,22 +1008,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
                 }
             }
         } else {
-            let final_corpus = load_chain_corpus(&corpus_path)?;
-            let entries: Vec<_> = final_corpus
-                .entries()
-                .iter()
-                .filter(|e| e.spec_name == chain.name)
-                .collect();
-            let completed = entries.len();
-            let unique_cov: usize = {
-                use std::collections::HashSet;
-                entries
-                    .iter()
-                    .map(|e| e.coverage_bits)
-                    .collect::<HashSet<_>>()
-                    .len()
-            };
-            (completed, unique_cov)
+            chain_completed_and_unique_cov_from_path(&corpus_path, &chain.name)?
         };
         if completed < min_completed_per_chain {
             quality_failures.push(format!(

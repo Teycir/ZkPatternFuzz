@@ -277,6 +277,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `run_interrupts` module for panic/signal artifact capture (`install_panic_hook`, `start_signal_watchers`) while preserving run-context fallback behavior.
    - Added `run_process_control` module for explicit `--kill-existing` process shutdown flow (`kill_existing_instances`).
    - Removed the corresponding helper blocks from `main.rs` and rewired imports/re-exports without changing command behavior.
+104. Batched chain-mode modularization by extracting corpus/helpers and UI presentation (`src/main.rs`, `src/run_chain_corpus.rs`, `src/run_chain_ui.rs`):
+   - Added `run_chain_corpus` helpers for metadata/corpus loading, execution-count reads, and coverage/count derivation (`read_chain_meta`, `load_chain_corpus`, `read_chain_execution_count`, `chain_unique_coverage_bits`, `chain_completed_and_unique_cov_from_path`).
+   - Added `run_chain_ui` helpers for chain-mode banner and chain-list rendering (`print_chain_mode_banner`, `print_chains_to_fuzz`).
+   - Replaced inline closure helpers and banner/list print blocks in `run_chain_campaign` with module calls.
+   - Removed duplicated inline HashSet coverage calculations from chain-mode callsites by reusing shared helper functions.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -517,6 +522,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 95. Engagement-dir panic-path regression spot-check after runtime/control helper extraction batch:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+96. Main CLI compile verification after chain-mode helper extraction batch:
+    - `cargo check -q`
+97. Selector/command regression spot-check after chain-mode helper extraction batch:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+98. Engagement-dir panic-path regression spot-check after chain-mode helper extraction batch:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
