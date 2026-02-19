@@ -118,7 +118,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] 10-target run completes with zero filesystem collisions
 - [ ] Parallel run wall-clock speedup >=1.7x over serial baseline
 
-**Current Status:** ❌ Pending 10-target wall-clock benchmark
+**Current Status:** ⚠️ Speedup automation added via `scripts/benchmark_parallel_speedup.sh`; benchmark execution evidence still pending
 
 ---
 
@@ -339,7 +339,8 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 ### High Priority (P1)
 - [x] Add automated fresh clone + bootstrap validation script (`scripts/fresh_clone_bootstrap_validate.sh`)
 - [ ] Run fresh clone + bootstrap validation and capture summary artifacts
-- [ ] Execute 10-target wall-clock benchmark
+- [x] Add serial-vs-parallel speedup benchmark automation (`scripts/benchmark_parallel_speedup.sh`)
+- [ ] Execute 10-target wall-clock benchmark and capture speedup evidence
 - [ ] Validate integrated campaign runs for Phase 3A criteria
 - [ ] Achieve measurable recall (target >=80%)
 - [ ] Validate safe FPR remains <=5%
