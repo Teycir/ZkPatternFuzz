@@ -234,6 +234,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Moved `ScanTarget` and `materialize_scan_pattern_campaign(...)` from `main.rs` to `scan_dispatch`.
    - Kept regex-selector metadata stripping, include-path rewriting, and scan parameter injection behavior unchanged.
    - Updated selector regression tests to use explicit `std::fs` import instead of relying on `main.rs` wildcard imports.
+94. Continued scan modularization by extracting selector gating + mismatch diagnostics (`src/main.rs`, `src/scan_selector.rs`):
+   - Added `evaluate_scan_selectors_or_bail(...)` in `scan_selector` to centralize selector pass/fail orchestration.
+   - Moved selector-threshold failure-detail construction out of `run_scan` into module-local helper logic.
+   - Kept selector evaluation semantics and mismatch error text shape unchanged while reducing `run_scan` branching complexity.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -435,6 +439,10 @@ Validation:
 76. Main CLI compile verification after scan materialization extraction:
     - `cargo check -q`
 77. Selector safety regression spot-check after scan materialization extraction:
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+78. Main CLI compile verification after selector-gating extraction:
+    - `cargo check -q`
+79. Selector safety regression spot-check after selector-gating extraction:
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)

@@ -46,10 +46,10 @@ use scan_progress::{
     read_scan_findings_summary_since, run_scan_phase_with_progress, scan_default_output_dir,
 };
 use scan_selector::{
-    evaluate_loaded_scan_regex_patterns, load_scan_regex_selector_config, ScanRegexPatternSummary,
+    evaluate_scan_selectors_or_bail, load_scan_regex_selector_config, ScanRegexPatternSummary,
 };
 #[cfg(test)]
-use scan_selector::validate_scan_regex_pattern_safety;
+use scan_selector::{evaluate_loaded_scan_regex_patterns, validate_scan_regex_pattern_safety};
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName};
 use zk_fuzzer::fuzzer::ZkFuzzer;
 use zk_fuzzer::Framework;
@@ -853,59 +853,11 @@ async fn run_scan(
         circuit_path: PathBuf::from(target_circuit),
         main_component: main_component.to_string(),
     };
-    let mut scan_regex_summary: Option<ScanRegexPatternSummary> = None;
-    if let Some(selector_config) = regex_selector_config.as_ref() {
-        let summary = evaluate_loaded_scan_regex_patterns(selector_config, &target.circuit_path)?;
-        if !summary.selector_passed {
-            let mut reasons: Vec<String> = Vec::new();
-            if summary.matched_patterns < summary.required_k_of_n {
-                reasons.push(format!(
-                    "k_of_n not met (matched {} of {}, required >= {})",
-                    summary.matched_patterns, summary.total_patterns, summary.required_k_of_n
-                ));
-            }
-            if summary.matched_score + f64::EPSILON < summary.required_min_score {
-                reasons.push(format!(
-                    "score threshold not met (matched {:.2}, required >= {:.2})",
-                    summary.matched_score, summary.required_min_score
-                ));
-            }
-            for group in &summary.group_matches {
-                if !group.passed {
-                    reasons.push(format!(
-                        "group '{}' unmet (k_of_n {}/{}, required >= {}; score {:.2}, required >= {:.2})",
-                        group.name,
-                        group.matched_patterns,
-                        group.total_patterns,
-                        group.required_k_of_n,
-                        group.matched_score,
-                        group.required_min_score
-                    ));
-                }
-            }
-            let detail = if reasons.is_empty() {
-                "selector policy thresholds not satisfied".to_string()
-            } else {
-                reasons.join("; ")
-            };
-            anyhow::bail!(
-                "Pattern '{}' selectors did not match target circuit '{}': {}. \
-                 Refine `patterns`/`selector_policy` or choose a matching pattern YAML.",
-                pattern_path,
-                target.circuit_path.display(),
-                detail
-            );
-        }
-        tracing::info!(
-            "Pattern selectors matched {}/{} (score {:.2}, required {:.2}): [{}]",
-            summary.matched_patterns,
-            summary.total_patterns,
-            summary.matched_score,
-            summary.required_min_score,
-            summary.matched_ids.join(", ")
-        );
-        scan_regex_summary = Some(summary);
-    }
+    let scan_regex_summary: Option<ScanRegexPatternSummary> = evaluate_scan_selectors_or_bail(
+        pattern_path,
+        regex_selector_config.as_ref(),
+        &target.circuit_path,
+    )?;
 
     let materialized = materialize_scan_pattern_campaign(
         pattern_path,

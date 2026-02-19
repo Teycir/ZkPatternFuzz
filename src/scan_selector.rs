@@ -773,3 +773,68 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
 
     Ok(summary)
 }
+
+fn selector_failure_detail(summary: &ScanRegexPatternSummary) -> String {
+    let mut reasons: Vec<String> = Vec::new();
+    if summary.matched_patterns < summary.required_k_of_n {
+        reasons.push(format!(
+            "k_of_n not met (matched {} of {}, required >= {})",
+            summary.matched_patterns, summary.total_patterns, summary.required_k_of_n
+        ));
+    }
+    if summary.matched_score + f64::EPSILON < summary.required_min_score {
+        reasons.push(format!(
+            "score threshold not met (matched {:.2}, required >= {:.2})",
+            summary.matched_score, summary.required_min_score
+        ));
+    }
+    for group in &summary.group_matches {
+        if !group.passed {
+            reasons.push(format!(
+                "group '{}' unmet (k_of_n {}/{}, required >= {}; score {:.2}, required >= {:.2})",
+                group.name,
+                group.matched_patterns,
+                group.total_patterns,
+                group.required_k_of_n,
+                group.matched_score,
+                group.required_min_score
+            ));
+        }
+    }
+    if reasons.is_empty() {
+        "selector policy thresholds not satisfied".to_string()
+    } else {
+        reasons.join("; ")
+    }
+}
+
+pub(crate) fn evaluate_scan_selectors_or_bail(
+    pattern_path: &str,
+    selector_config: Option<&ScanRegexSelectorConfig>,
+    target_circuit: &Path,
+) -> anyhow::Result<Option<ScanRegexPatternSummary>> {
+    let Some(selector_config) = selector_config else {
+        return Ok(None);
+    };
+
+    let summary = evaluate_loaded_scan_regex_patterns(selector_config, target_circuit)?;
+    if !summary.selector_passed {
+        let detail = selector_failure_detail(&summary);
+        anyhow::bail!(
+            "Pattern '{}' selectors did not match target circuit '{}': {}. \
+             Refine `patterns`/`selector_policy` or choose a matching pattern YAML.",
+            pattern_path,
+            target_circuit.display(),
+            detail
+        );
+    }
+    tracing::info!(
+        "Pattern selectors matched {}/{} (score {:.2}, required {:.2}): [{}]",
+        summary.matched_patterns,
+        summary.total_patterns,
+        summary.matched_score,
+        summary.required_min_score,
+        summary.matched_ids.join(", ")
+    );
+    Ok(Some(summary))
+}
