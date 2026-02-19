@@ -94,10 +94,10 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Ensure local binary assets remain untracked by git
 
 ### Exit Criteria
-- [ ] Fresh clone + bootstrap can run 5-target matrix without manual tool installation
-- [ ] Keygen readiness preflight passes on at least 4/5 baseline targets
+- [x] Fresh clone + bootstrap can run 5-target matrix without manual tool installation (`artifacts/fresh_clone_validation/latest_report.json`)
+- [x] Keygen readiness preflight passes on at least 4/5 baseline targets (`artifacts/keygen_preflight/latest_report.json`)
 
-**Current Status:** ⚠️ Fresh-clone validation reaches benchmark stage with report `artifacts/fresh_clone_validation/latest_report.json`, but currently fails operability gate due to missing `circomlib` includes in clean-clone benchmark targets (`circom_compilation_failed=6/10`, `completed=1/10`) after dry-run bootstrap
+**Current Status:** ✅ Phase 2 exit criteria are met: fresh-clone bootstrap matrix passes with zero Circom compilation failures and baseline keygen preflight passes on 5/5 targets
 
 ---
 
@@ -340,7 +340,9 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Add automated fresh clone + bootstrap validation script (`scripts/fresh_clone_bootstrap_validate.sh`)
 - [x] Run fresh clone + bootstrap validation and capture summary artifacts (`artifacts/fresh_clone_validation/latest_report.json`)
 - [x] Fix clean-clone `zk-backends` build blockers (`fixture`/`util` module resolution) so bootstrap validation can reach benchmark stage
-- [ ] Ensure `circomlib` include availability in fresh-clone bootstrap path and eliminate `circom_compilation_failed` (`artifacts/fresh_clone_validation/fresh_clone_20260219_203942_circom_compilation_analysis.json`)
+- [x] Ensure `circomlib` include availability in fresh-clone bootstrap path and eliminate `circom_compilation_failed` (`artifacts/fresh_clone_validation/latest_report.json`)
+- [x] Add automated keygen preflight matrix validator (`scripts/keygen_preflight_validate.sh`)
+- [x] Run baseline keygen preflight matrix and capture pass-count report (`artifacts/keygen_preflight/latest_report.json`)
 - [x] Add serial-vs-parallel speedup benchmark automation (`scripts/benchmark_parallel_speedup.sh`)
 - [x] Execute 10-target wall-clock benchmark and capture speedup evidence
 - [x] Add automated Phase 3A validation script (`scripts/phase3a_validate.sh`)
@@ -362,16 +364,23 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 ### Fresh Clone Validation (Bootstrap Operability)
 - **Command:** `scripts/fresh_clone_bootstrap_validate.sh --bootstrap-mode dry-run --suite safe_regression,vulnerable_ground_truth --trials 1 --jobs 1 --batch-jobs 1 --workers 1 --iterations 50 --timeout 10 --report-out artifacts/fresh_clone_validation/latest_report.json`
 - **Report:** `artifacts/fresh_clone_validation/latest_report.json`
-- **Outcome:** `passes=false`, `overall_completion_rate=0.10`, `overall_attack_stage_reach_rate=0.40`, `circom_compilation_failed=6`, `completed_runs=1`
-- **Resolved blocker:** clean-clone compile failure from missing `zk-backends` modules (`fixture`/`util`) is fixed
-- **Observed blocker:** benchmark runs in fresh clone still fail mostly at Circom compilation (`circom_compilation_failed`), indicating bootstrap operability is not yet sufficient
-- **Status:** Phase 2 operability exit criteria remain open until fresh-clone benchmark runs complete without Circom compilation failures
+- **Outcome:** `passes=true`, `overall_completion_rate=0.30`, `overall_attack_stage_reach_rate=1.00`, `circom_compilation_failed=0`, `completed_runs=3`
+- **Resolved blocker:** clean-clone compile failure from missing `zk-backends` modules (`fixture`/`util`) is fixed, and clean-clone Circom include resolution no longer fails benchmark runs
+- **Observed blocker:** completion/quality gates are still below target despite stable bootstrap operability
+- **Status:** Phase 2 dependency-availability blocker is closed; remaining blockers are completion and detection-quality gates
 
 ### Fresh Clone Circom Compilation Root-Cause Analysis
 - **Command:** `python3 scripts/analyze_circom_compilation_failures.py --outcomes artifacts/fresh_clone_validation/fresh_clone_20260219_203942_outcomes.json --summary artifacts/fresh_clone_validation/fresh_clone_20260219_203942_summary.json --repo-root . --json-out artifacts/fresh_clone_validation/fresh_clone_20260219_203942_circom_compilation_analysis.json`
 - **Report:** `artifacts/fresh_clone_validation/fresh_clone_20260219_203942_circom_compilation_analysis.json`
 - **Outcome:** all six fresh-clone compilation failures map to circuits importing `circomlib/*` (`poseidon.circom`, `comparators.circom`, `bitify.circom`)
-- **Status:** Phase 2 blocker narrowed to reproducible dependency-availability gap (clean clone lacks required `circomlib` include roots during benchmark run)
+- **Follow-up:** rerun at current head (`artifacts/fresh_clone_validation/latest_report.json`) shows `circom_compilation_failed=0`
+- **Status:** Phase 2 dependency-availability gap is resolved; this RCA remains as historical root-cause evidence
+
+### Baseline Keygen Readiness Preflight (5-target matrix)
+- **Command:** `scripts/keygen_preflight_validate.sh --suite safe_regression --profile dev --required-passes 4 --report-out artifacts/keygen_preflight/latest_report.json`
+- **Report:** `artifacts/keygen_preflight/latest_report.json`
+- **Outcome:** `passes=true`, `passed_targets=5`, `failed_targets=0`, `required_passes=4`
+- **Status:** Phase 2 keygen-readiness exit gate is met on baseline suite
 
 ### Release Candidate Validation (Two Consecutive Attempts)
 - **Command:** `scripts/release_candidate_validate_twice.sh --bench-root artifacts/benchmark_runs_fast --required-passes 1 --stable-ref 370d029 --rollback-even-if-gate-fails --output-dir artifacts/release_candidate_validation`
