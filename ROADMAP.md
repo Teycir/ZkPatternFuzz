@@ -361,6 +361,15 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 128. Continued chain-mode modularization by reducing finalize/save policy duplication (`src/main.rs`, `src/run_chain_reports.rs`):
    - Updated finalize flow to consume `ChainReportContext` directly for engagement policy checks.
    - Simplified `run_chain_campaign` tail orchestration to use prebuilt contexts instead of duplicating strict/run-valid metadata.
+129. Completed chain-mode modularization by extracting full chain campaign flow module (`src/main.rs`, `src/run_chain_campaign_flow.rs`):
+   - Moved `run_chain_campaign` implementation body into dedicated `run_chain_campaign_flow::run_chain_campaign(...)`.
+   - Kept `src/main.rs` as a thin delegating wrapper for chain mode entrypoint dispatch.
+130. Finalized chain-mode main-surface cleanup after flow extraction (`src/main.rs`):
+   - Removed chain-campaign-only imports from `main.rs` now owned by `run_chain_campaign_flow`.
+   - Preserved CLI dispatch behavior and existing wrapper signature.
+131. Consolidated chain flow dependencies inside campaign module (`src/run_chain_campaign_flow.rs`):
+   - Wired existing startup, engine, corpus, quality, UI, report, and finalize helpers through module-local orchestration imports.
+   - Preserved run artifact behavior, strict engagement semantics, and report outputs while reducing main binary surface area.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -678,6 +687,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 128. Engagement-dir panic-path regression spot-check after chain corpus/report-context consolidation batch:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+129. Main CLI compile verification after chain campaign flow extraction:
+    - `cargo check -q`
+130. Selector/command regression spot-check after chain campaign flow extraction:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+131. Engagement-dir panic-path regression spot-check after chain campaign flow extraction:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
