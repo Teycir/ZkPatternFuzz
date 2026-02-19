@@ -394,21 +394,43 @@ impl NoirTarget {
     fn parse_nargo_info(&self, output: &str) -> Result<(usize, usize, usize)> {
         let info: serde_json::Value =
             serde_json::from_str(output).context("Invalid JSON from nargo info --json")?;
-        let opcodes = info
-            .get("opcodes")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'opcodes' in nargo info output"))?
-            as usize;
-        let witnesses = info
-            .get("witnesses")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'witnesses' in nargo info output"))?
-            as usize;
-        let public = info
-            .get("public_inputs")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'public_inputs' in nargo info output"))?
-            as usize;
+        let scalar = |key: &str| {
+            info.get(key)
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize)
+                .unwrap_or(0)
+        };
+
+        // Legacy schema:
+        //   {"opcodes": X, "witnesses": Y, "public_inputs": Z}
+        //
+        // Newer schema (observed in modern nargo):
+        //   {"programs":[{"functions":[{"opcodes": X}, ...], ...}], ...}
+        let opcodes = if let Some(v) = info.get("opcodes").and_then(|v| v.as_u64()) {
+            v as usize
+        } else if let Some(programs) = info.get("programs").and_then(|v| v.as_array()) {
+            programs
+                .iter()
+                .flat_map(|program| {
+                    program
+                        .get("functions")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default()
+                })
+                .filter_map(|func| func.get("opcodes").and_then(|v| v.as_u64()))
+                .map(|v| v as usize)
+                .sum()
+        } else {
+            0
+        };
+
+        if opcodes == 0 {
+            anyhow::bail!("Missing 'opcodes' in nargo info output");
+        }
+
+        let witnesses = scalar("witnesses");
+        let public = scalar("public_inputs");
         Ok((opcodes, witnesses, public))
     }
 

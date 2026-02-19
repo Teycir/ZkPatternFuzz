@@ -141,11 +141,11 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ### Exit Criteria
 - [x] `AdaptiveOrchestrator` integration tests validate allocation enforcement
-- [ ] Proof forgery detector cannot hang indefinitely on subprocesses
+- [x] Proof forgery detector cannot hang indefinitely on subprocesses (`artifacts/phase3a_timeout_noir_validation/phase3a_timeout_noir_report.json`)
 - [x] Cairo backend can execute and report non-empty coverage/failure semantics
-- [ ] Noir backend execution throughput improves measurably on repeated runs
+- [x] Noir backend execution throughput improves measurably on repeated runs (`artifacts/phase3a_timeout_noir_validation/noir_throughput_report.json`)
 
-**Current Status:** ⚠️ Required and backend-heavy checks pass via `scripts/phase3a_validate.sh --run-backend-heavy` (`artifacts/phase3a_validation_backend_heavy/phase3a_report.json`); proof-forgery timeout-specific and Noir throughput-specific criteria still need dedicated evidence
+**Current Status:** ✅ Phase 3A exit criteria are met with dedicated timeout/noir evidence (`artifacts/phase3a_timeout_noir_validation/phase3a_timeout_noir_report.json`), including proof-forgery timeout hardening and measured Noir warm-run speedup
 
 ---
 
@@ -347,6 +347,8 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Execute 10-target wall-clock benchmark and capture speedup evidence
 - [x] Add automated Phase 3A validation script (`scripts/phase3a_validate.sh`)
 - [x] Run backend-heavy Phase 3A integrated checks (Cairo/Noir) and capture evidence (`artifacts/phase3a_validation_backend_heavy/phase3a_report.json`)
+- [x] Add dedicated Phase 3A timeout+Noir throughput validator (`scripts/phase3a_timeout_noir_validate.sh`, `src/bin/zk0d_noir_throughput.rs`)
+- [x] Run dedicated proof-forgery timeout and Noir throughput checks (`artifacts/phase3a_timeout_noir_validation/phase3a_timeout_noir_report.json`)
 - [ ] Achieve measurable recall (target >=80%)
 - [ ] Validate safe FPR remains <=5%
 
@@ -393,7 +395,13 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - **Command:** `scripts/phase3a_validate.sh --output-dir artifacts/phase3a_validation_backend_heavy --run-backend-heavy --enforce`
 - **Report:** `artifacts/phase3a_validation_backend_heavy/phase3a_report.json`
 - **Outcome:** required checks `PASS`; optional backend-heavy checks `PASS` (`cairo_backend_integration`, `noir_constraint_coverage`)
-- **Status:** backend-heavy execution evidence is captured; remaining open criteria are proof-forgery timeout-specific validation and Noir throughput delta evidence
+- **Status:** backend-heavy execution evidence is captured and remains green
+
+### Phase 3A Dedicated Timeout + Noir Throughput Validation
+- **Command:** `scripts/phase3a_timeout_noir_validate.sh --output-dir artifacts/phase3a_timeout_noir_validation --noir-project tests/noir_projects/multiplier --noir-runs 20 --min-improvement-ratio 1.05 --enforce`
+- **Report:** `artifacts/phase3a_timeout_noir_validation/phase3a_timeout_noir_report.json`
+- **Outcome:** required checks `PASS` (`proof_forgery_timeout_hardening`, `noir_repeated_run_throughput`), Noir cold/warm ratio `1.97x` (`cold_first_us=214399`, `warm_median_us=108626`)
+- **Status:** Phase 3A timeout and Noir-throughput exit criteria are now closed with dedicated evidence
 
 ### Run 1: Permission-Denied Blocker
 - **Command:** `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 1 --batch-jobs 1 --workers 1 --output-dir artifacts/benchmark_runs`

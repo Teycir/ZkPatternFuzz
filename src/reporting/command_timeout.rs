@@ -1,10 +1,45 @@
 //! Timeout wrapper for external commands
 
 use std::io::Read;
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+
+#[cfg(unix)]
+fn prepare_child_process_group(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    // Put the spawned command in its own process group so timeout enforcement can
+    // terminate the entire subtree (e.g., `sh -c "sleep ..."` descendants).
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn prepare_child_process_group(_cmd: &mut Command) {}
+
+#[cfg(unix)]
+fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
+    let pgid = child.id() as i32;
+    // Best-effort kill of the whole process group.
+    let rc = unsafe { libc::killpg(pgid, libc::SIGKILL) };
+    if rc == 0 {
+        return Ok(());
+    }
+    // Fall back to killing only the direct child when group kill is unavailable.
+    child.kill()
+}
+
+#[cfg(not(unix))]
+fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
+    child.kill()
+}
 
 fn spawn_pipe_reader<R>(mut reader: R) -> JoinHandle<anyhow::Result<Vec<u8>>>
 where
@@ -34,6 +69,8 @@ fn join_pipe_reader(
 /// Execute a command with timeout using std::process polling.
 /// This avoids environment-specific SIGCHLD handler failures.
 pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<Output> {
+    prepare_child_process_group(cmd);
+
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -57,7 +94,7 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<
         }
 
         if Instant::now() >= deadline {
-            child.kill()?;
+            kill_child_tree(&mut child)?;
             child.wait()?;
             // Ensure reader threads observe EOF and exit cleanly.
             let _stdout = join_pipe_reader(stdout_reader)?;
@@ -68,3 +105,7 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<
         thread::sleep(Duration::from_millis(20));
     }
 }
+
+#[cfg(test)]
+#[path = "command_timeout_tests.rs"]
+mod tests;
