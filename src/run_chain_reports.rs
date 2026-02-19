@@ -1,13 +1,13 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use std::path::PathBuf;
 use zk_fuzzer::config::ReportingConfig;
 use zk_fuzzer::chain_fuzzer::metrics::DepthMetricsSummary;
 use zk_fuzzer::chain_fuzzer::ChainFinding;
 use zk_fuzzer::reporting::FuzzReport;
 
 use crate::engagement_artifacts::write_run_artifacts;
+use crate::run_chain_context::ChainRunContext;
 use crate::run_lifecycle::write_failed_mode_run_artifact_with_error;
 use crate::run_outcome_docs::completed_run_doc_with_window;
 
@@ -332,33 +332,23 @@ pub(crate) fn save_standard_chain_report(
     report.save_to_files()
 }
 
-pub(crate) struct ChainSaveContext<'a> {
-    pub output_dir: &'a Path,
-    pub command: &'a str,
-    pub run_id: &'a str,
-    pub config_path: &'a str,
-    pub campaign_name: &'a str,
-    pub started_utc: DateTime<Utc>,
-    pub timeout_seconds: Option<u64>,
-}
-
 pub(crate) fn save_chain_reports_and_standard_or_emit_failure(
-    save_ctx: &ChainSaveContext<'_>,
+    run_ctx: &ChainRunContext<'_>,
     report_ctx: &ChainReportContext<'_>,
     seed: Option<u64>,
     reporting: ReportingConfig,
     run_execution_count: u64,
 ) -> anyhow::Result<()> {
-    if let Err(err) = save_chain_reports_bundle(save_ctx.output_dir, save_ctx.config_path, seed, report_ctx) {
+    if let Err(err) = save_chain_reports_bundle(run_ctx.output_dir, run_ctx.config_path, seed, report_ctx) {
         write_failed_mode_run_artifact_with_error(
-            save_ctx.output_dir,
-            save_ctx.command,
-            save_ctx.run_id,
+            run_ctx.output_dir,
+            run_ctx.command,
+            run_ctx.run_id,
             "save_chain_reports",
-            save_ctx.config_path,
-            save_ctx.campaign_name,
-            save_ctx.started_utc,
-            save_ctx.timeout_seconds,
+            run_ctx.config_path,
+            run_ctx.campaign_name,
+            run_ctx.started_utc,
+            run_ctx.timeout_seconds,
             format!("{:#}", err),
         );
         return Err(err);
@@ -371,14 +361,14 @@ pub(crate) fn save_chain_reports_and_standard_or_emit_failure(
         run_execution_count,
     ) {
         write_failed_mode_run_artifact_with_error(
-            save_ctx.output_dir,
-            save_ctx.command,
-            save_ctx.run_id,
+            run_ctx.output_dir,
+            run_ctx.command,
+            run_ctx.run_id,
             "save_standard_report",
-            save_ctx.config_path,
-            save_ctx.campaign_name,
-            save_ctx.started_utc,
-            save_ctx.timeout_seconds,
+            run_ctx.config_path,
+            run_ctx.campaign_name,
+            run_ctx.started_utc,
+            run_ctx.timeout_seconds,
             format!("{:#}", err),
         );
         return Err(err);
@@ -388,9 +378,8 @@ pub(crate) fn save_chain_reports_and_standard_or_emit_failure(
 }
 
 pub(crate) struct ChainFinalizeContext<'a> {
+    pub run_ctx: &'a ChainRunContext<'a>,
     pub completion_ctx: ChainCompletionDocContext<'a>,
-    pub output_dir: &'a PathBuf,
-    pub run_id: &'a str,
     pub engagement_strict: bool,
     pub run_valid: bool,
     pub critical: bool,
@@ -398,7 +387,7 @@ pub(crate) struct ChainFinalizeContext<'a> {
 
 pub(crate) fn finalize_chain_run(ctx: ChainFinalizeContext<'_>) -> anyhow::Result<()> {
     let doc = build_chain_completion_doc(&ctx.completion_ctx);
-    write_run_artifacts(ctx.output_dir, ctx.run_id, &doc);
+    write_run_artifacts(ctx.run_ctx.output_dir, ctx.run_ctx.run_id, &doc);
 
     if ctx.critical {
         anyhow::bail!("Chain run produced CRITICAL findings (see chain_report.json/report.json)");

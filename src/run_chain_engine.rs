@@ -1,33 +1,28 @@
-use chrono::{DateTime, Utc};
 use zk_fuzzer::chain_fuzzer::{ChainFinding, ChainSpec};
 use zk_fuzzer::fuzzer::FuzzingEngine;
 
 use crate::cli::ChainRunOptions;
+use crate::run_chain_context::ChainRunContext;
 use crate::run_lifecycle::write_failed_mode_run_artifact_with_error;
 
 pub(crate) async fn run_chain_engine(
+    run_ctx: &ChainRunContext<'_>,
     config: &zk_fuzzer::config::FuzzConfig,
     chains: &[ChainSpec],
     options: &ChainRunOptions,
-    output_dir: &std::path::Path,
-    command: &str,
-    run_id: &str,
-    config_path: &str,
-    campaign_name: &str,
-    started_utc: DateTime<Utc>,
 ) -> anyhow::Result<Vec<ChainFinding>> {
     let mut engine = match FuzzingEngine::new(config.clone(), options.seed, options.workers) {
         Ok(e) => e,
         Err(err) => {
             write_failed_mode_run_artifact_with_error(
-                output_dir,
-                command,
-                run_id,
+                run_ctx.output_dir,
+                run_ctx.command,
+                run_ctx.run_id,
                 "engine_init",
-                config_path,
-                campaign_name,
-                started_utc,
-                Some(options.timeout),
+                run_ctx.config_path,
+                run_ctx.campaign_name,
+                run_ctx.started_utc,
+                run_ctx.timeout_seconds,
                 format!("{:#}", err),
             );
             return Err(err);
@@ -49,14 +44,14 @@ pub(crate) async fn run_chain_engine(
         Ok(findings) => Ok(findings),
         Err(err) => {
             write_failed_mode_run_artifact_with_error(
-                output_dir,
-                command,
-                run_id,
+                run_ctx.output_dir,
+                run_ctx.command,
+                run_ctx.run_id,
                 "engine_run_chains",
-                config_path,
-                campaign_name,
-                started_utc,
-                Some(options.timeout),
+                run_ctx.config_path,
+                run_ctx.campaign_name,
+                run_ctx.started_utc,
+                run_ctx.timeout_seconds,
                 format!("{:#}", err),
             );
             Err(err)

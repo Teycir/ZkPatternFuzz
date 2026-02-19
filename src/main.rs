@@ -8,6 +8,7 @@ mod preflight_backend;
 mod run_bootstrap;
 mod run_chain_corpus;
 mod run_chain_config;
+mod run_chain_context;
 mod run_chain_engine;
 mod run_chain_quality;
 mod run_chain_reports;
@@ -43,12 +44,13 @@ use run_chain_corpus::{
     load_chain_final_metrics,
 };
 use run_chain_config::apply_chain_mode_overrides;
+use run_chain_context::ChainRunContext;
 use run_chain_engine::run_chain_engine;
 use run_chain_quality::assess_chain_quality;
 use run_chain_reports::{
     build_chain_report_context, chain_completion_status, finalize_chain_run,
-    save_chain_reports_and_standard_or_emit_failure, ChainCompletionDocContext, ChainFinalizeContext,
-    ChainReportContextInput, ChainSaveContext,
+    save_chain_reports_and_standard_or_emit_failure, ChainCompletionDocContext,
+    ChainFinalizeContext, ChainReportContextInput,
 };
 use run_chain_startup::startup_chain_run_or_exit_dry_run;
 use run_chain_ui::print_chain_results;
@@ -757,6 +759,16 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         chain_run_options_doc(&options),
     )?;
 
+    let run_ctx = ChainRunContext::from_options(
+        &output_dir,
+        command,
+        &run_id,
+        config_path,
+        &campaign_name,
+        started_utc,
+        &options,
+    );
+
     let _ctx_guard = RunLogContextGuard::new();
 
     // Get chains from config
@@ -766,15 +778,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     apply_chain_mode_overrides(&mut config, &options);
 
     if startup_chain_run_or_exit_dry_run(
+        &run_ctx,
         &config,
         &chains,
         &options,
-        &output_dir,
-        command,
-        &run_id,
-        config_path,
-        &campaign_name,
-        started_utc,
     )? {
         return Ok(());
     }
@@ -788,15 +795,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let baseline_unique_coverage_bits = baseline_metrics.unique_coverage_bits;
 
     let chain_findings: Vec<ChainFinding> = run_chain_engine(
+        &run_ctx,
         &config,
         &chains,
         &options,
-        &output_dir,
-        command,
-        &run_id,
-        config_path,
-        &campaign_name,
-        started_utc,
     )
     .await?;
 
@@ -856,15 +858,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     });
 
     save_chain_reports_and_standard_or_emit_failure(
-        &ChainSaveContext {
-            output_dir: &output_dir,
-            command,
-            run_id: &run_id,
-            config_path,
-            campaign_name: &campaign_name,
-            started_utc,
-            timeout_seconds: Some(options.timeout),
-        },
+        &run_ctx,
         &report_ctx,
         options.seed,
         config.reporting.clone(),
@@ -874,6 +868,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let (status, critical) = chain_completion_status(engagement_strict, run_valid, &chain_findings);
 
     finalize_chain_run(ChainFinalizeContext {
+        run_ctx: &run_ctx,
         completion_ctx: ChainCompletionDocContext {
             command,
             run_id: &run_id,
@@ -895,8 +890,6 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             min_unique_coverage_bits,
             min_completed_per_chain,
         },
-        output_dir: &output_dir,
-        run_id: &run_id,
         engagement_strict,
         run_valid,
         critical,

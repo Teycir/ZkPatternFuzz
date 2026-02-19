@@ -337,6 +337,18 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 120. Continued chain-mode modularization by extracting completion finalization and enforcement (`src/main.rs`, `src/run_chain_reports.rs`):
    - Added `ChainFinalizeContext` and `finalize_chain_run(...)` to centralize completion artifact write and strict-failure/critical bailout policy.
    - Replaced inline completion doc write + terminal bail checks in `run_chain_campaign` with a focused helper invocation.
+121. Continued chain-mode modularization by introducing shared run context (`src/main.rs`, `src/run_chain_context.rs`):
+   - Added `ChainRunContext` with canonical command/run/output/timing metadata for chain orchestration helpers.
+   - Added `ChainRunContext::from_options(...)` constructor to centralize timeout wiring from CLI options.
+122. Continued chain-mode modularization by rewiring startup/engine helpers to shared context (`src/main.rs`, `src/run_chain_startup.rs`, `src/run_chain_engine.rs`):
+   - Updated `startup_chain_run_or_exit_dry_run(...)` to consume `ChainRunContext` instead of repeated run metadata arguments.
+   - Updated `run_chain_engine(...)` to consume `ChainRunContext` and reuse shared failure-artifact metadata.
+123. Continued chain-mode modularization by rewiring report-save/finalize helpers to shared context (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Updated `save_chain_reports_and_standard_or_emit_failure(...)` to consume `ChainRunContext` for save-stage failure handling.
+   - Updated `ChainFinalizeContext`/`finalize_chain_run(...)` to consume `ChainRunContext` for completion artifact writes.
+124. Continued chain-mode modularization by collapsing chain callsite argument sprawl (`src/main.rs`):
+   - Constructed a single `run_ctx` in `run_chain_campaign` and threaded it through startup, engine, save, and finalize orchestration calls.
+   - Removed redundant repeated argument blocks while preserving behavior.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -640,6 +652,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 122. Engagement-dir panic-path regression spot-check after chain assessment/finalization extraction batch:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+123. Main CLI compile verification after chain shared-context extraction batch:
+    - `cargo check -q`
+124. Selector/command regression spot-check after chain shared-context extraction batch:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+125. Engagement-dir panic-path regression spot-check after chain shared-context extraction batch:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
