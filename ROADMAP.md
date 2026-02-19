@@ -296,6 +296,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `run_chain_ui::ChainResultsUiContext` and `print_chain_results(...)` to centralize terminal rendering for depth/corpus metrics and finding summaries.
    - Moved chain findings severity formatting, distribution bars, and reproduction command display out of `run_chain_campaign`.
    - Replaced the large inline results-print block in `run_chain_campaign` with a focused module call while preserving operator output semantics.
+108. Continued chain-mode modularization by extracting completion status/doc assembly (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Added `chain_completion_status(...)` to centralize terminal/report completion-state selection (`completed`, `failed_engagement_contract`, `completed_with_critical_findings`).
+   - Added `ChainCompletionDocContext` and `build_chain_completion_doc(...)` for shared completion artifact construction with metrics + engagement sections.
+   - Replaced inline status/critical computation and completion-doc field assembly in `run_chain_campaign` with focused helper calls.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -564,6 +568,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 107. Engagement-dir panic-path regression spot-check after chain-results UI extraction:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+108. Main CLI compile verification after chain-completion helper extraction:
+    - `cargo check -q`
+109. Selector/command regression spot-check after chain-completion helper extraction:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+110. Engagement-dir panic-path regression spot-check after chain-completion helper extraction:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)

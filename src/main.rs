@@ -41,8 +41,8 @@ use run_chain_corpus::{
 };
 use run_chain_quality::collect_chain_quality_failures;
 use run_chain_reports::{
-    build_chain_report_json, build_chain_report_markdown, write_chain_report_json,
-    write_chain_report_markdown,
+    build_chain_completion_doc, build_chain_report_json, build_chain_report_markdown,
+    chain_completion_status, write_chain_report_json, write_chain_report_markdown,
 };
 use run_chain_ui::{print_chain_mode_banner, print_chain_results, print_chains_to_fuzz};
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
@@ -1126,46 +1126,29 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         return Err(err);
     }
 
-    let critical = chain_findings
-        .iter()
-        .any(|f| f.finding.severity.to_lowercase() == "critical");
-    let status = if critical {
-        "completed_with_critical_findings"
-    } else if engagement_strict && !run_valid {
-        "failed_engagement_contract"
-    } else {
-        "completed"
-    };
+    let (status, critical) = chain_completion_status(engagement_strict, run_valid, &chain_findings);
 
     stage = "completed";
-    let mut doc = completed_run_doc_with_window(
+    let doc = build_chain_completion_doc(&run_chain_reports::ChainCompletionDocContext {
         command,
-        &run_id,
-        status,
+        run_id: &run_id,
         stage,
         config_path,
-        &campaign_name,
-        &output_dir,
+        campaign_name: &campaign_name,
+        output_dir: &output_dir,
         started_utc,
-        Some(options.timeout),
-    );
-    doc["metrics"] = serde_json::json!({
-        "chain_findings_total": summary.total_findings,
-        "critical_findings": critical,
-        "corpus_entries": final_total_entries,
-        "unique_coverage_bits": final_unique_coverage_bits,
-        "max_depth": final_max_depth,
-        "d_mean": summary.d_mean,
-        "p_deep": summary.p_deep,
-    });
-    doc["engagement"] = serde_json::json!({
-        "strict": engagement_strict,
-        "valid_run": run_valid,
-        "failures": quality_failures,
-        "thresholds": {
-            "min_unique_coverage_bits": min_unique_coverage_bits,
-            "min_completed_per_chain": min_completed_per_chain,
-        }
+        timeout_seconds: Some(options.timeout),
+        status,
+        summary: &summary,
+        critical,
+        final_total_entries,
+        final_unique_coverage_bits,
+        final_max_depth,
+        engagement_strict,
+        run_valid,
+        quality_failures: &quality_failures,
+        min_unique_coverage_bits,
+        min_completed_per_chain,
     });
     write_run_artifacts(&output_dir, &run_id, &doc);
 

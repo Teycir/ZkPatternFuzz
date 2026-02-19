@@ -1,7 +1,10 @@
 use std::path::Path;
 
+use chrono::{DateTime, Utc};
 use zk_fuzzer::chain_fuzzer::metrics::DepthMetricsSummary;
 use zk_fuzzer::chain_fuzzer::ChainFinding;
+
+use crate::run_outcome_docs::completed_run_doc_with_window;
 
 pub(crate) struct ChainReportContext<'a> {
     pub campaign_name: &'a str,
@@ -175,4 +178,77 @@ pub(crate) fn build_chain_report_markdown(
 pub(crate) fn write_chain_report_markdown(path: &Path, markdown: &str) -> anyhow::Result<()> {
     std::fs::write(path, markdown)?;
     Ok(())
+}
+
+pub(crate) fn chain_completion_status(
+    engagement_strict: bool,
+    run_valid: bool,
+    chain_findings: &[ChainFinding],
+) -> (&'static str, bool) {
+    let critical = chain_findings
+        .iter()
+        .any(|f| f.finding.severity.to_lowercase() == "critical");
+    let status = if critical {
+        "completed_with_critical_findings"
+    } else if engagement_strict && !run_valid {
+        "failed_engagement_contract"
+    } else {
+        "completed"
+    };
+    (status, critical)
+}
+
+pub(crate) struct ChainCompletionDocContext<'a> {
+    pub command: &'a str,
+    pub run_id: &'a str,
+    pub stage: &'a str,
+    pub config_path: &'a str,
+    pub campaign_name: &'a str,
+    pub output_dir: &'a Path,
+    pub started_utc: DateTime<Utc>,
+    pub timeout_seconds: Option<u64>,
+    pub status: &'a str,
+    pub summary: &'a DepthMetricsSummary,
+    pub critical: bool,
+    pub final_total_entries: usize,
+    pub final_unique_coverage_bits: usize,
+    pub final_max_depth: usize,
+    pub engagement_strict: bool,
+    pub run_valid: bool,
+    pub quality_failures: &'a [String],
+    pub min_unique_coverage_bits: usize,
+    pub min_completed_per_chain: usize,
+}
+
+pub(crate) fn build_chain_completion_doc(ctx: &ChainCompletionDocContext<'_>) -> serde_json::Value {
+    let mut doc = completed_run_doc_with_window(
+        ctx.command,
+        ctx.run_id,
+        ctx.status,
+        ctx.stage,
+        ctx.config_path,
+        ctx.campaign_name,
+        ctx.output_dir,
+        ctx.started_utc,
+        ctx.timeout_seconds,
+    );
+    doc["metrics"] = serde_json::json!({
+        "chain_findings_total": ctx.summary.total_findings,
+        "critical_findings": ctx.critical,
+        "corpus_entries": ctx.final_total_entries,
+        "unique_coverage_bits": ctx.final_unique_coverage_bits,
+        "max_depth": ctx.final_max_depth,
+        "d_mean": ctx.summary.d_mean,
+        "p_deep": ctx.summary.p_deep,
+    });
+    doc["engagement"] = serde_json::json!({
+        "strict": ctx.engagement_strict,
+        "valid_run": ctx.run_valid,
+        "failures": ctx.quality_failures,
+        "thresholds": {
+            "min_unique_coverage_bits": ctx.min_unique_coverage_bits,
+            "min_completed_per_chain": ctx.min_completed_per_chain,
+        }
+    });
+    doc
 }
