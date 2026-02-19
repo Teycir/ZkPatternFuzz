@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STABLE_REF=""
 WORKTREE_PATH=""
+CARGO_OFFLINE=1
 
 usage() {
   cat <<'USAGE'
@@ -15,6 +16,7 @@ in an isolated git worktree.
 Options:
   --stable-ref <git-ref>   Required. Previous stable tag/commit/branch to validate.
   --worktree <path>        Optional explicit temporary worktree path.
+  --no-cargo-offline       Disable cargo --offline for rollback build/run steps.
   -h, --help               Show this help.
 USAGE
 }
@@ -28,6 +30,10 @@ while [[ $# -gt 0 ]]; do
     --worktree)
       WORKTREE_PATH="$2"
       shift 2
+      ;;
+    --no-cargo-offline)
+      CARGO_OFFLINE=0
+      shift
       ;;
     -h|--help)
       usage
@@ -73,12 +79,17 @@ git -C "$ROOT_DIR" worktree add --detach "$WORKTREE_PATH" "$STABLE_REF" >/dev/nu
 
 pushd "$WORKTREE_PATH" >/dev/null
 
+declare -a CARGO_ARGS=()
+if [[ "$CARGO_OFFLINE" -eq 1 ]]; then
+  CARGO_ARGS+=(--offline)
+fi
+
 echo "Building stable ref in release mode..."
-cargo build --release --all-features
+cargo "${CARGO_ARGS[@]}" build --release --all-features
 
 echo "Running rollback smoke checks..."
 ./target/release/zk-fuzzer --help >/dev/null
-cargo run --release --bin zk0d_batch -- --config-profile dev --list-catalog >/dev/null
+cargo "${CARGO_ARGS[@]}" run --release --bin zk0d_batch -- --config-profile dev --list-catalog >/dev/null
 
 popd >/dev/null
 echo "Rollback validation passed for ref: $STABLE_REF"

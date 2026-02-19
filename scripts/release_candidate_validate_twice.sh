@@ -6,6 +6,7 @@ BENCH_ROOT="$ROOT_DIR/artifacts/benchmark_runs_fast"
 REQUIRED_PASSES=1
 OUTPUT_DIR="$ROOT_DIR/artifacts/release_candidate_validation"
 STABLE_REF=""
+ROLLBACK_EVEN_IF_GATE_FAILS=0
 ENFORCE=0
 
 usage() {
@@ -19,6 +20,9 @@ Options:
   --bench-root <path>        Benchmark root directory (default: artifacts/benchmark_runs_fast)
   --required-passes <n>      Summaries required per gate attempt (default: 1)
   --stable-ref <git-ref>     Optional rollback target ref
+  --rollback-even-if-gate-fails
+                             Run rollback validation when --stable-ref is set,
+                             even if gate attempts fail
   --output-dir <path>        Output directory for logs/report
   --enforce                  Exit non-zero when overall validation fails
   -h, --help                 Show this help
@@ -38,6 +42,10 @@ while [[ $# -gt 0 ]]; do
     --stable-ref)
       STABLE_REF="$2"
       shift 2
+      ;;
+    --rollback-even-if-gate-fails)
+      ROLLBACK_EVEN_IF_GATE_FAILS=1
+      shift
       ;;
     --output-dir)
       OUTPUT_DIR="$2"
@@ -88,7 +96,14 @@ done
 
 rollback_status="skip"
 rollback_log_path=""
-if [[ "${attempt_statuses[0]}" == "pass" && "${attempt_statuses[1]}" == "pass" && -n "$STABLE_REF" ]]; then
+rollback_trigger="not_requested"
+if [[ -n "$STABLE_REF" ]]; then
+  rollback_trigger="gates_passed_twice"
+fi
+if [[ "$ROLLBACK_EVEN_IF_GATE_FAILS" -eq 1 && -n "$STABLE_REF" ]]; then
+  rollback_trigger="forced"
+fi
+if [[ -n "$STABLE_REF" && ( ("${attempt_statuses[0]}" == "pass" && "${attempt_statuses[1]}" == "pass") || "$ROLLBACK_EVEN_IF_GATE_FAILS" -eq 1 ) ]]; then
   rollback_log_path="$OUTPUT_DIR/rollback_validation.log"
   echo "Running rollback validation against stable ref: $STABLE_REF"
   if "$ROOT_DIR/scripts/rollback_validate.sh" --stable-ref "$STABLE_REF" >"$rollback_log_path" 2>&1; then
@@ -99,7 +114,7 @@ if [[ "${attempt_statuses[0]}" == "pass" && "${attempt_statuses[1]}" == "pass" &
 fi
 
 REPORT_PATH="$OUTPUT_DIR/release_candidate_report.json"
-python3 - "$REPORT_PATH" "$BENCH_ROOT" "$REQUIRED_PASSES" "$STABLE_REF" \
+python3 - "$REPORT_PATH" "$BENCH_ROOT" "$REQUIRED_PASSES" "$STABLE_REF" "$rollback_trigger" \
   "${attempt_statuses[0]}" "${attempt_statuses[1]}" \
   "${attempt_logs[0]}" "${attempt_logs[1]}" \
   "$rollback_status" "$rollback_log_path" <<'PY'
@@ -112,6 +127,7 @@ from datetime import datetime, timezone
     bench_root,
     required_passes,
     stable_ref,
+    rollback_trigger,
     attempt1_status,
     attempt2_status,
     attempt1_log,
@@ -133,6 +149,7 @@ payload = {
     ],
     "gates_passed_twice": gates_passed_twice,
     "stable_ref": stable_ref or None,
+    "rollback_trigger": rollback_trigger,
     "rollback_status": rollback_status,
     "rollback_log_path": rollback_log or None,
     "overall_pass": overall_pass,

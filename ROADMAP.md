@@ -197,7 +197,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Versioned release candidate passes all gates twice consecutively
 - [ ] Rollback strategy documented and tested
 
-**Current Status:** ❌ Automated two-attempt release validation executed via `scripts/release_candidate_validate_twice.sh`; both gate attempts currently fail on latest benchmark (`completion=0.35`, `safe_fpr=0.50`)
+**Current Status:** ❌ Automated two-attempt release validation still fails on benchmark gates (`completion=0.35`, `safe_fpr=0.50`), but rollback smoke validation now passes in offline mode when forced for evidence capture (`artifacts/release_candidate_validation/rollback_validation.log`)
 
 ---
 
@@ -352,8 +352,8 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Add rollback-integrated release gate invocation (`scripts/release_candidate_gate.sh --stable-ref <ref>`)
 - [x] Add automated two-attempt release-candidate validator (`scripts/release_candidate_validate_twice.sh`)
 - [ ] Run release candidate validation twice consecutively
-- [ ] Execute rollback validation in release gate and archive evidence
-- [ ] Document any remaining edge cases in troubleshooting playbook
+- [x] Execute rollback validation in release gate and archive evidence (`artifacts/release_candidate_validation/rollback_validation.log`)
+- [x] Document remaining edge cases in troubleshooting playbook (`docs/TROUBLESHOOTING_PLAYBOOK.md` section `5B`)
 
 ---
 
@@ -368,11 +368,11 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - **Status:** Phase 2 operability exit criteria remain open until fresh-clone benchmark runs complete without Circom compilation failures
 
 ### Release Candidate Validation (Two Consecutive Attempts)
-- **Command:** `scripts/release_candidate_validate_twice.sh --bench-root artifacts/benchmark_runs_fast --required-passes 1 --output-dir artifacts/release_candidate_validation`
+- **Command:** `scripts/release_candidate_validate_twice.sh --bench-root artifacts/benchmark_runs_fast --required-passes 1 --stable-ref 370d029 --rollback-even-if-gate-fails --output-dir artifacts/release_candidate_validation`
 - **Report:** `artifacts/release_candidate_validation/release_candidate_report.json`
-- **Outcome:** attempt #1 `fail`, attempt #2 `fail`, rollback `skip`
+- **Outcome:** attempt #1 `fail`, attempt #2 `fail`, rollback `pass` (forced with `--stable-ref 370d029 --rollback-even-if-gate-fails`)
 - **Observed blocker:** latest gate target (`benchmark_20260219_182723`) fails thresholds (`overall_completion_rate=0.35 < 0.95`, `safe_false_positive_rate=0.50 > 0.20`)
-- **Status:** Phase 5 release criteria remain open until gate metrics pass on two consecutive attempts, then rollback validation can be archived
+- **Status:** Phase 5 release criteria remain open until gate metrics pass on two consecutive attempts; rollback evidence is now archived
 
 ### Run 1: Permission-Denied Blocker
 - **Command:** `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 1 --batch-jobs 1 --workers 1 --output-dir artifacts/benchmark_runs`

@@ -132,6 +132,33 @@ export ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS=300
 2. For strict per-run log separation, avoid overlapping runs that share the same process.
 3. If needed, split logs by run id post-hoc using `started_utc`/run metadata from artifacts.
 
+## 5B. Clean-Clone And Release-Gate Edge Cases
+
+### Typical signals
+- Fresh-clone validation reaches benchmark stage but report shows high `circom_compilation_failed`.
+- Release gate unexpectedly evaluates `benchmark_home/.../report_*` summaries instead of timestamped benchmark runs.
+- Rollback evidence is missing because release gates fail before rollback is attempted.
+
+### Actions
+1. Ensure fresh-clone failures are triaged from `artifacts/fresh_clone_validation/latest_report.json` using aggregated reason counts (`completed`, `circom_compilation_failed`, etc.).
+2. Use benchmark summary paths under `benchmark_YYYYMMDD_HHMMSS/summary.json` for gating checks.
+3. Run two-attempt release validation and emit report:
+```bash
+scripts/release_candidate_validate_twice.sh \
+  --bench-root artifacts/benchmark_runs_fast \
+  --required-passes 1 \
+  --output-dir artifacts/release_candidate_validation
+```
+4. If rollback evidence is required even when gates fail, force rollback execution:
+```bash
+scripts/release_candidate_validate_twice.sh \
+  --bench-root artifacts/benchmark_runs_fast \
+  --required-passes 1 \
+  --stable-ref <git-ref> \
+  --rollback-even-if-gate-fails \
+  --output-dir artifacts/release_candidate_validation
+```
+
 ## 6. Readiness / Invariant Failures
 
 ### Typical signals
