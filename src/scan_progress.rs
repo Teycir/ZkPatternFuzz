@@ -1,3 +1,4 @@
+use crate::cli::ScanFamily;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -91,4 +92,31 @@ where
     println!("SCAN END");
     println!("scan findings: {}", summary.findings_total);
     run_result
+}
+
+pub(crate) async fn dispatch_scan_family_run<MkMono, MkMulti, MonoFut, MultiFut>(
+    family: ScanFamily,
+    output_dir: &Path,
+    mono_has_explicit_corpus_dir: bool,
+    mono_run: MkMono,
+    multi_run: MkMulti,
+) -> anyhow::Result<()>
+where
+    MkMono: FnOnce() -> MonoFut,
+    MkMulti: FnOnce() -> MultiFut,
+    MonoFut: std::future::Future<Output = anyhow::Result<()>>,
+    MultiFut: std::future::Future<Output = anyhow::Result<()>>,
+{
+    match family {
+        ScanFamily::Mono => run_scan_mode_with_progress("mono", output_dir, mono_run()).await,
+        ScanFamily::Multi => {
+            if mono_has_explicit_corpus_dir {
+                anyhow::bail!(
+                    "--corpus-dir is mono-only. Multi/chain scans use chain corpus under ~/ZkFuzz."
+                );
+            }
+            run_scan_mode_with_progress("multi", output_dir, multi_run()).await
+        }
+        ScanFamily::Auto => unreachable!("auto resolved before scan run dispatch"),
+    }
 }

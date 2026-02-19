@@ -250,6 +250,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `run_scan_mode_with_progress(...)` to centralize `SCAN START/END`, periodic progress, and findings summary emission.
    - Replaced duplicated mono/multi run-shell logic in `run_scan` with a shared helper call.
    - Kept multi-scan corpus guardrail behavior unchanged.
+98. Continued scan modularization by extracting family-run dispatch orchestration (`src/main.rs`, `src/scan_progress.rs`):
+   - Added `dispatch_scan_family_run(...)` to centralize `mono`/`multi` scan execution branching.
+   - Moved mono-only corpus guardrail enforcement into the shared dispatch helper.
+   - Reduced `run_scan` to pure scan preparation/orchestration while preserving runtime behavior.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -459,6 +463,10 @@ Validation:
 80. Main CLI compile verification after batched scan-family/target/progress helper extraction:
     - `cargo check -q`
 81. Selector safety regression spot-check after batched scan-family/target/progress helper extraction:
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+82. Main CLI compile verification after scan-family dispatch extraction:
+    - `cargo check -q`
+83. Selector safety regression spot-check after scan-family dispatch extraction:
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)

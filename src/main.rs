@@ -43,7 +43,7 @@ use scan_dispatch::{
 };
 use scan_output::apply_scan_output_suffix_if_present;
 use scan_progress::{
-    run_scan_mode_with_progress, scan_default_output_dir,
+    dispatch_scan_family_run, scan_default_output_dir,
 };
 use scan_selector::{
     evaluate_scan_selectors_or_bail, load_scan_regex_selector_config, ScanRegexPatternSummary,
@@ -826,27 +826,15 @@ async fn run_scan(
     );
 
     let output_dir = scan_default_output_dir();
-
-    match family {
-        ScanFamily::Mono => {
-            run_scan_mode_with_progress("mono", &output_dir, run_campaign(&materialized_str, mono_options)).await
-        }
-        ScanFamily::Multi => {
-            if mono_options.corpus_dir.is_some() {
-                anyhow::bail!(
-                    "--corpus-dir is mono-only. Multi/chain scans use chain corpus under ~/ZkFuzz."
-                );
-            }
-
-            run_scan_mode_with_progress(
-                "multi",
-                &output_dir,
-                run_chain_campaign(&materialized_str, chain_options),
-            )
-            .await
-        }
-        ScanFamily::Auto => unreachable!("auto resolved above"),
-    }
+    let mono_has_explicit_corpus_dir = mono_options.corpus_dir.is_some();
+    dispatch_scan_family_run(
+        family,
+        &output_dir,
+        mono_has_explicit_corpus_dir,
+        || run_campaign(&materialized_str, mono_options),
+        || run_chain_campaign(&materialized_str, chain_options),
+    )
+    .await
 }
 
 async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow::Result<()> {
