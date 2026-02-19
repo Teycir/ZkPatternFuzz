@@ -385,6 +385,24 @@ fn run_trial(
 ) -> anyhow::Result<TrialOutcome> {
     let (selector_key, selector_value) = selector_for_target(&item.target)?;
     let mut cmd = Command::new(batch_bin);
+    // Keep benchmark child runs sandbox/writable even when $HOME points to a restricted path.
+    // We pin HOME and run-signal dir under the benchmark output directory.
+    let benchmark_home = PathBuf::from(&args.output_dir).join("benchmark_home");
+    fs::create_dir_all(&benchmark_home).with_context(|| {
+        format!(
+            "Failed to create benchmark home root '{}'",
+            benchmark_home.display()
+        )
+    })?;
+    let run_signal_dir = benchmark_home.join("ZkFuzz");
+    fs::create_dir_all(&run_signal_dir).with_context(|| {
+        format!(
+            "Failed to create benchmark run-signal root '{}'",
+            run_signal_dir.display()
+        )
+    })?;
+    cmd.env("HOME", &benchmark_home)
+        .env("ZKF_RUN_SIGNAL_DIR", &run_signal_dir);
     cmd.arg("--registry")
         .arg(registry_path)
         .arg(format!("--{}", selector_key))

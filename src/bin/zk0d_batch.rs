@@ -1235,13 +1235,18 @@ fn main() -> anyhow::Result<()> {
     println!("Gate 1/3 (expected templates): {}", expected_count);
 
     let bin_path = PathBuf::from("target/release/zk-fuzzer");
-    if args.build && !bin_path.exists() {
+    if args.build {
         let status = Command::new("cargo")
             .args(["build", "--release", "--bin", "zk-fuzzer"])
             .status()?;
         if !status.success() {
             anyhow::bail!("cargo build --release --bin zk-fuzzer failed");
         }
+    } else if !bin_path.exists() {
+        anyhow::bail!(
+            "zk-fuzzer binary not found at '{}' and --build=false",
+            bin_path.display()
+        );
     }
 
     let artifacts_root = scan_output_root().join(".scan_run_artifacts");

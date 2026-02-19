@@ -700,6 +700,16 @@ Validation:
     - Summary: `artifacts/benchmark_runs/benchmark_20260219_145841/summary.json`
     - Result: `total_runs=20`, `overall_completion_rate=0.0%`, `vulnerable_recall=0.0%`, `safe_false_positive_rate=0.0%`
     - Observation: run failures were setup/permission-bound (`Failed to reserve batch scan run root ... Permission denied`), so criteria remain unmet.
+133. Hardened benchmark trial runner to force writable run roots (`src/bin/zk0d_benchmark.rs`):
+    - Set child `zk0d_batch` environment (`HOME`, `ZKF_RUN_SIGNAL_DIR`) under benchmark output root (`.../benchmark_home`) to avoid host-home permission failures.
+    - Re-ran constrained 20-run matrix (`trials=2`, `jobs=4`, `iterations=200`, `timeout=15`) and confirmed permission-denied setup blocker is removed.
+    - New blocker surfaced during runs: panic `Missing required 'command' in run document` (reported by `zk0d_batch` as `artifact_mirror_panic_missing_command`), so Phase 0/1 remain unmet.
+134. Eliminated stale release-binary reuse in batch benchmark runs (`src/bin/zk0d_batch.rs`):
+    - Updated `--build` behavior to always rebuild `target/release/zk-fuzzer` (not only when missing), ensuring benchmark trials run current source instead of stale binaries.
+    - Added explicit failure when `--build=false` and release binary is missing.
+135. Replaced `wait-timeout` signal-handler timeout path (`src/reporting/command_timeout.rs`):
+    - Switched command timeout execution from `wait_timeout::ChildExt::wait_timeout` to a `try_wait` polling loop with `Instant` deadline.
+    - Removes observed non-unwinding abort during evidence proof generation (`bad error on write fd: Operation not permitted`) in benchmark trial runs.
 
 ## Status Checklist (2026-02-19)
 
@@ -728,6 +738,13 @@ Latest gate evidence (2026-02-19):
 2. Phase 1 remains unmet:
    - Required: recall uplift on vulnerable matrix and bounded high-confidence FP on safe suite.
    - Measured (`benchmark_20260219_145841`): vulnerable recall `0.0%`, safe false-positive rate `0.0%` (no completed detections).
+3. Follow-up rerun after writable-root fix:
+   - Command: `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 4 --batch-jobs 1 --workers 1 --iterations 200 --timeout 15 --output-dir artifacts/benchmark_runs`
+   - Outcome: permission-denied setup blocker cleared, but runs hit panic blocker `Missing required 'command' in run document` during evidence/report mirroring, preventing clean gate closure.
+4. Follow-up fixes and reruns after item 3:
+   - `zk0d_batch --build` now forces fresh release rebuilds; stale-binary panic path is removed.
+   - `run_with_timeout` now uses `try_wait` polling; evidence generation no longer aborts via `wait-timeout` signal-handler panic.
+   - Latest completed 20-run summary still fails gates: `artifacts/benchmark_runs/benchmark_20260219_151048/summary.json` (`overall_completion_rate=10.0%`, `vulnerable_recall=0.0%`, `safe_false_positive_rate=0.0%`), so Phase 0/1 remain unchecked.
 
 Definition of Done progress:
 - [ ] Stability: >=95% scan completion on production multi-target runs
