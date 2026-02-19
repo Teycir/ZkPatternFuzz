@@ -21,7 +21,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Phase 0 exit criteria (met on 20-run fast matrix: attack-stage reach 90%, no output-lock failures)
 - ❌ Phase 1 exit criteria (partially met: selector hit-rate 90%, safe high-confidence FPR 0%; recall uplift criterion still pending baseline confirmation)
 - ❌ Phase 2 exit criteria (pending fresh clone validation)
-- ❌ Phase 3 exit criteria (pending 10-target benchmark)
+- ✅ Phase 3 exit criteria (met on 10-target serial-vs-parallel benchmark with zero collisions and 1.884x speedup)
 - ❌ Phase 3A exit criteria (pending integrated campaign runs)
 - ❌ Phase 4 exit criteria (partially met: safe high-confidence FPR 0% and miss reason coverage 100%; vulnerable recall remains 60% vs 80% target)
 - ❌ Phase 5 exit criteria (pending release candidate validation)
@@ -115,10 +115,10 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add target-matrix usage docs
 
 ### Exit Criteria
-- [ ] 10-target run completes with zero filesystem collisions
-- [ ] Parallel run wall-clock speedup >=1.7x over serial baseline
+- [x] 10-target run completes with zero filesystem collisions
+- [x] Parallel run wall-clock speedup >=1.7x over serial baseline
 
-**Current Status:** ⚠️ Speedup automation added via `scripts/benchmark_parallel_speedup.sh`; benchmark execution evidence still pending
+**Current Status:** ✅ Met on latest speedup run (`artifacts/benchmark_runs_speedup_v2/speedup_report.json`): zero collisions and `1.884x` speedup (`jobs=2` vs `jobs=1`)
 
 ---
 
@@ -340,7 +340,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Add automated fresh clone + bootstrap validation script (`scripts/fresh_clone_bootstrap_validate.sh`)
 - [ ] Run fresh clone + bootstrap validation and capture summary artifacts
 - [x] Add serial-vs-parallel speedup benchmark automation (`scripts/benchmark_parallel_speedup.sh`)
-- [ ] Execute 10-target wall-clock benchmark and capture speedup evidence
+- [x] Execute 10-target wall-clock benchmark and capture speedup evidence
 - [x] Add automated Phase 3A validation script (`scripts/phase3a_validate.sh`)
 - [ ] Run backend-heavy Phase 3A integrated checks (Cairo/Noir) and capture evidence
 - [ ] Achieve measurable recall (target >=80%)
@@ -476,6 +476,7 @@ gh run watch
 - Selector hit-rate report: `artifacts/benchmark_runs_fast/benchmark_20260219_182723/selector_hit_rate.json` (`18/20` => `90.0%`)
 - Miss reason coverage report: `artifacts/benchmark_runs_fast/benchmark_20260219_182723/miss_reason_coverage.json` (`4/4` misses categorized => `100%`)
 - Phase 3A required-check report: `artifacts/phase3a_validation/phase3a_report.json` (required checks `PASS`, backend-heavy checks currently `skip`)
+- Phase 3 speedup report: `artifacts/benchmark_runs_speedup_v2/speedup_report.json` (`serial=133.345s`, `parallel=70.790s`, `speedup=1.884x`, collisions `0`)
 - Once panic is fixed, need to validate all exit criteria systematically
 - Release candidate validation requires two consecutive passes of all gates
 - Nightly CI matrix is operational with fast-smoke and deep-scheduled lanes

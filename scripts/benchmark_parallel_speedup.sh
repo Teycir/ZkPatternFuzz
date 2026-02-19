@@ -127,8 +127,18 @@ PY
 )"
 
   local summary_path outcomes_path
-  summary_path="$(find "$outdir" -type f -path '*/benchmark_*/summary.json' | sort | tail -n 1)"
-  outcomes_path="$(find "$outdir" -type f -path '*/benchmark_*/outcomes.json' | sort | tail -n 1)"
+  summary_path="$(
+    find "$outdir" -type f \
+      | rg '/benchmark_[0-9]{8}_[0-9]{6}/summary\.json$' \
+      | sort \
+      | tail -n 1
+  )"
+  outcomes_path="$(
+    find "$outdir" -type f \
+      | rg '/benchmark_[0-9]{8}_[0-9]{6}/outcomes\.json$' \
+      | sort \
+      | tail -n 1
+  )"
   if [[ -z "$summary_path" || -z "$outcomes_path" ]]; then
     echo "Missing benchmark artifacts for $label run" >&2
     exit 1
