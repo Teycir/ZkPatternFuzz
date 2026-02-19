@@ -32,6 +32,8 @@ cargo build --release
 cargo test
 ```
 
+For portable static Z3 linking (CI/release-style builds), add `--features z3-static`.
+
 ### Local Circom Toolchain Bootstrap
 
 ```bash

@@ -12,6 +12,10 @@ anyhow = "1.0"
 num-bigint = "0.4"
 rand = "0.8"
 tracing = "0.1"
-z3 = { version = "0.12", features = ["static-link-z3"] }
+z3 = "0.12"
 hex = "0.4"
 parking_lot = "0.12"
+
+[features]
+default = []
+z3-static = ["z3/static-link-z3"]

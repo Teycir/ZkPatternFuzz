@@ -67,7 +67,7 @@ zk-fuzzer-core = { path = "crates/zk-fuzzer-core" }
 zk-attacks = { path = "crates/zk-attacks" }
 
 # SMT Solver for symbolic execution
-z3 = { version = "0.12", features = ["static-link-z3"] }
+z3 = "0.12"
 num_cpus = "1.16"
 crossbeam = "0.8.4"
 parking_lot = "0.12"
@@ -97,6 +97,15 @@ default = []
 symbolic = []  # Enable full symbolic execution
 acir-bytecode = ["zk-constraints/acir-bytecode"]
 attack-plugins = ["zk-attacks/plugin-loader"]
+z3-static = ["z3/static-link-z3", "zk-constraints/z3-static", "zk-symbolic/z3-static"]
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false
 
 [[bin]]
 name = "zk-fuzzer"
