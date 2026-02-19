@@ -19,7 +19,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ### Exit Criteria Progress
 - ✅ Phase 0 exit criteria (met on 20-run fast matrix: attack-stage reach 90%, no output-lock failures)
-- ❌ Phase 1 exit criteria (partially met: selector hit-rate 90%, safe high-confidence FPR 0%; recall uplift criterion still pending baseline confirmation)
+- ✅ Phase 1 exit criteria (met: selector hit-rate 90%, recall uplift +60pp over non-dry-run baseline, safe high-confidence FPR 0%)
 - ❌ Phase 2 exit criteria (fresh-clone build blocker fixed; validation now blocked by Circom compilation readiness in benchmark stage)
 - ✅ Phase 3 exit criteria (met on 10-target serial-vs-parallel benchmark with zero collisions and 1.884x speedup)
 - ❌ Phase 3A exit criteria (pending integrated campaign runs)
@@ -74,10 +74,10 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ### Exit Criteria
 - [x] Selector hit-rate >=90% on intended target set
-- [ ] Recall improves by >=20 percentage points over baseline
+- [x] Recall improves by >=20 percentage points over baseline
 - [x] High-confidence false positives remain bounded (<=5% on safe suite)
 
-**Current Status:** ⚠️ Latest 20-run matrix (`benchmark_20260219_182723`) has selector hit-rate `90.0%` (`18/20`), recall `60%`, and safe high-confidence FPR `0%`; recall uplift target confirmation remains pending
+**Current Status:** ✅ Recall uplift confirmed by `scripts/validate_recall_uplift.py`: baseline `benchmark_20260219_151048` recall `0%` to latest `benchmark_20260219_182723` recall `60%` (`+60pp`), with safe high-confidence FPR `0%`
 
 ---
 
@@ -401,6 +401,12 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - **Report:** `artifacts/benchmark_runs_fast/benchmark_20260219_182723/artifact_mirror_panic_report.json`
 - **Outcome:** `passes=true`, `panic_occurrences=0` across `20` runs
 - **Status:** Prior panic class is no longer observed on the latest 20-run matrix
+
+### Phase 1 Recall Uplift Validation
+- **Command:** `python3 scripts/validate_recall_uplift.py --baseline-summary artifacts/benchmark_runs/benchmark_20260219_151048/summary.json --candidate-summary artifacts/benchmark_runs_fast/benchmark_20260219_182723/summary.json --min-uplift-pp 20 --max-safe-high-conf-fpr 0.05 --json-out artifacts/benchmark_runs_fast/benchmark_20260219_182723/recall_uplift_report.json --enforce`
+- **Report:** `artifacts/benchmark_runs_fast/benchmark_20260219_182723/recall_uplift_report.json`
+- **Outcome:** `baseline_recall=0.0`, `candidate_recall=0.6`, `recall_uplift_pp=60.0`, `safe_high_confidence_false_positive_rate=0.0`, `passes=true`
+- **Status:** Phase 1 recall-uplift criterion is now evidence-backed and met
 
 ---
 
