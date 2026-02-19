@@ -35,3 +35,68 @@ fn wilson_interval_is_bounded() {
     assert!(ci.upper <= 1.0);
     assert!(ci.lower <= ci.upper);
 }
+
+#[test]
+fn reached_completion_accepts_critical_findings_reason() {
+    let mut reason_counts = BTreeMap::new();
+    reason_counts.insert("critical_findings_detected".to_string(), 1);
+    assert!(reached_completion(&reason_counts));
+}
+
+#[test]
+fn suite_completion_rate_uses_completion_state_not_exit_code() {
+    let outcomes = vec![
+        TrialOutcome {
+            suite_name: "suite".to_string(),
+            suite_description: None,
+            positive: false,
+            target_name: "a".to_string(),
+            trial_idx: 1,
+            seed: 1,
+            exit_code: 1,
+            completed: true,
+            scan_findings_total: 0,
+            detected: false,
+            high_confidence_detected: false,
+            attack_stage_reached: true,
+            reason_counts: BTreeMap::new(),
+            error_message: None,
+        },
+        TrialOutcome {
+            suite_name: "suite".to_string(),
+            suite_description: None,
+            positive: false,
+            target_name: "b".to_string(),
+            trial_idx: 2,
+            seed: 2,
+            exit_code: 1,
+            completed: true,
+            scan_findings_total: 0,
+            detected: false,
+            high_confidence_detected: false,
+            attack_stage_reached: true,
+            reason_counts: BTreeMap::new(),
+            error_message: None,
+        },
+        TrialOutcome {
+            suite_name: "suite".to_string(),
+            suite_description: None,
+            positive: false,
+            target_name: "c".to_string(),
+            trial_idx: 3,
+            seed: 3,
+            exit_code: 0,
+            completed: false,
+            scan_findings_total: 0,
+            detected: false,
+            high_confidence_detected: false,
+            attack_stage_reached: true,
+            reason_counts: BTreeMap::new(),
+            error_message: None,
+        },
+    ];
+
+    let suites = compute_suite_summaries(&outcomes);
+    assert_eq!(suites.len(), 1);
+    assert!((suites[0].completion_rate - (2.0 / 3.0)).abs() < 1e-12);
+}

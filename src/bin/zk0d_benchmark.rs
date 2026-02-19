@@ -163,6 +163,7 @@ struct TrialOutcome {
     trial_idx: usize,
     seed: u64,
     exit_code: i32,
+    completed: bool,
     scan_findings_total: u64,
     detected: bool,
     high_confidence_detected: bool,
@@ -385,7 +386,12 @@ fn parse_scan_findings_total(stdout: &str) -> u64 {
 }
 
 fn reached_attack_stage(reason_counts: &BTreeMap<String, usize>) -> bool {
-    reason_counts.contains_key("completed") || reason_counts.contains_key("critical_findings_detected")
+    reached_completion(reason_counts)
+}
+
+fn reached_completion(reason_counts: &BTreeMap<String, usize>) -> bool {
+    reason_counts.contains_key("completed")
+        || reason_counts.contains_key("critical_findings_detected")
 }
 
 fn selector_for_target(target: &BenchmarkTarget) -> anyhow::Result<(&'static str, String)> {
@@ -551,6 +557,11 @@ fn run_trial(
     let high_confidence_detected = reason_rows.iter().any(|row| row.high_confidence_detected);
 
     let scan_findings_total = parse_scan_findings_total(&stdout);
+    let completed = if reason_rows.is_empty() {
+        exit_code == 0
+    } else {
+        reached_completion(&reason_counts)
+    };
     let detected =
         scan_findings_total > 0 || reason_counts.contains_key("critical_findings_detected");
     let attack_stage_reached = reached_attack_stage(&reason_counts);
@@ -563,6 +574,7 @@ fn run_trial(
         trial_idx: item.trial_idx,
         seed: item.seed,
         exit_code,
+        completed,
         scan_findings_total,
         detected,
         high_confidence_detected,
@@ -583,6 +595,7 @@ fn trial_error_outcome(item: &WorkItem, err: &anyhow::Error) -> TrialOutcome {
         trial_idx: item.trial_idx,
         seed: item.seed,
         exit_code: 1,
+        completed: false,
         scan_findings_total: 0,
         detected: false,
         high_confidence_detected: false,
@@ -630,7 +643,7 @@ fn compute_suite_summaries(outcomes: &[TrialOutcome]) -> Vec<SuiteSummary> {
             .iter()
             .filter(|o| o.high_confidence_detected)
             .count();
-        let completions = items.iter().filter(|o| o.exit_code == 0).count();
+        let completions = items.iter().filter(|o| o.completed).count();
         let attack_stage_reached = items.iter().filter(|o| o.attack_stage_reached).count();
         let mean_scan_findings = if runs_total == 0 {
             0.0
@@ -785,16 +798,17 @@ fn write_markdown(
     md.push('\n');
 
     md.push_str("## Trial Outcomes\n\n");
-    md.push_str("| Suite | Target | Trial | Seed | Exit | Findings | Detected | High-Conf Detected | Attack Stage | Error |\n");
-    md.push_str("|---|---|---:|---:|---:|---:|---|---|---|---|\n");
+    md.push_str("| Suite | Target | Trial | Seed | Exit | Completed | Findings | Detected | High-Conf Detected | Attack Stage | Error |\n");
+    md.push_str("|---|---|---:|---:|---:|---|---:|---|---|---|---|\n");
     for o in outcomes {
         md.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             o.suite_name,
             o.target_name,
             o.trial_idx,
             o.seed,
             o.exit_code,
+            o.completed,
             o.scan_findings_total,
             o.detected,
             o.high_confidence_detected,
@@ -957,11 +971,12 @@ fn main() -> anyhow::Result<()> {
             );
         } else {
             println!(
-                "{}::{}::trial{} exit={} findings={} detected={} high_conf_detected={}",
+                "{}::{}::trial{} exit={} completed={} findings={} detected={} high_conf_detected={}",
                 outcome.suite_name,
                 outcome.target_name,
                 outcome.trial_idx,
                 outcome.exit_code,
+                outcome.completed,
                 outcome.scan_findings_total,
                 outcome.detected,
                 outcome.high_confidence_detected
@@ -972,7 +987,7 @@ fn main() -> anyhow::Result<()> {
 
     let suite_summaries = compute_suite_summaries(&outcomes);
     let total_runs = outcomes.len();
-    let completed = outcomes.iter().filter(|o| o.exit_code == 0).count();
+    let completed = outcomes.iter().filter(|o| o.completed).count();
     let attack_stage_reached = outcomes.iter().filter(|o| o.attack_stage_reached).count();
     let total_detected = outcomes.iter().filter(|o| o.detected).count();
 
