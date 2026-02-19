@@ -140,12 +140,12 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Apply largest-remainder method to chain scheduler budget allocation
 
 ### Exit Criteria
-- [ ] `AdaptiveOrchestrator` integration tests validate allocation enforcement
+- [x] `AdaptiveOrchestrator` integration tests validate allocation enforcement
 - [ ] Proof forgery detector cannot hang indefinitely on subprocesses
-- [ ] Cairo backend can execute and report non-empty coverage/failure semantics
+- [x] Cairo backend can execute and report non-empty coverage/failure semantics
 - [ ] Noir backend execution throughput improves measurably on repeated runs
 
-**Current Status:** ⚠️ Required logic-hardening checks pass via `scripts/phase3a_validate.sh` (`artifacts/phase3a_validation/phase3a_report.json`); backend-heavy Cairo/Noir integrated runs remain pending
+**Current Status:** ⚠️ Required and backend-heavy checks pass via `scripts/phase3a_validate.sh --run-backend-heavy` (`artifacts/phase3a_validation_backend_heavy/phase3a_report.json`); proof-forgery timeout-specific and Noir throughput-specific criteria still need dedicated evidence
 
 ---
 
@@ -344,7 +344,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Add serial-vs-parallel speedup benchmark automation (`scripts/benchmark_parallel_speedup.sh`)
 - [x] Execute 10-target wall-clock benchmark and capture speedup evidence
 - [x] Add automated Phase 3A validation script (`scripts/phase3a_validate.sh`)
-- [ ] Run backend-heavy Phase 3A integrated checks (Cairo/Noir) and capture evidence
+- [x] Run backend-heavy Phase 3A integrated checks (Cairo/Noir) and capture evidence (`artifacts/phase3a_validation_backend_heavy/phase3a_report.json`)
 - [ ] Achieve measurable recall (target >=80%)
 - [ ] Validate safe FPR remains <=5%
 
@@ -373,6 +373,12 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - **Outcome:** attempt #1 `fail`, attempt #2 `fail`, rollback `pass` (forced with `--stable-ref 370d029 --rollback-even-if-gate-fails`)
 - **Observed blocker:** latest gate target (`benchmark_20260219_182723`) fails thresholds (`overall_completion_rate=0.35 < 0.95`, `safe_false_positive_rate=0.50 > 0.20`)
 - **Status:** Phase 5 release criteria remain open until gate metrics pass on two consecutive attempts; rollback evidence is now archived
+
+### Phase 3A Backend-Heavy Integrated Validation
+- **Command:** `scripts/phase3a_validate.sh --output-dir artifacts/phase3a_validation_backend_heavy --run-backend-heavy --enforce`
+- **Report:** `artifacts/phase3a_validation_backend_heavy/phase3a_report.json`
+- **Outcome:** required checks `PASS`; optional backend-heavy checks `PASS` (`cairo_backend_integration`, `noir_constraint_coverage`)
+- **Status:** backend-heavy execution evidence is captured; remaining open criteria are proof-forgery timeout-specific validation and Noir throughput delta evidence
 
 ### Run 1: Permission-Denied Blocker
 - **Command:** `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 1 --batch-jobs 1 --workers 1 --output-dir artifacts/benchmark_runs`
