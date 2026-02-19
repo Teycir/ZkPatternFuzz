@@ -20,7 +20,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 ### Exit Criteria Progress
 - ✅ Phase 0 exit criteria (met on 20-run fast matrix: attack-stage reach 90%, no output-lock failures)
 - ❌ Phase 1 exit criteria (partially met: selector hit-rate 90%, safe high-confidence FPR 0%; recall uplift criterion still pending baseline confirmation)
-- ❌ Phase 2 exit criteria (pending fresh clone validation)
+- ❌ Phase 2 exit criteria (fresh-clone validation now automated and executed; blocked by clean-clone build failure in `zk-backends`)
 - ✅ Phase 3 exit criteria (met on 10-target serial-vs-parallel benchmark with zero collisions and 1.884x speedup)
 - ❌ Phase 3A exit criteria (pending integrated campaign runs)
 - ❌ Phase 4 exit criteria (partially met: safe high-confidence FPR 0% and miss reason coverage 100%; vulnerable recall remains 60% vs 80% target)
@@ -97,7 +97,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Fresh clone + bootstrap can run 5-target matrix without manual tool installation
 - [ ] Keygen readiness preflight passes on at least 4/5 baseline targets
 
-**Current Status:** ⚠️ Validation automation added via `scripts/fresh_clone_bootstrap_validate.sh`; full fresh-clone execution evidence still pending
+**Current Status:** ⚠️ Fresh-clone validation executed via `scripts/fresh_clone_bootstrap_validate.sh` with report `artifacts/fresh_clone_validation/latest_report.json`; run is currently blocked at build stage (`zk-backends` missing `fixture`/`util` modules in a clean clone)
 
 ---
 
@@ -338,7 +338,8 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 
 ### High Priority (P1)
 - [x] Add automated fresh clone + bootstrap validation script (`scripts/fresh_clone_bootstrap_validate.sh`)
-- [ ] Run fresh clone + bootstrap validation and capture summary artifacts
+- [x] Run fresh clone + bootstrap validation and capture summary artifacts (`artifacts/fresh_clone_validation/latest_report.json`)
+- [ ] Fix clean-clone `zk-backends` build blockers (`fixture`/`util` module resolution) so bootstrap validation can reach benchmark stage
 - [x] Add serial-vs-parallel speedup benchmark automation (`scripts/benchmark_parallel_speedup.sh`)
 - [x] Execute 10-target wall-clock benchmark and capture speedup evidence
 - [x] Add automated Phase 3A validation script (`scripts/phase3a_validate.sh`)
@@ -355,6 +356,13 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 ---
 
 ## 📊 Latest Benchmark Evidence (2026-02-19)
+
+### Fresh Clone Validation (Bootstrap Operability)
+- **Command:** `scripts/fresh_clone_bootstrap_validate.sh --bootstrap-mode dry-run --suite safe_regression,vulnerable_ground_truth --trials 1 --jobs 1 --batch-jobs 1 --workers 1 --iterations 50 --timeout 10 --report-out artifacts/fresh_clone_validation/latest_report.json`
+- **Report:** `artifacts/fresh_clone_validation/latest_report.json`
+- **Outcome:** `passes=false`, `stage=build`, `error="cargo build failed in fresh clone"`
+- **Observed blocker:** clean-clone compile of `crates/zk-backends/src/lib.rs` fails because modules `fixture` and `util` are not present in clone source tree
+- **Status:** Phase 2 operability exit criteria remain open until clean-clone build succeeds and benchmark stage completes
 
 ### Run 1: Permission-Denied Blocker
 - **Command:** `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 1 --batch-jobs 1 --workers 1 --output-dir artifacts/benchmark_runs`
