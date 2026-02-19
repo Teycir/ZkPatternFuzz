@@ -38,7 +38,8 @@ template DivisionByZero() {
     // Additional constraint: remainder < divisor (for Euclidean division)
     // BUG: This ALSO fails when divisor = 0 because 0 < 0 is false,
     // but in field arithmetic it's more subtle
-    component lt = LessThan(254);
+    // circomlib LessThan requires n <= 252.
+    component lt = LessThan(252);
     lt.in[0] <== remainder;
     lt.in[1] <== divisor;
     // Note: We're not even enforcing this constraint strictly
@@ -74,11 +75,11 @@ template FeeCalculation() {
     // This should be: total_amount === calculated_product
     // But due to integer division, we use: calculated_product <= total_amount < calculated_product + fee_divisor
     
-    component lte = LessEqThan(254);
+    component lte = LessEqThan(252);
     lte.in[0] <== calculated_product;
     lte.in[1] <== total_amount;
     
-    component lt = LessThan(254);
+    component lt = LessThan(252);
     lt.in[0] <== total_amount;
     lt.in[1] <== calculated_product + fee_divisor;
     
