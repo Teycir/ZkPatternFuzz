@@ -7,6 +7,7 @@ mod output_lock;
 mod preflight_backend;
 mod run_bootstrap;
 mod run_chain_corpus;
+mod run_chain_quality;
 mod run_chain_ui;
 mod run_identity;
 mod run_interrupts;
@@ -37,6 +38,7 @@ use run_chain_corpus::{
     chain_completed_and_unique_cov_from_path, chain_unique_coverage_bits, load_chain_corpus,
     read_chain_execution_count, read_chain_meta,
 };
+use run_chain_quality::collect_chain_quality_failures;
 use run_chain_ui::{print_chain_mode_banner, print_chains_to_fuzz};
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
 use run_interrupts::{install_panic_hook, start_signal_watchers};
@@ -994,35 +996,13 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         .get_usize("engagement_min_chain_completed_per_chain")
         .unwrap_or(1);
 
-    let mut quality_failures: Vec<String> = Vec::new();
-    for chain in &chains {
-        let (completed, unique_cov): (usize, usize) = if let Some(meta) = &final_meta {
-            match meta.per_chain.get(&chain.name) {
-                Some(m) => (m.completed_traces, m.unique_coverage_bits),
-                None => {
-                    tracing::warn!(
-                        "Chain corpus metadata missing per-chain entry for '{}'",
-                        chain.name
-                    );
-                    (0, 0)
-                }
-            }
-        } else {
-            chain_completed_and_unique_cov_from_path(&corpus_path, &chain.name)?
-        };
-        if completed < min_completed_per_chain {
-            quality_failures.push(format!(
-                "chain '{}' completed_traces={} < min_completed_per_chain={}",
-                chain.name, completed, min_completed_per_chain
-            ));
-        }
-        if unique_cov < min_unique_coverage_bits {
-            quality_failures.push(format!(
-                "chain '{}' unique_coverage_bits={} < min_unique_coverage_bits={}",
-                chain.name, unique_cov, min_unique_coverage_bits
-            ));
-        }
-    }
+    let quality_failures = collect_chain_quality_failures(
+        &chains,
+        final_meta.as_ref(),
+        &corpus_path,
+        min_completed_per_chain,
+        min_unique_coverage_bits,
+    )?;
     let run_valid = quality_failures.is_empty();
 
     // Compute metrics

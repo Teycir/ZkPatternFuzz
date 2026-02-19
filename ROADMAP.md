@@ -282,6 +282,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `run_chain_ui` helpers for chain-mode banner and chain-list rendering (`print_chain_mode_banner`, `print_chains_to_fuzz`).
    - Replaced inline closure helpers and banner/list print blocks in `run_chain_campaign` with module calls.
    - Removed duplicated inline HashSet coverage calculations from chain-mode callsites by reusing shared helper functions.
+105. Continued chain-mode modularization by extracting quality-gate evaluation (`src/main.rs`, `src/run_chain_quality.rs`):
+   - Added `collect_chain_quality_failures(...)` to centralize strict engagement-contract checks for per-chain completed traces and unique coverage bits.
+   - Reused existing metadata-first behavior with corpus fallback via `chain_completed_and_unique_cov_from_path(...)`.
+   - Replaced the inline quality-failure loop in `run_chain_campaign` with the shared helper.
+   - Preserved operator-facing diagnostics and strict-failure status behavior while shrinking chain orchestration logic.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -529,6 +534,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 98. Engagement-dir panic-path regression spot-check after chain-mode helper extraction batch:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+99. Main CLI compile verification after chain-quality helper extraction:
+    - `cargo check -q`
+100. Selector/command regression spot-check after chain-quality helper extraction:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+101. Engagement-dir panic-path regression spot-check after chain-quality helper extraction:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
