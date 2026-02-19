@@ -74,3 +74,21 @@ where
         }
     }
 }
+
+pub(crate) async fn run_scan_mode_with_progress<F>(
+    mode_label: &str,
+    output_dir: &Path,
+    phase_future: F,
+) -> anyhow::Result<()>
+where
+    F: std::future::Future<Output = anyhow::Result<()>>,
+{
+    tracing::info!("Scan (yaml {} run)", mode_label);
+    println!("\nSCAN START");
+    let started_at = std::time::SystemTime::now();
+    let run_result = run_scan_phase_with_progress("scan", output_dir, phase_future).await;
+    let summary = read_scan_findings_summary_since(output_dir, started_at).unwrap_or_default();
+    println!("SCAN END");
+    println!("scan findings: {}", summary.findings_total);
+    run_result
+}

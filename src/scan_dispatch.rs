@@ -18,6 +18,18 @@ pub struct ScanTarget {
     pub main_component: String,
 }
 
+pub fn build_scan_target(
+    framework: &str,
+    target_circuit: &str,
+    main_component: &str,
+) -> anyhow::Result<ScanTarget> {
+    Ok(ScanTarget {
+        framework: parse_framework_arg(framework)?,
+        circuit_path: PathBuf::from(target_circuit),
+        main_component: main_component.to_string(),
+    })
+}
+
 pub fn parse_framework_arg(value: &str) -> anyhow::Result<Framework> {
     match value.trim().to_ascii_lowercase().as_str() {
         "circom" => Ok(Framework::Circom),
@@ -48,6 +60,62 @@ pub fn detect_pattern_has_chains(path: &str) -> anyhow::Result<bool> {
         .as_sequence()
         .context("'chains' must be a YAML sequence when present")?;
     Ok(!seq.is_empty())
+}
+
+pub fn resolve_scan_family(
+    pattern_path: &str,
+    family_hint: ScanFamily,
+    regex_mode: bool,
+) -> anyhow::Result<ScanFamily> {
+    let has_chains = detect_pattern_has_chains(pattern_path)?;
+    let family = if regex_mode {
+        if has_chains {
+            tracing::info!(
+                "Regex-focused scan: forcing mono execution and ignoring `chains` in '{}'",
+                pattern_path
+            );
+        }
+        ScanFamily::Mono
+    } else {
+        match family_hint {
+            ScanFamily::Auto => {
+                if has_chains {
+                    ScanFamily::Multi
+                } else {
+                    ScanFamily::Mono
+                }
+            }
+            ScanFamily::Mono => {
+                if has_chains {
+                    anyhow::bail!(
+                        "Scan family set to mono but pattern '{}' contains non-empty `chains`.",
+                        pattern_path
+                    );
+                }
+                ScanFamily::Mono
+            }
+            ScanFamily::Multi => {
+                if !has_chains {
+                    anyhow::bail!(
+                        "Scan family set to multi but pattern '{}' has no `chains`.",
+                        pattern_path
+                    );
+                }
+                ScanFamily::Multi
+            }
+        }
+    };
+
+    if !regex_mode {
+        validate_scan_pattern_complexity(pattern_path, family)?;
+    } else {
+        tracing::info!(
+            "Regex selectors active: skipping multi-chain complexity checks for '{}'",
+            pattern_path
+        );
+    }
+
+    Ok(family)
 }
 
 pub fn validate_scan_pattern_complexity(path: &str, family: ScanFamily) -> anyhow::Result<()> {

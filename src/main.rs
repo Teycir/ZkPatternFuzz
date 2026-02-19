@@ -38,12 +38,12 @@ use runtime_misc::{
     validate_campaign,
 };
 use scan_dispatch::{
-    detect_pattern_has_chains, materialize_scan_pattern_campaign, parse_framework_arg,
-    validate_pattern_only_yaml, validate_scan_pattern_complexity, ScanTarget,
+    build_scan_target, materialize_scan_pattern_campaign, resolve_scan_family,
+    validate_pattern_only_yaml,
 };
 use scan_output::apply_scan_output_suffix_if_present;
 use scan_progress::{
-    read_scan_findings_summary_since, run_scan_phase_with_progress, scan_default_output_dir,
+    run_scan_mode_with_progress, scan_default_output_dir,
 };
 use scan_selector::{
     evaluate_scan_selectors_or_bail, load_scan_regex_selector_config, ScanRegexPatternSummary,
@@ -801,58 +801,8 @@ async fn run_scan(
     let regex_selector_config = load_scan_regex_selector_config(pattern_path)?;
     let regex_mode = regex_selector_config.is_some();
 
-    let has_chains = detect_pattern_has_chains(pattern_path)?;
-    let family = if regex_mode {
-        if has_chains {
-            tracing::info!(
-                "Regex-focused scan: forcing mono execution and ignoring `chains` in '{}'",
-                pattern_path
-            );
-        }
-        ScanFamily::Mono
-    } else {
-        match family_hint {
-            ScanFamily::Auto => {
-                if has_chains {
-                    ScanFamily::Multi
-                } else {
-                    ScanFamily::Mono
-                }
-            }
-            ScanFamily::Mono => {
-                if has_chains {
-                    anyhow::bail!(
-                        "Scan family set to mono but pattern '{}' contains non-empty `chains`.",
-                        pattern_path
-                    );
-                }
-                ScanFamily::Mono
-            }
-            ScanFamily::Multi => {
-                if !has_chains {
-                    anyhow::bail!(
-                        "Scan family set to multi but pattern '{}' has no `chains`.",
-                        pattern_path
-                    );
-                }
-                ScanFamily::Multi
-            }
-        }
-    };
-    if !regex_mode {
-        validate_scan_pattern_complexity(pattern_path, family)?;
-    } else {
-        tracing::info!(
-            "Regex selectors active: skipping multi-chain complexity checks for '{}'",
-            pattern_path
-        );
-    }
-
-    let target = ScanTarget {
-        framework: parse_framework_arg(framework)?,
-        circuit_path: PathBuf::from(target_circuit),
-        main_component: main_component.to_string(),
-    };
+    let family = resolve_scan_family(pattern_path, family_hint, regex_mode)?;
+    let target = build_scan_target(framework, target_circuit, main_component)?;
     let scan_regex_summary: Option<ScanRegexPatternSummary> = evaluate_scan_selectors_or_bail(
         pattern_path,
         regex_selector_config.as_ref(),
@@ -879,20 +829,7 @@ async fn run_scan(
 
     match family {
         ScanFamily::Mono => {
-            tracing::info!("Scan (yaml mono run)");
-            println!("\nSCAN START");
-            let started_at = std::time::SystemTime::now();
-            let run_result = run_scan_phase_with_progress(
-                "scan",
-                &output_dir,
-                run_campaign(&materialized_str, mono_options),
-            )
-            .await;
-            let summary =
-                read_scan_findings_summary_since(&output_dir, started_at).unwrap_or_default();
-            println!("SCAN END");
-            println!("scan findings: {}", summary.findings_total);
-            run_result
+            run_scan_mode_with_progress("mono", &output_dir, run_campaign(&materialized_str, mono_options)).await
         }
         ScanFamily::Multi => {
             if mono_options.corpus_dir.is_some() {
@@ -901,20 +838,12 @@ async fn run_scan(
                 );
             }
 
-            tracing::info!("Scan (yaml multi run)");
-            println!("\nSCAN START");
-            let started_at = std::time::SystemTime::now();
-            let run_result = run_scan_phase_with_progress(
-                "scan",
+            run_scan_mode_with_progress(
+                "multi",
                 &output_dir,
                 run_chain_campaign(&materialized_str, chain_options),
             )
-            .await;
-            let summary =
-                read_scan_findings_summary_since(&output_dir, started_at).unwrap_or_default();
-            println!("SCAN END");
-            println!("scan findings: {}", summary.findings_total);
-            run_result
+            .await
         }
         ScanFamily::Auto => unreachable!("auto resolved above"),
     }

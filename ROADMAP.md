@@ -238,6 +238,18 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `evaluate_scan_selectors_or_bail(...)` in `scan_selector` to centralize selector pass/fail orchestration.
    - Moved selector-threshold failure-detail construction out of `run_scan` into module-local helper logic.
    - Kept selector evaluation semantics and mismatch error text shape unchanged while reducing `run_scan` branching complexity.
+95. Batched scan modularization by extracting family-resolution policy from `run_scan` (`src/main.rs`, `src/scan_dispatch.rs`):
+   - Added `resolve_scan_family(...)` to centralize regex-mode mono forcing and `--family`/`chains` consistency checks.
+   - Moved complexity-gate dispatch (`validate_scan_pattern_complexity` vs regex-mode skip) behind the same helper.
+   - Kept existing operator-facing diagnostics unchanged while removing family-branching boilerplate from `main.rs`.
+96. Batched scan modularization by extracting scan-target construction (`src/main.rs`, `src/scan_dispatch.rs`):
+   - Added `build_scan_target(...)` for framework parsing + target struct assembly from CLI scan args.
+   - Removed direct `ScanTarget` construction and framework parsing details from `run_scan`.
+   - Preserved target materialization inputs and framework validation behavior.
+97. Batched scan modularization by extracting shared scan-mode progress wrapper (`src/main.rs`, `src/scan_progress.rs`):
+   - Added `run_scan_mode_with_progress(...)` to centralize `SCAN START/END`, periodic progress, and findings summary emission.
+   - Replaced duplicated mono/multi run-shell logic in `run_scan` with a shared helper call.
+   - Kept multi-scan corpus guardrail behavior unchanged.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -443,6 +455,10 @@ Validation:
 78. Main CLI compile verification after selector-gating extraction:
     - `cargo check -q`
 79. Selector safety regression spot-check after selector-gating extraction:
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+80. Main CLI compile verification after batched scan-family/target/progress helper extraction:
+    - `cargo check -q`
+81. Selector safety regression spot-check after batched scan-family/target/progress helper extraction:
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
