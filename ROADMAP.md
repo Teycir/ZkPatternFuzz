@@ -695,8 +695,13 @@ Validation:
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 131. Engagement-dir panic-path regression spot-check after chain campaign flow extraction:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+132. Exit-criteria evidence run for Phase 0/1 using 20-run benchmark matrix (dev profile):
+    - Command: `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 1 --batch-jobs 1 --workers 1 --output-dir artifacts/benchmark_runs`
+    - Summary: `artifacts/benchmark_runs/benchmark_20260219_145841/summary.json`
+    - Result: `total_runs=20`, `overall_completion_rate=0.0%`, `vulnerable_recall=0.0%`, `safe_false_positive_rate=0.0%`
+    - Observation: run failures were setup/permission-bound (`Failed to reserve batch scan run root ... Permission denied`), so criteria remain unmet.
 
-## Status Checklist (2026-02-18)
+## Status Checklist (2026-02-19)
 
 Phase implementation progress:
 - [x] Phase 0: Reliability Blockers (implementation items completed)
@@ -715,6 +720,14 @@ Exit criteria progress:
 - [ ] Phase 3A exit criteria fully met in integrated campaign runs
 - [ ] Phase 4 exit criteria fully met (`recall >= 80%`, `safe high-confidence FPR <= 5%`)
 - [ ] Phase 5 exit criteria met (release candidate pass twice + rollback validation)
+
+Latest gate evidence (2026-02-19):
+1. Phase 0 remains unmet:
+   - Required: 20-run matrix with 0 output-lock/setup blockers and >=90% runs reaching attack execution stage.
+   - Measured (`benchmark_20260219_145841`): completion `0.0%` over `20` runs due run-root permission failures.
+2. Phase 1 remains unmet:
+   - Required: recall uplift on vulnerable matrix and bounded high-confidence FP on safe suite.
+   - Measured (`benchmark_20260219_145841`): vulnerable recall `0.0%`, safe false-positive rate `0.0%` (no completed detections).
 
 Definition of Done progress:
 - [ ] Stability: >=95% scan completion on production multi-target runs
