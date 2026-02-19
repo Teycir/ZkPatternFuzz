@@ -5,15 +5,17 @@ use super::*;
 fn parse_reason_tsv_reads_reason_codes() {
     let stdout = r#"
 REASON_TSV_START
-template	suffix	reason_code	status	stage
-a.yaml	x	completed	completed	done
-b.yaml	y	key_generation_failed	failed	preflight_backend
+template	suffix	reason_code	status	stage	high_confidence_detected
+a.yaml	x	completed	completed	done	0
+b.yaml	y	key_generation_failed	failed	preflight_backend	1
 REASON_TSV_END
 "#;
     let parsed = parse_reason_tsv(stdout);
     assert_eq!(parsed.len(), 2);
-    assert_eq!(parsed[0], "completed");
-    assert_eq!(parsed[1], "key_generation_failed");
+    assert_eq!(parsed[0].reason_code, "completed");
+    assert!(!parsed[0].high_confidence_detected);
+    assert_eq!(parsed[1].reason_code, "key_generation_failed");
+    assert!(parsed[1].high_confidence_detected);
 }
 
 #[test]

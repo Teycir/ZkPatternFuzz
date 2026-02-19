@@ -369,6 +369,15 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 serde_yaml::Value::String("low".to_string()),
             );
         }
+        if let Ok(value) = std::env::var("ZKF_MIN_EVIDENCE_CONFIDENCE") {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                additional.insert(
+                    "min_evidence_confidence".to_string(),
+                    serde_yaml::Value::String(trimmed.to_string()),
+                );
+            }
+        }
         if additional
             .get("oracle_validation_min_agreement_ratio")
             .is_none()
@@ -378,6 +387,15 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 serde_yaml::Value::String("0.45".to_string()),
             );
         }
+        if let Ok(value) = std::env::var("ZKF_ORACLE_VALIDATION_MIN_AGREEMENT_RATIO") {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                additional.insert(
+                    "oracle_validation_min_agreement_ratio".to_string(),
+                    serde_yaml::Value::String(trimmed.to_string()),
+                );
+            }
+        }
         if additional
             .get("oracle_validation_cross_attack_weight")
             .is_none()
@@ -386,6 +404,15 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "oracle_validation_cross_attack_weight".to_string(),
                 serde_yaml::Value::String("0.65".to_string()),
             );
+        }
+        if let Ok(value) = std::env::var("ZKF_ORACLE_VALIDATION_CROSS_ATTACK_WEIGHT") {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                additional.insert(
+                    "oracle_validation_cross_attack_weight".to_string(),
+                    serde_yaml::Value::String(trimmed.to_string()),
+                );
+            }
         }
         if additional
             .get("oracle_validation_mutation_test_count")
@@ -405,8 +432,20 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 "Evidence bundle generation disabled by environment (ZKF_DISABLE_EVIDENCE_BUNDLES)"
             );
         }
+        let value_to_string = |key: &str| -> String {
+            match additional.get(key) {
+                Some(serde_yaml::Value::String(s)) => s.clone(),
+                Some(serde_yaml::Value::Number(n)) => n.to_string(),
+                Some(serde_yaml::Value::Bool(b)) => b.to_string(),
+                Some(_) => "set".to_string(),
+                None => "unset".to_string(),
+            }
+        };
         tracing::info!(
-            "Evidence recall bias active (min_conf=low, agreement_ratio<=0.45, cross_attack_weight>=0.65 unless overridden in YAML)"
+            "Evidence recall bias active (min_conf={}, agreement_ratio<={}, cross_attack_weight>={} unless overridden in YAML/env)",
+            value_to_string("min_evidence_confidence"),
+            value_to_string("oracle_validation_min_agreement_ratio"),
+            value_to_string("oracle_validation_cross_attack_weight"),
         );
 
         // Pre-flight readiness check for strict evidence engagements.

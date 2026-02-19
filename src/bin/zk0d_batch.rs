@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
+const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
+const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
 const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
 const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
 const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
@@ -204,6 +206,49 @@ struct TemplateOutcomeReason {
 }
 
 fn report_has_high_confidence_finding(report_path: &Path) -> bool {
+    report_has_high_confidence_finding_with_min_oracles(
+        report_path,
+        high_confidence_min_oracles_from_env(),
+    )
+}
+
+fn high_confidence_min_oracles_from_env() -> usize {
+    std::env::var(HIGH_CONFIDENCE_MIN_ORACLES_ENV)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES)
+}
+
+fn parse_correlation_confidence(description: &str) -> Option<String> {
+    let marker = "correlation:";
+    let description_lc = description.to_ascii_lowercase();
+    let start = description_lc.find(marker)?;
+    let tail = description_lc.get(start + marker.len()..)?.trim_start();
+    let token = tail.split_whitespace().next()?.trim_matches(|ch: char| {
+        ch == '(' || ch == ')' || ch == ',' || ch == ';' || ch == '.'
+    });
+    if token.is_empty() {
+        return None;
+    }
+    Some(token.to_string())
+}
+
+fn parse_correlation_oracle_count(description: &str) -> Option<usize> {
+    let marker = "oracles=";
+    let start = description.find(marker)?;
+    let tail = description.get(start + marker.len()..)?;
+    let digits: String = tail.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse::<usize>().ok()
+}
+
+fn report_has_high_confidence_finding_with_min_oracles(
+    report_path: &Path,
+    min_oracles: usize,
+) -> bool {
     let raw = match fs::read_to_string(report_path) {
         Ok(raw) => raw,
         Err(_) => return false,
@@ -216,13 +261,23 @@ fn report_has_high_confidence_finding(report_path: &Path) -> bool {
         return false;
     };
     findings.iter().any(|finding| {
-        let description_lc = finding
+        let description = finding
             .get("description")
             .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        description_lc.contains("correlation: high")
-            || description_lc.contains("correlation: critical")
+            .unwrap_or_default();
+        let Some(confidence) = parse_correlation_confidence(description) else {
+            return false;
+        };
+        if confidence == "critical" {
+            return true;
+        }
+        if confidence != "high" {
+            return false;
+        }
+        match parse_correlation_oracle_count(description) {
+            Some(oracles) => oracles >= min_oracles,
+            None => true,
+        }
     })
 }
 

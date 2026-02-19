@@ -83,6 +83,22 @@ struct Args {
     /// Allow oversubscribed jobs*batch_jobs*workers beyond CPU guardrail
     #[arg(long, default_value_t = false)]
     allow_oversubscription: bool,
+
+    /// Optional benchmark override for evidence confidence threshold (e.g. low/medium/high)
+    #[arg(long)]
+    benchmark_min_evidence_confidence: Option<String>,
+
+    /// Optional benchmark override for oracle validation minimum agreement ratio
+    #[arg(long)]
+    benchmark_oracle_min_agreement_ratio: Option<f64>,
+
+    /// Optional benchmark override for oracle validation cross-attack weight
+    #[arg(long)]
+    benchmark_oracle_cross_attack_weight: Option<f64>,
+
+    /// Optional benchmark override for strict high-confidence minimum oracle count
+    #[arg(long)]
+    benchmark_high_confidence_min_oracles: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -214,6 +230,10 @@ struct BenchmarkConfigSnapshot {
     iterations: u64,
     timeout: u64,
     dry_run: bool,
+    benchmark_min_evidence_confidence: Option<String>,
+    benchmark_oracle_min_agreement_ratio: Option<f64>,
+    benchmark_oracle_cross_attack_weight: Option<f64>,
+    benchmark_high_confidence_min_oracles: Option<usize>,
 }
 
 fn default_main_component() -> String {
@@ -458,6 +478,24 @@ fn run_trial(
     cmd.env("HOME", &benchmark_home)
         .env("ZKF_RUN_SIGNAL_DIR", &run_signal_dir)
         .env("ZKF_DISABLE_EVIDENCE_BUNDLES", "1");
+    if let Some(value) = args.benchmark_min_evidence_confidence.as_deref() {
+        cmd.env("ZKF_MIN_EVIDENCE_CONFIDENCE", value);
+    }
+    if let Some(value) = args.benchmark_oracle_min_agreement_ratio {
+        cmd.env(
+            "ZKF_ORACLE_VALIDATION_MIN_AGREEMENT_RATIO",
+            format!("{:.3}", value),
+        );
+    }
+    if let Some(value) = args.benchmark_oracle_cross_attack_weight {
+        cmd.env(
+            "ZKF_ORACLE_VALIDATION_CROSS_ATTACK_WEIGHT",
+            format!("{:.3}", value),
+        );
+    }
+    if let Some(value) = args.benchmark_high_confidence_min_oracles {
+        cmd.env("ZKF_HIGH_CONFIDENCE_MIN_ORACLES", value.to_string());
+    }
     cmd.arg("--registry")
         .arg(registry_path)
         .arg(format!("--{}", selector_key))
@@ -990,6 +1028,10 @@ fn main() -> anyhow::Result<()> {
             iterations: args.iterations,
             timeout: args.timeout,
             dry_run: args.dry_run,
+            benchmark_min_evidence_confidence: args.benchmark_min_evidence_confidence.clone(),
+            benchmark_oracle_min_agreement_ratio: args.benchmark_oracle_min_agreement_ratio,
+            benchmark_oracle_cross_attack_weight: args.benchmark_oracle_cross_attack_weight,
+            benchmark_high_confidence_min_oracles: args.benchmark_high_confidence_min_oracles,
         },
         suites: suite_summaries,
         total_runs,
