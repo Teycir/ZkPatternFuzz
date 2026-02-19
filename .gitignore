@@ -48,6 +48,10 @@ tests/semantic_oracles_test.rs
 
 # Experimental modules
 circuits
+!vendor/
+!vendor/circomlib/
+!vendor/circomlib/circuits/
+!vendor/circomlib/circuits/**
 .npm-cache
 third_party
 build/zk0d/circom/withdraw_Withdraw/withdraw.r1cs
