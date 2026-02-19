@@ -97,7 +97,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Fresh clone + bootstrap can run 5-target matrix without manual tool installation
 - [ ] Keygen readiness preflight passes on at least 4/5 baseline targets
 
-**Current Status:** ⚠️ Fresh-clone validation reaches benchmark stage with report `artifacts/fresh_clone_validation/latest_report.json`, but currently fails operability gate due to Circom compile failures (`circom_compilation_failed=6/10`, `completed=1/10`) after dry-run bootstrap
+**Current Status:** ⚠️ Fresh-clone validation reaches benchmark stage with report `artifacts/fresh_clone_validation/latest_report.json`, but currently fails operability gate due to missing `circomlib` includes in clean-clone benchmark targets (`circom_compilation_failed=6/10`, `completed=1/10`) after dry-run bootstrap
 
 ---
 
@@ -340,7 +340,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Add automated fresh clone + bootstrap validation script (`scripts/fresh_clone_bootstrap_validate.sh`)
 - [x] Run fresh clone + bootstrap validation and capture summary artifacts (`artifacts/fresh_clone_validation/latest_report.json`)
 - [x] Fix clean-clone `zk-backends` build blockers (`fixture`/`util` module resolution) so bootstrap validation can reach benchmark stage
-- [ ] Eliminate fresh-clone Circom compilation failures after bootstrap (`circom_compilation_failed` must be 0)
+- [ ] Ensure `circomlib` include availability in fresh-clone bootstrap path and eliminate `circom_compilation_failed` (`artifacts/fresh_clone_validation/fresh_clone_20260219_203942_circom_compilation_analysis.json`)
 - [x] Add serial-vs-parallel speedup benchmark automation (`scripts/benchmark_parallel_speedup.sh`)
 - [x] Execute 10-target wall-clock benchmark and capture speedup evidence
 - [x] Add automated Phase 3A validation script (`scripts/phase3a_validate.sh`)
@@ -366,6 +366,12 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - **Resolved blocker:** clean-clone compile failure from missing `zk-backends` modules (`fixture`/`util`) is fixed
 - **Observed blocker:** benchmark runs in fresh clone still fail mostly at Circom compilation (`circom_compilation_failed`), indicating bootstrap operability is not yet sufficient
 - **Status:** Phase 2 operability exit criteria remain open until fresh-clone benchmark runs complete without Circom compilation failures
+
+### Fresh Clone Circom Compilation Root-Cause Analysis
+- **Command:** `python3 scripts/analyze_circom_compilation_failures.py --outcomes artifacts/fresh_clone_validation/fresh_clone_20260219_203942_outcomes.json --summary artifacts/fresh_clone_validation/fresh_clone_20260219_203942_summary.json --repo-root . --json-out artifacts/fresh_clone_validation/fresh_clone_20260219_203942_circom_compilation_analysis.json`
+- **Report:** `artifacts/fresh_clone_validation/fresh_clone_20260219_203942_circom_compilation_analysis.json`
+- **Outcome:** all six fresh-clone compilation failures map to circuits importing `circomlib/*` (`poseidon.circom`, `comparators.circom`, `bitify.circom`)
+- **Status:** Phase 2 blocker narrowed to reproducible dependency-availability gap (clean clone lacks required `circomlib` include roots during benchmark run)
 
 ### Release Candidate Validation (Two Consecutive Attempts)
 - **Command:** `scripts/release_candidate_validate_twice.sh --bench-root artifacts/benchmark_runs_fast --required-passes 1 --stable-ref 370d029 --rollback-even-if-gate-fails --output-dir artifacts/release_candidate_validation`
