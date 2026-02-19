@@ -44,7 +44,7 @@ use run_chain_reports::{
     build_chain_report_json, build_chain_report_markdown, write_chain_report_json,
     write_chain_report_markdown,
 };
-use run_chain_ui::{print_chain_mode_banner, print_chains_to_fuzz};
+use run_chain_ui::{print_chain_mode_banner, print_chain_results, print_chains_to_fuzz};
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
 use run_interrupts::{install_panic_hook, start_signal_watchers};
 use run_lifecycle::{
@@ -713,7 +713,6 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
 /// Run a chain-focused fuzzing campaign (Mode 3: Deepest)
 async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyhow::Result<()> {
-    use colored::*;
     use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics};
     use zk_fuzzer::config::parse_chains;
     use zk_fuzzer::fuzzer::FuzzingEngine;
@@ -1014,92 +1013,20 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let metrics = DepthMetrics::new(chain_findings.clone());
     let summary = metrics.summary();
 
-    // Print results
-    println!();
-    println!("{}", "═".repeat(60).bright_magenta());
-    println!("{}", "  CHAIN FUZZING RESULTS".bright_white().bold());
-    println!("{}", "═".repeat(60).bright_magenta());
-
-    println!("\n{}", "DEPTH METRICS".bright_yellow().bold());
-    println!("  Total Chain Findings:  {}", summary.total_findings);
-    println!("  Mean L_min (D):        {:.2}", summary.d_mean);
-    println!("  P(L_min >= 2):         {:.1}%", summary.p_deep * 100.0);
-    println!();
-    println!("{}", "CORPUS / EXPLORATION METRICS".bright_yellow().bold());
-    println!(
-        "  Corpus entries:            {} (Δ {})",
+    // Print results.
+    print_chain_results(&run_chain_ui::ChainResultsUiContext {
+        summary: &summary,
         final_total_entries,
-        final_total_entries.saturating_sub(baseline_total_entries)
-    );
-    println!(
-        "  Unique coverage bits:      {} (Δ {})",
+        baseline_total_entries,
         final_unique_coverage_bits,
-        final_unique_coverage_bits.saturating_sub(baseline_unique_coverage_bits)
-    );
-    println!("  Max depth reached:         {}", final_max_depth);
-
-    if !summary.depth_distribution.is_empty() {
-        println!("\n{}", "DEPTH DISTRIBUTION".bright_yellow().bold());
-        let mut depths: Vec<_> = summary.depth_distribution.iter().collect();
-        depths.sort_by_key(|(k, _)| *k);
-        for (depth, count) in depths {
-            let bar = "█".repeat((*count).min(30));
-            println!("  L_min={}: {} ({})", depth, bar.bright_cyan(), count);
-        }
-    }
-
-    if !chain_findings.is_empty() {
-        println!("\n{}", "CHAIN FINDINGS".bright_yellow().bold());
-        for (i, finding) in chain_findings.iter().enumerate() {
-            let severity_str = match finding.finding.severity.to_uppercase().as_str() {
-                "CRITICAL" => format!("[{}]", finding.finding.severity)
-                    .bright_red()
-                    .bold(),
-                "HIGH" => format!("[{}]", finding.finding.severity).red(),
-                "MEDIUM" => format!("[{}]", finding.finding.severity).yellow(),
-                "LOW" => format!("[{}]", finding.finding.severity).bright_yellow(),
-                _ => format!("[{}]", finding.finding.severity).white(),
-            };
-
-            println!(
-                "\n  {}. {} Chain: {} (L_min: {})",
-                i + 1,
-                severity_str,
-                finding.spec_name.cyan(),
-                finding.l_min.to_string().bright_green()
-            );
-            println!("     {}", finding.finding.description);
-
-            if let Some(ref assertion) = finding.violated_assertion {
-                println!("     Violated: {}", assertion.bright_red());
-            }
-
-            // Print reproduction command
-            println!("     {}", "Reproduction:".bright_yellow());
-            println!(
-                "       cargo run --release -- chains {} --seed {}",
-                config_path,
-                options.seed.unwrap_or(42)
-            );
-        }
-    } else if run_valid {
-        println!(
-            "\n{}",
-            "  ✓ No chain vulnerabilities found!".bright_green().bold()
-        );
-    } else {
-        println!(
-            "\n{}",
-            "  ✗ Run invalid: exploration too narrow to treat as 'clean'"
-                .bright_red()
-                .bold()
-        );
-        for failure in &quality_failures {
-            println!("     - {}", failure);
-        }
-    }
-
-    println!("\n{}", "═".repeat(60).bright_magenta());
+        baseline_unique_coverage_bits,
+        final_max_depth,
+        chain_findings: &chain_findings,
+        run_valid,
+        quality_failures: &quality_failures,
+        config_path,
+        seed: options.seed,
+    });
 
     // Save reports
     stage = "save_chain_reports";

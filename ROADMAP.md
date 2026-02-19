@@ -292,6 +292,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added shared JSON report builder/writer helpers (`build_chain_report_json`, `write_chain_report_json`).
    - Added shared Markdown report builder/writer helpers (`build_chain_report_markdown`, `write_chain_report_markdown`).
    - Replaced large inline chain-report JSON/Markdown assembly blocks in `run_chain_campaign` with helper calls while preserving output shape and reproduction snippets.
+107. Continued chain-mode modularization by extracting chain-results console rendering (`src/main.rs`, `src/run_chain_ui.rs`):
+   - Added `run_chain_ui::ChainResultsUiContext` and `print_chain_results(...)` to centralize terminal rendering for depth/corpus metrics and finding summaries.
+   - Moved chain findings severity formatting, distribution bars, and reproduction command display out of `run_chain_campaign`.
+   - Replaced the large inline results-print block in `run_chain_campaign` with a focused module call while preserving operator output semantics.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -553,6 +557,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 104. Engagement-dir panic-path regression spot-check after chain-report helper extraction:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+105. Main CLI compile verification after chain-results UI extraction:
+    - `cargo check -q`
+106. Selector/command regression spot-check after chain-results UI extraction:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+107. Engagement-dir panic-path regression spot-check after chain-results UI extraction:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
