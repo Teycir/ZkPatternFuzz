@@ -1,18 +1,19 @@
 use anyhow::Context;
-use chrono::{DateTime, Local, Utc};
+use chrono::{Local, Utc};
 use clap::Parser;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::path::PathBuf;
 mod cli;
 mod engagement_artifacts;
 mod output_lock;
 mod preflight_backend;
 mod run_bootstrap;
 mod run_identity;
+mod run_interrupts;
 mod run_lifecycle;
+mod run_log_context;
 mod run_outcome_docs;
 mod run_paths;
+mod run_process_control;
 mod runtime_misc;
 mod scan_dispatch;
 mod scan_output;
@@ -32,18 +33,21 @@ use run_bootstrap::{
     announce_report_dir_and_bind_log_context, load_campaign_config_with_optional_profile,
 };
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
+use run_interrupts::{install_panic_hook, start_signal_watchers};
 use run_lifecycle::{
     initialize_campaign_run_lifecycle, require_evidence_readiness_or_emit_failure,
     run_backend_preflight_or_emit_failure, seed_running_run_artifact,
     write_failed_mode_run_artifact_with_error, write_failed_mode_run_artifact_with_reason,
-    write_failed_run_artifact,
 };
+pub(crate) use run_log_context::set_run_log_context_for_campaign;
+use run_log_context::{DynamicLogWriter, RunLogContextGuard};
 use run_outcome_docs::{completed_run_doc_with_window, running_run_doc_with_window};
 #[cfg(test)]
 pub(crate) use run_paths::{engagement_dir_name, run_id_epoch_dir};
 pub(crate) use run_paths::{
     engagement_root_dir, normalize_build_paths, read_optional_env, run_signal_dir,
 };
+use run_process_control::kill_existing_instances;
 use runtime_misc::{
     generate_sample_config, minimize_corpus, print_banner, print_run_window, truncate_str,
     validate_campaign,
@@ -56,388 +60,6 @@ use scan_selector::{
 };
 use zk_fuzzer::fuzzer::ZkFuzzer;
 use zk_fuzzer::Framework;
-
-#[derive(Debug, Clone)]
-struct RunLogContext {
-    run_id: String,
-    command: String,
-    campaign_path: Option<String>,
-    campaign_name: Option<String>,
-    output_dir: Option<PathBuf>,
-    started_utc: String,
-}
-
-static RUN_LOG_CONTEXT: OnceLock<Mutex<Option<RunLogContext>>> = OnceLock::new();
-static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
-static SIGNAL_WATCHER_STARTED: OnceLock<()> = OnceLock::new();
-static DYNAMIC_LOG_FILE: OnceLock<Mutex<Option<(PathBuf, std::fs::File)>>> = OnceLock::new();
-
-struct DynamicLogWriter;
-
-struct DynamicTeeWriter;
-
-impl DynamicTeeWriter {
-    fn desired_log_path() -> PathBuf {
-        if let Some(ctx) = get_run_log_context() {
-            // Engagement-local session log. This makes each `report_<timestamp>/` folder
-            // self-contained and easy to manage when you have many engagements.
-            engagement_root_dir(&ctx.run_id).join("session.log")
-        } else {
-            run_signal_dir().join("session.log")
-        }
-    }
-
-    fn with_log_file<F, R>(f: F) -> io::Result<R>
-    where
-        F: FnOnce(&mut std::fs::File) -> io::Result<R>,
-    {
-        let path = Self::desired_log_path();
-        let slot = DYNAMIC_LOG_FILE.get_or_init(|| Mutex::new(None));
-        let mut guard = slot.lock().map_err(|_| io::ErrorKind::Other)?;
-
-        let need_reopen = match guard.as_ref() {
-            Some((p, _)) => *p != path,
-            None => true,
-        };
-
-        if need_reopen {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(|err| {
-                    io::Error::other(format!(
-                        "Failed to create log directory '{}': {err}",
-                        parent.display()
-                    ))
-                })?;
-            }
-            match std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)
-            {
-                Ok(file) => {
-                    *guard = Some((path.clone(), file));
-                }
-                Err(err) => {
-                    // Fail opening file logger for this write attempt.
-                    return Err(err);
-                }
-            }
-        }
-
-        if let Some((_, ref mut file)) = guard.as_mut() {
-            f(file)
-        } else {
-            Err(io::Error::other("log file unavailable"))
-        }
-    }
-
-    /// Best-effort synchronization hook used when run-log context changes.
-    ///
-    /// This pre-opens/rebinds the file target immediately so most subsequent log lines
-    /// are routed to the new engagement log path without waiting for the next write call.
-    fn sync_to_current_context() {
-        if let Err(err) = Self::with_log_file(|_| Ok(())) {
-            eprintln!(
-                "[zk-fuzzer] WARN: failed to sync session log path to current context: {}",
-                err
-            );
-        }
-    }
-}
-
-impl io::Write for DynamicTeeWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // Console output (keep behavior similar to default fmt subscriber).
-        if let Err(err) = io::stderr().write_all(buf) {
-            eprintln!("[zk-fuzzer] WARN: failed writing to stderr: {}", err);
-        }
-
-        // Best-effort file output with non-blocking approach
-        let _ = Self::with_log_file(|file| file.write_all(buf).map(|_| ()));
-
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        if let Err(err) = io::stderr().flush() {
-            eprintln!("[zk-fuzzer] WARN: failed flushing stderr: {}", err);
-        }
-        let _ = Self::with_log_file(|file| file.flush());
-        Ok(())
-    }
-}
-
-impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for DynamicLogWriter {
-    type Writer = DynamicTeeWriter;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        DynamicTeeWriter
-    }
-}
-
-fn set_run_log_context(ctx: Option<RunLogContext>) {
-    let slot = RUN_LOG_CONTEXT.get_or_init(|| Mutex::new(None));
-    let mut should_sync_file = false;
-    match slot.lock() {
-        Ok(mut guard) => {
-            *guard = ctx;
-            should_sync_file = true;
-        }
-        Err(err) => eprintln!("[zk-fuzzer] WARN: failed to lock run log context: {}", err),
-    }
-    if should_sync_file {
-        DynamicTeeWriter::sync_to_current_context();
-    }
-}
-
-fn get_run_log_context() -> Option<RunLogContext> {
-    let slot = RUN_LOG_CONTEXT.get_or_init(|| Mutex::new(None));
-    match slot.lock() {
-        Ok(guard) => guard.clone(),
-        Err(poisoned) => {
-            tracing::warn!("Run log context mutex poisoned, recovering data");
-            poisoned.into_inner().clone()
-        }
-    }
-}
-
-struct RunLogContextGuard;
-
-impl RunLogContextGuard {
-    fn new() -> Self {
-        Self
-    }
-}
-
-impl Drop for RunLogContextGuard {
-    fn drop(&mut self) {
-        set_run_log_context(None);
-    }
-}
-
-pub(crate) fn set_run_log_context_for_campaign(
-    dry_run: bool,
-    run_id: &str,
-    command: &str,
-    config_path: &str,
-    campaign_name: Option<&str>,
-    output_dir: Option<&Path>,
-    started_utc: &DateTime<Utc>,
-) {
-    if dry_run {
-        return;
-    }
-
-    set_run_log_context(Some(RunLogContext {
-        run_id: run_id.to_string(),
-        command: command.to_string(),
-        campaign_path: Some(config_path.to_string()),
-        campaign_name: campaign_name.map(|name| name.to_string()),
-        output_dir: output_dir.map(Path::to_path_buf),
-        started_utc: started_utc.to_rfc3339(),
-    }));
-}
-
-fn install_panic_hook() {
-    if PANIC_HOOK_INSTALLED.set(()).is_err() {
-        return;
-    }
-
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let now = Utc::now().to_rfc3339();
-        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = info.payload().downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "panic payload (non-string)".to_string()
-        };
-        let location = info
-            .location()
-            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
-        let backtrace = std::backtrace::Backtrace::force_capture().to_string();
-
-        let ctx = get_run_log_context();
-        let run_id = match ctx.as_ref().map(|c| c.run_id.clone()) {
-            Some(id) => id,
-            None => make_run_id("panic", None),
-        };
-
-        let doc = serde_json::json!({
-            "status": "panic",
-            "timestamp_utc": now,
-            "run_id": run_id.clone(),
-            "panic": {
-                "message": payload,
-                "location": location,
-                "backtrace": backtrace,
-            },
-            "context": ctx.as_ref().map(|c| serde_json::json!({
-                "command": c.command,
-                "campaign_path": c.campaign_path,
-                "campaign_name": c.campaign_name,
-                "output_dir": c.output_dir.as_ref().map(|p| p.display().to_string()),
-                "started_utc": c.started_utc,
-                "pid": std::process::id(),
-            })),
-        });
-
-        if let Some(ctx) = ctx {
-            if let Some(output_dir) = ctx.output_dir.as_ref() {
-                write_run_artifacts(output_dir, &run_id, &doc);
-            } else {
-                write_failed_run_artifact(&run_id, &doc);
-            }
-        } else {
-            write_failed_run_artifact(&run_id, &doc);
-        }
-
-        default_hook(info);
-    }));
-}
-
-fn start_signal_watchers() {
-    if SIGNAL_WATCHER_STARTED.set(()).is_err() {
-        return;
-    }
-
-    tokio::spawn(async move {
-        let mut sigint = Box::pin(tokio::signal::ctrl_c());
-
-        #[cfg(unix)]
-        let mut sigterm =
-            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!("Failed to install SIGTERM handler: {}", e);
-                    return;
-                }
-            };
-
-        #[cfg(not(unix))]
-        let mut sigterm: Option<()> = None;
-
-        let stop = async {
-            #[cfg(unix)]
-            {
-                tokio::select! {
-                    _ = &mut sigint => "SIGINT",
-                    _ = sigterm.recv() => "SIGTERM",
-                }
-            }
-
-            #[cfg(not(unix))]
-            {
-                let _ = sigint;
-                "SIGINT"
-            }
-        };
-
-        let signal_name = stop.await;
-        let now = Utc::now().to_rfc3339();
-        let ctx = get_run_log_context();
-        let run_id = match ctx.as_ref().map(|c| c.run_id.clone()) {
-            Some(id) => id,
-            None => make_run_id("interrupted", None),
-        };
-
-        let doc = serde_json::json!({
-            "status": "interrupted",
-            "timestamp_utc": now,
-            "run_id": run_id.clone(),
-            "signal": signal_name,
-            "context": ctx.as_ref().map(|c| serde_json::json!({
-                "command": c.command,
-                "campaign_path": c.campaign_path,
-                "campaign_name": c.campaign_name,
-                "output_dir": c.output_dir.as_ref().map(|p| p.display().to_string()),
-                "started_utc": c.started_utc,
-                "pid": std::process::id(),
-            })),
-        });
-
-        if let Some(ctx) = ctx {
-            if let Some(output_dir) = ctx.output_dir.as_ref() {
-                write_run_artifacts(output_dir, &run_id, &doc);
-            } else {
-                write_failed_run_artifact(&run_id, &doc);
-            }
-        } else {
-            write_failed_run_artifact(&run_id, &doc);
-        }
-
-        // Conventional shell exit codes: 130 (SIGINT), 143 (SIGTERM).
-        let code = if signal_name == "SIGTERM" { 143 } else { 130 };
-        std::process::exit(code);
-    });
-}
-
-/// Kill existing zk-fuzzer instances with graceful shutdown
-async fn kill_existing_instances() {
-    let current_pid = std::process::id();
-
-    let pgrep_output = std::process::Command::new("pgrep")
-        .args(["-x", "zk-fuzzer"])
-        .output();
-
-    if let Ok(output) = pgrep_output {
-        if output.status.success() {
-            let pids = String::from_utf8_lossy(&output.stdout);
-            for pid_str in pids.lines() {
-                if let Ok(pid) = pid_str.trim().parse::<u32>() {
-                    if pid != current_pid {
-                        // Try graceful shutdown first (SIGTERM)
-                        match std::process::Command::new("kill")
-                            .args(["-15", &pid.to_string()])
-                            .output()
-                        {
-                            Ok(output) if output.status.success() => {}
-                            Ok(output) => tracing::warn!(
-                                "Failed to send SIGTERM to {}: {}",
-                                pid,
-                                String::from_utf8_lossy(&output.stderr)
-                            ),
-                            Err(err) => {
-                                tracing::warn!("Error sending SIGTERM to {}: {}", pid, err)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Wait for graceful shutdown
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-            // Force kill any remaining processes (SIGKILL)
-            for pid_str in pids.lines() {
-                if let Ok(pid) = pid_str.trim().parse::<u32>() {
-                    if pid != current_pid {
-                        match std::process::Command::new("kill")
-                            .args(["-9", &pid.to_string()])
-                            .output()
-                        {
-                            Ok(output) if output.status.success() => {}
-                            Ok(output) => tracing::warn!(
-                                "Failed to send SIGKILL to {}: {}",
-                                pid,
-                                String::from_utf8_lossy(&output.stderr)
-                            ),
-                            Err(err) => {
-                                tracing::warn!("Error sending SIGKILL to {}: {}", pid, err)
-                            }
-                        }
-                    }
-                }
-            }
-
-            eprintln!(
-                "Terminated existing zk-fuzzer instances (excluding PID {})",
-                current_pid
-            );
-        }
-    }
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
