@@ -37,6 +37,8 @@ ZkFuzz/scan_run*/
 .zenflow
 .aider.chat.history.md
 .aider.input.history
+__pycache__/
+*.pyc
 
 # Test artifacts
 tests/noir_projects/multiplier/target/noir_multiplier.gz

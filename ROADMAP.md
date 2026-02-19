@@ -19,7 +19,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ### Exit Criteria Progress
 - ✅ Phase 0 exit criteria (met on 20-run fast matrix: attack-stage reach 90%, no output-lock failures)
-- ❌ Phase 1 exit criteria (partially met: recall improved to 60% and safe high-confidence FPR reduced to 0%, selector hit-rate validation still pending)
+- ❌ Phase 1 exit criteria (partially met: selector hit-rate 90%, safe high-confidence FPR 0%; recall uplift criterion still pending baseline confirmation)
 - ❌ Phase 2 exit criteria (pending fresh clone validation)
 - ❌ Phase 3 exit criteria (pending 10-target benchmark)
 - ❌ Phase 3A exit criteria (pending integrated campaign runs)
@@ -73,11 +73,11 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add selector normalization/synonym regression tests
 
 ### Exit Criteria
-- [ ] Selector hit-rate >=90% on intended target set
+- [x] Selector hit-rate >=90% on intended target set
 - [ ] Recall improves by >=20 percentage points over baseline
 - [x] High-confidence false positives remain bounded (<=5% on safe suite)
 
-**Current Status:** ⚠️ Recall is 60% on latest 20-run matrix (`benchmark_20260219_182723`) and safe high-confidence FPR is now 0%; selector hit-rate and target recall level still need validation
+**Current Status:** ⚠️ Latest 20-run matrix (`benchmark_20260219_182723`) has selector hit-rate `90.0%` (`18/20`), recall `60%`, and safe high-confidence FPR `0%`; recall uplift target confirmation remains pending
 
 ---
 
@@ -469,6 +469,7 @@ gh run watch
 - Latest 20-run fast matrix evidence: `artifacts/benchmark_runs_fast/benchmark_20260219_182723/summary.json`
 - Fast matrix metrics: `completion_rate=35.0%`, `attack_stage_reach_rate=90.0%`, `recall=60.0%`, `recall_high_conf=20.0%`, `precision=54.5%`, `safe_fpr=50.0%`, `safe_high_conf_fpr=0.0%`
 - High-confidence metric now uses stricter oracle corroboration in batch scoring (`benchmark_high_confidence_min_oracles=3`)
+- Selector hit-rate report: `artifacts/benchmark_runs_fast/benchmark_20260219_182723/selector_hit_rate.json` (`18/20` => `90.0%`)
 - Once panic is fixed, need to validate all exit criteria systematically
 - Release candidate validation requires two consecutive passes of all gates
 - Nightly CI matrix is operational with fast-smoke and deep-scheduled lanes
