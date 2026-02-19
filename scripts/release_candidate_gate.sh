@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BENCH_ROOT="$ROOT_DIR/artifacts/benchmark_runs"
 REQUIRED_PASSES=2
+STABLE_REF=""
 
 usage() {
   cat <<'USAGE'
@@ -14,6 +15,7 @@ Validate that the last N benchmark summaries all pass ci_benchmark_gate threshol
 Options:
   --bench-root <path>        Benchmark root directory (default: artifacts/benchmark_runs)
   --required-passes <n>      Number of latest summaries that must pass (default: 2)
+  --stable-ref <git-ref>     Optional rollback validation target (runs rollback_validate on pass)
   -h, --help                 Show this help
 
 Thresholds are inherited from scripts/ci_benchmark_gate.sh env vars:
@@ -21,6 +23,7 @@ Thresholds are inherited from scripts/ci_benchmark_gate.sh env vars:
   MIN_VULNERABLE_RECALL
   MIN_PRECISION
   MAX_SAFE_FPR
+  MAX_SAFE_HIGH_CONF_FPR
 USAGE
 }
 
@@ -32,6 +35,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --required-passes)
       REQUIRED_PASSES="$2"
+      shift 2
+      ;;
+    --stable-ref)
+      STABLE_REF="$2"
       shift 2
       ;;
     -h|--help)
@@ -82,3 +89,8 @@ if [ "$failures" -ne 0 ]; then
 fi
 
 echo "Release candidate gate passed: last $REQUIRED_PASSES benchmark summaries passed."
+
+if [ -n "$STABLE_REF" ]; then
+  echo "Running rollback validation against stable ref: $STABLE_REF"
+  "$ROOT_DIR/scripts/rollback_validate.sh" --stable-ref "$STABLE_REF"
+fi

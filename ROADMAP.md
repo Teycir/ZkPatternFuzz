@@ -346,8 +346,9 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [ ] Validate safe FPR remains <=5%
 
 ### Medium Priority (P2)
+- [x] Add rollback-integrated release gate invocation (`scripts/release_candidate_gate.sh --stable-ref <ref>`)
 - [ ] Run release candidate validation twice consecutively
-- [ ] Test rollback strategy
+- [ ] Execute rollback validation in release gate and archive evidence
 - [ ] Document any remaining edge cases in troubleshooting playbook
 
 ---
@@ -450,7 +451,7 @@ python3 -m unittest -q tests/test_benchmark_failure_dashboard.py
 ### Release Validation
 ```bash
 # Release candidate gate (requires 2 consecutive passes)
-./scripts/release_candidate_gate.sh
+MAX_SAFE_HIGH_CONF_FPR=0.05 ./scripts/release_candidate_gate.sh --stable-ref <stable-ref>
 
 # Rollback validation
 ./scripts/rollback_validate.sh <stable-ref>
