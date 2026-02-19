@@ -300,6 +300,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `chain_completion_status(...)` to centralize terminal/report completion-state selection (`completed`, `failed_engagement_contract`, `completed_with_critical_findings`).
    - Added `ChainCompletionDocContext` and `build_chain_completion_doc(...)` for shared completion artifact construction with metrics + engagement sections.
    - Replaced inline status/critical computation and completion-doc field assembly in `run_chain_campaign` with focused helper calls.
+109. Continued chain-mode modularization by extracting corpus metric loading (`src/main.rs`, `src/run_chain_corpus.rs`):
+   - Added `ChainBaselineMetrics`/`ChainFinalMetrics` containers and shared loaders (`load_chain_baseline_metrics`, `load_chain_final_metrics`).
+   - Centralized resume-aware baseline execution/coverage derivation and metadata-first final corpus metric loading.
+   - Replaced duplicated baseline/final corpus metric blocks in `run_chain_campaign` with helper calls while preserving fallback behavior.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -575,6 +579,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 110. Engagement-dir panic-path regression spot-check after chain-completion helper extraction:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+111. Main CLI compile verification after chain-corpus metric loader extraction:
+    - `cargo check -q`
+112. Selector/command regression spot-check after chain-corpus metric loader extraction:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+113. Engagement-dir panic-path regression spot-check after chain-corpus metric loader extraction:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)

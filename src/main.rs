@@ -36,8 +36,8 @@ use run_bootstrap::{
     announce_report_dir_and_bind_log_context, load_campaign_config_with_optional_profile,
 };
 use run_chain_corpus::{
-    chain_completed_and_unique_cov_from_path, chain_unique_coverage_bits, load_chain_corpus,
-    read_chain_execution_count, read_chain_meta,
+    chain_completed_and_unique_cov_from_path, load_chain_baseline_metrics,
+    load_chain_final_metrics,
 };
 use run_chain_quality::collect_chain_quality_failures;
 use run_chain_reports::{
@@ -875,28 +875,11 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let corpus_path = output_dir.join("chain_corpus.json");
     let corpus_meta_path = output_dir.join("chain_corpus_meta.json");
-    let baseline_execution_count = if options.resume {
-        read_chain_execution_count(&corpus_path)?
-    } else {
-        0
-    };
-
-    let baseline_meta = if options.resume && corpus_meta_path.exists() {
-        read_chain_meta(&corpus_meta_path)
-    } else {
-        None
-    };
-    let (baseline_total_entries, baseline_unique_coverage_bits): (usize, usize) = if !options.resume
-    {
-        (0, 0)
-    } else if let Some(meta) = &baseline_meta {
-        (meta.total_entries, meta.unique_coverage_bits)
-    } else {
-        let baseline_corpus = load_chain_corpus(&corpus_path)?;
-        let baseline_total_entries = baseline_corpus.len();
-        let baseline_unique_coverage_bits = chain_unique_coverage_bits(&baseline_corpus);
-        (baseline_total_entries, baseline_unique_coverage_bits)
-    };
+    let baseline_metrics =
+        load_chain_baseline_metrics(&corpus_path, &corpus_meta_path, options.resume)?;
+    let baseline_execution_count = baseline_metrics.execution_count;
+    let baseline_total_entries = baseline_metrics.total_entries;
+    let baseline_unique_coverage_bits = baseline_metrics.unique_coverage_bits;
 
     // Create engine directly
     stage = "engine_init";
@@ -953,31 +936,12 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     // Load chain corpus for quality/coverage metrics (persistent across runs).
     // Prefer meta sidecar to avoid parsing a large chain_corpus.json.
-    let final_meta = if corpus_meta_path.exists() {
-        read_chain_meta(&corpus_meta_path)
-    } else {
-        None
-    };
-    let (final_total_entries, final_unique_coverage_bits, final_max_depth): (usize, usize, usize) =
-        if let Some(meta) = &final_meta {
-            (
-                meta.total_entries,
-                meta.unique_coverage_bits,
-                meta.max_depth,
-            )
-        } else {
-            let final_corpus = load_chain_corpus(&corpus_path)?;
-            let final_total_entries = final_corpus.len();
-            let final_unique_coverage_bits = chain_unique_coverage_bits(&final_corpus);
-            let final_max_depth = final_corpus.entries().iter().map(|e| e.depth_reached).max();
-            let final_max_depth: usize = final_max_depth.unwrap_or_default();
-            (
-                final_total_entries,
-                final_unique_coverage_bits,
-                final_max_depth,
-            )
-        };
-    let final_execution_count = read_chain_execution_count(&corpus_path)?;
+    let final_metrics = load_chain_final_metrics(&corpus_path, &corpus_meta_path)?;
+    let final_meta = final_metrics.meta;
+    let final_total_entries = final_metrics.total_entries;
+    let final_unique_coverage_bits = final_metrics.unique_coverage_bits;
+    let final_max_depth = final_metrics.max_depth;
+    let final_execution_count = final_metrics.execution_count;
     let run_execution_count = final_execution_count.saturating_sub(baseline_execution_count);
 
     // Engagement contract for Mode 3: refuse to report a "clean" run when exploration is too narrow.
