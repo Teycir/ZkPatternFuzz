@@ -1,11 +1,14 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
+use std::path::PathBuf;
 use zk_fuzzer::config::ReportingConfig;
 use zk_fuzzer::chain_fuzzer::metrics::DepthMetricsSummary;
 use zk_fuzzer::chain_fuzzer::ChainFinding;
 use zk_fuzzer::reporting::FuzzReport;
 
+use crate::engagement_artifacts::write_run_artifacts;
+use crate::run_lifecycle::write_failed_mode_run_artifact_with_error;
 use crate::run_outcome_docs::completed_run_doc_with_window;
 
 pub(crate) struct ChainReportContext<'a> {
@@ -22,6 +25,42 @@ pub(crate) struct ChainReportContext<'a> {
     pub baseline_total_entries: usize,
     pub baseline_unique_coverage_bits: usize,
     pub chain_findings: &'a [ChainFinding],
+}
+
+pub(crate) struct ChainReportContextInput<'a> {
+    pub campaign_name: &'a str,
+    pub engagement_strict: bool,
+    pub run_valid: bool,
+    pub quality_failures: &'a [String],
+    pub min_unique_coverage_bits: usize,
+    pub min_completed_per_chain: usize,
+    pub summary: &'a DepthMetricsSummary,
+    pub final_total_entries: usize,
+    pub final_unique_coverage_bits: usize,
+    pub final_max_depth: usize,
+    pub baseline_total_entries: usize,
+    pub baseline_unique_coverage_bits: usize,
+    pub chain_findings: &'a [ChainFinding],
+}
+
+pub(crate) fn build_chain_report_context<'a>(
+    input: ChainReportContextInput<'a>,
+) -> ChainReportContext<'a> {
+    ChainReportContext {
+        campaign_name: input.campaign_name,
+        engagement_strict: input.engagement_strict,
+        run_valid: input.run_valid,
+        quality_failures: input.quality_failures,
+        min_unique_coverage_bits: input.min_unique_coverage_bits,
+        min_completed_per_chain: input.min_completed_per_chain,
+        summary: input.summary,
+        final_total_entries: input.final_total_entries,
+        final_unique_coverage_bits: input.final_unique_coverage_bits,
+        final_max_depth: input.final_max_depth,
+        baseline_total_entries: input.baseline_total_entries,
+        baseline_unique_coverage_bits: input.baseline_unique_coverage_bits,
+        chain_findings: input.chain_findings,
+    }
 }
 
 pub(crate) fn build_chain_report_json(ctx: &ChainReportContext<'_>) -> serde_json::Value {
@@ -291,4 +330,83 @@ pub(crate) fn save_standard_chain_report(
     );
     report.statistics.total_executions = run_execution_count;
     report.save_to_files()
+}
+
+pub(crate) struct ChainSaveContext<'a> {
+    pub output_dir: &'a Path,
+    pub command: &'a str,
+    pub run_id: &'a str,
+    pub config_path: &'a str,
+    pub campaign_name: &'a str,
+    pub started_utc: DateTime<Utc>,
+    pub timeout_seconds: Option<u64>,
+}
+
+pub(crate) fn save_chain_reports_and_standard_or_emit_failure(
+    save_ctx: &ChainSaveContext<'_>,
+    report_ctx: &ChainReportContext<'_>,
+    seed: Option<u64>,
+    reporting: ReportingConfig,
+    run_execution_count: u64,
+) -> anyhow::Result<()> {
+    if let Err(err) = save_chain_reports_bundle(save_ctx.output_dir, save_ctx.config_path, seed, report_ctx) {
+        write_failed_mode_run_artifact_with_error(
+            save_ctx.output_dir,
+            save_ctx.command,
+            save_ctx.run_id,
+            "save_chain_reports",
+            save_ctx.config_path,
+            save_ctx.campaign_name,
+            save_ctx.started_utc,
+            save_ctx.timeout_seconds,
+            format!("{:#}", err),
+        );
+        return Err(err);
+    }
+
+    if let Err(err) = save_standard_chain_report(
+        report_ctx.campaign_name,
+        report_ctx.chain_findings,
+        reporting,
+        run_execution_count,
+    ) {
+        write_failed_mode_run_artifact_with_error(
+            save_ctx.output_dir,
+            save_ctx.command,
+            save_ctx.run_id,
+            "save_standard_report",
+            save_ctx.config_path,
+            save_ctx.campaign_name,
+            save_ctx.started_utc,
+            save_ctx.timeout_seconds,
+            format!("{:#}", err),
+        );
+        return Err(err);
+    }
+
+    Ok(())
+}
+
+pub(crate) struct ChainFinalizeContext<'a> {
+    pub completion_ctx: ChainCompletionDocContext<'a>,
+    pub output_dir: &'a PathBuf,
+    pub run_id: &'a str,
+    pub engagement_strict: bool,
+    pub run_valid: bool,
+    pub critical: bool,
+}
+
+pub(crate) fn finalize_chain_run(ctx: ChainFinalizeContext<'_>) -> anyhow::Result<()> {
+    let doc = build_chain_completion_doc(&ctx.completion_ctx);
+    write_run_artifacts(ctx.output_dir, ctx.run_id, &doc);
+
+    if ctx.critical {
+        anyhow::bail!("Chain run produced CRITICAL findings (see chain_report.json/report.json)");
+    }
+    if ctx.engagement_strict && !ctx.run_valid {
+        anyhow::bail!(
+            "Strict chain run failed engagement contract; see chain_report.json for details"
+        );
+    }
+    Ok(())
 }

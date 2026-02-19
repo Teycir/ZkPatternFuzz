@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use zk_fuzzer::chain_fuzzer::{ChainCorpusMeta, ChainSpec};
+use zk_fuzzer::chain_fuzzer::metrics::DepthMetricsSummary;
+use zk_fuzzer::chain_fuzzer::{ChainCorpusMeta, ChainFinding, ChainSpec};
+use zk_fuzzer::chain_fuzzer::DepthMetrics;
 
 use crate::chain_completed_and_unique_cov_from_path;
 
@@ -8,6 +10,13 @@ pub(crate) struct ChainEngagementSettings {
     pub strict: bool,
     pub min_unique_coverage_bits: usize,
     pub min_completed_per_chain: usize,
+}
+
+pub(crate) struct ChainQualityAssessment {
+    pub engagement: ChainEngagementSettings,
+    pub quality_failures: Vec<String>,
+    pub run_valid: bool,
+    pub summary: DepthMetricsSummary,
 }
 
 pub(crate) fn load_chain_engagement_settings(
@@ -33,6 +42,32 @@ pub(crate) fn load_chain_engagement_settings(
             .get_usize("engagement_min_chain_completed_per_chain")
             .unwrap_or(1),
     }
+}
+
+pub(crate) fn assess_chain_quality(
+    config: &zk_fuzzer::config::FuzzConfig,
+    chains: &[ChainSpec],
+    final_meta: Option<&ChainCorpusMeta>,
+    corpus_path: &Path,
+    chain_findings: &[ChainFinding],
+) -> anyhow::Result<ChainQualityAssessment> {
+    let engagement = load_chain_engagement_settings(config);
+    let quality_failures = collect_chain_quality_failures(
+        chains,
+        final_meta,
+        corpus_path,
+        engagement.min_completed_per_chain,
+        engagement.min_unique_coverage_bits,
+    )?;
+    let run_valid = quality_failures.is_empty();
+    let metrics = DepthMetrics::new(chain_findings.to_vec());
+    let summary = metrics.summary();
+    Ok(ChainQualityAssessment {
+        engagement,
+        quality_failures,
+        run_valid,
+        summary,
+    })
 }
 
 pub(crate) fn collect_chain_quality_failures(

@@ -325,6 +325,18 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 116. Continued chain-mode modularization by trimming orchestration imports/callsites in `run_chain_campaign` (`src/main.rs`):
    - Removed no-longer-needed inline startup/engine/report writer imports and stage mutation boilerplate after helper extraction.
    - Kept completion document generation and strict-failure semantics unchanged.
+117. Continued chain-mode modularization by extracting quality/summary assessment (`src/main.rs`, `src/run_chain_quality.rs`):
+   - Added `ChainQualityAssessment` and `assess_chain_quality(...)` to centralize engagement threshold reads, quality-failure evaluation, run-valid computation, and depth summary construction.
+   - Replaced inline assessment logic in `run_chain_campaign` with the shared helper.
+118. Continued chain-mode modularization by extracting report context construction (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Added `ChainReportContextInput` and `build_chain_report_context(...)` to centralize `ChainReportContext` assembly.
+   - Replaced inline report-context struct assembly in `run_chain_campaign` with a typed constructor call.
+119. Continued chain-mode modularization by extracting failure-wrapped report persistence (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Added `ChainSaveContext` and `save_chain_reports_and_standard_or_emit_failure(...)` to centralize chained report writes and failed-run artifact emission for both chain and standard report save stages.
+   - Replaced duplicated error-handling blocks around report writes in `run_chain_campaign` with a single helper call.
+120. Continued chain-mode modularization by extracting completion finalization and enforcement (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Added `ChainFinalizeContext` and `finalize_chain_run(...)` to centralize completion artifact write and strict-failure/critical bailout policy.
+   - Replaced inline completion doc write + terminal bail checks in `run_chain_campaign` with a focused helper invocation.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -621,6 +633,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 119. Engagement-dir panic-path regression spot-check after chain startup/engine/report helper extraction batch:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+120. Main CLI compile verification after chain assessment/finalization extraction batch:
+    - `cargo check -q`
+121. Selector/command regression spot-check after chain assessment/finalization extraction batch:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+122. Engagement-dir panic-path regression spot-check after chain assessment/finalization extraction batch:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)

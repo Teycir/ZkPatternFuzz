@@ -44,10 +44,11 @@ use run_chain_corpus::{
 };
 use run_chain_config::apply_chain_mode_overrides;
 use run_chain_engine::run_chain_engine;
-use run_chain_quality::{collect_chain_quality_failures, load_chain_engagement_settings};
+use run_chain_quality::assess_chain_quality;
 use run_chain_reports::{
-    build_chain_completion_doc, chain_completion_status, save_chain_reports_bundle,
-    save_standard_chain_report,
+    build_chain_report_context, chain_completion_status, finalize_chain_run,
+    save_chain_reports_and_standard_or_emit_failure, ChainCompletionDocContext, ChainFinalizeContext,
+    ChainReportContextInput, ChainSaveContext,
 };
 use run_chain_startup::startup_chain_run_or_exit_dry_run;
 use run_chain_ui::print_chain_results;
@@ -719,7 +720,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
 /// Run a chain-focused fuzzing campaign (Mode 3: Deepest)
 async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyhow::Result<()> {
-    use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics};
+    use zk_fuzzer::chain_fuzzer::ChainFinding;
     use zk_fuzzer::config::parse_chains;
 
     let started_utc = Utc::now();
@@ -809,24 +810,19 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let final_execution_count = final_metrics.execution_count;
     let run_execution_count = final_execution_count.saturating_sub(baseline_execution_count);
 
-    // Engagement contract for Mode 3: refuse to report a "clean" run when exploration is too narrow.
-    let engagement = load_chain_engagement_settings(&config);
-    let engagement_strict = engagement.strict;
-    let min_unique_coverage_bits = engagement.min_unique_coverage_bits;
-    let min_completed_per_chain = engagement.min_completed_per_chain;
-
-    let quality_failures = collect_chain_quality_failures(
+    let assessment = assess_chain_quality(
+        &config,
         &chains,
         final_meta.as_ref(),
         &corpus_path,
-        min_completed_per_chain,
-        min_unique_coverage_bits,
+        &chain_findings,
     )?;
-    let run_valid = quality_failures.is_empty();
-
-    // Compute metrics
-    let metrics = DepthMetrics::new(chain_findings.clone());
-    let summary = metrics.summary();
+    let engagement_strict = assessment.engagement.strict;
+    let min_unique_coverage_bits = assessment.engagement.min_unique_coverage_bits;
+    let min_completed_per_chain = assessment.engagement.min_completed_per_chain;
+    let run_valid = assessment.run_valid;
+    let quality_failures = assessment.quality_failures;
+    let summary = assessment.summary;
 
     // Print results.
     print_chain_results(&run_chain_ui::ChainResultsUiContext {
@@ -843,7 +839,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         seed: options.seed,
     });
 
-    let report_ctx = run_chain_reports::ChainReportContext {
+    let report_ctx = build_chain_report_context(ChainReportContextInput {
         campaign_name: &config.campaign.name,
         engagement_strict,
         run_valid,
@@ -857,80 +853,54 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         baseline_total_entries,
         baseline_unique_coverage_bits,
         chain_findings: &chain_findings,
-    };
+    });
 
-    if let Err(err) = save_chain_reports_bundle(&output_dir, config_path, options.seed, &report_ctx)
-    {
-        write_failed_mode_run_artifact_with_error(
-            &output_dir,
+    save_chain_reports_and_standard_or_emit_failure(
+        &ChainSaveContext {
+            output_dir: &output_dir,
             command,
-            &run_id,
-            "save_chain_reports",
+            run_id: &run_id,
             config_path,
-            &campaign_name,
+            campaign_name: &campaign_name,
             started_utc,
-            Some(options.timeout),
-            format!("{:#}", err),
-        );
-        return Err(err);
-    }
-
-    if let Err(err) = save_standard_chain_report(
-        &config.campaign.name,
-        &chain_findings,
+            timeout_seconds: Some(options.timeout),
+        },
+        &report_ctx,
+        options.seed,
         config.reporting.clone(),
         run_execution_count,
-    ) {
-        write_failed_mode_run_artifact_with_error(
-            &output_dir,
-            command,
-            &run_id,
-            "save_standard_report",
-            config_path,
-            &campaign_name,
-            started_utc,
-            Some(options.timeout),
-            format!("{:#}", err),
-        );
-        return Err(err);
-    }
+    )?;
 
     let (status, critical) = chain_completion_status(engagement_strict, run_valid, &chain_findings);
 
-    let stage = "completed";
-    let doc = build_chain_completion_doc(&run_chain_reports::ChainCompletionDocContext {
-        command,
-        run_id: &run_id,
-        stage,
-        config_path,
-        campaign_name: &campaign_name,
+    finalize_chain_run(ChainFinalizeContext {
+        completion_ctx: ChainCompletionDocContext {
+            command,
+            run_id: &run_id,
+            stage: "completed",
+            config_path,
+            campaign_name: &campaign_name,
+            output_dir: &output_dir,
+            started_utc,
+            timeout_seconds: Some(options.timeout),
+            status,
+            summary: &summary,
+            critical,
+            final_total_entries,
+            final_unique_coverage_bits,
+            final_max_depth,
+            engagement_strict,
+            run_valid,
+            quality_failures: &quality_failures,
+            min_unique_coverage_bits,
+            min_completed_per_chain,
+        },
         output_dir: &output_dir,
-        started_utc,
-        timeout_seconds: Some(options.timeout),
-        status,
-        summary: &summary,
-        critical,
-        final_total_entries,
-        final_unique_coverage_bits,
-        final_max_depth,
+        run_id: &run_id,
         engagement_strict,
         run_valid,
-        quality_failures: &quality_failures,
-        min_unique_coverage_bits,
-        min_completed_per_chain,
-    });
-    write_run_artifacts(&output_dir, &run_id, &doc);
-
-    if critical {
-        anyhow::bail!("Chain run produced CRITICAL findings (see chain_report.json/report.json)");
-    }
-    if engagement_strict && !run_valid {
-        anyhow::bail!(
-            "Strict chain run failed engagement contract; see chain_report.json for details"
-        );
-    }
-
-    Ok(())
+        critical,
+    })
 }
 
 #[cfg(test)]
