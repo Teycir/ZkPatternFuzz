@@ -40,20 +40,19 @@ use run_bootstrap::{
     announce_report_dir_and_bind_log_context, load_campaign_config_with_optional_profile,
 };
 use run_chain_corpus::{
-    chain_completed_and_unique_cov_from_path, load_chain_baseline_metrics,
-    load_chain_final_metrics,
+    chain_completed_and_unique_cov_from_path, load_chain_run_corpus_metrics,
 };
 use run_chain_config::apply_chain_mode_overrides;
 use run_chain_context::ChainRunContext;
 use run_chain_engine::run_chain_engine;
 use run_chain_quality::assess_chain_quality;
 use run_chain_reports::{
-    build_chain_report_context, chain_completion_status, finalize_chain_run,
-    save_chain_reports_and_standard_or_emit_failure, ChainCompletionDocContext,
-    ChainFinalizeContext, ChainReportContextInput,
+    build_chain_completion_doc_context, build_chain_report_context, chain_completion_status,
+    finalize_chain_run, save_chain_reports_and_standard_or_emit_failure, ChainFinalizeContext,
+    ChainReportContextInput,
 };
 use run_chain_startup::startup_chain_run_or_exit_dry_run;
-use run_chain_ui::print_chain_results;
+use run_chain_ui::print_chain_results_from_report;
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
 use run_interrupts::{install_panic_hook, start_signal_watchers};
 use run_lifecycle::{
@@ -788,12 +787,6 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let corpus_path = output_dir.join("chain_corpus.json");
     let corpus_meta_path = output_dir.join("chain_corpus_meta.json");
-    let baseline_metrics =
-        load_chain_baseline_metrics(&corpus_path, &corpus_meta_path, options.resume)?;
-    let baseline_execution_count = baseline_metrics.execution_count;
-    let baseline_total_entries = baseline_metrics.total_entries;
-    let baseline_unique_coverage_bits = baseline_metrics.unique_coverage_bits;
-
     let chain_findings: Vec<ChainFinding> = run_chain_engine(
         &run_ctx,
         &config,
@@ -802,15 +795,15 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     )
     .await?;
 
-    // Load chain corpus for quality/coverage metrics (persistent across runs).
-    // Prefer meta sidecar to avoid parsing a large chain_corpus.json.
-    let final_metrics = load_chain_final_metrics(&corpus_path, &corpus_meta_path)?;
-    let final_meta = final_metrics.meta;
-    let final_total_entries = final_metrics.total_entries;
-    let final_unique_coverage_bits = final_metrics.unique_coverage_bits;
-    let final_max_depth = final_metrics.max_depth;
-    let final_execution_count = final_metrics.execution_count;
-    let run_execution_count = final_execution_count.saturating_sub(baseline_execution_count);
+    let run_corpus_metrics =
+        load_chain_run_corpus_metrics(&corpus_path, &corpus_meta_path, options.resume)?;
+    let baseline_total_entries = run_corpus_metrics.baseline.total_entries;
+    let baseline_unique_coverage_bits = run_corpus_metrics.baseline.unique_coverage_bits;
+    let final_meta = run_corpus_metrics.final_metrics.meta;
+    let final_total_entries = run_corpus_metrics.final_metrics.total_entries;
+    let final_unique_coverage_bits = run_corpus_metrics.final_metrics.unique_coverage_bits;
+    let final_max_depth = run_corpus_metrics.final_metrics.max_depth;
+    let run_execution_count = run_corpus_metrics.run_execution_count;
 
     let assessment = assess_chain_quality(
         &config,
@@ -825,21 +818,6 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let run_valid = assessment.run_valid;
     let quality_failures = assessment.quality_failures;
     let summary = assessment.summary;
-
-    // Print results.
-    print_chain_results(&run_chain_ui::ChainResultsUiContext {
-        summary: &summary,
-        final_total_entries,
-        baseline_total_entries,
-        final_unique_coverage_bits,
-        baseline_unique_coverage_bits,
-        final_max_depth,
-        chain_findings: &chain_findings,
-        run_valid,
-        quality_failures: &quality_failures,
-        config_path,
-        seed: options.seed,
-    });
 
     let report_ctx = build_chain_report_context(ChainReportContextInput {
         campaign_name: &config.campaign.name,
@@ -857,6 +835,8 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         chain_findings: &chain_findings,
     });
 
+    print_chain_results_from_report(&report_ctx, config_path, options.seed);
+
     save_chain_reports_and_standard_or_emit_failure(
         &run_ctx,
         &report_ctx,
@@ -867,31 +847,11 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let (status, critical) = chain_completion_status(engagement_strict, run_valid, &chain_findings);
 
+    let completion_ctx = build_chain_completion_doc_context(&run_ctx, &report_ctx, status, critical);
     finalize_chain_run(ChainFinalizeContext {
         run_ctx: &run_ctx,
-        completion_ctx: ChainCompletionDocContext {
-            command,
-            run_id: &run_id,
-            stage: "completed",
-            config_path,
-            campaign_name: &campaign_name,
-            output_dir: &output_dir,
-            started_utc,
-            timeout_seconds: Some(options.timeout),
-            status,
-            summary: &summary,
-            critical,
-            final_total_entries,
-            final_unique_coverage_bits,
-            final_max_depth,
-            engagement_strict,
-            run_valid,
-            quality_failures: &quality_failures,
-            min_unique_coverage_bits,
-            min_completed_per_chain,
-        },
-        engagement_strict,
-        run_valid,
+        report_ctx: &report_ctx,
+        completion_ctx,
         critical,
     })
 }

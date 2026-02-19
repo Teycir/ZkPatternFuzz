@@ -282,6 +282,35 @@ pub(crate) struct ChainCompletionDocContext<'a> {
     pub min_completed_per_chain: usize,
 }
 
+pub(crate) fn build_chain_completion_doc_context<'a>(
+    run_ctx: &'a ChainRunContext<'a>,
+    report_ctx: &'a ChainReportContext<'a>,
+    status: &'a str,
+    critical: bool,
+) -> ChainCompletionDocContext<'a> {
+    ChainCompletionDocContext {
+        command: run_ctx.command,
+        run_id: run_ctx.run_id,
+        stage: "completed",
+        config_path: run_ctx.config_path,
+        campaign_name: run_ctx.campaign_name,
+        output_dir: run_ctx.output_dir,
+        started_utc: run_ctx.started_utc,
+        timeout_seconds: run_ctx.timeout_seconds,
+        status,
+        summary: report_ctx.summary,
+        critical,
+        final_total_entries: report_ctx.final_total_entries,
+        final_unique_coverage_bits: report_ctx.final_unique_coverage_bits,
+        final_max_depth: report_ctx.final_max_depth,
+        engagement_strict: report_ctx.engagement_strict,
+        run_valid: report_ctx.run_valid,
+        quality_failures: report_ctx.quality_failures,
+        min_unique_coverage_bits: report_ctx.min_unique_coverage_bits,
+        min_completed_per_chain: report_ctx.min_completed_per_chain,
+    }
+}
+
 pub(crate) fn build_chain_completion_doc(ctx: &ChainCompletionDocContext<'_>) -> serde_json::Value {
     let mut doc = completed_run_doc_with_window(
         ctx.command,
@@ -379,9 +408,8 @@ pub(crate) fn save_chain_reports_and_standard_or_emit_failure(
 
 pub(crate) struct ChainFinalizeContext<'a> {
     pub run_ctx: &'a ChainRunContext<'a>,
+    pub report_ctx: &'a ChainReportContext<'a>,
     pub completion_ctx: ChainCompletionDocContext<'a>,
-    pub engagement_strict: bool,
-    pub run_valid: bool,
     pub critical: bool,
 }
 
@@ -392,7 +420,7 @@ pub(crate) fn finalize_chain_run(ctx: ChainFinalizeContext<'_>) -> anyhow::Resul
     if ctx.critical {
         anyhow::bail!("Chain run produced CRITICAL findings (see chain_report.json/report.json)");
     }
-    if ctx.engagement_strict && !ctx.run_valid {
+    if ctx.report_ctx.engagement_strict && !ctx.report_ctx.run_valid {
         anyhow::bail!(
             "Strict chain run failed engagement contract; see chain_report.json for details"
         );

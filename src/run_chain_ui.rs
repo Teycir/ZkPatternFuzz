@@ -175,3 +175,23 @@ pub(crate) fn print_chain_results(ctx: &ChainResultsUiContext<'_>) {
 
     println!("\n{}", "═".repeat(60).bright_magenta());
 }
+
+pub(crate) fn print_chain_results_from_report(
+    report_ctx: &crate::run_chain_reports::ChainReportContext<'_>,
+    config_path: &str,
+    seed: Option<u64>,
+) {
+    print_chain_results(&ChainResultsUiContext {
+        summary: report_ctx.summary,
+        final_total_entries: report_ctx.final_total_entries,
+        baseline_total_entries: report_ctx.baseline_total_entries,
+        final_unique_coverage_bits: report_ctx.final_unique_coverage_bits,
+        baseline_unique_coverage_bits: report_ctx.baseline_unique_coverage_bits,
+        final_max_depth: report_ctx.final_max_depth,
+        chain_findings: report_ctx.chain_findings,
+        run_valid: report_ctx.run_valid,
+        quality_failures: report_ctx.quality_failures,
+        config_path,
+        seed,
+    });
+}

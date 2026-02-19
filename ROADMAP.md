@@ -349,6 +349,18 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 124. Continued chain-mode modularization by collapsing chain callsite argument sprawl (`src/main.rs`):
    - Constructed a single `run_ctx` in `run_chain_campaign` and threaded it through startup, engine, save, and finalize orchestration calls.
    - Removed redundant repeated argument blocks while preserving behavior.
+125. Continued chain-mode modularization by extracting run-level corpus metric staging (`src/main.rs`, `src/run_chain_corpus.rs`):
+   - Added `ChainRunCorpusMetrics` and `load_chain_run_corpus_metrics(...)` to centralize baseline/final corpus metric loading and execution-delta derivation.
+   - Replaced staged baseline/final metric stitching in `run_chain_campaign` with the shared loader.
+126. Continued chain-mode modularization by deriving UI rendering from report context (`src/main.rs`, `src/run_chain_ui.rs`):
+   - Added `print_chain_results_from_report(...)` to avoid rebuilding a second context object from report-equivalent fields.
+   - Replaced direct `ChainResultsUiContext` assembly in `run_chain_campaign` with the report-context-backed helper.
+127. Continued chain-mode modularization by deriving completion-doc context from run/report contexts (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Added `build_chain_completion_doc_context(...)` to centralize completion-doc context assembly from `ChainRunContext` + `ChainReportContext`.
+   - Replaced inline completion-context field wiring in `run_chain_campaign`.
+128. Continued chain-mode modularization by reducing finalize/save policy duplication (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Updated finalize flow to consume `ChainReportContext` directly for engagement policy checks.
+   - Simplified `run_chain_campaign` tail orchestration to use prebuilt contexts instead of duplicating strict/run-valid metadata.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -659,6 +671,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 125. Engagement-dir panic-path regression spot-check after chain shared-context extraction batch:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+126. Main CLI compile verification after chain corpus/report-context consolidation batch:
+    - `cargo check -q`
+127. Selector/command regression spot-check after chain corpus/report-context consolidation batch:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+128. Engagement-dir panic-path regression spot-check after chain corpus/report-context consolidation batch:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)

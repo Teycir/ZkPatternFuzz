@@ -17,6 +17,12 @@ pub(crate) struct ChainFinalMetrics {
     pub max_depth: usize,
 }
 
+pub(crate) struct ChainRunCorpusMetrics {
+    pub baseline: ChainBaselineMetrics,
+    pub final_metrics: ChainFinalMetrics,
+    pub run_execution_count: u64,
+}
+
 pub(crate) fn read_chain_meta(path: &Path) -> Option<ChainCorpusMeta> {
     match std::fs::read_to_string(path) {
         Ok(raw) => match serde_json::from_str::<ChainCorpusMeta>(&raw) {
@@ -166,5 +172,22 @@ pub(crate) fn load_chain_final_metrics(
         total_entries,
         unique_coverage_bits,
         max_depth,
+    })
+}
+
+pub(crate) fn load_chain_run_corpus_metrics(
+    corpus_path: &Path,
+    corpus_meta_path: &Path,
+    resume: bool,
+) -> anyhow::Result<ChainRunCorpusMetrics> {
+    let baseline = load_chain_baseline_metrics(corpus_path, corpus_meta_path, resume)?;
+    let final_metrics = load_chain_final_metrics(corpus_path, corpus_meta_path)?;
+    let run_execution_count = final_metrics
+        .execution_count
+        .saturating_sub(baseline.execution_count);
+    Ok(ChainRunCorpusMetrics {
+        baseline,
+        final_metrics,
+        run_execution_count,
     })
 }
