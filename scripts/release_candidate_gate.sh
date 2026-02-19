@@ -63,7 +63,11 @@ if [ ! -d "$BENCH_ROOT" ]; then
   exit 1
 fi
 
-mapfile -t summaries < <(find "$BENCH_ROOT" -type f -path '*/benchmark_*/summary.json' | sort)
+mapfile -t summaries < <(
+  find "$BENCH_ROOT" -type f \
+    | rg '/benchmark_[0-9]{8}_[0-9]{6}/summary\.json$' \
+    | sort
+)
 summary_count="${#summaries[@]}"
 
 if [ "$summary_count" -lt "$REQUIRED_PASSES" ]; then

@@ -19,7 +19,12 @@ fi
 if [ -n "$SUMMARY_PATH_OVERRIDE" ]; then
   SUMMARY_PATH="$SUMMARY_PATH_OVERRIDE"
 else
-  SUMMARY_PATH="$(find "$BENCH_ROOT" -type f -path '*/benchmark_*/summary.json' | sort | tail -n 1)"
+  SUMMARY_PATH="$(
+    find "$BENCH_ROOT" -type f \
+      | rg '/benchmark_[0-9]{8}_[0-9]{6}/summary\.json$' \
+      | sort \
+      | tail -n 1
+  )"
 fi
 if [ -z "$SUMMARY_PATH" ] || [ ! -f "$SUMMARY_PATH" ]; then
   if [ -n "$SUMMARY_PATH_OVERRIDE" ]; then

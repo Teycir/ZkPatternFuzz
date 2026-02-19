@@ -197,7 +197,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Versioned release candidate passes all gates twice consecutively
 - [ ] Rollback strategy documented and tested
 
-**Current Status:** ❌ Pending release candidate validation
+**Current Status:** ❌ Automated two-attempt release validation executed via `scripts/release_candidate_validate_twice.sh`; both gate attempts currently fail on latest benchmark (`completion=0.35`, `safe_fpr=0.50`)
 
 ---
 
@@ -350,6 +350,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 
 ### Medium Priority (P2)
 - [x] Add rollback-integrated release gate invocation (`scripts/release_candidate_gate.sh --stable-ref <ref>`)
+- [x] Add automated two-attempt release-candidate validator (`scripts/release_candidate_validate_twice.sh`)
 - [ ] Run release candidate validation twice consecutively
 - [ ] Execute rollback validation in release gate and archive evidence
 - [ ] Document any remaining edge cases in troubleshooting playbook
@@ -365,6 +366,13 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - **Resolved blocker:** clean-clone compile failure from missing `zk-backends` modules (`fixture`/`util`) is fixed
 - **Observed blocker:** benchmark runs in fresh clone still fail mostly at Circom compilation (`circom_compilation_failed`), indicating bootstrap operability is not yet sufficient
 - **Status:** Phase 2 operability exit criteria remain open until fresh-clone benchmark runs complete without Circom compilation failures
+
+### Release Candidate Validation (Two Consecutive Attempts)
+- **Command:** `scripts/release_candidate_validate_twice.sh --bench-root artifacts/benchmark_runs_fast --required-passes 1 --output-dir artifacts/release_candidate_validation`
+- **Report:** `artifacts/release_candidate_validation/release_candidate_report.json`
+- **Outcome:** attempt #1 `fail`, attempt #2 `fail`, rollback `skip`
+- **Observed blocker:** latest gate target (`benchmark_20260219_182723`) fails thresholds (`overall_completion_rate=0.35 < 0.95`, `safe_false_positive_rate=0.50 > 0.20`)
+- **Status:** Phase 5 release criteria remain open until gate metrics pass on two consecutive attempts, then rollback validation can be archived
 
 ### Run 1: Permission-Denied Blocker
 - **Command:** `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 1 --batch-jobs 1 --workers 1 --output-dir artifacts/benchmark_runs`
