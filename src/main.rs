@@ -8,8 +8,11 @@ mod cli;
 mod engagement_artifacts;
 mod output_lock;
 mod preflight_backend;
+mod run_bootstrap;
+mod run_identity;
 mod run_lifecycle;
 mod run_outcome_docs;
+mod run_paths;
 mod runtime_misc;
 mod scan_dispatch;
 mod scan_output;
@@ -25,27 +28,32 @@ use engagement_artifacts::{
     mode_folder_from_command, write_global_run_signal, write_run_artifacts,
 };
 use preflight_backend::preflight_campaign;
+use run_bootstrap::{
+    announce_report_dir_and_bind_log_context, load_campaign_config_with_optional_profile,
+};
+pub(crate) use run_identity::{make_run_id, sanitize_slug};
 use run_lifecycle::{
     initialize_campaign_run_lifecycle, require_evidence_readiness_or_emit_failure,
     run_backend_preflight_or_emit_failure, seed_running_run_artifact,
     write_failed_mode_run_artifact_with_error, write_failed_mode_run_artifact_with_reason,
-    write_failed_run_artifact, write_failed_run_artifact_with_error,
+    write_failed_run_artifact,
 };
-use run_outcome_docs::{
-    completed_run_doc_with_window, running_run_doc_with_window,
+use run_outcome_docs::{completed_run_doc_with_window, running_run_doc_with_window};
+#[cfg(test)]
+pub(crate) use run_paths::{engagement_dir_name, run_id_epoch_dir};
+pub(crate) use run_paths::{
+    engagement_root_dir, normalize_build_paths, read_optional_env, run_signal_dir,
 };
 use runtime_misc::{
     generate_sample_config, minimize_corpus, print_banner, print_run_window, truncate_str,
     validate_campaign,
 };
-use scan_output::apply_scan_output_suffix_if_present;
 use scan_runner::run_scan as run_scan_orchestrated;
 #[cfg(test)]
 use scan_selector::{
     evaluate_loaded_scan_regex_patterns, load_scan_regex_selector_config,
     validate_scan_regex_pattern_safety, ScanRegexPatternSummary,
 };
-use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName};
 use zk_fuzzer::fuzzer::ZkFuzzer;
 use zk_fuzzer::Framework;
 
@@ -228,242 +236,6 @@ pub(crate) fn set_run_log_context_for_campaign(
         output_dir: output_dir.map(Path::to_path_buf),
         started_utc: started_utc.to_rfc3339(),
     }));
-}
-
-fn sanitize_slug(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-            out.push(ch);
-        } else {
-            out.push('_');
-        }
-    }
-    let trimmed = out.trim_matches('_').to_string();
-    if trimmed.is_empty() {
-        "unnamed".to_string()
-    } else {
-        trimmed
-    }
-}
-
-fn derive_campaign_slug(campaign_path: &str) -> String {
-    let slug = Path::new(campaign_path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .map(sanitize_slug);
-    match slug {
-        Some(value) => value,
-        None => "campaign".to_string(),
-    }
-}
-
-fn make_run_id(command: &str, campaign_path: Option<&str>) -> String {
-    let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-    let pid = std::process::id();
-    let campaign = match campaign_path {
-        Some(path) => derive_campaign_slug(path),
-        None => "no_campaign".to_string(),
-    };
-    format!("{}_{}_{}_pid{}", ts, sanitize_slug(command), campaign, pid)
-}
-
-fn read_optional_env(name: &str) -> Option<String> {
-    match std::env::var(name) {
-        Ok(value) => Some(value),
-        Err(std::env::VarError::NotPresent) => None,
-        Err(e) => {
-            eprintln!("[zk-fuzzer] ERROR: invalid {} value: {}", name, e);
-            std::process::exit(2);
-        }
-    }
-}
-
-fn run_signal_dir() -> PathBuf {
-    // Base folder where "easy to find" run folders are written.
-    //
-    // Default matches your requested structure:
-    //   /home/<user>/ZkFuzz/report_<epoch>/
-    //
-    // Override with:
-    //   ZKF_RUN_SIGNAL_DIR=/some/other/base
-    //
-    // If writing outside the repo is not allowed in your environment, set it back to:
-    //   ZKF_RUN_SIGNAL_DIR=reports/_run_signals
-    let path = if let Some(v) = read_optional_env("ZKF_RUN_SIGNAL_DIR") {
-        let trimmed = v.trim();
-        if !trimmed.is_empty() {
-            PathBuf::from(trimmed)
-        } else {
-            eprintln!("[zk-fuzzer] ERROR: ZKF_RUN_SIGNAL_DIR is set but empty");
-            std::process::exit(2);
-        }
-    } else if let Some(home) = read_optional_env("HOME") {
-        let home = home.trim();
-        if !home.is_empty() {
-            PathBuf::from(home).join("ZkFuzz")
-        } else {
-            eprintln!("[zk-fuzzer] ERROR: HOME is set but empty");
-            std::process::exit(2);
-        }
-    } else {
-        eprintln!("[zk-fuzzer] ERROR: neither ZKF_RUN_SIGNAL_DIR nor HOME is available");
-        std::process::exit(2);
-    };
-
-    if let Err(err) = std::fs::create_dir_all(&path) {
-        eprintln!(
-            "[zk-fuzzer] ERROR: cannot create run-signal dir '{}': {}",
-            path.display(),
-            err
-        );
-        std::process::exit(2);
-    }
-    path
-}
-
-fn build_cache_dir() -> PathBuf {
-    // Build artifacts are large and should not live inside engagement report folders.
-    // Default:
-    //   /home/<user>/ZkFuzz/_build_cache/
-    //
-    // Override with:
-    //   ZKF_BUILD_CACHE_DIR=/some/other/path
-    if let Some(v) = read_optional_env("ZKF_BUILD_CACHE_DIR") {
-        let trimmed = v.trim();
-        if !trimmed.is_empty() {
-            let path = PathBuf::from(trimmed);
-            if let Err(err) = std::fs::create_dir_all(&path) {
-                eprintln!(
-                    "[zk-fuzzer] ERROR: cannot create build cache dir '{}': {}",
-                    path.display(),
-                    err
-                );
-                std::process::exit(2);
-            }
-            return path;
-        }
-    }
-
-    let path = run_signal_dir().join("_build_cache");
-    if let Err(err) = std::fs::create_dir_all(&path) {
-        eprintln!(
-            "[zk-fuzzer] ERROR: cannot create build cache dir '{}': {}",
-            path.display(),
-            err
-        );
-        std::process::exit(2);
-    }
-    path
-}
-
-pub(crate) fn normalize_build_paths(config: &mut FuzzConfig, run_id: &str) {
-    use std::path::PathBuf;
-
-    let report_dir = engagement_root_dir(run_id);
-    let cache = build_cache_dir();
-    let additional = &mut config.campaign.parameters.additional;
-
-    // Remove any explicit build paths that point inside the engagement folder, then force
-    // build_dir_base to the cache root.
-    let keys = [
-        "build_dir_base",
-        "build_dir",
-        "circom_build_dir",
-        "noir_build_dir",
-        "halo2_build_dir",
-        "cairo_build_dir",
-    ];
-
-    let mut had_in_report = false;
-    for key in keys {
-        if let Some(v) = additional.get(key).and_then(|v| v.as_str()) {
-            let p = PathBuf::from(v);
-            if p.starts_with(&report_dir) {
-                had_in_report = true;
-                additional.remove(key);
-            }
-        }
-    }
-
-    // If build_dir_base is missing, set it. If it existed but pointed into the report dir, replace it.
-    if had_in_report || additional.get("build_dir_base").is_none() {
-        additional.insert(
-            "build_dir_base".to_string(),
-            serde_yaml::Value::String(cache.display().to_string()),
-        );
-        if had_in_report {
-            tracing::info!(
-                "Build artifacts redirected to cache dir {:?} (were inside engagement folder {:?})",
-                cache,
-                report_dir
-            );
-        }
-    }
-}
-
-fn run_id_epoch_dir(run_id: &str) -> Option<String> {
-    // run_id prefix is make_run_id(): "%Y%m%d_%H%M%S_..."
-    if run_id.len() < 15 {
-        return None;
-    }
-    let ts = &run_id[..15];
-    let naive = match chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d_%H%M%S") {
-        Ok(naive) => naive,
-        Err(err) => {
-            tracing::warn!("Invalid run_id timestamp prefix '{}': {}", ts, err);
-            return None;
-        }
-    };
-    let started_utc = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
-    Some(format!("report_{}", started_utc.timestamp()))
-}
-
-fn engagement_dir_name(run_id: &str) -> String {
-    // Allow grouping multiple processes (scan/chains/misc) into the same report folder.
-    //
-    // Example:
-    //   export ZKF_ENGAGEMENT_EPOCH=176963063
-    //   ... run scan and chains ...
-    //   => /home/<user>/ZkFuzz/report_176963063/
-    if let Some(epoch) = read_optional_env("ZKF_ENGAGEMENT_EPOCH") {
-        let trimmed = epoch.trim();
-        if !trimmed.is_empty() {
-            return format!("report_{}", trimmed);
-        }
-    }
-
-    if let Some(name) = read_optional_env("ZKF_ENGAGEMENT_NAME") {
-        let trimmed = name.trim();
-        if !trimmed.is_empty() {
-            return trimmed.to_string();
-        }
-    }
-
-    match run_id_epoch_dir(run_id) {
-        Some(dir_name) => dir_name,
-        None => {
-            let fallback = format!("report_{}", sanitize_slug(run_id));
-            tracing::warn!(
-                "Run id '{}' does not contain a valid timestamp prefix; using fallback engagement dir '{}'",
-                run_id,
-                fallback
-            );
-            fallback
-        }
-    }
-}
-
-fn engagement_root_dir(run_id: &str) -> PathBuf {
-    // If ZKF_ENGAGEMENT_DIR is set, use it as the full report folder.
-    if let Some(dir) = read_optional_env("ZKF_ENGAGEMENT_DIR") {
-        let trimmed = dir.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
-        }
-    }
-
-    run_signal_dir().join(engagement_dir_name(run_id))
 }
 
 fn install_panic_hook() {
@@ -811,69 +583,23 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     let started_utc = Utc::now();
     let command = options.command_label;
     let run_id = make_run_id(command, Some(config_path));
-    let report_dir = engagement_root_dir(&run_id);
-    let mut stage = "load_config";
-    tracing::info!("Report directory: {}", report_dir.display());
-
-    // Put `session.log` under the engagement folder from the very start (even if YAML parsing
-    // fails). This avoids scattering logs across multiple locations.
-    set_run_log_context_for_campaign(
+    let mut stage: &str;
+    announce_report_dir_and_bind_log_context(
         options.dry_run,
         &run_id,
         command,
         config_path,
-        None,
-        None,
         &started_utc,
     );
 
-    tracing::info!("Loading campaign from: {}", config_path);
-    let mut config = match FuzzConfig::from_yaml(config_path) {
-        Ok(cfg) => cfg,
-        Err(err) => {
-            let ended_utc = Utc::now();
-            write_failed_run_artifact_with_error(
-                &run_id,
-                command,
-                stage,
-                config_path,
-                &started_utc,
-                &ended_utc,
-                format!("{:#}", err),
-                None,
-            );
-            return Err(err);
-        }
-    };
-
-    // Apply profile if specified
-    stage = "apply_profile";
-    if let Some(profile_name) = options.profile.as_deref() {
-        match profile_name.parse::<ProfileName>() {
-            Ok(parsed_profile) => apply_profile(&mut config, parsed_profile),
-            Err(e) => {
-                let ended_utc = Utc::now();
-                let parse_error = e.to_string();
-                write_failed_run_artifact_with_error(
-                    &run_id,
-                    command,
-                    stage,
-                    config_path,
-                    &started_utc,
-                    &ended_utc,
-                    parse_error.clone(),
-                    Some(config.reporting.output_dir.as_path()),
-                );
-                return Err(anyhow::anyhow!(
-                    "Invalid --profile '{}': {}",
-                    profile_name,
-                    parse_error
-                ));
-            }
-        }
-    }
-
-    apply_scan_output_suffix_if_present(&mut config)?;
+    let mut config = load_campaign_config_with_optional_profile(
+        "campaign",
+        &run_id,
+        command,
+        config_path,
+        &started_utc,
+        options.profile.as_deref(),
+    )?;
 
     let campaign_name = config.campaign.name.clone();
 
@@ -1361,42 +1087,23 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let started_utc = Utc::now();
     let command = "chains";
     let run_id = make_run_id(command, Some(config_path));
-    let report_dir = engagement_root_dir(&run_id);
-    let mut stage = "load_config";
-    tracing::info!("Report directory: {}", report_dir.display());
-
-    // Put `session.log` under the engagement folder from the very start (even if YAML parsing
-    // fails). This avoids scattering logs across multiple locations.
-    set_run_log_context_for_campaign(
+    let mut stage: &str;
+    announce_report_dir_and_bind_log_context(
         options.dry_run,
         &run_id,
         command,
         config_path,
-        None,
-        None,
         &started_utc,
     );
 
-    tracing::info!("Loading chain campaign from: {}", config_path);
-    let mut config = match FuzzConfig::from_yaml(config_path) {
-        Ok(cfg) => cfg,
-        Err(err) => {
-            let ended_utc = Utc::now();
-            write_failed_run_artifact_with_error(
-                &run_id,
-                command,
-                stage,
-                config_path,
-                &started_utc,
-                &ended_utc,
-                format!("{:#}", err),
-                None,
-            );
-            return Err(err);
-        }
-    };
-
-    apply_scan_output_suffix_if_present(&mut config)?;
+    let mut config = load_campaign_config_with_optional_profile(
+        "chain campaign",
+        &run_id,
+        command,
+        config_path,
+        &started_utc,
+        None,
+    )?;
 
     let campaign_name = config.campaign.name.clone();
 

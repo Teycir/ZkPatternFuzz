@@ -262,6 +262,16 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `scan_runner::run_scan(...)` to centralize prepared-scan orchestration and family run dispatch.
    - Kept `main.rs::run_scan` as a thin wrapper that binds module orchestration to existing `run_campaign`/`run_chain_campaign` execution paths.
    - Preserved scan behavior while further shrinking command-dispatch logic in `main.rs`.
+101. Continued CLI modularization by extracting campaign bootstrap helpers (`src/main.rs`, `src/run_bootstrap.rs`):
+   - Added `announce_report_dir_and_bind_log_context(...)` to centralize report-dir announcement and early run-log context binding.
+   - Added `load_campaign_config_with_optional_profile(...)` to centralize YAML load, optional profile apply, scan output suffix handling, and early failure artifact emission.
+   - Replaced duplicated bootstrap blocks in both `run_campaign` and `run_chain_campaign` with helper calls while preserving behavior.
+   - Removed stale stage pre-initialization and unused lifecycle import introduced by the extraction.
+102. Batched CLI modularization by extracting run identity and path helpers (`src/main.rs`, `src/run_identity.rs`, `src/run_paths.rs`):
+   - Added `run_identity` module for slug normalization and run-id generation (`sanitize_slug`, `make_run_id`).
+   - Added `run_paths` module for env/path resolution and build-path normalization (`read_optional_env`, `run_signal_dir`, `engagement_root_dir`, `normalize_build_paths`, engagement-dir naming helpers).
+   - Removed duplicated helper bodies from `main.rs` and re-exported needed helpers at crate root to preserve existing module callsites.
+   - Kept panic/signal handling, scan suffix handling, and lifecycle paths behavior-preserving while shrinking `main.rs`.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -484,6 +494,18 @@ Validation:
     - `cargo check -q`
 87. Selector safety regression spot-check after scan-runner module extraction:
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+88. Main CLI compile verification after run-bootstrap extraction:
+    - `cargo check -q`
+89. Selector/command regression spot-check after run-bootstrap extraction:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+90. Main CLI compile verification after run-identity/run-path extraction:
+    - `cargo check -q`
+91. Selector/command regression spot-check after run-identity/run-path extraction:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+92. Engagement-dir panic-path regression spot-check after run-path extraction:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
 
