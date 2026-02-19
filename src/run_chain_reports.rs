@@ -182,6 +182,27 @@ pub(crate) fn write_chain_report_markdown(path: &Path, markdown: &str) -> anyhow
     Ok(())
 }
 
+pub(crate) fn save_chain_reports_bundle(
+    output_dir: &Path,
+    config_path: &str,
+    seed: Option<u64>,
+    report_ctx: &ChainReportContext<'_>,
+) -> anyhow::Result<()> {
+    std::fs::create_dir_all(output_dir)?;
+
+    let chain_report_path = output_dir.join("chain_report.json");
+    let chain_report = build_chain_report_json(report_ctx);
+    write_chain_report_json(&chain_report_path, &chain_report)?;
+    tracing::info!("Saved chain report to {:?}", chain_report_path);
+
+    let chain_md_path = output_dir.join("chain_report.md");
+    let chain_md = build_chain_report_markdown(report_ctx, config_path, seed);
+    write_chain_report_markdown(&chain_md_path, &chain_md)?;
+    tracing::info!("Saved chain markdown report to {:?}", chain_md_path);
+
+    Ok(())
+}
+
 pub(crate) fn chain_completion_status(
     engagement_strict: bool,
     run_valid: bool,

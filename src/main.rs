@@ -8,8 +8,10 @@ mod preflight_backend;
 mod run_bootstrap;
 mod run_chain_corpus;
 mod run_chain_config;
+mod run_chain_engine;
 mod run_chain_quality;
 mod run_chain_reports;
+mod run_chain_startup;
 mod run_chain_ui;
 mod run_identity;
 mod run_interrupts;
@@ -41,13 +43,14 @@ use run_chain_corpus::{
     load_chain_final_metrics,
 };
 use run_chain_config::apply_chain_mode_overrides;
+use run_chain_engine::run_chain_engine;
 use run_chain_quality::{collect_chain_quality_failures, load_chain_engagement_settings};
 use run_chain_reports::{
-    build_chain_completion_doc, build_chain_report_json, build_chain_report_markdown,
-    chain_completion_status, save_standard_chain_report, write_chain_report_json,
-    write_chain_report_markdown,
+    build_chain_completion_doc, chain_completion_status, save_chain_reports_bundle,
+    save_standard_chain_report,
 };
-use run_chain_ui::{print_chain_mode_banner, print_chain_results, print_chains_to_fuzz};
+use run_chain_startup::startup_chain_run_or_exit_dry_run;
+use run_chain_ui::print_chain_results;
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
 use run_interrupts::{install_panic_hook, start_signal_watchers};
 use run_lifecycle::{
@@ -718,12 +721,10 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyhow::Result<()> {
     use zk_fuzzer::chain_fuzzer::{ChainFinding, DepthMetrics};
     use zk_fuzzer::config::parse_chains;
-    use zk_fuzzer::fuzzer::FuzzingEngine;
 
     let started_utc = Utc::now();
     let command = "chains";
     let run_id = make_run_id(command, Some(config_path));
-    let mut stage: &str;
     announce_report_dir_and_bind_log_context(
         options.dry_run,
         &run_id,
@@ -758,95 +759,22 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let _ctx_guard = RunLogContextGuard::new();
 
     // Get chains from config
-    stage = "parse_chains";
     let chains = parse_chains(&config);
-    if chains.is_empty() {
-        if !options.dry_run {
-            write_failed_mode_run_artifact_with_reason(
-                &output_dir,
-                command,
-                &run_id,
-                stage,
-                config_path,
-                &campaign_name,
-                started_utc,
-                Some(options.timeout),
-                "Chain mode requires chains: definitions in the YAML.".to_string(),
-                None,
-            );
-        }
-        anyhow::bail!(
-            "Chain mode requires chains: definitions in the YAML. \
-             See campaigns/templates/deepest_multistep.yaml for examples."
-        );
-    }
 
     // Force evidence mode settings for chain fuzzing.
     apply_chain_mode_overrides(&mut config, &options);
 
-    // Pre-flight readiness check (chains need assertions; strict mode blocks silent runs).
-    stage = "preflight_readiness";
-    println!();
-    let readiness = zk_fuzzer::config::check_0day_readiness(&config);
-    print!("{}", readiness.format());
-    require_evidence_readiness_or_emit_failure(
-        options.dry_run,
-        &output_dir,
-        command,
-        &run_id,
-        stage,
-        config_path,
-        &campaign_name,
-        started_utc,
-        Some(options.timeout),
-        &readiness,
-        "Campaign has critical issues; refusing to start strict chain run",
-    )?;
-
-    stage = "preflight_backend";
-    run_backend_preflight_or_emit_failure(
-        options.dry_run,
+    if startup_chain_run_or_exit_dry_run(
         &config,
+        &chains,
+        &options,
         &output_dir,
         command,
         &run_id,
-        stage,
         config_path,
         &campaign_name,
         started_utc,
-        Some(options.timeout),
-    )?;
-
-    // Print chain-specific banner.
-    print_chain_mode_banner(
-        &config.campaign.name,
-        chains.len(),
-        options.timeout,
-        options.resume,
-    );
-    let run_start = Local::now();
-    print_run_window(run_start, Some(options.timeout));
-
-    if !options.dry_run {
-        seed_running_run_artifact(
-            &output_dir,
-            command,
-            &run_id,
-            "starting_engine",
-            config_path,
-            &campaign_name,
-            started_utc,
-            Some(options.timeout),
-            chain_run_options_doc(&options),
-        );
-    }
-
-    // List chains.
-    print_chains_to_fuzz(&chains);
-
-    if options.dry_run {
-        tracing::info!("Dry run mode - configuration validated successfully");
-        println!("\n✓ Chain configuration is valid");
+    )? {
         return Ok(());
     }
 
@@ -858,58 +786,18 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     let baseline_total_entries = baseline_metrics.total_entries;
     let baseline_unique_coverage_bits = baseline_metrics.unique_coverage_bits;
 
-    // Create engine directly
-    stage = "engine_init";
-    let mut engine = match FuzzingEngine::new(config.clone(), options.seed, options.workers) {
-        Ok(e) => e,
-        Err(err) => {
-            write_failed_mode_run_artifact_with_error(
-                &output_dir,
-                command,
-                &run_id,
-                stage,
-                config_path,
-                &campaign_name,
-                started_utc,
-                Some(options.timeout),
-                format!("{:#}", err),
-            );
-            return Err(err);
-        }
-    };
-
-    // Run chain fuzzing
-    let progress = if options.simple_progress {
-        None
-    } else {
-        // Create a progress reporter for chain mode
-        let total = (options.iterations as usize * chains.len()) as u64;
-        Some(zk_fuzzer::progress::ProgressReporter::new(
-            &format!("{} (chains)", config.campaign.name),
-            total,
-            options.verbose,
-        ))
-    };
-
-    stage = "engine_run_chains";
-    let chain_findings: Vec<ChainFinding> =
-        match engine.run_chains(&chains, progress.as_ref()).await {
-            Ok(findings) => findings,
-            Err(err) => {
-                write_failed_mode_run_artifact_with_error(
-                    &output_dir,
-                    command,
-                    &run_id,
-                    stage,
-                    config_path,
-                    &campaign_name,
-                    started_utc,
-                    Some(options.timeout),
-                    format!("{:#}", err),
-                );
-                return Err(err);
-            }
-        };
+    let chain_findings: Vec<ChainFinding> = run_chain_engine(
+        &config,
+        &chains,
+        &options,
+        &output_dir,
+        command,
+        &run_id,
+        config_path,
+        &campaign_name,
+        started_utc,
+    )
+    .await?;
 
     // Load chain corpus for quality/coverage metrics (persistent across runs).
     // Prefer meta sidecar to avoid parsing a large chain_corpus.json.
@@ -955,23 +843,6 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         seed: options.seed,
     });
 
-    // Save reports
-    stage = "save_chain_reports";
-    if let Err(err) = std::fs::create_dir_all(&output_dir) {
-        write_failed_mode_run_artifact_with_error(
-            &output_dir,
-            command,
-            &run_id,
-            stage,
-            config_path,
-            &campaign_name,
-            started_utc,
-            Some(options.timeout),
-            format!("{:#}", err),
-        );
-        return Err(err.into());
-    }
-
     let report_ctx = run_chain_reports::ChainReportContext {
         campaign_name: &config.campaign.name,
         engagement_strict,
@@ -988,15 +859,13 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         chain_findings: &chain_findings,
     };
 
-    // Save chain findings as JSON.
-    let chain_report_path = output_dir.join("chain_report.json");
-    let chain_report = build_chain_report_json(&report_ctx);
-    if let Err(err) = write_chain_report_json(&chain_report_path, &chain_report) {
+    if let Err(err) = save_chain_reports_bundle(&output_dir, config_path, options.seed, &report_ctx)
+    {
         write_failed_mode_run_artifact_with_error(
             &output_dir,
             command,
             &run_id,
-            stage,
+            "save_chain_reports",
             config_path,
             &campaign_name,
             started_utc,
@@ -1005,28 +874,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         );
         return Err(err);
     }
-    tracing::info!("Saved chain report to {:?}", chain_report_path);
 
-    // Save chain findings as markdown.
-    let chain_md_path = output_dir.join("chain_report.md");
-    let chain_md = build_chain_report_markdown(&report_ctx, config_path, options.seed);
-    if let Err(err) = write_chain_report_markdown(&chain_md_path, &chain_md) {
-        write_failed_mode_run_artifact_with_error(
-            &output_dir,
-            command,
-            &run_id,
-            stage,
-            config_path,
-            &campaign_name,
-            started_utc,
-            Some(options.timeout),
-            format!("{:#}", err),
-        );
-        return Err(err.into());
-    }
-    tracing::info!("Saved chain markdown report to {:?}", chain_md_path);
-
-    stage = "save_standard_report";
     if let Err(err) = save_standard_chain_report(
         &config.campaign.name,
         &chain_findings,
@@ -1037,7 +885,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
             &output_dir,
             command,
             &run_id,
-            stage,
+            "save_standard_report",
             config_path,
             &campaign_name,
             started_utc,
@@ -1049,7 +897,7 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
 
     let (status, critical) = chain_completion_status(engagement_strict, run_valid, &chain_findings);
 
-    stage = "completed";
+    let stage = "completed";
     let doc = build_chain_completion_doc(&run_chain_reports::ChainCompletionDocContext {
         command,
         run_id: &run_id,

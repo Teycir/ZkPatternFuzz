@@ -313,6 +313,18 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
 112. Continued chain-mode modularization by extracting standard report persistence (`src/main.rs`, `src/run_chain_reports.rs`):
    - Added `save_standard_chain_report(...)` to centralize conversion from chain findings to standard findings and report save flow.
    - Replaced inline standard-report assembly/save block in `run_chain_campaign` with a single helper call.
+113. Continued chain-mode modularization by extracting startup/preflight orchestration (`src/main.rs`, `src/run_chain_startup.rs`):
+   - Added `startup_chain_run_or_exit_dry_run(...)` to centralize chain presence validation, readiness/backend preflight, startup banner output, and dry-run early exit behavior.
+   - Replaced inline startup/preflight blocks in `run_chain_campaign` with a single helper call.
+114. Continued chain-mode modularization by extracting engine execution orchestration (`src/main.rs`, `src/run_chain_engine.rs`):
+   - Added `run_chain_engine(...)` to centralize engine initialization, progress reporter setup, and chain execution error handling.
+   - Replaced inline `FuzzingEngine` setup/run flow in `run_chain_campaign` with the shared async helper.
+115. Continued chain-mode modularization by extracting bundled chain report persistence (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Added `save_chain_reports_bundle(...)` to centralize report directory creation and JSON/Markdown chain report writes.
+   - Replaced duplicated report-output write sequence in `run_chain_campaign` with the helper while preserving error propagation and logging.
+116. Continued chain-mode modularization by trimming orchestration imports/callsites in `run_chain_campaign` (`src/main.rs`):
+   - Removed no-longer-needed inline startup/engine/report writer imports and stage mutation boilerplate after helper extraction.
+   - Kept completion document generation and strict-failure semantics unchanged.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -602,6 +614,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 116. Engagement-dir panic-path regression spot-check after chain setup/engagement/report helper extraction batch:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+117. Main CLI compile verification after chain startup/engine/report helper extraction batch:
+    - `cargo check -q`
+118. Selector/command regression spot-check after chain startup/engine/report helper extraction batch:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+119. Engagement-dir panic-path regression spot-check after chain startup/engine/report helper extraction batch:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
