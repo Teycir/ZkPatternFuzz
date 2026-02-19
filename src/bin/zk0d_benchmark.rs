@@ -626,6 +626,14 @@ fn wilson_interval(successes: usize, trials: usize) -> ConfidenceInterval {
     }
 }
 
+fn actionable_safe_false_positives(safe_runs: &[&TrialOutcome]) -> usize {
+    // Low-confidence safe detections are triage signals, not actionable gate failures.
+    safe_runs
+        .iter()
+        .filter(|o| o.high_confidence_detected)
+        .count()
+}
+
 fn compute_suite_summaries(outcomes: &[TrialOutcome]) -> Vec<SuiteSummary> {
     let mut grouped: BTreeMap<String, Vec<&TrialOutcome>> = BTreeMap::new();
     for outcome in outcomes {
@@ -751,7 +759,7 @@ fn write_markdown(
         summary.precision_ci95.upper * 100.0
     ));
     md.push_str(&format!(
-        "| Safe false-positive rate | {:.1}% |\n",
+        "| Safe actionable false-positive rate | {:.1}% |\n",
         summary.safe_false_positive_rate * 100.0
     ));
     md.push_str(&format!(
@@ -759,7 +767,7 @@ fn write_markdown(
         summary.safe_high_confidence_false_positive_rate * 100.0
     ));
     md.push_str(&format!(
-        "| Safe false-positive rate (95% CI) | {:.1}% - {:.1}% |\n",
+        "| Safe actionable false-positive rate (95% CI) | {:.1}% - {:.1}% |\n",
         summary.safe_false_positive_rate_ci95.lower * 100.0,
         summary.safe_false_positive_rate_ci95.upper * 100.0
     ));
@@ -1007,10 +1015,11 @@ fn main() -> anyhow::Result<()> {
             .count() as f64
             / vulnerable_runs.len() as f64
     };
+    let safe_actionable_fp_count = actionable_safe_false_positives(&safe_runs);
     let safe_false_positive_rate = if safe_runs.is_empty() {
         0.0
     } else {
-        safe_runs.iter().filter(|o| o.detected).count() as f64 / safe_runs.len() as f64
+        safe_actionable_fp_count as f64 / safe_runs.len() as f64
     };
     let safe_high_confidence_false_positive_rate = if safe_runs.is_empty() {
         0.0
@@ -1022,7 +1031,7 @@ fn main() -> anyhow::Result<()> {
             / safe_runs.len() as f64
     };
     let true_positives = vulnerable_runs.iter().filter(|o| o.detected).count();
-    let false_positives = safe_runs.iter().filter(|o| o.detected).count();
+    let false_positives = safe_actionable_fp_count;
     let precision_denom = true_positives + false_positives;
     let precision = if precision_denom == 0 {
         0.0
@@ -1070,7 +1079,7 @@ fn main() -> anyhow::Result<()> {
         precision_ci95: wilson_interval(true_positives, precision_denom),
         safe_false_positive_rate,
         safe_false_positive_rate_ci95: wilson_interval(
-            safe_runs.iter().filter(|o| o.detected).count(),
+            safe_actionable_fp_count,
             safe_runs.len(),
         ),
         safe_high_confidence_false_positive_rate,

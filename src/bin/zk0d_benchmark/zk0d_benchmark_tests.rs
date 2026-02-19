@@ -100,3 +100,41 @@ fn suite_completion_rate_uses_completion_state_not_exit_code() {
     assert_eq!(suites.len(), 1);
     assert!((suites[0].completion_rate - (2.0 / 3.0)).abs() < 1e-12);
 }
+
+#[test]
+fn actionable_safe_false_positives_only_counts_high_confidence() {
+    let safe_low_conf = TrialOutcome {
+        suite_name: "safe".to_string(),
+        suite_description: None,
+        positive: false,
+        target_name: "a".to_string(),
+        trial_idx: 1,
+        seed: 1,
+        exit_code: 1,
+        completed: true,
+        scan_findings_total: 0,
+        detected: true,
+        high_confidence_detected: false,
+        attack_stage_reached: true,
+        reason_counts: BTreeMap::new(),
+        error_message: None,
+    };
+    let safe_high_conf = TrialOutcome {
+        suite_name: "safe".to_string(),
+        suite_description: None,
+        positive: false,
+        target_name: "b".to_string(),
+        trial_idx: 1,
+        seed: 2,
+        exit_code: 1,
+        completed: true,
+        scan_findings_total: 0,
+        detected: true,
+        high_confidence_detected: true,
+        attack_stage_reached: true,
+        reason_counts: BTreeMap::new(),
+        error_message: None,
+    };
+    let safe_runs = vec![&safe_low_conf, &safe_high_conf];
+    assert_eq!(actionable_safe_false_positives(&safe_runs), 1);
+}
