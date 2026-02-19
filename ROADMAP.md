@@ -97,7 +97,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Fresh clone + bootstrap can run 5-target matrix without manual tool installation
 - [ ] Keygen readiness preflight passes on at least 4/5 baseline targets
 
-**Current Status:** ❌ Pending fresh clone validation
+**Current Status:** ⚠️ Validation automation added via `scripts/fresh_clone_bootstrap_validate.sh`; full fresh-clone execution evidence still pending
 
 ---
 
@@ -337,7 +337,8 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [ ] Achieve >=90% completion rate on benchmark runs
 
 ### High Priority (P1)
-- [ ] Run fresh clone + bootstrap validation
+- [x] Add automated fresh clone + bootstrap validation script (`scripts/fresh_clone_bootstrap_validate.sh`)
+- [ ] Run fresh clone + bootstrap validation and capture summary artifacts
 - [ ] Execute 10-target wall-clock benchmark
 - [ ] Validate integrated campaign runs for Phase 3A criteria
 - [ ] Achieve measurable recall (target >=80%)
