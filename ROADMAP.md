@@ -258,6 +258,10 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Added `prepare_scan_dispatch(...)` to centralize pattern-only validation, selector config load/evaluation, family resolution, target construction, and campaign materialization.
    - Added `PreparedScanDispatch` to return normalized scan execution inputs (`family` + materialized campaign path).
    - Reduced `run_scan` to dispatch-only orchestration while preserving selector and materialization behavior.
+100. Continued scan modularization by isolating scan-run orchestration into a dedicated runner module (`src/main.rs`, `src/scan_runner.rs`):
+   - Added `scan_runner::run_scan(...)` to centralize prepared-scan orchestration and family run dispatch.
+   - Kept `main.rs::run_scan` as a thin wrapper that binds module orchestration to existing `run_campaign`/`run_chain_campaign` execution paths.
+   - Preserved scan behavior while further shrinking command-dispatch logic in `main.rs`.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -475,6 +479,10 @@ Validation:
 84. Main CLI compile verification after scan-preparation helper extraction:
     - `cargo check -q`
 85. Selector safety regression spot-check after scan-preparation helper extraction:
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+86. Main CLI compile verification after scan-runner module extraction:
+    - `cargo check -q`
+87. Selector safety regression spot-check after scan-runner module extraction:
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)

@@ -14,6 +14,7 @@ mod runtime_misc;
 mod scan_dispatch;
 mod scan_output;
 mod scan_progress;
+mod scan_runner;
 mod scan_selector;
 mod toolchain_bootstrap;
 use cli::{
@@ -37,11 +38,8 @@ use runtime_misc::{
     generate_sample_config, minimize_corpus, print_banner, print_run_window, truncate_str,
     validate_campaign,
 };
-use scan_dispatch::prepare_scan_dispatch;
 use scan_output::apply_scan_output_suffix_if_present;
-use scan_progress::{
-    dispatch_scan_family_run, scan_default_output_dir,
-};
+use scan_runner::run_scan as run_scan_orchestrated;
 #[cfg(test)]
 use scan_selector::{
     evaluate_loaded_scan_regex_patterns, load_scan_regex_selector_config,
@@ -794,24 +792,17 @@ async fn run_scan(
     mono_options: CampaignRunOptions,
     chain_options: ChainRunOptions,
 ) -> anyhow::Result<()> {
-    let prepared = prepare_scan_dispatch(
+    run_scan_orchestrated(
         pattern_path,
         family_hint,
         target_circuit,
         main_component,
         framework,
         output_suffix,
-    )?;
-    let materialized_str = prepared.materialized_campaign_path.to_string_lossy().to_string();
-
-    let output_dir = scan_default_output_dir();
-    let mono_has_explicit_corpus_dir = mono_options.corpus_dir.is_some();
-    dispatch_scan_family_run(
-        prepared.family,
-        &output_dir,
-        mono_has_explicit_corpus_dir,
-        || run_campaign(&materialized_str, mono_options),
-        || run_chain_campaign(&materialized_str, chain_options),
+        mono_options,
+        chain_options,
+        |materialized, options| async move { run_campaign(&materialized, options).await },
+        |materialized, options| async move { run_chain_campaign(&materialized, options).await },
     )
     .await
 }
