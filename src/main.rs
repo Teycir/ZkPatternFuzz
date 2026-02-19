@@ -8,6 +8,7 @@ mod preflight_backend;
 mod run_bootstrap;
 mod run_chain_corpus;
 mod run_chain_quality;
+mod run_chain_reports;
 mod run_chain_ui;
 mod run_identity;
 mod run_interrupts;
@@ -39,6 +40,10 @@ use run_chain_corpus::{
     read_chain_execution_count, read_chain_meta,
 };
 use run_chain_quality::collect_chain_quality_failures;
+use run_chain_reports::{
+    build_chain_report_json, build_chain_report_markdown, write_chain_report_json,
+    write_chain_report_markdown,
+};
 use run_chain_ui::{print_chain_mode_banner, print_chains_to_fuzz};
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
 use run_interrupts::{install_panic_hook, start_signal_watchers};
@@ -1113,46 +1118,26 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
         return Err(err.into());
     }
 
-    // Save chain findings as JSON
+    let report_ctx = run_chain_reports::ChainReportContext {
+        campaign_name: &config.campaign.name,
+        engagement_strict,
+        run_valid,
+        quality_failures: &quality_failures,
+        min_unique_coverage_bits,
+        min_completed_per_chain,
+        summary: &summary,
+        final_total_entries,
+        final_unique_coverage_bits,
+        final_max_depth,
+        baseline_total_entries,
+        baseline_unique_coverage_bits,
+        chain_findings: &chain_findings,
+    };
+
+    // Save chain findings as JSON.
     let chain_report_path = output_dir.join("chain_report.json");
-    let chain_report = serde_json::json!({
-        "campaign_name": config.campaign.name,
-        "mode": "chain_fuzzing",
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-        "engagement": {
-            "strict": engagement_strict,
-            "valid_run": run_valid,
-            "failures": quality_failures,
-            "thresholds": {
-                "min_unique_coverage_bits": min_unique_coverage_bits,
-                "min_completed_per_chain": min_completed_per_chain,
-            },
-        },
-        "metrics": {
-            "total_findings": summary.total_findings,
-            "d_mean": summary.d_mean,
-            "p_deep": summary.p_deep,
-            "depth_distribution": summary.depth_distribution,
-        },
-        "corpus_metrics": {
-            "corpus_entries": final_total_entries,
-            "unique_coverage_bits": final_unique_coverage_bits,
-            "max_depth": final_max_depth,
-            "baseline": {
-                "corpus_entries": baseline_total_entries,
-                "unique_coverage_bits": baseline_unique_coverage_bits,
-            }
-        },
-        "chain_findings": chain_findings,
-    });
-    if let Err(err) = (|| -> anyhow::Result<()> {
-        use std::io::{BufWriter, Write};
-        let f = std::fs::File::create(&chain_report_path)?;
-        let mut w = BufWriter::new(f);
-        serde_json::to_writer_pretty(&mut w, &chain_report)?;
-        w.flush()?;
-        Ok(())
-    })() {
+    let chain_report = build_chain_report_json(&report_ctx);
+    if let Err(err) = write_chain_report_json(&chain_report_path, &chain_report) {
         write_failed_mode_run_artifact_with_error(
             &output_dir,
             command,
@@ -1168,109 +1153,10 @@ async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyh
     }
     tracing::info!("Saved chain report to {:?}", chain_report_path);
 
-    // Save chain findings as markdown
+    // Save chain findings as markdown.
     let chain_md_path = output_dir.join("chain_report.md");
-    let mut md = String::new();
-    md.push_str(&format!(
-        "# Chain Fuzzing Report: {}\n\n",
-        config.campaign.name
-    ));
-    md.push_str("**Mode:** Multi-Step Chain Fuzzing (Mode 3)\n");
-    md.push_str(&format!(
-        "**Generated:** {}\n\n",
-        chrono::Utc::now().to_rfc3339()
-    ));
-
-    md.push_str("## Engagement Validation\n\n");
-    md.push_str(&format!("**Strict:** {}\n", engagement_strict));
-    md.push_str(&format!(
-        "**Valid Run:** {}\n",
-        if run_valid { "yes" } else { "no" }
-    ));
-    md.push_str(&format!(
-        "**Thresholds:** min_unique_coverage_bits={}, min_completed_per_chain={}\n\n",
-        min_unique_coverage_bits, min_completed_per_chain
-    ));
-
-    md.push_str("### Corpus / Exploration Metrics\n\n");
-    md.push_str(&format!(
-        "- Corpus entries: {} (delta {})\n",
-        final_total_entries,
-        final_total_entries.saturating_sub(baseline_total_entries)
-    ));
-    md.push_str(&format!(
-        "- Unique coverage bits: {} (delta {})\n",
-        final_unique_coverage_bits,
-        final_unique_coverage_bits.saturating_sub(baseline_unique_coverage_bits)
-    ));
-    md.push_str(&format!("- Max depth: {}\n\n", final_max_depth));
-
-    if !quality_failures.is_empty() {
-        md.push_str("### Failures\n\n");
-        for failure in &quality_failures {
-            md.push_str(&format!("- {}\n", failure));
-        }
-        md.push('\n');
-    }
-
-    md.push_str("## Depth Metrics\n\n");
-    md.push_str("| Metric | Value |\n");
-    md.push_str("|--------|-------|\n");
-    md.push_str(&format!(
-        "| Total Findings | {} |\n",
-        summary.total_findings
-    ));
-    md.push_str(&format!("| Mean L_min (D) | {:.2} |\n", summary.d_mean));
-    md.push_str(&format!(
-        "| P(L_min >= 2) | {:.1}% |\n\n",
-        summary.p_deep * 100.0
-    ));
-
-    if !chain_findings.is_empty() {
-        md.push_str("## Chain Findings\n\n");
-        for (i, finding) in chain_findings.iter().enumerate() {
-            md.push_str(&format!(
-                "### {}. [{}] Chain: {}\n\n",
-                i + 1,
-                finding.finding.severity.to_uppercase(),
-                finding.spec_name
-            ));
-            md.push_str(&format!("**L_min:** {}\n\n", finding.l_min));
-            md.push_str(&format!("{}\n\n", finding.finding.description));
-
-            if let Some(ref assertion) = finding.violated_assertion {
-                md.push_str(&format!("**Violated Assertion:** `{}`\n\n", assertion));
-            }
-
-            // Add trace summary
-            md.push_str("**Trace:**\n\n");
-            for (step_idx, step) in finding.trace.steps.iter().enumerate() {
-                let status = if step.success { "✓" } else { "✗" };
-                md.push_str(&format!(
-                    "- Step {}: {} `{}` - {}\n",
-                    step_idx,
-                    status,
-                    step.circuit_ref,
-                    if step.success {
-                        "success"
-                    } else {
-                        step.error.as_deref().unwrap_or("failed")
-                    }
-                ));
-            }
-            md.push('\n');
-
-            // Add reproduction
-            md.push_str("**Reproduction:**\n\n");
-            md.push_str(&format!(
-                "```bash\ncargo run --release -- chains {} --seed {}\n```\n\n",
-                config_path,
-                options.seed.unwrap_or(42)
-            ));
-        }
-    }
-
-    if let Err(err) = std::fs::write(&chain_md_path, md) {
+    let chain_md = build_chain_report_markdown(&report_ctx, config_path, options.seed);
+    if let Err(err) = write_chain_report_markdown(&chain_md_path, &chain_md) {
         write_failed_mode_run_artifact_with_error(
             &output_dir,
             command,

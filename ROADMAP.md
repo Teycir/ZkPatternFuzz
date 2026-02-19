@@ -287,6 +287,11 @@ Completed reliability hardening in Circom backend (`crates/zk-backends/src/circo
    - Reused existing metadata-first behavior with corpus fallback via `chain_completed_and_unique_cov_from_path(...)`.
    - Replaced the inline quality-failure loop in `run_chain_campaign` with the shared helper.
    - Preserved operator-facing diagnostics and strict-failure status behavior while shrinking chain orchestration logic.
+106. Continued chain-mode modularization by extracting chain report construction/writes (`src/main.rs`, `src/run_chain_reports.rs`):
+   - Added `run_chain_reports::ChainReportContext` to centralize report-input fields shared by JSON/Markdown emitters.
+   - Added shared JSON report builder/writer helpers (`build_chain_report_json`, `write_chain_report_json`).
+   - Added shared Markdown report builder/writer helpers (`build_chain_report_markdown`, `write_chain_report_markdown`).
+   - Replaced large inline chain-report JSON/Markdown assembly blocks in `run_chain_campaign` with helper calls while preserving output shape and reproduction snippets.
 
 Validation:
 1. `cargo check -p zk-backends` passed.
@@ -541,6 +546,13 @@ Validation:
     - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
     - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
 101. Engagement-dir panic-path regression spot-check after chain-quality helper extraction:
+    - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
+102. Main CLI compile verification after chain-report helper extraction:
+    - `cargo check -q`
+103. Selector/command regression spot-check after chain-report helper extraction:
+    - `cargo test -q run_doc_command_extraction_ -- --test-threads=1`
+    - `cargo test -q scan_selector_tests::scan_selector_regex_safety_ -- --test-threads=1`
+104. Engagement-dir panic-path regression spot-check after chain-report helper extraction:
     - `cargo test -q engagement_dir_name_invalid_run_id_never_panics -- --test-threads=1`
 
 ## Status Checklist (2026-02-18)
