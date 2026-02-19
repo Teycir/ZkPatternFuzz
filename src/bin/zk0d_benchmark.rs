@@ -377,6 +377,26 @@ fn build_batch_binary(args: &Args, batch_bin: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn build_scan_binary(args: &Args, scan_bin: &Path) -> anyhow::Result<()> {
+    if !args.build {
+        if scan_bin.exists() {
+            return Ok(());
+        }
+        anyhow::bail!(
+            "zk-fuzzer binary not found at '{}' and --build=false",
+            scan_bin.display()
+        );
+    }
+    let status = Command::new("cargo")
+        .args(["build", "--release", "--bin", "zk-fuzzer"])
+        .status()
+        .context("Failed to build zk-fuzzer binary")?;
+    if !status.success() {
+        anyhow::bail!("cargo build --release --bin zk-fuzzer failed");
+    }
+    Ok(())
+}
+
 fn run_trial(
     args: &Args,
     batch_bin: &Path,
@@ -432,10 +452,6 @@ fn run_trial(
     if args.dry_run {
         cmd.arg("--dry-run");
     }
-    if args.build {
-        cmd.arg("--build");
-    }
-
     let output = cmd.output().with_context(|| {
         format!(
             "Failed to run target '{}' trial {}",
@@ -774,6 +790,8 @@ fn main() -> anyhow::Result<()> {
 
     let batch_bin = PathBuf::from("target/release/zk0d_batch");
     build_batch_binary(&args, &batch_bin)?;
+    let scan_bin = PathBuf::from("target/release/zk-fuzzer");
+    build_scan_binary(&args, &scan_bin)?;
 
     println!(
         "Running {} trial jobs across {} suite(s) (jobs={}, batch_jobs={}, workers={})",

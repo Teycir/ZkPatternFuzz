@@ -18,8 +18,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Phase 5: Release Hardening (implementation completed)
 
 ### Exit Criteria Progress
-- ❌ Phase 0 exit criteria (in progress: panic blockers fixed; completion still below threshold)
-- ❌ Phase 1 exit criteria (in progress: recall remains 0%, safe FPR currently unbounded)
+- ❌ Phase 0 exit criteria (in progress: panic blockers fixed; latest 20-run completion 35% < 90% target)
+- ❌ Phase 1 exit criteria (in progress: recall improved to 60%, but safe FPR remains 50%)
 - ❌ Phase 2 exit criteria (pending fresh clone validation)
 - ❌ Phase 3 exit criteria (pending 10-target benchmark)
 - ❌ Phase 3A exit criteria (pending integrated campaign runs)
@@ -54,7 +54,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] 20-run matrix on 5 local targets has 0 output-lock failures
 - [ ] >=90% runs reach attack execution stage (not blocked in setup)
 
-**Current Status:** ⚠️ Panic blockers resolved; matrix completion still below threshold in latest evidence runs
+**Current Status:** ⚠️ Panic blockers resolved; latest 20-run fast matrix reached 35% completion (target >=90%)
 
 ---
 
@@ -77,7 +77,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Recall improves by >=20 percentage points over baseline
 - [ ] High-confidence false positives remain bounded (<=5% on safe suite)
 
-**Current Status:** ❌ Recall remains 0%; latest safe-suite smoke shows high false-positive pressure (safe FPR 60%)
+**Current Status:** ⚠️ Recall improved to 60% on latest 20-run matrix, but safe false-positive rate remains high (50%)
 
 ---
 
@@ -466,6 +466,8 @@ gh run watch
 - Panic blockers addressed in current branch (`wait-timeout` abort path removed, run-doc stale-binary path resolved)
 - Latest smoke benchmark evidence: `artifacts/benchmark_runs_smoke/benchmark_20260219_153249/summary.json`
 - Smoke metrics: `completion_rate=40.0%`, `recall=0.0%`, `safe_fpr=60.0%`
+- Latest 20-run fast matrix evidence: `artifacts/benchmark_runs_fast/benchmark_20260219_154019/summary.json`
+- Fast matrix metrics: `completion_rate=35.0%`, `recall=60.0%`, `precision=54.5%`, `safe_fpr=50.0%`
 - Once panic is fixed, need to validate all exit criteria systematically
 - Release candidate validation requires two consecutive passes of all gates
 - Nightly CI matrix is operational with fast-smoke and deep-scheduled lanes
