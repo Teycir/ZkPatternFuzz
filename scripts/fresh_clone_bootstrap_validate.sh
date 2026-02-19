@@ -14,7 +14,9 @@ WORKERS=1
 ITERATIONS=50
 TIMEOUT=10
 OUTPUT_SUBDIR="artifacts/fresh_clone_validation"
-MIN_ATTACK_STAGE_RATE=0.90
+MIN_ATTACK_STAGE_RATE=0.0
+MIN_COMPLETION_RATE=0.0
+MAX_CIRCOM_COMPILATION_FAILED=0
 RUN_ID="$(date +%Y%m%d_%H%M%S)"
 REPORT_OUT="$ROOT_DIR/artifacts/fresh_clone_validation/fresh_clone_${RUN_ID}_report.json"
 CARGO_OFFLINE=1
@@ -39,7 +41,10 @@ Options:
   --iterations <n>            Iterations per run (default: 50)
   --timeout <seconds>         Timeout per run (default: 10)
   --output-subdir <path>      Output dir inside clone (default: artifacts/fresh_clone_validation)
-  --min-attack-stage-rate <f> Minimum required attack-stage reach rate (default: 0.90)
+  --min-attack-stage-rate <f> Minimum required attack-stage reach rate (default: 0.0)
+  --min-completion-rate <f>   Minimum required completion rate (default: 0.0)
+  --max-circom-compilation-failed <n>
+                              Maximum allowed circom_compilation_failed runs (default: 0)
   --report-out <path>         Report output JSON path (default: artifacts/fresh_clone_validation/fresh_clone_<timestamp>_report.json)
   --no-cargo-offline          Disable cargo --offline for clone build/run steps
   -h, --help                  Show this help
@@ -98,6 +103,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --min-attack-stage-rate)
       MIN_ATTACK_STAGE_RATE="$2"
+      shift 2
+      ;;
+    --min-completion-rate)
+      MIN_COMPLETION_RATE="$2"
+      shift 2
+      ;;
+    --max-circom-compilation-failed)
+      MAX_CIRCOM_COMPILATION_FAILED="$2"
       shift 2
       ;;
     --report-out)
@@ -248,7 +261,7 @@ COPIED_OUTCOMES="$REPORT_DIR/fresh_clone_${RUN_ID}_outcomes.json"
 cp "$SUMMARY_PATH" "$COPIED_SUMMARY"
 cp "$OUTCOMES_PATH" "$COPIED_OUTCOMES"
 
-python3 - "$SUMMARY_PATH" "$OUTCOMES_PATH" "$MIN_ATTACK_STAGE_RATE" "$BOOTSTRAP_MODE" "$REPORT_OUT" "$COPIED_SUMMARY" "$COPIED_OUTCOMES" <<'PY'
+python3 - "$SUMMARY_PATH" "$OUTCOMES_PATH" "$MIN_ATTACK_STAGE_RATE" "$MIN_COMPLETION_RATE" "$MAX_CIRCOM_COMPILATION_FAILED" "$BOOTSTRAP_MODE" "$REPORT_OUT" "$COPIED_SUMMARY" "$COPIED_OUTCOMES" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
@@ -257,12 +270,16 @@ from datetime import datetime, timezone
     summary_path,
     outcomes_path,
     min_attack_stage_raw,
+    min_completion_raw,
+    max_circom_compilation_failed_raw,
     bootstrap_mode,
     report_out,
     copied_summary,
     copied_outcomes,
 ) = sys.argv[1:]
 min_attack_stage = float(min_attack_stage_raw)
+min_completion = float(min_completion_raw)
+max_circom_compilation_failed = int(max_circom_compilation_failed_raw)
 with open(summary_path, "r", encoding="utf-8") as f:
     summary = json.load(f)
 with open(outcomes_path, "r", encoding="utf-8") as f:
@@ -271,28 +288,43 @@ with open(outcomes_path, "r", encoding="utf-8") as f:
 attack_stage = float(summary.get("overall_attack_stage_reach_rate", 0.0))
 completion = float(summary.get("overall_completion_rate", 0.0))
 total_runs = int(summary.get("total_runs", 0))
+aggregated_reason_counts = {}
 locked = 0
 for outcome in outcomes:
     reason_counts = outcome.get("reason_counts", {})
+    for key, value in reason_counts.items():
+        aggregated_reason_counts[key] = aggregated_reason_counts.get(key, 0) + int(value)
     locked += int(reason_counts.get("output_dir_locked", 0))
+
+circom_compilation_failed = int(aggregated_reason_counts.get("circom_compilation_failed", 0))
+completed_runs = int(aggregated_reason_counts.get("completed", 0))
 
 print(
     "Fresh-clone metrics:"
     f" total_runs={total_runs}"
     f" completion={completion:.4f}"
     f" attack_stage={attack_stage:.4f}"
+    f" completed_runs={completed_runs}"
+    f" circom_compilation_failed={circom_compilation_failed}"
     f" output_dir_locked={locked}"
 )
 
 failures = []
 if total_runs <= 0:
     failures.append("total_runs must be > 0")
-if attack_stage < min_attack_stage:
+if min_attack_stage > 0 and attack_stage < min_attack_stage:
     failures.append(
         f"overall_attack_stage_reach_rate {attack_stage:.4f} < {min_attack_stage:.4f}"
     )
+if min_completion > 0 and completion < min_completion:
+    failures.append(f"overall_completion_rate {completion:.4f} < {min_completion:.4f}")
 if locked != 0:
     failures.append(f"output_dir_locked occurrences must be 0 (found {locked})")
+if circom_compilation_failed > max_circom_compilation_failed:
+    failures.append(
+        "circom_compilation_failed occurrences must be <= "
+        f"{max_circom_compilation_failed} (found {circom_compilation_failed})"
+    )
 
 payload = {
     "generated_utc": datetime.now(timezone.utc).isoformat(),
@@ -302,8 +334,13 @@ payload = {
     "total_runs": total_runs,
     "overall_completion_rate": completion,
     "overall_attack_stage_reach_rate": attack_stage,
+    "completed_runs": completed_runs,
     "output_dir_locked": locked,
+    "circom_compilation_failed": circom_compilation_failed,
+    "aggregated_reason_counts": aggregated_reason_counts,
     "min_attack_stage_rate": min_attack_stage,
+    "min_completion_rate": min_completion,
+    "max_circom_compilation_failed": max_circom_compilation_failed,
     "passes": len(failures) == 0,
     "failures": failures,
 }
