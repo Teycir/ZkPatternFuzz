@@ -332,8 +332,8 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 ## 📋 Immediate Action Items
 
 ### Top Priority (P0)
-- [ ] Fix panic `Missing required 'command' in run document` in evidence/report mirroring
-- [ ] Validate fix with 20-run benchmark matrix
+- [x] Fix panic `Missing required 'command' in run document` in evidence/report mirroring
+- [x] Validate fix with 20-run benchmark matrix (`artifacts/benchmark_runs_fast/benchmark_20260219_182723/artifact_mirror_panic_report.json`)
 - [ ] Achieve >=90% completion rate on benchmark runs
 
 ### High Priority (P1)
@@ -389,6 +389,12 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - **Fix Applied:** Set child `zk0d_batch` environment under benchmark output root to avoid host-home permission failures
 - **Outcome:** Permission-denied setup blocker cleared, but runs hit panic blocker `Missing required 'command' in run document` during evidence/report mirroring
 - **Status:** Phase 0/1 remain unmet
+
+### Panic Regression Validation (20-Run Matrix)
+- **Command:** `python3 scripts/validate_artifact_mirror_panics.py --outcomes artifacts/benchmark_runs_fast/benchmark_20260219_182723/outcomes.json --json-out artifacts/benchmark_runs_fast/benchmark_20260219_182723/artifact_mirror_panic_report.json --enforce`
+- **Report:** `artifacts/benchmark_runs_fast/benchmark_20260219_182723/artifact_mirror_panic_report.json`
+- **Outcome:** `passes=true`, `panic_occurrences=0` across `20` runs
+- **Status:** Prior panic class is no longer observed on the latest 20-run matrix
 
 ---
 
