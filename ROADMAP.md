@@ -23,7 +23,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ❌ Phase 2 exit criteria (pending fresh clone validation)
 - ❌ Phase 3 exit criteria (pending 10-target benchmark)
 - ❌ Phase 3A exit criteria (pending integrated campaign runs)
-- ❌ Phase 4 exit criteria (in progress: vulnerable recall remains 60% vs 80% target; safe high-confidence FPR now 0%)
+- ❌ Phase 4 exit criteria (partially met: safe high-confidence FPR 0% and miss reason coverage 100%; vulnerable recall remains 60% vs 80% target)
 - ❌ Phase 5 exit criteria (pending release candidate validation)
 
 ### Definition of Done Progress
@@ -169,9 +169,9 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 ### Exit Criteria
 - [ ] Vulnerable-set recall >=80%
 - [x] Safe-set high-confidence FPR <=5%
-- [ ] Every miss has machine-readable root-cause category
+- [x] Every miss has machine-readable root-cause category
 
-**Current Status:** ❌ Recall 60%, Safe high-confidence FPR 0% (targets: recall >=80%, safe high-confidence FPR <=5%)
+**Current Status:** ❌ Recall 60%, Safe high-confidence FPR 0%, miss reason coverage 100% (`4/4`) on latest matrix; vulnerable recall target remains unmet
 
 ---
 
@@ -473,6 +473,7 @@ gh run watch
 - Fast matrix metrics: `completion_rate=35.0%`, `attack_stage_reach_rate=90.0%`, `recall=60.0%`, `recall_high_conf=20.0%`, `precision=54.5%`, `safe_fpr=50.0%`, `safe_high_conf_fpr=0.0%`
 - High-confidence metric now uses stricter oracle corroboration in batch scoring (`benchmark_high_confidence_min_oracles=3`)
 - Selector hit-rate report: `artifacts/benchmark_runs_fast/benchmark_20260219_182723/selector_hit_rate.json` (`18/20` => `90.0%`)
+- Miss reason coverage report: `artifacts/benchmark_runs_fast/benchmark_20260219_182723/miss_reason_coverage.json` (`4/4` misses categorized => `100%`)
 - Once panic is fixed, need to validate all exit criteria systematically
 - Release candidate validation requires two consecutive passes of all gates
 - Nightly CI matrix is operational with fast-smoke and deep-scheduled lanes
