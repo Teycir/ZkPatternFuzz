@@ -145,7 +145,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Cairo backend can execute and report non-empty coverage/failure semantics
 - [ ] Noir backend execution throughput improves measurably on repeated runs
 
-**Current Status:** ❌ Pending integrated campaign runs validation
+**Current Status:** ⚠️ Required logic-hardening checks pass via `scripts/phase3a_validate.sh` (`artifacts/phase3a_validation/phase3a_report.json`); backend-heavy Cairo/Noir integrated runs remain pending
 
 ---
 
@@ -341,7 +341,8 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [ ] Run fresh clone + bootstrap validation and capture summary artifacts
 - [x] Add serial-vs-parallel speedup benchmark automation (`scripts/benchmark_parallel_speedup.sh`)
 - [ ] Execute 10-target wall-clock benchmark and capture speedup evidence
-- [ ] Validate integrated campaign runs for Phase 3A criteria
+- [x] Add automated Phase 3A validation script (`scripts/phase3a_validate.sh`)
+- [ ] Run backend-heavy Phase 3A integrated checks (Cairo/Noir) and capture evidence
 - [ ] Achieve measurable recall (target >=80%)
 - [ ] Validate safe FPR remains <=5%
 
@@ -474,6 +475,7 @@ gh run watch
 - High-confidence metric now uses stricter oracle corroboration in batch scoring (`benchmark_high_confidence_min_oracles=3`)
 - Selector hit-rate report: `artifacts/benchmark_runs_fast/benchmark_20260219_182723/selector_hit_rate.json` (`18/20` => `90.0%`)
 - Miss reason coverage report: `artifacts/benchmark_runs_fast/benchmark_20260219_182723/miss_reason_coverage.json` (`4/4` misses categorized => `100%`)
+- Phase 3A required-check report: `artifacts/phase3a_validation/phase3a_report.json` (required checks `PASS`, backend-heavy checks currently `skip`)
 - Once panic is fixed, need to validate all exit criteria systematically
 - Release candidate validation requires two consecutive passes of all gates
 - Nightly CI matrix is operational with fast-smoke and deep-scheduled lanes
