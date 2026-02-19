@@ -832,11 +832,13 @@ impl CircomExecutor {
                     );
                     for root in Self::circuit_ancestor_paths(circuit_path) {
                         paths.push(root.join("node_modules"));
+                        paths.push(root.join("vendor"));
                     }
                     for local in Self::local_bins_search_paths() {
                         paths.push(local);
                     }
                     paths.push(PathBuf::from("node_modules"));
+                    paths.push(PathBuf::from("vendor"));
                     if let Some(bins_node_modules) = preferred_bins_node_modules {
                         paths.push(bins_node_modules);
                     }
@@ -854,6 +856,7 @@ impl CircomExecutor {
 
         for root in Self::circuit_ancestor_paths(circuit_path) {
             paths.push(root.join("node_modules"));
+            paths.push(root.join("vendor"));
         }
         for local in Self::local_bins_search_paths() {
             paths.push(local);
@@ -861,6 +864,10 @@ impl CircomExecutor {
 
         {
             let candidate = "node_modules";
+            paths.push(PathBuf::from(candidate));
+        }
+        {
+            let candidate = "vendor";
             paths.push(PathBuf::from(candidate));
         }
 

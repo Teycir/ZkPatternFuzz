@@ -192,3 +192,28 @@ fn test_circom_include_paths_invalid_utf8_does_not_panic() {
         None => std::env::remove_var("CIRCOM_INCLUDE_PATHS"),
     }
 }
+
+#[test]
+fn test_circom_include_paths_include_vendor_from_circuit_ancestors() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let root = temp_dir.path();
+    let circuits_dir = root.join("circuits");
+    let vendor_dir = root.join("vendor").join("circomlib").join("circuits");
+
+    std::fs::create_dir_all(&circuits_dir).expect("mkdir circuits");
+    std::fs::create_dir_all(&vendor_dir).expect("mkdir vendor/circomlib/circuits");
+
+    let circuit_path = circuits_dir.join("example.circom");
+    std::fs::write(&circuit_path, "pragma circom 2.0.0;").expect("write circuit");
+    std::fs::write(vendor_dir.join("poseidon.circom"), "// fixture").expect("write include");
+
+    let include_paths =
+        CircomExecutor::default_include_paths_for(circuit_path.to_str().expect("utf8 path"));
+    let expected_vendor_root = root.join("vendor");
+    assert!(
+        include_paths.iter().any(|p| p == &expected_vendor_root),
+        "expected include paths to contain '{}', got {:?}",
+        expected_vendor_root.display(),
+        include_paths
+    );
+}
