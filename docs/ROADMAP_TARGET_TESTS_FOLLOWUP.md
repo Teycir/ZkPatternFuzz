@@ -2,6 +2,25 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T15:29:30Z
+- Roadmap automation advancement shipped:
+  - Added backend-specific readiness aliases/profiles in `targets/fuzzer_registry.prod.yaml`:
+    - `readiness_noir`
+    - `readiness_cairo`
+    - `readiness_halo2`
+    - `readiness_non_circom`
+  - Added aggregated backend readiness dashboard publisher:
+    - `scripts/backend_readiness_dashboard.sh`
+    - artifact: `artifacts/backend_readiness/latest_report.json`
+  - Wired per-backend readiness gates into release candidate gate:
+    - `scripts/release_candidate_gate.sh` now enforces Noir/Cairo/Halo2 readiness thresholds unless `--skip-backend-readiness-gate` is set.
+  - Wired dashboard publication into benchmark runners:
+    - `scripts/run_benchmarks.sh`
+    - `scripts/run_production_benchmarks.sh`
+- Outcome:
+  - Release/benchmark workflow now has explicit non-Circom readiness gate integration.
+  - Next blocker remains producing/passing required backend reports (especially Noir lane output) so gate can pass in strict mode.
+
 ## Update (UTC): 2026-02-20T15:07:11Z
 - Formal Verification Bridge runtime slice implemented:
   - Fuzz findings export: `reporting.output_dir/formal_bridge/fuzz_findings.json`

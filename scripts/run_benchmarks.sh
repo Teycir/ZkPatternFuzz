@@ -15,6 +15,8 @@
 
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -27,6 +29,19 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 log_section() { echo -e "\n${CYAN}═══════════════════════════════════════════════════════════${NC}"; echo -e "${CYAN}  $1${NC}"; echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}\n"; }
+
+publish_backend_dashboard() {
+    local dashboard_script="$ROOT_DIR/scripts/backend_readiness_dashboard.sh"
+    if [ ! -x "$dashboard_script" ]; then
+        log_warn "Backend readiness dashboard script not found: $dashboard_script"
+        return
+    fi
+    if "$dashboard_script" --output "$ROOT_DIR/artifacts/backend_readiness/latest_report.json" >/dev/null 2>&1; then
+        log_info "Updated backend readiness dashboard: artifacts/backend_readiness/latest_report.json"
+    else
+        log_warn "Backend readiness dashboard update failed"
+    fi
+}
 
 # Configuration
 QUICK_MODE=false
@@ -277,6 +292,8 @@ echo "  Results saved to:"
 echo "    - $RESULTS_JSON"
 echo "    - $RESULTS_MD"
 echo "    - $SCOREBOARD"
+
+publish_backend_dashboard
 
 # Exit code based on results
 if [ "$FAILED" -gt 0 ]; then

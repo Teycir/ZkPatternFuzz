@@ -216,7 +216,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 | Halo2 | Partial (mixed breadth outcomes) | `halo2_scaffold` completes, but local JSON spec still fails strict input reconciliation |
 
 ### Implementation Tasks
-- [ ] Add backend-specific readiness profiles in `targets/fuzzer_registry.prod.yaml` for Noir, Halo2, and Cairo circuit families
+- [x] Add backend-specific readiness profiles in `targets/fuzzer_registry.prod.yaml` for Noir, Halo2, and Cairo circuit families
 - [x] Add Noir preflight hardening for package-resolution and ABI artifact-path variants
 - [x] Add selector-mismatch synthetic outcome classification in `zk0d_batch` to eliminate validation-skip `run_outcome_missing` gaps
 - [ ] Add Noir end-to-end prove/verify smoke and fuzz parity tests for external `Nargo.toml` projects
@@ -225,8 +225,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Add Halo2 JSON-spec input reconciliation normalizer (wire-label/index compatibility)
 - [ ] Add Halo2 scaffold execution stability checks under nightly toolchain with deterministic fixture inputs
 - [ ] Reduce `run_outcome_missing` on non-Circom targets to <=5% by enforcing explicit reason-code closure in matrix summaries
-- [ ] Add per-backend release gates in `scripts/release_candidate_gate.sh` (Noir/Halo2/Cairo must each satisfy minimum completion and setup-success thresholds)
-- [ ] Publish backend readiness dashboard artifact (`artifacts/backend_readiness/latest_report.json`) on every benchmark/release run
+- [x] Add per-backend release gates in `scripts/release_candidate_gate.sh` (Noir/Halo2/Cairo must each satisfy minimum completion and setup-success thresholds)
+- [x] Publish backend readiness dashboard artifact (`artifacts/backend_readiness/latest_report.json`) on every benchmark/release run
 - [x] Add dedicated Cairo readiness matrix + runner (`targets/zk0d_matrix_cairo_readiness.yaml`, `scripts/run_cairo_readiness.sh`)
 - [x] Add dedicated Halo2 readiness matrix + runner (`targets/zk0d_matrix_halo2_readiness.yaml`, `scripts/run_halo2_readiness.sh`)
 
@@ -249,9 +249,9 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Attack DSL specification
 
 ### Formal Verification Bridge
-- [ ] Export fuzzing findings to formal tools
-- [ ] Import formal invariants as fuzzing oracles
-- [ ] Hybrid fuzzing+proof workflow
+- [x] Export fuzzing findings to formal tools
+- [x] Import formal invariants as fuzzing oracles
+- [x] Hybrid fuzzing+proof workflow
 
 ### Exit Criteria
 - [ ] Noir: `backend_preflight_failed=0` on roadmap breadth/follow-up target sets and >=90% completed outcomes
@@ -260,7 +260,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Cross-backend: non-Circom `run_outcome_missing` <=5% in aggregate follow-up report
 - [ ] Release gate fails automatically when any non-Circom backend drops below readiness thresholds
 
-**Current Status:** 🟡 In progress. Noir setup-path blockers are resolved for roadmap breadth steps `066-067` with explicit reason-code closure (`completed=1, selector_mismatch=26`, `run_outcome_missing=0` in `artifacts/roadmap_step_tests_recheck3/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv` and `artifacts/roadmap_step_tests_recheck3/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`). Halo2 breadth recheck shows split outcomes (`step_068`: `completed=15, selector_mismatch=12`; `step_069`: `runtime_error=6, selector_mismatch=21`). Cairo/Halo2 readiness lane scripts are in place, but current workspace compile regression (`FuzzConfigV2`/`AIAssistantConfig`) blocks integration-test execution until fixed.
+**Current Status:** 🟡 In progress. Noir setup-path blockers are resolved for roadmap breadth steps `066-067` with explicit reason-code closure (`completed=1, selector_mismatch=26`, `run_outcome_missing=0` in `artifacts/roadmap_step_tests_recheck3/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv` and `artifacts/roadmap_step_tests_recheck3/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`). Halo2 breadth recheck shows split outcomes (`step_068`: `completed=15, selector_mismatch=12`; `step_069`: `runtime_error=6, selector_mismatch=21`). Backend readiness gates and dashboard publication are now wired into release/benchmark workflows; remaining execution risk is reaching completion-rate/runtime-error thresholds across all required backend reports (including Noir readiness lane outputs).
 
 ---
 
