@@ -1,0 +1,9 @@
+version: 1
+
+targets:
+  - name: local_cairo_multiplier
+    target_circuit: tests/cairo_programs/multiplier.cairo
+    main_component: main
+    framework: cairo
+    alias: always
+    enabled: true
