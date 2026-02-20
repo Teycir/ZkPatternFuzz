@@ -2,6 +2,16 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T22:05:50Z
+- Ran two-attempt release validation checkpoint with enforcement:
+  - `scripts/release_candidate_validate_twice.sh --bench-root artifacts/benchmark_runs_fast --required-passes 1 --output-dir artifacts/release_candidate_validation --enforce`
+- Result: `PASS`
+  - gate attempt #1: `pass`
+  - gate attempt #2: `pass`
+  - rollback: `skip` (no stable ref requested)
+  - overall: `PASS`
+  - report: `artifacts/release_candidate_validation/release_candidate_report.json`
+
 ## Update (UTC): 2026-02-20T21:53:49Z
 - Ran release-candidate gate checkpoint after backend readiness hardening:
   - Default benchmark root attempt:
