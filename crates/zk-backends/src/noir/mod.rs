@@ -322,10 +322,8 @@ impl NoirTarget {
         let compile_project = |this: &Self| -> Result<std::process::Output> {
             let mut cmd = this.nargo_command()?;
             cmd.args(["compile"]);
-            Ok(
-                crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-                    .context("Failed to run nargo compile")?,
-            )
+            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
+                .context("Failed to run nargo compile")
         };
 
         // Compile the project
@@ -646,12 +644,12 @@ impl NoirTarget {
                 )
             })?;
         }
-        self.copy_project_tree(self.project_path.as_path(), isolated_root.as_path())?;
+        Self::copy_project_tree(self.project_path.as_path(), isolated_root.as_path())?;
         self.project_path_override = Some(isolated_root);
         Ok(true)
     }
 
-    fn copy_project_tree(&self, src: &Path, dst: &Path) -> Result<()> {
+    fn copy_project_tree(src: &Path, dst: &Path) -> Result<()> {
         fs::create_dir_all(dst).with_context(|| format!("Failed creating '{}'", dst.display()))?;
 
         for entry in
@@ -677,7 +675,7 @@ impl NoirTarget {
                 if skip {
                     continue;
                 }
-                self.copy_project_tree(src_path.as_path(), dst_path.as_path())?;
+                Self::copy_project_tree(src_path.as_path(), dst_path.as_path())?;
                 continue;
             }
 

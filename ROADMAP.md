@@ -615,8 +615,8 @@ gh run watch
 - [ ] Refactor `src/run_outcome_docs.rs:175` (9 args → config struct)
 - [ ] Refactor `src/scan_runner.rs:5` (10 args → config struct)
 - [ ] Refactor `src/main.rs:193` (8 args → config struct)
-- [ ] Fix `only_used_in_recursion` in `crates/zk-backends/src/noir/mod.rs:654`
-- [ ] Remove needless `Ok()` wrapper in `crates/zk-backends/src/noir/mod.rs:325`
+- [x] Fix `only_used_in_recursion` in `crates/zk-backends/src/noir/mod.rs:654`
+- [x] Remove needless `Ok()` wrapper in `crates/zk-backends/src/noir/mod.rs:325`
 
 ### P2 - Documentation & Safety
 - [ ] Add safety comments to `src/reporting/command_timeout.rs:13-19,30`
