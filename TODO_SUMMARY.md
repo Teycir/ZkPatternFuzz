@@ -22,7 +22,7 @@
 ## Benchmarks & Performance
 
 - [ ] Add more chain complexity benchmarks (`benches/chain_benchmark.rs`)
-- [ ] Cross-backend throughput comparison harness
+- [x] Cross-backend throughput comparison harness
 - [ ] Memory usage profiling for large circuits
 
 ---

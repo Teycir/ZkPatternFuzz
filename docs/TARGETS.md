@@ -112,6 +112,27 @@ Outputs are written under:
 - `artifacts/benchmark_trends/latest_failure_dashboard.json` (nightly failure-class dashboard)
 - `artifacts/benchmark_trends/latest_failure_dashboard.md` (human-readable failure-class pass/fail table)
 
+## Cross-Backend Throughput Harness
+
+Use the throughput harness to compare Noir/Cairo/Halo2 readiness lane throughput
+under the same runtime parameters.
+
+```bash
+./scripts/benchmark_cross_backend_throughput.sh \
+  --runs 2 \
+  --iterations 20 \
+  --timeout 20 \
+  --workers 2 \
+  --batch-jobs 1 \
+  --enforce
+```
+
+Artifacts:
+
+- `artifacts/backend_throughput/latest_report.json`
+- `artifacts/backend_throughput/latest_report.md`
+- `artifacts/backend_throughput/raw/run_metrics.jsonl`
+
 Failure dashboard class thresholds are configurable without changing output paths:
 
 - Environment overrides:

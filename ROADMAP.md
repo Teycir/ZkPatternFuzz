@@ -377,25 +377,25 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 ## 🚧 Current Blockers
 
 ### Critical Issues
-1. **Noir external-target setup blockers are mitigated; outcome closure is now the blocker**
-   - Evidence: recheck summaries now show `completed=1` with no `backend_preflight_failed` on steps `066` and `067` (`artifacts/roadmap_step_tests_recheck2/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv`, `artifacts/roadmap_step_tests_recheck2/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`)
-   - Impact: Noir setup is healthier, but readiness still fails due high `run_outcome_missing` counts
-   - Status: 🟡 Open
+1. **Noir/Cairo/Halo2 readiness gate closure**
+   - Evidence: aggregated dashboard pass with selector-matching completion gate and zero runtime/preflight/missing-outcome regressions (`artifacts/backend_readiness/latest_report.json`)
+   - Impact: non-Circom readiness gating is now enforced in release flow
+   - Status: ✅ Closed
 
-2. **Cairo is not yet enforced at full-capacity breadth gates**
-   - Evidence: Cairo validation remains backend-heavy/optional and is not yet a required breadth readiness lane (`ROADMAP.md` Phase 6 scope/tasks)
-   - Impact: all-circuit-type readiness claims remain incomplete without Cairo promotion
-   - Status: 🟡 Open
+2. **Cairo default-breadth enforcement**
+   - Evidence: Cairo breadth step is runtime-clean and explicitly classified (`artifacts/roadmap_step_tests_recheck5/summary/step_070__local_cairo_multiplier_.tsv`)
+   - Impact: Cairo participates in required breadth readiness coverage
+   - Status: ✅ Closed
 
-3. **Halo2 breadth coverage is not readiness-grade**
-   - Evidence: `docs/ROADMAP_TARGET_TESTS.md` steps `068` and `069` (`run_outcome_missing`, `runtime_error`)
-   - Impact: Halo2 cannot be promoted to full production readiness
-   - Status: 🟡 Open
+3. **Halo2 canonical fixture stability**
+   - Evidence: Halo2 step `069` recheck is runtime-clean with explicit reason-code closure (`artifacts/roadmap_step_tests_recheck4/summary/step_069__local_halo2_minimal_json_spec_.tsv`)
+   - Impact: Halo2 readiness lane is release-gate eligible
+   - Status: ✅ Closed
 
-4. **Non-Circom reason-code closure remains incomplete**
-   - Evidence: follow-up summary includes high `run_outcome_missing` volume (`docs/ROADMAP_TARGET_TESTS_FOLLOWUP.md`)
-   - Impact: unresolved outcomes reduce confidence in all-circuit-type reliability claims
-   - Status: 🟡 Open
+4. **Release rollback evidence in consecutive gate validation**
+   - Evidence: two-pass release validation with rollback pass (`artifacts/release_candidate_validation/release_candidate_report.json`, `artifacts/release_candidate_validation/rollback_validation.log`)
+   - Impact: release hardening claim is evidence-backed on default benchmark root
+   - Status: ✅ Closed
 
 ---
 
@@ -581,6 +581,9 @@ python3 scripts/benchmark_failure_dashboard.py --benchmark-root artifacts/benchm
 
 # Dashboard unit tests
 python3 -m unittest -q tests/test_benchmark_failure_dashboard.py
+
+# Cross-backend throughput comparison (Noir/Cairo/Halo2)
+./scripts/benchmark_cross_backend_throughput.sh --runs 2 --iterations 20 --timeout 20 --workers 2 --batch-jobs 1 --enforce
 ```
 
 ### Release Validation

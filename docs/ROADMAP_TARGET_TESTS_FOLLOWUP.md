@@ -2,6 +2,18 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T22:40:28Z
+- Added cross-backend throughput comparison harness:
+  - `scripts/benchmark_cross_backend_throughput.sh`
+  - compares Noir/Cairo/Halo2 readiness lanes under shared runtime parameters and emits ranking by median completed throughput.
+- Validation run (lightweight enforced pass):
+  - `./scripts/benchmark_cross_backend_throughput.sh --runs 1 --iterations 5 --timeout 8 --workers 1 --batch-jobs 1 --no-build-if-missing --enforce`
+  - Result: `PASS`
+  - Throughput ranking (median completed/sec): `halo2`, `noir`, `cairo`
+  - Artifact: `artifacts/backend_throughput/latest_report.json`
+  - Markdown summary: `artifacts/backend_throughput/latest_report.md`
+  - Raw run metrics: `artifacts/backend_throughput/raw/run_metrics.jsonl`
+
 ## Update (UTC): 2026-02-20T22:21:10Z
 - Restored default release-gate path on `artifacts/benchmark_runs` with fresh passing summaries.
 - Benchmark regeneration command (used twice):
