@@ -28,7 +28,10 @@ where
         framework,
         output_suffix,
     )?;
-    let materialized_mono = prepared.materialized_campaign_path.to_string_lossy().to_string();
+    let materialized_mono = prepared
+        .materialized_campaign_path
+        .to_string_lossy()
+        .to_string();
     let materialized_multi = materialized_mono.clone();
 
     let output_dir = scan_default_output_dir();

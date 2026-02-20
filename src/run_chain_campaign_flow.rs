@@ -82,7 +82,8 @@ pub(crate) async fn run_chain_campaign(
 
     let corpus_path = output_dir.join("chain_corpus.json");
     let corpus_meta_path = output_dir.join("chain_corpus_meta.json");
-    let chain_findings: Vec<ChainFinding> = run_chain_engine(&run_ctx, &config, &chains, &options).await?;
+    let chain_findings: Vec<ChainFinding> =
+        run_chain_engine(&run_ctx, &config, &chains, &options).await?;
 
     let run_corpus_metrics =
         load_chain_run_corpus_metrics(&corpus_path, &corpus_meta_path, options.resume)?;
@@ -133,7 +134,8 @@ pub(crate) async fn run_chain_campaign(
         report_ctx.run_valid,
         &chain_findings,
     );
-    let completion_ctx = build_chain_completion_doc_context(&run_ctx, &report_ctx, status, critical);
+    let completion_ctx =
+        build_chain_completion_doc_context(&run_ctx, &report_ctx, status, critical);
     finalize_chain_run(ChainFinalizeContext {
         run_ctx: &run_ctx,
         report_ctx: &report_ctx,

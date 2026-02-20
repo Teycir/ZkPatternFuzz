@@ -2,14 +2,16 @@ use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
 use zk_fuzzer::config::{FuzzConfig, ReadinessReport};
 
-use crate::engagement_artifacts::{best_effort_write_json, write_global_run_signal, write_run_artifacts};
+use crate::engagement_artifacts::{
+    best_effort_write_json, write_global_run_signal, write_run_artifacts,
+};
 use crate::engagement_root_dir;
-use crate::{normalize_build_paths, set_run_log_context_for_campaign};
 use crate::output_lock::acquire_output_dir_lock;
 use crate::preflight_backend::run_backend_preflight;
 use crate::run_outcome_docs::{
     failed_run_doc_with_window, log_run_reason_code, running_run_doc_with_window,
 };
+use crate::{normalize_build_paths, set_run_log_context_for_campaign};
 
 fn readiness_report_to_json(readiness: &ReadinessReport) -> serde_json::Value {
     let warnings = readiness

@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use zk_fuzzer::config::ReportingConfig;
 use zk_fuzzer::chain_fuzzer::metrics::DepthMetricsSummary;
 use zk_fuzzer::chain_fuzzer::ChainFinding;
+use zk_fuzzer::config::ReportingConfig;
 use zk_fuzzer::reporting::FuzzReport;
 
 use crate::engagement_artifacts::write_run_artifacts;
@@ -368,7 +368,9 @@ pub(crate) fn save_chain_reports_and_standard_or_emit_failure(
     reporting: ReportingConfig,
     run_execution_count: u64,
 ) -> anyhow::Result<()> {
-    if let Err(err) = save_chain_reports_bundle(run_ctx.output_dir, run_ctx.config_path, seed, report_ctx) {
+    if let Err(err) =
+        save_chain_reports_bundle(run_ctx.output_dir, run_ctx.config_path, seed, report_ctx)
+    {
         write_failed_mode_run_artifact_with_error(
             run_ctx.output_dir,
             run_ctx.command,

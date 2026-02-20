@@ -647,10 +647,8 @@ fn compute_suite_summaries(outcomes: &[TrialOutcome]) -> Vec<SuiteSummary> {
     for (suite_name, items) in grouped {
         let runs_total = items.len();
         let detections = items.iter().filter(|o| o.detected).count();
-        let high_confidence_detections = items
-            .iter()
-            .filter(|o| o.high_confidence_detected)
-            .count();
+        let high_confidence_detections =
+            items.iter().filter(|o| o.high_confidence_detected).count();
         let completions = items.iter().filter(|o| o.completed).count();
         let attack_stage_reached = items.iter().filter(|o| o.attack_stage_reached).count();
         let mean_scan_findings = if runs_total == 0 {
@@ -1078,10 +1076,7 @@ fn main() -> anyhow::Result<()> {
         precision,
         precision_ci95: wilson_interval(true_positives, precision_denom),
         safe_false_positive_rate,
-        safe_false_positive_rate_ci95: wilson_interval(
-            safe_actionable_fp_count,
-            safe_runs.len(),
-        ),
+        safe_false_positive_rate_ci95: wilson_interval(safe_actionable_fp_count, safe_runs.len()),
         safe_high_confidence_false_positive_rate,
         safe_high_confidence_false_positive_rate_ci95: wilson_interval(
             safe_runs

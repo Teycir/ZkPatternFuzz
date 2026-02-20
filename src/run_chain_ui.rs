@@ -96,7 +96,10 @@ pub(crate) fn print_chain_results(ctx: &ChainResultsUiContext<'_>) {
     println!("\n{}", "DEPTH METRICS".bright_yellow().bold());
     println!("  Total Chain Findings:  {}", ctx.summary.total_findings);
     println!("  Mean L_min (D):        {:.2}", ctx.summary.d_mean);
-    println!("  P(L_min >= 2):         {:.1}%", ctx.summary.p_deep * 100.0);
+    println!(
+        "  P(L_min >= 2):         {:.1}%",
+        ctx.summary.p_deep * 100.0
+    );
     println!();
     println!("{}", "CORPUS / EXPLORATION METRICS".bright_yellow().bold());
     println!(

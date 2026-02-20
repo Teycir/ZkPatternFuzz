@@ -225,9 +225,10 @@ fn parse_correlation_confidence(description: &str) -> Option<String> {
     let description_lc = description.to_ascii_lowercase();
     let start = description_lc.find(marker)?;
     let tail = description_lc.get(start + marker.len()..)?.trim_start();
-    let token = tail.split_whitespace().next()?.trim_matches(|ch: char| {
-        ch == '(' || ch == ')' || ch == ',' || ch == ';' || ch == '.'
-    });
+    let token = tail
+        .split_whitespace()
+        .next()?
+        .trim_matches(|ch: char| ch == '(' || ch == ')' || ch == ',' || ch == ';' || ch == '.');
     if token.is_empty() {
         return None;
     }
@@ -1185,7 +1186,10 @@ fn collect_template_outcome_reasons(
                 .get("stage")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            let report_path = artifacts_root.join(run_root).join(&suffix).join("report.json");
+            let report_path = artifacts_root
+                .join(run_root)
+                .join(&suffix)
+                .join("report.json");
 
             TemplateOutcomeReason {
                 template_file: template.file_name.clone(),
@@ -1247,7 +1251,11 @@ fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
             reason.reason_code,
             reason.status.as_deref().unwrap_or("unknown"),
             reason.stage.as_deref().unwrap_or("unknown"),
-            if reason.high_confidence_detected { "1" } else { "0" },
+            if reason.high_confidence_detected {
+                "1"
+            } else {
+                "0"
+            },
         );
     }
     println!("REASON_TSV_END");
