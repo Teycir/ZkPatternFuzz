@@ -1,4 +1,6 @@
 use super::*;
+use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 
 fn make_test_case(id: u64) -> TestCase {
     TestCase {
@@ -135,4 +137,68 @@ fn test_per_worker_merge() {
     let entries = state.take_for_merge();
     assert_eq!(entries.len(), 10);
     assert!(!state.needs_merge());
+}
+
+#[test]
+fn test_deadlock_detection_on_read_lock_contention() {
+    let config = OracleStateConfig {
+        max_entries: 16,
+        bloom_filter_bits: 1024,
+        bloom_hash_count: 3,
+        enable_lru: true,
+        memory_limit_bytes: 0,
+        eviction_batch_size: 4,
+    };
+    let map: BoundedStateMap<Vec<u8>, u64> = BoundedStateMap::new(config);
+    let key = 7u64.to_le_bytes().to_vec();
+    map.insert(key.clone(), 7, 8);
+
+    let _write_guard = map.storage.write().expect("acquire write lock");
+    let start = Instant::now();
+    let value = map.get(&key);
+    let elapsed = start.elapsed();
+
+    assert!(value.is_none(), "read should skip after deadlock suspicion");
+    assert!(
+        elapsed >= Duration::from_millis(40),
+        "contention window too short to exercise detection: {:?}",
+        elapsed
+    );
+    assert!(
+        map.stats.deadlock_suspicions.load(Ordering::Relaxed) >= 1,
+        "expected deadlock suspicion counter to increment"
+    );
+    assert!(
+        map.stats.lock_wait_warnings.load(Ordering::Relaxed) >= 1,
+        "expected lock wait warning counter to increment"
+    );
+}
+
+#[test]
+fn test_deadlock_detection_on_write_lock_contention() {
+    let config = OracleStateConfig {
+        max_entries: 16,
+        bloom_filter_bits: 1024,
+        bloom_hash_count: 3,
+        enable_lru: true,
+        memory_limit_bytes: 0,
+        eviction_batch_size: 4,
+    };
+    let map: BoundedStateMap<Vec<u8>, u64> = BoundedStateMap::new(config);
+
+    let _read_guard = map.storage.read().expect("acquire read lock");
+    let start = Instant::now();
+    let inserted = map.insert(9u64.to_le_bytes().to_vec(), 9, 8);
+    let elapsed = start.elapsed();
+
+    assert!(!inserted, "write should skip after deadlock suspicion");
+    assert!(
+        elapsed >= Duration::from_millis(40),
+        "contention window too short to exercise detection: {:?}",
+        elapsed
+    );
+    assert!(
+        map.stats.deadlock_suspicions.load(Ordering::Relaxed) >= 1,
+        "expected deadlock suspicion counter to increment"
+    );
 }

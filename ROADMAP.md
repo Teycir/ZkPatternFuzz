@@ -624,8 +624,8 @@ gh run watch
 - [x] Complete AI implementation in `src/ai/invariant_generator.rs`
 
 ### P3 - Concurrency Hardening
-- [ ] Add deadlock detection for high-concurrency paths
-- [ ] Add integration tests for concurrent code paths
+- [x] Add deadlock detection for high-concurrency paths
+- [x] Add integration tests for concurrent code paths
 
 ---
 

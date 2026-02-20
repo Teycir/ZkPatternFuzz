@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use zk_core::{FieldElement, TestCase};
 use zk_fuzzer::fuzzer::oracle_state::{
@@ -340,6 +340,53 @@ fn test_oracle_state_manager_concurrent() {
 
     // All unique IDs, so no collisions expected
     assert_eq!(stats.collisions, 0);
+}
+
+#[test]
+fn test_oracle_state_manager_concurrent_completes_without_deadlock() {
+    let config = OracleStateConfig {
+        max_entries: 1_000_000,
+        bloom_filter_bits: 10_000_000,
+        bloom_hash_count: 7,
+        enable_lru: true,
+        memory_limit_bytes: 0,
+        eviction_batch_size: 1000,
+    };
+
+    let manager = Arc::new(OracleStateManager::new(config));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let manager_for_run = Arc::clone(&manager);
+
+    thread::spawn(move || {
+        let mut handles = vec![];
+        for worker_id in 0..NUM_WORKERS {
+            let m = Arc::clone(&manager_for_run);
+            handles.push(thread::spawn(move || {
+                for i in 0..1500 {
+                    let id = (worker_id as u64) * 100_000 + (i as u64);
+                    m.record_output(hash_from_id(id), make_test_case(id));
+                }
+            }));
+        }
+
+        for handle in handles {
+            if handle.join().is_err() {
+                let _ = tx.send(None);
+                return;
+            }
+        }
+        let _ = tx.send(Some(manager_for_run.stats()));
+    });
+
+    let maybe_stats = rx.recv_timeout(Duration::from_secs(20)).expect(
+        "concurrency run exceeded timeout (possible deadlock in oracle state high-contention path)",
+    );
+    let stats = maybe_stats.expect("worker thread panicked");
+
+    assert_eq!(
+        stats.deadlock_suspicions, 0,
+        "unexpected deadlock suspicions under healthy concurrent workload"
+    );
 }
 
 #[test]

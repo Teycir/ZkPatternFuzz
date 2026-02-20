@@ -37,7 +37,8 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::RwLock;
+use std::sync::{RwLock, TryLockError};
+use std::time::{Duration, Instant};
 
 use zk_core::{FieldElement, TestCase};
 
@@ -232,6 +233,8 @@ pub struct StateMapStats {
     pub cache_misses: AtomicU64,
     pub insertions: AtomicU64,
     pub evictions: AtomicU64,
+    pub lock_wait_warnings: AtomicU64,
+    pub deadlock_suspicions: AtomicU64,
 }
 
 impl StateMapStats {
@@ -261,6 +264,18 @@ where
     K: Eq + Hash + Clone + AsRef<[u8]>,
     V: Clone,
 {
+    #[cfg(test)]
+    const LOCK_WAIT_WARNING_THRESHOLD: Duration = Duration::from_millis(10);
+    #[cfg(not(test))]
+    const LOCK_WAIT_WARNING_THRESHOLD: Duration = Duration::from_millis(250);
+
+    #[cfg(test)]
+    const LOCK_WAIT_DEADLOCK_THRESHOLD: Duration = Duration::from_millis(50);
+    #[cfg(not(test))]
+    const LOCK_WAIT_DEADLOCK_THRESHOLD: Duration = Duration::from_secs(2);
+
+    const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(1);
+
     /// Create a new bounded state map
     pub fn new(config: OracleStateConfig) -> Self {
         Self {
@@ -286,6 +301,102 @@ where
         result
     }
 
+    fn acquire_read_storage(
+        &self,
+        operation: &'static str,
+    ) -> Option<std::sync::RwLockReadGuard<'_, HashMap<K, LruEntry<V>>>> {
+        let start = Instant::now();
+        let mut warned = false;
+        loop {
+            match self.storage.try_read() {
+                Ok(guard) => return Some(guard),
+                Err(TryLockError::Poisoned(err)) => {
+                    tracing::warn!(
+                        "Oracle state storage read lock poisoned in {}: {}",
+                        operation,
+                        err
+                    );
+                    return Some(err.into_inner());
+                }
+                Err(TryLockError::WouldBlock) => {
+                    let waited = start.elapsed();
+                    if !warned && waited >= Self::LOCK_WAIT_WARNING_THRESHOLD {
+                        warned = true;
+                        self.stats
+                            .lock_wait_warnings
+                            .fetch_add(1, Ordering::Relaxed);
+                        tracing::warn!(
+                            "Oracle state read lock contention in {} after {:?}",
+                            operation,
+                            waited
+                        );
+                    }
+                    if waited >= Self::LOCK_WAIT_DEADLOCK_THRESHOLD {
+                        self.stats
+                            .deadlock_suspicions
+                            .fetch_add(1, Ordering::Relaxed);
+                        tracing::error!(
+                            "Oracle state read lock deadlock suspicion in {} after {:?}; \
+                             skipping operation to keep workers live",
+                            operation,
+                            waited
+                        );
+                        return None;
+                    }
+                    std::thread::sleep(Self::LOCK_RETRY_INTERVAL);
+                }
+            }
+        }
+    }
+
+    fn acquire_write_storage(
+        &self,
+        operation: &'static str,
+    ) -> Option<std::sync::RwLockWriteGuard<'_, HashMap<K, LruEntry<V>>>> {
+        let start = Instant::now();
+        let mut warned = false;
+        loop {
+            match self.storage.try_write() {
+                Ok(guard) => return Some(guard),
+                Err(TryLockError::Poisoned(err)) => {
+                    tracing::warn!(
+                        "Oracle state storage write lock poisoned in {}: {}",
+                        operation,
+                        err
+                    );
+                    return Some(err.into_inner());
+                }
+                Err(TryLockError::WouldBlock) => {
+                    let waited = start.elapsed();
+                    if !warned && waited >= Self::LOCK_WAIT_WARNING_THRESHOLD {
+                        warned = true;
+                        self.stats
+                            .lock_wait_warnings
+                            .fetch_add(1, Ordering::Relaxed);
+                        tracing::warn!(
+                            "Oracle state write lock contention in {} after {:?}",
+                            operation,
+                            waited
+                        );
+                    }
+                    if waited >= Self::LOCK_WAIT_DEADLOCK_THRESHOLD {
+                        self.stats
+                            .deadlock_suspicions
+                            .fetch_add(1, Ordering::Relaxed);
+                        tracing::error!(
+                            "Oracle state write lock deadlock suspicion in {} after {:?}; \
+                             skipping operation to keep workers live",
+                            operation,
+                            waited
+                        );
+                        return None;
+                    }
+                    std::thread::sleep(Self::LOCK_RETRY_INTERVAL);
+                }
+            }
+        }
+    }
+
     /// Get value for key
     pub fn get(&self, key: &K) -> Option<V> {
         // Fast path: bloom filter says definitely not present
@@ -294,13 +405,7 @@ where
         }
 
         // Slow path: check actual storage
-        let storage = match self.storage.read() {
-            Ok(storage) => storage,
-            Err(err) => {
-                tracing::warn!("Oracle state storage lock poisoned in get(): {}", err);
-                return None;
-            }
-        };
+        let storage = self.acquire_read_storage("get")?;
         if let Some(entry) = storage.get(key) {
             self.stats.cache_hits.fetch_add(1, Ordering::Relaxed);
             // Note: We can't update last_access here without write lock
@@ -336,12 +441,8 @@ where
         let timestamp = self.timestamp.fetch_add(1, Ordering::Relaxed);
         let entry = LruEntry::new(value, timestamp);
 
-        let mut storage = match self.storage.write() {
-            Ok(s) => s,
-            Err(err) => {
-                tracing::warn!("oracle state storage lock poisoned; recovering: {}", err);
-                err.into_inner()
-            }
+        let Some(mut storage) = self.acquire_write_storage("insert") else {
+            return false;
         };
 
         let is_new = !storage.contains_key(&key);
@@ -359,15 +460,8 @@ where
 
     /// Evict oldest entries
     fn evict_oldest(&self) {
-        let mut storage = match self.storage.write() {
-            Ok(s) => s,
-            Err(err) => {
-                tracing::warn!(
-                    "oracle state storage lock poisoned during eviction; recovering: {}",
-                    err
-                );
-                err.into_inner()
-            }
+        let Some(mut storage) = self.acquire_write_storage("evict_oldest") else {
+            return;
         };
 
         if storage.len() < self.config.eviction_batch_size {
@@ -418,7 +512,7 @@ where
 
     /// Clear all entries
     pub fn clear(&self) {
-        if let Ok(mut storage) = self.storage.write() {
+        if let Some(mut storage) = self.acquire_write_storage("clear") {
             storage.clear();
         }
         self.bloom.clear();
@@ -497,6 +591,16 @@ impl OracleStateManager {
                 .stats()
                 .evictions
                 .load(Ordering::Relaxed),
+            lock_wait_warnings: self
+                .output_history
+                .stats()
+                .lock_wait_warnings
+                .load(Ordering::Relaxed),
+            deadlock_suspicions: self
+                .output_history
+                .stats()
+                .deadlock_suspicions
+                .load(Ordering::Relaxed),
         }
     }
 
@@ -524,6 +628,10 @@ pub struct OracleStateStats {
     pub bloom_effectiveness: f64,
     /// Number of evictions performed
     pub evictions: u64,
+    /// Number of lock wait warning events in shared state map.
+    pub lock_wait_warnings: u64,
+    /// Number of suspected deadlock incidents (operation skipped after timeout).
+    pub deadlock_suspicions: u64,
 }
 
 /// Estimate memory size of a test case
