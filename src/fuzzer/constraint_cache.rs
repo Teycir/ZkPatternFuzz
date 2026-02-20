@@ -37,6 +37,16 @@ struct CacheEntry {
     access_count: u64,
 }
 
+/// Errors that can occur when inserting a batch into the cache.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConstraintCacheInsertError {
+    /// Batch exceeds total cache capacity and cannot be inserted safely.
+    BatchExceedsCapacity {
+        batch_size: usize,
+        max_size: usize,
+    },
+}
+
 /// Thread-safe constraint evaluation cache
 #[derive(Debug)]
 pub struct ConstraintEvalCache {
@@ -86,15 +96,14 @@ impl ConstraintEvalCache {
         let input_hash = Self::hash_inputs(inputs);
         let key = (constraint_id, input_hash);
 
-        let cache = self.cache.read();
-        if let Some(entry) = cache.get(&key) {
-            // Check TTL
+        let mut cache = self.cache.write();
+        if let Some(entry) = cache.get_mut(&key) {
             if self.ttl_seconds > 0 && entry.timestamp.elapsed().as_secs() > self.ttl_seconds {
-                drop(cache);
                 self.misses.fetch_add(1, AtomicOrdering::Relaxed);
                 return None;
             }
 
+            entry.access_count = entry.access_count.saturating_add(1);
             self.hits.fetch_add(1, AtomicOrdering::Relaxed);
             Some(entry.result.clone())
         } else {
@@ -135,7 +144,7 @@ impl ConstraintEvalCache {
         &self,
         queries: &[(usize, Vec<FieldElement>)],
     ) -> Vec<Option<ConstraintEvalResult>> {
-        let cache = self.cache.read();
+        let mut cache = self.cache.write();
 
         queries
             .iter()
@@ -143,29 +152,51 @@ impl ConstraintEvalCache {
                 let input_hash = Self::hash_inputs(inputs);
                 let key = (*constraint_id, input_hash);
 
-                cache.get(&key).and_then(|entry| {
-                    if self.ttl_seconds > 0
-                        && entry.timestamp.elapsed().as_secs() > self.ttl_seconds
-                    {
+                match cache.get_mut(&key) {
+                    Some(entry) => {
+                        if self.ttl_seconds > 0
+                            && entry.timestamp.elapsed().as_secs() > self.ttl_seconds
+                        {
+                            self.misses.fetch_add(1, AtomicOrdering::Relaxed);
+                            None
+                        } else {
+                            entry.access_count = entry.access_count.saturating_add(1);
+                            self.hits.fetch_add(1, AtomicOrdering::Relaxed);
+                            Some(entry.result.clone())
+                        }
+                    }
+                    None => {
                         self.misses.fetch_add(1, AtomicOrdering::Relaxed);
                         None
-                    } else {
-                        self.hits.fetch_add(1, AtomicOrdering::Relaxed);
-                        Some(entry.result.clone())
                     }
-                })
+                }
             })
             .collect()
     }
 
     /// Batch insert multiple results
-    pub fn insert_batch(&self, entries: Vec<(usize, Vec<FieldElement>, ConstraintEvalResult)>) {
+    pub fn insert_batch(
+        &self,
+        entries: Vec<(usize, Vec<FieldElement>, ConstraintEvalResult)>,
+    ) -> Result<(), ConstraintCacheInsertError> {
         let mut cache = self.cache.write();
 
         // Pre-evict if necessary
         let needed_space = entries.len();
+        if needed_space > self.max_size {
+            return Err(ConstraintCacheInsertError::BatchExceedsCapacity {
+                batch_size: needed_space,
+                max_size: self.max_size,
+            });
+        }
+
         while cache.len() + needed_space > self.max_size {
-            self.evict_lru(&mut cache);
+            if self.evict_lru(&mut cache) == 0 {
+                return Err(ConstraintCacheInsertError::BatchExceedsCapacity {
+                    batch_size: needed_space,
+                    max_size: self.max_size,
+                });
+            }
         }
 
         for (constraint_id, inputs, result) in entries {
@@ -181,25 +212,36 @@ impl ConstraintEvalCache {
                 },
             );
         }
+
+        Ok(())
     }
 
-    /// Evict least recently used entries
-    fn evict_lru(&self, cache: &mut HashMap<(usize, u64), CacheEntry>) {
-        // Find entries to evict (oldest 10%)
-        let evict_count = self.max_size / 10;
+    /// Evict low-priority entries.
+    ///
+    /// We evict lowest access-count entries first and break ties by oldest timestamp.
+    fn evict_lru(&self, cache: &mut HashMap<(usize, u64), CacheEntry>) -> usize {
+        if cache.is_empty() {
+            return 0;
+        }
+
+        // Evict at least one entry to guarantee forward progress.
+        let evict_count = (self.max_size / 10).max(1).min(cache.len());
 
         let mut entries: Vec<_> = cache
             .iter()
             .map(|(k, v)| (*k, v.timestamp, v.access_count))
             .collect();
 
-        // Sort by timestamp (oldest first) and access count
-        entries.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.2.cmp(&b.2)));
+        entries.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.1.cmp(&b.1)));
 
+        let mut evicted = 0usize;
         for (key, _, _) in entries.into_iter().take(evict_count) {
             cache.remove(&key);
             self.evictions.fetch_add(1, AtomicOrdering::Relaxed);
+            evicted += 1;
         }
+
+        evicted
     }
 
     /// Hash input values for cache key

@@ -219,12 +219,12 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add backend-specific readiness profiles in `targets/fuzzer_registry.prod.yaml` for Noir, Halo2, and Cairo circuit families
 - [x] Add Noir preflight hardening for package-resolution and ABI artifact-path variants
 - [x] Add selector-mismatch synthetic outcome classification in `zk0d_batch` to eliminate validation-skip `run_outcome_missing` gaps
-- [ ] Add Noir end-to-end prove/verify smoke and fuzz parity tests for external `Nargo.toml` projects
+- [x] Add Noir end-to-end prove/verify smoke and fuzz parity tests for external `Nargo.toml` projects
 - [x] Add Cairo breadth-target suite to `zk0d_matrix` default validation set (not optional backend-heavy-only checks) (`targets/zk0d_matrix_breadth.yaml`)
-- [ ] Add Cairo full-capacity regression suite with stable coverage/failure semantics on external and local targets
+- [x] Add Cairo full-capacity regression suite with stable coverage/failure semantics on external and local targets
 - [x] Add Cairo JSON/metadata input reconciliation fallback (wire-label/index compatibility) (`src/executor/mod.rs`)
 - [x] Add Halo2 JSON-spec input reconciliation normalizer (wire-label/index compatibility) (`src/executor/mod.rs`)
-- [ ] Add Halo2 scaffold execution stability checks under nightly toolchain with deterministic fixture inputs
+- [x] Add Halo2 scaffold execution stability checks under nightly toolchain with deterministic fixture inputs
 - [ ] Reduce `run_outcome_missing` on non-Circom targets to <=5% by enforcing explicit reason-code closure in matrix summaries
 - [x] Add per-backend release gates in `scripts/release_candidate_gate.sh` (Noir/Halo2/Cairo must each satisfy minimum completion and setup-success thresholds)
 - [x] Publish backend readiness dashboard artifact (`artifacts/backend_readiness/latest_report.json`) on every benchmark/release run
@@ -239,16 +239,16 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Cross-backend lane: run 50+ target collision stress tests and enforce aggregate non-Circom readiness thresholds in release gates
 
 ### Test Coverage Gaps
-- [ ] Cairo full integration tests
-- [ ] Halo2 real-circuit validation suite
-- [ ] Noir constraint coverage edge cases
+- [x] Cairo full integration tests
+- [x] Halo2 real-circuit validation suite
+- [x] Noir constraint coverage edge cases
 - [ ] Multi-target collision stress tests (50+ targets)
 
 ### Documentation
-- [ ] Noir backend troubleshooting guide
-- [ ] Cairo integration tutorial
-- [ ] Halo2 migration guide from mock mode
-- [ ] Attack DSL specification
+- [x] Noir backend troubleshooting guide
+- [x] Cairo integration tutorial
+- [x] Halo2 migration guide from mock mode
+- [x] Attack DSL specification
 
 ### Formal Verification Bridge
 - [x] Export fuzzing findings to formal tools
@@ -595,6 +595,47 @@ MAX_SAFE_HIGH_CONF_FPR=0.05 ./scripts/release_candidate_gate.sh --stable-ref <st
 gh workflow run "Release Validation" --ref main -f required_passes=2 -f stable_ref=<tag>
 gh run watch
 ```
+
+---
+
+## 🐛 Capacity & Fitness Bug Fixes (2026-02-20)
+
+### Critical (P0)
+- [x] **Bug 1**: Fix `insert_batch` infinite loop in `src/fuzzer/constraint_cache.rs`
+  - Issue: When `needed_space > max_size`, loop never terminates
+  - Fix: Add guard `if needed_space > max_size { return Err(...) }` before loop
+
+### High Priority (P1)
+- [x] **Bug 2**: Fix LRU eviction in `src/fuzzer/constraint_cache.rs`
+  - Issue: `access_count` never incremented in `get()`, eviction is FIFO not LRU
+  - Fix: Add `entry.access_count += 1` in `get()` method
+
+- [x] **Bug 4**: Add size cap to `unsat_cache` in `crates/zk-symbolic/src/symbolic_v2.rs`
+  - Issue: Unbounded `HashSet<u64>` causes memory exhaustion
+  - Fix: Add `max_unsat_cache_size` and evict oldest entries when exceeded
+
+- [x] **Bug 5**: Fix `coe_energy` i32 overflow in `crates/zk-fuzzer-core/src/power_schedule.rs`
+  - Issue: Silent narrowing overflow for `selection_count > 2^31`
+  - Fix: Use `.saturating_sub(CUT_OFF).min(i32::MAX as u32) as i32` or switch to f64
+
+- [x] **Bug 6**: Enforce `max_size` in `corpus.load()` in `crates/zk-fuzzer-core/src/corpus/mod.rs`
+  - Issue: Resume bypasses capacity limit
+  - Fix: Add size check and truncate/evict when `entries.len() > max_size`
+
+### Medium Priority (P2)
+- [x] **Bug 3**: Count cache misses for absent keys in `src/fuzzer/constraint_cache.rs`
+  - Issue: Only TTL-expired hits counted as misses, genuine misses untracked
+  - Fix: Add `else { self.misses += 1 }` branch for absent keys
+
+- [x] **Bug 7**: Fix energy decay truncation in `crates/zk-fuzzer-core/src/corpus/mod.rs`
+  - Issue: `usize` cast truncates to zero prematurely (e.g., `1 * 0.9 = 0.9 → 0`)
+  - Fix: Use `((entry.energy as f64) * factor).round() as usize`
+  - Also fix in `EnergyScheduler::calculate_energy` (coverage.rs:362)
+
+### Low Priority (P3)
+- [x] **Bug 8**: Handle empty-input mutation in `crates/zk-fuzzer-core/src/engine.rs`
+  - Issue: Silent no-op when `inputs.is_empty()`, returns unmutated clone
+  - Fix: Add early return or generate new random input when empty
 
 ---
 

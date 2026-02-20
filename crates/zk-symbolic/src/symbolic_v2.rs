@@ -18,7 +18,7 @@ use crate::executor::{
 };
 use parking_lot::RwLock;
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -291,11 +291,15 @@ pub struct ConstraintCache {
     solutions: RwLock<HashMap<u64, CachedSolution>>,
     /// Cache of unsatisfiable constraint patterns
     unsat_cache: RwLock<HashSet<u64>>,
+    /// Insertion order for unsat cache eviction
+    unsat_order: RwLock<VecDeque<u64>>,
     /// Statistics
     hits: AtomicU64,
     misses: AtomicU64,
     /// Maximum cache size
     max_size: usize,
+    /// Maximum unsat cache size
+    max_unsat_cache_size: usize,
     /// Time-to-live for cached entries (seconds)
     ttl_seconds: u64,
 }
@@ -311,15 +315,23 @@ impl ConstraintCache {
         Self {
             solutions: RwLock::new(HashMap::new()),
             unsat_cache: RwLock::new(HashSet::new()),
+            unsat_order: RwLock::new(VecDeque::new()),
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
             max_size: 100_000,
+            max_unsat_cache_size: 100_000,
             ttl_seconds: 3600,
         }
     }
 
     pub fn with_max_size(mut self, size: usize) -> Self {
         self.max_size = size;
+        self.max_unsat_cache_size = size;
+        self
+    }
+
+    pub fn with_max_unsat_cache_size(mut self, size: usize) -> Self {
+        self.max_unsat_cache_size = size;
         self
     }
 
@@ -358,7 +370,18 @@ impl ConstraintCache {
 
         match &result {
             SolverResult::Unsat => {
-                self.unsat_cache.write().insert(hash);
+                let mut unsat_cache = self.unsat_cache.write();
+                if unsat_cache.insert(hash) {
+                    let mut unsat_order = self.unsat_order.write();
+                    unsat_order.push_back(hash);
+                    while unsat_cache.len() > self.max_unsat_cache_size {
+                        if let Some(oldest) = unsat_order.pop_front() {
+                            unsat_cache.remove(&oldest);
+                        } else {
+                            break;
+                        }
+                    }
+                }
             }
             _ => {
                 let mut solutions = self.solutions.write();
@@ -453,6 +476,7 @@ impl ConstraintCache {
     pub fn clear(&self) {
         self.solutions.write().clear();
         self.unsat_cache.write().clear();
+        self.unsat_order.write().clear();
         self.hits.store(0, AtomicOrdering::Relaxed);
         self.misses.store(0, AtomicOrdering::Relaxed);
     }

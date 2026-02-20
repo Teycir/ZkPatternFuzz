@@ -359,7 +359,7 @@ impl EnergyScheduler {
 
         // Apply decay based on age
         let decay = self.decay_factor.powi(age as i32);
-        (energy as f64 * decay) as usize
+        (energy as f64 * decay).round() as usize
     }
 }
 

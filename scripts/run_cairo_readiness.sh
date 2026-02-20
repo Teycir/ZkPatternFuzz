@@ -18,6 +18,7 @@ Options:
   --timeout <sec>          Timeout per scan in seconds (default: 30)
   --output-dir <path>      Output directory (default: artifacts/backend_readiness/cairo)
   --skip-integration-test  Skip test_cairo_integration
+  --skip-regression-test   Skip test_cairo_full_capacity_regression_suite
   --no-build-if-missing    Do not build zk0d_batch when missing
   -h, --help               Show this help
 EOF
@@ -32,6 +33,7 @@ ITERATIONS=250
 TIMEOUT=30
 OUTPUT_DIR="artifacts/backend_readiness/cairo"
 SKIP_INTEGRATION_TEST=false
+SKIP_REGRESSION_TEST=false
 BUILD_IF_MISSING=true
 
 while [[ $# -gt 0 ]]; do
@@ -45,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --skip-integration-test) SKIP_INTEGRATION_TEST=true; shift ;;
+    --skip-regression-test) SKIP_REGRESSION_TEST=true; shift ;;
     --no-build-if-missing) BUILD_IF_MISSING=false; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -73,6 +76,7 @@ mkdir -p "$OUTPUT_DIR"
 
 STAMP="$(date -u +"%Y%m%d_%H%M%S")"
 INTEGRATION_LOG="$OUTPUT_DIR/integration_${STAMP}.log"
+REGRESSION_LOG="$OUTPUT_DIR/regression_${STAMP}.log"
 MATRIX_LOG="$OUTPUT_DIR/matrix_${STAMP}.log"
 SUMMARY_TSV="$OUTPUT_DIR/summary_${STAMP}.tsv"
 LATEST_JSON="$OUTPUT_DIR/latest_report.json"
@@ -89,6 +93,21 @@ if ! $SKIP_INTEGRATION_TEST; then
     INTEGRATION_STATUS="pass"
   else
     INTEGRATION_STATUS="fail"
+  fi
+fi
+
+REGRESSION_EXIT=0
+REGRESSION_STATUS="skipped"
+if ! $SKIP_REGRESSION_TEST; then
+  set +e
+  ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo_full_capacity_regression_suite -- --exact \
+    >"$REGRESSION_LOG" 2>&1
+  REGRESSION_EXIT=$?
+  set -e
+  if [[ "$REGRESSION_EXIT" -eq 0 ]]; then
+    REGRESSION_STATUS="pass"
+  else
+    REGRESSION_STATUS="fail"
   fi
 fi
 
@@ -203,17 +222,25 @@ cat > "$LATEST_JSON" <<EOF
     "exit_code": $MATRIX_EXIT,
     "reason_counts": {${REASONS_JSON}}
   },
-  "integration_test": {
-    "name": "test_cairo_integration",
-    "status": "$INTEGRATION_STATUS",
-    "exit_code": $INTEGRATION_EXIT,
-    "log": "$INTEGRATION_LOG"
-  }
+  "integration_tests": [
+    {
+      "name": "test_cairo_integration",
+      "status": "$INTEGRATION_STATUS",
+      "exit_code": $INTEGRATION_EXIT,
+      "log": "$INTEGRATION_LOG"
+    },
+    {
+      "name": "test_cairo_full_capacity_regression_suite",
+      "status": "$REGRESSION_STATUS",
+      "exit_code": $REGRESSION_EXIT,
+      "log": "$REGRESSION_LOG"
+    }
+  ]
 }
 EOF
 
 echo "Cairo readiness report: $LATEST_JSON"
-if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 ]]; then
+if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 || "$REGRESSION_EXIT" -ne 0 ]]; then
   exit 1
 fi
 

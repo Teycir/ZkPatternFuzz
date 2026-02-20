@@ -75,6 +75,15 @@ fn test_energy_scheduler() {
 }
 
 #[test]
+fn test_energy_scheduler_rounding_preserves_small_energy() {
+    let scheduler = EnergyScheduler::new()
+        .with_base_energy(1)
+        .with_new_coverage_bonus(0);
+    let energy = scheduler.calculate_energy(false, 1);
+    assert_eq!(energy, 1);
+}
+
+#[test]
 fn test_coverage_snapshot() {
     let tracker = CoverageTracker::new(100);
     tracker.record_execution(&coverage_for(&[0, 1, 2, 3, 4]));

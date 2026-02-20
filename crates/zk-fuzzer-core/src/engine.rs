@@ -119,6 +119,10 @@ impl FuzzingEngineCore {
 
     pub fn generate_test_case(&mut self) -> TestCase {
         if let Some(entry) = self.corpus.get_random(&mut self.rng) {
+            if entry.test_case.inputs.is_empty() {
+                return self.generate_random_test_case();
+            }
+
             let metrics = TestCaseMetrics {
                 selection_count: entry.execution_count,
                 new_coverage_count: if entry.discovered_new_coverage { 1 } else { 0 },
@@ -180,6 +184,12 @@ impl FuzzingEngineCore {
                     }
                 }
                 inputs
+            };
+
+            let mutated_inputs = if mutated_inputs.is_empty() {
+                self.generate_random_test_case().inputs
+            } else {
+                mutated_inputs
             };
 
             TestCase {
@@ -498,3 +508,7 @@ impl FuzzingEngineCoreBuilder {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "engine_tests.rs"]
+mod tests;

@@ -134,6 +134,46 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+### 5e. [NOIR_BACKEND_TROUBLESHOOTING.md](NOIR_BACKEND_TROUBLESHOOTING.md) - **Noir Ops Guide**
+**For:** Diagnosing Noir readiness and integration failures  
+**Contains:**
+- Noir fast health checks
+- common reason-code triage
+- single-target repro command path
+- readiness lane + gate checklist
+
+---
+
+### 5f. [CAIRO_INTEGRATION_TUTORIAL.md](CAIRO_INTEGRATION_TUTORIAL.md) - **Cairo Integration**
+**For:** Wiring Cairo targets into readiness lanes and release gates  
+**Contains:**
+- Cairo prerequisites and first run
+- matrix/alias configuration pattern
+- readiness lane execution and artifacts
+- promotion criteria into aggregate gate
+
+---
+
+### 5g. [HALO2_MIGRATION_FROM_MOCK_MODE.md](HALO2_MIGRATION_FROM_MOCK_MODE.md) - **Halo2 Migration**
+**For:** Moving campaigns from mock mode to real Halo2 execution  
+**Contains:**
+- mock-to-real migration steps
+- JSON spec and Cargo target setup
+- integration test and lane commands
+- common runtime/preflight pitfalls
+
+---
+
+### 5h. [ATTACK_DSL_SPEC.md](ATTACK_DSL_SPEC.md) - **Attack Config Spec**
+**For:** Authoring and validating `attacks` DSL in campaign YAML  
+**Contains:**
+- normative attack schema
+- supported attack type vocabulary
+- schedule linkage semantics
+- validation workflow
+
+---
+
 ## 🤖 AI Integration
 
 ### 5.5. [MISTRAL_AI_INTEGRATION.md](MISTRAL_AI_INTEGRATION.md) - **15 min read**
@@ -254,6 +294,18 @@ docs/
 ├── PLUGIN_SYSTEM_GUIDE.md
 │   └── Dynamic plugin discovery, strict behavior, hardening defaults
 │
+├── NOIR_BACKEND_TROUBLESHOOTING.md
+│   └── Noir readiness triage and reason-code diagnostics
+│
+├── CAIRO_INTEGRATION_TUTORIAL.md
+│   └── Cairo target onboarding into readiness lanes
+│
+├── HALO2_MIGRATION_FROM_MOCK_MODE.md
+│   └── Mock-to-real Halo2 migration workflow
+│
+├── ATTACK_DSL_SPEC.md
+│   └── Campaign attack DSL and validation contract
+│
 └── (See root directory for more)
     ├── README.md
     ├── ARCHITECTURE.md
@@ -279,10 +331,12 @@ docs/
 **YAML Configuration**
 - [tests/campaigns/](../tests/campaigns/) - Real examples
 - `cargo run --bin zk0d_config_migrate -- <config.yaml> --check` - Legacy-shape migration check
+- [ATTACK_DSL_SPEC.md](ATTACK_DSL_SPEC.md) - Attack schema and type vocabulary
 
 **Attack Types**
 - [README.md](../README.md) - Attack type summary
 - [src/oracles/](../src/oracles/) - Implementation details
+- [ATTACK_DSL_SPEC.md](ATTACK_DSL_SPEC.md) - `attacks` DSL reference
 
 **Development**
 - [ARCHITECTURE.md](../ARCHITECTURE.md) - System design
@@ -292,6 +346,8 @@ docs/
 **Troubleshooting**
 - [TROUBLESHOOTING_PLAYBOOK.md](TROUBLESHOOTING_PLAYBOOK.md) - Production troubleshooting flows
 - [TUTORIAL.md](TUTORIAL.md) - Common issues
+- [NOIR_BACKEND_TROUBLESHOOTING.md](NOIR_BACKEND_TROUBLESHOOTING.md) - Noir backend diagnostics
+- [HALO2_MIGRATION_FROM_MOCK_MODE.md](HALO2_MIGRATION_FROM_MOCK_MODE.md) - Halo2 migration pitfalls
 
 ---
 

@@ -22,6 +22,29 @@ fn test_constraint_cache() {
 }
 
 #[test]
+fn test_constraint_cache_unsat_cache_respects_size_cap() {
+    let cache = ConstraintCache::new()
+        .with_max_size(100)
+        .with_max_unsat_cache_size(2);
+
+    let mut pc_a = PathCondition::new();
+    pc_a.add_constraint(SymbolicConstraint::Boolean(SymbolicValue::symbol("a")));
+    cache.insert(&pc_a, SolverResult::Unsat);
+
+    let mut pc_b = PathCondition::new();
+    pc_b.add_constraint(SymbolicConstraint::Boolean(SymbolicValue::symbol("b")));
+    cache.insert(&pc_b, SolverResult::Unsat);
+
+    let mut pc_c = PathCondition::new();
+    pc_c.add_constraint(SymbolicConstraint::Boolean(SymbolicValue::symbol("c")));
+    cache.insert(&pc_c, SolverResult::Unsat);
+
+    assert!(cache.get(&pc_a).is_none());
+    assert!(matches!(cache.get(&pc_b), Some(SolverResult::Unsat)));
+    assert!(matches!(cache.get(&pc_c), Some(SolverResult::Unsat)));
+}
+
+#[test]
 fn test_path_merger() {
     let mut merger = PathMerger::new(MergeStrategy::ProgramPoint).with_threshold(2);
 

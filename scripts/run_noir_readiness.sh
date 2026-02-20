@@ -19,6 +19,9 @@ Options:
   --output-dir <path>                 Output directory (default: artifacts/backend_readiness/noir)
   --skip-integration-test             Skip test_noir_integration
   --skip-constraint-coverage-test     Skip test_noir_constraint_coverage
+  --skip-constraint-edge-cases-test   Skip test_noir_constraint_coverage_edge_cases
+  --skip-external-smoke-test          Skip test_noir_external_nargo_prove_verify_smoke
+  --skip-external-parity-test         Skip test_noir_external_nargo_fuzz_parity
   --no-build-if-missing               Do not build zk0d_batch when missing
   -h, --help                          Show this help
 EOF
@@ -34,6 +37,9 @@ TIMEOUT=30
 OUTPUT_DIR="artifacts/backend_readiness/noir"
 SKIP_INTEGRATION_TEST=false
 SKIP_CONSTRAINT_COVERAGE_TEST=false
+SKIP_CONSTRAINT_EDGE_CASES_TEST=false
+SKIP_EXTERNAL_SMOKE_TEST=false
+SKIP_EXTERNAL_PARITY_TEST=false
 BUILD_IF_MISSING=true
 
 while [[ $# -gt 0 ]]; do
@@ -48,6 +54,9 @@ while [[ $# -gt 0 ]]; do
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --skip-integration-test) SKIP_INTEGRATION_TEST=true; shift ;;
     --skip-constraint-coverage-test) SKIP_CONSTRAINT_COVERAGE_TEST=true; shift ;;
+    --skip-constraint-edge-cases-test) SKIP_CONSTRAINT_EDGE_CASES_TEST=true; shift ;;
+    --skip-external-smoke-test) SKIP_EXTERNAL_SMOKE_TEST=true; shift ;;
+    --skip-external-parity-test) SKIP_EXTERNAL_PARITY_TEST=true; shift ;;
     --no-build-if-missing) BUILD_IF_MISSING=false; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -77,6 +86,9 @@ mkdir -p "$OUTPUT_DIR"
 STAMP="$(date -u +"%Y%m%d_%H%M%S")"
 INTEGRATION_LOG="$OUTPUT_DIR/integration_${STAMP}.log"
 CONSTRAINT_COVERAGE_LOG="$OUTPUT_DIR/constraint_coverage_${STAMP}.log"
+CONSTRAINT_EDGE_CASES_LOG="$OUTPUT_DIR/constraint_edge_cases_${STAMP}.log"
+EXTERNAL_SMOKE_LOG="$OUTPUT_DIR/external_smoke_${STAMP}.log"
+EXTERNAL_PARITY_LOG="$OUTPUT_DIR/external_parity_${STAMP}.log"
 MATRIX_LOG="$OUTPUT_DIR/matrix_${STAMP}.log"
 SUMMARY_TSV="$OUTPUT_DIR/summary_${STAMP}.tsv"
 LATEST_JSON="$OUTPUT_DIR/latest_report.json"
@@ -108,6 +120,51 @@ if ! $SKIP_CONSTRAINT_COVERAGE_TEST; then
     CONSTRAINT_COVERAGE_STATUS="pass"
   else
     CONSTRAINT_COVERAGE_STATUS="fail"
+  fi
+fi
+
+CONSTRAINT_EDGE_CASES_EXIT=0
+CONSTRAINT_EDGE_CASES_STATUS="skipped"
+if ! $SKIP_CONSTRAINT_EDGE_CASES_TEST; then
+  set +e
+  ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_constraint_coverage_edge_cases -- --exact \
+    >"$CONSTRAINT_EDGE_CASES_LOG" 2>&1
+  CONSTRAINT_EDGE_CASES_EXIT=$?
+  set -e
+  if [[ "$CONSTRAINT_EDGE_CASES_EXIT" -eq 0 ]]; then
+    CONSTRAINT_EDGE_CASES_STATUS="pass"
+  else
+    CONSTRAINT_EDGE_CASES_STATUS="fail"
+  fi
+fi
+
+EXTERNAL_SMOKE_EXIT=0
+EXTERNAL_SMOKE_STATUS="skipped"
+if ! $SKIP_EXTERNAL_SMOKE_TEST; then
+  set +e
+  ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_external_nargo_prove_verify_smoke -- --exact \
+    >"$EXTERNAL_SMOKE_LOG" 2>&1
+  EXTERNAL_SMOKE_EXIT=$?
+  set -e
+  if [[ "$EXTERNAL_SMOKE_EXIT" -eq 0 ]]; then
+    EXTERNAL_SMOKE_STATUS="pass"
+  else
+    EXTERNAL_SMOKE_STATUS="fail"
+  fi
+fi
+
+EXTERNAL_PARITY_EXIT=0
+EXTERNAL_PARITY_STATUS="skipped"
+if ! $SKIP_EXTERNAL_PARITY_TEST; then
+  set +e
+  ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_external_nargo_fuzz_parity -- --exact \
+    >"$EXTERNAL_PARITY_LOG" 2>&1
+  EXTERNAL_PARITY_EXIT=$?
+  set -e
+  if [[ "$EXTERNAL_PARITY_EXIT" -eq 0 ]]; then
+    EXTERNAL_PARITY_STATUS="pass"
+  else
+    EXTERNAL_PARITY_STATUS="fail"
   fi
 fi
 
@@ -234,13 +291,31 @@ cat > "$LATEST_JSON" <<EOF
       "status": "$CONSTRAINT_COVERAGE_STATUS",
       "exit_code": $CONSTRAINT_COVERAGE_EXIT,
       "log": "$CONSTRAINT_COVERAGE_LOG"
+    },
+    {
+      "name": "test_noir_constraint_coverage_edge_cases",
+      "status": "$CONSTRAINT_EDGE_CASES_STATUS",
+      "exit_code": $CONSTRAINT_EDGE_CASES_EXIT,
+      "log": "$CONSTRAINT_EDGE_CASES_LOG"
+    },
+    {
+      "name": "test_noir_external_nargo_prove_verify_smoke",
+      "status": "$EXTERNAL_SMOKE_STATUS",
+      "exit_code": $EXTERNAL_SMOKE_EXIT,
+      "log": "$EXTERNAL_SMOKE_LOG"
+    },
+    {
+      "name": "test_noir_external_nargo_fuzz_parity",
+      "status": "$EXTERNAL_PARITY_STATUS",
+      "exit_code": $EXTERNAL_PARITY_EXIT,
+      "log": "$EXTERNAL_PARITY_LOG"
     }
   ]
 }
 EOF
 
 echo "Noir readiness report: $LATEST_JSON"
-if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 || "$CONSTRAINT_COVERAGE_EXIT" -ne 0 ]]; then
+if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 || "$CONSTRAINT_COVERAGE_EXIT" -ne 0 || "$CONSTRAINT_EDGE_CASES_EXIT" -ne 0 || "$EXTERNAL_SMOKE_EXIT" -ne 0 || "$EXTERNAL_PARITY_EXIT" -ne 0 ]]; then
   exit 1
 fi
 

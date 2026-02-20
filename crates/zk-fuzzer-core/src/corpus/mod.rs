@@ -224,7 +224,7 @@ impl Corpus {
     pub fn decay_energy(&self, factor: f64) {
         let mut entries = self.entries.write();
         for entry in entries.iter_mut() {
-            entry.energy = ((entry.energy as f64) * factor) as usize;
+            entry.energy = ((entry.energy as f64) * factor).round() as usize;
         }
     }
 
@@ -247,16 +247,42 @@ impl Corpus {
             if corpus_file.exists() {
                 let data = std::fs::read_to_string(&corpus_file)?;
                 let serializable: SerializableCorpus = serde_json::from_str(&data)?;
+                let mut loaded_entries = serializable.to_entries();
+                let original_loaded_count = loaded_entries.len();
+
+                if loaded_entries.len() > self.max_size {
+                    tracing::warn!(
+                        "Loaded corpus has {} entries, truncating to max_size={}",
+                        loaded_entries.len(),
+                        self.max_size
+                    );
+                    loaded_entries.truncate(self.max_size);
+                }
 
                 let mut entries = self.entries.write();
                 let mut index = self.coverage_index.write();
 
-                for (i, entry) in serializable.to_entries().into_iter().enumerate() {
+                entries.clear();
+                index.clear();
+
+                for entry in loaded_entries {
+                    if index.contains_key(&entry.coverage_hash) {
+                        continue;
+                    }
+                    if entries.len() >= self.max_size {
+                        break;
+                    }
+                    let i = entries.len();
                     index.insert(entry.coverage_hash, i);
                     entries.push(entry);
                 }
 
-                tracing::info!("Loaded {} corpus entries from {:?}", entries.len(), path);
+                tracing::info!(
+                    "Loaded {} corpus entries from {:?} (source entries: {})",
+                    entries.len(),
+                    path,
+                    original_loaded_count
+                );
             }
         }
         Ok(())

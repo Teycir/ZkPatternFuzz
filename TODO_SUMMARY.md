@@ -43,19 +43,19 @@
 
 ## Test Coverage Gaps
 
-- [ ] Cairo full integration tests
-- [ ] Halo2 real-circuit validation suite
-- [ ] Noir constraint coverage edge cases
+- [x] Cairo full integration tests
+- [x] Halo2 real-circuit validation suite
+- [x] Noir constraint coverage edge cases
 - [ ] Multi-target collision stress tests (50+ targets)
 
 ---
 
 ## Documentation
 
-- [ ] Noir backend troubleshooting guide
-- [ ] Cairo integration tutorial
-- [ ] Halo2 migration guide from mock mode
-- [ ] Attack DSL specification
+- [x] Noir backend troubleshooting guide
+- [x] Cairo integration tutorial
+- [x] Halo2 migration guide from mock mode
+- [x] Attack DSL specification
 
 ---
 

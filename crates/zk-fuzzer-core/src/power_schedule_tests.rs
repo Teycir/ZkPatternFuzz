@@ -59,6 +59,17 @@ fn test_power_schedule_coe() {
 }
 
 #[test]
+fn test_power_schedule_coe_handles_extreme_selection_count() {
+    let scheduler = PowerScheduler::new(PowerSchedule::Coe);
+    let extreme = TestCaseMetrics {
+        selection_count: u64::MAX,
+        ..Default::default()
+    };
+
+    assert_eq!(scheduler.calculate_energy(&extreme), 1);
+}
+
+#[test]
 fn test_energy_clamping() {
     let scheduler = PowerScheduler::new(PowerSchedule::Explore);
 

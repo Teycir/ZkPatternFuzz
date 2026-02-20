@@ -2,6 +2,43 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T19:30:48Z
+- Added Cairo full-capacity deterministic regression suite:
+  - `tests/backend_integration_tests.rs::test_cairo_full_capacity_regression_suite`
+  - validates target/executor parity and repeated-run output/coverage-hash stability on local Cairo target, plus optional external target (`CAIRO_EXTERNAL_PROGRAM`).
+- Extended Cairo readiness lane enforcement:
+  - `scripts/run_cairo_readiness.sh` now runs `test_cairo_full_capacity_regression_suite` in addition to `test_cairo_integration`.
+  - Cairo readiness report now emits `integration_tests` list including both checks.
+- Outcome:
+  - Roadmap item `Add Cairo full-capacity regression suite with stable coverage/failure semantics on external and local targets` is now implemented.
+  - Test coverage gap `Cairo full integration tests` is now implemented.
+
+## Update (UTC): 2026-02-20T19:28:53Z
+- Added Halo2 deterministic scaffold stability validation under nightly:
+  - `tests/backend_integration_tests.rs::test_halo2_scaffold_execution_stability`
+  - validates repeat execution determinism (`outputs`, `coverage_hash`) across fixed fixtures.
+- Extended Halo2 readiness lane enforcement:
+  - `scripts/run_halo2_readiness.sh` now runs `test_halo2_scaffold_execution_stability` in addition to existing JSON/real-circuit integration tests.
+- Outcome:
+  - Roadmap item `Add Halo2 scaffold execution stability checks under nightly toolchain with deterministic fixture inputs` is now implemented.
+  - Test coverage gap `Halo2 real-circuit validation suite` is now implemented.
+
+## Update (UTC): 2026-02-20T19:27:35Z
+- Added Noir external `Nargo.toml` end-to-end smoke coverage in integration tests:
+  - `tests/backend_integration_tests.rs::test_noir_external_nargo_prove_verify_smoke`
+- Added deterministic Noir external fuzz parity checks (target vs executor):
+  - `tests/backend_integration_tests.rs::test_noir_external_nargo_fuzz_parity`
+- Added Noir constraint coverage edge-case test coverage:
+  - `tests/backend_integration_tests.rs::test_noir_constraint_coverage_edge_cases`
+- Wired Noir readiness lane to enforce these tests by default:
+  - `scripts/run_noir_readiness.sh` now runs:
+    - `test_noir_constraint_coverage_edge_cases`
+    - `test_noir_external_nargo_prove_verify_smoke`
+    - `test_noir_external_nargo_fuzz_parity`
+- Outcome:
+  - Roadmap item `Add Noir end-to-end prove/verify smoke and fuzz parity tests for external Nargo.toml projects` is now implemented.
+  - Roadmap/TODO item `Noir constraint coverage edge cases` is now implemented.
+
 ## Update (UTC): 2026-02-20T16:22:19Z
 - Promoted Cairo into default breadth gating:
   - Added `local_cairo_multiplier` to `targets/zk0d_matrix_breadth.yaml` (step `070`, alias `readiness_cairo`).

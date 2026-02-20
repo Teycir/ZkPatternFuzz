@@ -1,6 +1,9 @@
 use super::*;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn test_corpus_add() {
@@ -113,4 +116,54 @@ fn test_get_random_with_zero_energy() {
     let mut rng = rand::thread_rng();
     let selected = corpus.get_random(&mut rng);
     assert!(selected.is_some());
+}
+
+#[test]
+fn test_decay_energy_rounds_instead_of_truncating() {
+    let corpus = Corpus::new(100);
+    let mut entry = CorpusEntry::new(
+        TestCase {
+            inputs: vec![FieldElement::from_u64(7)],
+            expected_output: None,
+            metadata: TestMetadata::default(),
+        },
+        7007,
+    );
+    entry.energy = 1;
+    assert!(corpus.add(entry));
+
+    corpus.decay_energy(0.9);
+    let entries = corpus.all_entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].energy, 1);
+}
+
+#[test]
+fn test_load_enforces_max_size() {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock should be after epoch")
+        .as_nanos();
+    let temp_dir = PathBuf::from(format!("/tmp/zkpatternfuzz_corpus_load_{nanos}"));
+
+    // Save a corpus larger than the reader's max_size.
+    let writer = Corpus::new(10).with_persistence(temp_dir.clone());
+    for i in 0..3u64 {
+        let entry = CorpusEntry::new(
+            TestCase {
+                inputs: vec![FieldElement::from_u64(i)],
+                expected_output: None,
+                metadata: TestMetadata::default(),
+            },
+            i,
+        );
+        assert!(writer.add(entry));
+    }
+    writer.save().expect("writer save should succeed");
+
+    let reader = Corpus::new(2).with_persistence(temp_dir.clone());
+    reader.load().expect("reader load should succeed");
+    assert!(reader.len() <= 2);
+
+    let _ = fs::remove_dir_all(temp_dir);
 }

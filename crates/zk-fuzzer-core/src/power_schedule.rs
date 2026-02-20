@@ -173,7 +173,9 @@ impl PowerScheduler {
 
         if metrics.selection_count > CUT_OFF {
             // Exponential decay after cut-off
-            let decay = 0.5_f64.powi((metrics.selection_count - CUT_OFF) as i32 / 8);
+            let decay_steps_u64 = metrics.selection_count.saturating_sub(CUT_OFF) / 8;
+            let decay_steps = decay_steps_u64.min(i32::MAX as u64) as i32;
+            let decay = 0.5_f64.powi(decay_steps);
             (self.base_energy as f64 * decay).max(self.min_energy as f64) as usize
         } else {
             self.base_energy

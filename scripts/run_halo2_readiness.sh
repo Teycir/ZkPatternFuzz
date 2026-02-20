@@ -19,6 +19,7 @@ Options:
   --output-dir <path>          Output directory (default: artifacts/backend_readiness/halo2)
   --skip-json-integration-test Skip test_halo2_json_integration
   --skip-real-circuit-test     Skip test_halo2_real_circuit_constraint_coverage
+  --skip-stability-test        Skip test_halo2_scaffold_execution_stability
   --no-build-if-missing        Do not build zk0d_batch when missing
   -h, --help                   Show this help
 EOF
@@ -34,6 +35,7 @@ TIMEOUT=20
 OUTPUT_DIR="artifacts/backend_readiness/halo2"
 SKIP_JSON_INTEGRATION_TEST=false
 SKIP_REAL_CIRCUIT_TEST=false
+SKIP_STABILITY_TEST=false
 BUILD_IF_MISSING=true
 
 while [[ $# -gt 0 ]]; do
@@ -48,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --skip-json-integration-test) SKIP_JSON_INTEGRATION_TEST=true; shift ;;
     --skip-real-circuit-test) SKIP_REAL_CIRCUIT_TEST=true; shift ;;
+    --skip-stability-test) SKIP_STABILITY_TEST=true; shift ;;
     --no-build-if-missing) BUILD_IF_MISSING=false; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -77,6 +80,7 @@ mkdir -p "$OUTPUT_DIR"
 STAMP="$(date -u +"%Y%m%d_%H%M%S")"
 JSON_INTEGRATION_LOG="$OUTPUT_DIR/integration_json_${STAMP}.log"
 REAL_CIRCUIT_LOG="$OUTPUT_DIR/integration_real_${STAMP}.log"
+STABILITY_LOG="$OUTPUT_DIR/integration_stability_${STAMP}.log"
 MATRIX_LOG="$OUTPUT_DIR/matrix_${STAMP}.log"
 SUMMARY_TSV="$OUTPUT_DIR/summary_${STAMP}.tsv"
 LATEST_JSON="$OUTPUT_DIR/latest_report.json"
@@ -110,6 +114,21 @@ if ! $SKIP_REAL_CIRCUIT_TEST; then
     REAL_CIRCUIT_STATUS="pass"
   else
     REAL_CIRCUIT_STATUS="fail"
+  fi
+fi
+
+STABILITY_EXIT=0
+STABILITY_STATUS="skipped"
+if ! $SKIP_STABILITY_TEST; then
+  set +e
+  ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_scaffold_execution_stability -- --exact \
+    >"$STABILITY_LOG" 2>&1
+  STABILITY_EXIT=$?
+  set -e
+  if [[ "$STABILITY_EXIT" -eq 0 ]]; then
+    STABILITY_STATUS="pass"
+  else
+    STABILITY_STATUS="fail"
   fi
 fi
 
@@ -236,13 +255,19 @@ cat > "$LATEST_JSON" <<EOF
       "status": "$REAL_CIRCUIT_STATUS",
       "exit_code": $REAL_CIRCUIT_EXIT,
       "log": "$REAL_CIRCUIT_LOG"
+    },
+    {
+      "name": "test_halo2_scaffold_execution_stability",
+      "status": "$STABILITY_STATUS",
+      "exit_code": $STABILITY_EXIT,
+      "log": "$STABILITY_LOG"
     }
   ]
 }
 EOF
 
 echo "Halo2 readiness report: $LATEST_JSON"
-if [[ "$MATRIX_EXIT" -ne 0 || "$JSON_INTEGRATION_EXIT" -ne 0 || "$REAL_CIRCUIT_EXIT" -ne 0 ]]; then
+if [[ "$MATRIX_EXIT" -ne 0 || "$JSON_INTEGRATION_EXIT" -ne 0 || "$REAL_CIRCUIT_EXIT" -ne 0 || "$STABILITY_EXIT" -ne 0 ]]; then
   exit 1
 fi
 

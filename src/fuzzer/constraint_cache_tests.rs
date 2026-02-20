@@ -67,7 +67,7 @@ fn test_cache_batch() {
             ConstraintEvalResult::Violated,
         ),
     ];
-    cache.insert_batch(entries);
+    cache.insert_batch(entries).expect("batch insert should succeed");
 
     // Get batch
     let queries = vec![
@@ -80,6 +80,10 @@ fn test_cache_batch() {
     assert_eq!(results[0], Some(ConstraintEvalResult::Satisfied));
     assert_eq!(results[1], Some(ConstraintEvalResult::Violated));
     assert_eq!(results[2], None);
+
+    let stats = cache.stats();
+    assert_eq!(stats.hits, 2);
+    assert_eq!(stats.misses, 1);
 }
 
 #[test]
@@ -109,6 +113,69 @@ fn test_shared_cache() {
     // Read from clone
     assert_eq!(
         cache_clone.get(0, &inputs),
+        Some(ConstraintEvalResult::Satisfied)
+    );
+}
+
+#[test]
+fn test_insert_batch_rejects_oversized_batch() {
+    let cache = ConstraintEvalCache::new().with_max_size(2);
+    let entries = vec![
+        (
+            0,
+            vec![FieldElement::from_u64(1)],
+            ConstraintEvalResult::Satisfied,
+        ),
+        (
+            1,
+            vec![FieldElement::from_u64(2)],
+            ConstraintEvalResult::Satisfied,
+        ),
+        (
+            2,
+            vec![FieldElement::from_u64(3)],
+            ConstraintEvalResult::Satisfied,
+        ),
+    ];
+
+    let err = cache
+        .insert_batch(entries)
+        .expect_err("oversized batch should fail");
+
+    assert_eq!(
+        err,
+        ConstraintCacheInsertError::BatchExceedsCapacity {
+            batch_size: 3,
+            max_size: 2
+        }
+    );
+}
+
+#[test]
+fn test_lru_prefers_low_access_count_eviction() {
+    let cache = ConstraintEvalCache::new().with_max_size(10);
+
+    for i in 0..10u64 {
+        let inputs = vec![FieldElement::from_u64(i)];
+        cache.insert(i as usize, &inputs, ConstraintEvalResult::Satisfied);
+    }
+
+    let sticky_inputs = vec![FieldElement::from_u64(0)];
+    for _ in 0..5 {
+        assert_eq!(
+            cache.get(0, &sticky_inputs),
+            Some(ConstraintEvalResult::Satisfied)
+        );
+    }
+
+    cache.insert(
+        999,
+        &[FieldElement::from_u64(999)],
+        ConstraintEvalResult::Satisfied,
+    );
+
+    assert_eq!(
+        cache.get(0, &sticky_inputs),
         Some(ConstraintEvalResult::Satisfied)
     );
 }
