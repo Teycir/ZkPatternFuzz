@@ -14,15 +14,21 @@ ITERATIONS=250
 TIMEOUT=30
 SKIP_NOIR_INTEGRATION_TEST=0
 SKIP_NOIR_CONSTRAINT_COVERAGE_TEST=0
+SKIP_NOIR_CONSTRAINT_EDGE_CASES_TEST=0
+SKIP_NOIR_EXTERNAL_SMOKE_TEST=0
+SKIP_NOIR_EXTERNAL_PARITY_TEST=0
 SKIP_CAIRO_INTEGRATION_TEST=0
+SKIP_CAIRO_REGRESSION_TEST=0
 SKIP_HALO2_JSON_INTEGRATION_TEST=0
 SKIP_HALO2_REAL_CIRCUIT_TEST=0
+SKIP_HALO2_STABILITY_TEST=0
 NO_BUILD_IF_MISSING=0
 ENFORCE_DASHBOARD=0
 REQUIRED_BACKENDS="${BACKEND_REQUIRED_LIST:-noir,cairo,halo2}"
 MIN_COMPLETION_RATE="${MIN_BACKEND_COMPLETION_RATE:-0.90}"
 MAX_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
+MAX_RUN_OUTCOME_MISSING_RATE="${MAX_BACKEND_RUN_OUTCOME_MISSING_RATE:-0.05}"
 
 usage() {
   cat <<'USAGE'
@@ -45,11 +51,18 @@ Options:
   --min-completion-rate <float>         Dashboard gate minimum completion ratio (default: 0.90)
   --max-runtime-error <int>             Dashboard gate max runtime_error count (default: 0)
   --max-backend-preflight-failed <int>  Dashboard gate max backend_preflight_failed count (default: 0)
+  --max-run-outcome-missing-rate <f>    Dashboard gate max run_outcome_missing ratio (default: 0.05)
   --skip-noir-integration-test          Skip test_noir_integration
   --skip-noir-constraint-coverage-test  Skip test_noir_constraint_coverage
+  --skip-noir-constraint-edge-cases-test
+                                        Skip test_noir_constraint_coverage_edge_cases
+  --skip-noir-external-smoke-test       Skip test_noir_external_nargo_prove_verify_smoke
+  --skip-noir-external-parity-test      Skip test_noir_external_nargo_fuzz_parity
   --skip-cairo-integration-test         Skip test_cairo_integration
+  --skip-cairo-regression-test          Skip test_cairo_full_capacity_regression_suite
   --skip-halo2-json-integration-test    Skip test_halo2_json_integration
   --skip-halo2-real-circuit-test        Skip test_halo2_real_circuit_constraint_coverage
+  --skip-halo2-stability-test           Skip test_halo2_scaffold_execution_stability
   --no-build-if-missing                 Do not build zk0d_batch when missing
   --enforce-dashboard                   Exit non-zero if aggregated readiness gate fails
   -h, --help                            Show this help
@@ -72,11 +85,17 @@ while [[ $# -gt 0 ]]; do
     --min-completion-rate) MIN_COMPLETION_RATE="$2"; shift 2 ;;
     --max-runtime-error) MAX_RUNTIME_ERROR="$2"; shift 2 ;;
     --max-backend-preflight-failed) MAX_BACKEND_PREFLIGHT_FAILED="$2"; shift 2 ;;
+    --max-run-outcome-missing-rate) MAX_RUN_OUTCOME_MISSING_RATE="$2"; shift 2 ;;
     --skip-noir-integration-test) SKIP_NOIR_INTEGRATION_TEST=1; shift ;;
     --skip-noir-constraint-coverage-test) SKIP_NOIR_CONSTRAINT_COVERAGE_TEST=1; shift ;;
+    --skip-noir-constraint-edge-cases-test) SKIP_NOIR_CONSTRAINT_EDGE_CASES_TEST=1; shift ;;
+    --skip-noir-external-smoke-test) SKIP_NOIR_EXTERNAL_SMOKE_TEST=1; shift ;;
+    --skip-noir-external-parity-test) SKIP_NOIR_EXTERNAL_PARITY_TEST=1; shift ;;
     --skip-cairo-integration-test) SKIP_CAIRO_INTEGRATION_TEST=1; shift ;;
+    --skip-cairo-regression-test) SKIP_CAIRO_REGRESSION_TEST=1; shift ;;
     --skip-halo2-json-integration-test) SKIP_HALO2_JSON_INTEGRATION_TEST=1; shift ;;
     --skip-halo2-real-circuit-test) SKIP_HALO2_REAL_CIRCUIT_TEST=1; shift ;;
+    --skip-halo2-stability-test) SKIP_HALO2_STABILITY_TEST=1; shift ;;
     --no-build-if-missing) NO_BUILD_IF_MISSING=1; shift ;;
     --enforce-dashboard) ENFORCE_DASHBOARD=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -129,6 +148,15 @@ fi
 if [[ "$SKIP_NOIR_CONSTRAINT_COVERAGE_TEST" -eq 1 ]]; then
   noir_cmd+=(--skip-constraint-coverage-test)
 fi
+if [[ "$SKIP_NOIR_CONSTRAINT_EDGE_CASES_TEST" -eq 1 ]]; then
+  noir_cmd+=(--skip-constraint-edge-cases-test)
+fi
+if [[ "$SKIP_NOIR_EXTERNAL_SMOKE_TEST" -eq 1 ]]; then
+  noir_cmd+=(--skip-external-smoke-test)
+fi
+if [[ "$SKIP_NOIR_EXTERNAL_PARITY_TEST" -eq 1 ]]; then
+  noir_cmd+=(--skip-external-parity-test)
+fi
 
 cairo_cmd=(
   "$ROOT_DIR/scripts/run_cairo_readiness.sh"
@@ -144,6 +172,9 @@ cairo_cmd=(
 )
 if [[ "$SKIP_CAIRO_INTEGRATION_TEST" -eq 1 ]]; then
   cairo_cmd+=(--skip-integration-test)
+fi
+if [[ "$SKIP_CAIRO_REGRESSION_TEST" -eq 1 ]]; then
+  cairo_cmd+=(--skip-regression-test)
 fi
 
 halo2_cmd=(
@@ -163,6 +194,9 @@ if [[ "$SKIP_HALO2_JSON_INTEGRATION_TEST" -eq 1 ]]; then
 fi
 if [[ "$SKIP_HALO2_REAL_CIRCUIT_TEST" -eq 1 ]]; then
   halo2_cmd+=(--skip-real-circuit-test)
+fi
+if [[ "$SKIP_HALO2_STABILITY_TEST" -eq 1 ]]; then
+  halo2_cmd+=(--skip-stability-test)
 fi
 
 lane_failures=0
@@ -184,6 +218,7 @@ dashboard_cmd=(
   --min-completion-rate "$MIN_COMPLETION_RATE"
   --max-runtime-error "$MAX_RUNTIME_ERROR"
   --max-backend-preflight-failed "$MAX_BACKEND_PREFLIGHT_FAILED"
+  --max-run-outcome-missing-rate "$MAX_RUN_OUTCOME_MISSING_RATE"
 )
 if [[ "$ENFORCE_DASHBOARD" -eq 1 ]]; then
   dashboard_cmd+=(--enforce)

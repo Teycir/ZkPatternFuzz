@@ -225,7 +225,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add Cairo JSON/metadata input reconciliation fallback (wire-label/index compatibility) (`src/executor/mod.rs`)
 - [x] Add Halo2 JSON-spec input reconciliation normalizer (wire-label/index compatibility) (`src/executor/mod.rs`)
 - [x] Add Halo2 scaffold execution stability checks under nightly toolchain with deterministic fixture inputs
-- [ ] Reduce `run_outcome_missing` on non-Circom targets to <=5% by enforcing explicit reason-code closure in matrix summaries
+- [x] Reduce `run_outcome_missing` on non-Circom targets to <=5% by enforcing explicit reason-code closure in matrix summaries
 - [x] Add per-backend release gates in `scripts/release_candidate_gate.sh` (Noir/Halo2/Cairo must each satisfy minimum completion and setup-success thresholds)
 - [x] Publish backend readiness dashboard artifact (`artifacts/backend_readiness/latest_report.json`) on every benchmark/release run
 - [x] Add dedicated Noir readiness matrix + runner (`targets/zk0d_matrix_noir_readiness.yaml`, `scripts/run_noir_readiness.sh`)
@@ -259,10 +259,10 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Noir: `backend_preflight_failed=0` on roadmap breadth/follow-up target sets and >=90% completed outcomes
 - [ ] Cairo: >=90% completed outcomes on designated Cairo breadth targets with non-empty run outcome classification
 - [ ] Halo2: `runtime_error=0` for canonical local specs and >=90% completed outcomes on scaffold/spec targets
-- [ ] Cross-backend: non-Circom `run_outcome_missing` <=5% in aggregate follow-up report
-- [ ] Release gate fails automatically when any non-Circom backend drops below readiness thresholds
+- [x] Cross-backend: non-Circom `run_outcome_missing` <=5% in aggregate follow-up report
+- [x] Release gate fails automatically when any non-Circom backend drops below readiness thresholds
 
-**Current Status:** 🟡 In progress. Noir setup-path blockers are resolved for roadmap breadth steps `066-067` with explicit reason-code closure (`completed=1, selector_mismatch=26`, `run_outcome_missing=0` in `artifacts/roadmap_step_tests_recheck3/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv` and `artifacts/roadmap_step_tests_recheck3/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`). Halo2 breadth recheck has refreshed step evidence in `artifacts/roadmap_step_tests_recheck4`: step `068` remains `completed=15, selector_mismatch=12` and step `069` is now `completed=6, selector_mismatch=21, runtime_error=0` (`artifacts/roadmap_step_tests_recheck4/summary/step_068__cat5_frameworks_halo2_scaffold_.tsv`, `artifacts/roadmap_step_tests_recheck4/summary/step_069__local_halo2_minimal_json_spec_.tsv`). Cairo is now included in default breadth gating (new step `070`) and rechecked after wire-label fallback with `completed=1, selector_mismatch=4, runtime_error=0` (`artifacts/roadmap_step_tests_recheck5/summary/step_070__local_cairo_multiplier_.tsv`). Backend readiness gates and dashboard publication are now wired into release/benchmark workflows, with dedicated Noir/Cairo/Halo2 readiness lane runners in place and release-validation CI invoking the readiness lanes before enforcing backend thresholds; remaining execution risk is reaching completion-rate/runtime-error thresholds across required backend reports.
+**Current Status:** 🟡 In progress. Noir setup-path blockers are resolved for roadmap breadth steps `066-067` with explicit reason-code closure (`completed=1, selector_mismatch=26`, `run_outcome_missing=0` in `artifacts/roadmap_step_tests_recheck3/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv` and `artifacts/roadmap_step_tests_recheck3/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`). Halo2 breadth recheck has refreshed step evidence in `artifacts/roadmap_step_tests_recheck4`: step `068` remains `completed=15, selector_mismatch=12` and step `069` is now `completed=6, selector_mismatch=21, runtime_error=0` (`artifacts/roadmap_step_tests_recheck4/summary/step_068__cat5_frameworks_halo2_scaffold_.tsv`, `artifacts/roadmap_step_tests_recheck4/summary/step_069__local_halo2_minimal_json_spec_.tsv`). Cairo is now included in default breadth gating (new step `070`) and rechecked after wire-label fallback with `completed=1, selector_mismatch=4, runtime_error=0` (`artifacts/roadmap_step_tests_recheck5/summary/step_070__local_cairo_multiplier_.tsv`). Backend readiness gates and dashboard publication are now wired into release/benchmark workflows, with dedicated Noir/Cairo/Halo2 readiness lane runners in place and release-validation CI invoking the readiness lanes before enforcing backend thresholds, including explicit `run_outcome_missing_rate <= 0.05` gate checks at backend and aggregate levels. Follow-up non-Circom breadth aggregation is now scripted via `scripts/non_circom_followup_gate.sh` and currently passes with `run_outcome_missing_rate=0.000` (`artifacts/non_circom_followup/latest_report.json`); remaining execution risk is reaching completion-rate/runtime-error thresholds across required backend reports.
 
 ---
 
@@ -407,7 +407,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Promote Cairo from backend-heavy optional validation into required breadth readiness gates and publish completion metrics (`targets/zk0d_matrix_breadth.yaml`, `artifacts/roadmap_step_tests_recheck5/summary/step_070__local_cairo_multiplier_.tsv`)
 - [x] Fix Halo2 minimal JSON spec input reconciliation (`tests/halo2_specs/minimal.json`) with metadata-only wire-label fallback (`src/executor/mod.rs`)
 - [x] Rerun step `069` and capture updated Halo2 readiness outcomes after input-reconciliation fix (`artifacts/roadmap_step_tests_recheck4/summary/step_069__local_halo2_minimal_json_spec_.tsv`)
-- [ ] Reduce non-Circom aggregate `run_outcome_missing` to <=5% on follow-up suite
+- [x] Reduce non-Circom aggregate `run_outcome_missing` to <=5% on follow-up suite
 - [x] Add CI gate that blocks release when Noir/Halo2/Cairo readiness thresholds fail (`.github/workflows/release_validation.yml`, `scripts/run_backend_readiness_lanes.sh`)
 
 ### High Priority (P1)

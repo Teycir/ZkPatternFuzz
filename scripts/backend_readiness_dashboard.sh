@@ -8,6 +8,7 @@ REQUIRED_BACKENDS="${REQUIRED_BACKENDS:-noir,cairo,halo2}"
 MIN_COMPLETION_RATE="${MIN_BACKEND_COMPLETION_RATE:-0.90}"
 MAX_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
+MAX_RUN_OUTCOME_MISSING_RATE="${MAX_RUN_OUTCOME_MISSING_RATE:-0.05}"
 ENFORCE=0
 
 usage() {
@@ -23,6 +24,8 @@ Options:
   --min-completion-rate <float>         Minimum completion rate per backend (default: 0.90)
   --max-runtime-error <int>             Maximum runtime_error count per backend (default: 0)
   --max-backend-preflight-failed <int>  Maximum backend_preflight_failed count per backend (default: 0)
+  --max-run-outcome-missing-rate <float>
+                                      Maximum run_outcome_missing ratio (per backend and aggregate) (default: 0.05)
   --enforce                             Exit non-zero when any backend fails
   -h, --help                            Show this help
 USAGE
@@ -54,6 +57,10 @@ while [[ $# -gt 0 ]]; do
       MAX_BACKEND_PREFLIGHT_FAILED="$2"
       shift 2
       ;;
+    --max-run-outcome-missing-rate)
+      MAX_RUN_OUTCOME_MISSING_RATE="$2"
+      shift 2
+      ;;
     --enforce)
       ENFORCE=1
       shift
@@ -79,6 +86,7 @@ python3 - \
   "$MIN_COMPLETION_RATE" \
   "$MAX_RUNTIME_ERROR" \
   "$MAX_BACKEND_PREFLIGHT_FAILED" \
+  "$MAX_RUN_OUTCOME_MISSING_RATE" \
   "$ENFORCE" <<'PY'
 import json
 import os
@@ -106,10 +114,13 @@ required_backends = [part.strip() for part in sys.argv[3].split(",") if part.str
 min_completion_rate = as_float(sys.argv[4], 0.90)
 max_runtime_error = as_int(sys.argv[5], 0)
 max_backend_preflight_failed = as_int(sys.argv[6], 0)
-enforce = as_int(sys.argv[7], 0) == 1
+max_run_outcome_missing_rate = as_float(sys.argv[7], 0.05)
+enforce = as_int(sys.argv[8], 0) == 1
 
 backend_entries = []
 overall_pass = True
+aggregate_total_classified = 0
+aggregate_run_outcome_missing = 0
 
 for backend in required_backends:
     report_path = os.path.join(readiness_root, backend, "latest_report.json")
@@ -124,6 +135,8 @@ for backend in required_backends:
         "completion_rate": 0.0,
         "runtime_error_count": 0,
         "backend_preflight_failed_count": 0,
+        "run_outcome_missing_count": 0,
+        "run_outcome_missing_rate": 0.0,
         "integration_statuses": [],
         "gate_pass": False,
         "gate_failures": [],
@@ -150,6 +163,12 @@ for backend in required_backends:
     runtime_error_count = max(as_int(numeric_reason_counts.get("runtime_error", 0), 0), 0)
     backend_preflight_failed_count = max(
         as_int(numeric_reason_counts.get("backend_preflight_failed", 0), 0), 0
+    )
+    run_outcome_missing_count = max(
+        as_int(numeric_reason_counts.get("run_outcome_missing", 0), 0), 0
+    )
+    run_outcome_missing_rate = (
+        run_outcome_missing_count / total_classified if total_classified > 0 else 0.0
     )
 
     integration_statuses = []
@@ -178,6 +197,10 @@ for backend in required_backends:
         gate_failures.append(
             f"backend_preflight_failed_count {backend_preflight_failed_count} > {max_backend_preflight_failed}"
         )
+    if run_outcome_missing_rate > max_run_outcome_missing_rate:
+        gate_failures.append(
+            f"run_outcome_missing_rate {run_outcome_missing_rate:.3f} > {max_run_outcome_missing_rate:.3f}"
+        )
     if integration_failures > 0:
         gate_failures.append(f"integration_failures={integration_failures}")
 
@@ -194,12 +217,29 @@ for backend in required_backends:
             "completion_rate": completion_rate,
             "runtime_error_count": runtime_error_count,
             "backend_preflight_failed_count": backend_preflight_failed_count,
+            "run_outcome_missing_count": run_outcome_missing_count,
+            "run_outcome_missing_rate": run_outcome_missing_rate,
             "integration_statuses": integration_statuses,
             "gate_pass": gate_pass,
             "gate_failures": gate_failures,
         }
     )
     backend_entries.append(entry)
+    aggregate_total_classified += total_classified
+    aggregate_run_outcome_missing += run_outcome_missing_count
+
+aggregate_run_outcome_missing_rate = (
+    aggregate_run_outcome_missing / aggregate_total_classified
+    if aggregate_total_classified > 0
+    else 0.0
+)
+aggregate_gate_failures = []
+if aggregate_run_outcome_missing_rate > max_run_outcome_missing_rate:
+    aggregate_gate_failures.append(
+        f"aggregate_run_outcome_missing_rate {aggregate_run_outcome_missing_rate:.3f} > {max_run_outcome_missing_rate:.3f}"
+    )
+if aggregate_gate_failures:
+    overall_pass = False
 
 payload = {
     "generated_utc": datetime.now(timezone.utc).isoformat(),
@@ -209,8 +249,15 @@ payload = {
         "min_completion_rate": min_completion_rate,
         "max_runtime_error": max_runtime_error,
         "max_backend_preflight_failed": max_backend_preflight_failed,
+        "max_run_outcome_missing_rate": max_run_outcome_missing_rate,
     },
     "backends": backend_entries,
+    "aggregate": {
+        "total_classified": aggregate_total_classified,
+        "run_outcome_missing_count": aggregate_run_outcome_missing,
+        "run_outcome_missing_rate": aggregate_run_outcome_missing_rate,
+        "gate_failures": aggregate_gate_failures,
+    },
     "overall_pass": overall_pass,
 }
 
@@ -224,11 +271,21 @@ for entry in backend_entries:
         f"[{status}] {entry['backend']}: "
         f"completion={entry['completion_rate']:.3f} "
         f"runtime_error={entry['runtime_error_count']} "
-        f"backend_preflight_failed={entry['backend_preflight_failed_count']}"
+        f"backend_preflight_failed={entry['backend_preflight_failed_count']} "
+        f"run_outcome_missing_rate={entry['run_outcome_missing_rate']:.3f}"
     )
     if entry["gate_failures"]:
         for failure in entry["gate_failures"]:
             print(f"  - {failure}")
+
+print(
+    "Aggregate non-Circom run_outcome_missing_rate="
+    f"{aggregate_run_outcome_missing_rate:.3f} "
+    f"(count={aggregate_run_outcome_missing}, total={aggregate_total_classified})"
+)
+if aggregate_gate_failures:
+    for failure in aggregate_gate_failures:
+        print(f"  - {failure}")
 
 print(f"Backend readiness dashboard: {output_path}")
 print(f"Overall backend readiness: {'PASS' if overall_pass else 'FAIL'}")

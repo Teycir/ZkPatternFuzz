@@ -11,6 +11,7 @@ BACKEND_REQUIRED_LIST="${BACKEND_REQUIRED_LIST:-noir,cairo,halo2}"
 MIN_BACKEND_COMPLETION_RATE="${MIN_BACKEND_COMPLETION_RATE:-0.90}"
 MAX_BACKEND_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
+MAX_BACKEND_RUN_OUTCOME_MISSING_RATE="${MAX_BACKEND_RUN_OUTCOME_MISSING_RATE:-0.05}"
 SKIP_BACKEND_READINESS_GATE=0
 
 usage() {
@@ -34,6 +35,8 @@ Options:
                              Maximum per-backend runtime_error count (default: 0)
   --max-backend-preflight-failed <int>
                              Maximum per-backend backend_preflight_failed count (default: 0)
+  --max-backend-run-outcome-missing-rate <float>
+                             Maximum per-backend and aggregate run_outcome_missing ratio (default: 0.05)
   --skip-backend-readiness-gate
                              Publish dashboard artifact but do not fail release gate on backend readiness
   -h, --help                 Show this help
@@ -83,6 +86,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --max-backend-preflight-failed)
       MAX_BACKEND_PREFLIGHT_FAILED="$2"
+      shift 2
+      ;;
+    --max-backend-run-outcome-missing-rate)
+      MAX_BACKEND_RUN_OUTCOME_MISSING_RATE="$2"
       shift 2
       ;;
     --skip-backend-readiness-gate)
@@ -150,6 +157,7 @@ backend_gate_cmd=(
   --min-completion-rate "$MIN_BACKEND_COMPLETION_RATE"
   --max-runtime-error "$MAX_BACKEND_RUNTIME_ERROR"
   --max-backend-preflight-failed "$MAX_BACKEND_PREFLIGHT_FAILED"
+  --max-run-outcome-missing-rate "$MAX_BACKEND_RUN_OUTCOME_MISSING_RATE"
 )
 
 if [ "$SKIP_BACKEND_READINESS_GATE" -eq 1 ]; then

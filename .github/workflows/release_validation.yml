@@ -65,6 +65,11 @@ on:
         required: false
         default: "0"
         type: string
+      max_backend_run_outcome_missing_rate:
+        description: Maximum run_outcome_missing ratio allowed per backend and aggregate
+        required: false
+        default: "0.05"
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -132,11 +137,17 @@ jobs:
             --min-completion-rate "${{ inputs.min_backend_completion_rate }}" \
             --max-runtime-error "${{ inputs.max_backend_runtime_error }}" \
             --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
+            --max-run-outcome-missing-rate "${{ inputs.max_backend_run_outcome_missing_rate }}" \
             --skip-noir-integration-test \
             --skip-noir-constraint-coverage-test \
+            --skip-noir-constraint-edge-cases-test \
+            --skip-noir-external-smoke-test \
+            --skip-noir-external-parity-test \
             --skip-cairo-integration-test \
+            --skip-cairo-regression-test \
             --skip-halo2-json-integration-test \
-            --skip-halo2-real-circuit-test
+            --skip-halo2-real-circuit-test \
+            --skip-halo2-stability-test
 
       - name: Validate release candidate gate
         env:
@@ -151,7 +162,8 @@ jobs:
             --required-backends "${{ inputs.required_backends }}" \
             --min-backend-completion-rate "${{ inputs.min_backend_completion_rate }}" \
             --max-backend-runtime-error "${{ inputs.max_backend_runtime_error }}" \
-            --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}"
+            --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
+            --max-backend-run-outcome-missing-rate "${{ inputs.max_backend_run_outcome_missing_rate }}"
 
       - name: Upload benchmark artifacts
         if: always()

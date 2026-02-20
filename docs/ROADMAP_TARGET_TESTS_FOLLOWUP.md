@@ -2,6 +2,34 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T19:44:55Z
+- Added non-Circom follow-up aggregate gate automation:
+  - `scripts/non_circom_followup_gate.sh`
+  - computes aggregate `run_outcome_missing` from roadmap breadth recheck step summaries for frameworks `noir,cairo,halo2`.
+  - emits report: `artifacts/non_circom_followup/latest_report.json`
+  - supports threshold enforcement via `--max-run-outcome-missing-rate` (default `0.05`) and `--enforce`.
+- Validation:
+  - `scripts/non_circom_followup_gate.sh --enforce`
+  - Result: `PASS` with aggregate `run_outcome_missing_rate=0.000` (`count=0`, `total=113`) across steps `066-070`.
+
+## Update (UTC): 2026-02-20T19:37:46Z
+- Enforced non-Circom `run_outcome_missing` readiness gate threshold end-to-end:
+  - `scripts/backend_readiness_dashboard.sh`
+    - adds `--max-run-outcome-missing-rate` (default `0.05`)
+    - enforces threshold per backend and for aggregate required-backend totals.
+  - `scripts/run_backend_readiness_lanes.sh`
+    - plumbs `--max-run-outcome-missing-rate` into dashboard publishing/enforcement.
+  - `scripts/release_candidate_gate.sh`
+    - plumbs `--max-backend-run-outcome-missing-rate` into release readiness gating.
+  - `.github/workflows/release_validation.yml`
+    - adds input `max_backend_run_outcome_missing_rate` and passes it through readiness and release gate invocations.
+- Readiness orchestrator parity updates:
+  - Added skip passthrough flags in `scripts/run_backend_readiness_lanes.sh` for newly introduced backend checks:
+    - Noir edge-cases/external smoke/external parity
+    - Cairo regression suite
+    - Halo2 scaffold stability
+  - Release workflow now uses these skip flags in the readiness-lane bootstrap step for deterministic CI behavior.
+
 ## Update (UTC): 2026-02-20T19:30:48Z
 - Added Cairo full-capacity deterministic regression suite:
   - `tests/backend_integration_tests.rs::test_cairo_full_capacity_regression_suite`
