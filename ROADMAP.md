@@ -222,7 +222,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Add Noir end-to-end prove/verify smoke and fuzz parity tests for external `Nargo.toml` projects
 - [ ] Add Cairo breadth-target suite to `zk0d_matrix` default validation set (not optional backend-heavy-only checks)
 - [ ] Add Cairo full-capacity regression suite with stable coverage/failure semantics on external and local targets
-- [ ] Add Halo2 JSON-spec input reconciliation normalizer (wire-label/index compatibility)
+- [x] Add Halo2 JSON-spec input reconciliation normalizer (wire-label/index compatibility) (`src/executor/mod.rs`)
 - [ ] Add Halo2 scaffold execution stability checks under nightly toolchain with deterministic fixture inputs
 - [ ] Reduce `run_outcome_missing` on non-Circom targets to <=5% by enforcing explicit reason-code closure in matrix summaries
 - [x] Add per-backend release gates in `scripts/release_candidate_gate.sh` (Noir/Halo2/Cairo must each satisfy minimum completion and setup-success thresholds)
@@ -404,7 +404,8 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Implement Phase 6 backend readiness matrix runner and publish `artifacts/backend_readiness/latest_report.json`
 - [x] Fix Noir target setup path for Aztec example projects (steps `066`/`067`) and rerun breadth follow-up (`artifacts/roadmap_step_tests_recheck2/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv`, `artifacts/roadmap_step_tests_recheck2/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`)
 - [ ] Promote Cairo from backend-heavy optional validation into required breadth readiness gates and publish completion metrics
-- [ ] Fix Halo2 minimal JSON spec input reconciliation (`tests/halo2_specs/minimal.json`) and rerun step `069`
+- [x] Fix Halo2 minimal JSON spec input reconciliation (`tests/halo2_specs/minimal.json`) with metadata-only wire-label fallback (`src/executor/mod.rs`)
+- [ ] Rerun step `069` and capture updated Halo2 readiness outcomes after input-reconciliation fix
 - [ ] Reduce non-Circom aggregate `run_outcome_missing` to <=5% on follow-up suite
 - [x] Add CI gate that blocks release when Noir/Halo2/Cairo readiness thresholds fail (`.github/workflows/release_validation.yml`, `scripts/run_backend_readiness_lanes.sh`)
 

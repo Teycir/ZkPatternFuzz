@@ -111,6 +111,34 @@ fn test_halo2_constraint_checks_with_json_spec() {
 }
 
 #[test]
+fn test_halo2_wire_label_fallback_for_metadata_only_json_spec() {
+    let json = r#"
+        {
+          "name": "minimal_halo2",
+          "k": 4,
+          "advice_columns": 2,
+          "fixed_columns": 1,
+          "instance_columns": 1,
+          "constraints": 8,
+          "private_inputs": 2,
+          "public_inputs": 1,
+          "lookups": 0
+        }
+        "#;
+
+    let temp = tempfile::Builder::new().suffix(".json").tempfile().unwrap();
+    std::fs::write(temp.path(), json).unwrap();
+
+    let executor = Halo2Executor::new(temp.path().to_str().unwrap(), "main").unwrap();
+    let inspector = executor.constraint_inspector().unwrap();
+    let labels = inspector.wire_labels();
+
+    assert_eq!(labels.get(&0).map(String::as_str), Some("public_input_0"));
+    assert_eq!(labels.get(&1).map(String::as_str), Some("private_input_0"));
+    assert_eq!(labels.get(&2).map(String::as_str), Some("private_input_1"));
+}
+
+#[test]
 fn test_circom_ptau_autodetect_prefers_env_override() {
     let temp = tempfile::tempdir().expect("tempdir");
     let ptau = temp.path().join("custom.ptau");

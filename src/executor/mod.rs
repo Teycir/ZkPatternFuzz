@@ -1658,6 +1658,19 @@ impl ConstraintInspector for Halo2Executor {
         for constraint in &parsed.constraints {
             collect_wire_labels_from_constraint(&mut labels, constraint);
         }
+        // Metadata-only Halo2 JSON specs may not embed gate-level constraints/wires.
+        // Ensure strict input reconciliation can still align by synthesizing stable
+        // labels for every declared public/private input index.
+        for (ordinal, idx) in self.public_input_indices().into_iter().enumerate() {
+            labels
+                .entry(idx)
+                .or_insert_with(|| format!("public_input_{}", ordinal));
+        }
+        for (ordinal, idx) in self.private_input_indices().into_iter().enumerate() {
+            labels
+                .entry(idx)
+                .or_insert_with(|| format!("private_input_{}", ordinal));
+        }
         labels
     }
 }
