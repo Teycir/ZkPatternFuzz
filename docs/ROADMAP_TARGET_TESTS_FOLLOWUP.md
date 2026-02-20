@@ -2,6 +2,16 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T15:51:55Z
+- Added backend readiness orchestrator:
+  - `scripts/run_backend_readiness_lanes.sh`
+  - runs Noir/Cairo/Halo2 lanes, then publishes `artifacts/backend_readiness/latest_report.json`
+- Wired release workflow to execute backend readiness lanes before the release candidate gate:
+  - `.github/workflows/release_validation.yml`
+  - release gate now receives explicit backend-threshold inputs (`required_backends`, completion/runtime/preflight limits)
+- Outcome:
+  - Release validation now has concrete CI-path enforcement for non-Circom readiness thresholds rather than relying on pre-existing local artifacts.
+
 ## Update (UTC): 2026-02-20T15:40:11Z
 - Added dedicated Noir readiness lane artifacts:
   - `scripts/run_noir_readiness.sh`
@@ -78,7 +88,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - Cairo readiness report: `artifacts/backend_readiness/cairo/latest_report.json` (`exit_code=1`, `reason_counts: none=1`)
   - Halo2 readiness report: `artifacts/backend_readiness/halo2/latest_report.json` (`exit_code=1`, `reason_counts: none=2`)
 - Blocking issue:
-  - Current workspace compile regression (`FuzzConfigV2` initializer missing `ai_assistant`) prevents `zk-fuzzer` rebuild during lane execution; see matrix logs under `artifacts/backend_readiness/{cairo,halo2}/matrix_*.log`.
+  - Historical (resolved): workspace compile regression (`FuzzConfigV2` initializer missing `ai_assistant`) previously prevented `zk-fuzzer` rebuild during lane execution; see matrix logs under `artifacts/backend_readiness/{cairo,halo2}/matrix_*.log`.
 
 ## Scope
 - Focused rerun subset: targets that showed at least one 'completed' or 'critical_findings_detected' in first pass

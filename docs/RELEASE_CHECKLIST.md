@@ -53,11 +53,16 @@ Use this for `rc` and final tags. Each item is a hard gate unless explicitly wai
   - `./scripts/ci_benchmark_gate.sh`
 - [ ] Consecutive release-candidate benchmark gate:
   - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2`
+- [ ] Backend readiness lanes executed and dashboard published:
+  - `./scripts/run_backend_readiness_lanes.sh --required-backends noir,cairo,halo2 --min-completion-rate 0.90 --max-runtime-error 0 --max-backend-preflight-failed 0`
+- [ ] Backend readiness gate enforced as part of release candidate validation:
+  - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --min-backend-completion-rate 0.90 --max-backend-runtime-error 0 --max-backend-preflight-failed 0`
 - [ ] If shipping production-depth changes, run at least one non-dry benchmark suite and archive `summary.json`.
 - [ ] Release validation workflow run recorded:
   - GitHub Actions `Release Validation` (`workflow_dispatch`) with:
     - `stable_ref=<previous_stable_tag_or_commit>`
     - `required_passes=2`
+    - readiness gate inputs set for backend thresholds (`required_backends`, `min_backend_completion_rate`, `max_backend_runtime_error`, `max_backend_preflight_failed`)
 
 ## 6. Documentation + Migration
 

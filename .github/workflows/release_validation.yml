@@ -30,6 +30,41 @@ on:
         required: false
         default: "2"
         type: string
+      readiness_iterations:
+        description: Iterations per backend readiness lane run
+        required: false
+        default: "120"
+        type: string
+      readiness_timeout:
+        description: Timeout seconds per backend readiness lane scan
+        required: false
+        default: "45"
+        type: string
+      readiness_workers:
+        description: Workers per backend readiness lane scan
+        required: false
+        default: "2"
+        type: string
+      required_backends:
+        description: Comma-separated backends required by readiness gate
+        required: false
+        default: "noir,cairo,halo2"
+        type: string
+      min_backend_completion_rate:
+        description: Minimum completion ratio required per backend
+        required: false
+        default: "0.90"
+        type: string
+      max_backend_runtime_error:
+        description: Maximum runtime_error count allowed per backend
+        required: false
+        default: "0"
+        type: string
+      max_backend_preflight_failed:
+        description: Maximum backend_preflight_failed count allowed per backend
+        required: false
+        default: "0"
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -84,6 +119,25 @@ jobs:
               --timeout ${{ inputs.timeout }}
           done
 
+      - name: Run backend readiness lanes
+        continue-on-error: true
+        env:
+          CIRCOM_INCLUDE_PATHS: third_party:node_modules
+        run: |
+          bash ./scripts/run_backend_readiness_lanes.sh \
+            --iterations ${{ inputs.readiness_iterations }} \
+            --timeout ${{ inputs.readiness_timeout }} \
+            --workers ${{ inputs.readiness_workers }} \
+            --required-backends "${{ inputs.required_backends }}" \
+            --min-completion-rate "${{ inputs.min_backend_completion_rate }}" \
+            --max-runtime-error "${{ inputs.max_backend_runtime_error }}" \
+            --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
+            --skip-noir-integration-test \
+            --skip-noir-constraint-coverage-test \
+            --skip-cairo-integration-test \
+            --skip-halo2-json-integration-test \
+            --skip-halo2-real-circuit-test
+
       - name: Validate release candidate gate
         env:
           MIN_COMPLETION_RATE: "0.95"
@@ -93,14 +147,20 @@ jobs:
         run: |
           bash ./scripts/release_candidate_gate.sh \
             --bench-root artifacts/benchmark_runs \
-            --required-passes ${{ inputs.required_passes }}
+            --required-passes ${{ inputs.required_passes }} \
+            --required-backends "${{ inputs.required_backends }}" \
+            --min-backend-completion-rate "${{ inputs.min_backend_completion_rate }}" \
+            --max-backend-runtime-error "${{ inputs.max_backend_runtime_error }}" \
+            --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}"
 
       - name: Upload benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-validation-benchmark-${{ github.run_id }}
-          path: artifacts/benchmark_runs/
+          path: |
+            artifacts/benchmark_runs/
+            artifacts/backend_readiness/
           retention-days: 30
 
   rollback-validation:
