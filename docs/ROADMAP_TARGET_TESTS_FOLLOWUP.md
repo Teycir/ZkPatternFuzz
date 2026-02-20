@@ -2,6 +2,20 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T16:22:19Z
+- Promoted Cairo into default breadth gating:
+  - Added `local_cairo_multiplier` to `targets/zk0d_matrix_breadth.yaml` (step `070`, alias `readiness_cairo`).
+- Fixed Cairo strict input reconciliation for implicit I/O index labels:
+  - `src/executor/mod.rs` now synthesizes fallback labels for all Cairo public/private input indices when source-derived labels are incomplete.
+  - Added regression test `src/executor/mod_tests.rs::test_cairo_wire_label_fallback_covers_all_input_indices`.
+- Validation:
+  - `cargo test -q cairo_wire_label_fallback -- --nocapture` passes.
+  - `cargo test -q --test backend_integration_tests test_cairo_integration -- --exact` passes.
+  - Rerun step `070` summary: `artifacts/roadmap_step_tests_recheck5/summary/step_070__local_cairo_multiplier_.tsv`
+    - `completed=1`, `selector_mismatch=4`, `runtime_error=0`, `run_outcome_missing=0`
+- Outcome:
+  - Cairo is now part of required default breadth execution with explicit outcome classification; remaining work is completion-rate uplift, not runtime-error closure.
+
 ## Update (UTC): 2026-02-20T16:16:12Z
 - Refreshed Halo2 breadth recheck for both roadmap steps `068` and `069` under `artifacts/roadmap_step_tests_recheck4`.
 - Step `068` (`cat5_frameworks_halo2_scaffold`):

@@ -212,16 +212,17 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 | Backend | Current Status | Known Gaps |
 |---|---|---|
 | Noir | In progress (setup stabilized) | Needs full-capacity breadth gating and higher completed-rate on matching templates |
-| Cairo | Partial (lane bootstrapped) | Readiness lane exists, but needs full-capacity pass-rate closure on broader targets |
-| Halo2 | Partial (mixed breadth outcomes) | `halo2_scaffold` completes, but local JSON spec still fails strict input reconciliation |
+| Cairo | In progress (default breadth-gated) | Runtime-error blocker cleared; completion-rate is still below full-capacity target |
+| Halo2 | Partial (mixed breadth outcomes) | Local JSON-spec reconciliation is fixed; scaffold path still needs completion-rate lift |
 
 ### Implementation Tasks
 - [x] Add backend-specific readiness profiles in `targets/fuzzer_registry.prod.yaml` for Noir, Halo2, and Cairo circuit families
 - [x] Add Noir preflight hardening for package-resolution and ABI artifact-path variants
 - [x] Add selector-mismatch synthetic outcome classification in `zk0d_batch` to eliminate validation-skip `run_outcome_missing` gaps
 - [ ] Add Noir end-to-end prove/verify smoke and fuzz parity tests for external `Nargo.toml` projects
-- [ ] Add Cairo breadth-target suite to `zk0d_matrix` default validation set (not optional backend-heavy-only checks)
+- [x] Add Cairo breadth-target suite to `zk0d_matrix` default validation set (not optional backend-heavy-only checks) (`targets/zk0d_matrix_breadth.yaml`)
 - [ ] Add Cairo full-capacity regression suite with stable coverage/failure semantics on external and local targets
+- [x] Add Cairo JSON/metadata input reconciliation fallback (wire-label/index compatibility) (`src/executor/mod.rs`)
 - [x] Add Halo2 JSON-spec input reconciliation normalizer (wire-label/index compatibility) (`src/executor/mod.rs`)
 - [ ] Add Halo2 scaffold execution stability checks under nightly toolchain with deterministic fixture inputs
 - [ ] Reduce `run_outcome_missing` on non-Circom targets to <=5% by enforcing explicit reason-code closure in matrix summaries
@@ -261,7 +262,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Cross-backend: non-Circom `run_outcome_missing` <=5% in aggregate follow-up report
 - [ ] Release gate fails automatically when any non-Circom backend drops below readiness thresholds
 
-**Current Status:** 🟡 In progress. Noir setup-path blockers are resolved for roadmap breadth steps `066-067` with explicit reason-code closure (`completed=1, selector_mismatch=26`, `run_outcome_missing=0` in `artifacts/roadmap_step_tests_recheck3/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv` and `artifacts/roadmap_step_tests_recheck3/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`). Halo2 breadth recheck has refreshed step evidence in `artifacts/roadmap_step_tests_recheck4`: step `068` remains `completed=15, selector_mismatch=12` and step `069` is now `completed=6, selector_mismatch=21, runtime_error=0` (`artifacts/roadmap_step_tests_recheck4/summary/step_068__cat5_frameworks_halo2_scaffold_.tsv`, `artifacts/roadmap_step_tests_recheck4/summary/step_069__local_halo2_minimal_json_spec_.tsv`). Backend readiness gates and dashboard publication are now wired into release/benchmark workflows, with dedicated Noir/Cairo/Halo2 readiness lane runners in place and release-validation CI invoking the readiness lanes before enforcing backend thresholds; remaining execution risk is reaching completion-rate/runtime-error thresholds across required backend reports.
+**Current Status:** 🟡 In progress. Noir setup-path blockers are resolved for roadmap breadth steps `066-067` with explicit reason-code closure (`completed=1, selector_mismatch=26`, `run_outcome_missing=0` in `artifacts/roadmap_step_tests_recheck3/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv` and `artifacts/roadmap_step_tests_recheck3/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`). Halo2 breadth recheck has refreshed step evidence in `artifacts/roadmap_step_tests_recheck4`: step `068` remains `completed=15, selector_mismatch=12` and step `069` is now `completed=6, selector_mismatch=21, runtime_error=0` (`artifacts/roadmap_step_tests_recheck4/summary/step_068__cat5_frameworks_halo2_scaffold_.tsv`, `artifacts/roadmap_step_tests_recheck4/summary/step_069__local_halo2_minimal_json_spec_.tsv`). Cairo is now included in default breadth gating (new step `070`) and rechecked after wire-label fallback with `completed=1, selector_mismatch=4, runtime_error=0` (`artifacts/roadmap_step_tests_recheck5/summary/step_070__local_cairo_multiplier_.tsv`). Backend readiness gates and dashboard publication are now wired into release/benchmark workflows, with dedicated Noir/Cairo/Halo2 readiness lane runners in place and release-validation CI invoking the readiness lanes before enforcing backend thresholds; remaining execution risk is reaching completion-rate/runtime-error thresholds across required backend reports.
 
 ---
 
@@ -403,7 +404,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 ### Top Priority (P0)
 - [x] Implement Phase 6 backend readiness matrix runner and publish `artifacts/backend_readiness/latest_report.json`
 - [x] Fix Noir target setup path for Aztec example projects (steps `066`/`067`) and rerun breadth follow-up (`artifacts/roadmap_step_tests_recheck2/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv`, `artifacts/roadmap_step_tests_recheck2/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`)
-- [ ] Promote Cairo from backend-heavy optional validation into required breadth readiness gates and publish completion metrics
+- [x] Promote Cairo from backend-heavy optional validation into required breadth readiness gates and publish completion metrics (`targets/zk0d_matrix_breadth.yaml`, `artifacts/roadmap_step_tests_recheck5/summary/step_070__local_cairo_multiplier_.tsv`)
 - [x] Fix Halo2 minimal JSON spec input reconciliation (`tests/halo2_specs/minimal.json`) with metadata-only wire-label fallback (`src/executor/mod.rs`)
 - [x] Rerun step `069` and capture updated Halo2 readiness outcomes after input-reconciliation fix (`artifacts/roadmap_step_tests_recheck4/summary/step_069__local_halo2_minimal_json_spec_.tsv`)
 - [ ] Reduce non-Circom aggregate `run_outcome_missing` to <=5% on follow-up suite
@@ -594,6 +595,37 @@ MAX_SAFE_HIGH_CONF_FPR=0.05 ./scripts/release_candidate_gate.sh --stable-ref <st
 gh workflow run "Release Validation" --ref main -f required_passes=2 -f stable_ref=<tag>
 gh run watch
 ```
+
+---
+
+## 🔍 Code Quality Tasks (2026-02-20)
+
+### P0 - Replace Panic Calls with Error Handling
+- [ ] `src/fuzzer/engine/config_helpers.rs` - Invalid power_schedule panic
+- [ ] `src/fuzzer/engine/corpus_manager.rs` - Invalid indexed input suffix panic
+- [ ] `src/fuzzer/oracle_correlation.rs` - Empty correlation group panic
+- [ ] `src/fuzzer/oracle_state.rs` - Lock poisoning panics (2 instances)
+- [ ] `src/reporting/sarif.rs` - Invalid SARIF location panics (3 instances)
+- [ ] `src/executor/isolation_hardening.rs` - UNIX_EPOCH panics (2 instances)
+
+### P1 - Fix Clippy Warnings
+- [ ] Apply `cargo clippy --fix` for auto-fixable issues
+- [ ] Refactor `src/run_lifecycle.rs:306` (8 args → config struct)
+- [ ] Refactor `src/run_outcome_docs.rs:150` (8 args → config struct)
+- [ ] Refactor `src/run_outcome_docs.rs:175` (9 args → config struct)
+- [ ] Refactor `src/scan_runner.rs:5` (10 args → config struct)
+- [ ] Refactor `src/main.rs:193` (8 args → config struct)
+- [ ] Fix `only_used_in_recursion` in `crates/zk-backends/src/noir/mod.rs:654`
+- [ ] Remove needless `Ok()` wrapper in `crates/zk-backends/src/noir/mod.rs:325`
+
+### P2 - Documentation & Safety
+- [ ] Add safety comments to `src/reporting/command_timeout.rs:13-19,30`
+- [ ] Add safety comments to `src/executor/isolation_hardening.rs:332,335`
+- [ ] Complete AI implementation in `src/ai/invariant_generator.rs`
+
+### P3 - Concurrency Hardening
+- [ ] Add deadlock detection for high-concurrency paths
+- [ ] Add integration tests for concurrent code paths
 
 ---
 

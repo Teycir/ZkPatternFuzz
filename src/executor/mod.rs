@@ -1785,7 +1785,21 @@ impl ConstraintInspector for CairoExecutor {
     }
 
     fn wire_labels(&self) -> std::collections::HashMap<usize, String> {
-        self.target.wire_labels()
+        let mut labels = self.target.wire_labels();
+        // Cairo source-level labels may omit implicit runtime I/O slots.
+        // Synthesize deterministic labels so strict input reconciliation can
+        // always map every declared public/private index.
+        for (ordinal, idx) in self.public_input_indices().into_iter().enumerate() {
+            labels
+                .entry(idx)
+                .or_insert_with(|| format!("public_input_{}", ordinal));
+        }
+        for (ordinal, idx) in self.private_input_indices().into_iter().enumerate() {
+            labels
+                .entry(idx)
+                .or_insert_with(|| format!("private_input_{}", ordinal));
+        }
+        labels
     }
 }
 

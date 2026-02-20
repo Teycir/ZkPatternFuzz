@@ -139,6 +139,34 @@ fn test_halo2_wire_label_fallback_for_metadata_only_json_spec() {
 }
 
 #[test]
+fn test_cairo_wire_label_fallback_covers_all_input_indices() {
+    if crate::targets::CairoTarget::check_cairo_available().is_err() {
+        return;
+    }
+
+    let cairo_program = "tests/cairo_programs/multiplier.cairo";
+    if !std::path::Path::new(cairo_program).exists() {
+        return;
+    }
+
+    let executor = CairoExecutor::new(cairo_program).expect("create Cairo executor");
+    let inspector = executor.constraint_inspector().unwrap();
+    let labels = inspector.wire_labels();
+
+    for idx in inspector
+        .public_input_indices()
+        .into_iter()
+        .chain(inspector.private_input_indices().into_iter())
+    {
+        assert!(
+            labels.contains_key(&idx),
+            "expected Cairo wire labels to include input index {}",
+            idx
+        );
+    }
+}
+
+#[test]
 fn test_circom_ptau_autodetect_prefers_env_override() {
     let temp = tempfile::tempdir().expect("tempdir");
     let ptau = temp.path().join("custom.ptau");
