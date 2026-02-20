@@ -2,6 +2,18 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T21:53:49Z
+- Ran release-candidate gate checkpoint after backend readiness hardening:
+  - Default benchmark root attempt:
+    - `scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 ...`
+    - Result: `FAIL` due stale benchmark summaries (`benchmark_20260219_151907`, `benchmark_20260219_153704`) failing completion/FPR thresholds.
+  - Roadmap-fast benchmark checkpoint:
+    - `scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs_fast --required-passes 1 ...`
+    - Result: `PASS`
+      - benchmark gate passed on `artifacts/benchmark_runs_fast/benchmark_20260219_212657/summary.json`
+      - backend readiness gate passed for Noir/Cairo/Halo2
+      - aggregate non-Circom `run_outcome_missing_rate=0.000`
+
 ## Update (UTC): 2026-02-20T21:48:40Z
 - Hardened backend integration tests to treat environment limitations as `SKIP_INFRA` rather than hard failures:
   - File: `tests/backend_integration_tests.rs`
