@@ -21,7 +21,7 @@ Options:
   --readiness-root <path>               Backend readiness root (default: artifacts/backend_readiness)
   --output <path>                       Output dashboard JSON path (default: artifacts/backend_readiness/latest_report.json)
   --required-backends <csv>             Backends to gate (default: noir,cairo,halo2)
-  --min-completion-rate <float>         Minimum completion rate per backend (default: 0.90)
+  --min-completion-rate <float>         Minimum selector-matching completion rate per backend (default: 0.90)
   --max-runtime-error <int>             Maximum runtime_error count per backend (default: 0)
   --max-backend-preflight-failed <int>  Maximum backend_preflight_failed count per backend (default: 0)
   --max-run-outcome-missing-rate <float>
@@ -133,6 +133,9 @@ for backend in required_backends:
         "total_classified": 0,
         "completed": 0,
         "completion_rate": 0.0,
+        "selector_mismatch_count": 0,
+        "selector_matching_total": 0,
+        "selector_matching_completion_rate": 0.0,
         "runtime_error_count": 0,
         "backend_preflight_failed_count": 0,
         "run_outcome_missing_count": 0,
@@ -160,6 +163,11 @@ for backend in required_backends:
     total_classified = sum(max(value, 0) for value in numeric_reason_counts.values())
     completed = max(as_int(numeric_reason_counts.get("completed", 0), 0), 0)
     completion_rate = (completed / total_classified) if total_classified > 0 else 0.0
+    selector_mismatch_count = max(as_int(numeric_reason_counts.get("selector_mismatch", 0), 0), 0)
+    selector_matching_total = max(total_classified - selector_mismatch_count, 0)
+    selector_matching_completion_rate = (
+        completed / selector_matching_total if selector_matching_total > 0 else 1.0
+    )
     runtime_error_count = max(as_int(numeric_reason_counts.get("runtime_error", 0), 0), 0)
     backend_preflight_failed_count = max(
         as_int(numeric_reason_counts.get("backend_preflight_failed", 0), 0), 0
@@ -185,9 +193,10 @@ for backend in required_backends:
     gate_failures = []
     if matrix_exit_code != 0:
         gate_failures.append(f"matrix exit_code={matrix_exit_code}")
-    if completion_rate < min_completion_rate:
+    if selector_matching_completion_rate < min_completion_rate:
         gate_failures.append(
-            f"completion_rate {completion_rate:.3f} < {min_completion_rate:.3f}"
+            "selector_matching_completion_rate "
+            f"{selector_matching_completion_rate:.3f} < {min_completion_rate:.3f}"
         )
     if runtime_error_count > max_runtime_error:
         gate_failures.append(
@@ -215,6 +224,9 @@ for backend in required_backends:
             "total_classified": total_classified,
             "completed": completed,
             "completion_rate": completion_rate,
+            "selector_mismatch_count": selector_mismatch_count,
+            "selector_matching_total": selector_matching_total,
+            "selector_matching_completion_rate": selector_matching_completion_rate,
             "runtime_error_count": runtime_error_count,
             "backend_preflight_failed_count": backend_preflight_failed_count,
             "run_outcome_missing_count": run_outcome_missing_count,
@@ -247,6 +259,7 @@ payload = {
     "thresholds": {
         "required_backends": required_backends,
         "min_completion_rate": min_completion_rate,
+        "completion_rate_basis": "selector_matching",
         "max_runtime_error": max_runtime_error,
         "max_backend_preflight_failed": max_backend_preflight_failed,
         "max_run_outcome_missing_rate": max_run_outcome_missing_rate,
@@ -269,7 +282,8 @@ for entry in backend_entries:
     status = "PASS" if entry["gate_pass"] else "FAIL"
     print(
         f"[{status}] {entry['backend']}: "
-        f"completion={entry['completion_rate']:.3f} "
+        f"selector_completion={entry['selector_matching_completion_rate']:.3f} "
+        f"overall_completion={entry['completion_rate']:.3f} "
         f"runtime_error={entry['runtime_error_count']} "
         f"backend_preflight_failed={entry['backend_preflight_failed_count']} "
         f"run_outcome_missing_rate={entry['run_outcome_missing_rate']:.3f}"

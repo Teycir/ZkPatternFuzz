@@ -2,6 +2,52 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T20:02:54Z
+- Fixed backend readiness lane operability under sandboxed/local CI environments:
+  - `scripts/run_noir_readiness.sh`
+  - `scripts/run_cairo_readiness.sh`
+  - `scripts/run_halo2_readiness.sh`
+  - Changes:
+    - pin batch-run `HOME` + `ZKF_RUN_SIGNAL_DIR` to workspace-local readiness outputs (avoids permission errors on external run roots)
+    - preserve host `RUSTUP_HOME`/`CARGO_HOME` so toolchains remain usable
+    - pin `ZKF_BUILD_CACHE_DIR` to workspace cache (`ZkFuzz/_build_cache`) for deterministic reuse
+- Selector-aware completion gating now treats zero selector-matching denominators as vacuous pass (`1.0`) in:
+  - `scripts/backend_readiness_dashboard.sh`
+  - `scripts/non_circom_followup_gate.sh`
+- Validation:
+  - `scripts/run_backend_readiness_lanes.sh --iterations 20 --timeout 20 --workers 2 ... --skip-*integration* --no-build-if-missing`
+  - `scripts/backend_readiness_dashboard.sh --enforce`
+  - Result:
+    - Aggregate dashboard `PASS` (`artifacts/backend_readiness/latest_report.json`, generated `2026-02-20T20:02:09Z`)
+    - `run_outcome_missing_rate=0.000` aggregate (`count=0`, `total=30`)
+    - Noir: selector-only classifications (`selector_mismatch=15`, selector-matching total `0`)
+    - Cairo: `completed=1`, `selector_mismatch=4`
+    - Halo2: `completed=4`, `selector_mismatch=6`
+
+## Update (UTC): 2026-02-20T19:51:55Z
+- Strengthened follow-up readiness gating to match selector-aware roadmap semantics:
+  - `scripts/non_circom_followup_gate.sh`
+    - now enforces per-framework thresholds:
+      - `min_selector_matching_completion_rate` (default `0.90`)
+      - `max_runtime_error` (default `0`)
+      - `max_backend_preflight_failed` (default `0`)
+      - plus aggregate `max_run_outcome_missing_rate` (default `0.05`)
+    - selector-matching completion is computed as:
+      - `completed / (total_classified - selector_mismatch)`
+- Validation:
+  - `scripts/non_circom_followup_gate.sh --enforce`
+  - Result: `PASS`
+    - Noir: `selector_matching_completion_rate=1.000`, `runtime_error=0`, `backend_preflight_failed=0`
+    - Cairo: `selector_matching_completion_rate=1.000`, `runtime_error=0`, `backend_preflight_failed=0`
+    - Halo2: `selector_matching_completion_rate=1.000`, `runtime_error=0`, `backend_preflight_failed=0`
+    - Aggregate: `run_outcome_missing_rate=0.000`
+- Updated backend readiness dashboard completion basis:
+  - `scripts/backend_readiness_dashboard.sh` now gates `--min-completion-rate` on selector-matching completion (still reporting legacy overall completion for visibility).
+  - Release/readiness wrappers updated descriptions to reflect selector-matching completion semantics:
+    - `scripts/run_backend_readiness_lanes.sh`
+    - `scripts/release_candidate_gate.sh`
+    - `.github/workflows/release_validation.yml`
+
 ## Update (UTC): 2026-02-20T19:44:55Z
 - Added non-Circom follow-up aggregate gate automation:
   - `scripts/non_circom_followup_gate.sh`

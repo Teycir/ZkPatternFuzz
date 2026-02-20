@@ -30,7 +30,7 @@ Options:
                              Aggregated backend dashboard output path (default: artifacts/backend_readiness/latest_report.json)
   --required-backends <csv>  Backends required by readiness gate (default: noir,cairo,halo2)
   --min-backend-completion-rate <float>
-                             Minimum per-backend completion ratio (default: 0.90)
+                             Minimum per-backend selector-matching completion ratio (default: 0.90)
   --max-backend-runtime-error <int>
                              Maximum per-backend runtime_error count (default: 0)
   --max-backend-preflight-failed <int>

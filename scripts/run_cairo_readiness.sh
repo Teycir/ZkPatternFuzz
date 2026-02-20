@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
   cat <<'EOF'
@@ -73,6 +74,14 @@ if [[ ! -x "$BATCH_BIN" ]]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
+READINESS_HOME="${READINESS_HOME:-$OUTPUT_DIR/readiness_home}"
+READINESS_SIGNAL_DIR="${READINESS_SIGNAL_DIR:-$READINESS_HOME/ZkFuzz}"
+HOST_HOME="${HOST_HOME:-${HOME:-$ROOT_DIR}}"
+READINESS_RUSTUP_HOME="${READINESS_RUSTUP_HOME:-${RUSTUP_HOME:-$HOST_HOME/.rustup}}"
+READINESS_CARGO_HOME="${READINESS_CARGO_HOME:-${CARGO_HOME:-$HOST_HOME/.cargo}}"
+READINESS_BUILD_CACHE_DIR="${READINESS_BUILD_CACHE_DIR:-$ROOT_DIR/ZkFuzz/_build_cache}"
+mkdir -p "$READINESS_SIGNAL_DIR"
+mkdir -p "$READINESS_BUILD_CACHE_DIR"
 
 STAMP="$(date -u +"%Y%m%d_%H%M%S")"
 INTEGRATION_LOG="$OUTPUT_DIR/integration_${STAMP}.log"
@@ -167,7 +176,12 @@ for row in "${TARGET_ROWS[@]}"; do
   )
 
   set +e
-  "${RUN_CMD[@]}" >"$TARGET_LOG" 2>&1
+  HOME="$READINESS_HOME" \
+    ZKF_RUN_SIGNAL_DIR="$READINESS_SIGNAL_DIR" \
+    ZKF_BUILD_CACHE_DIR="$READINESS_BUILD_CACHE_DIR" \
+    RUSTUP_HOME="$READINESS_RUSTUP_HOME" \
+    CARGO_HOME="$READINESS_CARGO_HOME" \
+    "${RUN_CMD[@]}" >"$TARGET_LOG" 2>&1
   TARGET_EXIT=$?
   set -e
 

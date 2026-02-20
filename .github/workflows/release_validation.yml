@@ -51,7 +51,7 @@ on:
         default: "noir,cairo,halo2"
         type: string
       min_backend_completion_rate:
-        description: Minimum completion ratio required per backend
+        description: Minimum selector-matching completion ratio required per backend
         required: false
         default: "0.90"
         type: string

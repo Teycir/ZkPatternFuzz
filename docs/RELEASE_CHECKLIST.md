@@ -54,15 +54,16 @@ Use this for `rc` and final tags. Each item is a hard gate unless explicitly wai
 - [ ] Consecutive release-candidate benchmark gate:
   - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2`
 - [ ] Backend readiness lanes executed and dashboard published:
-  - `./scripts/run_backend_readiness_lanes.sh --required-backends noir,cairo,halo2 --min-completion-rate 0.90 --max-runtime-error 0 --max-backend-preflight-failed 0`
+  - `./scripts/run_backend_readiness_lanes.sh --required-backends noir,cairo,halo2 --min-completion-rate 0.90 --max-runtime-error 0 --max-backend-preflight-failed 0 --max-run-outcome-missing-rate 0.05`
 - [ ] Backend readiness gate enforced as part of release candidate validation:
-  - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --min-backend-completion-rate 0.90 --max-backend-runtime-error 0 --max-backend-preflight-failed 0`
+  - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --min-backend-completion-rate 0.90 --max-backend-runtime-error 0 --max-backend-preflight-failed 0 --max-backend-run-outcome-missing-rate 0.05`
+  - Note: `min-backend-completion-rate` is evaluated on selector-matching templates (`completed / (total - selector_mismatch)`).
 - [ ] If shipping production-depth changes, run at least one non-dry benchmark suite and archive `summary.json`.
 - [ ] Release validation workflow run recorded:
   - GitHub Actions `Release Validation` (`workflow_dispatch`) with:
     - `stable_ref=<previous_stable_tag_or_commit>`
     - `required_passes=2`
-    - readiness gate inputs set for backend thresholds (`required_backends`, `min_backend_completion_rate`, `max_backend_runtime_error`, `max_backend_preflight_failed`)
+    - readiness gate inputs set for backend thresholds (`required_backends`, `min_backend_completion_rate`, `max_backend_runtime_error`, `max_backend_preflight_failed`, `max_backend_run_outcome_missing_rate`)
 
 ## 6. Documentation + Migration
 

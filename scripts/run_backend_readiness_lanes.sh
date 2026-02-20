@@ -48,7 +48,7 @@ Options:
   --iterations <N>                      Iterations per scan (default: 250)
   --timeout <sec>                       Timeout per scan in seconds (default: 30)
   --required-backends <csv>             Backends required in dashboard gate (default: noir,cairo,halo2)
-  --min-completion-rate <float>         Dashboard gate minimum completion ratio (default: 0.90)
+  --min-completion-rate <float>         Dashboard gate minimum selector-matching completion ratio (default: 0.90)
   --max-runtime-error <int>             Dashboard gate max runtime_error count (default: 0)
   --max-backend-preflight-failed <int>  Dashboard gate max backend_preflight_failed count (default: 0)
   --max-run-outcome-missing-rate <f>    Dashboard gate max run_outcome_missing ratio (default: 0.05)
