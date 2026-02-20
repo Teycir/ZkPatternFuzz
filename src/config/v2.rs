@@ -101,6 +101,10 @@ pub struct FuzzConfigV2 {
     #[serde(default)]
     pub chains: Vec<ChainConfig>,
 
+    /// AI model configuration for assisted pentesting
+    #[serde(default)]
+    pub ai_assistant: Option<AIAssistantConfig>,
+
     /// Base v1 configuration (merged after includes)
     #[serde(flatten)]
     pub base: Option<FuzzConfig>,
@@ -647,6 +651,12 @@ impl ConfigResolver {
                 "v2_traits".to_string(),
                 serde_yaml::to_value(&v2_config.target_traits)?,
             );
+            if let Some(ai_assistant) = &v2_config.ai_assistant {
+                merged.campaign.parameters.additional.insert(
+                    "v2_ai_assistant".to_string(),
+                    serde_yaml::to_value(ai_assistant)?,
+                );
+            }
 
             // Merge chains defined in this v2 config (overrides included chains by name)
             merged.chains = Self::merge_chains(merged.chains, v2_config.chains);
@@ -1039,6 +1049,21 @@ impl FuzzConfig {
             .unwrap_or_default()
     }
 
+    /// Extract AI assistant configuration from v2 metadata.
+    pub fn get_ai_assistant_config(&self) -> Option<AIAssistantConfig> {
+        self.campaign
+            .parameters
+            .additional
+            .get("v2_ai_assistant")
+            .and_then(|v| match serde_yaml::from_value(v.clone()) {
+                Ok(parsed) => Some(parsed),
+                Err(err) => {
+                    tracing::warn!("Invalid v2_ai_assistant config: {}", err);
+                    None
+                }
+            })
+    }
+
     /// Check if config uses v2 features
     pub fn is_v2(&self) -> bool {
         self.campaign.version.starts_with("2.")
@@ -1390,6 +1415,70 @@ pub fn parse_chains_v2(config: &FuzzConfigV2) -> Vec<crate::chain_fuzzer::ChainS
 /// Parse chain configurations from a FuzzConfig
 pub fn parse_chains(config: &super::FuzzConfig) -> Vec<crate::chain_fuzzer::ChainSpec> {
     config.chains.iter().map(|c| c.to_chain_spec()).collect()
+}
+
+/// AI Assistant configuration for AI-assisted pentesting
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct AIAssistantConfig {
+    /// Enable AI-assisted pentesting
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// AI model to use (e.g., "mistral", "claude", "gpt-4")
+    #[serde(default = "default_ai_model")]
+    pub model: String,
+
+    /// API endpoint for AI model
+    #[serde(default)]
+    pub endpoint: Option<String>,
+
+    /// API key for AI model (can be set via environment variable)
+    #[serde(default)]
+    pub api_key: Option<String>,
+
+    /// Temperature for AI responses (0.0-1.0)
+    #[serde(default = "default_ai_temperature")]
+    pub temperature: f32,
+
+    /// Maximum tokens for AI responses
+    #[serde(default = "default_ai_max_tokens")]
+    pub max_tokens: u32,
+
+    /// AI assistance modes
+    #[serde(default)]
+    pub modes: Vec<AIAssistanceMode>,
+
+    /// Custom system prompt for AI
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+}
+
+/// AI assistance modes
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AIAssistanceMode {
+    /// Generate candidate invariants from circuit analysis
+    InvariantGeneration,
+    /// Analyze fuzzing results and suggest next steps
+    ResultAnalysis,
+    /// Generate YAML configuration suggestions
+    ConfigSuggestion,
+    /// Explain vulnerabilities in natural language
+    VulnerabilityExplanation,
+    /// All modes enabled
+    All,
+}
+
+fn default_ai_model() -> String {
+    "mistral".to_string()
+}
+
+fn default_ai_temperature() -> f32 {
+    0.7
+}
+
+fn default_ai_max_tokens() -> u32 {
+    1000
 }
 
 #[cfg(test)]

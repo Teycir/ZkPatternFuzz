@@ -1,4 +1,5 @@
 use super::*;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
 fn test_parse_equals_invariant() {
@@ -95,4 +96,45 @@ fn test_schedule_phase_serialization() {
     assert_eq!(parsed.phase, "seed");
     assert_eq!(parsed.duration_sec, 60);
     assert_eq!(parsed.fail_on_findings.len(), 2);
+}
+
+#[test]
+fn test_v2_ai_assistant_roundtrip() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("zkf_ai_v2_{}.yaml", unique));
+    let yaml = r#"
+campaign:
+  name: "ai-test"
+  version: "2.0"
+  target:
+    framework: "circom"
+    circuit_path: "./dummy.circom"
+    main_component: "Main"
+inputs:
+  - name: "x"
+    type: "field"
+attacks:
+  - type: "underconstrained"
+    description: "test"
+ai_assistant:
+  enabled: true
+  model: "mistral"
+  temperature: 0.5
+  max_tokens: 512
+  modes:
+    - invariant_generation
+    - result_analysis
+"#;
+    std::fs::write(&path, yaml).unwrap();
+    let config = FuzzConfig::from_yaml_v2(path.to_str().unwrap()).unwrap();
+    let ai = config.get_ai_assistant_config().expect("missing ai config");
+    std::fs::remove_file(path).ok();
+
+    assert!(ai.enabled);
+    assert_eq!(ai.model, "mistral");
+    assert_eq!(ai.max_tokens, 512);
+    assert_eq!(ai.modes.len(), 2);
 }

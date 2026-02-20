@@ -1,0 +1,106 @@
+# AI-Assisted Security Audit Configuration
+# Uses Mistral AI model for invariant generation and result analysis
+
+campaign:
+  name: "AI-Assisted Circuit Audit"
+  version: "1.0.0"
+  target:
+    framework: "circom"
+    circuit_path: "./test_circuit.circom"
+    main_component: "Main"
+  parameters:
+    timeout_seconds: 600
+    field: "bn254"
+    strict_backend: true
+    oracle_validation: true
+    per_exec_isolation: true
+
+# AI Assistant Configuration (Mistral AI by default)
+ai_assistant:
+  enabled: true
+  model: "mistral"  # Options: "mistral", "claude", "gpt-4"
+  temperature: 0.7
+  max_tokens: 1000
+  modes:
+    - invariant_generation
+    - result_analysis
+    - config_suggestion
+    - vulnerability_explanation
+  # Optional: Custom API endpoint
+  # endpoint: "https://api.mistral.ai/v1"
+  # Optional: API key (can also be set via environment variable)
+  # api_key: "your-api-key"
+
+# Baseline invariants required for readiness/evidence mode
+invariants:
+  - name: "public_input_field_range"
+    relation: "public_input < 2^252"
+    oracle: "must_hold"
+  - name: "private_witness_field_range"
+    relation: "private_witness < 2^252"
+    oracle: "must_hold"
+
+# Attack configurations
+attacks:
+  - type: "underconstrained"
+    description: "Detect multiple valid witnesses for same public inputs"
+    config:
+      max_attempts: 5000
+      confidence_threshold: 0.95
+
+  - type: "collision"
+    description: "Hash and nullifier collision detection"
+    config:
+      target: "auto"  # Auto-detect collision targets
+
+  - type: "boundary"
+    description: "Field boundary and arithmetic overflow testing"
+    config:
+      test_edge_cases: true
+      test_overflow: true
+
+  - type: "constraint_inference"
+    description: "Infer missing constraints from witness patterns"
+    config:
+      min_confidence: 0.8
+
+# Input configurations
+inputs:
+  - name: "public_input"
+    type: "field"
+    fuzz_strategy: "random"
+    constraints:
+      - "value < 2^252"
+
+  - name: "private_witness"
+    type: "field"
+    fuzz_strategy: "symbolic"
+    interesting:
+      - "0"
+      - "1"
+      - "2^252 - 1"
+
+# Mutations for fuzzing
+mutations:
+  - name: "bit_flip"
+    probability: 0.1
+    operations: ["single_bit_flip", "multi_bit_flip"]
+  - name: "arithmetic"
+    probability: 0.2
+    operations: ["add_one", "sub_one", "negate"]
+  - name: "boundary"
+    probability: 0.1
+    use_values: ["zero", "one", "max_field", "mid_field"]
+
+# Reporting configuration
+reporting:
+  output_dir: "./reports/ai_audit"
+  formats: ["json", "markdown", "sarif"]
+  include_poc: true
+  crash_reproduction: true
+
+# AI-Generated invariants will be added here during the skimmer phase
+# invariants:
+#   - name: "ai_generated_invariant_1"
+#     relation: "invariant_expression"
+#     oracle: "must_hold"

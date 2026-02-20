@@ -210,6 +210,7 @@
 //! - [Circom Documentation](https://docs.circom.io/)
 //! - [Noir Documentation](https://noir-lang.org/)
 
+pub mod ai;
 pub mod config;
 pub mod corpus;
 pub mod cve;
@@ -370,8 +371,9 @@ pub use analysis::{
 };
 pub use differential::{DifferentialConfig, DifferentialFuzzer, DifferentialResult};
 pub use formal::{
-    CircuitProperty, CoqExporter, FormalConfig, FormalVerificationManager, LeanExporter,
-    ProofObligation, ProofSystem, PropertyExtractor,
+    export_formal_bridge_artifacts, import_formal_invariants_from_file, CircuitProperty,
+    CoqExporter, FormalBridgeArtifacts, FormalBridgeOptions, FormalConfig,
+    FormalVerificationManager, LeanExporter, ProofObligation, ProofSystem, PropertyExtractor,
 };
 pub use multi_circuit::{CircuitChain, MultiCircuitConfig, MultiCircuitFuzzer};
 

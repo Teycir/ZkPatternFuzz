@@ -1,6 +1,6 @@
 use chrono::{Local, Utc};
 use clap::Parser;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 mod cli;
 mod engagement_artifacts;
 mod output_lock;
@@ -67,6 +67,10 @@ use scan_runner::run_scan as run_scan_orchestrated;
 use scan_selector::{
     evaluate_loaded_scan_regex_patterns, load_scan_regex_selector_config,
     validate_scan_regex_pattern_safety, ScanRegexPatternSummary,
+};
+use zk_fuzzer::ai::AIAssistant;
+use zk_fuzzer::formal::{
+    export_formal_bridge_artifacts, import_formal_invariants_from_file, FormalBridgeOptions,
 };
 use zk_fuzzer::fuzzer::ZkFuzzer;
 use zk_fuzzer::Framework;
@@ -211,6 +215,42 @@ async fn run_scan(
     .await
 }
 
+fn build_ai_circuit_context(config: &zk_fuzzer::config::FuzzConfig) -> String {
+    let attack_types = config
+        .attacks
+        .iter()
+        .map(|attack| format!("{:?}", attack.attack_type))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let input_names = config
+        .inputs
+        .iter()
+        .map(|input| input.name.clone())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let circuit_preview = std::fs::read_to_string(&config.campaign.target.circuit_path)
+        .map(|raw| truncate_str(&raw, 4096))
+        .unwrap_or_else(|_| "<circuit source unavailable>".to_string());
+
+    format!(
+        "campaign={}\nframework={:?}\ncircuit_path={}\nmain_component={}\nattacks=[{}]\ninputs=[{}]\n\ncircuit_preview:\n{}",
+        config.campaign.name,
+        config.campaign.target.framework,
+        config.campaign.target.circuit_path.display(),
+        config.campaign.target.main_component,
+        attack_types,
+        input_names,
+        circuit_preview
+    )
+}
+
+fn maybe_write_ai_artifact(output_dir: &Path, file_name: &str, content: &str) {
+    let path = output_dir.join("ai").join(file_name);
+    if let Err(err) = zk_fuzzer::util::write_file_atomic(&path, content.as_bytes()) {
+        tracing::warn!("Failed to write AI artifact '{}': {}", path.display(), err);
+    }
+}
+
 async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow::Result<()> {
     let started_utc = Utc::now();
     let command = options.command_label;
@@ -234,6 +274,35 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     )?;
 
     let campaign_name = config.campaign.name.clone();
+    let formal_bridge_options =
+        FormalBridgeOptions::from_additional(&config.campaign.parameters.additional);
+    let imported_formal_invariants =
+        match import_formal_invariants_from_file(&mut config, config_path) {
+            Ok(count) => count,
+            Err(err) => {
+                tracing::warn!("Failed to import formal invariants: {}", err);
+                0
+            }
+        };
+    if imported_formal_invariants > 0 {
+        tracing::info!(
+            "Imported {} formal invariants into fuzzing runtime",
+            imported_formal_invariants
+        );
+    }
+    let formal_bridge_invariants = config.get_invariants();
+
+    let ai_assistant = config
+        .get_ai_assistant_config()
+        .filter(|cfg| cfg.enabled)
+        .map(|cfg| {
+            tracing::info!(
+                "AI assistant enabled (model='{}', modes={:?})",
+                cfg.model,
+                cfg.modes
+            );
+            AIAssistant::new(cfg)
+        });
 
     if options.real_only {
         tracing::info!("--real-only set (real backend mode is already enforced)");
@@ -528,6 +597,44 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         }
     }
 
+    let mut ai_generated_invariant_count = 0usize;
+    let mut ai_generated_yaml = false;
+    if let Some(ai) = ai_assistant.as_ref() {
+        let ai_context = build_ai_circuit_context(&config);
+
+        match ai.generate_invariants(&ai_context).await {
+            Ok(invariants) if !invariants.is_empty() => {
+                ai_generated_invariant_count = invariants.len();
+                let mut artifact = String::from("# AI-generated candidate invariants\n\n");
+                for invariant in invariants {
+                    artifact.push_str("- ");
+                    artifact.push_str(&invariant);
+                    artifact.push('\n');
+                }
+                if !options.dry_run {
+                    maybe_write_ai_artifact(&output_dir, "candidate_invariants.md", &artifact);
+                }
+            }
+            Ok(_) => {}
+            Err(err) => tracing::warn!("AI invariant generation failed: {}", err),
+        }
+
+        match ai.suggest_yaml(&ai_context).await {
+            Ok(suggested_yaml) if !suggested_yaml.trim().is_empty() => {
+                ai_generated_yaml = true;
+                if !options.dry_run {
+                    maybe_write_ai_artifact(
+                        &output_dir,
+                        "suggested_campaign.yaml",
+                        &suggested_yaml,
+                    );
+                }
+            }
+            Ok(_) => {}
+            Err(err) => tracing::warn!("AI YAML suggestion failed: {}", err),
+        }
+    }
+
     if options.dry_run {
         tracing::info!("Dry run mode - configuration validated successfully");
         println!("\n✓ Configuration is valid");
@@ -537,6 +644,25 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         println!("  Inputs: {}", config.inputs.len());
         if options.resume {
             println!("  Resume: enabled");
+        }
+        if ai_assistant.is_some() {
+            println!(
+                "  AI: enabled (invariants: {}, config_suggestion: {})",
+                ai_generated_invariant_count,
+                if ai_generated_yaml {
+                    "generated"
+                } else {
+                    "not_generated"
+                }
+            );
+        }
+        if formal_bridge_options.enabled {
+            println!(
+                "  Formal bridge: enabled (system: {:?}, invariants: {}, imported_now: {})",
+                formal_bridge_options.system,
+                formal_bridge_invariants.len(),
+                imported_formal_invariants
+            );
         }
         if let Some(ref p) = options.profile {
             println!("  Profile: {}", p);
@@ -724,6 +850,57 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             format!("{:#}", err),
         );
         return Err(err);
+    }
+
+    if let Some(ai) = ai_assistant.as_ref() {
+        match serde_json::to_string_pretty(&report) {
+            Ok(serialized_report) => match ai.analyze_results(&serialized_report).await {
+                Ok(analysis) if !analysis.trim().is_empty() => {
+                    maybe_write_ai_artifact(&output_dir, "result_analysis.md", &analysis);
+                }
+                Ok(_) => {}
+                Err(err) => tracing::warn!("AI result analysis failed: {}", err),
+            },
+            Err(err) => tracing::warn!("Failed to serialize report for AI analysis: {}", err),
+        }
+
+        if let Some(finding) = report.findings.first() {
+            let vulnerability = format!("{:?}: {}", finding.attack_type, finding.description);
+            match ai.explain_vulnerability(&vulnerability).await {
+                Ok(explanation) if !explanation.trim().is_empty() => {
+                    maybe_write_ai_artifact(
+                        &output_dir,
+                        "top_finding_explanation.md",
+                        &explanation,
+                    );
+                }
+                Ok(_) => {}
+                Err(err) => tracing::warn!("AI vulnerability explanation failed: {}", err),
+            }
+        }
+    }
+
+    if formal_bridge_options.enabled {
+        match export_formal_bridge_artifacts(
+            &output_dir,
+            &campaign_name,
+            &report,
+            &formal_bridge_invariants,
+            &formal_bridge_options,
+        ) {
+            Ok(artifacts) => {
+                tracing::info!(
+                    "Formal bridge artifacts generated: findings='{}' invariants='{}' module='{}' obligations={}",
+                    artifacts.findings_export_path.display(),
+                    artifacts.imported_oracles_path.display(),
+                    artifacts.proof_module_path.display(),
+                    artifacts.obligations_count
+                );
+            }
+            Err(err) => {
+                tracing::warn!("Formal bridge artifact generation failed: {}", err);
+            }
+        }
     }
 
     let critical = report.has_critical_findings();

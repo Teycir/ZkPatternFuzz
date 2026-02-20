@@ -2,6 +2,52 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T15:07:11Z
+- Formal Verification Bridge runtime slice implemented:
+  - Fuzz findings export: `reporting.output_dir/formal_bridge/fuzz_findings.json`
+  - Invariant-oracle import: `campaign.parameters.formal_invariants_file` merges into v2 invariants + runtime oracles
+  - Hybrid proof workflow bundle:
+    - `reporting.output_dir/formal_bridge/imported_invariants.yaml`
+    - `reporting.output_dir/formal_bridge/FuzzBridge.lean` (or `.v` via `formal_bridge_system: coq`)
+    - `reporting.output_dir/formal_bridge/hybrid_workflow.md`
+- Validation:
+  - New unit tests in `src/formal/bridge_tests.rs`
+  - Run integration wired in `src/main.rs` after report persistence
+
+## Update (UTC): 2026-02-20T14:18:32Z
+- Focused Noir recheck: steps `066` and `067`
+- Runner: `scripts/run_breadth_step.sh`
+- Output root: `artifacts/roadmap_step_tests_recheck3`
+- Settings: workers=2, iterations=20, timeout=20
+- Result:
+  - Step 066: `completed=1`, `selector_mismatch=26`, `run_outcome_missing=0`
+  - Step 067: `completed=1`, `selector_mismatch=26`, `run_outcome_missing=0`
+- Notes:
+  - Noir setup-path blockers are no longer reproducing on these targets.
+  - Selector validation misses are now classified explicitly (`selector_mismatch`) instead of surfacing as `run_outcome_missing`.
+
+## Update (UTC): 2026-02-20T14:30:06Z
+- Focused Halo2 recheck: steps `068` and `069`
+- Runner: `scripts/run_breadth_step.sh`
+- Output root: `artifacts/roadmap_step_tests_recheck3`
+- Settings: workers=2, iterations=20, timeout=20
+- Result:
+  - Step 068: `completed=15`, `selector_mismatch=12`, `run_outcome_missing=0`
+  - Step 069: `runtime_error=6`, `selector_mismatch=21`, `run_outcome_missing=0`
+- Notes:
+  - `cat5_frameworks_halo2_scaffold` executes to completion on selector-matching templates.
+  - `local_halo2_minimal_json_spec` still fails with strict input reconciliation (`missing wire label for input index 0`).
+
+## Update (UTC): 2026-02-20T14:37:55Z
+- Readiness lane bootstrap scripts added:
+  - `scripts/run_cairo_readiness.sh` with matrix `targets/zk0d_matrix_cairo_readiness.yaml`
+  - `scripts/run_halo2_readiness.sh` with matrix `targets/zk0d_matrix_halo2_readiness.yaml`
+- Bootstrap run status:
+  - Cairo readiness report: `artifacts/backend_readiness/cairo/latest_report.json` (`exit_code=1`, `reason_counts: none=1`)
+  - Halo2 readiness report: `artifacts/backend_readiness/halo2/latest_report.json` (`exit_code=1`, `reason_counts: none=2`)
+- Blocking issue:
+  - Current workspace compile regression (`FuzzConfigV2` initializer missing `ai_assistant`) prevents `zk-fuzzer` rebuild during lane execution; see matrix logs under `artifacts/backend_readiness/{cairo,halo2}/matrix_*.log`.
+
 ## Scope
 - Focused rerun subset: targets that showed at least one 'completed' or 'critical_findings_detected' in first pass
 - Runner: scripts/run_breadth_step.sh

@@ -6,10 +6,15 @@
 //! - Property extraction from circuits
 //! - Proof obligation generation
 
+pub mod bridge;
 pub mod coq;
 pub mod lean;
 pub mod properties;
 
+pub use bridge::{
+    export_formal_bridge_artifacts, import_formal_invariants_from_file, FormalBridgeArtifacts,
+    FormalBridgeOptions,
+};
 pub use coq::CoqExporter;
 pub use lean::LeanExporter;
 pub use properties::{CircuitProperty, PropertyExtractor};

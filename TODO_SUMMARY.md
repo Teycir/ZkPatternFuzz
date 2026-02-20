@@ -30,9 +30,9 @@
 ## Advanced Features (from Architecture Roadmap)
 
 ### Formal Verification Bridge
-- [ ] Export fuzzing findings to formal tools
-- [ ] Import formal invariants as fuzzing oracles
-- [ ] Hybrid fuzzing+proof workflow
+- [x] Export fuzzing findings to formal tools
+- [x] Import formal invariants as fuzzing oracles
+- [x] Hybrid fuzzing+proof workflow
 
 ### Developer Experience
 - [ ] Custom attack pattern DSL
