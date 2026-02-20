@@ -441,6 +441,8 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - **[TRIAGE_SYSTEM.md](docs/TRIAGE_SYSTEM.md)** - Automated triage
 - **[DEFI_ATTACK_GUIDE.md](docs/DEFI_ATTACK_GUIDE.md)** - MEV/front-running detection
 - **[TARGETS.md](docs/TARGETS.md)** - Target matrix and benchmark usage
+- **[ROADMAP_TARGET_TESTS.md](docs/ROADMAP_TARGET_TESTS.md)** - Breadth target checklist with per-target remarks
+- **[ROADMAP_TARGET_TESTS_FOLLOWUP.md](docs/ROADMAP_TARGET_TESTS_FOLLOWUP.md)** - Focused follow-up rerun summary
 
 ---
 

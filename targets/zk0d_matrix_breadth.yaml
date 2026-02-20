@@ -1,0 +1,485 @@
+version: 1
+
+targets:
+  - name: semaphore_wrapper_local
+    target_circuit: campaigns/zk0d/semaphore_main.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat8_libs_snarkjs_test_plonk_circuit_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat8_libs/snarkjs/test/plonk_circuit/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat8_libs_snarkjs_test_groth16_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat8_libs/snarkjs/test/groth16/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat8_libs_snarkjs_test_fflonk_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat8_libs/snarkjs/test/fflonk/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_tornado_core_circuits_withdraw
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/tornado-core/circuits/withdraw.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat8_libs_snarkjs_test_circuit2_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat8_libs/snarkjs/test/circuit2/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat8_libs_snarkjs_test_circuit_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat8_libs/snarkjs/test/circuit/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat5_frameworks_snarkjs_test_plonk_circuit_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/snarkjs/test/plonk_circuit/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat5_frameworks_snarkjs_test_groth16_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/snarkjs/test/groth16/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat5_frameworks_snarkjs_test_fflonk_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/snarkjs/test/fflonk/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat5_frameworks_snarkjs_test_circuit2_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/snarkjs/test/circuit2/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat5_frameworks_snarkjs_test_circuit_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/snarkjs/test/circuit/circuit.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_verifyExpirationTime
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_verifyExpirationTime.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_verifyCredentialNotRevoked
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_verifyCredentialNotRevoked.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_verifyCredentialMtpHiHv
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_verifyCredentialMtpHiHv.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_verifyCredentialMtp
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_verifyCredentialMtp.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_verifyClaimsTreeRoot
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_verifyClaimsTreeRoot.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_verifyClaimSignature
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_verifyClaimSignature.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_isUpdatable
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_isUpdatable.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_isExpirable
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_isExpirable.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_GetValueByIndex
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_GetValueByIndex.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_idUtils_SelectProfile
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/idUtils_SelectProfile.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_getSubjectLocation
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_getSubjectLocation.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_idUtils_ProfileID
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/idUtils_ProfileID.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_getClaimSubjectOtherIden
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_getClaimSubjectOtherIden.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_idUtils_NewID
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/idUtils_NewID.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_idUtils_GatherID
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/idUtils_GatherID.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_getClaimExpiration
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_getClaimExpiration.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_idUtils_CalculateIdChecksum
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/idUtils_CalculateIdChecksum.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_checkIdenStateMatchesRoots
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_checkIdenStateMatchesRoots.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_eq
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/eq.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_utils_arraySizeValidatorTest
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/utils_arraySizeValidatorTest.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_eddsaposeidon
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/eddsaposeidon.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_claimUtils_getClaimMerklizeRoot
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/claimUtils_getClaimMerklizeRoot.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_comparators_greater_than
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/comparators_greater_than.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_comparators
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/comparators.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_utils_claimUtils_getClaimHeader
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/utils/claimUtils_getClaimHeader.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_authV3Test
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/authV3Test.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_stateTransitionTest
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/stateTransitionTest.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_query_queryTest
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/query/queryTest.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_query_nullifyTest
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/query/nullifyTest.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_query_inTest
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/query/inTest.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_stateTransitionV3
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/stateTransitionV3.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_poseidon16
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/poseidon16.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_poseidon14
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/poseidon14.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_poseidon
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/poseidon.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_lessthan
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/lessthan.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_linkedMultiQuery5
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/linkedMultiQuery5.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_idUtils_TakeNBits
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/idUtils_TakeNBits.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_linkedMultiQuery3
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/linkedMultiQuery3.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_test_circuits_idUtils_SplitID
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/test/circuits/idUtils_SplitID.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_linkedMultiQuery
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/linkedMultiQuery.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_credentialAtomicQueryV3Universal
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/credentialAtomicQueryV3Universal.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_credentialAtomicQueryV3Universal_16_16_64
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/credentialAtomicQueryV3Universal-16-16-64.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_credentialAtomicQueryV3OnChain
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/credentialAtomicQueryV3OnChain.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_credentialAtomicQueryV3OnChain_16_16_64_16_32
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/credentialAtomicQueryV3OnChain-16-16-64-16-32.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_credentialAtomicQueryV3
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/credentialAtomicQueryV3.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_credentialAtomicQueryV3_16_16_64
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/credentialAtomicQueryV3-16-16-64.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_authV3
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/authV3.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_circuits_circuits_authV3_8_32
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/circuits/authV3-8-32.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_email_wallet_packages_circuits_tests_circuits_test_invitation_code_regex
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/tests/circuits/test_invitation_code_regex.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_email_wallet_packages_circuits_src_claim
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/src/claim.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_email_wallet_packages_circuits_src_announcement
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/src/announcement.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_email_wallet_packages_circuits_src_account_creation
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/src/account_creation.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_email_wallet_packages_circuits_src_email_sender
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/src/email_sender.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_aztec_docs_examples_circuits_hello_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/docs/examples/circuits/hello_circuit/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: always
+    enabled: true
+
+  - name: cat3_privacy_barretenberg_docs_examples_fixtures_main
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/docs/examples/fixtures/main/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: always
+    enabled: true
+
+  - name: cat5_frameworks_halo2_scaffold
+    target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/halo2-scaffold/Cargo.toml
+    main_component: zk0d_mul
+    framework: halo2
+    alias: always
+    enabled: true
+
+  - name: local_halo2_minimal_json_spec
+    target_circuit: tests/halo2_specs/minimal.json
+    main_component: minimal
+    framework: halo2
+    alias: always
+    enabled: true
