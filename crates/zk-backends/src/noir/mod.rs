@@ -596,7 +596,9 @@ impl NoirTarget {
                 };
 
                 if file_type.is_file()
-                    && path.extension().is_some_and(|extension| extension == "json")
+                    && path
+                        .extension()
+                        .is_some_and(|extension| extension == "json")
                     && seen.insert(path.clone())
                 {
                     candidates.push(path);
@@ -638,7 +640,10 @@ impl NoirTarget {
         let isolated_root = self.build_dir.join("isolated_project");
         if isolated_root.exists() {
             fs::remove_dir_all(&isolated_root).with_context(|| {
-                format!("Failed removing stale isolated directory '{}'", isolated_root.display())
+                format!(
+                    "Failed removing stale isolated directory '{}'",
+                    isolated_root.display()
+                )
             })?;
         }
         self.copy_project_tree(self.project_path.as_path(), isolated_root.as_path())?;
@@ -647,17 +652,18 @@ impl NoirTarget {
     }
 
     fn copy_project_tree(&self, src: &Path, dst: &Path) -> Result<()> {
-        fs::create_dir_all(dst)
-            .with_context(|| format!("Failed creating '{}'", dst.display()))?;
+        fs::create_dir_all(dst).with_context(|| format!("Failed creating '{}'", dst.display()))?;
 
-        for entry in fs::read_dir(src).with_context(|| format!("Failed reading '{}'", src.display()))?
+        for entry in
+            fs::read_dir(src).with_context(|| format!("Failed reading '{}'", src.display()))?
         {
-            let entry = entry.with_context(|| format!("Failed reading entry in '{}'", src.display()))?;
+            let entry =
+                entry.with_context(|| format!("Failed reading entry in '{}'", src.display()))?;
             let src_path = entry.path();
             let dst_path = dst.join(entry.file_name());
-            let file_type = entry
-                .file_type()
-                .with_context(|| format!("Failed reading file type for '{}'", src_path.display()))?;
+            let file_type = entry.file_type().with_context(|| {
+                format!("Failed reading file type for '{}'", src_path.display())
+            })?;
 
             if file_type.is_symlink() {
                 continue;
