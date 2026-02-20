@@ -49,6 +49,9 @@ Use this for `rc` and final tags. Each item is a hard gate unless explicitly wai
 - [ ] Benchmark dry-runs:
   - `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --dry-run --trials 1 --jobs 1 --batch-jobs 1 --workers 1`
   - `cargo run --quiet --bin zk0d_benchmark -- --config-profile prod --dry-run --trials 1 --jobs 1 --batch-jobs 1 --workers 1`
+- [ ] Benchmark regeneration for release gate evidence (recommended profile):
+  - `cargo run --quiet --release --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 1 --batch-jobs 1 --workers 1 --iterations 50 --timeout 10 --benchmark-min-evidence-confidence low --benchmark-oracle-min-agreement-ratio 0.45 --benchmark-oracle-cross-attack-weight 0.65 --benchmark-high-confidence-min-oracles 3 --output-dir artifacts/benchmark_runs`
+  - Run the command twice to produce two fresh summaries for `--required-passes 2`.
 - [ ] Regression gate check:
   - `./scripts/ci_benchmark_gate.sh`
 - [ ] Consecutive release-candidate benchmark gate:
