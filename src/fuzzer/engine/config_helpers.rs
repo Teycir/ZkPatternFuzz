@@ -383,7 +383,12 @@ impl FuzzingEngine {
                 return match s.parse() {
                     Ok(schedule) => schedule,
                     Err(err) => {
-                        panic!("Invalid power_schedule '{}': {:?}", s, err);
+                        tracing::warn!(
+                            "Invalid power_schedule '{}': {:?}; defaulting to MMOPT",
+                            s,
+                            err
+                        );
+                        PowerSchedule::Mmopt
                     }
                 };
             }

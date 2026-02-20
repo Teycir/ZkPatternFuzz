@@ -601,12 +601,12 @@ gh run watch
 ## 🔍 Code Quality Tasks (2026-02-20)
 
 ### P0 - Replace Panic Calls with Error Handling
-- [ ] `src/fuzzer/engine/config_helpers.rs` - Invalid power_schedule panic
-- [ ] `src/fuzzer/engine/corpus_manager.rs` - Invalid indexed input suffix panic
-- [ ] `src/fuzzer/oracle_correlation.rs` - Empty correlation group panic
-- [ ] `src/fuzzer/oracle_state.rs` - Lock poisoning panics (2 instances)
-- [ ] `src/reporting/sarif.rs` - Invalid SARIF location panics (3 instances)
-- [ ] `src/executor/isolation_hardening.rs` - UNIX_EPOCH panics (2 instances)
+- [x] `src/fuzzer/engine/config_helpers.rs` - Invalid power_schedule panic
+- [x] `src/fuzzer/engine/corpus_manager.rs` - Invalid indexed input suffix panic
+- [x] `src/fuzzer/oracle_correlation.rs` - Empty correlation group panic
+- [x] `src/fuzzer/oracle_state.rs` - Lock poisoning panics (2 instances)
+- [x] `src/reporting/sarif.rs` - Invalid SARIF location panics (3 instances)
+- [x] `src/executor/isolation_hardening.rs` - UNIX_EPOCH panics (2 instances)
 
 ### P1 - Fix Clippy Warnings
 - [ ] Apply `cargo clippy --fix` for auto-fixable issues

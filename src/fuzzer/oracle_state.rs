@@ -338,7 +338,10 @@ where
 
         let mut storage = match self.storage.write() {
             Ok(s) => s,
-            Err(err) => panic!("oracle state storage lock poisoned: {}", err),
+            Err(err) => {
+                tracing::warn!("oracle state storage lock poisoned; recovering: {}", err);
+                err.into_inner()
+            }
         };
 
         let is_new = !storage.contains_key(&key);
@@ -358,10 +361,13 @@ where
     fn evict_oldest(&self) {
         let mut storage = match self.storage.write() {
             Ok(s) => s,
-            Err(err) => panic!(
-                "oracle state storage lock poisoned during eviction: {}",
-                err
-            ),
+            Err(err) => {
+                tracing::warn!(
+                    "oracle state storage lock poisoned during eviction; recovering: {}",
+                    err
+                );
+                err.into_inner()
+            }
         };
 
         if storage.len() < self.config.eviction_batch_size {

@@ -285,7 +285,11 @@ impl OracleCorrelator {
             let combined_severity = match combined_severity {
                 Some(value) => value,
                 None => {
-                    panic!("Correlation group unexpectedly empty while computing combined severity")
+                    tracing::warn!(
+                        "Skipping empty correlation group while computing combined severity (witness={})",
+                        witness_hash
+                    );
+                    continue;
                 }
             };
 

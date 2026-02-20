@@ -1226,31 +1226,46 @@ fn finding_to_result(
 
 /// Parse location string to SARIF location
 fn parse_location(loc: &str) -> SarifLocation {
-    // Try to parse "file:line" or "file:line:column" format
-    let parts: Vec<&str> = loc.split(':').collect();
+    // Parse from the right-most suffixes so paths containing ':' (e.g. Windows
+    // drive letters) are preserved. Invalid numeric suffixes are treated as part
+    // of the file path rather than hard-failing report generation.
+    let mut file = loc;
+    let mut line: Option<usize> = None;
+    let mut column: Option<usize> = None;
+    let mut remainder = loc;
 
-    let (file, line, column) = match parts.len() {
-        1 => (parts[0], None, None),
-        2 => (
-            parts[0],
-            match parts[1].parse::<usize>() {
-                Ok(line) => Some(line),
-                Err(err) => panic!("Invalid SARIF location line '{}': {}", loc, err),
-            },
-            None,
-        ),
-        _ => (
-            parts[0],
-            match parts[1].parse::<usize>() {
-                Ok(line) => Some(line),
-                Err(err) => panic!("Invalid SARIF location line '{}': {}", loc, err),
-            },
-            match parts[2].parse::<usize>() {
-                Ok(column) => Some(column),
-                Err(err) => panic!("Invalid SARIF location column '{}': {}", loc, err),
-            },
-        ),
-    };
+    if let Some((prefix, suffix)) = remainder.rsplit_once(':') {
+        match suffix.parse::<usize>() {
+            Ok(last_num) => {
+                remainder = prefix;
+                if let Some((prefix2, suffix2)) = remainder.rsplit_once(':') {
+                    match suffix2.parse::<usize>() {
+                        Ok(line_num) => {
+                            file = prefix2;
+                            line = Some(line_num);
+                            column = Some(last_num);
+                        }
+                        Err(_) => {
+                            file = prefix;
+                            line = Some(last_num);
+                        }
+                    }
+                } else {
+                    file = prefix;
+                    line = Some(last_num);
+                }
+            }
+            Err(_) => {
+                if loc.contains(':') {
+                    tracing::warn!(
+                        "Invalid SARIF location suffix '{}'; treating as plain file path: {}",
+                        suffix,
+                        loc
+                    );
+                }
+            }
+        }
+    }
 
     let uri = file.to_string();
 

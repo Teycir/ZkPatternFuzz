@@ -299,7 +299,10 @@ impl FuzzingEngine {
         if idx_str.chars().all(|c| c.is_ascii_digit()) {
             let idx = match idx_str.parse::<usize>() {
                 Ok(idx) => idx,
-                Err(err) => panic!("Invalid indexed input suffix '{}': {}", idx_str, err),
+                Err(err) => {
+                    tracing::warn!("Invalid indexed input suffix '{}': {}", idx_str, err);
+                    return None;
+                }
             };
             return Some((base, idx));
         }

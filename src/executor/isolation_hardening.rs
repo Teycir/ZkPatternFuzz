@@ -449,7 +449,11 @@ impl Watchdog {
         match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
             Ok(duration) => duration.as_millis() as u64,
             Err(err) => {
-                panic!("System clock is before UNIX_EPOCH while computing watchdog time: {err}")
+                tracing::warn!(
+                    "System clock is before UNIX_EPOCH while computing watchdog time: {}; using 0",
+                    err
+                );
+                0
             }
         }
     }
@@ -481,6 +485,20 @@ pub struct HardenedIsolatedExecutor {
 }
 
 impl HardenedIsolatedExecutor {
+    fn timestamp_secs_or_zero(context: &str) -> u64 {
+        match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            Ok(duration) => duration.as_secs(),
+            Err(err) => {
+                tracing::warn!(
+                    "System clock is before UNIX_EPOCH while recording {}: {}; using 0",
+                    context,
+                    err
+                );
+                0
+            }
+        }
+    }
+
     /// Create a new hardened executor
     pub fn new(
         inner: Arc<dyn CircuitExecutor>,
@@ -536,14 +554,7 @@ impl HardenedIsolatedExecutor {
 
         // Record telemetry
         self.telemetry.record(IsolationEvent {
-            timestamp: match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-                Ok(duration) => duration.as_secs(),
-                Err(err) => {
-                    panic!(
-                        "System clock is before UNIX_EPOCH while recording crash event: {err}"
-                    )
-                }
-            },
+            timestamp: Self::timestamp_secs_or_zero("crash event"),
             event_type: IsolationEventType::Crash,
             circuit_id: self.circuit_id.clone(),
             error: result.error.clone(),
@@ -554,16 +565,7 @@ impl HardenedIsolatedExecutor {
         if crash_count >= self.config.max_consecutive_crashes {
             self.recovery_state.blacklist(&self.circuit_id);
             self.telemetry.record(IsolationEvent {
-                timestamp: match std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                {
-                    Ok(duration) => duration.as_secs(),
-                    Err(err) => {
-                        panic!(
-                            "System clock is before UNIX_EPOCH while recording blacklist event: {err}"
-                        )
-                    }
-                },
+                timestamp: Self::timestamp_secs_or_zero("blacklist event"),
                 event_type: IsolationEventType::Blacklisted,
                 circuit_id: self.circuit_id.clone(),
                 error: None,

@@ -45,6 +45,30 @@ fn test_parse_location() {
 }
 
 #[test]
+fn test_parse_location_windows_path_with_line_and_column() {
+    let loc = parse_location("C:\\repo\\test.circom:12:3");
+    let phys = loc.physical_location.unwrap();
+    assert_eq!(
+        phys.artifact_location.unwrap().uri,
+        Some("C:\\repo\\test.circom".to_string())
+    );
+    let region = phys.region.unwrap();
+    assert_eq!(region.start_line, Some(12));
+    assert_eq!(region.start_column, Some(3));
+}
+
+#[test]
+fn test_parse_location_invalid_suffix_keeps_plain_path() {
+    let loc = parse_location("test.circom:not_a_number");
+    let phys = loc.physical_location.unwrap();
+    assert_eq!(
+        phys.artifact_location.unwrap().uri,
+        Some("test.circom:not_a_number".to_string())
+    );
+    assert!(phys.region.is_none());
+}
+
+#[test]
 fn test_attack_type_to_rule_id() {
     assert_eq!(
         attack_type_to_rule_id(&AttackType::Underconstrained),
