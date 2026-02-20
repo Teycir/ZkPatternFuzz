@@ -205,6 +205,12 @@ struct TemplateOutcomeReason {
     high_confidence_detected: bool,
 }
 
+struct ScanRunResult {
+    success: bool,
+    stdout: String,
+    stderr: String,
+}
+
 fn report_has_high_confidence_finding(report_path: &Path) -> bool {
     report_has_high_confidence_finding_with_min_oracles(
         report_path,
@@ -738,7 +744,7 @@ fn run_scan(
     family: Family,
     validate_only: bool,
     output_suffix: &str,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<ScanRunResult> {
     let family_str = family.as_str();
     let mut cmd = Command::new(run_cfg.bin_path);
     if let Some(run_root) = run_cfg.scan_run_root {
@@ -794,11 +800,29 @@ fn run_scan(
             suffix_arg,
             if validate_only { " --dry-run" } else { "" }
         );
-        return Ok(true);
+        return Ok(ScanRunResult {
+            success: true,
+            stdout: String::new(),
+            stderr: String::new(),
+        });
     }
 
-    let status = cmd.status()?;
-    Ok(status.success())
+    let output = cmd.output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if !stdout.is_empty() {
+        print!("{}", stdout);
+    }
+    if !stderr.is_empty() {
+        eprint!("{}", stderr);
+    }
+
+    Ok(ScanRunResult {
+        success: output.status.success(),
+        stdout,
+        stderr,
+    })
 }
 
 fn effective_family(template_family: Family, family_override: Family) -> Family {
@@ -843,12 +867,29 @@ fn run_template(
         return Ok(false);
     }
 
-    if !skip_validate && !run_scan(run_cfg, template, family, true, output_suffix)? {
-        eprintln!("Template '{}' failed validation", template.file_name);
-        return Ok(false);
+    if !skip_validate {
+        let validate = run_scan(run_cfg, template, family, true, output_suffix)?;
+        if !validate.success {
+            if is_selector_mismatch_validation(&validate.stdout, &validate.stderr)
+                && write_selector_mismatch_outcome(
+                    run_cfg.artifacts_root,
+                    run_cfg.scan_run_root,
+                    output_suffix,
+                )
+                .is_ok()
+            {
+                eprintln!(
+                    "Template '{}' selector mismatch recorded as synthetic preflight outcome",
+                    template.file_name
+                );
+                return Ok(true);
+            }
+            eprintln!("Template '{}' failed validation", template.file_name);
+            return Ok(false);
+        }
     }
 
-    if !run_scan(run_cfg, template, family, false, output_suffix)? {
+    if !run_scan(run_cfg, template, family, false, output_suffix)?.success {
         if run_cfg.retry_transient_setup && !run_cfg.dry_run {
             let reason_code = read_template_reason_code(
                 run_cfg.artifacts_root,
@@ -864,7 +905,7 @@ fn run_template(
                     std::thread::sleep(std::time::Duration::from_secs(
                         run_cfg.retry_backoff_secs.max(1),
                     ));
-                    if run_scan(run_cfg, template, family, false, output_suffix)? {
+                    if run_scan(run_cfg, template, family, false, output_suffix)?.success {
                         return Ok(true);
                     }
                 }
@@ -1105,6 +1146,9 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
     if stage == "preflight_backend" {
         return "backend_preflight_failed";
     }
+    if stage == "preflight_selector" {
+        return "selector_mismatch";
+    }
     if stage == "preflight_invariants" {
         return "missing_invariants";
     }
@@ -1259,6 +1303,46 @@ fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
         );
     }
     println!("REASON_TSV_END");
+}
+
+fn is_selector_mismatch_validation(stdout: &str, stderr: &str) -> bool {
+    let combined = format!("{}\n{}", stdout, stderr).to_ascii_lowercase();
+    combined.contains("selectors did not match target circuit")
+}
+
+fn write_selector_mismatch_outcome(
+    artifacts_root: &Path,
+    run_root: Option<&str>,
+    output_suffix: &str,
+) -> anyhow::Result<()> {
+    let Some(run_root) = run_root else {
+        anyhow::bail!("scan_run_root is unavailable for selector mismatch outcome");
+    };
+
+    let template_dir = artifacts_root.join(run_root).join(output_suffix);
+    fs::create_dir_all(&template_dir).with_context(|| {
+        format!(
+            "Failed creating selector-mismatch artifact dir '{}'",
+            template_dir.display()
+        )
+    })?;
+
+    let run_outcome_path = template_dir.join("run_outcome.json");
+    let payload = serde_json::json!({
+        "status": "failed",
+        "stage": "preflight_selector",
+        "reason": "selector_mismatch",
+        "error": "Pattern selectors did not match target circuit",
+    });
+    let serialized = serde_json::to_string_pretty(&payload)?;
+    fs::write(&run_outcome_path, serialized).with_context(|| {
+        format!(
+            "Failed writing selector-mismatch run outcome '{}'",
+            run_outcome_path.display()
+        )
+    })?;
+
+    Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
