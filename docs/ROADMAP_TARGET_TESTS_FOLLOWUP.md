@@ -2,6 +2,18 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T16:02:52Z
+- Reran roadmap breadth step `069` after Halo2 metadata-label reconciliation fix.
+- Runner:
+  - `HOME=/home/teycir/Repos/ZkPatternFuzz RUSTUP_HOME=/home/teycir/.rustup CARGO_HOME=/home/teycir/.cargo scripts/run_breadth_step.sh --step 69 --workers 2 --iterations 20 --timeout 20 --output-dir artifacts/roadmap_step_tests_recheck4`
+- Output:
+  - Summary: `artifacts/roadmap_step_tests_recheck4/summary/step_069__local_halo2_minimal_json_spec_.tsv`
+  - Log: `artifacts/roadmap_step_tests_recheck4/logs/step_069__local_halo2_minimal_json_spec_.log`
+- Result:
+  - Step `069`: `completed=6`, `selector_mismatch=21`, `runtime_error=0`, `run_outcome_missing=0`
+- Additional fix:
+  - `scripts/run_breadth_step.sh` now normalizes numeric `--step` values using base-10 parsing, so `--step 069` works correctly.
+
 ## Update (UTC): 2026-02-20T15:55:16Z
 - Implemented Halo2 JSON-spec input reconciliation fallback for metadata-only specs:
   - `src/executor/mod.rs` now synthesizes stable wire labels (`public_input_<i>`, `private_input_<i>`) when explicit gate-derived labels are absent.

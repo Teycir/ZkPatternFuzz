@@ -85,9 +85,11 @@ if ! [[ "$STEP" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+STEP_NUM=$((10#$STEP))
+
 TARGET_COUNT="$(awk '/^  - name: / { c += 1 } END { print c + 0 }' "$MATRIX")"
-if (( STEP < 1 || STEP > TARGET_COUNT )); then
-  echo "--step out of range: $STEP (valid: 1..$TARGET_COUNT)" >&2
+if (( STEP_NUM < 1 || STEP_NUM > TARGET_COUNT )); then
+  echo "--step out of range: $STEP_NUM (valid: 1..$TARGET_COUNT)" >&2
   exit 1
 fi
 
@@ -98,7 +100,7 @@ trap 'rm -f "$TMP_SINGLE_MATRIX"' EXIT
   echo "version: 1"
   echo
   echo "targets:"
-  awk -v wanted="$STEP" '
+  awk -v wanted="$STEP_NUM" '
     /^  - name: / {
       idx += 1
       in_target = (idx == wanted)
@@ -113,7 +115,7 @@ TARGET_NAME="$(awk '/^  - name: / { print $3; exit }' "$TMP_SINGLE_MATRIX")"
 TARGET_CIRCUIT="$(sed -n 's/^    target_circuit: //p' "$TMP_SINGLE_MATRIX" | head -n1)"
 TARGET_FRAMEWORK="$(sed -n 's/^    framework: //p' "$TMP_SINGLE_MATRIX" | head -n1)"
 SAFE_TARGET_NAME="$(echo "$TARGET_NAME" | tr -cs 'A-Za-z0-9._-' '_')"
-STEP_ID="$(printf "%03d" "$STEP")"
+STEP_ID="$(printf "%03d" "$STEP_NUM")"
 
 mkdir -p "$OUTPUT_DIR/logs" "$OUTPUT_DIR/summary" "$OUTPUT_DIR/observations"
 
@@ -166,7 +168,7 @@ fi
   echo "# Step ${STEP_ID} Observation"
   echo
   echo "- Date (UTC): $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  echo "- Step index: ${STEP}/${TARGET_COUNT}"
+  echo "- Step index: ${STEP_NUM}/${TARGET_COUNT}"
   echo "- Target: \`${TARGET_NAME}\`"
   echo "- Framework: \`${TARGET_FRAMEWORK}\`"
   echo "- Circuit: \`${TARGET_CIRCUIT}\`"
