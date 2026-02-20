@@ -1,39 +1,23 @@
 {
-  "campaign_name": "scan_underconstrained_strict_probe",
-  "campaign_path": "/tmp/zkfuzz_scan/underconstrained_strict_probe__d7e211fb65790ab8.yaml",
-  "command": "evidence",
-  "output_dir": "/home/teycir/Repos/ZkPatternFuzz/ZkFuzz/.scan_run_artifacts/scan_run20260219_150135/auto__underconstrained_strict_probe",
-  "pid": 142587,
-  "progress": {
-    "campaign_name": "scan_underconstrained_strict_probe",
-    "command": "evidence",
-    "details": {},
-    "mode_label": "evidence",
-    "output_dir": "/home/teycir/Repos/ZkPatternFuzz/ZkFuzz/.scan_run_artifacts/scan_run20260219_150135/auto__underconstrained_strict_probe",
-    "progress": {
-      "overall_fraction": 0.9090909090909092,
-      "overall_percent": 90.9090909090909,
-      "phase_progress": 0.0,
-      "step_current": 11,
-      "step_fraction": "11/11",
-      "steps_done": 10,
-      "steps_total": 11
-    },
-    "run_id": "20260219_150135_evidence_underconstrained_strict_probe__d7e211fb65790ab8_pid142587",
-    "stage": "continuous_complete",
-    "updated_unix_seconds": 1771513352
-  },
-  "run_id": "20260219_150135_evidence_underconstrained_strict_probe__d7e211fb65790ab8_pid142587",
+  "campaign_name": "scan_cveX16_scroll_missing_constraint",
+  "campaign_path": "/tmp/zkfuzz_scan/cveX16_scroll_missing_constraint__788bc903fb2d3d6d.yaml",
+  "command": "scan",
+  "duration_seconds": 0,
+  "ended_utc": "2026-02-20T13:27:24.404622522+00:00",
+  "error": "Backend preflight failed while initializing executor: Failed to locate ABI in Noir build artifacts under /home/teycir/Repos/ZkPatternFuzz/ZkFuzz/_build_cache/noir/Nargo_main__7347009a27fc",
+  "output_dir": "/home/teycir/Repos/ZkPatternFuzz/ZkFuzz/.scan_run_artifacts/scan_run20260220_132720/auto__cveX16_scroll_missing_constraint",
+  "pid": 2190102,
+  "run_id": "20260220_132724_scan_cveX16_scroll_missing_constraint__788bc903fb2d3d6d_pid2190102",
   "run_window": {
-    "expected_latest_end_local": "2026-02-19T16:03:35.622372327+01:00",
-    "expected_latest_end_utc": "2026-02-19T15:03:35.622372327+00:00",
+    "expected_latest_end_local": "2026-02-20T14:27:44.146420078+01:00",
+    "expected_latest_end_utc": "2026-02-20T13:27:44.146420078+00:00",
     "note": "For this command, --timeout is enforced as a total wall-clock budget for the run.",
-    "started_local": "2026-02-19T16:01:35.622372327+01:00",
-    "started_utc": "2026-02-19T15:01:35.622372327+00:00",
-    "timeout_seconds": 120,
+    "started_local": "2026-02-20T14:27:24.146420078+01:00",
+    "started_utc": "2026-02-20T13:27:24.146420078+00:00",
+    "timeout_seconds": 20,
     "timeout_semantics": "wall_clock"
   },
-  "stage": "engine_progress",
-  "started_utc": "2026-02-19T15:01:35.622372327+00:00",
-  "status": "running"
+  "stage": "preflight_backend",
+  "started_utc": "2026-02-20T13:27:24.146420078+00:00",
+  "status": "failed"
 }
