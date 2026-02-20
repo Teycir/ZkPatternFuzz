@@ -1,0 +1,23 @@
+version: 1
+
+targets:
+  - name: local_noir_multiplier
+    target_circuit: tests/noir_projects/multiplier/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
+  - name: cat3_privacy_aztec_docs_examples_circuits_hello_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/docs/examples/circuits/hello_circuit/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
+  - name: cat3_privacy_barretenberg_docs_examples_fixtures_main
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/docs/examples/fixtures/main/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true

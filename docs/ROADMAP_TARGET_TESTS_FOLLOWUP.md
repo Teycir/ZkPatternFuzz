@@ -2,6 +2,19 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T15:40:11Z
+- Added dedicated Noir readiness lane artifacts:
+  - `scripts/run_noir_readiness.sh`
+  - `targets/zk0d_matrix_noir_readiness.yaml`
+- Updated readiness matrices to use backend-specific aliases instead of `always`:
+  - Cairo matrix now uses `readiness_cairo`
+  - Halo2 matrix now uses `readiness_halo2`
+  - Noir matrix uses `readiness_noir`
+- Outcome:
+  - All three priority non-Circom backends now have explicit lane runners with comparable output schema under `artifacts/backend_readiness/<backend>/latest_report.json`.
+  - Noir lane smoke execution generated `artifacts/backend_readiness/noir/latest_report.json` (`exit_code=1`, `reason_counts: none=3`) with integration slices intentionally skipped for bootstrap.
+  - Next blocker is lane execution quality (completion thresholds/runtime errors), not lane availability.
+
 ## Update (UTC): 2026-02-20T15:29:30Z
 - Roadmap automation advancement shipped:
   - Added backend-specific readiness aliases/profiles in `targets/fuzzer_registry.prod.yaml`:

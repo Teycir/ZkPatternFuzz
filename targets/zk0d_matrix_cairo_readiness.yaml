@@ -5,5 +5,5 @@ targets:
     target_circuit: tests/cairo_programs/multiplier.cairo
     main_component: main
     framework: cairo
-    alias: always
+    alias: readiness_cairo
     enabled: true

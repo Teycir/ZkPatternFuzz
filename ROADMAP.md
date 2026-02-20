@@ -212,7 +212,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 | Backend | Current Status | Known Gaps |
 |---|---|---|
 | Noir | In progress (setup stabilized) | Needs full-capacity breadth gating and higher completed-rate on matching templates |
-| Cairo | Partial (lane bootstrapped) | Readiness lane exists, but matrix execution is blocked by current workspace compile regression |
+| Cairo | Partial (lane bootstrapped) | Readiness lane exists, but needs full-capacity pass-rate closure on broader targets |
 | Halo2 | Partial (mixed breadth outcomes) | `halo2_scaffold` completes, but local JSON spec still fails strict input reconciliation |
 
 ### Implementation Tasks
@@ -227,6 +227,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Reduce `run_outcome_missing` on non-Circom targets to <=5% by enforcing explicit reason-code closure in matrix summaries
 - [x] Add per-backend release gates in `scripts/release_candidate_gate.sh` (Noir/Halo2/Cairo must each satisfy minimum completion and setup-success thresholds)
 - [x] Publish backend readiness dashboard artifact (`artifacts/backend_readiness/latest_report.json`) on every benchmark/release run
+- [x] Add dedicated Noir readiness matrix + runner (`targets/zk0d_matrix_noir_readiness.yaml`, `scripts/run_noir_readiness.sh`)
 - [x] Add dedicated Cairo readiness matrix + runner (`targets/zk0d_matrix_cairo_readiness.yaml`, `scripts/run_cairo_readiness.sh`)
 - [x] Add dedicated Halo2 readiness matrix + runner (`targets/zk0d_matrix_halo2_readiness.yaml`, `scripts/run_halo2_readiness.sh`)
 
@@ -260,7 +261,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Cross-backend: non-Circom `run_outcome_missing` <=5% in aggregate follow-up report
 - [ ] Release gate fails automatically when any non-Circom backend drops below readiness thresholds
 
-**Current Status:** 🟡 In progress. Noir setup-path blockers are resolved for roadmap breadth steps `066-067` with explicit reason-code closure (`completed=1, selector_mismatch=26`, `run_outcome_missing=0` in `artifacts/roadmap_step_tests_recheck3/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv` and `artifacts/roadmap_step_tests_recheck3/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`). Halo2 breadth recheck shows split outcomes (`step_068`: `completed=15, selector_mismatch=12`; `step_069`: `runtime_error=6, selector_mismatch=21`). Backend readiness gates and dashboard publication are now wired into release/benchmark workflows; remaining execution risk is reaching completion-rate/runtime-error thresholds across all required backend reports (including Noir readiness lane outputs).
+**Current Status:** 🟡 In progress. Noir setup-path blockers are resolved for roadmap breadth steps `066-067` with explicit reason-code closure (`completed=1, selector_mismatch=26`, `run_outcome_missing=0` in `artifacts/roadmap_step_tests_recheck3/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv` and `artifacts/roadmap_step_tests_recheck3/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`). Halo2 breadth recheck shows split outcomes (`step_068`: `completed=15, selector_mismatch=12`; `step_069`: `runtime_error=6, selector_mismatch=21`). Backend readiness gates and dashboard publication are now wired into release/benchmark workflows, with dedicated Noir/Cairo/Halo2 readiness lane runners in place; remaining execution risk is reaching completion-rate/runtime-error thresholds across required backend reports.
 
 ---
 
@@ -400,7 +401,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 ## 📋 Immediate Action Items
 
 ### Top Priority (P0)
-- [ ] Implement Phase 6 backend readiness matrix runner and publish `artifacts/backend_readiness/latest_report.json`
+- [x] Implement Phase 6 backend readiness matrix runner and publish `artifacts/backend_readiness/latest_report.json`
 - [x] Fix Noir target setup path for Aztec example projects (steps `066`/`067`) and rerun breadth follow-up (`artifacts/roadmap_step_tests_recheck2/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv`, `artifacts/roadmap_step_tests_recheck2/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`)
 - [ ] Promote Cairo from backend-heavy optional validation into required breadth readiness gates and publish completion metrics
 - [ ] Fix Halo2 minimal JSON spec input reconciliation (`tests/halo2_specs/minimal.json`) and rerun step `069`
