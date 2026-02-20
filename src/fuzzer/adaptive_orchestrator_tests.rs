@@ -1,4 +1,3 @@
-
 use super::*;
 use std::collections::HashMap;
 use zk_core::ProofOfConcept;

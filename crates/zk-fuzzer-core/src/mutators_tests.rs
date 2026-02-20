@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::constants::BN254_HALF_MODULUS;
 use rand::rngs::StdRng;

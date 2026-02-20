@@ -1,4 +1,3 @@
-
 use super::*;
 use zk_core::AttackType;
 use zk_core::ProofOfConcept;

@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::config::test_config::BASIC_CAMPAIGN_YAML;
 use zk_core::{AttackType, Finding, ProofOfConcept, Severity};

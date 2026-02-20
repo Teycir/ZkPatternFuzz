@@ -1,4 +1,3 @@
-
 use super::*;
 
 fn make_merkle_test_case(leaf: u64, path_elements: &[u64], path_indices: &[u64]) -> TestCase {

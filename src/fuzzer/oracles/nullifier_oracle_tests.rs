@@ -1,4 +1,3 @@
-
 use super::*;
 
 fn make_test_case(secret_val: u64) -> TestCase {

@@ -1,4 +1,3 @@
-
 use super::*;
 use std::fs;
 use std::path::PathBuf;
@@ -27,7 +26,10 @@ fn write_temp_report(contents: &str) -> PathBuf {
 #[test]
 fn parse_correlation_metadata_extracts_confidence_and_oracles() {
     let description = "abc\nCorrelation: HIGH (groups=2, oracles=3, corroborating=9)";
-    assert_eq!(parse_correlation_confidence(description).as_deref(), Some("high"));
+    assert_eq!(
+        parse_correlation_confidence(description).as_deref(),
+        Some("high")
+    );
     assert_eq!(parse_correlation_oracle_count(description), Some(3));
 }
 
@@ -41,8 +43,12 @@ fn high_confidence_high_requires_min_oracles() {
   ]
 }"#;
     let path = write_temp_report(report);
-    assert!(report_has_high_confidence_finding_with_min_oracles(&path, 2));
-    assert!(!report_has_high_confidence_finding_with_min_oracles(&path, 3));
+    assert!(report_has_high_confidence_finding_with_min_oracles(
+        &path, 2
+    ));
+    assert!(!report_has_high_confidence_finding_with_min_oracles(
+        &path, 3
+    ));
     let _ = fs::remove_file(path);
 }
 
@@ -56,6 +62,8 @@ fn high_confidence_critical_ignores_oracle_threshold() {
   ]
 }"#;
     let path = write_temp_report(report);
-    assert!(report_has_high_confidence_finding_with_min_oracles(&path, 4));
+    assert!(report_has_high_confidence_finding_with_min_oracles(
+        &path, 4
+    ));
     let _ = fs::remove_file(path);
 }

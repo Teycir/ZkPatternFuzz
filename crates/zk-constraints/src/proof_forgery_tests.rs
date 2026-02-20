@@ -1,4 +1,3 @@
-
 use super::super::r1cs_parser::R1CSConstraint;
 use super::*;
 use num_bigint::BigUint;

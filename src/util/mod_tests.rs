@@ -1,4 +1,3 @@
-
 use super::write_file_atomic;
 
 #[test]

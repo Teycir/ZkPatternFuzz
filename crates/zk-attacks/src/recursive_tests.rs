@@ -1,4 +1,3 @@
-
 use super::*;
 
 fn sample_field_element(val: u64) -> FieldElement {
