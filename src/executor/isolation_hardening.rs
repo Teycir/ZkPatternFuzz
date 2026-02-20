@@ -326,9 +326,12 @@ impl ResourceMonitor {
     #[cfg(unix)]
     pub fn get_usage(&self, pid: u32) -> ResourceUsage {
         // Get system page size and clock ticks per second
+        // SAFETY: `sysconf` is a pure libc query with no pointer arguments; we
+        // only read its return value and apply conservative defaults on failure.
         let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
         let page_size = if page_size <= 0 { 4096 } else { page_size as u64 };
 
+        // SAFETY: same rationale as above for `_SC_CLK_TCK`.
         let clock_ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
         let clock_ticks_per_sec = if clock_ticks_per_sec <= 0 {
             100

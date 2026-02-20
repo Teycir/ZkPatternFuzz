@@ -619,9 +619,9 @@ gh run watch
 - [x] Remove needless `Ok()` wrapper in `crates/zk-backends/src/noir/mod.rs:325`
 
 ### P2 - Documentation & Safety
-- [ ] Add safety comments to `src/reporting/command_timeout.rs:13-19,30`
-- [ ] Add safety comments to `src/executor/isolation_hardening.rs:332,335`
-- [ ] Complete AI implementation in `src/ai/invariant_generator.rs`
+- [x] Add safety comments to `src/reporting/command_timeout.rs:13-19,30`
+- [x] Add safety comments to `src/executor/isolation_hardening.rs:332,335`
+- [x] Complete AI implementation in `src/ai/invariant_generator.rs`
 
 ### P3 - Concurrency Hardening
 - [ ] Add deadlock detection for high-concurrency paths

@@ -11,6 +11,9 @@ fn prepare_child_process_group(cmd: &mut Command) {
     use std::os::unix::process::CommandExt;
     // Put the spawned command in its own process group so timeout enforcement can
     // terminate the entire subtree (e.g., `sh -c "sleep ..."` descendants).
+    // SAFETY: `pre_exec` runs in the child process immediately before `exec`.
+    // The closure performs a single async-signal-safe libc call (`setpgid`) and
+    // returns an OS error on failure without touching shared process state.
     unsafe {
         cmd.pre_exec(|| {
             if libc::setpgid(0, 0) != 0 {
@@ -28,6 +31,8 @@ fn prepare_child_process_group(_cmd: &mut Command) {}
 fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
     let pgid = child.id() as i32;
     // Best-effort kill of the whole process group.
+    // SAFETY: `pgid` is derived from the spawned child PID and is used only as
+    // a target identifier for `killpg`; no borrowed memory is involved.
     let rc = unsafe { libc::killpg(pgid, libc::SIGKILL) };
     if rc == 0 {
         return Ok(());

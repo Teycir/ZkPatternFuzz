@@ -105,3 +105,52 @@ async fn test_yaml_suggestion() {
     assert!(yaml.contains("mistral"));
     assert!(yaml.contains("range"));
 }
+
+#[tokio::test]
+async fn test_invariant_generation_is_deduplicated_and_bounded() {
+    let config = AIAssistantConfig {
+        enabled: true,
+        model: "mistral".to_string(),
+        endpoint: None,
+        api_key: None,
+        temperature: 0.1,
+        max_tokens: 128,
+        modes: vec![ConfigMode::InvariantGeneration],
+        system_prompt: None,
+    };
+
+    let ai = AIAssistant::new(config);
+    let circuit_info =
+        "Merkle merkle nullifier NULLIFIER range RANGE signature hash balance transfer";
+
+    let invariants = ai.generate_invariants(circuit_info).await.unwrap();
+    assert!(!invariants.is_empty());
+    assert!(invariants.len() <= 8);
+
+    let unique: std::collections::HashSet<_> = invariants.iter().collect();
+    assert_eq!(unique.len(), invariants.len());
+}
+
+#[tokio::test]
+async fn test_invariant_generation_uses_contextual_prompt_hints() {
+    let config = AIAssistantConfig {
+        enabled: true,
+        model: "mistral".to_string(),
+        endpoint: None,
+        api_key: None,
+        temperature: 0.7,
+        max_tokens: 1000,
+        modes: vec![ConfigMode::InvariantGeneration],
+        system_prompt: Some("focus on privacy and replay protections for bridge flows".to_string()),
+    };
+
+    let ai = AIAssistant::new(config);
+    let invariants = ai.generate_invariants("generic circuit").await.unwrap();
+
+    assert!(invariants
+        .iter()
+        .any(|item| item.contains("privacy_leakage_bound")));
+    assert!(invariants
+        .iter()
+        .any(|item| item.contains("nonce_monotonicity")));
+}
