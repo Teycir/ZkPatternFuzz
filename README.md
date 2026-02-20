@@ -55,12 +55,30 @@ Notes:
 # Run a campaign
 cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml
 
+# Run with AI assistance (Mistral model)
+cargo run --release -- --config templates/ai_assisted_audit.yaml
+
 # With verbose output
 cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --verbose
 
 # Custom worker count
 cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --workers 8
 ```
+
+## AI-Assisted Pentesting
+
+ZkPatternFuzz integrates Mistral AI for intelligent security analysis:
+
+**AI Features:**
+- **Invariant Generation**: Automatically generate candidate invariants from circuit patterns
+- **Result Analysis**: Intelligent analysis of fuzzing results with actionable recommendations
+- **Config Suggestions**: AI-generated YAML configuration tailored to your circuit
+- **Vulnerability Explanation**: Natural language explanations of found vulnerabilities
+
+**AI Models Supported:**
+- Mistral (default) - Optimized for ZK circuit analysis
+- Claude - Advanced reasoning capabilities
+- GPT-4 - General-purpose AI assistance
 
 ## Attack Types
 

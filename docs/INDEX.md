@@ -134,6 +134,22 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+## 🤖 AI Integration
+
+### 5.5. [MISTRAL_AI_INTEGRATION.md](MISTRAL_AI_INTEGRATION.md) - **15 min read**
+**For:** Using AI-assisted pentesting features   
+**Contains:**
+- Mistral AI configuration guide
+- AI assistance modes explained
+- Pattern-based invariant generation
+- Result analysis and recommendations
+- YAML configuration generation
+- Best practices and examples
+
+**Start here if:** You want to enable AI-assisted security analysis
+
+---
+
 ## 🏗️ Architecture & Development
 
 ### 6. [ARCHITECTURE.md](../ARCHITECTURE.md) - **45 min read**
