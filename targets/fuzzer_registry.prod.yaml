@@ -42,6 +42,7 @@ collections:
     registry: local_cve_patterns
     description: "Noir readiness profile (constraint/soundness focused)"
     templates:
+      - cveX28_noir_multiplier_readiness_probe.yaml
       - cveX10_maci_underconstrained_circuit.yaml
       - cveX11_bulletproofs_frozen_heart.yaml
       - cveX12_plonk_frozen_heart.yaml
@@ -101,3 +102,4 @@ aliases:
   cveX25_aleo_non_committing_encryption: ["cveX25_aleo_non_committing_encryption.yaml"]
   cveX26_light_protocol_non_atomic_state: ["cveX26_light_protocol_non_atomic_state.yaml"]
   cveX27_zkemail_underconstrained_spoofing: ["cveX27_zkemail_underconstrained_spoofing.yaml"]
+  cveX28_noir_multiplier_readiness_probe: ["cveX28_noir_multiplier_readiness_probe.yaml"]

@@ -58,6 +58,8 @@ Use this for `rc` and final tags. Each item is a hard gate unless explicitly wai
 - [ ] Backend readiness gate enforced as part of release candidate validation:
   - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --min-backend-completion-rate 0.90 --max-backend-runtime-error 0 --max-backend-preflight-failed 0 --max-backend-run-outcome-missing-rate 0.05`
   - Note: `min-backend-completion-rate` is evaluated on selector-matching templates (`completed / (total - selector_mismatch)`).
+- [ ] Non-Circom collision stress lane (50+ targets) passes:
+  - `./scripts/run_non_circom_collision_stress.sh --enforce`
 - [ ] If shipping production-depth changes, run at least one non-dry benchmark suite and archive `summary.json`.
 - [ ] Release validation workflow run recorded:
   - GitHub Actions `Release Validation` (`workflow_dispatch`) with:

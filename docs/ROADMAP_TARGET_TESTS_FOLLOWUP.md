@@ -2,6 +2,42 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T20:16:53Z
+- Added automated non-Circom 50+ target collision stress lane:
+  - `scripts/run_non_circom_collision_stress.sh`
+  - Generates a synthetic 54-target mixed non-Circom matrix (Noir/Cairo/Halo2 local fixtures), runs `zk0d_matrix` in parallel, and enforces:
+    - `output_dir_locked_count <= 0`
+    - `run_outcome_missing_rate <= 0.05`
+    - `none_rate <= 0.0`
+  - Report artifact:
+    - `artifacts/non_circom_collision_stress/latest_report.json`
+- Validation:
+  - `scripts/run_non_circom_collision_stress.sh --enforce`
+  - Result: `PASS`
+    - `total_classified=54`
+    - `output_dir_locked=0`
+    - `run_outcome_missing_rate=0.000`
+    - `none_rate=0.000`
+
+## Update (UTC): 2026-02-20T20:13:08Z
+- Improved Noir readiness selector-matching coverage:
+  - Added `campaigns/cve/patterns/cveX28_noir_multiplier_readiness_probe.yaml`
+  - Added to Noir readiness collection in `targets/fuzzer_registry.prod.yaml`:
+    - `noir_readiness` now includes `cveX28_noir_multiplier_readiness_probe.yaml`
+- Purpose:
+  - ensure at least one deterministic selector-matching template for the local Noir readiness fixture (`tests/noir_projects/multiplier/Nargo.toml`) while external Noir targets can remain selector-filtered.
+- Validation:
+  - `scripts/run_noir_readiness.sh --iterations 20 --timeout 20 --workers 2 --skip-*integration* --no-build-if-missing`
+  - Result (`artifacts/backend_readiness/noir/latest_report.json`):
+    - `matrix.exit_code=0`
+    - `reason_counts: completed=3, selector_mismatch=15`
+- Full lane re-validation:
+  - `scripts/run_backend_readiness_lanes.sh --iterations 20 --timeout 20 --workers 2 ... --skip-*integration* --no-build-if-missing`
+  - Result:
+    - Noir/Cairo/Halo2 lanes all `PASS`
+    - Aggregated dashboard `PASS` with selector basis (`artifacts/backend_readiness/latest_report.json`)
+    - aggregate `run_outcome_missing_rate=0.000` (`count=0`, `total=33`)
+
 ## Update (UTC): 2026-02-20T20:02:54Z
 - Fixed backend readiness lane operability under sandboxed/local CI environments:
   - `scripts/run_noir_readiness.sh`

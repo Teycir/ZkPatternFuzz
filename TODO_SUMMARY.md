@@ -37,7 +37,6 @@
 ### Developer Experience
 - [ ] Custom attack pattern DSL
 - [ ] Real-time web dashboard for campaigns
-- [ ] VS Code extension for SARIF viewing
 
 ---
 
@@ -46,7 +45,7 @@
 - [x] Cairo full integration tests
 - [x] Halo2 real-circuit validation suite
 - [x] Noir constraint coverage edge cases
-- [ ] Multi-target collision stress tests (50+ targets)
+- [x] Multi-target collision stress tests (50+ targets)
 
 ---
 
