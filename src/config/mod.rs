@@ -28,6 +28,7 @@ pub use profiles::{apply_profile, EmbeddedProfile, ProfileName};
 pub use readiness::{check_0day_readiness, ReadinessLevel, ReadinessReport, ReadinessWarning};
 pub use suggester::YamlSuggester;
 pub use v2::parse_chains;
+pub use v2::{AIAssistanceMode, AIAssistantConfig};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};

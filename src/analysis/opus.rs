@@ -322,6 +322,7 @@ impl OpusAnalyzer {
             invariants,
             schedule,
             chains: Vec::new(), // Mode 3: No auto-generated chains
+            ai_assistant: None, // No AI assistance in auto-generated configs
             base: Some(FuzzConfig {
                 campaign: Campaign {
                     name: format!("Opus-Generated: {}", circuit_name),
