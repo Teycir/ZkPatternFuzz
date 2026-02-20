@@ -703,7 +703,7 @@ impl AdaptiveOrchestrator {
 
     fn content_tokens(text: &str) -> Vec<String> {
         text.split(|c: char| !c.is_ascii_alphanumeric())
-            .filter_map(|raw| Self::normalize_token(raw))
+            .filter_map(Self::normalize_token)
             .collect()
     }
 

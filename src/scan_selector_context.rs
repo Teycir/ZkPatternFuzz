@@ -47,9 +47,7 @@ impl SelectorContextSystem {
         let Some(name) = target.file_name().and_then(|name| name.to_str()) else {
             return false;
         };
-        self.manifest_names
-            .iter()
-            .any(|candidate| *candidate == name)
+        self.manifest_names.contains(&name)
     }
 
     fn append_context(&self, target: &Path, builder: &mut SelectorSourceBuilder) {
@@ -100,9 +98,7 @@ impl SelectorContextSystem {
         let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
             return false;
         };
-        self.allowed_extensions
-            .iter()
-            .any(|allowed| *allowed == ext)
+        self.allowed_extensions.contains(&ext)
     }
 }
 

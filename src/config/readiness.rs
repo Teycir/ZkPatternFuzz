@@ -224,8 +224,7 @@ impl ReadinessReport {
 fn normalize_attack_name(name: &str) -> String {
     name.trim()
         .to_ascii_lowercase()
-        .replace('-', "_")
-        .replace(' ', "_")
+        .replace(['-', ' '], "_")
 }
 
 fn canonical_attack_key_from_name(name: &str) -> Option<&'static str> {

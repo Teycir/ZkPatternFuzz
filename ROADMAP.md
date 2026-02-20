@@ -609,7 +609,7 @@ gh run watch
 - [x] `src/executor/isolation_hardening.rs` - UNIX_EPOCH panics (2 instances)
 
 ### P1 - Fix Clippy Warnings
-- [ ] Apply `cargo clippy --fix` for auto-fixable issues
+- [x] Apply `cargo clippy --fix` for auto-fixable issues
 - [x] Refactor `src/run_lifecycle.rs:306` (8 args → config struct)
 - [x] Refactor `src/run_outcome_docs.rs:150` (8 args → config struct)
 - [x] Refactor `src/run_outcome_docs.rs:175` (9 args → config struct)

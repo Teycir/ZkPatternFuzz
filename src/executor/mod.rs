@@ -823,35 +823,32 @@ impl CircomExecutor {
             .ok()
             .map(|cwd| cwd.join("bins").join("node_modules"));
 
-        match std::env::var_os("CIRCOM_INCLUDE_PATHS") {
-            Some(raw_os) => {
-                let separator = if cfg!(windows) { ';' } else { ':' };
-                let Some(raw) = raw_os.to_str() else {
-                    tracing::warn!(
-                        "Ignoring CIRCOM_INCLUDE_PATHS because it contains invalid UTF-8"
-                    );
-                    for root in Self::circuit_ancestor_paths(circuit_path) {
-                        paths.push(root.join("node_modules"));
-                        paths.push(root.join("vendor"));
-                    }
-                    for local in Self::local_bins_search_paths() {
-                        paths.push(local);
-                    }
-                    paths.push(PathBuf::from("node_modules"));
-                    paths.push(PathBuf::from("vendor"));
-                    if let Some(bins_node_modules) = preferred_bins_node_modules {
-                        paths.push(bins_node_modules);
-                    }
-                    return Self::dedupe_paths(paths);
-                };
-                for entry in raw.split(separator) {
-                    let entry = entry.trim();
-                    if !entry.is_empty() {
-                        paths.push(PathBuf::from(entry));
-                    }
+        if let Some(raw_os) = std::env::var_os("CIRCOM_INCLUDE_PATHS") {
+            let separator = if cfg!(windows) { ';' } else { ':' };
+            let Some(raw) = raw_os.to_str() else {
+                tracing::warn!(
+                    "Ignoring CIRCOM_INCLUDE_PATHS because it contains invalid UTF-8"
+                );
+                for root in Self::circuit_ancestor_paths(circuit_path) {
+                    paths.push(root.join("node_modules"));
+                    paths.push(root.join("vendor"));
+                }
+                for local in Self::local_bins_search_paths() {
+                    paths.push(local);
+                }
+                paths.push(PathBuf::from("node_modules"));
+                paths.push(PathBuf::from("vendor"));
+                if let Some(bins_node_modules) = preferred_bins_node_modules {
+                    paths.push(bins_node_modules);
+                }
+                return Self::dedupe_paths(paths);
+            };
+            for entry in raw.split(separator) {
+                let entry = entry.trim();
+                if !entry.is_empty() {
+                    paths.push(PathBuf::from(entry));
                 }
             }
-            None => {}
         }
 
         for root in Self::circuit_ancestor_paths(circuit_path) {

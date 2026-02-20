@@ -39,7 +39,7 @@ fn nested_mapping_mut<'a>(root: &'a mut Value, keys: &[&str]) -> Option<&'a mut 
     let mut current = root;
     for name in keys {
         let map = current.as_mapping_mut()?;
-        current = map.get_mut(&key(name))?;
+        current = map.get_mut(key(name))?;
     }
     current.as_mapping_mut()
 }
@@ -93,7 +93,7 @@ fn migrate_attack_plugin_fields(root: &mut Value, report: &mut MigrationReport) 
     let Some(root_map) = root.as_mapping_mut() else {
         return;
     };
-    let Some(attacks_value) = root_map.get_mut(&key("attacks")) else {
+    let Some(attacks_value) = root_map.get_mut(key("attacks")) else {
         return;
     };
     let Some(attacks) = attacks_value.as_sequence_mut() else {
@@ -151,7 +151,7 @@ fn migrate_attack_plugin_dirs(root: &mut Value, report: &mut MigrationReport) {
     let Some(parameters) = nested_mapping_mut(root, &["campaign", "parameters"]) else {
         return;
     };
-    let Some(plugin_dirs_value) = parameters.get_mut(&key("attack_plugin_dirs")) else {
+    let Some(plugin_dirs_value) = parameters.get_mut(key("attack_plugin_dirs")) else {
         return;
     };
 
