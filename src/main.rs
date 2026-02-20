@@ -6,10 +6,10 @@ mod engagement_artifacts;
 mod output_lock;
 mod preflight_backend;
 mod run_bootstrap;
-mod run_chain_corpus;
-mod run_chain_config;
 mod run_chain_campaign_flow;
+mod run_chain_config;
 mod run_chain_context;
+mod run_chain_corpus;
 mod run_chain_engine;
 mod run_chain_quality;
 mod run_chain_reports;
@@ -28,6 +28,7 @@ mod scan_output;
 mod scan_progress;
 mod scan_runner;
 mod scan_selector;
+mod scan_selector_context;
 mod toolchain_bootstrap;
 use cli::{
     campaign_run_options_doc, BinsBootstrapRequest, CampaignRunOptions, ChainRunOptions, Cli,
@@ -40,9 +41,7 @@ use preflight_backend::preflight_campaign;
 use run_bootstrap::{
     announce_report_dir_and_bind_log_context, load_campaign_config_with_optional_profile,
 };
-use run_chain_corpus::{
-    chain_completed_and_unique_cov_from_path,
-};
+use run_chain_corpus::chain_completed_and_unique_cov_from_path;
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
 use run_interrupts::{install_panic_hook, start_signal_watchers};
 use run_lifecycle::{

@@ -1,3 +1,4 @@
+use crate::scan_selector_context::build_selector_source;
 use anyhow::Context;
 use regex::RegexBuilder;
 use serde::Deserialize;
@@ -587,12 +588,7 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
         return Ok(ScanRegexPatternSummary::default());
     }
 
-    let source = fs::read_to_string(target_circuit).with_context(|| {
-        format!(
-            "Failed to read target circuit '{}' for regex pattern evaluation",
-            target_circuit.display()
-        )
-    })?;
+    let source = build_selector_source(target_circuit)?;
 
     let mut line_starts = vec![0usize];
     for (idx, ch) in source.char_indices() {

@@ -18,6 +18,21 @@ fn evaluate_selector_summary(pattern_yaml: &str, target_source: &str) -> ScanReg
         .expect("evaluate selector config")
 }
 
+fn evaluate_selector_summary_with_target_file(
+    pattern_yaml: &str,
+    target_path: &std::path::Path,
+) -> ScanRegexPatternSummary {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let pattern_path = temp_dir.path().join("pattern.yaml");
+    fs::write(&pattern_path, pattern_yaml).expect("write pattern");
+    let selector_config =
+        load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
+            .expect("load selector config")
+            .expect("selector config should exist");
+    evaluate_loaded_scan_regex_patterns(&selector_config, target_path)
+        .expect("evaluate selector config")
+}
+
 #[test]
 fn scan_selector_default_policy_matches_any_single_pattern() {
     let pattern_yaml = r#"
@@ -195,6 +210,82 @@ fn scan_selector_regex_safety_rejects_nested_dangerous_quantifier() {
     let err = validate_scan_regex_pattern_safety(r"(a+)+")
         .expect_err("nested quantifier must be rejected");
     assert!(format!("{err:#}").contains("nested quantifier"));
+}
+
+#[test]
+fn scan_selector_manifest_context_reads_nargo_src_tree() {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let project_dir = temp_dir.path().join("noir_project");
+    let src_dir = project_dir.join("src");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::write(
+        project_dir.join("Nargo.toml"),
+        r#"[package]
+name = "demo"
+type = "bin"
+authors = ["tests"]
+"#,
+    )
+    .expect("write nargo manifest");
+    fs::write(
+        src_dir.join("main.nr"),
+        r#"fn main(noteIndex: Field) { let nullifier = noteIndex; }"#,
+    )
+    .expect("write noir source");
+
+    let pattern_yaml = r#"
+patterns:
+  - id: noir_nullifier
+    kind: regex
+    pattern: "\\bnullifier\\b"
+  - id: noir_note_index
+    kind: regex
+    pattern: "\\bnoteIndex\\b"
+selector_policy:
+  k_of_n: 2
+"#;
+    let summary =
+        evaluate_selector_summary_with_target_file(pattern_yaml, &project_dir.join("Nargo.toml"));
+    assert!(summary.selector_passed);
+    assert_eq!(summary.matched_patterns, 2);
+}
+
+#[test]
+fn scan_selector_manifest_context_reads_cargo_src_tree() {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let project_dir = temp_dir.path().join("halo2_project");
+    let src_dir = project_dir.join("src");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::write(
+        project_dir.join("Cargo.toml"),
+        r#"[package]
+name = "halo2_demo"
+version = "0.1.0"
+edition = "2021"
+"#,
+    )
+    .expect("write cargo manifest");
+    fs::write(
+        src_dir.join("main.rs"),
+        r#"fn main() { let flow_constraint = "execution flow constraint"; println!("{}", flow_constraint); }"#,
+    )
+    .expect("write rust source");
+
+    let pattern_yaml = r#"
+patterns:
+  - id: execution_flow
+    kind: regex
+    pattern: "execution\\s*flow"
+  - id: constraint_term
+    kind: regex
+    pattern: "\\bconstraint\\b"
+selector_policy:
+  k_of_n: 2
+"#;
+    let summary =
+        evaluate_selector_summary_with_target_file(pattern_yaml, &project_dir.join("Cargo.toml"));
+    assert!(summary.selector_passed);
+    assert_eq!(summary.matched_patterns, 2);
 }
 
 #[test]
