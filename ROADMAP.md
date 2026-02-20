@@ -200,7 +200,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Versioned release candidate passes all gates twice consecutively (`artifacts/release_candidate_validation/release_candidate_report.json`)
 - [x] Rollback strategy documented and tested (`docs/RELEASE_CHECKLIST.md`, `artifacts/release_candidate_validation/rollback_validation.log`)
 
-**Current Status:** ✅ Two consecutive release-gate attempts pass (`artifacts/release_candidate_validation/release_candidate_report.json`) on latest benchmark evidence (`artifacts/benchmark_runs_fast/benchmark_20260219_212657/summary.json`)
+**Current Status:** ✅ Two consecutive release-gate attempts pass (`artifacts/release_candidate_validation/release_candidate_report.json`) on the default benchmark root with fresh passing evidence (`artifacts/benchmark_runs/benchmark_20260220_221614/summary.json`, `artifacts/benchmark_runs/benchmark_20260220_222045/summary.json`), and remain valid on fast benchmark evidence (`artifacts/benchmark_runs_fast/benchmark_20260219_212657/summary.json`).
 
 ---
 

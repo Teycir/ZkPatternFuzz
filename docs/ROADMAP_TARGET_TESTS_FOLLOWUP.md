@@ -2,6 +2,18 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-20T22:21:10Z
+- Restored default release-gate path on `artifacts/benchmark_runs` with fresh passing summaries.
+- Benchmark regeneration command (used twice):
+  - `cargo run --quiet --release --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 1 --batch-jobs 1 --workers 1 --iterations 50 --timeout 10 --benchmark-min-evidence-confidence low --benchmark-oracle-min-agreement-ratio 0.45 --benchmark-oracle-cross-attack-weight 0.65 --benchmark-high-confidence-min-oracles 3 --output-dir artifacts/benchmark_runs`
+- New passing summaries:
+  - `artifacts/benchmark_runs/benchmark_20260220_221614/summary.json`
+  - `artifacts/benchmark_runs/benchmark_20260220_222045/summary.json`
+  - each reports: `completion=1.0`, `recall=0.8`, `precision=1.0`, `safe_fpr=0.0`, `safe_high_conf_fpr=0.0`.
+- Gate validation:
+  - `scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 ...` -> `PASS`
+  - `scripts/release_candidate_validate_twice.sh --bench-root artifacts/benchmark_runs --required-passes 2 --output-dir artifacts/release_candidate_validation --enforce` -> `PASS` (attempt1=pass, attempt2=pass, overall=PASS)
+
 ## Update (UTC): 2026-02-20T22:05:50Z
 - Ran two-attempt release validation checkpoint with enforcement:
   - `scripts/release_candidate_validate_twice.sh --bench-root artifacts/benchmark_runs_fast --required-passes 1 --output-dir artifacts/release_candidate_validation --enforce`
