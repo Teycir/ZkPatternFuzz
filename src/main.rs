@@ -32,7 +32,7 @@ mod scan_selector_context;
 mod toolchain_bootstrap;
 use cli::{
     campaign_run_options_doc, BinsBootstrapRequest, CampaignRunOptions, ChainRunOptions, Cli,
-    CommandRequest, ScanFamily, ScanRequest,
+    CommandRequest, ScanRequest,
 };
 use engagement_artifacts::{
     mode_folder_from_command, write_global_run_signal, write_run_artifacts,
@@ -51,7 +51,9 @@ use run_lifecycle::{
 };
 pub(crate) use run_log_context::set_run_log_context_for_campaign;
 use run_log_context::{DynamicLogWriter, RunLogContextGuard};
-use run_outcome_docs::{completed_run_doc_with_window, running_run_doc_with_window};
+use run_outcome_docs::{
+    completed_run_doc_with_window, running_run_doc_with_window, RunOutcomeDocContext,
+};
 #[cfg(test)]
 pub(crate) use run_paths::{engagement_dir_name, run_id_epoch_dir};
 pub(crate) use run_paths::{
@@ -116,28 +118,7 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
     let request = cli.into_request();
 
     match request {
-        CommandRequest::Scan(ScanRequest {
-            pattern,
-            family,
-            target_circuit,
-            main_component,
-            framework,
-            output_suffix,
-            mono_options,
-            chain_options,
-        }) => {
-            run_scan(
-                &pattern,
-                family,
-                &target_circuit,
-                &main_component,
-                &framework,
-                output_suffix.as_deref(),
-                mono_options,
-                chain_options,
-            )
-            .await
-        }
+        CommandRequest::Scan(scan_request) => run_scan(scan_request).await,
         CommandRequest::RunCampaign { campaign, options } => {
             if implicit_legacy_run {
                 tracing::warn!(
@@ -190,25 +171,9 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
     }
 }
 
-async fn run_scan(
-    pattern_path: &str,
-    family_hint: ScanFamily,
-    target_circuit: &str,
-    main_component: &str,
-    framework: &str,
-    output_suffix: Option<&str>,
-    mono_options: CampaignRunOptions,
-    chain_options: ChainRunOptions,
-) -> anyhow::Result<()> {
+async fn run_scan(scan_request: ScanRequest) -> anyhow::Result<()> {
     run_scan_orchestrated(
-        pattern_path,
-        family_hint,
-        target_circuit,
-        main_component,
-        framework,
-        output_suffix,
-        mono_options,
-        chain_options,
+        scan_request,
         |materialized, options| async move { run_campaign(&materialized, options).await },
         |materialized, options| async move { run_chain_campaign(&materialized, options).await },
     )
@@ -734,16 +699,16 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                     }
                 };
 
-                let mut doc = running_run_doc_with_window(
-                    &command_for_monitor,
-                    &run_id_for_monitor,
-                    "engine_progress",
-                    &campaign_path_for_monitor,
-                    &campaign_name_for_monitor,
-                    &output_dir_for_monitor,
-                    started_utc_for_monitor,
-                    timeout_for_monitor,
-                );
+                let mut doc = running_run_doc_with_window(RunOutcomeDocContext {
+                    command: &command_for_monitor,
+                    run_id: &run_id_for_monitor,
+                    stage: "engine_progress",
+                    config_path: &campaign_path_for_monitor,
+                    campaign_name: &campaign_name_for_monitor,
+                    output_dir: &output_dir_for_monitor,
+                    started_utc: &started_utc_for_monitor,
+                    timeout_seconds: timeout_for_monitor,
+                });
                 doc["progress"] = progress_json;
                 let run_id_for_signal = match doc.get("run_id").and_then(|v| v.as_str()) {
                     Some(run_id) => run_id,
@@ -799,16 +764,16 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     // Run with new engine if not using simple progress
     stage = "engine_run";
     if !options.dry_run {
-        let doc = running_run_doc_with_window(
+        let doc = running_run_doc_with_window(RunOutcomeDocContext {
             command,
-            &run_id,
+            run_id: &run_id,
             stage,
             config_path,
-            &campaign_name,
-            &output_dir,
-            started_utc,
-            options.timeout,
-        );
+            campaign_name: &campaign_name,
+            output_dir: &output_dir,
+            started_utc: &started_utc,
+            timeout_seconds: options.timeout,
+        });
         write_run_artifacts(&output_dir, &run_id, &doc);
     }
     let report = match if options.simple_progress {
@@ -905,19 +870,21 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 
     let critical = report.has_critical_findings();
     let mut doc = completed_run_doc_with_window(
-        command,
-        &run_id,
         if critical {
             "completed_with_critical_findings"
         } else {
             "completed"
         },
-        "completed",
-        config_path,
-        &campaign_name,
-        &output_dir,
-        started_utc,
-        options.timeout,
+        RunOutcomeDocContext {
+            command,
+            run_id: &run_id,
+            stage: "completed",
+            config_path,
+            campaign_name: &campaign_name,
+            output_dir: &output_dir,
+            started_utc: &started_utc,
+            timeout_seconds: options.timeout,
+        },
     );
     doc["metrics"] = serde_json::json!({
         "findings_total": report.findings.len(),

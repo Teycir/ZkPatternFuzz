@@ -10,8 +10,31 @@ use crate::output_lock::acquire_output_dir_lock;
 use crate::preflight_backend::run_backend_preflight;
 use crate::run_outcome_docs::{
     failed_run_doc_with_window, log_run_reason_code, running_run_doc_with_window,
+    RunOutcomeDocContext,
 };
 use crate::{normalize_build_paths, set_run_log_context_for_campaign};
+
+fn run_doc_context<'a>(
+    command: &'a str,
+    run_id: &'a str,
+    stage: &'a str,
+    config_path: &'a str,
+    campaign_name: &'a str,
+    output_dir: &'a Path,
+    started_utc: &'a DateTime<Utc>,
+    timeout_seconds: Option<u64>,
+) -> RunOutcomeDocContext<'a> {
+    RunOutcomeDocContext {
+        command,
+        run_id,
+        stage,
+        config_path,
+        campaign_name,
+        output_dir,
+        started_utc,
+        timeout_seconds,
+    }
+}
 
 fn readiness_report_to_json(readiness: &ReadinessReport) -> serde_json::Value {
     let warnings = readiness
@@ -44,16 +67,16 @@ pub(crate) fn seed_running_run_artifact(
     timeout_seconds: Option<u64>,
     options: serde_json::Value,
 ) {
-    let mut doc = running_run_doc_with_window(
+    let mut doc = running_run_doc_with_window(run_doc_context(
         command,
         run_id,
         stage,
         config_path,
         campaign_name,
         output_dir,
-        started_utc,
+        &started_utc,
         timeout_seconds,
-    );
+    ));
     doc["options"] = options;
     write_run_artifacts(output_dir, run_id, &doc);
 }
@@ -69,16 +92,16 @@ pub(crate) fn write_failed_mode_run_artifact_with_error(
     timeout_seconds: Option<u64>,
     error: String,
 ) {
-    let mut doc = failed_run_doc_with_window(
+    let mut doc = failed_run_doc_with_window(run_doc_context(
         command,
         run_id,
         stage,
         config_path,
         campaign_name,
         output_dir,
-        started_utc,
+        &started_utc,
         timeout_seconds,
-    );
+    ));
     doc["error"] = serde_json::Value::String(error);
     write_run_artifacts(output_dir, run_id, &doc);
 }
@@ -95,16 +118,16 @@ pub(crate) fn write_failed_mode_run_artifact_with_reason(
     reason: String,
     readiness: Option<serde_json::Value>,
 ) {
-    let mut doc = failed_run_doc_with_window(
+    let mut doc = failed_run_doc_with_window(run_doc_context(
         command,
         run_id,
         stage,
         config_path,
         campaign_name,
         output_dir,
-        started_utc,
+        &started_utc,
         timeout_seconds,
-    );
+    ));
     doc["reason"] = serde_json::Value::String(reason);
     if let Some(readiness) = readiness {
         doc["readiness"] = readiness;
@@ -296,32 +319,34 @@ pub(crate) fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value)
     write_global_run_signal(run_id, value);
 }
 
-pub(crate) fn write_failed_run_artifact_with_error(
-    run_id: &str,
-    command: &str,
-    stage: &str,
-    config_path: &str,
-    started_utc: &DateTime<Utc>,
-    ended_utc: &DateTime<Utc>,
-    error: String,
-    output_dir: Option<&Path>,
-) {
+pub(crate) struct FailedRunArtifactErrorContext<'a> {
+    pub run_id: &'a str,
+    pub command: &'a str,
+    pub stage: &'a str,
+    pub config_path: &'a str,
+    pub started_utc: &'a DateTime<Utc>,
+    pub ended_utc: &'a DateTime<Utc>,
+    pub error: String,
+    pub output_dir: Option<&'a Path>,
+}
+
+pub(crate) fn write_failed_run_artifact_with_error(ctx: FailedRunArtifactErrorContext<'_>) {
     let mut doc = serde_json::json!({
         "status": "failed",
-        "command": command,
-        "run_id": run_id,
-        "stage": stage,
+        "command": ctx.command,
+        "run_id": ctx.run_id,
+        "stage": ctx.stage,
         "pid": std::process::id(),
-        "campaign_path": config_path,
-        "started_utc": started_utc.to_rfc3339(),
-        "ended_utc": ended_utc.to_rfc3339(),
-        "duration_seconds": (*ended_utc - *started_utc).num_seconds().max(0),
-        "error": error,
+        "campaign_path": ctx.config_path,
+        "started_utc": ctx.started_utc.to_rfc3339(),
+        "ended_utc": ctx.ended_utc.to_rfc3339(),
+        "duration_seconds": (*ctx.ended_utc - *ctx.started_utc).num_seconds().max(0),
+        "error": ctx.error,
     });
-    if let Some(path) = output_dir {
+    if let Some(path) = ctx.output_dir {
         doc["output_dir"] = serde_json::Value::String(path.display().to_string());
     }
-    write_failed_run_artifact(run_id, &doc);
+    write_failed_run_artifact(ctx.run_id, &doc);
 }
 
 fn pid_is_alive(pid: u32) -> Option<bool> {

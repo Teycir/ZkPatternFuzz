@@ -1,32 +1,36 @@
-use crate::cli::{CampaignRunOptions, ChainRunOptions, ScanFamily};
+use crate::cli::ScanRequest;
 use crate::scan_dispatch::prepare_scan_dispatch;
 use crate::scan_progress::{dispatch_scan_family_run, scan_default_output_dir};
 
 pub(crate) async fn run_scan<RunMono, RunMulti, MonoFut, MultiFut>(
-    pattern_path: &str,
-    family_hint: ScanFamily,
-    target_circuit: &str,
-    main_component: &str,
-    framework: &str,
-    output_suffix: Option<&str>,
-    mono_options: CampaignRunOptions,
-    chain_options: ChainRunOptions,
+    scan_request: ScanRequest,
     run_mono: RunMono,
     run_multi: RunMulti,
 ) -> anyhow::Result<()>
 where
-    RunMono: FnOnce(String, CampaignRunOptions) -> MonoFut,
-    RunMulti: FnOnce(String, ChainRunOptions) -> MultiFut,
+    RunMono: FnOnce(String, crate::cli::CampaignRunOptions) -> MonoFut,
+    RunMulti: FnOnce(String, crate::cli::ChainRunOptions) -> MultiFut,
     MonoFut: std::future::Future<Output = anyhow::Result<()>>,
     MultiFut: std::future::Future<Output = anyhow::Result<()>>,
 {
-    let prepared = prepare_scan_dispatch(
-        pattern_path,
-        family_hint,
+    let ScanRequest {
+        pattern,
+        family,
         target_circuit,
         main_component,
         framework,
         output_suffix,
+        mono_options,
+        chain_options,
+    } = scan_request;
+
+    let prepared = prepare_scan_dispatch(
+        &pattern,
+        family,
+        &target_circuit,
+        &main_component,
+        &framework,
+        output_suffix.as_deref(),
     )?;
     let materialized_mono = prepared
         .materialized_campaign_path

@@ -9,7 +9,7 @@ use zk_fuzzer::reporting::FuzzReport;
 use crate::engagement_artifacts::write_run_artifacts;
 use crate::run_chain_context::ChainRunContext;
 use crate::run_lifecycle::write_failed_mode_run_artifact_with_error;
-use crate::run_outcome_docs::completed_run_doc_with_window;
+use crate::run_outcome_docs::{completed_run_doc_with_window, RunOutcomeDocContext};
 
 pub(crate) struct ChainReportContext<'a> {
     pub campaign_name: &'a str,
@@ -313,15 +313,17 @@ pub(crate) fn build_chain_completion_doc_context<'a>(
 
 pub(crate) fn build_chain_completion_doc(ctx: &ChainCompletionDocContext<'_>) -> serde_json::Value {
     let mut doc = completed_run_doc_with_window(
-        ctx.command,
-        ctx.run_id,
         ctx.status,
-        ctx.stage,
-        ctx.config_path,
-        ctx.campaign_name,
-        ctx.output_dir,
-        ctx.started_utc,
-        ctx.timeout_seconds,
+        RunOutcomeDocContext {
+            command: ctx.command,
+            run_id: ctx.run_id,
+            stage: ctx.stage,
+            config_path: ctx.config_path,
+            campaign_name: ctx.campaign_name,
+            output_dir: ctx.output_dir,
+            started_utc: &ctx.started_utc,
+            timeout_seconds: ctx.timeout_seconds,
+        },
     );
     doc["metrics"] = serde_json::json!({
         "chain_findings_total": ctx.summary.total_findings,

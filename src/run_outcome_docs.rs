@@ -1,6 +1,18 @@
 use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
 use std::path::Path;
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RunOutcomeDocContext<'a> {
+    pub command: &'a str,
+    pub run_id: &'a str,
+    pub stage: &'a str,
+    pub config_path: &'a str,
+    pub campaign_name: &'a str,
+    pub output_dir: &'a Path,
+    pub started_utc: &'a DateTime<Utc>,
+    pub timeout_seconds: Option<u64>,
+}
+
 pub(crate) fn add_run_window_fields(
     doc: &mut serde_json::Value,
     started_utc: DateTime<Utc>,
@@ -147,84 +159,74 @@ pub(crate) fn log_run_reason_code(doc: &serde_json::Value) {
     );
 }
 
-pub(crate) fn running_run_doc_with_window(
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    output_dir: &Path,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
-) -> serde_json::Value {
+pub(crate) fn running_run_doc_with_window(ctx: RunOutcomeDocContext<'_>) -> serde_json::Value {
     let mut doc = serde_json::json!({
         "status": "running",
-        "command": command,
-        "run_id": run_id,
-        "stage": stage,
+        "command": ctx.command,
+        "run_id": ctx.run_id,
+        "stage": ctx.stage,
         "pid": std::process::id(),
-        "campaign_path": config_path,
-        "campaign_name": campaign_name,
-        "output_dir": output_dir.display().to_string(),
-        "started_utc": started_utc.to_rfc3339(),
+        "campaign_path": ctx.config_path,
+        "campaign_name": ctx.campaign_name,
+        "output_dir": ctx.output_dir.display().to_string(),
+        "started_utc": ctx.started_utc.to_rfc3339(),
     });
-    add_run_window_fields(&mut doc, started_utc, timeout_seconds, "wall_clock");
+    add_run_window_fields(
+        &mut doc,
+        ctx.started_utc.to_owned(),
+        ctx.timeout_seconds,
+        "wall_clock",
+    );
     doc
 }
 
 pub(crate) fn completed_run_doc_with_window(
-    command: &str,
-    run_id: &str,
     status: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    output_dir: &Path,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
+    ctx: RunOutcomeDocContext<'_>,
 ) -> serde_json::Value {
     let ended_utc = Utc::now();
     let mut doc = serde_json::json!({
         "status": status,
-        "command": command,
-        "run_id": run_id,
-        "stage": stage,
+        "command": ctx.command,
+        "run_id": ctx.run_id,
+        "stage": ctx.stage,
         "pid": std::process::id(),
-        "campaign_path": config_path,
-        "campaign_name": campaign_name,
-        "output_dir": output_dir.display().to_string(),
-        "started_utc": started_utc.to_rfc3339(),
+        "campaign_path": ctx.config_path,
+        "campaign_name": ctx.campaign_name,
+        "output_dir": ctx.output_dir.display().to_string(),
+        "started_utc": ctx.started_utc.to_rfc3339(),
         "ended_utc": ended_utc.to_rfc3339(),
-        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+        "duration_seconds": (ended_utc - ctx.started_utc.to_owned()).num_seconds().max(0),
     });
-    add_run_window_fields(&mut doc, started_utc, timeout_seconds, "wall_clock");
+    add_run_window_fields(
+        &mut doc,
+        ctx.started_utc.to_owned(),
+        ctx.timeout_seconds,
+        "wall_clock",
+    );
     doc
 }
 
-pub(crate) fn failed_run_doc_with_window(
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    output_dir: &Path,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
-) -> serde_json::Value {
+pub(crate) fn failed_run_doc_with_window(ctx: RunOutcomeDocContext<'_>) -> serde_json::Value {
     let ended_utc = Utc::now();
     let mut doc = serde_json::json!({
         "status": "failed",
-        "command": command,
-        "run_id": run_id,
-        "stage": stage,
+        "command": ctx.command,
+        "run_id": ctx.run_id,
+        "stage": ctx.stage,
         "pid": std::process::id(),
-        "campaign_path": config_path,
-        "campaign_name": campaign_name,
-        "output_dir": output_dir.display().to_string(),
-        "started_utc": started_utc.to_rfc3339(),
+        "campaign_path": ctx.config_path,
+        "campaign_name": ctx.campaign_name,
+        "output_dir": ctx.output_dir.display().to_string(),
+        "started_utc": ctx.started_utc.to_rfc3339(),
         "ended_utc": ended_utc.to_rfc3339(),
-        "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+        "duration_seconds": (ended_utc - ctx.started_utc.to_owned()).num_seconds().max(0),
     });
-    add_run_window_fields(&mut doc, started_utc, timeout_seconds, "wall_clock");
+    add_run_window_fields(
+        &mut doc,
+        ctx.started_utc.to_owned(),
+        ctx.timeout_seconds,
+        "wall_clock",
+    );
     doc
 }

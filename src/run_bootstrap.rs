@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName};
 
-use crate::run_lifecycle::write_failed_run_artifact_with_error;
+use crate::run_lifecycle::{write_failed_run_artifact_with_error, FailedRunArtifactErrorContext};
 use crate::scan_output::apply_scan_output_suffix_if_present;
 use crate::set_run_log_context_for_campaign;
 
@@ -41,16 +41,16 @@ pub(crate) fn load_campaign_config_with_optional_profile(
         Ok(cfg) => cfg,
         Err(err) => {
             let ended_utc = Utc::now();
-            write_failed_run_artifact_with_error(
+            write_failed_run_artifact_with_error(FailedRunArtifactErrorContext {
                 run_id,
                 command,
-                "load_config",
+                stage: "load_config",
                 config_path,
                 started_utc,
-                &ended_utc,
-                format!("{:#}", err),
-                None,
-            );
+                ended_utc: &ended_utc,
+                error: format!("{:#}", err),
+                output_dir: None,
+            });
             return Err(err);
         }
     };
@@ -61,16 +61,16 @@ pub(crate) fn load_campaign_config_with_optional_profile(
             Err(err) => {
                 let ended_utc = Utc::now();
                 let parse_error = err.to_string();
-                write_failed_run_artifact_with_error(
+                write_failed_run_artifact_with_error(FailedRunArtifactErrorContext {
                     run_id,
                     command,
-                    "apply_profile",
+                    stage: "apply_profile",
                     config_path,
                     started_utc,
-                    &ended_utc,
-                    parse_error.clone(),
-                    Some(config.reporting.output_dir.as_path()),
-                );
+                    ended_utc: &ended_utc,
+                    error: parse_error.clone(),
+                    output_dir: Some(config.reporting.output_dir.as_path()),
+                });
                 return Err(anyhow::anyhow!(
                     "Invalid --profile '{}': {}",
                     profile_name,

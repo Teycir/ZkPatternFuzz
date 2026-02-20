@@ -610,11 +610,11 @@ gh run watch
 
 ### P1 - Fix Clippy Warnings
 - [ ] Apply `cargo clippy --fix` for auto-fixable issues
-- [ ] Refactor `src/run_lifecycle.rs:306` (8 args → config struct)
-- [ ] Refactor `src/run_outcome_docs.rs:150` (8 args → config struct)
-- [ ] Refactor `src/run_outcome_docs.rs:175` (9 args → config struct)
-- [ ] Refactor `src/scan_runner.rs:5` (10 args → config struct)
-- [ ] Refactor `src/main.rs:193` (8 args → config struct)
+- [x] Refactor `src/run_lifecycle.rs:306` (8 args → config struct)
+- [x] Refactor `src/run_outcome_docs.rs:150` (8 args → config struct)
+- [x] Refactor `src/run_outcome_docs.rs:175` (9 args → config struct)
+- [x] Refactor `src/scan_runner.rs:5` (10 args → config struct)
+- [x] Refactor `src/main.rs:193` (8 args → config struct)
 - [x] Fix `only_used_in_recursion` in `crates/zk-backends/src/noir/mod.rs:654`
 - [x] Remove needless `Ok()` wrapper in `crates/zk-backends/src/noir/mod.rs:325`
 
