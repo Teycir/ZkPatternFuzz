@@ -134,7 +134,6 @@ Commit message prefixes:
 ### Low Priority
 
 7. **Advanced Features**
-   - Distributed fuzzing
    - Formal verification integration
 
 ## Testing

@@ -226,7 +226,6 @@ pub mod util;
 pub mod analysis;
 pub mod chain_fuzzer; // Mode 3: Multi-step chain fuzzing
 pub mod differential;
-pub mod distributed;
 pub mod formal;
 pub mod multi_circuit;
 
@@ -370,10 +369,6 @@ pub use analysis::{
     R1CS,
 };
 pub use differential::{DifferentialConfig, DifferentialFuzzer, DifferentialResult};
-pub use distributed::{
-    ClusterStats, CorpusSyncManager, DistributedConfig, DistributedCoordinator, FuzzerNode,
-    NodeRole, NodeStatus, SyncStrategy, WorkUnit,
-};
 pub use formal::{
     CircuitProperty, CoqExporter, FormalConfig, FormalVerificationManager, LeanExporter,
     ProofObligation, ProofSystem, PropertyExtractor,

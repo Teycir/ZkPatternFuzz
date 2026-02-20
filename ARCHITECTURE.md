@@ -238,16 +238,6 @@ Hardened execution and evidence tooling to avoid hangs and crashes.
 - Evidence mode prefers per-exec isolation for hang safety.
 - Proof generation for Circom/Noir/Cairo uses timeouts to avoid indefinite stalls.
 
-### 12. Distributed Fuzzing (`src/distributed/`)
-
-Optional local-only coordinator/worker mode.
-
-**Defaults:**
-- Binds to `127.0.0.1` by default (local only).
-- Enforces a maximum message size to avoid memory exhaustion.
-
-**Note:** Remote/distributed use is not enabled by default.
-
 ## Data Flow
 
 ### Fuzzing Loop
@@ -513,8 +503,6 @@ pub fn my_mutation(input: &[FieldElement], rng: &mut impl Rng) -> Vec<FieldEleme
 
 ## Future Enhancements
 
-1. **Distributed Fuzzing**: Corpus sharing across machines
-2. **Machine Learning**: Learn mutation strategies from successful cases
-3. **Formal Verification Integration**: Combine fuzzing with proofs
-4. **Custom DSL**: Domain-specific language for attack patterns
-5. **Real-time Dashboard**: Web UI for campaign monitoring
+1. **Formal Verification Integration**: Combine fuzzing with proofs
+2. **Custom DSL**: Domain-specific language for attack patterns
+3. **Real-time Dashboard**: Web UI for campaign monitoring

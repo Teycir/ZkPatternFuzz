@@ -267,7 +267,6 @@ cargo run --release -- evidence campaign.yaml --seed 42 --workers 4
 
 - [ ] Lock-free coverage bitmap (like AFL++)
 - [ ] NUMA-aware memory allocation
-- [ ] Distributed fuzzing across machines
 - [ ] GPU-accelerated constraint checking
 
 ---

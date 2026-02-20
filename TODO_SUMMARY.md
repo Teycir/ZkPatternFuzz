@@ -1,0 +1,96 @@
+# ZkPatternFuzz Implementation Checklist
+
+**Status:** Production Ready (Phases 0-5 Complete)  
+**Last Updated:** February 20, 2026
+
+---
+
+## Backend Integrations
+
+| Backend | Status | Checkbox |
+|---------|--------|----------|
+| Circom (R1CS) | ✅ Mature | - [x] Full proving/verification support |
+| Noir (ACIR) | ⚠️ Partial | - [ ] Complete real-circuit proving |
+| | | - [ ] Barretenberg integration hardening |
+| Halo2 (PLONK) | ⚠️ Partial | - [ ] Mock → real circuit execution |
+| | | - [ ] Production circuit integration |
+| Cairo (STARK) | 🔬 Experimental | - [ ] Real-circuit proving support |
+| | | - [ ] Stone prover integration |
+
+---
+
+## Benchmarks & Performance
+
+- [ ] Add more chain complexity benchmarks (`benches/chain_benchmark.rs`)
+- [ ] Cross-backend throughput comparison harness
+- [ ] Memory usage profiling for large circuits
+
+---
+
+## Advanced Features (from Architecture Roadmap)
+
+### Formal Verification Bridge
+- [ ] Export fuzzing findings to formal tools
+- [ ] Import formal invariants as fuzzing oracles
+- [ ] Hybrid fuzzing+proof workflow
+
+### Developer Experience
+- [ ] Custom attack pattern DSL
+- [ ] Real-time web dashboard for campaigns
+- [ ] VS Code extension for SARIF viewing
+
+---
+
+## Test Coverage Gaps
+
+- [ ] Cairo full integration tests
+- [ ] Halo2 real-circuit validation suite
+- [ ] Noir constraint coverage edge cases
+- [ ] Multi-target collision stress tests (50+ targets)
+
+---
+
+## Documentation
+
+- [ ] Noir backend troubleshooting guide
+- [ ] Cairo integration tutorial
+- [ ] Halo2 migration guide from mock mode
+- [ ] Attack DSL specification
+
+---
+
+## Third-Party Dependency Monitoring
+
+- [ ] Track zkevm-circuits upstream releases (504 TODOs in submodule)
+- [ ] Evaluate arkworks 0.5 upgrade path
+- [ ] Z3 solver version compatibility matrix
+
+---
+
+## Completed (Do Not Modify)
+
+These items are complete and closed:
+
+- [x] Phase 0: Reliability blockers (100% attack-stage reach)
+- [x] Phase 1: Detection recall upgrade (80% recall achieved)
+- [x] Phase 2: Real backend internalization (fresh-clone bootstrap)
+- [x] Phase 3: Multi-target execution (1.884x speedup, 0 collisions)
+- [x] Phase 3A: Logic correctness hardening
+- [x] Phase 4: Validation/stats tooling
+- [x] Phase 5: Release hardening (consecutive pass gates)
+- [x] 22 real-world CVE regression tests
+- [x] CI benchmark regression gates
+- [x] Release candidate validation workflow
+- [x] Troubleshooting playbook
+
+---
+
+## Legend
+
+| Symbol | Meaning |
+|--------|---------|
+| - [ ] | Not implemented / needs work |
+| - [x] | Complete |
+| ⚠️ | Partial support |
+| 🔬 | Experimental |
+| ✅ | Production-ready |

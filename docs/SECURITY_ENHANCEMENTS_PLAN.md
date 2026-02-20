@@ -830,11 +830,10 @@ cargo run -- --config campaigns/examples/quantum_resistance_audit.yaml
 
 ## Future Enhancements
 
-1. **Machine Learning Integration**: Train models on YAML patterns
-2. **Community Patterns**: Allow users to submit custom YAML patterns
-3. **Pattern Marketplace**: Share and download attack patterns
-4. **Auto-tuning**: Automatically adjust thresholds based on results
-5. **Visual Pattern Editor**: GUI for creating YAML patterns
+1. **Community Patterns**: Allow users to submit custom YAML patterns
+2. **Pattern Marketplace**: Share and download attack patterns
+3. **Auto-tuning**: Automatically adjust thresholds based on results
+4. **Visual Pattern Editor**: GUI for creating YAML patterns
 
 ---
 

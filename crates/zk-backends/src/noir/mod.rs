@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use zk_core::ConstraintEquation;
@@ -61,6 +61,8 @@ impl Drop for ScopedFileOverwrite {
 pub struct NoirTarget {
     /// Path to the Noir project directory (containing Nargo.toml)
     project_path: PathBuf,
+    /// Optional project path override used when isolating nested-workspace projects.
+    project_path_override: Option<PathBuf>,
     /// Compiled circuit metadata
     metadata: Option<NoirMetadata>,
     /// Build directory for artifacts
@@ -150,6 +152,12 @@ pub enum Visibility {
 }
 
 impl NoirTarget {
+    fn active_project_path(&self) -> &Path {
+        self.project_path_override
+            .as_deref()
+            .unwrap_or(self.project_path.as_path())
+    }
+
     /// Get the field name used by this circuit (default Noir field)
     pub fn field_name(&self) -> &str {
         // Noir currently uses the native field (typically BN254 in Barretenberg)
@@ -204,7 +212,7 @@ impl NoirTarget {
 
         let mut command = Command::new("nargo");
         command
-            .current_dir(&self.project_path)
+            .current_dir(self.active_project_path())
             .env("HOME", &nargo_home)
             .env("NARGO_HOME", &nargo_home)
             .env("CARGO_HOME", &cargo_home)
@@ -215,7 +223,7 @@ impl NoirTarget {
     }
 
     fn proof_file_candidates(&self) -> Vec<PathBuf> {
-        let proof_dir = self.project_path.join("proofs");
+        let proof_dir = self.active_project_path().join("proofs");
         let mut candidates = Vec::new();
         let mut seen = HashSet::new();
         for stem in [self.name().to_string(), "main".to_string()] {
@@ -249,6 +257,7 @@ impl NoirTarget {
 
         Ok(Self {
             project_path,
+            project_path_override: None,
             metadata: None,
             build_dir,
             compiled: false,
@@ -299,7 +308,7 @@ impl NoirTarget {
             return Ok(());
         }
 
-        tracing::info!("Compiling Noir project: {:?}", self.project_path);
+        tracing::info!("Compiling Noir project: {:?}", self.active_project_path());
 
         // Check nargo is available
         let nargo_version = Self::check_nargo_available()?;
@@ -310,12 +319,34 @@ impl NoirTarget {
             .expect("noir IO lock poisoned during compile");
         let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.build_dir)?;
 
-        // Compile the project
-        let output = {
-            let mut cmd = self.nargo_command()?;
+        let compile_project = |this: &Self| -> Result<std::process::Output> {
+            let mut cmd = this.nargo_command()?;
             cmd.args(["compile"]);
-            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-                .context("Failed to run nargo compile")?
+            Ok(
+                crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
+                    .context("Failed to run nargo compile")?,
+            )
+        };
+
+        // Compile the project
+        let mut output = compile_project(self)?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if Self::is_missing_selected_package(&stderr)
+                && self.enable_isolated_project_mode().with_context(|| {
+                    format!(
+                        "Failed preparing isolated Noir project from '{}'",
+                        self.project_path.display()
+                    )
+                })?
+            {
+                tracing::warn!(
+                    "Noir package resolution failed in parent workspace; retrying compile in isolated project copy '{}'",
+                    self.active_project_path().display()
+                );
+                output = compile_project(self)?;
+            }
         };
 
         if !output.status.success() {
@@ -335,7 +366,7 @@ impl NoirTarget {
     /// Parse circuit information from compiled artifacts
     fn parse_circuit_info(&mut self) -> Result<()> {
         // Get project name from Nargo.toml
-        let nargo_toml_path = self.project_path.join("Nargo.toml");
+        let nargo_toml_path = self.active_project_path().join("Nargo.toml");
         if !nargo_toml_path.exists() {
             anyhow::bail!(
                 "Noir project is missing Nargo.toml at '{}'",
@@ -460,8 +491,9 @@ impl NoirTarget {
         }
 
         anyhow::bail!(
-            "Failed to locate ABI in Noir build artifacts under {}",
-            self.build_dir.display()
+            "Failed to locate ABI in Noir artifacts (build_dir='{}', project_target='{}')",
+            self.build_dir.display(),
+            self.active_project_path().join("target").display()
         )
     }
 
@@ -478,7 +510,7 @@ impl NoirTarget {
             }
         }
 
-        let nargo_toml_path = self.project_path.join("Nargo.toml");
+        let nargo_toml_path = self.active_project_path().join("Nargo.toml");
         if nargo_toml_path.exists() {
             let content = std::fs::read_to_string(&nargo_toml_path)
                 .with_context(|| format!("Failed reading '{}'", nargo_toml_path.display()))?;
@@ -487,27 +519,174 @@ impl NoirTarget {
             if seen.insert(path.clone()) {
                 candidates.push(path);
             }
-        }
-
-        for entry in std::fs::read_dir(&self.build_dir).with_context(|| {
-            format!(
-                "Failed reading Noir build dir '{}'",
-                self.build_dir.display()
-            )
-        })? {
-            let entry = entry.with_context(|| {
-                format!(
-                    "Failed reading an entry in Noir build dir '{}'",
-                    self.build_dir.display()
-                )
-            })?;
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "json") && seen.insert(path.clone()) {
-                candidates.push(path);
+            let project_target_named = self
+                .active_project_path()
+                .join("target")
+                .join(format!("{}.json", name));
+            if seen.insert(project_target_named.clone()) {
+                candidates.push(project_target_named);
             }
         }
 
+        for stem in ["program", "main"] {
+            let project_target_default = self
+                .active_project_path()
+                .join("target")
+                .join(format!("{stem}.json"));
+            if seen.insert(project_target_default.clone()) {
+                candidates.push(project_target_default);
+            }
+        }
+
+        self.collect_json_candidates(self.build_dir.as_path(), 3, &mut candidates, &mut seen)?;
+        let project_target_dir = self.active_project_path().join("target");
+        self.collect_json_candidates(project_target_dir.as_path(), 2, &mut candidates, &mut seen)?;
+
         Ok(candidates)
+    }
+
+    fn collect_json_candidates(
+        &self,
+        root: &Path,
+        max_depth: usize,
+        candidates: &mut Vec<PathBuf>,
+        seen: &mut HashSet<PathBuf>,
+    ) -> Result<()> {
+        if !root.exists() {
+            return Ok(());
+        }
+
+        let mut stack = vec![(root.to_path_buf(), 0usize)];
+        while let Some((dir, depth)) = stack.pop() {
+            let entries = match std::fs::read_dir(&dir) {
+                Ok(entries) => entries,
+                Err(err) => {
+                    tracing::debug!(
+                        "Failed reading Noir artifact directory '{}': {}",
+                        dir.display(),
+                        err
+                    );
+                    continue;
+                }
+            };
+
+            for entry in entries {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(err) => {
+                        tracing::debug!(
+                            "Failed reading Noir artifact entry in '{}': {}",
+                            dir.display(),
+                            err
+                        );
+                        continue;
+                    }
+                };
+                let path = entry.path();
+                let file_type = match entry.file_type() {
+                    Ok(file_type) => file_type,
+                    Err(err) => {
+                        tracing::debug!(
+                            "Failed reading Noir artifact file type '{}': {}",
+                            path.display(),
+                            err
+                        );
+                        continue;
+                    }
+                };
+
+                if file_type.is_file()
+                    && path.extension().is_some_and(|extension| extension == "json")
+                    && seen.insert(path.clone())
+                {
+                    candidates.push(path);
+                } else if file_type.is_dir() && depth < max_depth {
+                    stack.push((path, depth + 1));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn is_missing_selected_package(stderr: &str) -> bool {
+        stderr.contains("Selected package `") && stderr.contains("was not found")
+    }
+
+    fn enable_isolated_project_mode(&mut self) -> Result<bool> {
+        if self.project_path_override.is_some() {
+            return Ok(false);
+        }
+
+        let manifest_path = self.project_path.join("Nargo.toml");
+        let manifest_content = fs::read_to_string(&manifest_path)
+            .with_context(|| format!("Failed reading '{}'", manifest_path.display()))?;
+
+        // Path dependencies commonly rely on sibling-relative paths. Keep original
+        // layout in that case instead of copying into an isolated directory.
+        if manifest_content
+            .lines()
+            .any(|line| !line.trim_start().starts_with('#') && line.contains("path ="))
+        {
+            tracing::warn!(
+                "Skipping Noir isolated-project fallback for '{}' because manifest uses path dependencies",
+                manifest_path.display()
+            );
+            return Ok(false);
+        }
+
+        let isolated_root = self.build_dir.join("isolated_project");
+        if isolated_root.exists() {
+            fs::remove_dir_all(&isolated_root).with_context(|| {
+                format!("Failed removing stale isolated directory '{}'", isolated_root.display())
+            })?;
+        }
+        self.copy_project_tree(self.project_path.as_path(), isolated_root.as_path())?;
+        self.project_path_override = Some(isolated_root);
+        Ok(true)
+    }
+
+    fn copy_project_tree(&self, src: &Path, dst: &Path) -> Result<()> {
+        fs::create_dir_all(dst)
+            .with_context(|| format!("Failed creating '{}'", dst.display()))?;
+
+        for entry in fs::read_dir(src).with_context(|| format!("Failed reading '{}'", src.display()))?
+        {
+            let entry = entry.with_context(|| format!("Failed reading entry in '{}'", src.display()))?;
+            let src_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+            let file_type = entry
+                .file_type()
+                .with_context(|| format!("Failed reading file type for '{}'", src_path.display()))?;
+
+            if file_type.is_symlink() {
+                continue;
+            }
+
+            if file_type.is_dir() {
+                let skip = src_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| matches!(name, "target" | "proofs" | ".git"));
+                if skip {
+                    continue;
+                }
+                self.copy_project_tree(src_path.as_path(), dst_path.as_path())?;
+                continue;
+            }
+
+            if file_type.is_file() {
+                fs::copy(&src_path, &dst_path).with_context(|| {
+                    format!(
+                        "Failed copying Noir project file '{}' to '{}'",
+                        src_path.display(),
+                        dst_path.display()
+                    )
+                })?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Load the compiled ACIR artifact (JSON) when available.
@@ -682,11 +861,11 @@ impl NoirTarget {
         let _guard = noir_io_lock()
             .lock()
             .expect("noir IO lock poisoned during execute");
-        let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
+        let _dir_lock = crate::util::DirLock::acquire_exclusive(self.active_project_path())?;
 
         // Create Prover.toml with inputs
         let prover_toml = self.create_prover_toml(inputs)?;
-        let prover_path = self.project_path.join("Prover.toml");
+        let prover_path = self.active_project_path().join("Prover.toml");
         let _prover_guard = ScopedFileOverwrite::overwrite(prover_path, prover_toml.as_bytes())?;
 
         // Execute using nargo execute (JSON output is version-dependent)
@@ -885,7 +1064,12 @@ impl TargetCircuit for NoirTarget {
             .as_ref()
             .expect("Noir metadata unavailable; call compile() before querying num_private_inputs");
         if !metadata.abi.parameters.is_empty() {
-            return metadata.abi.parameters.len();
+            return metadata
+                .abi
+                .parameters
+                .iter()
+                .filter(|p| p.visibility != Visibility::Public)
+                .count();
         }
         metadata.num_witnesses
     }
@@ -919,11 +1103,11 @@ impl TargetCircuit for NoirTarget {
         let _guard = noir_io_lock()
             .lock()
             .expect("noir IO lock poisoned during prove");
-        let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
+        let _dir_lock = crate::util::DirLock::acquire_exclusive(self.active_project_path())?;
 
         // Create Prover.toml
         let prover_toml = self.create_prover_toml(witness)?;
-        let prover_path = self.project_path.join("Prover.toml");
+        let prover_path = self.active_project_path().join("Prover.toml");
         let _prover_guard = ScopedFileOverwrite::overwrite(prover_path, prover_toml.as_bytes())?;
 
         // Generate proof using nargo
@@ -956,7 +1140,7 @@ impl TargetCircuit for NoirTarget {
         let _guard = noir_io_lock()
             .lock()
             .expect("noir IO lock poisoned during verify");
-        let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.project_path)?;
+        let _dir_lock = crate::util::DirLock::acquire_exclusive(self.active_project_path())?;
 
         // Write proof to all known nargo lookup paths for compatibility across noir versions.
         let mut _proof_guards = Vec::new();

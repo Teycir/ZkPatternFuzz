@@ -1,12 +1,12 @@
 # ZkPatternFuzz Production Roadmap
 
-Date: 2026-02-19  
+Date: 2026-02-20  
 Status: Active  
-Primary goal: make the scanner production-grade for real multi-target runs with high recall and high runtime stability.
+Primary goal: make the scanner production-grade for real multi-target runs with high recall and high runtime stability, with full circuit-type readiness across all supported frameworks.
 
 ---
 
-## 📊 Status Overview (2026-02-19)
+## 📊 Status Overview (2026-02-20)
 
 ### Phase Implementation Progress
 - ✅ Phase 0: Reliability Blockers (implementation completed)
@@ -16,6 +16,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Phase 3A: Logic Correctness Hardening (implementation completed)
 - ✅ Phase 4: Validation/Stats tooling (implementation completed)
 - ✅ Phase 5: Release Hardening (implementation completed)
+- 🟡 Phase 6: Full Non-Circom Circuit-Type Readiness (in progress)
 
 ### Exit Criteria Progress
 - ✅ Phase 0 exit criteria (met on 20-run fast matrix: attack-stage reach 100%, no output-lock failures)
@@ -25,6 +26,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Phase 3A exit criteria (met with backend-heavy and timeout/Noir-throughput validations)
 - ✅ Phase 4 exit criteria (met on latest fast matrix: recall 80%, safe high-confidence FPR 0%, miss reason coverage 100%)
 - ✅ Phase 5 exit criteria (release candidate gates pass twice consecutively)
+- ⏳ Phase 6 exit criteria (pending: Noir/Cairo/Halo2 breadth readiness and zero unresolved backend-specific blockers)
 
 ### Definition of Done Progress
 - ✅ Stability: >=95% scan completion on the latest 20-run benchmark matrix (`100%`)
@@ -32,6 +34,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Detection: measurable recall uplift on known vulnerable targets
 - ✅ Operability: single bootstrap path validated on fresh environments
 - ✅ Quality gates: nightly regression dashboard with pass/fail by failure class
+- ⏳ Backend breadth: Noir/Cairo/Halo2 pass required backend readiness gates across local and external target matrices
 
 ---
 
@@ -201,6 +204,57 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ---
 
+## 🧩 Phase 6: Full Non-Circom Circuit-Type Readiness
+
+**Goal:** Make all non-Circom backends first-class at full capacity, with priority order Noir -> Cairo -> Halo2, and release-gated across representative circuit types.
+
+### Scope (Backend Readiness Matrix)
+| Backend | Current Status | Known Gaps |
+|---|---|---|
+| Noir | Partial | External-package preflight/ABI lookup failures on breadth targets |
+| Cairo | Partial | Integrated checks pass, but breadth matrix coverage is still below release-gate standards |
+| Halo2 | Partial | Runtime input reconciliation failures and high `run_outcome_missing` counts |
+
+### Implementation Tasks
+- [ ] Add backend-specific readiness profiles in `targets/fuzzer_registry.prod.yaml` for Noir, Halo2, and Cairo circuit families
+- [ ] Add Noir preflight hardening for package-resolution and ABI artifact-path variants
+- [ ] Add Noir end-to-end prove/verify smoke and fuzz parity tests for external `Nargo.toml` projects
+- [ ] Add Cairo breadth-target suite to `zk0d_matrix` default validation set (not optional backend-heavy-only checks)
+- [ ] Add Cairo full-capacity regression suite with stable coverage/failure semantics on external and local targets
+- [ ] Add Halo2 JSON-spec input reconciliation normalizer (wire-label/index compatibility)
+- [ ] Add Halo2 scaffold execution stability checks under nightly toolchain with deterministic fixture inputs
+- [ ] Reduce `run_outcome_missing` on non-Circom targets to <=5% by enforcing explicit reason-code closure in matrix summaries
+- [ ] Add per-backend release gates in `scripts/release_candidate_gate.sh` (Noir/Halo2/Cairo must each satisfy minimum completion and setup-success thresholds)
+- [ ] Publish backend readiness dashboard artifact (`artifacts/backend_readiness/latest_report.json`) on every benchmark/release run
+
+### Test Coverage Gaps
+- [ ] Cairo full integration tests
+- [ ] Halo2 real-circuit validation suite
+- [ ] Noir constraint coverage edge cases
+- [ ] Multi-target collision stress tests (50+ targets)
+
+### Documentation
+- [ ] Noir backend troubleshooting guide
+- [ ] Cairo integration tutorial
+- [ ] Halo2 migration guide from mock mode
+- [ ] Attack DSL specification
+
+### Formal Verification Bridge
+- [ ] Export fuzzing findings to formal tools
+- [ ] Import formal invariants as fuzzing oracles
+- [ ] Hybrid fuzzing+proof workflow
+
+### Exit Criteria
+- [ ] Noir: `backend_preflight_failed=0` on roadmap breadth/follow-up target sets and >=90% completed outcomes
+- [ ] Cairo: >=90% completed outcomes on designated Cairo breadth targets with non-empty run outcome classification
+- [ ] Halo2: `runtime_error=0` for canonical local specs and >=90% completed outcomes on scaffold/spec targets
+- [ ] Cross-backend: non-Circom `run_outcome_missing` <=5% in aggregate follow-up report
+- [ ] Release gate fails automatically when any non-Circom backend drops below readiness thresholds
+
+**Current Status:** 🟡 Open. Noir and Halo2 breadth failures remain unresolved (`docs/ROADMAP_TARGET_TESTS.md` steps `066-069`), and Cairo still needs promotion from optional backend-heavy checks to full-capacity breadth gating.
+
+---
+
 ## 🔬 Audit Intake (2026-02-18)
 
 Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, Info=2)
@@ -312,19 +366,37 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 ## 🚧 Current Blockers
 
 ### Critical Issues
-1. **No open release blockers**
-   - Benchmark gate passes on latest matrix (`artifacts/benchmark_runs_fast/benchmark_20260219_212657/summary.json`)
-   - Two-attempt release candidate validation passes (`artifacts/release_candidate_validation/release_candidate_report.json`)
-   - Status: ✅ Closed
+1. **Noir external-target setup blockers are mitigated; outcome closure is now the blocker**
+   - Evidence: recheck summaries now show `completed=1` with no `backend_preflight_failed` on steps `066` and `067` (`artifacts/roadmap_step_tests_recheck2/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv`, `artifacts/roadmap_step_tests_recheck2/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`)
+   - Impact: Noir setup is healthier, but readiness still fails due high `run_outcome_missing` counts
+   - Status: 🟡 Open
+
+2. **Cairo is not yet enforced at full-capacity breadth gates**
+   - Evidence: Cairo validation remains backend-heavy/optional and is not yet a required breadth readiness lane (`ROADMAP.md` Phase 6 scope/tasks)
+   - Impact: all-circuit-type readiness claims remain incomplete without Cairo promotion
+   - Status: 🟡 Open
+
+3. **Halo2 breadth coverage is not readiness-grade**
+   - Evidence: `docs/ROADMAP_TARGET_TESTS.md` steps `068` and `069` (`run_outcome_missing`, `runtime_error`)
+   - Impact: Halo2 cannot be promoted to full production readiness
+   - Status: 🟡 Open
+
+4. **Non-Circom reason-code closure remains incomplete**
+   - Evidence: follow-up summary includes high `run_outcome_missing` volume (`docs/ROADMAP_TARGET_TESTS_FOLLOWUP.md`)
+   - Impact: unresolved outcomes reduce confidence in all-circuit-type reliability claims
+   - Status: 🟡 Open
 
 ---
 
 ## 📋 Immediate Action Items
 
 ### Top Priority (P0)
-- [x] Fix panic `Missing required 'command' in run document` in evidence/report mirroring
-- [x] Validate fix with 20-run benchmark matrix (`artifacts/benchmark_runs_fast/benchmark_20260219_182723/artifact_mirror_panic_report.json`)
-- [x] Achieve >=90% completion rate on benchmark runs (`artifacts/benchmark_runs_fast/benchmark_20260219_212657/summary.json`)
+- [ ] Implement Phase 6 backend readiness matrix runner and publish `artifacts/backend_readiness/latest_report.json`
+- [x] Fix Noir target setup path for Aztec example projects (steps `066`/`067`) and rerun breadth follow-up (`artifacts/roadmap_step_tests_recheck2/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv`, `artifacts/roadmap_step_tests_recheck2/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`)
+- [ ] Promote Cairo from backend-heavy optional validation into required breadth readiness gates and publish completion metrics
+- [ ] Fix Halo2 minimal JSON spec input reconciliation (`tests/halo2_specs/minimal.json`) and rerun step `069`
+- [ ] Reduce non-Circom aggregate `run_outcome_missing` to <=5% on follow-up suite
+- [ ] Add CI gate that blocks release when Noir/Halo2/Cairo readiness thresholds fail
 
 ### High Priority (P1)
 - [x] Add automated fresh clone + bootstrap validation script (`scripts/fresh_clone_bootstrap_validate.sh`)
@@ -516,7 +588,7 @@ gh run watch
 
 ## 📝 Notes
 
-- All implementation tasks for Phases 0-5 are complete
+- All implementation tasks for Phases 0-5 are complete; Phase 6 is now the active execution roadmap
 - Panic blockers addressed in current branch (`wait-timeout` abort path removed, run-doc stale-binary path resolved)
 - Latest smoke benchmark evidence: `artifacts/benchmark_runs_smoke/benchmark_20260219_153249/summary.json`
 - Smoke metrics: `completion_rate=40.0%`, `recall=0.0%`, `safe_fpr=60.0%`
