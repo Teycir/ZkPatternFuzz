@@ -203,7 +203,3 @@ impl Default for SimpleProgressTracker {
 
 /// Shared progress reporter for concurrent access
 pub type SharedProgressReporter = Arc<ProgressReporter>;
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

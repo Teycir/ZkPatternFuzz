@@ -10,9 +10,6 @@ pub mod invariant_generator;
 pub mod result_analyzer;
 pub mod yaml_suggester;
 
-#[cfg(test)]
-mod tests;
-
 use crate::config::{AIAssistanceMode, AIAssistantConfig};
 use anyhow::Result;
 

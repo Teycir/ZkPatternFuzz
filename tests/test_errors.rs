@@ -1,4 +1,4 @@
-use super::*;
+use zk_fuzzer::errors::ZkFuzzerError;
 
 #[test]
 fn test_error_display() {

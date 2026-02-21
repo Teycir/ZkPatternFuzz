@@ -1,4 +1,4 @@
-use super::write_file_atomic;
+use zk_fuzzer::util::write_file_atomic;
 
 #[test]
 fn test_write_file_atomic_replaces_contents() {

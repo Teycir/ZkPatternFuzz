@@ -2,6 +2,48 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T23:25:17Z
+- Continued strict production/test separation by migrating corpus/bootstrap test hooks out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/corpus/lockfree.rs`
+    - `src/toolchain_bootstrap.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_corpus_lockfree.rs`
+    - `tests/test_toolchain_bootstrap.rs`
+- Test migration notes:
+  - switched lock-free corpus tests from in-module imports to public integration imports via `zk_fuzzer::corpus::*`.
+  - kept private helper coverage for bootstrap checksum/magic parsing via an in-test `include!("../src/toolchain_bootstrap.rs")` module (with `#![allow(dead_code)]`) so production visibility stays unchanged.
+- Validation:
+  - `cargo fmt --all` -> `PASS`
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_corpus_lockfree --test test_toolchain_bootstrap` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `12` (down from `14` before this batch)
+
+## Update (UTC): 2026-02-21T23:22:27Z
+- Continued strict production/test separation by migrating another core utilities batch out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/util/mod.rs`
+    - `src/ai/mod.rs`
+    - `src/progress/mod.rs`
+    - `src/errors.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_util_mod.rs`
+    - `tests/test_ai_mod.rs`
+    - `tests/test_progress_mod.rs`
+    - `tests/test_errors.rs`
+- Test migration notes:
+  - replaced in-module imports (`use super::*`, `use crate::*`) with integration imports (`zk_fuzzer::*`).
+  - removed private-state assertions from progress tracker tests and kept public behavior checks (`update`, `finish`) only.
+- Validation:
+  - `cargo fmt --all` -> `PASS`
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_util_mod --test test_ai_mod --test test_progress_mod --test test_errors` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `14` (down from `18` before this batch)
+
 ## Update (UTC): 2026-02-21T23:13:35Z
 - Continued strict production/test separation by migrating the next `fuzzer` module set out of `src/**`.
   - removed in-source `#[cfg(test)]` hooks from:

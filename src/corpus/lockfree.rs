@@ -365,7 +365,3 @@ pub type SharedLockFreeCorpus = Arc<LockFreeCorpus>;
 pub fn create_shared_corpus(coverage_bits: usize) -> SharedLockFreeCorpus {
     Arc::new(LockFreeCorpus::new(coverage_bits))
 }
-
-#[cfg(test)]
-#[path = "lockfree_tests.rs"]
-mod tests;

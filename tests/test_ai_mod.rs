@@ -1,7 +1,7 @@
 //! AI Module Tests
 
-use crate::ai::{AIAssistanceMode, AIAssistant};
-use crate::config::{AIAssistanceMode as ConfigMode, AIAssistantConfig};
+use zk_fuzzer::ai::AIAssistant;
+use zk_fuzzer::config::{AIAssistanceMode, AIAssistantConfig};
 
 #[test]
 fn test_ai_assistant_creation() {
@@ -12,7 +12,10 @@ fn test_ai_assistant_creation() {
         api_key: None,
         temperature: 0.7,
         max_tokens: 1000,
-        modes: vec![ConfigMode::InvariantGeneration, ConfigMode::ResultAnalysis],
+        modes: vec![
+            AIAssistanceMode::InvariantGeneration,
+            AIAssistanceMode::ResultAnalysis,
+        ],
         system_prompt: None,
     };
 
@@ -29,7 +32,7 @@ fn test_ai_mode_checking() {
         api_key: None,
         temperature: 0.7,
         max_tokens: 1000,
-        modes: vec![ConfigMode::InvariantGeneration, ConfigMode::All],
+        modes: vec![AIAssistanceMode::InvariantGeneration, AIAssistanceMode::All],
         system_prompt: None,
     };
 
@@ -53,7 +56,7 @@ fn test_ai_disabled() {
         api_key: None,
         temperature: 0.7,
         max_tokens: 1000,
-        modes: vec![ConfigMode::All],
+        modes: vec![AIAssistanceMode::All],
         system_prompt: None,
     };
 
@@ -71,7 +74,7 @@ async fn test_invariant_generation() {
         api_key: None,
         temperature: 0.7,
         max_tokens: 1000,
-        modes: vec![ConfigMode::InvariantGeneration],
+        modes: vec![AIAssistanceMode::InvariantGeneration],
         system_prompt: None,
     };
 
@@ -93,7 +96,7 @@ async fn test_yaml_suggestion() {
         api_key: None,
         temperature: 0.7,
         max_tokens: 1000,
-        modes: vec![ConfigMode::ConfigSuggestion],
+        modes: vec![AIAssistanceMode::ConfigSuggestion],
         system_prompt: None,
     };
 
@@ -115,7 +118,7 @@ async fn test_invariant_generation_is_deduplicated_and_bounded() {
         api_key: None,
         temperature: 0.1,
         max_tokens: 128,
-        modes: vec![ConfigMode::InvariantGeneration],
+        modes: vec![AIAssistanceMode::InvariantGeneration],
         system_prompt: None,
     };
 
@@ -140,7 +143,7 @@ async fn test_invariant_generation_uses_contextual_prompt_hints() {
         api_key: None,
         temperature: 0.7,
         max_tokens: 1000,
-        modes: vec![ConfigMode::InvariantGeneration],
+        modes: vec![AIAssistanceMode::InvariantGeneration],
         system_prompt: Some("focus on privacy and replay protections for bridge flows".to_string()),
     };
 

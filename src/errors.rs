@@ -212,7 +212,3 @@ impl<T, E: std::error::Error + Send + Sync + 'static> ErrorContext<T>
         })
     }
 }
-
-#[cfg(test)]
-#[path = "errors_tests.rs"]
-mod tests;

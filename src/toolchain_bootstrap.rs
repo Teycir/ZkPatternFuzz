@@ -574,7 +574,3 @@ fn verify_ptau_magic(path: &Path) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "toolchain_bootstrap_tests.rs"]
-mod tests;

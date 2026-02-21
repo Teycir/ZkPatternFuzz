@@ -1,6 +1,9 @@
-use super::*;
-use zk_core::FieldElement;
-use zk_core::TestMetadata;
+use std::sync::Arc;
+
+use zk_core::{FieldElement, TestCase, TestMetadata};
+use zk_fuzzer::corpus::{
+    create_shared_corpus, AtomicCoverageBitmap, LockFreeCorpus, LockFreeTestQueue,
+};
 
 fn make_test_case(inputs: Vec<u64>) -> TestCase {
     TestCase {

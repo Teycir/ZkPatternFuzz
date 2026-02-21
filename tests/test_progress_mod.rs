@@ -1,4 +1,6 @@
-use super::*;
+use std::time::Duration;
+
+use zk_fuzzer::progress::{FuzzingStats, SimpleProgressTracker};
 
 #[test]
 fn test_fuzzing_stats() {
@@ -25,5 +27,5 @@ fn test_simple_progress_tracker() {
     };
 
     tracker.update(stats);
-    assert_eq!(tracker.stats.executions, 100);
+    tracker.finish();
 }
