@@ -2,6 +2,62 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T19:39:32Z
+- Continued lifecycle modularization by extracting static pattern selector/materialization helpers:
+  - moved static pattern helper methods out of:
+    - `src/fuzzer/engine/run_lifecycle.rs`
+  - into:
+    - `src/fuzzer/engine/run_pattern.rs`
+  - methods moved:
+    - `select_executable_witness_for_pattern_finding`
+    - `record_scan_pattern_findings`
+  - registered new module in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `src/fuzzer/engine/run_lifecycle.rs` reduced from `966` to `853` lines in this slice
+  - extracted `src/fuzzer/engine/run_pattern.rs` (`117` lines)
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+
+## Update (UTC): 2026-02-21T19:37:34Z
+- Continued lifecycle modularization by splitting reporting/evidence finalization from run orchestration:
+  - moved reporting/evidence finalization logic out of:
+    - `src/fuzzer/engine/run_lifecycle.rs`
+  - into:
+    - `src/fuzzer/engine/run_reporting.rs`
+  - added helper:
+    - `finalize_run_report(start_time, mode_label, phases_total)`
+  - updated `run_lifecycle.rs` to delegate final phase to `finalize_run_report(...)`
+  - registered new module in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `src/fuzzer/engine/run_lifecycle.rs` reduced from `1114` to `966` lines in this slice
+  - extracted `src/fuzzer/engine/run_reporting.rs` (`161` lines)
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+
+## Update (UTC): 2026-02-21T19:30:53Z
+- Continued oversized-engine modularization by splitting engine lifecycle orchestration out of `mod.rs`:
+  - moved lifecycle helpers + run loop orchestration into:
+    - `src/fuzzer/engine/run_lifecycle.rs`
+  - methods moved include:
+    - `with_findings_write`
+    - `with_findings_read`
+    - `select_executable_witness_for_pattern_finding`
+    - `record_scan_pattern_findings`
+    - `configure_wall_clock_deadline`
+    - `wall_clock_timeout_reached`
+    - `wall_clock_remaining`
+    - `run`
+  - registered new module in `src/fuzzer/engine/mod.rs`
+  - updated dispatch guard test source aggregation for modularized run loop:
+    - `src/fuzzer/engine/attack_runner_tests.rs`
+- Impact:
+  - `src/fuzzer/engine/mod.rs` reduced from `1635` to `529` lines in this slice
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+
 ## Update (UTC): 2026-02-21T19:30:00Z
 - Continued oversized-engine modularization with advanced-runtime attack-family extraction:
   - moved advanced runtime attack handlers out of `attack_runner.rs` into:

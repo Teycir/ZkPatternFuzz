@@ -715,6 +715,9 @@ gh run watch
   - [x] extract static/source scan attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_static.rs`) and reduce `attack_runner.rs` size without behavior drift
   - [x] extract advanced runtime attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_advanced.rs`) for sidechannel/privacy/defi attack family isolation
   - [x] extract protocol/economic attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_protocol.rs`) for mev/front-running/zkevm/batch-verification family isolation
+  - [x] extract lifecycle orchestration helpers + run loop into dedicated module (`src/fuzzer/engine/run_lifecycle.rs`) so `mod.rs` remains initialization-focused
+  - [x] extract static pattern witness-selection/recording into dedicated module (`src/fuzzer/engine/run_pattern.rs`) to isolate selector/materialization flow from run orchestration
+  - [x] extract report/evidence finalization into dedicated module (`src/fuzzer/engine/run_reporting.rs`) so run orchestration and reporting paths are isolated
   - [ ] split `src/fuzzer/engine/attack_runner.rs` into attack-family dispatch modules + shared execution helpers
   - [ ] split `src/fuzzer/engine/mod.rs` into smaller orchestration modules (init, run loop, reporting, selector/static analysis)
 - [ ] Keep `src/main.rs` as a thin CLI entrypoint by moving remaining orchestration into `run_*` modules and shared services
