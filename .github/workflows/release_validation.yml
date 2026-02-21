@@ -99,7 +99,7 @@ jobs:
       - name: Install Z3
         run: |
           sudo apt-get update
-          sudo apt-get install -y libz3-dev z3
+          sudo apt-get install -y libz3-dev z3 bubblewrap
 
       - name: Install Circom and snarkjs
         run: npm install -g circom snarkjs
@@ -151,7 +151,8 @@ jobs:
             --max-runtime-error "${{ inputs.max_backend_runtime_error }}" \
             --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
             --max-run-outcome-missing-rate "${{ inputs.max_backend_run_outcome_missing_rate }}" \
-            --enforce-dashboard
+            --enforce-dashboard \
+            --enforce-tool-sandbox
 
       - name: Validate release candidate gate
         env:

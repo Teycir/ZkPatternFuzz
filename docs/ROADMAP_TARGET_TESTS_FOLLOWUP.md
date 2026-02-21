@@ -2,6 +2,30 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T18:10:57Z
+- Closed security hardening task for strict external-tool sandbox mode:
+  - backend command timeout wrapper now supports strict sandbox execution for backend tools (`circom`, `snarkjs`, `nargo`, `scarb`, `cargo`) when `ZKFUZZ_EXTERNAL_TOOL_SANDBOX=required`.
+  - evidence/reporting timeout wrapper now supports the same strict sandbox mode.
+  - Noir `nargo --version` preflight now uses timeout wrapper path (inherits sandbox mode).
+  - readiness lanes gained explicit enforcement flag:
+    - `scripts/run_backend_readiness_lanes.sh --enforce-tool-sandbox`
+    - requires `bwrap` and exports strict sandbox env for invoked lanes.
+  - release validation workflow now enforces sandboxed readiness lanes:
+    - installs `bubblewrap`
+    - invokes readiness lanes with `--enforce-tool-sandbox`.
+- Files:
+  - `crates/zk-backends/src/util.rs`
+  - `crates/zk-backends/src/noir/mod.rs`
+  - `src/reporting/command_timeout.rs`
+  - `scripts/run_backend_readiness_lanes.sh`
+  - `.github/workflows/release_validation.yml`
+- Validation:
+  - `cargo check -q --locked --offline` -> `PASS`
+  - `cargo test -q -p zk-backends --locked --offline` -> `PASS`
+  - `cargo test -q --lib reporting::command_timeout::tests:: --locked --offline` -> `PASS`
+  - `bash -n scripts/run_backend_readiness_lanes.sh` -> `PASS`
+  - `ruby -ryaml -e "YAML.load_file('.github/workflows/release_validation.yml'); puts 'release workflow yaml: ok'"` -> `PASS`
+
 ## Update (UTC): 2026-02-21T17:21:49Z
 - Closed security hardening documentation task:
   - added explicit threat model and trust-boundary document:

@@ -34,6 +34,7 @@ MAX_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
 MAX_RUN_OUTCOME_MISSING_RATE="${MAX_BACKEND_RUN_OUTCOME_MISSING_RATE:-0.05}"
 MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="${MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL:-12}"
+ENFORCE_TOOL_SANDBOX=0
 
 usage() {
   cat <<'USAGE'
@@ -76,6 +77,7 @@ Options:
   --skip-halo2-throughput-test          Skip test_halo2_scaffold_production_throughput
   --no-build-if-missing                 Do not build zk0d_batch when missing
   --enforce-dashboard                   Exit non-zero if aggregated readiness gate fails
+  --enforce-tool-sandbox               Require backend external-tool sandbox mode (bwrap) for lanes
   -h, --help                            Show this help
 USAGE
 }
@@ -114,6 +116,7 @@ while [[ $# -gt 0 ]]; do
     --skip-halo2-throughput-test) SKIP_HALO2_THROUGHPUT_TEST=1; shift ;;
     --no-build-if-missing) NO_BUILD_IF_MISSING=1; shift ;;
     --enforce-dashboard) ENFORCE_DASHBOARD=1; shift ;;
+    --enforce-tool-sandbox) ENFORCE_TOOL_SANDBOX=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *)
       echo "Unknown argument: $1" >&2
@@ -124,6 +127,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 mkdir -p "$READINESS_ROOT"
+
+if [[ "$ENFORCE_TOOL_SANDBOX" -eq 1 ]]; then
+  command -v bwrap >/dev/null 2>&1 || {
+    echo "bwrap is required for --enforce-tool-sandbox but was not found in PATH" >&2
+    exit 2
+  }
+  export ZKFUZZ_EXTERNAL_TOOL_SANDBOX=required
+  export ZKFUZZ_EXTERNAL_TOOL_SANDBOX_BIN="${ZKFUZZ_EXTERNAL_TOOL_SANDBOX_BIN:-bwrap}"
+  echo "Backend external-tool sandbox: required (${ZKFUZZ_EXTERNAL_TOOL_SANDBOX_BIN})"
+fi
 
 run_lane() {
   local lane_name="$1"

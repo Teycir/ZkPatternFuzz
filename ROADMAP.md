@@ -706,7 +706,7 @@ gh run watch
 ### Security Hardening Follow-Up (From Manual Review)
 - [x] Replace unmaintained `bincode 1.3` in ACIR bytecode decoding path (`crates/zk-constraints/Cargo.toml`, `crates/zk-constraints/src/constraint_types.rs`, `crates/zk-constraints/src/constraint_types_tests.rs`) with a maintained serialization strategy and regression tests
 - [x] Add CI panic-surface gate for production code to block new `.unwrap()`/`.expect()` outside tests/docs, with an explicit allowlist for proven invariants (`scripts/check_panic_surface.py`, `config/panic_surface_allowlist.txt`, `.github/workflows/ci.yml`)
-- [ ] Add strict external-tool sandbox execution mode (namespace/seccomp wrapper) for backend commands (`circom`, `snarkjs`, `nargo`, `scarb`, `cargo`) and enforce it in release readiness lanes
+- [x] Add strict external-tool sandbox execution mode (namespace/seccomp wrapper) for backend commands (`circom`, `snarkjs`, `nargo`, `scarb`, `cargo`) and enforce it in release readiness lanes (`crates/zk-backends/src/util.rs`, `src/reporting/command_timeout.rs`, `scripts/run_backend_readiness_lanes.sh`, `.github/workflows/release_validation.yml`)
 - [x] Publish an explicit security assumptions and threat model document for fuzzing/evidence flows and backend toolchain trust boundaries (`docs/SECURITY_THREAT_MODEL.md`)
 
 ---

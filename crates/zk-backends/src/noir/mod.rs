@@ -328,9 +328,9 @@ impl NoirTarget {
 
     /// Check if nargo is available
     pub fn check_nargo_available() -> Result<String> {
-        let output = Command::new("nargo")
-            .arg("--version")
-            .output()
+        let mut cmd = Command::new("nargo");
+        cmd.arg("--version");
+        let output = crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
             .context("nargo not found in PATH")?;
 
         if !output.status.success() {
