@@ -18,6 +18,22 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `cargo check -q` -> `PASS`
   - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
 
+## Update (UTC): 2026-02-21T19:20:02Z
+- Continued oversized-engine modularization with protocol/economic attack-family extraction:
+  - moved protocol/economic attack handlers out of `attack_runner.rs` into:
+    - `src/fuzzer/engine/attack_runner_protocol.rs`
+  - extracted methods:
+    - `run_mev_attack`
+    - `run_front_running_attack`
+    - `run_zkevm_attack`
+    - `run_batch_verification_attack`
+  - registered new module in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `attack_runner.rs` reduced from `3092` to `2732` lines in this slice
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+
 ## Update (UTC): 2026-02-21T19:20:00Z
 - Continued oversized-engine modularization with attack-family extraction:
   - moved static/source scan attack handlers out of `attack_runner.rs` into:
