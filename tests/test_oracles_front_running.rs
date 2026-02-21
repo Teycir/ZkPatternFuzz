@@ -1,4 +1,9 @@
-use super::*;
+use std::collections::HashMap;
+
+use zk_core::{FieldElement, Severity};
+use zk_fuzzer::oracles::{
+    FrontRunningConfig, FrontRunningResult, FrontRunningVulnerability, StateLeakageAnalyzer,
+};
 
 #[test]
 fn test_front_running_config_default() {
@@ -43,10 +48,9 @@ fn test_result_to_finding() {
 fn test_state_leakage_analyzer() {
     let mut analyzer = StateLeakageAnalyzer::new(10);
 
-    // Add observations with low output diversity
     for i in 0..20 {
         let private = vec![FieldElement::from_u64(i)];
-        let output = vec![FieldElement::from_u64(i % 3)]; // Only 3 unique outputs
+        let output = vec![FieldElement::from_u64(i % 3)];
         analyzer.observe(private, output);
     }
 

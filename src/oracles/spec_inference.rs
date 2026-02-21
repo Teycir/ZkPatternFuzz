@@ -841,7 +841,3 @@ pub struct SpecInferenceStats {
     pub violations_found: usize,
     pub specs_by_type: HashMap<String, usize>,
 }
-
-#[cfg(test)]
-#[path = "spec_inference_tests.rs"]
-mod tests;

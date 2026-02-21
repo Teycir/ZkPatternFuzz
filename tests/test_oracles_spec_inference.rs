@@ -1,5 +1,7 @@
-use super::*;
 use rand::SeedableRng;
+use zk_core::FieldElement;
+use zk_fuzzer::executor::FixtureCircuitExecutor;
+use zk_fuzzer::oracles::{ExecutionSample, InferredSpec, SpecInferenceOracle};
 
 #[test]
 fn test_inferred_spec_confidence() {
@@ -14,14 +16,24 @@ fn test_inferred_spec_confidence() {
     assert!((spec.confidence() - 0.95).abs() < 0.001);
 }
 
-#[test]
-fn test_oracle_creation() {
+#[tokio::test]
+async fn test_collect_samples_respects_sample_count() {
     let oracle = SpecInferenceOracle::new()
-        .with_sample_count(1000)
+        .with_sample_count(5)
         .with_confidence_threshold(0.85);
+    let executor = FixtureCircuitExecutor::new("spec", 2, 1).with_outputs(1);
 
-    assert_eq!(oracle.sample_count, 1000);
-    assert!((oracle.confidence_threshold - 0.85).abs() < 0.001);
+    let samples = oracle
+        .collect_samples(&executor, |_rng| {
+            vec![
+                FieldElement::from_u64(1),
+                FieldElement::from_u64(2),
+                FieldElement::from_u64(3),
+            ]
+        })
+        .await;
+
+    assert_eq!(samples.len(), 5);
 }
 
 #[test]
@@ -40,7 +52,7 @@ fn test_nonzero_violations_are_deduplicated() {
 }
 
 #[test]
-fn test_infer_range_checks() {
+fn test_infer_specs_includes_range_checks() {
     let oracle = SpecInferenceOracle::new();
 
     let samples: Vec<ExecutionSample> = (0..100)
@@ -50,12 +62,32 @@ fn test_infer_range_checks() {
         })
         .collect();
 
-    let specs = oracle.infer_range_checks(&samples, 1);
+    let specs = oracle.infer_specs(&samples);
+    let inferred_bits = specs.iter().find_map(|spec| {
+        if let InferredSpec::RangeCheck { inferred_bits, .. } = spec {
+            Some(*inferred_bits)
+        } else {
+            None
+        }
+    });
 
-    assert!(!specs.is_empty());
-    if let InferredSpec::RangeCheck { inferred_bits, .. } = &specs[0] {
-        assert!(*inferred_bits <= 8);
-    }
+    assert!(inferred_bits.is_some());
+    assert!(inferred_bits.unwrap_or(usize::MAX) <= 8);
+}
+
+#[test]
+fn test_confidence_threshold_filters_specs() {
+    let strict_oracle = SpecInferenceOracle::new().with_confidence_threshold(1.1);
+
+    let samples: Vec<ExecutionSample> = (0..100)
+        .map(|i| ExecutionSample {
+            inputs: vec![FieldElement::from_u64(i % 256)],
+            outputs: vec![FieldElement::from_u64(i)],
+        })
+        .collect();
+
+    let specs = strict_oracle.infer_specs(&samples);
+    assert!(specs.is_empty());
 }
 
 #[test]

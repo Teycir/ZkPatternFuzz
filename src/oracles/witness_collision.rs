@@ -401,7 +401,3 @@ impl WitnessCollisionDetector {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "witness_collision_tests.rs"]
-mod tests;

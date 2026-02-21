@@ -619,7 +619,3 @@ impl Default for ArbitrageDetector {
         Self::new()
     }
 }
-
-#[cfg(test)]
-#[path = "mev_tests.rs"]
-mod tests;

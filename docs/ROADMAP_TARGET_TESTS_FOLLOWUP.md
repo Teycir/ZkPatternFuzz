@@ -2,6 +2,31 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T23:33:03Z
+- Continued strict production/test separation by migrating the `oracles` batch out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/oracles/constraint_slice.rs`
+    - `src/oracles/front_running.rs`
+    - `src/oracles/witness_collision.rs`
+    - `src/oracles/mev.rs`
+    - `src/oracles/spec_inference.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_oracles_constraint_slice.rs`
+    - `tests/test_oracles_front_running.rs`
+    - `tests/test_oracles_witness_collision.rs`
+    - `tests/test_oracles_mev.rs`
+    - `tests/test_oracles_spec_inference.rs`
+- Test migration notes:
+  - replaced in-module imports (`use super::*`) with integration imports via `zk_fuzzer::oracles::*` and `zk_core::*`.
+  - rewrote private-method assertions (`mev`/`spec_inference`/`constraint_slice`) to equivalent public-behavior assertions (deterministic seeded run, `infer_specs(...)`, slice/mutation invariants).
+- Validation:
+  - `cargo fmt --all` -> `PASS`
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_oracles_constraint_slice --test test_oracles_front_running --test test_oracles_witness_collision --test test_oracles_mev --test test_oracles_spec_inference` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `7` (down from `12` before this batch)
+
 ## Update (UTC): 2026-02-21T23:25:17Z
 - Continued strict production/test separation by migrating corpus/bootstrap test hooks out of `src/**`.
   - removed in-source `#[cfg(test)]` hooks from:

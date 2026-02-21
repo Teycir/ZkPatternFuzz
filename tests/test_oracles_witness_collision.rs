@@ -1,4 +1,7 @@
-use super::*;
+use zk_core::{AttackType, FieldElement};
+use zk_fuzzer::oracles::{
+    EquivalenceClass, EquivalencePredicate, WitnessCollision, WitnessCollisionDetector,
+};
 
 #[test]
 fn test_equivalence_differ_only_at() {
@@ -14,13 +17,13 @@ fn test_equivalence_differ_only_at() {
     ];
     let b = vec![
         FieldElement::from_u64(1),
-        FieldElement::from_u64(99), // Different at index 1
+        FieldElement::from_u64(99),
         FieldElement::from_u64(3),
     ];
     let c = vec![
         FieldElement::from_u64(1),
         FieldElement::from_u64(2),
-        FieldElement::from_u64(99), // Different at index 2 (not allowed)
+        FieldElement::from_u64(99),
     ];
 
     assert!(class.are_equivalent(&a, &b));
@@ -101,9 +104,6 @@ fn test_collision_analysis() {
     let analysis = detector.analyze_patterns(&collisions);
 
     assert_eq!(analysis.total_collisions, 2);
-    let differing = match analysis.differing_indices.get(&1) {
-        Some(value) => *value,
-        None => 0,
-    };
+    let differing = analysis.differing_indices.get(&1).copied().unwrap_or(0);
     assert_eq!(differing, 2);
 }

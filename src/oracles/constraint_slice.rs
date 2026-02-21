@@ -445,7 +445,3 @@ pub struct ConstraintSliceStats {
     pub leaking_constraints: usize,
     pub unexpected_changes: usize,
 }
-
-#[cfg(test)]
-#[path = "constraint_slice_tests.rs"]
-mod tests;

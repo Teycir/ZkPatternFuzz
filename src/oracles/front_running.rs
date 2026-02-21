@@ -637,7 +637,3 @@ impl Default for StateLeakageAnalyzer {
         Self::new(50)
     }
 }
-
-#[cfg(test)]
-#[path = "front_running_tests.rs"]
-mod tests;

@@ -1,4 +1,11 @@
-use super::*;
+use std::collections::HashMap;
+
+use zk_core::{AttackType, FieldElement, Severity};
+use zk_fuzzer::executor::FixtureCircuitExecutor;
+use zk_fuzzer::oracles::{
+    ArbitrageDetector, MevAttack, MevConfig, MevTestResult, MevVulnerabilityType,
+    PriceImpactAnalyzer,
+};
 
 #[test]
 fn test_mev_config_default() {
@@ -33,48 +40,45 @@ fn test_mev_result_to_finding() {
     };
 
     let finding = result.to_finding();
+    assert_eq!(finding.attack_type, AttackType::Soundness);
     assert_eq!(finding.severity, Severity::Critical);
     assert!(finding.description.contains("SANDWICH_ATTACK"));
 }
 
 #[test]
-fn test_permutation() {
+fn test_mev_run_is_seed_deterministic() {
     let config = MevConfig {
         seed: Some(42),
+        ordering_permutations: 12,
+        sandwich_attempts: 12,
         ..Default::default()
     };
-    let mut attack = MevAttack::new(config);
 
+    let mut attack_a = MevAttack::new(config.clone());
+    let mut attack_b = MevAttack::new(config);
+    let executor = FixtureCircuitExecutor::new("mev", 3, 1).with_outputs(2);
     let inputs = vec![
-        FieldElement::from_u64(1),
-        FieldElement::from_u64(2),
-        FieldElement::from_u64(3),
+        FieldElement::from_u64(10),
+        FieldElement::from_u64(20),
+        FieldElement::from_u64(30),
+        FieldElement::from_u64(40),
     ];
 
-    let permuted = attack.permute_inputs(&inputs);
-    assert_eq!(permuted.len(), inputs.len());
-}
+    let findings_a = attack_a
+        .run(&executor, &inputs)
+        .expect("MEV run should succeed");
+    let findings_b = attack_b
+        .run(&executor, &inputs)
+        .expect("MEV run should succeed");
 
-#[test]
-fn test_output_difference() {
-    let config = MevConfig::default();
-    let attack = MevAttack::new(config);
-
-    let a = vec![FieldElement::from_u64(100), FieldElement::from_u64(200)];
-    let b = vec![FieldElement::from_u64(110), FieldElement::from_u64(210)];
-
-    let diff = attack.output_difference(&a, &b);
-    assert!(diff > 0.0);
-    assert!(diff < 1.0);
+    assert_eq!(findings_a.len(), findings_b.len());
 }
 
 #[test]
 fn test_price_impact_analyzer() {
-    let mut analyzer = PriceImpactAnalyzer::new(0.05); // 5% max slippage
+    let mut analyzer = PriceImpactAnalyzer::new(0.05);
 
-    // Record trades with increasing price impact, eventually exceeding 5%
     for i in 0..15 {
-        // Price impact grows quadratically: 0, 0.5%, 2%, 4.5%, 8%...
         analyzer.record(i as f64 * 100.0, 0.005 * (i as f64).powi(2));
     }
 
@@ -86,12 +90,11 @@ fn test_price_impact_analyzer() {
 fn test_arbitrage_detector() {
     let mut detector = ArbitrageDetector::new();
 
-    // Record prices from two circuits
     detector.record_price("dex_a", 100.0);
     detector.record_price("dex_a", 101.0);
     detector.record_price("dex_b", 110.0);
     detector.record_price("dex_b", 111.0);
 
-    let findings = detector.detect_arbitrage(0.05); // 5% min profit
+    let findings = detector.detect_arbitrage(0.05);
     assert!(!findings.is_empty());
 }
