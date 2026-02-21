@@ -2,6 +2,68 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T14:54:38Z
+- Executed heavy non-Circom readiness lanes under release-grade profile and enforced dashboard gate:
+  - `scripts/run_backend_readiness_lanes.sh --iterations 120 --timeout 45 --workers 2 --batch-jobs 1 --required-backends noir,cairo,halo2 --enforce-dashboard --no-build-if-missing` -> `PASS`
+- Published artifacts (heavy profile):
+  - Noir: `artifacts/backend_readiness/noir/latest_report.json` (`generated_utc=2026-02-21T14:44:02Z`, `reason_counts={"completed":6}`)
+  - Cairo: `artifacts/backend_readiness/cairo/latest_report.json` (`generated_utc=2026-02-21T14:47:33Z`, `reason_counts={"completed":4}`)
+  - Halo2: `artifacts/backend_readiness/halo2/latest_report.json` (`generated_utc=2026-02-21T14:54:17Z`, `reason_counts={"completed":8}`)
+  - Aggregate: `artifacts/backend_readiness/latest_report.json` (`generated_utc=2026-02-21T14:54:17.539334+00:00`, `overall_pass=true`)
+- Enforced gate metrics at heavy profile:
+  - Noir: selector-matching completion `1.000`, selector mismatch rate `0.000`, runtime/preflight/missing-outcome `0`
+  - Cairo: selector-matching completion `1.000`, selector mismatch rate `0.000`, runtime/preflight/missing-outcome `0`
+  - Halo2: selector-matching completion `1.000`, selector mismatch rate `0.000`, runtime/preflight/missing-outcome `0`
+  - Aggregate non-Circom: `selector_matching_total=18`, `run_outcome_missing_rate=0.000`
+- Release-grade evidence lock:
+  - This run supersedes prior quick-lane evidence for readiness-gate confidence claims.
+
+## Update (UTC): 2026-02-21T14:20:45Z
+- Lifted Halo2 readiness from mixed selector results to full selector-match completion by replacing generic CVE selectors with Halo2-specific readiness probes.
+  - Added:
+    - `campaigns/cve/patterns/cveX35_halo2_signature_readiness_probe.yaml`
+    - `campaigns/cve/patterns/cveX36_halo2_constraint_metadata_readiness_probe.yaml`
+    - `campaigns/cve/patterns/cveX37_halo2_plonk_lookup_readiness_probe.yaml`
+    - `campaigns/cve/patterns/cveX38_halo2_profile_k_readiness_probe.yaml`
+  - Updated `targets/fuzzer_registry.prod.yaml`:
+    - `halo2_readiness` collection now uses `cveX35`..`cveX38`
+    - added aliases for `cveX35`..`cveX38`
+- Validation:
+  - `scripts/run_halo2_readiness.sh --iterations 20 --timeout 20 --workers 2 --batch-jobs 1 --output-dir artifacts/backend_readiness/halo2 --no-build-if-missing` -> `PASS`
+    - report: `artifacts/backend_readiness/halo2/latest_report.json`
+    - matrix: `exit_code=0`, `reason_counts={"completed":8}`
+    - summary: `artifacts/backend_readiness/halo2/summary_20260221_141811.tsv`
+      - `cat5_frameworks_halo2_scaffold: completed=4`
+      - `local_halo2_minimal_json_spec: completed=4`
+  - `scripts/backend_readiness_dashboard.sh --readiness-root artifacts/backend_readiness --output artifacts/backend_readiness/latest_report.json --enforce` -> `PASS`
+    - Halo2 gate metrics: `selector_matching_total=8`, `selector_mismatch_rate=0.000`, `overall_completion=1.000`, `runtime_error=0`, `backend_preflight_failed=0`
+    - aggregate selector-matching depth: `18` (`>=12`)
+  - `scripts/run_backend_readiness_lanes.sh --iterations 20 --timeout 20 --workers 2 --batch-jobs 1 --required-backends noir,cairo,halo2 --enforce-dashboard --no-build-if-missing` -> `PASS`
+    - lanes: Noir `PASS`, Cairo `PASS`, Halo2 `PASS`
+    - aggregate gate: `PASS` (`artifacts/backend_readiness/latest_report.json`)
+
+## Update (UTC): 2026-02-21T14:14:16Z
+- Lifted Cairo strict-capacity regression from fail to pass without reintroducing output-hash fallback:
+  - `src/executor/mod.rs`
+    - `CairoExecutor` now derives strict coverage from source-level `assert` evaluation against observed runtime outputs.
+    - added Cairo expression/assert parsing helpers for deterministic arithmetic evaluation (`+`, `-`, `*`, constants, `[output_ptr]` / `[output_ptr + N]`).
+    - Cairo executor construction now caches source text and refuses coverage when assertions cannot be evaluated.
+  - `src/executor/mod_tests.rs`
+    - added unit coverage for Cairo assertion extraction and expression evaluation:
+      - `executor::tests::test_cairo_assertion_descriptions_extract_assert_statements`
+      - `executor::tests::test_eval_cairo_expression_supports_arithmetic_and_output_ptr`
+- Validation:
+  - `cargo test -q -p zk-fuzzer --lib executor::tests::test_cairo_assertion_descriptions_extract_assert_statements -- --exact` -> `PASS`
+  - `cargo test -q -p zk-fuzzer --lib executor::tests::test_eval_cairo_expression_supports_arithmetic_and_output_ptr -- --exact` -> `PASS`
+  - `ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo_full_capacity_regression_suite -- --exact` -> `PASS`
+  - `scripts/run_cairo_readiness.sh --iterations 20 --timeout 20 --workers 2 --batch-jobs 1 --output-dir artifacts/backend_readiness/cairo --no-build-if-missing` -> `PASS`
+    - report: `artifacts/backend_readiness/cairo/latest_report.json`
+    - matrix: `exit_code=0`, `reason_counts={"completed":4}`
+    - integration slices: `test_cairo_integration=pass`, `test_cairo_full_capacity_regression_suite=pass`
+  - `scripts/backend_readiness_dashboard.sh --readiness-root artifacts/backend_readiness --output artifacts/backend_readiness/latest_report.json --enforce` -> `PASS`
+    - aggregate selector-matching depth: `14` (`>=12`)
+    - required backend gates: Noir/Cairo/Halo2 all `PASS`
+
 ## Update (UTC): 2026-02-21T13:52:04Z
 - Added Circom-parity depth gates for non-Circom readiness to prevent false “green” status from selector-only completion:
   - `scripts/backend_readiness_dashboard.sh`

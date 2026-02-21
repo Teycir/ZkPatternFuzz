@@ -25,9 +25,9 @@
 - [x] Enforce minimum overall completion ratio per backend (`>=0.40`)
 - [x] Enforce maximum selector-mismatch ratio per backend (`<=0.70`)
 - [x] Enforce minimum aggregate selector-matching depth (`>=12`)
-- [ ] Lift Noir to pass parity depth gates
-- [ ] Lift Cairo to pass parity depth gates
-- [ ] Lift aggregate non-Circom selector-matching depth to gate threshold
+- [x] Lift Noir to pass parity depth gates
+- [x] Lift Cairo to pass parity depth gates
+- [x] Lift aggregate non-Circom selector-matching depth to gate threshold
 
 ---
 
@@ -48,7 +48,7 @@
 
 ### Developer Experience
 - [ ] Custom attack pattern DSL
-- [ ] Real-time web dashboard for campaigns
+- [ ] Enhanced CLI reporting and progress indicators
 
 ---
 

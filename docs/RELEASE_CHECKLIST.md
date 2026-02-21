@@ -61,6 +61,14 @@ Use this for `rc` and final tags. Each item is a hard gate unless explicitly wai
 - [ ] Backend readiness gate enforced as part of release candidate validation:
   - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --min-backend-completion-rate 0.90 --max-backend-runtime-error 0 --max-backend-preflight-failed 0 --max-backend-run-outcome-missing-rate 0.05`
   - Note: `min-backend-completion-rate` is evaluated on selector-matching templates (`completed / (total - selector_mismatch)`).
+- [x] Heavy backend readiness lanes (release-grade evidence snapshot) captured:
+  - Command:
+    - `./scripts/run_backend_readiness_lanes.sh --iterations 120 --timeout 45 --workers 2 --batch-jobs 1 --required-backends noir,cairo,halo2 --enforce-dashboard --no-build-if-missing`
+  - Evidence:
+    - `artifacts/backend_readiness/noir/latest_report.json` (`generated_utc=2026-02-21T14:44:02Z`, `reason_counts={"completed":6}`)
+    - `artifacts/backend_readiness/cairo/latest_report.json` (`generated_utc=2026-02-21T14:47:33Z`, `reason_counts={"completed":4}`)
+    - `artifacts/backend_readiness/halo2/latest_report.json` (`generated_utc=2026-02-21T14:54:17Z`, `reason_counts={"completed":8}`)
+    - `artifacts/backend_readiness/latest_report.json` (`generated_utc=2026-02-21T14:54:17.539334+00:00`, `overall_pass=true`, `selector_matching_total=18`, `run_outcome_missing_rate=0.000`)
 - [ ] Non-Circom collision stress lane (50+ targets) passes:
   - `./scripts/run_non_circom_collision_stress.sh --enforce`
 - [ ] If shipping production-depth changes, run at least one non-dry benchmark suite and archive `summary.json`.
