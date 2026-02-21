@@ -41,6 +41,8 @@ campaign:
 export RUSTUP_TOOLCHAIN=nightly
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_json_integration -- --exact
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_real_circuit_constraint_coverage -- --exact
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_scaffold_execution_stability -- --exact
+HALO2_THROUGHPUT_ROUNDS=2 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_scaffold_production_throughput -- --exact
 ```
 
 ## 5. Run Halo2 Readiness Lane
@@ -70,7 +72,7 @@ cat artifacts/backend_readiness/latest_report.json
 
 ## 8. Exit Criteria For Halo2 Migration
 
-1. Both Halo2 integration tests pass.
+1. Halo2 integration coverage + stability + throughput tests pass.
 2. Halo2 lane report is consistently produced.
 3. Canonical Halo2 targets run without `runtime_error`.
 4. Halo2 contributes passing metrics in aggregated readiness dashboard.

@@ -22,6 +22,7 @@ SKIP_CAIRO_REGRESSION_TEST=0
 SKIP_HALO2_JSON_INTEGRATION_TEST=0
 SKIP_HALO2_REAL_CIRCUIT_TEST=0
 SKIP_HALO2_STABILITY_TEST=0
+SKIP_HALO2_THROUGHPUT_TEST=0
 NO_BUILD_IF_MISSING=0
 ENFORCE_DASHBOARD=0
 REQUIRED_BACKENDS="${BACKEND_REQUIRED_LIST:-noir,cairo,halo2}"
@@ -72,6 +73,7 @@ Options:
   --skip-halo2-json-integration-test    Skip test_halo2_json_integration
   --skip-halo2-real-circuit-test        Skip test_halo2_real_circuit_constraint_coverage
   --skip-halo2-stability-test           Skip test_halo2_scaffold_execution_stability
+  --skip-halo2-throughput-test          Skip test_halo2_scaffold_production_throughput
   --no-build-if-missing                 Do not build zk0d_batch when missing
   --enforce-dashboard                   Exit non-zero if aggregated readiness gate fails
   -h, --help                            Show this help
@@ -109,6 +111,7 @@ while [[ $# -gt 0 ]]; do
     --skip-halo2-json-integration-test) SKIP_HALO2_JSON_INTEGRATION_TEST=1; shift ;;
     --skip-halo2-real-circuit-test) SKIP_HALO2_REAL_CIRCUIT_TEST=1; shift ;;
     --skip-halo2-stability-test) SKIP_HALO2_STABILITY_TEST=1; shift ;;
+    --skip-halo2-throughput-test) SKIP_HALO2_THROUGHPUT_TEST=1; shift ;;
     --no-build-if-missing) NO_BUILD_IF_MISSING=1; shift ;;
     --enforce-dashboard) ENFORCE_DASHBOARD=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -210,6 +213,9 @@ if [[ "$SKIP_HALO2_REAL_CIRCUIT_TEST" -eq 1 ]]; then
 fi
 if [[ "$SKIP_HALO2_STABILITY_TEST" -eq 1 ]]; then
   halo2_cmd+=(--skip-stability-test)
+fi
+if [[ "$SKIP_HALO2_THROUGHPUT_TEST" -eq 1 ]]; then
+  halo2_cmd+=(--skip-throughput-test)
 fi
 
 lane_failures=0

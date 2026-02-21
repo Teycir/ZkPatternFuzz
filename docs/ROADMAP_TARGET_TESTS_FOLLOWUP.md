@@ -2,6 +2,25 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T16:48:59Z
+- Implemented Halo2 production throughput gate for real scaffold execution:
+  - `tests/backend_integration_tests.rs`
+    - added `test_halo2_scaffold_production_throughput`
+    - enforces deterministic outputs/coverage across repeated real-circuit runs
+    - enforces configurable throughput thresholds (`HALO2_THROUGHPUT_*` env gates)
+- Wired throughput gate into readiness lanes:
+  - `scripts/run_halo2_readiness.sh`
+    - now runs `test_halo2_scaffold_production_throughput` by default
+    - added `--skip-throughput-test`
+    - emits throughput integration status into `latest_report.json`
+  - `scripts/run_backend_readiness_lanes.sh`
+    - added passthrough `--skip-halo2-throughput-test`
+- Validation:
+  - `bash -n scripts/run_halo2_readiness.sh scripts/run_backend_readiness_lanes.sh` -> `PASS`
+  - `HALO2_THROUGHPUT_ROUNDS=2 HALO2_THROUGHPUT_MAX_MEDIAN_MS=15000 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_scaffold_production_throughput -- --exact` -> `PASS`
+  - `HALO2_THROUGHPUT_ROUNDS=2 HALO2_THROUGHPUT_MAX_MEDIAN_MS=15000 scripts/run_halo2_readiness.sh --iterations 1 --timeout 8 --workers 1 --batch-jobs 1 --no-build-if-missing --skip-json-integration-test --skip-real-circuit-test --skip-stability-test` -> `PASS`
+    - report: `artifacts/backend_readiness/halo2/latest_report.json` (`generated_utc=2026-02-21T16:48:11Z`, `test_halo2_scaffold_production_throughput=pass`)
+
 ## Update (UTC): 2026-02-21T16:40:01Z
 - Implemented Cairo1 prove/verify pipeline in backend target:
   - `crates/zk-backends/src/cairo/mod.rs`

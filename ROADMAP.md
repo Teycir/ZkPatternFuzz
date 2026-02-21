@@ -685,7 +685,7 @@ gh run watch
 - [x] Cairo: enforce Stone prover integration gate in readiness lane (`scripts/run_cairo_readiness.sh`)
 - [x] Cairo: Cairo1 proof/verify pipeline via `scarb prove --execute` + `scarb verify --execution-id` (strict execution-id tracking)
 - [x] Halo2: mock to real-circuit execution promotion in release lanes (release workflow now installs Noir/Cairo toolchains and runs unskipped backend readiness lanes with dashboard enforcement)
-- [ ] Halo2: production circuit integration breadth/throughput uplift
+- [x] Halo2: production circuit integration breadth/throughput uplift (`test_halo2_scaffold_production_throughput` enforced in `run_halo2_readiness.sh`)
 
 ### Product Surface And Ecosystem Tracking
 - [x] Custom attack pattern DSL (`docs/ATTACK_DSL_SPEC.md`)

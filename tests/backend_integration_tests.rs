@@ -4,6 +4,7 @@
 //! when the required tools are available in the environment.
 
 use std::path::PathBuf;
+use std::time::Instant;
 use zk_fuzzer::config::Framework;
 use zk_fuzzer::executor::{
     CairoExecutor, CircomExecutor, CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions,
@@ -1544,6 +1545,172 @@ fn test_halo2_scaffold_execution_stability() {
         None => return,
     };
     assert!(verified, "Halo2 proof verification returned false");
+}
+
+/// Throughput gate for production-like Halo2 scaffold execution.
+///
+/// This complements functional stability by enforcing a basic performance floor
+/// on repeated real-circuit runs.
+#[test]
+fn test_halo2_scaffold_production_throughput() {
+    if !require_real_backends("test_halo2_scaffold_production_throughput") {
+        return;
+    }
+    let repo_path = halo2_real_repo_path();
+    if !repo_path.exists() {
+        println!(
+            "test_halo2_scaffold_production_throughput: SKIP_INFRA (Missing halo2-scaffold repo at {})",
+            repo_path.display()
+        );
+        return;
+    }
+    if let Err(err) = configure_halo2_real_env() {
+        println!("test_halo2_scaffold_production_throughput: SKIP_INFRA ({err})");
+        return;
+    }
+
+    let rounds = std::env::var("HALO2_THROUGHPUT_ROUNDS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|v| *v >= 2)
+        .unwrap_or(3);
+    let max_median_ms = std::env::var("HALO2_THROUGHPUT_MAX_MEDIAN_MS")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| *v > 0.0)
+        .unwrap_or(8_000.0);
+    let min_runs_per_sec = std::env::var("HALO2_THROUGHPUT_MIN_RUNS_PER_SEC")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| *v > 0.0)
+        .unwrap_or(0.10);
+    let max_warm_slowdown_ratio = std::env::var("HALO2_THROUGHPUT_MAX_WARM_SLOWDOWN_RATIO")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| *v >= 1.0)
+        .unwrap_or(2.0);
+
+    let build_dir = std::env::temp_dir().join("zk0d_halo2_build_throughput");
+    let executor = match expect_or_skip_infra(
+        "test_halo2_scaffold_production_throughput",
+        "create Halo2 executor",
+        Halo2Executor::new_with_build_dir(repo_path.to_str().unwrap(), "zk0d_mul", build_dir),
+    ) {
+        Some(executor) => executor,
+        None => return,
+    };
+
+    let fixtures = halo2_stability_fixtures();
+    let mut all_run_ms = Vec::<f64>::new();
+    let mut first_run_ms = Vec::<f64>::new();
+    let mut warm_run_ms = Vec::<f64>::new();
+
+    for fixture in fixtures {
+        let mut baseline_outputs: Option<Vec<FieldElement>> = None;
+        let mut baseline_coverage_hash: Option<u64> = None;
+
+        for run_idx in 0..rounds {
+            let start = Instant::now();
+            let result = executor.execute_sync(&fixture);
+            let elapsed_ms = start.elapsed().as_secs_f64() * 1_000.0;
+            all_run_ms.push(elapsed_ms);
+
+            if !result.success {
+                let message = result
+                    .error
+                    .unwrap_or_else(|| "unknown halo2 execution error".to_string());
+                match classify_error("halo2 throughput execute", message) {
+                    MatrixStatus::SkipInfra(reason) => {
+                        println!(
+                            "test_halo2_scaffold_production_throughput: SKIP_INFRA ({reason})"
+                        );
+                        return;
+                    }
+                    MatrixStatus::Fail(reason) => panic!("Halo2 throughput execute failed: {reason}"),
+                    MatrixStatus::Pass => {
+                        unreachable!("classify_error never returns MatrixStatus::Pass")
+                    }
+                }
+            }
+
+            assert!(
+                !result.coverage.satisfied_constraints.is_empty(),
+                "Expected non-empty Halo2 constraint coverage for throughput fixture {:?}",
+                fixture
+            );
+
+            match (&baseline_outputs, baseline_coverage_hash) {
+                (None, None) => {
+                    baseline_outputs = Some(result.outputs.clone());
+                    baseline_coverage_hash = Some(result.coverage.coverage_hash);
+                }
+                (Some(expected_outputs), Some(expected_hash)) => {
+                    assert_eq!(
+                        &result.outputs, expected_outputs,
+                        "Halo2 throughput run output mismatch for fixture {:?}",
+                        fixture
+                    );
+                    assert_eq!(
+                        result.coverage.coverage_hash, expected_hash,
+                        "Halo2 throughput run coverage hash mismatch for fixture {:?}",
+                        fixture
+                    );
+                }
+                _ => unreachable!("baseline output/hash state must be set together"),
+            }
+
+            if run_idx == 0 {
+                first_run_ms.push(elapsed_ms);
+            } else {
+                warm_run_ms.push(elapsed_ms);
+            }
+        }
+    }
+
+    assert!(
+        !all_run_ms.is_empty() && !first_run_ms.is_empty() && !warm_run_ms.is_empty(),
+        "Halo2 throughput sampling did not collect enough runs"
+    );
+
+    all_run_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    warm_run_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let median_ms = all_run_ms[all_run_ms.len() / 2];
+    let warm_median_ms = warm_run_ms[warm_run_ms.len() / 2];
+    let first_mean_ms = first_run_ms.iter().sum::<f64>() / first_run_ms.len() as f64;
+    let warm_slowdown_ratio = warm_median_ms / first_mean_ms.max(1.0);
+    let total_seconds = all_run_ms.iter().sum::<f64>() / 1_000.0;
+    let runs_per_sec = all_run_ms.len() as f64 / total_seconds.max(0.001);
+
+    println!(
+        "halo2 throughput metrics: rounds={} total_runs={} median_ms={:.2} warm_median_ms={:.2} first_mean_ms={:.2} runs_per_sec={:.3} warm_slowdown_ratio={:.3}",
+        rounds,
+        all_run_ms.len(),
+        median_ms,
+        warm_median_ms,
+        first_mean_ms,
+        runs_per_sec,
+        warm_slowdown_ratio
+    );
+
+    assert!(
+        median_ms <= max_median_ms,
+        "Halo2 throughput median too high: {:.2}ms > {:.2}ms",
+        median_ms,
+        max_median_ms
+    );
+    assert!(
+        runs_per_sec >= min_runs_per_sec,
+        "Halo2 throughput too low: {:.3} runs/s < {:.3} runs/s",
+        runs_per_sec,
+        min_runs_per_sec
+    );
+    assert!(
+        warm_slowdown_ratio <= max_warm_slowdown_ratio,
+        "Halo2 warm-run slowdown too high: {:.3} > {:.3}",
+        warm_slowdown_ratio,
+        max_warm_slowdown_ratio
+    );
 }
 
 /// Integration test for Cairo (only runs if cairo tools are available)
