@@ -1,5 +1,3 @@
-#[cfg(test)]
-pub(super) use super::attack_runner_budget::deterministic_attack_cap;
 use super::attack_runner_budget::strict_attack_floor;
 use super::prelude::*;
 use super::FuzzingEngine;

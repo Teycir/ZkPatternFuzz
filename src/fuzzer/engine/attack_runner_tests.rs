@@ -1,5 +1,4 @@
-use super::deterministic_attack_cap;
-use super::strict_attack_floor;
+use super::super::attack_runner_budget::{deterministic_attack_cap, strict_attack_floor};
 use super::FuzzingEngine;
 use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 

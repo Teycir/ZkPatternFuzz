@@ -58,6 +58,13 @@ Follow Rust best practices:
 - Add tests for new functionality
 - Update documentation
 
+### Production/Test Separation (Mandatory)
+
+- Do not mix production and test concerns in the same runtime path.
+- Production modules (`src/**`, `crates/**`) must not import or re-export test-only code.
+- Place test bodies in `tests/**` or dedicated `*_tests.rs` files gated with `#[cfg(test)]`.
+- Do not add production-only fallback logic or public exports just to make tests compile.
+
 ### 3. Test Your Changes
 
 ```bash
