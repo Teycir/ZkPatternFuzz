@@ -590,6 +590,12 @@ python3 -m unittest -q tests/test_benchmark_failure_dashboard.py
 
 # zkevm-circuits upstream release tracking (strict; requires release metadata)
 python3 scripts/track_zkevm_releases.py --repo-path circuits/zkevm-circuits --releases-json /tmp/zkevm_releases_fixture.json --release-commit "$(git -C circuits/zkevm-circuits rev-list -n 1 v0.10.0)" --output artifacts/dependency_tracking/zkevm_upstream_latest.json
+
+# arkworks 0.5 upgrade-path evaluation (workspace-scoped)
+python3 scripts/evaluate_arkworks_upgrade_path.py --output artifacts/dependency_tracking/arkworks_upgrade_path.json
+
+# Z3 solver compatibility matrix (strict dynamic + static lanes)
+python3 scripts/build_z3_compatibility_matrix.py --output artifacts/dependency_tracking/z3_compatibility_matrix.json
 ```
 
 ### Release Validation
@@ -693,8 +699,8 @@ gh run watch
 ### Product Surface And Ecosystem Tracking
 - [x] Custom attack pattern DSL (`docs/ATTACK_DSL_SPEC.md`)
 - [x] Track `zkevm-circuits` upstream releases (`scripts/track_zkevm_releases.py`, `tests/test_track_zkevm_releases.py`)
-- [ ] Evaluate `arkworks` 0.5 upgrade path
-- [ ] Build Z3 solver compatibility matrix
+- [x] Evaluate `arkworks` 0.5 upgrade path (`scripts/evaluate_arkworks_upgrade_path.py`, `tests/test_evaluate_arkworks_upgrade_path.py`, `artifacts/dependency_tracking/arkworks_upgrade_path.json`)
+- [x] Build Z3 solver compatibility matrix (`scripts/build_z3_compatibility_matrix.py`, `tests/test_build_z3_compatibility_matrix.py`, `artifacts/dependency_tracking/z3_compatibility_matrix.json`)
 
 ---
 

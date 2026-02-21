@@ -2,6 +2,32 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T17:07:15Z
+- Implemented strict Z3 solver compatibility matrix:
+  - `scripts/build_z3_compatibility_matrix.py`
+    - captures local `z3 --version` + `Cargo.lock` `z3`/`z3-sys` versions.
+    - executes strict offline build lanes for dynamic + `z3-static` configurations.
+    - emits pass/fail matrix with per-lane duration and command trace.
+  - `tests/test_build_z3_compatibility_matrix.py`
+    - validates Z3 version parsing, lock-version extraction, and matrix summary logic.
+- Validation:
+  - `python3 -m unittest -q tests/test_build_z3_compatibility_matrix.py` -> `PASS` (3 tests)
+  - `python3 scripts/build_z3_compatibility_matrix.py --output artifacts/dependency_tracking/z3_compatibility_matrix.json` -> `PASS`
+    - report: `artifacts/dependency_tracking/z3_compatibility_matrix.json` (`generated_utc=2026-02-21T17:07:06.371385+00:00`, `overall_pass=true`, `z3_version=4.13.0`, lanes: dynamic/static/workspace all `pass`)
+
+## Update (UTC): 2026-02-21T17:02:25Z
+- Implemented strict workspace-scoped `arkworks` 0.5 upgrade-path evaluation:
+  - `scripts/evaluate_arkworks_upgrade_path.py`
+    - parses workspace manifests + `Cargo.lock` and reports direct/lock `ark-*` versions.
+    - reports concrete blockers, migration steps, risk tier, and readiness status.
+    - explicitly ignores non-workspace vendored manifests to avoid false dependency inflation.
+  - `tests/test_evaluate_arkworks_upgrade_path.py`
+    - validates semver-track parsing, lock parsing, blocker detection, and workspace-only scoping.
+- Validation:
+  - `python3 -m unittest -q tests/test_evaluate_arkworks_upgrade_path.py` -> `PASS` (4 tests)
+  - `python3 scripts/evaluate_arkworks_upgrade_path.py --output artifacts/dependency_tracking/arkworks_upgrade_path.json` -> `PASS`
+    - report: `artifacts/dependency_tracking/arkworks_upgrade_path.json` (`generated_utc=2026-02-21T17:01:58.474570+00:00`, `not_on_05_direct=4`, `lock_non_05=11`, `risk=low`, `ready_to_upgrade_now=false`)
+
 ## Update (UTC): 2026-02-21T16:55:25Z
 - Implemented strict `zkevm-circuits` upstream-release tracking:
   - `scripts/track_zkevm_releases.py`
