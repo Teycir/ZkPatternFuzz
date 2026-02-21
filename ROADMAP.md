@@ -563,7 +563,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Enforce stricter config test separation under dedicated config-test module boundary
 - [x] Document hard no-mixing policy: production modules (`src/**`, `crates/**`) must not import, re-export, or depend on test-only modules/helpers
 - [x] Document hard placement policy: test bodies belong only in `tests/**` or dedicated `*_tests.rs` files gated via `#[cfg(test)]`
-- [ ] Add CI guard that fails if production modules expose test-only symbols/re-exports
+- [x] Add CI guard that fails if production modules expose test-only symbols/re-exports
 
 ### Attack Coverage
 - [x] Wire previously non-executed attack families into runtime dispatch
