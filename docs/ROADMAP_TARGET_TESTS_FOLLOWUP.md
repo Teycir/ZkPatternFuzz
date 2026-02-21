@@ -2,6 +2,27 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T21:47:44Z
+- Continued `attack_runner` modularization by isolating underconstrained attack family + parser helpers:
+  - moved underconstrained execution and helper methods out of:
+    - `src/fuzzer/engine/attack_runner.rs`
+  - into:
+    - `src/fuzzer/engine/attack_runner_underconstrained.rs`
+  - methods moved:
+    - `run_underconstrained_attack`
+    - `run_frozen_wire_detector`
+    - `resolve_public_input_positions`
+    - `parse_fixed_public_inputs`
+  - kept `src/fuzzer/engine/attack_runner.rs` as shared option-extension + test anchor module
+  - registered new module in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `src/fuzzer/engine/attack_runner.rs` reduced from `466` to `32` lines in this slice
+  - extracted `src/fuzzer/engine/attack_runner_underconstrained.rs` (`434` lines)
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q deterministic_cap_enabled_by_default_in_evidence_mode -- --nocapture` -> `PASS`
+
 ## Update (UTC): 2026-02-21T21:41:04Z
 - Continued oversized-engine modularization with three granular extraction slices:
   - moved engine initialization constructor logic out of:
