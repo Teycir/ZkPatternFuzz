@@ -13,7 +13,7 @@ targets:
     main_component: main
     framework: noir
     alias: readiness_noir
-    enabled: true
+    enabled: false
 
   - name: cat3_privacy_barretenberg_docs_examples_fixtures_main
     target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/docs/examples/fixtures/main/Nargo.toml

@@ -1,0 +1,77 @@
+---
+patterns:
+  - id: cairo_builtins_output
+    kind: regex
+    pattern: '%builtins\s+output'
+    message: 'Cairo output builtin declaration detected'
+
+invariants:
+  - name: placeholder_output_reflexive
+    invariant_type: constraint
+    relation: output_0 == output_0
+    oracle: must_hold
+    severity: low
+    description: "Placeholder invariant for regex-driven CVE templates."
+
+attacks:
+  - type: underconstrained
+    description: Search for alternate witnesses with same public behavior.
+    config:
+      witness_pairs: 6000
+  - type: soundness
+    description: Proof/verification soundness checks.
+    config:
+      forge_attempts: 1000
+      mutation_rate: 0.1
+  - type: constraint_inference
+    description: Infer missing semantic constraints with confirmation.
+    config:
+      confidence_threshold: 0.7
+      confirm_violations: true
+  - type: constraint_slice
+    description: Cone-based dependency slicing.
+    config:
+      samples_per_cone: 32
+      base_witness_attempts: 32
+  - type: spec_inference
+    description: Infer high-level specification constraints from IO behavior and test violations.
+    config:
+      sample_count: 1000
+  - type: witness_collision
+    description: Detect distinct witnesses mapping to same public outputs.
+    config:
+      samples: 2000
+      scope_public_inputs: true
+  - type: metamorphic
+    description: Transform-based semantic consistency checks.
+    config:
+      num_tests: 256
+  - type: boundary
+    description: Boundary value testing
+    config:
+      test_values:
+        - "0"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+        - "6"
+        - "7"
+        - "8"
+        - "9"
+        - "10"
+        - "11"
+        - "15"
+        - "16"
+        - "31"
+        - "32"
+        - "63"
+        - "64"
+        - "65"
+        - "255"
+
+inputs:
+  - name: input_0
+    type: field
+    fuzz_strategy: random

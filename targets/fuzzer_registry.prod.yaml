@@ -43,29 +43,24 @@ collections:
     description: "Noir readiness profile (constraint/soundness focused)"
     templates:
       - cveX28_noir_multiplier_readiness_probe.yaml
-      - cveX10_maci_underconstrained_circuit.yaml
-      - cveX11_bulletproofs_frozen_heart.yaml
-      - cveX12_plonk_frozen_heart.yaml
-      - cveX14_mimc_assigned_not_constrained.yaml
-      - cveX19_summa_unconstrained_constants.yaml
+      - cveX29_noir_main_signature_readiness_probe.yaml
+      - cveX30_noir_two_input_main_readiness_probe.yaml
   cairo_readiness:
     registry: local_cve_patterns
     description: "Cairo readiness profile (range/arithmetic/constraint focused)"
     templates:
-      - cveX01_dark_forest_missing_bit_length.yaml
-      - cveX02_bigint_missing_bit_length.yaml
-      - cveX15_scroll_missing_overflow_constraint.yaml
-      - cveX16_scroll_missing_constraint.yaml
-      - cveX20_polygon_missing_remainder_constraint.yaml
+      - cveX31_cairo_multiplier_builtins_readiness_probe.yaml
+      - cveX32_cairo_multiplier_main_readiness_probe.yaml
+      - cveX33_cairo_multiplier_mul_readiness_probe.yaml
+      - cveX34_cairo_multiplier_assert_readiness_probe.yaml
   halo2_readiness:
     registry: local_cve_patterns
     description: "Halo2 readiness profile (soundness + underconstrained focused)"
     templates:
-      - cveX10_maci_underconstrained_circuit.yaml
-      - cveX11_bulletproofs_frozen_heart.yaml
-      - cveX12_plonk_frozen_heart.yaml
-      - cveX14_mimc_assigned_not_constrained.yaml
-      - cveX20_polygon_missing_remainder_constraint.yaml
+      - cveX35_halo2_signature_readiness_probe.yaml
+      - cveX36_halo2_constraint_metadata_readiness_probe.yaml
+      - cveX37_halo2_plonk_lookup_readiness_probe.yaml
+      - cveX38_halo2_profile_k_readiness_probe.yaml
 
 aliases:
   all: ["always"]
@@ -103,3 +98,13 @@ aliases:
   cveX26_light_protocol_non_atomic_state: ["cveX26_light_protocol_non_atomic_state.yaml"]
   cveX27_zkemail_underconstrained_spoofing: ["cveX27_zkemail_underconstrained_spoofing.yaml"]
   cveX28_noir_multiplier_readiness_probe: ["cveX28_noir_multiplier_readiness_probe.yaml"]
+  cveX29_noir_main_signature_readiness_probe: ["cveX29_noir_main_signature_readiness_probe.yaml"]
+  cveX30_noir_two_input_main_readiness_probe: ["cveX30_noir_two_input_main_readiness_probe.yaml"]
+  cveX31_cairo_multiplier_builtins_readiness_probe: ["cveX31_cairo_multiplier_builtins_readiness_probe.yaml"]
+  cveX32_cairo_multiplier_main_readiness_probe: ["cveX32_cairo_multiplier_main_readiness_probe.yaml"]
+  cveX33_cairo_multiplier_mul_readiness_probe: ["cveX33_cairo_multiplier_mul_readiness_probe.yaml"]
+  cveX34_cairo_multiplier_assert_readiness_probe: ["cveX34_cairo_multiplier_assert_readiness_probe.yaml"]
+  cveX35_halo2_signature_readiness_probe: ["cveX35_halo2_signature_readiness_probe.yaml"]
+  cveX36_halo2_constraint_metadata_readiness_probe: ["cveX36_halo2_constraint_metadata_readiness_probe.yaml"]
+  cveX37_halo2_plonk_lookup_readiness_probe: ["cveX37_halo2_plonk_lookup_readiness_probe.yaml"]
+  cveX38_halo2_profile_k_readiness_probe: ["cveX38_halo2_profile_k_readiness_probe.yaml"]
