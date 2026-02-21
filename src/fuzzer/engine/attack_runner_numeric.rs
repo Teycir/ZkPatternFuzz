@@ -1,4 +1,4 @@
-use super::attack_runner::OptionValueExt;
+use super::attack_runner_option_ext::OptionValueExt;
 use super::prelude::*;
 use super::FuzzingEngine;
 
