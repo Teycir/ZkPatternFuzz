@@ -1946,7 +1946,3 @@ impl ConstraintInspector for CairoExecutor {
         self.resolved_wire_labels()
     }
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

@@ -1552,7 +1552,3 @@ impl CveOracle {
         None
     }
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

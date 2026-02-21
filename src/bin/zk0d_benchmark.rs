@@ -1119,7 +1119,3 @@ fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "zk0d_benchmark/zk0d_benchmark_tests.rs"]
-mod tests;

@@ -69,8 +69,8 @@ impl Default for IsolationHardeningConfig {
     fn default() -> Self {
         Self {
             max_memory_bytes: 4 * 1024 * 1024 * 1024, // 4GB
-            max_cpu_time_ms: 60_000,                   // 60 seconds
-            watchdog_timeout_ms: 30_000,               // 30 seconds
+            max_cpu_time_ms: 60_000,                  // 60 seconds
+            watchdog_timeout_ms: 30_000,              // 30 seconds
             max_consecutive_crashes: 5,
             enable_crash_recovery: true,
             enable_resource_monitoring: true,
@@ -329,7 +329,11 @@ impl ResourceMonitor {
         // SAFETY: `sysconf` is a pure libc query with no pointer arguments; we
         // only read its return value and apply conservative defaults on failure.
         let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-        let page_size = if page_size <= 0 { 4096 } else { page_size as u64 };
+        let page_size = if page_size <= 0 {
+            4096
+        } else {
+            page_size as u64
+        };
 
         // SAFETY: same rationale as above for `_SC_CLK_TCK`.
         let clock_ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
@@ -338,7 +342,7 @@ impl ResourceMonitor {
         } else {
             clock_ticks_per_sec as u64
         };
-        
+
         let statm_path = format!("/proc/{}/statm", pid);
         let stat_path = format!("/proc/{}/stat", pid);
 
@@ -425,15 +429,14 @@ impl Watchdog {
     pub fn new(timeout_ms: u64) -> Self {
         Self {
             timeout: Duration::from_millis(timeout_ms),
-            last_activity: Arc::new(std::sync::atomic::AtomicU64::new(
-                Self::now_millis(),
-            )),
+            last_activity: Arc::new(std::sync::atomic::AtomicU64::new(Self::now_millis())),
         }
     }
 
     /// Record activity (call periodically to prevent timeout)
     pub fn ping(&self) {
-        self.last_activity.store(Self::now_millis(), Ordering::Relaxed);
+        self.last_activity
+            .store(Self::now_millis(), Ordering::Relaxed);
     }
 
     /// Check if the watchdog has timed out
@@ -639,11 +642,3 @@ impl CircuitExecutor for HardenedIsolatedExecutor {
         self.inner.field_name()
     }
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-#[cfg(test)]
-#[path = "isolation_hardening_tests.rs"]
-mod tests;

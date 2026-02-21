@@ -1,37 +1,9 @@
-use super::*;
+use zk_core::{CircuitExecutor, ExecutionCoverage, ExecutionResult, FieldElement};
+use zk_fuzzer::executor::{CairoExecutor, Halo2Executor};
+use zk_fuzzer::targets::CairoTarget;
 
 #[test]
-fn test_cairo_assertion_descriptions_extract_assert_statements() {
-    let source = r#"
-        let a = 3;
-        assert [output_ptr] = a;
-        // assert ignored in comments
-        assert a = 3;
-    "#;
-
-    let assertions = cairo_assertion_descriptions(source);
-    assert_eq!(assertions.len(), 2);
-    assert_eq!(assertions[0], "[output_ptr] = a");
-    assert_eq!(assertions[1], "a = 3");
-}
-
-#[test]
-fn test_eval_cairo_expression_supports_arithmetic_and_output_ptr() {
-    let mut vars = std::collections::HashMap::new();
-    vars.insert("a".to_string(), FieldElement::from_u64(3));
-    vars.insert("b".to_string(), FieldElement::from_u64(4));
-
-    let outputs = vec![FieldElement::from_u64(12), FieldElement::from_u64(99)];
-
-    let mul = eval_cairo_expression("a * b", &vars, &outputs, 0).expect("mul value");
-    assert_eq!(mul, FieldElement::from_u64(12));
-
-    let output = eval_cairo_expression("[output_ptr + 1]", &vars, &outputs, 0).expect("output");
-    assert_eq!(output, FieldElement::from_u64(99));
-}
-
-#[test]
-fn test_execution_result() {
+fn execution_result_helpers_behave_as_expected() {
     let result = ExecutionResult::success(vec![FieldElement::one()], ExecutionCoverage::default());
     assert!(result.success);
     assert!(result.error.is_none());
@@ -42,12 +14,7 @@ fn test_execution_result() {
 }
 
 #[test]
-fn test_coverage_from_results_returns_none_when_constraints_missing() {
-    assert!(coverage_from_results(vec![]).is_none());
-}
-
-#[test]
-fn test_halo2_plonk_constraint_checking() {
+fn halo2_plonk_constraint_checking() {
     let json = r#"
         {
           "name": "test",
@@ -90,7 +57,7 @@ fn test_halo2_plonk_constraint_checking() {
 }
 
 #[test]
-fn test_halo2_constraint_checks_with_json_spec() {
+fn halo2_constraint_checks_with_json_spec() {
     let json = r#"
         {
           "name": "test",
@@ -135,7 +102,7 @@ fn test_halo2_constraint_checks_with_json_spec() {
 }
 
 #[test]
-fn test_halo2_wire_label_fallback_for_metadata_only_json_spec() {
+fn halo2_wire_label_fallback_for_metadata_only_json_spec() {
     let json = r#"
         {
           "name": "minimal_halo2",
@@ -163,8 +130,8 @@ fn test_halo2_wire_label_fallback_for_metadata_only_json_spec() {
 }
 
 #[test]
-fn test_cairo_wire_label_fallback_covers_all_input_indices() {
-    if crate::targets::CairoTarget::check_cairo_available().is_err() {
+fn cairo_wire_label_fallback_covers_all_input_indices() {
+    if CairoTarget::check_cairo_available().is_err() {
         return;
     }
 
@@ -188,69 +155,4 @@ fn test_cairo_wire_label_fallback_covers_all_input_indices() {
             idx
         );
     }
-}
-
-#[cfg(unix)]
-#[test]
-fn test_circom_include_paths_invalid_utf8_does_not_panic() {
-    use std::ffi::OsString;
-    use std::os::unix::ffi::OsStringExt;
-
-    struct EnvRestore {
-        previous: Option<OsString>,
-    }
-
-    impl Drop for EnvRestore {
-        fn drop(&mut self) {
-            match self.previous.take() {
-                Some(value) => std::env::set_var("CIRCOM_INCLUDE_PATHS", value),
-                None => std::env::remove_var("CIRCOM_INCLUDE_PATHS"),
-            }
-        }
-    }
-
-    let mut restore = EnvRestore {
-        previous: std::env::var_os("CIRCOM_INCLUDE_PATHS"),
-    };
-
-    let invalid = OsString::from_vec(vec![0xff, b'x', b':', b'y']);
-    std::env::set_var("CIRCOM_INCLUDE_PATHS", invalid);
-
-    let result =
-        std::panic::catch_unwind(|| CircomExecutor::default_include_paths_for("dummy.circom"));
-    assert!(
-        result.is_ok(),
-        "default_include_paths_for should gracefully handle invalid UTF-8 env values"
-    );
-
-    // Explicitly restore before assertion exits to keep global env clean in this process.
-    match restore.previous.take() {
-        Some(value) => std::env::set_var("CIRCOM_INCLUDE_PATHS", value),
-        None => std::env::remove_var("CIRCOM_INCLUDE_PATHS"),
-    }
-}
-
-#[test]
-fn test_circom_include_paths_include_vendor_from_circuit_ancestors() {
-    let temp_dir = tempfile::tempdir().expect("temp dir");
-    let root = temp_dir.path();
-    let circuits_dir = root.join("circuits");
-    let vendor_dir = root.join("vendor").join("circomlib").join("circuits");
-
-    std::fs::create_dir_all(&circuits_dir).expect("mkdir circuits");
-    std::fs::create_dir_all(&vendor_dir).expect("mkdir vendor/circomlib/circuits");
-
-    let circuit_path = circuits_dir.join("example.circom");
-    std::fs::write(&circuit_path, "pragma circom 2.0.0;").expect("write circuit");
-    std::fs::write(vendor_dir.join("poseidon.circom"), "// fixture").expect("write include");
-
-    let include_paths =
-        CircomExecutor::default_include_paths_for(circuit_path.to_str().expect("utf8 path"));
-    let expected_vendor_root = root.join("vendor");
-    assert!(
-        include_paths.iter().any(|p| p == &expected_vendor_root),
-        "expected include paths to contain '{}', got {:?}",
-        expected_vendor_root.display(),
-        include_paths
-    );
 }

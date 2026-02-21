@@ -1606,7 +1606,3 @@ fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "zk0d_batch/zk0d_batch_tests.rs"]
-mod tests;

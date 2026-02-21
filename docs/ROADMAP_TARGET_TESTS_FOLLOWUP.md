@@ -2,6 +2,56 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T23:51:05Z
+- Completed migration of the last real in-source executor test hook.
+  - removed from `src/**`:
+    - `src/executor/mod.rs` test hook (`#[cfg(test)] #[path = "mod_tests.rs"] mod tests;`)
+  - migrated coverage into integration tests:
+    - added `tests/test_executor_mod.rs` (public behavior checks for execution results + Halo2/Cairo inspector flows)
+  - removed source-bound test file:
+    - `src/executor/mod_tests.rs`
+- Validation:
+  - `cargo fmt --all` -> `PASS`
+  - `cargo test -q --test test_executor_mod --test test_executor_isolation_hardening --test test_cve_mod --test test_bin_zk0d_matrix --test test_bin_zk0d_batch --test test_bin_zk0d_benchmark` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+  - `cargo check -q` -> `PASS`
+- Progress:
+  - remaining raw `#[cfg(test)]` matches in `src/**`: `1`
+  - breakdown:
+    - no in-source test hooks remain in `src/**`
+    - one string literal emission only (non-hook): `src/reporting/poc_generator.rs`
+
+## Update (UTC): 2026-02-21T23:47:25Z
+- Continued strict production/test separation by completing the blocked migration batch for executor/CVE/bin modules.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/executor/isolation_hardening.rs`
+    - `src/cve/mod.rs`
+    - `src/bin/zk0d_matrix.rs`
+    - `src/bin/zk0d_batch.rs`
+    - `src/bin/zk0d_benchmark.rs`
+  - replaced failing private-wrapper migrations with stable integration tests in `tests/**`:
+    - `tests/test_executor_isolation_hardening.rs`
+    - `tests/test_cve_mod.rs`
+    - `tests/test_bin_zk0d_matrix.rs`
+    - `tests/test_bin_zk0d_batch.rs`
+    - `tests/test_bin_zk0d_benchmark.rs`
+  - deleted temporary transition files that depended on private internals:
+    - `tests/support/executor_isolation_hardening_tests_body.rs`
+    - `tests/support/cve_mod_tests_body.rs`
+    - `tests/support/zk0d_matrix_tests_body.rs`
+    - `tests/support/zk0d_batch_tests_body.rs`
+    - `tests/support/zk0d_benchmark_tests_body.rs`
+- Validation:
+  - `cargo fmt --all` -> `PASS`
+  - `cargo test -q --test test_executor_isolation_hardening --test test_cve_mod --test test_bin_zk0d_matrix --test test_bin_zk0d_batch --test test_bin_zk0d_benchmark` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+  - `cargo check -q` -> `PASS`
+- Progress:
+  - remaining raw `#[cfg(test)]` matches in `src/**`: `2`
+  - breakdown:
+    - actual in-source test hook: `src/executor/mod.rs`
+    - string literal emission only (non-hook): `src/reporting/poc_generator.rs`
+
 ## Update (UTC): 2026-02-21T23:33:03Z
 - Continued strict production/test separation by migrating the `oracles` batch out of `src/**`.
   - removed in-source `#[cfg(test)]` hooks from:

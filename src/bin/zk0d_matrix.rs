@@ -373,7 +373,3 @@ fn main() -> anyhow::Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "zk0d_matrix/zk0d_matrix_tests.rs"]
-mod tests;
