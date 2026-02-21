@@ -102,6 +102,7 @@ mod attack_runner_protocol;
 mod attack_runner_runtime;
 mod attack_runner_soundness;
 mod attack_runner_static;
+mod attack_runner_underconstrained;
 mod attack_runner_utils;
 mod chain_runner;
 mod config_helpers;
