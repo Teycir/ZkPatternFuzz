@@ -1,4 +1,5 @@
-use super::*;
+use zk_core::{FieldElement, TestCase};
+use zk_fuzzer::fuzzer::{MerkleOracle, OracleConfig, SemanticOracle};
 
 fn make_merkle_test_case(leaf: u64, path_elements: &[u64], path_indices: &[u64]) -> TestCase {
     let mut inputs = vec![FieldElement::from_u64(leaf)];

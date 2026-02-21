@@ -360,7 +360,3 @@ impl SemanticOracle for MerkleOracle {
         stats
     }
 }
-
-#[cfg(test)]
-#[path = "merkle_oracle_tests.rs"]
-mod tests;

@@ -267,7 +267,3 @@ impl SemanticOracle for NullifierOracle {
         stats
     }
 }
-
-#[cfg(test)]
-#[path = "nullifier_oracle_tests.rs"]
-mod tests;

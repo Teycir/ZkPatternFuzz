@@ -249,7 +249,3 @@ impl SemanticOracle for CommitmentOracle {
         stats
     }
 }
-
-#[cfg(test)]
-#[path = "commitment_oracle_tests.rs"]
-mod tests;

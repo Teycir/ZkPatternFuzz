@@ -1,4 +1,5 @@
-use super::*;
+use zk_core::{FieldElement, Severity, TestCase};
+use zk_fuzzer::fuzzer::{NullifierOracle, OracleConfig, SemanticOracle};
 
 fn make_test_case(secret_val: u64) -> TestCase {
     TestCase {

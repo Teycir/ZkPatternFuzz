@@ -1,4 +1,5 @@
-use super::*;
+use zk_core::{FieldElement, TestCase};
+use zk_fuzzer::fuzzer::{CommitmentOracle, OracleConfig, SemanticOracle};
 
 #[test]
 fn test_binding_violation_detected() {

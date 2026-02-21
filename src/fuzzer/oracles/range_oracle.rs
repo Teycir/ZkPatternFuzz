@@ -322,7 +322,3 @@ impl SemanticOracle for RangeProofOracle {
         stats
     }
 }
-
-#[cfg(test)]
-#[path = "range_oracle_tests.rs"]
-mod tests;

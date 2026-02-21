@@ -1,4 +1,5 @@
-use super::*;
+use zk_core::{FieldElement, TestCase};
+use zk_fuzzer::fuzzer::{OracleConfig, RangeProofOracle, SemanticOracle};
 
 fn make_range_test(value: u64) -> TestCase {
     TestCase {

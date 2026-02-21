@@ -122,7 +122,3 @@ pub(crate) fn hash_field_elements(elements: &[FieldElement]) -> Vec<u8> {
     }
     hasher.finalize().to_vec()
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

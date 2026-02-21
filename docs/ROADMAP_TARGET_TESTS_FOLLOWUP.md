@@ -2,6 +2,30 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T22:42:31Z
+- Continued strict production/test separation by migrating `fuzzer/oracles` tests out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/fuzzer/oracles/mod.rs`
+    - `src/fuzzer/oracles/commitment_oracle.rs`
+    - `src/fuzzer/oracles/merkle_oracle.rs`
+    - `src/fuzzer/oracles/nullifier_oracle.rs`
+    - `src/fuzzer/oracles/range_oracle.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_fuzzer_oracles_mod.rs`
+    - `tests/test_fuzzer_oracles_commitment.rs`
+    - `tests/test_fuzzer_oracles_merkle.rs`
+    - `tests/test_fuzzer_oracles_nullifier.rs`
+    - `tests/test_fuzzer_oracles_range.rs`
+- Test migration notes:
+  - replaced in-module imports (`use super::*`) with integration imports via public API (`zk_fuzzer::fuzzer::*`, `zk_core::*`).
+  - replaced private helper-function unit test coverage in `mod_tests` with public-behavior coverage on `CombinedSemanticOracle`.
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_fuzzer_oracles_mod --test test_fuzzer_oracles_commitment --test test_fuzzer_oracles_merkle --test test_fuzzer_oracles_nullifier --test test_fuzzer_oracles_range` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `40` (down from `45` before this batch)
+
 ## Update (UTC): 2026-02-21T22:38:04Z
 - Continued strict production/test separation by migrating `multi_circuit` tests out of `src/**`.
   - removed in-source `#[cfg(test)]` hooks from:

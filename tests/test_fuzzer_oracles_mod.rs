@@ -1,18 +1,5 @@
-use super::*;
-
-#[test]
-fn test_compute_entropy() {
-    // All same byte -> 0 entropy
-    let low_entropy = vec![0u8; 100];
-    assert!(compute_entropy(&low_entropy) < 0.01);
-
-    // All different bytes -> high entropy
-    let high_entropy: Vec<u8> = (0..=255).collect();
-    assert!(compute_entropy(&high_entropy) > 0.9);
-
-    // Empty -> 0 entropy
-    assert_eq!(compute_entropy(&[]), 0.0);
-}
+use zk_core::{FieldElement, TestCase};
+use zk_fuzzer::fuzzer::{CombinedSemanticOracle, OracleConfig};
 
 #[test]
 fn test_combined_oracle_empty() {
@@ -26,4 +13,11 @@ fn test_combined_oracle_empty() {
 
     // No oracles added, should return None
     assert!(oracle.check(&test_case, &output).is_none());
+}
+
+#[test]
+fn test_combined_oracle_with_all_oracles_has_expected_members() {
+    let oracle = CombinedSemanticOracle::with_all_oracles(OracleConfig::default());
+    let stats = oracle.stats();
+    assert_eq!(stats.len(), 4);
 }
