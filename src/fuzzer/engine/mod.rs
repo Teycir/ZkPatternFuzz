@@ -100,6 +100,7 @@ mod attack_runner_novel;
 mod attack_runner_numeric;
 mod attack_runner_protocol;
 mod attack_runner_runtime;
+mod attack_runner_soundness;
 mod attack_runner_static;
 mod attack_runner_utils;
 mod chain_runner;
