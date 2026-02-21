@@ -711,8 +711,9 @@ gh run watch
 
 ### External Assessment Follow-Up (2026-02-21)
 - [ ] Refactor oversized engine files by responsibility boundary:
-  - split `src/fuzzer/engine/attack_runner.rs` into attack-family dispatch modules + shared execution helpers
-  - split `src/fuzzer/engine/mod.rs` into smaller orchestration modules (init, run loop, reporting, selector/static analysis)
+  - [x] extract findings post-processing/storage into dedicated module (`src/fuzzer/engine/finding_pipeline.rs`) and remove duplicated evidence-mode policy logic from `attack_runner.rs`
+  - [ ] split `src/fuzzer/engine/attack_runner.rs` into attack-family dispatch modules + shared execution helpers
+  - [ ] split `src/fuzzer/engine/mod.rs` into smaller orchestration modules (init, run loop, reporting, selector/static analysis)
 - [ ] Keep `src/main.rs` as a thin CLI entrypoint by moving remaining orchestration into `run_*` modules and shared services
 - [ ] Close remaining clippy debt and prevent regression:
   - convert remaining 8+ argument functions to config/builder structs

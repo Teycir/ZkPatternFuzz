@@ -98,6 +98,7 @@ mod chain_runner;
 mod config_helpers;
 mod continuous_fuzzer;
 mod corpus_manager;
+mod finding_pipeline;
 mod invariant_enforcer;
 mod metamorphic_helpers;
 mod report_generator;

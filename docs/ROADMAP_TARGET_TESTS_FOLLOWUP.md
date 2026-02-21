@@ -2,6 +2,19 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T19:10:00Z
+- Started oversized-engine modularization follow-up with a no-behavior-change extraction:
+  - moved findings post-processing and storage pipeline out of `attack_runner.rs` into:
+    - `src/fuzzer/engine/finding_pipeline.rs`
+  - removed duplicated evidence-mode filtering/severity-normalization blocks from `src/fuzzer/engine/attack_runner.rs`
+  - registered new engine module in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `attack_runner.rs` reduced from `3580` to `3455` lines in this slice
+  - keeps `FuzzingEngine::has_static_source_evidence` and related behavior stable for existing tests
+- Validation:
+  - `cargo test -q has_static_source_evidence -- --nocapture` -> `PASS`
+  - `cargo check -q` -> `PASS`
+
 ## Update (UTC): 2026-02-21T19:00:00Z
 - Closed roadmap hygiene task for accidental root placeholder files:
   - removed repo-root `new_file.txt`.
