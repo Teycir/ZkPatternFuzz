@@ -936,6 +936,8 @@ gh run watch
   - [x] extract static/source scan attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_static.rs`) and reduce `attack_runner.rs` size without behavior drift
   - [x] extract advanced runtime attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_advanced.rs`) for sidechannel/privacy/defi attack family isolation
   - [x] extract protocol/economic attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_protocol.rs`) for mev/front-running/zkevm/batch-verification family isolation
+  - [x] extract Phase-4 novel oracle attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_novel.rs`) for constraint-inference/metamorphic/constraint-slice/spec-inference/witness-collision isolation
+  - [x] extract deterministic attack budget/floor helpers into dedicated module (`src/fuzzer/engine/attack_runner_budget.rs`) to share cap/floor logic across attack-family modules
   - [x] extract lifecycle orchestration helpers + run loop into dedicated module (`src/fuzzer/engine/run_lifecycle.rs`) so `mod.rs` remains initialization-focused
   - [x] extract startup/bootstrap orchestration into dedicated module (`src/fuzzer/engine/run_bootstrap.rs`) so run lifecycle flow is separated from pre-attack initialization
   - [x] extract attack-dispatch execution loop into dedicated module (`src/fuzzer/engine/run_dispatch.rs`) so run lifecycle orchestration is separated from per-attack dispatch mechanics

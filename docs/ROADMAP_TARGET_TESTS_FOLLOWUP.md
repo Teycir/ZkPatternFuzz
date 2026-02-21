@@ -2,6 +2,32 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T20:26:44Z
+- Continued `attack_runner` modularization with shared-helper + novel-attack extraction:
+  - moved deterministic budget/floor helper logic out of:
+    - `src/fuzzer/engine/attack_runner.rs`
+  - into:
+    - `src/fuzzer/engine/attack_runner_budget.rs`
+  - moved Phase-4 novel attack handlers out of:
+    - `src/fuzzer/engine/attack_runner.rs`
+  - into:
+    - `src/fuzzer/engine/attack_runner_novel.rs`
+  - extracted methods:
+    - `run_constraint_inference_attack`
+    - `run_metamorphic_attack`
+    - `run_constraint_slice_attack`
+    - `run_spec_inference_attack`
+    - `run_witness_collision_attack`
+  - registered new modules in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `src/fuzzer/engine/attack_runner.rs` reduced from `2732` to `2075` lines in this slice
+  - extracted `src/fuzzer/engine/attack_runner_novel.rs` (`563` lines)
+  - extracted `src/fuzzer/engine/attack_runner_budget.rs` (`101` lines)
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q deterministic_cap_enabled_by_default_in_evidence_mode -- --nocapture` -> `PASS`
+
 ## Update (UTC): 2026-02-21T20:18:58Z
 - Continued lifecycle modularization by extracting continuation/timeout orchestration:
   - moved continuation/timeout block out of:

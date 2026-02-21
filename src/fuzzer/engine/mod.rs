@@ -95,6 +95,8 @@
 
 mod attack_runner;
 mod attack_runner_advanced;
+mod attack_runner_budget;
+mod attack_runner_novel;
 mod attack_runner_protocol;
 mod attack_runner_static;
 mod chain_runner;
