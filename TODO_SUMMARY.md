@@ -17,6 +17,18 @@
 | Cairo (STARK) | 🔬 Experimental | - [ ] Real-circuit proving support |
 | | | - [ ] Stone prover integration |
 
+### Circom-Parity Readiness Gates (Non-Circom)
+
+- [x] Enforce selector-matching completion gate (`>=0.90`)
+- [x] Enforce runtime/preflight/missing-outcome zero-regression gates
+- [x] Enforce minimum selector-matching depth per backend (`>=4`)
+- [x] Enforce minimum overall completion ratio per backend (`>=0.40`)
+- [x] Enforce maximum selector-mismatch ratio per backend (`<=0.70`)
+- [x] Enforce minimum aggregate selector-matching depth (`>=12`)
+- [ ] Lift Noir to pass parity depth gates
+- [ ] Lift Cairo to pass parity depth gates
+- [ ] Lift aggregate non-Circom selector-matching depth to gate threshold
+
 ---
 
 ## Benchmarks & Performance

@@ -6,9 +6,13 @@ READINESS_ROOT="${READINESS_ROOT:-$ROOT_DIR/artifacts/backend_readiness}"
 OUTPUT_PATH="${OUTPUT_PATH:-$READINESS_ROOT/latest_report.json}"
 REQUIRED_BACKENDS="${REQUIRED_BACKENDS:-noir,cairo,halo2}"
 MIN_COMPLETION_RATE="${MIN_BACKEND_COMPLETION_RATE:-0.90}"
+MIN_SELECTOR_MATCHING_TOTAL="${MIN_BACKEND_SELECTOR_MATCHING_TOTAL:-4}"
+MIN_OVERALL_COMPLETION_RATE="${MIN_BACKEND_OVERALL_COMPLETION_RATE:-0.40}"
+MAX_SELECTOR_MISMATCH_RATE="${MAX_BACKEND_SELECTOR_MISMATCH_RATE:-0.70}"
 MAX_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
 MAX_RUN_OUTCOME_MISSING_RATE="${MAX_RUN_OUTCOME_MISSING_RATE:-0.05}"
+MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="${MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL:-12}"
 ENFORCE=0
 
 usage() {
@@ -22,10 +26,15 @@ Options:
   --output <path>                       Output dashboard JSON path (default: artifacts/backend_readiness/latest_report.json)
   --required-backends <csv>             Backends to gate (default: noir,cairo,halo2)
   --min-completion-rate <float>         Minimum selector-matching completion rate per backend (default: 0.90)
+  --min-selector-matching-total <int>   Minimum selector-matching classified runs per backend (default: 4)
+  --min-overall-completion-rate <float> Minimum overall completion rate per backend (default: 0.40)
+  --max-selector-mismatch-rate <float>  Maximum selector_mismatch ratio per backend (default: 0.70)
   --max-runtime-error <int>             Maximum runtime_error count per backend (default: 0)
   --max-backend-preflight-failed <int>  Maximum backend_preflight_failed count per backend (default: 0)
   --max-run-outcome-missing-rate <float>
                                       Maximum run_outcome_missing ratio (per backend and aggregate) (default: 0.05)
+  --min-aggregate-selector-matching-total <int>
+                                      Minimum aggregate selector-matching classified runs across required backends (default: 12)
   --enforce                             Exit non-zero when any backend fails
   -h, --help                            Show this help
 USAGE
@@ -49,6 +58,18 @@ while [[ $# -gt 0 ]]; do
       MIN_COMPLETION_RATE="$2"
       shift 2
       ;;
+    --min-selector-matching-total)
+      MIN_SELECTOR_MATCHING_TOTAL="$2"
+      shift 2
+      ;;
+    --min-overall-completion-rate)
+      MIN_OVERALL_COMPLETION_RATE="$2"
+      shift 2
+      ;;
+    --max-selector-mismatch-rate)
+      MAX_SELECTOR_MISMATCH_RATE="$2"
+      shift 2
+      ;;
     --max-runtime-error)
       MAX_RUNTIME_ERROR="$2"
       shift 2
@@ -59,6 +80,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --max-run-outcome-missing-rate)
       MAX_RUN_OUTCOME_MISSING_RATE="$2"
+      shift 2
+      ;;
+    --min-aggregate-selector-matching-total)
+      MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="$2"
       shift 2
       ;;
     --enforce)
@@ -84,9 +109,13 @@ python3 - \
   "$OUTPUT_PATH" \
   "$REQUIRED_BACKENDS" \
   "$MIN_COMPLETION_RATE" \
+  "$MIN_SELECTOR_MATCHING_TOTAL" \
+  "$MIN_OVERALL_COMPLETION_RATE" \
+  "$MAX_SELECTOR_MISMATCH_RATE" \
   "$MAX_RUNTIME_ERROR" \
   "$MAX_BACKEND_PREFLIGHT_FAILED" \
   "$MAX_RUN_OUTCOME_MISSING_RATE" \
+  "$MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL" \
   "$ENFORCE" <<'PY'
 import json
 import os
@@ -112,15 +141,20 @@ readiness_root = sys.argv[1]
 output_path = sys.argv[2]
 required_backends = [part.strip() for part in sys.argv[3].split(",") if part.strip()]
 min_completion_rate = as_float(sys.argv[4], 0.90)
-max_runtime_error = as_int(sys.argv[5], 0)
-max_backend_preflight_failed = as_int(sys.argv[6], 0)
-max_run_outcome_missing_rate = as_float(sys.argv[7], 0.05)
-enforce = as_int(sys.argv[8], 0) == 1
+min_selector_matching_total = as_int(sys.argv[5], 4)
+min_overall_completion_rate = as_float(sys.argv[6], 0.40)
+max_selector_mismatch_rate = as_float(sys.argv[7], 0.70)
+max_runtime_error = as_int(sys.argv[8], 0)
+max_backend_preflight_failed = as_int(sys.argv[9], 0)
+max_run_outcome_missing_rate = as_float(sys.argv[10], 0.05)
+min_aggregate_selector_matching_total = as_int(sys.argv[11], 12)
+enforce = as_int(sys.argv[12], 0) == 1
 
 backend_entries = []
 overall_pass = True
 aggregate_total_classified = 0
 aggregate_run_outcome_missing = 0
+aggregate_selector_matching_total = 0
 
 for backend in required_backends:
     report_path = os.path.join(readiness_root, backend, "latest_report.json")
@@ -134,6 +168,7 @@ for backend in required_backends:
         "completed": 0,
         "completion_rate": 0.0,
         "selector_mismatch_count": 0,
+        "selector_mismatch_rate": 0.0,
         "selector_matching_total": 0,
         "selector_matching_completion_rate": 0.0,
         "runtime_error_count": 0,
@@ -164,6 +199,9 @@ for backend in required_backends:
     completed = max(as_int(numeric_reason_counts.get("completed", 0), 0), 0)
     completion_rate = (completed / total_classified) if total_classified > 0 else 0.0
     selector_mismatch_count = max(as_int(numeric_reason_counts.get("selector_mismatch", 0), 0), 0)
+    selector_mismatch_rate = (
+        selector_mismatch_count / total_classified if total_classified > 0 else 0.0
+    )
     selector_matching_total = max(total_classified - selector_mismatch_count, 0)
     selector_matching_completion_rate = (
         completed / selector_matching_total if selector_matching_total > 0 else 1.0
@@ -198,6 +236,18 @@ for backend in required_backends:
             "selector_matching_completion_rate "
             f"{selector_matching_completion_rate:.3f} < {min_completion_rate:.3f}"
         )
+    if selector_matching_total < min_selector_matching_total:
+        gate_failures.append(
+            f"selector_matching_total {selector_matching_total} < {min_selector_matching_total}"
+        )
+    if completion_rate < min_overall_completion_rate:
+        gate_failures.append(
+            f"overall_completion_rate {completion_rate:.3f} < {min_overall_completion_rate:.3f}"
+        )
+    if selector_mismatch_rate > max_selector_mismatch_rate:
+        gate_failures.append(
+            f"selector_mismatch_rate {selector_mismatch_rate:.3f} > {max_selector_mismatch_rate:.3f}"
+        )
     if runtime_error_count > max_runtime_error:
         gate_failures.append(
             f"runtime_error_count {runtime_error_count} > {max_runtime_error}"
@@ -225,6 +275,7 @@ for backend in required_backends:
             "completed": completed,
             "completion_rate": completion_rate,
             "selector_mismatch_count": selector_mismatch_count,
+            "selector_mismatch_rate": selector_mismatch_rate,
             "selector_matching_total": selector_matching_total,
             "selector_matching_completion_rate": selector_matching_completion_rate,
             "runtime_error_count": runtime_error_count,
@@ -239,6 +290,7 @@ for backend in required_backends:
     backend_entries.append(entry)
     aggregate_total_classified += total_classified
     aggregate_run_outcome_missing += run_outcome_missing_count
+    aggregate_selector_matching_total += selector_matching_total
 
 aggregate_run_outcome_missing_rate = (
     aggregate_run_outcome_missing / aggregate_total_classified
@@ -250,6 +302,11 @@ if aggregate_run_outcome_missing_rate > max_run_outcome_missing_rate:
     aggregate_gate_failures.append(
         f"aggregate_run_outcome_missing_rate {aggregate_run_outcome_missing_rate:.3f} > {max_run_outcome_missing_rate:.3f}"
     )
+if aggregate_selector_matching_total < min_aggregate_selector_matching_total:
+    aggregate_gate_failures.append(
+        "aggregate_selector_matching_total "
+        f"{aggregate_selector_matching_total} < {min_aggregate_selector_matching_total}"
+    )
 if aggregate_gate_failures:
     overall_pass = False
 
@@ -260,13 +317,18 @@ payload = {
         "required_backends": required_backends,
         "min_completion_rate": min_completion_rate,
         "completion_rate_basis": "selector_matching",
+        "min_selector_matching_total": min_selector_matching_total,
+        "min_overall_completion_rate": min_overall_completion_rate,
+        "max_selector_mismatch_rate": max_selector_mismatch_rate,
         "max_runtime_error": max_runtime_error,
         "max_backend_preflight_failed": max_backend_preflight_failed,
         "max_run_outcome_missing_rate": max_run_outcome_missing_rate,
+        "min_aggregate_selector_matching_total": min_aggregate_selector_matching_total,
     },
     "backends": backend_entries,
     "aggregate": {
         "total_classified": aggregate_total_classified,
+        "selector_matching_total": aggregate_selector_matching_total,
         "run_outcome_missing_count": aggregate_run_outcome_missing,
         "run_outcome_missing_rate": aggregate_run_outcome_missing_rate,
         "gate_failures": aggregate_gate_failures,
@@ -283,6 +345,8 @@ for entry in backend_entries:
     print(
         f"[{status}] {entry['backend']}: "
         f"selector_completion={entry['selector_matching_completion_rate']:.3f} "
+        f"selector_matching_total={entry['selector_matching_total']} "
+        f"selector_mismatch_rate={entry['selector_mismatch_rate']:.3f} "
         f"overall_completion={entry['completion_rate']:.3f} "
         f"runtime_error={entry['runtime_error_count']} "
         f"backend_preflight_failed={entry['backend_preflight_failed_count']} "
@@ -292,6 +356,11 @@ for entry in backend_entries:
         for failure in entry["gate_failures"]:
             print(f"  - {failure}")
 
+print(
+    "Aggregate non-Circom selector_matching_total="
+    f"{aggregate_selector_matching_total} "
+    f"(minimum={min_aggregate_selector_matching_total})"
+)
 print(
     "Aggregate non-Circom run_outcome_missing_rate="
     f"{aggregate_run_outcome_missing_rate:.3f} "

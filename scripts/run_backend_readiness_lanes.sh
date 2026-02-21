@@ -26,9 +26,13 @@ NO_BUILD_IF_MISSING=0
 ENFORCE_DASHBOARD=0
 REQUIRED_BACKENDS="${BACKEND_REQUIRED_LIST:-noir,cairo,halo2}"
 MIN_COMPLETION_RATE="${MIN_BACKEND_COMPLETION_RATE:-0.90}"
+MIN_SELECTOR_MATCHING_TOTAL="${MIN_BACKEND_SELECTOR_MATCHING_TOTAL:-4}"
+MIN_OVERALL_COMPLETION_RATE="${MIN_BACKEND_OVERALL_COMPLETION_RATE:-0.40}"
+MAX_SELECTOR_MISMATCH_RATE="${MAX_BACKEND_SELECTOR_MISMATCH_RATE:-0.70}"
 MAX_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
 MAX_RUN_OUTCOME_MISSING_RATE="${MAX_BACKEND_RUN_OUTCOME_MISSING_RATE:-0.05}"
+MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="${MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL:-12}"
 
 usage() {
   cat <<'USAGE'
@@ -49,9 +53,14 @@ Options:
   --timeout <sec>                       Timeout per scan in seconds (default: 30)
   --required-backends <csv>             Backends required in dashboard gate (default: noir,cairo,halo2)
   --min-completion-rate <float>         Dashboard gate minimum selector-matching completion ratio (default: 0.90)
+  --min-selector-matching-total <int>   Dashboard gate minimum selector-matching classified runs per backend (default: 4)
+  --min-overall-completion-rate <f>     Dashboard gate minimum overall completion ratio per backend (default: 0.40)
+  --max-selector-mismatch-rate <f>      Dashboard gate maximum selector_mismatch ratio per backend (default: 0.70)
   --max-runtime-error <int>             Dashboard gate max runtime_error count (default: 0)
   --max-backend-preflight-failed <int>  Dashboard gate max backend_preflight_failed count (default: 0)
   --max-run-outcome-missing-rate <f>    Dashboard gate max run_outcome_missing ratio (default: 0.05)
+  --min-aggregate-selector-matching-total <int>
+                                        Dashboard gate minimum aggregate selector-matching classified runs (default: 12)
   --skip-noir-integration-test          Skip test_noir_integration
   --skip-noir-constraint-coverage-test  Skip test_noir_constraint_coverage
   --skip-noir-constraint-edge-cases-test
@@ -83,9 +92,13 @@ while [[ $# -gt 0 ]]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --required-backends) REQUIRED_BACKENDS="$2"; shift 2 ;;
     --min-completion-rate) MIN_COMPLETION_RATE="$2"; shift 2 ;;
+    --min-selector-matching-total) MIN_SELECTOR_MATCHING_TOTAL="$2"; shift 2 ;;
+    --min-overall-completion-rate) MIN_OVERALL_COMPLETION_RATE="$2"; shift 2 ;;
+    --max-selector-mismatch-rate) MAX_SELECTOR_MISMATCH_RATE="$2"; shift 2 ;;
     --max-runtime-error) MAX_RUNTIME_ERROR="$2"; shift 2 ;;
     --max-backend-preflight-failed) MAX_BACKEND_PREFLIGHT_FAILED="$2"; shift 2 ;;
     --max-run-outcome-missing-rate) MAX_RUN_OUTCOME_MISSING_RATE="$2"; shift 2 ;;
+    --min-aggregate-selector-matching-total) MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="$2"; shift 2 ;;
     --skip-noir-integration-test) SKIP_NOIR_INTEGRATION_TEST=1; shift ;;
     --skip-noir-constraint-coverage-test) SKIP_NOIR_CONSTRAINT_COVERAGE_TEST=1; shift ;;
     --skip-noir-constraint-edge-cases-test) SKIP_NOIR_CONSTRAINT_EDGE_CASES_TEST=1; shift ;;
@@ -216,9 +229,13 @@ dashboard_cmd=(
   --output "$READINESS_ROOT/latest_report.json"
   --required-backends "$REQUIRED_BACKENDS"
   --min-completion-rate "$MIN_COMPLETION_RATE"
+  --min-selector-matching-total "$MIN_SELECTOR_MATCHING_TOTAL"
+  --min-overall-completion-rate "$MIN_OVERALL_COMPLETION_RATE"
+  --max-selector-mismatch-rate "$MAX_SELECTOR_MISMATCH_RATE"
   --max-runtime-error "$MAX_RUNTIME_ERROR"
   --max-backend-preflight-failed "$MAX_BACKEND_PREFLIGHT_FAILED"
   --max-run-outcome-missing-rate "$MAX_RUN_OUTCOME_MISSING_RATE"
+  --min-aggregate-selector-matching-total "$MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL"
 )
 if [[ "$ENFORCE_DASHBOARD" -eq 1 ]]; then
   dashboard_cmd+=(--enforce)

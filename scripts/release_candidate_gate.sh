@@ -9,9 +9,13 @@ BACKEND_READINESS_ROOT="$ROOT_DIR/artifacts/backend_readiness"
 BACKEND_READINESS_DASHBOARD="$BACKEND_READINESS_ROOT/latest_report.json"
 BACKEND_REQUIRED_LIST="${BACKEND_REQUIRED_LIST:-noir,cairo,halo2}"
 MIN_BACKEND_COMPLETION_RATE="${MIN_BACKEND_COMPLETION_RATE:-0.90}"
+MIN_BACKEND_SELECTOR_MATCHING_TOTAL="${MIN_BACKEND_SELECTOR_MATCHING_TOTAL:-4}"
+MIN_BACKEND_OVERALL_COMPLETION_RATE="${MIN_BACKEND_OVERALL_COMPLETION_RATE:-0.40}"
+MAX_BACKEND_SELECTOR_MISMATCH_RATE="${MAX_BACKEND_SELECTOR_MISMATCH_RATE:-0.70}"
 MAX_BACKEND_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
 MAX_BACKEND_RUN_OUTCOME_MISSING_RATE="${MAX_BACKEND_RUN_OUTCOME_MISSING_RATE:-0.05}"
+MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="${MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL:-12}"
 SKIP_BACKEND_READINESS_GATE=0
 
 usage() {
@@ -31,12 +35,20 @@ Options:
   --required-backends <csv>  Backends required by readiness gate (default: noir,cairo,halo2)
   --min-backend-completion-rate <float>
                              Minimum per-backend selector-matching completion ratio (default: 0.90)
+  --min-backend-selector-matching-total <int>
+                             Minimum per-backend selector-matching classified runs (default: 4)
+  --min-backend-overall-completion-rate <float>
+                             Minimum per-backend overall completion ratio (default: 0.40)
+  --max-backend-selector-mismatch-rate <float>
+                             Maximum per-backend selector_mismatch ratio (default: 0.70)
   --max-backend-runtime-error <int>
                              Maximum per-backend runtime_error count (default: 0)
   --max-backend-preflight-failed <int>
                              Maximum per-backend backend_preflight_failed count (default: 0)
   --max-backend-run-outcome-missing-rate <float>
                              Maximum per-backend and aggregate run_outcome_missing ratio (default: 0.05)
+  --min-aggregate-selector-matching-total <int>
+                             Minimum aggregate selector-matching classified runs across required backends (default: 12)
   --skip-backend-readiness-gate
                              Publish dashboard artifact but do not fail release gate on backend readiness
   -h, --help                 Show this help
@@ -80,6 +92,18 @@ while [[ $# -gt 0 ]]; do
       MIN_BACKEND_COMPLETION_RATE="$2"
       shift 2
       ;;
+    --min-backend-selector-matching-total)
+      MIN_BACKEND_SELECTOR_MATCHING_TOTAL="$2"
+      shift 2
+      ;;
+    --min-backend-overall-completion-rate)
+      MIN_BACKEND_OVERALL_COMPLETION_RATE="$2"
+      shift 2
+      ;;
+    --max-backend-selector-mismatch-rate)
+      MAX_BACKEND_SELECTOR_MISMATCH_RATE="$2"
+      shift 2
+      ;;
     --max-backend-runtime-error)
       MAX_BACKEND_RUNTIME_ERROR="$2"
       shift 2
@@ -90,6 +114,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --max-backend-run-outcome-missing-rate)
       MAX_BACKEND_RUN_OUTCOME_MISSING_RATE="$2"
+      shift 2
+      ;;
+    --min-aggregate-selector-matching-total)
+      MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="$2"
       shift 2
       ;;
     --skip-backend-readiness-gate)
@@ -155,9 +183,13 @@ backend_gate_cmd=(
   --output "$BACKEND_READINESS_DASHBOARD"
   --required-backends "$BACKEND_REQUIRED_LIST"
   --min-completion-rate "$MIN_BACKEND_COMPLETION_RATE"
+  --min-selector-matching-total "$MIN_BACKEND_SELECTOR_MATCHING_TOTAL"
+  --min-overall-completion-rate "$MIN_BACKEND_OVERALL_COMPLETION_RATE"
+  --max-selector-mismatch-rate "$MAX_BACKEND_SELECTOR_MISMATCH_RATE"
   --max-runtime-error "$MAX_BACKEND_RUNTIME_ERROR"
   --max-backend-preflight-failed "$MAX_BACKEND_PREFLIGHT_FAILED"
   --max-run-outcome-missing-rate "$MAX_BACKEND_RUN_OUTCOME_MISSING_RATE"
+  --min-aggregate-selector-matching-total "$MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL"
 )
 
 if [ "$SKIP_BACKEND_READINESS_GATE" -eq 1 ]; then

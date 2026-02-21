@@ -2,6 +2,28 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T13:52:04Z
+- Added Circom-parity depth gates for non-Circom readiness to prevent false “green” status from selector-only completion:
+  - `scripts/backend_readiness_dashboard.sh`
+    - new enforced thresholds:
+      - `min_selector_matching_total` per backend (default: `4`)
+      - `min_overall_completion_rate` per backend (default: `0.40`)
+      - `max_selector_mismatch_rate` per backend (default: `0.70`)
+      - `min_aggregate_selector_matching_total` across required backends (default: `12`)
+    - existing strict thresholds remain (`selector-matching completion`, `runtime_error`, `backend_preflight_failed`, `run_outcome_missing`)
+  - `scripts/run_backend_readiness_lanes.sh`
+    - plumbed new parity threshold options/env passthrough into dashboard gate invocation
+  - `scripts/release_candidate_gate.sh`
+    - release gate now consumes and enforces the same new parity thresholds by default
+- Validation:
+  - `bash -n scripts/backend_readiness_dashboard.sh scripts/run_backend_readiness_lanes.sh scripts/release_candidate_gate.sh` -> `PASS`
+  - `scripts/backend_readiness_dashboard.sh --readiness-root artifacts/backend_readiness --output /tmp/backend_readiness_parity_report.json --enforce` -> `FAIL` (expected under stricter parity thresholds)
+  - Failure diagnostics (current gap to Circom-level readiness):
+    - Noir: `selector_matching_total=3`, `overall_completion=0.167`, `selector_mismatch_rate=0.833`
+    - Cairo: `selector_matching_total=1`, `overall_completion=0.200`, `selector_mismatch_rate=0.800`
+    - Halo2: `PASS` (`selector_matching_total=4`, `overall_completion=0.400`, `selector_mismatch_rate=0.600`)
+    - Aggregate: `selector_matching_total=8 < 12`
+
 ## Update (UTC): 2026-02-21T13:41:55Z
 - Enforced single-mode backend strictness (no strict/non-strict toggle surface):
   - `src/executor/mod.rs`
