@@ -52,7 +52,10 @@ jobs:
 
       - name: Panic surface gate
         run: python3 scripts/check_panic_surface.py --fail-on-stale
-      
+
+      - name: Repo hygiene gate
+        run: python3 scripts/check_repo_hygiene.py --repo-root .
+
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       

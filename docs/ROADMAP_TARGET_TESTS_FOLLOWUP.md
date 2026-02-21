@@ -2,6 +2,20 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T19:00:00Z
+- Closed roadmap hygiene task for accidental root placeholder files:
+  - removed repo-root `new_file.txt`.
+  - added lightweight root-file hygiene gate script:
+    - `scripts/check_repo_hygiene.py`
+  - added unit tests:
+    - `tests/test_check_repo_hygiene.py`
+  - wired gate into CI check job:
+    - `.github/workflows/ci.yml` (`Repo hygiene gate` step)
+- Validation:
+  - `python3 -m unittest -q tests/test_check_repo_hygiene.py` -> `PASS`
+  - `python3 scripts/check_repo_hygiene.py --repo-root .` -> `PASS`
+  - `python3 scripts/check_repo_hygiene.py --repo-root . --json-out artifacts/repo_hygiene/latest.json` -> `PASS`
+
 ## Update (UTC): 2026-02-21T18:49:12Z
 - Stabilized strict external-tool sandbox readiness lanes for non-Circom backends:
   - removed failing `bwrap --unshare-net` usage from backend and reporting timeout wrappers.

@@ -709,6 +709,25 @@ gh run watch
 - [x] Add strict external-tool sandbox execution mode (namespace/seccomp wrapper) for backend commands (`circom`, `snarkjs`, `nargo`, `scarb`, `cargo`) and enforce it in release readiness lanes (`crates/zk-backends/src/util.rs`, `src/reporting/command_timeout.rs`, `scripts/run_backend_readiness_lanes.sh`, `.github/workflows/release_validation.yml`)
 - [x] Publish an explicit security assumptions and threat model document for fuzzing/evidence flows and backend toolchain trust boundaries (`docs/SECURITY_THREAT_MODEL.md`)
 
+### External Assessment Follow-Up (2026-02-21)
+- [ ] Refactor oversized engine files by responsibility boundary:
+  - split `src/fuzzer/engine/attack_runner.rs` into attack-family dispatch modules + shared execution helpers
+  - split `src/fuzzer/engine/mod.rs` into smaller orchestration modules (init, run loop, reporting, selector/static analysis)
+- [ ] Keep `src/main.rs` as a thin CLI entrypoint by moving remaining orchestration into `run_*` modules and shared services
+- [ ] Close remaining clippy debt and prevent regression:
+  - convert remaining 8+ argument functions to config/builder structs
+  - replace post-`Default::default()` field assignment patterns with struct literal initialization
+  - clean redundant variable redefinitions in `src/toolchain_bootstrap.rs`
+  - replace manual multiple-of checks with `.is_multiple_of()`
+  - add/keep CI clippy gate at warning-free target for touched crates
+- [x] Delete repo-root `new_file.txt` and add a lightweight repo-hygiene check to block accidental placeholder files at root (`scripts/check_repo_hygiene.py`, `tests/test_check_repo_hygiene.py`, `.github/workflows/ci.yml`)
+- [ ] Audit AI data-egress path before production usage:
+  - review `build_ai_circuit_context` and `src/ai/*` for source-data minimization and explicit opt-in controls
+  - ensure API keys/secrets and full circuit sources are never logged
+  - add regression tests for redaction/no-secret-logging behavior
+- [ ] Document rationale/tradeoffs for current profiles (`[profile.test] debug=0`, `[profile.dev] incremental=false`) in contributor docs
+- [ ] Review `lib.rs` public re-export surface and decide whether to keep broad exports or introduce a smaller prelude-oriented API
+
 ---
 
 ## 📝 Notes
