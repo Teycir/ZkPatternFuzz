@@ -2,6 +2,20 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T19:20:00Z
+- Continued oversized-engine modularization with attack-family extraction:
+  - moved static/source scan attack handlers out of `attack_runner.rs` into:
+    - `src/fuzzer/engine/attack_runner_static.rs`
+  - extracted methods:
+    - `run_circom_static_lint_attack`
+    - `run_quantum_resistance_attack`
+  - registered new module in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `attack_runner.rs` reduced from `3455` to `3315` lines in this slice
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q has_static_source_evidence -- --nocapture` -> `PASS`
+
 ## Update (UTC): 2026-02-21T19:10:00Z
 - Started oversized-engine modularization follow-up with a no-behavior-change extraction:
   - moved findings post-processing and storage pipeline out of `attack_runner.rs` into:

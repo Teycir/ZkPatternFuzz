@@ -94,6 +94,7 @@
 //! - Synthetic backends are disabled in runtime execution paths
 
 mod attack_runner;
+mod attack_runner_static;
 mod chain_runner;
 mod config_helpers;
 mod continuous_fuzzer;
