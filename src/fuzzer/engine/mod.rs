@@ -105,6 +105,8 @@ mod finding_pipeline;
 mod invariant_enforcer;
 mod metamorphic_helpers;
 mod report_generator;
+mod run_bootstrap;
+mod run_dispatch;
 mod run_lifecycle;
 mod run_pattern;
 mod run_reporting;

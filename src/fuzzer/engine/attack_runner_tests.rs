@@ -101,9 +101,10 @@ fn strict_attack_floor_is_skipped_in_deterministic_runtime_mode() {
 #[test]
 fn engine_dispatch_has_no_not_yet_implemented_fallback() {
     let source = format!(
-        "{}\n{}",
+        "{}\n{}\n{}",
         include_str!("mod.rs"),
-        include_str!("run_lifecycle.rs")
+        include_str!("run_lifecycle.rs"),
+        include_str!("run_dispatch.rs")
     );
     assert!(
         !source.contains("not yet implemented"),

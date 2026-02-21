@@ -2,6 +2,42 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T19:58:50Z
+- Continued lifecycle modularization by extracting startup/bootstrap orchestration:
+  - moved startup/bootstrap block out of:
+    - `src/fuzzer/engine/run_lifecycle.rs`
+  - into:
+    - `src/fuzzer/engine/run_bootstrap.rs`
+  - added helper:
+    - `run_bootstrap_phase(progress, mode_label, phases_total, evidence_mode)`
+  - updated `run_lifecycle.rs` to delegate startup/bootstrap via `run_bootstrap_phase(...)`
+  - registered new module in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `src/fuzzer/engine/run_lifecycle.rs` reduced from `373` to `268` lines in this slice
+  - extracted `src/fuzzer/engine/run_bootstrap.rs` (`121` lines)
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+
+## Update (UTC): 2026-02-21T19:51:54Z
+- Continued lifecycle modularization by extracting attack-dispatch orchestration from run lifecycle flow:
+  - moved attack dispatch loop out of:
+    - `src/fuzzer/engine/run_lifecycle.rs`
+  - into:
+    - `src/fuzzer/engine/run_dispatch.rs`
+  - added helper:
+    - `run_attack_phase(progress, mode_label, phases_total, start_time, engagement_strict)`
+  - updated `run_lifecycle.rs` to delegate attack phase execution to `run_attack_phase(...)`
+  - registered new module in `src/fuzzer/engine/mod.rs`
+  - updated dispatch guard test source aggregation:
+    - `src/fuzzer/engine/attack_runner_tests.rs` now includes `run_dispatch.rs`
+- Impact:
+  - `src/fuzzer/engine/run_lifecycle.rs` reduced from `853` to `373` lines in this slice
+  - extracted `src/fuzzer/engine/run_dispatch.rs` (`506` lines)
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+
 ## Update (UTC): 2026-02-21T19:39:32Z
 - Continued lifecycle modularization by extracting static pattern selector/materialization helpers:
   - moved static pattern helper methods out of:

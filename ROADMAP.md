@@ -266,6 +266,227 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ---
 
+## 🧠 Phase 7: Semantic Analysis & Complex Bug Detection
+
+**Goal:** Bridge the gap between syntax-level fuzzing and semantic property violations. Enable detection of protocol-level bugs that current constraint-level analysis misses.
+
+**Priority:** High-impact additions that directly model real attacker behavior and catch production vulnerability classes.
+
+### 7.1 Semantic Property Specification (P0 - Highest Impact)
+
+**Problem:** Fuzzer knows circuit syntax (constraints, wires) but not intent (what the circuit should prove). Current oracles check "does it crash?" not "does it lie?".
+
+**Solution:** User-supplied invariant DSL that drives semantic oracles.
+
+#### Implementation Tasks
+- [ ] Design invariant specification YAML schema
+  ```yaml
+  invariants:
+    - id: "merkle_root_integrity"
+      property: "circuit never verifies if merkle_root != expected_root"
+      oracle_type: "semantic_violation"
+      severity: "critical"
+    - id: "nullifier_uniqueness"
+      property: "nullifier collision implies double-spend"
+      oracle_type: "collision_semantic"
+      severity: "critical"
+  ```
+- [ ] Implement invariant parser and validator (`crates/zk-core/src/invariants.rs`)
+- [ ] Add semantic oracle engine that checks invariants against witness/proof pairs
+- [ ] Integrate with existing `spec_inference.rs` for auto-generated invariants
+- [ ] Add invariant violation reporting with counterexamples
+- [ ] Add regression tests with known semantic bugs (underconstrained Merkle, nullifier replay)
+
+#### Exit Criteria
+- [ ] 5+ real vulnerability patterns expressible as invariants
+- [ ] Semantic oracle detects >=80% of underconstrained bugs in test suite
+- [ ] Zero false positives on safe circuits with correct invariants
+
+**Impact:** Directly models "does the circuit prove what it claims?" - the core security question.
+
+### 7.2 Non-Native Field Arithmetic Oracle (P0 - Critical for Signature Circuits)
+
+**Problem:** Circuits emulating secp256k1/Ed25519 inside BN254 using limb decomposition have frequent limb overflow bugs. Current boundary testing only tests BN254 field edges, completely missing limb-level bugs.
+
+**Solution:** Dedicated oracle for limb-decomposed arithmetic.
+
+#### Implementation Tasks
+- [ ] Add limb decomposition detector in constraint analysis (`crates/zk-constraints/src/limb_analysis.rs`)
+  - Identify variables representing limbs (naming patterns, bit-width constraints)
+  - Track limb reconstruction constraints (sum of limbs = full value)
+- [ ] Implement limb boundary fuzzer
+  - Fuzz individual limb boundaries: `limb[i] = 2^k - 1`, `limb[i] = 2^k`, `limb[i] = 0`
+  - Fuzz limb sum overflows: `sum(limbs) > field_modulus`
+  - Fuzz carry propagation edge cases
+- [ ] Add non-native field oracle that checks:
+  - Limb overflow detection (individual limbs exceed bit-width)
+  - Reconstruction overflow (sum of limbs wraps around field)
+  - Carry bit validation
+- [ ] Add test suite with known limb overflow CVEs (EdDSA malleability, ECDSA s-value)
+
+#### Exit Criteria
+- [ ] Detects CVE-2024-42459 (EdDSA malleability) automatically
+- [ ] Finds limb overflow in >=3 signature circuit test cases
+- [ ] Zero false positives on correctly implemented non-native field arithmetic
+
+**Impact:** Catches the #1 bug class in production signature/key circuits.
+
+### 7.3 Witness Extension Attack (P1 - SMT-Driven Constraint Removal)
+
+**Problem:** Current `AltWitnessSolver` finds alternative witnesses but doesn't model the attacker who bypasses a subset of constraints.
+
+**Solution:** Given a valid witness for a subset of constraints (with some removed), use Z3 to find an assignment satisfying the rest.
+
+#### Implementation Tasks
+- [ ] Extend `crates/zk-symbolic/src/enhanced.rs` with witness extension mode
+- [ ] Implement constraint subset selection strategies:
+  - Remove single constraint (exhaustive)
+  - Remove constraint clusters (dependency-graph-guided)
+  - Remove constraints by type (range checks, lookups, custom gates)
+- [ ] Add Z3-based witness extension solver:
+  - Start with valid witness for subset A
+  - Solve for remaining constraints B with A fixed
+  - Check if extended witness violates semantic invariants
+- [ ] Integrate with semantic invariant checker (Phase 7.1)
+- [ ] Add test cases with known constraint-removal vulnerabilities
+
+#### Exit Criteria
+- [ ] Finds underconstrained bugs by removing <=3 constraints
+- [ ] Detects >=70% of constraint-removal bugs in test suite
+- [ ] Completes within 60s timeout for circuits with <10K constraints
+
+**Impact:** Directly models real attacker strategy: "what if I remove this constraint?".
+
+### 7.4 Lookup Table Gap Analysis (P1 - Halo2/Modern Circom)
+
+**Problem:** Halo2 and recent Circom use Plookup/lookup arguments. Current `LookupConstraint` stub has no analysis engine. Missing lookup range checks are a top production bug class.
+
+**Solution:** Dedicated lookup coverage checker.
+
+#### Implementation Tasks
+- [ ] Extend `crates/zk-constraints/src/constraint_types.rs` with full lookup semantics
+- [ ] Implement lookup table extractor from circuit IR
+- [ ] Add lookup coverage analyzer:
+  - Track which values are looked up vs. which should be
+  - Detect missing range checks (value used without lookup)
+  - Detect incomplete lookup tables (gaps in range)
+- [ ] Add lookup fuzzer:
+  - Fuzz values outside lookup table range
+  - Fuzz boundary values (min/max of table)
+  - Fuzz gaps in sparse lookup tables
+- [ ] Add Halo2-specific lookup integration tests
+
+#### Exit Criteria
+- [ ] Detects missing range checks in >=80% of test cases
+- [ ] Works on Halo2 circuits with Plookup gates
+- [ ] Finds lookup table gaps in sparse tables
+
+**Impact:** Catches missing range-proof bugs in modern ZK systems.
+
+### 7.5 Reference Implementation Differential (P2 - Semantic Drift Detection)
+
+**Problem:** Current differential fuzzer compares backends, not circuit vs. specification. Output mismatch (circuit accepts what reference rejects) is a direct bug signal.
+
+**Solution:** Compare circuit against pure Rust/Python reference implementation.
+
+#### Implementation Tasks
+- [ ] Design reference implementation specification format
+  ```yaml
+  reference:
+    language: "rust"
+    path: "./reference/merkle_tree.rs"
+    function: "verify_merkle_proof"
+    input_mapping:
+      leaf: "circuit.leaf"
+      pathElements: "circuit.pathElements"
+      pathIndices: "circuit.pathIndices"
+  ```
+- [ ] Implement reference executor (Rust/Python/WASM)
+- [ ] Add differential oracle:
+  - Run same inputs through circuit and reference
+  - Flag cases where circuit accepts but reference rejects
+  - Flag cases where outputs differ
+- [ ] Add test suite with known implementation-vs-spec bugs
+
+#### Exit Criteria
+- [ ] Detects >=3 implementation drift bugs in test suite
+- [ ] Supports Rust and Python reference implementations
+- [ ] Completes differential check in <5s per test case
+
+**Impact:** Catches implementation vs. specification drift.
+
+### 7.6 Constraint Cluster Collective Enforcement (P2 - Multi-Constraint Gaps)
+
+**Problem:** Individual oracles check each constraint in isolation. Complex bugs arise when a group of constraints should collectively enforce a property but has a gap.
+
+**Solution:** Constraint cluster graph that checks whether a cluster's combined solution space matches intended property.
+
+#### Implementation Tasks
+- [ ] Extend `crates/zk-constraints/src/analysis/dependency.rs` with cluster detection
+- [ ] Implement constraint clustering algorithm:
+  - Group constraints by shared variables
+  - Identify enforcement clusters (e.g., all constraints for one Merkle level)
+  - Detect weak clusters (under-constrained variable subsets)
+- [ ] Add cluster-level oracle:
+  - Check if cluster collectively enforces expected property
+  - Detect gaps between constraints in cluster
+  - Flag clusters with high degrees of freedom
+- [ ] Add test cases with known multi-constraint gaps
+
+#### Exit Criteria
+- [ ] Detects >=60% of multi-constraint gap bugs in test suite
+- [ ] Identifies weak constraint clusters in <10s for circuits with <10K constraints
+- [ ] Zero false positives on correctly clustered constraints
+
+**Impact:** Catches bugs that arise from interactions between constraints.
+
+### 7.7 Information Leakage Oracle Enhancement (P3 - Active Distinguisher)
+
+**Problem:** Current `taint.rs` tracks flow but doesn't actively fuzz for distinguisher attacks. Need to test whether private data leaks through public outputs or proof bytes.
+
+**Solution:** Active fuzzing for distinguishable outputs.
+
+#### Implementation Tasks
+- [ ] Extend `src/fuzzer/taint.rs` with active distinguisher mode
+- [ ] Implement distinguisher fuzzer:
+  - Run circuit with different private inputs, same public inputs
+  - Check if public outputs differ (information leak)
+  - Check if proof bytes differ in distinguishable way
+  - Use statistical tests (chi-square, KS test) for subtle leaks
+- [ ] Add test cases with known information leakage bugs
+
+#### Exit Criteria
+- [ ] Detects >=70% of information leakage bugs in test suite
+- [ ] Completes distinguisher test in <30s per circuit
+- [ ] Supports statistical significance testing
+
+**Impact:** Catches privacy violations in ZK circuits.
+
+### Implementation Priority Order
+
+| Priority | Phase | Bug Class Caught | Estimated Effort |
+|----------|-------|------------------|------------------|
+| P0 | 7.1 Semantic Invariants | Protocol-level soundness | 2-3 weeks |
+| P0 | 7.2 Non-Native Field | Signature/key circuit exploits | 2 weeks |
+| P1 | 7.3 Witness Extension | Constraint removal attacks | 2 weeks |
+| P1 | 7.4 Lookup Table Gaps | Missing range-proof bugs | 1-2 weeks |
+| P2 | 7.5 Reference Differential | Implementation vs spec drift | 1 week |
+| P2 | 7.6 Constraint Clusters | Multi-constraint gaps | 2 weeks |
+| P3 | 7.7 Information Leakage | Privacy violations | 1 week |
+
+### Exit Criteria (Phase 7 Complete)
+- [ ] Semantic invariant DSL operational with >=5 real vulnerability patterns
+- [ ] Non-native field oracle detects limb overflow in signature circuits
+- [ ] Witness extension attack finds underconstrained bugs via constraint removal
+- [ ] Lookup table analyzer works on Halo2 circuits
+- [ ] Reference differential catches >=3 implementation drift bugs
+- [ ] All P0/P1 tasks complete with regression tests
+- [ ] Documentation updated with semantic analysis guide
+
+**Current Status:** 🔴 Not started. Phase 6 complete, Phase 7 is next priority.
+
+---
+
 ## 🔬 Audit Intake (2026-02-18)
 
 Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, Info=2)
@@ -716,6 +937,8 @@ gh run watch
   - [x] extract advanced runtime attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_advanced.rs`) for sidechannel/privacy/defi attack family isolation
   - [x] extract protocol/economic attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_protocol.rs`) for mev/front-running/zkevm/batch-verification family isolation
   - [x] extract lifecycle orchestration helpers + run loop into dedicated module (`src/fuzzer/engine/run_lifecycle.rs`) so `mod.rs` remains initialization-focused
+  - [x] extract startup/bootstrap orchestration into dedicated module (`src/fuzzer/engine/run_bootstrap.rs`) so run lifecycle flow is separated from pre-attack initialization
+  - [x] extract attack-dispatch execution loop into dedicated module (`src/fuzzer/engine/run_dispatch.rs`) so run lifecycle orchestration is separated from per-attack dispatch mechanics
   - [x] extract static pattern witness-selection/recording into dedicated module (`src/fuzzer/engine/run_pattern.rs`) to isolate selector/materialization flow from run orchestration
   - [x] extract report/evidence finalization into dedicated module (`src/fuzzer/engine/run_reporting.rs`) so run orchestration and reporting paths are isolated
   - [ ] split `src/fuzzer/engine/attack_runner.rs` into attack-family dispatch modules + shared execution helpers
