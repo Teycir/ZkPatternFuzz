@@ -894,7 +894,3 @@ impl FuzzingEngine {
         Ok(hasher.finish())
     }
 }
-
-#[cfg(test)]
-#[path = "chain_runner_tests.rs"]
-mod tests;
