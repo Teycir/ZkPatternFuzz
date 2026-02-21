@@ -38,12 +38,20 @@ You will see:
 
 ```text
 Gate 1/3 (expected templates): <N>
-Batch complete. Templates executed: <N>, failures: 0
+[BATCH PROGRESS] 1/<N> (...) ok=1 fail=0 ... last=<template>.yaml result=ok
+[BATCH PROGRESS] ...
+Batch complete. Templates executed: <N>, failures: 0, duration: <sec>s, avg_rate: <r>/s
 Gate 2/3 (completion line): PASS ...
 Gate 3/3 (artifact reconciliation): PASS ...
 ```
 
 If any gate fails, `zk0d_batch` exits non-zero.
+
+To suppress live progress lines (for quieter CI logs), pass:
+
+```bash
+--no-batch-progress
+```
 
 Run additional patterns:
 

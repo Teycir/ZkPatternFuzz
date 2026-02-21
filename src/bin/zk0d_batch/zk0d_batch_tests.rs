@@ -109,3 +109,23 @@ fn selector_mismatch_outcome_writer_creates_run_outcome_json() {
 
     let _ = fs::remove_dir_all(artifacts_root);
 }
+
+#[test]
+fn batch_progress_line_includes_metrics_and_last_template() {
+    let line = format_batch_progress_line(3, 10, 2, 1, 5.0, "cveX_test.yaml", false);
+    assert!(line.contains("[BATCH PROGRESS] 3/10 (30.0%)"));
+    assert!(line.contains("ok=2"));
+    assert!(line.contains("fail=1"));
+    assert!(line.contains("elapsed=5.0s"));
+    assert!(line.contains("rate=0.60/s"));
+    assert!(line.contains("eta="));
+    assert!(line.contains("last=cveX_test.yaml"));
+    assert!(line.contains("result=fail"));
+}
+
+#[test]
+fn batch_progress_line_handles_zero_total() {
+    let line = format_batch_progress_line(0, 0, 0, 0, 0.0, "none", true);
+    assert!(line.contains("[BATCH PROGRESS] 0/0 (100.0%)"));
+    assert!(line.contains("result=ok"));
+}

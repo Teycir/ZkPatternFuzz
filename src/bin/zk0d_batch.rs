@@ -6,6 +6,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
 
 const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
@@ -93,6 +96,10 @@ struct Args {
     /// Emit per-template reason codes as TSV to stdout (for external harness ingestion)
     #[arg(long, default_value_t = false)]
     emit_reason_tsv: bool,
+
+    /// Disable batch-level progress lines (enabled by default)
+    #[arg(long, default_value_t = false)]
+    no_batch_progress: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -199,6 +206,84 @@ struct ScanRunResult {
     success: bool,
     stdout: String,
     stderr: String,
+}
+
+struct BatchProgress {
+    total: usize,
+    started_at: Instant,
+    completed: AtomicUsize,
+    failed: AtomicUsize,
+}
+
+impl BatchProgress {
+    fn new(total: usize) -> Self {
+        Self {
+            total,
+            started_at: Instant::now(),
+            completed: AtomicUsize::new(0),
+            failed: AtomicUsize::new(0),
+        }
+    }
+
+    fn record(&self, template_file: &str, success: bool) -> String {
+        let completed = self.completed.fetch_add(1, Ordering::Relaxed) + 1;
+        if !success {
+            self.failed.fetch_add(1, Ordering::Relaxed);
+        }
+
+        let failed = self.failed.load(Ordering::Relaxed);
+        let succeeded = completed.saturating_sub(failed);
+        let elapsed_secs = self.started_at.elapsed().as_secs_f64();
+
+        format_batch_progress_line(
+            completed,
+            self.total,
+            succeeded,
+            failed,
+            elapsed_secs,
+            template_file,
+            success,
+        )
+    }
+}
+
+fn format_batch_progress_line(
+    completed: usize,
+    total: usize,
+    succeeded: usize,
+    failed: usize,
+    elapsed_secs: f64,
+    template_file: &str,
+    success: bool,
+) -> String {
+    let percent = if total == 0 {
+        100.0
+    } else {
+        (completed as f64 * 100.0) / total as f64
+    };
+    let elapsed = elapsed_secs.max(0.001);
+    let rate = completed as f64 / elapsed;
+    let remaining = total.saturating_sub(completed);
+    let eta_secs = if rate > 0.0 {
+        remaining as f64 / rate
+    } else {
+        0.0
+    };
+    let result = if success { "ok" } else { "fail" };
+
+    format!(
+        "[BATCH PROGRESS] {}/{} ({:.1}%) ok={} fail={} elapsed={:.1}s rate={:.2}/s eta={:.1}s last={} result={}",
+        completed,
+        total,
+        percent,
+        succeeded,
+        failed,
+        elapsed,
+        rate,
+        eta_secs,
+        template_file,
+        result
+    )
 }
 
 fn report_has_high_confidence_finding(report_path: &Path) -> bool {
@@ -1349,6 +1434,7 @@ fn main() -> anyhow::Result<()> {
         .map(|(template, family)| scan_output_suffix(template, *family))
         .collect();
     let expected_count = expected_suffixes.len();
+    let batch_started_at = Instant::now();
 
     println!("Gate 1/3 (expected templates): {}", expected_count);
 
@@ -1407,17 +1493,30 @@ fn main() -> anyhow::Result<()> {
         selected_with_family.len(),
         jobs
     );
+    println!(
+        "Batch progress indicator: {}",
+        if args.no_batch_progress {
+            "disabled"
+        } else {
+            "enabled"
+        }
+    );
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(jobs)
         .build()
         .map_err(|err| anyhow::anyhow!("Failed to build rayon thread pool: {}", err))?;
+    let progress = if args.no_batch_progress {
+        None
+    } else {
+        Some(Arc::new(BatchProgress::new(selected_with_family.len())))
+    };
 
     let outcomes = pool.install(|| {
         selected_with_family
             .par_iter()
             .map(|(template, family)| {
                 let suffix = scan_output_suffix(template, *family);
-                match run_template(
+                let ok = match run_template(
                     run_cfg,
                     template,
                     *family,
@@ -1429,17 +1528,23 @@ fn main() -> anyhow::Result<()> {
                         eprintln!("Template '{}' failed: {}", template.file_name, err);
                         false
                     }
+                };
+                if let Some(progress) = progress.as_ref() {
+                    println!("{}", progress.record(&template.file_name, ok));
                 }
+                ok
             })
             .collect::<Vec<_>>()
     });
 
     let executed = outcomes.len();
     let failures = outcomes.iter().filter(|ok| !**ok).count();
+    let duration_secs = batch_started_at.elapsed().as_secs_f64().max(0.001);
+    let avg_rate = executed as f64 / duration_secs;
 
     println!(
-        "Batch complete. Templates executed: {}, failures: {}",
-        executed, failures
+        "Batch complete. Templates executed: {}, failures: {}, duration: {:.1}s, avg_rate: {:.2}/s",
+        executed, failures, duration_secs, avg_rate
     );
     let gate2_ok = executed == expected_count && failures == 0;
     println!(

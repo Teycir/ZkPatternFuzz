@@ -48,7 +48,7 @@
 
 ### Developer Experience
 - [ ] Custom attack pattern DSL
-- [ ] Enhanced CLI reporting and progress indicators
+- [x] Enhanced CLI reporting and progress indicators
 
 ---
 
