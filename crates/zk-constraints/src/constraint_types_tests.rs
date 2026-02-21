@@ -223,6 +223,34 @@ fn test_parse_acir_json_variants() {
     assert_eq!(parsed.constraints.len(), 2);
 }
 
+#[cfg(feature = "acir-bytecode")]
+#[test]
+fn test_decode_legacy_bincode_roundtrip() {
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    struct DemoPayload {
+        a: u32,
+        b: String,
+    }
+
+    let expected = DemoPayload {
+        a: 7,
+        b: "legacy".to_string(),
+    };
+
+    let encoded = bincode::serde::encode_to_vec(&expected, bincode::config::legacy())
+        .expect("legacy bincode encoding should succeed");
+    let decoded = decode_legacy_bincode::<DemoPayload>(&encoded);
+
+    assert_eq!(decoded, Some(expected));
+}
+
+#[cfg(feature = "acir-bytecode")]
+#[test]
+fn test_decode_legacy_bincode_rejects_invalid_payload() {
+    let decoded = decode_legacy_bincode::<serde_json::Value>(&[0xFF, 0x00, 0x01]);
+    assert!(decoded.is_none());
+}
+
 #[test]
 fn test_parse_air_json() {
     let json = r#"

@@ -1857,6 +1857,16 @@ fn parse_acir_json(value: &serde_json::Value) -> ParsedConstraintSet {
 }
 
 #[cfg(feature = "acir-bytecode")]
+fn decode_legacy_bincode<T>(bytes: &[u8]) -> Option<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    bincode::serde::decode_from_slice::<T, _>(bytes, bincode::config::legacy())
+        .ok()
+        .map(|(value, _consumed)| value)
+}
+
+#[cfg(feature = "acir-bytecode")]
 fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet> {
     let bytecode = value.get("bytecode")?.as_str()?;
     let raw = match base64::engine::general_purpose::STANDARD.decode(bytecode) {
@@ -1874,9 +1884,9 @@ fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet>
         raw
     };
 
-    // Attempt to deserialize ACIR bytecode into a Program or Circuit and convert to JSON.
-    // This keeps decoding logic centralized in ACIR crates while reusing existing JSON parsing.
-    if let Ok(program) = bincode::deserialize::<acir::circuit::Program>(&bytes) {
+    // Decode ACIR payloads with bincode v2 legacy config for compatibility with
+    // existing ACIR serialization layouts while avoiding unmaintained bincode v1.
+    if let Some(program) = decode_legacy_bincode::<acir::circuit::Program>(&bytes) {
         let json = match serde_json::to_value(program) {
             Ok(json) => json,
             Err(_err) => return None,
@@ -1884,7 +1894,7 @@ fn parse_acir_bytecode(value: &serde_json::Value) -> Option<ParsedConstraintSet>
         return Some(parse_acir_json(&json));
     }
 
-    if let Ok(circuit) = bincode::deserialize::<acir::circuit::Circuit>(&bytes) {
+    if let Some(circuit) = decode_legacy_bincode::<acir::circuit::Circuit>(&bytes) {
         let json = match serde_json::to_value(circuit) {
             Ok(json) => json,
             Err(_err) => return None,

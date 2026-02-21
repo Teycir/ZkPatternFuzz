@@ -49,6 +49,9 @@ jobs:
       
       - name: Check formatting
         run: cargo fmt --all -- --check
+
+      - name: Panic surface gate
+        run: python3 scripts/check_panic_surface.py --fail-on-stale
       
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings

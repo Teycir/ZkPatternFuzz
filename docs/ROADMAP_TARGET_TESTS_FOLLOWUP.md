@@ -2,6 +2,48 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T17:21:49Z
+- Closed security hardening documentation task:
+  - added explicit threat model and trust-boundary document:
+    - `docs/SECURITY_THREAT_MODEL.md`
+  - linked threat model in roadmap documentation index section.
+- Coverage includes:
+  - system boundaries, assets, trust assumptions, threat actors
+  - threat-to-mitigation mapping for readiness/evidence/toolchain risks
+  - security invariants, residual risks, and operational controls
+
+## Update (UTC): 2026-02-21T17:20:40Z
+- Closed security hardening task for production panic-surface control:
+  - added `scripts/check_panic_surface.py` to detect `.unwrap()`/`.expect()` in production Rust paths (`src/`, `crates/`) while excluding tests/docs paths.
+  - added explicit baseline allowlist: `config/panic_surface_allowlist.txt`.
+  - wired CI enforcement in `.github/workflows/ci.yml` (`check` job, `Panic surface gate` step).
+  - added regression tests: `tests/test_check_panic_surface.py`.
+- Validation:
+  - `python3 -m unittest -q tests/test_check_panic_surface.py` -> `PASS` (3 tests)
+  - `python3 scripts/check_panic_surface.py --fail-on-stale` -> `PASS` (`matches=67`, `unknown=0`, `stale=0`)
+
+## Update (UTC): 2026-02-21T17:17:48Z
+- Closed security hardening task for ACIR serialization dependency:
+  - migrated `zk-constraints` optional ACIR decoder from unmaintained `bincode` 1.x to maintained `bincode` 2.x with serde support.
+  - updated ACIR bytecode decode path to a shared `decode_legacy_bincode(...)` helper using `bincode::config::legacy()` for compatibility.
+  - added regression tests for legacy decode roundtrip and invalid payload handling.
+- Files:
+  - `crates/zk-constraints/Cargo.toml`
+  - `crates/zk-constraints/src/constraint_types.rs`
+  - `crates/zk-constraints/src/constraint_types_tests.rs`
+- Validation:
+  - `cargo test -q -p zk-constraints --features acir-bytecode --locked --offline` -> `PASS` (29 tests)
+  - `cargo check -q --locked --offline` -> `PASS`
+
+## Update (UTC): 2026-02-21T17:11:33Z
+- Reviewed `MANUAL_CODE_REVIEW.md` and triaged only still-applicable gaps into roadmap backlog:
+  - unmaintained `bincode 1.3` in ACIR decode path
+  - production panic-surface CI gate for `.unwrap()`/`.expect()`
+  - strict sandbox mode for backend external-tool execution
+  - explicit security assumptions/threat-model documentation
+- Roadmap updates:
+  - `ROADMAP.md` -> added section `Security Hardening Follow-Up (From Manual Review)` with concrete, testable tasks.
+
 ## Update (UTC): 2026-02-21T17:07:15Z
 - Implemented strict Z3 solver compatibility matrix:
   - `scripts/build_z3_compatibility_matrix.py`

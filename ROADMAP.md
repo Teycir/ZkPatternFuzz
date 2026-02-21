@@ -523,6 +523,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - **[RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)** - Production release gate checklist
 - **[TROUBLESHOOTING_PLAYBOOK.md](docs/TROUBLESHOOTING_PLAYBOOK.md)** - Keygen/includes/locks/timeouts playbook
 - **[TRIAGE_SYSTEM.md](docs/TRIAGE_SYSTEM.md)** - Automated triage
+- **[SECURITY_THREAT_MODEL.md](docs/SECURITY_THREAT_MODEL.md)** - Security assumptions and trust boundaries
 - **[DEFI_ATTACK_GUIDE.md](docs/DEFI_ATTACK_GUIDE.md)** - MEV/front-running detection
 - **[TARGETS.md](docs/TARGETS.md)** - Target matrix and benchmark usage
 - **[ROADMAP_TARGET_TESTS.md](docs/ROADMAP_TARGET_TESTS.md)** - Breadth target checklist with per-target remarks
@@ -701,6 +702,12 @@ gh run watch
 - [x] Track `zkevm-circuits` upstream releases (`scripts/track_zkevm_releases.py`, `tests/test_track_zkevm_releases.py`)
 - [x] Evaluate `arkworks` 0.5 upgrade path (`scripts/evaluate_arkworks_upgrade_path.py`, `tests/test_evaluate_arkworks_upgrade_path.py`, `artifacts/dependency_tracking/arkworks_upgrade_path.json`)
 - [x] Build Z3 solver compatibility matrix (`scripts/build_z3_compatibility_matrix.py`, `tests/test_build_z3_compatibility_matrix.py`, `artifacts/dependency_tracking/z3_compatibility_matrix.json`)
+
+### Security Hardening Follow-Up (From Manual Review)
+- [x] Replace unmaintained `bincode 1.3` in ACIR bytecode decoding path (`crates/zk-constraints/Cargo.toml`, `crates/zk-constraints/src/constraint_types.rs`, `crates/zk-constraints/src/constraint_types_tests.rs`) with a maintained serialization strategy and regression tests
+- [x] Add CI panic-surface gate for production code to block new `.unwrap()`/`.expect()` outside tests/docs, with an explicit allowlist for proven invariants (`scripts/check_panic_surface.py`, `config/panic_surface_allowlist.txt`, `.github/workflows/ci.yml`)
+- [ ] Add strict external-tool sandbox execution mode (namespace/seccomp wrapper) for backend commands (`circom`, `snarkjs`, `nargo`, `scarb`, `cargo`) and enforce it in release readiness lanes
+- [x] Publish an explicit security assumptions and threat model document for fuzzing/evidence flows and backend toolchain trust boundaries (`docs/SECURITY_THREAT_MODEL.md`)
 
 ---
 
