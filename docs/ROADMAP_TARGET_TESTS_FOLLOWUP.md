@@ -2,6 +2,24 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T22:01:57Z
+- Continued strict production/test separation by migrating CLI selector tests out of `src/**`:
+  - removed test-only hooks/imports from:
+    - `src/main.rs`
+  - deleted in-source test file:
+    - `src/scan_selector_tests.rs`
+  - recreated selector/manifest/regex/run-doc behavior tests under:
+    - `tests/test_scan_selector_behavior.rs`
+  - new integration test imports runtime modules by path for behavior coverage without `#[cfg(test)]` in production modules.
+- Impact:
+  - `src/main.rs` no longer has `#[cfg(test)]` scan-selector wiring
+  - selector-policy and run-doc fallback behavior coverage remains in `tests/**`
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q scan_selector_default_policy_matches_any_single_pattern -- --nocapture` -> `PASS`
+  - `cargo test -q run_doc_command_extraction_defaults_to_unknown_when_missing -- --nocapture` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+
 ## Update (UTC): 2026-02-21T21:56:39Z
 - Enforced engine-scope test-placement policy (`tests/**` only) and continued attack-runner decoupling:
   - extracted shared option helpers into:
