@@ -99,6 +99,7 @@ mod attack_runner_budget;
 mod attack_runner_novel;
 mod attack_runner_numeric;
 mod attack_runner_protocol;
+mod attack_runner_runtime;
 mod attack_runner_static;
 mod chain_runner;
 mod config_helpers;
