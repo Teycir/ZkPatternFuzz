@@ -30,6 +30,8 @@ fn test_function_extraction() {
 
 #[test]
 fn test_proof_file_candidates_include_name_and_main_without_duplicates() {
+    use std::collections::HashSet;
+
     let mut target = NoirTarget::new("/tmp/noir-proof-candidates").expect("target construction");
     target.metadata = Some(NoirMetadata {
         name: "demo".to_string(),
@@ -42,18 +44,32 @@ fn test_proof_file_candidates_include_name_and_main_without_duplicates() {
     target.compiled = true;
 
     let candidates = target.proof_file_candidates();
-    assert_eq!(candidates.len(), 2);
+    let unique_len = candidates.iter().collect::<HashSet<_>>().len();
+    assert_eq!(candidates.len(), unique_len, "candidates should be deduplicated");
+
     assert!(candidates
         .iter()
         .any(|path| path.ends_with("proofs/demo.proof")));
     assert!(candidates
         .iter()
         .any(|path| path.ends_with("proofs/main.proof")));
+    assert!(candidates
+        .iter()
+        .any(|path| path.ends_with("target/proofs/demo.proof")));
+    assert!(candidates
+        .iter()
+        .any(|path| path.ends_with("target/main.proof")));
 
     target.metadata.as_mut().expect("metadata").name = "main".to_string();
     let deduped = target.proof_file_candidates();
-    assert_eq!(deduped.len(), 1);
-    assert!(deduped[0].ends_with("proofs/main.proof"));
+    let deduped_unique_len = deduped.iter().collect::<HashSet<_>>().len();
+    assert_eq!(deduped.len(), deduped_unique_len);
+    assert!(
+        deduped
+            .iter()
+            .all(|path| path.to_string_lossy().contains("main.proof")),
+        "all candidates should use main.proof when project name is main"
+    );
 }
 
 #[test]

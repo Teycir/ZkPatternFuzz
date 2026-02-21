@@ -38,6 +38,8 @@ pub struct CairoTarget {
     cairo_version: CairoVersion,
     /// Configuration
     config: CairoConfig,
+    /// Last Cairo1 execution id produced by `scarb prove --execute`.
+    cairo1_last_execution_id: Mutex<Option<String>>,
 }
 
 /// Cairo version
@@ -119,6 +121,7 @@ impl CairoTarget {
             compiled: false,
             cairo_version,
             config: CairoConfig::default(),
+            cairo1_last_execution_id: Mutex::new(None),
         })
     }
 
@@ -592,6 +595,49 @@ impl CairoTarget {
         self.parse_cairo_output(stdout)
     }
 
+    fn cairo1_arguments_json(inputs: &[FieldElement]) -> String {
+        let args: Vec<String> = inputs
+            .iter()
+            .map(|fe| format!("\"{}\"", field_element_to_decimal(fe)))
+            .collect();
+        format!("[{}]", args.join(", "))
+    }
+
+    fn parse_cairo1_execution_id(output: &str) -> Option<String> {
+        for line in output.lines() {
+            let lowered = line.to_ascii_lowercase();
+            if !lowered.contains("execution id") {
+                continue;
+            }
+
+            let candidate = line
+                .split(':')
+                .nth(1)
+                .unwrap_or(line)
+                .split_whitespace()
+                .find_map(|token| {
+                    let trimmed = token
+                        .trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
+                        .trim();
+                    if trimmed.is_empty() {
+                        return None;
+                    }
+                    let valid = trimmed
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+                    if valid {
+                        Some(trimmed.to_string())
+                    } else {
+                        None
+                    }
+                });
+            if candidate.is_some() {
+                return candidate;
+            }
+        }
+        None
+    }
+
     /// Generate STARK proof using stone-prover
     pub fn generate_stark_proof(
         &self,
@@ -742,7 +788,38 @@ impl TargetCircuit for CairoTarget {
             .expect("cairo IO lock poisoned during prove");
 
         if self.cairo_version == CairoVersion::Cairo1 {
-            anyhow::bail!("Cairo1 proving via stone-prover is not implemented");
+            let project_dir = self
+                .source_path
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
+
+            let args_json = Self::cairo1_arguments_json(witness);
+            let output = {
+                let mut cmd = Command::new("scarb");
+                cmd.args(["prove", "--execute", "--output", "standard"]);
+                if !witness.is_empty() {
+                    cmd.args(["--arguments", &args_json]);
+                }
+                cmd.current_dir(project_dir);
+                crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                    .context("Failed to run scarb prove --execute for Cairo1")?
+            };
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!("Cairo1 proof generation failed: {}", stderr);
+            }
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let execution_id = Self::parse_cairo1_execution_id(&stdout).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cairo1 proof generation succeeded but execution id was not found in scarb output"
+                )
+            })?;
+            *self
+                .cairo1_last_execution_id
+                .lock()
+                .expect("cairo1 execution id lock poisoned during prove") = Some(execution_id.clone());
+            return Ok(execution_id.into_bytes());
         }
 
         let compiled_path = self
@@ -814,6 +891,39 @@ impl TargetCircuit for CairoTarget {
         let _guard = cairo_io_lock()
             .lock()
             .expect("cairo IO lock poisoned during verify");
+
+        if self.cairo_version == CairoVersion::Cairo1 {
+            let project_dir = self
+                .source_path
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
+
+            let execution_id_from_proof = std::str::from_utf8(proof)
+                .ok()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string);
+            let execution_id = execution_id_from_proof.or_else(|| {
+                self.cairo1_last_execution_id
+                    .lock()
+                    .expect("cairo1 execution id lock poisoned during verify")
+                    .clone()
+            });
+            let execution_id = execution_id.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cairo1 verify requires an execution id from prove output; got empty proof payload"
+                )
+            })?;
+
+            let output = {
+                let mut cmd = Command::new("scarb");
+                cmd.args(["verify", "--execution-id", &execution_id])
+                    .current_dir(project_dir);
+                crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
+                    .context("Failed to run scarb verify for Cairo1")?
+            };
+            return Ok(output.status.success());
+        }
 
         let temp_dir = tempfile::Builder::new()
             .prefix("zkfuzz_cairo_verify_")

@@ -32,3 +32,43 @@ fn test_nargo_missing_subcommand_message_detection() {
         "prove"
     ));
 }
+
+#[test]
+fn test_barretenberg_missing_tool_message_detection() {
+    assert!(barretenberg_missing_tool_message(
+        "",
+        "bb: command not found"
+    ));
+    assert!(barretenberg_missing_tool_message(
+        "",
+        "error: failed to execute /usr/local/bin/bb: No such file or directory"
+    ));
+    assert!(!barretenberg_missing_tool_message(
+        "",
+        "error: verification failed due to invalid proof"
+    ));
+}
+
+#[test]
+fn test_noir_proof_candidates_include_project_name_and_common_locations() {
+    let temp_dir = TempDir::new().unwrap();
+    std::fs::write(
+        temp_dir.path().join("Nargo.toml"),
+        "[package]\nname = \"demo\"\ntype = \"bin\"\nauthors = [\"\"]\n\n[dependencies]\n",
+    )
+    .unwrap();
+
+    let candidates = noir_proof_candidates(temp_dir.path());
+    assert!(candidates
+        .iter()
+        .any(|path| path.ends_with("proofs/noir.proof")));
+    assert!(candidates
+        .iter()
+        .any(|path| path.ends_with("proofs/main.proof")));
+    assert!(candidates
+        .iter()
+        .any(|path| path.ends_with("proofs/demo.proof")));
+    assert!(candidates
+        .iter()
+        .any(|path| path.ends_with("target/proofs/demo.proof")));
+}

@@ -676,6 +676,25 @@ gh run watch
 
 ---
 
+## 📌 Remaining Backlog
+
+### Non-Circom Backend Production Parity (Priority Order: Noir -> Cairo -> Halo2)
+- [x] Noir: enforce local real-circuit prove/verify smoke gate (`test_noir_local_prove_verify_smoke`, wired in `scripts/run_noir_readiness.sh`)
+- [x] Noir: barretenberg integration hardening for external `bb`-coupled projects (explicit `bb`-missing diagnostics + robust proof artifact path resolution in evidence flow)
+- [x] Cairo: enforce real-circuit proving support for local Cairo0 fixture (`test_cairo_stone_prover_prove_verify_smoke`)
+- [x] Cairo: enforce Stone prover integration gate in readiness lane (`scripts/run_cairo_readiness.sh`)
+- [x] Cairo: Cairo1 proof/verify pipeline via `scarb prove --execute` + `scarb verify --execution-id` (strict execution-id tracking)
+- [x] Halo2: mock to real-circuit execution promotion in release lanes (release workflow now installs Noir/Cairo toolchains and runs unskipped backend readiness lanes with dashboard enforcement)
+- [ ] Halo2: production circuit integration breadth/throughput uplift
+
+### Product Surface And Ecosystem Tracking
+- [x] Custom attack pattern DSL (`docs/ATTACK_DSL_SPEC.md`)
+- [ ] Track `zkevm-circuits` upstream releases
+- [ ] Evaluate `arkworks` 0.5 upgrade path
+- [ ] Build Z3 solver compatibility matrix
+
+---
+
 ## 📝 Notes
 
 - All implementation tasks for Phases 0-5 are complete; Phase 6 is now the active execution roadmap

@@ -1054,6 +1054,57 @@ fn test_noir_integration() {
     assert_eq!(outputs.first(), Some(&FieldElement::from_u64(15)));
 }
 
+/// Local prove/verify smoke for Noir real-circuit readiness.
+#[test]
+fn test_noir_local_prove_verify_smoke() {
+    if !require_real_backends("test_noir_local_prove_verify_smoke") {
+        return;
+    }
+    NoirTarget::check_nargo_available()
+        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+
+    let project_path = noir_project_path("multiplier");
+    assert!(
+        project_path.exists(),
+        "Missing Noir project at {:?}",
+        project_path
+    );
+
+    let mut target =
+        NoirTarget::new(project_path.to_str().unwrap()).expect("Failed to create NoirTarget");
+    target.compile().expect("Noir compilation failed");
+
+    let witness = vec![FieldElement::from_u64(3), FieldElement::from_u64(5)];
+    let outputs = match expect_or_skip_infra(
+        "test_noir_local_prove_verify_smoke",
+        "Noir execute",
+        target.execute(&witness),
+    ) {
+        Some(outputs) => outputs,
+        None => return,
+    };
+    assert_eq!(outputs.first(), Some(&FieldElement::from_u64(15)));
+
+    let proof = match expect_or_skip_infra(
+        "test_noir_local_prove_verify_smoke",
+        "Noir proof generation",
+        target.prove(&witness),
+    ) {
+        Some(proof) => proof,
+        None => return,
+    };
+
+    let verified = match expect_or_skip_infra(
+        "test_noir_local_prove_verify_smoke",
+        "Noir proof verification",
+        target.verify(&proof, &outputs),
+    ) {
+        Some(verified) => verified,
+        None => return,
+    };
+    assert!(verified, "Noir proof verification returned false");
+}
+
 /// Integration test for ExecutorFactory using real backends
 #[test]
 fn test_executor_factory_real_backends() {
@@ -1517,6 +1568,64 @@ fn test_cairo_integration() {
 
     let outputs = target.execute(&[]).expect("Cairo execution failed");
     assert_eq!(outputs.first(), Some(&FieldElement::from_u64(12)));
+}
+
+/// Local stone-prover smoke for Cairo real-circuit readiness.
+#[test]
+fn test_cairo_stone_prover_prove_verify_smoke() {
+    if !require_real_backends("test_cairo_stone_prover_prove_verify_smoke") {
+        return;
+    }
+    CairoTarget::check_cairo_available()
+        .expect("Cairo not available. Ensure cairo-compile and cairo-run are on PATH");
+    let _stone_version = match expect_or_skip_infra(
+        "test_cairo_stone_prover_prove_verify_smoke",
+        "stone-prover availability",
+        CairoTarget::check_stone_prover_available(),
+    ) {
+        Some(version) => version,
+        None => return,
+    };
+
+    let program_path = cairo_program_path("multiplier");
+    assert!(
+        program_path.exists(),
+        "Missing Cairo program at {:?}",
+        program_path
+    );
+
+    let mut target =
+        CairoTarget::new(program_path.to_str().unwrap()).expect("Failed to create CairoTarget");
+    target.compile().expect("Cairo compilation failed");
+
+    let witness = Vec::new();
+    let outputs = match expect_or_skip_infra(
+        "test_cairo_stone_prover_prove_verify_smoke",
+        "Cairo execute",
+        target.execute(&witness),
+    ) {
+        Some(outputs) => outputs,
+        None => return,
+    };
+    assert_eq!(outputs.first(), Some(&FieldElement::from_u64(12)));
+
+    let proof = match expect_or_skip_infra(
+        "test_cairo_stone_prover_prove_verify_smoke",
+        "Cairo proof generation",
+        target.prove(&witness),
+    ) {
+        Some(proof) => proof,
+        None => return,
+    };
+    let verified = match expect_or_skip_infra(
+        "test_cairo_stone_prover_prove_verify_smoke",
+        "Cairo proof verification",
+        target.verify(&proof, &outputs),
+    ) {
+        Some(verified) => verified,
+        None => return,
+    };
+    assert!(verified, "Cairo proof verification returned false");
 }
 
 /// Full-capacity Cairo regression suite with deterministic execution parity and stability checks.

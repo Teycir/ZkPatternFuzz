@@ -68,3 +68,4 @@ node_modules/
 /bin/
 bins/
 **/.z3-trace
+.opencode

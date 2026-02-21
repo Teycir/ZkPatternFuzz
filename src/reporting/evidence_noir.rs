@@ -15,7 +15,9 @@
 //! ```
 
 use super::evidence::VerificationResult;
+use std::collections::HashSet;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 use zk_core::Finding;
@@ -56,6 +58,59 @@ fn ensure_nargo_subcommand(project_path: &Path, subcommand: &str) -> anyhow::Res
         stdout.trim(),
         stderr.trim()
     )
+}
+
+fn barretenberg_missing_tool_message(stdout: &str, stderr: &str) -> bool {
+    let combined = format!("{stdout}\n{stderr}").to_ascii_lowercase();
+    combined.contains("bb: command not found")
+        || combined.contains("bb.exe: command not found")
+        || combined.contains("no such file or directory")
+            && (combined.contains(" bb")
+                || combined.contains("/bb")
+                || combined.contains("\\bb")
+                || combined.contains("barretenberg"))
+        || combined.contains("barretenberg")
+            && (combined.contains("not found") || combined.contains("missing"))
+}
+
+fn parse_project_name_from_nargo_toml(project_path: &Path) -> Option<String> {
+    let nargo_toml = project_path.join("Nargo.toml");
+    let content = std::fs::read_to_string(nargo_toml).ok()?;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("name") {
+            continue;
+        }
+        let value = trimmed.split('=').nth(1)?.trim().trim_matches('"');
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn noir_proof_candidates(project_path: &Path) -> Vec<PathBuf> {
+    let mut stems = vec!["noir".to_string(), "main".to_string()];
+    if let Some(name) = parse_project_name_from_nargo_toml(project_path) {
+        stems.push(name);
+    }
+
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    let dirs = vec![
+        project_path.join("proofs"),
+        project_path.join("target").join("proofs"),
+        project_path.join("target"),
+    ];
+    for dir in dirs {
+        for stem in &stems {
+            let path = dir.join(format!("{stem}.proof"));
+            if seen.insert(path.clone()) {
+                candidates.push(path);
+            }
+        }
+    }
+    candidates
 }
 
 /// Generate Noir proof for a finding
@@ -120,7 +175,17 @@ pub fn generate_noir_proof(
 
     match prove_result {
         Ok(output) if !output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
+            if barretenberg_missing_tool_message(&stdout, &stderr) {
+                return Ok((
+                    proof_path,
+                    VerificationResult::Failed(
+                        "proof generation failed: missing Barretenberg 'bb' tool required by this Noir project. Install bb and ensure it is on PATH."
+                            .to_string(),
+                    ),
+                ));
+            }
             tracing::warn!("Noir proof generation failed: {}", stderr);
             return Ok((
                 proof_path,
@@ -136,10 +201,29 @@ pub fn generate_noir_proof(
         }
     }
 
-    // Copy proof to finding directory
-    let noir_proof = project_path.join("proofs").join("noir.proof");
-    if noir_proof.exists() {
-        std::fs::copy(&noir_proof, &proof_path)?;
+    // Copy proof to finding directory from known Noir/Barretenberg layouts.
+    let candidates = noir_proof_candidates(project_path);
+    let mut copied = false;
+    for candidate in &candidates {
+        if candidate.exists() {
+            std::fs::copy(candidate, &proof_path)?;
+            copied = true;
+            break;
+        }
+    }
+    if !copied {
+        let searched = candidates
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Ok((
+            proof_path,
+            VerificationResult::Failed(format!(
+                "proof generation succeeded but no proof artifact was found; searched: {}",
+                searched
+            )),
+        ));
     }
 
     // Step 4: Verify proof
@@ -156,7 +240,17 @@ pub fn generate_noir_proof(
             Ok((proof_path, VerificationResult::Passed))
         }
         Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
+            if barretenberg_missing_tool_message(&stdout, &stderr) {
+                return Ok((
+                    proof_path,
+                    VerificationResult::Failed(
+                        "verification failed: missing Barretenberg 'bb' tool required by this Noir project. Install bb and ensure it is on PATH."
+                            .to_string(),
+                    ),
+                ));
+            }
             tracing::info!("Noir proof verification failed: {}", stderr);
             Ok((
                 proof_path,

@@ -2,6 +2,86 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T16:40:01Z
+- Implemented Cairo1 prove/verify pipeline in backend target:
+  - `crates/zk-backends/src/cairo/mod.rs`
+    - replaced Cairo1 hard-fail in `prove()` with `scarb prove --execute` flow.
+    - added strict execution-id extraction from prove output and persistence for same-target verify calls.
+    - wired Cairo1 `verify()` to `scarb verify --execution-id <id>`.
+    - added deterministic Cairo1 argument JSON helper used by prove flow.
+  - `crates/zk-backends/src/cairo/mod_tests.rs`
+    - added `test_parse_cairo1_execution_id_from_output`
+    - added `test_parse_cairo1_execution_id_missing_returns_none`
+    - added `test_cairo1_arguments_json_serialization`
+- Validation:
+  - `cargo test -q -p zk-backends cairo::tests:: -- --nocapture` -> `PASS` (5/5)
+  - `ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo_stone_prover_prove_verify_smoke -- --exact` -> `PASS`
+
+## Update (UTC): 2026-02-21T16:35:52Z
+- Promoted non-Circom readiness from skip-tolerant to enforced in release workflow:
+  - `.github/workflows/release_validation.yml`
+    - removed `continue-on-error` on `Run backend readiness lanes`.
+    - removed all backend-integration skip flags from readiness-lane invocation.
+    - enabled dashboard enforcement in that step via `--enforce-dashboard`.
+    - added explicit Noir toolchain bootstrap (`noirup`, `nargo --version`).
+    - added explicit Cairo toolchain bootstrap (Scarb install + `scarb cairo-run --version`).
+- Validation:
+  - `ruby -ryaml -e "YAML.load_file('.github/workflows/release_validation.yml'); puts 'workflow yaml: ok'"` -> `PASS`
+  - workflow grep checks confirm:
+    - no remaining `continue-on-error` for backend readiness lane
+    - no `--skip-*` backend readiness flags in release workflow
+    - readiness lane now runs with `--enforce-dashboard`
+
+## Update (UTC): 2026-02-21T16:33:56Z
+- Hardened Noir Barretenberg-coupled evidence flow without reintroducing fallback execution:
+  - `src/reporting/evidence_noir.rs`
+    - added explicit `bb`-missing diagnostics (`barretenberg_missing_tool_message`) for `nargo prove` / `nargo verify` failures.
+    - replaced single-path proof copy (`proofs/noir.proof`) with strict multi-candidate lookup across common Noir layouts:
+      - `proofs/{noir,main,<project_name>}.proof`
+      - `target/proofs/{noir,main,<project_name>}.proof`
+      - `target/{noir,main,<project_name>}.proof`
+    - now hard-fails evidence generation when prove succeeds but no proof artifact exists in known paths.
+  - `src/reporting/evidence_noir_tests.rs`
+    - added `test_barretenberg_missing_tool_message_detection`
+    - added `test_noir_proof_candidates_include_project_name_and_common_locations`
+- Validation:
+  - `cargo test -q --lib reporting::evidence_noir::tests::test_barretenberg_missing_tool_message_detection -- --exact` -> `PASS`
+  - `cargo test -q --lib reporting::evidence_noir::tests::test_noir_proof_candidates_include_project_name_and_common_locations -- --exact` -> `PASS`
+  - `cargo test -q --lib reporting::evidence_noir::tests::test_convert_witness_to_prover_toml -- --exact` -> `PASS`
+  - `ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_local_prove_verify_smoke -- --exact` -> `PASS`
+
+## Update (UTC): 2026-02-21T16:25:12Z
+- Strengthened Noir prove/verify operability for real-circuit runs:
+  - `crates/zk-backends/src/noir/mod.rs`
+    - expanded proof artifact lookup to cover known modern `nargo` output roots:
+      - `proofs/`
+      - `target/proofs/`
+      - configured `build_dir/proofs/`
+      - `target/`
+      - configured `build_dir/`
+    - improved missing-proof diagnostics to include all searched paths.
+  - `crates/zk-backends/src/noir/mod_tests.rs`
+    - updated regression test coverage for expanded/deduplicated proof candidates.
+- Added dedicated local prove/verify readiness gates:
+  - `tests/backend_integration_tests.rs`
+    - new `test_noir_local_prove_verify_smoke`
+    - new `test_cairo_stone_prover_prove_verify_smoke`
+  - `scripts/run_noir_readiness.sh`
+    - now runs `test_noir_local_prove_verify_smoke` by default
+    - added `--skip-local-prove-verify-test`
+  - `scripts/run_cairo_readiness.sh`
+    - now runs `test_cairo_stone_prover_prove_verify_smoke` by default
+    - added `--skip-stone-prover-test`
+- Validation:
+  - `bash -n scripts/run_noir_readiness.sh scripts/run_cairo_readiness.sh` -> `PASS`
+  - `cargo test -q -p zk-backends noir::tests::test_proof_file_candidates_include_name_and_main_without_duplicates -- --exact` -> `PASS`
+  - `ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_local_prove_verify_smoke -- --exact` -> `PASS`
+  - `ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo_stone_prover_prove_verify_smoke -- --exact` -> `PASS`
+  - `scripts/run_noir_readiness.sh --iterations 1 --timeout 8 --workers 1 --batch-jobs 1 --no-build-if-missing --skip-integration-test --skip-constraint-coverage-test --skip-constraint-edge-cases-test --skip-external-smoke-test --skip-external-parity-test` -> `PASS`
+    - report: `artifacts/backend_readiness/noir/latest_report.json` (`generated_utc=2026-02-21T16:27:10Z`, `test_noir_local_prove_verify_smoke=pass`)
+  - `scripts/run_cairo_readiness.sh --iterations 1 --timeout 8 --workers 1 --batch-jobs 1 --no-build-if-missing --skip-integration-test --skip-regression-test` -> `PASS`
+    - report: `artifacts/backend_readiness/cairo/latest_report.json` (`generated_utc=2026-02-21T16:27:16Z`, `test_cairo_stone_prover_prove_verify_smoke=pass`)
+
 ## Update (UTC): 2026-02-21T14:54:38Z
 - Executed heavy non-Circom readiness lanes under release-grade profile and enforced dashboard gate:
   - `scripts/run_backend_readiness_lanes.sh --iterations 120 --timeout 45 --workers 2 --batch-jobs 1 --required-backends noir,cairo,halo2 --enforce-dashboard --no-build-if-missing` -> `PASS`

@@ -9,6 +9,7 @@ Run these in order:
 ```bash
 nargo --version
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_integration -- --exact
+ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_local_prove_verify_smoke -- --exact
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_constraint_coverage -- --exact
 scripts/run_noir_readiness.sh --workers 2 --iterations 100 --timeout 20
 ```
@@ -28,6 +29,7 @@ cat artifacts/backend_readiness/noir/latest_report.json
 | `run_outcome_missing` | Early process abort or artifact write interruption | Re-run with `--emit-reason-tsv`, inspect matrix log |
 | `runtime_error` | Executor path failure, often dependency/layout mismatch | Check lane logs and reproduce with a single target run |
 | Integration test fails but matrix runs | Real-backend env/test setup mismatch | Re-run with `ZKFUZZ_REAL_BACKENDS=1` and inspect per-test log from lane output |
+| `proof generation failed: missing Barretenberg 'bb' tool` | Project/toolchain expects external `bb` binary but it is unavailable | Install matching Barretenberg and ensure `bb` is on `PATH` |
 
 ## 3. Target Path Rules (Noir)
 

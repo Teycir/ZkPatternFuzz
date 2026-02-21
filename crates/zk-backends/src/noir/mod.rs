@@ -261,13 +261,29 @@ impl NoirTarget {
     }
 
     fn proof_file_candidates(&self) -> Vec<PathBuf> {
-        let proof_dir = self.active_project_path().join("proofs");
         let mut candidates = Vec::new();
         let mut seen = HashSet::new();
-        for stem in [self.name().to_string(), "main".to_string()] {
-            let candidate = proof_dir.join(format!("{}.proof", stem));
-            if seen.insert(candidate.clone()) {
-                candidates.push(candidate);
+        let mut stems = vec![self.name().to_string()];
+        if self.name() != "main" {
+            stems.push("main".to_string());
+        }
+
+        // Noir CLI output locations vary across versions and workspace layouts.
+        // Keep the lookup strict, but cover known artifact roots.
+        let dirs = vec![
+            self.active_project_path().join("proofs"),
+            self.active_project_path().join("target").join("proofs"),
+            self.build_dir.join("proofs"),
+            self.active_project_path().join("target"),
+            self.build_dir.clone(),
+        ];
+
+        for dir in dirs {
+            for stem in &stems {
+                let candidate = dir.join(format!("{stem}.proof"));
+                if seen.insert(candidate.clone()) {
+                    candidates.push(candidate);
+                }
             }
         }
         candidates
@@ -1050,12 +1066,21 @@ impl TargetCircuit for NoirTarget {
         }
 
         // Read generated proof from known nargo output locations.
-        for proof_path in self.proof_file_candidates() {
+        let proof_candidates = self.proof_file_candidates();
+        for proof_path in &proof_candidates {
             if proof_path.exists() {
-                return Ok(std::fs::read(&proof_path)?);
+                return Ok(std::fs::read(proof_path)?);
             }
         }
-        anyhow::bail!("Proof file not found")
+        let searched_paths = proof_candidates
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::bail!(
+            "Proof file not found after successful nargo prove; searched: {}",
+            searched_paths
+        )
     }
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {

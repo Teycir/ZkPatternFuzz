@@ -19,6 +19,7 @@ Options:
   --timeout <sec>                     Timeout per scan in seconds (default: 30)
   --output-dir <path>                 Output directory (default: artifacts/backend_readiness/noir)
   --skip-integration-test             Skip test_noir_integration
+  --skip-local-prove-verify-test      Skip test_noir_local_prove_verify_smoke
   --skip-constraint-coverage-test     Skip test_noir_constraint_coverage
   --skip-constraint-edge-cases-test   Skip test_noir_constraint_coverage_edge_cases
   --skip-external-smoke-test          Skip test_noir_external_nargo_prove_verify_smoke
@@ -37,6 +38,7 @@ ITERATIONS=250
 TIMEOUT=30
 OUTPUT_DIR="artifacts/backend_readiness/noir"
 SKIP_INTEGRATION_TEST=false
+SKIP_LOCAL_PROVE_VERIFY_TEST=false
 SKIP_CONSTRAINT_COVERAGE_TEST=false
 SKIP_CONSTRAINT_EDGE_CASES_TEST=false
 SKIP_EXTERNAL_SMOKE_TEST=false
@@ -54,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --skip-integration-test) SKIP_INTEGRATION_TEST=true; shift ;;
+    --skip-local-prove-verify-test) SKIP_LOCAL_PROVE_VERIFY_TEST=true; shift ;;
     --skip-constraint-coverage-test) SKIP_CONSTRAINT_COVERAGE_TEST=true; shift ;;
     --skip-constraint-edge-cases-test) SKIP_CONSTRAINT_EDGE_CASES_TEST=true; shift ;;
     --skip-external-smoke-test) SKIP_EXTERNAL_SMOKE_TEST=true; shift ;;
@@ -94,6 +97,7 @@ mkdir -p "$READINESS_BUILD_CACHE_DIR"
 
 STAMP="$(date -u +"%Y%m%d_%H%M%S")"
 INTEGRATION_LOG="$OUTPUT_DIR/integration_${STAMP}.log"
+LOCAL_PROVE_VERIFY_LOG="$OUTPUT_DIR/local_prove_verify_${STAMP}.log"
 CONSTRAINT_COVERAGE_LOG="$OUTPUT_DIR/constraint_coverage_${STAMP}.log"
 CONSTRAINT_EDGE_CASES_LOG="$OUTPUT_DIR/constraint_edge_cases_${STAMP}.log"
 EXTERNAL_SMOKE_LOG="$OUTPUT_DIR/external_smoke_${STAMP}.log"
@@ -114,6 +118,21 @@ if ! $SKIP_INTEGRATION_TEST; then
     INTEGRATION_STATUS="pass"
   else
     INTEGRATION_STATUS="fail"
+  fi
+fi
+
+LOCAL_PROVE_VERIFY_EXIT=0
+LOCAL_PROVE_VERIFY_STATUS="skipped"
+if ! $SKIP_LOCAL_PROVE_VERIFY_TEST; then
+  set +e
+  ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_local_prove_verify_smoke -- --exact \
+    >"$LOCAL_PROVE_VERIFY_LOG" 2>&1
+  LOCAL_PROVE_VERIFY_EXIT=$?
+  set -e
+  if [[ "$LOCAL_PROVE_VERIFY_EXIT" -eq 0 ]]; then
+    LOCAL_PROVE_VERIFY_STATUS="pass"
+  else
+    LOCAL_PROVE_VERIFY_STATUS="fail"
   fi
 fi
 
@@ -301,6 +320,12 @@ cat > "$LATEST_JSON" <<EOF
       "log": "$INTEGRATION_LOG"
     },
     {
+      "name": "test_noir_local_prove_verify_smoke",
+      "status": "$LOCAL_PROVE_VERIFY_STATUS",
+      "exit_code": $LOCAL_PROVE_VERIFY_EXIT,
+      "log": "$LOCAL_PROVE_VERIFY_LOG"
+    },
+    {
       "name": "test_noir_constraint_coverage",
       "status": "$CONSTRAINT_COVERAGE_STATUS",
       "exit_code": $CONSTRAINT_COVERAGE_EXIT,
@@ -329,7 +354,7 @@ cat > "$LATEST_JSON" <<EOF
 EOF
 
 echo "Noir readiness report: $LATEST_JSON"
-if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 || "$CONSTRAINT_COVERAGE_EXIT" -ne 0 || "$CONSTRAINT_EDGE_CASES_EXIT" -ne 0 || "$EXTERNAL_SMOKE_EXIT" -ne 0 || "$EXTERNAL_PARITY_EXIT" -ne 0 ]]; then
+if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 || "$LOCAL_PROVE_VERIFY_EXIT" -ne 0 || "$CONSTRAINT_COVERAGE_EXIT" -ne 0 || "$CONSTRAINT_EDGE_CASES_EXIT" -ne 0 || "$EXTERNAL_SMOKE_EXIT" -ne 0 || "$EXTERNAL_PARITY_EXIT" -ne 0 ]]; then
   exit 1
 fi
 

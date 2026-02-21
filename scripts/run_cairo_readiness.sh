@@ -19,6 +19,7 @@ Options:
   --timeout <sec>          Timeout per scan in seconds (default: 30)
   --output-dir <path>      Output directory (default: artifacts/backend_readiness/cairo)
   --skip-integration-test  Skip test_cairo_integration
+  --skip-stone-prover-test Skip test_cairo_stone_prover_prove_verify_smoke
   --skip-regression-test   Skip test_cairo_full_capacity_regression_suite
   --no-build-if-missing    Do not build zk0d_batch when missing
   -h, --help               Show this help
@@ -34,6 +35,7 @@ ITERATIONS=250
 TIMEOUT=30
 OUTPUT_DIR="artifacts/backend_readiness/cairo"
 SKIP_INTEGRATION_TEST=false
+SKIP_STONE_PROVER_TEST=false
 SKIP_REGRESSION_TEST=false
 BUILD_IF_MISSING=true
 
@@ -48,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --skip-integration-test) SKIP_INTEGRATION_TEST=true; shift ;;
+    --skip-stone-prover-test) SKIP_STONE_PROVER_TEST=true; shift ;;
     --skip-regression-test) SKIP_REGRESSION_TEST=true; shift ;;
     --no-build-if-missing) BUILD_IF_MISSING=false; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -85,6 +88,7 @@ mkdir -p "$READINESS_BUILD_CACHE_DIR"
 
 STAMP="$(date -u +"%Y%m%d_%H%M%S")"
 INTEGRATION_LOG="$OUTPUT_DIR/integration_${STAMP}.log"
+STONE_PROVER_LOG="$OUTPUT_DIR/stone_prover_${STAMP}.log"
 REGRESSION_LOG="$OUTPUT_DIR/regression_${STAMP}.log"
 MATRIX_LOG="$OUTPUT_DIR/matrix_${STAMP}.log"
 SUMMARY_TSV="$OUTPUT_DIR/summary_${STAMP}.tsv"
@@ -102,6 +106,21 @@ if ! $SKIP_INTEGRATION_TEST; then
     INTEGRATION_STATUS="pass"
   else
     INTEGRATION_STATUS="fail"
+  fi
+fi
+
+STONE_PROVER_EXIT=0
+STONE_PROVER_STATUS="skipped"
+if ! $SKIP_STONE_PROVER_TEST; then
+  set +e
+  ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo_stone_prover_prove_verify_smoke -- --exact \
+    >"$STONE_PROVER_LOG" 2>&1
+  STONE_PROVER_EXIT=$?
+  set -e
+  if [[ "$STONE_PROVER_EXIT" -eq 0 ]]; then
+    STONE_PROVER_STATUS="pass"
+  else
+    STONE_PROVER_STATUS="fail"
   fi
 fi
 
@@ -244,6 +263,12 @@ cat > "$LATEST_JSON" <<EOF
       "log": "$INTEGRATION_LOG"
     },
     {
+      "name": "test_cairo_stone_prover_prove_verify_smoke",
+      "status": "$STONE_PROVER_STATUS",
+      "exit_code": $STONE_PROVER_EXIT,
+      "log": "$STONE_PROVER_LOG"
+    },
+    {
       "name": "test_cairo_full_capacity_regression_suite",
       "status": "$REGRESSION_STATUS",
       "exit_code": $REGRESSION_EXIT,
@@ -254,7 +279,7 @@ cat > "$LATEST_JSON" <<EOF
 EOF
 
 echo "Cairo readiness report: $LATEST_JSON"
-if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 || "$REGRESSION_EXIT" -ne 0 ]]; then
+if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 || "$STONE_PROVER_EXIT" -ne 0 || "$REGRESSION_EXIT" -ne 0 ]]; then
   exit 1
 fi
 
