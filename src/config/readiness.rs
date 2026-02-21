@@ -222,9 +222,7 @@ impl ReadinessReport {
 }
 
 fn normalize_attack_name(name: &str) -> String {
-    name.trim()
-        .to_ascii_lowercase()
-        .replace(['-', ' '], "_")
+    name.trim().to_ascii_lowercase().replace(['-', ' '], "_")
 }
 
 fn canonical_attack_key_from_name(name: &str) -> Option<&'static str> {
@@ -298,7 +296,9 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
                 "Backend",
                 "strict_backend=false is unsupported: backend/tooling checks are always strict",
             )
-            .with_fix("Remove strict_backend (or set strict_backend: true for legacy compatibility)"),
+            .with_fix(
+                "Remove strict_backend (or set strict_backend: true for legacy compatibility)",
+            ),
         );
     }
 

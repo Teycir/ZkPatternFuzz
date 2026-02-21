@@ -1407,9 +1407,7 @@ impl CveOracle {
     }
 
     fn normalize_route_key(raw: &str) -> String {
-        raw.trim()
-            .to_ascii_lowercase()
-            .replace(['-', ' '], "_")
+        raw.trim().to_ascii_lowercase().replace(['-', ' '], "_")
     }
 
     fn route_pattern_key(

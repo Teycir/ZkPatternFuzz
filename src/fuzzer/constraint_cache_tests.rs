@@ -67,7 +67,9 @@ fn test_cache_batch() {
             ConstraintEvalResult::Violated,
         ),
     ];
-    cache.insert_batch(entries).expect("batch insert should succeed");
+    cache
+        .insert_batch(entries)
+        .expect("batch insert should succeed");
 
     // Get batch
     let queries = vec![

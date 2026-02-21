@@ -89,7 +89,9 @@ fn noir_external_nargo_projects() -> Vec<(&'static str, PathBuf)> {
     vec![
         (
             "aztec_hello_circuit",
-            base.join("cat3_privacy/aztec-packages/docs/examples/circuits/hello_circuit/Nargo.toml"),
+            base.join(
+                "cat3_privacy/aztec-packages/docs/examples/circuits/hello_circuit/Nargo.toml",
+            ),
         ),
         (
             "barretenberg_fixture_main",
@@ -113,7 +115,11 @@ fn noir_input_candidates(input_count: usize) -> Vec<Vec<FieldElement>> {
             .map(|idx| FieldElement::from_u64((idx as u64) + 1))
             .collect(),
     );
-    cases.push((0..input_count).map(|_| FieldElement::from_u64(3)).collect());
+    cases.push(
+        (0..input_count)
+            .map(|_| FieldElement::from_u64(3))
+            .collect(),
+    );
     cases.push(
         (0..input_count)
             .map(|idx| FieldElement::from_u64(((idx as u64) + 1) * 5))
@@ -122,7 +128,10 @@ fn noir_input_candidates(input_count: usize) -> Vec<Vec<FieldElement>> {
     cases
 }
 
-fn run_noir_external_prove_verify_smoke(name: &str, nargo_toml_path: &std::path::Path) -> MatrixStatus {
+fn run_noir_external_prove_verify_smoke(
+    name: &str,
+    nargo_toml_path: &std::path::Path,
+) -> MatrixStatus {
     if !nargo_toml_path.exists() {
         return MatrixStatus::SkipInfra(format!(
             "external Noir project missing: {}",
@@ -252,7 +261,11 @@ fn cairo_input_candidates(input_count: usize) -> Vec<Vec<FieldElement>> {
             .map(|idx| FieldElement::from_u64((idx as u64) + 1))
             .collect(),
     );
-    cases.push((0..input_count).map(|_| FieldElement::from_u64(5)).collect());
+    cases.push(
+        (0..input_count)
+            .map(|_| FieldElement::from_u64(5))
+            .collect(),
+    );
     cases
 }
 
@@ -1396,7 +1409,10 @@ fn test_halo2_scaffold_execution_stability() {
                     return;
                 }
                 MatrixStatus::Fail(reason) => {
-                    panic!("First Halo2 run failed for fixture {:?}: {}", fixture, reason)
+                    panic!(
+                        "First Halo2 run failed for fixture {:?}: {}",
+                        fixture, reason
+                    )
                 }
                 MatrixStatus::Pass => {
                     unreachable!("classify_error never returns MatrixStatus::Pass")
@@ -1420,7 +1436,10 @@ fn test_halo2_scaffold_execution_stability() {
                     return;
                 }
                 MatrixStatus::Fail(reason) => {
-                    panic!("Second Halo2 run failed for fixture {:?}: {}", fixture, reason)
+                    panic!(
+                        "Second Halo2 run failed for fixture {:?}: {}",
+                        fixture, reason
+                    )
                 }
                 MatrixStatus::Pass => {
                     unreachable!("classify_error never returns MatrixStatus::Pass")
@@ -1541,7 +1560,10 @@ fn test_cairo_full_capacity_regression_suite() {
     }
 
     if !failures.is_empty() {
-        panic!("Cairo full-capacity regression failures:\n{}", failures.join("\n"));
+        panic!(
+            "Cairo full-capacity regression failures:\n{}",
+            failures.join("\n")
+        );
     }
 }
 

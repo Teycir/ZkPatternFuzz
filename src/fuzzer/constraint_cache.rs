@@ -41,10 +41,7 @@ struct CacheEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConstraintCacheInsertError {
     /// Batch exceeds total cache capacity and cannot be inserted safely.
-    BatchExceedsCapacity {
-        batch_size: usize,
-        max_size: usize,
-    },
+    BatchExceedsCapacity { batch_size: usize, max_size: usize },
 }
 
 /// Thread-safe constraint evaluation cache
