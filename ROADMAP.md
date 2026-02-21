@@ -587,6 +587,9 @@ python3 -m unittest -q tests/test_benchmark_failure_dashboard.py
 
 # Large-circuit memory profiling (Noir/Cairo/Halo2)
 ./scripts/profile_large_circuit_memory.sh --max-targets 6 --max-targets-per-framework 2 --iterations 20 --timeout 20
+
+# zkevm-circuits upstream release tracking (strict; requires release metadata)
+python3 scripts/track_zkevm_releases.py --repo-path circuits/zkevm-circuits --releases-json /tmp/zkevm_releases_fixture.json --release-commit "$(git -C circuits/zkevm-circuits rev-list -n 1 v0.10.0)" --output artifacts/dependency_tracking/zkevm_upstream_latest.json
 ```
 
 ### Release Validation
@@ -689,7 +692,7 @@ gh run watch
 
 ### Product Surface And Ecosystem Tracking
 - [x] Custom attack pattern DSL (`docs/ATTACK_DSL_SPEC.md`)
-- [ ] Track `zkevm-circuits` upstream releases
+- [x] Track `zkevm-circuits` upstream releases (`scripts/track_zkevm_releases.py`, `tests/test_track_zkevm_releases.py`)
 - [ ] Evaluate `arkworks` 0.5 upgrade path
 - [ ] Build Z3 solver compatibility matrix
 

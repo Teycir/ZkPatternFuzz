@@ -2,6 +2,21 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T16:55:25Z
+- Implemented strict `zkevm-circuits` upstream-release tracking:
+  - `scripts/track_zkevm_releases.py`
+    - compares local checkout HEAD to latest stable upstream release tag commit.
+    - emits machine-readable tracking artifact (`status`, `up_to_date`, local/release commits).
+    - supports strict offline evidence mode via `--releases-json` + explicit `--release-commit`.
+  - `tests/test_track_zkevm_releases.py`
+    - validates stable-release selection (draft/prerelease exclusion).
+    - validates relationship classification (`up_to_date`, `behind_latest_release`, `ahead_contains_latest_release`).
+    - validates end-to-end report generation path.
+- Validation:
+  - `python3 -m unittest -q tests/test_track_zkevm_releases.py` -> `PASS` (3 tests)
+  - `python3 scripts/track_zkevm_releases.py --repo-path circuits/zkevm-circuits --releases-json /tmp/zkevm_releases_fixture.json --release-commit "$(git -C circuits/zkevm-circuits rev-list -n 1 v0.10.0)" --output artifacts/dependency_tracking/zkevm_upstream_latest.json` -> `PASS`
+    - report: `artifacts/dependency_tracking/zkevm_upstream_latest.json` (`generated_utc=2026-02-21T16:56:57.871999+00:00`, `status=diverged`, `up_to_date=false`)
+
 ## Update (UTC): 2026-02-21T16:48:59Z
 - Implemented Halo2 production throughput gate for real scaffold execution:
   - `tests/backend_integration_tests.rs`
