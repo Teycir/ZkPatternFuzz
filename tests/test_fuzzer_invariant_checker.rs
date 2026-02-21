@@ -1,4 +1,7 @@
-use super::*;
+use zk_core::FieldElement;
+use zk_fuzzer::config::v2::{Invariant, InvariantOracle, InvariantType};
+use zk_fuzzer::config::{FuzzStrategy, Input};
+use zk_fuzzer::fuzzer::invariant_checker::InvariantChecker;
 
 fn make_field_element(val: u64) -> FieldElement {
     let mut bytes = [0u8; 32];
@@ -19,10 +22,10 @@ fn test_range_check() {
         severity: Some("high".to_string()),
     };
 
-    let inputs = vec![crate::config::Input {
+    let inputs = vec![Input {
         name: "x".to_string(),
         input_type: "field".to_string(),
-        fuzz_strategy: crate::config::FuzzStrategy::Random,
+        fuzz_strategy: FuzzStrategy::Random,
         constraints: vec![],
         interesting: vec![],
         length: None,

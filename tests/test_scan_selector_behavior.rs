@@ -1,15 +1,15 @@
 use std::fs;
 
-#[path = "../src/scan_selector_context.rs"]
-mod scan_selector_context;
-#[path = "../src/scan_selector.rs"]
-mod scan_selector;
 #[path = "../src/run_identity.rs"]
 mod run_identity;
 #[path = "../src/run_outcome_docs.rs"]
 mod run_outcome_docs;
 #[path = "../src/run_paths.rs"]
 mod run_paths;
+#[path = "../src/scan_selector.rs"]
+mod scan_selector;
+#[path = "../src/scan_selector_context.rs"]
+mod scan_selector_context;
 pub(crate) use run_paths::{engagement_root_dir, run_signal_dir};
 #[path = "../src/engagement_artifacts.rs"]
 mod engagement_artifacts;
@@ -29,9 +29,10 @@ fn evaluate_selector_summary(pattern_yaml: &str, target_source: &str) -> ScanReg
     fs::write(&pattern_path, pattern_yaml).expect("write pattern");
     fs::write(&target_path, target_source).expect("write target");
 
-    let selector_config = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
-        .expect("load selector config")
-        .expect("selector config should exist");
+    let selector_config =
+        load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
+            .expect("load selector config")
+            .expect("selector config should exist");
     evaluate_loaded_scan_regex_patterns(&selector_config, &target_path)
         .expect("evaluate selector config")
 }
@@ -43,9 +44,10 @@ fn evaluate_selector_summary_with_target_file(
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let pattern_path = temp_dir.path().join("pattern.yaml");
     fs::write(&pattern_path, pattern_yaml).expect("write pattern");
-    let selector_config = load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
-        .expect("load selector config")
-        .expect("selector config should exist");
+    let selector_config =
+        load_scan_regex_selector_config(pattern_path.to_str().expect("utf8 path"))
+            .expect("load selector config")
+            .expect("selector config should exist");
     evaluate_loaded_scan_regex_patterns(&selector_config, target_path)
         .expect("evaluate selector config")
 }

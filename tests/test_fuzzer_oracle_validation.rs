@@ -1,4 +1,6 @@
-use super::*;
+use zk_fuzzer::fuzzer::oracle_validation::{
+    GroundTruthValidationResult, OracleValidator, ValidationResult,
+};
 
 #[test]
 fn test_validation_result_creation() {

@@ -918,7 +918,3 @@ pub async fn run_from_cli(
 
     orchestrator.run_adaptive_campaign(project_path).await
 }
-
-#[cfg(test)]
-#[path = "adaptive_orchestrator_tests.rs"]
-mod tests;

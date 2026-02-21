@@ -1,4 +1,8 @@
-use super::*;
+use std::time::Duration;
+use zk_core::{ExecutionResult, FieldElement};
+use zk_fuzzer::fuzzer::async_pipeline::{
+    AsyncPipeline, BatchExecutor, PipelineConfig, PipelineStats,
+};
 
 #[test]
 fn test_pipeline_config_defaults() {
@@ -42,12 +46,7 @@ fn test_async_pipeline_creation() {
 #[test]
 fn test_pipeline_stop() {
     let pipeline = AsyncPipeline::new(PipelineConfig::default());
-    pipeline
-        .running
-        .store(true, std::sync::atomic::Ordering::SeqCst);
-
-    assert!(pipeline.is_running());
-
+    assert!(!pipeline.is_running());
     pipeline.stop();
     assert!(!pipeline.is_running());
 }

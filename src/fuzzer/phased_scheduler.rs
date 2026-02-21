@@ -516,7 +516,3 @@ impl Default for ScheduleBuilder {
         Self::new()
     }
 }
-
-#[cfg(test)]
-#[path = "phased_scheduler_tests.rs"]
-mod tests;

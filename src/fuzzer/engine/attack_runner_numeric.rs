@@ -246,7 +246,9 @@ impl FuzzingEngine {
 
         let witnesses = self.collect_corpus_inputs(base_samples.max(1));
         if witnesses.is_empty() {
-            anyhow::bail!("Nullifier replay scanner requires corpus witnesses, but none are available");
+            anyhow::bail!(
+                "Nullifier replay scanner requires corpus witnesses, but none are available"
+            );
         }
 
         let findings = scanner.run(self.executor.as_ref(), &witnesses);

@@ -45,7 +45,11 @@ fn test_proof_file_candidates_include_name_and_main_without_duplicates() {
 
     let candidates = target.proof_file_candidates();
     let unique_len = candidates.iter().collect::<HashSet<_>>().len();
-    assert_eq!(candidates.len(), unique_len, "candidates should be deduplicated");
+    assert_eq!(
+        candidates.len(),
+        unique_len,
+        "candidates should be deduplicated"
+    );
 
     assert!(candidates
         .iter()

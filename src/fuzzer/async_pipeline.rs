@@ -428,7 +428,3 @@ impl BatchExecutor {
         results
     }
 }
-
-#[cfg(test)]
-#[path = "async_pipeline_tests.rs"]
-mod tests;

@@ -1636,7 +1636,9 @@ fn test_halo2_scaffold_production_throughput() {
                         );
                         return;
                     }
-                    MatrixStatus::Fail(reason) => panic!("Halo2 throughput execute failed: {reason}"),
+                    MatrixStatus::Fail(reason) => {
+                        panic!("Halo2 throughput execute failed: {reason}")
+                    }
                     MatrixStatus::Pass => {
                         unreachable!("classify_error never returns MatrixStatus::Pass")
                     }

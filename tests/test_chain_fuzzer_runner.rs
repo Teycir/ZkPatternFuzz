@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 use zk_core::{CircuitExecutor, CircuitInfo, ExecutionResult, FieldElement, Framework};
 use zk_fuzzer::chain_fuzzer::{ChainRunner, ChainSpec, StepSpec};
 use zk_fuzzer::executor::FixtureCircuitExecutor;

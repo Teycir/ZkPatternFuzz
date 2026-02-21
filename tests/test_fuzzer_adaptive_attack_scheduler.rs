@@ -1,9 +1,7 @@
 use std::time::Duration;
 use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
 use zk_fuzzer::fuzzer::adaptive_attack_scheduler::NearMissType;
-use zk_fuzzer::fuzzer::{
-    AdaptiveScheduler, AdaptiveSchedulerConfig, AttackResults, NearMissEvent,
-};
+use zk_fuzzer::fuzzer::{AdaptiveScheduler, AdaptiveSchedulerConfig, AttackResults, NearMissEvent};
 
 #[test]
 fn test_scheduler_initialization() {

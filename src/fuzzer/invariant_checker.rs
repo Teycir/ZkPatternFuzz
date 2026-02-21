@@ -707,7 +707,3 @@ impl InvariantChecker {
             .any(|inv| inv.invariant_type == InvariantType::Uniqueness)
     }
 }
-
-#[cfg(test)]
-#[path = "invariant_checker_tests.rs"]
-mod tests;

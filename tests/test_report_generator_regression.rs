@@ -7,7 +7,9 @@ fn report_generator_preserves_correlation_annotation_guards() {
         "correlation marker annotation must remain deduplicated"
     );
     assert!(
-        source.contains("ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.severity.cmp(&a.1.severity)))"),
+        source.contains(
+            "ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.severity.cmp(&a.1.severity)))"
+        ),
         "correlation ranking must prioritize confidence, then severity"
     );
     assert!(

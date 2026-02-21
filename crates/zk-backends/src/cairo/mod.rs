@@ -818,7 +818,8 @@ impl TargetCircuit for CairoTarget {
             *self
                 .cairo1_last_execution_id
                 .lock()
-                .expect("cairo1 execution id lock poisoned during prove") = Some(execution_id.clone());
+                .expect("cairo1 execution id lock poisoned during prove") =
+                Some(execution_id.clone());
             return Ok(execution_id.into_bytes());
         }
 

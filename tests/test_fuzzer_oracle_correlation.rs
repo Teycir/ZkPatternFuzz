@@ -1,7 +1,5 @@
 use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
-use zk_fuzzer::fuzzer::oracle_correlation::{
-    ConfidenceLevel, OracleCorrelator, OracleGroup,
-};
+use zk_fuzzer::fuzzer::oracle_correlation::{ConfidenceLevel, OracleCorrelator, OracleGroup};
 
 fn make_finding(
     attack_type: AttackType,

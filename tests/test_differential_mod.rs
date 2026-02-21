@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use zk_core::{CircuitExecutor, CircuitInfo, ExecutionCoverage, ExecutionResult, FieldElement, Framework};
+use zk_core::{
+    CircuitExecutor, CircuitInfo, ExecutionCoverage, ExecutionResult, FieldElement, Framework,
+};
 use zk_fuzzer::differential::{DifferentialConfig, DifferentialFuzzer, DifferentialSeverity};
 
 #[derive(Clone)]
@@ -54,8 +56,11 @@ fn success_result(
     evaluated: Vec<usize>,
     execution_time_us: u64,
 ) -> ExecutionResult {
-    ExecutionResult::success(outputs, ExecutionCoverage::with_constraints(satisfied, evaluated))
-        .with_time(execution_time_us)
+    ExecutionResult::success(
+        outputs,
+        ExecutionCoverage::with_constraints(satisfied, evaluated),
+    )
+    .with_time(execution_time_us)
 }
 
 #[test]
@@ -72,12 +77,7 @@ fn test_differential_comparison_agrees_for_identical_results() {
         compare_timing: false,
         ..Default::default()
     });
-    let expected = success_result(
-        vec![FieldElement::one()],
-        vec![1, 2, 3],
-        vec![1, 2, 3],
-        10,
-    );
+    let expected = success_result(vec![FieldElement::one()], vec![1, 2, 3], vec![1, 2, 3], 10);
 
     fuzzer.add_executor(
         Framework::Circom,
@@ -130,11 +130,27 @@ fn test_coverage_mismatch_detects_low_overlap() {
         ..Default::default()
     });
 
-    let a = success_result(vec![FieldElement::one()], vec![1, 2, 3, 4], vec![1, 2, 3, 4], 10);
-    let b = success_result(vec![FieldElement::one()], vec![3, 4, 5, 6], vec![3, 4, 5, 6], 10);
+    let a = success_result(
+        vec![FieldElement::one()],
+        vec![1, 2, 3, 4],
+        vec![1, 2, 3, 4],
+        10,
+    );
+    let b = success_result(
+        vec![FieldElement::one()],
+        vec![3, 4, 5, 6],
+        vec![3, 4, 5, 6],
+        10,
+    );
 
-    fuzzer.add_executor(Framework::Circom, Arc::new(FixedExecutor::new(Framework::Circom, a)));
-    fuzzer.add_executor(Framework::Noir, Arc::new(FixedExecutor::new(Framework::Noir, b)));
+    fuzzer.add_executor(
+        Framework::Circom,
+        Arc::new(FixedExecutor::new(Framework::Circom, a)),
+    );
+    fuzzer.add_executor(
+        Framework::Noir,
+        Arc::new(FixedExecutor::new(Framework::Noir, b)),
+    );
 
     let finding = fuzzer
         .compare_backends(&[FieldElement::zero(), FieldElement::one()])

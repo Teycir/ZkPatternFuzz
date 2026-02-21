@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use std::sync::Arc;
 use zk_core::FieldElement;
 use zk_fuzzer::executor::FixtureCircuitExecutor;
 use zk_fuzzer::multi_circuit::recursive::{RecursionResult, RecursiveTester};

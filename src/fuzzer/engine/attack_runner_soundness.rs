@@ -1,5 +1,5 @@
-use super::attack_runner_option_ext::OptionValueExt;
 use super::attack_runner_budget::strict_attack_floor;
+use super::attack_runner_option_ext::OptionValueExt;
 use super::prelude::*;
 use super::FuzzingEngine;
 

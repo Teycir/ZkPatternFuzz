@@ -1,5 +1,5 @@
-use zk_fuzzer::chain_fuzzer::{ChainTrace, DepthMetrics};
 use zk_fuzzer::chain_fuzzer::types::{ChainFinding, ChainFindingCore};
+use zk_fuzzer::chain_fuzzer::{ChainTrace, DepthMetrics};
 
 fn create_test_finding(l_min: usize) -> ChainFinding {
     ChainFinding {

@@ -264,14 +264,8 @@ where
     K: Eq + Hash + Clone + AsRef<[u8]>,
     V: Clone,
 {
-    #[cfg(test)]
-    const LOCK_WAIT_WARNING_THRESHOLD: Duration = Duration::from_millis(10);
-    #[cfg(not(test))]
     const LOCK_WAIT_WARNING_THRESHOLD: Duration = Duration::from_millis(250);
 
-    #[cfg(test)]
-    const LOCK_WAIT_DEADLOCK_THRESHOLD: Duration = Duration::from_millis(50);
-    #[cfg(not(test))]
     const LOCK_WAIT_DEADLOCK_THRESHOLD: Duration = Duration::from_secs(2);
 
     const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(1);
@@ -702,11 +696,3 @@ impl PerWorkerOracleState {
         self.worker_id
     }
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-#[cfg(test)]
-#[path = "oracle_state_tests.rs"]
-mod tests;

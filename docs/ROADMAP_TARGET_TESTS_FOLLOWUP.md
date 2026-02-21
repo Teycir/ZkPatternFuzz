@@ -2,6 +2,49 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T23:13:35Z
+- Continued strict production/test separation by migrating the next `fuzzer` module set out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/fuzzer/adaptive_orchestrator.rs`
+    - `src/fuzzer/phased_scheduler.rs`
+    - `src/fuzzer/oracle_state.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_fuzzer_adaptive_orchestrator.rs`
+    - `tests/test_fuzzer_phased_scheduler.rs`
+    - `tests/test_fuzzer_oracle_state.rs`
+- Test migration notes:
+  - replaced unit-style private/internal assertions with integration assertions on public behavior and exported types.
+  - removed test-only compile branching in `oracle_state` lock contention thresholds (`#[cfg(test)]` constants), leaving a single strict production path.
+  - updated phased scheduler severity-stop validation to assert schedule termination via public `execute(...)` behavior instead of private helper calls.
+- Validation:
+  - `cargo fmt --all` -> `PASS`
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_fuzzer_adaptive_orchestrator --test test_fuzzer_phased_scheduler --test test_fuzzer_oracle_state` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `18` (down from `23` before this batch)
+
+## Update (UTC): 2026-02-21T23:06:48Z
+- Continued strict production/test separation by migrating another focused `fuzzer` core subset out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/fuzzer/async_pipeline.rs`
+    - `src/fuzzer/invariant_checker.rs`
+    - `src/fuzzer/oracle_validation.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_fuzzer_async_pipeline.rs`
+    - `tests/test_fuzzer_invariant_checker.rs`
+    - `tests/test_fuzzer_oracle_validation.rs`
+- Test migration notes:
+  - replaced in-module imports (`use super::*`) with integration imports via public APIs.
+  - adapted async pipeline stop coverage to assert public behavior (idempotent `stop` state) instead of private field access.
+  - moved invariant checker tests to use `zk_fuzzer::config::*` and `zk_fuzzer::fuzzer::invariant_checker::*` paths explicitly.
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_fuzzer_async_pipeline --test test_fuzzer_invariant_checker --test test_fuzzer_oracle_validation` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `23` (down from `26` before this batch)
+
 ## Update (UTC): 2026-02-21T22:57:35Z
 - Continued strict production/test separation by migrating a focused `fuzzer` core subset out of `src/**`.
   - removed in-source `#[cfg(test)]` hooks from:

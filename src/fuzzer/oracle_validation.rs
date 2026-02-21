@@ -709,7 +709,3 @@ pub fn filter_validated_findings(
         })
         .collect()
 }
-
-#[cfg(test)]
-#[path = "oracle_validation_tests.rs"]
-mod tests;

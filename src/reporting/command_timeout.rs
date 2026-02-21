@@ -156,7 +156,11 @@ fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
     for key in tracked_env {
         if let Ok(value) = std::env::var(key) {
             let path = PathBuf::from(value);
-            let absolute = if path.is_absolute() { path } else { cwd.join(path) };
+            let absolute = if path.is_absolute() {
+                path
+            } else {
+                cwd.join(path)
+            };
             paths.insert(absolute);
         }
     }
@@ -171,7 +175,11 @@ fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
         }
         if let Some(raw_value) = value {
             let path = PathBuf::from(raw_value);
-            let absolute = if path.is_absolute() { path } else { cwd.join(path) };
+            let absolute = if path.is_absolute() {
+                path
+            } else {
+                cwd.join(path)
+            };
             paths.insert(absolute);
         }
     }
@@ -203,9 +211,7 @@ fn maybe_wrap_with_tool_sandbox(cmd: &Command) -> anyhow::Result<Option<Command>
 
     #[cfg(not(unix))]
     {
-        anyhow::bail!(
-            "ZKFUZZ_EXTERNAL_TOOL_SANDBOX=required is unsupported on non-Unix platforms"
-        );
+        anyhow::bail!("ZKFUZZ_EXTERNAL_TOOL_SANDBOX=required is unsupported on non-Unix platforms");
     }
 
     #[cfg(unix)]

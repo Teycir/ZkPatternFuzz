@@ -29,5 +29,8 @@ fn test_generate_halo2_repro_script_writes_verify_helper() {
     let content = std::fs::read_to_string(&verify_path).unwrap();
     assert!(content.contains("Halo2Target"));
     assert!(content.contains("parse_witness_inputs"));
-    assert!(!content.contains("YourCircuit"), "must use generic backend target");
+    assert!(
+        !content.contains("YourCircuit"),
+        "must use generic backend target"
+    );
 }

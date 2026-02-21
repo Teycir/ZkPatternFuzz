@@ -136,9 +136,7 @@ fn test_reproduction_bonus() {
 
     let report = pipeline.generate_report();
     let ranked = report.all_findings_by_priority();
-    let triaged = ranked
-        .first()
-        .expect("expected finding after reproduction");
+    let triaged = ranked.first().expect("expected finding after reproduction");
     let score_after = triaged.confidence_score;
     assert!(score_after > score_before);
 
