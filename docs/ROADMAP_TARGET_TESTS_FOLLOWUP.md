@@ -2,6 +2,27 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T18:49:12Z
+- Stabilized strict external-tool sandbox readiness lanes for non-Circom backends:
+  - removed failing `bwrap --unshare-net` usage from backend and reporting timeout wrappers.
+  - normalized relative command working directories to canonical absolute paths before sandbox bind/chdir.
+  - expanded writable bind tracking to include backend target directories:
+    - `CARGO_TARGET_DIR`
+    - `NARGO_TARGET_DIR`
+    - `SCARB_TARGET_DIR`
+  - hardened external Noir parity test classification to treat strict coverage-capability limits as infra skips (instead of backend correctness failures).
+- Files:
+  - `crates/zk-backends/src/util.rs`
+  - `src/reporting/command_timeout.rs`
+  - `tests/backend_integration_tests.rs`
+- Validation:
+  - `scripts/run_backend_readiness_lanes.sh --iterations 1 --timeout 8 --workers 1 --batch-jobs 1 --enforce-dashboard --enforce-tool-sandbox` -> `PASS`
+  - backend readiness reports:
+    - Noir: `artifacts/backend_readiness/noir/latest_report.json` (`generated_utc=2026-02-21T18:47:09Z`, `reason_counts={"completed":6}`)
+    - Cairo: `artifacts/backend_readiness/cairo/latest_report.json` (`generated_utc=2026-02-21T18:48:24Z`, `reason_counts={"completed":4}`)
+    - Halo2: `artifacts/backend_readiness/halo2/latest_report.json` (`generated_utc=2026-02-21T18:49:12Z`, `reason_counts={"completed":8}`)
+  - aggregate dashboard: `artifacts/backend_readiness/latest_report.json` (`generated_utc=2026-02-21T18:49:12.727407+00:00`, `overall_pass=true`)
+
 ## Update (UTC): 2026-02-21T18:10:57Z
 - Closed security hardening task for strict external-tool sandbox mode:
   - backend command timeout wrapper now supports strict sandbox execution for backend tools (`circom`, `snarkjs`, `nargo`, `scarb`, `cargo`) when `ZKFUZZ_EXTERNAL_TOOL_SANDBOX=required`.

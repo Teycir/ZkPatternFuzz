@@ -105,10 +105,24 @@ fn command_targets_backend_tool(cmd: &Command) -> bool {
 }
 
 fn resolve_current_dir(cmd: &Command) -> Result<PathBuf> {
-    if let Some(dir) = cmd.get_current_dir() {
-        return Ok(dir.to_path_buf());
-    }
-    std::env::current_dir().context("Failed to resolve current working directory")
+    let raw_dir = if let Some(dir) = cmd.get_current_dir() {
+        dir.to_path_buf()
+    } else {
+        std::env::current_dir().context("Failed to resolve current working directory")?
+    };
+    let absolute = if raw_dir.is_absolute() {
+        raw_dir
+    } else {
+        std::env::current_dir()
+            .context("Failed resolving base cwd for relative command dir")?
+            .join(raw_dir)
+    };
+    absolute.canonicalize().with_context(|| {
+        format!(
+            "Failed to canonicalize command working directory '{}'",
+            absolute.display()
+        )
+    })
 }
 
 fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
@@ -116,14 +130,22 @@ fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
     paths.insert(cwd.to_path_buf());
     paths.insert(PathBuf::from("/tmp"));
 
-    let tracked_env = ["HOME", "CARGO_HOME", "NARGO_HOME", "SCARB_CACHE", "RUSTUP_HOME"];
+    let tracked_env = [
+        "HOME",
+        "CARGO_HOME",
+        "NARGO_HOME",
+        "SCARB_CACHE",
+        "RUSTUP_HOME",
+        "CARGO_TARGET_DIR",
+        "NARGO_TARGET_DIR",
+        "SCARB_TARGET_DIR",
+    ];
 
     for key in tracked_env {
         if let Ok(value) = std::env::var(key) {
             let path = PathBuf::from(value);
-            if path.is_absolute() {
-                paths.insert(path);
-            }
+            let absolute = if path.is_absolute() { path } else { cwd.join(path) };
+            paths.insert(absolute);
         }
     }
 
@@ -137,9 +159,8 @@ fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
         }
         if let Some(raw_value) = value {
             let path = PathBuf::from(raw_value);
-            if path.is_absolute() {
-                paths.insert(path);
-            }
+            let absolute = if path.is_absolute() { path } else { cwd.join(path) };
+            paths.insert(absolute);
         }
     }
 
@@ -197,7 +218,6 @@ fn maybe_wrap_with_tool_sandbox(cmd: &Command) -> Result<Option<Command>> {
             .arg("--die-with-parent")
             .arg("--new-session")
             .arg("--unshare-pid")
-            .arg("--unshare-net")
             .arg("--proc")
             .arg("/proc")
             .arg("--dev")

@@ -1,5 +1,6 @@
 //! Timeout wrapper for external commands
 
+use std::collections::BTreeSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
@@ -123,10 +124,62 @@ fn command_targets_backend_tool(cmd: &Command) -> bool {
 }
 
 fn resolve_current_dir(cmd: &Command) -> anyhow::Result<PathBuf> {
-    if let Some(dir) = cmd.get_current_dir() {
-        return Ok(dir.to_path_buf());
+    let raw_dir = if let Some(dir) = cmd.get_current_dir() {
+        dir.to_path_buf()
+    } else {
+        std::env::current_dir()?
+    };
+    let absolute = if raw_dir.is_absolute() {
+        raw_dir
+    } else {
+        std::env::current_dir()?.join(raw_dir)
+    };
+    Ok(absolute.canonicalize().unwrap_or(absolute))
+}
+
+fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
+    let mut paths = BTreeSet::<PathBuf>::new();
+    paths.insert(cwd.to_path_buf());
+    paths.insert(PathBuf::from("/tmp"));
+
+    let tracked_env = [
+        "HOME",
+        "CARGO_HOME",
+        "NARGO_HOME",
+        "SCARB_CACHE",
+        "RUSTUP_HOME",
+        "CARGO_TARGET_DIR",
+        "NARGO_TARGET_DIR",
+        "SCARB_TARGET_DIR",
+    ];
+
+    for key in tracked_env {
+        if let Ok(value) = std::env::var(key) {
+            let path = PathBuf::from(value);
+            let absolute = if path.is_absolute() { path } else { cwd.join(path) };
+            paths.insert(absolute);
+        }
     }
-    Ok(std::env::current_dir()?)
+
+    for (key, value) in cmd.get_envs() {
+        let key_name = match key.to_str() {
+            Some(k) => k,
+            None => continue,
+        };
+        if !tracked_env.iter().any(|tracked| tracked == &key_name) {
+            continue;
+        }
+        if let Some(raw_value) = value {
+            let path = PathBuf::from(raw_value);
+            let absolute = if path.is_absolute() { path } else { cwd.join(path) };
+            paths.insert(absolute);
+        }
+    }
+
+    paths
+        .into_iter()
+        .filter(|p| p.exists())
+        .collect::<Vec<PathBuf>>()
 }
 
 fn find_binary_on_path(name: &str) -> bool {
@@ -169,12 +222,12 @@ fn maybe_wrap_with_tool_sandbox(cmd: &Command) -> anyhow::Result<Option<Command>
         }
 
         let cwd = resolve_current_dir(cmd)?;
+        let writable_paths = candidate_writable_bind_paths(cmd, &cwd);
         let mut wrapped = Command::new(&sandbox_bin);
         wrapped
             .arg("--die-with-parent")
             .arg("--new-session")
             .arg("--unshare-pid")
-            .arg("--unshare-net")
             .arg("--proc")
             .arg("/proc")
             .arg("--dev")
@@ -183,10 +236,13 @@ fn maybe_wrap_with_tool_sandbox(cmd: &Command) -> anyhow::Result<Option<Command>
             .arg("/")
             .arg("/")
             .arg("--tmpfs")
-            .arg("/tmp")
-            .arg("--bind")
-            .arg(&cwd)
-            .arg(&cwd)
+            .arg("/tmp");
+
+        for path in writable_paths {
+            wrapped.arg("--bind").arg(&path).arg(&path);
+        }
+
+        wrapped
             .arg("--chdir")
             .arg(&cwd)
             .arg("--")

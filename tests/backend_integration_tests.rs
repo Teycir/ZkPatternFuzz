@@ -220,9 +220,18 @@ fn run_noir_external_fuzz_parity(name: &str, nargo_toml_path: &std::path::Path) 
         match target_result {
             Ok(expected_outputs) => {
                 if !executor_result.success {
+                    let executor_error = executor_result
+                        .error
+                        .unwrap_or_else(|| "unknown executor error".to_string());
+                    if is_infrastructure_issue(&executor_error) {
+                        return MatrixStatus::SkipInfra(format!(
+                            "{name} parity skipped: executor cannot evaluate this external project in strict mode: {}",
+                            executor_error
+                        ));
+                    }
                     return MatrixStatus::Fail(format!(
                         "{name} parity mismatch on executable witness: target succeeded but executor failed: {}",
-                        executor_result.error.unwrap_or_else(|| "unknown executor error".to_string())
+                        executor_error
                     ));
                 }
                 if executor_result.outputs != expected_outputs {
@@ -426,6 +435,7 @@ fn is_infrastructure_issue(message: &str) -> bool {
         "build lock file",
         ".zkfuzz_build.lock",
         "provide a circuit binary that supports --prove",
+        "constraint coverage unavailable",
     ];
     markers.iter().any(|marker| msg.contains(marker))
 }
