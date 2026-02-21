@@ -2,6 +2,22 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T19:30:00Z
+- Continued oversized-engine modularization with advanced-runtime attack-family extraction:
+  - moved advanced runtime attack handlers out of `attack_runner.rs` into:
+    - `src/fuzzer/engine/attack_runner_advanced.rs`
+  - extracted methods:
+    - `run_sidechannel_advanced_attack`
+    - `run_privacy_advanced_attack`
+    - `run_defi_advanced_attack`
+  - registered new module in `src/fuzzer/engine/mod.rs`
+  - widened `bounded_attack_units` to `pub(super)` to support cross-module engine methods
+- Impact:
+  - `attack_runner.rs` reduced from `3315` to `3092` lines in this slice
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+
 ## Update (UTC): 2026-02-21T19:20:00Z
 - Continued oversized-engine modularization with attack-family extraction:
   - moved static/source scan attack handlers out of `attack_runner.rs` into:
