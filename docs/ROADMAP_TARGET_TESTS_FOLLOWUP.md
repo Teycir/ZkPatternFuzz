@@ -2,6 +2,37 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T21:56:39Z
+- Enforced engine-scope test-placement policy (`tests/**` only) and continued attack-runner decoupling:
+  - extracted shared option helpers into:
+    - `src/fuzzer/engine/attack_runner_option_ext.rs`
+  - rewired attack-family modules to use option helper module directly:
+    - `src/fuzzer/engine/attack_runner_numeric.rs`
+    - `src/fuzzer/engine/attack_runner_runtime.rs`
+    - `src/fuzzer/engine/attack_runner_soundness.rs`
+    - `src/fuzzer/engine/attack_runner_underconstrained.rs`
+  - removed legacy attack-runner test anchor from production tree:
+    - deleted `src/fuzzer/engine/attack_runner.rs`
+    - deleted `src/fuzzer/engine/attack_runner_tests.rs`
+  - removed remaining engine in-source test hooks/files:
+    - deleted `src/fuzzer/engine/chain_runner_tests.rs`
+    - removed `#[cfg(test)]` blocks from `src/fuzzer/engine/chain_runner.rs` and `src/fuzzer/engine/report_generator.rs`
+  - moved/added regression coverage under `tests/**`:
+    - `tests/test_engine_dispatch_regression.rs`
+    - `tests/test_chain_runner_regression.rs`
+    - `tests/test_report_generator_regression.rs`
+  - registered new module in `src/fuzzer/engine/mod.rs`:
+    - `mod attack_runner_option_ext;`
+- Impact:
+  - engine production sources no longer contain `#[cfg(test)]` modules or `*_tests.rs` companions
+  - attack-family modules no longer depend on a monolithic `attack_runner.rs` for option defaults
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q chain_resume_aggregation_keeps_zero_coverage_guard -- --nocapture` -> `PASS`
+  - `cargo test -q report_generator_preserves_correlation_annotation_guards -- --nocapture` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+
 ## Update (UTC): 2026-02-21T21:47:44Z
 - Continued `attack_runner` modularization by isolating underconstrained attack family + parser helpers:
   - moved underconstrained execution and helper methods out of:
