@@ -1,7 +1,10 @@
-use super::*;
-use crate::executor::FixtureCircuitExecutor;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use std::sync::Arc;
+use zk_core::CircuitExecutor;
+use zk_fuzzer::analysis::profiling::TimingStats;
+use zk_fuzzer::analysis::Profiler;
+use zk_fuzzer::executor::FixtureCircuitExecutor;
 
 #[test]
 fn test_timing_stats() {

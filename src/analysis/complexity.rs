@@ -278,7 +278,3 @@ impl Default for ConstraintBreakdown {
         Self::new()
     }
 }
-
-#[cfg(test)]
-#[path = "complexity_tests.rs"]
-mod tests;

@@ -1387,7 +1387,3 @@ impl ZeroDayDetector for ArithmeticOverflowDetector {
         hints
     }
 }
-
-#[cfg(test)]
-#[path = "opus_tests.rs"]
-mod tests;

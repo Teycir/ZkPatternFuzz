@@ -283,7 +283,3 @@ pub fn generate_soundness_proof(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

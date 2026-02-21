@@ -453,7 +453,3 @@ impl DependencyAnalyzer {
         graph.coverage_stats(coverage)
     }
 }
-
-#[cfg(test)]
-#[path = "dependency_tests.rs"]
-mod tests;

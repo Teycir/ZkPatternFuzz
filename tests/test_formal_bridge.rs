@@ -1,9 +1,11 @@
-use super::*;
-use crate::config::v2::{Invariant, InvariantOracle, InvariantType};
-use crate::config::{FuzzConfig, ReportingConfig};
-use crate::reporting::{FuzzReport, FuzzStatistics};
 use chrono::Utc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use zk_fuzzer::config::v2::{Invariant, InvariantOracle, InvariantType};
+use zk_fuzzer::config::{FuzzConfig, ReportingConfig};
+use zk_fuzzer::formal::{
+    export_formal_bridge_artifacts, import_formal_invariants_from_file, FormalBridgeOptions,
+};
+use zk_fuzzer::reporting::{FuzzReport, FuzzStatistics};
 
 fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
     let unique = SystemTime::now()

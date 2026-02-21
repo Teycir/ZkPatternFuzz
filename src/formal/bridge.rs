@@ -573,7 +573,3 @@ Campaign: `{campaign_name}`\n\n\
         proof_module_path.display(),
     )
 }
-
-#[cfg(test)]
-#[path = "bridge_tests.rs"]
-mod tests;

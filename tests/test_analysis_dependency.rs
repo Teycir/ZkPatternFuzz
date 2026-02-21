@@ -1,4 +1,5 @@
-use super::*;
+use zk_core::CoverageMap;
+use zk_fuzzer::analysis::DependencyGraph;
 
 #[test]
 fn test_dependency_graph_creation() {

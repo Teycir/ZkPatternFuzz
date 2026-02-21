@@ -372,7 +372,3 @@ impl ProofExporter for CoqExporter {
         )
     }
 }
-
-#[cfg(test)]
-#[path = "coq_tests.rs"]
-mod tests;

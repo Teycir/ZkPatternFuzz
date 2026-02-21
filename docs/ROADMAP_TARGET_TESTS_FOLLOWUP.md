@@ -2,6 +2,62 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T22:24:35Z
+- Continued strict production/test separation by migrating analysis module tests out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/analysis/complexity.rs`
+    - `src/analysis/dependency.rs`
+    - `src/analysis/opus.rs`
+    - `src/analysis/profiling.rs`
+    - `src/analysis/taint.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_analysis_complexity.rs`
+    - `tests/test_analysis_dependency.rs`
+    - `tests/test_analysis_opus.rs`
+    - `tests/test_analysis_profiling.rs`
+    - `tests/test_analysis_taint.rs`
+- Test migration notes:
+  - replaced private `OpusAnalyzer` internals assertions with public-behavior checks via `analyze_project(...)` and `analyze_circuit(...)` zero-day hints.
+  - adjusted integration imports to module-qualified public APIs where types are not re-exported at `analysis` root.
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_analysis_complexity --test test_analysis_dependency --test test_analysis_profiling --test test_analysis_taint --test test_analysis_opus` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `60` (down from `65` before this batch)
+
+## Update (UTC): 2026-02-21T22:19:00Z
+- Continued strict production/test separation by migrating formal + differential tests out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/formal/bridge.rs`
+    - `src/formal/coq.rs`
+    - `src/formal/lean.rs`
+    - `src/formal/mod.rs`
+    - `src/formal/properties.rs`
+    - `src/differential/executor.rs`
+    - `src/differential/mod.rs`
+    - `src/differential/report.rs`
+    - `src/differential/translator.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_formal_bridge.rs`
+    - `tests/test_formal_coq.rs`
+    - `tests/test_formal_lean.rs`
+    - `tests/test_formal_mod.rs`
+    - `tests/test_formal_properties.rs`
+    - `tests/test_differential_executor.rs`
+    - `tests/test_differential_mod.rs`
+    - `tests/test_differential_report.rs`
+    - `tests/test_differential_translator.rs`
+- Test migration notes:
+  - replaced private helper assertions in Coq/Lean tests with public-behavior checks via `export_obligation(...)` output inspection.
+  - replaced differential private-function tests with integration-safe checks using fixed test executors and public `compare_backends(...)` findings/severity.
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_formal_bridge --test test_formal_coq --test test_formal_lean --test test_formal_mod --test test_formal_properties --test test_differential_executor --test test_differential_mod --test test_differential_report --test test_differential_translator` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `65` (down from `74` before this batch)
+
 ## Update (UTC): 2026-02-21T22:11:41Z
 - Continued strict production/test separation by migrating config module unit tests out of `src/**`:
   - removed in-source `#[cfg(test)]` hooks from:

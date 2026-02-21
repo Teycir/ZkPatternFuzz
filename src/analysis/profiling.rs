@@ -334,7 +334,3 @@ impl Profiler {
         results
     }
 }
-
-#[cfg(test)]
-#[path = "profiling_tests.rs"]
-mod tests;

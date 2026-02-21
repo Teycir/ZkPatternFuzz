@@ -1,5 +1,7 @@
-use super::*;
-use crate::executor::FixtureCircuitExecutor;
+use std::sync::Arc;
+use zk_core::{FieldElement, Framework};
+use zk_fuzzer::differential::executor::MultiBackendExecutor;
+use zk_fuzzer::executor::FixtureCircuitExecutor;
 
 #[test]
 fn test_multi_backend_executor() {

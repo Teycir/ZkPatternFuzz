@@ -376,7 +376,3 @@ impl PropertyValidator {
         self.results.iter().filter(|r| !r.valid).collect()
     }
 }
-
-#[cfg(test)]
-#[path = "properties_tests.rs"]
-mod tests;

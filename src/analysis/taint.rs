@@ -360,7 +360,3 @@ pub enum TaintFindingType {
     /// Implicit flow through control dependency
     ImplicitFlow,
 }
-
-#[cfg(test)]
-#[path = "taint_tests.rs"]
-mod tests;

@@ -1,4 +1,6 @@
-use super::*;
+use zk_core::Framework;
+use zk_fuzzer::differential::report::DifferentialReport;
+use zk_fuzzer::differential::DifferentialStats;
 
 #[test]
 fn test_differential_report_creation() {

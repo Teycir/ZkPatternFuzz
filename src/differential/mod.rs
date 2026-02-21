@@ -357,7 +357,3 @@ fn coverage_stats(a: &[usize], b: &[usize]) -> (f64, usize, f64) {
     };
     (jaccard, abs_delta, rel_delta)
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

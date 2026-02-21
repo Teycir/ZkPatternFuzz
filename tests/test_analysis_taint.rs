@@ -1,4 +1,5 @@
-use super::*;
+use zk_fuzzer::analysis::taint::TaintFindingType;
+use zk_fuzzer::analysis::TaintAnalyzer;
 
 #[test]
 fn test_taint_analyzer_creation() {

@@ -113,7 +113,3 @@ impl fmt::Display for DifferentialReport {
         Ok(())
     }
 }
-
-#[cfg(test)]
-#[path = "report_tests.rs"]
-mod tests;

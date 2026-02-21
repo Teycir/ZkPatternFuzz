@@ -130,7 +130,3 @@ impl CircuitExecutor for MultiBackendExecutor {
         self.primary_executor().verify(proof, public_inputs)
     }
 }
-
-#[cfg(test)]
-#[path = "executor_tests.rs"]
-mod tests;

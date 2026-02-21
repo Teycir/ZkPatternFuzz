@@ -1,4 +1,5 @@
-use super::*;
+use std::collections::HashMap;
+use zk_fuzzer::differential::translator::{CircuitPattern, CircuitTranslator, TargetFramework, TranslatorConfig};
 
 #[test]
 fn test_pattern_from_circom_template() {

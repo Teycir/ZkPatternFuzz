@@ -334,7 +334,3 @@ impl ProofExporter for LeanExporter {
         )
     }
 }
-
-#[cfg(test)]
-#[path = "lean_tests.rs"]
-mod tests;

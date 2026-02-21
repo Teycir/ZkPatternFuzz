@@ -1,9 +1,11 @@
-use super::*;
+use zk_fuzzer::formal::properties::DependencyGraph;
+use zk_fuzzer::formal::{CircuitProperty, PropertyExtractor};
 
 #[test]
 fn test_property_extractor_creation() {
     let extractor = PropertyExtractor::new();
-    assert!(extractor.boolean_signals.is_empty());
+    let props = extractor.extract_all(&[]);
+    assert!(props.is_empty());
 }
 
 #[test]

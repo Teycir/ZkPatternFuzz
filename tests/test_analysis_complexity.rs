@@ -1,5 +1,8 @@
-use super::*;
-use crate::executor::FixtureCircuitExecutor;
+use std::sync::Arc;
+use zk_core::CircuitExecutor;
+use zk_fuzzer::analysis::complexity::ConstraintBreakdown;
+use zk_fuzzer::analysis::ComplexityAnalyzer;
+use zk_fuzzer::executor::FixtureCircuitExecutor;
 
 #[test]
 fn test_complexity_analyzer() {
