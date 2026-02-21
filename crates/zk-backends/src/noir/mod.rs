@@ -21,6 +21,20 @@ fn noir_external_command_timeout() -> std::time::Duration {
     crate::util::timeout_from_env("ZK_FUZZER_NOIR_EXTERNAL_TIMEOUT_SECS", 60)
 }
 
+fn command_output_text(output: &std::process::Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    format!("stdout: {}\nstderr: {}", stdout.trim(), stderr.trim())
+}
+
+fn nargo_missing_subcommand_message(stdout: &str, stderr: &str, subcommand: &str) -> bool {
+    let combined = format!("{stdout}\n{stderr}").to_ascii_lowercase();
+    combined.contains("unrecognized subcommand")
+        && (combined.contains(&format!("'{subcommand}'"))
+            || combined.contains(&format!("`{subcommand}`"))
+            || combined.contains(subcommand))
+}
+
 struct ScopedFileOverwrite {
     path: PathBuf,
     original: Option<Vec<u8>>,
@@ -222,6 +236,34 @@ impl NoirTarget {
         Ok(command)
     }
 
+    fn ensure_nargo_subcommand(&self, subcommand: &str) -> Result<()> {
+        let output = {
+            let mut cmd = self.nargo_command()?;
+            cmd.args(["help", subcommand]);
+            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
+                .with_context(|| format!("Failed probing nargo subcommand '{subcommand}'"))?
+        };
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if nargo_missing_subcommand_message(&stdout, &stderr, subcommand) {
+            anyhow::bail!(
+                "nargo '{}' is required but unavailable in this installed Noir CLI. Update your Noir toolchain to a version that exposes this subcommand.",
+                subcommand
+            );
+        }
+
+        anyhow::bail!(
+            "Failed probing nargo subcommand '{}': {}",
+            subcommand,
+            command_output_text(&output)
+        )
+    }
+
     fn proof_file_candidates(&self) -> Vec<PathBuf> {
         let proof_dir = self.active_project_path().join("proofs");
         let mut candidates = Vec::new();
@@ -282,21 +324,6 @@ impl NoirTarget {
 
         if !output.status.success() {
             anyhow::bail!("nargo --version failed");
-        }
-
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    }
-
-    /// Check if bb (Barretenberg) is available
-    pub fn check_bb_available() -> Result<String> {
-        let output = Command::new("bb")
-            .arg("--version")
-            .output()
-            .context("Failed to run bb --version")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("bb --version failed: {}", stderr.trim());
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -1114,7 +1141,7 @@ impl TargetCircuit for NoirTarget {
         let prover_path = self.active_project_path().join("Prover.toml");
         let _prover_guard = ScopedFileOverwrite::overwrite(prover_path, prover_toml.as_bytes())?;
 
-        // Generate proof using nargo
+        self.ensure_nargo_subcommand("prove")?;
         let output = {
             let mut cmd = self.nargo_command()?;
             cmd.args(["prove"]);
@@ -1123,8 +1150,10 @@ impl TargetCircuit for NoirTarget {
         };
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Noir proof generation failed: {}", stderr);
+            anyhow::bail!(
+                "Noir proof generation failed: {}",
+                command_output_text(&output)
+            );
         }
 
         // Read generated proof from known nargo output locations.
@@ -1155,7 +1184,7 @@ impl TargetCircuit for NoirTarget {
             _proof_guards.push(ScopedFileOverwrite::overwrite(proof_path, proof)?);
         }
 
-        // Verify using nargo
+        self.ensure_nargo_subcommand("verify")?;
         let output = {
             let mut cmd = self.nargo_command()?;
             cmd.args(["verify"]);

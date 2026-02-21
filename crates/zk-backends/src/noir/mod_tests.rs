@@ -125,3 +125,14 @@ fn test_num_private_inputs_counts_only_private_abi_parameters() {
     assert_eq!(target.num_private_inputs(), 1);
     assert_eq!(target.num_public_inputs(), 1);
 }
+
+#[test]
+fn test_nargo_missing_subcommand_message_detection() {
+    let stderr = "error: unrecognized subcommand 'prove'\n\nUsage: nargo <COMMAND>";
+    assert!(nargo_missing_subcommand_message("", stderr, "prove"));
+    assert!(!nargo_missing_subcommand_message(
+        "",
+        "error: package not found",
+        "prove"
+    ));
+}

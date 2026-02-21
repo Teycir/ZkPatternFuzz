@@ -21,3 +21,14 @@ fn test_convert_witness_to_prover_toml() {
     assert!(toml_content.contains("y = "));
     assert!(toml_content.contains("arr = "));
 }
+
+#[test]
+fn test_nargo_missing_subcommand_message_detection() {
+    let stderr = "error: unrecognized subcommand 'prove'\n\nUsage: nargo <COMMAND>";
+    assert!(nargo_missing_subcommand_message("", stderr, "prove"));
+    assert!(!nargo_missing_subcommand_message(
+        "",
+        "error: package not found",
+        "prove"
+    ));
+}

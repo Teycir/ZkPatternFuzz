@@ -20,6 +20,44 @@ use std::process::Command;
 use std::time::Duration;
 use zk_core::Finding;
 
+fn nargo_missing_subcommand_message(stdout: &str, stderr: &str, subcommand: &str) -> bool {
+    let combined = format!("{stdout}\n{stderr}").to_ascii_lowercase();
+    combined.contains("unrecognized subcommand")
+        && (combined.contains(&format!("'{subcommand}'"))
+            || combined.contains(&format!("`{subcommand}`"))
+            || combined.contains(subcommand))
+}
+
+fn ensure_nargo_subcommand(project_path: &Path, subcommand: &str) -> anyhow::Result<()> {
+    let output = super::command_timeout::run_with_timeout(
+        Command::new("nargo")
+            .arg("help")
+            .arg(subcommand)
+            .current_dir(project_path),
+        Duration::from_secs(10),
+    )?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if nargo_missing_subcommand_message(&stdout, &stderr, subcommand) {
+        anyhow::bail!(
+            "nargo '{}' is required but unavailable in this installed Noir CLI. Update your Noir toolchain.",
+            subcommand
+        );
+    }
+
+    anyhow::bail!(
+        "Failed probing nargo subcommand '{}': stdout='{}' stderr='{}'",
+        subcommand,
+        stdout.trim(),
+        stderr.trim()
+    )
+}
+
 /// Generate Noir proof for a finding
 ///
 /// # Arguments
@@ -60,13 +98,17 @@ pub fn generate_noir_proof(
         Duration::from_secs(10),
     );
 
-    let nargo_ok = matches!(nargo_check, Ok(output) if output.status.success());
-    if !nargo_ok {
-        return Ok((
-            proof_path,
-            VerificationResult::Skipped("nargo not found in PATH".to_string()),
-        ));
+    match nargo_check {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => anyhow::bail!(
+            "nargo --version failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ),
+        Err(err) => anyhow::bail!("nargo --version failed: {}", err),
     }
+
+    ensure_nargo_subcommand(project_path, "prove")?;
+    ensure_nargo_subcommand(project_path, "verify")?;
 
     // Step 3: Generate proof
     tracing::info!("Generating Noir proof for finding in {:?}", finding_dir);
@@ -88,12 +130,7 @@ pub fn generate_noir_proof(
                 )),
             ));
         }
-        Err(e) => {
-            return Ok((
-                proof_path,
-                VerificationResult::Skipped(format!("nargo prove failed: {}", e)),
-            ));
-        }
+        Err(e) => anyhow::bail!("nargo prove failed: {}", e),
         _ => {
             tracing::debug!("Noir proof generated successfully");
         }
@@ -129,10 +166,7 @@ pub fn generate_noir_proof(
                 )),
             ))
         }
-        Err(e) => Ok((
-            proof_path,
-            VerificationResult::Skipped(format!("nargo verify failed: {}", e)),
-        )),
+        Err(e) => anyhow::bail!("nargo verify failed: {}", e),
     }
 }
 

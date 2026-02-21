@@ -2,6 +2,55 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T13:18:16Z
+- Switched Noir tool behavior to strict fail-fast (no fallback execution path):
+  - file: `crates/zk-backends/src/noir/mod.rs`
+  - changes:
+    - removed Barretenberg (`bb`) prove/verify fallback branch from Noir target execution
+    - `prove()` and `verify()` now require `nargo prove` / `nargo verify` support and hard-fail when unavailable
+    - explicit error message directs toolchain update when subcommands are missing
+- Switched Noir evidence proof path to strict fail-fast for missing tooling:
+  - file: `src/reporting/evidence_noir.rs`
+  - changes:
+    - `nargo --version` and `nargo prove`/`verify` capability checks now return hard errors (not `VerificationResult::Skipped`)
+    - command-timeout execution errors for prove/verify now fail the operation directly
+- Validation:
+  - `cargo test -q -p zk-backends noir::tests::test_nargo_missing_subcommand_message_detection` -> `PASS`
+  - `cargo test -q --package zk-fuzzer test_nargo_missing_subcommand_message_detection` -> `PASS`
+  - `cargo check -q` -> `PASS`
+
+## Update (UTC): 2026-02-21T13:07:31Z
+- Hardened Noir proving/verification compatibility for modern CLI layouts:
+  - file: `crates/zk-backends/src/noir/mod.rs`
+  - changes:
+    - detect whether `nargo` exposes `prove`/`verify` subcommands (`nargo help <subcommand>`)
+    - keep legacy path when subcommands exist
+    - fallback to Barretenberg `bb` flow when subcommands are absent:
+      - witness generation via `nargo execute <witness_name>`
+      - proof generation via `bb prove --scheme <scheme> -b <artifact.json> -w <witness.gz> -o <proof>`
+      - verification via `bb write_vk ...` + `bb verify ...`
+    - add configurable proof scheme via `ZK_FUZZER_NOIR_BB_SCHEME` (default: `ultra_honk`)
+    - improved command failure diagnostics by including combined stdout/stderr snippets
+- Added Noir parser regression coverage:
+  - file: `crates/zk-backends/src/noir/mod_tests.rs`
+  - test: `test_nargo_missing_subcommand_message_detection`
+- Hardened Noir evidence proof pipeline to avoid false failures on modern CLI:
+  - file: `src/reporting/evidence_noir.rs`
+  - changes:
+    - detect `nargo prove`/`nargo verify` subcommand availability before attempting proof flow
+    - when unavailable, emit explicit `VerificationResult::Skipped(...)` with migration guidance instead of reporting opaque command failures
+- Added evidence parser regression coverage:
+  - file: `src/reporting/evidence_noir_tests.rs`
+  - test: `test_nargo_missing_subcommand_message_detection`
+- Validation:
+  - `cargo test -q -p zk-backends noir::tests::test_nargo_missing_subcommand_message_detection` -> `PASS`
+  - `cargo test -q -p zk-backends noir::tests::test_proof_file_candidates_include_name_and_main_without_duplicates` -> `PASS`
+  - `cargo test -q --package zk-fuzzer test_convert_witness_to_prover_toml` -> `PASS`
+  - `cargo test -q --package zk-fuzzer test_nargo_missing_subcommand_message_detection` -> `PASS`
+  - `ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_real_backend_matrix_smoke -- --exact` -> `PASS`
+  - `cargo check -q -p zk-backends` -> `PASS`
+  - `cargo check -q` -> `PASS`
+
 ## Update (UTC): 2026-02-21T12:52:39Z
 - Executed aggregate non-Circom readiness gate after Halo2 toolchain fallback fix:
   - `scripts/run_backend_readiness_lanes.sh --iterations 5 --timeout 8 --workers 1 --batch-jobs 1 --required-backends noir,cairo,halo2 --min-completion-rate 0.90 --max-runtime-error 0 --max-backend-preflight-failed 0 --max-run-outcome-missing-rate 0.05 --skip-noir-integration-test --skip-noir-constraint-coverage-test --skip-noir-constraint-edge-cases-test --skip-noir-external-smoke-test --skip-noir-external-parity-test --skip-cairo-integration-test --skip-cairo-regression-test --skip-halo2-json-integration-test --skip-halo2-real-circuit-test --skip-halo2-stability-test --no-build-if-missing --enforce-dashboard`
