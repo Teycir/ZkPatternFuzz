@@ -273,12 +273,6 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         tracing::info!("--real-only set (real backend mode is already enforced)");
     }
 
-    // Always enforce strict backend in this CLI.
-    config
-        .campaign
-        .parameters
-        .additional
-        .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
     // Soundness for Circom requires proving/verification keys. In strict live runs, ensure
     // prerequisites are satisfied by auto-running trusted setup when needed.
     let needs_soundness_keys = config
@@ -387,11 +381,6 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
             "engagement_strict".to_string(),
             serde_yaml::Value::Bool(true),
         );
-        config
-            .campaign
-            .parameters
-            .additional
-            .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
 
         // Slight recall bias for evidence scans: prefer not missing true positives.
         // Keep YAML authority by only applying when user did not set explicit values.

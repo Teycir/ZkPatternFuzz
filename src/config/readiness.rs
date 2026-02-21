@@ -278,7 +278,8 @@ fn collect_configured_attack_keys(config: &FuzzConfig) -> HashSet<&'static str> 
 pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
     let mut warnings = Vec::new();
 
-    // 1. Check strict_backend
+    // 1. Strict backend behavior is always enforced.
+    // Keep compatibility checks so legacy configs don't silently disable safety.
     let additional = &config.campaign.parameters.additional;
     let evidence_mode = additional
         .get("evidence_mode")
@@ -288,18 +289,16 @@ pub fn check_0day_readiness(config: &FuzzConfig) -> ReadinessReport {
         .get("engagement_strict")
         .and_then(|v| v.as_bool())
         .unwrap_or(evidence_mode);
-    let strict_backend = additional
-        .get("strict_backend")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    if !strict_backend {
+    if matches!(
+        additional.get("strict_backend").and_then(|v| v.as_bool()),
+        Some(false)
+    ) {
         warnings.push(
             ReadinessWarning::critical(
                 "Backend",
-                "strict_backend is false - backend/tooling failures can hide real bugs",
+                "strict_backend=false is unsupported: backend/tooling checks are always strict",
             )
-            .with_fix("Set strict_backend: true in campaign.parameters.additional"),
+            .with_fix("Remove strict_backend (or set strict_backend: true for legacy compatibility)"),
         );
     }
 

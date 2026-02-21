@@ -45,14 +45,14 @@ pub fn generate_cairo_proof(
     if !witness_json.exists() {
         return Ok((
             proof_path,
-            VerificationResult::Skipped("witness.json not found".to_string()),
+            VerificationResult::Failed("witness.json not found".to_string()),
         ));
     }
 
     if !program_path.exists() {
         return Ok((
             proof_path,
-            VerificationResult::Skipped(format!(
+            VerificationResult::Failed(format!(
                 "Cairo program not found: {}",
                 program_path.display()
             )),
@@ -64,7 +64,7 @@ pub fn generate_cairo_proof(
     if let Err(e) = convert_witness_to_cairo_input(&witness_json, &input_path) {
         return Ok((
             proof_path,
-            VerificationResult::Skipped(format!("Failed to convert witness: {}", e)),
+            VerificationResult::Failed(format!("Failed to convert witness: {}", e)),
         ));
     }
 
@@ -87,7 +87,7 @@ pub fn generate_cairo_proof(
     if !has_cairo_run && !has_scarb {
         return Ok((
             proof_path,
-            VerificationResult::Skipped("Neither cairo-run nor scarb found in PATH".to_string()),
+            VerificationResult::Failed("Neither cairo-run nor scarb found in PATH".to_string()),
         ));
     }
 
@@ -117,7 +117,7 @@ pub fn generate_cairo_proof(
         // For Scarb-based projects, we need a different approach
         return Ok((
             proof_path,
-            VerificationResult::Skipped(
+            VerificationResult::Failed(
                 "Scarb-based Cairo 1 proof generation not yet implemented".to_string(),
             ),
         ));
@@ -138,7 +138,7 @@ pub fn generate_cairo_proof(
         Err(e) => {
             return Ok((
                 proof_path,
-                VerificationResult::Skipped(format!("cairo-run error: {}", e)),
+                VerificationResult::Failed(format!("cairo-run error: {}", e)),
             ));
         }
         _ => {
@@ -158,7 +158,7 @@ pub fn generate_cairo_proof(
     if !has_stone_prover {
         return Ok((
             proof_path,
-            VerificationResult::Skipped(
+            VerificationResult::Failed(
                 "stone-prover (cpu_air_prover) not found. Install from starkware-libs/stone-prover"
                     .to_string(),
             ),
@@ -188,7 +188,7 @@ pub fn generate_cairo_proof(
             tracing::warn!("Stone prover failed: {}", stderr);
             return Ok((
                 proof_path,
-                VerificationResult::Skipped(format!(
+                VerificationResult::Failed(format!(
                     "Proof generation failed (trace exists): {}",
                     stderr.chars().take(200).collect::<String>()
                 )),
@@ -200,12 +200,12 @@ pub fn generate_cairo_proof(
             if trace_path.exists() {
                 return Ok((
                     proof_path,
-                    VerificationResult::Skipped(format!("Trace generated but proof failed: {}", e)),
+                    VerificationResult::Failed(format!("Trace generated but proof failed: {}", e)),
                 ));
             }
             return Ok((
                 proof_path,
-                VerificationResult::Skipped(format!("stone prover error: {}", e)),
+                VerificationResult::Failed(format!("stone prover error: {}", e)),
             ));
         }
         _ => {
@@ -239,7 +239,7 @@ pub fn generate_cairo_proof(
         }
         Err(e) => Ok((
             proof_path,
-            VerificationResult::Skipped(format!("cpu_air_verifier error: {}", e)),
+            VerificationResult::Failed(format!("cpu_air_verifier error: {}", e)),
         )),
     }
 }

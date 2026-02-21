@@ -15,7 +15,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, OnceLock};
 use tempfile::Builder;
-use zk_constraints::r1cs_parser::R1CS;
 use zk_core::ConstraintEquation;
 use zk_core::FieldElement;
 use zk_core::Framework;
@@ -1161,50 +1160,29 @@ impl CircomTarget {
             return Ok(());
         }
 
-        // Prefer snarkjs for metadata parity; fall back to direct R1CS parsing when unavailable.
+        // Strict mode: require snarkjs metadata extraction to succeed.
         let r1cs_path_str = r1cs_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 r1cs path: {}", r1cs_path.display()))?;
         let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
         cmd.args(["r1cs", "info", r1cs_path_str]);
+        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
+            .context("Failed to run snarkjs r1cs info")?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "snarkjs r1cs info failed for '{}': {}",
+                r1cs_path.display(),
+                format_command_failure(&output)
+            );
+        }
         let (num_constraints, num_private_inputs, num_public_inputs, num_outputs) =
-            match run_with_timeout(&mut cmd, circom_external_command_timeout()) {
-                Ok(output) if output.status.success() => {
-                    match Self::parse_snarkjs_r1cs_info_stdout(&String::from_utf8_lossy(
-                        &output.stdout,
-                    )) {
-                        Ok(parsed) => parsed,
-                        Err(err) => {
-                            tracing::warn!(
-                                "Failed to parse snarkjs r1cs info output for '{}': {}. Falling back to direct .r1cs parsing.",
-                                r1cs_path.display(),
-                                err
-                            );
-                            Self::parse_r1cs_counts_fallback(&r1cs_path)?
-                        }
-                    }
-                }
-                Ok(output) => {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    tracing::warn!(
-                        "snarkjs r1cs info failed for '{}': status={} stderr='{}' stdout='{}'. Falling back to direct .r1cs parsing.",
-                        r1cs_path.display(),
-                        output.status,
-                        stderr.trim(),
-                        stdout.trim()
-                    );
-                    Self::parse_r1cs_counts_fallback(&r1cs_path)?
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        "Failed to run snarkjs r1cs info for '{}': {}. Falling back to direct .r1cs parsing.",
-                        r1cs_path.display(),
-                        err
-                    );
-                    Self::parse_r1cs_counts_fallback(&r1cs_path)?
-                }
-            };
+            Self::parse_snarkjs_r1cs_info_stdout(&String::from_utf8_lossy(&output.stdout))
+                .with_context(|| {
+                    format!(
+                        "Failed to parse snarkjs r1cs info output for '{}'",
+                        r1cs_path.display()
+                    )
+                })?;
 
         // Also parse the symbols file for signal names
         let (signals, sym_list) = if sym_path.exists() {
@@ -1388,21 +1366,6 @@ impl CircomTarget {
         Ok((constraints, private_inputs, public_inputs, outputs))
     }
 
-    fn parse_r1cs_counts_fallback(r1cs_path: &Path) -> Result<(usize, usize, usize, usize)> {
-        let r1cs = R1CS::from_file(r1cs_path).with_context(|| {
-            format!(
-                "Failed to parse fallback R1CS file '{}'",
-                r1cs_path.display()
-            )
-        })?;
-        Ok((
-            r1cs.constraints.len(),
-            r1cs.num_private_inputs,
-            r1cs.num_public_inputs,
-            r1cs.num_public_outputs,
-        ))
-    }
-
     /// Parse the symbols file to get signal names
     fn parse_symbols_file(&self, path: &Path) -> Result<HashMap<String, usize>> {
         let file = std::fs::File::open(path)?;
@@ -1460,7 +1423,7 @@ impl CircomTarget {
         let _guard = circom_io_guard("setup_keys")?;
         let basename = self.output_basename()?;
         let r1cs_path = self.build_dir.join(format!("{}.r1cs", basename));
-        let ptau_path = self.find_or_download_ptau()?;
+        let ptau_path = self.find_ptau()?;
 
         let zkey_path = self.build_dir.join(format!("{}.zkey", basename));
         let vkey_path = self.build_dir.join(format!("{}_vkey.json", basename));
@@ -1573,8 +1536,8 @@ impl CircomTarget {
         Ok(())
     }
 
-    /// Find existing powers of tau file or download a small one
-    fn find_or_download_ptau(&self) -> Result<PathBuf> {
+    /// Find existing powers of tau file.
+    fn find_ptau(&self) -> Result<PathBuf> {
         if let Some(path) = &self.ptau_path_override {
             if is_valid_ptau_file(path)? {
                 return Ok(path.clone());
@@ -1627,90 +1590,9 @@ impl CircomTarget {
             }
         }
 
-        // Prefer the largest local valid ptau fixture before network download.
-        let local_candidate_dirs = [
-            PathBuf::from("reports/ptau"),
-            PathBuf::from("targets/zkbugs/misc/circom"),
-            PathBuf::from("tests/circuits/build"),
-        ];
-        let mut best_local: Option<(u64, PathBuf)> = None;
-        for dir in &local_candidate_dirs {
-            let entries = match std::fs::read_dir(dir) {
-                Ok(entries) => entries,
-                Err(_) => continue,
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_none_or(|e| e != "ptau") {
-                    continue;
-                }
-                if !is_valid_ptau_file(&path)? {
-                    continue;
-                }
-                let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                match &best_local {
-                    Some((best_size, _)) if size <= *best_size => {}
-                    _ => best_local = Some((size, path)),
-                }
-            }
-        }
-        if let Some((size, candidate)) = best_local {
-            tracing::info!(
-                "Using local fallback ptau file: {:?} ({} bytes)",
-                candidate,
-                size
-            );
-            return Ok(candidate);
-        }
-
-        // Download a small ptau file for testing
-        let ptau_path = self.build_dir.join("pot12_final.ptau");
-        if ptau_path.exists() && !is_valid_ptau_file(&ptau_path)? {
-            tracing::warn!(
-                "Removing invalid cached ptau before download: {}",
-                ptau_path.display()
-            );
-            if let Err(err) = std::fs::remove_file(&ptau_path) {
-                tracing::warn!(
-                    "Failed to remove invalid ptau '{}': {}",
-                    ptau_path.display(),
-                    err
-                );
-            }
-        }
-        if !ptau_path.exists() {
-            tracing::info!("Downloading powers of tau file...");
-            let ptau_path_str = ptau_path
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("Non-UTF8 ptau path: {}", ptau_path.display()))?;
-            let download_timeout =
-                circom_external_command_timeout().max(std::time::Duration::from_secs(300));
-            let mut cmd = Command::new("curl");
-            cmd.args([
-                "-L",
-                "-o",
-                ptau_path_str,
-                "https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_12.ptau",
-            ]);
-            let output = run_with_timeout(&mut cmd, download_timeout)
-                .context("Failed to download ptau file")?;
-
-            if !output.status.success() {
-                anyhow::bail!(
-                    "Failed to download powers of tau file: {}",
-                    format_command_failure(&output)
-                );
-            }
-        }
-
-        if !is_valid_ptau_file(&ptau_path)? {
-            anyhow::bail!(
-                "Downloaded ptau file is invalid (bad header/size): {}",
-                ptau_path.display()
-            );
-        }
-
-        Ok(ptau_path)
+        anyhow::bail!(
+            "No valid ptau file found. Configure an explicit ptau path via executor options/target settings."
+        )
     }
 
     /// Calculate witness for given inputs

@@ -64,7 +64,6 @@ pub struct ExecOptions {
     pub circom_skip_constraint_check: bool,
     #[serde(default = "default_circom_witness_sanity_check")]
     pub circom_witness_sanity_check: bool,
-    pub strict_backend: bool,
 }
 
 fn default_circom_witness_sanity_check() -> bool {
@@ -112,7 +111,6 @@ impl ExecOptions {
             circom_skip_compile_if_artifacts: options.circom_skip_compile_if_artifacts,
             circom_skip_constraint_check: options.circom_skip_constraint_check,
             circom_witness_sanity_check: options.circom_witness_sanity_check,
-            strict_backend: options.strict_backend,
         }
     }
 
@@ -135,7 +133,6 @@ impl ExecOptions {
             circom_skip_compile_if_artifacts: self.circom_skip_compile_if_artifacts,
             circom_skip_constraint_check: self.circom_skip_constraint_check,
             circom_witness_sanity_check: self.circom_witness_sanity_check,
-            strict_backend: self.strict_backend,
         }
     }
 }
@@ -240,7 +237,7 @@ pub struct IsolationConfig {
     pub memory_limit_bytes: u64,
     /// Maximum CPU time limit in seconds (0 = unlimited)
     pub cpu_limit_secs: u64,
-    /// Number of retry attempts on crash
+    /// Deprecated in strict mode; retries are disabled.
     pub max_retries: usize,
     /// Enable crash telemetry
     pub enable_telemetry: bool,
@@ -256,7 +253,7 @@ impl Default for IsolationConfig {
             timeout_ms: 30_000,     // 30 seconds default
             memory_limit_bytes: 0,  // No limit by default
             cpu_limit_secs: 0,      // No limit by default
-            max_retries: 3,         // Retry up to 3 times on crash
+            max_retries: 0,         // Strict mode: no automatic retries
             enable_telemetry: true, // Track crash statistics
             kill_on_oom: true,      // Kill on OOM
             kill_on_timeout: true,  // Kill on timeout by default
@@ -475,35 +472,24 @@ impl IsolatedExecutor {
     }
 
     fn run_isolated(&self, request: &ExecRequest) -> anyhow::Result<ExecResponse> {
-        let mut retries = 0;
-        loop {
-            match self.run_isolated_once(request) {
-                Ok(response) => {
-                    if self.config.enable_telemetry {
-                        self.telemetry.record_success();
-                    }
-                    return Ok(response);
+        match self.run_isolated_once(request) {
+            Ok(response) => {
+                if self.config.enable_telemetry {
+                    self.telemetry.record_success();
                 }
-                Err(err) => {
-                    let failure_type = FailureType::from_error(&err.to_string());
-                    if self.config.enable_telemetry {
-                        match failure_type {
-                            FailureType::Timeout => self.telemetry.record_timeout(),
-                            FailureType::Crash => self.telemetry.record_crash(),
-                            FailureType::Oom => self.telemetry.record_oom(),
-                            FailureType::Other => self.telemetry.record_other_failure(),
-                        }
-                    }
-
-                    if retries >= self.config.max_retries || failure_type == FailureType::Timeout {
-                        return Err(err);
-                    }
-
-                    retries += 1;
-                    if self.config.enable_telemetry {
-                        self.telemetry.record_retry();
+                Ok(response)
+            }
+            Err(err) => {
+                let failure_type = FailureType::from_error(&err.to_string());
+                if self.config.enable_telemetry {
+                    match failure_type {
+                        FailureType::Timeout => self.telemetry.record_timeout(),
+                        FailureType::Crash => self.telemetry.record_crash(),
+                        FailureType::Oom => self.telemetry.record_oom(),
+                        FailureType::Other => self.telemetry.record_other_failure(),
                     }
                 }
+                Err(err)
             }
         }
     }

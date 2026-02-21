@@ -26,18 +26,6 @@ cargo run --release --bin zk0d_batch -- \
   --framework circom
 ```
 
-To enable one-shot transient setup retries (keygen/preflight/lock classes):
-
-```bash
-cargo run --release --bin zk0d_batch -- \
-  --alias always \
-  --target-circuit /media/elements/Repos/zk0d/path/to/target.circom \
-  --main-component Main \
-  --framework circom \
-  --retry-transient-setup \
-  --retry-backoff-secs 3
-```
-
 ### Strict 3-Check Gate (Enforced by `zk0d_batch`)
 
 Every batch run enforces:

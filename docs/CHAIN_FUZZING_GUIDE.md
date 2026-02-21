@@ -263,7 +263,6 @@ campaign:
       chain_shrink_max_attempts: 100 # Minimization attempts
       
       # General performance
-      strict_backend: true           # Required for evidence
       per_exec_isolation: false      # Faster execution
 ```
 

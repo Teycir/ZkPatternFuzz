@@ -75,8 +75,6 @@ impl Drop for ScopedFileOverwrite {
 pub struct NoirTarget {
     /// Path to the Noir project directory (containing Nargo.toml)
     project_path: PathBuf,
-    /// Optional project path override used when isolating nested-workspace projects.
-    project_path_override: Option<PathBuf>,
     /// Compiled circuit metadata
     metadata: Option<NoirMetadata>,
     /// Build directory for artifacts
@@ -167,9 +165,7 @@ pub enum Visibility {
 
 impl NoirTarget {
     fn active_project_path(&self) -> &Path {
-        self.project_path_override
-            .as_deref()
-            .unwrap_or(self.project_path.as_path())
+        self.project_path.as_path()
     }
 
     /// Get the field name used by this circuit (default Noir field)
@@ -299,7 +295,6 @@ impl NoirTarget {
 
         Ok(Self {
             project_path,
-            project_path_override: None,
             metadata: None,
             build_dir,
             compiled: false,
@@ -354,25 +349,7 @@ impl NoirTarget {
         };
 
         // Compile the project
-        let mut output = compile_project(self)?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if Self::is_missing_selected_package(&stderr)
-                && self.enable_isolated_project_mode().with_context(|| {
-                    format!(
-                        "Failed preparing isolated Noir project from '{}'",
-                        self.project_path.display()
-                    )
-                })?
-            {
-                tracing::warn!(
-                    "Noir package resolution failed in parent workspace; retrying compile in isolated project copy '{}'",
-                    self.active_project_path().display()
-                );
-                output = compile_project(self)?;
-            }
-        };
+        let output = compile_project(self)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -630,90 +607,6 @@ impl NoirTarget {
                 } else if file_type.is_dir() && depth < max_depth {
                     stack.push((path, depth + 1));
                 }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn is_missing_selected_package(stderr: &str) -> bool {
-        stderr.contains("Selected package `") && stderr.contains("was not found")
-    }
-
-    fn enable_isolated_project_mode(&mut self) -> Result<bool> {
-        if self.project_path_override.is_some() {
-            return Ok(false);
-        }
-
-        let manifest_path = self.project_path.join("Nargo.toml");
-        let manifest_content = fs::read_to_string(&manifest_path)
-            .with_context(|| format!("Failed reading '{}'", manifest_path.display()))?;
-
-        // Path dependencies commonly rely on sibling-relative paths. Keep original
-        // layout in that case instead of copying into an isolated directory.
-        if manifest_content
-            .lines()
-            .any(|line| !line.trim_start().starts_with('#') && line.contains("path ="))
-        {
-            tracing::warn!(
-                "Skipping Noir isolated-project fallback for '{}' because manifest uses path dependencies",
-                manifest_path.display()
-            );
-            return Ok(false);
-        }
-
-        let isolated_root = self.build_dir.join("isolated_project");
-        if isolated_root.exists() {
-            fs::remove_dir_all(&isolated_root).with_context(|| {
-                format!(
-                    "Failed removing stale isolated directory '{}'",
-                    isolated_root.display()
-                )
-            })?;
-        }
-        Self::copy_project_tree(self.project_path.as_path(), isolated_root.as_path())?;
-        self.project_path_override = Some(isolated_root);
-        Ok(true)
-    }
-
-    fn copy_project_tree(src: &Path, dst: &Path) -> Result<()> {
-        fs::create_dir_all(dst).with_context(|| format!("Failed creating '{}'", dst.display()))?;
-
-        for entry in
-            fs::read_dir(src).with_context(|| format!("Failed reading '{}'", src.display()))?
-        {
-            let entry =
-                entry.with_context(|| format!("Failed reading entry in '{}'", src.display()))?;
-            let src_path = entry.path();
-            let dst_path = dst.join(entry.file_name());
-            let file_type = entry.file_type().with_context(|| {
-                format!("Failed reading file type for '{}'", src_path.display())
-            })?;
-
-            if file_type.is_symlink() {
-                continue;
-            }
-
-            if file_type.is_dir() {
-                let skip = src_path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| matches!(name, "target" | "proofs" | ".git"));
-                if skip {
-                    continue;
-                }
-                Self::copy_project_tree(src_path.as_path(), dst_path.as_path())?;
-                continue;
-            }
-
-            if file_type.is_file() {
-                fs::copy(&src_path, &dst_path).with_context(|| {
-                    format!(
-                        "Failed copying Noir project file '{}' to '{}'",
-                        src_path.display(),
-                        dst_path.display()
-                    )
-                })?;
             }
         }
 

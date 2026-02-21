@@ -26,9 +26,6 @@ pub(crate) fn validate_campaign(config_path: &str) -> anyhow::Result<()> {
             additional
                 .entry("engagement_strict".to_string())
                 .or_insert_with(|| serde_yaml::Value::Bool(true));
-            additional
-                .entry("strict_backend".to_string())
-                .or_insert_with(|| serde_yaml::Value::Bool(true));
         } else {
             // Match `run/evidence` defaults: iterations=100000.
             additional

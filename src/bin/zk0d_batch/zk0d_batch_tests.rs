@@ -3,16 +3,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[test]
-fn transient_setup_reason_classifier() {
-    assert!(is_transient_setup_reason("key_generation_failed"));
-    assert!(is_transient_setup_reason("output_dir_locked"));
-    assert!(is_transient_setup_reason("backend_preflight_failed"));
-    assert!(!is_transient_setup_reason("backend_tooling_missing"));
-    assert!(!is_transient_setup_reason("circom_compilation_failed"));
-    assert!(!is_transient_setup_reason("completed"));
-}
-
 fn write_temp_report(contents: &str) -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

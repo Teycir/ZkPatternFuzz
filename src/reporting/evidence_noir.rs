@@ -82,13 +82,13 @@ pub fn generate_noir_proof(
         if let Err(e) = convert_witness_to_prover_toml(&witness_json, &prover_toml) {
             return Ok((
                 proof_path,
-                VerificationResult::Skipped(format!("Failed to convert witness: {}", e)),
+                VerificationResult::Failed(format!("Failed to convert witness: {}", e)),
             ));
         }
     } else {
         return Ok((
             proof_path,
-            VerificationResult::Skipped("witness.json not found".to_string()),
+            VerificationResult::Failed("witness.json not found".to_string()),
         ));
     }
 

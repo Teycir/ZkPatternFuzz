@@ -93,14 +93,6 @@ struct Args {
     /// Emit per-template reason codes as TSV to stdout (for external harness ingestion)
     #[arg(long, default_value_t = false)]
     emit_reason_tsv: bool,
-
-    /// Retry once on transient setup failures (key setup/lock/readiness) with backoff
-    #[arg(long, default_value_t = true)]
-    retry_transient_setup: bool,
-
-    /// Backoff before retrying a transient setup failure (seconds)
-    #[arg(long, default_value_t = 3)]
-    retry_backoff_secs: u64,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -191,8 +183,6 @@ struct ScanRunConfig<'a> {
     scan_run_root: Option<&'a str>,
     dry_run: bool,
     artifacts_root: &'a Path,
-    retry_transient_setup: bool,
-    retry_backoff_secs: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -890,60 +880,11 @@ fn run_template(
     }
 
     if !run_scan(run_cfg, template, family, false, output_suffix)?.success {
-        if run_cfg.retry_transient_setup && !run_cfg.dry_run {
-            let reason_code = read_template_reason_code(
-                run_cfg.artifacts_root,
-                run_cfg.scan_run_root,
-                output_suffix,
-            );
-            if let Some(reason_code) = reason_code {
-                if is_transient_setup_reason(&reason_code) {
-                    eprintln!(
-                        "Template '{}' transient setup failure (reason_code={}); retrying once after {}s",
-                        template.file_name, reason_code, run_cfg.retry_backoff_secs
-                    );
-                    std::thread::sleep(std::time::Duration::from_secs(
-                        run_cfg.retry_backoff_secs.max(1),
-                    ));
-                    if run_scan(run_cfg, template, family, false, output_suffix)?.success {
-                        return Ok(true);
-                    }
-                }
-            }
-        }
         eprintln!("Template '{}' failed", template.file_name);
         return Ok(false);
     }
 
     Ok(true)
-}
-
-fn read_template_reason_code(
-    artifacts_root: &Path,
-    run_root: Option<&str>,
-    output_suffix: &str,
-) -> Option<String> {
-    let run_root = run_root?;
-    let run_outcome_path = artifacts_root
-        .join(run_root)
-        .join(output_suffix)
-        .join("run_outcome.json");
-    let raw = fs::read_to_string(run_outcome_path).ok()?;
-    let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    Some(classify_run_reason_code(&parsed).to_string())
-}
-
-fn is_transient_setup_reason(reason_code: &str) -> bool {
-    matches!(
-        reason_code,
-        "output_dir_locked"
-            | "key_generation_failed"
-            | "backend_preflight_failed"
-            | "run_outcome_missing"
-            | "run_outcome_unreadable"
-            | "run_outcome_invalid_json"
-            | "stale_interrupted"
-    )
 }
 
 fn scan_output_suffix(template: &TemplateInfo, family: Family) -> String {
@@ -1440,8 +1381,6 @@ fn main() -> anyhow::Result<()> {
         scan_run_root: None,
         dry_run: args.dry_run,
         artifacts_root: &artifacts_root,
-        retry_transient_setup: args.retry_transient_setup,
-        retry_backoff_secs: args.retry_backoff_secs,
     };
 
     let baseline_roots = if args.dry_run {

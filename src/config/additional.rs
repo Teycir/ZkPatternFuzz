@@ -21,7 +21,7 @@ impl AdditionalConfig {
     /// campaign:
     ///   parameters:
     ///     additional:
-    ///       strict_backend: true
+    ///       evidence_mode: true
     /// ```
     ///
     /// Because `Parameters.additional` is `#[serde(flatten)]`, that shape ends up as a single

@@ -2,6 +2,107 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T13:41:55Z
+- Enforced single-mode backend strictness (no strict/non-strict toggle surface):
+  - `src/executor/mod.rs`
+    - removed `strict_backend` from `ExecutorFactoryOptions`
+    - `ExecutorFactoryOptions::strict()` kept as compatibility alias to default strict behavior
+  - `src/executor/isolated.rs`
+    - removed `strict_backend` from isolated exec option serialization/plumbing
+  - `src/config/profiles.rs`
+    - removed `strict_backend` profile field and profile parameter emission
+  - `src/fuzzer/engine/config_helpers.rs`, `src/preflight_backend.rs`
+    - `strict_backend=false` now hard-fails config parsing
+    - legacy `strict_backend=true` accepted as deprecated no-op
+  - `src/main.rs`, `src/runtime_misc.rs`, `src/run_chain_config.rs`
+    - removed injected `strict_backend: true` writes (strictness is now implicit and always on)
+  - `src/config/readiness.rs`
+    - removed dependency on `strict_backend` presence
+    - reports explicit `strict_backend=false` as critical unsupported config
+- Enforced fail-fast evidence behavior when tools/prerequisites are missing:
+  - `src/reporting/evidence.rs`
+    - proof-generation errors now map to `VerificationResult::Failed` (not `Skipped`)
+    - missing Circom artifacts / missing `snarkjs` now fail
+    - removed `npx snarkjs` fallback path; default command is strict `snarkjs`
+  - `src/reporting/evidence_noir.rs`, `src/reporting/evidence_halo2.rs`, `src/reporting/evidence_cairo.rs`
+    - missing witness/spec/tools and command errors now fail instead of skip
+- Docs aligned with always-strict behavior:
+  - removed `strict_backend` toggles/examples from:
+    - `docs/PROFILES_GUIDE.md`
+    - `docs/CHAIN_FUZZING_GUIDE.md`
+    - `docs/TUTORIAL.md`
+    - `docs/PLUGIN_SYSTEM_GUIDE.md`
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --bin zk0d_batch` -> `PASS`
+  - `cargo test -q --package zk-fuzzer test_coverage_from_results_returns_none_when_constraints_missing` -> `PASS`
+
+## Update (UTC): 2026-02-21T13:31:25Z
+- Continued fallback eradication in Circom backend internals:
+  - `crates/zk-backends/src/circom/mod.rs`
+    - removed `.r1cs` direct-parse fallback when `snarkjs r1cs info` execution/parsing fails
+    - metadata extraction now hard-fails on `snarkjs` failure
+    - removed ptau local-fixture/download fallback path in `find_or_download_ptau`
+    - key setup now requires an existing valid ptau source (configured or discoverable in strict search paths), otherwise fails immediately
+- Validation:
+  - `cargo check -q -p zk-backends` -> `PASS`
+  - `cargo check -q` -> `PASS`
+  - `ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_real_backend_matrix_smoke -- --exact` -> `PASS`
+
+## Update (UTC): 2026-02-21T13:29:25Z
+- Extended strict no-fallback policy to additional execution surfaces:
+  - `src/executor/mod.rs`
+    - removed Circom executor `snarkjs`/`ptau` autodetection path injection in `new_with_options(...)`
+    - explicit option values are honored, but no automatic local/env path discovery fallback is applied by the executor wrapper
+  - `src/executor/mod_tests.rs`
+    - removed Circom autodetect tests tied to deleted fallback behavior
+  - `src/bin/zk0d_batch.rs`
+    - removed transient-setup retry behavior and related CLI/config fields
+  - `src/bin/zk0d_batch/zk0d_batch_tests.rs`
+    - removed retry classifier test tied to deleted fallback behavior
+  - `docs/TARGETS.md`
+    - removed retry-flag usage example from execution docs
+- Validation:
+  - `cargo test -q --bin zk0d_batch` -> `PASS`
+  - `cargo test -q --package zk-fuzzer test_coverage_from_results_returns_none_when_constraints_missing` -> `PASS`
+  - `cargo test -q -p zk-backends noir::tests::test_nargo_missing_subcommand_message_detection` -> `PASS`
+  - `cargo test -q -p zk-backends halo2::tests::test_halo2_cargo_command_uses_configured_toolchain` -> `PASS`
+  - `cargo check -q` -> `PASS`
+
+## Update (UTC): 2026-02-21T13:27:38Z
+- Continued strict no-fallback enforcement in runtime execution paths:
+  - `src/executor/mod.rs`
+    - removed Cairo output-hash coverage fallback path
+    - Cairo execution now fails when real constraint coverage is unavailable (`refusing output-hash fallback`)
+  - `src/bin/zk0d_batch.rs`
+    - removed transient-setup retry control flags and retry loop (`--retry-transient-setup`, `--retry-backoff-secs`)
+    - batch runner now does single-attempt execution with immediate failure on run error
+  - `src/bin/zk0d_batch/zk0d_batch_tests.rs`
+    - removed retry-classifier test tied to deleted retry fallback behavior
+  - `docs/TARGETS.md`
+    - removed retry-based batch-run example
+- Validation:
+  - `cargo test -q --bin zk0d_batch` -> `PASS`
+  - `cargo test -q --package zk-fuzzer test_coverage_from_results_returns_none_when_constraints_missing` -> `PASS`
+  - `cargo check -q` -> `PASS`
+
+## Update (UTC): 2026-02-21T13:22:06Z
+- Removed remaining backend auto-fallback paths to enforce strict fail-fast tooling policy:
+  - `crates/zk-backends/src/noir/mod.rs`
+    - removed compile-time isolated-project retry path (`enable_isolated_project_mode` / copy-based fallback)
+    - compile now runs once and fails immediately on package/tooling issues
+  - `crates/zk-backends/src/halo2/mod.rs`
+    - removed lockfile-v4 auto-retry branch (`cargo +nightly`) in `setup_rust_circuit`
+    - build now fails immediately when toolchain/lockfile is incompatible
+    - narrowed optional env toolchain input to explicit `ZK_FUZZER_HALO2_CARGO_TOOLCHAIN` only
+  - `src/reporting/evidence_noir.rs`
+    - evidence proof flow already moved to hard-fail on missing/unsupported `nargo prove` / `nargo verify`
+- Validation:
+  - `cargo test -q -p zk-backends noir::tests::test_nargo_missing_subcommand_message_detection` -> `PASS`
+  - `cargo test -q -p zk-backends halo2::tests::test_halo2_cargo_command_uses_configured_toolchain` -> `PASS`
+  - `ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_real_backend_matrix_smoke -- --exact` -> `PASS`
+  - `cargo check -q` -> `PASS`
+
 ## Update (UTC): 2026-02-21T13:18:16Z
 - Switched Noir tool behavior to strict fail-fast (no fallback execution path):
   - file: `crates/zk-backends/src/noir/mod.rs`

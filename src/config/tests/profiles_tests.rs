@@ -30,14 +30,6 @@ fn test_profile_iterations() {
 }
 
 #[test]
-fn test_profile_strict_backend() {
-    assert!(!EmbeddedProfile::quick().strict_backend);
-    assert!(EmbeddedProfile::standard().strict_backend);
-    assert!(EmbeddedProfile::deep().strict_backend);
-    assert!(EmbeddedProfile::perf().strict_backend);
-}
-
-#[test]
 fn test_profile_to_params() {
     let profile = EmbeddedProfile::standard();
     let params = profile.to_additional_params();
@@ -45,10 +37,6 @@ fn test_profile_to_params() {
     assert_eq!(
         params.get("max_iterations").and_then(|v| v.as_u64()),
         Some(100_000)
-    );
-    assert_eq!(
-        params.get("strict_backend").and_then(|v| v.as_bool()),
-        Some(true)
     );
     assert_eq!(
         params.get("symbolic_enabled").and_then(|v| v.as_bool()),

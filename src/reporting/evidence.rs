@@ -38,7 +38,9 @@ pub enum VerificationResult {
     Passed,
     /// Proof verification failed - not a real bug
     Failed(String),
-    /// Could not run verification (missing tools, etc.)
+    /// Verification was intentionally not executed.
+    ///
+    /// Strict backend/evidence flows should prefer returning `Failed` on tooling issues.
     Skipped(String),
     /// Verification in progress
     Pending,
@@ -203,14 +205,18 @@ impl EvidenceGenerator {
     }
 
     /// Resolve the snarkjs command to use
-    fn resolve_snarkjs_cmd(&self) -> String {
+    fn resolve_snarkjs_cmd(&self) -> anyhow::Result<String> {
         if let Some(ref path) = self.snarkjs_path {
             if path.exists() {
-                return path.display().to_string();
+                return Ok(path.display().to_string());
             }
+            anyhow::bail!(
+                "Configured circom_snarkjs_path does not exist: {}",
+                path.display()
+            );
         }
-        // Default to npx snarkjs which handles both global and local installs
-        "npx snarkjs".to_string()
+        // Strict behavior: require a real snarkjs binary on PATH when no explicit path is set.
+        Ok("snarkjs".to_string())
     }
 
     /// Auto-discover circuit artifacts from build directory
@@ -339,7 +345,7 @@ impl EvidenceGenerator {
                     bundle.verification_result = verification;
                 }
                 Err(e) => {
-                    bundle.verification_result = VerificationResult::Skipped(e.to_string());
+                    bundle.verification_result = VerificationResult::Failed(e.to_string());
                 }
             },
             Framework::Noir => {
@@ -355,7 +361,7 @@ impl EvidenceGenerator {
                         bundle.verification_result = verification;
                     }
                     Err(e) => {
-                        bundle.verification_result = VerificationResult::Skipped(e.to_string());
+                        bundle.verification_result = VerificationResult::Failed(e.to_string());
                     }
                 }
             }
@@ -378,7 +384,7 @@ impl EvidenceGenerator {
                         bundle.verification_result = verification;
                     }
                     Err(e) => {
-                        bundle.verification_result = VerificationResult::Skipped(e.to_string());
+                        bundle.verification_result = VerificationResult::Failed(e.to_string());
                     }
                 }
             }
@@ -394,7 +400,7 @@ impl EvidenceGenerator {
                         bundle.verification_result = verification;
                     }
                     Err(e) => {
-                        bundle.verification_result = VerificationResult::Skipped(e.to_string());
+                        bundle.verification_result = VerificationResult::Failed(e.to_string());
                     }
                 }
             }
@@ -626,7 +632,7 @@ echo "Finding description: {}"
                 return Ok((
                     proof_json,
                     public_json,
-                    VerificationResult::Skipped(
+                    VerificationResult::Failed(
                         "circuit WASM not found - compile circuit first".to_string(),
                     ),
                 ));
@@ -639,7 +645,7 @@ echo "Finding description: {}"
                 return Ok((
                     proof_json,
                     public_json,
-                    VerificationResult::Skipped(
+                    VerificationResult::Failed(
                         "zkey not found - run trusted setup first".to_string(),
                     ),
                 ));
@@ -652,12 +658,12 @@ echo "Finding description: {}"
                 return Ok((
                     proof_json,
                     public_json,
-                    VerificationResult::Skipped("verification key not found".to_string()),
+                    VerificationResult::Failed("verification key not found".to_string()),
                 ));
             }
         };
 
-        let snarkjs_cmd = self.resolve_snarkjs_cmd();
+        let snarkjs_cmd = self.resolve_snarkjs_cmd()?;
         tracing::info!(
             "Generating proof with snarkjs for finding in {:?}",
             finding_dir
@@ -665,27 +671,15 @@ echo "Finding description: {}"
 
         // Step 1: Calculate witness (wasm -> wtns)
         // snarkjs wtns calculate circuit.wasm witness.json witness.wtns
-        let wtns_result = if snarkjs_cmd.starts_with("npx") {
-            super::command_timeout::run_with_timeout(
-                Command::new("npx")
-                    .args(["--yes", "snarkjs", "wtns", "calculate"]) // --yes prevents prompts
-                    .arg(&wasm)
-                    .arg(&witness_json)
-                    .arg(&witness_wtns)
-                    .current_dir(finding_dir),
-                timeout,
-            )
-        } else {
-            super::command_timeout::run_with_timeout(
-                Command::new(&snarkjs_cmd)
-                    .args(["wtns", "calculate"])
-                    .arg(&wasm)
-                    .arg(&witness_json)
-                    .arg(&witness_wtns)
-                    .current_dir(finding_dir),
-                timeout,
-            )
-        };
+        let wtns_result = super::command_timeout::run_with_timeout(
+            Command::new(&snarkjs_cmd)
+                .args(["wtns", "calculate"])
+                .arg(&wasm)
+                .arg(&witness_json)
+                .arg(&witness_wtns)
+                .current_dir(finding_dir),
+            timeout,
+        );
 
         match wtns_result {
             Ok(output) if !output.status.success() => {
@@ -704,7 +698,7 @@ echo "Finding description: {}"
                 return Ok((
                     proof_json,
                     public_json,
-                    VerificationResult::Skipped(format!("snarkjs not available: {}", e)),
+                    VerificationResult::Failed(format!("snarkjs not available: {}", e)),
                 ));
             }
             _ => {
@@ -714,29 +708,16 @@ echo "Finding description: {}"
 
         // Step 2: Generate proof
         // snarkjs groth16 prove circuit.zkey witness.wtns proof.json public.json
-        let prove_result = if snarkjs_cmd.starts_with("npx") {
-            super::command_timeout::run_with_timeout(
-                Command::new("npx")
-                    .args(["--yes", "snarkjs", "groth16", "prove"])
-                    .arg(&zkey)
-                    .arg(&witness_wtns)
-                    .arg(&proof_json)
-                    .arg(&public_json)
-                    .current_dir(finding_dir),
-                timeout,
-            )
-        } else {
-            super::command_timeout::run_with_timeout(
-                Command::new(&snarkjs_cmd)
-                    .args(["groth16", "prove"])
-                    .arg(&zkey)
-                    .arg(&witness_wtns)
-                    .arg(&proof_json)
-                    .arg(&public_json)
-                    .current_dir(finding_dir),
-                timeout,
-            )
-        };
+        let prove_result = super::command_timeout::run_with_timeout(
+            Command::new(&snarkjs_cmd)
+                .args(["groth16", "prove"])
+                .arg(&zkey)
+                .arg(&witness_wtns)
+                .arg(&proof_json)
+                .arg(&public_json)
+                .current_dir(finding_dir),
+            timeout,
+        );
 
         match prove_result {
             Ok(output) if !output.status.success() => {
@@ -755,7 +736,7 @@ echo "Finding description: {}"
                 return Ok((
                     proof_json,
                     public_json,
-                    VerificationResult::Skipped(format!("snarkjs prove failed: {}", e)),
+                    VerificationResult::Failed(format!("snarkjs prove failed: {}", e)),
                 ));
             }
             _ => {
@@ -765,27 +746,15 @@ echo "Finding description: {}"
 
         // Step 3: Verify proof
         // snarkjs groth16 verify vkey.json public.json proof.json
-        let verify_result = if snarkjs_cmd.starts_with("npx") {
-            super::command_timeout::run_with_timeout(
-                Command::new("npx")
-                    .args(["--yes", "snarkjs", "groth16", "verify"])
-                    .arg(&vkey)
-                    .arg(&public_json)
-                    .arg(&proof_json)
-                    .current_dir(finding_dir),
-                timeout,
-            )
-        } else {
-            super::command_timeout::run_with_timeout(
-                Command::new(&snarkjs_cmd)
-                    .args(["groth16", "verify"])
-                    .arg(&vkey)
-                    .arg(&public_json)
-                    .arg(&proof_json)
-                    .current_dir(finding_dir),
-                timeout,
-            )
-        };
+        let verify_result = super::command_timeout::run_with_timeout(
+            Command::new(&snarkjs_cmd)
+                .args(["groth16", "verify"])
+                .arg(&vkey)
+                .arg(&public_json)
+                .arg(&proof_json)
+                .current_dir(finding_dir),
+            timeout,
+        );
 
         match verify_result {
             Ok(output) => {
@@ -829,7 +798,7 @@ echo "Finding description: {}"
             Err(e) => Ok((
                 proof_json,
                 public_json,
-                VerificationResult::Skipped(format!("snarkjs verify failed: {}", e)),
+                VerificationResult::Failed(format!("snarkjs verify failed: {}", e)),
             )),
         }
     }

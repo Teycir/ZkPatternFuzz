@@ -18,7 +18,6 @@
 //! | Setting                  | Quick    | Standard  | Deep       | Perf      |
 //! |--------------------------|----------|-----------|------------|-----------|
 //! | max_iterations           | 10,000   | 100,000   | 1,000,000  | 500,000   |
-//! | strict_backend           | false    | true      | true       | true      |
 //! | evidence_mode            | false    | true      | true       | false     |
 //! | per_exec_isolation       | false    | false     | true       | false     |
 //! | symbolic_enabled         | true     | true      | true       | false     |
@@ -78,8 +77,6 @@ pub struct EmbeddedProfile {
     pub description: String,
     /// Maximum fuzzing iterations
     pub max_iterations: u64,
-    /// Require strict backend/tooling checks
-    pub strict_backend: bool,
     /// Enable evidence mode (proof generation)
     pub evidence_mode: bool,
     /// Enable per-execution isolation (slower but safer)
@@ -113,7 +110,6 @@ impl EmbeddedProfile {
             name: "quick".to_string(),
             description: "Fast exploration for initial triage (10K iterations)".to_string(),
             max_iterations: 10_000,
-            strict_backend: false,
             evidence_mode: false,
             per_exec_isolation: false,
             attacks: vec![
@@ -136,7 +132,6 @@ impl EmbeddedProfile {
             name: "standard".to_string(),
             description: "Balanced fuzzing for most audits (100K iterations)".to_string(),
             max_iterations: 100_000,
-            strict_backend: true,
             evidence_mode: true,
             per_exec_isolation: false,
             attacks: vec![
@@ -166,7 +161,6 @@ impl EmbeddedProfile {
             name: "deep".to_string(),
             description: "Thorough analysis for critical targets (1M iterations)".to_string(),
             max_iterations: 1_000_000,
-            strict_backend: true,
             evidence_mode: true,
             per_exec_isolation: true,
             attacks: vec!["all".to_string()],
@@ -185,7 +179,6 @@ impl EmbeddedProfile {
             name: "perf".to_string(),
             description: "Performance-first long runs (500K iterations)".to_string(),
             max_iterations: 500_000,
-            strict_backend: true,
             evidence_mode: false,
             per_exec_isolation: false,
             attacks: vec!["underconstrained".to_string(), "boundary".to_string()],
@@ -215,10 +208,6 @@ impl EmbeddedProfile {
         params.insert(
             "max_iterations".to_string(),
             serde_yaml::Value::Number(serde_yaml::Number::from(self.max_iterations)),
-        );
-        params.insert(
-            "strict_backend".to_string(),
-            serde_yaml::Value::Bool(self.strict_backend),
         );
         params.insert(
             "evidence_mode".to_string(),
@@ -278,7 +267,6 @@ impl EmbeddedProfile {
         println!("| Setting                  | Quick    | Standard  | Deep       | Perf      |");
         println!("|--------------------------|----------|-----------|------------|-----------|");
         println!("| max_iterations           | 10,000   | 100,000   | 1,000,000  | 500,000   |");
-        println!("| strict_backend           | false    | true      | true       | true      |");
         println!("| evidence_mode            | false    | true      | true       | false     |");
         println!("| per_exec_isolation       | false    | false     | true       | false     |");
         println!("| symbolic_enabled         | true     | true      | true       | false     |");
@@ -297,10 +285,9 @@ pub fn apply_profile(config: &mut super::FuzzConfig, profile_name: ProfileName) 
     merge_profile_attacks(config, &profile);
 
     tracing::info!(
-        "Applied profile '{}': {} iterations, strict_backend={}, evidence_mode={}",
+        "Applied profile '{}': {} iterations, evidence_mode={}",
         profile.name,
         profile.max_iterations,
-        profile.strict_backend,
         profile.evidence_mode,
     );
 }

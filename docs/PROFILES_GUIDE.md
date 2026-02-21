@@ -21,7 +21,6 @@ cargo run -- evidence campaign.yaml --profile deep
 | Setting                  | Quick      | Standard   | Deep        |
 |--------------------------|------------|------------|-------------|
 | `max_iterations`         | 10,000     | 100,000    | 1,000,000   |
-| `strict_backend`         | false      | true       | true        |
 | `evidence_mode`          | false      | true       | true        |
 | `per_exec_isolation`     | false      | false      | true        |
 | `constraint_guided`      | false      | true       | true        |
@@ -44,7 +43,7 @@ cargo run -- evidence campaign.yaml --profile deep
 **Limitations:**
 - May miss deep bugs requiring more iterations
 - No evidence generation
-- Mock backend allowed (not cryptographically verified)
+- Fewer iterations than Standard/Deep
 
 **Attacks enabled:** `boundary`, `arithmetic_overflow`, `underconstrained`
 
@@ -122,7 +121,6 @@ For more control, define profiles in your campaign YAML:
 profiles:
   my_custom:
     max_iterations: 250000
-    strict_backend: true
     evidence_mode: true
     constraint_guided: true
 

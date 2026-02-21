@@ -101,18 +101,6 @@ fn test_analysis_unused_columns() {
 }
 
 #[test]
-fn test_halo2_lockfile_error_detection() {
-    let lockfile_v4 = r#"error: failed to parse lock file
-
-Caused by:
-  lock file version 4 requires `-Znext-lockfile-bump`"#;
-    assert!(halo2_lockfile_requires_nightly(lockfile_v4));
-    assert!(!halo2_lockfile_requires_nightly(
-        "error: failed to fetch dependency",
-    ));
-}
-
-#[test]
 fn test_halo2_cargo_command_uses_configured_toolchain() {
     let dir = tempdir().unwrap();
     let spec_path = dir.path().join("test.json");

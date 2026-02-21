@@ -84,16 +84,6 @@ fn test_candidate_artifact_paths_include_project_target_json() {
 }
 
 #[test]
-fn test_missing_selected_package_error_detection() {
-    assert!(NoirTarget::is_missing_selected_package(
-        "Selected package `hello_circuit` was not found"
-    ));
-    assert!(!NoirTarget::is_missing_selected_package(
-        "Noir compilation failed for other reason"
-    ));
-}
-
-#[test]
 fn test_num_private_inputs_counts_only_private_abi_parameters() {
     use crate::TargetCircuit;
 

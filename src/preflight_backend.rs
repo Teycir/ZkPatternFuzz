@@ -14,9 +14,20 @@ fn parse_preflight_executor_options(
         noir_build_dir: additional.get_path("noir_build_dir"),
         halo2_build_dir: additional.get_path("halo2_build_dir"),
         cairo_build_dir: additional.get_path("cairo_build_dir"),
-        strict_backend: true,
         ..Default::default()
     };
+
+    if let Some(strict_backend) = additional.get_bool("strict_backend") {
+        if !strict_backend {
+            anyhow::bail!(
+                "Invalid config: strict_backend=false is not supported. \
+                 Backend strictness is always enabled; remove strict_backend or set it true."
+            );
+        }
+        tracing::warn!(
+            "Config key 'strict_backend' is deprecated and ignored (strict backend is always enabled)"
+        );
+    }
 
     if let Some(auto_setup) = additional.get_bool("circom_auto_setup_keys") {
         options.circom_auto_setup_keys = auto_setup;

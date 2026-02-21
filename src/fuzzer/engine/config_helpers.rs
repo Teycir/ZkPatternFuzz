@@ -412,13 +412,19 @@ impl FuzzingEngine {
         options.halo2_build_dir = Self::additional_path(additional, "halo2_build_dir");
         options.cairo_build_dir = Self::additional_path(additional, "cairo_build_dir");
 
-        // Runtime hardening: enforce strict backend availability checks.
+        // Runtime hardening: strict backend behavior is always enforced.
+        // Keep this parser branch only for backward compatibility messaging.
         if let Some(strict_backend) = Self::additional_bool(additional, "strict_backend") {
             if !strict_backend {
-                tracing::warn!("Ignoring strict_backend=false; strict backend mode is enforced");
+                anyhow::bail!(
+                    "Invalid config: strict_backend=false is not supported. \
+                     Backend strictness is always enabled; remove strict_backend or set it true."
+                );
             }
+            tracing::warn!(
+                "Config key 'strict_backend' is deprecated and ignored (strict backend is always enabled)"
+            );
         }
-        options.strict_backend = true;
         if let Some(auto_setup) = Self::additional_bool(additional, "circom_auto_setup_keys") {
             tracing::info!("Circom auto setup keys: {}", auto_setup);
             options.circom_auto_setup_keys = auto_setup;

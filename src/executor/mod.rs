@@ -72,8 +72,6 @@ pub struct ExecutorFactoryOptions {
     /// even when `circom_skip_constraint_check` is enabled to skip expensive host-side
     /// per-constraint coverage evaluation.
     pub circom_witness_sanity_check: bool,
-    /// If true, fail with an error when real backend tooling is missing.
-    pub strict_backend: bool,
 }
 
 impl Default for ExecutorFactoryOptions {
@@ -92,21 +90,16 @@ impl Default for ExecutorFactoryOptions {
             circom_skip_compile_if_artifacts: false,
             circom_skip_constraint_check: false,
             circom_witness_sanity_check: true,
-            strict_backend: true,
         }
     }
 }
 
 impl ExecutorFactoryOptions {
-    /// Create options with strict backend mode enabled
+    /// Legacy constructor alias retained for compatibility.
     ///
-    /// In strict mode, the factory will error if a real backend is not available
-    /// instead of substituting alternative execution paths.
+    /// Strict backend behavior is always enforced; this is equivalent to `Default::default()`.
     pub fn strict() -> Self {
-        Self {
-            strict_backend: true,
-            ..Self::default()
-        }
+        Self::default()
     }
 
     fn resolve_build_dir(
@@ -222,20 +215,6 @@ fn coverage_from_results(results: Vec<ConstraintResult>) -> Option<ExecutionCove
     let mut coverage = ExecutionCoverage::with_constraints(satisfied, evaluated);
     coverage.value_buckets = value_buckets;
     Some(coverage)
-}
-
-fn coverage_from_results_or_output_hash(
-    results: Vec<ConstraintResult>,
-    outputs: &[FieldElement],
-    backend_label: &str,
-) -> ExecutionCoverage {
-    coverage_from_results(results).unwrap_or_else(|| {
-        tracing::warn!(
-            "{} constraint coverage unavailable; using output-hash fallback",
-            backend_label
-        );
-        ExecutionCoverage::with_output_hash(outputs)
-    })
 }
 
 fn value_bucket_for(value_bytes: &[u8]) -> u8 {
@@ -642,19 +621,9 @@ impl ExecutorFactory {
                 )?;
                 if options.circom_auto_setup_keys {
                     tracing::info!("Auto-generating Circom proving/verification keys");
-                    if let Err(err) = executor.setup_keys() {
-                        if options.circom_require_setup_keys {
-                            anyhow::bail!(
-                                "Circom key setup failed during strict preflight: {}",
-                                err
-                            );
-                        } else {
-                            tracing::warn!(
-                                "Circom key setup failed (continuing without prove/verify-dependent checks): {}",
-                                err
-                            );
-                        }
-                    }
+                    executor
+                        .setup_keys()
+                        .context("Circom key setup failed during executor preflight")?;
                 }
                 Ok(Arc::new(executor))
             }
@@ -826,9 +795,7 @@ impl CircomExecutor {
         if let Some(raw_os) = std::env::var_os("CIRCOM_INCLUDE_PATHS") {
             let separator = if cfg!(windows) { ';' } else { ':' };
             let Some(raw) = raw_os.to_str() else {
-                tracing::warn!(
-                    "Ignoring CIRCOM_INCLUDE_PATHS because it contains invalid UTF-8"
-                );
+                tracing::warn!("Ignoring CIRCOM_INCLUDE_PATHS because it contains invalid UTF-8");
                 for root in Self::circuit_ancestor_paths(circuit_path) {
                     paths.push(root.join("node_modules"));
                     paths.push(root.join("vendor"));
@@ -886,102 +853,6 @@ impl CircomExecutor {
         filtered
     }
 
-    fn autodetect_snarkjs_path(circuit_path: &str) -> Option<PathBuf> {
-        for root in Self::circuit_ancestor_paths(circuit_path) {
-            let local_cli = root
-                .join("node_modules")
-                .join("snarkjs")
-                .join("build")
-                .join("cli.cjs");
-            if local_cli.exists() {
-                return Some(local_cli);
-            }
-            let local_bin = root.join("node_modules").join(".bin").join("snarkjs");
-            if local_bin.exists() {
-                return Some(local_bin);
-            }
-        }
-        if let Ok(cwd) = std::env::current_dir() {
-            for candidate in [
-                cwd.join("bins")
-                    .join("node_modules")
-                    .join("snarkjs")
-                    .join("build")
-                    .join("cli.cjs"),
-                cwd.join("bins")
-                    .join("node_modules")
-                    .join(".bin")
-                    .join("snarkjs"),
-                cwd.join("bins").join("snarkjs"),
-            ] {
-                if candidate.exists() {
-                    return Some(candidate);
-                }
-            }
-        }
-        None
-    }
-
-    fn autodetect_ptau_path(circuit_path: &str) -> Option<PathBuf> {
-        if let Ok(raw) = std::env::var("ZKF_PTAU_PATH") {
-            let trimmed = raw.trim();
-            if !trimmed.is_empty() {
-                let explicit = PathBuf::from(trimmed);
-                if explicit.exists() {
-                    return Some(explicit);
-                }
-                tracing::warn!(
-                    "ZKF_PTAU_PATH is set to '{}' but file was not found; continuing with autodetection",
-                    explicit.display()
-                );
-            }
-        }
-
-        let candidates = [
-            "bins/ptau/pot21_final.ptau",
-            "bins/ptau/pot20_final.ptau",
-            "bins/ptau/pot19_final.ptau",
-            "bins/ptau/pot12_final.ptau",
-            "bins/ptau/powersOfTau28_hez_final_12.ptau",
-            "ptau/pot21_final.ptau",
-            "ptau/pot20_final.ptau",
-            "ptau/pot19_final.ptau",
-            "ptau/pot12_final.ptau",
-            "ptau/powersOfTau28_hez_final_12.ptau",
-            "reports/ptau/pot21_final.ptau",
-            "reports/ptau/pot20_final.ptau",
-            "reports/ptau/pot19_final.ptau",
-            "reports/ptau/pot12_final.ptau",
-            "tests/circuits/build/pot12_final.ptau",
-            "bins/pot21_final.ptau",
-            "bins/pot20_final.ptau",
-            "bins/pot19_final.ptau",
-            "bins/pot12_final.ptau",
-            "bins/powersOfTau28_hez_final_12.ptau",
-            "pot21_final.ptau",
-            "pot20_final.ptau",
-            "pot19_final.ptau",
-            "pot12_final.ptau",
-            "powersOfTau28_hez_final_12.ptau",
-        ];
-
-        for root in Self::circuit_ancestor_paths(circuit_path) {
-            for rel in candidates {
-                let p = root.join(rel);
-                if p.exists() {
-                    return Some(p);
-                }
-            }
-        }
-        for rel in candidates {
-            let p = PathBuf::from(rel);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-        None
-    }
-
     pub fn new(circuit_path: &str, main_component: &str) -> anyhow::Result<Self> {
         let options = CircomExecutorOptions {
             include_paths: Self::default_include_paths_for(circuit_path),
@@ -1028,8 +899,8 @@ impl CircomExecutor {
         } else {
             include_paths = Self::dedupe_paths(include_paths);
         }
-        let ptau_path = ptau_path.or_else(|| Self::autodetect_ptau_path(circuit_path));
-        let snarkjs_path = snarkjs_path.or_else(|| Self::autodetect_snarkjs_path(circuit_path));
+        let ptau_path = ptau_path;
+        let snarkjs_path = snarkjs_path;
 
         let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?
             .with_skip_compile_if_artifacts(skip_compile_if_artifacts)
@@ -1719,11 +1590,16 @@ impl CircuitExecutor for CairoExecutor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = coverage_from_results_or_output_hash(
-                    self.check_constraints(inputs),
-                    &outputs,
-                    "Cairo",
-                );
+                let coverage = match coverage_from_results(self.check_constraints(inputs)) {
+                    Some(coverage) => coverage,
+                    None => {
+                        return ExecutionResult::failure(
+                            "Cairo constraint coverage unavailable: refusing output-hash fallback"
+                                .to_string(),
+                        )
+                        .with_time(start.elapsed().as_micros() as u64);
+                    }
+                };
                 ExecutionResult::success(outputs, coverage)
                     .with_time(start.elapsed().as_micros() as u64)
             }

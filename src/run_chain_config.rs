@@ -13,11 +13,6 @@ pub(crate) fn apply_chain_mode_overrides(
         "engagement_strict".to_string(),
         serde_yaml::Value::Bool(true),
     );
-    config
-        .campaign
-        .parameters
-        .additional
-        .insert("strict_backend".to_string(), serde_yaml::Value::Bool(true));
     config.campaign.parameters.additional.insert(
         "chain_budget_seconds".to_string(),
         serde_yaml::Value::Number(serde_yaml::Number::from(options.timeout)),

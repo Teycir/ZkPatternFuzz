@@ -40,7 +40,7 @@ pub fn generate_halo2_proof(
     if !witness_json.exists() {
         return Ok((
             proof_path,
-            VerificationResult::Skipped("witness.json not found".to_string()),
+            VerificationResult::Failed("witness.json not found".to_string()),
         ));
     }
 
@@ -50,7 +50,7 @@ pub fn generate_halo2_proof(
         _ => {
             return Ok((
                 proof_path,
-                VerificationResult::Skipped(
+                VerificationResult::Failed(
                     "Halo2 circuit specification not found. Set 'halo2_circuit_spec' in config."
                         .to_string(),
                 ),

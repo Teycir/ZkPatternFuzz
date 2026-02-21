@@ -12,14 +12,8 @@ fn test_execution_result() {
 }
 
 #[test]
-fn test_coverage_fallback_uses_output_hash_when_constraints_missing() {
-    let outputs = vec![FieldElement::from_u64(7), FieldElement::from_u64(11)];
-    let coverage = coverage_from_results_or_output_hash(vec![], &outputs, "test");
-    assert!(coverage.evaluated_constraints.is_empty());
-    assert_eq!(
-        coverage.coverage_hash,
-        ExecutionCoverage::with_output_hash(&outputs).coverage_hash
-    );
+fn test_coverage_from_results_returns_none_when_constraints_missing() {
+    assert!(coverage_from_results(vec![]).is_none());
 }
 
 #[test]
@@ -164,49 +158,6 @@ fn test_cairo_wire_label_fallback_covers_all_input_indices() {
             idx
         );
     }
-}
-
-#[test]
-fn test_circom_ptau_autodetect_prefers_env_override() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let ptau = temp.path().join("custom.ptau");
-    std::fs::write(&ptau, b"ptau-test").expect("write");
-
-    let previous = std::env::var("ZKF_PTAU_PATH").ok();
-    std::env::set_var("ZKF_PTAU_PATH", &ptau);
-    let detected = CircomExecutor::autodetect_ptau_path("circuits/example.circom");
-
-    match previous {
-        Some(value) => std::env::set_var("ZKF_PTAU_PATH", value),
-        None => std::env::remove_var("ZKF_PTAU_PATH"),
-    }
-
-    assert_eq!(detected.as_deref(), Some(ptau.as_path()));
-}
-
-#[test]
-fn test_circom_ptau_autodetect_finds_bins_ptau_fixture() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let circuit_dir = temp.path().join("project").join("circuits");
-    std::fs::create_dir_all(&circuit_dir).expect("mkdir circuits");
-    let circuit_path = circuit_dir.join("sample.circom");
-    std::fs::write(&circuit_path, "pragma circom 2.0.0;").expect("write circuit");
-
-    let bins_ptau_dir = temp.path().join("project").join("bins").join("ptau");
-    std::fs::create_dir_all(&bins_ptau_dir).expect("mkdir ptau");
-    let ptau_path = bins_ptau_dir.join("pot12_final.ptau");
-    std::fs::write(&ptau_path, b"ptau-test").expect("write ptau");
-
-    let previous = std::env::var("ZKF_PTAU_PATH").ok();
-    std::env::remove_var("ZKF_PTAU_PATH");
-    let detected =
-        CircomExecutor::autodetect_ptau_path(circuit_path.to_str().expect("utf8 circuit path"));
-    match previous {
-        Some(value) => std::env::set_var("ZKF_PTAU_PATH", value),
-        None => std::env::remove_var("ZKF_PTAU_PATH"),
-    }
-
-    assert_eq!(detected.as_deref(), Some(ptau_path.as_path()));
 }
 
 #[cfg(unix)]

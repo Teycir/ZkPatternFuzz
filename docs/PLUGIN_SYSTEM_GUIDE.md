@@ -63,7 +63,6 @@ campaign:
     additional:
       evidence_mode: true
       engagement_strict: true
-      strict_backend: true
       attack_plugin_dirs:
         - "/opt/zkfuzz/plugins"
 ```
