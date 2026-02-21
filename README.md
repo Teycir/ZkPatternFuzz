@@ -8,8 +8,15 @@ A Zero-Knowledge Proof Security Testing Framework written in Rust.
 
 ## Overview
 
-ZkPatternFuzz fuzzes ZK circuits to find security vulnerabilities across multiple backends:
+ZkPatternFuzz is a security testing framework that **automates accumulated audit expertise**. Each vulnerability discovered during manual audits is encoded as an executable YAML pattern, creating a growing knowledge base that automatically detects known vulnerability classes in future audits.
 
+**The Core Concept:**
+- Human auditors discover vulnerabilities through manual review
+- Vulnerabilities are encoded as YAML detection patterns
+- Future audits automatically test for all known patterns
+- Knowledge compounds: more audits → more patterns → better coverage
+
+**Supported Backends:**
 - **Circom** - R1CS-based circuits (most mature)
 - **Noir** - ACIR-based circuits (partial support)
 - **Halo2** - PLONK-based circuits (partial support)
@@ -101,6 +108,57 @@ ZkPatternFuzz integrates Mistral AI for intelligent security analysis:
 | `mev` | MEV attack detection | ✅ |
 | `front_running` | Front-running detection | ✅ |
 
+## How It Works: From Discovery to Automation
+
+### 1. Manual Discovery (Human Expertise)
+```
+Auditor manually reviews circuit → Finds novel vulnerability → Documents exploit
+```
+
+### 2. Pattern Encoding (Knowledge Capture)
+```yaml
+# patterns/underconstrained_merkle_path.yaml
+pattern:
+  id: "zero_merkle_path_bypass"
+  discovered: "2024-01-15"
+  severity: "critical"
+  
+  detection:
+    attack_type: "underconstrained"
+    test_cases:
+      - name: "all_zero_path"
+        inputs:
+          pathElements: [0, 0, 0, 0, 0]
+          pathIndices: [0, 0, 0, 0, 0]
+        expected: "should_fail_but_might_pass"
+    
+    required_constraint:
+      description: "Path elements must be validated"
+      check: "pathElements[i] != 0 OR explicit_validation"
+```
+
+### 3. Automated Detection (Compound Advantage)
+```bash
+# Next audit automatically tests this pattern
+cargo run -- scan new_client.yaml --patterns ./patterns/
+
+# Output: [CRITICAL] Pattern match: zero_merkle_path_bypass
+#         Detected in 0.3 seconds (manual review: 2+ hours)
+```
+
+### 4. Knowledge Growth
+```
+Year 1: 10 patterns  → 10 vulnerability classes detected automatically
+Year 2: 30 patterns  → 30 vulnerability classes detected automatically
+Year 3: 60 patterns  → 60 vulnerability classes detected automatically
+```
+
+**Pattern Sources:**
+- Manual audit discoveries (primary source)
+- Public CVEs (zkBugs, GitHub advisories)
+- Client-reported vulnerabilities
+- Research papers (0xPARC, Trail of Bits)
+
 ## Campaign Configuration
 
 Create a YAML file:
@@ -132,6 +190,26 @@ reporting:
 ```
 
 ## Key Features
+
+### Pattern-Based Detection
+
+**Executable Knowledge Base:**
+- YAML-encoded vulnerability patterns from real audits
+- Automatic application of accumulated expertise
+- Version-controlled pattern library
+- Extensible: add new patterns without code changes
+
+**Pattern Library Structure:**
+```
+patterns/
+├── production/              # Battle-tested patterns
+│   ├── underconstrained/
+│   ├── soundness/
+│   ├── collision/
+│   └── defi_specific/
+├── experimental/            # New patterns under validation
+└── cve_signatures/          # Public CVE detection patterns
+```
 
 ### Detection Techniques
 
@@ -201,7 +279,7 @@ attacks:
 
 ## CVE Test Suite
 
-22 real-world vulnerabilities from zkBugs dataset:
+22 real-world vulnerabilities from zkBugs dataset, encoded as detection patterns:
 
 ```bash
 # Verify circuits exist
@@ -216,6 +294,11 @@ cargo test --test autonomous_cve_tests -- --nocapture
 - 11 High severity
 - 9 projects (Iden3, Self.xyz, SuccinctLabs, etc.)
 - Includes CVE-2024-42459 (EdDSA malleability)
+
+**These CVEs serve as:**
+1. Validation that patterns detect real vulnerabilities
+2. Baseline pattern library for new audits
+3. Regression tests for pattern accuracy
 
 See `CVErefs/AUTONOMOUS_TEST_SUITE.md` for details.
 
@@ -254,6 +337,7 @@ ZkPatternFuzz/
 
 ## Documentation
 
+- **[PATTERN_LIBRARY.md](docs/PATTERN_LIBRARY.md)** - Pattern-based knowledge accumulation (core competitive advantage)
 - **[TUTORIAL.md](docs/TUTORIAL.md)** - Step-by-step guide
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Internal design
 - **[ROADMAP.md](ROADMAP.md)** - Development roadmap
@@ -289,11 +373,18 @@ cargo doc --open
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-**Areas Needing Help:**
+**Priority Areas:**
+- **Pattern Contributions**: Encode new vulnerability patterns from audits/CVEs
 - Cairo real-circuit integration
-- Additional attack patterns
+- Additional attack implementations
 - Documentation and examples
 - Performance optimizations
+
+**Pattern Contribution Workflow:**
+1. Discover vulnerability (manual audit, CVE, research)
+2. Create YAML pattern with detection logic
+3. Add test cases validating detection
+4. Submit for review and integration
 
 ## License
 
