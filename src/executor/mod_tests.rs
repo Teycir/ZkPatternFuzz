@@ -1,6 +1,36 @@
 use super::*;
 
 #[test]
+fn test_cairo_assertion_descriptions_extract_assert_statements() {
+    let source = r#"
+        let a = 3;
+        assert [output_ptr] = a;
+        // assert ignored in comments
+        assert a = 3;
+    "#;
+
+    let assertions = cairo_assertion_descriptions(source);
+    assert_eq!(assertions.len(), 2);
+    assert_eq!(assertions[0], "[output_ptr] = a");
+    assert_eq!(assertions[1], "a = 3");
+}
+
+#[test]
+fn test_eval_cairo_expression_supports_arithmetic_and_output_ptr() {
+    let mut vars = std::collections::HashMap::new();
+    vars.insert("a".to_string(), FieldElement::from_u64(3));
+    vars.insert("b".to_string(), FieldElement::from_u64(4));
+
+    let outputs = vec![FieldElement::from_u64(12), FieldElement::from_u64(99)];
+
+    let mul = eval_cairo_expression("a * b", &vars, &outputs, 0).expect("mul value");
+    assert_eq!(mul, FieldElement::from_u64(12));
+
+    let output = eval_cairo_expression("[output_ptr + 1]", &vars, &outputs, 0).expect("output");
+    assert_eq!(output, FieldElement::from_u64(99));
+}
+
+#[test]
 fn test_execution_result() {
     let result = ExecutionResult::success(vec![FieldElement::one()], ExecutionCoverage::default());
     assert!(result.success);

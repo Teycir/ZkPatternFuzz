@@ -1546,19 +1546,288 @@ impl ConstraintInspector for Halo2Executor {
 /// Cairo executor wrapper
 pub struct CairoExecutor {
     target: crate::targets::CairoTarget,
+    source_code: String,
+}
+
+fn strip_cairo_inline_comment(line: &str) -> &str {
+    match line.split_once("//") {
+        Some((head, _)) => head,
+        None => line,
+    }
+}
+
+fn trim_cairo_statement(line: &str) -> &str {
+    let line = line.trim();
+    let line = line.trim_end_matches(';');
+    line.trim()
+}
+
+fn trim_wrapping_parentheses(expr: &str) -> &str {
+    let mut expr = expr.trim();
+    loop {
+        if !(expr.starts_with('(') && expr.ends_with(')')) {
+            return expr;
+        }
+
+        let mut depth = 0usize;
+        let mut wraps = true;
+        for (idx, ch) in expr.char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    if depth == 0 {
+                        wraps = false;
+                        break;
+                    }
+                    depth -= 1;
+                    if depth == 0 && idx != expr.len() - 1 {
+                        wraps = false;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if wraps {
+            expr = &expr[1..expr.len() - 1];
+        } else {
+            return expr;
+        }
+    }
+}
+
+fn split_top_level_binary(expr: &str, op: char) -> Option<(&str, &str)> {
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+
+    for (idx, ch) in expr.char_indices().rev() {
+        match ch {
+            ')' => paren_depth += 1,
+            '(' => {
+                if paren_depth == 0 {
+                    return None;
+                }
+                paren_depth -= 1;
+            }
+            ']' => bracket_depth += 1,
+            '[' => {
+                if bracket_depth == 0 {
+                    return None;
+                }
+                bracket_depth -= 1;
+            }
+            _ => {}
+        }
+
+        if paren_depth != 0 || bracket_depth != 0 || ch != op {
+            continue;
+        }
+
+        if op == '-' && idx == 0 {
+            continue;
+        }
+
+        let left = expr[..idx].trim();
+        let right = expr[idx + ch.len_utf8()..].trim();
+        if left.is_empty() || right.is_empty() {
+            continue;
+        }
+        return Some((left, right));
+    }
+
+    None
+}
+
+fn parse_cairo_constant(token: &str) -> Option<FieldElement> {
+    if token.starts_with("0x") || token.starts_with("0X") {
+        return FieldElement::from_hex(token).ok();
+    }
+    match token.parse::<u64>() {
+        Ok(value) => Some(FieldElement::from_u64(value)),
+        Err(_) => None,
+    }
+}
+
+fn parse_output_ptr_index(token: &str, base_index: usize) -> Option<usize> {
+    let token = token.trim();
+    if token == "[output_ptr]" {
+        return Some(base_index);
+    }
+    let token = token
+        .strip_prefix("[output_ptr + ")
+        .and_then(|v| v.strip_suffix(']'))?;
+    let offset = token.trim().parse::<usize>().ok()?;
+    base_index.checked_add(offset)
+}
+
+fn eval_cairo_expression(
+    expr: &str,
+    vars: &HashMap<String, FieldElement>,
+    outputs: &[FieldElement],
+    output_ptr_index: usize,
+) -> Option<FieldElement> {
+    let expr = trim_wrapping_parentheses(expr);
+    if expr.is_empty() {
+        return None;
+    }
+
+    for op in ['+', '-'] {
+        if let Some((lhs, rhs)) = split_top_level_binary(expr, op) {
+            let lhs = eval_cairo_expression(lhs, vars, outputs, output_ptr_index)?;
+            let rhs = eval_cairo_expression(rhs, vars, outputs, output_ptr_index)?;
+            return Some(match op {
+                '+' => lhs.add(&rhs),
+                '-' => lhs.sub(&rhs),
+                _ => unreachable!("operator set is fixed"),
+            });
+        }
+    }
+
+    if let Some((lhs, rhs)) = split_top_level_binary(expr, '*') {
+        let lhs = eval_cairo_expression(lhs, vars, outputs, output_ptr_index)?;
+        let rhs = eval_cairo_expression(rhs, vars, outputs, output_ptr_index)?;
+        return Some(lhs.mul(&rhs));
+    }
+
+    if let Some(idx) = parse_output_ptr_index(expr, output_ptr_index) {
+        return outputs.get(idx).cloned();
+    }
+
+    if let Some(value) = parse_cairo_constant(expr) {
+        return Some(value);
+    }
+
+    vars.get(expr).cloned()
+}
+
+fn cairo_assertion_descriptions(source: &str) -> Vec<String> {
+    source
+        .lines()
+        .filter_map(|raw| {
+            let statement = trim_cairo_statement(strip_cairo_inline_comment(raw));
+            statement
+                .strip_prefix("assert ")
+                .map(|body| body.trim().to_string())
+        })
+        .collect()
 }
 
 impl CairoExecutor {
     pub fn new(source_path: &str) -> anyhow::Result<Self> {
+        let source_code = std::fs::read_to_string(source_path)
+            .with_context(|| format!("Failed to read Cairo source '{}'", source_path))?;
         let mut target = crate::targets::CairoTarget::new(source_path)?;
         target.compile()?;
-        Ok(Self { target })
+        Ok(Self {
+            target,
+            source_code,
+        })
     }
 
     pub fn new_with_build_dir(source_path: &str, build_dir: PathBuf) -> anyhow::Result<Self> {
+        let source_code = std::fs::read_to_string(source_path)
+            .with_context(|| format!("Failed to read Cairo source '{}'", source_path))?;
         let mut target = crate::targets::CairoTarget::new(source_path)?.with_build_dir(build_dir);
         target.compile()?;
-        Ok(Self { target })
+        Ok(Self {
+            target,
+            source_code,
+        })
+    }
+
+    fn resolved_wire_labels(&self) -> HashMap<usize, String> {
+        let mut labels = self.target.wire_labels();
+        // Cairo source-level labels may omit implicit runtime I/O slots.
+        // Synthesize deterministic labels so strict input reconciliation can
+        // always map every declared public/private index.
+        for (ordinal, idx) in self.public_input_indices().into_iter().enumerate() {
+            labels
+                .entry(idx)
+                .or_insert_with(|| format!("public_input_{}", ordinal));
+        }
+        for (ordinal, idx) in self.private_input_indices().into_iter().enumerate() {
+            labels
+                .entry(idx)
+                .or_insert_with(|| format!("private_input_{}", ordinal));
+        }
+        labels
+    }
+
+    fn evaluate_constraints_from_source(
+        &self,
+        inputs: &[FieldElement],
+        outputs: &[FieldElement],
+    ) -> Vec<ConstraintResult> {
+        let mut vars = HashMap::new();
+        let labels = self.resolved_wire_labels();
+        for (ordinal, idx) in self.private_input_indices().into_iter().enumerate() {
+            let Some(value) = inputs.get(ordinal) else {
+                break;
+            };
+            if let Some(label) = labels.get(&idx) {
+                vars.insert(label.clone(), value.clone());
+            }
+        }
+
+        let mut results = Vec::new();
+        let mut output_ptr_index = 0usize;
+        let mut constraint_id = 0usize;
+
+        for raw_line in self.source_code.lines() {
+            let statement = trim_cairo_statement(strip_cairo_inline_comment(raw_line));
+            if statement.is_empty() {
+                continue;
+            }
+
+            if let Some(assignment) = statement.strip_prefix("let ") {
+                let Some((lhs_raw, rhs_raw)) = assignment.split_once('=') else {
+                    continue;
+                };
+                let lhs_name = lhs_raw
+                    .trim()
+                    .trim_start_matches("mut ")
+                    .split(':')
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if lhs_name.is_empty() || lhs_name == "output_ptr" {
+                    continue;
+                }
+                if let Some(value) =
+                    eval_cairo_expression(rhs_raw.trim(), &vars, outputs, output_ptr_index)
+                {
+                    vars.insert(lhs_name.to_string(), value);
+                }
+                continue;
+            }
+
+            if let Some(assertion) = statement.strip_prefix("assert ") {
+                let Some((lhs_raw, rhs_raw)) = assertion.split_once('=') else {
+                    continue;
+                };
+                let lhs_expr = lhs_raw.trim();
+                let rhs_expr = rhs_raw.trim();
+                let lhs_value = eval_cairo_expression(lhs_expr, &vars, outputs, output_ptr_index);
+                let rhs_value = eval_cairo_expression(rhs_expr, &vars, outputs, output_ptr_index);
+
+                if lhs_expr.contains("output_ptr") {
+                    output_ptr_index = output_ptr_index.saturating_add(1);
+                }
+
+                if let (Some(lhs), Some(rhs)) = (lhs_value, rhs_value) {
+                    results.push(ConstraintResult {
+                        constraint_id,
+                        satisfied: lhs == rhs,
+                        lhs_value: lhs,
+                        rhs_value: rhs,
+                    });
+                }
+                constraint_id = constraint_id.saturating_add(1);
+            }
+        }
+
+        results
     }
 }
 
@@ -1590,7 +1859,9 @@ impl CircuitExecutor for CairoExecutor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = match coverage_from_results(self.check_constraints(inputs)) {
+                let coverage = match coverage_from_results(
+                    self.evaluate_constraints_from_source(inputs, &outputs),
+                ) {
                     Some(coverage) => coverage,
                     None => {
                         return ExecutionResult::failure(
@@ -1632,15 +1903,29 @@ impl CircuitExecutor for CairoExecutor {
 
 impl ConstraintInspector for CairoExecutor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
-        Vec::new()
+        cairo_assertion_descriptions(&self.source_code)
+            .into_iter()
+            .enumerate()
+            .map(|(id, description)| ConstraintEquation {
+                id,
+                a_terms: Vec::new(),
+                b_terms: Vec::new(),
+                c_terms: Vec::new(),
+                description: Some(description),
+            })
+            .collect()
     }
 
-    fn check_constraints(&self, _witness: &[FieldElement]) -> Vec<ConstraintResult> {
-        Vec::new()
+    fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {
+        let private_count = self.target.num_private_inputs().min(witness.len());
+        let output_count = self.target.num_public_inputs().min(witness.len());
+        let output_start = witness.len().saturating_sub(output_count);
+
+        self.evaluate_constraints_from_source(&witness[..private_count], &witness[output_start..])
     }
 
     fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
-        Vec::new()
+        vec![Vec::new(); cairo_assertion_descriptions(&self.source_code).len()]
     }
 
     fn public_input_indices(&self) -> Vec<usize> {
@@ -1658,21 +1943,7 @@ impl ConstraintInspector for CairoExecutor {
     }
 
     fn wire_labels(&self) -> std::collections::HashMap<usize, String> {
-        let mut labels = self.target.wire_labels();
-        // Cairo source-level labels may omit implicit runtime I/O slots.
-        // Synthesize deterministic labels so strict input reconciliation can
-        // always map every declared public/private index.
-        for (ordinal, idx) in self.public_input_indices().into_iter().enumerate() {
-            labels
-                .entry(idx)
-                .or_insert_with(|| format!("public_input_{}", ordinal));
-        }
-        for (ordinal, idx) in self.private_input_indices().into_iter().enumerate() {
-            labels
-                .entry(idx)
-                .or_insert_with(|| format!("private_input_{}", ordinal));
-        }
-        labels
+        self.resolved_wire_labels()
     }
 }
 
