@@ -737,7 +737,3 @@ impl CrossStepInvariantChecker {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "invariants_tests.rs"]
-mod tests;

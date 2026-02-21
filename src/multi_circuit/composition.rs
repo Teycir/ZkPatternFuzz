@@ -166,7 +166,3 @@ pub enum VulnerabilityType {
     /// Invalid recursion
     InvalidRecursion,
 }
-
-#[cfg(test)]
-#[path = "composition_tests.rs"]
-mod tests;

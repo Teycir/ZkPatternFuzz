@@ -328,7 +328,3 @@ pub struct ChainStepResult {
     pub inputs: Vec<FieldElement>,
     pub result: ExecutionResult,
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

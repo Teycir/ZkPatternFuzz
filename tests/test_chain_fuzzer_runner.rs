@@ -1,7 +1,10 @@
-use super::*;
-use crate::executor::FixtureCircuitExecutor;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
 use std::thread;
-use zk_core::{CircuitInfo, ExecutionResult, Framework};
+use zk_core::{CircuitExecutor, CircuitInfo, ExecutionResult, FieldElement, Framework};
+use zk_fuzzer::chain_fuzzer::{ChainRunner, ChainSpec, StepSpec};
+use zk_fuzzer::executor::FixtureCircuitExecutor;
 
 struct SlowExecutor {
     inner: FixtureCircuitExecutor,
@@ -258,5 +261,3 @@ fn test_chain_runner_rejects_invalid_from_prior_output_index() {
         .expect("missing error")
         .contains("has only 1 outputs"));
 }
-
-use super::super::types::StepSpec;

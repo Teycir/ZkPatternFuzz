@@ -1,4 +1,4 @@
-use super::*;
+use zk_fuzzer::fuzzer::grammar::{EntropyLevel, InputType};
 
 #[test]
 fn test_input_type_description() {

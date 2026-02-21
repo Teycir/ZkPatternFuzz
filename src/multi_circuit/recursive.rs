@@ -238,7 +238,3 @@ pub enum SoundnessIssueType {
     RecursionBypass,
     AccumulatorMalleability,
 }
-
-#[cfg(test)]
-#[path = "recursive_tests.rs"]
-mod tests;

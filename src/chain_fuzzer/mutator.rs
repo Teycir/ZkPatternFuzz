@@ -623,7 +623,3 @@ impl Default for ChainMutator {
         Self::new()
     }
 }
-
-#[cfg(test)]
-#[path = "mutator_tests.rs"]
-mod tests;

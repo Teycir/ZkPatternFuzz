@@ -1,13 +1,15 @@
-use super::*;
-use crate::executor::FixtureCircuitExecutor;
+use std::sync::Arc;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use zk_core::FieldElement;
+use zk_fuzzer::executor::FixtureCircuitExecutor;
+use zk_fuzzer::multi_circuit::recursive::{RecursionResult, RecursiveTester};
 
 #[test]
 fn test_recursive_tester_creation() {
     let tester = RecursiveTester::new(5);
-    assert_eq!(tester.max_depth, 5);
-    assert!(tester.verifier_circuit.is_none());
+    let result = tester.test_recursion(&[FieldElement::one()], 1);
+    assert!(matches!(result, RecursionResult::Error(_)));
 }
 
 #[test]

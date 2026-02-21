@@ -1,13 +1,15 @@
-use super::*;
-use crate::executor::FixtureCircuitExecutor;
+use std::sync::Arc;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use zk_core::FieldElement;
+use zk_fuzzer::executor::FixtureCircuitExecutor;
+use zk_fuzzer::multi_circuit::{CircuitChain, MultiCircuitConfig, MultiCircuitFuzzer};
 
 #[test]
 fn test_multi_circuit_fuzzer_creation() {
     let config = MultiCircuitConfig::default();
     let fuzzer = MultiCircuitFuzzer::new(config);
-    assert!(fuzzer.circuits.is_empty());
+    assert!(fuzzer.findings().is_empty());
 }
 
 #[test]

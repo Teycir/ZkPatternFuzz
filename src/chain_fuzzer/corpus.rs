@@ -448,7 +448,3 @@ pub struct CorpusStats {
     pub avg_near_miss: f64,
     pub max_depth: usize,
 }
-
-#[cfg(test)]
-#[path = "corpus_tests.rs"]
-mod tests;

@@ -165,7 +165,3 @@ pub enum GenerationStrategy {
 }
 
 // InputSpec::flattened_count is defined in mod.rs
-
-#[cfg(test)]
-#[path = "generator_tests.rs"]
-mod tests;

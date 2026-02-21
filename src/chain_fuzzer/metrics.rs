@@ -241,7 +241,3 @@ impl Default for DepthMetrics {
         Self::empty()
     }
 }
-
-#[cfg(test)]
-#[path = "metrics_tests.rs"]
-mod tests;

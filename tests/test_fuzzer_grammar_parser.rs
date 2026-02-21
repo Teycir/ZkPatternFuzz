@@ -1,4 +1,4 @@
-use super::*;
+use zk_fuzzer::fuzzer::grammar::GrammarParser;
 
 #[test]
 fn test_parse_valid_grammar() {

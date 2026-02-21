@@ -1,24 +1,27 @@
-use super::*;
-use crate::chain_fuzzer::types::StepSpec;
-use crate::executor::FixtureCircuitExecutor;
+use std::collections::HashMap;
 use std::sync::Arc;
+use zk_core::CircuitExecutor;
+use zk_fuzzer::chain_fuzzer::{
+    ChainRunner, ChainShrinker, ChainSpec, CrossStepInvariantChecker, CrossStepViolation, StepSpec,
+};
+use zk_fuzzer::executor::FixtureCircuitExecutor;
 
 fn create_test_runner() -> ChainRunner {
     let mut executors = HashMap::new();
     executors.insert(
         "circuit_a".to_string(),
         Arc::new(FixtureCircuitExecutor::new("circuit_a", 2, 0).with_outputs(2))
-            as Arc<dyn zk_core::CircuitExecutor>,
+            as Arc<dyn CircuitExecutor>,
     );
     executors.insert(
         "circuit_b".to_string(),
         Arc::new(FixtureCircuitExecutor::new("circuit_b", 2, 0).with_outputs(2))
-            as Arc<dyn zk_core::CircuitExecutor>,
+            as Arc<dyn CircuitExecutor>,
     );
     executors.insert(
         "circuit_c".to_string(),
         Arc::new(FixtureCircuitExecutor::new("circuit_c", 2, 0).with_outputs(2))
-            as Arc<dyn zk_core::CircuitExecutor>,
+            as Arc<dyn CircuitExecutor>,
     );
     ChainRunner::new(executors).expect("failed to create chain runner")
 }

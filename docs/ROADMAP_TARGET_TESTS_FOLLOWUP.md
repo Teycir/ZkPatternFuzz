@@ -2,6 +2,78 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T22:38:04Z
+- Continued strict production/test separation by migrating `multi_circuit` tests out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/multi_circuit/mod.rs`
+    - `src/multi_circuit/composition.rs`
+    - `src/multi_circuit/recursive.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_multi_circuit_mod.rs`
+    - `tests/test_multi_circuit_composition.rs`
+    - `tests/test_multi_circuit_recursive.rs`
+- Test migration notes:
+  - replaced private-field assertions (`fuzzer.circuits`, `tester.max_depth`, `tester.verifier_circuit`) with public-behavior assertions.
+  - switched imports from in-module `super::*` to integration imports via `zk_fuzzer::multi_circuit::*`.
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_multi_circuit_mod --test test_multi_circuit_composition --test test_multi_circuit_recursive` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `45` (down from `48` before this batch)
+
+## Update (UTC): 2026-02-21T22:35:54Z
+- Continued strict production/test separation by migrating `fuzzer/grammar` tests out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/fuzzer/grammar/mod.rs`
+    - `src/fuzzer/grammar/generator.rs`
+    - `src/fuzzer/grammar/types.rs`
+    - `src/fuzzer/grammar/parser.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_fuzzer_grammar_mod.rs`
+    - `tests/test_fuzzer_grammar_generator.rs`
+    - `tests/test_fuzzer_grammar_types.rs`
+    - `tests/test_fuzzer_grammar_parser.rs`
+- Test migration notes:
+  - replaced in-module imports (`use super::*`) with integration imports via public API (`zk_fuzzer::fuzzer::grammar::*`, `zk_core::FieldElement`).
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_fuzzer_grammar_mod --test test_fuzzer_grammar_generator --test test_fuzzer_grammar_types --test test_fuzzer_grammar_parser` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `48` (down from `52` before this batch)
+
+## Update (UTC): 2026-02-21T22:33:07Z
+- Continued strict production/test separation by migrating `chain_fuzzer` unit tests out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/chain_fuzzer/corpus.rs`
+    - `src/chain_fuzzer/invariants.rs`
+    - `src/chain_fuzzer/metrics.rs`
+    - `src/chain_fuzzer/mutator.rs`
+    - `src/chain_fuzzer/runner.rs`
+    - `src/chain_fuzzer/scheduler.rs`
+    - `src/chain_fuzzer/shrinker.rs`
+    - `src/chain_fuzzer/types.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_chain_fuzzer_corpus.rs`
+    - `tests/test_chain_fuzzer_invariants.rs`
+    - `tests/test_chain_fuzzer_metrics.rs`
+    - `tests/test_chain_fuzzer_mutator.rs`
+    - `tests/test_chain_fuzzer_runner.rs`
+    - `tests/test_chain_fuzzer_scheduler.rs`
+    - `tests/test_chain_fuzzer_shrinker.rs`
+    - `tests/test_chain_fuzzer_types.rs`
+- Test migration notes:
+  - replaced unit-test-only imports (`use super::*`) with integration imports (`zk_fuzzer::...`, `zk_core::...`).
+  - removed private scheduler field mutation in tests and switched to public `update_priority(...)` API.
+  - fixed stale trailing unit-test import in runner tests.
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_chain_fuzzer_corpus --test test_chain_fuzzer_invariants --test test_chain_fuzzer_metrics --test test_chain_fuzzer_mutator --test test_chain_fuzzer_runner --test test_chain_fuzzer_scheduler --test test_chain_fuzzer_shrinker --test test_chain_fuzzer_types` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `52` (down from `60` before this batch)
+
 ## Update (UTC): 2026-02-21T22:24:35Z
 - Continued strict production/test separation by migrating analysis module tests out of `src/**`.
   - removed in-source `#[cfg(test)]` hooks from:

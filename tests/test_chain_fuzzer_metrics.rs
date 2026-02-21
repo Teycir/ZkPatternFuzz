@@ -1,5 +1,5 @@
-use super::*;
-use crate::chain_fuzzer::types::{ChainFindingCore, ChainTrace};
+use zk_fuzzer::chain_fuzzer::{ChainTrace, DepthMetrics};
+use zk_fuzzer::chain_fuzzer::types::{ChainFinding, ChainFindingCore};
 
 fn create_test_finding(l_min: usize) -> ChainFinding {
     ChainFinding {

@@ -1,10 +1,11 @@
-use super::*;
-use crate::executor::FixtureCircuitExecutor;
+use std::sync::Arc;
+use zk_fuzzer::executor::FixtureCircuitExecutor;
+use zk_fuzzer::multi_circuit::composition::{CompositionTester, CompositionType};
 
 #[test]
 fn test_composition_tester_creation() {
     let tester = CompositionTester::new(CompositionType::Parallel);
-    assert!(tester.circuits.is_empty());
+    assert!(tester.check_vulnerabilities().is_empty());
 }
 
 #[test]

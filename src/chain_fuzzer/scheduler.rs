@@ -279,7 +279,3 @@ pub struct SchedulerStats {
     /// Findings count per chain
     pub findings_count: HashMap<String, usize>,
 }
-
-#[cfg(test)]
-#[path = "scheduler_tests.rs"]
-mod tests;

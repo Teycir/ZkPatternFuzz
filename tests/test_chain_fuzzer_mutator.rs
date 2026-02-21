@@ -1,5 +1,7 @@
-use super::*;
-use crate::chain_fuzzer::types::StepSpec;
+use std::collections::HashMap;
+use zk_core::FieldElement;
+use zk_fuzzer::chain_fuzzer::mutator::{ChainMutator, MutationType, MutationWeights};
+use zk_fuzzer::chain_fuzzer::{ChainSpec, StepSpec};
 
 #[test]
 fn test_mutate_inputs() {
@@ -52,7 +54,10 @@ fn test_boundary_injection() {
     let mut rng = rand::thread_rng();
     let (mutated, mutation_type) = mutator.mutate_inputs(&spec, &initial_inputs, &mut rng);
 
-    matches!(mutation_type, MutationType::BoundaryInjection { .. });
+    assert!(matches!(
+        mutation_type,
+        MutationType::BoundaryInjection { .. }
+    ));
 
     // One of the inputs should be a boundary value
     let inputs = mutated.get("circuit_a").unwrap();

@@ -1,5 +1,7 @@
-use super::*;
-use crate::chain_fuzzer::types::StepTrace;
+use zk_core::FieldElement;
+use zk_fuzzer::chain_fuzzer::{
+    ChainTrace, CrossStepAssertion, CrossStepInvariantChecker, StepTrace,
+};
 
 fn create_test_trace() -> ChainTrace {
     let mut trace = ChainTrace::new("test_chain");

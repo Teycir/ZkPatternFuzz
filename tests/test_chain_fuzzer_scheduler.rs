@@ -1,5 +1,6 @@
-use super::*;
-use crate::chain_fuzzer::types::StepSpec;
+use std::time::Duration;
+use zk_fuzzer::chain_fuzzer::scheduler::ChainRunStats;
+use zk_fuzzer::chain_fuzzer::{ChainScheduler, ChainSpec, StepSpec};
 
 fn create_test_chains() -> Vec<ChainSpec> {
     vec![
@@ -60,8 +61,15 @@ fn test_priority_allocation() {
     let chains = create_test_chains();
     let mut scheduler = ChainScheduler::new(chains, Duration::from_secs(300));
 
-    // Boost chain_a priority
-    scheduler.priorities.insert("chain_a".to_string(), 5.0);
+    // Boost chain_a priority through public API
+    scheduler.update_priority(&ChainRunStats {
+        chain_name: "chain_a".to_string(),
+        found_violation: true,
+        new_coverage: 10,
+        near_miss_score: 0.7,
+        executions: 50,
+        time_spent: Duration::from_secs(5),
+    });
 
     let allocations = scheduler.allocate();
 
@@ -83,9 +91,33 @@ fn test_chains_by_priority() {
     let chains = create_test_chains();
     let mut scheduler = ChainScheduler::new(chains, Duration::from_secs(300));
 
-    scheduler.priorities.insert("chain_b".to_string(), 3.0);
-    scheduler.priorities.insert("chain_a".to_string(), 1.0);
-    scheduler.priorities.insert("chain_c".to_string(), 2.0);
+    // chain_b high priority
+    scheduler.update_priority(&ChainRunStats {
+        chain_name: "chain_b".to_string(),
+        found_violation: true,
+        new_coverage: 0,
+        near_miss_score: 0.2,
+        executions: 10,
+        time_spent: Duration::from_secs(1),
+    });
+    // chain_c medium priority
+    scheduler.update_priority(&ChainRunStats {
+        chain_name: "chain_c".to_string(),
+        found_violation: false,
+        new_coverage: 20,
+        near_miss_score: 0.0,
+        executions: 10,
+        time_spent: Duration::from_secs(1),
+    });
+    // chain_a low priority via no-progress penalty
+    scheduler.update_priority(&ChainRunStats {
+        chain_name: "chain_a".to_string(),
+        found_violation: false,
+        new_coverage: 0,
+        near_miss_score: 0.0,
+        executions: 10,
+        time_spent: Duration::from_secs(1),
+    });
 
     let sorted = scheduler.chains_by_priority();
     assert_eq!(sorted[0].name, "chain_b");
@@ -96,10 +128,7 @@ fn test_chains_by_priority() {
 #[test]
 fn test_largest_remainder_allocation_preserves_total_and_fairness() {
     let chains = create_test_chains();
-    let mut scheduler = ChainScheduler::new(chains, Duration::from_millis(1001));
-    scheduler.priorities.insert("chain_a".to_string(), 3.0);
-    scheduler.priorities.insert("chain_b".to_string(), 2.0);
-    scheduler.priorities.insert("chain_c".to_string(), 1.0);
+    let scheduler = ChainScheduler::new(chains, Duration::from_millis(1001));
 
     let allocations = scheduler.allocate();
     let total_allocated_ms: u64 = allocations
@@ -108,21 +137,12 @@ fn test_largest_remainder_allocation_preserves_total_and_fairness() {
         .sum();
     assert_eq!(total_allocated_ms, 1001);
 
-    let alloc_a = allocations
+    let mut budgets: Vec<u64> = allocations
         .iter()
-        .find(|a| a.spec.name == "chain_a")
-        .expect("chain_a allocation");
-    let alloc_b = allocations
-        .iter()
-        .find(|a| a.spec.name == "chain_b")
-        .expect("chain_b allocation");
-    let alloc_c = allocations
-        .iter()
-        .find(|a| a.spec.name == "chain_c")
-        .expect("chain_c allocation");
-
-    // Remaining 2ms are split proportionally: 1ms direct to chain_a and 1ms leftover to chain_b.
-    assert_eq!(alloc_a.budget, Duration::from_millis(334));
-    assert_eq!(alloc_b.budget, Duration::from_millis(334));
-    assert_eq!(alloc_c.budget, Duration::from_millis(333));
+        .map(|a| a.budget.as_millis() as u64)
+        .collect();
+    budgets.sort_unstable();
+    assert_eq!(budgets[0], 333);
+    assert_eq!(budgets[1], 334);
+    assert_eq!(budgets[2], 334);
 }

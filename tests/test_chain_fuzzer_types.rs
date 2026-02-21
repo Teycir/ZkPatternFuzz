@@ -1,4 +1,7 @@
-use super::*;
+use zk_core::FieldElement;
+use zk_fuzzer::chain_fuzzer::{
+    ChainSpec, ChainTrace, CrossStepAssertion, InputWiring, StepSpec, StepTrace,
+};
 
 #[test]
 fn test_chain_spec_truncate() {

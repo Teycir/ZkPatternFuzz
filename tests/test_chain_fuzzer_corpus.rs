@@ -1,5 +1,7 @@
-use super::*;
+use std::collections::HashMap;
 use tempfile::TempDir;
+use zk_core::FieldElement;
+use zk_fuzzer::chain_fuzzer::{ChainCorpus, ChainCorpusEntry};
 
 fn create_test_entry(name: &str, coverage: u64, near_miss: f64) -> ChainCorpusEntry {
     use std::collections::hash_map::DefaultHasher;

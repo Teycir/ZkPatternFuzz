@@ -322,7 +322,3 @@ impl ChainShrinker {
         self.minimize(spec, inputs, target_violation).l_min
     }
 }
-
-#[cfg(test)]
-#[path = "shrinker_tests.rs"]
-mod tests;

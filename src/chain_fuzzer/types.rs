@@ -925,7 +925,3 @@ impl ChainFinding {
         self.l_min >= 2
     }
 }
-
-#[cfg(test)]
-#[path = "types_tests.rs"]
-mod tests;
