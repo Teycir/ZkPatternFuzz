@@ -54,8 +54,6 @@ use run_log_context::{DynamicLogWriter, RunLogContextGuard};
 use run_outcome_docs::{
     completed_run_doc_with_window, running_run_doc_with_window, RunOutcomeDocContext,
 };
-#[cfg(test)]
-pub(crate) use run_paths::{engagement_dir_name, run_id_epoch_dir};
 pub(crate) use run_paths::{
     engagement_root_dir, normalize_build_paths, read_optional_env, run_signal_dir,
 };
@@ -65,11 +63,6 @@ use runtime_misc::{
     validate_campaign,
 };
 use scan_runner::run_scan as run_scan_orchestrated;
-#[cfg(test)]
-use scan_selector::{
-    evaluate_loaded_scan_regex_patterns, load_scan_regex_selector_config,
-    validate_scan_regex_pattern_safety, ScanRegexPatternSummary,
-};
 use zk_fuzzer::ai::AIAssistant;
 use zk_fuzzer::formal::{
     export_formal_bridge_artifacts, import_formal_invariants_from_file, FormalBridgeOptions,
@@ -893,6 +886,3 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
 async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyhow::Result<()> {
     run_chain_campaign_flow::run_chain_campaign(config_path, options).await
 }
-
-#[cfg(test)]
-mod scan_selector_tests;
