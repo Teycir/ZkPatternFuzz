@@ -192,7 +192,3 @@ pub fn migrate_config_value(mut root: Value) -> (Value, MigrationReport) {
     migrate_attack_plugin_dirs(&mut root, &mut report);
     (root, report)
 }
-
-#[cfg(test)]
-#[path = "tests/migration_tests.rs"]
-mod tests;

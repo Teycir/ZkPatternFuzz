@@ -2,6 +2,37 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T22:11:41Z
+- Continued strict production/test separation by migrating config module unit tests out of `src/**`:
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/config/additional.rs`
+    - `src/config/generator.rs`
+    - `src/config/migration.rs`
+    - `src/config/mod.rs`
+    - `src/config/parser.rs`
+    - `src/config/profiles.rs`
+    - `src/config/readiness.rs`
+    - `src/config/suggester.rs`
+    - `src/config/v2.rs`
+  - moved/deleted in-source config test files:
+    - deleted `src/config/tests/*.rs`
+    - moved coverage into new integration tests:
+      - `tests/test_config_additional.rs`
+      - `tests/test_config_generator.rs`
+      - `tests/test_config_migration.rs`
+      - `tests/test_config_parser.rs`
+      - `tests/test_config_profiles.rs`
+      - `tests/test_config_readiness.rs`
+      - `tests/test_config_suggester.rs`
+      - `tests/test_config_v2.rs`
+- Test migration notes:
+  - generator behavior tests were kept on public APIs (`generate_from_source`, pattern detection) rather than private helper calls, preserving coverage intent without test hooks in production modules.
+  - suggester test fixture was inlined into integration tests, removing `config::test_config` test-only module wiring.
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_config_additional --test test_config_generator --test test_config_migration --test test_config_parser --test test_config_profiles --test test_config_readiness --test test_config_suggester --test test_config_v2` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+
 ## Update (UTC): 2026-02-21T22:01:57Z
 - Continued strict production/test separation by migrating CLI selector tests out of `src/**`:
   - removed test-only hooks/imports from:

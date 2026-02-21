@@ -1,5 +1,5 @@
-use super::*;
 use num_bigint::BigUint;
+use zk_fuzzer::config::parser::expand_value_placeholder;
 
 #[test]
 fn test_expand_zero() {

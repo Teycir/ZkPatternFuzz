@@ -1480,7 +1480,3 @@ fn default_ai_temperature() -> f32 {
 fn default_ai_max_tokens() -> u32 {
     1000
 }
-
-#[cfg(test)]
-#[path = "tests/v2_tests.rs"]
-mod tests;

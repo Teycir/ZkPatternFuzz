@@ -702,7 +702,3 @@ pub fn check_critical_only(config: &FuzzConfig) -> Vec<ReadinessWarning> {
         .filter(|w| w.level == ReadinessLevel::Critical)
         .collect()
 }
-
-#[cfg(test)]
-#[path = "tests/readiness_tests.rs"]
-mod tests;

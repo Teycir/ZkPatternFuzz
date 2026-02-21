@@ -303,7 +303,3 @@ impl SuggestedConfigBuilder {
         suggester.generate_suggested_yaml(&self.original, &self.suggestions)
     }
 }
-
-#[cfg(test)]
-#[path = "tests/suggester_tests.rs"]
-mod tests;

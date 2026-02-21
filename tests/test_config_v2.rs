@@ -1,5 +1,10 @@
-use super::*;
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
+use zk_fuzzer::config::v2::{
+    parse_invariant_relation, EarlyTerminateCondition, Invariant, InvariantAST, InvariantOracle,
+    InvariantType, SchedulePhase,
+};
+use zk_fuzzer::config::{FuzzConfig, Severity};
 
 #[test]
 fn test_parse_equals_invariant() {

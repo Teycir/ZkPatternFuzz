@@ -1,5 +1,4 @@
-use super::*;
-use crate::config::{Attack, AttackType};
+use zk_fuzzer::config::{check_0day_readiness, Attack, AttackType, FuzzConfig, ReadinessLevel};
 
 #[test]
 fn test_missing_circuit_path_is_critical() {

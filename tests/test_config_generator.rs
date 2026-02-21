@@ -1,6 +1,6 @@
-use super::*;
 use std::path::Path;
-use zk_core::Severity;
+use zk_core::{AttackType, Framework, Severity};
+use zk_fuzzer::config::generator::{ConfigGenerator, PatternType};
 
 #[test]
 fn test_merkle_pattern_detection() {
@@ -109,7 +109,19 @@ fn test_detect_main_component() {
             component main = MerkleProof();
         "#;
 
-    let main = detect_main_component(source, Framework::Circom).unwrap();
+    let generator = ConfigGenerator::new();
+    let config = generator
+        .generate_from_source(source, Framework::Circom, Path::new("main.circom"))
+        .expect("config generation should succeed");
+
+    let main = config
+        .base
+        .as_ref()
+        .expect("base config should be present")
+        .campaign
+        .target
+        .main_component
+        .clone();
     assert_eq!(main, "MerkleProof");
 }
 
@@ -121,7 +133,9 @@ fn test_detect_main_component_requires_explicit_circom_main() {
             }
         "#;
 
-    let err = detect_main_component(source, Framework::Circom)
+    let generator = ConfigGenerator::new();
+    let err = generator
+        .generate_from_source(source, Framework::Circom, Path::new("missing-main.circom"))
         .expect_err("missing explicit Circom main should return an error");
     assert!(format!("{err:#}").contains("component main"));
 }
@@ -134,7 +148,9 @@ fn test_detect_main_component_requires_noir_main() {
             }
         "#;
 
-    let err = detect_main_component(source, Framework::Noir)
+    let generator = ConfigGenerator::new();
+    let err = generator
+        .generate_from_source(source, Framework::Noir, Path::new("main.nr"))
         .expect_err("missing Noir main should return an error");
     assert!(format!("{err:#}").contains("fn main"));
 }
@@ -157,17 +173,49 @@ fn test_generate_from_source_fails_when_main_component_missing() {
 
 #[test]
 fn test_parse_circom_input() {
-    let line = "    signal input leaf;";
-    let input = parse_circom_input(line).unwrap();
-    assert_eq!(input.name, "leaf");
+    let source = r#"
+            template Main() {
+                signal input leaf;
+                signal output out;
+                out <== leaf;
+            }
+            component main = Main();
+        "#;
+
+    let generator = ConfigGenerator::new();
+    let config = generator
+        .generate_from_source(source, Framework::Circom, Path::new("main.circom"))
+        .expect("config generation should succeed");
+    let base = config.base.as_ref().expect("base config should be present");
+    let input = base
+        .inputs
+        .iter()
+        .find(|input| input.name == "leaf")
+        .expect("input should be detected");
     assert_eq!(input.input_type, "field");
 }
 
 #[test]
 fn test_parse_circom_array_input() {
-    let line = "    signal input pathElements[20];";
-    let input = parse_circom_input(line).unwrap();
-    assert_eq!(input.name, "pathElements");
+    let source = r#"
+            template Main() {
+                signal input pathElements[20];
+                signal output out;
+                out <== pathElements[0];
+            }
+            component main = Main();
+        "#;
+
+    let generator = ConfigGenerator::new();
+    let config = generator
+        .generate_from_source(source, Framework::Circom, Path::new("main.circom"))
+        .expect("config generation should succeed");
+    let base = config.base.as_ref().expect("base config should be present");
+    let input = base
+        .inputs
+        .iter()
+        .find(|input| input.name == "pathElements")
+        .expect("array input should be detected");
     assert_eq!(input.input_type, "array<field>");
     assert_eq!(input.length, Some(20));
 }

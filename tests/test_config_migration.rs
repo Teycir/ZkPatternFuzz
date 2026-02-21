@@ -1,4 +1,4 @@
-use crate::config::migration::migrate_config_value;
+use zk_fuzzer::config::migration::migrate_config_value;
 
 fn yaml_key(name: &str) -> serde_yaml::Value {
     serde_yaml::Value::String(name.to_string())

@@ -1024,7 +1024,3 @@ fn parse_noir_input(line: &str) -> Option<Input> {
     }
     None
 }
-
-#[cfg(test)]
-#[path = "tests/generator_tests.rs"]
-mod tests;

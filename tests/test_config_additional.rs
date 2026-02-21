@@ -1,12 +1,11 @@
-use super::*;
+use zk_fuzzer::config::AdditionalConfig;
 
 #[test]
 fn hoists_legacy_additional_mapping() {
     let mut cfg = AdditionalConfig::default();
 
     // Top-level key should win over legacy nested key.
-    cfg.extra
-        .insert("strict_backend".to_string(), serde_yaml::Value::Bool(false));
+    cfg.insert("strict_backend".to_string(), serde_yaml::Value::Bool(false));
 
     let mut legacy = serde_yaml::Mapping::new();
     legacy.insert(
@@ -17,11 +16,10 @@ fn hoists_legacy_additional_mapping() {
         serde_yaml::Value::String("per_exec_isolation".to_string()),
         serde_yaml::Value::Bool(true),
     );
-    cfg.extra
-        .insert("additional".to_string(), serde_yaml::Value::Mapping(legacy));
+    cfg.insert("additional".to_string(), serde_yaml::Value::Mapping(legacy));
 
     assert!(cfg.hoist_legacy_additional());
     assert_eq!(cfg.get_bool("strict_backend"), Some(false));
     assert_eq!(cfg.get_bool("per_exec_isolation"), Some(true));
-    assert!(!cfg.extra.contains_key("additional"));
+    assert!(!cfg.contains_key("additional"));
 }

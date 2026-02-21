@@ -226,7 +226,3 @@ pub fn expand_value_placeholder(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "tests/parser_tests.rs"]
-mod tests;

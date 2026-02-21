@@ -375,7 +375,3 @@ fn default_profile_attack_config(attack_type: &super::AttackType) -> serde_yaml:
     }
     serde_yaml::Value::Mapping(mapping)
 }
-
-#[cfg(test)]
-#[path = "tests/profiles_tests.rs"]
-mod tests;

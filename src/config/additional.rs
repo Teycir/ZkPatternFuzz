@@ -138,7 +138,3 @@ impl DerefMut for AdditionalConfig {
         &mut self.extra
     }
 }
-
-#[cfg(test)]
-#[path = "tests/additional_tests.rs"]
-mod tests;

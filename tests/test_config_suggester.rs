@@ -1,11 +1,34 @@
-use super::*;
-use crate::config::test_config::BASIC_CAMPAIGN_YAML;
 use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
+use zk_fuzzer::config::suggester::YamlSuggester;
+use zk_fuzzer::fuzzer::{SuggestionType, YamlSuggestion};
+use zk_fuzzer::reporting::FuzzReport;
+
+const BASIC_CAMPAIGN_YAML: &str = r#"
+campaign:
+  name: "Test"
+  version: "1.0"
+  target:
+    framework: "circom"
+    circuit_path: "./test.circom"
+    main_component: "Main"
+
+inputs:
+  - name: "x"
+    type: "field"
+    interesting: ["0", "1"]
+
+attacks:
+  - type: "underconstrained"
+    description: "Test"
+"#;
 
 #[test]
 fn test_suggester_creation() {
     let suggester = YamlSuggester::new();
-    assert!(suggester.include_comments);
+    let rendered = suggester
+        .apply_suggestions(BASIC_CAMPAIGN_YAML, &[])
+        .expect("rendering suggestions should succeed");
+    assert!(rendered.contains("campaign:"));
 }
 
 #[test]

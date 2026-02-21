@@ -1,5 +1,4 @@
-use super::*;
-use crate::config::{AttackType, FuzzConfig};
+use zk_fuzzer::config::{apply_profile, AttackType, EmbeddedProfile, FuzzConfig, ProfileName};
 
 #[test]
 fn test_profile_parsing() {
