@@ -2,6 +2,33 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T21:41:04Z
+- Continued oversized-engine modularization with three granular extraction slices:
+  - moved engine initialization constructor logic out of:
+    - `src/fuzzer/engine/mod.rs`
+  - into:
+    - `src/fuzzer/engine/engine_init.rs`
+  - moved shared attack-runner utility methods out of:
+    - `src/fuzzer/engine/attack_runner.rs`
+  - into:
+    - `src/fuzzer/engine/attack_runner_utils.rs`
+  - moved soundness/trusted-setup attack handlers out of:
+    - `src/fuzzer/engine/attack_runner.rs`
+  - into:
+    - `src/fuzzer/engine/attack_runner_soundness.rs`
+  - registered new modules in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `src/fuzzer/engine/attack_runner.rs` reduced from `959` to `466` lines in this batch
+  - `src/fuzzer/engine/mod.rs` reduced to a wiring/struct shell with constructor isolated in `engine_init.rs`
+  - extracted:
+    - `src/fuzzer/engine/engine_init.rs` (`329` lines)
+    - `src/fuzzer/engine/attack_runner_utils.rs` (`121` lines)
+    - `src/fuzzer/engine/attack_runner_soundness.rs` (`384` lines)
+- Validation:
+  - `cargo check -q` -> `PASS` (run for each slice)
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q deterministic_cap_enabled_by_default_in_evidence_mode -- --nocapture` -> `PASS`
+
 ## Update (UTC): 2026-02-21T20:26:44Z
 - Continued `attack_runner` modularization with shared-helper + novel-attack extraction:
   - moved deterministic budget/floor helper logic out of:
