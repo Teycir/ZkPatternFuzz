@@ -438,7 +438,3 @@ pub enum RecommendationPriority {
 pub fn attack_type_to_string(attack_type: AttackType) -> String {
     format!("{:?}", attack_type).to_lowercase()
 }
-
-#[cfg(test)]
-#[path = "oracle_diversity_tests.rs"]
-mod tests;

@@ -1,4 +1,9 @@
-use super::*;
+use std::sync::Arc;
+use zk_core::FieldElement;
+use zk_fuzzer::fuzzer::constraint_cache::{
+    create_shared_cache_with_size, ConstraintCacheInsertError, ConstraintEvalCache,
+    ConstraintEvalResult,
+};
 
 #[test]
 fn test_cache_basic() {

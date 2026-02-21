@@ -430,7 +430,3 @@ impl NearMissDetector {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "near_miss_tests.rs"]
-mod tests;

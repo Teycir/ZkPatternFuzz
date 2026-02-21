@@ -443,7 +443,3 @@ pub struct AdaptiveSchedulerStats {
     pub best_attack: Option<AttackType>,
     pub under_explored: Vec<AttackType>,
 }
-
-#[cfg(test)]
-#[path = "adaptive_attack_scheduler_tests.rs"]
-mod tests;

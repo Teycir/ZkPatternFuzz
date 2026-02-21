@@ -514,7 +514,3 @@ impl CorrelationReport {
         md
     }
 }
-
-#[cfg(test)]
-#[path = "oracle_correlation_tests.rs"]
-mod tests;

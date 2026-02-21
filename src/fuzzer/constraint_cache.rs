@@ -333,7 +333,3 @@ pub fn create_shared_cache() -> SharedConstraintCache {
 pub fn create_shared_cache_with_size(max_size: usize) -> SharedConstraintCache {
     Arc::new(ConstraintEvalCache::new().with_max_size(max_size))
 }
-
-#[cfg(test)]
-#[path = "constraint_cache_tests.rs"]
-mod tests;

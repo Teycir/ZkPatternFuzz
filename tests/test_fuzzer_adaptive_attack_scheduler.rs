@@ -1,12 +1,17 @@
-use super::*;
+use std::time::Duration;
+use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
+use zk_fuzzer::fuzzer::adaptive_attack_scheduler::NearMissType;
+use zk_fuzzer::fuzzer::{
+    AdaptiveScheduler, AdaptiveSchedulerConfig, AttackResults, NearMissEvent,
+};
 
 #[test]
 fn test_scheduler_initialization() {
     let mut scheduler = AdaptiveScheduler::new();
     scheduler.initialize(&[AttackType::Underconstrained, AttackType::Soundness]);
 
-    assert_eq!(scheduler.attack_scores.len(), 2);
-    assert!(scheduler.attack_scores.values().all(|&s| s > 0.0));
+    assert_eq!(scheduler.scores().len(), 2);
+    assert!(scheduler.scores().values().all(|&s| s > 0.0));
 }
 
 #[test]
@@ -15,7 +20,7 @@ fn test_score_update_with_findings() {
     scheduler.initialize(&[AttackType::Underconstrained]);
 
     let initial_score = *scheduler
-        .attack_scores
+        .scores()
         .get(&AttackType::Underconstrained)
         .unwrap();
 
@@ -26,7 +31,7 @@ fn test_score_update_with_findings() {
             attack_type: AttackType::Underconstrained,
             severity: Severity::Critical,
             description: "Test".to_string(),
-            poc: zk_core::ProofOfConcept::default(),
+            poc: ProofOfConcept::default(),
             location: None,
         }],
         near_misses: vec![],
@@ -37,7 +42,7 @@ fn test_score_update_with_findings() {
     scheduler.update_scores(&results);
 
     let new_score = *scheduler
-        .attack_scores
+        .scores()
         .get(&AttackType::Underconstrained)
         .unwrap();
     assert!(new_score > initial_score);
@@ -83,12 +88,14 @@ fn test_yaml_suggestions() {
     let mut scheduler = AdaptiveScheduler::new();
     scheduler.initialize(&[AttackType::Underconstrained]);
 
-    // Add a near-miss
-    scheduler.near_misses.push(NearMissEvent {
+    // Add a near-miss through the public update path.
+    let mut results = AttackResults::new(AttackType::Underconstrained);
+    results.near_misses.push(NearMissEvent {
         event_type: NearMissType::AlmostOutOfRange,
         distance: 0.1,
         description: "0x1fffffffffffffff".to_string(),
     });
+    scheduler.update_scores(&results);
 
     let suggestions = scheduler.suggest_yaml_edits();
     assert!(!suggestions.is_empty());

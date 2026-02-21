@@ -1,4 +1,7 @@
-use super::*;
+use zk_core::FieldElement;
+use zk_fuzzer::fuzzer::near_miss::{
+    NearMiss, NearMissConfig, NearMissDetector, NearMissType, RangeConstraint,
+};
 
 #[test]
 fn test_range_near_miss() {

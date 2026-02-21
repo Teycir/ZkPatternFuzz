@@ -2,6 +2,31 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T22:57:35Z
+- Continued strict production/test separation by migrating a focused `fuzzer` core subset out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/fuzzer/near_miss.rs`
+    - `src/fuzzer/constraint_cache.rs`
+    - `src/fuzzer/oracle_diversity.rs`
+    - `src/fuzzer/oracle_correlation.rs`
+    - `src/fuzzer/adaptive_attack_scheduler.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_fuzzer_near_miss.rs`
+    - `tests/test_fuzzer_constraint_cache.rs`
+    - `tests/test_fuzzer_oracle_diversity.rs`
+    - `tests/test_fuzzer_oracle_correlation.rs`
+    - `tests/test_fuzzer_adaptive_attack_scheduler.rs`
+- Test migration notes:
+  - replaced in-module imports (`use super::*`) with integration imports via public APIs.
+  - adaptive scheduler tests were rewritten to use public methods (`scores()`, `update_scores(...)`) instead of private field access.
+  - near-miss test imports were switched to `fuzzer::near_miss::*` for non-reexported types.
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_fuzzer_near_miss --test test_fuzzer_constraint_cache --test test_fuzzer_oracle_diversity --test test_fuzzer_oracle_correlation --test test_fuzzer_adaptive_attack_scheduler` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `26` (down from `31` before this batch)
+
 ## Update (UTC): 2026-02-21T22:51:39Z
 - Continued strict production/test separation by migrating `reporting` tests out of `src/**`.
   - removed in-source `#[cfg(test)]` hooks from:

@@ -1,4 +1,5 @@
-use super::*;
+use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
+use zk_fuzzer::fuzzer::oracle_diversity::OracleDiversityTracker;
 
 #[test]
 fn test_tracker_creation() {
@@ -71,7 +72,7 @@ fn test_finding_recording() {
         attack_type: AttackType::Underconstrained,
         severity: Severity::Critical,
         description: "Test finding".to_string(),
-        poc: zk_core::ProofOfConcept::default(),
+        poc: ProofOfConcept::default(),
         location: Some("test.circom:42".to_string()),
     };
 
