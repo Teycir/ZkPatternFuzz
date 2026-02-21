@@ -1,6 +1,6 @@
-use super::*;
-use zk_core::AttackType;
-use zk_core::ProofOfConcept;
+use zk_core::{AttackType, CoverageMap, Finding, ProofOfConcept, Severity};
+use zk_fuzzer::config::ReportingConfig;
+use zk_fuzzer::reporting::FuzzReport;
 
 #[test]
 fn test_report_creation() {

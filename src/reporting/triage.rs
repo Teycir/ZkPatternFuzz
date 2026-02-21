@@ -706,7 +706,3 @@ pub struct TriageStatistics {
     /// Oracle name -> finding count
     pub oracles_by_finding_count: HashMap<String, usize>,
 }
-
-#[cfg(test)]
-#[path = "triage_tests.rs"]
-mod tests;

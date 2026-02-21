@@ -1,5 +1,5 @@
-use super::*;
-use zk_core::{AttackType, FieldElement};
+use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
+use zk_fuzzer::reporting::{ConfidenceLevel, TriageConfig, TriagePipeline};
 
 fn make_finding(attack_type: AttackType, severity: Severity, description: &str) -> Finding {
     Finding {
@@ -70,7 +70,12 @@ fn test_cross_oracle_bonus() {
     pipeline.add_oracle_to_finding(idx, "CollisionOracle");
     pipeline.add_oracle_to_finding(idx, "SemanticOracle");
 
-    let triaged = &pipeline.findings[idx];
+    let report = pipeline.generate_report();
+    let triaged = report
+        .all_findings_by_priority()
+        .into_iter()
+        .find(|f| f.priority_rank == 1)
+        .expect("expected triaged finding");
     assert_eq!(triaged.detected_by_oracles.len(), 3);
     assert!(triaged.score_breakdown.cross_oracle_bonus > 0.0);
 }
@@ -87,11 +92,21 @@ fn test_picus_verification_bonus() {
     );
     let idx = pipeline.add_finding(finding).unwrap();
 
-    let score_before = pipeline.findings[idx].confidence_score;
+    let score_before = pipeline
+        .generate_report()
+        .all_findings_by_priority()
+        .first()
+        .expect("expected finding before verification")
+        .confidence_score;
 
     pipeline.mark_picus_verified(idx);
 
-    let score_after = pipeline.findings[idx].confidence_score;
+    let score_after = pipeline
+        .generate_report()
+        .all_findings_by_priority()
+        .first()
+        .expect("expected finding after verification")
+        .confidence_score;
     assert!(score_after > score_before);
 }
 
@@ -107,17 +122,26 @@ fn test_reproduction_bonus() {
     );
     let idx = pipeline.add_finding(finding).unwrap();
 
-    let score_before = pipeline.findings[idx].confidence_score;
+    let score_before = pipeline
+        .generate_report()
+        .all_findings_by_priority()
+        .first()
+        .expect("expected finding before reproduction")
+        .confidence_score;
 
     // Record successful reproductions
     pipeline.record_reproduction(idx, true);
     pipeline.record_reproduction(idx, true);
     pipeline.record_reproduction(idx, false); // One failure
 
-    let score_after = pipeline.findings[idx].confidence_score;
+    let report = pipeline.generate_report();
+    let ranked = report.all_findings_by_priority();
+    let triaged = ranked
+        .first()
+        .expect("expected finding after reproduction");
+    let score_after = triaged.confidence_score;
     assert!(score_after > score_before);
 
-    let triaged = &pipeline.findings[idx];
     assert_eq!(triaged.reproduction_attempts, 3);
     assert_eq!(triaged.reproduction_successes, 2);
 }
@@ -147,7 +171,8 @@ fn test_deduplication() {
     assert!(idx1.is_some());
     assert!(idx2.is_none()); // Should be deduplicated
 
-    assert_eq!(pipeline.findings.len(), 1);
+    let report = pipeline.generate_report();
+    assert_eq!(report.statistics.total_findings, 1);
 }
 
 #[test]
@@ -209,8 +234,7 @@ fn test_evidence_mode_filter() {
     // At least critical finding should be included
     assert!(
         !evidence_findings.is_empty(),
-        "Evidence findings should not be empty. Total findings: {}",
-        pipeline.findings.len()
+        "Evidence findings should not be empty"
     );
     for f in evidence_findings {
         assert!(f.confidence_score >= 0.4);

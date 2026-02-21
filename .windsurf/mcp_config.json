@@ -1,0 +1,191 @@
+{
+  "servers": {
+    "apkeep": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/apkeep-mcp/index.js"],
+      "env": {},
+      "description": "Download APKs from APKPure or APKMirror"
+    },
+    "apktool": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/apktool-mcp/index.js"],
+      "env": {},
+      "description": "Android APK reverse engineering via apktool"
+    },
+    "fetch": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/fetch-mcp/dist/index.js"],
+      "env": {},
+      "description": "Fetch and convert web content to markdown"
+    },
+    "github-scoped": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/github-mcp-scoped-server/dist/index.js"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "description": "GitHub MCP server with repository analytics"
+    },
+    "sqlite": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/sqlite-mcp/index.js"],
+      "env": {},
+      "description": "SQLite database operations"
+    },
+    "ollama": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/Ollama-mcp/index.js"],
+      "env": {},
+      "description": "Ollama local LLM integration"
+    },
+    "frida": {
+      "command": "python3",
+      "args": ["/home/teycir/Mcp/frida-mcp/server.py"],
+      "env": {},
+      "description": "Frida dynamic instrumentation"
+    },
+    "ghidra": {
+      "command": "python3",
+      "args": ["/home/teycir/Mcp/Ghidra-mcp/server.py"],
+      "env": {},
+      "description": "Ghidra reverse engineering"
+    },
+    "jadx": {
+      "command": "python3",
+      "args": ["/home/teycir/Mcp/Jadx-mcp/server.py"],
+      "env": {},
+      "description": "JADX Android decompiler"
+    },
+    "binwalk": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/binwalk-mcp/index.js"],
+      "env": {},
+      "description": "Binwalk firmware analysis"
+    },
+    "nmap": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/Nmap-mcp/index.js"],
+      "env": {},
+      "description": "Nmap network scanning"
+    },
+    "adb": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/adb-mcp/index.js"],
+      "env": {},
+      "description": "ADB Android debug bridge"
+    },
+    "docker": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/docker-mcp/index.js"],
+      "env": {},
+      "description": "Docker container management"
+    },
+    "ripgrep": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/ripgrep-mcp/index.js"],
+      "env": {},
+      "description": "Ripgrep fast text search"
+    },
+    "etherscan": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/etherscan-mcp/index.js"],
+      "env": {
+        "ETHERSCAN_API_KEY": "${ETHERSCAN_API_KEY}"
+      },
+      "description": "Etherscan blockchain explorer"
+    },
+    "burp": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/burp-mcp-server/index.js"],
+      "env": {},
+      "description": "Burp Suite security testing"
+    },
+    "mitmproxy": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/mitmproxy-mcp/index.js"],
+      "env": {},
+      "description": "mitmproxy HTTP/HTTPS proxy"
+    },
+    "shodan": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/shodan-mcp/index.js"],
+      "env": {
+        "SHODAN_API_KEY": "${SHODAN_API_KEY}"
+      },
+      "description": "Shodan search engine"
+    },
+    "nuclei": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/nuclei-mcp/index.js"],
+      "env": {},
+      "description": "Nuclei vulnerability scanner"
+    },
+    "playwright": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/playwright-mcp/index.js"],
+      "env": {},
+      "description": "Playwright browser automation"
+    },
+    "postgres": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/postgres-mcp/index.js"],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}"
+      },
+      "description": "PostgreSQL database operations"
+    },
+    "supabase": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/mcp-server-supabase/index.js"],
+      "env": {
+        "SUPABASE_URL": "${SUPABASE_URL}",
+        "SUPABASE_KEY": "${SUPABASE_KEY}"
+      },
+      "description": "Supabase backend operations"
+    },
+    "git": {
+      "command": "node",
+      "args": ["/home/teycir/Mcp/mcp-server-git/index.js"],
+      "env": {},
+      "description": "Git repository operations"
+    },
+    "browser-tools": {
+      "command": "node",
+      "args": ["/home/teycir/Documents/Cline/MCP/browser-tools-mcp/index.js"],
+      "env": {},
+      "description": "Browser tools integration"
+    },
+    "context7": {
+      "command": "node",
+      "args": ["/home/teycir/Documents/Cline/MCP/context7-mcp/index.js"],
+      "env": {},
+      "description": "Context7 documentation search"
+    },
+    "dalle": {
+      "command": "node",
+      "args": ["/home/teycir/Documents/Cline/MCP/dalle-mcp/index.js"],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+      },
+      "description": "DALL-E image generation"
+    },
+    "obsidian": {
+      "command": "node",
+      "args": ["/home/teycir/Documents/Cline/MCP/mcp-obsidian/index.js"],
+      "env": {},
+      "description": "Obsidian vault operations"
+    },
+    "memory": {
+      "command": "node",
+      "args": ["/home/teycir/Documents/Cline/MCP/memory-server/index.js"],
+      "env": {},
+      "description": "Memory/persistence server"
+    },
+    "time": {
+      "command": "node",
+      "args": ["/home/teycir/Documents/Cline/MCP/time-server/index.js"],
+      "env": {},
+      "description": "Time utilities"
+    }
+  }
+}

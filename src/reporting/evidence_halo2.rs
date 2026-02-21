@@ -334,7 +334,3 @@ echo "If verify_halo2.rs prints 'Verification PASSED', this is a CONFIRMED bug."
 
     Ok(format!("cd {} && ./repro.sh", script_dir.display()))
 }
-
-#[cfg(test)]
-#[path = "evidence_halo2_tests.rs"]
-mod tests;

@@ -2,6 +2,40 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T22:51:39Z
+- Continued strict production/test separation by migrating `reporting` tests out of `src/**`.
+  - removed in-source `#[cfg(test)]` hooks from:
+    - `src/reporting/mod.rs`
+    - `src/reporting/command_timeout.rs`
+    - `src/reporting/coverage_summary.rs`
+    - `src/reporting/evidence_cairo.rs`
+    - `src/reporting/evidence_halo2.rs`
+    - `src/reporting/evidence_noir.rs`
+    - `src/reporting/poc_generator.rs`
+    - `src/reporting/sarif.rs`
+    - `src/reporting/triage.rs`
+  - moved test files to `tests/**`:
+    - `tests/test_reporting_mod.rs`
+    - `tests/test_reporting_command_timeout.rs`
+    - `tests/test_reporting_coverage_summary.rs`
+    - `tests/test_reporting_evidence_cairo.rs`
+    - `tests/test_reporting_evidence_halo2.rs`
+    - `tests/test_reporting_evidence_noir.rs`
+    - `tests/test_reporting_poc_generator.rs`
+    - `tests/test_reporting_sarif.rs`
+    - `tests/test_reporting_triage.rs`
+- Test migration notes:
+  - replaced in-module imports (`use super::*`) with integration imports via `zk_fuzzer::reporting::*` and `zk_core::*`.
+  - rewired tests that depended on private helpers to assert equivalent behavior through public APIs (SARIF builder output, evidence repro script generation, triage report/public score surfaces).
+  - for timeout wrapper coverage, integration test uses `#[path = "../src/reporting/command_timeout.rs"]` module import to avoid widening public API surface.
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q --test test_reporting_mod --test test_reporting_command_timeout --test test_reporting_coverage_summary --test test_reporting_evidence_cairo --test test_reporting_evidence_halo2 --test test_reporting_evidence_noir --test test_reporting_poc_generator --test test_reporting_sarif --test test_reporting_triage` -> `PASS`
+  - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
+- Progress:
+  - remaining `#[cfg(test)]` occurrences in `src/**`: `31` (down from `40` before this batch)
+  - note: one remaining raw match in `src/reporting/poc_generator.rs` is an emitted string literal (`"#[cfg(test)]"`), not an in-source test module hook.
+
 ## Update (UTC): 2026-02-21T22:42:31Z
 - Continued strict production/test separation by migrating `fuzzer/oracles` tests out of `src/**`.
   - removed in-source `#[cfg(test)]` hooks from:

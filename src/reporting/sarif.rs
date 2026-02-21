@@ -1502,7 +1502,3 @@ fn generate_cwe_taxonomy() -> SarifTaxonomy {
         ],
     }
 }
-
-#[cfg(test)]
-#[path = "sarif_tests.rs"]
-mod tests;

@@ -353,7 +353,3 @@ echo "========================================"
         path.parent().unwrap().display()
     ))
 }
-
-#[cfg(test)]
-#[path = "evidence_noir_tests.rs"]
-mod tests;

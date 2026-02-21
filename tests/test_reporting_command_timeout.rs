@@ -1,4 +1,7 @@
-use super::run_with_timeout;
+#[path = "../src/reporting/command_timeout.rs"]
+mod command_timeout;
+
+use command_timeout::run_with_timeout;
 use std::process::Command;
 use std::time::{Duration, Instant};
 

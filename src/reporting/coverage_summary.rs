@@ -492,7 +492,3 @@ impl Default for CoverageSummaryBuilder {
         Self::new()
     }
 }
-
-#[cfg(test)]
-#[path = "coverage_summary_tests.rs"]
-mod tests;

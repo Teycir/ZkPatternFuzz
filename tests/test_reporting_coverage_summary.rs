@@ -1,4 +1,4 @@
-use super::*;
+use zk_fuzzer::reporting::CoverageSummaryBuilder;
 
 #[test]
 fn test_coverage_summary_creation() {
@@ -16,18 +16,25 @@ fn test_coverage_summary_creation() {
 
 #[test]
 fn test_format_number() {
-    let summary = CoverageSummary::default();
-    assert_eq!(summary.format_number(1234567), "1,234,567");
-    assert_eq!(summary.format_number(123), "123");
-    assert_eq!(summary.format_number(0), "0");
+    let summary = CoverageSummaryBuilder::new()
+        .constraint_coverage(1_234_567, 2_000_000)
+        .build();
+    let mut out = Vec::new();
+    summary.print_to(&mut out).expect("print_to should succeed");
+    let rendered = String::from_utf8(out).expect("valid UTF-8 output");
+    assert!(rendered.contains("1,234,567"));
+    assert!(rendered.contains("2,000,000"));
 }
 
 #[test]
 fn test_progress_bar() {
-    let summary = CoverageSummary::default();
-    let bar = summary.make_progress_bar(50.0, 10);
-    // Bar should contain filled and empty parts
-    assert!(bar.contains('█') || bar.contains('░'));
+    let summary = CoverageSummaryBuilder::new()
+        .constraint_coverage(50, 100)
+        .build();
+    let mut out = Vec::new();
+    summary.print_to(&mut out).expect("print_to should succeed");
+    let rendered = String::from_utf8(out).expect("valid UTF-8 output");
+    assert!(rendered.contains('█') || rendered.contains('░'));
 }
 
 #[test]

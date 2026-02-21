@@ -562,7 +562,3 @@ impl Default for PoCGenerator {
         Self::new()
     }
 }
-
-#[cfg(test)]
-#[path = "poc_generator_tests.rs"]
-mod tests;

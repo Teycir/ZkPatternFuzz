@@ -1,5 +1,5 @@
-use super::*;
-use zk_core::{AttackType, Finding, ProofOfConcept, Severity};
+use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
+use zk_fuzzer::reporting::{PoCFormat, PoCGenerator};
 
 fn sample_finding() -> Finding {
     Finding {

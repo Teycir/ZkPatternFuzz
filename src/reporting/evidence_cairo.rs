@@ -322,7 +322,3 @@ fi
         path.parent().unwrap().display()
     ))
 }
-
-#[cfg(test)]
-#[path = "evidence_cairo_tests.rs"]
-mod tests;

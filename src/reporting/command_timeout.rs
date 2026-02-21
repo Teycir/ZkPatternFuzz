@@ -313,7 +313,3 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<
         thread::sleep(Duration::from_millis(20));
     }
 }
-
-#[cfg(test)]
-#[path = "command_timeout_tests.rs"]
-mod tests;
