@@ -99,3 +99,45 @@ fn test_analysis_unused_columns() {
     let issues = analysis::check_unused_columns(source);
     assert!(!issues.is_empty());
 }
+
+#[test]
+fn test_halo2_lockfile_error_detection() {
+    let lockfile_v4 = r#"error: failed to parse lock file
+
+Caused by:
+  lock file version 4 requires `-Znext-lockfile-bump`"#;
+    assert!(halo2_lockfile_requires_nightly(lockfile_v4));
+    assert!(!halo2_lockfile_requires_nightly(
+        "error: failed to fetch dependency",
+    ));
+}
+
+#[test]
+fn test_halo2_cargo_command_uses_configured_toolchain() {
+    let dir = tempdir().unwrap();
+    let spec_path = dir.path().join("test.json");
+    fs::write(
+        &spec_path,
+        r#"{
+                "name":"test",
+                "k":12,
+                "advice_columns":2,
+                "fixed_columns":1,
+                "instance_columns":1,
+                "constraints":1,
+                "private_inputs":0,
+                "public_inputs":1,
+                "lookups":0
+            }"#,
+    )
+    .unwrap();
+
+    let mut target = Halo2Target::new(spec_path.to_str().unwrap()).unwrap();
+    target.cargo_toolchain = Some("nightly".to_string());
+    let command = target.cargo_command();
+    let args: Vec<String> = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect();
+    assert!(args.iter().any(|arg| arg == "+nightly"));
+}

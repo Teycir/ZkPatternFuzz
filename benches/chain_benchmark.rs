@@ -7,9 +7,14 @@
 //! This benchmark is NOT part of the regular test suite due to execution time.
 //! It serves as a regression gate for Mode 3 chain fuzzing quality.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use std::{env, path::Path};
+use std::{fmt::Write as _, sync::Arc};
+use zk_core::CircuitExecutor;
+use zk_fuzzer::chain_fuzzer::{ChainRunner, ChainSpec, CrossStepAssertion, StepSpec};
+use zk_fuzzer::executor::FixtureCircuitExecutor;
 
 /// Result of running the chain benchmark suite
 #[derive(Debug, Clone, Default)]
@@ -82,6 +87,48 @@ struct GroundTruthCase {
     chain_yaml: &'static str,
     expected_finding: bool,
     expected_assertion: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ChainComplexityProfile {
+    name: &'static str,
+    chain_length: usize,
+    wiring_per_step: usize,
+    assertions: usize,
+}
+
+const CHAIN_COMPLEXITY_PROFILES: [ChainComplexityProfile; 4] = [
+    ChainComplexityProfile {
+        name: "low",
+        chain_length: 2,
+        wiring_per_step: 1,
+        assertions: 0,
+    },
+    ChainComplexityProfile {
+        name: "medium",
+        chain_length: 5,
+        wiring_per_step: 2,
+        assertions: 2,
+    },
+    ChainComplexityProfile {
+        name: "deep",
+        chain_length: 12,
+        wiring_per_step: 2,
+        assertions: 4,
+    },
+    ChainComplexityProfile {
+        name: "wide_wiring",
+        chain_length: 8,
+        wiring_per_step: 4,
+        assertions: 2,
+    },
+];
+
+#[derive(Debug, Clone)]
+struct ChainComplexitySnapshot {
+    profile: ChainComplexityProfile,
+    elapsed: Duration,
+    succeeded: bool,
 }
 
 /// Get ground truth cases from tests/ground_truth/chains/
@@ -184,6 +231,92 @@ fn run_benchmark_suite() -> ChainBenchmarkResult {
     result
 }
 
+fn create_fixture_chain_runner(num_circuits: usize, io_width: usize) -> Option<ChainRunner> {
+    let mut executors: HashMap<String, Arc<dyn CircuitExecutor>> = HashMap::new();
+    for index in 0..num_circuits {
+        let name = format!("circuit_{index}");
+        let executor = FixtureCircuitExecutor::new(&name, io_width, 0).with_outputs(io_width);
+        executors.insert(name, Arc::new(executor));
+    }
+
+    match ChainRunner::new(executors) {
+        Ok(runner) => Some(runner),
+        Err(err) => {
+            eprintln!("Skipping complexity benchmark: failed to create chain runner: {err}");
+            None
+        }
+    }
+}
+
+fn build_complexity_spec(profile: ChainComplexityProfile, num_circuits: usize) -> ChainSpec {
+    let mut steps = vec![StepSpec::fresh("circuit_0")];
+    for step_index in 1..profile.chain_length {
+        let circuit = format!("circuit_{}", step_index % num_circuits);
+        let mapping: Vec<(usize, usize)> = (0..profile.wiring_per_step).map(|i| (i, i)).collect();
+        steps.push(StepSpec::from_prior(&circuit, step_index - 1, mapping));
+    }
+
+    let mut spec = ChainSpec::new(format!("complexity_{}", profile.name), steps);
+    let tail_step = profile.chain_length.saturating_sub(1);
+    for assertion_index in 0..profile.assertions {
+        let wire = assertion_index % profile.wiring_per_step.max(1);
+        let assertion = CrossStepAssertion::new(
+            format!("{}_assertion_{assertion_index}", profile.name),
+            format!("step[0].out[{wire}] == step[{tail_step}].in[{wire}]"),
+        );
+        spec = spec.with_assertion(assertion);
+    }
+    spec
+}
+
+fn run_chain_complexity_snapshot() -> Vec<ChainComplexitySnapshot> {
+    let Some(runner) = create_fixture_chain_runner(6, 8) else {
+        return Vec::new();
+    };
+
+    let initial_inputs = HashMap::new();
+    CHAIN_COMPLEXITY_PROFILES
+        .iter()
+        .copied()
+        .map(|profile| {
+            let spec = build_complexity_spec(profile, 6);
+            let start = Instant::now();
+            let mut rng = rand::thread_rng();
+            let succeeded = runner.execute(&spec, &initial_inputs, &mut rng).completed;
+            ChainComplexitySnapshot {
+                profile,
+                elapsed: start.elapsed(),
+                succeeded,
+            }
+        })
+        .collect()
+}
+
+fn complexity_snapshot_markdown(samples: &[ChainComplexitySnapshot]) -> String {
+    let mut out = String::from(
+        "# Chain Complexity Benchmark Snapshot\n\n| Profile | Chain Length | Wiring/Step | Assertions | Single-Run Elapsed | Success |\n|---|---:|---:|---:|---:|---|\n",
+    );
+
+    if samples.is_empty() {
+        out.push_str("| n/a | 0 | 0 | 0 | n/a | no_data |\n");
+        return out;
+    }
+
+    for sample in samples {
+        let _ = writeln!(
+            out,
+            "| {} | {} | {} | {} | {:.3}s | {} |",
+            sample.profile.name,
+            sample.profile.chain_length,
+            sample.profile.wiring_per_step,
+            sample.profile.assertions,
+            sample.elapsed.as_secs_f64(),
+            if sample.succeeded { "pass" } else { "fail" }
+        );
+    }
+    out
+}
+
 fn chain_benchmark(c: &mut Criterion) {
     let available_cases = get_ground_truth_cases()
         .iter()
@@ -249,5 +382,42 @@ fn chain_benchmark(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, chain_benchmark);
+fn chain_complexity_benchmark(c: &mut Criterion) {
+    let Some(runner) = create_fixture_chain_runner(6, 8) else {
+        return;
+    };
+
+    let mut group = c.benchmark_group("chain_complexity_profiles");
+    group.measurement_time(Duration::from_secs(30));
+    group.sample_size(20);
+
+    let initial_inputs = HashMap::new();
+    for profile in CHAIN_COMPLEXITY_PROFILES {
+        let spec = build_complexity_spec(profile, 6);
+        group.throughput(Throughput::Elements(profile.chain_length as u64));
+        group.bench_with_input(
+            BenchmarkId::new(profile.name, profile.chain_length),
+            &spec,
+            |b, spec| {
+                b.iter(|| {
+                    let mut rng = rand::thread_rng();
+                    let result = runner.execute(spec, &initial_inputs, &mut rng);
+                    black_box(result)
+                });
+            },
+        );
+    }
+
+    group.finish();
+
+    let snapshot = run_chain_complexity_snapshot();
+    if std::fs::create_dir_all("reports").is_ok() {
+        let markdown = complexity_snapshot_markdown(&snapshot);
+        if let Err(e) = std::fs::write("reports/chain_complexity_benchmark.md", markdown) {
+            eprintln!("Failed to write chain complexity benchmark snapshot: {e}");
+        }
+    }
+}
+
+criterion_group!(benches, chain_benchmark, chain_complexity_benchmark);
 criterion_main!(benches);

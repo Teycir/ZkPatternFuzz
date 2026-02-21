@@ -584,6 +584,9 @@ python3 -m unittest -q tests/test_benchmark_failure_dashboard.py
 
 # Cross-backend throughput comparison (Noir/Cairo/Halo2)
 ./scripts/benchmark_cross_backend_throughput.sh --runs 2 --iterations 20 --timeout 20 --workers 2 --batch-jobs 1 --enforce
+
+# Large-circuit memory profiling (Noir/Cairo/Halo2)
+./scripts/profile_large_circuit_memory.sh --max-targets 6 --max-targets-per-framework 2 --iterations 20 --timeout 20
 ```
 
 ### Release Validation

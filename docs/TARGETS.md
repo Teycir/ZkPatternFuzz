@@ -133,6 +133,25 @@ Artifacts:
 - `artifacts/backend_throughput/latest_report.md`
 - `artifacts/backend_throughput/raw/run_metrics.jsonl`
 
+## Large-Circuit Memory Profiling
+
+Use the memory profiling harness to run selected large targets under
+`/usr/bin/time -v` and capture peak RSS by backend/framework.
+
+```bash
+./scripts/profile_large_circuit_memory.sh \
+  --max-targets 6 \
+  --max-targets-per-framework 2 \
+  --iterations 20 \
+  --timeout 20
+```
+
+Artifacts:
+
+- `artifacts/memory_profiles/latest_report.json`
+- `artifacts/memory_profiles/latest_report.md`
+- `artifacts/memory_profiles/raw/results.tsv`
+
 Failure dashboard class thresholds are configurable without changing output paths:
 
 - Environment overrides:

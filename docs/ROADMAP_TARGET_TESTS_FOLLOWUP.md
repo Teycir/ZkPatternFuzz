@@ -2,6 +2,75 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T12:52:39Z
+- Executed aggregate non-Circom readiness gate after Halo2 toolchain fallback fix:
+  - `scripts/run_backend_readiness_lanes.sh --iterations 5 --timeout 8 --workers 1 --batch-jobs 1 --required-backends noir,cairo,halo2 --min-completion-rate 0.90 --max-runtime-error 0 --max-backend-preflight-failed 0 --max-run-outcome-missing-rate 0.05 --skip-noir-integration-test --skip-noir-constraint-coverage-test --skip-noir-constraint-edge-cases-test --skip-noir-external-smoke-test --skip-noir-external-parity-test --skip-cairo-integration-test --skip-cairo-regression-test --skip-halo2-json-integration-test --skip-halo2-real-circuit-test --skip-halo2-stability-test --no-build-if-missing --enforce-dashboard`
+  - Result: `PASS` (Noir/Cairo/Halo2 lanes all pass; aggregated dashboard pass)
+  - Aggregated dashboard: `artifacts/backend_readiness/latest_report.json`
+  - Gate metrics:
+    - Noir: selector-matching completion `1.000`, `runtime_error=0`, `backend_preflight_failed=0`
+    - Cairo: selector-matching completion `1.000`, `runtime_error=0`, `backend_preflight_failed=0`
+    - Halo2: selector-matching completion `1.000`, `runtime_error=0`, `backend_preflight_failed=0`
+    - Aggregate non-Circom `run_outcome_missing_rate=0.000` (`count=0`, `total=33`)
+
+## Update (UTC): 2026-02-21T12:50:33Z
+- Hardened Halo2 Rust-project setup for lockfile/toolchain compatibility:
+  - file: `crates/zk-backends/src/halo2/mod.rs`
+  - change: when Halo2 Rust-project build fails with lockfile-v4/toolchain parse error, setup retries with `cargo +nightly` and keeps the selected toolchain for subsequent `cargo run` calls (`--info/--constraints/--execute/--prove/--verify` paths).
+- Added backend regression coverage:
+  - file: `crates/zk-backends/src/halo2/mod_tests.rs`
+  - tests:
+    - `test_halo2_lockfile_error_detection`
+    - `test_halo2_cargo_command_uses_configured_toolchain`
+  - validation:
+    - `cargo test -q -p zk-backends halo2::tests::test_halo2_lockfile_error_detection` -> `PASS`
+    - `cargo test -q -p zk-backends halo2::tests::test_halo2_cargo_command_uses_configured_toolchain` -> `PASS`
+- Halo2 readiness spot-check (matrix-only quick run) now passes with scaffold target completing:
+  - `scripts/run_halo2_readiness.sh --iterations 5 --timeout 8 --workers 1 --batch-jobs 1 --no-build-if-missing --skip-json-integration-test --skip-real-circuit-test --skip-stability-test`
+  - result: `PASS`
+  - report: `artifacts/backend_readiness/halo2/latest_report.json`
+  - summary: `artifacts/backend_readiness/halo2/summary_20260221_125002.tsv` (`completed=4`, `selector_mismatch=6`, `backend_preflight_failed=0`)
+- Re-ran large-circuit memory profile harness after Halo2 fix:
+  - `./scripts/profile_large_circuit_memory.sh --max-targets 3 --max-targets-per-framework 1 --iterations 5 --timeout 8 --workers 1 --batch-jobs 1 --no-build-if-missing`
+  - result: `PASS` (`overall_pass=true`)
+  - report: `artifacts/memory_profiles/latest_report.json`
+  - per-framework max RSS (kB): Cairo `84248`, Noir `62928`, Halo2 `59224` (all `exit_code=0`)
+
+## Update (UTC): 2026-02-21T12:38:57Z
+- Added large-circuit memory profiling harness:
+  - `scripts/profile_large_circuit_memory.sh`
+  - selects largest available targets from matrix inputs, profiles `zk0d_batch` with `/usr/bin/time -v`, and publishes JSON/Markdown/TSV artifacts.
+- Validation run:
+  - `./scripts/profile_large_circuit_memory.sh --max-targets 3 --max-targets-per-framework 1 --iterations 5 --timeout 8 --workers 1 --batch-jobs 1 --no-build-if-missing`
+  - Result: report generated (`overall_pass=false` in non-enforced mode due one backend preflight failure)
+  - Artifacts:
+    - `artifacts/memory_profiles/latest_report.json`
+    - `artifacts/memory_profiles/latest_report.md`
+    - `artifacts/memory_profiles/raw/results.tsv`
+  - Observed peak RSS (kB):
+    - Cairo `84520` (`local_cairo_multiplier`)
+    - Noir `62972` (`cat3_privacy_aztec_docs_examples_circuits_hello_circuit`)
+    - Halo2 `59736` (`cat5_frameworks_halo2_scaffold`, `exit_code=1`, `backend_preflight_failed=3`)
+
+## Update (UTC): 2026-02-21T12:28:49Z
+- Ran heavier cross-backend throughput batch (3 runs per backend) in enforced mode:
+  - `./scripts/benchmark_cross_backend_throughput.sh --runs 3 --enforce --no-build-if-missing`
+  - Result: `PASS`
+  - Throughput ranking (median completed/sec): `halo2`, `cairo`, `noir`
+  - Artifact: `artifacts/backend_throughput/latest_report.json`
+  - Markdown summary: `artifacts/backend_throughput/latest_report.md`
+- Added chain complexity benchmark lanes in `benches/chain_benchmark.rs`:
+  - profiles: `low`, `medium`, `deep`, `wide_wiring`
+  - output snapshot: `reports/chain_complexity_benchmark.md`
+- Validation:
+  - `cargo check -q --bench chain_benchmark` -> `PASS`
+  - `cargo bench --bench chain_benchmark chain_complexity_profiles -- --quick` -> `PASS`
+  - Criterion quick results:
+    - `chain_complexity_profiles/low/2` median `~80us`
+    - `chain_complexity_profiles/medium/5` median `~201us`
+    - `chain_complexity_profiles/deep/12` median `~511us`
+    - `chain_complexity_profiles/wide_wiring/8` median `~340us`
+
 ## Update (UTC): 2026-02-20T22:40:28Z
 - Added cross-backend throughput comparison harness:
   - `scripts/benchmark_cross_backend_throughput.sh`

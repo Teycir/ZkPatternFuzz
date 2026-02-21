@@ -22,6 +22,25 @@ fn halo2_external_command_timeout() -> std::time::Duration {
     crate::util::timeout_from_env("ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS", 120)
 }
 
+fn halo2_cargo_toolchain_from_env() -> Option<String> {
+    for key in ["ZK_FUZZER_HALO2_CARGO_TOOLCHAIN", "RUSTUP_TOOLCHAIN"] {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn halo2_lockfile_requires_nightly(stderr: &str) -> bool {
+    let lower = stderr.to_ascii_lowercase();
+    lower.contains("lock file version 4 requires")
+        || lower.contains("requires `-znext-lockfile-bump`")
+        || lower.contains("requires -znext-lockfile-bump")
+}
+
 /// Halo2 circuit target
 ///
 /// Unlike Circom and Noir which use external CLIs, Halo2 circuits are Rust code
@@ -39,6 +58,8 @@ pub struct Halo2Target {
     build_dir: PathBuf,
     /// Circuit configuration
     config: Halo2Config,
+    /// Optional cargo toolchain suffix (e.g. nightly).
+    cargo_toolchain: Option<String>,
     /// Cached PLONK constraints and lookup tables (if available)
     plonk_constraints: OnceLock<ParsedConstraintSet>,
 }
@@ -140,6 +161,7 @@ impl Halo2Target {
             metadata: None,
             build_dir,
             config: Halo2Config::default(),
+            cargo_toolchain: halo2_cargo_toolchain_from_env(),
             plonk_constraints: OnceLock::new(),
         })
     }
@@ -156,10 +178,31 @@ impl Halo2Target {
         self
     }
 
-    fn cargo_command(&self) -> Command {
+    fn cargo_command_with_toolchain(&self, toolchain: Option<&str>) -> Command {
         let mut command = Command::new("cargo");
+        if let Some(toolchain) = toolchain {
+            let trimmed = toolchain.trim();
+            if !trimmed.is_empty() {
+                command.arg(format!("+{trimmed}"));
+            }
+        }
         command.env("CARGO_TARGET_DIR", &self.build_dir);
         command
+    }
+
+    fn cargo_command(&self) -> Command {
+        self.cargo_command_with_toolchain(self.cargo_toolchain.as_deref())
+    }
+
+    fn run_cargo_build(
+        &self,
+        project_dir: &Path,
+        toolchain: Option<&str>,
+    ) -> Result<std::process::Output> {
+        let mut cmd = self.cargo_command_with_toolchain(toolchain);
+        cmd.args(["build", "--release"]).current_dir(project_dir);
+        crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout())
+            .context("Failed to build Halo2 circuit")
     }
 
     /// Load and configure the circuit
@@ -207,16 +250,23 @@ impl Halo2Target {
 
         // Build the project
         tracing::info!("Building Halo2 Rust project...");
-        let output = {
-            let mut cmd = self.cargo_command();
-            cmd.args(["build", "--release"]).current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout())
-                .context("Failed to build Halo2 circuit")?
-        };
+        let mut output = self.run_cargo_build(project_dir, self.cargo_toolchain.as_deref())?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Failed to build Halo2 circuit: {}", stderr);
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if self.cargo_toolchain.is_none() && halo2_lockfile_requires_nightly(&stderr) {
+                tracing::warn!(
+                    "Halo2 build hit lockfile-version/toolchain incompatibility; retrying with cargo +nightly"
+                );
+                self.cargo_toolchain = Some("nightly".to_string());
+                output = self.run_cargo_build(project_dir, self.cargo_toolchain.as_deref())?;
+                if !output.status.success() {
+                    let fallback_stderr = String::from_utf8_lossy(&output.stderr);
+                    anyhow::bail!("Failed to build Halo2 circuit: {}", fallback_stderr);
+                }
+            } else {
+                anyhow::bail!("Failed to build Halo2 circuit: {}", stderr);
+            }
         }
 
         // Try to run the circuit's info command if it has one
