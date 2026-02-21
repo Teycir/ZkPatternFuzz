@@ -2,6 +2,23 @@
 
 Generated (UTC): 2026-02-20T01:28:14Z
 
+## Update (UTC): 2026-02-21T20:18:58Z
+- Continued lifecycle modularization by extracting continuation/timeout orchestration:
+  - moved continuation/timeout block out of:
+    - `src/fuzzer/engine/run_lifecycle.rs`
+  - into:
+    - `src/fuzzer/engine/run_continuation.rs`
+  - added helper:
+    - `run_continuation_phase(progress, mode_label, phases_total, attacks_total, wall_clock_timed_out, start_time)`
+  - updated `run_lifecycle.rs` to delegate continuation phase via `run_continuation_phase(...)`
+  - registered new module in `src/fuzzer/engine/mod.rs`
+- Impact:
+  - `src/fuzzer/engine/run_lifecycle.rs` reduced from `268` to `188` lines in this slice
+  - extracted `src/fuzzer/engine/run_continuation.rs` (`106` lines)
+- Validation:
+  - `cargo check -q` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+
 ## Update (UTC): 2026-02-21T19:58:50Z
 - Continued lifecycle modularization by extracting startup/bootstrap orchestration:
   - moved startup/bootstrap block out of:

@@ -939,6 +939,7 @@ gh run watch
   - [x] extract lifecycle orchestration helpers + run loop into dedicated module (`src/fuzzer/engine/run_lifecycle.rs`) so `mod.rs` remains initialization-focused
   - [x] extract startup/bootstrap orchestration into dedicated module (`src/fuzzer/engine/run_bootstrap.rs`) so run lifecycle flow is separated from pre-attack initialization
   - [x] extract attack-dispatch execution loop into dedicated module (`src/fuzzer/engine/run_dispatch.rs`) so run lifecycle orchestration is separated from per-attack dispatch mechanics
+  - [x] extract post-dispatch continuation/timeout orchestration into dedicated module (`src/fuzzer/engine/run_continuation.rs`) so continuous phase control is isolated from lifecycle entrypoint
   - [x] extract static pattern witness-selection/recording into dedicated module (`src/fuzzer/engine/run_pattern.rs`) to isolate selector/materialization flow from run orchestration
   - [x] extract report/evidence finalization into dedicated module (`src/fuzzer/engine/run_reporting.rs`) so run orchestration and reporting paths are isolated
   - [ ] split `src/fuzzer/engine/attack_runner.rs` into attack-family dispatch modules + shared execution helpers
