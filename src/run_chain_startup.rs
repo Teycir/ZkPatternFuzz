@@ -6,7 +6,7 @@ use crate::run_chain_context::ChainRunContext;
 use crate::run_chain_ui::{print_chain_mode_banner, print_chains_to_fuzz};
 use crate::run_lifecycle::{
     require_evidence_readiness_or_emit_failure, run_backend_preflight_or_emit_failure,
-    seed_running_run_artifact, write_failed_mode_run_artifact_with_reason,
+    seed_running_run_artifact, write_failed_mode_run_artifact_with_reason, RunLifecycleContext,
 };
 use crate::runtime_misc::print_run_window;
 
@@ -16,17 +16,21 @@ pub(crate) fn startup_chain_run_or_exit_dry_run(
     chains: &[ChainSpec],
     options: &ChainRunOptions,
 ) -> anyhow::Result<bool> {
+    let lifecycle_ctx = RunLifecycleContext::new(
+        run_ctx.output_dir,
+        run_ctx.command,
+        run_ctx.run_id,
+        run_ctx.config_path,
+        run_ctx.campaign_name,
+        &run_ctx.started_utc,
+        run_ctx.timeout_seconds,
+    );
+
     if chains.is_empty() {
         if !options.dry_run {
             write_failed_mode_run_artifact_with_reason(
-                run_ctx.output_dir,
-                run_ctx.command,
-                run_ctx.run_id,
+                &lifecycle_ctx,
                 "parse_chains",
-                run_ctx.config_path,
-                run_ctx.campaign_name,
-                run_ctx.started_utc,
-                run_ctx.timeout_seconds,
                 "Chain mode requires chains: definitions in the YAML.".to_string(),
                 None,
             );
@@ -42,14 +46,8 @@ pub(crate) fn startup_chain_run_or_exit_dry_run(
     print!("{}", readiness.format());
     require_evidence_readiness_or_emit_failure(
         options.dry_run,
-        run_ctx.output_dir,
-        run_ctx.command,
-        run_ctx.run_id,
+        &lifecycle_ctx,
         "preflight_readiness",
-        run_ctx.config_path,
-        run_ctx.campaign_name,
-        run_ctx.started_utc,
-        run_ctx.timeout_seconds,
         &readiness,
         "Campaign has critical issues; refusing to start strict chain run",
     )?;
@@ -57,14 +55,8 @@ pub(crate) fn startup_chain_run_or_exit_dry_run(
     run_backend_preflight_or_emit_failure(
         options.dry_run,
         config,
-        run_ctx.output_dir,
-        run_ctx.command,
-        run_ctx.run_id,
+        &lifecycle_ctx,
         "preflight_backend",
-        run_ctx.config_path,
-        run_ctx.campaign_name,
-        run_ctx.started_utc,
-        run_ctx.timeout_seconds,
     )?;
 
     print_chain_mode_banner(
@@ -78,14 +70,8 @@ pub(crate) fn startup_chain_run_or_exit_dry_run(
 
     if !options.dry_run {
         seed_running_run_artifact(
-            run_ctx.output_dir,
-            run_ctx.command,
-            run_ctx.run_id,
+            &lifecycle_ctx,
             "starting_engine",
-            run_ctx.config_path,
-            run_ctx.campaign_name,
-            run_ctx.started_utc,
-            run_ctx.timeout_seconds,
             chain_run_options_doc(options),
         );
     }

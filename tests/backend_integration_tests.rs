@@ -108,25 +108,19 @@ fn noir_input_candidates(input_count: usize) -> Vec<Vec<FieldElement>> {
         return vec![Vec::new()];
     }
 
-    let mut cases = Vec::new();
-    cases.push((0..input_count).map(|_| FieldElement::zero()).collect());
-    cases.push((0..input_count).map(|_| FieldElement::one()).collect());
-    cases.push(
+    vec![
+        (0..input_count).map(|_| FieldElement::zero()).collect(),
+        (0..input_count).map(|_| FieldElement::one()).collect(),
         (0..input_count)
             .map(|idx| FieldElement::from_u64((idx as u64) + 1))
             .collect(),
-    );
-    cases.push(
         (0..input_count)
             .map(|_| FieldElement::from_u64(3))
             .collect(),
-    );
-    cases.push(
         (0..input_count)
             .map(|idx| FieldElement::from_u64(((idx as u64) + 1) * 5))
             .collect(),
-    );
-    cases
+    ]
 }
 
 fn run_noir_external_prove_verify_smoke(
@@ -263,20 +257,16 @@ fn cairo_input_candidates(input_count: usize) -> Vec<Vec<FieldElement>> {
         return vec![Vec::new()];
     }
 
-    let mut cases = Vec::new();
-    cases.push((0..input_count).map(|_| FieldElement::zero()).collect());
-    cases.push((0..input_count).map(|_| FieldElement::one()).collect());
-    cases.push(
+    vec![
+        (0..input_count).map(|_| FieldElement::zero()).collect(),
+        (0..input_count).map(|_| FieldElement::one()).collect(),
         (0..input_count)
             .map(|idx| FieldElement::from_u64((idx as u64) + 1))
             .collect(),
-    );
-    cases.push(
         (0..input_count)
             .map(|_| FieldElement::from_u64(5))
             .collect(),
-    );
-    cases
+    ]
 }
 
 fn run_cairo_regression_case(

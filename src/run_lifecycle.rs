@@ -14,25 +14,74 @@ use crate::run_outcome_docs::{
 };
 use crate::{normalize_build_paths, set_run_log_context_for_campaign};
 
+#[derive(Clone, Copy)]
+pub(crate) struct RunLifecycleMeta<'a> {
+    pub command: &'a str,
+    pub run_id: &'a str,
+    pub config_path: &'a str,
+    pub campaign_name: &'a str,
+    pub started_utc: &'a DateTime<Utc>,
+    pub timeout_seconds: Option<u64>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct RunLifecycleContext<'a> {
+    pub output_dir: &'a Path,
+    pub command: &'a str,
+    pub run_id: &'a str,
+    pub config_path: &'a str,
+    pub campaign_name: &'a str,
+    pub started_utc: &'a DateTime<Utc>,
+    pub timeout_seconds: Option<u64>,
+}
+
+impl<'a> RunLifecycleContext<'a> {
+    pub(crate) fn from_meta(output_dir: &'a Path, meta: RunLifecycleMeta<'a>) -> Self {
+        Self {
+            output_dir,
+            command: meta.command,
+            run_id: meta.run_id,
+            config_path: meta.config_path,
+            campaign_name: meta.campaign_name,
+            started_utc: meta.started_utc,
+            timeout_seconds: meta.timeout_seconds,
+        }
+    }
+
+    pub(crate) fn new(
+        output_dir: &'a Path,
+        command: &'a str,
+        run_id: &'a str,
+        config_path: &'a str,
+        campaign_name: &'a str,
+        started_utc: &'a DateTime<Utc>,
+        timeout_seconds: Option<u64>,
+    ) -> Self {
+        Self {
+            output_dir,
+            command,
+            run_id,
+            config_path,
+            campaign_name,
+            started_utc,
+            timeout_seconds,
+        }
+    }
+}
+
 fn run_doc_context<'a>(
-    command: &'a str,
-    run_id: &'a str,
-    stage: &'a str,
-    config_path: &'a str,
-    campaign_name: &'a str,
-    output_dir: &'a Path,
-    started_utc: &'a DateTime<Utc>,
-    timeout_seconds: Option<u64>,
+    run_ctx: &'a RunLifecycleContext<'a>,
+    stage: &'static str,
 ) -> RunOutcomeDocContext<'a> {
     RunOutcomeDocContext {
-        command,
-        run_id,
+        command: run_ctx.command,
+        run_id: run_ctx.run_id,
         stage,
-        config_path,
-        campaign_name,
-        output_dir,
-        started_utc,
-        timeout_seconds,
+        config_path: run_ctx.config_path,
+        campaign_name: run_ctx.campaign_name,
+        output_dir: run_ctx.output_dir,
+        started_utc: run_ctx.started_utc,
+        timeout_seconds: run_ctx.timeout_seconds,
     }
 }
 
@@ -57,94 +106,43 @@ fn readiness_report_to_json(readiness: &ReadinessReport) -> serde_json::Value {
 }
 
 pub(crate) fn seed_running_run_artifact(
-    output_dir: &Path,
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
+    run_ctx: &RunLifecycleContext<'_>,
+    stage: &'static str,
     options: serde_json::Value,
 ) {
-    let mut doc = running_run_doc_with_window(run_doc_context(
-        command,
-        run_id,
-        stage,
-        config_path,
-        campaign_name,
-        output_dir,
-        &started_utc,
-        timeout_seconds,
-    ));
+    let mut doc = running_run_doc_with_window(run_doc_context(run_ctx, stage));
     doc["options"] = options;
-    write_run_artifacts(output_dir, run_id, &doc);
+    write_run_artifacts(run_ctx.output_dir, run_ctx.run_id, &doc);
 }
 
 pub(crate) fn write_failed_mode_run_artifact_with_error(
-    output_dir: &Path,
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
+    run_ctx: &RunLifecycleContext<'_>,
+    stage: &'static str,
     error: String,
 ) {
-    let mut doc = failed_run_doc_with_window(run_doc_context(
-        command,
-        run_id,
-        stage,
-        config_path,
-        campaign_name,
-        output_dir,
-        &started_utc,
-        timeout_seconds,
-    ));
+    let mut doc = failed_run_doc_with_window(run_doc_context(run_ctx, stage));
     doc["error"] = serde_json::Value::String(error);
-    write_run_artifacts(output_dir, run_id, &doc);
+    write_run_artifacts(run_ctx.output_dir, run_ctx.run_id, &doc);
 }
 
 pub(crate) fn write_failed_mode_run_artifact_with_reason(
-    output_dir: &Path,
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
+    run_ctx: &RunLifecycleContext<'_>,
+    stage: &'static str,
     reason: String,
     readiness: Option<serde_json::Value>,
 ) {
-    let mut doc = failed_run_doc_with_window(run_doc_context(
-        command,
-        run_id,
-        stage,
-        config_path,
-        campaign_name,
-        output_dir,
-        &started_utc,
-        timeout_seconds,
-    ));
+    let mut doc = failed_run_doc_with_window(run_doc_context(run_ctx, stage));
     doc["reason"] = serde_json::Value::String(reason);
     if let Some(readiness) = readiness {
         doc["readiness"] = readiness;
     }
-    write_run_artifacts(output_dir, run_id, &doc);
+    write_run_artifacts(run_ctx.output_dir, run_ctx.run_id, &doc);
 }
 
 pub(crate) fn require_evidence_readiness_or_emit_failure(
     dry_run: bool,
-    output_dir: &Path,
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
+    run_ctx: &RunLifecycleContext<'_>,
+    stage: &'static str,
     readiness: &ReadinessReport,
     failure_reason: &str,
 ) -> anyhow::Result<()> {
@@ -154,14 +152,8 @@ pub(crate) fn require_evidence_readiness_or_emit_failure(
 
     if !dry_run {
         write_failed_mode_run_artifact_with_reason(
-            output_dir,
-            command,
-            run_id,
+            run_ctx,
             stage,
-            config_path,
-            campaign_name,
-            started_utc,
-            timeout_seconds,
             failure_reason.to_string(),
             Some(readiness_report_to_json(readiness)),
         );
@@ -173,31 +165,15 @@ pub(crate) fn require_evidence_readiness_or_emit_failure(
 pub(crate) fn run_backend_preflight_or_emit_failure(
     dry_run: bool,
     config: &FuzzConfig,
-    output_dir: &Path,
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
+    run_ctx: &RunLifecycleContext<'_>,
+    stage: &'static str,
 ) -> anyhow::Result<()> {
     if dry_run {
         return Ok(());
     }
 
     if let Err(err) = run_backend_preflight(config) {
-        write_failed_mode_run_artifact_with_error(
-            output_dir,
-            command,
-            run_id,
-            stage,
-            config_path,
-            campaign_name,
-            started_utc,
-            timeout_seconds,
-            format!("{:#}", err),
-        );
+        write_failed_mode_run_artifact_with_error(run_ctx, stage, format!("{:#}", err));
         return Err(err);
     }
 
@@ -206,42 +182,37 @@ pub(crate) fn run_backend_preflight_or_emit_failure(
 
 pub(crate) fn acquire_output_lock_or_write_failure(
     dry_run: bool,
-    output_dir: &Path,
-    command: &str,
-    run_id: &str,
-    stage: &str,
-    config_path: &str,
-    campaign_name: &str,
-    started_utc: &DateTime<Utc>,
+    run_ctx: &RunLifecycleContext<'_>,
+    stage: &'static str,
 ) -> anyhow::Result<Option<zk_fuzzer::util::file_lock::FileLock>> {
     if dry_run {
         return Ok(None);
     }
 
-    match acquire_output_dir_lock(output_dir) {
+    match acquire_output_dir_lock(run_ctx.output_dir) {
         Ok(lock) => Ok(Some(lock)),
         Err(err) => {
             let err_text = format!("{:#}", err);
             let ended_utc = Utc::now();
             let doc = serde_json::json!({
                 "status": "failed",
-                "command": command,
-                "run_id": run_id,
+                "command": run_ctx.command,
+                "run_id": run_ctx.run_id,
                 "stage": stage,
                 "pid": std::process::id(),
-                "campaign_path": config_path,
-                "campaign_name": campaign_name,
-                "output_dir": output_dir.display().to_string(),
-                "started_utc": started_utc.to_rfc3339(),
+                "campaign_path": run_ctx.config_path,
+                "campaign_name": run_ctx.campaign_name,
+                "output_dir": run_ctx.output_dir.display().to_string(),
+                "started_utc": run_ctx.started_utc.to_rfc3339(),
                 "ended_utc": ended_utc.to_rfc3339(),
-                "duration_seconds": (ended_utc - started_utc).num_seconds().max(0),
+                "duration_seconds": (ended_utc - run_ctx.started_utc).num_seconds().max(0),
                 "error": err_text.clone(),
                 "hint": "Output directory is already locked by another process. Choose a different reporting.output_dir or wait for the other run to finish.",
             });
-            write_failed_run_artifact(run_id, &doc);
+            write_failed_run_artifact(run_ctx.run_id, &doc);
             Err(anyhow::anyhow!(
                 "Output directory is already in use (locked): {}. Error: {}",
-                output_dir.display(),
+                run_ctx.output_dir.display(),
                 err_text
             ))
         }
@@ -251,60 +222,37 @@ pub(crate) fn acquire_output_lock_or_write_failure(
 pub(crate) fn initialize_campaign_run_lifecycle(
     dry_run: bool,
     config: &mut FuzzConfig,
-    command: &str,
-    run_id: &str,
-    config_path: &str,
-    campaign_name: &str,
-    started_utc: DateTime<Utc>,
-    timeout_seconds: Option<u64>,
+    run_meta: RunLifecycleMeta<'_>,
     options_doc: serde_json::Value,
 ) -> anyhow::Result<(PathBuf, Option<zk_fuzzer::util::file_lock::FileLock>)> {
     // Prevent multi-process collisions on the same output dir.
     // Skip locking/writes in --dry-run since no files are written.
-    let stage = "acquire_output_lock";
+    let stage: &'static str = "acquire_output_lock";
     let output_dir = config.reporting.output_dir.clone();
-    let output_lock = acquire_output_lock_or_write_failure(
-        dry_run,
-        &output_dir,
-        command,
-        run_id,
-        stage,
-        config_path,
-        campaign_name,
-        &started_utc,
-    )?;
+    let run_ctx = RunLifecycleContext::from_meta(&output_dir, run_meta);
+    let output_lock = acquire_output_lock_or_write_failure(dry_run, &run_ctx, stage)?;
 
     if !dry_run {
         // If a previous run died without updating run_outcome.json, mark it as stale so it does
         // not look like "still running forever".
-        mark_stale_previous_run_if_any(&output_dir, std::process::id());
+        mark_stale_previous_run_if_any(run_ctx.output_dir, std::process::id());
 
         set_run_log_context_for_campaign(
             dry_run,
-            run_id,
-            command,
-            config_path,
-            Some(campaign_name),
-            Some(&output_dir),
-            &started_utc,
+            run_ctx.run_id,
+            run_ctx.command,
+            run_ctx.config_path,
+            Some(run_ctx.campaign_name),
+            Some(run_ctx.output_dir),
+            run_ctx.started_utc,
         );
 
         // Seed a persistent status file early so interrupted runs still leave artifacts.
-        seed_running_run_artifact(
-            &output_dir,
-            command,
-            run_id,
-            stage,
-            config_path,
-            campaign_name,
-            started_utc,
-            timeout_seconds,
-            options_doc,
-        );
+        seed_running_run_artifact(&run_ctx, stage, options_doc);
     }
 
     // Ensure build artifacts never land inside the engagement report folder.
-    normalize_build_paths(config, run_id);
+    normalize_build_paths(config, run_ctx.run_id);
 
     Ok((output_dir, output_lock))
 }

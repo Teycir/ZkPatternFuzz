@@ -51,9 +51,7 @@ fn test_circuit_path(name: &str) -> PathBuf {
 /// Test that circom and snarkjs are available
 #[test]
 fn test_circom_snarkjs_available() {
-    if !require_circom_and_snarkjs() {
-        return;
-    }
+    let _ = require_circom_and_snarkjs();
 }
 
 /// Test circuit compilation (requires circom)

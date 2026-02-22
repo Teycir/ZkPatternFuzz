@@ -8,7 +8,7 @@ use zk_fuzzer::reporting::FuzzReport;
 
 use crate::engagement_artifacts::write_run_artifacts;
 use crate::run_chain_context::ChainRunContext;
-use crate::run_lifecycle::write_failed_mode_run_artifact_with_error;
+use crate::run_lifecycle::{write_failed_mode_run_artifact_with_error, RunLifecycleContext};
 use crate::run_outcome_docs::{completed_run_doc_with_window, RunOutcomeDocContext};
 
 pub(crate) struct ChainReportContext<'a> {
@@ -370,18 +370,22 @@ pub(crate) fn save_chain_reports_and_standard_or_emit_failure(
     reporting: ReportingConfig,
     run_execution_count: u64,
 ) -> anyhow::Result<()> {
+    let lifecycle_ctx = RunLifecycleContext::new(
+        run_ctx.output_dir,
+        run_ctx.command,
+        run_ctx.run_id,
+        run_ctx.config_path,
+        run_ctx.campaign_name,
+        &run_ctx.started_utc,
+        run_ctx.timeout_seconds,
+    );
+
     if let Err(err) =
         save_chain_reports_bundle(run_ctx.output_dir, run_ctx.config_path, seed, report_ctx)
     {
         write_failed_mode_run_artifact_with_error(
-            run_ctx.output_dir,
-            run_ctx.command,
-            run_ctx.run_id,
+            &lifecycle_ctx,
             "save_chain_reports",
-            run_ctx.config_path,
-            run_ctx.campaign_name,
-            run_ctx.started_utc,
-            run_ctx.timeout_seconds,
             format!("{:#}", err),
         );
         return Err(err);
@@ -394,14 +398,8 @@ pub(crate) fn save_chain_reports_and_standard_or_emit_failure(
         run_execution_count,
     ) {
         write_failed_mode_run_artifact_with_error(
-            run_ctx.output_dir,
-            run_ctx.command,
-            run_ctx.run_id,
+            &lifecycle_ctx,
             "save_standard_report",
-            run_ctx.config_path,
-            run_ctx.campaign_name,
-            run_ctx.started_utc,
-            run_ctx.timeout_seconds,
             format!("{:#}", err),
         );
         return Err(err);

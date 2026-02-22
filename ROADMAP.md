@@ -951,7 +951,7 @@ gh run watch
   - [ ] split `src/fuzzer/engine/mod.rs` into smaller orchestration modules (init, run loop, reporting, selector/static analysis)
 - [ ] Keep `src/main.rs` as a thin CLI entrypoint by moving remaining orchestration into `run_*` modules and shared services
 - [ ] Close remaining clippy debt and prevent regression:
-  - [ ] convert remaining 8+ argument functions to config/builder structs
+  - [x] convert remaining 8+ argument functions to config/builder structs
   - [x] replace post-`Default::default()` field assignment patterns with struct literal initialization
   - [ ] clean redundant variable redefinitions in `src/toolchain_bootstrap.rs`
   - [x] replace manual multiple-of checks with `.is_multiple_of()`

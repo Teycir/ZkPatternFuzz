@@ -48,6 +48,7 @@ use run_lifecycle::{
     initialize_campaign_run_lifecycle, require_evidence_readiness_or_emit_failure,
     run_backend_preflight_or_emit_failure, seed_running_run_artifact,
     write_failed_mode_run_artifact_with_error, write_failed_mode_run_artifact_with_reason,
+    RunLifecycleContext, RunLifecycleMeta,
 };
 pub(crate) use run_log_context::set_run_log_context_for_campaign;
 use run_log_context::{DynamicLogWriter, RunLogContextGuard};
@@ -213,7 +214,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     let started_utc = Utc::now();
     let command = options.command_label;
     let run_id = make_run_id(command, Some(config_path));
-    let mut stage: &str;
+    let mut stage: &'static str;
     announce_report_dir_and_bind_log_context(
         options.dry_run,
         &run_id,
@@ -328,17 +329,21 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         serde_yaml::Value::String(command.to_string()),
     );
 
+    let run_lifecycle_meta = RunLifecycleMeta {
+        command,
+        run_id: &run_id,
+        config_path,
+        campaign_name: &campaign_name,
+        started_utc: &started_utc,
+        timeout_seconds: options.timeout,
+    };
     let (output_dir, _output_lock) = initialize_campaign_run_lifecycle(
         options.dry_run,
         &mut config,
-        command,
-        &run_id,
-        config_path,
-        &campaign_name,
-        started_utc,
-        options.timeout,
+        run_lifecycle_meta,
         campaign_run_options_doc(&options),
     )?;
+    let lifecycle_ctx = RunLifecycleContext::from_meta(&output_dir, run_lifecycle_meta);
 
     let _ctx_guard = RunLogContextGuard::new();
 
@@ -349,14 +354,8 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         if invariants.is_empty() {
             if !options.dry_run {
                 write_failed_mode_run_artifact_with_reason(
-                    &output_dir,
-                    command,
-                    &run_id,
+                    &lifecycle_ctx,
                     stage,
-                    config_path,
-                    &campaign_name,
-                    started_utc,
-                    options.timeout,
                     "Evidence mode requires v2 invariants in the YAML (invariants: ...)."
                         .to_string(),
                     None,
@@ -470,32 +469,15 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
         print!("{}", readiness.format());
         require_evidence_readiness_or_emit_failure(
             options.dry_run,
-            &output_dir,
-            command,
-            &run_id,
+            &lifecycle_ctx,
             stage,
-            config_path,
-            &campaign_name,
-            started_utc,
-            options.timeout,
             &readiness,
             "Campaign has critical issues; refusing to start strict evidence run",
         )?;
     }
 
     stage = "preflight_backend";
-    run_backend_preflight_or_emit_failure(
-        options.dry_run,
-        &config,
-        &output_dir,
-        command,
-        &run_id,
-        stage,
-        config_path,
-        &campaign_name,
-        started_utc,
-        options.timeout,
-    )?;
+    run_backend_preflight_or_emit_failure(options.dry_run, &config, &lifecycle_ctx, stage)?;
 
     // Print banner
     print_banner(&config);
@@ -505,14 +487,8 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     if !options.dry_run {
         // Update run artifacts with a more informative stage than the initial lock acquisition.
         seed_running_run_artifact(
-            &output_dir,
-            command,
-            &run_id,
+            &lifecycle_ctx,
             "starting_engine",
-            config_path,
-            &campaign_name,
-            started_utc,
-            options.timeout,
             campaign_run_options_doc(&options),
         );
     }
@@ -766,17 +742,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     } {
         Ok(r) => r,
         Err(err) => {
-            write_failed_mode_run_artifact_with_error(
-                &output_dir,
-                command,
-                &run_id,
-                stage,
-                config_path,
-                &campaign_name,
-                started_utc,
-                options.timeout,
-                format!("{:#}", err),
-            );
+            write_failed_mode_run_artifact_with_error(&lifecycle_ctx, stage, format!("{:#}", err));
             return Err(err);
         }
     };
@@ -785,17 +751,7 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
     stage = "save_report";
     report.print_summary();
     if let Err(err) = report.save_to_files() {
-        write_failed_mode_run_artifact_with_error(
-            &output_dir,
-            command,
-            &run_id,
-            stage,
-            config_path,
-            &campaign_name,
-            started_utc,
-            options.timeout,
-            format!("{:#}", err),
-        );
+        write_failed_mode_run_artifact_with_error(&lifecycle_ctx, stage, format!("{:#}", err));
         return Err(err);
     }
 

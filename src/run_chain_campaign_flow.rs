@@ -17,7 +17,7 @@ use crate::run_chain_reports::{
 use crate::run_chain_startup::startup_chain_run_or_exit_dry_run;
 use crate::run_chain_ui::print_chain_results_from_report;
 use crate::run_identity::make_run_id;
-use crate::run_lifecycle::initialize_campaign_run_lifecycle;
+use crate::run_lifecycle::{initialize_campaign_run_lifecycle, RunLifecycleMeta};
 use crate::run_log_context::RunLogContextGuard;
 
 pub(crate) async fn run_chain_campaign(
@@ -48,16 +48,19 @@ pub(crate) async fn run_chain_campaign(
     )?;
 
     let campaign_name = config.campaign.name.clone();
+    let run_meta = RunLifecycleMeta {
+        command,
+        run_id: &run_id,
+        config_path,
+        campaign_name: &campaign_name,
+        started_utc: &started_utc,
+        timeout_seconds: Some(options.timeout),
+    };
 
     let (output_dir, _output_lock) = initialize_campaign_run_lifecycle(
         options.dry_run,
         &mut config,
-        command,
-        &run_id,
-        config_path,
-        &campaign_name,
-        started_utc,
-        Some(options.timeout),
+        run_meta,
         chain_run_options_doc(&options),
     )?;
 

@@ -3,7 +3,7 @@ use zk_fuzzer::fuzzer::FuzzingEngine;
 
 use crate::cli::ChainRunOptions;
 use crate::run_chain_context::ChainRunContext;
-use crate::run_lifecycle::write_failed_mode_run_artifact_with_error;
+use crate::run_lifecycle::{write_failed_mode_run_artifact_with_error, RunLifecycleContext};
 
 pub(crate) async fn run_chain_engine(
     run_ctx: &ChainRunContext<'_>,
@@ -11,18 +11,22 @@ pub(crate) async fn run_chain_engine(
     chains: &[ChainSpec],
     options: &ChainRunOptions,
 ) -> anyhow::Result<Vec<ChainFinding>> {
+    let lifecycle_ctx = RunLifecycleContext::new(
+        run_ctx.output_dir,
+        run_ctx.command,
+        run_ctx.run_id,
+        run_ctx.config_path,
+        run_ctx.campaign_name,
+        &run_ctx.started_utc,
+        run_ctx.timeout_seconds,
+    );
+
     let mut engine = match FuzzingEngine::new(config.clone(), options.seed, options.workers) {
         Ok(e) => e,
         Err(err) => {
             write_failed_mode_run_artifact_with_error(
-                run_ctx.output_dir,
-                run_ctx.command,
-                run_ctx.run_id,
+                &lifecycle_ctx,
                 "engine_init",
-                run_ctx.config_path,
-                run_ctx.campaign_name,
-                run_ctx.started_utc,
-                run_ctx.timeout_seconds,
                 format!("{:#}", err),
             );
             return Err(err);
@@ -44,14 +48,8 @@ pub(crate) async fn run_chain_engine(
         Ok(findings) => Ok(findings),
         Err(err) => {
             write_failed_mode_run_artifact_with_error(
-                run_ctx.output_dir,
-                run_ctx.command,
-                run_ctx.run_id,
+                &lifecycle_ctx,
                 "engine_run_chains",
-                run_ctx.config_path,
-                run_ctx.campaign_name,
-                run_ctx.started_utc,
-                run_ctx.timeout_seconds,
                 format!("{:#}", err),
             );
             Err(err)
