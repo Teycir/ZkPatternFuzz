@@ -13,6 +13,7 @@ pub mod limb_analysis;
 pub mod limb_boundary_fuzzer;
 pub mod lookup_coverage;
 pub mod lookup_extractor;
+pub mod lookup_fuzzer;
 pub mod proof_forgery;
 pub mod r1cs_parser;
 pub mod r1cs_to_smt;
@@ -44,6 +45,7 @@ pub use lookup_extractor::{
     LookupExtractionReport, LookupExtractorConfig, LookupTableExtractor, LookupUsage,
     LookupUsageSource,
 };
+pub use lookup_fuzzer::{LookupFuzzCase, LookupFuzzCaseKind, LookupFuzzer, LookupFuzzerConfig};
 
 pub use proof_forgery::{
     quick_underconstrained_check, ForgeryStats, ProofForgeryDetector, ProofForgeryResult,

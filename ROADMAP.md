@@ -439,7 +439,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
   - Track which values are looked up vs. which should be
   - Detect missing range checks (value used without lookup)
   - Detect incomplete lookup tables (gaps in range)
-- [ ] Add lookup fuzzer:
+- [x] Add lookup fuzzer:
   - Fuzz values outside lookup table range
   - Fuzz boundary values (min/max of table)
   - Fuzz gaps in sparse lookup tables
