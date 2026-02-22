@@ -298,8 +298,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 #### Noir -> 5/5
 - [ ] Expand Noir matrix coverage to `>=25` selector-matching classified runs per release cycle.
-- [ ] Add compatibility matrix tests for supported `nargo` versions and artifact layouts.
-- [ ] Add hard proof artifact contract tests (path + format + deterministic verify inputs).
+- [x] Add compatibility matrix tests for supported `nargo` versions and artifact layouts.
+- [x] Add hard proof artifact contract tests (path + format + deterministic verify inputs).
 - [ ] Exit criteria: Noir score `5.0` for 14 consecutive daily scorecards.
 
 #### Halo2 -> 5/5

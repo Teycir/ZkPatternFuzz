@@ -8,6 +8,7 @@
 use crate::TargetCircuit;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,6 +34,31 @@ fn nargo_missing_subcommand_message(stdout: &str, stderr: &str, subcommand: &str
         && (combined.contains(&format!("'{subcommand}'"))
             || combined.contains(&format!("`{subcommand}`"))
             || combined.contains(subcommand))
+}
+
+fn validate_proof_artifact_bytes(proof: &[u8]) -> Result<()> {
+    if proof.is_empty() {
+        anyhow::bail!("Noir proof artifact is empty");
+    }
+    Ok(())
+}
+
+fn verify_inputs_digest_hex(public_inputs: &[FieldElement]) -> String {
+    let mut hasher = Sha256::new();
+    for input in public_inputs {
+        hasher.update(input.0);
+    }
+    hex::encode(hasher.finalize())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct NoirVerifyInputsContract {
+    contract_version: u32,
+    framework: String,
+    field: String,
+    count: usize,
+    public_inputs_hex: Vec<String>,
+    inputs_sha256: String,
 }
 
 struct ScopedFileOverwrite {
@@ -287,6 +313,44 @@ impl NoirTarget {
             }
         }
         candidates
+    }
+
+    fn verify_inputs_contract_path(&self) -> PathBuf {
+        self.build_dir.join("verify_inputs_contract.json")
+    }
+
+    fn build_verify_inputs_contract(
+        &self,
+        public_inputs: &[FieldElement],
+    ) -> NoirVerifyInputsContract {
+        let public_inputs_hex = public_inputs
+            .iter()
+            .map(|value| format!("0x{}", hex::encode(value.0)))
+            .collect::<Vec<_>>();
+
+        NoirVerifyInputsContract {
+            contract_version: 1,
+            framework: "noir".to_string(),
+            field: self.field_name().to_string(),
+            count: public_inputs.len(),
+            public_inputs_hex,
+            inputs_sha256: verify_inputs_digest_hex(public_inputs),
+        }
+    }
+
+    fn write_verify_inputs_contract(&self, public_inputs: &[FieldElement]) -> Result<PathBuf> {
+        let contract_path = self.verify_inputs_contract_path();
+        if let Some(parent) = contract_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed creating '{}'", parent.display()))?;
+        }
+
+        let contract = self.build_verify_inputs_contract(public_inputs);
+        let payload = serde_json::to_vec_pretty(&contract)
+            .context("Failed serializing Noir verify inputs contract")?;
+        std::fs::write(&contract_path, payload)
+            .with_context(|| format!("Failed writing '{}'", contract_path.display()))?;
+        Ok(contract_path)
     }
 
     /// Create a new Noir target from a project path
@@ -1069,7 +1133,14 @@ impl TargetCircuit for NoirTarget {
         let proof_candidates = self.proof_file_candidates();
         for proof_path in &proof_candidates {
             if proof_path.exists() {
-                return Ok(std::fs::read(proof_path)?);
+                let proof = std::fs::read(proof_path)?;
+                validate_proof_artifact_bytes(&proof).with_context(|| {
+                    format!(
+                        "Invalid Noir proof artifact format at '{}'",
+                        proof_path.display()
+                    )
+                })?;
+                return Ok(proof);
             }
         }
         let searched_paths = proof_candidates
@@ -1083,15 +1154,21 @@ impl TargetCircuit for NoirTarget {
         )
     }
 
-    fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {
+    fn verify(&self, proof: &[u8], public_inputs: &[FieldElement]) -> Result<bool> {
         if !self.compiled {
             anyhow::bail!("Circuit not compiled. Call compile() first.");
         }
+
+        validate_proof_artifact_bytes(proof)
+            .context("Invalid Noir proof artifact format before verify")?;
 
         let _guard = noir_io_lock()
             .lock()
             .expect("noir IO lock poisoned during verify");
         let _dir_lock = crate::util::DirLock::acquire_exclusive(self.active_project_path())?;
+
+        // Persist deterministic verify-inputs contract for reproducibility/debugging.
+        let _ = self.write_verify_inputs_contract(public_inputs)?;
 
         // Write proof to all known nargo lookup paths for compatibility across noir versions.
         let mut _proof_guards = Vec::new();
