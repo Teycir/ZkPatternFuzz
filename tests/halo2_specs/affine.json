@@ -7,5 +7,11 @@
   "constraints": 10,
   "private_inputs": 2,
   "public_inputs": 1,
-  "lookups": 0
+  "lookups": 0,
+  "gates": [
+    {
+      "wires": [1, 1, 1],
+      "selectors": { "q_l": "1", "q_r": "0", "q_o": "-1", "q_m": "0", "q_c": "0" }
+    }
+  ]
 }

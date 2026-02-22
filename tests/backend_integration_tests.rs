@@ -1857,6 +1857,11 @@ fn test_halo2_json_integration() {
     let mut target =
         Halo2Target::new(spec_path.to_str().unwrap()).expect("Failed to create Halo2Target");
     target.setup().expect("Halo2 setup failed");
+    let parsed = target.load_plonk_constraints();
+    assert!(
+        !parsed.constraints.is_empty(),
+        "Halo2 JSON readiness fixture must include concrete constraints"
+    );
 
     let outputs = target
         .execute(&[FieldElement::from_u64(1), FieldElement::from_u64(2)])

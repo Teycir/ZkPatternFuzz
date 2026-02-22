@@ -7,5 +7,21 @@
   "constraints": 14,
   "private_inputs": 2,
   "public_inputs": 1,
-  "lookups": 2
+  "lookups": [
+    { "table_id": 0, "input": 0 },
+    { "table_id": 0, "input": 0 }
+  ],
+  "tables": {
+    "0": {
+      "name": "const_one",
+      "num_columns": 1,
+      "entries": [["1"]]
+    }
+  },
+  "gates": [
+    {
+      "wires": [1, 1, 1],
+      "selectors": { "q_l": "1", "q_r": "0", "q_o": "-1", "q_m": "0", "q_c": "0" }
+    }
+  ]
 }

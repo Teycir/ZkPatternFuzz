@@ -33,6 +33,16 @@ fn halo2_cargo_toolchain_from_env() -> Option<String> {
     None
 }
 
+fn halo2_strict_readiness_mode() -> bool {
+    match std::env::var("ZKFUZZ_HALO2_STRICT_READINESS") {
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    }
+}
+
 /// Halo2 circuit target
 ///
 /// Unlike Circom and Noir which use external CLIs, Halo2 circuits are Rust code
@@ -378,6 +388,11 @@ impl Halo2Target {
         });
 
         let parsed = ConstraintParser::parse_plonk_with_tables(&content);
+        if halo2_strict_readiness_mode() && parsed.constraints.is_empty() {
+            anyhow::bail!(
+                "Halo2 strict readiness mode requires non-empty PLONK constraints in JSON specs"
+            );
+        }
         if self.plonk_constraints.set(parsed).is_err() {
             tracing::warn!("PLONK constraint cache already initialized during setup_from_json");
         }
