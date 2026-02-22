@@ -387,16 +387,16 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
   - Fuzz individual limb boundaries: `limb[i] = 2^k - 1`, `limb[i] = 2^k`, `limb[i] = 0`
   - Fuzz limb sum overflows: `sum(limbs) > field_modulus`
   - Fuzz carry propagation edge cases
-- [ ] Add non-native field oracle that checks:
+- [x] Add non-native field oracle that checks:
   - Limb overflow detection (individual limbs exceed bit-width)
   - Reconstruction overflow (sum of limbs wraps around field)
   - Carry bit validation
-- [ ] Add test suite with known limb overflow CVEs (EdDSA malleability, ECDSA s-value)
+- [x] Add test suite with known limb overflow CVEs (EdDSA malleability, ECDSA s-value)
 
 #### Exit Criteria
-- [ ] Detects CVE-2024-42459 (EdDSA malleability) automatically
-- [ ] Finds limb overflow in >=3 signature circuit test cases
-- [ ] Zero false positives on correctly implemented non-native field arithmetic
+- [x] Detects CVE-2024-42459 (EdDSA malleability) automatically
+- [x] Finds limb overflow in >=3 signature circuit test cases
+- [x] Zero false positives on correctly implemented non-native field arithmetic
 
 **Impact:** Catches the #1 bug class in production signature/key circuits.
 
@@ -545,7 +545,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ### Exit Criteria (Phase 7 Complete)
 - [ ] Semantic invariant DSL operational with >=5 real vulnerability patterns
-- [ ] Non-native field oracle detects limb overflow in signature circuits
+- [x] Non-native field oracle detects limb overflow in signature circuits
 - [ ] Witness extension attack finds underconstrained bugs via constraint removal
 - [ ] Lookup table analyzer works on Halo2 circuits
 - [ ] Reference differential catches >=3 implementation drift bugs
