@@ -16,7 +16,13 @@ MAX_BACKEND_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
 MAX_BACKEND_RUN_OUTCOME_MISSING_RATE="${MAX_BACKEND_RUN_OUTCOME_MISSING_RATE:-0.05}"
 MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="${MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL:-12}"
+BACKEND_MATURITY_SCORECARD="$ROOT_DIR/artifacts/backend_maturity/latest_scorecard.json"
+BACKEND_MATURITY_REQUIRED_LIST="${BACKEND_MATURITY_REQUIRED_LIST:-}"
+MIN_BACKEND_MATURITY_SCORE="${MIN_BACKEND_MATURITY_SCORE:-4.5}"
+KEYGEN_PREFLIGHT_REPORT="$ROOT_DIR/artifacts/keygen_preflight/latest_report.json"
+RELEASE_CANDIDATE_REPORT="$ROOT_DIR/artifacts/release_candidate_validation/release_candidate_report.json"
 SKIP_BACKEND_READINESS_GATE=0
+SKIP_BACKEND_MATURITY_GATE=0
 
 usage() {
   cat <<'USAGE'
@@ -32,7 +38,11 @@ Options:
                              Backend readiness root (default: artifacts/backend_readiness)
   --backend-readiness-dashboard <path>
                              Aggregated backend dashboard output path (default: artifacts/backend_readiness/latest_report.json)
+  --backend-maturity-scorecard <path>
+                             Backend maturity scorecard output path (default: artifacts/backend_maturity/latest_scorecard.json)
   --required-backends <csv>  Backends required by readiness gate (default: noir,cairo,halo2)
+  --required-maturity-backends <csv>
+                             Backends required by maturity gate (default: circom + required-backends)
   --min-backend-completion-rate <float>
                              Minimum per-backend selector-matching completion ratio (default: 0.90)
   --min-backend-selector-matching-total <int>
@@ -49,8 +59,18 @@ Options:
                              Maximum per-backend and aggregate run_outcome_missing ratio (default: 0.05)
   --min-aggregate-selector-matching-total <int>
                              Minimum aggregate selector-matching classified runs across required backends (default: 12)
+  --min-backend-maturity-score <float>
+                             Minimum maturity score required per backend (default: 4.5)
+  --keygen-preflight-report <path>
+                             Circom keygen preflight report consumed by maturity scorecard
+                             (default: artifacts/keygen_preflight/latest_report.json)
+  --release-candidate-report <path>
+                             Release candidate report consumed by maturity scorecard
+                             (default: artifacts/release_candidate_validation/release_candidate_report.json)
   --skip-backend-readiness-gate
                              Publish dashboard artifact but do not fail release gate on backend readiness
+  --skip-backend-maturity-gate
+                             Publish maturity scorecard but do not fail release gate on backend maturity
   -h, --help                 Show this help
 
 Thresholds are inherited from scripts/ci_benchmark_gate.sh env vars:
@@ -84,8 +104,16 @@ while [[ $# -gt 0 ]]; do
       BACKEND_READINESS_DASHBOARD="$2"
       shift 2
       ;;
+    --backend-maturity-scorecard)
+      BACKEND_MATURITY_SCORECARD="$2"
+      shift 2
+      ;;
     --required-backends)
       BACKEND_REQUIRED_LIST="$2"
+      shift 2
+      ;;
+    --required-maturity-backends)
+      BACKEND_MATURITY_REQUIRED_LIST="$2"
       shift 2
       ;;
     --min-backend-completion-rate)
@@ -120,8 +148,24 @@ while [[ $# -gt 0 ]]; do
       MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="$2"
       shift 2
       ;;
+    --min-backend-maturity-score)
+      MIN_BACKEND_MATURITY_SCORE="$2"
+      shift 2
+      ;;
+    --keygen-preflight-report)
+      KEYGEN_PREFLIGHT_REPORT="$2"
+      shift 2
+      ;;
+    --release-candidate-report)
+      RELEASE_CANDIDATE_REPORT="$2"
+      shift 2
+      ;;
     --skip-backend-readiness-gate)
       SKIP_BACKEND_READINESS_GATE=1
+      shift
+      ;;
+    --skip-backend-maturity-gate)
+      SKIP_BACKEND_MATURITY_GATE=1
       shift
       ;;
     -h|--help)
@@ -135,6 +179,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [ -z "$BACKEND_MATURITY_REQUIRED_LIST" ]; then
+  BACKEND_MATURITY_REQUIRED_LIST="circom,$BACKEND_REQUIRED_LIST"
+fi
 
 if ! [[ "$REQUIRED_PASSES" =~ ^[0-9]+$ ]] || [ "$REQUIRED_PASSES" -lt 1 ]; then
   echo "required-passes must be a positive integer (got '$REQUIRED_PASSES')" >&2
@@ -198,6 +246,25 @@ if [ "$SKIP_BACKEND_READINESS_GATE" -eq 1 ]; then
 else
   echo "Running backend readiness gate..."
   "${backend_gate_cmd[@]}" --enforce
+fi
+
+maturity_gate_cmd=(
+  "$ROOT_DIR/scripts/backend_maturity_scorecard.sh"
+  --readiness-dashboard "$BACKEND_READINESS_DASHBOARD"
+  --benchmark-root "$BENCH_ROOT"
+  --keygen-preflight "$KEYGEN_PREFLIGHT_REPORT"
+  --release-candidate-report "$RELEASE_CANDIDATE_REPORT"
+  --output "$BACKEND_MATURITY_SCORECARD"
+  --required-backends "$BACKEND_MATURITY_REQUIRED_LIST"
+  --min-score "$MIN_BACKEND_MATURITY_SCORE"
+)
+
+if [ "$SKIP_BACKEND_MATURITY_GATE" -eq 1 ]; then
+  echo "Publishing backend maturity scorecard (gate disabled)..."
+  "${maturity_gate_cmd[@]}"
+else
+  echo "Running backend maturity gate..."
+  "${maturity_gate_cmd[@]}" --enforce
 fi
 
 if [ -n "$STABLE_REF" ]; then

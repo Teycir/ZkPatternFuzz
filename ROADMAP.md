@@ -289,8 +289,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 5. `Operational hardening (1.0)`: release gates pass with sandbox enforced and performance/flake thresholds satisfied.
 
 ### 8.2 Shared Workstream (Week 1-2)
-- [ ] Add a backend scorecard generator (`scripts/backend_maturity_scorecard.sh`) and publish `artifacts/backend_maturity/latest_scorecard.json`.
-- [ ] Add CI/release gate that fails when any backend score drops below target (`>=4.5` initially, `==5.0` at cutover).
+- [x] Add a backend scorecard generator (`scripts/backend_maturity_scorecard.sh`) and publish `artifacts/backend_maturity/latest_scorecard.json`.
+- [x] Add CI/release gate that fails when any backend score drops below target (`>=4.5` initially, `==5.0` at cutover).
 - [ ] Expand readiness matrices to include at least 5 enabled representative targets per backend (local + external).
 - [ ] Enforce tool sandbox for all readiness/release lanes (`--enforce-tool-sandbox`) and archive gate evidence.
 
