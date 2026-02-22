@@ -400,7 +400,8 @@ pub use formal::{
 };
 pub use multi_circuit::{CircuitChain, MultiCircuitConfig, MultiCircuitFuzzer};
 pub use pipeline::{
-    default_post_roadmap_tracks, PostRoadmapRunSummary, PostRoadmapRunner, TrackFailure,
+    default_post_roadmap_tracks, PostRoadmapRunSummary, PostRoadmapRunner, PostRoadmapRunnerConfig,
+    TrackFailure,
 };
 
 // Mode 3: Chain fuzzing for multi-step vulnerabilities

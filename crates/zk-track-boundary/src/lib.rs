@@ -1,14 +1,36 @@
+mod adapters;
+
 use std::path::PathBuf;
 
 use async_trait::async_trait;
 use zk_postroadmap_core::{PostRoadmapResult, TrackExecution, TrackInput, TrackKind, TrackRunner};
 
-#[derive(Debug, Default)]
-pub struct BoundaryTrackRunner;
+pub use adapters::{
+    BoundaryProtocolAdapter, BoundaryProtocolCase, BoundaryProtocolResult, SerializationAdapter,
+    VerifierAdapter,
+};
+
+pub const TRACK_MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[derive(Default)]
+pub struct BoundaryTrackRunner {
+    protocol_adapters: Vec<Box<dyn BoundaryProtocolAdapter>>,
+}
 
 impl BoundaryTrackRunner {
     pub fn new() -> Self {
-        Self
+        Self {
+            protocol_adapters: Vec::new(),
+        }
+    }
+
+    pub fn with_protocol_adapter(mut self, adapter: Box<dyn BoundaryProtocolAdapter>) -> Self {
+        self.protocol_adapters.push(adapter);
+        self
+    }
+
+    pub fn protocol_adapter_count(&self) -> usize {
+        self.protocol_adapters.len()
     }
 }
 
@@ -23,6 +45,7 @@ impl TrackRunner for BoundaryTrackRunner {
     }
 
     async fn run(&self, input: &TrackInput) -> PostRoadmapResult<TrackExecution> {
+        let _protocol_adapters = self.protocol_adapters.len();
         Ok(TrackExecution::empty(self.track(), input.run_id.clone()))
     }
 
@@ -42,5 +65,16 @@ mod tests {
     #[test]
     fn exposes_boundary_track_kind() {
         assert_eq!(BoundaryTrackRunner::new().track(), TrackKind::Boundary);
+    }
+
+    #[test]
+    fn reports_protocol_adapter_count() {
+        let runner = BoundaryTrackRunner::new();
+        assert_eq!(runner.protocol_adapter_count(), 0);
+    }
+
+    #[test]
+    fn exposes_track_version() {
+        assert!(!TRACK_MODULE_VERSION.is_empty());
     }
 }

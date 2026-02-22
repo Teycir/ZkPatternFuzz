@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use zk_postroadmap_core::{PostRoadmapResult, TrackExecution, TrackInput, TrackKind, TrackRunner};
 
+pub const TRACK_MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug, Default)]
 pub struct CryptoTrackRunner;
 
@@ -42,5 +44,10 @@ mod tests {
     #[test]
     fn exposes_crypto_track_kind() {
         assert_eq!(CryptoTrackRunner::new().track(), TrackKind::Crypto);
+    }
+
+    #[test]
+    fn exposes_track_version() {
+        assert!(!TRACK_MODULE_VERSION.is_empty());
     }
 }

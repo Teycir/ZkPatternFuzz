@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use zk_postroadmap_core::{
@@ -7,6 +8,12 @@ use zk_postroadmap_core::{
 /// Executes deferred post-roadmap tracks in ROI order with stage isolation.
 pub struct PostRoadmapRunner {
     tracks: Vec<Box<dyn TrackRunner>>,
+    config: PostRoadmapRunnerConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostRoadmapRunnerConfig {
+    enabled_tracks: BTreeSet<TrackKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,8 +32,13 @@ pub struct PostRoadmapRunSummary {
 
 impl PostRoadmapRunner {
     pub fn new(tracks: Vec<Box<dyn TrackRunner>>) -> Self {
+        Self::with_config(tracks, PostRoadmapRunnerConfig::default())
+    }
+
+    pub fn with_config(tracks: Vec<Box<dyn TrackRunner>>, config: PostRoadmapRunnerConfig) -> Self {
         Self {
             tracks: Self::sort_tracks(tracks),
+            config,
         }
     }
 
@@ -39,6 +51,9 @@ impl PostRoadmapRunner {
 
         for track_runner in &self.tracks {
             let track = track_runner.track();
+            if !self.config.is_enabled(track) {
+                continue;
+            }
 
             if let Err(error) = track_runner.prepare(input).await {
                 summary
@@ -87,6 +102,36 @@ impl PostRoadmapRunner {
     }
 }
 
+impl PostRoadmapRunnerConfig {
+    pub fn only<I>(tracks: I) -> Self
+    where
+        I: IntoIterator<Item = TrackKind>,
+    {
+        Self {
+            enabled_tracks: tracks.into_iter().collect(),
+        }
+    }
+
+    pub fn all_enabled() -> Self {
+        Self::default()
+    }
+
+    pub fn is_enabled(&self, track: TrackKind) -> bool {
+        self.enabled_tracks.contains(&track)
+    }
+}
+
+impl Default for PostRoadmapRunnerConfig {
+    fn default() -> Self {
+        Self::only([
+            TrackKind::Boundary,
+            TrackKind::Compiler,
+            TrackKind::Semantic,
+            TrackKind::Crypto,
+        ])
+    }
+}
+
 impl TrackFailure {
     fn from_error(track: TrackKind, stage: RunnerStage, error: PostRoadmapError) -> Self {
         Self {
@@ -112,7 +157,7 @@ mod tests {
     use std::path::PathBuf;
 
     use async_trait::async_trait;
-    use zk_postroadmap_core::{PostRoadmapResult, TrackExecution};
+    use zk_postroadmap_core::{PostRoadmapResult, ReplayArtifact, TrackExecution};
 
     use super::*;
 
@@ -120,6 +165,7 @@ mod tests {
     struct StubRunner {
         track: TrackKind,
         fail_on: Option<RunnerStage>,
+        with_replay_artifact: bool,
     }
 
     impl StubRunner {
@@ -127,6 +173,7 @@ mod tests {
             Self {
                 track,
                 fail_on: None,
+                with_replay_artifact: false,
             }
         }
 
@@ -134,6 +181,15 @@ mod tests {
             Self {
                 track,
                 fail_on: Some(stage),
+                with_replay_artifact: false,
+            }
+        }
+
+        fn with_replay(track: TrackKind) -> Self {
+            Self {
+                track,
+                fail_on: None,
+                with_replay_artifact: true,
             }
         }
 
@@ -160,7 +216,18 @@ mod tests {
 
         async fn run(&self, input: &TrackInput) -> PostRoadmapResult<TrackExecution> {
             self.fail_if_requested(RunnerStage::Run)?;
-            Ok(TrackExecution::empty(self.track, input.run_id.clone()))
+            let mut execution = TrackExecution::empty(self.track, input.run_id.clone());
+            if self.with_replay_artifact {
+                execution.replay_artifacts.push(ReplayArtifact {
+                    replay_id: format!("replay-{}", input.run_id),
+                    track: self.track,
+                    command: vec!["cargo".to_string(), "test".to_string()],
+                    env: BTreeMap::new(),
+                    evidence_paths: vec![],
+                    notes: "sample replay".to_string(),
+                });
+            }
+            Ok(execution)
         }
 
         async fn validate(&self, _execution: &TrackExecution) -> PostRoadmapResult<()> {
@@ -220,5 +287,35 @@ mod tests {
         assert_eq!(summary.failures.len(), 1);
         assert_eq!(summary.failures[0].track, TrackKind::Boundary);
         assert_eq!(summary.failures[0].stage, RunnerStage::Run);
+    }
+
+    #[tokio::test]
+    async fn supports_track_toggles_from_config() {
+        let runner = PostRoadmapRunner::with_config(
+            vec![
+                Box::new(StubRunner::ok(TrackKind::Boundary)),
+                Box::new(StubRunner::ok(TrackKind::Compiler)),
+                Box::new(StubRunner::ok(TrackKind::Semantic)),
+            ],
+            PostRoadmapRunnerConfig::only([TrackKind::Compiler]),
+        );
+
+        let summary = runner.execute(&sample_input()).await;
+        assert_eq!(summary.runs.len(), 1);
+        assert_eq!(summary.runs[0].track, TrackKind::Compiler);
+    }
+
+    #[tokio::test]
+    async fn carries_replay_artifacts_in_run_summary() {
+        let runner =
+            PostRoadmapRunner::new(vec![Box::new(StubRunner::with_replay(TrackKind::Boundary))]);
+
+        let summary = runner.execute(&sample_input()).await;
+        assert_eq!(summary.runs.len(), 1);
+        assert_eq!(summary.runs[0].replay_artifacts.len(), 1);
+        assert_eq!(
+            summary.runs[0].replay_artifacts[0].replay_id,
+            "replay-run-1".to_string()
+        );
     }
 }

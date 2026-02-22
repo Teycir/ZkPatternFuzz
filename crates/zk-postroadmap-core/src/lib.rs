@@ -4,6 +4,8 @@ mod contracts;
 mod errors;
 mod runner;
 
+pub const POST_ROADMAP_CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub use contracts::{
     FindingSeverity, ReplayArtifact, Scorecard, ScorecardMetric, TrackExecution, TrackFinding,
     TrackInput, TrackKind, POST_ROADMAP_SCHEMA_VERSION,
@@ -17,7 +19,7 @@ mod tests {
 
     use crate::{
         FindingSeverity, Scorecard, ScorecardMetric, TrackExecution, TrackFinding, TrackKind,
-        POST_ROADMAP_SCHEMA_VERSION,
+        POST_ROADMAP_CORE_VERSION, POST_ROADMAP_SCHEMA_VERSION,
     };
 
     #[test]
@@ -66,5 +68,10 @@ mod tests {
                 .expect("schema version"),
             POST_ROADMAP_SCHEMA_VERSION
         );
+    }
+
+    #[test]
+    fn exposes_core_contract_version() {
+        assert!(!POST_ROADMAP_CORE_VERSION.is_empty());
     }
 }
