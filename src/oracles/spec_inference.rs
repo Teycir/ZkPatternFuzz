@@ -784,7 +784,7 @@ impl SpecInferenceOracle {
         for (spec_idx, spec) in specs.iter().enumerate() {
             on_progress(spec_idx, specs.len());
 
-            if spec_idx == 0 || (spec_idx % 25 == 0) || spec_idx + 1 == specs.len() {
+            if spec_idx == 0 || spec_idx.is_multiple_of(25) || spec_idx + 1 == specs.len() {
                 let elapsed = start.elapsed();
                 let tested = spec_idx.max(1) as f64;
                 let rate = elapsed.as_secs_f64() / tested;

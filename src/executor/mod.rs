@@ -899,9 +899,6 @@ impl CircomExecutor {
         } else {
             include_paths = Self::dedupe_paths(include_paths);
         }
-        let ptau_path = ptau_path;
-        let snarkjs_path = snarkjs_path;
-
         let mut target = crate::targets::CircomTarget::new(circuit_path, main_component)?
             .with_skip_compile_if_artifacts(skip_compile_if_artifacts)
             .with_witness_sanity_check(witness_sanity_check);

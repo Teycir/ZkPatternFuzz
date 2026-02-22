@@ -158,7 +158,7 @@ impl BenchmarkStats {
 
         let mut sorted_times = times.clone();
         sorted_times.sort();
-        let median = if sorted_times.len() % 2 == 0 {
+        let median = if sorted_times.len().is_multiple_of(2) {
             (sorted_times[sorted_times.len() / 2 - 1] + sorted_times[sorted_times.len() / 2]) as f64
                 / 2.0
         } else {

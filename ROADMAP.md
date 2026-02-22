@@ -951,11 +951,11 @@ gh run watch
   - [ ] split `src/fuzzer/engine/mod.rs` into smaller orchestration modules (init, run loop, reporting, selector/static analysis)
 - [ ] Keep `src/main.rs` as a thin CLI entrypoint by moving remaining orchestration into `run_*` modules and shared services
 - [ ] Close remaining clippy debt and prevent regression:
-  - convert remaining 8+ argument functions to config/builder structs
-  - replace post-`Default::default()` field assignment patterns with struct literal initialization
-  - clean redundant variable redefinitions in `src/toolchain_bootstrap.rs`
-  - replace manual multiple-of checks with `.is_multiple_of()`
-  - add/keep CI clippy gate at warning-free target for touched crates
+  - [ ] convert remaining 8+ argument functions to config/builder structs
+  - [x] replace post-`Default::default()` field assignment patterns with struct literal initialization
+  - [ ] clean redundant variable redefinitions in `src/toolchain_bootstrap.rs`
+  - [x] replace manual multiple-of checks with `.is_multiple_of()`
+  - [ ] add/keep CI clippy gate at warning-free target for touched crates
 - [x] Delete repo-root `new_file.txt` and add a lightweight repo-hygiene check to block accidental placeholder files at root (`scripts/check_repo_hygiene.py`, `tests/test_check_repo_hygiene.py`, `.github/workflows/ci.yml`)
 - [ ] Audit AI data-egress path before production usage:
   - review `build_ai_circuit_context` and `src/ai/*` for source-data minimization and explicit opt-in controls

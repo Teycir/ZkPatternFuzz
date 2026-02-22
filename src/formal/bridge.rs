@@ -224,16 +224,17 @@ pub fn export_formal_bridge_artifacts(
     crate::util::write_file_atomic(&proof_module_path, module_result.code.as_bytes())?;
 
     let workflow_path = bridge_dir.join("hybrid_workflow.md");
-    let workflow = render_hybrid_workflow(
+    let workflow_summary = HybridWorkflowSummary {
         campaign_name,
-        report.findings.len(),
-        invariants.len(),
-        obligations.len(),
-        options.system,
-        &findings_export_path,
-        &imported_oracles_path,
-        &proof_module_path,
-    );
+        finding_count: report.findings.len(),
+        invariant_count: invariants.len(),
+        obligations_count: obligations.len(),
+        system: options.system,
+        findings_export_path: &findings_export_path,
+        imported_oracles_path: &imported_oracles_path,
+        proof_module_path: &proof_module_path,
+    };
+    let workflow = render_hybrid_workflow(&workflow_summary);
     crate::util::write_file_atomic(&workflow_path, workflow.as_bytes())?;
 
     Ok(FormalBridgeArtifacts {
@@ -537,17 +538,19 @@ fn value_as_usize(value: &serde_yaml::Value) -> Option<usize> {
     }
 }
 
-fn render_hybrid_workflow(
-    campaign_name: &str,
+struct HybridWorkflowSummary<'a> {
+    campaign_name: &'a str,
     finding_count: usize,
     invariant_count: usize,
     obligations_count: usize,
     system: ProofSystem,
-    findings_export_path: &Path,
-    imported_oracles_path: &Path,
-    proof_module_path: &Path,
-) -> String {
-    let system_label = match system {
+    findings_export_path: &'a Path,
+    imported_oracles_path: &'a Path,
+    proof_module_path: &'a Path,
+}
+
+fn render_hybrid_workflow(summary: &HybridWorkflowSummary<'_>) -> String {
+    let system_label = match summary.system {
         ProofSystem::Lean4 => "Lean4",
         ProofSystem::Coq => "Coq",
     };
@@ -568,8 +571,12 @@ Campaign: `{campaign_name}`\n\n\
 2. Review imported invariants in `imported_invariants.yaml` and tighten relations.\n\
 3. Discharge obligations in `FuzzBridge.*` within {system_label}.\n\
 4. Feed proven/failed obligations back into campaign invariants for the next fuzz run.\n",
-        findings_export_path.display(),
-        imported_oracles_path.display(),
-        proof_module_path.display(),
+        summary.findings_export_path.display(),
+        summary.imported_oracles_path.display(),
+        summary.proof_module_path.display(),
+        campaign_name = summary.campaign_name,
+        finding_count = summary.finding_count,
+        invariant_count = summary.invariant_count,
+        obligations_count = summary.obligations_count,
     )
 }

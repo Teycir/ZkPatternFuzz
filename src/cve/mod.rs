@@ -498,8 +498,10 @@ impl RegressionTest {
         };
         let main_component = detect_main_component(&source, framework);
 
-        let mut executor_options = ExecutorFactoryOptions::default();
-        executor_options.circom_skip_compile_if_artifacts = true;
+        let executor_options = ExecutorFactoryOptions {
+            circom_skip_compile_if_artifacts: true,
+            ..ExecutorFactoryOptions::default()
+        };
         let executor = match ExecutorFactory::create_with_options(
             framework,
             &self.circuit_path,
@@ -618,8 +620,10 @@ impl RegressionTest {
         let framework = detect_framework(path).ok()?;
         let main_component = detect_main_component(&source, framework);
 
-        let mut executor_options = ExecutorFactoryOptions::default();
-        executor_options.circom_skip_compile_if_artifacts = true;
+        let executor_options = ExecutorFactoryOptions {
+            circom_skip_compile_if_artifacts: true,
+            ..ExecutorFactoryOptions::default()
+        };
 
         match ExecutorFactory::create_with_options(
             framework,
@@ -1286,7 +1290,7 @@ fn parse_string_as_field_element(
     {
         let normalized = hex_part.replace('_', "");
         if !normalized.is_empty() && normalized.chars().all(|c| c.is_ascii_hexdigit()) {
-            let even = if normalized.len() % 2 == 0 {
+            let even = if normalized.len().is_multiple_of(2) {
                 normalized
             } else {
                 format!("0{}", normalized)
