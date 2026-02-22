@@ -1,16 +1,22 @@
 use std::fs;
 
+#[allow(dead_code)]
 #[path = "../src/run_identity.rs"]
 mod run_identity;
+#[allow(dead_code)]
 #[path = "../src/run_outcome_docs.rs"]
 mod run_outcome_docs;
+#[allow(dead_code)]
 #[path = "../src/run_paths.rs"]
 mod run_paths;
+#[allow(dead_code)]
 #[path = "../src/scan_selector.rs"]
 mod scan_selector;
+#[allow(dead_code)]
 #[path = "../src/scan_selector_context.rs"]
 mod scan_selector_context;
 pub(crate) use run_paths::{engagement_root_dir, run_signal_dir};
+#[allow(dead_code)]
 #[path = "../src/engagement_artifacts.rs"]
 mod engagement_artifacts;
 

@@ -3,7 +3,7 @@ use zk_fuzzer::chain_fuzzer::metrics::DepthMetricsSummary;
 use zk_fuzzer::chain_fuzzer::ChainFinding;
 use zk_fuzzer::chain_fuzzer::ChainSpec;
 
-use crate::truncate_str;
+use crate::runtime_misc::truncate_str;
 
 pub(crate) fn print_chain_mode_banner(
     campaign_name: &str,

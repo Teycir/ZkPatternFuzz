@@ -60,11 +60,10 @@ pub(crate) use run_paths::{
 };
 use run_process_control::kill_existing_instances;
 use runtime_misc::{
-    generate_sample_config, minimize_corpus, print_banner, print_run_window, truncate_str,
-    validate_campaign,
+    generate_sample_config, minimize_corpus, print_banner, print_run_window, validate_campaign,
 };
 use scan_runner::run_scan as run_scan_orchestrated;
-use zk_fuzzer::ai::AIAssistant;
+use zk_fuzzer::ai::{build_ai_circuit_context, redact_sensitive_text, AIAssistant};
 use zk_fuzzer::formal::{
     export_formal_bridge_artifacts, import_formal_invariants_from_file, FormalBridgeOptions,
 };
@@ -172,35 +171,6 @@ async fn run_scan(scan_request: ScanRequest) -> anyhow::Result<()> {
         |materialized, options| async move { run_chain_campaign(&materialized, options).await },
     )
     .await
-}
-
-fn build_ai_circuit_context(config: &zk_fuzzer::config::FuzzConfig) -> String {
-    let attack_types = config
-        .attacks
-        .iter()
-        .map(|attack| format!("{:?}", attack.attack_type))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let input_names = config
-        .inputs
-        .iter()
-        .map(|input| input.name.clone())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let circuit_preview = std::fs::read_to_string(&config.campaign.target.circuit_path)
-        .map(|raw| truncate_str(&raw, 4096))
-        .unwrap_or_else(|_| "<circuit source unavailable>".to_string());
-
-    format!(
-        "campaign={}\nframework={:?}\ncircuit_path={}\nmain_component={}\nattacks=[{}]\ninputs=[{}]\n\ncircuit_preview:\n{}",
-        config.campaign.name,
-        config.campaign.target.framework,
-        config.campaign.target.circuit_path.display(),
-        config.campaign.target.main_component,
-        attack_types,
-        input_names,
-        circuit_preview
-    )
 }
 
 fn maybe_write_ai_artifact(output_dir: &Path, file_name: &str, content: &str) {
@@ -539,7 +509,10 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 }
             }
             Ok(_) => {}
-            Err(err) => tracing::warn!("AI invariant generation failed: {}", err),
+            Err(err) => tracing::warn!(
+                "AI invariant generation failed: {}",
+                redact_sensitive_text(&err.to_string())
+            ),
         }
 
         match ai.suggest_yaml(&ai_context).await {
@@ -554,7 +527,10 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                 }
             }
             Ok(_) => {}
-            Err(err) => tracing::warn!("AI YAML suggestion failed: {}", err),
+            Err(err) => tracing::warn!(
+                "AI YAML suggestion failed: {}",
+                redact_sensitive_text(&err.to_string())
+            ),
         }
     }
 
@@ -762,7 +738,10 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                     maybe_write_ai_artifact(&output_dir, "result_analysis.md", &analysis);
                 }
                 Ok(_) => {}
-                Err(err) => tracing::warn!("AI result analysis failed: {}", err),
+                Err(err) => tracing::warn!(
+                    "AI result analysis failed: {}",
+                    redact_sensitive_text(&err.to_string())
+                ),
             },
             Err(err) => tracing::warn!("Failed to serialize report for AI analysis: {}", err),
         }
@@ -778,7 +757,10 @@ async fn run_campaign(config_path: &str, options: CampaignRunOptions) -> anyhow:
                     );
                 }
                 Ok(_) => {}
-                Err(err) => tracing::warn!("AI vulnerability explanation failed: {}", err),
+                Err(err) => tracing::warn!(
+                    "AI vulnerability explanation failed: {}",
+                    redact_sensitive_text(&err.to_string())
+                ),
             }
         }
     }

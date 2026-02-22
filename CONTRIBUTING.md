@@ -84,6 +84,35 @@ cargo fmt --check
 cargo clippy -- -D warnings
 ```
 
+### Build Profiles And Tradeoffs
+
+The repository intentionally sets:
+
+- `[profile.dev] debug=0`
+- `[profile.dev] incremental=false`
+- `[profile.test] debug=0`
+- `[profile.test] incremental=false`
+
+Rationale:
+
+- Faster CI and local iteration for this large workspace (smaller artifacts, less incremental bookkeeping).
+- More stable benchmarking and fuzzing timings by avoiding frequent incremental-state variance.
+
+Tradeoffs:
+
+- Debugger stack traces and local variable introspection are less rich by default.
+- Clean rebuilds can be more expensive than incremental for tiny edit loops.
+
+Recommended local overrides when actively debugging:
+
+```bash
+# Richer debug info for one test run
+RUSTFLAGS="-C debuginfo=2" cargo test test_name
+
+# Opt into incremental locally (CI remains deterministic)
+CARGO_INCREMENTAL=1 cargo check
+```
+
 ### 4. Commit Changes
 
 Use clear, descriptive commit messages:

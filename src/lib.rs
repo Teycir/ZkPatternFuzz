@@ -240,6 +240,22 @@ pub use fuzzer::ZkFuzzer;
 pub use reporting::{FuzzReport, PoCFormat, PoCGenerator, PoCGeneratorConfig};
 pub use zk_core::CircuitInfo;
 
+/// Curated high-level imports for library consumers.
+///
+/// This prelude is additive and non-breaking: broad re-exports remain available for
+/// existing users, while new integrations can prefer a smaller import surface.
+pub mod prelude {
+    pub use crate::config::{
+        Attack, AttackType, Campaign, Framework, FuzzConfig, FuzzStrategy, Input, Parameters,
+        ReportingConfig, Severity, Target,
+    };
+    pub use crate::errors::{Result, ZkFuzzerError};
+    pub use crate::executor::{CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions};
+    pub use crate::fuzzer::ZkFuzzer;
+    pub use crate::reporting::FuzzReport;
+    pub use crate::CircuitInfo;
+}
+
 // Semantic oracles for ZK-specific vulnerability detection
 pub use fuzzer::{
     AdaptiveCampaignResults,

@@ -6,9 +6,15 @@
 //! - YAML configuration generation
 //! - Vulnerability explanation
 
+mod context;
 pub mod invariant_generator;
 pub mod result_analyzer;
 pub mod yaml_suggester;
+
+pub use context::{
+    build_ai_circuit_context, build_ai_circuit_context_with_options, redact_sensitive_text,
+    AICircuitContextOptions,
+};
 
 use crate::config::{AIAssistanceMode, AIAssistantConfig};
 use anyhow::Result;

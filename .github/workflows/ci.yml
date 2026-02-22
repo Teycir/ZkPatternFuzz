@@ -59,8 +59,10 @@ jobs:
       - name: Production/test separation gate
         run: python3 scripts/check_prod_test_separation.py --repo-root .
 
-      - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+      # Full warning-free lint gate across all targets/features.
+      # This is stricter than a touched-crates-only policy.
+      - name: Clippy (Warning-Free All Targets)
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
       
       - name: Build
         run: cargo build --all-features
