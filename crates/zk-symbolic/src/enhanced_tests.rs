@@ -244,6 +244,7 @@ fn test_enhanced_executor_witness_extension_mode_filters_non_violations() {
             max_removed_constraints: 1,
             max_subsets: 4,
             require_invariant_violation: true,
+            max_analysis_time_ms: 60_000,
         },
         ..Default::default()
     };
@@ -260,4 +261,43 @@ fn test_enhanced_executor_witness_extension_mode_filters_non_violations() {
     assert!(results
         .iter()
         .all(WitnessExtensionResult::violates_invariants));
+}
+
+#[test]
+fn test_witness_extension_analysis_budget_zero_stops_immediately() {
+    let constraints = vec![
+        SymbolicConstraint::Eq(
+            SymbolicValue::symbol("input_0"),
+            SymbolicValue::concrete(FieldElement::from_u64(1)),
+        ),
+        SymbolicConstraint::Eq(
+            SymbolicValue::symbol("x"),
+            SymbolicValue::concrete(FieldElement::from_u64(5)),
+        ),
+    ];
+    let base_witness = HashMap::from([
+        ("input_0".to_string(), FieldElement::from_u64(1)),
+        ("x".to_string(), FieldElement::from_u64(5)),
+    ]);
+    let fixed_symbols = HashSet::from(["input_0".to_string(), "x".to_string()]);
+
+    let config = EnhancedSymbolicConfig {
+        execution_mode: ExecutionMode::WitnessExtension,
+        witness_extension: WitnessExtensionConfig {
+            enabled: true,
+            subset_strategy: ConstraintSubsetStrategy::RemoveSingleConstraint,
+            max_removed_constraints: 1,
+            max_subsets: 8,
+            require_invariant_violation: false,
+            max_analysis_time_ms: 0,
+        },
+        ..Default::default()
+    };
+    let mut executor = EnhancedSymbolicExecutor::with_config(1, config);
+
+    let results = executor.run_witness_extension(&constraints, &base_witness, &fixed_symbols, &[]);
+    assert!(
+        results.is_empty(),
+        "analysis with zero budget should stop before processing plans"
+    );
 }
