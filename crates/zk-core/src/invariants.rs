@@ -1,5 +1,8 @@
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
+
+use crate::FieldElement;
 
 /// AST for invariant expressions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +91,53 @@ impl Error for InvariantValidationError {}
 pub struct InvariantValidationResult {
     pub ast: InvariantAST,
     pub identifiers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SemanticInvariantKind {
+    Constraint,
+    Range,
+    Uniqueness,
+    Metamorphic,
+    Custom,
+}
+
+#[derive(Debug, Clone)]
+pub struct SemanticInvariantSpec {
+    pub name: String,
+    pub relation: String,
+    pub severity: String,
+    pub kind: SemanticInvariantKind,
+    pub ast: Option<InvariantAST>,
+    pub input_indices: Vec<usize>,
+    pub range_bounds: Option<(FieldElement, FieldElement, bool)>,
+    pub uniqueness_key_indices: Vec<usize>,
+    pub uniqueness_value_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WitnessProofPair {
+    pub witness: Vec<FieldElement>,
+    pub outputs: Vec<FieldElement>,
+    pub proof: Option<Vec<u8>>,
+    pub circuit_accepted: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SemanticViolation {
+    pub invariant_name: String,
+    pub relation: String,
+    pub witness: Vec<FieldElement>,
+    pub outputs: Vec<FieldElement>,
+    pub severity: String,
+    pub evidence: String,
+    pub circuit_accepted: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SemanticOracleEngine {
+    input_map: HashMap<String, (usize, usize)>,
+    uniqueness_tracker: HashMap<String, HashSet<Vec<u8>>>,
 }
 
 /// Parse invariant relation expressions.
@@ -399,13 +449,413 @@ pub fn validate_invariant_against_inputs(
     Ok(InvariantValidationResult { ast, identifiers })
 }
 
+impl SemanticOracleEngine {
+    pub fn with_input_map(input_map: HashMap<String, (usize, usize)>) -> Self {
+        Self {
+            input_map,
+            uniqueness_tracker: HashMap::new(),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.uniqueness_tracker.clear();
+    }
+
+    pub fn check(
+        &mut self,
+        invariant: &SemanticInvariantSpec,
+        pair: &WitnessProofPair,
+    ) -> Option<SemanticViolation> {
+        match invariant.kind {
+            SemanticInvariantKind::Range => self.check_range(invariant, pair),
+            SemanticInvariantKind::Uniqueness => self.check_uniqueness(invariant, pair),
+            SemanticInvariantKind::Constraint => self.check_constraint(invariant, pair),
+            SemanticInvariantKind::Metamorphic | SemanticInvariantKind::Custom => None,
+        }
+    }
+
+    fn check_range(
+        &self,
+        invariant: &SemanticInvariantSpec,
+        pair: &WitnessProofPair,
+    ) -> Option<SemanticViolation> {
+        let (lower, upper, is_exclusive) = invariant.range_bounds.as_ref()?;
+
+        for idx in &invariant.input_indices {
+            if *idx >= pair.witness.len() {
+                continue;
+            }
+
+            let value = &pair.witness[*idx];
+            if Self::field_cmp(value, lower) == std::cmp::Ordering::Less {
+                return Some(SemanticViolation {
+                    invariant_name: invariant.name.clone(),
+                    relation: invariant.relation.clone(),
+                    witness: pair.witness.clone(),
+                    outputs: pair.outputs.clone(),
+                    severity: invariant.severity.clone(),
+                    evidence: format!(
+                        "Input at index {} = {} is below lower bound {}",
+                        idx,
+                        value.to_hex(),
+                        lower.to_hex()
+                    ),
+                    circuit_accepted: pair.circuit_accepted,
+                });
+            }
+
+            let cmp = Self::field_cmp(value, upper);
+            let upper_violated = if *is_exclusive {
+                cmp != std::cmp::Ordering::Less
+            } else {
+                cmp == std::cmp::Ordering::Greater
+            };
+
+            if upper_violated {
+                return Some(SemanticViolation {
+                    invariant_name: invariant.name.clone(),
+                    relation: invariant.relation.clone(),
+                    witness: pair.witness.clone(),
+                    outputs: pair.outputs.clone(),
+                    severity: invariant.severity.clone(),
+                    evidence: format!(
+                        "Input at index {} = {} exceeds upper bound {} (exclusive={})",
+                        idx,
+                        value.to_hex(),
+                        upper.to_hex(),
+                        is_exclusive
+                    ),
+                    circuit_accepted: pair.circuit_accepted,
+                });
+            }
+        }
+
+        None
+    }
+
+    fn check_uniqueness(
+        &mut self,
+        invariant: &SemanticInvariantSpec,
+        pair: &WitnessProofPair,
+    ) -> Option<SemanticViolation> {
+        if invariant.uniqueness_key_indices.is_empty()
+            || invariant.uniqueness_value_indices.is_empty()
+        {
+            return None;
+        }
+
+        let key_hash = self.compute_hash(&invariant.uniqueness_key_indices, &pair.witness);
+        let value_hash = self.compute_hash(&invariant.uniqueness_value_indices, &pair.witness);
+
+        let value_hex = hex::encode(&value_hash);
+        for (other_key, other_values) in &self.uniqueness_tracker {
+            if other_key.starts_with(&format!("{}:", invariant.name))
+                && other_values.contains(&value_hash)
+            {
+                return Some(SemanticViolation {
+                    invariant_name: invariant.name.clone(),
+                    relation: invariant.relation.clone(),
+                    witness: pair.witness.clone(),
+                    outputs: pair.outputs.clone(),
+                    severity: invariant.severity.clone(),
+                    evidence: format!(
+                        "Uniqueness violation: value {} seen with different keys",
+                        value_hex
+                    ),
+                    circuit_accepted: pair.circuit_accepted,
+                });
+            }
+        }
+
+        let tracker_key = format!("{}:{}", invariant.name, hex::encode(&key_hash));
+        self.uniqueness_tracker
+            .entry(tracker_key)
+            .or_default()
+            .insert(value_hash);
+
+        None
+    }
+
+    fn check_constraint(
+        &self,
+        invariant: &SemanticInvariantSpec,
+        pair: &WitnessProofPair,
+    ) -> Option<SemanticViolation> {
+        let ast = invariant.ast.as_ref()?;
+        self.check_constraint_ast(ast, invariant, pair)
+    }
+
+    fn check_constraint_ast(
+        &self,
+        ast: &InvariantAST,
+        invariant: &SemanticInvariantSpec,
+        pair: &WitnessProofPair,
+    ) -> Option<SemanticViolation> {
+        match ast {
+            InvariantAST::Equals(left, right) => {
+                let left_val = self.evaluate_expr(left, pair)?;
+                let right_val = self.evaluate_expr(right, pair)?;
+                if left_val != right_val {
+                    return Some(self.mk_violation(
+                        invariant,
+                        pair,
+                        format!(
+                            "Constraint violated: {} != {}",
+                            left_val.to_hex(),
+                            right_val.to_hex()
+                        ),
+                    ));
+                }
+            }
+            InvariantAST::NotEquals(left, right) => {
+                let left_val = self.evaluate_expr(left, pair)?;
+                let right_val = self.evaluate_expr(right, pair)?;
+                if left_val == right_val {
+                    return Some(self.mk_violation(
+                        invariant,
+                        pair,
+                        format!(
+                            "Constraint violated: {} should not equal {}",
+                            left_val.to_hex(),
+                            right_val.to_hex()
+                        ),
+                    ));
+                }
+            }
+            InvariantAST::LessThan(left, right) => {
+                let left_val = self.evaluate_expr(left, pair)?;
+                let right_val = self.evaluate_expr(right, pair)?;
+                if Self::field_cmp(&left_val, &right_val) != std::cmp::Ordering::Less {
+                    return Some(self.mk_violation(
+                        invariant,
+                        pair,
+                        format!(
+                            "Constraint violated: {} not < {}",
+                            left_val.to_hex(),
+                            right_val.to_hex()
+                        ),
+                    ));
+                }
+            }
+            InvariantAST::LessThanOrEqual(left, right) => {
+                let left_val = self.evaluate_expr(left, pair)?;
+                let right_val = self.evaluate_expr(right, pair)?;
+                if matches!(
+                    Self::field_cmp(&left_val, &right_val),
+                    std::cmp::Ordering::Greater
+                ) {
+                    return Some(self.mk_violation(
+                        invariant,
+                        pair,
+                        format!(
+                            "Constraint violated: {} not <= {}",
+                            left_val.to_hex(),
+                            right_val.to_hex()
+                        ),
+                    ));
+                }
+            }
+            InvariantAST::GreaterThan(left, right) => {
+                let left_val = self.evaluate_expr(left, pair)?;
+                let right_val = self.evaluate_expr(right, pair)?;
+                if Self::field_cmp(&left_val, &right_val) != std::cmp::Ordering::Greater {
+                    return Some(self.mk_violation(
+                        invariant,
+                        pair,
+                        format!(
+                            "Constraint violated: {} not > {}",
+                            left_val.to_hex(),
+                            right_val.to_hex()
+                        ),
+                    ));
+                }
+            }
+            InvariantAST::GreaterThanOrEqual(left, right) => {
+                let left_val = self.evaluate_expr(left, pair)?;
+                let right_val = self.evaluate_expr(right, pair)?;
+                if matches!(
+                    Self::field_cmp(&left_val, &right_val),
+                    std::cmp::Ordering::Less
+                ) {
+                    return Some(self.mk_violation(
+                        invariant,
+                        pair,
+                        format!(
+                            "Constraint violated: {} not >= {}",
+                            left_val.to_hex(),
+                            right_val.to_hex()
+                        ),
+                    ));
+                }
+            }
+            InvariantAST::InSet(value_expr, set_expr) => {
+                let value = self.evaluate_expr(value_expr, pair)?;
+                let set_values = self.evaluate_set(set_expr, pair)?;
+                if !set_values.contains(&value) {
+                    return Some(self.mk_violation(
+                        invariant,
+                        pair,
+                        format!("Constraint violated: {} not in set", value.to_hex()),
+                    ));
+                }
+            }
+            InvariantAST::Range {
+                lower,
+                value,
+                upper,
+                inclusive_lower,
+                inclusive_upper,
+            } => {
+                let lower_value = self.evaluate_expr(lower, pair)?;
+                let value_value = self.evaluate_expr(value, pair)?;
+                let upper_value = self.evaluate_expr(upper, pair)?;
+
+                let lower_ok = match Self::field_cmp(&value_value, &lower_value) {
+                    std::cmp::Ordering::Less => false,
+                    std::cmp::Ordering::Equal => *inclusive_lower,
+                    std::cmp::Ordering::Greater => true,
+                };
+                let upper_ok = match Self::field_cmp(&value_value, &upper_value) {
+                    std::cmp::Ordering::Less => true,
+                    std::cmp::Ordering::Equal => *inclusive_upper,
+                    std::cmp::Ordering::Greater => false,
+                };
+
+                if !lower_ok || !upper_ok {
+                    return Some(self.mk_violation(
+                        invariant,
+                        pair,
+                        format!(
+                            "Constraint violated: {} outside range {}..{}",
+                            value_value.to_hex(),
+                            lower_value.to_hex(),
+                            upper_value.to_hex()
+                        ),
+                    ));
+                }
+            }
+            InvariantAST::ForAll { expr, .. } => {
+                return self.check_constraint_ast(expr, invariant, pair);
+            }
+            _ => {}
+        }
+
+        None
+    }
+
+    fn mk_violation(
+        &self,
+        invariant: &SemanticInvariantSpec,
+        pair: &WitnessProofPair,
+        evidence: String,
+    ) -> SemanticViolation {
+        SemanticViolation {
+            invariant_name: invariant.name.clone(),
+            relation: invariant.relation.clone(),
+            witness: pair.witness.clone(),
+            outputs: pair.outputs.clone(),
+            severity: invariant.severity.clone(),
+            evidence,
+            circuit_accepted: pair.circuit_accepted,
+        }
+    }
+
+    fn evaluate_set(
+        &self,
+        expr: &InvariantAST,
+        pair: &WitnessProofPair,
+    ) -> Option<Vec<FieldElement>> {
+        if let InvariantAST::Set(values) = expr {
+            let mut out = Vec::with_capacity(values.len());
+            for value in values {
+                out.push(self.evaluate_expr(value, pair)?);
+            }
+            return Some(out);
+        }
+        None
+    }
+
+    fn evaluate_expr(&self, expr: &InvariantAST, pair: &WitnessProofPair) -> Option<FieldElement> {
+        match expr {
+            InvariantAST::Identifier(name) => {
+                let lower = name.to_lowercase();
+                if let Some(&(offset, _)) = self.input_map.get(&lower) {
+                    return pair.witness.get(offset).cloned();
+                }
+
+                if lower.starts_with("output") {
+                    let idx_str = lower.trim_start_matches("output").trim_start_matches('_');
+                    let idx = idx_str.parse::<usize>().ok()?;
+                    return pair.outputs.get(idx).cloned();
+                }
+
+                if lower == "proof_len" {
+                    let len = pair.proof.as_ref().map(|proof| proof.len()).unwrap_or(0);
+                    return Some(FieldElement::from_u64(len as u64));
+                }
+
+                None
+            }
+            InvariantAST::ArrayAccess(name, index) => {
+                let lower = name.to_lowercase();
+                let idx = index.trim().parse::<usize>().ok()?;
+                let (offset, len) = self.input_map.get(&lower).copied()?;
+                if idx >= len {
+                    return None;
+                }
+                pair.witness.get(offset + idx).cloned()
+            }
+            InvariantAST::Literal(value) => Self::parse_field_value(value),
+            InvariantAST::Power(base, exp) => {
+                if base.trim() != "2" {
+                    return None;
+                }
+                let bits = exp.trim().parse::<u32>().ok()?;
+                if bits > 63 {
+                    return None;
+                }
+                Some(FieldElement::from_u64(1u64 << bits))
+            }
+            _ => None,
+        }
+    }
+
+    fn parse_field_value(raw: &str) -> Option<FieldElement> {
+        let trimmed = raw.trim();
+        if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
+            return FieldElement::from_hex(trimmed).ok();
+        }
+        let value = trimmed.parse::<u64>().ok()?;
+        Some(FieldElement::from_u64(value))
+    }
+
+    fn compute_hash(&self, indices: &[usize], witness: &[FieldElement]) -> Vec<u8> {
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+        for idx in indices {
+            if let Some(value) = witness.get(*idx) {
+                hasher.update(value.0);
+            }
+        }
+        hasher.finalize().to_vec()
+    }
+
+    fn field_cmp(a: &FieldElement, b: &FieldElement) -> std::cmp::Ordering {
+        a.0.cmp(&b.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         extract_identifiers_from_relation, parse_invariant_relation,
         validate_invariant_against_inputs, InvariantAST, InvariantParseError,
-        InvariantValidationError,
+        InvariantValidationError, SemanticInvariantKind, SemanticInvariantSpec,
+        SemanticOracleEngine, WitnessProofPair,
     };
+    use crate::FieldElement;
+    use std::collections::HashMap;
 
     #[test]
     fn parse_equals_with_function_call() {
@@ -474,5 +924,109 @@ mod tests {
             err,
             InvariantValidationError::NoKnownInputReference { .. }
         ));
+    }
+
+    fn make_fe(v: u64) -> FieldElement {
+        FieldElement::from_u64(v)
+    }
+
+    #[test]
+    fn semantic_engine_checks_range_on_witness() {
+        let mut input_map = HashMap::new();
+        input_map.insert("x".to_string(), (0usize, 1usize));
+        let mut engine = SemanticOracleEngine::with_input_map(input_map);
+
+        let spec = SemanticInvariantSpec {
+            name: "x_range".to_string(),
+            relation: "0 <= x < 10".to_string(),
+            severity: "high".to_string(),
+            kind: SemanticInvariantKind::Range,
+            ast: parse_invariant_relation("0 <= x < 10").ok(),
+            input_indices: vec![0],
+            range_bounds: Some((make_fe(0), make_fe(10), true)),
+            uniqueness_key_indices: vec![],
+            uniqueness_value_indices: vec![],
+        };
+        let pair = WitnessProofPair {
+            witness: vec![make_fe(10)],
+            outputs: vec![],
+            proof: None,
+            circuit_accepted: true,
+        };
+        let violation = engine.check(&spec, &pair);
+        assert!(violation.is_some());
+    }
+
+    #[test]
+    fn semantic_engine_checks_uniqueness_across_pairs() {
+        let mut input_map = HashMap::new();
+        input_map.insert("scope".to_string(), (0usize, 1usize));
+        input_map.insert("nullifier".to_string(), (1usize, 1usize));
+        let mut engine = SemanticOracleEngine::with_input_map(input_map);
+
+        let spec = SemanticInvariantSpec {
+            name: "nullifier_uniqueness".to_string(),
+            relation: "unique(nullifier) for each (scope)".to_string(),
+            severity: "critical".to_string(),
+            kind: SemanticInvariantKind::Uniqueness,
+            ast: None,
+            input_indices: vec![0, 1],
+            range_bounds: None,
+            uniqueness_key_indices: vec![0],
+            uniqueness_value_indices: vec![1],
+        };
+
+        let first = WitnessProofPair {
+            witness: vec![make_fe(1), make_fe(42)],
+            outputs: vec![],
+            proof: None,
+            circuit_accepted: true,
+        };
+        assert!(engine.check(&spec, &first).is_none());
+
+        let second = WitnessProofPair {
+            witness: vec![make_fe(2), make_fe(42)],
+            outputs: vec![],
+            proof: None,
+            circuit_accepted: true,
+        };
+        assert!(engine.check(&spec, &second).is_some());
+    }
+
+    #[test]
+    fn semantic_engine_supports_proof_len_identifier() {
+        let mut input_map = HashMap::new();
+        input_map.insert("x".to_string(), (0usize, 1usize));
+        let mut engine = SemanticOracleEngine::with_input_map(input_map);
+
+        let spec = SemanticInvariantSpec {
+            name: "proof_present".to_string(),
+            relation: "proof_len > 0".to_string(),
+            severity: "medium".to_string(),
+            kind: SemanticInvariantKind::Constraint,
+            ast: parse_invariant_relation("proof_len > 0").ok(),
+            input_indices: vec![],
+            range_bounds: None,
+            uniqueness_key_indices: vec![],
+            uniqueness_value_indices: vec![],
+        };
+
+        let with_empty_proof = WitnessProofPair {
+            witness: vec![make_fe(5)],
+            outputs: vec![],
+            proof: None,
+            circuit_accepted: true,
+        };
+        let violation = engine.check(&spec, &with_empty_proof);
+        assert!(violation.is_some());
+
+        let with_proof = WitnessProofPair {
+            witness: vec![make_fe(5)],
+            outputs: vec![],
+            proof: Some(vec![0xAA, 0xBB]),
+            circuit_accepted: true,
+        };
+        let violation = engine.check(&spec, &with_proof);
+        assert!(violation.is_none());
     }
 }

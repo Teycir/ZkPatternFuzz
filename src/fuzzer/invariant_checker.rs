@@ -34,7 +34,10 @@ use crate::config::v2::{
 };
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use zk_core::FieldElement;
+use zk_core::{
+    FieldElement, SemanticInvariantKind, SemanticInvariantSpec, SemanticOracleEngine,
+    WitnessProofPair,
+};
 
 /// A violation of an invariant detected during fuzzing
 #[derive(Debug, Clone)]
@@ -76,6 +79,8 @@ pub struct ParsedInvariant {
     pub uniqueness_key_indices: Vec<usize>,
     /// For uniqueness invariants: value indices to check
     pub uniqueness_value_indices: Vec<usize>,
+    /// Shared semantic-oracle representation for witness/proof checking
+    pub semantic_spec: SemanticInvariantSpec,
 }
 
 /// Fuzz-continuous invariant checker
@@ -90,6 +95,8 @@ pub struct InvariantChecker {
     /// For uniqueness invariants: tracks seen values per key
     /// Key: invariant_name + key_hash, Value: set of value_hashes
     uniqueness_tracker: HashMap<String, HashSet<Vec<u8>>>,
+    /// Shared semantic oracle engine for witness/proof pair checks
+    semantic_oracle: SemanticOracleEngine,
 }
 
 impl InvariantChecker {
@@ -113,8 +120,9 @@ impl InvariantChecker {
 
         Self {
             invariants: parsed,
-            input_map,
+            input_map: input_map.clone(),
             uniqueness_tracker: HashMap::new(),
+            semantic_oracle: SemanticOracleEngine::with_input_map(input_map),
         }
     }
 
@@ -161,6 +169,11 @@ impl InvariantChecker {
             } else {
                 (vec![], vec![])
             };
+        let semantic_ast = ast.clone();
+        let semantic_input_indices = input_indices.clone();
+        let semantic_range_bounds = range_bounds.clone();
+        let semantic_uniqueness_key_indices = uniqueness_key_indices.clone();
+        let semantic_uniqueness_value_indices = uniqueness_value_indices.clone();
 
         Some(ParsedInvariant {
             name: invariant.name.clone(),
@@ -175,7 +188,31 @@ impl InvariantChecker {
             range_bounds,
             uniqueness_key_indices,
             uniqueness_value_indices,
+            semantic_spec: SemanticInvariantSpec {
+                name: invariant.name.clone(),
+                relation: invariant.relation.clone(),
+                severity: match invariant.severity.clone() {
+                    Some(value) => value,
+                    None => "medium".to_string(),
+                },
+                kind: Self::to_semantic_kind(invariant.invariant_type.clone()),
+                ast: semantic_ast,
+                input_indices: semantic_input_indices,
+                range_bounds: semantic_range_bounds,
+                uniqueness_key_indices: semantic_uniqueness_key_indices,
+                uniqueness_value_indices: semantic_uniqueness_value_indices,
+            },
         })
+    }
+
+    fn to_semantic_kind(kind: InvariantType) -> SemanticInvariantKind {
+        match kind {
+            InvariantType::Constraint => SemanticInvariantKind::Constraint,
+            InvariantType::Metamorphic => SemanticInvariantKind::Metamorphic,
+            InvariantType::Range => SemanticInvariantKind::Range,
+            InvariantType::Uniqueness => SemanticInvariantKind::Uniqueness,
+            InvariantType::Custom => SemanticInvariantKind::Custom,
+        }
     }
 
     /// Extract input indices referenced in a relation
@@ -395,6 +432,27 @@ impl InvariantChecker {
         outputs: &[FieldElement],
         circuit_accepted: bool,
     ) -> Option<Violation> {
+        let witness_proof_pair = WitnessProofPair {
+            witness: inputs.to_vec(),
+            outputs: outputs.to_vec(),
+            proof: None,
+            circuit_accepted,
+        };
+        if let Some(violation) = self
+            .semantic_oracle
+            .check(&invariant.semantic_spec, &witness_proof_pair)
+        {
+            return Some(Violation {
+                invariant_name: violation.invariant_name,
+                relation: violation.relation,
+                witness: violation.witness,
+                outputs: violation.outputs,
+                severity: violation.severity,
+                evidence: violation.evidence,
+                circuit_accepted: violation.circuit_accepted,
+            });
+        }
+
         match invariant.invariant_type {
             InvariantType::Range => self.check_range(invariant, inputs, circuit_accepted),
             InvariantType::Uniqueness => self.check_uniqueness(invariant, inputs, circuit_accepted),
@@ -693,6 +751,7 @@ impl InvariantChecker {
     /// Reset uniqueness tracking state
     pub fn reset_uniqueness_state(&mut self) {
         self.uniqueness_tracker.clear();
+        self.semantic_oracle.reset();
     }
 
     /// Get the number of invariants being checked

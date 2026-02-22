@@ -18,7 +18,8 @@ pub use info::CircuitInfo;
 pub use invariants::{
     collect_identifiers, extract_identifiers_from_ast, extract_identifiers_from_relation,
     parse_invariant_relation, validate_invariant_against_inputs, InvariantAST, InvariantParseError,
-    InvariantValidationError, InvariantValidationResult,
+    InvariantValidationError, InvariantValidationResult, SemanticInvariantKind,
+    SemanticInvariantSpec, SemanticOracleEngine, SemanticViolation, WitnessProofPair,
 };
 pub use traits::{Attack, AttackContext, OracleConfig, OracleStats, SemanticOracle};
 pub use types::{

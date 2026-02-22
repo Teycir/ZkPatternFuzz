@@ -1,12 +1,12 @@
 # ZkPatternFuzz Production Roadmap
 
-Date: 2026-02-20  
+Date: 2026-02-22  
 Status: Active  
-Primary goal: make the scanner production-grade for real multi-target runs with high recall and high runtime stability, with full circuit-type readiness across all supported frameworks.
+Primary goal: make the scanner production-grade for real multi-target runs with high recall and high runtime stability, and drive every supported circuit framework to a measurable 5/5 maturity score.
 
 ---
 
-## 📊 Status Overview (2026-02-20)
+## 📊 Status Overview (2026-02-22)
 
 ### Phase Implementation Progress
 - ✅ Phase 0: Reliability Blockers (implementation completed)
@@ -16,7 +16,9 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Phase 3A: Logic Correctness Hardening (implementation completed)
 - ✅ Phase 4: Validation/Stats tooling (implementation completed)
 - ✅ Phase 5: Release Hardening (implementation completed)
-- 🟡 Phase 6: Full Non-Circom Circuit-Type Readiness (in progress)
+- ✅ Phase 6: Full Non-Circom Circuit-Type Readiness (implementation completed)
+- ⏳ Phase 7: Semantic Analysis & Complex Bug Detection (planned)
+- 🟡 Phase 8: 5/5 Circuit Maturity Program (in progress)
 
 ### Exit Criteria Progress
 - ✅ Phase 0 exit criteria (met on 20-run fast matrix: attack-stage reach 100%, no output-lock failures)
@@ -26,7 +28,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Phase 3A exit criteria (met with backend-heavy and timeout/Noir-throughput validations)
 - ✅ Phase 4 exit criteria (met on latest fast matrix: recall 80%, safe high-confidence FPR 0%, miss reason coverage 100%)
 - ✅ Phase 5 exit criteria (release candidate gates pass twice consecutively)
-- ⏳ Phase 6 exit criteria (pending: Noir/Cairo/Halo2 breadth readiness and zero unresolved backend-specific blockers)
+- ✅ Phase 6 exit criteria (met: non-Circom readiness lanes pass with zero runtime/preflight/missing-outcome regressions)
+- ⏳ Phase 8 exit criteria (pending: Circom/Noir/Cairo/Halo2 sustained at 5.0/5.0 for 14 consecutive daily scorecards)
 
 ### Definition of Done Progress
 - ✅ Stability: >=95% scan completion on the latest 20-run benchmark matrix (`100%`)
@@ -34,7 +37,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Detection: measurable recall uplift on known vulnerable targets
 - ✅ Operability: single bootstrap path validated on fresh environments
 - ✅ Quality gates: nightly regression dashboard with pass/fail by failure class
-- ⏳ Backend breadth: Noir/Cairo/Halo2 pass required backend readiness gates across local and external target matrices
+- ⏳ 5/5 maturity: Circom/Noir/Cairo/Halo2 each sustain 5.0/5.0 across release-gated scorecard runs
 
 ---
 
@@ -266,6 +269,72 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ---
 
+## 🏁 Phase 8: 5/5 Circuit Maturity Program (All Frameworks)
+
+**Goal:** reach and sustain `5.0/5.0` maturity for Circom, Noir, Cairo, and Halo2 using a single, release-gated scorecard.
+**Track:** active parallel execution track for backend maturity closure while Phase 7 semantic-analysis work remains planned.
+
+### Baseline Snapshot (2026-02-22)
+- Noir: `4.0/5.0`
+- Halo2: `3.1/5.0`
+- Cairo: `2.8/5.0`
+- Circom: `4.5/5.0` (finalized in Week 1 scorecard freeze)
+- Cross-backend readiness: `4.2/5.0`
+
+### 8.1 Maturity Rubric (5 points total)
+1. `Execution fidelity (1.0)`: deterministic outputs + no infra-skip on required targets.
+2. `Proof lifecycle fidelity (1.0)`: setup/prove/verify is fully supported and reproducible.
+3. `Constraint coverage fidelity (1.0)`: production lanes use real backend constraints; no heuristic-only pass paths.
+4. `Breadth readiness (1.0)`: >=95% completion with `runtime_error=0`, `backend_preflight_failed=0`, `run_outcome_missing=0`.
+5. `Operational hardening (1.0)`: release gates pass with sandbox enforced and performance/flake thresholds satisfied.
+
+### 8.2 Shared Workstream (Week 1-2)
+- [ ] Add a backend scorecard generator (`scripts/backend_maturity_scorecard.sh`) and publish `artifacts/backend_maturity/latest_scorecard.json`.
+- [ ] Add CI/release gate that fails when any backend score drops below target (`>=4.5` initially, `==5.0` at cutover).
+- [ ] Expand readiness matrices to include at least 5 enabled representative targets per backend (local + external).
+- [ ] Enforce tool sandbox for all readiness/release lanes (`--enforce-tool-sandbox`) and archive gate evidence.
+
+### 8.3 Backend-Specific Closure Plans
+
+#### Noir -> 5/5
+- [ ] Expand Noir matrix coverage to `>=25` selector-matching classified runs per release cycle.
+- [ ] Add compatibility matrix tests for supported `nargo` versions and artifact layouts.
+- [ ] Add hard proof artifact contract tests (path + format + deterministic verify inputs).
+- [ ] Exit criteria: Noir score `5.0` for 14 consecutive daily scorecards.
+
+#### Halo2 -> 5/5
+- [ ] Implement key setup path in `Halo2Target::setup_keys` (or a strict canonical adapter with equivalent guarantees).
+- [ ] Add canonical execution/prove/verify integration that is not dependent on ad-hoc custom CLI flags in target binaries.
+- [ ] Replace metadata-only success fallbacks with strict production behavior in readiness lanes.
+- [ ] Expand Halo2 matrix to at least 5 targets (JSON specs + real circuits + external circuits).
+- [ ] Exit criteria: `runtime_error=0` and Halo2 score `5.0` for 14 consecutive daily scorecards.
+
+#### Cairo -> 5/5
+- [ ] Replace source-assertion-only coverage fallback with trace/AIR-backed production coverage.
+- [ ] Normalize Cairo1 proof handling to a structured, reproducible artifact contract (not execution-id-only payload semantics).
+- [ ] Gate both Cairo0 and Cairo1 canonical paths where applicable.
+- [ ] Expand Cairo matrix to at least 5 targets (local + external) with stone/scarb prove-verify gates.
+- [ ] Exit criteria: Cairo score `5.0` for 14 consecutive daily scorecards.
+
+#### Circom -> 5/5
+- [ ] Add long-horizon flake gate (14-day consecutive pass requirement) for Circom keygen/compile/prove/verify lanes.
+- [ ] Add hermetic include/path validation in release lanes for deterministic toolchain resolution.
+- [ ] Add large-circuit memory and throughput fitness gates in release validation.
+- [ ] Exit criteria: Circom score `5.0` for 14 consecutive daily scorecards.
+
+### 8.4 Milestones
+- [ ] `M0 (Week 1)`: scorecard freeze + matrix expansion + initial gate at `>=4.5`.
+- [ ] `M1 (Week 3)`: Halo2/Cairo critical implementation gaps closed; all backends `>=4.5`.
+- [ ] `M2 (Week 5)`: coverage-fidelity hardening complete; all backends `>=4.8`.
+- [ ] `M3 (Week 7)`: all backends sustained at `5.0/5.0` for 14 consecutive daily runs.
+
+### 8.5 Global Exit Criteria
+- [ ] Circom/Noir/Cairo/Halo2 each score `5.0/5.0` on the published scorecard for 14 consecutive days.
+- [ ] Zero unresolved backend-specific release blockers.
+- [ ] Release candidate gate enforces and archives 5/5 evidence bundles.
+
+---
+
 ## 🧠 Phase 7: Semantic Analysis & Complex Bug Detection
 
 **Goal:** Bridge the gap between syntax-level fuzzing and semantic property violations. Enable detection of protocol-level bugs that current constraint-level analysis misses.
@@ -292,7 +361,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
       severity: "critical"
   ```
 - [x] Implement invariant parser and validator (`crates/zk-core/src/invariants.rs`)
-- [ ] Add semantic oracle engine that checks invariants against witness/proof pairs
+- [x] Add semantic oracle engine that checks invariants against witness/proof pairs (`crates/zk-core/src/invariants.rs`, `src/fuzzer/invariant_checker.rs`)
 - [ ] Integrate with existing `spec_inference.rs` for auto-generated invariants
 - [ ] Add invariant violation reporting with counterexamples
 - [ ] Add regression tests with known semantic bugs (underconstrained Merkle, nullifier replay)
@@ -968,7 +1037,7 @@ gh run watch
 
 ## 📝 Notes
 
-- All implementation tasks for Phases 0-5 are complete; Phase 6 is now the active execution roadmap
+- All implementation tasks for Phases 0-6 are complete; Phase 8 is now the active execution roadmap for backend maturity closure (with Phase 7 tracked as semantic-analysis backlog)
 - Panic blockers addressed in current branch (`wait-timeout` abort path removed, run-doc stale-binary path resolved)
 - Latest smoke benchmark evidence: `artifacts/benchmark_runs_smoke/benchmark_20260219_153249/summary.json`
 - Smoke metrics: `completion_rate=40.0%`, `recall=0.0%`, `safe_fpr=60.0%`
