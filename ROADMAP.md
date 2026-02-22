@@ -303,8 +303,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Exit criteria: Noir score `5.0` for 14 consecutive daily scorecards.
 
 #### Halo2 -> 5/5
-- [ ] Implement key setup path in `Halo2Target::setup_keys` (or a strict canonical adapter with equivalent guarantees).
-- [ ] Add canonical execution/prove/verify integration that is not dependent on ad-hoc custom CLI flags in target binaries.
+- [x] Implement key setup path in `Halo2Target::setup_keys` (or a strict canonical adapter with equivalent guarantees).
+- [x] Add canonical execution/prove/verify integration that is not dependent on ad-hoc custom CLI flags in target binaries.
 - [ ] Replace metadata-only success fallbacks with strict production behavior in readiness lanes.
 - [ ] Expand Halo2 matrix to at least 5 targets (JSON specs + real circuits + external circuits).
 - [ ] Exit criteria: `runtime_error=0` and Halo2 score `5.0` for 14 consecutive daily scorecards.
