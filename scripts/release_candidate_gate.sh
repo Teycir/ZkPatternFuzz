@@ -30,9 +30,24 @@ RELEASE_CANDIDATE_REPORT="$ROOT_DIR/artifacts/release_candidate_validation/relea
 CIRCOM_FLAKE_REPORT="$ROOT_DIR/artifacts/circom_flake/latest_report.json"
 CIRCOM_FLAKE_HISTORY="$ROOT_DIR/artifacts/circom_flake/history.json"
 CIRCOM_FLAKE_CONSECUTIVE_DAYS="${CIRCOM_FLAKE_CONSECUTIVE_DAYS:-0}"
+CIRCOM_HERMETIC_REPORT="$ROOT_DIR/artifacts/circom_hermetic/latest_report.json"
+BACKEND_CAPACITY_FITNESS_REPORT="$ROOT_DIR/artifacts/backend_capacity_fitness/latest_report.json"
+BACKEND_CAPACITY_FITNESS_THROUGHPUT_OUTPUT_DIR="$ROOT_DIR/artifacts/backend_throughput"
+BACKEND_CAPACITY_FITNESS_MEMORY_OUTPUT_DIR="$ROOT_DIR/artifacts/memory_profiles"
+BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS="${BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS:-noir,cairo,halo2}"
+BACKEND_CAPACITY_FITNESS_MIN_MEDIAN_COMPLETED_PER_SEC="${BACKEND_CAPACITY_FITNESS_MIN_MEDIAN_COMPLETED_PER_SEC:-0.005}"
+BACKEND_CAPACITY_FITNESS_PER_BACKEND_MIN_MEDIAN_COMPLETED_PER_SEC="${BACKEND_CAPACITY_FITNESS_PER_BACKEND_MIN_MEDIAN_COMPLETED_PER_SEC:-}"
+BACKEND_CAPACITY_FITNESS_MAX_RSS_KB="${BACKEND_CAPACITY_FITNESS_MAX_RSS_KB:-262144}"
+BACKEND_CAPACITY_FITNESS_THROUGHPUT_RUNS="${BACKEND_CAPACITY_FITNESS_THROUGHPUT_RUNS:-1}"
+BACKEND_CAPACITY_FITNESS_ITERATIONS="${BACKEND_CAPACITY_FITNESS_ITERATIONS:-20}"
+BACKEND_CAPACITY_FITNESS_TIMEOUT="${BACKEND_CAPACITY_FITNESS_TIMEOUT:-20}"
+BACKEND_CAPACITY_FITNESS_WORKERS="${BACKEND_CAPACITY_FITNESS_WORKERS:-2}"
+BACKEND_CAPACITY_FITNESS_BATCH_JOBS="${BACKEND_CAPACITY_FITNESS_BATCH_JOBS:-1}"
 SKIP_BACKEND_READINESS_GATE=0
 SKIP_BACKEND_MATURITY_GATE=0
 SKIP_CIRCOM_FLAKE_GATE=0
+SKIP_CIRCOM_HERMETIC_GATE=0
+SKIP_BACKEND_CAPACITY_FITNESS_GATE=0
 
 usage() {
   cat <<'USAGE'
@@ -99,12 +114,47 @@ Options:
   --circom-flake-consecutive-days <int>
                              Require N consecutive UTC daily keygen+compile/prove/verify passes
                              for Circom lane flake gate (default: 0, disabled)
+  --circom-hermetic-report <path>
+                             Circom hermetic include/toolchain report output path
+                             (default: artifacts/circom_hermetic/latest_report.json)
+  --backend-capacity-fitness-report <path>
+                             Backend capacity fitness report output path
+                             (default: artifacts/backend_capacity_fitness/latest_report.json)
+  --backend-capacity-fitness-throughput-output-dir <path>
+                             Throughput harness output dir
+                             (default: artifacts/backend_throughput)
+  --backend-capacity-fitness-memory-output-dir <path>
+                             Memory profile output dir
+                             (default: artifacts/memory_profiles)
+  --backend-capacity-fitness-required-backends <csv>
+                             Required backends for capacity fitness thresholds
+                             (default: noir,cairo,halo2)
+  --backend-capacity-fitness-min-median-completed-per-sec <float>
+                             Global minimum median completed/sec threshold (default: 0.005)
+  --backend-capacity-fitness-per-backend-min-median-completed-per-sec <csv>
+                             Optional per-backend completed/sec thresholds (e.g. noir=0.01,cairo=0.01)
+  --backend-capacity-fitness-max-rss-kb <int>
+                             Max allowed RSS kB for large-circuit memory profile (default: 262144)
+  --backend-capacity-fitness-throughput-runs <int>
+                             Throughput runs per backend for fitness gate (default: 1)
+  --backend-capacity-fitness-iterations <int>
+                             Iterations used by throughput/memory fitness lanes (default: 20)
+  --backend-capacity-fitness-timeout <int>
+                             Timeout seconds used by throughput/memory fitness lanes (default: 20)
+  --backend-capacity-fitness-workers <int>
+                             Worker count used by throughput/memory fitness lanes (default: 2)
+  --backend-capacity-fitness-batch-jobs <int>
+                             Batch jobs used by throughput/memory fitness lanes (default: 1)
   --skip-backend-readiness-gate
                              Publish dashboard artifact but do not fail release gate on backend readiness
   --skip-backend-maturity-gate
                              Publish maturity scorecard but do not fail release gate on backend maturity
   --skip-circom-flake-gate
                              Publish Circom flake report but do not fail release gate on it
+  --skip-circom-hermetic-gate
+                             Publish Circom hermetic report but do not fail release gate on it
+  --skip-backend-capacity-fitness-gate
+                             Publish backend capacity fitness report but do not fail release gate on it
   -h, --help                 Show this help
 
 Thresholds are inherited from scripts/ci_benchmark_gate.sh env vars:
@@ -230,6 +280,58 @@ while [[ $# -gt 0 ]]; do
       CIRCOM_FLAKE_CONSECUTIVE_DAYS="$2"
       shift 2
       ;;
+    --circom-hermetic-report)
+      CIRCOM_HERMETIC_REPORT="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-report)
+      BACKEND_CAPACITY_FITNESS_REPORT="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-throughput-output-dir)
+      BACKEND_CAPACITY_FITNESS_THROUGHPUT_OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-memory-output-dir)
+      BACKEND_CAPACITY_FITNESS_MEMORY_OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-required-backends)
+      BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-min-median-completed-per-sec)
+      BACKEND_CAPACITY_FITNESS_MIN_MEDIAN_COMPLETED_PER_SEC="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-per-backend-min-median-completed-per-sec)
+      BACKEND_CAPACITY_FITNESS_PER_BACKEND_MIN_MEDIAN_COMPLETED_PER_SEC="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-max-rss-kb)
+      BACKEND_CAPACITY_FITNESS_MAX_RSS_KB="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-throughput-runs)
+      BACKEND_CAPACITY_FITNESS_THROUGHPUT_RUNS="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-iterations)
+      BACKEND_CAPACITY_FITNESS_ITERATIONS="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-timeout)
+      BACKEND_CAPACITY_FITNESS_TIMEOUT="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-workers)
+      BACKEND_CAPACITY_FITNESS_WORKERS="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-batch-jobs)
+      BACKEND_CAPACITY_FITNESS_BATCH_JOBS="$2"
+      shift 2
+      ;;
     --skip-backend-readiness-gate)
       SKIP_BACKEND_READINESS_GATE=1
       shift
@@ -240,6 +342,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-circom-flake-gate)
       SKIP_CIRCOM_FLAKE_GATE=1
+      shift
+      ;;
+    --skip-circom-hermetic-gate)
+      SKIP_CIRCOM_HERMETIC_GATE=1
+      shift
+      ;;
+    --skip-backend-capacity-fitness-gate)
+      SKIP_BACKEND_CAPACITY_FITNESS_GATE=1
       shift
       ;;
     -h|--help)
@@ -319,6 +429,53 @@ if [ "$SKIP_CIRCOM_FLAKE_GATE" -eq 1 ]; then
 else
   echo "Running Circom long-horizon flake gate..."
   "${circom_flake_cmd[@]}" --enforce
+fi
+
+circom_hermetic_cmd=(
+  "$ROOT_DIR/scripts/circom_hermetic_gate.sh"
+  --output "$CIRCOM_HERMETIC_REPORT"
+)
+
+if [ "$SKIP_CIRCOM_HERMETIC_GATE" -eq 1 ]; then
+  echo "Publishing Circom hermetic include/toolchain report (gate disabled)..."
+  "${circom_hermetic_cmd[@]}"
+else
+  echo "Running Circom hermetic include/toolchain gate..."
+  "${circom_hermetic_cmd[@]}" --enforce
+fi
+
+capacity_fitness_cmd=(
+  "$ROOT_DIR/scripts/backend_capacity_fitness_gate.sh"
+  --output "$BACKEND_CAPACITY_FITNESS_REPORT"
+  --throughput-output-dir "$BACKEND_CAPACITY_FITNESS_THROUGHPUT_OUTPUT_DIR"
+  --memory-output-dir "$BACKEND_CAPACITY_FITNESS_MEMORY_OUTPUT_DIR"
+  --required-backends "$BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS"
+  --min-median-completed-per-sec "$BACKEND_CAPACITY_FITNESS_MIN_MEDIAN_COMPLETED_PER_SEC"
+  --max-rss-kb "$BACKEND_CAPACITY_FITNESS_MAX_RSS_KB"
+  --throughput-runs "$BACKEND_CAPACITY_FITNESS_THROUGHPUT_RUNS"
+  --throughput-iterations "$BACKEND_CAPACITY_FITNESS_ITERATIONS"
+  --throughput-timeout "$BACKEND_CAPACITY_FITNESS_TIMEOUT"
+  --throughput-workers "$BACKEND_CAPACITY_FITNESS_WORKERS"
+  --throughput-batch-jobs "$BACKEND_CAPACITY_FITNESS_BATCH_JOBS"
+  --memory-iterations "$BACKEND_CAPACITY_FITNESS_ITERATIONS"
+  --memory-timeout "$BACKEND_CAPACITY_FITNESS_TIMEOUT"
+  --memory-workers "$BACKEND_CAPACITY_FITNESS_WORKERS"
+  --memory-batch-jobs "$BACKEND_CAPACITY_FITNESS_BATCH_JOBS"
+)
+
+if [ -n "$BACKEND_CAPACITY_FITNESS_PER_BACKEND_MIN_MEDIAN_COMPLETED_PER_SEC" ]; then
+  capacity_fitness_cmd+=(
+    --per-backend-min-median-completed-per-sec
+    "$BACKEND_CAPACITY_FITNESS_PER_BACKEND_MIN_MEDIAN_COMPLETED_PER_SEC"
+  )
+fi
+
+if [ "$SKIP_BACKEND_CAPACITY_FITNESS_GATE" -eq 1 ]; then
+  echo "Publishing backend capacity fitness report (gate disabled)..."
+  "${capacity_fitness_cmd[@]}"
+else
+  echo "Running backend capacity fitness gate..."
+  "${capacity_fitness_cmd[@]}" --enforce
 fi
 
 backend_gate_cmd=(

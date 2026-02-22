@@ -319,8 +319,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 #### Circom -> 5/5
 - [x] Add long-horizon flake gate (14-day consecutive pass requirement) for Circom keygen/compile/prove/verify lanes.
-- [ ] Add hermetic include/path validation in release lanes for deterministic toolchain resolution.
-- [ ] Add large-circuit memory and throughput fitness gates in release validation.
+- [x] Add hermetic include/path validation in release lanes for deterministic toolchain resolution (`scripts/circom_hermetic_gate.sh`, `scripts/release_candidate_gate.sh`).
+- [x] Add large-circuit memory and throughput fitness gates in release validation (`scripts/backend_capacity_fitness_gate.sh`, `scripts/release_candidate_gate.sh`).
 - Tracking note: once the two items above land, the same 14-day scorecard gate enforces sustained closure.
 
 ### 8.4 Milestones (Informational)
