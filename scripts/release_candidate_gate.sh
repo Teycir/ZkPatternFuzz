@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+GATE_SCRIPT_DIR="${ZKFUZZ_RELEASE_GATE_SCRIPT_DIR:-$ROOT_DIR/scripts}"
 BENCH_ROOT="$ROOT_DIR/artifacts/benchmark_runs"
 REQUIRED_PASSES=2
 STABLE_REF=""
@@ -32,6 +33,9 @@ CIRCOM_FLAKE_HISTORY="$ROOT_DIR/artifacts/circom_flake/history.json"
 CIRCOM_FLAKE_CONSECUTIVE_DAYS="${CIRCOM_FLAKE_CONSECUTIVE_DAYS:-0}"
 CIRCOM_HERMETIC_REPORT="$ROOT_DIR/artifacts/circom_hermetic/latest_report.json"
 BACKEND_CAPACITY_FITNESS_REPORT="$ROOT_DIR/artifacts/backend_capacity_fitness/latest_report.json"
+EVIDENCE_ARCHIVE_ROOT="$ROOT_DIR/artifacts/release_candidate_validation/evidence_bundles"
+EVIDENCE_MANIFEST_PATH="$ROOT_DIR/artifacts/release_candidate_validation/evidence_bundle_manifest.json"
+BACKEND_BLOCKERS_REPORT="$ROOT_DIR/artifacts/release_candidate_validation/backend_release_blockers.json"
 BACKEND_CAPACITY_FITNESS_THROUGHPUT_OUTPUT_DIR="$ROOT_DIR/artifacts/backend_throughput"
 BACKEND_CAPACITY_FITNESS_MEMORY_OUTPUT_DIR="$ROOT_DIR/artifacts/memory_profiles"
 BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS="${BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS:-noir,cairo,halo2}"
@@ -145,6 +149,15 @@ Options:
                              Worker count used by throughput/memory fitness lanes (default: 2)
   --backend-capacity-fitness-batch-jobs <int>
                              Batch jobs used by throughput/memory fitness lanes (default: 1)
+  --evidence-archive-root <path>
+                             Root directory for archived release evidence bundle snapshots
+                             (default: artifacts/release_candidate_validation/evidence_bundles)
+  --evidence-manifest <path>
+                             Output JSON manifest for release evidence bundle coverage
+                             (default: artifacts/release_candidate_validation/evidence_bundle_manifest.json)
+  --backend-blockers-report <path>
+                             Output JSON report for unresolved backend-specific release blockers
+                             (default: artifacts/release_candidate_validation/backend_release_blockers.json)
   --skip-backend-readiness-gate
                              Publish dashboard artifact but do not fail release gate on backend readiness
   --skip-backend-maturity-gate
@@ -332,6 +345,18 @@ while [[ $# -gt 0 ]]; do
       BACKEND_CAPACITY_FITNESS_BATCH_JOBS="$2"
       shift 2
       ;;
+    --evidence-archive-root)
+      EVIDENCE_ARCHIVE_ROOT="$2"
+      shift 2
+      ;;
+    --evidence-manifest)
+      EVIDENCE_MANIFEST_PATH="$2"
+      shift 2
+      ;;
+    --backend-blockers-report)
+      BACKEND_BLOCKERS_REPORT="$2"
+      shift 2
+      ;;
     --skip-backend-readiness-gate)
       SKIP_BACKEND_READINESS_GATE=1
       shift
@@ -376,6 +401,11 @@ if ! [[ "$REQUIRED_PASSES" =~ ^[0-9]+$ ]] || [ "$REQUIRED_PASSES" -lt 1 ]; then
   exit 2
 fi
 
+if [ ! -d "$GATE_SCRIPT_DIR" ]; then
+  echo "gate script directory not found: $GATE_SCRIPT_DIR" >&2
+  exit 2
+fi
+
 if [ ! -d "$BENCH_ROOT" ]; then
   echo "::error::Benchmark output directory not found: $BENCH_ROOT"
   exit 1
@@ -401,7 +431,7 @@ echo "Checking last $REQUIRED_PASSES benchmark summaries under: $BENCH_ROOT"
 for ((i=start_idx; i<summary_count; i++)); do
   summary="${summaries[$i]}"
   echo "==> Gate check: $summary"
-  if ! "$ROOT_DIR/scripts/ci_benchmark_gate.sh" "$BENCH_ROOT" "$summary"; then
+  if ! "$GATE_SCRIPT_DIR/ci_benchmark_gate.sh" "$BENCH_ROOT" "$summary"; then
     failures=$((failures + 1))
   fi
 done
@@ -414,7 +444,7 @@ fi
 echo "Release candidate gate passed: last $REQUIRED_PASSES benchmark summaries passed."
 
 circom_flake_cmd=(
-  "$ROOT_DIR/scripts/circom_flake_gate.sh"
+  "$GATE_SCRIPT_DIR/circom_flake_gate.sh"
   --benchmark-root "$BENCH_ROOT"
   --benchmark-summary "$LATEST_SUMMARY"
   --keygen-preflight "$KEYGEN_PREFLIGHT_REPORT"
@@ -432,7 +462,7 @@ else
 fi
 
 circom_hermetic_cmd=(
-  "$ROOT_DIR/scripts/circom_hermetic_gate.sh"
+  "$GATE_SCRIPT_DIR/circom_hermetic_gate.sh"
   --output "$CIRCOM_HERMETIC_REPORT"
 )
 
@@ -445,7 +475,7 @@ else
 fi
 
 capacity_fitness_cmd=(
-  "$ROOT_DIR/scripts/backend_capacity_fitness_gate.sh"
+  "$GATE_SCRIPT_DIR/backend_capacity_fitness_gate.sh"
   --output "$BACKEND_CAPACITY_FITNESS_REPORT"
   --throughput-output-dir "$BACKEND_CAPACITY_FITNESS_THROUGHPUT_OUTPUT_DIR"
   --memory-output-dir "$BACKEND_CAPACITY_FITNESS_MEMORY_OUTPUT_DIR"
@@ -479,7 +509,7 @@ else
 fi
 
 backend_gate_cmd=(
-  "$ROOT_DIR/scripts/backend_readiness_dashboard.sh"
+  "$GATE_SCRIPT_DIR/backend_readiness_dashboard.sh"
   --readiness-root "$BACKEND_READINESS_ROOT"
   --output "$BACKEND_READINESS_DASHBOARD"
   --required-backends "$BACKEND_REQUIRED_LIST"
@@ -504,7 +534,7 @@ else
 fi
 
 maturity_gate_cmd=(
-  "$ROOT_DIR/scripts/backend_maturity_scorecard.sh"
+  "$GATE_SCRIPT_DIR/backend_maturity_scorecard.sh"
   --readiness-dashboard "$BACKEND_READINESS_DASHBOARD"
   --benchmark-root "$BENCH_ROOT"
   --keygen-preflight "$KEYGEN_PREFLIGHT_REPORT"
@@ -526,7 +556,382 @@ else
   "${maturity_gate_cmd[@]}" --enforce
 fi
 
+python3 - \
+  "$EVIDENCE_ARCHIVE_ROOT" \
+  "$EVIDENCE_MANIFEST_PATH" \
+  "$BACKEND_BLOCKERS_REPORT" \
+  "$BACKEND_READINESS_DASHBOARD" \
+  "$BACKEND_MATURITY_SCORECARD" \
+  "$CIRCOM_FLAKE_REPORT" \
+  "$CIRCOM_HERMETIC_REPORT" \
+  "$BACKEND_CAPACITY_FITNESS_REPORT" \
+  "$SKIP_BACKEND_READINESS_GATE" \
+  "$SKIP_BACKEND_MATURITY_GATE" \
+  "$SKIP_CIRCOM_FLAKE_GATE" \
+  "$SKIP_CIRCOM_HERMETIC_GATE" \
+  "$SKIP_BACKEND_CAPACITY_FITNESS_GATE" \
+  "$BACKEND_MATURITY_CONSECUTIVE_DAYS" \
+  "$BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE" \
+  "$CIRCOM_FLAKE_CONSECUTIVE_DAYS" \
+  "$BACKEND_REQUIRED_LIST" \
+  "$BACKEND_MATURITY_REQUIRED_LIST" \
+  "$BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS" <<'PY'
+import json
+import re
+import shutil
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional
+
+(
+    archive_root_raw,
+    manifest_path_raw,
+    blockers_path_raw,
+    readiness_report_raw,
+    maturity_report_raw,
+    circom_flake_report_raw,
+    circom_hermetic_report_raw,
+    capacity_report_raw,
+    skip_readiness_raw,
+    skip_maturity_raw,
+    skip_flake_raw,
+    skip_hermetic_raw,
+    skip_capacity_raw,
+    maturity_consecutive_days_raw,
+    maturity_consecutive_target_raw,
+    flake_consecutive_days_raw,
+    readiness_required_backends_raw,
+    maturity_required_backends_raw,
+    capacity_required_backends_raw,
+) = sys.argv[1:]
+
+
+def as_bool_int(value: str) -> bool:
+    try:
+        return int(value) == 1
+    except Exception:
+        return False
+
+
+def as_int(value: str, default: int) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def as_float(value: str, default: float) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def parse_csv_list(raw: str) -> List[str]:
+    values = []
+    for part in raw.split(","):
+        value = part.strip().lower()
+        if value and value not in values:
+            values.append(value)
+    return values
+
+
+def parse_failures(payload: dict) -> List[str]:
+    candidates = []
+    for key in ("gate_failures", "failures"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            for entry in value:
+                candidates.append(str(entry))
+    return candidates
+
+
+def load_json(path: Path):
+    if not path.is_file():
+        return None, f"missing report: {path}"
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if not isinstance(payload, dict):
+            return None, f"invalid report payload (expected object): {path}"
+        return payload, None
+    except Exception as exc:
+        return None, f"failed to parse report JSON {path}: {exc}"
+
+
+def unique_archive_dir(base_root: Path) -> Path:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    candidate = base_root / f"release_gate_{timestamp}"
+    suffix = 0
+    while candidate.exists():
+        suffix += 1
+        candidate = base_root / f"release_gate_{timestamp}_{suffix}"
+    return candidate
+
+
+archive_root = Path(archive_root_raw)
+manifest_path = Path(manifest_path_raw)
+blockers_path = Path(blockers_path_raw)
+
+skip_flags = {
+    "backend_readiness": as_bool_int(skip_readiness_raw),
+    "backend_maturity": as_bool_int(skip_maturity_raw),
+    "circom_flake": as_bool_int(skip_flake_raw),
+    "circom_hermetic": as_bool_int(skip_hermetic_raw),
+    "backend_capacity_fitness": as_bool_int(skip_capacity_raw),
+}
+
+maturity_consecutive_days = as_int(maturity_consecutive_days_raw, 0)
+maturity_consecutive_target = as_float(maturity_consecutive_target_raw, 5.0)
+flake_consecutive_days = as_int(flake_consecutive_days_raw, 0)
+
+readiness_required_backends = parse_csv_list(readiness_required_backends_raw)
+maturity_required_backends = parse_csv_list(maturity_required_backends_raw)
+capacity_required_backends = parse_csv_list(capacity_required_backends_raw)
+
+bundle_specs = [
+    {
+        "id": "backend_readiness",
+        "path": Path(readiness_report_raw),
+        "required": not skip_flags["backend_readiness"],
+    },
+    {
+        "id": "backend_maturity",
+        "path": Path(maturity_report_raw),
+        "required": not skip_flags["backend_maturity"],
+    },
+    {
+        "id": "circom_flake",
+        "path": Path(circom_flake_report_raw),
+        "required": not skip_flags["circom_flake"],
+    },
+    {
+        "id": "circom_hermetic",
+        "path": Path(circom_hermetic_report_raw),
+        "required": not skip_flags["circom_hermetic"],
+    },
+    {
+        "id": "backend_capacity_fitness",
+        "path": Path(capacity_report_raw),
+        "required": not skip_flags["backend_capacity_fitness"],
+    },
+]
+
+release_failures: List[str] = []
+unresolved_blockers: List[dict] = []
+bundle_entries: List[dict] = []
+
+
+def add_backend_blocker(bundle_id: str, backend: str, message: str, report_path: Path):
+    unresolved_blockers.append(
+        {
+            "bundle": bundle_id,
+            "backend": backend,
+            "severity": "release_blocker",
+            "message": message,
+            "evidence_path": str(report_path),
+        }
+    )
+
+
+for spec in bundle_specs:
+    bundle_id = spec["id"]
+    report_path: Path = spec["path"]
+    required = bool(spec["required"])
+
+    payload, load_error = load_json(report_path)
+    present = payload is not None
+    overall_pass = bool(payload.get("overall_pass", False)) if payload else False
+    gate_failures = parse_failures(payload) if payload else []
+    threshold_failures: List[str] = []
+
+    if load_error:
+        gate_failures.append(load_error)
+
+    if required and not present:
+        release_failures.append(f"{bundle_id}: report missing ({report_path})")
+        add_backend_blocker(bundle_id, "aggregate", "report missing", report_path)
+
+    if required and present and not overall_pass:
+        release_failures.append(f"{bundle_id}: overall_pass=false")
+
+    if required and present and bundle_id == "backend_maturity" and maturity_consecutive_days > 0:
+        thresholds = payload.get("thresholds", {})
+        consecutive_gate = payload.get("consecutive_gate", {})
+        if int(thresholds.get("consecutive_days", -1) or -1) != maturity_consecutive_days:
+            threshold_failures.append(
+                "maturity consecutive_days threshold mismatch "
+                f"(expected {maturity_consecutive_days}, got {thresholds.get('consecutive_days')})"
+            )
+        if not bool(consecutive_gate.get("enabled", False)):
+            threshold_failures.append("maturity consecutive gate expected enabled=true")
+        if int(consecutive_gate.get("target_days", -1) or -1) != maturity_consecutive_days:
+            threshold_failures.append(
+                "maturity consecutive gate target_days mismatch "
+                f"(expected {maturity_consecutive_days}, got {consecutive_gate.get('target_days')})"
+            )
+        target_score = as_float(str(consecutive_gate.get("target_score", "")), float("nan"))
+        if target_score != target_score or abs(target_score - maturity_consecutive_target) > 1e-9:
+            threshold_failures.append(
+                "maturity consecutive gate target_score mismatch "
+                f"(expected {maturity_consecutive_target:.3f}, got {consecutive_gate.get('target_score')})"
+            )
+
+    if required and present and bundle_id == "circom_flake" and flake_consecutive_days > 0:
+        if int(payload.get("required_consecutive_days", -1) or -1) != flake_consecutive_days:
+            threshold_failures.append(
+                "circom flake required_consecutive_days mismatch "
+                f"(expected {flake_consecutive_days}, got {payload.get('required_consecutive_days')})"
+            )
+        if not bool(payload.get("required_gate_enabled", False)):
+            threshold_failures.append("circom flake required_gate_enabled expected true")
+
+    if required and threshold_failures:
+        for failure in threshold_failures:
+            release_failures.append(f"{bundle_id}: {failure}")
+            add_backend_blocker(bundle_id, "aggregate", failure, report_path)
+
+    if required and present and bundle_id == "backend_readiness":
+        for entry in payload.get("backends", []) or []:
+            backend = str(entry.get("backend", "unknown")).lower()
+            if bool(entry.get("gate_pass", False)):
+                continue
+            failures = entry.get("gate_failures", []) or ["gate_pass=false"]
+            for failure in failures:
+                add_backend_blocker(bundle_id, backend, str(failure), report_path)
+        for failure in payload.get("aggregate", {}).get("gate_failures", []) or []:
+            add_backend_blocker(bundle_id, "aggregate", str(failure), report_path)
+
+    if required and present and bundle_id == "backend_maturity":
+        failure_list = payload.get("gate_failures", []) or []
+        for failure in failure_list:
+            text = str(failure)
+            match = re.match(r"^([a-zA-Z0-9_-]+):\s+", text)
+            backend = match.group(1).lower() if match else "aggregate"
+            add_backend_blocker(bundle_id, backend, text, report_path)
+
+    if required and present and bundle_id == "backend_capacity_fitness":
+        failure_list = payload.get("gate_failures", []) or []
+        for failure in failure_list:
+            text = str(failure)
+            backend = "aggregate"
+            for name in capacity_required_backends:
+                if re.search(rf"\b{name}\b", text, flags=re.IGNORECASE):
+                    backend = name
+                    break
+            add_backend_blocker(bundle_id, backend, text, report_path)
+
+    if required and present and bundle_id in {"circom_flake", "circom_hermetic"}:
+        failure_list = parse_failures(payload)
+        if not failure_list and not overall_pass:
+            failure_list = ["overall_pass=false"]
+        for failure in failure_list:
+            add_backend_blocker(bundle_id, "circom", str(failure), report_path)
+
+    bundle_entries.append(
+        {
+            "bundle_id": bundle_id,
+            "required": required,
+            "report_path": str(report_path),
+            "present": present,
+            "overall_pass": overall_pass,
+            "gate_failures": gate_failures,
+            "threshold_failures": threshold_failures,
+            "archived_path": None,
+        }
+    )
+
+archive_dir = unique_archive_dir(archive_root)
+archive_dir.mkdir(parents=True, exist_ok=True)
+
+for entry in bundle_entries:
+    source = Path(entry["report_path"])
+    if not source.is_file():
+        continue
+    destination = archive_dir / f"{entry['bundle_id']}.json"
+    shutil.copy2(source, destination)
+    entry["archived_path"] = str(destination)
+
+required_total = sum(1 for entry in bundle_entries if entry["required"])
+required_present = sum(1 for entry in bundle_entries if entry["required"] and entry["present"])
+required_passing = sum(
+    1
+    for entry in bundle_entries
+    if entry["required"]
+    and entry["present"]
+    and entry["overall_pass"]
+    and len(entry["threshold_failures"]) == 0
+)
+
+coverage_ok = required_total == required_passing
+blockers_ok = len(unresolved_blockers) == 0
+overall_pass = coverage_ok and blockers_ok and len(release_failures) == 0
+
+manifest_payload = {
+    "generated_utc": datetime.now(timezone.utc).isoformat(),
+    "archive_dir": str(archive_dir),
+    "overall_pass": overall_pass,
+    "required_bundle_total": required_total,
+    "required_bundle_present": required_present,
+    "required_bundle_passing": required_passing,
+    "bundle_coverage_ok": coverage_ok,
+    "bundle_count_total": len(bundle_entries),
+    "release_failures": release_failures,
+    "consecutive_thresholds": {
+        "backend_maturity_consecutive_days": maturity_consecutive_days,
+        "backend_maturity_consecutive_target_score": maturity_consecutive_target,
+        "circom_flake_consecutive_days": flake_consecutive_days,
+    },
+    "required_backends": {
+        "readiness": readiness_required_backends,
+        "maturity": maturity_required_backends,
+        "capacity_fitness": capacity_required_backends,
+    },
+    "bundles": bundle_entries,
+    "backend_release_blockers_report": str(blockers_path),
+}
+
+blockers_payload = {
+    "generated_utc": datetime.now(timezone.utc).isoformat(),
+    "overall_pass": blockers_ok,
+    "unresolved_backend_blockers_count": len(unresolved_blockers),
+    "unresolved_backend_blockers": unresolved_blockers,
+}
+
+manifest_path.parent.mkdir(parents=True, exist_ok=True)
+manifest_path.write_text(json.dumps(manifest_payload, indent=2) + "\n", encoding="utf-8")
+(archive_dir / "evidence_bundle_manifest.json").write_text(
+    json.dumps(manifest_payload, indent=2) + "\n",
+    encoding="utf-8",
+)
+
+blockers_path.parent.mkdir(parents=True, exist_ok=True)
+blockers_path.write_text(json.dumps(blockers_payload, indent=2) + "\n", encoding="utf-8")
+(archive_dir / "backend_release_blockers.json").write_text(
+    json.dumps(blockers_payload, indent=2) + "\n",
+    encoding="utf-8",
+)
+
+print(f"Release evidence bundle archive: {archive_dir}")
+print(
+    "Release evidence bundle coverage: "
+    f"required={required_passing}/{required_total} "
+    f"status={'PASS' if coverage_ok else 'FAIL'}"
+)
+print(
+    "Backend-specific release blockers: "
+    f"{len(unresolved_blockers)} "
+    f"status={'PASS' if blockers_ok else 'FAIL'}"
+)
+print(f"Evidence manifest: {manifest_path}")
+print(f"Blockers report: {blockers_path}")
+
+if not overall_pass:
+    raise SystemExit(1)
+PY
+
 if [ -n "$STABLE_REF" ]; then
   echo "Running rollback validation against stable ref: $STABLE_REF"
-  "$ROOT_DIR/scripts/rollback_validate.sh" --stable-ref "$STABLE_REF"
+  "$GATE_SCRIPT_DIR/rollback_validate.sh" --stable-ref "$STABLE_REF"
 fi

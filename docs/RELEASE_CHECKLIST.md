@@ -44,6 +44,9 @@ Scope update (2026-02-22): this checklist keeps release-blocking gates only. Exp
   - `cargo run --quiet --release --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 1 --batch-jobs 1 --workers 1 --iterations 50 --timeout 10 --benchmark-min-evidence-confidence low --benchmark-oracle-min-agreement-ratio 0.45 --benchmark-oracle-cross-attack-weight 0.65 --benchmark-high-confidence-min-oracles 3 --output-dir artifacts/benchmark_runs`
 - [ ] Release candidate gate passes with readiness, maturity, streak, hermetic include/toolchain enforcement, and backend capacity fitness (large-circuit memory + throughput):
   - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --required-maturity-backends circom,noir,cairo,halo2 --min-backend-completion-rate 0.90 --min-backend-selector-matching-total-per-backend noir=25,cairo=4,halo2=4 --min-backend-enabled-targets 5 --min-backend-maturity-score 4.5 --backend-maturity-consecutive-days 14 --backend-maturity-consecutive-target-score 5.0 --backend-maturity-consecutive-backends circom,noir,cairo,halo2 --circom-flake-consecutive-days 14 --backend-capacity-fitness-min-median-completed-per-sec 0.005 --backend-capacity-fitness-max-rss-kb 262144 --max-backend-runtime-error 0 --max-backend-preflight-failed 0 --max-backend-run-outcome-missing-rate 0.05`
+  - verify artifacts:
+    - `artifacts/release_candidate_validation/evidence_bundle_manifest.json`
+    - `artifacts/release_candidate_validation/backend_release_blockers.json`
 - [ ] Non-Circom collision stress gate passes:
   - `./scripts/run_non_circom_collision_stress.sh --enforce`
 - [ ] GitHub Actions `Release Validation` run recorded with matching thresholds/inputs and archived artifacts.

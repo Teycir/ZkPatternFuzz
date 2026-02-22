@@ -330,8 +330,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - `M3 (Week 7)`: planned (all backends sustained at `5.0/5.0` for 14 consecutive daily runs).
 
 ### 8.5 Global Exit Criteria (Release Gate)
-- [ ] Zero unresolved backend-specific release blockers.
-- [ ] Release candidate gate enforces and archives 5/5 evidence bundles (including 14-day consecutive scorecard thresholds).
+- [x] Zero unresolved backend-specific release blockers (`scripts/release_candidate_gate.sh` -> `backend_release_blockers.json`).
+- [x] Release candidate gate enforces and archives 5/5 evidence bundles (including 14-day consecutive scorecard thresholds) (`scripts/release_candidate_gate.sh` -> evidence bundle manifest/archive).
 
 ---
 
