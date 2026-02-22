@@ -812,9 +812,9 @@ gh run watch
 - [x] Upgrade proof-soundness mutation from random byte-noise to algebraically-aware transforms:
   - implement structure-aware mutation hooks for supported proof systems (or explicitly gate unsupported systems)
   - keep random-byte mutation only as a negative-control lane, not a primary soundness signal
-- [ ] Reduce backend depth imbalance (Circom vs Noir/Halo2/Cairo):
-  - extend constraint-inspection style analyses (unused signal / weak-constraint classes where feasible) beyond Circom
-  - publish per-backend recall and true-positive contribution slices so aggregate recall is not Circom-dominated without visibility
+- [x] Reduce backend depth imbalance (Circom vs Noir/Halo2/Cairo):
+  - [x] extend constraint-inspection style analyses (unused signal / weak-constraint classes where feasible) beyond Circom
+  - [x] publish per-backend recall and true-positive contribution slices so aggregate recall is not Circom-dominated without visibility
 
 #### P2: Coverage Breadth + Oracle Completeness
 - [ ] Improve spec-inference robustness against sampling blind spots (targeted boundary witness generation and combination coverage for rare input patterns).

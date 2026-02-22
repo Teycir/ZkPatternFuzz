@@ -160,6 +160,7 @@ struct TrialOutcome {
     suite_description: Option<String>,
     positive: bool,
     target_name: String,
+    framework: String,
     trial_idx: usize,
     seed: u64,
     exit_code: i32,
@@ -193,10 +194,30 @@ struct SuiteSummary {
 }
 
 #[derive(Debug, Serialize)]
+struct BackendSummary {
+    backend: String,
+    runs_total: usize,
+    vulnerable_runs: usize,
+    safe_runs: usize,
+    true_positives: usize,
+    false_positives: usize,
+    vulnerable_recall: f64,
+    vulnerable_recall_ci95: ConfidenceInterval,
+    vulnerable_high_confidence_recall: f64,
+    vulnerable_high_confidence_recall_ci95: ConfidenceInterval,
+    precision: f64,
+    precision_ci95: ConfidenceInterval,
+    completion_rate: f64,
+    attack_stage_reach_rate: f64,
+    true_positive_contribution_share: f64,
+}
+
+#[derive(Debug, Serialize)]
 struct BenchmarkSummary {
     generated_utc: String,
     config: BenchmarkConfigSnapshot,
     suites: Vec<SuiteSummary>,
+    backends: Vec<BackendSummary>,
     total_runs: usize,
     total_detected: usize,
     overall_completion_rate: f64,
@@ -571,6 +592,7 @@ fn run_trial(
         suite_description: item.suite_description.clone(),
         positive: item.positive,
         target_name: item.target.name.clone(),
+        framework: item.target.framework.clone(),
         trial_idx: item.trial_idx,
         seed: item.seed,
         exit_code,
@@ -592,6 +614,7 @@ fn trial_error_outcome(item: &WorkItem, err: &anyhow::Error) -> TrialOutcome {
         suite_description: item.suite_description.clone(),
         positive: item.positive,
         target_name: item.target.name.clone(),
+        framework: item.target.framework.clone(),
         trial_idx: item.trial_idx,
         seed: item.seed,
         exit_code: 1,
@@ -709,6 +732,107 @@ fn compute_suite_summaries(outcomes: &[TrialOutcome]) -> Vec<SuiteSummary> {
     suites
 }
 
+fn normalize_backend_name(raw: &str) -> String {
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        "unknown".to_string()
+    } else {
+        normalized
+    }
+}
+
+fn compute_backend_summaries(
+    outcomes: &[TrialOutcome],
+    global_true_positives: usize,
+) -> Vec<BackendSummary> {
+    let mut grouped: BTreeMap<String, Vec<&TrialOutcome>> = BTreeMap::new();
+    for outcome in outcomes {
+        grouped
+            .entry(normalize_backend_name(&outcome.framework))
+            .or_default()
+            .push(outcome);
+    }
+
+    let mut backends = Vec::new();
+    for (backend, items) in grouped {
+        let runs_total = items.len();
+        let vulnerable_runs: Vec<&TrialOutcome> = items
+            .iter()
+            .copied()
+            .filter(|outcome| outcome.positive)
+            .collect();
+        let safe_runs: Vec<&TrialOutcome> = items
+            .iter()
+            .copied()
+            .filter(|outcome| !outcome.positive)
+            .collect();
+
+        let tp = vulnerable_runs
+            .iter()
+            .filter(|outcome| outcome.detected)
+            .count();
+        let high_conf_tp = vulnerable_runs
+            .iter()
+            .filter(|outcome| outcome.high_confidence_detected)
+            .count();
+        let fp = actionable_safe_false_positives(&safe_runs);
+        let precision_denom = tp + fp;
+
+        let completion_count = items.iter().filter(|outcome| outcome.completed).count();
+        let attack_stage_reached_count = items
+            .iter()
+            .filter(|outcome| outcome.attack_stage_reached)
+            .count();
+
+        backends.push(BackendSummary {
+            backend,
+            runs_total,
+            vulnerable_runs: vulnerable_runs.len(),
+            safe_runs: safe_runs.len(),
+            true_positives: tp,
+            false_positives: fp,
+            vulnerable_recall: if vulnerable_runs.is_empty() {
+                0.0
+            } else {
+                tp as f64 / vulnerable_runs.len() as f64
+            },
+            vulnerable_recall_ci95: wilson_interval(tp, vulnerable_runs.len()),
+            vulnerable_high_confidence_recall: if vulnerable_runs.is_empty() {
+                0.0
+            } else {
+                high_conf_tp as f64 / vulnerable_runs.len() as f64
+            },
+            vulnerable_high_confidence_recall_ci95: wilson_interval(
+                high_conf_tp,
+                vulnerable_runs.len(),
+            ),
+            precision: if precision_denom == 0 {
+                0.0
+            } else {
+                tp as f64 / precision_denom as f64
+            },
+            precision_ci95: wilson_interval(tp, precision_denom),
+            completion_rate: if runs_total == 0 {
+                0.0
+            } else {
+                completion_count as f64 / runs_total as f64
+            },
+            attack_stage_reach_rate: if runs_total == 0 {
+                0.0
+            } else {
+                attack_stage_reached_count as f64 / runs_total as f64
+            },
+            true_positive_contribution_share: if global_true_positives == 0 {
+                0.0
+            } else {
+                tp as f64 / global_true_positives as f64
+            },
+        });
+    }
+
+    backends
+}
+
 fn write_markdown(
     path: &Path,
     summary: &BenchmarkSummary,
@@ -803,14 +927,43 @@ fn write_markdown(
     }
     md.push('\n');
 
+    md.push_str("## Backend Effectiveness\n\n");
+    md.push_str(
+        "| Backend | Runs | Vulnerable | Safe | Recall (95% CI) | High-Conf Recall (95% CI) | Precision (95% CI) | TP Share | Completion | Attack Stage |\n",
+    );
+    md.push_str("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n");
+    for backend in &summary.backends {
+        md.push_str(&format!(
+            "| {} | {} | {} | {} | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.1}% ({:.1}-{:.1}) | {:.1}% | {:.1}% | {:.1}% |\n",
+            backend.backend,
+            backend.runs_total,
+            backend.vulnerable_runs,
+            backend.safe_runs,
+            backend.vulnerable_recall * 100.0,
+            backend.vulnerable_recall_ci95.lower * 100.0,
+            backend.vulnerable_recall_ci95.upper * 100.0,
+            backend.vulnerable_high_confidence_recall * 100.0,
+            backend.vulnerable_high_confidence_recall_ci95.lower * 100.0,
+            backend.vulnerable_high_confidence_recall_ci95.upper * 100.0,
+            backend.precision * 100.0,
+            backend.precision_ci95.lower * 100.0,
+            backend.precision_ci95.upper * 100.0,
+            backend.true_positive_contribution_share * 100.0,
+            backend.completion_rate * 100.0,
+            backend.attack_stage_reach_rate * 100.0
+        ));
+    }
+    md.push('\n');
+
     md.push_str("## Trial Outcomes\n\n");
-    md.push_str("| Suite | Target | Trial | Seed | Exit | Completed | Findings | Detected | High-Conf Detected | Attack Stage | Error |\n");
-    md.push_str("|---|---|---:|---:|---:|---|---:|---|---|---|---|\n");
+    md.push_str("| Suite | Target | Framework | Trial | Seed | Exit | Completed | Findings | Detected | High-Conf Detected | Attack Stage | Error |\n");
+    md.push_str("|---|---|---|---:|---:|---:|---|---:|---|---|---|---|\n");
     for o in outcomes {
         md.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
             o.suite_name,
             o.target_name,
+            o.framework,
             o.trial_idx,
             o.seed,
             o.exit_code,
@@ -977,9 +1130,10 @@ fn main() -> anyhow::Result<()> {
             );
         } else {
             println!(
-                "{}::{}::trial{} exit={} completed={} findings={} detected={} high_conf_detected={}",
+                "{}::{}::{}::trial{} exit={} completed={} findings={} detected={} high_conf_detected={}",
                 outcome.suite_name,
                 outcome.target_name,
+                outcome.framework,
                 outcome.trial_idx,
                 outcome.exit_code,
                 outcome.completed,
@@ -1056,6 +1210,7 @@ fn main() -> anyhow::Result<()> {
             benchmark_high_confidence_min_oracles: args.benchmark_high_confidence_min_oracles,
         },
         suites: suite_summaries,
+        backends: compute_backend_summaries(&outcomes, true_positives),
         total_runs,
         total_detected,
         overall_completion_rate: completed as f64 / total_runs as f64,
@@ -1118,4 +1273,82 @@ fn main() -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod backend_summary_tests {
+    use super::*;
+
+    fn make_outcome(
+        framework: &str,
+        positive: bool,
+        detected: bool,
+        high_confidence_detected: bool,
+    ) -> TrialOutcome {
+        TrialOutcome {
+            suite_name: "suite".to_string(),
+            suite_description: None,
+            positive,
+            target_name: "target".to_string(),
+            framework: framework.to_string(),
+            trial_idx: 0,
+            seed: 42,
+            exit_code: 0,
+            completed: true,
+            scan_findings_total: u64::from(detected),
+            detected,
+            high_confidence_detected,
+            attack_stage_reached: true,
+            reason_counts: BTreeMap::new(),
+            error_message: None,
+        }
+    }
+
+    fn approx_eq(left: f64, right: f64) -> bool {
+        (left - right).abs() < 1e-9
+    }
+
+    #[test]
+    fn compute_backend_summaries_reports_recall_precision_and_tp_share() {
+        let outcomes = vec![
+            make_outcome("circom", true, true, true),
+            make_outcome("circom", true, false, false),
+            make_outcome("noir", true, true, false),
+            make_outcome("noir", false, true, true),
+        ];
+
+        let summaries = compute_backend_summaries(&outcomes, 2);
+        assert_eq!(summaries.len(), 2);
+
+        let circom = summaries
+            .iter()
+            .find(|summary| summary.backend == "circom")
+            .expect("circom summary must exist");
+        assert_eq!(circom.vulnerable_runs, 2);
+        assert_eq!(circom.true_positives, 1);
+        assert_eq!(circom.false_positives, 0);
+        assert!(approx_eq(circom.vulnerable_recall, 0.5));
+        assert!(approx_eq(circom.precision, 1.0));
+        assert!(approx_eq(circom.true_positive_contribution_share, 0.5));
+
+        let noir = summaries
+            .iter()
+            .find(|summary| summary.backend == "noir")
+            .expect("noir summary must exist");
+        assert_eq!(noir.vulnerable_runs, 1);
+        assert_eq!(noir.safe_runs, 1);
+        assert_eq!(noir.true_positives, 1);
+        assert_eq!(noir.false_positives, 1);
+        assert!(approx_eq(noir.vulnerable_recall, 1.0));
+        assert!(approx_eq(noir.precision, 0.5));
+        assert!(approx_eq(noir.true_positive_contribution_share, 0.5));
+    }
+
+    #[test]
+    fn compute_backend_summaries_normalizes_empty_backend_to_unknown() {
+        let outcomes = vec![make_outcome("", true, true, true)];
+        let summaries = compute_backend_summaries(&outcomes, 1);
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].backend, "unknown");
+    }
 }
