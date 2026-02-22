@@ -27,8 +27,12 @@ BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE="${BACKEND_MATURITY_CONSECUTIVE_TARGET
 BACKEND_MATURITY_CONSECUTIVE_REQUIRED_LIST="${BACKEND_MATURITY_CONSECUTIVE_REQUIRED_LIST:-}"
 KEYGEN_PREFLIGHT_REPORT="$ROOT_DIR/artifacts/keygen_preflight/latest_report.json"
 RELEASE_CANDIDATE_REPORT="$ROOT_DIR/artifacts/release_candidate_validation/release_candidate_report.json"
+CIRCOM_FLAKE_REPORT="$ROOT_DIR/artifacts/circom_flake/latest_report.json"
+CIRCOM_FLAKE_HISTORY="$ROOT_DIR/artifacts/circom_flake/history.json"
+CIRCOM_FLAKE_CONSECUTIVE_DAYS="${CIRCOM_FLAKE_CONSECUTIVE_DAYS:-0}"
 SKIP_BACKEND_READINESS_GATE=0
 SKIP_BACKEND_MATURITY_GATE=0
+SKIP_CIRCOM_FLAKE_GATE=0
 
 usage() {
   cat <<'USAGE'
@@ -86,10 +90,21 @@ Options:
   --release-candidate-report <path>
                              Release candidate report consumed by maturity scorecard
                              (default: artifacts/release_candidate_validation/release_candidate_report.json)
+  --circom-flake-report <path>
+                             Circom long-horizon flake gate report output path
+                             (default: artifacts/circom_flake/latest_report.json)
+  --circom-flake-history <path>
+                             Circom long-horizon flake gate history output path
+                             (default: artifacts/circom_flake/history.json)
+  --circom-flake-consecutive-days <int>
+                             Require N consecutive UTC daily keygen+compile/prove/verify passes
+                             for Circom lane flake gate (default: 0, disabled)
   --skip-backend-readiness-gate
                              Publish dashboard artifact but do not fail release gate on backend readiness
   --skip-backend-maturity-gate
                              Publish maturity scorecard but do not fail release gate on backend maturity
+  --skip-circom-flake-gate
+                             Publish Circom flake report but do not fail release gate on it
   -h, --help                 Show this help
 
 Thresholds are inherited from scripts/ci_benchmark_gate.sh env vars:
@@ -203,12 +218,28 @@ while [[ $# -gt 0 ]]; do
       RELEASE_CANDIDATE_REPORT="$2"
       shift 2
       ;;
+    --circom-flake-report)
+      CIRCOM_FLAKE_REPORT="$2"
+      shift 2
+      ;;
+    --circom-flake-history)
+      CIRCOM_FLAKE_HISTORY="$2"
+      shift 2
+      ;;
+    --circom-flake-consecutive-days)
+      CIRCOM_FLAKE_CONSECUTIVE_DAYS="$2"
+      shift 2
+      ;;
     --skip-backend-readiness-gate)
       SKIP_BACKEND_READINESS_GATE=1
       shift
       ;;
     --skip-backend-maturity-gate)
       SKIP_BACKEND_MATURITY_GATE=1
+      shift
+      ;;
+    --skip-circom-flake-gate)
+      SKIP_CIRCOM_FLAKE_GATE=1
       shift
       ;;
     -h|--help)
@@ -254,6 +285,7 @@ fi
 
 start_idx=$((summary_count - REQUIRED_PASSES))
 failures=0
+LATEST_SUMMARY="${summaries[$((summary_count - 1))]}"
 echo "Checking last $REQUIRED_PASSES benchmark summaries under: $BENCH_ROOT"
 
 for ((i=start_idx; i<summary_count; i++)); do
@@ -270,6 +302,24 @@ if [ "$failures" -ne 0 ]; then
 fi
 
 echo "Release candidate gate passed: last $REQUIRED_PASSES benchmark summaries passed."
+
+circom_flake_cmd=(
+  "$ROOT_DIR/scripts/circom_flake_gate.sh"
+  --benchmark-root "$BENCH_ROOT"
+  --benchmark-summary "$LATEST_SUMMARY"
+  --keygen-preflight "$KEYGEN_PREFLIGHT_REPORT"
+  --output "$CIRCOM_FLAKE_REPORT"
+  --history-path "$CIRCOM_FLAKE_HISTORY"
+  --required-consecutive-days "$CIRCOM_FLAKE_CONSECUTIVE_DAYS"
+)
+
+if [ "$SKIP_CIRCOM_FLAKE_GATE" -eq 1 ]; then
+  echo "Publishing Circom long-horizon flake report (gate disabled)..."
+  "${circom_flake_cmd[@]}"
+else
+  echo "Running Circom long-horizon flake gate..."
+  "${circom_flake_cmd[@]}" --enforce
+fi
 
 backend_gate_cmd=(
   "$ROOT_DIR/scripts/backend_readiness_dashboard.sh"

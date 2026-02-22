@@ -71,6 +71,20 @@ fn cairo_external_program_from_env() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+fn cairo1_local_project_manifest_path() -> PathBuf {
+    repo_path()
+        .join("tests")
+        .join("cairo_projects")
+        .join("cairo1_constant")
+        .join("Scarb.toml")
+}
+
+fn cairo1_external_program_from_env() -> Option<PathBuf> {
+    std::env::var("CAIRO1_EXTERNAL_PROGRAM")
+        .ok()
+        .map(PathBuf::from)
+}
+
 fn halo2_spec_path(name: &str) -> PathBuf {
     repo_path()
         .join("tests")
@@ -363,6 +377,54 @@ fn run_cairo_regression_case(
     MatrixStatus::Pass
 }
 
+fn run_cairo_prove_verify_smoke_case(
+    case_name: &str,
+    program_path: &std::path::Path,
+    expected_output: Option<FieldElement>,
+) -> MatrixStatus {
+    if !program_path.exists() {
+        return MatrixStatus::SkipInfra(format!(
+            "{case_name} missing Cairo source/project: {}",
+            program_path.display()
+        ));
+    }
+
+    let mut target = match CairoTarget::new(program_path.to_str().unwrap()) {
+        Ok(target) => target,
+        Err(err) => return classify_error(&format!("{case_name} create target"), err),
+    };
+    if let Err(err) = target.compile() {
+        return classify_error(&format!("{case_name} compile"), err);
+    }
+
+    let witness = Vec::new();
+    let outputs = match target.execute(&witness) {
+        Ok(outputs) => outputs,
+        Err(err) => return classify_error(&format!("{case_name} execute"), err),
+    };
+
+    if let Some(expected) = expected_output {
+        if outputs.first() != Some(&expected) {
+            return MatrixStatus::Fail(format!(
+                "{case_name} output mismatch: expected {:?}, got {:?}",
+                expected,
+                outputs.first()
+            ));
+        }
+    }
+
+    let proof = match target.prove(&witness) {
+        Ok(proof) => proof,
+        Err(err) => return classify_error(&format!("{case_name} prove"), err),
+    };
+
+    match target.verify(&proof, &outputs) {
+        Ok(true) => MatrixStatus::Pass,
+        Ok(false) => MatrixStatus::Fail(format!("{case_name} verify returned false")),
+        Err(err) => classify_error(&format!("{case_name} verify"), err),
+    }
+}
+
 #[derive(Debug, Clone)]
 enum MatrixStatus {
     Pass,
@@ -433,6 +495,7 @@ fn is_infrastructure_issue(message: &str) -> bool {
         ".zkfuzz_build.lock",
         "provide a circuit binary that supports --prove",
         "constraint coverage unavailable",
+        "unrecognized subcommand",
     ];
     markers.iter().any(|marker| msg.contains(marker))
 }
@@ -1802,6 +1865,89 @@ fn test_cairo_stone_prover_prove_verify_smoke() {
         None => return,
     };
     assert!(verified, "Cairo proof verification returned false");
+}
+
+/// Local Scarb Cairo1 prove/verify smoke for canonical Cairo1 path coverage.
+#[test]
+fn test_cairo1_scarb_prove_verify_smoke() {
+    if !require_real_backends("test_cairo1_scarb_prove_verify_smoke") {
+        return;
+    }
+
+    let cairo1_path =
+        cairo1_external_program_from_env().unwrap_or_else(cairo1_local_project_manifest_path);
+    let status = run_cairo_prove_verify_smoke_case(
+        "cairo1_scarb_smoke",
+        &cairo1_path,
+        Some(FieldElement::from_u64(12)),
+    );
+    println!(
+        "cairo1 scarb smoke [{}]: {}",
+        cairo1_path.display(),
+        describe_status(&status)
+    );
+
+    if let MatrixStatus::Fail(reason) = status {
+        panic!("test_cairo1_scarb_prove_verify_smoke: {reason}");
+    }
+}
+
+/// Canonical Cairo gate that covers both Cairo0 and Cairo1 prove/verify paths when available.
+#[test]
+fn test_cairo_canonical_path_gate() {
+    if !require_real_backends("test_cairo_canonical_path_gate") {
+        return;
+    }
+
+    let cairo0_path = cairo_program_path("multiplier");
+    let cairo1_path =
+        cairo1_external_program_from_env().unwrap_or_else(cairo1_local_project_manifest_path);
+
+    let cairo0_status = run_cairo_prove_verify_smoke_case(
+        "cairo0_canonical_path",
+        &cairo0_path,
+        Some(FieldElement::from_u64(12)),
+    );
+    let cairo1_status = run_cairo_prove_verify_smoke_case(
+        "cairo1_canonical_path",
+        &cairo1_path,
+        Some(FieldElement::from_u64(12)),
+    );
+
+    println!(
+        "cairo canonical gate [cairo0:{}]: {}",
+        cairo0_path.display(),
+        describe_status(&cairo0_status)
+    );
+    println!(
+        "cairo canonical gate [cairo1:{}]: {}",
+        cairo1_path.display(),
+        describe_status(&cairo1_status)
+    );
+
+    let mut failures = Vec::new();
+    let mut pass_count = 0usize;
+    for (label, status) in [
+        ("cairo0_canonical_path", cairo0_status),
+        ("cairo1_canonical_path", cairo1_status),
+    ] {
+        match status {
+            MatrixStatus::Pass => pass_count += 1,
+            MatrixStatus::SkipInfra(_) => {}
+            MatrixStatus::Fail(reason) => failures.push(format!("{label}: {reason}")),
+        }
+    }
+
+    assert!(
+        pass_count > 0,
+        "test_cairo_canonical_path_gate: all canonical Cairo paths were infrastructure-skipped"
+    );
+    if !failures.is_empty() {
+        panic!(
+            "test_cairo_canonical_path_gate failures:\n{}",
+            failures.join("\n")
+        );
+    }
 }
 
 /// Full-capacity Cairo regression suite with deterministic execution parity and stability checks.

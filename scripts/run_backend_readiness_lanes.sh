@@ -18,6 +18,8 @@ SKIP_NOIR_CONSTRAINT_EDGE_CASES_TEST=0
 SKIP_NOIR_EXTERNAL_SMOKE_TEST=0
 SKIP_NOIR_EXTERNAL_PARITY_TEST=0
 SKIP_CAIRO_INTEGRATION_TEST=0
+SKIP_CAIRO1_SCARB_TEST=0
+SKIP_CAIRO_CANONICAL_GATE_TEST=0
 SKIP_CAIRO_REGRESSION_TEST=0
 SKIP_HALO2_JSON_INTEGRATION_TEST=0
 SKIP_HALO2_REAL_CIRCUIT_TEST=0
@@ -75,6 +77,8 @@ Options:
   --skip-noir-external-smoke-test       Skip test_noir_external_nargo_prove_verify_smoke
   --skip-noir-external-parity-test      Skip test_noir_external_nargo_fuzz_parity
   --skip-cairo-integration-test         Skip test_cairo_integration
+  --skip-cairo1-scarb-test              Skip test_cairo1_scarb_prove_verify_smoke
+  --skip-cairo-canonical-gate-test      Skip test_cairo_canonical_path_gate
   --skip-cairo-regression-test          Skip test_cairo_full_capacity_regression_suite
   --skip-halo2-json-integration-test    Skip test_halo2_json_integration
   --skip-halo2-real-circuit-test        Skip test_halo2_real_circuit_constraint_coverage
@@ -116,6 +120,8 @@ while [[ $# -gt 0 ]]; do
     --skip-noir-external-smoke-test) SKIP_NOIR_EXTERNAL_SMOKE_TEST=1; shift ;;
     --skip-noir-external-parity-test) SKIP_NOIR_EXTERNAL_PARITY_TEST=1; shift ;;
     --skip-cairo-integration-test) SKIP_CAIRO_INTEGRATION_TEST=1; shift ;;
+    --skip-cairo1-scarb-test) SKIP_CAIRO1_SCARB_TEST=1; shift ;;
+    --skip-cairo-canonical-gate-test) SKIP_CAIRO_CANONICAL_GATE_TEST=1; shift ;;
     --skip-cairo-regression-test) SKIP_CAIRO_REGRESSION_TEST=1; shift ;;
     --skip-halo2-json-integration-test) SKIP_HALO2_JSON_INTEGRATION_TEST=1; shift ;;
     --skip-halo2-real-circuit-test) SKIP_HALO2_REAL_CIRCUIT_TEST=1; shift ;;
@@ -208,6 +214,12 @@ cairo_cmd=(
 )
 if [[ "$SKIP_CAIRO_INTEGRATION_TEST" -eq 1 ]]; then
   cairo_cmd+=(--skip-integration-test)
+fi
+if [[ "$SKIP_CAIRO1_SCARB_TEST" -eq 1 ]]; then
+  cairo_cmd+=(--skip-cairo1-scarb-test)
+fi
+if [[ "$SKIP_CAIRO_CANONICAL_GATE_TEST" -eq 1 ]]; then
+  cairo_cmd+=(--skip-canonical-gate-test)
 fi
 if [[ "$SKIP_CAIRO_REGRESSION_TEST" -eq 1 ]]; then
   cairo_cmd+=(--skip-regression-test)

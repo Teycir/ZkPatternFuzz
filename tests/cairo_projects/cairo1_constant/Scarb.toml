@@ -1,0 +1,5 @@
+[package]
+name = "cairo1_constant"
+version = "0.1.0"
+
+[dependencies]

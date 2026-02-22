@@ -313,12 +313,12 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 #### Cairo -> 5/5
 - [x] Replace source-assertion-only coverage fallback with trace/AIR-backed production coverage.
 - [x] Normalize Cairo1 proof handling to a structured, reproducible artifact contract (not execution-id-only payload semantics).
-- [ ] Gate both Cairo0 and Cairo1 canonical paths where applicable.
-- [ ] Expand Cairo matrix to at least 5 targets (local + external) with stone/scarb prove-verify gates.
+- [x] Gate both Cairo0 and Cairo1 canonical paths where applicable.
+- [x] Expand Cairo matrix to at least 5 targets (local + external) with stone/scarb prove-verify gates.
 - [ ] Exit criteria: Cairo score `5.0` for 14 consecutive daily scorecards.
 
 #### Circom -> 5/5
-- [ ] Add long-horizon flake gate (14-day consecutive pass requirement) for Circom keygen/compile/prove/verify lanes.
+- [x] Add long-horizon flake gate (14-day consecutive pass requirement) for Circom keygen/compile/prove/verify lanes.
 - [ ] Add hermetic include/path validation in release lanes for deterministic toolchain resolution.
 - [ ] Add large-circuit memory and throughput fitness gates in release validation.
 - [ ] Exit criteria: Circom score `5.0` for 14 consecutive daily scorecards.

@@ -20,6 +20,9 @@ Options:
   --output-dir <path>      Output directory (default: artifacts/backend_readiness/cairo)
   --skip-integration-test  Skip test_cairo_integration
   --skip-stone-prover-test Skip test_cairo_stone_prover_prove_verify_smoke
+  --skip-cairo1-scarb-test Skip test_cairo1_scarb_prove_verify_smoke
+  --skip-canonical-gate-test
+                           Skip test_cairo_canonical_path_gate
   --skip-regression-test   Skip test_cairo_full_capacity_regression_suite
   --no-build-if-missing    Do not build zk0d_batch when missing
   -h, --help               Show this help
@@ -36,6 +39,8 @@ TIMEOUT=30
 OUTPUT_DIR="artifacts/backend_readiness/cairo"
 SKIP_INTEGRATION_TEST=false
 SKIP_STONE_PROVER_TEST=false
+SKIP_CAIRO1_SCARB_TEST=false
+SKIP_CANONICAL_GATE_TEST=false
 SKIP_REGRESSION_TEST=false
 BUILD_IF_MISSING=true
 
@@ -51,6 +56,8 @@ while [[ $# -gt 0 ]]; do
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
     --skip-integration-test) SKIP_INTEGRATION_TEST=true; shift ;;
     --skip-stone-prover-test) SKIP_STONE_PROVER_TEST=true; shift ;;
+    --skip-cairo1-scarb-test) SKIP_CAIRO1_SCARB_TEST=true; shift ;;
+    --skip-canonical-gate-test) SKIP_CANONICAL_GATE_TEST=true; shift ;;
     --skip-regression-test) SKIP_REGRESSION_TEST=true; shift ;;
     --no-build-if-missing) BUILD_IF_MISSING=false; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -89,6 +96,8 @@ mkdir -p "$READINESS_BUILD_CACHE_DIR"
 STAMP="$(date -u +"%Y%m%d_%H%M%S")"
 INTEGRATION_LOG="$OUTPUT_DIR/integration_${STAMP}.log"
 STONE_PROVER_LOG="$OUTPUT_DIR/stone_prover_${STAMP}.log"
+CAIRO1_SCARB_LOG="$OUTPUT_DIR/cairo1_scarb_${STAMP}.log"
+CANONICAL_GATE_LOG="$OUTPUT_DIR/canonical_gate_${STAMP}.log"
 REGRESSION_LOG="$OUTPUT_DIR/regression_${STAMP}.log"
 MATRIX_LOG="$OUTPUT_DIR/matrix_${STAMP}.log"
 SUMMARY_TSV="$OUTPUT_DIR/summary_${STAMP}.tsv"
@@ -123,6 +132,36 @@ if ! $SKIP_STONE_PROVER_TEST; then
     STONE_PROVER_STATUS="pass"
   else
     STONE_PROVER_STATUS="fail"
+  fi
+fi
+
+CAIRO1_SCARB_EXIT=0
+CAIRO1_SCARB_STATUS="skipped"
+if ! $SKIP_CAIRO1_SCARB_TEST; then
+  set +e
+  ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo1_scarb_prove_verify_smoke -- --exact \
+    >"$CAIRO1_SCARB_LOG" 2>&1
+  CAIRO1_SCARB_EXIT=$?
+  set -e
+  if [[ "$CAIRO1_SCARB_EXIT" -eq 0 ]]; then
+    CAIRO1_SCARB_STATUS="pass"
+  else
+    CAIRO1_SCARB_STATUS="fail"
+  fi
+fi
+
+CANONICAL_GATE_EXIT=0
+CANONICAL_GATE_STATUS="skipped"
+if ! $SKIP_CANONICAL_GATE_TEST; then
+  set +e
+  ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo_canonical_path_gate -- --exact \
+    >"$CANONICAL_GATE_LOG" 2>&1
+  CANONICAL_GATE_EXIT=$?
+  set -e
+  if [[ "$CANONICAL_GATE_EXIT" -eq 0 ]]; then
+    CANONICAL_GATE_STATUS="pass"
+  else
+    CANONICAL_GATE_STATUS="fail"
   fi
 fi
 
@@ -271,6 +310,18 @@ cat > "$LATEST_JSON" <<EOF
       "log": "$STONE_PROVER_LOG"
     },
     {
+      "name": "test_cairo1_scarb_prove_verify_smoke",
+      "status": "$CAIRO1_SCARB_STATUS",
+      "exit_code": $CAIRO1_SCARB_EXIT,
+      "log": "$CAIRO1_SCARB_LOG"
+    },
+    {
+      "name": "test_cairo_canonical_path_gate",
+      "status": "$CANONICAL_GATE_STATUS",
+      "exit_code": $CANONICAL_GATE_EXIT,
+      "log": "$CANONICAL_GATE_LOG"
+    },
+    {
       "name": "test_cairo_full_capacity_regression_suite",
       "status": "$REGRESSION_STATUS",
       "exit_code": $REGRESSION_EXIT,
@@ -281,7 +332,7 @@ cat > "$LATEST_JSON" <<EOF
 EOF
 
 echo "Cairo readiness report: $LATEST_JSON"
-if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 || "$STONE_PROVER_EXIT" -ne 0 || "$REGRESSION_EXIT" -ne 0 ]]; then
+if [[ "$MATRIX_EXIT" -ne 0 || "$INTEGRATION_EXIT" -ne 0 || "$STONE_PROVER_EXIT" -ne 0 || "$CAIRO1_SCARB_EXIT" -ne 0 || "$CANONICAL_GATE_EXIT" -ne 0 || "$REGRESSION_EXIT" -ne 0 ]]; then
   exit 1
 fi
 
