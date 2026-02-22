@@ -819,12 +819,12 @@ gh run watch
 #### P2: Coverage Breadth + Oracle Completeness
 - [x] Improve spec-inference robustness against sampling blind spots (targeted boundary witness generation and combination coverage for rare input patterns).
 - [x] Expand vulnerability pattern library beyond current Circom-heavy corpus to include non-Circom/ACIR/Halo2 lookup and newer audit-derived classes.
-- [ ] Add a differential oracle path for mock backend mode (behavior comparison against at least one real backend/canonical checker) to detect backend-specific divergence.
+- [x] Add a single-backend differential oracle path (behavior comparison against an explicit real reference backend only; no fallback comparator modes) to detect backend-specific divergence without mock-mode dependence.
 
 #### Exit Evidence For This Correction Wave
-- [ ] Mutator validity report: invalid out-of-field mutation rate == `0` across stress campaign.
-- [ ] Portability report: clean-clone CVE regression lane runs without machine-specific path edits.
-- [ ] Per-backend effectiveness report: separate recall/precision for Circom, Noir, Cairo, Halo2 with explicit target counts and contribution share.
+- [x] Mutator validity report: invalid out-of-field mutation rate == `0` across stress campaign (`scripts/build_mutator_validity_report.py`, `tests/test_build_mutator_validity_report.py`, `artifacts/mutator_validity/latest_report.json`).
+- [x] Portability report: clean-clone CVE regression lane runs without machine-specific path edits (`scripts/build_cve_portability_report.py`, `tests/test_build_cve_portability_report.py`, `artifacts/portability/latest_report.json`).
+- [x] Per-backend effectiveness report: separate recall/precision for Circom, Noir, Cairo, Halo2 with explicit target counts and contribution share (`scripts/build_backend_effectiveness_report.py`, `tests/test_build_backend_effectiveness_report.py`, `artifacts/backend_effectiveness/latest_report.json`). Added a dedicated multi-backend benchmark suite + sample runner to produce non-zero per-backend rows in one shot (`targets/benchmark_suites.multibackend.dev.yaml`, `scripts/run_multibackend_effectiveness_sample.sh`, `artifacts/backend_effectiveness/latest_multibackend_report.json`).
 
 ### Non-Circom Backend Production Parity (Priority Order: Noir -> Cairo -> Halo2)
 - [x] Noir: enforce local real-circuit prove/verify smoke gate (`test_noir_local_prove_verify_smoke`, wired in `scripts/run_noir_readiness.sh`)
@@ -1347,17 +1347,17 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - [ ] Operate one integrated pipeline: `generate -> attack -> interpret -> validate -> regress`.
 
 **Modularization Blueprint (design requirement)**
-- [ ] Split deferred work into separate crates/modules with strict boundaries:
-  - `crates/zk-postroadmap-core`: shared contracts (`TrackInput`, `TrackFinding`, `ReplayArtifact`, scorecard schema, error taxonomy).
-  - `crates/zk-track-boundary`: public-input/serialization/verifier boundary testing only.
-  - `crates/zk-track-compiler`: circuit generation, compiler differential, crash/timeout classification.
-  - `crates/zk-track-semantic`: intent extraction, semantic violation ranking, exploitability classification.
-  - `crates/zk-track-crypto`: field/curve/pairing property fuzzing and reference checks.
-  - `src/pipeline/post_roadmap_runner.rs`: orchestration only (no track-specific logic).
-- [ ] Enforce interface-first integration:
-  - each track implements a common runner trait (prepare -> run -> validate -> emit).
-  - tracks communicate only through `zk-postroadmap-core` artifact contracts.
-  - no direct track-to-track imports (dependency direction: `track -> core`, `runner -> track + core`).
+- [x] Split deferred work into separate crates/modules with strict boundaries:
+  - [x] `crates/zk-postroadmap-core`: shared contracts (`TrackInput`, `TrackFinding`, `ReplayArtifact`, scorecard schema, error taxonomy).
+  - [x] `crates/zk-track-boundary`: public-input/serialization/verifier boundary testing only.
+  - [x] `crates/zk-track-compiler`: circuit generation, compiler differential, crash/timeout classification.
+  - [x] `crates/zk-track-semantic`: intent extraction, semantic violation ranking, exploitability classification.
+  - [x] `crates/zk-track-crypto`: field/curve/pairing property fuzzing and reference checks.
+  - [x] `src/pipeline/post_roadmap_runner.rs`: orchestration only (no track-specific logic).
+- [x] Enforce interface-first integration:
+  - [x] each track implements a common runner trait (prepare -> run -> validate -> emit).
+  - [x] tracks communicate only through `zk-postroadmap-core` artifact contracts.
+  - [x] no direct track-to-track imports (dependency direction: `track -> core`, `runner -> track + core`).
 - [ ] Keep adapters modular:
   - AI/LLM providers behind a single adapter interface in semantic track.
   - compiler backend adapters behind per-backend strategy interfaces in compiler track.
