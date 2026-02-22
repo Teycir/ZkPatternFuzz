@@ -25,8 +25,10 @@ pub use executor::{
 };
 
 pub use enhanced::{
-    ConstraintSimplifier, EnhancedSymbolicConfig, EnhancedSymbolicExecutor, EnhancedSymbolicStats,
-    IncrementalSolver, PathPruner, PruningStrategy,
+    ConstraintRemovalPlan, ConstraintSimplifier, ConstraintSubsetSelector,
+    ConstraintSubsetStrategy, EnhancedSymbolicConfig, EnhancedSymbolicExecutor,
+    EnhancedSymbolicStats, ExecutionMode, IncrementalSolver, PathPruner, PruningStrategy,
+    WitnessExtensionConfig, WitnessExtensionResult,
 };
 
 // Phase 4: Symbolic Execution V2 with path explosion mitigation

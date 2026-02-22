@@ -35,8 +35,10 @@ pub use symbolic::{
     Z3Solver,
 };
 pub use symbolic_enhanced::{
-    ConstraintSimplifier, EnhancedSymbolicConfig, EnhancedSymbolicExecutor, EnhancedSymbolicStats,
-    IncrementalSolver, PathPruner, PruningStrategy,
+    ConstraintRemovalPlan, ConstraintSimplifier, ConstraintSubsetSelector,
+    ConstraintSubsetStrategy, EnhancedSymbolicConfig, EnhancedSymbolicExecutor,
+    EnhancedSymbolicStats, ExecutionMode, IncrementalSolver, PathPruner, PruningStrategy,
+    WitnessExtensionConfig, WitnessExtensionResult,
 };
 
 // Phase 4: Symbolic V2 with path explosion mitigation

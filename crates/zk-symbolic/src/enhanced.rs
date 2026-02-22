@@ -21,6 +21,279 @@ const BN254_MODULUS: &str =
     "21888242871839275222246405745257275088548364400416034343698204186575808495617";
 
 // ============================================================================
+// Witness Extension Mode (Roadmap 7.3)
+// ============================================================================
+
+/// Execution mode for enhanced symbolic analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionMode {
+    /// Standard path exploration mode.
+    Standard,
+    /// Witness-extension mode for constraint-removal attacks.
+    WitnessExtension,
+}
+
+/// Strategy used to select constraints removed during witness extension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConstraintSubsetStrategy {
+    /// Remove one constraint at a time (exhaustive over single removals).
+    RemoveSingleConstraint,
+    /// Remove dependency clusters (constraints sharing symbols).
+    RemoveDependencyCluster,
+    /// Remove constraints grouped by type.
+    RemoveByType,
+}
+
+/// Configuration for witness-extension analysis.
+#[derive(Debug, Clone)]
+pub struct WitnessExtensionConfig {
+    /// Enable witness-extension mode.
+    pub enabled: bool,
+    /// Constraint-removal strategy.
+    pub subset_strategy: ConstraintSubsetStrategy,
+    /// Maximum removed constraints per subset.
+    pub max_removed_constraints: usize,
+    /// Upper bound on number of generated subsets.
+    pub max_subsets: usize,
+    /// Keep only results that violate at least one semantic invariant.
+    pub require_invariant_violation: bool,
+}
+
+impl Default for WitnessExtensionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            subset_strategy: ConstraintSubsetStrategy::RemoveSingleConstraint,
+            max_removed_constraints: 3,
+            max_subsets: 128,
+            require_invariant_violation: true,
+        }
+    }
+}
+
+/// A selected constraint-removal plan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConstraintRemovalPlan {
+    /// Constraint indices removed from the set.
+    pub removed_indices: Vec<usize>,
+    /// Strategy that produced this plan.
+    pub strategy: ConstraintSubsetStrategy,
+    /// Human-readable reason for this plan.
+    pub reason: String,
+}
+
+/// Constraint subset selector for witness-extension attack planning.
+#[derive(Debug, Clone)]
+pub struct ConstraintSubsetSelector {
+    strategy: ConstraintSubsetStrategy,
+    max_removed_constraints: usize,
+    max_subsets: usize,
+}
+
+impl ConstraintSubsetSelector {
+    pub fn new(strategy: ConstraintSubsetStrategy) -> Self {
+        Self {
+            strategy,
+            max_removed_constraints: 3,
+            max_subsets: 128,
+        }
+    }
+
+    pub fn with_max_removed_constraints(mut self, value: usize) -> Self {
+        self.max_removed_constraints = value.max(1);
+        self
+    }
+
+    pub fn with_max_subsets(mut self, value: usize) -> Self {
+        self.max_subsets = value.max(1);
+        self
+    }
+
+    pub fn select(&self, constraints: &[SymbolicConstraint]) -> Vec<ConstraintRemovalPlan> {
+        if constraints.is_empty() {
+            return Vec::new();
+        }
+
+        let plans = match self.strategy {
+            ConstraintSubsetStrategy::RemoveSingleConstraint => {
+                self.select_single_constraint(constraints)
+            }
+            ConstraintSubsetStrategy::RemoveDependencyCluster => {
+                self.select_dependency_clusters(constraints)
+            }
+            ConstraintSubsetStrategy::RemoveByType => self.select_by_type(constraints),
+        };
+
+        plans.into_iter().take(self.max_subsets).collect()
+    }
+
+    fn select_single_constraint(
+        &self,
+        constraints: &[SymbolicConstraint],
+    ) -> Vec<ConstraintRemovalPlan> {
+        let mut plans = Vec::new();
+        for index in 0..constraints.len() {
+            plans.push(ConstraintRemovalPlan {
+                removed_indices: vec![index],
+                strategy: ConstraintSubsetStrategy::RemoveSingleConstraint,
+                reason: format!("single_constraint_index_{}", index),
+            });
+            if plans.len() >= self.max_subsets {
+                break;
+            }
+        }
+        plans
+    }
+
+    fn select_dependency_clusters(
+        &self,
+        constraints: &[SymbolicConstraint],
+    ) -> Vec<ConstraintRemovalPlan> {
+        let mut symbols_per_constraint = Vec::with_capacity(constraints.len());
+        for constraint in constraints {
+            symbols_per_constraint.push(constraint_symbols(constraint));
+        }
+
+        let mut plans = Vec::new();
+        let mut visited = vec![false; constraints.len()];
+        for start in 0..constraints.len() {
+            if visited[start] {
+                continue;
+            }
+
+            let mut stack = vec![start];
+            let mut cluster = Vec::new();
+            visited[start] = true;
+
+            while let Some(current) = stack.pop() {
+                cluster.push(current);
+                for candidate in 0..constraints.len() {
+                    if visited[candidate] || candidate == current {
+                        continue;
+                    }
+
+                    let intersects = symbols_per_constraint[current]
+                        .iter()
+                        .any(|symbol| symbols_per_constraint[candidate].contains(symbol));
+                    if intersects {
+                        visited[candidate] = true;
+                        stack.push(candidate);
+                    }
+                }
+            }
+
+            cluster.sort_unstable();
+            if cluster.len() > self.max_removed_constraints {
+                cluster.truncate(self.max_removed_constraints);
+            }
+            if cluster.is_empty() {
+                continue;
+            }
+
+            plans.push(ConstraintRemovalPlan {
+                removed_indices: cluster.clone(),
+                strategy: ConstraintSubsetStrategy::RemoveDependencyCluster,
+                reason: format!("dependency_cluster_size_{}", cluster.len()),
+            });
+
+            if plans.len() >= self.max_subsets {
+                break;
+            }
+        }
+
+        plans
+    }
+
+    fn select_by_type(&self, constraints: &[SymbolicConstraint]) -> Vec<ConstraintRemovalPlan> {
+        let mut grouped: HashMap<&'static str, Vec<usize>> = HashMap::new();
+        for (index, constraint) in constraints.iter().enumerate() {
+            grouped
+                .entry(classify_constraint_type(constraint))
+                .or_default()
+                .push(index);
+        }
+
+        let mut keys = grouped.keys().copied().collect::<Vec<_>>();
+        keys.sort_unstable();
+
+        let mut plans = Vec::new();
+        for key in keys {
+            let mut indices = grouped.remove(key).unwrap_or_default();
+            indices.sort_unstable();
+            if indices.len() > self.max_removed_constraints {
+                indices.truncate(self.max_removed_constraints);
+            }
+            if indices.is_empty() {
+                continue;
+            }
+
+            plans.push(ConstraintRemovalPlan {
+                removed_indices: indices.clone(),
+                strategy: ConstraintSubsetStrategy::RemoveByType,
+                reason: format!("constraint_type_group_{}", key),
+            });
+
+            if plans.len() >= self.max_subsets {
+                break;
+            }
+        }
+
+        plans
+    }
+}
+
+fn classify_constraint_type(constraint: &SymbolicConstraint) -> &'static str {
+    match constraint {
+        SymbolicConstraint::Eq(_, _)
+        | SymbolicConstraint::Neq(_, _)
+        | SymbolicConstraint::Lt(_, _)
+        | SymbolicConstraint::Lte(_, _) => "comparison",
+        SymbolicConstraint::R1CS { .. } => "r1cs",
+        SymbolicConstraint::Boolean(_) => "boolean",
+        SymbolicConstraint::Range(_, _) => "range",
+        SymbolicConstraint::And(_, _)
+        | SymbolicConstraint::Or(_, _)
+        | SymbolicConstraint::Not(_) => "logical",
+        SymbolicConstraint::True | SymbolicConstraint::False => "literal",
+    }
+}
+
+fn constraint_symbols(constraint: &SymbolicConstraint) -> HashSet<String> {
+    fn collect(constraint: &SymbolicConstraint, symbols: &mut HashSet<String>) {
+        match constraint {
+            SymbolicConstraint::Eq(a, b)
+            | SymbolicConstraint::Neq(a, b)
+            | SymbolicConstraint::Lt(a, b)
+            | SymbolicConstraint::Lte(a, b)
+            | SymbolicConstraint::Range(a, b) => {
+                symbols.extend(a.symbols());
+                symbols.extend(b.symbols());
+            }
+            SymbolicConstraint::R1CS { a, b, c } => {
+                symbols.extend(a.symbols());
+                symbols.extend(b.symbols());
+                symbols.extend(c.symbols());
+            }
+            SymbolicConstraint::Boolean(v) => {
+                symbols.extend(v.symbols());
+            }
+            SymbolicConstraint::And(c1, c2) | SymbolicConstraint::Or(c1, c2) => {
+                collect(c1, symbols);
+                collect(c2, symbols);
+            }
+            SymbolicConstraint::Not(c) => {
+                collect(c, symbols);
+            }
+            SymbolicConstraint::True | SymbolicConstraint::False => {}
+        }
+    }
+
+    let mut symbols = HashSet::new();
+    collect(constraint, &mut symbols);
+    symbols
+}
+
+// ============================================================================
 // Path Pruning Strategies
 // ============================================================================
 
@@ -659,6 +932,29 @@ impl Default for ConstraintSimplifier {
 // Incremental Z3 Solver
 // ============================================================================
 
+/// Result of a single witness-extension attempt.
+#[derive(Debug, Clone)]
+pub struct WitnessExtensionResult {
+    /// Constraint indices that were removed.
+    pub removed_indices: Vec<usize>,
+    /// Whether solver found an extension for the kept constraints.
+    pub sat: bool,
+    /// Model assignments returned by the solver.
+    pub assignments: HashMap<String, FieldElement>,
+    /// Number of removed constraints still satisfied by the extended witness.
+    pub removed_constraints_satisfied: usize,
+    /// Total removed constraints evaluated.
+    pub removed_constraints_total: usize,
+    /// Indices of semantic invariants violated by the extended witness.
+    pub violated_invariants: Vec<usize>,
+}
+
+impl WitnessExtensionResult {
+    pub fn violates_invariants(&self) -> bool {
+        !self.violated_invariants.is_empty()
+    }
+}
+
 /// Incremental solver using Z3's push/pop mechanism
 pub struct IncrementalSolver {
     timeout_ms: u32,
@@ -727,6 +1023,67 @@ impl IncrementalSolver {
         result
     }
 
+    /// Witness-extension solving:
+    /// - remove selected constraints,
+    /// - keep selected witness symbols fixed,
+    /// - solve for an extended witness on the remaining constraints,
+    /// - evaluate removed constraints and semantic invariants.
+    pub fn solve_witness_extension(
+        &mut self,
+        constraints: &[SymbolicConstraint],
+        removed_indices: &[usize],
+        base_witness: &HashMap<String, FieldElement>,
+        fixed_symbols: &HashSet<String>,
+        semantic_invariants: &[SymbolicConstraint],
+    ) -> WitnessExtensionResult {
+        let removed = removed_indices.iter().copied().collect::<HashSet<_>>();
+        let mut kept_constraints = Vec::new();
+        let mut removed_constraints = Vec::new();
+        for (index, constraint) in constraints.iter().enumerate() {
+            if removed.contains(&index) {
+                removed_constraints.push(constraint.clone());
+            } else {
+                kept_constraints.push(constraint.clone());
+            }
+        }
+
+        let sat_result = self.solve_constraints_with_fixed_assignments(
+            &kept_constraints,
+            base_witness,
+            fixed_symbols,
+        );
+
+        let mut result = WitnessExtensionResult {
+            removed_indices: removed_indices.to_vec(),
+            sat: false,
+            assignments: HashMap::new(),
+            removed_constraints_satisfied: 0,
+            removed_constraints_total: removed_constraints.len(),
+            violated_invariants: Vec::new(),
+        };
+
+        let SolverResult::Sat(assignments) = sat_result else {
+            return result;
+        };
+
+        result.sat = true;
+        result.assignments = assignments;
+
+        for constraint in &removed_constraints {
+            if evaluate_constraint_with_assignments(constraint, &result.assignments) == Some(true) {
+                result.removed_constraints_satisfied += 1;
+            }
+        }
+
+        for (index, invariant) in semantic_invariants.iter().enumerate() {
+            if evaluate_constraint_with_assignments(invariant, &result.assignments) == Some(false) {
+                result.violated_invariants.push(index);
+            }
+        }
+
+        result
+    }
+
     /// Use Z3's push/pop for incremental solving
     fn solve_with_push_pop(
         &self,
@@ -790,6 +1147,59 @@ impl IncrementalSolver {
         solver.pop(1);
 
         result
+    }
+
+    fn solve_constraints_with_fixed_assignments(
+        &self,
+        constraints: &[SymbolicConstraint],
+        base_witness: &HashMap<String, FieldElement>,
+        fixed_symbols: &HashSet<String>,
+    ) -> SolverResult {
+        let mut cfg = Config::new();
+        cfg.set_model_generation(true);
+        let ctx = Context::new(&cfg);
+        let solver = Solver::new(&ctx);
+
+        let mut params = z3::Params::new(&ctx);
+        params.set_u32("timeout", self.timeout_ms);
+        if let Some(seed) = self.random_seed {
+            let seed_u32 = (seed % (u32::MAX as u64)) as u32;
+            params.set_u32("random_seed", seed_u32);
+            params.set_u32("smt.random_seed", seed_u32);
+            params.set_u32("sat.random_seed", seed_u32);
+        }
+        solver.set_params(&params);
+
+        let mut vars: HashMap<String, ast::Int> = HashMap::new();
+        for constraint in constraints {
+            let z3_constraint = self.constraint_to_z3(&ctx, constraint, &mut vars);
+            solver.assert(&z3_constraint);
+        }
+
+        // Pin known witness symbols that represent subset-A assignments.
+        for symbol in fixed_symbols {
+            if let Some(value) = base_witness.get(symbol) {
+                let var = vars
+                    .entry(symbol.clone())
+                    .or_insert_with(|| ast::Int::new_const(&ctx, symbol.as_str()))
+                    .clone();
+                let decimal = value.to_decimal_string();
+                if let Some(int_value) = ast::Int::from_str(&ctx, &decimal) {
+                    solver.assert(&var._eq(&int_value));
+                }
+            }
+        }
+
+        self.add_field_bounds(&ctx, &solver, &vars);
+
+        match solver.check() {
+            SatResult::Sat => {
+                let model = solver.get_model().unwrap();
+                SolverResult::Sat(self.extract_model(&model, &vars))
+            }
+            SatResult::Unsat => SolverResult::Unsat,
+            SatResult::Unknown => SolverResult::Unknown,
+        }
     }
 
     /// Convert constraint to Z3 (simplified version - reuses logic from Z3Solver)
@@ -971,6 +1381,92 @@ impl Default for IncrementalSolver {
     }
 }
 
+fn evaluate_symbolic_value(
+    value: &SymbolicValue,
+    assignments: &HashMap<String, FieldElement>,
+) -> Option<FieldElement> {
+    match value {
+        SymbolicValue::Concrete(v) => Some(v.clone()),
+        SymbolicValue::Symbol(name) => assignments.get(name).cloned(),
+        SymbolicValue::Add(a, b) => {
+            let a_val = evaluate_symbolic_value(a, assignments)?;
+            let b_val = evaluate_symbolic_value(b, assignments)?;
+            Some(a_val.add(&b_val))
+        }
+        SymbolicValue::Mul(a, b) => {
+            let a_val = evaluate_symbolic_value(a, assignments)?;
+            let b_val = evaluate_symbolic_value(b, assignments)?;
+            Some(a_val.mul(&b_val))
+        }
+        SymbolicValue::Sub(a, b) => {
+            let a_val = evaluate_symbolic_value(a, assignments)?;
+            let b_val = evaluate_symbolic_value(b, assignments)?;
+            Some(a_val.sub(&b_val))
+        }
+        SymbolicValue::Neg(v) => {
+            let inner = evaluate_symbolic_value(v, assignments)?;
+            Some(inner.neg())
+        }
+        SymbolicValue::Div(_, _) | SymbolicValue::Ite(_, _, _) => None,
+    }
+}
+
+fn evaluate_constraint_with_assignments(
+    constraint: &SymbolicConstraint,
+    assignments: &HashMap<String, FieldElement>,
+) -> Option<bool> {
+    match constraint {
+        SymbolicConstraint::Eq(a, b) => {
+            let a_val = evaluate_symbolic_value(a, assignments)?;
+            let b_val = evaluate_symbolic_value(b, assignments)?;
+            Some(a_val == b_val)
+        }
+        SymbolicConstraint::Neq(a, b) => {
+            let a_val = evaluate_symbolic_value(a, assignments)?;
+            let b_val = evaluate_symbolic_value(b, assignments)?;
+            Some(a_val != b_val)
+        }
+        SymbolicConstraint::Lt(a, b) => {
+            let a_val = evaluate_symbolic_value(a, assignments)?;
+            let b_val = evaluate_symbolic_value(b, assignments)?;
+            Some(a_val.to_biguint() < b_val.to_biguint())
+        }
+        SymbolicConstraint::Lte(a, b) => {
+            let a_val = evaluate_symbolic_value(a, assignments)?;
+            let b_val = evaluate_symbolic_value(b, assignments)?;
+            Some(a_val.to_biguint() <= b_val.to_biguint())
+        }
+        SymbolicConstraint::R1CS { a, b, c } => {
+            let a_val = evaluate_symbolic_value(a, assignments)?;
+            let b_val = evaluate_symbolic_value(b, assignments)?;
+            let c_val = evaluate_symbolic_value(c, assignments)?;
+            Some(a_val.mul(&b_val) == c_val)
+        }
+        SymbolicConstraint::Boolean(v) => {
+            let value = evaluate_symbolic_value(v, assignments)?;
+            Some(value.is_zero() || value.is_one())
+        }
+        SymbolicConstraint::Range(v, bound) => {
+            let value = evaluate_symbolic_value(v, assignments)?;
+            let upper = evaluate_symbolic_value(bound, assignments)?;
+            Some(value.to_biguint() < upper.to_biguint())
+        }
+        SymbolicConstraint::And(left, right) => Some(
+            evaluate_constraint_with_assignments(left, assignments)?
+                && evaluate_constraint_with_assignments(right, assignments)?,
+        ),
+        SymbolicConstraint::Or(left, right) => Some(
+            evaluate_constraint_with_assignments(left, assignments)?
+                || evaluate_constraint_with_assignments(right, assignments)?,
+        ),
+        SymbolicConstraint::Not(inner) => {
+            Some(!evaluate_constraint_with_assignments(inner, assignments)?)
+        }
+        SymbolicConstraint::True => Some(true),
+        SymbolicConstraint::False => Some(false),
+    }
+}
+
 // ============================================================================
 // Enhanced Symbolic Executor
 // ============================================================================
@@ -996,6 +1492,10 @@ pub struct EnhancedSymbolicConfig {
     pub solutions_per_path: usize,
     /// Loop bound for loop detection
     pub loop_bound: usize,
+    /// Execution mode for this symbolic run.
+    pub execution_mode: ExecutionMode,
+    /// Witness-extension specific settings.
+    pub witness_extension: WitnessExtensionConfig,
 }
 
 impl Default for EnhancedSymbolicConfig {
@@ -1010,6 +1510,8 @@ impl Default for EnhancedSymbolicConfig {
             incremental_solving: true,
             solutions_per_path: 3,
             loop_bound: 10,
+            execution_mode: ExecutionMode::Standard,
+            witness_extension: WitnessExtensionConfig::default(),
         }
     }
 }
@@ -1080,6 +1582,47 @@ impl EnhancedSymbolicExecutor {
     pub fn update_coverage(&mut self, bitmap: Vec<bool>) {
         self.coverage_bitmap = bitmap.clone();
         self.pruner = self.pruner.clone().with_coverage_bitmap(bitmap);
+    }
+
+    /// Execute witness-extension analysis over generated removal plans.
+    pub fn run_witness_extension(
+        &mut self,
+        constraints: &[SymbolicConstraint],
+        base_witness: &HashMap<String, FieldElement>,
+        fixed_symbols: &HashSet<String>,
+        semantic_invariants: &[SymbolicConstraint],
+    ) -> Vec<WitnessExtensionResult> {
+        if self.config.execution_mode != ExecutionMode::WitnessExtension
+            || !self.config.witness_extension.enabled
+        {
+            return Vec::new();
+        }
+
+        let selector = ConstraintSubsetSelector::new(self.config.witness_extension.subset_strategy)
+            .with_max_removed_constraints(self.config.witness_extension.max_removed_constraints)
+            .with_max_subsets(self.config.witness_extension.max_subsets);
+
+        let plans = selector.select(constraints);
+        let mut results = Vec::new();
+        for plan in plans {
+            let result = self.solver.solve_witness_extension(
+                constraints,
+                &plan.removed_indices,
+                base_witness,
+                fixed_symbols,
+                semantic_invariants,
+            );
+
+            if self.config.witness_extension.require_invariant_violation
+                && !result.violates_invariants()
+            {
+                continue;
+            }
+
+            results.push(result);
+        }
+
+        results
     }
 
     /// Get next state to explore (priority-based)
