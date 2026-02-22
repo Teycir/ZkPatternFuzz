@@ -9,6 +9,7 @@
 
 pub mod alt_witness_solver;
 pub mod constraint_types;
+pub mod limb_analysis;
 pub mod proof_forgery;
 pub mod r1cs_parser;
 pub mod r1cs_to_smt;
@@ -24,6 +25,10 @@ pub use constraint_types::{
     LinearCombination, LookupConstraint, LookupTable, MemoryOpType, ParsedConstraintSet, PlonkGate,
     PolynomialConstraint, PolynomialTerm, R1CSConstraint, RangeConstraint, RangeMethod,
     UnknownLookupPolicy, WireRef,
+};
+pub use limb_analysis::{
+    detect_limb_decomposition, DetectedLimb, LimbAnalysisConfig, LimbAnalysisReport, LimbAnalyzer,
+    LimbReconstruction, LimbSignalSource, LimbTerm,
 };
 
 pub use proof_forgery::{

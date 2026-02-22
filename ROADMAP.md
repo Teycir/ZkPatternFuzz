@@ -364,7 +364,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add semantic oracle engine that checks invariants against witness/proof pairs (`crates/zk-core/src/invariants.rs`, `src/fuzzer/invariant_checker.rs`)
 - [x] Integrate with existing `spec_inference.rs` for auto-generated invariants
 - [x] Add invariant violation reporting with counterexamples
-- [ ] Add regression tests with known semantic bugs (underconstrained Merkle, nullifier replay)
+- [x] Add regression tests with known semantic bugs (underconstrained Merkle, nullifier replay)
 
 #### Exit Criteria
 - [ ] 5+ real vulnerability patterns expressible as invariants
@@ -380,7 +380,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 **Solution:** Dedicated oracle for limb-decomposed arithmetic.
 
 #### Implementation Tasks
-- [ ] Add limb decomposition detector in constraint analysis (`crates/zk-constraints/src/limb_analysis.rs`)
+- [x] Add limb decomposition detector in constraint analysis (`crates/zk-constraints/src/limb_analysis.rs`)
   - Identify variables representing limbs (naming patterns, bit-width constraints)
   - Track limb reconstruction constraints (sum of limbs = full value)
 - [ ] Implement limb boundary fuzzer
