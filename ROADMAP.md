@@ -416,11 +416,11 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
   - Start with valid witness for subset A
   - Solve for remaining constraints B with A fixed
   - Check if extended witness violates semantic invariants
-- [ ] Integrate with semantic invariant checker (Phase 7.1)
-- [ ] Add test cases with known constraint-removal vulnerabilities
+- [x] Integrate with semantic invariant checker (Phase 7.1)
+- [x] Add test cases with known constraint-removal vulnerabilities
 
 #### Exit Criteria
-- [ ] Finds underconstrained bugs by removing <=3 constraints
+- [x] Finds underconstrained bugs by removing <=3 constraints
 - [ ] Detects >=70% of constraint-removal bugs in test suite
 - [ ] Completes within 60s timeout for circuits with <10K constraints
 
