@@ -50,3 +50,30 @@ fn test_cairo1_arguments_json_serialization() {
     ]);
     assert_eq!(args, "[\"3\", \"42\"]");
 }
+
+#[test]
+fn test_cairo1_proof_artifact_roundtrip() {
+    let witness = vec![FieldElement::from_u64(3), FieldElement::from_u64(42)];
+    let args_json = CairoTarget::cairo1_arguments_json(&witness);
+    let artifact =
+        CairoTarget::build_cairo1_proof_artifact("run_abc123", &witness, args_json.clone());
+
+    let encoded = CairoTarget::serialize_cairo1_proof_artifact(&artifact)
+        .expect("serialize Cairo1 proof artifact contract");
+    let parsed = CairoTarget::parse_cairo1_proof_artifact(&encoded)
+        .expect("parse Cairo1 proof artifact contract");
+
+    assert_eq!(parsed, artifact);
+    assert_eq!(parsed.witness_args_json, args_json);
+}
+
+#[test]
+fn test_parse_cairo1_proof_artifact_rejects_legacy_execution_id_payload() {
+    let err = CairoTarget::parse_cairo1_proof_artifact(b"run_legacy_execution_id")
+        .expect_err("legacy execution-id payload must be rejected");
+    assert!(
+        err.to_string()
+            .contains("Invalid Cairo1 proof artifact format"),
+        "unexpected error: {err}"
+    );
+}

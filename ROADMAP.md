@@ -312,7 +312,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 #### Cairo -> 5/5
 - [x] Replace source-assertion-only coverage fallback with trace/AIR-backed production coverage.
-- [ ] Normalize Cairo1 proof handling to a structured, reproducible artifact contract (not execution-id-only payload semantics).
+- [x] Normalize Cairo1 proof handling to a structured, reproducible artifact contract (not execution-id-only payload semantics).
 - [ ] Gate both Cairo0 and Cairo1 canonical paths where applicable.
 - [ ] Expand Cairo matrix to at least 5 targets (local + external) with stone/scarb prove-verify gates.
 - [ ] Exit criteria: Cairo score `5.0` for 14 consecutive daily scorecards.

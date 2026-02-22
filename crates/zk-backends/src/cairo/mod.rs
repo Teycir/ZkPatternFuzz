@@ -8,6 +8,7 @@
 use crate::TargetCircuit;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -38,8 +39,6 @@ pub struct CairoTarget {
     cairo_version: CairoVersion,
     /// Configuration
     config: CairoConfig,
-    /// Last Cairo1 execution id produced by `scarb prove --execute`.
-    cairo1_last_execution_id: Mutex<Option<String>>,
     /// Last runtime-backed coverage sample captured during execution.
     runtime_coverage_sample: Mutex<Option<CairoRuntimeCoverageSample>>,
 }
@@ -58,6 +57,18 @@ pub struct CairoRuntimeCoverageSample {
     pub source: String,
     pub trace_bytes: u64,
     pub memory_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct Cairo1ProofArtifact {
+    contract_version: u32,
+    framework: String,
+    backend: String,
+    proof_transport: String,
+    execution_id: String,
+    witness_count: usize,
+    witness_args_json: String,
+    witness_sha256: String,
 }
 
 /// Cairo program metadata
@@ -130,7 +141,6 @@ impl CairoTarget {
             compiled: false,
             cairo_version,
             config: CairoConfig::default(),
-            cairo1_last_execution_id: Mutex::new(None),
             runtime_coverage_sample: Mutex::new(None),
         })
     }
@@ -653,6 +663,100 @@ impl CairoTarget {
         format!("[{}]", args.join(", "))
     }
 
+    fn cairo1_witness_digest_hex(inputs: &[FieldElement]) -> String {
+        let mut hasher = Sha256::new();
+        for value in inputs {
+            hasher.update(value.0);
+        }
+        hex::encode(hasher.finalize())
+    }
+
+    fn build_cairo1_proof_artifact(
+        execution_id: &str,
+        witness: &[FieldElement],
+        witness_args_json: String,
+    ) -> Cairo1ProofArtifact {
+        Cairo1ProofArtifact {
+            contract_version: 1,
+            framework: "cairo".to_string(),
+            backend: "scarb".to_string(),
+            proof_transport: "execution_id".to_string(),
+            execution_id: execution_id.to_string(),
+            witness_count: witness.len(),
+            witness_args_json,
+            witness_sha256: Self::cairo1_witness_digest_hex(witness),
+        }
+    }
+
+    fn cairo1_proof_contract_path(&self) -> PathBuf {
+        self.build_dir.join("cairo1_proof_contract.json")
+    }
+
+    fn serialize_cairo1_proof_artifact(artifact: &Cairo1ProofArtifact) -> Result<Vec<u8>> {
+        serde_json::to_vec_pretty(artifact)
+            .context("Failed serializing Cairo1 proof artifact contract")
+    }
+
+    fn parse_cairo1_proof_artifact(proof: &[u8]) -> Result<Cairo1ProofArtifact> {
+        let artifact: Cairo1ProofArtifact =
+            serde_json::from_slice(proof).context("Invalid Cairo1 proof artifact format")?;
+
+        if artifact.contract_version != 1 {
+            anyhow::bail!(
+                "Unsupported Cairo1 proof contract version {}; expected 1",
+                artifact.contract_version
+            );
+        }
+        if artifact.framework != "cairo" {
+            anyhow::bail!(
+                "Invalid Cairo1 proof contract framework '{}'; expected 'cairo'",
+                artifact.framework
+            );
+        }
+        if artifact.backend != "scarb" {
+            anyhow::bail!(
+                "Invalid Cairo1 proof contract backend '{}'; expected 'scarb'",
+                artifact.backend
+            );
+        }
+        if artifact.proof_transport != "execution_id" {
+            anyhow::bail!(
+                "Invalid Cairo1 proof transport '{}'; expected 'execution_id'",
+                artifact.proof_transport
+            );
+        }
+        if artifact.execution_id.trim().is_empty() {
+            anyhow::bail!("Cairo1 proof contract has empty execution_id");
+        }
+        let parsed_args: serde_json::Value = serde_json::from_str(&artifact.witness_args_json)
+            .context("Cairo1 proof contract witness_args_json is not valid JSON")?;
+        if !parsed_args.is_array() {
+            anyhow::bail!("Cairo1 proof contract witness_args_json must be a JSON array");
+        }
+
+        Ok(artifact)
+    }
+
+    fn write_cairo1_proof_artifact(&self, artifact: &Cairo1ProofArtifact) -> Result<PathBuf> {
+        let contract_path = self.cairo1_proof_contract_path();
+        if let Some(parent) = contract_path.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Failed creating Cairo1 proof contract directory '{}'",
+                    parent.display()
+                )
+            })?;
+        }
+        let payload = Self::serialize_cairo1_proof_artifact(artifact)?;
+        std::fs::write(&contract_path, payload).with_context(|| {
+            format!(
+                "Failed writing Cairo1 proof contract '{}'",
+                contract_path.display()
+            )
+        })?;
+        Ok(contract_path)
+    }
+
     fn parse_cairo1_execution_id(output: &str) -> Option<String> {
         for line in output.lines() {
             let lowered = line.to_ascii_lowercase();
@@ -865,12 +969,9 @@ impl TargetCircuit for CairoTarget {
                     "Cairo1 proof generation succeeded but execution id was not found in scarb output"
                 )
             })?;
-            *self
-                .cairo1_last_execution_id
-                .lock()
-                .expect("cairo1 execution id lock poisoned during prove") =
-                Some(execution_id.clone());
-            return Ok(execution_id.into_bytes());
+            let artifact = Self::build_cairo1_proof_artifact(&execution_id, witness, args_json);
+            let _contract_path = self.write_cairo1_proof_artifact(&artifact)?;
+            return Self::serialize_cairo1_proof_artifact(&artifact);
         }
 
         let compiled_path = self
@@ -949,26 +1050,12 @@ impl TargetCircuit for CairoTarget {
                 .parent()
                 .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
 
-            let execution_id_from_proof = std::str::from_utf8(proof)
-                .ok()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string);
-            let execution_id = execution_id_from_proof.or_else(|| {
-                self.cairo1_last_execution_id
-                    .lock()
-                    .expect("cairo1 execution id lock poisoned during verify")
-                    .clone()
-            });
-            let execution_id = execution_id.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Cairo1 verify requires an execution id from prove output; got empty proof payload"
-                )
-            })?;
+            let artifact = Self::parse_cairo1_proof_artifact(proof)
+                .context("Cairo1 verify requires structured proof artifact contract")?;
 
             let output = {
                 let mut cmd = Command::new("scarb");
-                cmd.args(["verify", "--execution-id", &execution_id])
+                cmd.args(["verify", "--execution-id", &artifact.execution_id])
                     .current_dir(project_dir);
                 crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
                     .context("Failed to run scarb verify for Cairo1")?
