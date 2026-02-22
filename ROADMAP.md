@@ -809,7 +809,7 @@ gh run watch
 - [x] Add regression tests that assert mutators always produce valid field elements for BN254 and preserve boundary semantics (`0`, `1`, `p-1`, `p`).
 
 #### P1: Signal Quality + Cross-Backend Depth
-- [ ] Upgrade proof-soundness mutation from random byte-noise to algebraically-aware transforms:
+- [x] Upgrade proof-soundness mutation from random byte-noise to algebraically-aware transforms:
   - implement structure-aware mutation hooks for supported proof systems (or explicitly gate unsupported systems)
   - keep random-byte mutation only as a negative-control lane, not a primary soundness signal
 - [ ] Reduce backend depth imbalance (Circom vs Noir/Halo2/Cairo):
@@ -846,6 +846,528 @@ gh run watch
 - [x] Add CI panic-surface gate for production code to block new `.unwrap()`/`.expect()` outside tests/docs, with an explicit allowlist for proven invariants (`scripts/check_panic_surface.py`, `config/panic_surface_allowlist.txt`, `.github/workflows/ci.yml`)
 - [x] Add strict external-tool sandbox execution mode (namespace/seccomp wrapper) for backend commands (`circom`, `snarkjs`, `nargo`, `scarb`, `cargo`) and enforce it in release readiness lanes (`crates/zk-backends/src/util.rs`, `src/reporting/command_timeout.rs`, `scripts/run_backend_readiness_lanes.sh`, `.github/workflows/release_validation.yml`)
 - [x] Publish an explicit security assumptions and threat model document for fuzzing/evidence flows and backend toolchain trust boundaries (`docs/SECURITY_THREAT_MODEL.md`)
+
+### AI-Powered Semantic Intent Analysis (2026-02-22)
+
+**Goal:** Bridge the gap between constraint satisfaction and semantic correctness by using AI to understand developer intent from documentation/comments.
+
+**Execution Policy:** This section is deferred and starts only after the current roadmap is complete (Phase 8 sustained-gate exit met). It is not part of active release gating.
+
+**The Problem:**
+- Fuzzer generates witnesses that satisfy all constraints
+- But some solutions violate intended semantics ("extra" solutions)
+- Manual auditors catch these by understanding intent from docs/comments
+- Current fuzzing misses semantic bugs that pass constraint checks
+
+#### Future P0 (Post-Roadmap): Intent Extraction & Semantic Oracle
+- [ ] Design intent extraction pipeline:
+  - [ ] Parse circuit source files for inline comments and docstrings
+  - [ ] Extract README/specification documents from project root
+  - [ ] Build structured intent representation (expected behaviors, invariants, security properties)
+- [ ] Implement AI-powered intent analyzer:
+  - [ ] Use LLM (Mistral/Claude/GPT-4) to extract semantic requirements from natural language
+  - [ ] Generate formal invariants from informal descriptions
+  - [ ] Identify security-critical properties ("must never", "always", "only if")
+- [ ] Build semantic violation detector:
+  - [ ] Compare fuzzer-generated witnesses against extracted intent
+  - [ ] Classify violations: exploitable vs benign
+  - [ ] Rank by severity based on security impact
+- [ ] Add exploitability classifier:
+  - [ ] AI analyzes which "extra solutions" enable attacks
+  - [ ] Generate proof-of-concept exploits for confirmed violations
+  - [ ] Provide natural language explanations of vulnerability
+
+#### Implementation Structure
+```
+crates/zk-semantic-analysis/
+├── src/
+│   ├── intent_extractor.rs    # Parse docs/comments
+│   ├── ai_analyzer.rs          # LLM-powered intent understanding
+│   ├── semantic_oracle.rs      # Violation detection
+│   ├── exploitability.rs       # Classify attack potential
+│   └── report_generator.rs     # Human-readable findings
+src/attacks/semantic_violation.rs  # Attack integration
+```
+
+#### Workflow Example
+```yaml
+# Circuit comment: "Only merkle tree members can withdraw"
+# Fuzzer finds: witness that satisfies constraints but bypasses membership check
+# AI detects: intent violation ("only members" → universal quantifier)
+# Classifier: EXPLOITABLE (unauthorized withdrawal)
+# Output: "Constraint gap allows non-members to withdraw funds"
+```
+
+#### Exit Criteria
+- [ ] Extract intent from 20+ real-world circuits with docs/comments
+- [ ] Detect ≥3 semantic violations missed by constraint-only analysis
+- [ ] Achieve ≥80% precision on exploitability classification (manual validation)
+- [ ] Generate actionable reports with fix suggestions
+
+#### Integration Points
+- Extends existing `underconstrained` attack with semantic awareness
+- Feeds into `invariant_checker.rs` with AI-generated invariants
+- Complements `witness_extension` attack with intent-guided search
+- Enhances reporting with natural language vulnerability explanations
+
+#### Value Proposition
+- **Catches semantic bugs:** Detects vulnerabilities that pass all constraint checks
+- **Scales audit expertise:** Automates intent understanding that requires human reasoning
+- **Reduces false positives:** Distinguishes exploitable violations from benign edge cases
+- **Actionable output:** Provides fix suggestions based on intended semantics
+
+**Status:** ⏸ Deferred (post-roadmap backlog; queued after current roadmap completion)
+
+---
+
+### Compiler Fuzzing (2026-02-22)
+
+**Goal:** Extend fuzzing from circuit inputs to circuit structure itself, enabling compiler edge-case detection and semantic correctness validation.
+
+**Execution Policy:** This section is deferred and starts only after the current roadmap is complete (Phase 8 sustained-gate exit met). It is not part of active release gating.
+
+#### Future P1 (Post-Roadmap): Adversarial Circuit Generation & Compiler Testing
+- [ ] **Programmatic Circuit Generation:**
+  - [ ] Design circuit generation DSL with backend-specific syntax templates (Circom/Noir/Halo2/Cairo)
+  - [ ] Implement bulk generator: produce 1000+ random circuits per backend
+  - [ ] Add mutation strategies:
+    - [ ] Deep nesting (trigger stack/recursion limits)
+    - [ ] Wide constraints (trigger memory/compilation limits)
+    - [ ] Pathological loops (trigger optimization bugs)
+    - [ ] Mixed types (trigger type checker edge cases)
+    - [ ] Malformed IR (trigger parser/validator bugs)
+  - [ ] Add AI-powered adversarial pattern generator:
+    - [ ] LLM analyzes known compiler bugs from GitHub issues
+    - [ ] Generate circuit patterns designed to trigger specific edge cases
+    - [ ] Evolve patterns based on compiler crash feedback
+
+- [ ] **Semantic Intent Validation:**
+  - [ ] Extract semantic intent from circuit comments/docs
+  - [ ] Compile generated circuit and extract constraint count/structure
+  - [ ] Verify compiled constraints match intended semantics
+  - [ ] Detect constraint gaps (satisfiable but violates intent)
+  - [ ] Report: "Circuit allows X but docs say 'only Y'"
+
+- [ ] **Differential Compiler Testing:**
+  - [ ] Compile same circuit with multiple compilers (Circom v2.0 vs v2.1)
+  - [ ] Compile same circuit across backends (Circom vs Noir for compatible logic)
+  - [ ] Compare constraint counts (unexpected differences = bug)
+  - [ ] Compare constraint structure (same logic → same constraints)
+  - [ ] Detect optimization regressions (constraint count increases)
+  - [ ] Version matrix testing: test N circuits × M compiler versions
+
+- [ ] **Compiler Crash/Bug Detection:**
+  - [ ] Timeout detection (compilation hangs)
+  - [ ] Crash detection (segfault, panic, assertion failure)
+  - [ ] Error message classification (ICE vs user error)
+  - [ ] Automatic bug report generation with minimal repro
+  - [ ] Regression suite: known compiler bugs must stay fixed
+
+#### Implementation Structure
+```
+crates/zk-circuit-gen/
+├── src/
+│   ├── generator.rs          # Core circuit generator (bulk mode)
+│   ├── strategies.rs         # Mutation strategies
+│   ├── ai_adversarial.rs     # AI-powered pattern generation
+│   ├── templates/            # Backend-specific templates
+│   │   ├── circom.rs
+│   │   ├── noir.rs
+│   │   ├── halo2.rs
+│   │   └── cairo.rs
+│   ├── semantic_validator.rs # Intent vs constraints checker
+│   ├── differential.rs       # Cross-compiler/version comparison
+│   └── crash_detector.rs     # Compiler bug detection
+src/attacks/compiler_fuzzing.rs  # Attack integration
+```
+
+#### Workflow Examples
+
+**Semantic Intent Validation:**
+```
+// Generated circuit comment: "Only admin can mint"
+// Compiled constraints: 42 constraints
+// Semantic check: FAIL - no admin verification constraint found
+// Report: "Constraint gap: minting is unconstrained"
+```
+
+**Differential Testing:**
+```
+// Circuit: merkle_proof.circom
+// Circom v2.0.0: 156 constraints
+// Circom v2.1.0: 312 constraints (2x increase!)
+// Report: "Optimization regression in v2.1.0"
+```
+
+**AI Adversarial Generation:**
+```
+// AI analyzes: GitHub issue #1234 "Compiler crashes on deeply nested templates"
+// Generates: 50 circuits with 10-20 nesting levels
+// Result: Circom v2.0.8 crashes on 3/50 circuits
+// Report: "Reproduced issue #1234 with minimal circuit"
+```
+
+#### Exit Criteria
+- [ ] Generate 1000+ syntactically valid circuits per backend
+- [ ] Detect ≥5 semantic intent violations (constraints don't match docs)
+- [ ] Find ≥1 compiler crash/timeout on adversarial inputs
+- [ ] Differential mode: test 100+ circuits × 3 compiler versions
+- [ ] Detect ≥1 optimization regression (constraint count increase)
+- [ ] AI generates ≥10 adversarial patterns from known bugs
+- [ ] Integration tests validate generated circuits compile on ≥1 backend
+
+#### Value Proposition
+- **Compiler hardening:** Find bugs before production deployment
+- **Semantic correctness:** Verify constraints match intent (not just syntax)
+- **Regression detection:** Catch optimization/correctness regressions across versions
+- **Proactive testing:** AI generates edge cases humans wouldn't think of
+- **Ecosystem health:** Improve reliability of all ZK compilers
+
+**Status:** ⏸ Deferred (post-roadmap backlog; queued after current roadmap completion)
+
+---
+
+### ZK/Non-ZK Boundary Fuzzing (2026-02-22)
+
+**Goal:** Test the interface between ZK circuits and external components (verifiers, serialization, public inputs) where most integration bugs occur.
+
+**Execution Policy:** This section is deferred and starts only after the current roadmap is complete (Phase 8 sustained-gate exit met). It is not part of active release gating.
+
+**The Problem:**
+- ZK circuits are tested in isolation
+- Bugs often occur at boundaries: proof generation → verification, circuit → Solidity
+- Public input manipulation can bypass circuit logic
+- Serialization edge cases cause verification failures
+- Gas-optimized verifiers may have different behavior than reference
+
+#### Future P0 (Post-Roadmap): Public Input Manipulation Fuzzer
+- [ ] **Valid Proof + Manipulated Public Inputs:**
+  - [ ] Generate valid proof for witness W with public inputs P
+  - [ ] Mutate public inputs: P' = mutate(P)
+  - [ ] Test verification: verify(proof, P') should REJECT
+  - [ ] Bug if accepts: verifier doesn't check public inputs correctly
+- [ ] **Mutation Strategies:**
+  - [ ] Bit flips: flip random bits in public input encoding
+  - [ ] Field boundary: replace with 0, p-1, p, p+1
+  - [ ] Reordering: swap public input positions
+  - [ ] Truncation: remove trailing public inputs
+  - [ ] Duplication: repeat public inputs
+  - [ ] Type confusion: interpret field element as different type
+- [ ] **Attack Scenarios:**
+  - [ ] Proof for user A, public input changed to user B (identity swap)
+  - [ ] Proof for amount 100, public input changed to 1000 (value inflation)
+  - [ ] Proof for valid merkle root, public input changed to attacker's root
+
+#### Future P1 (Post-Roadmap): Serialization/Deserialization Fuzzer
+- [ ] **Proof Serialization Edge Cases:**
+  - [ ] Empty proof: zero-length byte array
+  - [ ] Truncated proof: valid proof with bytes removed
+  - [ ] Oversized proof: valid proof with extra bytes appended
+  - [ ] Invalid encoding: malformed field elements, points not on curve
+  - [ ] Endianness: big-endian vs little-endian confusion
+  - [ ] Padding: extra zeros, non-canonical representations
+- [ ] **Public Input Serialization:**
+  - [ ] Array length mismatch: serialize N inputs, deserialize as M
+  - [ ] Type confusion: serialize as field, deserialize as bytes
+  - [ ] Encoding variants: hex vs base64 vs binary
+  - [ ] Delimiter confusion: comma vs space vs newline
+- [ ] **Cross-Language Serialization:**
+  - [ ] Rust prover → JavaScript verifier (snarkjs)
+  - [ ] Circom → Solidity verifier (ABI encoding)
+  - [ ] Noir → TypeScript verifier (JSON encoding)
+  - [ ] Test: serialize in language A, deserialize in language B
+
+#### Future P1 (Post-Roadmap): Solidity Verifier Fuzzer
+- [ ] **Gas-Optimized Verifier Testing:**
+  - [ ] Generate reference verifier (unoptimized)
+  - [ ] Generate gas-optimized verifier (production)
+  - [ ] Differential testing: same inputs → same outputs
+  - [ ] Detect optimization bugs: optimized accepts, reference rejects
+- [ ] **Verifier Input Fuzzing:**
+  - [ ] Fuzz proof bytes: random mutations
+  - [ ] Fuzz public inputs: edge-case values
+  - [ ] Fuzz calldata: malformed ABI encoding
+  - [ ] Test gas limits: does verifier run out of gas?
+  - [ ] Test revert conditions: proper error handling
+- [ ] **Pairing Check Manipulation:**
+  - [ ] Modify pairing equation components
+  - [ ] Test with invalid curve points
+  - [ ] Test with points not in correct subgroup
+  - [ ] Verify rejection of malformed pairing inputs
+- [ ] **Solidity-Specific Edge Cases:**
+  - [ ] Integer overflow in gas calculations
+  - [ ] Array bounds in public input access
+  - [ ] Memory allocation edge cases
+  - [ ] Calldata vs memory confusion
+  - [ ] Reentrancy (if verifier has callbacks)
+
+#### Future P1 (Post-Roadmap): Cross-Component Integration Fuzzer
+- [ ] **End-to-End Workflow Testing:**
+  - [ ] Circuit → Prover → Verifier (full pipeline)
+  - [ ] Test each boundary independently
+  - [ ] Inject faults at each stage
+  - [ ] Verify fault detection
+- [ ] **Component Mismatch Detection:**
+  - [ ] Prover version X, Verifier version Y
+  - [ ] Circuit compiled with flags A, Verifier expects flags B
+  - [ ] Trusted setup ceremony mismatch
+  - [ ] Curve parameter mismatch (BN254 vs BLS12-381)
+
+#### Implementation Structure
+```
+crates/zk-boundary-fuzz/
+├── src/
+│   ├── public_input_fuzzer.rs    # Public input manipulation
+│   ├── serialization_fuzzer.rs   # Encoding/decoding edge cases
+│   ├── solidity_verifier_fuzzer.rs # Verifier contract testing
+│   ├── cross_component_fuzzer.rs # Integration testing
+│   ├── mutators.rs               # Input mutation strategies
+│   └── differential_oracle.rs    # Reference vs optimized comparison
+src/attacks/boundary_violation.rs  # Attack integration
+```
+
+#### Workflow Examples
+
+**Public Input Manipulation:**
+```solidity
+// Generate valid proof for withdraw(user=Alice, amount=100)
+Proof proof = generate_proof(witness);
+
+// Manipulate public inputs
+public_inputs[0] = Bob;  // Change user
+public_inputs[1] = 1000; // Inflate amount
+
+// Test verification
+bool valid = verifier.verify(proof, public_inputs);
+assert(!valid, "Verifier accepted manipulated inputs!");
+// Bug found: verifier doesn't bind public inputs to proof
+```
+
+**Serialization Edge Case:**
+```rust
+// Serialize proof in Rust
+let proof_bytes = proof.serialize();
+
+// Truncate last byte
+let truncated = &proof_bytes[..proof_bytes.len()-1];
+
+// Deserialize in JavaScript
+let result = snarkjs.deserialize(truncated);
+// Bug found: snarkjs doesn't validate proof length
+```
+
+**Solidity Verifier Differential:**
+```solidity
+// Reference verifier (unoptimized)
+bool ref_result = ReferenceVerifier.verify(proof, inputs);
+
+// Gas-optimized verifier
+bool opt_result = OptimizedVerifier.verify(proof, inputs);
+
+assert(ref_result == opt_result, "Verifier mismatch!");
+// Bug found: optimized verifier skips subgroup check
+```
+
+#### Exit Criteria
+- [ ] Public input fuzzer: test 1000+ valid proofs with manipulated inputs
+- [ ] Detect ≥1 public input binding bug (verifier accepts wrong inputs)
+- [ ] Serialization fuzzer: test 100+ edge cases per format
+- [ ] Detect ≥1 serialization bug (crash, incorrect deserialization)
+- [ ] Solidity fuzzer: differential test 500+ proofs (reference vs optimized)
+- [ ] Detect ≥1 gas optimization bug (behavior divergence)
+- [ ] Cross-component: test 50+ version/configuration combinations
+- [ ] Detect ≥1 integration bug (component mismatch)
+
+#### Integration Points
+- Extends `verification_fuzzing` attack with boundary-specific tests
+- Complements `soundness` attack with public input manipulation
+- Feeds into `differential` attack with cross-language testing
+- Provides Solidity-specific testing for smart contract verifiers
+
+#### Value Proposition
+- **Real-world bugs:** Most vulnerabilities occur at component boundaries
+- **Integration testing:** Tests full pipeline, not just isolated circuits
+- **Public input security:** Ensures proofs are bound to public inputs
+- **Serialization safety:** Catches encoding bugs that cause verification failures
+- **Verifier correctness:** Validates gas-optimized Solidity verifiers
+- **Cross-language:** Tests interop between Rust/JS/Solidity components
+
+**Status:** ⏸ Deferred (post-roadmap backlog; queued after current roadmap completion)
+
+---
+
+### Cryptographic Primitives Fuzzing (2026-02-22)
+
+**Goal:** Systematically test low-level cryptographic operations (field arithmetic, curve operations, pairings) with edge cases that trigger implementation bugs.
+
+**Execution Policy:** This section is deferred and starts only after the current roadmap is complete (Phase 8 sustained-gate exit met). It is not part of active release gating.
+
+**The Problem:**
+- ZK circuits rely on field arithmetic, elliptic curves, and pairings
+- Edge cases (0, identity, invalid points) often expose bugs
+- Manual testing misses rare combinations
+- Implementation bugs can break soundness
+
+#### Future P1 (Post-Roadmap): Field Arithmetic Fuzzer
+- [ ] **Edge-Case Value Generator:**
+  - [ ] Special values: `0`, `1`, `-1`, `p/2`, `p-1`, `p`, `p+1`
+  - [ ] Algebraic properties: squares, non-squares, generators, primitive roots
+  - [ ] Random values: uniform distribution across field
+  - [ ] Boundary values: near-zero, near-modulus
+- [ ] **Operation Coverage:**
+  - [ ] Addition: `a + b` (overflow, underflow, identity)
+  - [ ] Subtraction: `a - b` (negative results, wraparound)
+  - [ ] Multiplication: `a * b` (overflow, zero, one)
+  - [ ] Division: `a / b` (division by zero, inverse computation)
+  - [ ] Exponentiation: `a^b` (large exponents, zero exponent)
+  - [ ] Modular reduction: verify `(a op b) mod p == expected`
+- [ ] **Property Testing:**
+  - [ ] Commutativity: `a + b == b + a`
+  - [ ] Associativity: `(a + b) + c == a + (b + c)`
+  - [ ] Distributivity: `a * (b + c) == a*b + a*c`
+  - [ ] Identity: `a + 0 == a`, `a * 1 == a`
+  - [ ] Inverse: `a * a^(-1) == 1` (for `a != 0`)
+
+#### Future P1 (Post-Roadmap): Curve Operation Fuzzer
+- [ ] **Point Generator:**
+  - [ ] Identity/infinity point: `O`
+  - [ ] Generator point: `G`
+  - [ ] Random valid points: `[k]G` for random `k`
+  - [ ] Low-order points: points with small order
+  - [ ] Invalid points: not on curve `y^2 != x^3 + ax + b`
+  - [ ] Points at infinity in different representations
+- [ ] **Operation Coverage:**
+  - [ ] Point addition: `P + Q`
+  - [ ] Point doubling: `2P`
+  - [ ] Scalar multiplication: `[k]P`
+  - [ ] Multi-scalar multiplication: `[k1]P1 + [k2]P2`
+  - [ ] Point negation: `-P`
+  - [ ] Point validation: `is_on_curve(P)`
+- [ ] **Edge Case Testing:**
+  - [ ] Adding identity: `P + O == P`
+  - [ ] Adding inverse: `P + (-P) == O`
+  - [ ] Doubling identity: `2O == O`
+  - [ ] Zero scalar: `[0]P == O`
+  - [ ] One scalar: `[1]P == P`
+  - [ ] Large scalar: `[p]P` (order wraparound)
+  - [ ] Invalid point rejection: operations on invalid points must fail
+
+#### Future P1 (Post-Roadmap): Pairing Fuzzer
+- [ ] **Input Combination Matrix:**
+  - [ ] G1 inputs: `{O, G1, random, low-order, invalid}` (5 cases)
+  - [ ] G2 inputs: `{O, G2, random, low-order, invalid}` (5 cases)
+  - [ ] Systematic testing: 5 × 5 = 25 combinations
+- [ ] **Pairing Properties:**
+  - [ ] Bilinearity: `e([a]P, [b]Q) == e(P, Q)^(ab)`
+  - [ ] Non-degeneracy: `e(G1, G2) != 1`
+  - [ ] Identity: `e(O, Q) == 1`, `e(P, O) == 1`
+  - [ ] Linearity in G1: `e(P1 + P2, Q) == e(P1, Q) * e(P2, Q)`
+  - [ ] Linearity in G2: `e(P, Q1 + Q2) == e(P, Q1) * e(P, Q2)`
+- [ ] **Degenerate Cases:**
+  - [ ] Both inputs identity: `e(O, O)`
+  - [ ] One input identity: `e(G1, O)`, `e(O, G2)`
+  - [ ] Low-order inputs: detect subgroup attacks
+  - [ ] Invalid inputs: must reject or handle safely
+
+#### Implementation Structure
+```
+crates/zk-crypto-fuzz/
+├── src/
+│   ├── field_fuzzer.rs       # Field arithmetic testing
+│   ├── curve_fuzzer.rs       # Elliptic curve operations
+│   ├── pairing_fuzzer.rs     # Pairing operations
+│   ├── generators.rs         # Edge-case value generation
+│   ├── property_checker.rs   # Algebraic property validation
+│   └── oracle.rs             # Reference implementation comparison
+src/attacks/crypto_primitives.rs  # Attack integration
+```
+
+#### Workflow Example
+```rust
+// Field arithmetic bug detection
+let edge_cases = [0, 1, p-1, p, p+1];
+for a in edge_cases {
+    for b in edge_cases {
+        let result = field_mul(a, b);
+        assert!(result < p, "Result not reduced: {}", result);
+        // Bug found: field_mul(p, 1) returns p (should be 0)
+    }
+}
+
+// Curve operation bug detection
+let P = random_point();
+let result = point_add(P, point_negate(P));
+assert!(is_identity(result), "P + (-P) should be identity");
+// Bug found: point_add doesn't handle inverse correctly
+
+// Pairing bug detection
+let e1 = pairing(identity_g1(), G2);
+assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
+// Bug found: pairing with identity returns random value
+```
+
+#### Exit Criteria
+- [ ] Field fuzzer: test 100+ operations × 10 edge-case values = 1000+ tests
+- [ ] Curve fuzzer: test 50+ operations × 7 point types = 350+ tests
+- [ ] Pairing fuzzer: test 25 input combinations × 5 properties = 125+ tests
+- [ ] Detect ≥1 field arithmetic bug (incorrect reduction, overflow)
+- [ ] Detect ≥1 curve operation bug (invalid point handling, identity)
+- [ ] Detect ≥1 pairing bug (degenerate case, bilinearity violation)
+- [ ] Property tests: 100% pass rate on reference implementation
+- [ ] Integration with existing attack framework
+
+#### Integration Points
+- Extends `arithmetic_overflow` attack with systematic edge-case coverage
+- Feeds into `soundness` attack with invalid curve point detection
+- Complements `boundary` attack with algebraic property testing
+- Provides oracle for differential testing against reference implementations
+
+#### Value Proposition
+- **Soundness bugs:** Catch implementation errors that break cryptographic assumptions
+- **Systematic coverage:** Test all edge cases, not just random inputs
+- **Property-based:** Verify algebraic properties hold (commutativity, bilinearity)
+- **Reference comparison:** Detect divergence from canonical implementations
+- **Proactive:** Find bugs before they reach production circuits
+
+**Status:** ⏸ Deferred (post-roadmap backlog; queued after current roadmap completion)
+
+---
+
+### Post-Roadmap Execution Workflow (Deferred Additions)
+
+**Applies to:** AI semantic intent analysis, compiler fuzzing, ZK/non-ZK boundary fuzzing, and cryptographic primitive fuzzing.
+
+**Operator Workflow (short form)**
+- [ ] Activate only after current roadmap completion (Phase 8 sustained-gate exit met); keep out of active release gates until then.
+- [ ] Run a foundation sprint first: shared corpus/evidence store, shared finding schema, shared replay/minimization harness, shared dashboard.
+- [ ] Execute in this order for ROI: `boundary -> compiler -> semantic -> crypto`.
+- [ ] Use shared data flow: compiler-generated circuits feed boundary tests; boundary/compiler findings feed semantic exploitability ranking; crypto checks validate math-level correctness vs noise; semantic outputs feed generator prioritization for next cycle.
+- [ ] Use weekly cadence: `generate -> boundary -> semantic -> crypto -> regress`.
+- [ ] Enforce promotion gates: deterministic replay, false-positive budget, explicit coverage counts, and required regression tests for accepted high/critical findings.
+- [ ] Operate one integrated pipeline: `generate -> attack -> interpret -> validate -> regress`.
+
+**Modularization Blueprint (design requirement)**
+- [ ] Split deferred work into separate crates/modules with strict boundaries:
+  - `crates/zk-postroadmap-core`: shared contracts (`TrackInput`, `TrackFinding`, `ReplayArtifact`, scorecard schema, error taxonomy).
+  - `crates/zk-track-boundary`: public-input/serialization/verifier boundary testing only.
+  - `crates/zk-track-compiler`: circuit generation, compiler differential, crash/timeout classification.
+  - `crates/zk-track-semantic`: intent extraction, semantic violation ranking, exploitability classification.
+  - `crates/zk-track-crypto`: field/curve/pairing property fuzzing and reference checks.
+  - `src/pipeline/post_roadmap_runner.rs`: orchestration only (no track-specific logic).
+- [ ] Enforce interface-first integration:
+  - each track implements a common runner trait (prepare -> run -> validate -> emit).
+  - tracks communicate only through `zk-postroadmap-core` artifact contracts.
+  - no direct track-to-track imports (dependency direction: `track -> core`, `runner -> track + core`).
+- [ ] Keep adapters modular:
+  - AI/LLM providers behind a single adapter interface in semantic track.
+  - compiler backend adapters behind per-backend strategy interfaces in compiler track.
+  - verifier/serialization adapters behind protocol interfaces in boundary track.
+- [ ] Enforce module-level quality gates:
+  - per-track tests + replay tests + contract compatibility tests.
+  - each track versioned independently in docs/changelog and can be toggled on/off by config.
+  - failures in one track should not block execution of other tracks (partial-run resilience).
+
+---
 
 ### External Assessment Follow-Up (2026-02-21)
 - [x] Refactor oversized engine files by responsibility boundary:

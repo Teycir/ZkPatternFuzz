@@ -106,8 +106,8 @@ attacks:
       proof_malleability:
         enabled: true
         proof_samples: 10
-        random_mutations: 100
-        structured_mutations: true
+        algebraic_mutations: true
+        negative_control_random_mutations: 8
       determinism:
         enabled: true
         repetitions: 5

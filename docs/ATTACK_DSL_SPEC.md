@@ -102,6 +102,8 @@ attacks:
       proof_malleability:
         enabled: true
         proof_samples: 16
+        algebraic_mutations: true
+        negative_control_random_mutations: 8
 
   - type: differential
     description: "Cross-backend drift detection"

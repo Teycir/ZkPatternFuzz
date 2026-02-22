@@ -217,7 +217,10 @@ vulnerabilities:
     let path = write_temp_yaml(&yaml);
     let result = CveDatabase::load_strict(&path);
     let _ = fs::remove_file(path);
-    assert!(result.is_err(), "expected unresolved env placeholder rejection");
+    assert!(
+        result.is_err(),
+        "expected unresolved env placeholder rejection"
+    );
     let error = result.err().expect("strict load should fail").to_string();
     assert!(
         error.contains("unresolved env placeholder"),

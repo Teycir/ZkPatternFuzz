@@ -217,13 +217,23 @@ impl FuzzingEngine {
             .and_then(|v| v.get("proof_samples"))
             .and_then(|v| v.as_u64())
             .or_value(10) as usize;
-        let random_mutations = section
-            .and_then(|v| v.get("random_mutations"))
+        let negative_control_random_mutations = section
+            .and_then(|v| v.get("negative_control_random_mutations"))
             .and_then(|v| v.as_u64())
-            .or_value(100) as usize;
-        let structured_mutations = section
-            .and_then(|v| v.get("structured_mutations"))
+            .or_else(|| {
+                section
+                    .and_then(|v| v.get("random_mutations"))
+                    .and_then(|v| v.as_u64())
+            })
+            .or_value(8) as usize;
+        let algebraic_mutations = section
+            .and_then(|v| v.get("algebraic_mutations"))
             .and_then(|v| v.as_bool())
+            .or_else(|| {
+                section
+                    .and_then(|v| v.get("structured_mutations"))
+                    .and_then(|v| v.as_bool())
+            })
             .or_value(true);
 
         let witnesses = self.collect_corpus_inputs(proof_samples.max(1));
@@ -235,8 +245,8 @@ impl FuzzingEngine {
 
         let scanner = ProofMalleabilityScanner::new()
             .with_proof_samples(proof_samples)
-            .with_random_mutations(random_mutations)
-            .with_structured_mutations(structured_mutations);
+            .with_negative_control_random_mutations(negative_control_random_mutations)
+            .with_algebraic_mutations(algebraic_mutations);
 
         let findings = scanner.run(self.executor.as_ref(), &witnesses);
         self.record_custom_findings(findings, finding_attack_type, progress)?;

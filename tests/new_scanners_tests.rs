@@ -10,6 +10,18 @@ use zk_fuzzer::oracles::{
     NullifierReplayScanner, ProofMalleabilityScanner, SetupPoisoningDetector,
 };
 
+fn sample_snarkjs_groth16_proof_json() -> Vec<u8> {
+    serde_json::json!({
+        "pi_a": ["1", "2", "1"],
+        "pi_b": [["3", "4"], ["5", "6"], ["1", "0"]],
+        "pi_c": ["7", "8", "1"],
+        "protocol": "groth16",
+        "curve": "bn128"
+    })
+    .to_string()
+    .into_bytes()
+}
+
 struct LenientProofExecutor {
     name: String,
     num_private_inputs: usize,
@@ -52,7 +64,7 @@ impl CircuitExecutor for LenientProofExecutor {
     }
 
     fn prove(&self, _witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
-        Ok(vec![0xAA; 96])
+        Ok(sample_snarkjs_groth16_proof_json())
     }
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
@@ -184,6 +196,32 @@ fn test_proof_malleability_scanner_detects_mutation() {
 
     let findings = scanner.run(&executor, &[witness]);
     assert!(!findings.is_empty(), "Expected malleability finding");
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.description.contains("(algebraic)")),
+        "Expected algebraic proof malleability finding"
+    );
+}
+
+#[test]
+fn test_proof_malleability_random_lane_marked_negative_control() {
+    let executor = LenientProofExecutor::new("lenient", 1, 1);
+    let witness = vec![FieldElement::from_u64(1), FieldElement::from_u64(2)];
+
+    let scanner = ProofMalleabilityScanner::new()
+        .with_proof_samples(1)
+        .with_algebraic_mutations(false)
+        .with_negative_control_random_mutations(2);
+
+    let findings = scanner.run(&executor, &[witness]);
+    assert!(!findings.is_empty(), "Expected negative-control findings");
+    assert!(
+        findings
+            .iter()
+            .all(|finding| finding.description.contains("(negative-control)")),
+        "Expected negative-control marker in finding descriptions"
+    );
 }
 
 #[test]

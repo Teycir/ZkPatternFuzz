@@ -72,7 +72,8 @@ impl CveDatabase {
                 continue;
             }
 
-            let expanded_circuit_path = expand_env_placeholders(&pattern.regression_test.circuit_path);
+            let expanded_circuit_path =
+                expand_env_placeholders(&pattern.regression_test.circuit_path);
             if has_unresolved_env_placeholder(&expanded_circuit_path) {
                 errors.push(format!(
                     "{} has unresolved env placeholder in regression_test.circuit_path '{}'. Set required environment variables.",

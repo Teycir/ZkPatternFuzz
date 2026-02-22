@@ -24,7 +24,9 @@ fn halo2_lookup_fixture_reports_lookup_constraints_and_executes() {
 
     let executor = Halo2Executor::new(spec_path.to_str().unwrap(), "main")
         .expect("create halo2 executor from lookup fixture");
-    let inspector = executor.constraint_inspector().expect("lookup fixture inspector");
+    let inspector = executor
+        .constraint_inspector()
+        .expect("lookup fixture inspector");
 
     let lookup_constraints = inspector
         .get_constraints()
@@ -80,7 +82,9 @@ fn halo2_lookup_vector_selector_semantics_end_to_end() {
 
     let executor = Halo2Executor::new(temp.path().to_str().unwrap(), "main")
         .expect("create halo2 executor for vector lookup");
-    let inspector = executor.constraint_inspector().expect("vector lookup inspector");
+    let inspector = executor
+        .constraint_inspector()
+        .expect("vector lookup inspector");
 
     let enabled_passing = vec![
         FieldElement::one(),
