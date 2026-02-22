@@ -91,18 +91,27 @@ impl ExtendedConstraintSymbolicExt for ExtendedConstraint {
                     inputs.extend(lookup.additional_inputs.iter().map(wire_to_symbolic));
                 }
 
-                if inputs.len() != table.num_columns {
+                let columns = if lookup.table_columns.is_empty() {
+                    (0..inputs.len()).collect::<Vec<_>>()
+                } else {
+                    lookup.table_columns.clone()
+                };
+
+                if columns.len() != inputs.len()
+                    || columns.iter().any(|col| *col >= table.num_columns)
+                {
                     return None;
                 }
 
                 let mut row_constraints = Vec::new();
                 for row in &table.entries {
-                    if row.len() != inputs.len() {
+                    if columns.iter().any(|col| row.get(*col).is_none()) {
                         continue;
                     }
 
                     let mut conjuncts = Vec::new();
-                    for (input, value) in inputs.iter().zip(row.iter()) {
+                    for (input, col) in inputs.iter().zip(columns.iter()) {
+                        let value = &row[*col];
                         conjuncts.push(SymbolicConstraint::eq(
                             input.clone(),
                             SymbolicValue::concrete(value.clone()),
@@ -111,8 +120,17 @@ impl ExtendedConstraintSymbolicExt for ExtendedConstraint {
 
                     row_constraints.push(fold_and(conjuncts));
                 }
+                let lookup_constraint = fold_or(row_constraints);
 
-                Some(fold_or(row_constraints))
+                if let Some(enable_wire) = &lookup.enable {
+                    let disabled = SymbolicConstraint::eq(
+                        wire_to_symbolic(enable_wire),
+                        SymbolicValue::concrete(FieldElement::zero()),
+                    );
+                    Some(disabled.or(lookup_constraint))
+                } else {
+                    Some(lookup_constraint)
+                }
             }
             ExtendedConstraint::Range(range) => {
                 let wire_val = wire_to_symbolic(&range.wire);

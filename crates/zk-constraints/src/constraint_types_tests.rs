@@ -28,6 +28,8 @@ fn test_lookup_vector_constraint() {
         table: Some(table),
         is_vector_lookup: true,
         additional_inputs: vec![WireRef::new(2)],
+        table_columns: Vec::new(),
+        enable: None,
     };
 
     let mut wires = HashMap::new();
@@ -36,6 +38,64 @@ fn test_lookup_vector_constraint() {
 
     let checker = ConstraintChecker::new();
     assert!(checker.check(&ExtendedConstraint::Lookup(lookup), &wires));
+}
+
+#[test]
+fn test_lookup_selected_columns_constraint() {
+    let mut table = LookupTable::new("triples", 3);
+    table.entries.push(vec![
+        FieldElement::from_u64(99),
+        FieldElement::from_u64(1),
+        FieldElement::from_u64(2),
+    ]);
+    table.entries.push(vec![
+        FieldElement::from_u64(77),
+        FieldElement::from_u64(5),
+        FieldElement::from_u64(6),
+    ]);
+
+    let lookup = LookupConstraint {
+        input: WireRef::new(1),
+        table_id: 0,
+        table: Some(table),
+        is_vector_lookup: true,
+        additional_inputs: vec![WireRef::new(2)],
+        table_columns: vec![1, 2],
+        enable: None,
+    };
+
+    let mut wires = HashMap::new();
+    wires.insert(1, FieldElement::from_u64(1));
+    wires.insert(2, FieldElement::from_u64(2));
+
+    let checker = ConstraintChecker::new();
+    assert!(checker.check(&ExtendedConstraint::Lookup(lookup), &wires));
+}
+
+#[test]
+fn test_lookup_enable_selector_skips_when_disabled() {
+    let mut table = LookupTable::new("single", 1);
+    table.entries.push(vec![FieldElement::from_u64(7)]);
+
+    let lookup = LookupConstraint {
+        input: WireRef::new(1),
+        table_id: 0,
+        table: Some(table),
+        is_vector_lookup: false,
+        additional_inputs: Vec::new(),
+        table_columns: Vec::new(),
+        enable: Some(WireRef::new(2)),
+    };
+
+    let mut wires = HashMap::new();
+    wires.insert(1, FieldElement::from_u64(42)); // not in table
+    wires.insert(2, FieldElement::zero()); // selector disabled
+
+    let checker = ConstraintChecker::new();
+    assert!(checker.check(&ExtendedConstraint::Lookup(lookup.clone()), &wires));
+
+    wires.insert(2, FieldElement::one()); // selector enabled
+    assert!(!checker.check(&ExtendedConstraint::Lookup(lookup), &wires));
 }
 
 #[test]
@@ -121,6 +181,8 @@ fn test_unknown_lookup_policy() {
         table: None,
         is_vector_lookup: false,
         additional_inputs: Vec::new(),
+        table_columns: Vec::new(),
+        enable: None,
     };
 
     let mut wires = HashMap::new();
@@ -184,6 +246,38 @@ fn test_parse_plonk_lookup_inline_table() {
     let parsed = ConstraintParser::parse_plonk_with_tables(json);
     assert_eq!(parsed.lookup_tables.len(), 1);
     assert_eq!(parsed.constraints.len(), 1);
+}
+
+#[test]
+fn test_parse_plonk_lookup_with_columns_and_enable() {
+    let json = r#"
+        {
+          "tables": {
+            "9": {
+              "name": "triples",
+              "num_columns": 3,
+              "entries": [[9, 1, 2], [8, 3, 4]]
+            }
+          },
+          "lookups": [
+            {
+              "table_id": 9,
+              "inputs": [1, 2],
+              "table_columns": [1, 2],
+              "enable": 3
+            }
+          ]
+        }
+        "#;
+
+    let parsed = ConstraintParser::parse_plonk_with_tables(json);
+    assert_eq!(parsed.constraints.len(), 1);
+
+    let ExtendedConstraint::Lookup(lookup) = &parsed.constraints[0] else {
+        panic!("expected parsed lookup constraint");
+    };
+    assert_eq!(lookup.table_columns, vec![1, 2]);
+    assert_eq!(lookup.enable.as_ref().map(|wire| wire.index), Some(3));
 }
 
 #[test]

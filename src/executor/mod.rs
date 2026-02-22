@@ -310,6 +310,7 @@ fn constraint_to_equation(id: usize, constraint: &ExtendedConstraint) -> Constra
                 .additional_inputs
                 .iter()
                 .map(|w| (w.index, FieldElement::one()))
+                .chain(lookup.enable.iter().map(|w| (w.index, FieldElement::one())))
                 .collect(),
             b_terms: Vec::new(),
             c_terms: vec![(lookup.input.index, FieldElement::one())],
@@ -472,6 +473,9 @@ fn collect_wire_labels_from_constraint(
             insert_wire_label(labels, &lookup.input);
             for wire in &lookup.additional_inputs {
                 insert_wire_label(labels, wire);
+            }
+            if let Some(enable_wire) = &lookup.enable {
+                insert_wire_label(labels, enable_wire);
             }
         }
         ExtendedConstraint::Range(range) => {

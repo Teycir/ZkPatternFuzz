@@ -433,7 +433,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 **Solution:** Dedicated lookup coverage checker.
 
 #### Implementation Tasks
-- [ ] Extend `crates/zk-constraints/src/constraint_types.rs` with full lookup semantics
+- [x] Extend `crates/zk-constraints/src/constraint_types.rs` with full lookup semantics
 - [ ] Implement lookup table extractor from circuit IR
 - [ ] Add lookup coverage analyzer:
   - Track which values are looked up vs. which should be

@@ -263,6 +263,14 @@ pub struct LookupConstraint {
     pub is_vector_lookup: bool,
     /// Additional input wires for vector lookups
     pub additional_inputs: Vec<WireRef>,
+    /// Explicit table-column mapping for each input value.
+    ///
+    /// When empty, columns default to `[0, 1, ..., num_inputs - 1]`.
+    pub table_columns: Vec<usize>,
+    /// Optional selector wire controlling whether the lookup is enforced.
+    ///
+    /// If present and selector is zero, the lookup is considered satisfied.
+    pub enable: Option<WireRef>,
 }
 
 /// Lookup table definition
@@ -317,6 +325,24 @@ impl LookupTable {
             return false;
         }
         self.entries.iter().any(|row| row == values)
+    }
+
+    /// Check membership against selected table columns.
+    pub fn contains_on_columns(&self, columns: &[usize], values: &[FieldElement]) -> bool {
+        if columns.len() != values.len() || columns.is_empty() {
+            return false;
+        }
+
+        if columns.iter().any(|col| *col >= self.num_columns) {
+            return false;
+        }
+
+        self.entries.iter().any(|row| {
+            columns
+                .iter()
+                .zip(values.iter())
+                .all(|(col, value)| row.get(*col) == Some(value))
+        })
     }
 }
 
@@ -1033,6 +1059,16 @@ impl ConstraintChecker {
         lookup: &LookupConstraint,
         wire_values: &HashMap<usize, FieldElement>,
     ) -> bool {
+        if let Some(enable_wire) = &lookup.enable {
+            let Some(enable_value) = wire_values.get(&enable_wire.index) else {
+                return false;
+            };
+
+            if enable_value.is_zero() {
+                return true;
+            }
+        }
+
         let table = lookup
             .table
             .as_ref()
@@ -1059,11 +1095,17 @@ impl ConstraintChecker {
             }
         }
 
-        if table.num_columns != values.len() {
+        let columns = if lookup.table_columns.is_empty() {
+            (0..values.len()).collect::<Vec<_>>()
+        } else {
+            lookup.table_columns.clone()
+        };
+
+        if columns.len() != values.len() {
             return false;
         }
 
-        table.contains(&values)
+        table.contains_on_columns(&columns, &values)
     }
 
     fn check_range(
@@ -1178,6 +1220,9 @@ impl ExtendedConstraint {
                 deps.push(lookup.input.index);
                 for wire in &lookup.additional_inputs {
                     deps.push(wire.index);
+                }
+                if let Some(enable_wire) = &lookup.enable {
+                    deps.push(enable_wire.index);
                 }
             }
             ExtendedConstraint::Range(range) => {
@@ -1383,6 +1428,68 @@ fn parse_lookup_inputs(lookup: &serde_json::Value) -> Vec<WireRef> {
         }
     }
     inputs
+}
+
+fn parse_lookup_table_columns(lookup: &serde_json::Value) -> Vec<usize> {
+    let mut columns = Vec::new();
+
+    for key in [
+        "table_columns",
+        "table_cols",
+        "column_indices",
+        "lookup_columns",
+    ] {
+        let Some(value) = lookup.get(key) else {
+            continue;
+        };
+
+        if let Some(array) = value.as_array() {
+            for entry in array {
+                if let Some(index) = entry
+                    .as_u64()
+                    .map(|v| v as usize)
+                    .or_else(|| entry.as_str().and_then(|s| s.parse::<usize>().ok()))
+                {
+                    columns.push(index);
+                }
+            }
+            continue;
+        }
+
+        if let Some(index) = value
+            .as_u64()
+            .map(|v| v as usize)
+            .or_else(|| value.as_str().and_then(|s| s.parse::<usize>().ok()))
+        {
+            columns.push(index);
+        }
+    }
+
+    columns
+}
+
+fn parse_lookup_enable_wire(lookup: &serde_json::Value) -> Option<WireRef> {
+    for key in ["enable", "enabled_by", "enable_if", "selector", "q_lookup"] {
+        if let Some(value) = lookup.get(key) {
+            if let Some(wire) = parse_wire_ref_value(value) {
+                return Some(wire);
+            }
+
+            if let Some(obj) = value.as_object() {
+                if let Some(inner) = obj
+                    .get("wire")
+                    .or_else(|| obj.get("witness"))
+                    .or_else(|| obj.get("input"))
+                {
+                    if let Some(wire) = parse_wire_ref_value(inner) {
+                        return Some(wire);
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -1643,6 +1750,8 @@ fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {
             if inputs.is_empty() {
                 continue;
             }
+            let table_columns = parse_lookup_table_columns(lookup);
+            let enable = parse_lookup_enable_wire(lookup);
 
             let input = inputs[0].clone();
             let additional_inputs = if inputs.len() > 1 {
@@ -1659,6 +1768,8 @@ fn parse_plonk_json(value: &serde_json::Value) -> ParsedConstraintSet {
                     table,
                     is_vector_lookup: !additional_inputs.is_empty(),
                     additional_inputs,
+                    table_columns,
+                    enable,
                 }));
         }
     }
@@ -1748,6 +1859,20 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                 } else {
                     Vec::new()
                 };
+                let table_columns = kv
+                    .get("table_columns")
+                    .or_else(|| kv.get("columns"))
+                    .map(|raw| {
+                        raw.split(',')
+                            .filter_map(|entry| entry.trim().parse::<usize>().ok())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                let enable = kv
+                    .get("enable")
+                    .or_else(|| kv.get("selector"))
+                    .and_then(|raw| raw.parse::<usize>().ok())
+                    .map(WireRef::new);
 
                 let table = set.lookup_tables.get(&table_id).cloned();
                 set.constraints
@@ -1757,6 +1882,8 @@ fn parse_plonk_text(content: &str) -> ParsedConstraintSet {
                         table,
                         is_vector_lookup: !additional_inputs.is_empty(),
                         additional_inputs,
+                        table_columns,
+                        enable,
                     }));
             }
             "gate" | "plonk" => {

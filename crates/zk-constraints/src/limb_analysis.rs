@@ -562,6 +562,9 @@ where
             for wire in &lookup.additional_inputs {
                 visit(wire);
             }
+            if let Some(enable_wire) = &lookup.enable {
+                visit(enable_wire);
+            }
         }
         ExtendedConstraint::Range(range) => {
             visit(&range.wire);
