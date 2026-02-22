@@ -1358,11 +1358,11 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - [x] each track implements a common runner trait (prepare -> run -> validate -> emit).
   - [x] tracks communicate only through `zk-postroadmap-core` artifact contracts.
   - [x] no direct track-to-track imports (dependency direction: `track -> core`, `runner -> track + core`).
-- [ ] Keep adapters modular:
+- [x] Keep adapters modular:
   - AI/LLM providers behind a single adapter interface in semantic track.
   - compiler backend adapters behind per-backend strategy interfaces in compiler track.
   - verifier/serialization adapters behind protocol interfaces in boundary track.
-- [ ] Enforce module-level quality gates:
+- [x] Enforce module-level quality gates:
   - per-track tests + replay tests + contract compatibility tests.
   - each track versioned independently in docs/changelog and can be toggled on/off by config.
   - failures in one track should not block execution of other tracks (partial-run resilience).
