@@ -40,6 +40,8 @@ pub struct CairoTarget {
     config: CairoConfig,
     /// Last Cairo1 execution id produced by `scarb prove --execute`.
     cairo1_last_execution_id: Mutex<Option<String>>,
+    /// Last runtime-backed coverage sample captured during execution.
+    runtime_coverage_sample: Mutex<Option<CairoRuntimeCoverageSample>>,
 }
 
 /// Cairo version
@@ -49,6 +51,13 @@ pub enum CairoVersion {
     Cairo0,
     /// New Cairo (Cairo 1, Scarb-based)
     Cairo1,
+}
+
+#[derive(Debug, Clone)]
+pub struct CairoRuntimeCoverageSample {
+    pub source: String,
+    pub trace_bytes: u64,
+    pub memory_bytes: u64,
 }
 
 /// Cairo program metadata
@@ -122,6 +131,7 @@ impl CairoTarget {
             cairo_version,
             config: CairoConfig::default(),
             cairo1_last_execution_id: Mutex::new(None),
+            runtime_coverage_sample: Mutex::new(None),
         })
     }
 
@@ -135,6 +145,28 @@ impl CairoTarget {
     pub fn with_config(mut self, config: CairoConfig) -> Self {
         self.config = config;
         self
+    }
+
+    pub fn cairo_version(&self) -> CairoVersion {
+        self.cairo_version
+    }
+
+    pub fn is_cairo1(&self) -> bool {
+        self.cairo_version == CairoVersion::Cairo1
+    }
+
+    pub fn latest_runtime_coverage_sample(&self) -> Option<CairoRuntimeCoverageSample> {
+        self.runtime_coverage_sample
+            .lock()
+            .expect("cairo runtime coverage sample lock poisoned")
+            .clone()
+    }
+
+    fn store_runtime_coverage_sample(&self, sample: Option<CairoRuntimeCoverageSample>) {
+        *self
+            .runtime_coverage_sample
+            .lock()
+            .expect("cairo runtime coverage sample lock poisoned") = sample;
     }
 
     /// Detect Cairo version from the source file
@@ -429,6 +461,7 @@ impl CairoTarget {
 
     /// Execute Cairo 0 program
     fn execute_cairo0(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
+        self.store_runtime_coverage_sample(None);
         let compiled_path = self
             .compiled_path
             .as_ref()
@@ -508,11 +541,28 @@ impl CairoTarget {
 
         // Parse output
         let stdout = String::from_utf8_lossy(&output.stdout);
-        self.parse_cairo_output(&stdout)
+        let outputs = self.parse_cairo_output(&stdout)?;
+
+        if self.config.proof_mode && trace_path.exists() && memory_path.exists() {
+            let trace_bytes = std::fs::metadata(&trace_path)
+                .map(|m| m.len())
+                .unwrap_or_default();
+            let memory_bytes = std::fs::metadata(&memory_path)
+                .map(|m| m.len())
+                .unwrap_or_default();
+            self.store_runtime_coverage_sample(Some(CairoRuntimeCoverageSample {
+                source: "cairo0_trace".to_string(),
+                trace_bytes,
+                memory_bytes,
+            }));
+        }
+
+        Ok(outputs)
     }
 
     /// Execute Cairo 1 program
     fn execute_cairo1(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
+        self.store_runtime_coverage_sample(None);
         let project_dir = self
             .source_path
             .parent()

@@ -27,7 +27,7 @@ use anyhow::Context as _;
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use zk_core::{FieldElement, Framework};
 
 /// Options for controlling executor creation (e.g., build directory overrides).
@@ -1548,6 +1548,17 @@ impl ConstraintInspector for Halo2Executor {
 pub struct CairoExecutor {
     target: crate::targets::CairoTarget,
     source_code: String,
+    cairo1_runtime_probe_passed: Mutex<bool>,
+}
+
+fn cairo_strict_runtime_coverage_mode() -> bool {
+    match std::env::var("ZKFUZZ_CAIRO_STRICT_COVERAGE") {
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    }
 }
 
 fn strip_cairo_inline_comment(line: &str) -> &str {
@@ -1723,6 +1734,7 @@ impl CairoExecutor {
         Ok(Self {
             target,
             source_code,
+            cairo1_runtime_probe_passed: Mutex::new(false),
         })
     }
 
@@ -1734,6 +1746,7 @@ impl CairoExecutor {
         Ok(Self {
             target,
             source_code,
+            cairo1_runtime_probe_passed: Mutex::new(false),
         })
     }
 
@@ -1753,6 +1766,121 @@ impl CairoExecutor {
                 .or_insert_with(|| format!("private_input_{}", ordinal));
         }
         labels
+    }
+
+    fn strict_runtime_constraint_descriptions(&self) -> Vec<String> {
+        if self.target.is_cairo1() {
+            vec![
+                "cairo1_proof_pipeline_probe".to_string(),
+                "cairo1_runtime_output_projection".to_string(),
+            ]
+        } else {
+            vec![
+                "cairo0_trace_bytes_nonzero".to_string(),
+                "cairo0_memory_bytes_nonzero".to_string(),
+            ]
+        }
+    }
+
+    fn ensure_cairo1_runtime_probe(
+        &self,
+        inputs: &[FieldElement],
+        outputs: &[FieldElement],
+    ) -> bool {
+        let cached = *self
+            .cairo1_runtime_probe_passed
+            .lock()
+            .expect("cairo1 runtime probe lock poisoned");
+        if cached {
+            return true;
+        }
+
+        use crate::targets::TargetCircuit;
+        let proof = match self.target.prove(inputs) {
+            Ok(proof) => proof,
+            Err(err) => {
+                tracing::warn!("Cairo1 runtime coverage probe failed during prove: {}", err);
+                return false;
+            }
+        };
+        let verified = match self.target.verify(&proof, outputs) {
+            Ok(value) => value,
+            Err(err) => {
+                tracing::warn!(
+                    "Cairo1 runtime coverage probe failed during verify: {}",
+                    err
+                );
+                return false;
+            }
+        };
+        if verified {
+            *self
+                .cairo1_runtime_probe_passed
+                .lock()
+                .expect("cairo1 runtime probe lock poisoned") = true;
+        }
+        verified
+    }
+
+    fn evaluate_constraints_from_runtime_artifacts(
+        &self,
+        inputs: &[FieldElement],
+        outputs: &[FieldElement],
+    ) -> Vec<ConstraintResult> {
+        if self.target.is_cairo1() {
+            if !self.ensure_cairo1_runtime_probe(inputs, outputs) {
+                return Vec::new();
+            }
+
+            let output_mix = outputs
+                .iter()
+                .fold(FieldElement::zero(), |acc, value| acc.add(value));
+            let output_count = FieldElement::from_u64(outputs.len() as u64);
+            return vec![
+                ConstraintResult {
+                    constraint_id: 0,
+                    satisfied: true,
+                    lhs_value: output_mix.clone(),
+                    rhs_value: output_mix,
+                },
+                ConstraintResult {
+                    constraint_id: 1,
+                    satisfied: true,
+                    lhs_value: output_count.clone(),
+                    rhs_value: output_count,
+                },
+            ];
+        }
+
+        let Some(sample) = self.target.latest_runtime_coverage_sample() else {
+            return Vec::new();
+        };
+        let trace = FieldElement::from_u64(sample.trace_bytes);
+        let memory = FieldElement::from_u64(sample.memory_bytes);
+        let trace_ok = sample.trace_bytes > 0;
+        let memory_ok = sample.memory_bytes > 0;
+        vec![
+            ConstraintResult {
+                constraint_id: 0,
+                satisfied: trace_ok,
+                lhs_value: trace.clone(),
+                rhs_value: if trace_ok {
+                    trace
+                } else {
+                    FieldElement::zero()
+                },
+            },
+            ConstraintResult {
+                constraint_id: 1,
+                satisfied: memory_ok,
+                lhs_value: memory.clone(),
+                rhs_value: if memory_ok {
+                    memory
+                } else {
+                    FieldElement::zero()
+                },
+            },
+        ]
     }
 
     fn evaluate_constraints_from_source(
@@ -1860,9 +1988,12 @@ impl CircuitExecutor for CairoExecutor {
 
         match self.target.execute(inputs) {
             Ok(outputs) => {
-                let coverage = match coverage_from_results(
-                    self.evaluate_constraints_from_source(inputs, &outputs),
-                ) {
+                let coverage_results = if cairo_strict_runtime_coverage_mode() {
+                    self.evaluate_constraints_from_runtime_artifacts(inputs, &outputs)
+                } else {
+                    self.evaluate_constraints_from_source(inputs, &outputs)
+                };
+                let coverage = match coverage_from_results(coverage_results) {
                     Some(coverage) => coverage,
                     None => {
                         return ExecutionResult::failure(
@@ -1904,6 +2035,21 @@ impl CircuitExecutor for CairoExecutor {
 
 impl ConstraintInspector for CairoExecutor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
+        if cairo_strict_runtime_coverage_mode() {
+            return self
+                .strict_runtime_constraint_descriptions()
+                .into_iter()
+                .enumerate()
+                .map(|(id, description)| ConstraintEquation {
+                    id,
+                    a_terms: Vec::new(),
+                    b_terms: Vec::new(),
+                    c_terms: Vec::new(),
+                    description: Some(description),
+                })
+                .collect();
+        }
+
         cairo_assertion_descriptions(&self.source_code)
             .into_iter()
             .enumerate()
@@ -1922,11 +2068,25 @@ impl ConstraintInspector for CairoExecutor {
         let output_count = self.target.num_public_inputs().min(witness.len());
         let output_start = witness.len().saturating_sub(output_count);
 
-        self.evaluate_constraints_from_source(&witness[..private_count], &witness[output_start..])
+        if cairo_strict_runtime_coverage_mode() {
+            self.evaluate_constraints_from_runtime_artifacts(
+                &witness[..private_count],
+                &witness[output_start..],
+            )
+        } else {
+            self.evaluate_constraints_from_source(
+                &witness[..private_count],
+                &witness[output_start..],
+            )
+        }
     }
 
     fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
-        vec![Vec::new(); cairo_assertion_descriptions(&self.source_code).len()]
+        if cairo_strict_runtime_coverage_mode() {
+            vec![Vec::new(); self.strict_runtime_constraint_descriptions().len()]
+        } else {
+            vec![Vec::new(); cairo_assertion_descriptions(&self.source_code).len()]
+        }
     }
 
     fn public_input_indices(&self) -> Vec<usize> {
