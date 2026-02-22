@@ -12,6 +12,7 @@ use crate::executor::{
 };
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::time::Instant;
 use z3::ast::Ast;
 use z3::{ast, Config, Context, SatResult, Solver};
 use zk_core::FieldElement;
@@ -57,6 +58,8 @@ pub struct WitnessExtensionConfig {
     pub max_subsets: usize,
     /// Keep only results that violate at least one semantic invariant.
     pub require_invariant_violation: bool,
+    /// Global witness-extension analysis budget.
+    pub max_analysis_time_ms: u64,
 }
 
 impl Default for WitnessExtensionConfig {
@@ -67,6 +70,7 @@ impl Default for WitnessExtensionConfig {
             max_removed_constraints: 3,
             max_subsets: 128,
             require_invariant_violation: true,
+            max_analysis_time_ms: 60_000,
         }
     }
 }
@@ -1604,7 +1608,18 @@ impl EnhancedSymbolicExecutor {
 
         let plans = selector.select(constraints);
         let mut results = Vec::new();
+        let start = Instant::now();
         for plan in plans {
+            if start.elapsed().as_millis() as u64
+                >= self.config.witness_extension.max_analysis_time_ms
+            {
+                tracing::warn!(
+                    "Witness-extension analysis budget exceeded ({} ms), stopping early",
+                    self.config.witness_extension.max_analysis_time_ms
+                );
+                break;
+            }
+
             let result = self.solver.solve_witness_extension(
                 constraints,
                 &plan.removed_indices,

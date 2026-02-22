@@ -135,12 +135,472 @@ impl FuzzingEngine {
             tracing::info!("Generated {} findings from invariant enforcement", kept);
         }
 
+        self.run_constraint_inference_witness_extension(config, &invariants, progress)?;
+
         tracing::info!("Constraint inference attack completed");
         if let Some(p) = progress {
             p.inc();
         }
 
         Ok(())
+    }
+
+    fn run_constraint_inference_witness_extension(
+        &mut self,
+        config: &serde_yaml::Value,
+        invariants: &[crate::config::v2::Invariant],
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::analysis::{
+            ConstraintSubsetStrategy, EnhancedSymbolicConfig, EnhancedSymbolicExecutor,
+            ExecutionMode, WitnessExtensionConfig,
+        };
+        use crate::config::v2::parse_invariant_relation;
+
+        let section = config.get("witness_extension");
+        let enabled = section
+            .and_then(|value| value.get("enabled"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        if !enabled {
+            return Ok(());
+        }
+
+        let Some(inspector) = self.executor.constraint_inspector() else {
+            tracing::warn!(
+                "Skipping witness-extension phase: constraint inspector unavailable for target"
+            );
+            return Ok(());
+        };
+
+        let equations = inspector.get_constraints();
+        if equations.is_empty() {
+            tracing::warn!("Skipping witness-extension phase: no constraints available");
+            return Ok(());
+        }
+
+        let public_wire_indices = inspector.public_input_indices();
+        let mut ordered_wire_indices = inspector.public_input_indices();
+        ordered_wire_indices.extend(inspector.private_input_indices());
+        if ordered_wire_indices.is_empty() {
+            ordered_wire_indices = (0..self.config.inputs.len()).collect();
+        }
+
+        let mut wire_labels = inspector.wire_labels();
+        self.merge_config_input_labels(inspector, &mut wire_labels);
+        self.merge_output_labels(inspector, &mut wire_labels);
+
+        let symbolic_constraints = equations
+            .iter()
+            .map(|equation| Self::equation_to_symbolic_constraint(equation, &wire_labels))
+            .collect::<Vec<_>>();
+        if symbolic_constraints.is_empty() {
+            tracing::warn!("Skipping witness-extension phase: failed symbolic conversion");
+            return Ok(());
+        }
+
+        let subset_strategy = match section
+            .and_then(|value| value.get("subset_strategy"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("single")
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "single" | "remove_single" | "remove_single_constraint" => {
+                ConstraintSubsetStrategy::RemoveSingleConstraint
+            }
+            "cluster" | "dependency_cluster" | "remove_dependency_cluster" => {
+                ConstraintSubsetStrategy::RemoveDependencyCluster
+            }
+            "type" | "by_type" | "remove_by_type" => ConstraintSubsetStrategy::RemoveByType,
+            _ => ConstraintSubsetStrategy::RemoveSingleConstraint,
+        };
+        let max_removed_constraints = section
+            .and_then(|value| value.get("max_removed_constraints"))
+            .and_then(|value| value.as_u64())
+            .unwrap_or(3) as usize;
+        let max_subsets = section
+            .and_then(|value| value.get("max_subsets"))
+            .and_then(|value| value.as_u64())
+            .unwrap_or(64) as usize;
+        let require_invariant_violation = section
+            .and_then(|value| value.get("require_invariant_violation"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true);
+        let max_analysis_time_ms = section
+            .and_then(|value| value.get("max_analysis_time_ms"))
+            .and_then(|value| value.as_u64())
+            .unwrap_or(60_000);
+        let solver_timeout_ms = section
+            .and_then(|value| value.get("solver_timeout_ms"))
+            .and_then(|value| value.as_u64())
+            .unwrap_or(5_000)
+            .min(u32::MAX as u64) as u32;
+
+        let semantic_invariants = invariants
+            .iter()
+            .filter_map(|invariant| {
+                let ast = parse_invariant_relation(&invariant.relation).ok()?;
+                Self::invariant_ast_to_symbolic_constraint(&ast)
+            })
+            .collect::<Vec<_>>();
+
+        if semantic_invariants.is_empty() {
+            tracing::warn!(
+                "Witness-extension semantic integration: no parseable invariants were available"
+            );
+            if require_invariant_violation {
+                return Ok(());
+            }
+        }
+
+        let base_witness_attempts = section
+            .and_then(|value| value.get("base_witness_attempts"))
+            .and_then(|value| value.as_u64())
+            .unwrap_or(32) as usize;
+        let mut base_witness = None;
+
+        for witness in self.collect_corpus_inputs(base_witness_attempts.saturating_mul(2).max(8)) {
+            if self.executor.execute_sync(&witness).success {
+                base_witness = Some(witness);
+                break;
+            }
+        }
+        if base_witness.is_none() {
+            for _ in 0..base_witness_attempts {
+                if self.wall_clock_timeout_reached() {
+                    break;
+                }
+                let candidate = self.generate_test_case().inputs;
+                if self.executor.execute_sync(&candidate).success {
+                    base_witness = Some(candidate);
+                    break;
+                }
+            }
+        }
+        let Some(base_witness) = base_witness else {
+            tracing::warn!("Skipping witness-extension phase: no valid base witness available");
+            return Ok(());
+        };
+
+        if ordered_wire_indices.is_empty() {
+            ordered_wire_indices = (0..base_witness.len()).collect();
+        }
+
+        let mut assignments = std::collections::HashMap::new();
+        for (input_idx, value) in base_witness.iter().enumerate() {
+            let wire_idx = ordered_wire_indices
+                .get(input_idx)
+                .copied()
+                .unwrap_or(input_idx);
+            assignments.insert(format!("w_{}", wire_idx), value.clone());
+            if let Some(label) = wire_labels.get(&wire_idx) {
+                assignments.insert(Self::sanitize_symbol_name(label), value.clone());
+            }
+        }
+
+        let mut fixed_symbols = std::collections::HashSet::new();
+        for wire_idx in public_wire_indices {
+            fixed_symbols.insert(format!("w_{}", wire_idx));
+            if let Some(label) = wire_labels.get(&wire_idx) {
+                fixed_symbols.insert(Self::sanitize_symbol_name(label));
+            }
+        }
+
+        let mut symbolic = EnhancedSymbolicExecutor::with_config(
+            self.config.inputs.len().max(1),
+            EnhancedSymbolicConfig {
+                max_paths: max_subsets.max(1),
+                max_depth: symbolic_constraints.len().min(1024).max(1),
+                solver_timeout_ms,
+                random_seed: self.seed,
+                pruning_strategy: crate::analysis::PruningStrategy::DepthBounded,
+                simplify_constraints: true,
+                incremental_solving: true,
+                solutions_per_path: 1,
+                loop_bound: 1,
+                execution_mode: ExecutionMode::WitnessExtension,
+                witness_extension: WitnessExtensionConfig {
+                    enabled: true,
+                    subset_strategy,
+                    max_removed_constraints: max_removed_constraints.max(1),
+                    max_subsets: max_subsets.max(1),
+                    require_invariant_violation,
+                    max_analysis_time_ms,
+                },
+            },
+        );
+
+        let results = symbolic.run_witness_extension(
+            &symbolic_constraints,
+            &assignments,
+            &fixed_symbols,
+            &semantic_invariants,
+        );
+
+        if results.is_empty() {
+            tracing::info!("Witness-extension phase completed with no violating candidates");
+            return Ok(());
+        }
+
+        let findings = results
+            .iter()
+            .map(|result| {
+                let severity = if result.removed_indices.len() <= 3
+                    && !result.violated_invariants.is_empty()
+                {
+                    Severity::Critical
+                } else {
+                    Severity::High
+                };
+
+                let witness_b = Self::assignment_map_to_inputs(
+                    &result.assignments,
+                    &base_witness,
+                    &ordered_wire_indices,
+                    &wire_labels,
+                );
+
+                Finding {
+                    attack_type: AttackType::ConstraintInference,
+                    severity,
+                    description: format!(
+                        "Witness-extension candidate found by removing constraints {:?}: {} removed constraints checked, {} violated semantic invariants.",
+                        result.removed_indices,
+                        result.removed_constraints_total,
+                        result.violated_invariants.len()
+                    ),
+                    poc: ProofOfConcept {
+                        witness_a: base_witness.clone(),
+                        witness_b: Some(witness_b),
+                        public_inputs: vec![],
+                        proof: None,
+                    },
+                    location: Some("witness_extension".to_string()),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let kept =
+            self.record_custom_findings(findings, AttackType::ConstraintInference, progress)?;
+        tracing::info!(
+            "Witness-extension semantic integration produced {} findings",
+            kept
+        );
+        Ok(())
+    }
+
+    fn equation_to_symbolic_constraint(
+        equation: &zk_core::ConstraintEquation,
+        wire_labels: &std::collections::HashMap<usize, String>,
+    ) -> crate::analysis::SymbolicConstraint {
+        use crate::analysis::{SymbolicConstraint, SymbolicValue};
+
+        fn lc_to_value(
+            terms: &[(usize, FieldElement)],
+            labels: &std::collections::HashMap<usize, String>,
+        ) -> SymbolicValue {
+            let mut iter = terms.iter();
+            let Some((first_idx, first_coeff)) = iter.next() else {
+                return SymbolicValue::concrete(FieldElement::zero());
+            };
+
+            let first_term =
+                FuzzingEngine::symbolic_term_from_coeff(*first_idx, first_coeff.clone(), labels);
+            iter.fold(first_term, |acc, (idx, coeff)| {
+                let term = FuzzingEngine::symbolic_term_from_coeff(*idx, coeff.clone(), labels);
+                SymbolicValue::Add(Box::new(acc), Box::new(term))
+            })
+        }
+
+        SymbolicConstraint::R1CS {
+            a: lc_to_value(&equation.a_terms, wire_labels),
+            b: lc_to_value(&equation.b_terms, wire_labels),
+            c: lc_to_value(&equation.c_terms, wire_labels),
+        }
+    }
+
+    fn symbolic_term_from_coeff(
+        wire_idx: usize,
+        coeff: FieldElement,
+        wire_labels: &std::collections::HashMap<usize, String>,
+    ) -> crate::analysis::SymbolicValue {
+        use crate::analysis::SymbolicValue;
+        let symbol = wire_labels
+            .get(&wire_idx)
+            .map(|value| Self::sanitize_symbol_name(value))
+            .unwrap_or_else(|| format!("w_{}", wire_idx));
+
+        let value = SymbolicValue::symbol(&symbol);
+        if coeff.is_one() {
+            value
+        } else {
+            SymbolicValue::Mul(Box::new(SymbolicValue::concrete(coeff)), Box::new(value))
+        }
+    }
+
+    fn sanitize_symbol_name(raw: &str) -> String {
+        let mut out = String::new();
+        for ch in raw.chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch.to_ascii_lowercase());
+            } else {
+                out.push('_');
+            }
+        }
+        let out = out.trim_matches('_').to_string();
+        if out.is_empty() {
+            "symbol".to_string()
+        } else {
+            out
+        }
+    }
+
+    fn invariant_ast_to_symbolic_constraint(
+        ast: &crate::config::v2::InvariantAST,
+    ) -> Option<crate::analysis::SymbolicConstraint> {
+        use crate::analysis::{SymbolicConstraint, SymbolicValue};
+        use crate::config::v2::InvariantAST;
+
+        match ast {
+            InvariantAST::Equals(left, right) => Some(SymbolicConstraint::Eq(
+                Self::invariant_ast_to_symbolic_value(left),
+                Self::invariant_ast_to_symbolic_value(right),
+            )),
+            InvariantAST::NotEquals(left, right) => Some(SymbolicConstraint::Neq(
+                Self::invariant_ast_to_symbolic_value(left),
+                Self::invariant_ast_to_symbolic_value(right),
+            )),
+            InvariantAST::LessThan(left, right) => Some(SymbolicConstraint::Lt(
+                Self::invariant_ast_to_symbolic_value(left),
+                Self::invariant_ast_to_symbolic_value(right),
+            )),
+            InvariantAST::LessThanOrEqual(left, right) => Some(SymbolicConstraint::Lte(
+                Self::invariant_ast_to_symbolic_value(left),
+                Self::invariant_ast_to_symbolic_value(right),
+            )),
+            InvariantAST::GreaterThan(left, right) => Some(SymbolicConstraint::Lt(
+                Self::invariant_ast_to_symbolic_value(right),
+                Self::invariant_ast_to_symbolic_value(left),
+            )),
+            InvariantAST::GreaterThanOrEqual(left, right) => Some(SymbolicConstraint::Lte(
+                Self::invariant_ast_to_symbolic_value(right),
+                Self::invariant_ast_to_symbolic_value(left),
+            )),
+            InvariantAST::Range {
+                lower,
+                value,
+                upper,
+                inclusive_lower,
+                inclusive_upper,
+            } => {
+                let lower_check = if *inclusive_lower {
+                    SymbolicConstraint::Lte(
+                        Self::invariant_ast_to_symbolic_value(lower),
+                        Self::invariant_ast_to_symbolic_value(value),
+                    )
+                } else {
+                    SymbolicConstraint::Lt(
+                        Self::invariant_ast_to_symbolic_value(lower),
+                        Self::invariant_ast_to_symbolic_value(value),
+                    )
+                };
+                let upper_check = if *inclusive_upper {
+                    SymbolicConstraint::Lte(
+                        Self::invariant_ast_to_symbolic_value(value),
+                        Self::invariant_ast_to_symbolic_value(upper),
+                    )
+                } else {
+                    SymbolicConstraint::Lt(
+                        Self::invariant_ast_to_symbolic_value(value),
+                        Self::invariant_ast_to_symbolic_value(upper),
+                    )
+                };
+                Some(SymbolicConstraint::And(
+                    Box::new(lower_check),
+                    Box::new(upper_check),
+                ))
+            }
+            InvariantAST::InSet(_, _) | InvariantAST::ForAll { .. } => None,
+            InvariantAST::Identifier(_)
+            | InvariantAST::ArrayAccess(_, _)
+            | InvariantAST::Call(_, _)
+            | InvariantAST::Literal(_)
+            | InvariantAST::Power(_, _)
+            | InvariantAST::Set(_)
+            | InvariantAST::Raw(_) => Some(SymbolicConstraint::Eq(
+                Self::invariant_ast_to_symbolic_value(ast),
+                SymbolicValue::concrete(FieldElement::one()),
+            )),
+        }
+    }
+
+    fn invariant_ast_to_symbolic_value(
+        ast: &crate::config::v2::InvariantAST,
+    ) -> crate::analysis::SymbolicValue {
+        use crate::analysis::SymbolicValue;
+        use crate::config::v2::InvariantAST;
+
+        match ast {
+            InvariantAST::Identifier(name) => {
+                SymbolicValue::symbol(&Self::sanitize_symbol_name(name))
+            }
+            InvariantAST::ArrayAccess(name, index) => {
+                SymbolicValue::symbol(&Self::sanitize_symbol_name(&format!("{}_{}", name, index)))
+            }
+            InvariantAST::Call(name, args) => {
+                let joined = args.join("_");
+                SymbolicValue::symbol(&Self::sanitize_symbol_name(&format!("{}_{}", name, joined)))
+            }
+            InvariantAST::Literal(value) => {
+                if let Ok(parsed) = value.parse::<u64>() {
+                    SymbolicValue::concrete(FieldElement::from_u64(parsed))
+                } else if let Ok(parsed) = FieldElement::from_hex(value) {
+                    SymbolicValue::concrete(parsed)
+                } else {
+                    SymbolicValue::symbol(&Self::sanitize_symbol_name(value))
+                }
+            }
+            InvariantAST::Power(base, exp) => {
+                if let (Ok(base_u), Ok(exp_u)) = (base.parse::<u64>(), exp.parse::<u32>()) {
+                    if exp_u <= 63 {
+                        if let Some(pow) = base_u.checked_pow(exp_u) {
+                            return SymbolicValue::concrete(FieldElement::from_u64(pow));
+                        }
+                    }
+                }
+                SymbolicValue::symbol(&Self::sanitize_symbol_name(&format!(
+                    "pow_{}_{}",
+                    base, exp
+                )))
+            }
+            InvariantAST::Raw(raw) => SymbolicValue::symbol(&Self::sanitize_symbol_name(raw)),
+            _ => SymbolicValue::symbol("unsupported_term"),
+        }
+    }
+
+    fn assignment_map_to_inputs(
+        assignments: &std::collections::HashMap<String, FieldElement>,
+        baseline_inputs: &[FieldElement],
+        wire_indices: &[usize],
+        wire_labels: &std::collections::HashMap<usize, String>,
+    ) -> Vec<FieldElement> {
+        let mut out = baseline_inputs.to_vec();
+        for (input_idx, value) in out.iter_mut().enumerate() {
+            let wire_idx = wire_indices.get(input_idx).copied().unwrap_or(input_idx);
+            let fallback = format!("w_{}", wire_idx);
+            if let Some(candidate) = assignments.get(&fallback) {
+                *value = candidate.clone();
+                continue;
+            }
+            if let Some(label) = wire_labels.get(&wire_idx) {
+                let alias = Self::sanitize_symbol_name(label);
+                if let Some(candidate) = assignments.get(&alias) {
+                    *value = candidate.clone();
+                }
+            }
+        }
+        out
     }
 
     pub(super) async fn run_metamorphic_attack(
