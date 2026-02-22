@@ -60,6 +60,11 @@ on:
         required: false
         default: "0.90"
         type: string
+      min_backend_selector_matching_total_per_backend:
+        description: Per-backend selector-matching classified run thresholds
+        required: false
+        default: "noir=25,cairo=4,halo2=4"
+        type: string
       min_backend_enabled_targets:
         description: Minimum enabled readiness matrix targets required per backend
         required: false
@@ -163,6 +168,7 @@ jobs:
             --workers ${{ inputs.readiness_workers }} \
             --required-backends "${{ inputs.required_backends }}" \
             --min-completion-rate "${{ inputs.min_backend_completion_rate }}" \
+            --per-backend-min-selector-matching-total "${{ inputs.min_backend_selector_matching_total_per_backend }}" \
             --min-enabled-targets "${{ inputs.min_backend_enabled_targets }}" \
             --max-runtime-error "${{ inputs.max_backend_runtime_error }}" \
             --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
@@ -183,6 +189,7 @@ jobs:
             --required-backends "${{ inputs.required_backends }}" \
             --required-maturity-backends "${{ inputs.required_maturity_backends }}" \
             --min-backend-completion-rate "${{ inputs.min_backend_completion_rate }}" \
+            --min-backend-selector-matching-total-per-backend "${{ inputs.min_backend_selector_matching_total_per_backend }}" \
             --min-backend-enabled-targets "${{ inputs.min_backend_enabled_targets }}" \
             --min-backend-maturity-score "${{ inputs.min_backend_maturity_score }}" \
             --max-backend-runtime-error "${{ inputs.max_backend_runtime_error }}" \

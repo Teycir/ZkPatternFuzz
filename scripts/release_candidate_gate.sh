@@ -10,6 +10,7 @@ BACKEND_READINESS_DASHBOARD="$BACKEND_READINESS_ROOT/latest_report.json"
 BACKEND_REQUIRED_LIST="${BACKEND_REQUIRED_LIST:-noir,cairo,halo2}"
 MIN_BACKEND_COMPLETION_RATE="${MIN_BACKEND_COMPLETION_RATE:-0.90}"
 MIN_BACKEND_SELECTOR_MATCHING_TOTAL="${MIN_BACKEND_SELECTOR_MATCHING_TOTAL:-4}"
+MIN_BACKEND_SELECTOR_MATCHING_TOTALS="${MIN_BACKEND_SELECTOR_MATCHING_TOTALS:-noir=25,cairo=4,halo2=4}"
 MIN_BACKEND_OVERALL_COMPLETION_RATE="${MIN_BACKEND_OVERALL_COMPLETION_RATE:-0.40}"
 MAX_BACKEND_SELECTOR_MISMATCH_RATE="${MAX_BACKEND_SELECTOR_MISMATCH_RATE:-0.70}"
 MAX_BACKEND_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
@@ -48,6 +49,9 @@ Options:
                              Minimum per-backend selector-matching completion ratio (default: 0.90)
   --min-backend-selector-matching-total <int>
                              Minimum per-backend selector-matching classified runs (default: 4)
+  --min-backend-selector-matching-total-per-backend <csv>
+                             Optional per-backend selector-matching thresholds
+                             (default: noir=25,cairo=4,halo2=4)
   --min-backend-overall-completion-rate <float>
                              Minimum per-backend overall completion ratio (default: 0.40)
   --max-backend-selector-mismatch-rate <float>
@@ -125,6 +129,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --min-backend-selector-matching-total)
       MIN_BACKEND_SELECTOR_MATCHING_TOTAL="$2"
+      shift 2
+      ;;
+    --min-backend-selector-matching-total-per-backend)
+      MIN_BACKEND_SELECTOR_MATCHING_TOTALS="$2"
       shift 2
       ;;
     --min-backend-overall-completion-rate)
@@ -239,6 +247,7 @@ backend_gate_cmd=(
   --required-backends "$BACKEND_REQUIRED_LIST"
   --min-completion-rate "$MIN_BACKEND_COMPLETION_RATE"
   --min-selector-matching-total "$MIN_BACKEND_SELECTOR_MATCHING_TOTAL"
+  --per-backend-min-selector-matching-total "$MIN_BACKEND_SELECTOR_MATCHING_TOTALS"
   --min-overall-completion-rate "$MIN_BACKEND_OVERALL_COMPLETION_RATE"
   --max-selector-mismatch-rate "$MAX_BACKEND_SELECTOR_MISMATCH_RATE"
   --max-runtime-error "$MAX_BACKEND_RUNTIME_ERROR"

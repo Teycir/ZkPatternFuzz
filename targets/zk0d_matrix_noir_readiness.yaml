@@ -29,6 +29,34 @@ targets:
     alias: readiness_noir
     enabled: true
 
+  - name: local_noir_sum_square
+    target_circuit: tests/noir_projects/sum_square/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
+  - name: local_noir_mul_accumulate
+    target_circuit: tests/noir_projects/mul_accumulate/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
+  - name: local_noir_delta_square
+    target_circuit: tests/noir_projects/delta_square/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
+  - name: local_noir_affine_shift
+    target_circuit: tests/noir_projects/affine_shift/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
   - name: external_noir_safe_product_vendored
     target_circuit: targets/external/readiness/noir/safe_product/Nargo.toml
     main_component: main

@@ -7,6 +7,7 @@ OUTPUT_PATH="${OUTPUT_PATH:-$READINESS_ROOT/latest_report.json}"
 REQUIRED_BACKENDS="${REQUIRED_BACKENDS:-noir,cairo,halo2}"
 MIN_COMPLETION_RATE="${MIN_BACKEND_COMPLETION_RATE:-0.90}"
 MIN_SELECTOR_MATCHING_TOTAL="${MIN_BACKEND_SELECTOR_MATCHING_TOTAL:-4}"
+PER_BACKEND_MIN_SELECTOR_MATCHING_TOTAL="${MIN_BACKEND_SELECTOR_MATCHING_TOTALS:-}"
 MIN_OVERALL_COMPLETION_RATE="${MIN_BACKEND_OVERALL_COMPLETION_RATE:-0.40}"
 MAX_SELECTOR_MISMATCH_RATE="${MAX_BACKEND_SELECTOR_MISMATCH_RATE:-0.70}"
 MAX_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
@@ -28,6 +29,8 @@ Options:
   --required-backends <csv>             Backends to gate (default: noir,cairo,halo2)
   --min-completion-rate <float>         Minimum selector-matching completion rate per backend (default: 0.90)
   --min-selector-matching-total <int>   Minimum selector-matching classified runs per backend (default: 4)
+  --per-backend-min-selector-matching-total <csv>
+                                      Optional per-backend selector-matching thresholds (e.g. noir=25,cairo=4,halo2=4)
   --min-overall-completion-rate <float> Minimum overall completion rate per backend (default: 0.40)
   --max-selector-mismatch-rate <float>  Maximum selector_mismatch ratio per backend (default: 0.70)
   --max-runtime-error <int>             Maximum runtime_error count per backend (default: 0)
@@ -62,6 +65,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --min-selector-matching-total)
       MIN_SELECTOR_MATCHING_TOTAL="$2"
+      shift 2
+      ;;
+    --per-backend-min-selector-matching-total)
+      PER_BACKEND_MIN_SELECTOR_MATCHING_TOTAL="$2"
       shift 2
       ;;
     --min-overall-completion-rate)
@@ -116,6 +123,7 @@ python3 - \
   "$REQUIRED_BACKENDS" \
   "$MIN_COMPLETION_RATE" \
   "$MIN_SELECTOR_MATCHING_TOTAL" \
+  "$PER_BACKEND_MIN_SELECTOR_MATCHING_TOTAL" \
   "$MIN_OVERALL_COMPLETION_RATE" \
   "$MAX_SELECTOR_MISMATCH_RATE" \
   "$MAX_RUNTIME_ERROR" \
@@ -142,6 +150,39 @@ def as_float(value, default=0.0):
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def parse_backend_thresholds(raw_value):
+    thresholds = {}
+    raw = str(raw_value or "").strip()
+    if not raw:
+        return thresholds
+
+    for item in raw.split(","):
+        pair = item.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            raise ValueError(
+                f"invalid backend threshold '{pair}' (expected backend=value)"
+            )
+        backend, value = pair.split("=", 1)
+        backend = backend.strip()
+        if not backend:
+            raise ValueError(f"invalid backend threshold '{pair}' (empty backend)")
+        try:
+            threshold = int(value.strip())
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid threshold value '{value.strip()}' for backend '{backend}'"
+            ) from exc
+        if threshold < 0:
+            raise ValueError(
+                f"invalid negative threshold {threshold} for backend '{backend}'"
+            )
+        thresholds[backend] = threshold
+
+    return thresholds
 
 
 def count_enabled_targets(matrix_path):
@@ -177,14 +218,19 @@ output_path = sys.argv[2]
 required_backends = [part.strip() for part in sys.argv[3].split(",") if part.strip()]
 min_completion_rate = as_float(sys.argv[4], 0.90)
 min_selector_matching_total = as_int(sys.argv[5], 4)
-min_overall_completion_rate = as_float(sys.argv[6], 0.40)
-max_selector_mismatch_rate = as_float(sys.argv[7], 0.70)
-max_runtime_error = as_int(sys.argv[8], 0)
-max_backend_preflight_failed = as_int(sys.argv[9], 0)
-max_run_outcome_missing_rate = as_float(sys.argv[10], 0.05)
-min_aggregate_selector_matching_total = as_int(sys.argv[11], 12)
-min_enabled_targets = as_int(sys.argv[12], 5)
-enforce = as_int(sys.argv[13], 0) == 1
+try:
+    per_backend_min_selector_matching_total = parse_backend_thresholds(sys.argv[6])
+except ValueError as err:
+    print(f"Invalid --per-backend-min-selector-matching-total: {err}", file=sys.stderr)
+    sys.exit(2)
+min_overall_completion_rate = as_float(sys.argv[7], 0.40)
+max_selector_mismatch_rate = as_float(sys.argv[8], 0.70)
+max_runtime_error = as_int(sys.argv[9], 0)
+max_backend_preflight_failed = as_int(sys.argv[10], 0)
+max_run_outcome_missing_rate = as_float(sys.argv[11], 0.05)
+min_aggregate_selector_matching_total = as_int(sys.argv[12], 12)
+min_enabled_targets = as_int(sys.argv[13], 5)
+enforce = as_int(sys.argv[14], 0) == 1
 
 backend_entries = []
 overall_pass = True
@@ -193,6 +239,9 @@ aggregate_run_outcome_missing = 0
 aggregate_selector_matching_total = 0
 
 for backend in required_backends:
+    selector_matching_total_threshold = per_backend_min_selector_matching_total.get(
+        backend, min_selector_matching_total
+    )
     report_path = os.path.join(readiness_root, backend, "latest_report.json")
     entry = {
         "backend": backend,
@@ -208,6 +257,7 @@ for backend in required_backends:
         "selector_mismatch_count": 0,
         "selector_mismatch_rate": 0.0,
         "selector_matching_total": 0,
+        "selector_matching_total_threshold": selector_matching_total_threshold,
         "selector_matching_completion_rate": 0.0,
         "runtime_error_count": 0,
         "backend_preflight_failed_count": 0,
@@ -276,9 +326,10 @@ for backend in required_backends:
             "selector_matching_completion_rate "
             f"{selector_matching_completion_rate:.3f} < {min_completion_rate:.3f}"
         )
-    if selector_matching_total < min_selector_matching_total:
+    if selector_matching_total < selector_matching_total_threshold:
         gate_failures.append(
-            f"selector_matching_total {selector_matching_total} < {min_selector_matching_total}"
+            "selector_matching_total "
+            f"{selector_matching_total} < {selector_matching_total_threshold}"
         )
     if enabled_targets_count is None:
         gate_failures.append("enabled_targets_count unavailable (matrix path missing/unreadable)")
@@ -366,6 +417,7 @@ payload = {
         "min_completion_rate": min_completion_rate,
         "completion_rate_basis": "selector_matching",
         "min_selector_matching_total": min_selector_matching_total,
+        "per_backend_min_selector_matching_total": per_backend_min_selector_matching_total,
         "min_overall_completion_rate": min_overall_completion_rate,
         "max_selector_mismatch_rate": max_selector_mismatch_rate,
         "max_runtime_error": max_runtime_error,

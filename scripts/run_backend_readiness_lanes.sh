@@ -28,6 +28,7 @@ ENFORCE_DASHBOARD=0
 REQUIRED_BACKENDS="${BACKEND_REQUIRED_LIST:-noir,cairo,halo2}"
 MIN_COMPLETION_RATE="${MIN_BACKEND_COMPLETION_RATE:-0.90}"
 MIN_SELECTOR_MATCHING_TOTAL="${MIN_BACKEND_SELECTOR_MATCHING_TOTAL:-4}"
+PER_BACKEND_MIN_SELECTOR_MATCHING_TOTAL="${MIN_BACKEND_SELECTOR_MATCHING_TOTALS:-noir=25,cairo=4,halo2=4}"
 MIN_OVERALL_COMPLETION_RATE="${MIN_BACKEND_OVERALL_COMPLETION_RATE:-0.40}"
 MAX_SELECTOR_MISMATCH_RATE="${MAX_BACKEND_SELECTOR_MISMATCH_RATE:-0.70}"
 MAX_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
@@ -57,6 +58,8 @@ Options:
   --required-backends <csv>             Backends required in dashboard gate (default: noir,cairo,halo2)
   --min-completion-rate <float>         Dashboard gate minimum selector-matching completion ratio (default: 0.90)
   --min-selector-matching-total <int>   Dashboard gate minimum selector-matching classified runs per backend (default: 4)
+  --per-backend-min-selector-matching-total <csv>
+                                        Dashboard per-backend selector-matching thresholds (default: noir=25,cairo=4,halo2=4)
   --min-overall-completion-rate <f>     Dashboard gate minimum overall completion ratio per backend (default: 0.40)
   --max-selector-mismatch-rate <f>      Dashboard gate maximum selector_mismatch ratio per backend (default: 0.70)
   --max-runtime-error <int>             Dashboard gate max runtime_error count (default: 0)
@@ -99,6 +102,7 @@ while [[ $# -gt 0 ]]; do
     --required-backends) REQUIRED_BACKENDS="$2"; shift 2 ;;
     --min-completion-rate) MIN_COMPLETION_RATE="$2"; shift 2 ;;
     --min-selector-matching-total) MIN_SELECTOR_MATCHING_TOTAL="$2"; shift 2 ;;
+    --per-backend-min-selector-matching-total) PER_BACKEND_MIN_SELECTOR_MATCHING_TOTAL="$2"; shift 2 ;;
     --min-overall-completion-rate) MIN_OVERALL_COMPLETION_RATE="$2"; shift 2 ;;
     --max-selector-mismatch-rate) MAX_SELECTOR_MISMATCH_RATE="$2"; shift 2 ;;
     --max-runtime-error) MAX_RUNTIME_ERROR="$2"; shift 2 ;;
@@ -252,6 +256,7 @@ dashboard_cmd=(
   --required-backends "$REQUIRED_BACKENDS"
   --min-completion-rate "$MIN_COMPLETION_RATE"
   --min-selector-matching-total "$MIN_SELECTOR_MATCHING_TOTAL"
+  --per-backend-min-selector-matching-total "$PER_BACKEND_MIN_SELECTOR_MATCHING_TOTAL"
   --min-overall-completion-rate "$MIN_OVERALL_COMPLETION_RATE"
   --max-selector-mismatch-rate "$MAX_SELECTOR_MISMATCH_RATE"
   --max-runtime-error "$MAX_RUNTIME_ERROR"
