@@ -293,6 +293,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add CI/release gate that fails when any backend score drops below target (`>=4.5` initially, `==5.0` at cutover).
 - [x] Expand readiness matrices to include at least 5 enabled representative targets per backend (local + external).
 - [x] Enforce tool sandbox for all readiness/release lanes (`--enforce-tool-sandbox`) and archive gate evidence.
+- [x] Add backend maturity history + consecutive-day streak gate (`scripts/backend_maturity_scorecard.sh`, `scripts/release_candidate_gate.sh`) to enforce 14-day `5.0` closures with runtime-error constraints.
 
 ### 8.3 Backend-Specific Closure Plans
 
@@ -306,7 +307,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Implement key setup path in `Halo2Target::setup_keys` (or a strict canonical adapter with equivalent guarantees).
 - [x] Add canonical execution/prove/verify integration that is not dependent on ad-hoc custom CLI flags in target binaries.
 - [x] Replace metadata-only success fallbacks with strict production behavior in readiness lanes.
-- [ ] Expand Halo2 matrix to at least 5 targets (JSON specs + real circuits + external circuits).
+- [x] Expand Halo2 matrix to at least 5 targets (JSON specs + real circuits + external circuits).
 - [ ] Exit criteria: `runtime_error=0` and Halo2 score `5.0` for 14 consecutive daily scorecards.
 
 #### Cairo -> 5/5

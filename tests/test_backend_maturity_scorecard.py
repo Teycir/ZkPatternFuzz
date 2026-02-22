@@ -2,6 +2,7 @@
 import json
 import subprocess
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import unittest
 
@@ -135,6 +136,8 @@ class BackendMaturityScorecardTests(unittest.TestCase):
             backend_names = {entry["backend"] for entry in payload["backends"]}
             self.assertEqual(backend_names, {"circom", "noir", "cairo", "halo2"})
             self.assertEqual(payload["gate_failures"], [])
+            self.assertIn("consecutive_gate", payload)
+            self.assertFalse(payload["consecutive_gate"]["enabled"])
 
     def test_scorecard_enforce_fails_when_required_backend_below_threshold(self):
         with tempfile.TemporaryDirectory(prefix="zkfuzz_maturity_fail_") as tmpdir:
@@ -193,6 +196,211 @@ class BackendMaturityScorecardTests(unittest.TestCase):
             payload = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertFalse(payload["overall_pass"])
             self.assertTrue(any(msg.startswith("halo2: score") for msg in payload["gate_failures"]))
+
+    def test_scorecard_enforce_passes_with_consecutive_day_streak(self):
+        with tempfile.TemporaryDirectory(prefix="zkfuzz_maturity_streak_pass_") as tmpdir:
+            root = Path(tmpdir)
+            readiness_path = root / "backend_readiness.json"
+            output_path = root / "scorecard.json"
+            history_path = root / "history.json"
+
+            _write_json(
+                readiness_path,
+                {
+                    "thresholds": {
+                        "min_selector_matching_total": 4,
+                        "min_overall_completion_rate": 0.4,
+                        "max_selector_mismatch_rate": 0.7,
+                        "max_run_outcome_missing_rate": 0.05,
+                    },
+                    "backends": [
+                        {
+                            "backend": "halo2",
+                            "matrix_exit_code": 0,
+                            "selector_matching_completion_rate": 1.0,
+                            "selector_matching_total": 8,
+                            "selector_mismatch_rate": 0.0,
+                            "completion_rate": 1.0,
+                            "runtime_error_count": 0,
+                            "backend_preflight_failed_count": 0,
+                            "run_outcome_missing_rate": 0.0,
+                            "integration_statuses": ["pass", "pass"],
+                            "gate_pass": True,
+                        }
+                    ],
+                },
+            )
+
+            now = datetime.now(timezone.utc)
+            _write_json(
+                history_path,
+                {
+                    "history_version": 1,
+                    "entries": [
+                        {
+                            "generated_utc": (now - timedelta(days=2)).isoformat(),
+                            "backends": {
+                                "halo2": {
+                                    "score_total": 5.0,
+                                    "runtime_error_count": 0,
+                                }
+                            },
+                        },
+                        {
+                            "generated_utc": (now - timedelta(days=1)).isoformat(),
+                            "backends": {
+                                "halo2": {
+                                    "score_total": 5.0,
+                                    "runtime_error_count": 0,
+                                }
+                            },
+                        },
+                    ],
+                },
+            )
+
+            proc = subprocess.run(
+                [
+                    str(_script_path()),
+                    "--readiness-dashboard",
+                    str(readiness_path),
+                    "--benchmark-root",
+                    str(root / "benchmark_runs"),
+                    "--history-path",
+                    str(history_path),
+                    "--output",
+                    str(output_path),
+                    "--required-backends",
+                    "halo2",
+                    "--min-score",
+                    "4.5",
+                    "--consecutive-days",
+                    "3",
+                    "--consecutive-target-score",
+                    "5.0",
+                    "--consecutive-required-backends",
+                    "halo2",
+                    "--enforce",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(
+                proc.returncode,
+                0,
+                msg=f"stdout={proc.stdout}\nstderr={proc.stderr}",
+            )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertTrue(payload["overall_pass"])
+            self.assertTrue(payload["consecutive_gate"]["enabled"])
+            self.assertTrue(payload["consecutive_gate"]["overall_pass"])
+            self.assertGreaterEqual(
+                payload["consecutive_gate"]["per_backend"]["halo2"]["current_streak_days"],
+                3,
+            )
+
+    def test_scorecard_enforce_fails_when_consecutive_day_streak_breaks(self):
+        with tempfile.TemporaryDirectory(prefix="zkfuzz_maturity_streak_fail_") as tmpdir:
+            root = Path(tmpdir)
+            readiness_path = root / "backend_readiness.json"
+            output_path = root / "scorecard.json"
+            history_path = root / "history.json"
+
+            _write_json(
+                readiness_path,
+                {
+                    "thresholds": {
+                        "min_selector_matching_total": 4,
+                        "min_overall_completion_rate": 0.4,
+                        "max_selector_mismatch_rate": 0.7,
+                        "max_run_outcome_missing_rate": 0.05,
+                    },
+                    "backends": [
+                        {
+                            "backend": "halo2",
+                            "matrix_exit_code": 0,
+                            "selector_matching_completion_rate": 1.0,
+                            "selector_matching_total": 8,
+                            "selector_mismatch_rate": 0.0,
+                            "completion_rate": 1.0,
+                            "runtime_error_count": 0,
+                            "backend_preflight_failed_count": 0,
+                            "run_outcome_missing_rate": 0.0,
+                            "integration_statuses": ["pass", "pass"],
+                            "gate_pass": True,
+                        }
+                    ],
+                },
+            )
+
+            now = datetime.now(timezone.utc)
+            _write_json(
+                history_path,
+                {
+                    "history_version": 1,
+                    "entries": [
+                        {
+                            "generated_utc": (now - timedelta(days=4)).isoformat(),
+                            "backends": {
+                                "halo2": {
+                                    "score_total": 5.0,
+                                    "runtime_error_count": 0,
+                                }
+                            },
+                        },
+                        {
+                            "generated_utc": (now - timedelta(days=1)).isoformat(),
+                            "backends": {
+                                "halo2": {
+                                    "score_total": 5.0,
+                                    "runtime_error_count": 0,
+                                }
+                            },
+                        },
+                    ],
+                },
+            )
+
+            proc = subprocess.run(
+                [
+                    str(_script_path()),
+                    "--readiness-dashboard",
+                    str(readiness_path),
+                    "--benchmark-root",
+                    str(root / "benchmark_runs"),
+                    "--history-path",
+                    str(history_path),
+                    "--output",
+                    str(output_path),
+                    "--required-backends",
+                    "halo2",
+                    "--min-score",
+                    "4.5",
+                    "--consecutive-days",
+                    "3",
+                    "--consecutive-target-score",
+                    "5.0",
+                    "--consecutive-required-backends",
+                    "halo2",
+                    "--enforce",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(proc.returncode, 0)
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertFalse(payload["overall_pass"])
+            self.assertFalse(payload["consecutive_gate"]["overall_pass"])
+            self.assertTrue(
+                any(
+                    msg.startswith("halo2: consecutive-day streak")
+                    for msg in payload["gate_failures"]
+                )
+            )
 
 
 if __name__ == "__main__":

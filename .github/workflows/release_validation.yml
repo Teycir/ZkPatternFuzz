@@ -75,6 +75,21 @@ on:
         required: false
         default: "4.5"
         type: string
+      backend_maturity_consecutive_days:
+        description: Consecutive UTC daily maturity scorecards required (0 disables streak gate)
+        required: false
+        default: "0"
+        type: string
+      backend_maturity_consecutive_target_score:
+        description: Target maturity score required by consecutive-day gate
+        required: false
+        default: "5.0"
+        type: string
+      backend_maturity_consecutive_backends:
+        description: Comma-separated backends required by consecutive-day maturity gate
+        required: false
+        default: "halo2"
+        type: string
       max_backend_runtime_error:
         description: Maximum runtime_error count allowed per backend
         required: false
@@ -192,6 +207,9 @@ jobs:
             --min-backend-selector-matching-total-per-backend "${{ inputs.min_backend_selector_matching_total_per_backend }}" \
             --min-backend-enabled-targets "${{ inputs.min_backend_enabled_targets }}" \
             --min-backend-maturity-score "${{ inputs.min_backend_maturity_score }}" \
+            --backend-maturity-consecutive-days "${{ inputs.backend_maturity_consecutive_days }}" \
+            --backend-maturity-consecutive-target-score "${{ inputs.backend_maturity_consecutive_target_score }}" \
+            --backend-maturity-consecutive-backends "${{ inputs.backend_maturity_consecutive_backends }}" \
             --max-backend-runtime-error "${{ inputs.max_backend_runtime_error }}" \
             --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
             --max-backend-run-outcome-missing-rate "${{ inputs.max_backend_run_outcome_missing_rate }}"

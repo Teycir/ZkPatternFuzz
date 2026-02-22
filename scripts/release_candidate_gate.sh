@@ -19,8 +19,12 @@ MAX_BACKEND_RUN_OUTCOME_MISSING_RATE="${MAX_BACKEND_RUN_OUTCOME_MISSING_RATE:-0.
 MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="${MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL:-12}"
 MIN_BACKEND_ENABLED_TARGETS="${MIN_BACKEND_ENABLED_TARGETS:-5}"
 BACKEND_MATURITY_SCORECARD="$ROOT_DIR/artifacts/backend_maturity/latest_scorecard.json"
+BACKEND_MATURITY_HISTORY="$ROOT_DIR/artifacts/backend_maturity/history.json"
 BACKEND_MATURITY_REQUIRED_LIST="${BACKEND_MATURITY_REQUIRED_LIST:-}"
 MIN_BACKEND_MATURITY_SCORE="${MIN_BACKEND_MATURITY_SCORE:-4.5}"
+BACKEND_MATURITY_CONSECUTIVE_DAYS="${BACKEND_MATURITY_CONSECUTIVE_DAYS:-0}"
+BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE="${BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE:-5.0}"
+BACKEND_MATURITY_CONSECUTIVE_REQUIRED_LIST="${BACKEND_MATURITY_CONSECUTIVE_REQUIRED_LIST:-}"
 KEYGEN_PREFLIGHT_REPORT="$ROOT_DIR/artifacts/keygen_preflight/latest_report.json"
 RELEASE_CANDIDATE_REPORT="$ROOT_DIR/artifacts/release_candidate_validation/release_candidate_report.json"
 SKIP_BACKEND_READINESS_GATE=0
@@ -42,6 +46,8 @@ Options:
                              Aggregated backend dashboard output path (default: artifacts/backend_readiness/latest_report.json)
   --backend-maturity-scorecard <path>
                              Backend maturity scorecard output path (default: artifacts/backend_maturity/latest_scorecard.json)
+  --backend-maturity-history <path>
+                             Backend maturity history output path (default: artifacts/backend_maturity/history.json)
   --required-backends <csv>  Backends required by readiness gate (default: noir,cairo,halo2)
   --required-maturity-backends <csv>
                              Backends required by maturity gate (default: circom + required-backends)
@@ -68,6 +74,12 @@ Options:
                              Minimum enabled matrix targets required per backend (default: 5)
   --min-backend-maturity-score <float>
                              Minimum maturity score required per backend (default: 4.5)
+  --backend-maturity-consecutive-days <int>
+                             Require N consecutive UTC daily maturity scorecards (default: 0, disabled)
+  --backend-maturity-consecutive-target-score <float>
+                             Target score required for consecutive-day maturity gate (default: 5.0)
+  --backend-maturity-consecutive-backends <csv>
+                             Backends required by consecutive maturity gate (default: required-maturity-backends)
   --keygen-preflight-report <path>
                              Circom keygen preflight report consumed by maturity scorecard
                              (default: artifacts/keygen_preflight/latest_report.json)
@@ -113,6 +125,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --backend-maturity-scorecard)
       BACKEND_MATURITY_SCORECARD="$2"
+      shift 2
+      ;;
+    --backend-maturity-history)
+      BACKEND_MATURITY_HISTORY="$2"
       shift 2
       ;;
     --required-backends)
@@ -167,6 +183,18 @@ while [[ $# -gt 0 ]]; do
       MIN_BACKEND_MATURITY_SCORE="$2"
       shift 2
       ;;
+    --backend-maturity-consecutive-days)
+      BACKEND_MATURITY_CONSECUTIVE_DAYS="$2"
+      shift 2
+      ;;
+    --backend-maturity-consecutive-target-score)
+      BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE="$2"
+      shift 2
+      ;;
+    --backend-maturity-consecutive-backends)
+      BACKEND_MATURITY_CONSECUTIVE_REQUIRED_LIST="$2"
+      shift 2
+      ;;
     --keygen-preflight-report)
       KEYGEN_PREFLIGHT_REPORT="$2"
       shift 2
@@ -197,6 +225,9 @@ done
 
 if [ -z "$BACKEND_MATURITY_REQUIRED_LIST" ]; then
   BACKEND_MATURITY_REQUIRED_LIST="circom,$BACKEND_REQUIRED_LIST"
+fi
+if [ -z "$BACKEND_MATURITY_CONSECUTIVE_REQUIRED_LIST" ]; then
+  BACKEND_MATURITY_CONSECUTIVE_REQUIRED_LIST="$BACKEND_MATURITY_REQUIRED_LIST"
 fi
 
 if ! [[ "$REQUIRED_PASSES" =~ ^[0-9]+$ ]] || [ "$REQUIRED_PASSES" -lt 1 ]; then
@@ -272,8 +303,12 @@ maturity_gate_cmd=(
   --keygen-preflight "$KEYGEN_PREFLIGHT_REPORT"
   --release-candidate-report "$RELEASE_CANDIDATE_REPORT"
   --output "$BACKEND_MATURITY_SCORECARD"
+  --history-path "$BACKEND_MATURITY_HISTORY"
   --required-backends "$BACKEND_MATURITY_REQUIRED_LIST"
   --min-score "$MIN_BACKEND_MATURITY_SCORE"
+  --consecutive-days "$BACKEND_MATURITY_CONSECUTIVE_DAYS"
+  --consecutive-target-score "$BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE"
+  --consecutive-required-backends "$BACKEND_MATURITY_CONSECUTIVE_REQUIRED_LIST"
 )
 
 if [ "$SKIP_BACKEND_MATURITY_GATE" -eq 1 ]; then

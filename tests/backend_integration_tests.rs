@@ -78,6 +78,13 @@ fn halo2_spec_path(name: &str) -> PathBuf {
         .join(format!("{}.json", name))
 }
 
+fn halo2_local_real_fixture_path() -> PathBuf {
+    repo_path()
+        .join("tests")
+        .join("halo2_real_fixture")
+        .join("Cargo.toml")
+}
+
 fn halo2_real_repo_path() -> PathBuf {
     if let Ok(path) = std::env::var("HALO2_SCAFFOLD_PATH") {
         return PathBuf::from(path);
@@ -1867,6 +1874,52 @@ fn test_halo2_json_integration() {
         .execute(&[FieldElement::from_u64(1), FieldElement::from_u64(2)])
         .expect("Halo2 execution failed");
     assert!(!outputs.is_empty());
+}
+
+/// Integration test for local in-repo Halo2 real-circuit fixture.
+#[test]
+fn test_halo2_local_real_fixture_integration() {
+    if !require_real_backends("test_halo2_local_real_fixture_integration") {
+        return;
+    }
+    let fixture_path = halo2_local_real_fixture_path();
+    assert!(
+        fixture_path.exists(),
+        "Missing local Halo2 real fixture at {:?}",
+        fixture_path
+    );
+
+    let build_dir = std::env::temp_dir().join("zk0d_halo2_local_fixture_build");
+    let executor = Halo2Executor::new_with_build_dir(
+        fixture_path.to_str().unwrap(),
+        "local_halo2_real_fixture",
+        build_dir,
+    )
+    .expect("Failed to create Halo2Executor for local fixture");
+
+    let inputs = vec![
+        FieldElement::from_u64(3),
+        FieldElement::from_u64(5),
+        FieldElement::from_u64(8),
+    ];
+    let result = executor.execute_sync(&inputs);
+    assert!(
+        result.success,
+        "Local Halo2 real fixture execution failed: {:?}",
+        result.error
+    );
+    assert!(
+        !result.coverage.satisfied_constraints.is_empty(),
+        "Expected non-empty constraint coverage for local Halo2 real fixture"
+    );
+
+    let proof = executor
+        .prove(&inputs)
+        .expect("Local Halo2 real fixture prove should succeed");
+    let verified = executor
+        .verify(&proof, &result.outputs)
+        .expect("Local Halo2 real fixture verify should succeed");
+    assert!(verified, "Local Halo2 real fixture verify returned false");
 }
 
 /// Test executor factory error behavior with unavailable backend tooling

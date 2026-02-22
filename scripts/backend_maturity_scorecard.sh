@@ -8,8 +8,12 @@ BENCHMARK_SUMMARY=""
 KEYGEN_PREFLIGHT="$ROOT_DIR/artifacts/keygen_preflight/latest_report.json"
 RELEASE_CANDIDATE_REPORT="$ROOT_DIR/artifacts/release_candidate_validation/release_candidate_report.json"
 OUTPUT_PATH="$ROOT_DIR/artifacts/backend_maturity/latest_scorecard.json"
+HISTORY_PATH="$ROOT_DIR/artifacts/backend_maturity/history.json"
 REQUIRED_BACKENDS="${BACKEND_MATURITY_REQUIRED_LIST:-circom,noir,cairo,halo2}"
 MIN_BACKEND_SCORE="${MIN_BACKEND_MATURITY_SCORE:-4.5}"
+CONSECUTIVE_DAYS="${BACKEND_MATURITY_CONSECUTIVE_DAYS:-0}"
+CONSECUTIVE_TARGET_SCORE="${BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE:-5.0}"
+CONSECUTIVE_REQUIRED_BACKENDS="${BACKEND_MATURITY_CONSECUTIVE_REQUIRED_LIST:-}"
 ENFORCE=0
 
 usage() {
@@ -30,10 +34,19 @@ Options:
                                        (default: artifacts/release_candidate_validation/release_candidate_report.json)
   --output <path>                      Output scorecard path
                                        (default: artifacts/backend_maturity/latest_scorecard.json)
+  --history-path <path>                Output history path used for consecutive-day streak checks
+                                       (default: artifacts/backend_maturity/history.json)
   --required-backends <csv>            Required backends for gate evaluation
                                        (default: circom,noir,cairo,halo2)
   --min-score <float>                  Minimum maturity score required per backend
                                        (default: 4.5)
+  --consecutive-days <int>             Require N consecutive UTC daily scorecards at/above target score
+                                       (default: 0, disabled)
+  --consecutive-target-score <float>   Target score for consecutive-day gate
+                                       (default: 5.0)
+  --consecutive-required-backends <csv>
+                                       Backends required by consecutive-day gate
+                                       (default: --required-backends)
   --enforce                            Exit non-zero when any required backend score is below threshold
   -h, --help                           Show this help
 USAGE
@@ -65,12 +78,28 @@ while [[ $# -gt 0 ]]; do
       OUTPUT_PATH="$2"
       shift 2
       ;;
+    --history-path)
+      HISTORY_PATH="$2"
+      shift 2
+      ;;
     --required-backends)
       REQUIRED_BACKENDS="$2"
       shift 2
       ;;
     --min-score)
       MIN_BACKEND_SCORE="$2"
+      shift 2
+      ;;
+    --consecutive-days)
+      CONSECUTIVE_DAYS="$2"
+      shift 2
+      ;;
+    --consecutive-target-score)
+      CONSECUTIVE_TARGET_SCORE="$2"
+      shift 2
+      ;;
+    --consecutive-required-backends)
+      CONSECUTIVE_REQUIRED_BACKENDS="$2"
       shift 2
       ;;
     --enforce)
@@ -110,12 +139,16 @@ python3 - \
   "$KEYGEN_PREFLIGHT" \
   "$RELEASE_CANDIDATE_REPORT" \
   "$OUTPUT_PATH" \
+  "$HISTORY_PATH" \
   "$REQUIRED_BACKENDS" \
   "$MIN_BACKEND_SCORE" \
+  "$CONSECUTIVE_DAYS" \
+  "$CONSECUTIVE_TARGET_SCORE" \
+  "$CONSECUTIVE_REQUIRED_BACKENDS" \
   "$ENFORCE" <<'PY'
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -146,6 +179,167 @@ def load_json(path: str) -> Tuple[Optional[dict], bool]:
         return None, False
     with p.open("r", encoding="utf-8") as handle:
         return json.load(handle), True
+
+
+def parse_datetime(value: str) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def load_history_entries(path: str) -> List[dict]:
+    payload, present = load_json(path)
+    if not present or payload is None:
+        return []
+    if isinstance(payload, dict):
+        entries = payload.get("entries")
+        if isinstance(entries, list):
+            return [entry for entry in entries if isinstance(entry, dict)]
+        return []
+    if isinstance(payload, list):
+        return [entry for entry in payload if isinstance(entry, dict)]
+    return []
+
+
+def extract_backend_day_sample(entry: dict, backend: str) -> Optional[dict]:
+    backends = entry.get("backends")
+    if isinstance(backends, dict):
+        value = backends.get(backend)
+        if isinstance(value, dict):
+            return {
+                "score_total": as_float(value.get("score_total"), 0.0),
+                "runtime_error_count": as_int(value.get("runtime_error_count"), 0),
+            }
+        if value is not None:
+            return {
+                "score_total": as_float(value, 0.0),
+                "runtime_error_count": 0,
+            }
+    if isinstance(backends, list):
+        for item in backends:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("backend", "")).strip() != backend:
+                continue
+            evidence = item.get("evidence")
+            runtime_error_count = 0
+            if isinstance(evidence, dict):
+                runtime_error_count = as_int(evidence.get("runtime_error_count"), 0)
+            return {
+                "score_total": as_float(item.get("score_total"), 0.0),
+                "runtime_error_count": runtime_error_count,
+            }
+
+    if isinstance(entry.get("backend"), str) and entry.get("backend") == backend:
+        evidence = entry.get("evidence")
+        runtime_error_count = 0
+        if isinstance(evidence, dict):
+            runtime_error_count = as_int(evidence.get("runtime_error_count"), 0)
+        return {
+            "score_total": as_float(entry.get("score_total"), 0.0),
+            "runtime_error_count": runtime_error_count,
+        }
+
+    return None
+
+
+def collapse_history_to_daily_latest(entries: List[dict]) -> List[dict]:
+    by_day: Dict[date, dict] = {}
+    for entry in entries:
+        generated_utc = parse_datetime(entry.get("generated_utc", ""))
+        if generated_utc is None:
+            continue
+        day = generated_utc.date()
+        existing = by_day.get(day)
+        if existing is None:
+            by_day[day] = {"generated_utc": generated_utc, "entry": entry}
+            continue
+        if generated_utc > existing["generated_utc"]:
+            by_day[day] = {"generated_utc": generated_utc, "entry": entry}
+
+    ordered_days = sorted(by_day.keys())
+    return [by_day[day] for day in ordered_days]
+
+
+def evaluate_consecutive_gate(
+    daily_entries: List[dict],
+    backends: List[str],
+    target_days: int,
+    target_score: float,
+) -> dict:
+    if target_days <= 0:
+        return {
+            "enabled": False,
+            "required_backends": backends,
+            "target_days": target_days,
+            "target_score": target_score,
+            "history_daily_entries": len(daily_entries),
+            "overall_pass": True,
+            "failures": [],
+            "per_backend": {},
+        }
+
+    failures: List[str] = []
+    per_backend: Dict[str, dict] = {}
+    for backend in backends:
+        streak = 0
+        expected_day: Optional[date] = None
+        last_sample: Optional[dict] = None
+        for day_record in reversed(daily_entries):
+            generated_utc = day_record["generated_utc"]
+            sample = extract_backend_day_sample(day_record["entry"], backend)
+            if sample is None:
+                break
+
+            score_ok = sample["score_total"] >= target_score
+            runtime_ok = sample["runtime_error_count"] == 0
+            if not score_ok or not runtime_ok:
+                break
+
+            current_day = generated_utc.date()
+            if expected_day is not None and current_day != expected_day:
+                break
+
+            streak += 1
+            last_sample = {
+                "day_utc": current_day.isoformat(),
+                "score_total": round(sample["score_total"], 3),
+                "runtime_error_count": sample["runtime_error_count"],
+            }
+            expected_day = current_day - timedelta(days=1)
+
+        per_backend[backend] = {
+            "current_streak_days": streak,
+            "required_streak_days": target_days,
+            "target_score": target_score,
+            "latest_sample": last_sample,
+            "pass": streak >= target_days,
+        }
+        if streak < target_days:
+            failures.append(
+                f"{backend}: consecutive-day streak {streak} < required {target_days} "
+                f"(target_score={target_score:.3f}, runtime_error_count must be 0 when present)"
+            )
+
+    return {
+        "enabled": True,
+        "required_backends": backends,
+        "target_days": target_days,
+        "target_score": target_score,
+        "history_daily_entries": len(daily_entries),
+        "overall_pass": len(failures) == 0,
+        "failures": failures,
+        "per_backend": per_backend,
+    }
 
 
 def ratio(value: float, target: float) -> float:
@@ -338,9 +532,18 @@ benchmark_summary_path = sys.argv[2]
 keygen_preflight_path = sys.argv[3]
 release_candidate_report_path = sys.argv[4]
 output_path = sys.argv[5]
-required_backends = [part.strip() for part in sys.argv[6].split(",") if part.strip()]
-min_backend_score = as_float(sys.argv[7], 4.5)
-enforce = as_int(sys.argv[8], 0) == 1
+history_path = sys.argv[6]
+required_backends = [part.strip() for part in sys.argv[7].split(",") if part.strip()]
+min_backend_score = as_float(sys.argv[8], 4.5)
+consecutive_days = as_int(sys.argv[9], 0)
+consecutive_target_score = as_float(sys.argv[10], 5.0)
+consecutive_required_backends = [part.strip() for part in sys.argv[11].split(",") if part.strip()]
+enforce = as_int(sys.argv[12], 0) == 1
+
+if consecutive_days < 0:
+    consecutive_days = 0
+if not consecutive_required_backends:
+    consecutive_required_backends = required_backends.copy()
 
 readiness_dashboard, readiness_present = load_json(readiness_dashboard_path)
 benchmark_summary, benchmark_present = load_json(benchmark_summary_path)
@@ -382,6 +585,8 @@ for backend in required_backends:
             f"{backend}: score {backend_score:.3f} < required {min_backend_score:.3f}"
         )
 
+score_threshold_gate_pass = len(required_failures) == 0
+
 all_non_circom_scores = [
     as_float(item.get("score_total"), 0.0)
     for item in backend_scores
@@ -392,6 +597,41 @@ cross_backend_readiness_score = (
     if all_non_circom_scores
     else 0.0
 )
+
+history_entries = load_history_entries(history_path)
+history_was_present = bool(history_entries)
+generated_utc = datetime.now(timezone.utc)
+
+history_backends: Dict[str, dict] = {}
+for item in backend_scores:
+    backend_name = str(item.get("backend", "unknown"))
+    evidence = item.get("evidence")
+    runtime_error_count = 0
+    if isinstance(evidence, dict):
+        runtime_error_count = as_int(evidence.get("runtime_error_count"), 0)
+    history_backends[backend_name] = {
+        "score_total": as_float(item.get("score_total"), 0.0),
+        "runtime_error_count": runtime_error_count,
+    }
+
+history_entry = {
+    "generated_utc": generated_utc.isoformat(),
+    "backends": history_backends,
+    "required_backends": required_backends,
+    "min_backend_score": min_backend_score,
+    "score_threshold_gate_pass": score_threshold_gate_pass,
+}
+history_entries.append(history_entry)
+
+daily_history_entries = collapse_history_to_daily_latest(history_entries)
+consecutive_gate = evaluate_consecutive_gate(
+    daily_history_entries,
+    consecutive_required_backends,
+    consecutive_days,
+    consecutive_target_score,
+)
+if not consecutive_gate["overall_pass"]:
+    required_failures.extend(consecutive_gate["failures"])
 
 overall_pass = len(required_failures) == 0
 
@@ -410,6 +650,9 @@ payload = {
     "thresholds": {
         "required_backends": required_backends,
         "min_backend_score": min_backend_score,
+        "consecutive_days": consecutive_days,
+        "consecutive_target_score": consecutive_target_score,
+        "consecutive_required_backends": consecutive_required_backends,
     },
     "sources": {
         "readiness_dashboard": {
@@ -428,9 +671,15 @@ payload = {
             "path": release_candidate_report_path,
             "present": release_present,
         },
+        "history": {
+            "path": history_path,
+            "present": history_was_present,
+        },
     },
     "backends": backend_scores,
     "cross_backend_readiness_score": cross_backend_readiness_score,
+    "score_threshold_gate_pass": score_threshold_gate_pass,
+    "consecutive_gate": consecutive_gate,
     "missing_required_backends": missing_required_backends,
     "gate_failures": required_failures,
     "overall_pass": overall_pass,
@@ -440,6 +689,17 @@ output = Path(output_path)
 output.parent.mkdir(parents=True, exist_ok=True)
 with output.open("w", encoding="utf-8") as handle:
     json.dump(payload, handle, indent=2)
+    handle.write("\n")
+
+history_output = Path(history_path)
+history_output.parent.mkdir(parents=True, exist_ok=True)
+history_payload = {
+    "history_version": 1,
+    "updated_utc": generated_utc.isoformat(),
+    "entries": history_entries,
+}
+with history_output.open("w", encoding="utf-8") as handle:
+    json.dump(history_payload, handle, indent=2)
     handle.write("\n")
 
 for backend in backend_scores:
@@ -455,8 +715,22 @@ if required_failures:
     for failure in required_failures:
         print(f"  - {failure}")
 
+if consecutive_gate["enabled"]:
+    print(
+        "Consecutive maturity gate: "
+        f"target_days={consecutive_gate['target_days']} "
+        f"target_score={consecutive_gate['target_score']:.3f} "
+        f"required_backends={','.join(consecutive_gate['required_backends']) or 'none'} "
+        f"status={'PASS' if consecutive_gate['overall_pass'] else 'FAIL'}"
+    )
+    for backend in consecutive_gate["required_backends"]:
+        backend_status = consecutive_gate["per_backend"].get(backend, {})
+        streak = as_int(backend_status.get("current_streak_days"), 0)
+        print(f"  - {backend}: streak_days={streak}")
+
 print(f"Cross-backend readiness score: {cross_backend_readiness_score:.3f}/5.000")
 print(f"Backend maturity scorecard: {output_path}")
+print(f"Backend maturity history: {history_path}")
 print(f"Overall backend maturity gate: {'PASS' if overall_pass else 'FAIL'}")
 
 if enforce and not overall_pass:

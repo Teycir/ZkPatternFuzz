@@ -29,6 +29,13 @@ targets:
     alias: readiness_halo2
     enabled: true
 
+  - name: local_halo2_real_fixture
+    target_circuit: tests/halo2_real_fixture/Cargo.toml
+    main_component: local_halo2_real_fixture
+    framework: halo2
+    alias: readiness_halo2
+    enabled: true
+
   - name: external_halo2_minimal_json_spec_vendored
     target_circuit: targets/external/readiness/halo2/minimal_external.json
     main_component: minimal_external
