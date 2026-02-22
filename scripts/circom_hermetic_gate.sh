@@ -123,9 +123,30 @@ snarkjs_candidates = [
     bins_dir / "bin" / ("snarkjs.cmd" if os.name == "nt" else "snarkjs"),
     bins_dir / "node_modules" / ".bin" / ("snarkjs.cmd" if os.name == "nt" else "snarkjs"),
 ]
-include_root = bins_dir / "node_modules"
+include_root_candidates: List[Path] = []
+for raw_candidate in (bins_dir / "node_modules", root_dir / "node_modules"):
+    resolved = resolve_path(raw_candidate)
+    if not any(existing == resolved for existing in include_root_candidates):
+        include_root_candidates.append(resolved)
+
+include_root = include_root_candidates[0]
 circomlib_root = include_root / "circomlib"
 circomlib_circuits = circomlib_root / "circuits"
+include_root_candidate_status: List[Dict[str, object]] = []
+for candidate in include_root_candidates:
+    candidate_circuits = candidate / "circomlib" / "circuits"
+    include_root_candidate_status.append(
+        {
+            "include_root": str(candidate),
+            "exists": candidate.is_dir(),
+            "circomlib_circuits_present": candidate_circuits.is_dir(),
+        }
+    )
+    if candidate_circuits.is_dir():
+        include_root = candidate
+        circomlib_root = include_root / "circomlib"
+        circomlib_circuits = candidate_circuits
+        break
 
 circom_ok = looks_executable(circom_bin)
 add_check(
@@ -159,7 +180,10 @@ add_check(
     checks,
     "local_include_root_present",
     include_root_ok,
-    f"expected directory at {_safe_rel(include_root, root_dir)}",
+    (
+        f"selected={_safe_rel(include_root, root_dir)}; candidates="
+        + ", ".join(_safe_rel(path, root_dir) for path in include_root_candidates)
+    ),
 )
 if not include_root_ok:
     gate_failures.append(f"missing local include root: {include_root}")
@@ -209,6 +233,8 @@ path_probe_parts = [
     str(bins_dir / "bin"),
     str(bins_dir / "node_modules" / ".bin"),
     str(bins_dir / "node_modules"),
+    str(root_dir / "node_modules" / ".bin"),
+    str(root_dir / "node_modules"),
 ]
 if os.environ.get("PATH"):
     path_probe_parts.append(os.environ["PATH"])
@@ -253,6 +279,7 @@ if not gate_failures and circom_ok and include_root_ok and circomlib_ok:
         tmp = Path(tmpdir)
         smoke_path = tmp / "smoke.circom"
         build_dir = tmp / "build"
+        build_dir.mkdir(parents=True, exist_ok=True)
         smoke_path.write_text(
             (
                 "pragma circom 2.1.6;\n"
@@ -293,7 +320,10 @@ if not gate_failures and circom_ok and include_root_ok and circomlib_ok:
         wasm_exists = (build_dir / "smoke_js" / "smoke.wasm").is_file()
         compile_smoke_ok = proc.returncode == 0 and r1cs_exists and wasm_exists
         if compile_smoke_ok:
-            compile_smoke_detail = "circom include smoke compile succeeded via local bins/node_modules"
+            compile_smoke_detail = (
+                "circom include smoke compile succeeded via local include root "
+                + _safe_rel(include_root, root_dir)
+            )
         else:
             compile_smoke_detail = (
                 f"circom smoke compile failed (exit={proc.returncode}, "
@@ -314,6 +344,8 @@ report = {
     "root_dir": str(root_dir),
     "bins_dir": str(bins_dir),
     "output_path": str(output_path),
+    "selected_include_root": str(include_root),
+    "include_root_candidates": include_root_candidate_status,
     "allow_external_circom_include_env": allow_external_include_env,
     "circom_include_paths_env": {
         "raw": raw_include_env,

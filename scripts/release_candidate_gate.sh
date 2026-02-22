@@ -323,6 +323,14 @@ while [[ $# -gt 0 ]]; do
       BACKEND_CAPACITY_FITNESS_MEMORY_OUTPUT_DIR="$2"
       shift 2
       ;;
+    --backend-capacity-fitness-throughput-report)
+      BACKEND_CAPACITY_FITNESS_THROUGHPUT_REPORT="$2"
+      shift 2
+      ;;
+    --backend-capacity-fitness-memory-report)
+      BACKEND_CAPACITY_FITNESS_MEMORY_REPORT="$2"
+      shift 2
+      ;;
     --backend-capacity-fitness-required-backends)
       BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS="$2"
       shift 2
@@ -358,6 +366,14 @@ while [[ $# -gt 0 ]]; do
     --backend-capacity-fitness-batch-jobs)
       BACKEND_CAPACITY_FITNESS_BATCH_JOBS="$2"
       shift 2
+      ;;
+    --backend-capacity-fitness-skip-throughput-run)
+      BACKEND_CAPACITY_FITNESS_SKIP_THROUGHPUT_RUN=1
+      shift
+      ;;
+    --backend-capacity-fitness-skip-memory-run)
+      BACKEND_CAPACITY_FITNESS_SKIP_MEMORY_RUN=1
+      shift
       ;;
     --evidence-archive-root)
       EVIDENCE_ARCHIVE_ROOT="$2"
@@ -538,6 +554,19 @@ if [ -n "$BACKEND_CAPACITY_FITNESS_PER_BACKEND_MIN_MEDIAN_COMPLETED_PER_SEC" ]; 
     --per-backend-min-median-completed-per-sec
     "$BACKEND_CAPACITY_FITNESS_PER_BACKEND_MIN_MEDIAN_COMPLETED_PER_SEC"
   )
+fi
+
+if [ -n "$BACKEND_CAPACITY_FITNESS_THROUGHPUT_REPORT" ]; then
+  capacity_fitness_cmd+=(--throughput-report "$BACKEND_CAPACITY_FITNESS_THROUGHPUT_REPORT")
+fi
+if [ -n "$BACKEND_CAPACITY_FITNESS_MEMORY_REPORT" ]; then
+  capacity_fitness_cmd+=(--memory-report "$BACKEND_CAPACITY_FITNESS_MEMORY_REPORT")
+fi
+if [ "$BACKEND_CAPACITY_FITNESS_SKIP_THROUGHPUT_RUN" -eq 1 ]; then
+  capacity_fitness_cmd+=(--skip-throughput-run)
+fi
+if [ "$BACKEND_CAPACITY_FITNESS_SKIP_MEMORY_RUN" -eq 1 ]; then
+  capacity_fitness_cmd+=(--skip-memory-run)
 fi
 
 if [ "$SKIP_BACKEND_CAPACITY_FITNESS_GATE" -eq 1 ]; then

@@ -202,10 +202,11 @@ cargo run --release --bin zk0d_benchmark -- \
   --workers 2
 ```
 
-## Release Validation Workflow (Manual Trigger)
+## Release Validation Workflow (Scheduled + Manual)
 
-Use the dedicated GitHub Actions workflow to validate Phase 5 exit criteria
-(consecutive benchmark passes + rollback validation).
+Use the dedicated GitHub Actions workflow to validate release criteria.
+- Scheduled lane: runs daily at 03:20 UTC for strict 14-day maturity/flake streak tracking.
+- Manual lane: `workflow_dispatch` for release cutover validation with rollback checks.
 
 Trigger from CLI:
 
@@ -227,7 +228,7 @@ gh run watch <run_id> --exit-status
 
 Notes:
 - `stable_ref` is required and should point to the previous production-stable
-  tag/commit used for rollback validation.
+  tag/commit used for rollback validation (manual lane).
 - `required_passes=2` matches the release checklist requirement for consecutive
   release-candidate gate passes.
 - If `gh` is unavailable, run the same workflow via GitHub Actions UI using

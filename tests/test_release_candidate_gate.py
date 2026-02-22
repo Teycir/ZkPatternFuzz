@@ -226,9 +226,17 @@ fi
         """
 output=""
 enforce=0
+throughput_report=""
+memory_report=""
+skip_throughput_run=0
+skip_memory_run=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output) output="$2"; shift 2 ;;
+    --throughput-report) throughput_report="$2"; shift 2 ;;
+    --memory-report) memory_report="$2"; shift 2 ;;
+    --skip-throughput-run) skip_throughput_run=1; shift ;;
+    --skip-memory-run) skip_memory_run=1; shift ;;
     --enforce) enforce=1; shift ;;
     *) shift ;;
   esac
@@ -237,12 +245,16 @@ pass=true
 if [[ "${FAIL_BACKEND_CAPACITY_FITNESS:-0}" == "1" ]]; then
   pass=false
 fi
-python3 - "$output" "$pass" <<'PY'
+python3 - "$output" "$pass" "$throughput_report" "$memory_report" "$skip_throughput_run" "$skip_memory_run" <<'PY'
 import json, os, sys
-output, pass_raw = sys.argv[1:]
+output, pass_raw, throughput_report, memory_report, skip_throughput_raw, skip_memory_raw = sys.argv[1:]
 passed = pass_raw == "true"
 payload = {
     "overall_pass": passed,
+    "throughput_report": throughput_report,
+    "memory_report": memory_report,
+    "skip_throughput_run": skip_throughput_raw == "1",
+    "skip_memory_run": skip_memory_raw == "1",
     "gate_failures": [] if passed else ["throughput backend 'noir' reported overall_pass=false"],
 }
 os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
@@ -473,6 +485,108 @@ class ReleaseCandidateGateTests(unittest.TestCase):
                 if row.get("backend") == "noir" and row.get("bundle") == "backend_maturity"
             ]
             self.assertTrue(noir_blockers, msg=f"blockers={blockers}")
+
+    def test_release_gate_passes_capacity_prefetched_report_flags(self):
+        with tempfile.TemporaryDirectory(prefix="zkfuzz_release_gate_capacity_prefetch_") as tmpdir:
+            root = Path(tmpdir)
+            bench_root = root / "benchmark_runs"
+            _write_minimal_benchmark_summary(
+                bench_root / "benchmark_20260222_000000" / "summary.json"
+            )
+            _write_minimal_benchmark_summary(
+                bench_root / "benchmark_20260222_000001" / "summary.json"
+            )
+
+            keygen_report = root / "keygen_preflight.json"
+            release_report = root / "release_candidate_report.json"
+            _write_json(keygen_report, {"passes": True, "total_targets": 5, "passed_targets": 5})
+            _write_json(release_report, {"overall_pass": True})
+
+            throughput_report = root / "backend_throughput" / "latest_report.json"
+            memory_report = root / "memory_profiles" / "latest_report.json"
+            _write_json(throughput_report, {"overall_pass": True})
+            _write_json(memory_report, {"overall_pass": True})
+
+            stub_dir = root / "stubs"
+            _write_stub_scripts(stub_dir)
+
+            readiness_report = root / "backend_readiness" / "latest_report.json"
+            maturity_scorecard = root / "backend_maturity" / "latest_scorecard.json"
+            maturity_history = root / "backend_maturity" / "history.json"
+            flake_report = root / "circom_flake" / "latest_report.json"
+            flake_history = root / "circom_flake" / "history.json"
+            hermetic_report = root / "circom_hermetic" / "latest_report.json"
+            capacity_report = root / "backend_capacity_fitness" / "latest_report.json"
+            evidence_archive_root = root / "release_candidate_validation" / "evidence_bundles"
+            evidence_manifest = (
+                root / "release_candidate_validation" / "evidence_bundle_manifest.json"
+            )
+            blockers_report = (
+                root / "release_candidate_validation" / "backend_release_blockers.json"
+            )
+
+            env = os.environ.copy()
+            env["ZKFUZZ_RELEASE_GATE_SCRIPT_DIR"] = str(stub_dir)
+            proc = subprocess.run(
+                [
+                    str(_script_path()),
+                    "--bench-root",
+                    str(bench_root),
+                    "--required-passes",
+                    "2",
+                    "--backend-readiness-dashboard",
+                    str(readiness_report),
+                    "--backend-maturity-scorecard",
+                    str(maturity_scorecard),
+                    "--backend-maturity-history",
+                    str(maturity_history),
+                    "--keygen-preflight-report",
+                    str(keygen_report),
+                    "--release-candidate-report",
+                    str(release_report),
+                    "--circom-flake-report",
+                    str(flake_report),
+                    "--circom-flake-history",
+                    str(flake_history),
+                    "--circom-flake-consecutive-days",
+                    "14",
+                    "--circom-hermetic-report",
+                    str(hermetic_report),
+                    "--backend-capacity-fitness-report",
+                    str(capacity_report),
+                    "--backend-capacity-fitness-throughput-report",
+                    str(throughput_report),
+                    "--backend-capacity-fitness-memory-report",
+                    str(memory_report),
+                    "--backend-capacity-fitness-skip-throughput-run",
+                    "--backend-capacity-fitness-skip-memory-run",
+                    "--backend-maturity-consecutive-days",
+                    "14",
+                    "--backend-maturity-consecutive-target-score",
+                    "5.0",
+                    "--evidence-archive-root",
+                    str(evidence_archive_root),
+                    "--evidence-manifest",
+                    str(evidence_manifest),
+                    "--backend-blockers-report",
+                    str(blockers_report),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+
+            self.assertEqual(
+                proc.returncode,
+                0,
+                msg=f"stdout={proc.stdout}\nstderr={proc.stderr}",
+            )
+            capacity = json.loads(capacity_report.read_text(encoding="utf-8"))
+            self.assertEqual(capacity["throughput_report"], str(throughput_report))
+            self.assertEqual(capacity["memory_report"], str(memory_report))
+            self.assertTrue(capacity["skip_throughput_run"])
+            self.assertTrue(capacity["skip_memory_run"])
 
     def test_release_gate_still_writes_manifest_when_enforced_subgate_fails(self):
         with tempfile.TemporaryDirectory(prefix="zkfuzz_release_gate_hard_fail_") as tmpdir:

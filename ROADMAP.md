@@ -294,6 +294,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Expand readiness matrices to include at least 5 enabled representative targets per backend (local + external).
 - [x] Enforce tool sandbox for all readiness/release lanes (`--enforce-tool-sandbox`) and archive gate evidence.
 - [x] Add backend maturity history + consecutive-day streak gate (`scripts/backend_maturity_scorecard.sh`, `scripts/release_candidate_gate.sh`) to enforce 14-day `5.0` closures with runtime-error constraints.
+- [x] Automate a daily strict release-validation streak lane with persisted maturity/flake history (`.github/workflows/release_validation.yml` schedule + cache restore/save).
 
 ### 8.3 Backend-Specific Closure Plans (Release-Critical)
 
@@ -714,6 +715,9 @@ MAX_SAFE_HIGH_CONF_FPR=0.05 ./scripts/release_candidate_gate.sh --stable-ref <st
 # Manual release validation workflow
 gh workflow run "Release Validation" --ref main -f required_passes=2 -f stable_ref=<tag>
 gh run watch
+
+# Daily strict streak recording lane (scheduled in GitHub Actions)
+# cron: 03:20 UTC via .github/workflows/release_validation.yml
 ```
 
 ---

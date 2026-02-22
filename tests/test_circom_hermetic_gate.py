@@ -23,7 +23,7 @@ def _make_executable(path: Path, content: str) -> None:
     path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def _prepare_local_bins(root: Path) -> Path:
+def _prepare_local_bins(root: Path, include_circomlib_in_bins: bool = True) -> Path:
     bins = root / "bins"
     circom_bin = bins / "bin" / "circom"
     snarkjs_bin = bins / "bin" / "snarkjs"
@@ -71,11 +71,12 @@ echo "snarkjs stub"
 """,
     )
 
-    circomlib_dir.mkdir(parents=True, exist_ok=True)
-    (circomlib_dir / "poseidon.circom").write_text(
-        "template Poseidon(n) { signal input inputs[n]; signal output out; out <== inputs[0]; }\n",
-        encoding="utf-8",
-    )
+    if include_circomlib_in_bins:
+        circomlib_dir.mkdir(parents=True, exist_ok=True)
+        (circomlib_dir / "poseidon.circom").write_text(
+            "template Poseidon(n) { signal input inputs[n]; signal output out; out <== inputs[0]; }\n",
+            encoding="utf-8",
+        )
     return bins
 
 
@@ -148,6 +149,40 @@ class CircomHermeticGateTests(unittest.TestCase):
                 "outside repository root",
                 "\n".join(payload["gate_failures"]),
             )
+
+    def test_enforced_gate_uses_repo_node_modules_fallback_include_root(self):
+        with tempfile.TemporaryDirectory(prefix="zkfuzz_circom_hermetic_root_fallback_") as tmpdir:
+            root = Path(tmpdir)
+            bins = _prepare_local_bins(root, include_circomlib_in_bins=False)
+            report = root / "report.json"
+
+            proc = subprocess.run(
+                [
+                    str(_script_path()),
+                    "--bins-dir",
+                    str(bins),
+                    "--output",
+                    str(report),
+                    "--enforce",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(
+                proc.returncode,
+                0,
+                msg=f"stdout={proc.stdout}\nstderr={proc.stderr}",
+            )
+
+            payload = json.loads(report.read_text(encoding="utf-8"))
+            self.assertTrue(payload["overall_pass"])
+            self.assertEqual(
+                Path(payload["selected_include_root"]).resolve(),
+                (_repo_root() / "node_modules").resolve(),
+            )
+            checks = {entry["name"]: entry["ok"] for entry in payload["checks"]}
+            self.assertTrue(checks.get("circom_include_smoke_compile"))
 
 
 if __name__ == "__main__":

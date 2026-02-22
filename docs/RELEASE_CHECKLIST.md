@@ -47,9 +47,13 @@ Scope update (2026-02-22): this checklist keeps release-blocking gates only. Exp
   - verify artifacts:
     - `artifacts/release_candidate_validation/evidence_bundle_manifest.json`
     - `artifacts/release_candidate_validation/backend_release_blockers.json`
+  - local fast-triage (non-canonical) when throughput/memory reports already exist:
+    - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --backend-capacity-fitness-throughput-report artifacts/backend_throughput/latest_report.json --backend-capacity-fitness-memory-report artifacts/memory_profiles/latest_report.json --backend-capacity-fitness-skip-throughput-run --backend-capacity-fitness-skip-memory-run`
 - [ ] Non-Circom collision stress gate passes:
   - `./scripts/run_non_circom_collision_stress.sh --enforce`
-- [ ] GitHub Actions `Release Validation` run recorded with matching thresholds/inputs and archived artifacts.
+- [ ] GitHub Actions `Release Validation` evidence recorded with matching thresholds and archived artifacts:
+  - Scheduled strict streak lane runs daily (03:20 UTC) with 14-day maturity/flake enforcement.
+  - Manual `workflow_dispatch` run includes rollback validation (`stable_ref`) for cutover sign-off.
 
 ## 6. Documentation And Risk Notes
 

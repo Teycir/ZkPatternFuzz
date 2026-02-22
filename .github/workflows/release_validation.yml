@@ -1,6 +1,8 @@
 name: Release Validation
 
 on:
+  schedule:
+    - cron: "20 3 * * *"
   workflow_dispatch:
     inputs:
       stable_ref:
@@ -90,6 +92,11 @@ on:
         required: false
         default: "halo2"
         type: string
+      circom_flake_consecutive_days:
+        description: Consecutive UTC daily Circom flake passes required (0 disables streak gate)
+        required: false
+        default: "0"
+        type: string
       max_backend_runtime_error:
         description: Maximum runtime_error count allowed per backend
         required: false
@@ -110,11 +117,41 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+concurrency:
+  group: release-validation-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release-candidate-gate:
     name: Release Candidate Gate
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    env:
+      REQUIRED_PASSES: ${{ github.event.inputs.required_passes || '2' }}
+      CONFIG_PROFILE: ${{ github.event.inputs.config_profile || 'prod' }}
+      ITERATIONS: ${{ github.event.inputs.iterations || '400' }}
+      TIMEOUT: ${{ github.event.inputs.timeout || '180' }}
+      READINESS_ITERATIONS: ${{ github.event.inputs.readiness_iterations || '120' }}
+      READINESS_TIMEOUT: ${{ github.event.inputs.readiness_timeout || '45' }}
+      READINESS_WORKERS: ${{ github.event.inputs.readiness_workers || '2' }}
+      REQUIRED_BACKENDS: ${{ github.event.inputs.required_backends || 'noir,cairo,halo2' }}
+      REQUIRED_MATURITY_BACKENDS: ${{ github.event.inputs.required_maturity_backends || 'circom,noir,cairo,halo2' }}
+      MIN_BACKEND_COMPLETION_RATE: ${{ github.event.inputs.min_backend_completion_rate || '0.90' }}
+      MIN_BACKEND_SELECTOR_MATCHING_TOTAL_PER_BACKEND: ${{ github.event.inputs.min_backend_selector_matching_total_per_backend || 'noir=25,cairo=4,halo2=4' }}
+      MIN_BACKEND_ENABLED_TARGETS: ${{ github.event.inputs.min_backend_enabled_targets || '5' }}
+      MIN_BACKEND_MATURITY_SCORE: ${{ github.event.inputs.min_backend_maturity_score || '4.5' }}
+      BACKEND_MATURITY_CONSECUTIVE_DAYS: ${{ github.event_name == 'schedule' && '14' || (github.event.inputs.backend_maturity_consecutive_days || '0') }}
+      BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE: ${{ github.event.inputs.backend_maturity_consecutive_target_score || '5.0' }}
+      BACKEND_MATURITY_CONSECUTIVE_BACKENDS: ${{ github.event_name == 'schedule' && 'circom,noir,cairo,halo2' || (github.event.inputs.backend_maturity_consecutive_backends || 'halo2') }}
+      CIRCOM_FLAKE_CONSECUTIVE_DAYS: ${{ github.event_name == 'schedule' && '14' || (github.event.inputs.circom_flake_consecutive_days || '0') }}
+      MAX_BACKEND_RUNTIME_ERROR: ${{ github.event.inputs.max_backend_runtime_error || '0' }}
+      MAX_BACKEND_PREFLIGHT_FAILED: ${{ github.event.inputs.max_backend_preflight_failed || '0' }}
+      MAX_BACKEND_RUN_OUTCOME_MISSING_RATE: ${{ github.event.inputs.max_backend_run_outcome_missing_rate || '0.05' }}
+      MIN_COMPLETION_RATE: "0.95"
+      MIN_VULNERABLE_RECALL: ${{ github.event_name == 'schedule' && '0.20' || '0.00' }}
+      MIN_PRECISION: ${{ github.event_name == 'schedule' && '0.20' || '0.00' }}
+      MAX_SAFE_FPR: "0.20"
+      MAX_SAFE_HIGH_CONF_FPR: "0.05"
     steps:
       - uses: actions/checkout@v4
 
@@ -156,21 +193,35 @@ jobs:
       - name: Build benchmark binaries
         run: cargo build --release --bin zk0d_batch --bin zk0d_benchmark
 
+      - name: Restore streak history cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            artifacts/backend_maturity/history.json
+            artifacts/circom_flake/history.json
+          key: release-streak-history-${{ github.run_id }}
+          restore-keys: |
+            release-streak-history-
+
+      - name: Ensure streak history directories exist
+        run: |
+          mkdir -p artifacts/backend_maturity artifacts/circom_flake
+
       - name: Run benchmark suite for consecutive-pass validation
         env:
           CIRCOM_INCLUDE_PATHS: third_party:node_modules
         run: |
-          for pass in $(seq 1 "${{ inputs.required_passes }}"); do
-            echo "Running benchmark pass ${pass}/${{ inputs.required_passes }}"
+          for pass in $(seq 1 "$REQUIRED_PASSES"); do
+            echo "Running benchmark pass ${pass}/${REQUIRED_PASSES}"
             cargo run --release --bin zk0d_benchmark -- \
-              --config-profile ${{ inputs.config_profile }} \
+              --config-profile "$CONFIG_PROFILE" \
               --suite vulnerable_ground_truth,safe_regression \
               --trials 1 \
               --jobs 2 \
               --batch-jobs 1 \
               --workers 2 \
-              --iterations ${{ inputs.iterations }} \
-              --timeout ${{ inputs.timeout }}
+              --iterations "$ITERATIONS" \
+              --timeout "$TIMEOUT"
           done
 
       - name: Run backend readiness lanes
@@ -178,41 +229,77 @@ jobs:
           CIRCOM_INCLUDE_PATHS: third_party:node_modules
         run: |
           bash ./scripts/run_backend_readiness_lanes.sh \
-            --iterations ${{ inputs.readiness_iterations }} \
-            --timeout ${{ inputs.readiness_timeout }} \
-            --workers ${{ inputs.readiness_workers }} \
-            --required-backends "${{ inputs.required_backends }}" \
-            --min-completion-rate "${{ inputs.min_backend_completion_rate }}" \
-            --per-backend-min-selector-matching-total "${{ inputs.min_backend_selector_matching_total_per_backend }}" \
-            --min-enabled-targets "${{ inputs.min_backend_enabled_targets }}" \
-            --max-runtime-error "${{ inputs.max_backend_runtime_error }}" \
-            --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
-            --max-run-outcome-missing-rate "${{ inputs.max_backend_run_outcome_missing_rate }}" \
+            --iterations "$READINESS_ITERATIONS" \
+            --timeout "$READINESS_TIMEOUT" \
+            --workers "$READINESS_WORKERS" \
+            --required-backends "$REQUIRED_BACKENDS" \
+            --min-completion-rate "$MIN_BACKEND_COMPLETION_RATE" \
+            --per-backend-min-selector-matching-total "$MIN_BACKEND_SELECTOR_MATCHING_TOTAL_PER_BACKEND" \
+            --min-enabled-targets "$MIN_BACKEND_ENABLED_TARGETS" \
+            --max-runtime-error "$MAX_BACKEND_RUNTIME_ERROR" \
+            --max-backend-preflight-failed "$MAX_BACKEND_PREFLIGHT_FAILED" \
+            --max-run-outcome-missing-rate "$MAX_BACKEND_RUN_OUTCOME_MISSING_RATE" \
             --enforce-dashboard \
             --enforce-tool-sandbox
 
       - name: Validate release candidate gate
-        env:
-          MIN_COMPLETION_RATE: "0.95"
-          MIN_VULNERABLE_RECALL: "0.00"
-          MIN_PRECISION: "0.00"
-          MAX_SAFE_FPR: "0.20"
         run: |
           bash ./scripts/release_candidate_gate.sh \
             --bench-root artifacts/benchmark_runs \
-            --required-passes ${{ inputs.required_passes }} \
-            --required-backends "${{ inputs.required_backends }}" \
-            --required-maturity-backends "${{ inputs.required_maturity_backends }}" \
-            --min-backend-completion-rate "${{ inputs.min_backend_completion_rate }}" \
-            --min-backend-selector-matching-total-per-backend "${{ inputs.min_backend_selector_matching_total_per_backend }}" \
-            --min-backend-enabled-targets "${{ inputs.min_backend_enabled_targets }}" \
-            --min-backend-maturity-score "${{ inputs.min_backend_maturity_score }}" \
-            --backend-maturity-consecutive-days "${{ inputs.backend_maturity_consecutive_days }}" \
-            --backend-maturity-consecutive-target-score "${{ inputs.backend_maturity_consecutive_target_score }}" \
-            --backend-maturity-consecutive-backends "${{ inputs.backend_maturity_consecutive_backends }}" \
-            --max-backend-runtime-error "${{ inputs.max_backend_runtime_error }}" \
-            --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
-            --max-backend-run-outcome-missing-rate "${{ inputs.max_backend_run_outcome_missing_rate }}"
+            --required-passes "$REQUIRED_PASSES" \
+            --required-backends "$REQUIRED_BACKENDS" \
+            --required-maturity-backends "$REQUIRED_MATURITY_BACKENDS" \
+            --min-backend-completion-rate "$MIN_BACKEND_COMPLETION_RATE" \
+            --min-backend-selector-matching-total-per-backend "$MIN_BACKEND_SELECTOR_MATCHING_TOTAL_PER_BACKEND" \
+            --min-backend-enabled-targets "$MIN_BACKEND_ENABLED_TARGETS" \
+            --min-backend-maturity-score "$MIN_BACKEND_MATURITY_SCORE" \
+            --backend-maturity-consecutive-days "$BACKEND_MATURITY_CONSECUTIVE_DAYS" \
+            --backend-maturity-consecutive-target-score "$BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE" \
+            --backend-maturity-consecutive-backends "$BACKEND_MATURITY_CONSECUTIVE_BACKENDS" \
+            --circom-flake-consecutive-days "$CIRCOM_FLAKE_CONSECUTIVE_DAYS" \
+            --max-backend-runtime-error "$MAX_BACKEND_RUNTIME_ERROR" \
+            --max-backend-preflight-failed "$MAX_BACKEND_PREFLIGHT_FAILED" \
+            --max-backend-run-outcome-missing-rate "$MAX_BACKEND_RUN_OUTCOME_MISSING_RATE"
+
+      - name: Publish streak summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          summary_path = Path(".github_release_validation_summary.md")
+          lines = ["## Release Streak Summary", ""]
+
+          maturity = Path("artifacts/backend_maturity/latest_scorecard.json")
+          if maturity.is_file():
+              payload = json.loads(maturity.read_text(encoding="utf-8"))
+              gate = payload.get("consecutive_gate", {}) if isinstance(payload, dict) else {}
+              lines.append(
+                  f"- Backend maturity consecutive gate: {'PASS' if gate.get('overall_pass') else 'FAIL'} "
+                  f"(target_days={gate.get('target_days')}, target_score={gate.get('target_score')})"
+              )
+              per_backend = gate.get("per_backend", {}) if isinstance(gate, dict) else {}
+              for backend in sorted(per_backend):
+                  entry = per_backend.get(backend, {})
+                  lines.append(f"  - {backend}: streak_days={entry.get('streak_days')}")
+          else:
+              lines.append("- Backend maturity consecutive gate: missing scorecard artifact")
+
+          flake = Path("artifacts/circom_flake/latest_report.json")
+          if flake.is_file():
+              payload = json.loads(flake.read_text(encoding="utf-8"))
+              lines.append(
+                  f"- Circom flake consecutive gate: {'PASS' if payload.get('overall_pass') else 'FAIL'} "
+                  f"(streak_days={payload.get('streak_days')}, required_days={payload.get('required_consecutive_days')})"
+              )
+          else:
+              lines.append("- Circom flake consecutive gate: missing flake artifact")
+
+          summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print(summary_path.read_text(encoding="utf-8"))
+          PY
+          cat .github_release_validation_summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload benchmark artifacts
         if: always()
@@ -223,10 +310,24 @@ jobs:
             artifacts/benchmark_runs/
             artifacts/backend_readiness/
             artifacts/backend_maturity/
+            artifacts/circom_flake/
+            artifacts/circom_hermetic/
+            artifacts/backend_capacity_fitness/
+            artifacts/release_candidate_validation/
           retention-days: 30
+
+      - name: Save streak history cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            artifacts/backend_maturity/history.json
+            artifacts/circom_flake/history.json
+          key: release-streak-history-${{ github.run_id }}
 
   rollback-validation:
     name: Rollback Validation
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: release-candidate-gate
     timeout-minutes: 120
