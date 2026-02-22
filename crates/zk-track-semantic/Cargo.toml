@@ -1,0 +1,10 @@
+[package]
+name = "zk-track-semantic"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description = "Deferred semantic track runner (intent extraction/violation ranking)"
+
+[dependencies]
+async-trait = "0.1"
+zk-postroadmap-core = { path = "../zk-postroadmap-core" }

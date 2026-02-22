@@ -1,0 +1,15 @@
+[package]
+name = "zk-postroadmap-core"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description = "Shared contracts for deferred post-roadmap tracks"
+
+[dependencies]
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"
+
+[dev-dependencies]
+serde_json = "1.0"

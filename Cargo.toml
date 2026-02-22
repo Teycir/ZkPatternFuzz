@@ -15,6 +15,11 @@ members = [
     "crates/zk-fuzzer-core",
     "crates/zk-attacks",
     "crates/zk-attacks-plugin-example",
+    "crates/zk-postroadmap-core",
+    "crates/zk-track-boundary",
+    "crates/zk-track-compiler",
+    "crates/zk-track-semantic",
+    "crates/zk-track-crypto",
 ]
 
 [dependencies]
@@ -65,6 +70,11 @@ zk-backends = { path = "crates/zk-backends" }
 zk-symbolic = { path = "crates/zk-symbolic" }
 zk-fuzzer-core = { path = "crates/zk-fuzzer-core" }
 zk-attacks = { path = "crates/zk-attacks" }
+zk-postroadmap-core = { path = "crates/zk-postroadmap-core" }
+zk-track-boundary = { path = "crates/zk-track-boundary" }
+zk-track-compiler = { path = "crates/zk-track-compiler" }
+zk-track-semantic = { path = "crates/zk-track-semantic" }
+zk-track-crypto = { path = "crates/zk-track-crypto" }
 
 # SMT Solver for symbolic execution
 z3 = "0.12"

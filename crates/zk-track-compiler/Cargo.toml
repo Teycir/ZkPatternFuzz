@@ -1,0 +1,10 @@
+[package]
+name = "zk-track-compiler"
+version = "0.1.0"
+edition = "2021"
+license = "BUSL-1.1"
+description = "Deferred compiler track runner (generation/differential/crash testing)"
+
+[dependencies]
+async-trait = "0.1"
+zk-postroadmap-core = { path = "../zk-postroadmap-core" }
