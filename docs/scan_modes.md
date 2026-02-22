@@ -5,7 +5,7 @@ This document defines how scanning works in this repo.
 ## Global Constraints
 
 - Targets are read-only and must come from `/media/elements/Repos/zk0d` unless explicitly approved.
-- No mocks or synthetic targets unless explicitly approved.
+- No synthetic targets unless explicitly approved.
 - Pattern YAML is strictly attack logic only (no hardcoded target/runtime/output fields).
 
 ## Scanner Model (YAML-Only)

@@ -112,6 +112,10 @@ attacks:
       cross_backend:
         enabled: true
         sample_count: 100
+        # Required when only one backend is configured:
+        # reference_backend: "halo2"
+        # reference_circuit_path: "tests/halo2_specs/reference.json"
+        # reference_main_component: "main"
 
   - type: collision
     description: "Nullifier/hash collision sweep"

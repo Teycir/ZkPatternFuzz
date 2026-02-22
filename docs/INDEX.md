@@ -155,9 +155,9 @@ Complete guide to all documentation files, ordered by use case and reading level
 ---
 
 ### 5g. [HALO2_MIGRATION_FROM_MOCK_MODE.md](HALO2_MIGRATION_FROM_MOCK_MODE.md) - **Halo2 Migration**
-**For:** Moving campaigns from mock mode to real Halo2 execution  
+**For:** Moving campaigns from testing mode to real Halo2 execution  
 **Contains:**
-- mock-to-real migration steps
+- testing-to-real migration steps
 - JSON spec and Cargo target setup
 - integration test and lane commands
 - common runtime/preflight pitfalls
@@ -311,7 +311,7 @@ docs/
 │   └── Cairo target onboarding into readiness lanes
 │
 ├── HALO2_MIGRATION_FROM_MOCK_MODE.md
-│   └── Mock-to-real Halo2 migration workflow
+│   └── Testing-to-real Halo2 migration workflow
 │
 ├── ATTACK_DSL_SPEC.md
 │   └── Campaign attack DSL and validation contract

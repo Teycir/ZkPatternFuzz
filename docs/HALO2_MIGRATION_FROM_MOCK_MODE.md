@@ -4,14 +4,14 @@ Guide to move campaigns from mock execution into real Halo2-backed execution.
 
 ## 1. Why Migrate
 
-Mock mode is useful for fast logic checks, but readiness requires real backend execution to validate:
+Testing mode is useful for fast logic checks, but readiness requires real backend execution to validate:
 - input/output wiring behavior
 - integration with Halo2 specs/projects
 - runtime stability under real proof paths
 
-## 2. Baseline: Keep A Mock Campaign For Quick Regression
+## 2. Baseline: Keep A Test Campaign For Quick Regression
 
-Keep your existing mock config for short feedback cycles, then add a Halo2 variant.
+Keep your existing test config for short feedback cycles, then add a Halo2 variant.
 
 ## 3. Move Target Definition To Halo2
 

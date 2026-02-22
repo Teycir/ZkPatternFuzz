@@ -37,7 +37,7 @@ cargo build
 cargo test
 
 # Run with example campaign
-cargo run -- --config tests/campaigns/mock_merkle_audit.yaml
+cargo run -- --config campaigns/example_audit.yaml
 ```
 
 ## Development Workflow

@@ -240,6 +240,18 @@ impl FuzzingEngine {
                 _ => None,
             }
         };
+        let reference_backend = cross_backend_section
+            .and_then(|v| v.get("reference_backend"))
+            .and_then(|v| v.as_str())
+            .and_then(parse_framework);
+        let reference_circuit_path = cross_backend_section
+            .and_then(|v| v.get("reference_circuit_path"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let reference_main_component = cross_backend_section
+            .and_then(|v| v.get("reference_main_component"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
 
         let backends: Vec<Framework> =
             if let Some(seq) = config.get("backends").and_then(|v| v.as_sequence()) {
@@ -272,10 +284,89 @@ impl FuzzingEngine {
         }
 
         if selected_backends.len() < 2 {
-            anyhow::bail!(
-                "Differential fuzzing requires at least two configured backends; got {}",
-                selected_backends.len()
-            );
+            if !cross_backend_enabled {
+                anyhow::bail!(
+                    "Differential fuzzing requires at least two configured backends; got {}",
+                    selected_backends.len()
+                );
+            }
+
+            let primary_backend = selected_backends
+                .first()
+                .copied()
+                .unwrap_or(self.config.campaign.target.framework);
+            let primary_circuit_path = backend_paths
+                .get(&primary_backend)
+                .map(|s| s.as_str())
+                .or_else_value(|| {
+                    self.config
+                        .campaign
+                        .target
+                        .circuit_path
+                        .to_str()
+                        .or_value("")
+                });
+            let primary_executor = ExecutorFactory::create_with_options(
+                primary_backend,
+                primary_circuit_path,
+                &self.config.campaign.target.main_component,
+                &self.executor_factory_options,
+            )
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to initialize primary backend {:?} for single-backend differential: {}",
+                    primary_backend,
+                    e
+                )
+            })?;
+
+            let reference_backend = reference_backend.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Single-backend differential requires explicit cross_backend.reference_backend; fallback comparators are disallowed"
+                )
+            })?;
+            let reference_circuit_path = reference_circuit_path
+                .as_deref()
+                .or_else(|| backend_paths.get(&reference_backend).map(|s| s.as_str()))
+                .or_else_value(|| {
+                    self.config
+                        .campaign
+                        .target
+                        .circuit_path
+                        .to_str()
+                        .or_value("")
+                });
+            let reference_main_component = reference_main_component
+                .as_deref()
+                .or_value(&self.config.campaign.target.main_component);
+            let reference_executor = ExecutorFactory::create_with_options(
+                reference_backend,
+                reference_circuit_path,
+                reference_main_component,
+                &self.executor_factory_options,
+            )
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to initialize reference backend {:?} for single-backend differential: {}",
+                    reference_backend,
+                    e
+                )
+            })?;
+
+            self.run_cross_backend_differential(
+                primary_executor,
+                reference_executor,
+                cross_backend_samples,
+                cross_backend_tolerance_bits,
+                progress,
+            )?;
+
+            if let Some(p) = progress {
+                for _ in 0..cross_backend_samples {
+                    p.inc();
+                }
+            }
+            return Ok(());
         }
 
         let mut diff_fuzzer = DifferentialFuzzer::new(DifferentialConfig {
@@ -410,7 +501,7 @@ impl FuzzingEngine {
     }
 
     pub(super) fn run_cross_backend_differential(
-        &self,
+        &mut self,
         executor_a: Arc<dyn CircuitExecutor>,
         executor_b: Arc<dyn CircuitExecutor>,
         sample_count: usize,
@@ -423,11 +514,9 @@ impl FuzzingEngine {
             anyhow::bail!("Cross-backend differential requires sample_count > 0");
         }
 
-        let witnesses = self.collect_corpus_inputs(sample_count.max(1));
+        let witnesses = self.collect_differential_witnesses(sample_count.max(1));
         if witnesses.is_empty() {
-            anyhow::bail!(
-                "Cross-backend differential requires corpus witnesses, but none are available"
-            );
+            anyhow::bail!("Cross-backend differential requires witnesses, but none are available");
         }
 
         let oracle = CrossBackendDifferential::new()
@@ -437,6 +526,24 @@ impl FuzzingEngine {
         let findings = oracle.run(executor_a.as_ref(), executor_b.as_ref(), &witnesses);
         self.record_custom_findings(findings, AttackType::Differential, progress)?;
         Ok(())
+    }
+
+    fn collect_differential_witnesses(&mut self, sample_count: usize) -> Vec<Vec<FieldElement>> {
+        if sample_count == 0 {
+            return Vec::new();
+        }
+
+        let mut witnesses = self.collect_corpus_inputs(sample_count);
+        while witnesses.len() < sample_count {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping differential witness collection early: wall-clock timeout reached"
+                );
+                break;
+            }
+            witnesses.push(self.generate_random_test_case().inputs);
+        }
+        witnesses
     }
 
     pub(super) async fn run_circuit_composition_attack(

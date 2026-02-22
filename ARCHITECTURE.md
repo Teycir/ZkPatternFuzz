@@ -15,9 +15,8 @@ ZkPatternFuzz is a modular security testing framework for zero-knowledge circuit
 **Backend Maturity:**
 - Circom: Production-ready (keygen preflight: 5/5 passes)
 - Noir: Partial support (throughput validated: 1.97x cold/warm ratio)
-- Halo2: Partial support (mock mode operational)
+- Halo2: Partial support
 - Cairo: Experimental (backend integration validated)
-- Mock: Full support (testing backend)
 
 ## Validation Methodology
 
@@ -56,7 +55,7 @@ FuzzingEngine
 
 Provides a unified interface for different ZK backends.
 
-**Trait Hierarchy:**
+#### Implementations:
 ```rust
 CircuitExecutor (trait)
 ├── execute(&self, inputs) -> outputs
@@ -64,7 +63,6 @@ CircuitExecutor (trait)
 └── verify(&self, proof, public) -> bool
 
 Implementations:
-├── MockCircuitExecutor (testing)
 ├── CircomTarget (via targets module)
 ├── NoirTarget (via targets module)
 ├── Halo2Target (via targets module)
@@ -233,7 +231,7 @@ Framework-specific integrations.
 #### Halo2 (`halo2.rs`)
 - Rust-based circuits
 - Compiles via `cargo build`
-- Mock mode for testing
+- Supports testing and production modes
 
 #### Cairo (`cairo.rs`)
 - Supports Cairo 0 and Cairo 1
@@ -512,12 +510,6 @@ pub fn my_mutation(input: &[FieldElement], rng: &mut impl Rng) -> Vec<FieldEleme
 - Use 8+ workers
 - Aggressive mutation rate
 - Shorter timeouts
-
-**For Heavy Circuits (>100k constraints):**
-- Use 2-4 workers
-- Conservative mutations
-- Longer timeouts
-- Enable symbolic execution
 
 ## Testing Strategy
 

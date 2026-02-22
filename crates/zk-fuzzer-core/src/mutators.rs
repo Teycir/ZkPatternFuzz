@@ -200,8 +200,8 @@ fn boundary_mutation(rng: &mut impl Rng) -> FieldElement {
         0 => FieldElement::zero(),
         1 => FieldElement::one(),
         2 => {
-            // Max value (all 0xff)
-            FieldElement([0xff; 32])
+            // Highest 256-bit value reduced into field domain.
+            reduce_modulo_field(FieldElement([0xff; 32]))
         }
         3 => {
             // bn254 scalar field p - 1 (using centralized constant)

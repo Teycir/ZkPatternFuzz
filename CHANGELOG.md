@@ -76,10 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - ABI parsing
   - Proof generation/verification
   - Function signature extraction
-- **Halo2**: PLONK support with mock mode
+- **Halo2**: PLONK support
   - Rust project compilation
   - JSON circuit specification
-  - Mock execution for testing
+  - Execution for testing
   - Circuit analysis utilities
 - **Cairo**: STARK support for Cairo 0 and Cairo 1
   - Scarb and cairo-compile support
@@ -200,7 +200,7 @@ This is the first public release of ZkPatternFuzz, a comprehensive security test
 - **Comprehensive Analysis**: Taint tracking, complexity analysis, and performance profiling
 - **Production Ready**: Parallel execution, deterministic fuzzing, and detailed reporting
 
-The framework has been tested with mock circuits and is ready for real-world ZK circuit auditing. Backend integrations are fully implemented but require the respective toolchains to be installed.
+The framework has been tested with various circuits and is ready for real-world ZK circuit auditing. Backend integrations are fully implemented but require the respective toolchains to be installed.
 
 ### Installation
 
@@ -214,10 +214,10 @@ cargo build --release
 
 ```bash
 # Run a fuzzing campaign
-cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml
+cargo run --release -- --config campaigns/example_audit.yaml
 
 # Validate configuration
-cargo run --release -- validate tests/campaigns/mock_merkle_audit.yaml
+cargo run --release -- validate campaigns/example_audit.yaml
 
 # Generate sample config
 cargo run --release -- init --output my_campaign.yaml --framework circom

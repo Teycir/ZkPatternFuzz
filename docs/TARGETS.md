@@ -99,6 +99,25 @@ cargo run --release --bin zk0d_benchmark -- \
   --workers 2
 ```
 
+For explicit per-backend effectiveness slices (Circom/Noir/Cairo/Halo2), use
+the dedicated multibackend suite:
+
+```bash
+cargo run --release --bin zk0d_benchmark -- \
+  --suites targets/benchmark_suites.multibackend.dev.yaml \
+  --suite safe_regression_multibackend,vulnerable_ground_truth_multibackend \
+  --trials 1 \
+  --jobs 1 \
+  --batch-jobs 1 \
+  --workers 1
+```
+
+Then build a per-backend report:
+
+```bash
+./scripts/run_multibackend_effectiveness_sample.sh
+```
+
 Outputs are written under:
 
 - `artifacts/benchmark_runs/benchmark_<timestamp>/summary.json`

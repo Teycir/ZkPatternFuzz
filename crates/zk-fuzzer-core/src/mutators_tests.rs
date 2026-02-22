@@ -2,6 +2,7 @@ use super::*;
 use crate::constants::BN254_HALF_MODULUS;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use std::cmp::Ordering;
 
 #[test]
 fn test_add_one() {
@@ -120,4 +121,62 @@ fn test_value_below_modulus_unchanged() {
     let input = FieldElement::from_u64(12345);
     let result = reduce_modulo_field(input.clone());
     assert_eq!(result, input);
+}
+
+#[test]
+fn test_boundary_mutation_values_are_in_field() {
+    let mut rng = StdRng::seed_from_u64(123);
+    let modulus = bn254_modulus_bytes();
+
+    for _ in 0..10_000 {
+        let value = boundary_mutation(&mut rng);
+        assert_eq!(
+            compare_bytes(&value.0, &modulus),
+            Ordering::Less,
+            "boundary mutation produced out-of-field value"
+        );
+    }
+}
+
+#[test]
+fn test_mutate_field_element_stress_summary() {
+    let mut rng = StdRng::seed_from_u64(0x5EED);
+    let modulus = bn254_modulus_bytes();
+
+    let mut seed_inputs = vec![
+        FieldElement::zero(),
+        FieldElement::one(),
+        FieldElement::max_value(),
+        FieldElement::half_modulus(),
+    ];
+    for _ in 0..64 {
+        seed_inputs.push(FieldElement::random(&mut rng));
+    }
+
+    let rounds_per_seed = 1_000usize;
+    let mut invalid = 0usize;
+    let mut total = 0usize;
+
+    for seed in &seed_inputs {
+        let mut current = seed.clone();
+        for _ in 0..rounds_per_seed {
+            current = mutate_field_element(&current, &mut rng);
+            total += 1;
+            if compare_bytes(&current.0, &modulus) != Ordering::Less {
+                invalid += 1;
+            }
+        }
+    }
+
+    let invalid_rate = invalid as f64 / total as f64;
+    println!(
+        "mutator_stress_summary total={} invalid={} invalid_rate={:.9}",
+        total, invalid, invalid_rate
+    );
+
+    assert_eq!(
+        invalid, 0,
+        "mutator stress produced {} out-of-field values out of {}",
+        invalid, total
+    );
 }

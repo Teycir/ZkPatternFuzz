@@ -1,0 +1,56 @@
+suites:
+  vulnerable_ground_truth_multibackend:
+    positive: true
+    description: "Multi-backend vulnerable candidate set for per-backend effectiveness calibration"
+    targets:
+      - name: circom_merkle_unconstrained
+        target_circuit: tests/ground_truth_circuits/merkle_unconstrained.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+
+      - name: noir_multiplier_missing_range_constraints
+        target_circuit: tests/noir_projects/multiplier/Nargo.toml
+        main_component: main
+        framework: noir
+        alias: benchmark
+
+      - name: cairo_hint_unconstrained
+        target_circuit: tests/cairo_programs/hint_unconstrained.cairo
+        main_component: main
+        framework: cairo
+        alias: benchmark
+
+      - name: halo2_lookup_underconstrained
+        target_circuit: tests/halo2_specs/lookup.json
+        main_component: lookup
+        framework: halo2
+        alias: benchmark
+
+  safe_regression_multibackend:
+    positive: false
+    description: "Multi-backend safe regression set for false-positive slices"
+    targets:
+      - name: circom_range_check_safe
+        target_circuit: tests/circuits/range_check.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+
+      - name: noir_add_chain_safe
+        target_circuit: tests/noir_projects/add_chain/Nargo.toml
+        main_component: main
+        framework: noir
+        alias: benchmark
+
+      - name: cairo_multiplier_safe
+        target_circuit: tests/cairo_programs/multiplier.cairo
+        main_component: main
+        framework: cairo
+        alias: benchmark
+
+      - name: halo2_minimal_safe
+        target_circuit: tests/halo2_specs/minimal.json
+        main_component: minimal
+        framework: halo2
+        alias: benchmark

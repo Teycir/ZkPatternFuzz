@@ -152,6 +152,9 @@ attacks:
         enabled: true
         sample_count: 100
         tolerance_bits: 0
+        # Required for single-backend differential:
+        # reference_backend: "halo2"
+        # reference_circuit_path: "tests/halo2_specs/reference.json"
 ```
 
 ### Step 2: Run Your First Campaign

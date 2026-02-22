@@ -25,9 +25,8 @@ ZkPatternFuzz is a security testing framework that **automates accumulated audit
 **Supported Backends:**
 - **Circom** - R1CS-based circuits (production-ready)
 - **Noir** - ACIR-based circuits (partial support, throughput validated)
-- **Halo2** - PLONK-based circuits (partial support, mock mode)
+- **Halo2** - PLONK-based circuits (partial support)
 - **Cairo** - STARK-based programs (experimental, integration validated)
-- **Mock** - In-process testing backend (full support)
 
 ## Installation
 
@@ -66,16 +65,16 @@ Notes:
 
 ```bash
 # Run a campaign
-cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml
+cargo run --release -- --config campaigns/example_audit.yaml
 
 # Run with AI assistance (Mistral model)
 cargo run --release -- --config templates/ai_assisted_audit.yaml
 
 # With verbose output
-cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --verbose
+cargo run --release -- --config campaigns/example_audit.yaml --verbose
 
 # Custom worker count
-cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --workers 8
+cargo run --release -- --config campaigns/example_audit.yaml --workers 8
 
 # Run benchmark suite
 cargo run --release --bin zk0d_benchmark -- \
@@ -410,7 +409,7 @@ scripts/keygen_preflight_validate.sh
 scripts/release_candidate_validate_twice.sh
 
 # Run with logging
-RUST_LOG=debug cargo run -- --config tests/campaigns/mock_merkle_audit.yaml
+RUST_LOG=debug cargo run -- --config campaigns/example_audit.yaml
 
 # Format and lint
 cargo fmt
