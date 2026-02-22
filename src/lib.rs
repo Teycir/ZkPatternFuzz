@@ -218,6 +218,7 @@ pub mod errors;
 pub mod executor;
 pub mod fuzzer;
 pub mod oracles;
+pub mod pipeline;
 pub mod progress;
 pub mod reporting;
 pub mod targets;
@@ -398,6 +399,9 @@ pub use formal::{
     FormalVerificationManager, LeanExporter, ProofObligation, ProofSystem, PropertyExtractor,
 };
 pub use multi_circuit::{CircuitChain, MultiCircuitConfig, MultiCircuitFuzzer};
+pub use pipeline::{
+    default_post_roadmap_tracks, PostRoadmapRunSummary, PostRoadmapRunner, TrackFailure,
+};
 
 // Mode 3: Chain fuzzing for multi-step vulnerabilities
 pub use chain_fuzzer::{
