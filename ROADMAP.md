@@ -860,33 +860,31 @@ gh run watch
 - Current fuzzing misses semantic bugs that pass constraint checks
 
 #### Future P0 (Post-Roadmap): Intent Extraction & Semantic Oracle
-- [ ] Design intent extraction pipeline:
-  - [ ] Parse circuit source files for inline comments and docstrings
-  - [ ] Extract README/specification documents from project root
-  - [ ] Build structured intent representation (expected behaviors, invariants, security properties)
+- [x] Design intent extraction pipeline:
+  - [x] Parse circuit source files for inline comments and docstrings
+  - [x] Extract README/specification documents from project root
+  - [x] Build structured intent representation (expected behaviors, invariants, security properties)
 - [ ] Implement AI-powered intent analyzer:
   - [ ] Use LLM (Mistral/Claude/GPT-4) to extract semantic requirements from natural language
   - [ ] Generate formal invariants from informal descriptions
   - [ ] Identify security-critical properties ("must never", "always", "only if")
 - [ ] Build semantic violation detector:
   - [ ] Compare fuzzer-generated witnesses against extracted intent
-  - [ ] Classify violations: exploitable vs benign
-  - [ ] Rank by severity based on security impact
+  - [x] Classify violations: exploitable vs benign
+  - [x] Rank by severity based on security impact
 - [ ] Add exploitability classifier:
   - [ ] AI analyzes which "extra solutions" enable attacks
   - [ ] Generate proof-of-concept exploits for confirmed violations
-  - [ ] Provide natural language explanations of vulnerability
+  - [x] Provide natural language explanations of vulnerability
 
 #### Implementation Structure
 ```
-crates/zk-semantic-analysis/
+crates/zk-track-semantic/
 ├── src/
-│   ├── intent_extractor.rs    # Parse docs/comments
-│   ├── ai_analyzer.rs          # LLM-powered intent understanding
-│   ├── semantic_oracle.rs      # Violation detection
-│   ├── exploitability.rs       # Classify attack potential
-│   └── report_generator.rs     # Human-readable findings
-src/attacks/semantic_violation.rs  # Attack integration
+│   ├── adapters.rs            # Intent extraction + exploitability adapters
+│   └── lib.rs                 # Semantic track runner + report emission
+└── tests/
+    └── semantic_track_runner.rs # End-to-end semantic-track coverage
 ```
 
 #### Workflow Example
@@ -1338,13 +1336,13 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 **Applies to:** AI semantic intent analysis, compiler fuzzing, ZK/non-ZK boundary fuzzing, and cryptographic primitive fuzzing.
 
 **Operator Workflow (short form)**
-- [ ] Activate only after current roadmap completion (Phase 8 sustained-gate exit met); keep out of active release gates until then.
-- [ ] Run a foundation sprint first: shared corpus/evidence store, shared finding schema, shared replay/minimization harness, shared dashboard.
-- [ ] Execute in this order for ROI: `boundary -> compiler -> semantic -> crypto`.
-- [ ] Use shared data flow: compiler-generated circuits feed boundary tests; boundary/compiler findings feed semantic exploitability ranking; crypto checks validate math-level correctness vs noise; semantic outputs feed generator prioritization for next cycle.
-- [ ] Use weekly cadence: `generate -> boundary -> semantic -> crypto -> regress`.
-- [ ] Enforce promotion gates: deterministic replay, false-positive budget, explicit coverage counts, and required regression tests for accepted high/critical findings.
-- [ ] Operate one integrated pipeline: `generate -> attack -> interpret -> validate -> regress`.
+- [x] Activate only after current roadmap completion (Phase 8 sustained-gate exit met); keep out of active release gates until then. (`PostRoadmapWorkflowConfig.activated=false` by default; explicit activation required in `src/pipeline/post_roadmap_workflow.rs`)
+- [x] Run a foundation sprint first: shared corpus/evidence store, shared finding schema, shared replay/minimization harness, shared dashboard. (`build_foundation_sprint_state` with `SharedStoreLayout`, `ReplayHarnessState`, `DashboardSnapshot` in `src/pipeline/post_roadmap_foundation.rs`)
+- [x] Execute in this order for ROI: `boundary -> compiler -> semantic -> crypto`. (encoded in `recommended_roi_track_order()` + track runner ordering)
+- [x] Use shared data flow: compiler-generated circuits feed boundary tests; boundary/compiler findings feed semantic exploitability ranking; crypto checks validate math-level correctness vs noise; semantic outputs feed generator prioritization for next cycle. (`build_shared_data_flow` in `src/pipeline/post_roadmap_workflow.rs`)
+- [x] Use weekly cadence: `generate -> boundary -> semantic -> crypto -> regress`. (encoded in `default_weekly_cadence()`)
+- [x] Enforce promotion gates: deterministic replay, false-positive budget, explicit coverage counts, and required regression tests for accepted high/critical findings. (`evaluate_promotion_gates` + `PostRoadmapPromotionPolicy`)
+- [x] Operate one integrated pipeline: `generate -> attack -> interpret -> validate -> regress`. (encoded in `default_integrated_pipeline()` and `PostRoadmapWorkflowRunner::run_cycle`)
 
 **Modularization Blueprint (design requirement)**
 - [x] Split deferred work into separate crates/modules with strict boundaries:

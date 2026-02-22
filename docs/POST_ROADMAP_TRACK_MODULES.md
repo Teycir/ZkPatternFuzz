@@ -44,3 +44,42 @@ let runner = PostRoadmapRunner::with_config(
 ```
 
 Disabled tracks are skipped, and enabled tracks continue independently even if one track fails.
+
+## Workflow Activation, Cadence, and Gates
+
+`PostRoadmapWorkflowRunner` wraps the track runner with explicit activation and promotion checks.
+
+- Activation: `PostRoadmapWorkflowConfig.activated` defaults to `false`.
+- Weekly cadence default: `generate -> boundary -> semantic -> crypto -> regress`.
+- Integrated pipeline default: `generate -> attack -> interpret -> validate -> regress`.
+- Promotion gates enforce:
+  - deterministic replay metric threshold
+  - false-positive budget
+  - explicit coverage counts
+  - mandatory `regression_test` metadata for high/critical findings
+
+## Foundation Sprint State
+
+`build_foundation_sprint_state` produces a shared foundation manifest:
+
+- `SharedStoreLayout`:
+  - `corpus/post_roadmap/shared`
+  - `evidence/post_roadmap/shared`
+  - `output/post_roadmap/replay`
+  - `output/post_roadmap/dashboard`
+- `ReplayHarnessState`:
+  - replay artifact count
+  - minimization queue count (reproducible findings)
+- `DashboardSnapshot`:
+  - run/finding/failure totals
+  - finding counts per track
+  - high/critical findings missing regression-test metadata
+
+## Shared Data Flow Manifest
+
+`build_shared_data_flow` extracts handoff artifacts for the deferred workflow:
+
+- compiler-generated circuits for boundary testing
+- boundary/compiler findings promoted into semantic candidate queue
+- crypto validation notes for noise filtering
+- semantic generator priorities for next-cycle generation

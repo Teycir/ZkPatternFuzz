@@ -400,8 +400,13 @@ pub use formal::{
 };
 pub use multi_circuit::{CircuitChain, MultiCircuitConfig, MultiCircuitFuzzer};
 pub use pipeline::{
-    default_post_roadmap_tracks, PostRoadmapRunSummary, PostRoadmapRunner, PostRoadmapRunnerConfig,
-    TrackFailure,
+    build_foundation_sprint_state, build_shared_data_flow, default_integrated_pipeline,
+    default_post_roadmap_tracks, default_weekly_cadence, evaluate_promotion_gates,
+    recommended_roi_track_order, DashboardSnapshot, FoundationSprintState, GeneratorPriority,
+    PostRoadmapPromotionPolicy, PostRoadmapRunSummary, PostRoadmapRunner, PostRoadmapRunnerConfig,
+    PostRoadmapWorkflowConfig, PostRoadmapWorkflowReport, PostRoadmapWorkflowRunner,
+    PromotionGateResult, ReplayHarnessState, SharedDataFlowReport, SharedStoreLayout, TrackFailure,
+    TrackFindingRef, WorkflowStage,
 };
 
 // Mode 3: Chain fuzzing for multi-step vulnerabilities
