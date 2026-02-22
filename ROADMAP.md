@@ -421,7 +421,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 #### Exit Criteria
 - [x] Finds underconstrained bugs by removing <=3 constraints
-- [ ] Detects >=70% of constraint-removal bugs in test suite
+- [x] Detects >=70% of constraint-removal bugs in test suite
 - [ ] Completes within 60s timeout for circuits with <10K constraints
 
 **Impact:** Directly models real attacker strategy: "what if I remove this constraint?".

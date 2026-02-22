@@ -129,3 +129,99 @@ fn test_witness_extension_detects_booleanity_removal_bug() {
     assert!(results.iter().all(|r| r.removed_indices.len() <= 3));
     assert!(results.iter().any(|r| r.violates_invariants()));
 }
+
+#[test]
+fn test_witness_extension_detects_at_least_seventy_percent_of_known_cases() {
+    let scenarios = vec![
+        (
+            vec![
+                SymbolicConstraint::Eq(
+                    SymbolicValue::symbol("input_0"),
+                    SymbolicValue::concrete(FieldElement::from_u64(1)),
+                ),
+                SymbolicConstraint::Eq(
+                    SymbolicValue::symbol("amount"),
+                    SymbolicValue::concrete(FieldElement::from_u64(300)),
+                ),
+                SymbolicConstraint::Range(
+                    SymbolicValue::symbol("amount"),
+                    SymbolicValue::concrete(FieldElement::from_u64(16)),
+                ),
+            ],
+            vec![SymbolicConstraint::Lt(
+                SymbolicValue::symbol("amount"),
+                SymbolicValue::concrete(FieldElement::from_u64(16)),
+            )],
+            HashMap::from([
+                ("input_0".to_string(), FieldElement::from_u64(1)),
+                ("amount".to_string(), FieldElement::from_u64(300)),
+            ]),
+            HashSet::from(["input_0".to_string(), "amount".to_string()]),
+        ),
+        (
+            vec![
+                SymbolicConstraint::Eq(
+                    SymbolicValue::symbol("input_0"),
+                    SymbolicValue::concrete(FieldElement::from_u64(1)),
+                ),
+                SymbolicConstraint::Eq(
+                    SymbolicValue::symbol("nullifier"),
+                    SymbolicValue::concrete(FieldElement::from_u64(42)),
+                ),
+                SymbolicConstraint::Neq(
+                    SymbolicValue::symbol("nullifier"),
+                    SymbolicValue::concrete(FieldElement::from_u64(42)),
+                ),
+            ],
+            vec![SymbolicConstraint::Neq(
+                SymbolicValue::symbol("nullifier"),
+                SymbolicValue::concrete(FieldElement::from_u64(42)),
+            )],
+            HashMap::from([
+                ("input_0".to_string(), FieldElement::from_u64(1)),
+                ("nullifier".to_string(), FieldElement::from_u64(42)),
+            ]),
+            HashSet::from(["input_0".to_string(), "nullifier".to_string()]),
+        ),
+        (
+            vec![
+                SymbolicConstraint::Eq(
+                    SymbolicValue::symbol("input_0"),
+                    SymbolicValue::concrete(FieldElement::from_u64(1)),
+                ),
+                SymbolicConstraint::Eq(
+                    SymbolicValue::symbol("flag"),
+                    SymbolicValue::concrete(FieldElement::from_u64(2)),
+                ),
+                SymbolicConstraint::Boolean(SymbolicValue::symbol("flag")),
+            ],
+            vec![SymbolicConstraint::Boolean(SymbolicValue::symbol("flag"))],
+            HashMap::from([
+                ("input_0".to_string(), FieldElement::from_u64(1)),
+                ("flag".to_string(), FieldElement::from_u64(2)),
+            ]),
+            HashSet::from(["input_0".to_string(), "flag".to_string()]),
+        ),
+    ];
+
+    let detected = scenarios
+        .into_iter()
+        .filter(|(constraints, invariants, base_witness, fixed_symbols)| {
+            let results = run_single_removal_case(
+                constraints.clone(),
+                invariants.clone(),
+                base_witness.clone(),
+                fixed_symbols.clone(),
+            );
+            results.iter().any(|r| r.violates_invariants())
+                && results.iter().all(|r| r.removed_indices.len() <= 3)
+        })
+        .count();
+
+    let detection_rate = detected as f64 / 3.0;
+    assert!(
+        detection_rate >= 0.70,
+        "expected >=70% detection rate, got {:.2}%",
+        detection_rate * 100.0
+    );
+}
