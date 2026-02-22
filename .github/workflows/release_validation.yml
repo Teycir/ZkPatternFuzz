@@ -181,7 +181,7 @@ jobs:
           curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
           echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
           "$HOME/.nargo/bin/noirup"
-          nargo --version
+          "$HOME/.nargo/bin/nargo" --version
 
       - name: Install Cairo toolchain (Scarb)
         run: |
