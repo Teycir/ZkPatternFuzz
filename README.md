@@ -16,12 +16,18 @@ ZkPatternFuzz is a security testing framework that **automates accumulated audit
 - Future audits automatically test for all known patterns
 - Knowledge compounds: more audits → more patterns → better coverage
 
+**Current Status (2026-02-19):**
+- ✅ Phase 1 Milestone: 80% vulnerable recall, 0% safe FPR
+- ✅ 100% completion rate, 100% attack stage reach
+- ✅ Keygen preflight: 5/5 targets passing
+- ✅ Release candidate validation: 2/2 consecutive passes
+
 **Supported Backends:**
-- **Circom** - R1CS-based circuits (most mature)
-- **Noir** - ACIR-based circuits (partial support)
-- **Halo2** - PLONK-based circuits (partial support)
-- **Cairo** - STARK-based programs (experimental)
-- **Mock** - In-process testing backend
+- **Circom** - R1CS-based circuits (production-ready)
+- **Noir** - ACIR-based circuits (partial support, throughput validated)
+- **Halo2** - PLONK-based circuits (partial support, mock mode)
+- **Cairo** - STARK-based programs (experimental, integration validated)
+- **Mock** - In-process testing backend (full support)
 
 ## Installation
 
@@ -70,6 +76,12 @@ cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --verbose
 
 # Custom worker count
 cargo run --release -- --config tests/campaigns/mock_merkle_audit.yaml --workers 8
+
+# Run benchmark suite
+cargo run --release --bin zk0d_benchmark -- \
+  --config-profile dev \
+  --suite safe_regression,vulnerable_ground_truth \
+  --trials 2 --workers 4
 ```
 
 ## AI-Assisted Pentesting
@@ -320,17 +332,44 @@ Options:
 ```
 ZkPatternFuzz/
 ├── src/                     # Main application
+│   ├── bin/                 # Binary executables (zk-fuzzer, zk0d_benchmark, etc.)
+│   ├── attacks/             # Attack implementations
+│   ├── executor/            # Circuit execution abstraction
+│   ├── fuzzer/              # Fuzzing engine
+│   ├── analysis/            # Symbolic execution, taint analysis
+│   ├── reporting/           # Report generation, evidence collection
+│   └── targets/             # Backend integrations
 ├── crates/                  # Workspace crates
-│   ├── zk-core/             # Core types
-│   ├── zk-attacks/          # Attack implementations
-│   ├── zk-fuzzer-core/      # Fuzzing engine
-│   ├── zk-symbolic/         # Symbolic execution
+│   ├── zk-core/             # Core types and traits
+│   ├── zk-attacks/          # Attack trait and implementations
+│   ├── zk-fuzzer-core/      # Fuzzing engine core
+│   ├── zk-symbolic/         # Symbolic execution (Z3)
 │   ├── zk-backends/         # Backend integrations
 │   └── zk-constraints/      # Constraint analysis
 ├── tests/                   # Test suite
+│   ├── campaigns/           # Test campaign configs
+│   ├── circuits/            # Test circuits
+│   ├── ground_truth/        # Known vulnerable circuits
+│   ├── safe_circuits/       # Known safe circuits
+│   └── noir_projects/       # Noir test projects
+├── targets/                 # Benchmark registries
+│   ├── zkbugs/              # zkBugs dataset (110 vulnerabilities)
+│   ├── benchmark_suites.yaml # Benchmark suite definitions
+│   └── zk0d_catalog.yaml    # Target catalog
+├── artifacts/               # Generated validation reports
+│   ├── benchmark_runs_fast/ # Benchmark results
+│   ├── fresh_clone_validation/ # Bootstrap validation
+│   ├── keygen_preflight/    # Keygen readiness reports
+│   └── release_candidate_validation/ # Release gate results
+├── scripts/                 # Automation scripts
+│   ├── fresh_clone_bootstrap_validate.sh
+│   ├── keygen_preflight_validate.sh
+│   ├── phase3a_validate.sh
+│   ├── release_candidate_validate_twice.sh
+│   └── rollback_validate.sh
 ├── campaigns/               # Campaign configs
-├── circuits/                # Test circuits
-├── targets/zkbugs/          # zkBugs dataset (110 vulnerabilities)
+├── circuits/                # Real-world test circuits
+├── CVErefs/                 # CVE test suite (22 vulnerabilities)
 ├── templates/               # YAML templates
 └── docs/                    # Documentation
 ```
@@ -339,12 +378,13 @@ ZkPatternFuzz/
 
 - **[PATTERN_LIBRARY.md](docs/PATTERN_LIBRARY.md)** - Pattern-based knowledge accumulation (core competitive advantage)
 - **[TUTORIAL.md](docs/TUTORIAL.md)** - Step-by-step guide
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Internal design
-- **[ROADMAP.md](ROADMAP.md)** - Development roadmap
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Internal design and current status
+- **[ROADMAP.md](ROADMAP.md)** - Development roadmap with benchmark evidence
 - **[RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)** - Production release gate checklist
 - **[TROUBLESHOOTING_PLAYBOOK.md](docs/TROUBLESHOOTING_PLAYBOOK.md)** - Keygen/includes/locks/timeouts playbook
 - **[TRIAGE_SYSTEM.md](docs/TRIAGE_SYSTEM.md)** - Automated triage
 - **[DEFI_ATTACK_GUIDE.md](docs/DEFI_ATTACK_GUIDE.md)** - MEV/front-running detection
+- **[TARGETS.md](docs/TARGETS.md)** - Target catalog and workflow commands
 
 ## Release Ops
 
@@ -358,6 +398,17 @@ ZkPatternFuzz/
 # Run tests
 cargo test
 
+# Run integration tests
+cargo test --test integration_tests
+
+# Run CVE test suite
+cargo test --test autonomous_cve_tests -- --nocapture
+
+# Run benchmark validation
+scripts/fresh_clone_bootstrap_validate.sh
+scripts/keygen_preflight_validate.sh
+scripts/release_candidate_validate_twice.sh
+
 # Run with logging
 RUST_LOG=debug cargo run -- --config tests/campaigns/mock_merkle_audit.yaml
 
@@ -367,6 +418,9 @@ cargo clippy -- -D warnings
 
 # Generate docs
 cargo doc --open
+
+# Check repo hygiene
+python3 scripts/check_repo_hygiene.py --enforce
 ```
 
 ## Contributing

@@ -291,7 +291,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
       oracle_type: "collision_semantic"
       severity: "critical"
   ```
-- [ ] Implement invariant parser and validator (`crates/zk-core/src/invariants.rs`)
+- [x] Implement invariant parser and validator (`crates/zk-core/src/invariants.rs`)
 - [ ] Add semantic oracle engine that checks invariants against witness/proof pairs
 - [ ] Integrate with existing `spec_inference.rs` for auto-generated invariants
 - [ ] Add invariant violation reporting with counterexamples

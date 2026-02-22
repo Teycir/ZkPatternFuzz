@@ -2,18 +2,32 @@
 
 ## Overview
 
-ZkPatternFuzz is a modular security testing framework for zero-knowledge circuits. This document describes the internal architecture, design decisions, and extension points.
+ZkPatternFuzz is a modular security testing framework for zero-knowledge circuits that automates accumulated audit expertise through pattern-based detection. This document describes the internal architecture, design decisions, and extension points.
+
+## Current Status (2026-02-19)
+
+**Phase 1 Milestone Achieved:**
+- Vulnerable recall: 80% (target: ≥80%)
+- Safe false-positive rate: 0% (target: ≤5%)
+- Overall completion rate: 100%
+- Attack stage reach rate: 100%
+
+**Backend Maturity:**
+- Circom: Production-ready (keygen preflight: 5/5 passes)
+- Noir: Partial support (throughput validated: 1.97x cold/warm ratio)
+- Halo2: Partial support (mock mode operational)
+- Cairo: Experimental (backend integration validated)
+- Mock: Full support (testing backend)
 
 ## Validation Methodology
 
 Validation assets are organized as first-class project artifacts:
 
-- Campaign templates: `tests/campaigns/validation/`
-- Automation scripts: `tests/scripts/`
-- Generated validation reports: `reports/validation/`
-- Consolidated status: `docs/VALIDATION_RESULTS.md`
-
-This keeps reproducibility data versioned alongside code and backend integrations.
+- Benchmark suites: `targets/benchmark_suites.{dev,prod}.yaml`
+- Automation scripts: `scripts/`
+- Generated validation reports: `artifacts/`
+- Release gates: `scripts/release_candidate_gate.sh`
+- Troubleshooting playbook: `docs/TROUBLESHOOTING_PLAYBOOK.md`
 
 ## Core Components
 
@@ -237,6 +251,27 @@ Hardened execution and evidence tooling to avoid hangs and crashes.
 **Behavior:**
 - Evidence mode prefers per-exec isolation for hang safety.
 - Proof generation for Circom/Noir/Cairo uses timeouts to avoid indefinite stalls.
+
+### 12. Benchmark & Validation Infrastructure
+
+Automated testing and quality gates for release validation.
+
+**Components:**
+- `zk0d_benchmark` (`src/bin/zk0d_benchmark.rs`): parallel benchmark runner with configurable profiles
+- `zk0d_batch` (`src/bin/zk0d_batch.rs`): batch execution for campaign matrices
+- `zk0d_matrix` (`src/bin/zk0d_matrix.rs`): multi-target validation orchestrator
+
+**Validation Scripts:**
+- `fresh_clone_bootstrap_validate.sh`: validates clean-clone operability
+- `keygen_preflight_validate.sh`: validates keygen readiness across targets
+- `phase3a_validate.sh`: backend-heavy integration checks
+- `release_candidate_validate_twice.sh`: two-attempt release gate
+- `rollback_validate.sh`: rollback safety validation
+
+**Benchmark Suites:**
+- `safe_regression`: Known-safe circuits for FPR measurement
+- `vulnerable_ground_truth`: Known-vulnerable circuits for recall measurement
+- Configurable via `targets/benchmark_suites.{dev,prod}.yaml`
 
 ## Data Flow
 
@@ -501,8 +536,44 @@ pub fn my_mutation(input: &[FieldElement], rng: &mut impl Rng) -> Vec<FieldEleme
 - Regression tests for found bugs
 - Performance benchmarks
 
+## Workspace Structure
+
+**Crates:**
+- `zk-core`: Core types and traits
+- `zk-attacks`: Attack implementations
+- `zk-fuzzer-core`: Fuzzing engine
+- `zk-symbolic`: Symbolic execution (Z3 integration)
+- `zk-backends`: Backend integrations (Circom, Noir, Halo2, Cairo)
+- `zk-constraints`: Constraint analysis
+
+**Key Directories:**
+- `src/`: Main application and orchestration
+- `tests/`: Integration tests, ground truth circuits, validation suites
+- `campaigns/`: YAML campaign configurations
+- `targets/`: Benchmark registries and target catalogs
+- `artifacts/`: Generated validation reports and benchmark results
+- `scripts/`: Automation and validation scripts
+- `docs/`: Documentation and guides
+- `CVErefs/`: CVE test suite (22 real-world vulnerabilities)
+
+## Release Process
+
+**Phase Gates:**
+1. **Phase 0**: Basic operability (completion rate ≥30%)
+2. **Phase 1**: Recall uplift (vulnerable recall ≥80%, safe FPR ≤5%)
+3. **Phase 2**: Dependency availability (keygen preflight, bootstrap validation)
+4. **Phase 3A**: Backend integration (Cairo, Noir, timeout hardening)
+5. **Phase 5**: Release candidate (two consecutive passes)
+
+**Release Checklist:**
+- See `docs/RELEASE_CHECKLIST.md` for complete gate criteria
+- Use `scripts/release_candidate_gate.sh` for automated validation
+- Consult `docs/TROUBLESHOOTING_PLAYBOOK.md` for failure resolution
+
 ## Future Enhancements
 
 1. **Formal Verification Integration**: Combine fuzzing with proofs
-2. **Custom DSL**: Domain-specific language for attack patterns
+2. **Custom DSL**: Domain-specific language for attack patterns (see `docs/ATTACK_DSL_SPEC.md`)
 3. **Real-time Dashboard**: Web UI for campaign monitoring
+4. **Pattern Library Expansion**: Encode more CVEs and audit findings
+5. **Cross-Backend Differential**: Enhanced multi-backend comparison

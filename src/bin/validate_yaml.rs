@@ -1,5 +1,5 @@
 use clap::Parser;
-use zk_fuzzer::config::v2::{parse_invariant_relation, InvariantAST};
+use zk_core::{validate_invariant_against_inputs, InvariantValidationError};
 use zk_fuzzer::config::FuzzConfig;
 use zk_fuzzer::cve::CveDatabase;
 
@@ -46,24 +46,27 @@ fn main() -> anyhow::Result<()> {
             errors.push("Missing invariants: evidence mode requires v2 `invariants`".to_string());
         } else {
             for inv in invariants {
-                if inv.name.trim().is_empty() {
-                    errors.push("Invariant name is empty".to_string());
-                }
-                if inv.relation.trim().is_empty() {
-                    errors.push(format!("Invariant '{}' has empty relation", inv.name));
-                    continue;
-                }
-
-                let identifiers = extract_identifiers(&inv.relation);
-                let has_input_ref = identifiers
-                    .iter()
-                    .any(|id| input_names.iter().any(|n| n.eq_ignore_ascii_case(id)));
-
-                if !has_input_ref {
-                    errors.push(format!(
-                        "Invariant '{}' does not reference any known input label (labels: {:?})",
-                        inv.name, input_names
-                    ));
+                match validate_invariant_against_inputs(&inv.name, &inv.relation, &input_names) {
+                    Ok(_) => {}
+                    Err(InvariantValidationError::EmptyInvariantName) => {
+                        errors.push("Invariant name is empty".to_string());
+                    }
+                    Err(InvariantValidationError::EmptyRelation) => {
+                        errors.push(format!("Invariant '{}' has empty relation", inv.name));
+                    }
+                    Err(InvariantValidationError::NoKnownInputReference { .. })
+                    | Err(InvariantValidationError::RawRelationExpression(_)) => {
+                        errors.push(format!(
+                            "Invariant '{}' does not reference any known input label (labels: {:?})",
+                            inv.name, input_names
+                        ));
+                    }
+                    Err(InvariantValidationError::InvalidRelation(err)) => {
+                        errors.push(format!(
+                            "Invariant '{}' has invalid relation: {}",
+                            inv.name, err
+                        ));
+                    }
                 }
             }
         }
@@ -90,60 +93,4 @@ fn main() -> anyhow::Result<()> {
 
     println!("✓ YAML validated successfully (evidence-ready)");
     Ok(())
-}
-
-fn extract_identifiers(relation: &str) -> Vec<String> {
-    if let Ok(ast) = parse_invariant_relation(relation) {
-        if !matches!(ast, InvariantAST::Raw(_)) {
-            let mut out = Vec::new();
-            collect_identifiers(&ast, &mut out);
-            out.sort();
-            out.dedup();
-            return out;
-        }
-    }
-    Vec::new()
-}
-
-fn collect_identifiers(ast: &InvariantAST, out: &mut Vec<String>) {
-    match ast {
-        InvariantAST::Identifier(name) => out.push(name.clone()),
-        InvariantAST::ArrayAccess(name, _) => out.push(name.clone()),
-        InvariantAST::Call(_, args) => {
-            for arg in args {
-                out.push(arg.clone());
-            }
-        }
-        InvariantAST::Equals(a, b)
-        | InvariantAST::NotEquals(a, b)
-        | InvariantAST::LessThan(a, b)
-        | InvariantAST::LessThanOrEqual(a, b)
-        | InvariantAST::GreaterThan(a, b)
-        | InvariantAST::GreaterThanOrEqual(a, b)
-        | InvariantAST::InSet(a, b) => {
-            collect_identifiers(a, out);
-            collect_identifiers(b, out);
-        }
-        InvariantAST::Range {
-            lower,
-            value,
-            upper,
-            ..
-        } => {
-            collect_identifiers(lower, out);
-            collect_identifiers(value, out);
-            collect_identifiers(upper, out);
-        }
-        InvariantAST::ForAll { expr, .. } => collect_identifiers(expr, out),
-        InvariantAST::Set(values) => {
-            for v in values {
-                collect_identifiers(v, out);
-            }
-        }
-        InvariantAST::Power(base, exp) => {
-            out.push(base.clone());
-            out.push(exp.clone());
-        }
-        InvariantAST::Literal(_) | InvariantAST::Raw(_) => {}
-    }
 }
