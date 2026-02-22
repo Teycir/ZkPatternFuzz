@@ -796,6 +796,36 @@ gh run watch
 
 ## 📌 Remaining Backlog
 
+### External Effectiveness Corrections (2026-02-22)
+
+#### P0: Mutation Correctness + Portability (must fix first)
+- [ ] Fix field-mutator correctness to keep generated values in-field by default:
+  - apply modular reduction in `bit_flip` / `byte_flip` outputs
+  - fix `sub_one(0)` to wrap to `p-1` (field semantics), not `2^256-1`
+  - replace misleading bitwise-`negate` behavior with true field negation (`p - x`) and keep bitwise inversion as a separately named mutator
+- [ ] Remove hardcoded developer-local paths from default runtime/config:
+  - remove/replace `DEFAULT_ZK0D_BASE` machine-specific path assumptions
+  - replace absolute local CVE fixture paths in `known_vulnerabilities.yaml` with repo-relative or env-configurable roots
+- [ ] Add regression tests that assert mutators always produce valid field elements for BN254 and preserve boundary semantics (`0`, `1`, `p-1`, `p`).
+
+#### P1: Signal Quality + Cross-Backend Depth
+- [ ] Upgrade proof-soundness mutation from random byte-noise to algebraically-aware transforms:
+  - implement structure-aware mutation hooks for supported proof systems (or explicitly gate unsupported systems)
+  - keep random-byte mutation only as a negative-control lane, not a primary soundness signal
+- [ ] Reduce backend depth imbalance (Circom vs Noir/Halo2/Cairo):
+  - extend constraint-inspection style analyses (unused signal / weak-constraint classes where feasible) beyond Circom
+  - publish per-backend recall and true-positive contribution slices so aggregate recall is not Circom-dominated without visibility
+
+#### P2: Coverage Breadth + Oracle Completeness
+- [ ] Improve spec-inference robustness against sampling blind spots (targeted boundary witness generation and combination coverage for rare input patterns).
+- [ ] Expand vulnerability pattern library beyond current Circom-heavy corpus to include non-Circom/ACIR/Halo2 lookup and newer audit-derived classes.
+- [ ] Add a differential oracle path for mock backend mode (behavior comparison against at least one real backend/canonical checker) to detect backend-specific divergence.
+
+#### Exit Evidence For This Correction Wave
+- [ ] Mutator validity report: invalid out-of-field mutation rate == `0` across stress campaign.
+- [ ] Portability report: clean-clone CVE regression lane runs without machine-specific path edits.
+- [ ] Per-backend effectiveness report: separate recall/precision for Circom, Noir, Cairo, Halo2 with explicit target counts and contribution share.
+
 ### Non-Circom Backend Production Parity (Priority Order: Noir -> Cairo -> Halo2)
 - [x] Noir: enforce local real-circuit prove/verify smoke gate (`test_noir_local_prove_verify_smoke`, wired in `scripts/run_noir_readiness.sh`)
 - [x] Noir: barretenberg integration hardening for external `bb`-coupled projects (explicit `bb`-missing diagnostics + robust proof artifact path resolution in evidence flow)
