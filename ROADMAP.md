@@ -17,7 +17,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - ✅ Phase 4: Validation/Stats tooling (implementation completed)
 - ✅ Phase 5: Release Hardening (implementation completed)
 - ✅ Phase 6: Full Non-Circom Circuit-Type Readiness (implementation completed)
-- ⏳ Phase 7: Semantic Analysis & Complex Bug Detection (planned)
+- 🟡 Phase 7: Semantic Analysis & Complex Bug Detection (partially implemented, release-deferred)
 - 🟡 Phase 8: 5/5 Circuit Maturity Program (in progress)
 
 ### Exit Criteria Progress
@@ -295,265 +295,75 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Enforce tool sandbox for all readiness/release lanes (`--enforce-tool-sandbox`) and archive gate evidence.
 - [x] Add backend maturity history + consecutive-day streak gate (`scripts/backend_maturity_scorecard.sh`, `scripts/release_candidate_gate.sh`) to enforce 14-day `5.0` closures with runtime-error constraints.
 
-### 8.3 Backend-Specific Closure Plans
+### 8.3 Backend-Specific Closure Plans (Release-Critical)
 
 #### Noir -> 5/5
 - [x] Expand Noir matrix coverage to `>=25` selector-matching classified runs per release cycle.
 - [x] Add compatibility matrix tests for supported `nargo` versions and artifact layouts.
 - [x] Add hard proof artifact contract tests (path + format + deterministic verify inputs).
-- [ ] Exit criteria: Noir score `5.0` for 14 consecutive daily scorecards.
+- Tracking note: 14-day `5.0` streak is enforced by the scorecard history gate, not a separate manual checklist item.
 
 #### Halo2 -> 5/5
 - [x] Implement key setup path in `Halo2Target::setup_keys` (or a strict canonical adapter with equivalent guarantees).
 - [x] Add canonical execution/prove/verify integration that is not dependent on ad-hoc custom CLI flags in target binaries.
 - [x] Replace metadata-only success fallbacks with strict production behavior in readiness lanes.
 - [x] Expand Halo2 matrix to at least 5 targets (JSON specs + real circuits + external circuits).
-- [ ] Exit criteria: `runtime_error=0` and Halo2 score `5.0` for 14 consecutive daily scorecards.
+- Tracking note: `runtime_error=0` and 14-day `5.0` streak remain enforced by release-gate thresholds.
 
 #### Cairo -> 5/5
 - [x] Replace source-assertion-only coverage fallback with trace/AIR-backed production coverage.
 - [x] Normalize Cairo1 proof handling to a structured, reproducible artifact contract (not execution-id-only payload semantics).
 - [x] Gate both Cairo0 and Cairo1 canonical paths where applicable.
 - [x] Expand Cairo matrix to at least 5 targets (local + external) with stone/scarb prove-verify gates.
-- [ ] Exit criteria: Cairo score `5.0` for 14 consecutive daily scorecards.
+- Tracking note: Cairo 14-day `5.0` closure is scorecard-gated and does not need duplicate manual tracking.
 
 #### Circom -> 5/5
 - [x] Add long-horizon flake gate (14-day consecutive pass requirement) for Circom keygen/compile/prove/verify lanes.
 - [ ] Add hermetic include/path validation in release lanes for deterministic toolchain resolution.
 - [ ] Add large-circuit memory and throughput fitness gates in release validation.
-- [ ] Exit criteria: Circom score `5.0` for 14 consecutive daily scorecards.
+- Tracking note: once the two items above land, the same 14-day scorecard gate enforces sustained closure.
 
-### 8.4 Milestones
-- [x] `M0 (Week 1)`: scorecard freeze + matrix expansion + initial gate at `>=4.5`.
-- [ ] `M1 (Week 3)`: Halo2/Cairo critical implementation gaps closed; all backends `>=4.5`.
-- [ ] `M2 (Week 5)`: coverage-fidelity hardening complete; all backends `>=4.8`.
-- [ ] `M3 (Week 7)`: all backends sustained at `5.0/5.0` for 14 consecutive daily runs.
+### 8.4 Milestones (Informational)
+- `M0 (Week 1)`: complete (`>=4.5` gate + scorecard freeze).
+- `M1 (Week 3)`: in progress (critical implementation gaps closed; all backends `>=4.5`).
+- `M2 (Week 5)`: planned (coverage-fidelity hardening to `>=4.8`).
+- `M3 (Week 7)`: planned (all backends sustained at `5.0/5.0` for 14 consecutive daily runs).
 
-### 8.5 Global Exit Criteria
-- [ ] Circom/Noir/Cairo/Halo2 each score `5.0/5.0` on the published scorecard for 14 consecutive days.
+### 8.5 Global Exit Criteria (Release Gate)
 - [ ] Zero unresolved backend-specific release blockers.
-- [ ] Release candidate gate enforces and archives 5/5 evidence bundles.
+- [ ] Release candidate gate enforces and archives 5/5 evidence bundles (including 14-day consecutive scorecard thresholds).
 
 ---
 
 ## 🧠 Phase 7: Semantic Analysis & Complex Bug Detection
 
-**Goal:** Bridge the gap between syntax-level fuzzing and semantic property violations. Enable detection of protocol-level bugs that current constraint-level analysis misses.
+**Goal:** Bridge the gap between syntax-level fuzzing and semantic property violations. Enable detection of protocol-level bugs that constraint-level analysis misses.
 
-**Priority:** High-impact additions that directly model real attacker behavior and catch production vulnerability classes.
+**Scope update (2026-02-22):** keep only high-leverage, near-term semantic tasks active while Phase 8 release closure is in progress; move long-horizon research tasks into deferred backlog tracking.
 
-### 7.1 Semantic Property Specification (P0 - Highest Impact)
+### 7.1 Completed Foundation (Merged)
+- [x] Semantic invariant DSL + parser/validator + semantic oracle + violation reporting (`docs/INVARIANT_SPEC_SCHEMA.md`, `crates/zk-core/src/invariants.rs`, `src/fuzzer/invariant_checker.rs`).
+- [x] Non-native field/limb arithmetic oracle with CVE-backed regressions (`crates/zk-constraints/src/limb_analysis.rs`, `tests/halo2_specs/affine.json`, signature fixtures).
+- [x] Witness extension attack mode with constraint-subset strategies and SMT solving (`crates/zk-symbolic/src/enhanced.rs`).
+- [x] Lookup-analysis core implemented (lookup semantics, extractor, analyzer, fuzzer) (`crates/zk-constraints/src/constraint_types.rs` and related analysis modules).
 
-**Problem:** Fuzzer knows circuit syntax (constraints, wires) but not intent (what the circuit should prove). Current oracles check "does it crash?" not "does it lie?".
+### 7.2 Active Remaining Work (Useful Now)
+- [ ] Add Halo2-specific lookup integration tests to validate Plookup coverage end to end.
+- [ ] Publish one semantic-analysis operator guide (invariants, witness extension, lookup workflows) with reproducible commands.
 
-**Solution:** User-supplied invariant DSL that drives semantic oracles.
+### 7.3 Deferred Backlog (Post-5/5 Cutover, Non-Blocking)
+- Reference implementation differential (former 7.5).
+- Constraint cluster collective enforcement (former 7.6).
+- Information leakage active distinguisher (former 7.7).
+- Stretch targets after reactivation:
+  - Expand invariant catalog to `>=5` production vulnerability patterns.
+  - Raise lookup detection coverage to `>=80%` on Halo2 Plookup fixtures.
 
-#### Implementation Tasks
-- [x] Design invariant specification YAML schema (`docs/INVARIANT_SPEC_SCHEMA.md`)
-  ```yaml
-  invariants:
-    - id: "merkle_root_integrity"
-      property: "circuit never verifies if merkle_root != expected_root"
-      oracle_type: "semantic_violation"
-      severity: "critical"
-    - id: "nullifier_uniqueness"
-      property: "nullifier collision implies double-spend"
-      oracle_type: "collision_semantic"
-      severity: "critical"
-  ```
-- [x] Implement invariant parser and validator (`crates/zk-core/src/invariants.rs`)
-- [x] Add semantic oracle engine that checks invariants against witness/proof pairs (`crates/zk-core/src/invariants.rs`, `src/fuzzer/invariant_checker.rs`)
-- [x] Integrate with existing `spec_inference.rs` for auto-generated invariants
-- [x] Add invariant violation reporting with counterexamples
-- [x] Add regression tests with known semantic bugs (underconstrained Merkle, nullifier replay)
+### 7.4 Tracking Rule
+- Phase 7 items are non-blocking while Phase 8 maturity closure remains the active release track.
+- Promote deferred items back to active only with an assigned owner, fixture plan, and explicit release impact.
 
-#### Exit Criteria
-- [ ] 5+ real vulnerability patterns expressible as invariants
-- [ ] Semantic oracle detects >=80% of underconstrained bugs in test suite
-- [ ] Zero false positives on safe circuits with correct invariants
-
-**Impact:** Directly models "does the circuit prove what it claims?" - the core security question.
-
-### 7.2 Non-Native Field Arithmetic Oracle (P0 - Critical for Signature Circuits)
-
-**Problem:** Circuits emulating secp256k1/Ed25519 inside BN254 using limb decomposition have frequent limb overflow bugs. Current boundary testing only tests BN254 field edges, completely missing limb-level bugs.
-
-**Solution:** Dedicated oracle for limb-decomposed arithmetic.
-
-#### Implementation Tasks
-- [x] Add limb decomposition detector in constraint analysis (`crates/zk-constraints/src/limb_analysis.rs`)
-  - Identify variables representing limbs (naming patterns, bit-width constraints)
-  - Track limb reconstruction constraints (sum of limbs = full value)
-- [x] Implement limb boundary fuzzer
-  - Fuzz individual limb boundaries: `limb[i] = 2^k - 1`, `limb[i] = 2^k`, `limb[i] = 0`
-  - Fuzz limb sum overflows: `sum(limbs) > field_modulus`
-  - Fuzz carry propagation edge cases
-- [x] Add non-native field oracle that checks:
-  - Limb overflow detection (individual limbs exceed bit-width)
-  - Reconstruction overflow (sum of limbs wraps around field)
-  - Carry bit validation
-- [x] Add test suite with known limb overflow CVEs (EdDSA malleability, ECDSA s-value)
-
-#### Exit Criteria
-- [x] Detects CVE-2024-42459 (EdDSA malleability) automatically
-- [x] Finds limb overflow in >=3 signature circuit test cases
-- [x] Zero false positives on correctly implemented non-native field arithmetic
-
-**Impact:** Catches the #1 bug class in production signature/key circuits.
-
-### 7.3 Witness Extension Attack (P1 - SMT-Driven Constraint Removal)
-
-**Problem:** Current `AltWitnessSolver` finds alternative witnesses but doesn't model the attacker who bypasses a subset of constraints.
-
-**Solution:** Given a valid witness for a subset of constraints (with some removed), use Z3 to find an assignment satisfying the rest.
-
-#### Implementation Tasks
-- [x] Extend `crates/zk-symbolic/src/enhanced.rs` with witness extension mode
-- [x] Implement constraint subset selection strategies:
-  - Remove single constraint (exhaustive)
-  - Remove constraint clusters (dependency-graph-guided)
-  - Remove constraints by type (range checks, lookups, custom gates)
-- [x] Add Z3-based witness extension solver:
-  - Start with valid witness for subset A
-  - Solve for remaining constraints B with A fixed
-  - Check if extended witness violates semantic invariants
-- [x] Integrate with semantic invariant checker (Phase 7.1)
-- [x] Add test cases with known constraint-removal vulnerabilities
-
-#### Exit Criteria
-- [x] Finds underconstrained bugs by removing <=3 constraints
-- [x] Detects >=70% of constraint-removal bugs in test suite
-- [x] Completes within 60s timeout for circuits with <10K constraints
-
-**Impact:** Directly models real attacker strategy: "what if I remove this constraint?".
-
-### 7.4 Lookup Table Gap Analysis (P1 - Halo2/Modern Circom)
-
-**Problem:** Halo2 and recent Circom use Plookup/lookup arguments. Current `LookupConstraint` stub has no analysis engine. Missing lookup range checks are a top production bug class.
-
-**Solution:** Dedicated lookup coverage checker.
-
-#### Implementation Tasks
-- [x] Extend `crates/zk-constraints/src/constraint_types.rs` with full lookup semantics
-- [x] Implement lookup table extractor from circuit IR
-- [x] Add lookup coverage analyzer:
-  - Track which values are looked up vs. which should be
-  - Detect missing range checks (value used without lookup)
-  - Detect incomplete lookup tables (gaps in range)
-- [x] Add lookup fuzzer:
-  - Fuzz values outside lookup table range
-  - Fuzz boundary values (min/max of table)
-  - Fuzz gaps in sparse lookup tables
-- [ ] Add Halo2-specific lookup integration tests
-
-#### Exit Criteria
-- [ ] Detects missing range checks in >=80% of test cases
-- [ ] Works on Halo2 circuits with Plookup gates
-- [ ] Finds lookup table gaps in sparse tables
-
-**Impact:** Catches missing range-proof bugs in modern ZK systems.
-
-### 7.5 Reference Implementation Differential (P2 - Semantic Drift Detection)
-
-**Problem:** Current differential fuzzer compares backends, not circuit vs. specification. Output mismatch (circuit accepts what reference rejects) is a direct bug signal.
-
-**Solution:** Compare circuit against pure Rust/Python reference implementation.
-
-#### Implementation Tasks
-- [ ] Design reference implementation specification format
-  ```yaml
-  reference:
-    language: "rust"
-    path: "./reference/merkle_tree.rs"
-    function: "verify_merkle_proof"
-    input_mapping:
-      leaf: "circuit.leaf"
-      pathElements: "circuit.pathElements"
-      pathIndices: "circuit.pathIndices"
-  ```
-- [ ] Implement reference executor (Rust/Python/WASM)
-- [ ] Add differential oracle:
-  - Run same inputs through circuit and reference
-  - Flag cases where circuit accepts but reference rejects
-  - Flag cases where outputs differ
-- [ ] Add test suite with known implementation-vs-spec bugs
-
-#### Exit Criteria
-- [ ] Detects >=3 implementation drift bugs in test suite
-- [ ] Supports Rust and Python reference implementations
-- [ ] Completes differential check in <5s per test case
-
-**Impact:** Catches implementation vs. specification drift.
-
-### 7.6 Constraint Cluster Collective Enforcement (P2 - Multi-Constraint Gaps)
-
-**Problem:** Individual oracles check each constraint in isolation. Complex bugs arise when a group of constraints should collectively enforce a property but has a gap.
-
-**Solution:** Constraint cluster graph that checks whether a cluster's combined solution space matches intended property.
-
-#### Implementation Tasks
-- [ ] Extend `crates/zk-constraints/src/analysis/dependency.rs` with cluster detection
-- [ ] Implement constraint clustering algorithm:
-  - Group constraints by shared variables
-  - Identify enforcement clusters (e.g., all constraints for one Merkle level)
-  - Detect weak clusters (under-constrained variable subsets)
-- [ ] Add cluster-level oracle:
-  - Check if cluster collectively enforces expected property
-  - Detect gaps between constraints in cluster
-  - Flag clusters with high degrees of freedom
-- [ ] Add test cases with known multi-constraint gaps
-
-#### Exit Criteria
-- [ ] Detects >=60% of multi-constraint gap bugs in test suite
-- [ ] Identifies weak constraint clusters in <10s for circuits with <10K constraints
-- [ ] Zero false positives on correctly clustered constraints
-
-**Impact:** Catches bugs that arise from interactions between constraints.
-
-### 7.7 Information Leakage Oracle Enhancement (P3 - Active Distinguisher)
-
-**Problem:** Current `taint.rs` tracks flow but doesn't actively fuzz for distinguisher attacks. Need to test whether private data leaks through public outputs or proof bytes.
-
-**Solution:** Active fuzzing for distinguishable outputs.
-
-#### Implementation Tasks
-- [ ] Extend `src/fuzzer/taint.rs` with active distinguisher mode
-- [ ] Implement distinguisher fuzzer:
-  - Run circuit with different private inputs, same public inputs
-  - Check if public outputs differ (information leak)
-  - Check if proof bytes differ in distinguishable way
-  - Use statistical tests (chi-square, KS test) for subtle leaks
-- [ ] Add test cases with known information leakage bugs
-
-#### Exit Criteria
-- [ ] Detects >=70% of information leakage bugs in test suite
-- [ ] Completes distinguisher test in <30s per circuit
-- [ ] Supports statistical significance testing
-
-**Impact:** Catches privacy violations in ZK circuits.
-
-### Implementation Priority Order
-
-| Priority | Phase | Bug Class Caught | Estimated Effort |
-|----------|-------|------------------|------------------|
-| P0 | 7.1 Semantic Invariants | Protocol-level soundness | 2-3 weeks |
-| P0 | 7.2 Non-Native Field | Signature/key circuit exploits | 2 weeks |
-| P1 | 7.3 Witness Extension | Constraint removal attacks | 2 weeks |
-| P1 | 7.4 Lookup Table Gaps | Missing range-proof bugs | 1-2 weeks |
-| P2 | 7.5 Reference Differential | Implementation vs spec drift | 1 week |
-| P2 | 7.6 Constraint Clusters | Multi-constraint gaps | 2 weeks |
-| P3 | 7.7 Information Leakage | Privacy violations | 1 week |
-
-### Exit Criteria (Phase 7 Complete)
-- [ ] Semantic invariant DSL operational with >=5 real vulnerability patterns
-- [x] Non-native field oracle detects limb overflow in signature circuits
-- [ ] Witness extension attack finds underconstrained bugs via constraint removal
-- [ ] Lookup table analyzer works on Halo2 circuits
-- [ ] Reference differential catches >=3 implementation drift bugs
-- [ ] All P0/P1 tasks complete with regression tests
-- [ ] Documentation updated with semantic analysis guide
-
-**Current Status:** 🔴 Not started. Phase 6 complete, Phase 7 is next priority.
+**Current Status:** 🟡 Partially implemented. Core P0/P1 engines are merged; remaining active work is limited to Halo2 lookup integration tests and operator documentation.
 
 ---
 
