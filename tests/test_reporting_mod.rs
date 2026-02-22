@@ -1,4 +1,4 @@
-use zk_core::{AttackType, CoverageMap, Finding, ProofOfConcept, Severity};
+use zk_core::{AttackType, CoverageMap, FieldElement, Finding, ProofOfConcept, Severity};
 use zk_fuzzer::config::ReportingConfig;
 use zk_fuzzer::reporting::FuzzReport;
 
@@ -66,4 +66,73 @@ fn test_finding_deserialization_from_json() {
     assert_eq!(finding.description, "Proof forgery detected");
     assert!(finding.location.is_none());
     assert_eq!(finding.poc.witness_a.len(), 1);
+}
+
+#[test]
+fn test_finding_roundtrip_preserves_counterexample_fields() {
+    let original = Finding {
+        attack_type: AttackType::ConstraintInference,
+        severity: Severity::High,
+        description: "Invariant counterexample".to_string(),
+        poc: ProofOfConcept {
+            witness_a: vec![FieldElement::from_u64(1)],
+            witness_b: Some(vec![FieldElement::from_u64(2)]),
+            public_inputs: vec![FieldElement::from_u64(3)],
+            proof: Some(vec![7, 8, 9]),
+        },
+        location: Some("Invariant: sample".to_string()),
+    };
+
+    let json = serde_json::to_string(&original).expect("serialize finding with counterexample");
+    assert!(json.contains("\"poc_public_inputs\""));
+
+    let deserialized: Finding =
+        serde_json::from_str(&json).expect("deserialize finding with counterexample");
+    assert_eq!(deserialized.poc.witness_a.len(), 1);
+    assert_eq!(deserialized.poc.witness_b.as_ref().map(Vec::len), Some(1));
+    assert_eq!(deserialized.poc.public_inputs.len(), 1);
+    assert_eq!(
+        deserialized.poc.public_inputs[0].to_hex(),
+        FieldElement::from_u64(3).to_hex()
+    );
+    assert_eq!(deserialized.poc.proof, Some(vec![7, 8, 9]));
+}
+
+#[test]
+fn test_markdown_report_includes_counterexample_public_outputs() {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+
+    let findings = vec![Finding {
+        attack_type: AttackType::ConstraintInference,
+        severity: Severity::High,
+        description: "Invariant violation with counterexample".to_string(),
+        poc: ProofOfConcept {
+            witness_a: vec![zk_core::FieldElement::from_u64(9)],
+            witness_b: None,
+            public_inputs: vec![zk_core::FieldElement::from_u64(42)],
+            proof: Some(vec![1, 2, 3]),
+        },
+        location: Some("Invariant: auto_spec_range_x".to_string()),
+    }];
+
+    let config = ReportingConfig {
+        output_dir: temp_dir.path().to_path_buf(),
+        formats: vec!["markdown".to_string()],
+        include_poc: true,
+        ..ReportingConfig::default()
+    };
+
+    let report = FuzzReport::new(
+        "test_campaign".to_string(),
+        findings,
+        CoverageMap::default(),
+        config,
+    );
+    report.save_to_files().expect("save markdown report");
+
+    let markdown = std::fs::read_to_string(temp_dir.path().join("report.md"))
+        .expect("read generated markdown report");
+    assert!(markdown.contains("Public Inputs/Outputs:"));
+    assert!(markdown.contains("0x000000000000000000000000000000000000000000000000000000000000002a"));
+    assert!(markdown.contains("Proof Bytes: 3"));
 }

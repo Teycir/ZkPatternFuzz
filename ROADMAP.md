@@ -362,8 +362,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
   ```
 - [x] Implement invariant parser and validator (`crates/zk-core/src/invariants.rs`)
 - [x] Add semantic oracle engine that checks invariants against witness/proof pairs (`crates/zk-core/src/invariants.rs`, `src/fuzzer/invariant_checker.rs`)
-- [ ] Integrate with existing `spec_inference.rs` for auto-generated invariants
-- [ ] Add invariant violation reporting with counterexamples
+- [x] Integrate with existing `spec_inference.rs` for auto-generated invariants
+- [x] Add invariant violation reporting with counterexamples
 - [ ] Add regression tests with known semantic bugs (underconstrained Merkle, nullifier replay)
 
 #### Exit Criteria

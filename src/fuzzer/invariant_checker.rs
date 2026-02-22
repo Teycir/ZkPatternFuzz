@@ -754,6 +754,33 @@ impl InvariantChecker {
         self.semantic_oracle.reset();
     }
 
+    /// Register additional invariants discovered at runtime (e.g. spec inference).
+    ///
+    /// Returns the number of invariants that were accepted and appended.
+    pub fn register_runtime_invariants(&mut self, invariants: Vec<Invariant>) -> usize {
+        let mut accepted = 0usize;
+
+        for invariant in invariants {
+            let already_present = self.invariants.iter().any(|existing| {
+                existing.name.eq_ignore_ascii_case(&invariant.name)
+                    || existing
+                        .relation
+                        .trim()
+                        .eq_ignore_ascii_case(invariant.relation.trim())
+            });
+            if already_present {
+                continue;
+            }
+
+            if let Some(parsed) = Self::parse_invariant(&invariant, &self.input_map) {
+                self.invariants.push(parsed);
+                accepted += 1;
+            }
+        }
+
+        accepted
+    }
+
     /// Get the number of invariants being checked
     pub fn invariant_count(&self) -> usize {
         self.invariants.len()

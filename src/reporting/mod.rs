@@ -281,6 +281,20 @@ impl FuzzReport {
                             witness_b.iter().map(|fe| fe.to_hex()).collect::<Vec<_>>()
                         ));
                     }
+                    if !finding.poc.public_inputs.is_empty() {
+                        md.push_str(&format!(
+                            "Public Inputs/Outputs: {:?}\n",
+                            finding
+                                .poc
+                                .public_inputs
+                                .iter()
+                                .map(|fe| fe.to_hex())
+                                .collect::<Vec<_>>()
+                        ));
+                    }
+                    if let Some(ref proof) = finding.poc.proof {
+                        md.push_str(&format!("Proof Bytes: {}\n", proof.len()));
+                    }
                     md.push_str("```\n\n");
                 }
             }

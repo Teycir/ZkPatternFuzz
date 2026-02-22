@@ -364,6 +364,16 @@ impl FuzzingEngine {
             "spec_inference_sample_count_cap",
             "spec_inference.sample_count",
         );
+        let configured_auto_invariant_cap = config
+            .get("auto_invariant_cap")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(64) as usize;
+        let auto_invariant_cap = self.bounded_attack_units(
+            configured_auto_invariant_cap,
+            1,
+            "spec_inference_auto_invariant_cap",
+            "spec_inference.auto_invariant_cap",
+        );
         let evidence_mode =
             Self::additional_bool(&self.config.campaign.parameters.additional, "evidence_mode")
                 .unwrap_or_default();
@@ -402,14 +412,14 @@ impl FuzzingEngine {
 
         let mode_label = if evidence_mode { "evidence" } else { "run" };
 
-        let findings = if let Some((phases_total, phases_completed, attack_idx, attacks_total)) =
+        let run_result = if let Some((phases_total, phases_completed, attack_idx, attacks_total)) =
             phase_context
         {
             let mut last_snapshot = std::time::Instant::now()
                 .checked_sub(std::time::Duration::from_secs(60))
                 .unwrap_or_else(std::time::Instant::now);
             oracle
-                .run_with_progress(
+                .run_with_progress_and_specs(
                     self.executor.as_ref(),
                     &initial_witnesses,
                     |spec_idx, specs_total| {
@@ -445,8 +455,33 @@ impl FuzzingEngine {
                 )
                 .await
         } else {
-            oracle.run(self.executor.as_ref(), &initial_witnesses).await
+            oracle
+                .run_with_progress_and_specs(
+                    self.executor.as_ref(),
+                    &initial_witnesses,
+                    |_spec_idx, _specs_total| {},
+                )
+                .await
         };
+        let findings = run_result.findings;
+
+        let auto_invariants =
+            self.spec_inference_specs_to_invariants(&run_result.inferred_specs, auto_invariant_cap);
+        let registered_auto_invariants = self.register_spec_inference_invariants(auto_invariants);
+        if registered_auto_invariants > 0 {
+            tracing::info!(
+                "Spec inference integrated {} auto-generated invariants (inferred_specs={}, accepted_samples={})",
+                registered_auto_invariants,
+                run_result.inferred_specs.len(),
+                run_result.samples_collected
+            );
+        } else {
+            tracing::debug!(
+                "Spec inference produced no new auto-generated invariants (inferred_specs={}, cap={})",
+                run_result.inferred_specs.len(),
+                auto_invariant_cap
+            );
+        }
 
         if !findings.is_empty() {
             self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
@@ -462,6 +497,199 @@ impl FuzzingEngine {
         }
 
         Ok(())
+    }
+
+    fn register_spec_inference_invariants(
+        &mut self,
+        invariants: Vec<crate::config::v2::Invariant>,
+    ) -> usize {
+        if invariants.is_empty() {
+            return 0;
+        }
+
+        if let Some(checker) = self.invariant_checker.as_mut() {
+            checker.register_runtime_invariants(invariants)
+        } else {
+            let accepted = invariants.len();
+            self.invariant_checker = Some(InvariantChecker::new(invariants, &self.config.inputs));
+            accepted
+        }
+    }
+
+    fn spec_inference_specs_to_invariants(
+        &self,
+        specs: &[crate::oracles::spec_inference::InferredSpec],
+        cap: usize,
+    ) -> Vec<crate::config::v2::Invariant> {
+        let mut invariants = Vec::new();
+        for (idx, spec) in specs.iter().enumerate() {
+            if invariants.len() >= cap {
+                break;
+            }
+            if let Some(invariant) = self.spec_inference_spec_to_invariant(spec, idx) {
+                invariants.push(invariant);
+            }
+        }
+        invariants
+    }
+
+    fn spec_inference_spec_to_invariant(
+        &self,
+        spec: &crate::oracles::spec_inference::InferredSpec,
+        idx: usize,
+    ) -> Option<crate::config::v2::Invariant> {
+        use crate::config::v2::{Invariant, InvariantOracle, InvariantType};
+        use crate::oracles::spec_inference::InferredSpec::{
+            BitwiseConstraint, ConstantValue, Equality, Inequality, LinearRelation, NonZero,
+            RangeCheck,
+        };
+
+        let severity = if spec.confidence() >= 0.99 {
+            "critical"
+        } else if spec.confidence() >= 0.95 {
+            "high"
+        } else {
+            "medium"
+        }
+        .to_string();
+
+        let description = format!(
+            "Auto-generated from spec inference ({:.1}% confidence): {}",
+            spec.confidence() * 100.0,
+            spec.description()
+        );
+
+        let (name, invariant_type, relation) = match spec {
+            RangeCheck {
+                input_index,
+                observed_min,
+                observed_max,
+                ..
+            } => {
+                let input_name = self.spec_input_name(*input_index)?;
+                (
+                    format!(
+                        "auto_spec_range_{}_{}",
+                        idx,
+                        self.sanitize_spec_fragment(input_name)
+                    ),
+                    InvariantType::Range,
+                    format!("{} <= {} <= {}", observed_min, input_name, observed_max),
+                )
+            }
+            BitwiseConstraint {
+                input_index,
+                bit_length,
+                ..
+            } => {
+                let input_name = self.spec_input_name(*input_index)?;
+                (
+                    format!(
+                        "auto_spec_bitwise_{}_{}",
+                        idx,
+                        self.sanitize_spec_fragment(input_name)
+                    ),
+                    InvariantType::Range,
+                    format!("0 <= {} < 2^{}", input_name, bit_length),
+                )
+            }
+            NonZero { wire_index, .. } => {
+                let input_name = self.spec_input_name(*wire_index)?;
+                (
+                    format!(
+                        "auto_spec_nonzero_{}_{}",
+                        idx,
+                        self.sanitize_spec_fragment(input_name)
+                    ),
+                    InvariantType::Constraint,
+                    format!("{} != 0", input_name),
+                )
+            }
+            ConstantValue {
+                wire_index, value, ..
+            } => {
+                let input_name = self.spec_input_name(*wire_index)?;
+                (
+                    format!(
+                        "auto_spec_constant_{}_{}",
+                        idx,
+                        self.sanitize_spec_fragment(input_name)
+                    ),
+                    InvariantType::Constraint,
+                    format!("{} == {}", input_name, value.to_decimal_string()),
+                )
+            }
+            Equality { wire_a, wire_b, .. } => {
+                let lhs = self.spec_input_name(*wire_a)?;
+                let rhs = self.spec_input_name(*wire_b)?;
+                (
+                    format!(
+                        "auto_spec_equal_{}_{}_{}",
+                        idx,
+                        self.sanitize_spec_fragment(lhs),
+                        self.sanitize_spec_fragment(rhs)
+                    ),
+                    InvariantType::Constraint,
+                    format!("{} == {}", lhs, rhs),
+                )
+            }
+            Inequality { wire_a, wire_b, .. } => {
+                let lhs = self.spec_input_name(*wire_a)?;
+                let rhs = self.spec_input_name(*wire_b)?;
+                (
+                    format!(
+                        "auto_spec_neq_{}_{}_{}",
+                        idx,
+                        self.sanitize_spec_fragment(lhs),
+                        self.sanitize_spec_fragment(rhs)
+                    ),
+                    InvariantType::Constraint,
+                    format!("{} != {}", lhs, rhs),
+                )
+            }
+            LinearRelation { .. } => {
+                tracing::debug!(
+                    "Skipping linear relation inferred spec for auto-invariant conversion: {}",
+                    spec.description()
+                );
+                return None;
+            }
+        };
+
+        Some(Invariant {
+            name,
+            invariant_type,
+            relation,
+            oracle: InvariantOracle::MustHold,
+            transform: None,
+            expected: None,
+            description: Some(description),
+            severity: Some(severity),
+        })
+    }
+
+    fn spec_input_name(&self, wire_index: usize) -> Option<&str> {
+        self.config
+            .inputs
+            .get(wire_index)
+            .map(|input| input.name.as_str())
+    }
+
+    fn sanitize_spec_fragment(&self, raw: &str) -> String {
+        let mut out = String::new();
+        for ch in raw.chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch.to_ascii_lowercase());
+            } else {
+                out.push('_');
+            }
+        }
+        let out = out.trim_matches('_').to_string();
+        if out.is_empty() {
+            "wire".to_string()
+        } else {
+            out
+        }
     }
 
     pub(super) async fn run_witness_collision_attack(

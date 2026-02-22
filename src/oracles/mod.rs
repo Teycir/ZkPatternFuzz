@@ -112,7 +112,9 @@ pub use recursive::{
 pub use setup_poisoning::{SetupPoisoningDetector, TrustedSetupAttack, TrustedSetupConfig};
 pub use sidechannel_advanced::{SidechannelAdvancedAttack, SidechannelAdvancedConfig};
 pub use soundness::SoundnessTester;
-pub use spec_inference::{ExecutionSample, InferredSpec, SpecInferenceOracle, SpecInferenceStats};
+pub use spec_inference::{
+    ExecutionSample, InferredSpec, SpecInferenceOracle, SpecInferenceRunResult, SpecInferenceStats,
+};
 pub use underconstrained::UnderconstrainedDetector;
 pub use verification::VerificationFuzzer;
 pub use witness::WitnessFuzzer;

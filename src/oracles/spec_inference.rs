@@ -167,6 +167,14 @@ pub struct SpecInferenceOracle {
     wire_labels: HashMap<usize, String>,
 }
 
+/// Result of a spec inference run with both generated specs and findings.
+#[derive(Debug, Clone, Default)]
+pub struct SpecInferenceRunResult {
+    pub samples_collected: usize,
+    pub inferred_specs: Vec<InferredSpec>,
+    pub findings: Vec<Finding>,
+}
+
 impl Default for SpecInferenceOracle {
     fn default() -> Self {
         Self::new()
@@ -754,6 +762,23 @@ impl SpecInferenceOracle {
     where
         F: FnMut(usize, usize),
     {
+        self.run_with_progress_and_specs(executor, initial_witnesses, |idx, total| {
+            on_progress(idx, total)
+        })
+        .await
+        .findings
+    }
+
+    /// Run the full spec inference attack and return both inferred specs and findings.
+    pub async fn run_with_progress_and_specs<F>(
+        &self,
+        executor: &dyn CircuitExecutor,
+        initial_witnesses: &[Vec<FieldElement>],
+        mut on_progress: F,
+    ) -> SpecInferenceRunResult
+    where
+        F: FnMut(usize, usize),
+    {
         let mut findings = Vec::new();
         let mut rng = rand::thread_rng();
 
@@ -770,7 +795,7 @@ impl SpecInferenceOracle {
         }
 
         if samples.is_empty() {
-            return findings;
+            return SpecInferenceRunResult::default();
         }
 
         // Infer specs
@@ -829,7 +854,11 @@ impl SpecInferenceOracle {
             }
         }
 
-        findings
+        SpecInferenceRunResult {
+            samples_collected: samples.len(),
+            inferred_specs: specs,
+            findings,
+        }
     }
 }
 

@@ -194,7 +194,7 @@ impl serde::Serialize for Finding {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Finding", 5)?;
+        let mut state = serializer.serialize_struct("Finding", 8)?;
         state.serialize_field("attack_type", &format!("{:?}", self.attack_type))?;
         state.serialize_field("severity", &self.severity)?;
         state.serialize_field("description", &self.description)?;
@@ -208,6 +208,25 @@ impl serde::Serialize for Finding {
                 .map(|fe| fe.to_hex())
                 .collect::<Vec<_>>(),
         )?;
+        state.serialize_field(
+            "poc_witness_b",
+            &self.poc.witness_b.as_ref().map(|witness| {
+                witness
+                    .iter()
+                    .map(|fe| fe.to_hex())
+                    .collect::<Vec<String>>()
+            }),
+        )?;
+        state.serialize_field(
+            "poc_public_inputs",
+            &self
+                .poc
+                .public_inputs
+                .iter()
+                .map(|fe| fe.to_hex())
+                .collect::<Vec<_>>(),
+        )?;
+        state.serialize_field("poc_proof", &self.poc.proof)?;
         state.end()
     }
 }
@@ -228,6 +247,9 @@ impl<'de> serde::Deserialize<'de> for Finding {
             Description,
             Location,
             PocWitnessA,
+            PocWitnessB,
+            PocPublicInputs,
+            PocProof,
         }
 
         struct FindingVisitor;
@@ -248,6 +270,9 @@ impl<'de> serde::Deserialize<'de> for Finding {
                 let mut description: Option<String> = None;
                 let mut location: Option<Option<String>> = None;
                 let mut poc_witness_a: Option<Vec<String>> = None;
+                let mut poc_witness_b: Option<Option<Vec<String>>> = None;
+                let mut poc_public_inputs: Option<Vec<String>> = None;
+                let mut poc_proof: Option<Option<Vec<u8>>> = None;
 
                 while let Some(key) = map.next_key()? {
                     match key {
@@ -265,6 +290,15 @@ impl<'de> serde::Deserialize<'de> for Finding {
                         }
                         Field::PocWitnessA => {
                             poc_witness_a = Some(map.next_value()?);
+                        }
+                        Field::PocWitnessB => {
+                            poc_witness_b = Some(map.next_value()?);
+                        }
+                        Field::PocPublicInputs => {
+                            poc_public_inputs = Some(map.next_value()?);
+                        }
+                        Field::PocProof => {
+                            poc_proof = Some(map.next_value()?);
                         }
                     }
                 }
@@ -354,6 +388,36 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     parsed_witness_a.push(field);
                 }
 
+                let parsed_witness_b = match poc_witness_b.unwrap_or(None) {
+                    Some(witness_b) => {
+                        let mut parsed: Vec<FieldElement> = Vec::with_capacity(witness_b.len());
+                        for hex in &witness_b {
+                            let field = FieldElement::from_hex(hex).map_err(|e| {
+                                de::Error::custom(format!(
+                                    "invalid poc.witness_b element '{}': {}",
+                                    hex, e
+                                ))
+                            })?;
+                            parsed.push(field);
+                        }
+                        Some(parsed)
+                    }
+                    None => None,
+                };
+
+                let public_inputs = poc_public_inputs.unwrap_or_default();
+                let mut parsed_public_inputs: Vec<FieldElement> =
+                    Vec::with_capacity(public_inputs.len());
+                for hex in &public_inputs {
+                    let field = FieldElement::from_hex(hex).map_err(|e| {
+                        de::Error::custom(format!(
+                            "invalid poc.public_inputs element '{}': {}",
+                            hex, e
+                        ))
+                    })?;
+                    parsed_public_inputs.push(field);
+                }
+
                 Ok(Finding {
                     attack_type: parsed_attack_type,
                     severity: severity.ok_or_else(|| de::Error::missing_field("severity"))?,
@@ -362,9 +426,9 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     location: location.unwrap_or_default(),
                     poc: ProofOfConcept {
                         witness_a: parsed_witness_a,
-                        witness_b: None,
-                        public_inputs: vec![],
-                        proof: None,
+                        witness_b: parsed_witness_b,
+                        public_inputs: parsed_public_inputs,
+                        proof: poc_proof.unwrap_or(None),
                     },
                 })
             }
@@ -376,6 +440,9 @@ impl<'de> serde::Deserialize<'de> for Finding {
             "description",
             "location",
             "poc_witness_a",
+            "poc_witness_b",
+            "poc_public_inputs",
+            "poc_proof",
         ];
         deserializer.deserialize_struct("Finding", FIELDS, FindingVisitor)
     }

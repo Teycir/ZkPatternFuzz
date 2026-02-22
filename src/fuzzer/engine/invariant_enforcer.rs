@@ -17,11 +17,20 @@ impl FuzzingEngine {
             _ => Severity::Medium,
         };
 
+        let counterexample_witness = if violation.witness.is_empty() {
+            test_case.inputs.clone()
+        } else {
+            violation.witness.clone()
+        };
+        let counterexample_outputs = violation.outputs.clone();
+        let counterexample_preview =
+            self.format_counterexample_preview(&counterexample_witness, &counterexample_outputs);
+
         let finding = Finding {
             attack_type: AttackType::ConstraintInference,
             severity,
             description: format!(
-                "Invariant '{}' violated: {}\nRelation: {}\nEvidence: {}",
+                "Invariant '{}' violated: {}\nRelation: {}\nEvidence: {}\nCounterexample:\n{}",
                 violation.invariant_name,
                 if violation.circuit_accepted {
                     "Circuit ACCEPTED violating witness"
@@ -29,12 +38,13 @@ impl FuzzingEngine {
                     "Violation detected"
                 },
                 violation.relation,
-                violation.evidence
+                violation.evidence,
+                counterexample_preview
             ),
             poc: ProofOfConcept {
-                witness_a: test_case.inputs.clone(),
+                witness_a: counterexample_witness,
                 witness_b: None,
-                public_inputs: vec![],
+                public_inputs: counterexample_outputs,
                 proof: None,
             },
             location: Some(format!("Invariant: {}", violation.invariant_name)),
@@ -135,21 +145,23 @@ impl FuzzingEngine {
             let result = self.executor.execute_sync(&witness);
             if result.success {
                 let severity = self.severity_from_invariant(invariant);
+                let counterexample_preview =
+                    self.format_counterexample_preview(&witness, &result.outputs);
                 let description = format!(
-                    "Invariant '{}' violated but circuit accepted input.\nRelation: {}",
-                    invariant.name, invariant.relation
+                    "Invariant '{}' violated but circuit accepted input.\nRelation: {}\nCounterexample:\n{}",
+                    invariant.name, invariant.relation, counterexample_preview
                 );
                 findings.push(Finding {
                     attack_type: AttackType::ConstraintInference,
                     severity,
                     description,
                     poc: ProofOfConcept {
-                        witness_a: witness,
+                        witness_a: witness.clone(),
                         witness_b: None,
-                        public_inputs: vec![],
+                        public_inputs: result.outputs.clone(),
                         proof: None,
                     },
-                    location: None,
+                    location: Some(format!("Invariant: {}", invariant.name)),
                 });
             }
         }
@@ -188,6 +200,81 @@ impl FuzzingEngine {
             .enumerate()
             .map(|(idx, input)| (idx, input.name.clone()))
             .collect()
+    }
+
+    fn counterexample_input_label(&self, idx: usize) -> String {
+        let mut offset = 0usize;
+        for input in &self.config.inputs {
+            let len = if input.input_type.starts_with("array") {
+                input.length.unwrap_or(1)
+            } else {
+                1
+            };
+
+            if idx >= offset && idx < offset.saturating_add(len) {
+                if len == 1 {
+                    return input.name.clone();
+                }
+                return format!("{}[{}]", input.name, idx - offset);
+            }
+            offset = offset.saturating_add(len);
+        }
+
+        format!("input_{}", idx)
+    }
+
+    fn format_counterexample_preview(
+        &self,
+        witness: &[FieldElement],
+        outputs: &[FieldElement],
+    ) -> String {
+        const WITNESS_PREVIEW_LIMIT: usize = 8;
+        const OUTPUT_PREVIEW_LIMIT: usize = 4;
+
+        let mut witness_preview = witness
+            .iter()
+            .enumerate()
+            .take(WITNESS_PREVIEW_LIMIT)
+            .map(|(idx, value)| {
+                format!(
+                    "{}={}",
+                    self.counterexample_input_label(idx),
+                    value.to_hex()
+                )
+            })
+            .collect::<Vec<_>>();
+        if witness.len() > WITNESS_PREVIEW_LIMIT {
+            witness_preview.push(format!(
+                "...(+{} more)",
+                witness.len() - WITNESS_PREVIEW_LIMIT
+            ));
+        }
+
+        let mut outputs_preview = outputs
+            .iter()
+            .enumerate()
+            .take(OUTPUT_PREVIEW_LIMIT)
+            .map(|(idx, value)| format!("output_{}={}", idx, value.to_hex()))
+            .collect::<Vec<_>>();
+        if outputs.len() > OUTPUT_PREVIEW_LIMIT {
+            outputs_preview.push(format!(
+                "...(+{} more)",
+                outputs.len() - OUTPUT_PREVIEW_LIMIT
+            ));
+        }
+
+        let witness_block = if witness_preview.is_empty() {
+            "<none>".to_string()
+        } else {
+            witness_preview.join(", ")
+        };
+        let outputs_block = if outputs_preview.is_empty() {
+            "<none>".to_string()
+        } else {
+            outputs_preview.join(", ")
+        };
+
+        format!("witness: [{}]\noutputs: [{}]", witness_block, outputs_block)
     }
 
     pub(super) fn merge_config_input_labels(

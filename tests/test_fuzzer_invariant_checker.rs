@@ -44,3 +44,35 @@ fn test_range_check() {
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].invariant_name, "test_range");
 }
+
+#[test]
+fn test_register_runtime_invariants_from_spec_inference() {
+    let inputs = vec![Input {
+        name: "x".to_string(),
+        input_type: "field".to_string(),
+        fuzz_strategy: FuzzStrategy::Random,
+        constraints: vec![],
+        interesting: vec![],
+        length: None,
+    }];
+    let mut checker = InvariantChecker::new(Vec::new(), &inputs);
+
+    let runtime_invariant = Invariant {
+        name: "auto_spec_range_x".to_string(),
+        invariant_type: InvariantType::Range,
+        relation: "0 <= x <= 9".to_string(),
+        oracle: InvariantOracle::MustHold,
+        transform: None,
+        expected: None,
+        description: Some("generated from spec inference".to_string()),
+        severity: Some("high".to_string()),
+    };
+
+    let added = checker.register_runtime_invariants(vec![runtime_invariant]);
+    assert_eq!(added, 1);
+
+    let witness = vec![make_field_element(10)];
+    let violations = checker.check(&witness, &[], true);
+    assert_eq!(violations.len(), 1);
+    assert_eq!(violations[0].invariant_name, "auto_spec_range_x");
+}
