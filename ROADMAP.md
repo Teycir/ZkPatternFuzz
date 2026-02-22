@@ -383,7 +383,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add limb decomposition detector in constraint analysis (`crates/zk-constraints/src/limb_analysis.rs`)
   - Identify variables representing limbs (naming patterns, bit-width constraints)
   - Track limb reconstruction constraints (sum of limbs = full value)
-- [ ] Implement limb boundary fuzzer
+- [x] Implement limb boundary fuzzer
   - Fuzz individual limb boundaries: `limb[i] = 2^k - 1`, `limb[i] = 2^k`, `limb[i] = 0`
   - Fuzz limb sum overflows: `sum(limbs) > field_modulus`
   - Fuzz carry propagation edge cases
