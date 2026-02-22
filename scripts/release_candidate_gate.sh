@@ -38,6 +38,8 @@ EVIDENCE_MANIFEST_PATH="$ROOT_DIR/artifacts/release_candidate_validation/evidenc
 BACKEND_BLOCKERS_REPORT="$ROOT_DIR/artifacts/release_candidate_validation/backend_release_blockers.json"
 BACKEND_CAPACITY_FITNESS_THROUGHPUT_OUTPUT_DIR="$ROOT_DIR/artifacts/backend_throughput"
 BACKEND_CAPACITY_FITNESS_MEMORY_OUTPUT_DIR="$ROOT_DIR/artifacts/memory_profiles"
+BACKEND_CAPACITY_FITNESS_THROUGHPUT_REPORT=""
+BACKEND_CAPACITY_FITNESS_MEMORY_REPORT=""
 BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS="${BACKEND_CAPACITY_FITNESS_REQUIRED_BACKENDS:-noir,cairo,halo2}"
 BACKEND_CAPACITY_FITNESS_MIN_MEDIAN_COMPLETED_PER_SEC="${BACKEND_CAPACITY_FITNESS_MIN_MEDIAN_COMPLETED_PER_SEC:-0.005}"
 BACKEND_CAPACITY_FITNESS_PER_BACKEND_MIN_MEDIAN_COMPLETED_PER_SEC="${BACKEND_CAPACITY_FITNESS_PER_BACKEND_MIN_MEDIAN_COMPLETED_PER_SEC:-}"
@@ -47,6 +49,8 @@ BACKEND_CAPACITY_FITNESS_ITERATIONS="${BACKEND_CAPACITY_FITNESS_ITERATIONS:-20}"
 BACKEND_CAPACITY_FITNESS_TIMEOUT="${BACKEND_CAPACITY_FITNESS_TIMEOUT:-20}"
 BACKEND_CAPACITY_FITNESS_WORKERS="${BACKEND_CAPACITY_FITNESS_WORKERS:-2}"
 BACKEND_CAPACITY_FITNESS_BATCH_JOBS="${BACKEND_CAPACITY_FITNESS_BATCH_JOBS:-1}"
+BACKEND_CAPACITY_FITNESS_SKIP_THROUGHPUT_RUN=0
+BACKEND_CAPACITY_FITNESS_SKIP_MEMORY_RUN=0
 SKIP_BACKEND_READINESS_GATE=0
 SKIP_BACKEND_MATURITY_GATE=0
 SKIP_CIRCOM_FLAKE_GATE=0
@@ -130,6 +134,16 @@ Options:
   --backend-capacity-fitness-memory-output-dir <path>
                              Memory profile output dir
                              (default: artifacts/memory_profiles)
+  --backend-capacity-fitness-throughput-report <path>
+                             Use precomputed throughput report JSON
+                             (skips harness only when combined with --backend-capacity-fitness-skip-throughput-run)
+  --backend-capacity-fitness-memory-report <path>
+                             Use precomputed memory report JSON
+                             (skips harness only when combined with --backend-capacity-fitness-skip-memory-run)
+  --backend-capacity-fitness-skip-throughput-run
+                             Do not execute throughput harness; consume --backend-capacity-fitness-throughput-report
+  --backend-capacity-fitness-skip-memory-run
+                             Do not execute memory harness; consume --backend-capacity-fitness-memory-report
   --backend-capacity-fitness-required-backends <csv>
                              Required backends for capacity fitness thresholds
                              (default: noir,cairo,halo2)
@@ -443,6 +457,12 @@ fi
 
 echo "Release candidate gate passed: last $REQUIRED_PASSES benchmark summaries passed."
 
+circom_flake_exit_code=0
+circom_hermetic_exit_code=0
+backend_capacity_fitness_exit_code=0
+backend_readiness_exit_code=0
+backend_maturity_exit_code=0
+
 circom_flake_cmd=(
   "$GATE_SCRIPT_DIR/circom_flake_gate.sh"
   --benchmark-root "$BENCH_ROOT"
@@ -455,10 +475,20 @@ circom_flake_cmd=(
 
 if [ "$SKIP_CIRCOM_FLAKE_GATE" -eq 1 ]; then
   echo "Publishing Circom long-horizon flake report (gate disabled)..."
-  "${circom_flake_cmd[@]}"
+  if "${circom_flake_cmd[@]}"; then
+    circom_flake_exit_code=0
+  else
+    circom_flake_exit_code=$?
+    echo "::warning::Circom long-horizon flake report publication exited non-zero (exit=$circom_flake_exit_code)"
+  fi
 else
   echo "Running Circom long-horizon flake gate..."
-  "${circom_flake_cmd[@]}" --enforce
+  if "${circom_flake_cmd[@]}" --enforce; then
+    circom_flake_exit_code=0
+  else
+    circom_flake_exit_code=$?
+    echo "::error::Circom long-horizon flake gate failed (exit=$circom_flake_exit_code)"
+  fi
 fi
 
 circom_hermetic_cmd=(
@@ -468,10 +498,20 @@ circom_hermetic_cmd=(
 
 if [ "$SKIP_CIRCOM_HERMETIC_GATE" -eq 1 ]; then
   echo "Publishing Circom hermetic include/toolchain report (gate disabled)..."
-  "${circom_hermetic_cmd[@]}"
+  if "${circom_hermetic_cmd[@]}"; then
+    circom_hermetic_exit_code=0
+  else
+    circom_hermetic_exit_code=$?
+    echo "::warning::Circom hermetic include/toolchain report publication exited non-zero (exit=$circom_hermetic_exit_code)"
+  fi
 else
   echo "Running Circom hermetic include/toolchain gate..."
-  "${circom_hermetic_cmd[@]}" --enforce
+  if "${circom_hermetic_cmd[@]}" --enforce; then
+    circom_hermetic_exit_code=0
+  else
+    circom_hermetic_exit_code=$?
+    echo "::error::Circom hermetic include/toolchain gate failed (exit=$circom_hermetic_exit_code)"
+  fi
 fi
 
 capacity_fitness_cmd=(
@@ -502,10 +542,20 @@ fi
 
 if [ "$SKIP_BACKEND_CAPACITY_FITNESS_GATE" -eq 1 ]; then
   echo "Publishing backend capacity fitness report (gate disabled)..."
-  "${capacity_fitness_cmd[@]}"
+  if "${capacity_fitness_cmd[@]}"; then
+    backend_capacity_fitness_exit_code=0
+  else
+    backend_capacity_fitness_exit_code=$?
+    echo "::warning::Backend capacity fitness report publication exited non-zero (exit=$backend_capacity_fitness_exit_code)"
+  fi
 else
   echo "Running backend capacity fitness gate..."
-  "${capacity_fitness_cmd[@]}" --enforce
+  if "${capacity_fitness_cmd[@]}" --enforce; then
+    backend_capacity_fitness_exit_code=0
+  else
+    backend_capacity_fitness_exit_code=$?
+    echo "::error::Backend capacity fitness gate failed (exit=$backend_capacity_fitness_exit_code)"
+  fi
 fi
 
 backend_gate_cmd=(
@@ -527,10 +577,20 @@ backend_gate_cmd=(
 
 if [ "$SKIP_BACKEND_READINESS_GATE" -eq 1 ]; then
   echo "Publishing backend readiness dashboard (gate disabled)..."
-  "${backend_gate_cmd[@]}"
+  if "${backend_gate_cmd[@]}"; then
+    backend_readiness_exit_code=0
+  else
+    backend_readiness_exit_code=$?
+    echo "::warning::Backend readiness dashboard publication exited non-zero (exit=$backend_readiness_exit_code)"
+  fi
 else
   echo "Running backend readiness gate..."
-  "${backend_gate_cmd[@]}" --enforce
+  if "${backend_gate_cmd[@]}" --enforce; then
+    backend_readiness_exit_code=0
+  else
+    backend_readiness_exit_code=$?
+    echo "::error::Backend readiness gate failed (exit=$backend_readiness_exit_code)"
+  fi
 fi
 
 maturity_gate_cmd=(
@@ -550,10 +610,20 @@ maturity_gate_cmd=(
 
 if [ "$SKIP_BACKEND_MATURITY_GATE" -eq 1 ]; then
   echo "Publishing backend maturity scorecard (gate disabled)..."
-  "${maturity_gate_cmd[@]}"
+  if "${maturity_gate_cmd[@]}"; then
+    backend_maturity_exit_code=0
+  else
+    backend_maturity_exit_code=$?
+    echo "::warning::Backend maturity scorecard publication exited non-zero (exit=$backend_maturity_exit_code)"
+  fi
 else
   echo "Running backend maturity gate..."
-  "${maturity_gate_cmd[@]}" --enforce
+  if "${maturity_gate_cmd[@]}" --enforce; then
+    backend_maturity_exit_code=0
+  else
+    backend_maturity_exit_code=$?
+    echo "::error::Backend maturity gate failed (exit=$backend_maturity_exit_code)"
+  fi
 fi
 
 python3 - \
@@ -565,6 +635,11 @@ python3 - \
   "$CIRCOM_FLAKE_REPORT" \
   "$CIRCOM_HERMETIC_REPORT" \
   "$BACKEND_CAPACITY_FITNESS_REPORT" \
+  "$backend_readiness_exit_code" \
+  "$backend_maturity_exit_code" \
+  "$circom_flake_exit_code" \
+  "$circom_hermetic_exit_code" \
+  "$backend_capacity_fitness_exit_code" \
   "$SKIP_BACKEND_READINESS_GATE" \
   "$SKIP_BACKEND_MATURITY_GATE" \
   "$SKIP_CIRCOM_FLAKE_GATE" \
@@ -593,6 +668,11 @@ from typing import Dict, List, Optional
     circom_flake_report_raw,
     circom_hermetic_report_raw,
     capacity_report_raw,
+    readiness_exit_raw,
+    maturity_exit_raw,
+    circom_flake_exit_raw,
+    circom_hermetic_exit_raw,
+    capacity_exit_raw,
     skip_readiness_raw,
     skip_maturity_raw,
     skip_flake_raw,
@@ -682,6 +762,14 @@ skip_flags = {
     "backend_capacity_fitness": as_bool_int(skip_capacity_raw),
 }
 
+run_exit_codes = {
+    "backend_readiness": as_int(readiness_exit_raw, 1),
+    "backend_maturity": as_int(maturity_exit_raw, 1),
+    "circom_flake": as_int(circom_flake_exit_raw, 1),
+    "circom_hermetic": as_int(circom_hermetic_exit_raw, 1),
+    "backend_capacity_fitness": as_int(capacity_exit_raw, 1),
+}
+
 maturity_consecutive_days = as_int(maturity_consecutive_days_raw, 0)
 maturity_consecutive_target = as_float(maturity_consecutive_target_raw, 5.0)
 flake_consecutive_days = as_int(flake_consecutive_days_raw, 0)
@@ -739,6 +827,7 @@ for spec in bundle_specs:
     bundle_id = spec["id"]
     report_path: Path = spec["path"]
     required = bool(spec["required"])
+    run_exit_code = run_exit_codes.get(bundle_id, 0)
 
     payload, load_error = load_json(report_path)
     present = payload is not None
@@ -752,6 +841,11 @@ for spec in bundle_specs:
     if required and not present:
         release_failures.append(f"{bundle_id}: report missing ({report_path})")
         add_backend_blocker(bundle_id, "aggregate", "report missing", report_path)
+
+    if required and run_exit_code != 0:
+        message = f"gate command exited non-zero (exit={run_exit_code})"
+        release_failures.append(f"{bundle_id}: {message}")
+        add_backend_blocker(bundle_id, "aggregate", message, report_path)
 
     if required and present and not overall_pass:
         release_failures.append(f"{bundle_id}: overall_pass=false")
@@ -836,6 +930,7 @@ for spec in bundle_specs:
             "report_path": str(report_path),
             "present": present,
             "overall_pass": overall_pass,
+            "gate_exit_code": run_exit_code,
             "gate_failures": gate_failures,
             "threshold_failures": threshold_failures,
             "archived_path": None,

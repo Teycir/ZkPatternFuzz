@@ -474,6 +474,106 @@ class ReleaseCandidateGateTests(unittest.TestCase):
             ]
             self.assertTrue(noir_blockers, msg=f"blockers={blockers}")
 
+    def test_release_gate_still_writes_manifest_when_enforced_subgate_fails(self):
+        with tempfile.TemporaryDirectory(prefix="zkfuzz_release_gate_hard_fail_") as tmpdir:
+            root = Path(tmpdir)
+            bench_root = root / "benchmark_runs"
+            _write_minimal_benchmark_summary(
+                bench_root / "benchmark_20260222_000000" / "summary.json"
+            )
+            _write_minimal_benchmark_summary(
+                bench_root / "benchmark_20260222_000001" / "summary.json"
+            )
+
+            keygen_report = root / "keygen_preflight.json"
+            release_report = root / "release_candidate_report.json"
+            _write_json(keygen_report, {"passes": True, "total_targets": 5, "passed_targets": 5})
+            _write_json(release_report, {"overall_pass": True})
+
+            stub_dir = root / "stubs"
+            _write_stub_scripts(stub_dir)
+
+            readiness_report = root / "backend_readiness" / "latest_report.json"
+            maturity_scorecard = root / "backend_maturity" / "latest_scorecard.json"
+            maturity_history = root / "backend_maturity" / "history.json"
+            flake_report = root / "circom_flake" / "latest_report.json"
+            flake_history = root / "circom_flake" / "history.json"
+            hermetic_report = root / "circom_hermetic" / "latest_report.json"
+            capacity_report = root / "backend_capacity_fitness" / "latest_report.json"
+            evidence_archive_root = root / "release_candidate_validation" / "evidence_bundles"
+            evidence_manifest = (
+                root / "release_candidate_validation" / "evidence_bundle_manifest.json"
+            )
+            blockers_report = (
+                root / "release_candidate_validation" / "backend_release_blockers.json"
+            )
+
+            env = os.environ.copy()
+            env["ZKFUZZ_RELEASE_GATE_SCRIPT_DIR"] = str(stub_dir)
+            env["FAIL_CIRCOM_FLAKE"] = "1"
+            proc = subprocess.run(
+                [
+                    str(_script_path()),
+                    "--bench-root",
+                    str(bench_root),
+                    "--required-passes",
+                    "2",
+                    "--backend-readiness-dashboard",
+                    str(readiness_report),
+                    "--backend-maturity-scorecard",
+                    str(maturity_scorecard),
+                    "--backend-maturity-history",
+                    str(maturity_history),
+                    "--keygen-preflight-report",
+                    str(keygen_report),
+                    "--release-candidate-report",
+                    str(release_report),
+                    "--circom-flake-report",
+                    str(flake_report),
+                    "--circom-flake-history",
+                    str(flake_history),
+                    "--circom-flake-consecutive-days",
+                    "14",
+                    "--circom-hermetic-report",
+                    str(hermetic_report),
+                    "--backend-capacity-fitness-report",
+                    str(capacity_report),
+                    "--backend-maturity-consecutive-days",
+                    "14",
+                    "--backend-maturity-consecutive-target-score",
+                    "5.0",
+                    "--evidence-archive-root",
+                    str(evidence_archive_root),
+                    "--evidence-manifest",
+                    str(evidence_manifest),
+                    "--backend-blockers-report",
+                    str(blockers_report),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+
+            self.assertNotEqual(proc.returncode, 0, msg=f"stdout={proc.stdout}\nstderr={proc.stderr}")
+            self.assertTrue(evidence_manifest.is_file(), msg=f"stdout={proc.stdout}\nstderr={proc.stderr}")
+            self.assertTrue(blockers_report.is_file(), msg=f"stdout={proc.stdout}\nstderr={proc.stderr}")
+
+            manifest = json.loads(evidence_manifest.read_text(encoding="utf-8"))
+            blockers = json.loads(blockers_report.read_text(encoding="utf-8"))
+            self.assertFalse(manifest["overall_pass"])
+            self.assertTrue(
+                any(
+                    failure.startswith("circom_flake: gate command exited non-zero")
+                    for failure in manifest["release_failures"]
+                ),
+                msg=f"manifest={manifest}",
+            )
+            flake_entries = [row for row in manifest["bundles"] if row.get("bundle_id") == "circom_flake"]
+            self.assertEqual(len(flake_entries), 1)
+            self.assertNotEqual(flake_entries[0]["gate_exit_code"], 0)
+            self.assertFalse(blockers["overall_pass"])
+
 
 if __name__ == "__main__":
     unittest.main()
