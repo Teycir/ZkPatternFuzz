@@ -1,6 +1,10 @@
 use super::attack_runner_option_ext::OptionValueExt;
 use super::prelude::*;
 use super::FuzzingEngine;
+use std::collections::HashMap;
+use zk_constraints::{
+    ExtendedConstraint, LinearCombination, R1CSConstraint, RangeConstraint, RangeMethod, WireRef,
+};
 
 impl FuzzingEngine {
     pub(super) async fn run_arithmetic_attack(
@@ -313,6 +317,196 @@ impl FuzzingEngine {
         self.run_canonicalization_attack(config, AttackType::Boundary, progress)?;
 
         Ok(())
+    }
+
+    pub(super) fn run_non_native_field_attack(
+        &mut self,
+        config: &serde_yaml::Value,
+        progress: Option<&ProgressReporter>,
+    ) -> anyhow::Result<()> {
+        use crate::oracles::NonNativeFieldOracle;
+
+        let section = config.get("non_native_field").or_value(config);
+        let enabled = section
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .or_value(true);
+        if !enabled {
+            return Ok(());
+        }
+
+        let sample_count = section
+            .get("sample_count")
+            .and_then(|v| v.as_u64())
+            .or_value(16) as usize;
+        let case_limit = section
+            .get("case_limit")
+            .and_then(|v| v.as_u64())
+            .or_value(256) as usize;
+        let finding_limit = section
+            .get("finding_limit")
+            .and_then(|v| v.as_u64())
+            .or_value(32) as usize;
+
+        let mut witnesses = self.collect_corpus_inputs(sample_count.max(1));
+        if witnesses.is_empty() {
+            tracing::warn!(
+                "Non-native field oracle did not receive corpus witnesses; falling back to generated samples"
+            );
+            for _ in 0..sample_count.max(1) {
+                if self.wall_clock_timeout_reached() {
+                    tracing::warn!(
+                        "Stopping non-native oracle witness generation early: wall-clock timeout reached"
+                    );
+                    break;
+                }
+                witnesses.push(self.generate_test_case().inputs);
+            }
+        }
+        if witnesses.is_empty() {
+            tracing::warn!(
+                "Skipping non-native field oracle: no witness samples available after fallback generation"
+            );
+            return Ok(());
+        }
+
+        let Some(inspector) = self.executor.constraint_inspector() else {
+            tracing::debug!("Skipping non-native field oracle: constraint inspector unavailable");
+            return Ok(());
+        };
+
+        let equations = inspector.get_constraints();
+        if equations.is_empty() {
+            tracing::debug!("Skipping non-native field oracle: no constraints available");
+            return Ok(());
+        }
+
+        let mut wire_labels = inspector.wire_labels();
+        self.merge_config_input_labels(inspector, &mut wire_labels);
+        self.merge_output_labels(inspector, &mut wire_labels);
+
+        let constraints = equations
+            .iter()
+            .map(|equation| Self::constraint_equation_to_extended(equation, &wire_labels))
+            .collect::<Vec<_>>();
+
+        let oracle = NonNativeFieldOracle::new()
+            .with_sample_count(sample_count)
+            .with_case_limit(case_limit)
+            .with_finding_limit(finding_limit);
+
+        let findings = oracle.run(
+            self.executor.as_ref(),
+            &constraints,
+            &wire_labels,
+            &witnesses,
+        );
+        self.record_custom_findings(findings, AttackType::BitDecomposition, progress)?;
+        Ok(())
+    }
+
+    fn constraint_equation_to_extended(
+        equation: &zk_core::ConstraintEquation,
+        wire_labels: &HashMap<usize, String>,
+    ) -> ExtendedConstraint {
+        let is_range = equation
+            .description
+            .as_deref()
+            .map(|desc| {
+                let lower = desc.to_ascii_lowercase();
+                lower.contains("range") || lower.contains("bit")
+            })
+            .unwrap_or(false);
+
+        if is_range {
+            let wire_idx = equation
+                .c_terms
+                .first()
+                .map(|(idx, _)| *idx)
+                .or_else(|| equation.a_terms.first().map(|(idx, _)| *idx));
+
+            if let Some(index) = wire_idx {
+                let bits = Self::infer_range_bits(
+                    equation.description.as_deref(),
+                    wire_labels.get(&index).map(|s| s.as_str()),
+                );
+                if let Some(bits) = bits {
+                    return ExtendedConstraint::Range(RangeConstraint {
+                        wire: Self::wire_ref_with_label(index, wire_labels),
+                        bits,
+                        method: RangeMethod::Plookup,
+                    });
+                }
+            }
+        }
+
+        ExtendedConstraint::R1CS(R1CSConstraint {
+            a: Self::linear_combination_from_terms(&equation.a_terms, wire_labels),
+            b: Self::linear_combination_from_terms(&equation.b_terms, wire_labels),
+            c: Self::linear_combination_from_terms(&equation.c_terms, wire_labels),
+        })
+    }
+
+    fn linear_combination_from_terms(
+        terms: &[(usize, FieldElement)],
+        wire_labels: &HashMap<usize, String>,
+    ) -> LinearCombination {
+        let mut lc = LinearCombination::new();
+        for (index, coeff) in terms {
+            lc.add_term(
+                Self::wire_ref_with_label(*index, wire_labels),
+                coeff.clone(),
+            );
+        }
+        lc
+    }
+
+    fn wire_ref_with_label(index: usize, wire_labels: &HashMap<usize, String>) -> WireRef {
+        if let Some(name) = wire_labels.get(&index) {
+            WireRef::named(index, name)
+        } else {
+            WireRef::new(index)
+        }
+    }
+
+    fn infer_range_bits(description: Option<&str>, wire_label: Option<&str>) -> Option<usize> {
+        description
+            .and_then(Self::extract_plausible_bit_width)
+            .or_else(|| wire_label.and_then(Self::extract_plausible_bit_width))
+    }
+
+    fn extract_plausible_bit_width(raw: &str) -> Option<usize> {
+        const PLAUSIBLE_WIDTHS: &[usize] = &[
+            8, 16, 24, 31, 32, 48, 51, 52, 64, 80, 96, 104, 112, 120, 126, 127, 128, 160, 192, 224,
+            252, 253, 254, 255, 256,
+        ];
+
+        let mut token = String::new();
+        for ch in raw.chars() {
+            if ch.is_ascii_digit() {
+                token.push(ch);
+                continue;
+            }
+
+            if !token.is_empty() {
+                if let Ok(value) = token.parse::<usize>() {
+                    if PLAUSIBLE_WIDTHS.contains(&value) {
+                        return Some(value);
+                    }
+                }
+                token.clear();
+            }
+        }
+
+        if !token.is_empty() {
+            if let Ok(value) = token.parse::<usize>() {
+                if PLAUSIBLE_WIDTHS.contains(&value) {
+                    return Some(value);
+                }
+            }
+        }
+
+        None
     }
 
     pub(super) fn run_canonicalization_attack(

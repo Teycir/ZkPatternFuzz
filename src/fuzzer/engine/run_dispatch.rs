@@ -266,10 +266,11 @@ impl FuzzingEngine {
                     }
                     AttackType::BitDecomposition => {
                         tracing::info!(
-                            "Routing BitDecomposition attack to underconstrained runner"
+                            "Running BitDecomposition attack with underconstrained + non-native field checks"
                         );
                         self.run_underconstrained_attack(&attack_config.config, progress)
                             .await?;
+                        self.run_non_native_field_attack(&attack_config.config, progress)?;
                         attack_executed = true;
                     }
                     AttackType::Malleability => {

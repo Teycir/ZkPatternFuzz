@@ -44,6 +44,7 @@ pub mod front_running; // Phase 3: Front-running attacks
 pub mod frozen_wire;
 pub mod metamorphic;
 pub mod mev; // Phase 3: MEV attacks
+pub mod non_native_field;
 pub mod nullifier_replay;
 pub mod privacy_advanced; // Advanced privacy attack helpers
 pub mod proof_malleability;
@@ -100,6 +101,7 @@ pub use mev::{
     ArbitrageDetector, MevAttack, MevConfig, MevTestResult, MevVulnerabilityType,
     PriceImpactAnalyzer,
 };
+pub use non_native_field::{NonNativeFieldOracle, NonNativeFieldOracleConfig};
 pub use nullifier_replay::{NullifierHeuristic, NullifierReplayScanner};
 pub use privacy_advanced::{PrivacyAdvancedAttack, PrivacyAdvancedConfig};
 pub use proof_malleability::{MalleabilityResult, ProofMalleabilityScanner, ProofMutation};
