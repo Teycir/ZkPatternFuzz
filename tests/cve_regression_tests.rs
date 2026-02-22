@@ -333,6 +333,46 @@ fn test_range_proof_boundary_values() {
     assert!(field_max.to_biguint() > num_bigint::BigUint::from(u64::MAX));
 }
 
+#[test]
+fn test_non_circom_pattern_library_expansion_entries() {
+    let db = CveDatabase::load(CVE_DATABASE_PATH).expect("Failed to load CVE database");
+
+    let noir_acir = db
+        .get_pattern("ZK-CVE-2025-001")
+        .expect("Noir/ACIR expansion CVE missing");
+    assert_eq!(noir_acir.detection.oracle, "constraint_inference");
+    assert_eq!(noir_acir.detection.attack_type, "underconstrained");
+    assert!(noir_acir.affects_circuit("noir_acir_vm"));
+
+    let halo2_lookup = db
+        .get_pattern("ZK-CVE-2025-002")
+        .expect("Halo2 lookup expansion CVE missing");
+    assert_eq!(halo2_lookup.detection.oracle, "lookup_soundness");
+    assert_eq!(halo2_lookup.detection.attack_type, "underconstrained");
+    assert!(halo2_lookup.affects_circuit("halo2_lookup_table"));
+}
+
+#[test]
+fn test_non_circom_patterns_are_discoverable_by_circuit_name() {
+    let db = CveDatabase::load(CVE_DATABASE_PATH).expect("Failed to load CVE database");
+
+    let noir_hits = db.patterns_for_circuit("noir-acir-compiler");
+    assert!(
+        noir_hits
+            .iter()
+            .any(|pattern| pattern.id == "ZK-CVE-2025-001"),
+        "Expected Noir/ACIR expansion pattern in noir circuit match set"
+    );
+
+    let halo2_hits = db.patterns_for_circuit("halo2_lookup");
+    assert!(
+        halo2_hits
+            .iter()
+            .any(|pattern| pattern.id == "ZK-CVE-2025-002"),
+        "Expected Halo2 lookup expansion pattern in halo2 circuit match set"
+    );
+}
+
 // ============== Grammar DSL Tests ==============
 
 #[test]

@@ -321,3 +321,59 @@ vulnerabilities:
         "expected placeholder to be expanded"
     );
 }
+
+#[test]
+fn regression_test_run_supports_halo2_json_specs() {
+    let yaml = r#"
+version: "1.0"
+last_updated: "2026-02-22"
+vulnerabilities:
+  - id: "ZK-STRICT-HALO2-JSON"
+    name: "Strict Fixture Halo2 JSON"
+    severity: "high"
+    affected_circuits:
+      - pattern: "halo2_lookup"
+        versions: ["*"]
+    sources: []
+    description: "strict fixture"
+    detection:
+      oracle: "lookup_soundness"
+      attack_type: "underconstrained"
+      procedure: []
+    regression_test:
+      enabled: true
+      circuit_path: "tests/halo2_specs/lookup.json"
+      test_cases:
+        - name: "lookup_row"
+          inputs:
+            input_0: 1
+            input_1: 1
+            input_2: 1
+          expected_result: "valid"
+      assertion: "fixture"
+    remediation:
+      description: "n/a"
+"#;
+
+    let path = write_temp_yaml(yaml);
+    let db = CveDatabase::load(&path).expect("load test cve yaml");
+    let _ = fs::remove_file(path);
+    let tests = db.generate_regression_tests();
+    assert_eq!(tests.len(), 1, "expected one regression test");
+
+    let result = tests[0].run();
+    assert!(
+        !result.test_results.is_empty(),
+        "expected concrete regression test results"
+    );
+    let has_framework_error = result.test_results.iter().any(|tc| {
+        tc.message
+            .as_deref()
+            .map(|msg| msg.contains("Framework detection failed"))
+            .unwrap_or(false)
+    });
+    assert!(
+        !has_framework_error,
+        "Halo2 JSON fixtures should not fail framework detection"
+    );
+}

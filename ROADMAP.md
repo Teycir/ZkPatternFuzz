@@ -818,7 +818,7 @@ gh run watch
 
 #### P2: Coverage Breadth + Oracle Completeness
 - [x] Improve spec-inference robustness against sampling blind spots (targeted boundary witness generation and combination coverage for rare input patterns).
-- [ ] Expand vulnerability pattern library beyond current Circom-heavy corpus to include non-Circom/ACIR/Halo2 lookup and newer audit-derived classes.
+- [x] Expand vulnerability pattern library beyond current Circom-heavy corpus to include non-Circom/ACIR/Halo2 lookup and newer audit-derived classes.
 - [ ] Add a differential oracle path for mock backend mode (behavior comparison against at least one real backend/canonical checker) to detect backend-specific divergence.
 
 #### Exit Evidence For This Correction Wave

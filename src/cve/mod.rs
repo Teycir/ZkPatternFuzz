@@ -741,11 +741,37 @@ fn detect_framework(path: &Path) -> anyhow::Result<Framework> {
         Some("nr") => Ok(Framework::Noir),
         Some("cairo") => Ok(Framework::Cairo),
         Some("rs") => Ok(Framework::Halo2),
+        Some("json") if looks_like_halo2_json(path) => Ok(Framework::Halo2),
         _ => anyhow::bail!(
             "Unsupported circuit file extension for backend detection: {}",
             path.display()
         ),
     }
+}
+
+fn looks_like_halo2_json(path: &Path) -> bool {
+    let content = match std::fs::read_to_string(path) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let Some(obj) = parsed.as_object() else {
+        return false;
+    };
+
+    let halo2_markers = [
+        "k",
+        "advice_columns",
+        "fixed_columns",
+        "instance_columns",
+        "constraints",
+        "lookups",
+        "gates",
+    ];
+    halo2_markers.iter().any(|marker| obj.contains_key(*marker))
 }
 
 fn detect_main_component(source: &str, framework: Framework) -> String {

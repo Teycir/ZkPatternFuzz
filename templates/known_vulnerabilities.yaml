@@ -8,7 +8,7 @@
 # - Remediation guidance
 ---
 version: "1.0"
-last_updated: "2026-02-05"
+last_updated: "2026-02-22"
 
 vulnerabilities:
   # ============== CRITICAL: Signature & Identity Vulnerabilities ==============
@@ -1726,6 +1726,120 @@ vulnerabilities:
 
     remediation:
       description: "Include serialized public inputs in transcript hash"
+
+  # ============== NEW: Non-Circom / ACIR / Halo2 Lookup Expansion (2025) ==============
+
+  - id: "ZK-CVE-2025-001"
+    name: "Noir ACIR Opcode Constraint Drift"
+    severity: high
+    cvss_score: 8.2
+    affected_circuits:
+      - pattern: "noir*"
+        versions: ["*"]
+      - pattern: "acir*"
+        versions: ["*"]
+      - pattern: "brillig*"
+        versions: ["*"]
+    sources:
+      - "Noir/ACIR Audit Corpus (2025)"
+      - "Aztec Security Engineering Notes"
+    description: |
+      ACIR/Brillig opcode transitions can become weakly constrained when opcode-domain
+      assumptions and witness-shape assumptions diverge across compiler/runtime versions.
+
+      IMPACT:
+      - Alternate witnesses for equivalent public statements
+      - Constraint omission around opcode operands
+      - Underconstrained execution paths in non-Circom workflows
+
+    detection:
+      oracle: constraint_inference
+      attack_type: underconstrained
+      procedure:
+        - action: extract_acir_opcode_trace
+        - action: mutate_opcode_operands
+          expected: should_fail
+        - action: verify_no_alternative_witness
+          expected: no_collision
+
+    regression_test:
+      enabled: true
+      circuit_path: "tests/noir_projects/multiplier/src/main.nr"
+      test_cases:
+        - name: noir_acir_baseline
+          inputs:
+            x: 7
+            y: 9
+          expected_result: valid
+        - name: noir_acir_zero_edge
+          inputs:
+            x: 0
+            y: 9
+          expected_result: valid
+      assertion: "Noir ACIR circuits should not admit alternate opcode-induced witnesses"
+
+    remediation:
+      description: "Constrain opcode-domain transitions and operand validity explicitly"
+      recommendations:
+        - "Bind opcode families to explicit selector/range constraints"
+        - "Add ACIR-level differential witness replay checks in CI"
+
+  - id: "ZK-CVE-2025-002"
+    name: "Halo2 Lookup Selector Underconstraint"
+    severity: high
+    cvss_score: 8.4
+    affected_circuits:
+      - pattern: "halo2*"
+        versions: ["*"]
+      - pattern: "lookup*"
+        versions: ["*"]
+      - pattern: "plookup*"
+        versions: ["*"]
+    sources:
+      - "Halo2 Lookup Integration Audits (2025)"
+      - "Plookup Soundness Follow-up Notes"
+    description: |
+      Lookup rows can be weakly constrained when selector activation and lookup-table
+      membership checks are not tightly bound in all execution branches.
+
+      IMPACT:
+      - Out-of-table values accepted under partial selector activation
+      - Lookup argument soundness degradation
+      - Underconstrained witness acceptance in lookup-heavy circuits
+
+    detection:
+      oracle: lookup_soundness
+      attack_type: underconstrained
+      procedure:
+        - action: enumerate_lookup_tables
+        - action: toggle_lookup_selector_edges
+          expected: should_fail
+        - action: inject_out_of_table_value
+          expected: should_fail
+
+    regression_test:
+      enabled: true
+      circuit_path: "tests/halo2_specs/lookup.json"
+      test_cases:
+        - name: lookup_valid_row
+          inputs:
+            input_0: 1
+            input_1: 1
+            input_2: 1
+          expected_result: valid
+        - name: lookup_invalid_row
+          inputs:
+            input_0: 2
+            input_1: 0
+            input_2: 1
+          expected_result: invalid
+      assertion: "Lookup rows must reject out-of-table values under all selector states"
+
+    remediation:
+      description: "Constrain selector activation and lookup membership jointly"
+      recommendations:
+        - "Enforce binary selector constraints on lookup gates"
+        - "Validate lookup table domain boundaries with fail-closed checks"
 
 # Interesting values for testing
 interesting_values:
