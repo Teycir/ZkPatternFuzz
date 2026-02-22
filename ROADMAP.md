@@ -407,12 +407,12 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 **Solution:** Given a valid witness for a subset of constraints (with some removed), use Z3 to find an assignment satisfying the rest.
 
 #### Implementation Tasks
-- [ ] Extend `crates/zk-symbolic/src/enhanced.rs` with witness extension mode
-- [ ] Implement constraint subset selection strategies:
+- [x] Extend `crates/zk-symbolic/src/enhanced.rs` with witness extension mode
+- [x] Implement constraint subset selection strategies:
   - Remove single constraint (exhaustive)
   - Remove constraint clusters (dependency-graph-guided)
   - Remove constraints by type (range checks, lookups, custom gates)
-- [ ] Add Z3-based witness extension solver:
+- [x] Add Z3-based witness extension solver:
   - Start with valid witness for subset A
   - Solve for remaining constraints B with A fixed
   - Check if extended witness violates semantic invariants
