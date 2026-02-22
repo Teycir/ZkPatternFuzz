@@ -800,6 +800,133 @@ impl FuzzingEngine {
         Ok(())
     }
 
+    fn spec_inference_boundary_values() -> Vec<FieldElement> {
+        vec![
+            FieldElement::zero(),
+            FieldElement::one(),
+            FieldElement::from_u64(2),
+            FieldElement::half_modulus(),
+            FieldElement::max_value(),
+        ]
+    }
+
+    fn append_spec_inference_boundary_witnesses(
+        witnesses: &mut Vec<Vec<FieldElement>>,
+        target_count: usize,
+        template: &[FieldElement],
+        boundary_values: &[FieldElement],
+    ) -> usize {
+        use std::collections::HashSet;
+        fn push_unique_candidate(
+            witnesses: &mut Vec<Vec<FieldElement>>,
+            seen: &mut HashSet<Vec<FieldElement>>,
+            candidate: Vec<FieldElement>,
+            target_count: usize,
+        ) -> bool {
+            if witnesses.len() >= target_count {
+                return false;
+            }
+            if seen.insert(candidate.clone()) {
+                witnesses.push(candidate);
+                return true;
+            }
+            false
+        }
+
+        if target_count == 0 || template.is_empty() || boundary_values.is_empty() {
+            return 0;
+        }
+
+        let mut seen: HashSet<Vec<FieldElement>> = witnesses.iter().cloned().collect();
+        let mut added = 0usize;
+
+        let width = template.len();
+        let max_value = FieldElement::max_value();
+
+        if push_unique_candidate(
+            witnesses,
+            &mut seen,
+            vec![FieldElement::zero(); width],
+            target_count,
+        ) {
+            added += 1;
+        }
+        if push_unique_candidate(
+            witnesses,
+            &mut seen,
+            vec![FieldElement::one(); width],
+            target_count,
+        ) {
+            added += 1;
+        }
+        if push_unique_candidate(
+            witnesses,
+            &mut seen,
+            vec![max_value.clone(); width],
+            target_count,
+        ) {
+            added += 1;
+        }
+
+        let mut alternating = Vec::with_capacity(width);
+        for idx in 0..width {
+            if idx % 2 == 0 {
+                alternating.push(FieldElement::zero());
+            } else {
+                alternating.push(max_value.clone());
+            }
+        }
+        if push_unique_candidate(witnesses, &mut seen, alternating, target_count) {
+            added += 1;
+        }
+
+        let single_width = width.min(16);
+        for idx in 0..single_width {
+            if witnesses.len() >= target_count {
+                break;
+            }
+            for value in boundary_values {
+                let mut witness = template.to_vec();
+                witness[idx] = value.clone();
+                if push_unique_candidate(witnesses, &mut seen, witness, target_count) {
+                    added += 1;
+                }
+            }
+        }
+
+        let pair_width = width.min(8);
+        let mut pair_values = vec![FieldElement::zero(), FieldElement::one()];
+        if !pair_values.contains(&max_value) {
+            pair_values.push(max_value.clone());
+        }
+
+        for i in 0..pair_width {
+            if witnesses.len() >= target_count {
+                break;
+            }
+            for j in (i + 1)..pair_width {
+                if witnesses.len() >= target_count {
+                    break;
+                }
+                for left in &pair_values {
+                    if witnesses.len() >= target_count {
+                        break;
+                    }
+                    for right in &pair_values {
+                        let mut witness = template.to_vec();
+                        witness[i] = left.clone();
+                        witness[j] = right.clone();
+                        if push_unique_candidate(witnesses, &mut seen, witness, target_count) {
+                            added += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        added
+    }
+
     pub(super) async fn run_spec_inference_attack(
         &mut self,
         config: &serde_yaml::Value,
@@ -858,9 +985,28 @@ impl FuzzingEngine {
             .with_confidence_threshold(0.9)
             .with_wire_labels(self.input_labels());
 
+        let boundary_seed_enabled = config
+            .get("boundary_seeding")
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
         // Generate initial witnesses
         let mut initial_witnesses = Vec::with_capacity(sample_count.max(1));
-        for _ in 0..sample_count.max(1) {
+        let mut boundary_seeded = 0usize;
+        if boundary_seed_enabled {
+            let template = self.generate_test_case().inputs;
+            let boundary_values = Self::spec_inference_boundary_values();
+            boundary_seeded = Self::append_spec_inference_boundary_witnesses(
+                &mut initial_witnesses,
+                sample_count.max(1),
+                &template,
+                &boundary_values,
+            );
+        }
+
+        let mut random_seeded = 0usize;
+        while initial_witnesses.len() < sample_count.max(1) {
             if self.wall_clock_timeout_reached() {
                 tracing::warn!(
                     "Stopping spec-inference witness seeding early: wall-clock timeout reached"
@@ -868,7 +1014,14 @@ impl FuzzingEngine {
                 break;
             }
             initial_witnesses.push(self.generate_test_case().inputs);
+            random_seeded = random_seeded.saturating_add(1);
         }
+        tracing::info!(
+            "Spec inference witness seeding mix: boundary_guided={} random={} total={}",
+            boundary_seeded,
+            random_seeded,
+            initial_witnesses.len()
+        );
 
         let mode_label = if evidence_mode { "evidence" } else { "run" };
 
@@ -1247,5 +1400,63 @@ impl FuzzingEngine {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spec_inference_boundary_witnesses_add_edge_cases_and_pairs() {
+        let template = vec![
+            FieldElement::from_u64(9),
+            FieldElement::from_u64(7),
+            FieldElement::from_u64(5),
+        ];
+        let mut witnesses = Vec::new();
+        let boundary_values = FuzzingEngine::spec_inference_boundary_values();
+        let added = FuzzingEngine::append_spec_inference_boundary_witnesses(
+            &mut witnesses,
+            128,
+            &template,
+            &boundary_values,
+        );
+        assert!(added > 0);
+        assert!(witnesses
+            .iter()
+            .any(|witness| witness.iter().all(FieldElement::is_zero)));
+        assert!(witnesses
+            .iter()
+            .any(|witness| witness[0] == FieldElement::max_value() && witness[1].is_zero()));
+    }
+
+    #[test]
+    fn spec_inference_boundary_witnesses_respect_target_limit() {
+        let template = vec![FieldElement::from_u64(3), FieldElement::from_u64(4)];
+        let mut witnesses = Vec::new();
+        let boundary_values = FuzzingEngine::spec_inference_boundary_values();
+        let added = FuzzingEngine::append_spec_inference_boundary_witnesses(
+            &mut witnesses,
+            2,
+            &template,
+            &boundary_values,
+        );
+        assert!(added <= 2);
+        assert_eq!(witnesses.len(), 2);
+    }
+
+    #[test]
+    fn spec_inference_boundary_witnesses_skip_empty_templates() {
+        let mut witnesses = Vec::new();
+        let boundary_values = FuzzingEngine::spec_inference_boundary_values();
+        let added = FuzzingEngine::append_spec_inference_boundary_witnesses(
+            &mut witnesses,
+            16,
+            &[],
+            &boundary_values,
+        );
+        assert_eq!(added, 0);
+        assert!(witnesses.is_empty());
     }
 }

@@ -817,7 +817,7 @@ gh run watch
   - [x] publish per-backend recall and true-positive contribution slices so aggregate recall is not Circom-dominated without visibility
 
 #### P2: Coverage Breadth + Oracle Completeness
-- [ ] Improve spec-inference robustness against sampling blind spots (targeted boundary witness generation and combination coverage for rare input patterns).
+- [x] Improve spec-inference robustness against sampling blind spots (targeted boundary witness generation and combination coverage for rare input patterns).
 - [ ] Expand vulnerability pattern library beyond current Circom-heavy corpus to include non-Circom/ACIR/Halo2 lookup and newer audit-derived classes.
 - [ ] Add a differential oracle path for mock backend mode (behavior comparison against at least one real backend/canonical checker) to detect backend-specific divergence.
 
