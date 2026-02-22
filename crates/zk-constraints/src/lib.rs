@@ -11,6 +11,7 @@ pub mod alt_witness_solver;
 pub mod constraint_types;
 pub mod limb_analysis;
 pub mod limb_boundary_fuzzer;
+pub mod lookup_coverage;
 pub mod lookup_extractor;
 pub mod proof_forgery;
 pub mod r1cs_parser;
@@ -34,6 +35,10 @@ pub use limb_analysis::{
 };
 pub use limb_boundary_fuzzer::{
     LimbBoundaryCase, LimbBoundaryCaseKind, LimbBoundaryFuzzer, LimbBoundaryFuzzerConfig,
+};
+pub use lookup_coverage::{
+    LookupCoverageAnalyzer, LookupCoverageAnalyzerConfig, LookupCoverageIssue,
+    LookupCoverageIssueKind, LookupCoverageReport, WireLookupCoverage,
 };
 pub use lookup_extractor::{
     LookupExtractionReport, LookupExtractorConfig, LookupTableExtractor, LookupUsage,
