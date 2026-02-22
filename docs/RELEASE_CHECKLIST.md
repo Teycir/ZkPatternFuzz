@@ -57,13 +57,13 @@ Use this for `rc` and final tags. Each item is a hard gate unless explicitly wai
 - [ ] Consecutive release-candidate benchmark gate:
   - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2`
 - [ ] Backend readiness lanes executed and dashboard published:
-  - `./scripts/run_backend_readiness_lanes.sh --required-backends noir,cairo,halo2 --min-completion-rate 0.90 --max-runtime-error 0 --max-backend-preflight-failed 0 --max-run-outcome-missing-rate 0.05`
+  - `./scripts/run_backend_readiness_lanes.sh --required-backends noir,cairo,halo2 --min-completion-rate 0.90 --min-enabled-targets 5 --max-runtime-error 0 --max-backend-preflight-failed 0 --max-run-outcome-missing-rate 0.05 --enforce-tool-sandbox`
 - [ ] Backend readiness gate enforced as part of release candidate validation:
-  - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --min-backend-completion-rate 0.90 --max-backend-runtime-error 0 --max-backend-preflight-failed 0 --max-backend-run-outcome-missing-rate 0.05`
+  - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --min-backend-completion-rate 0.90 --min-backend-enabled-targets 5 --max-backend-runtime-error 0 --max-backend-preflight-failed 0 --max-backend-run-outcome-missing-rate 0.05`
   - Note: `min-backend-completion-rate` is evaluated on selector-matching templates (`completed / (total - selector_mismatch)`).
 - [ ] Backend maturity scorecard published and gate enforced:
   - `./scripts/backend_maturity_scorecard.sh --readiness-dashboard artifacts/backend_readiness/latest_report.json --benchmark-root artifacts/benchmark_runs --keygen-preflight artifacts/keygen_preflight/latest_report.json --output artifacts/backend_maturity/latest_scorecard.json --required-backends circom,noir,cairo,halo2 --min-score 4.5 --enforce`
-  - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --required-maturity-backends circom,noir,cairo,halo2 --min-backend-completion-rate 0.90 --min-backend-maturity-score 4.5 --max-backend-runtime-error 0 --max-backend-preflight-failed 0 --max-backend-run-outcome-missing-rate 0.05`
+  - `./scripts/release_candidate_gate.sh --bench-root artifacts/benchmark_runs --required-passes 2 --required-backends noir,cairo,halo2 --required-maturity-backends circom,noir,cairo,halo2 --min-backend-completion-rate 0.90 --min-backend-enabled-targets 5 --min-backend-maturity-score 4.5 --max-backend-runtime-error 0 --max-backend-preflight-failed 0 --max-backend-run-outcome-missing-rate 0.05`
 - [x] Heavy backend readiness lanes (release-grade evidence snapshot) captured:
   - Command:
     - `./scripts/run_backend_readiness_lanes.sh --iterations 120 --timeout 45 --workers 2 --batch-jobs 1 --required-backends noir,cairo,halo2 --enforce-dashboard --no-build-if-missing`
@@ -79,7 +79,7 @@ Use this for `rc` and final tags. Each item is a hard gate unless explicitly wai
   - GitHub Actions `Release Validation` (`workflow_dispatch`) with:
     - `stable_ref=<previous_stable_tag_or_commit>`
     - `required_passes=2`
-    - readiness + maturity gate inputs set for backend thresholds (`required_backends`, `required_maturity_backends`, `min_backend_completion_rate`, `min_backend_maturity_score`, `max_backend_runtime_error`, `max_backend_preflight_failed`, `max_backend_run_outcome_missing_rate`)
+    - readiness + maturity gate inputs set for backend thresholds (`required_backends`, `required_maturity_backends`, `min_backend_completion_rate`, `min_backend_enabled_targets`, `min_backend_maturity_score`, `max_backend_runtime_error`, `max_backend_preflight_failed`, `max_backend_run_outcome_missing_rate`)
 
 ## 6. Documentation + Migration
 

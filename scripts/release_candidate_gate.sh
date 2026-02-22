@@ -16,6 +16,7 @@ MAX_BACKEND_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
 MAX_BACKEND_RUN_OUTCOME_MISSING_RATE="${MAX_BACKEND_RUN_OUTCOME_MISSING_RATE:-0.05}"
 MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="${MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL:-12}"
+MIN_BACKEND_ENABLED_TARGETS="${MIN_BACKEND_ENABLED_TARGETS:-5}"
 BACKEND_MATURITY_SCORECARD="$ROOT_DIR/artifacts/backend_maturity/latest_scorecard.json"
 BACKEND_MATURITY_REQUIRED_LIST="${BACKEND_MATURITY_REQUIRED_LIST:-}"
 MIN_BACKEND_MATURITY_SCORE="${MIN_BACKEND_MATURITY_SCORE:-4.5}"
@@ -59,6 +60,8 @@ Options:
                              Maximum per-backend and aggregate run_outcome_missing ratio (default: 0.05)
   --min-aggregate-selector-matching-total <int>
                              Minimum aggregate selector-matching classified runs across required backends (default: 12)
+  --min-backend-enabled-targets <int>
+                             Minimum enabled matrix targets required per backend (default: 5)
   --min-backend-maturity-score <float>
                              Minimum maturity score required per backend (default: 4.5)
   --keygen-preflight-report <path>
@@ -146,6 +149,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --min-aggregate-selector-matching-total)
       MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="$2"
+      shift 2
+      ;;
+    --min-backend-enabled-targets)
+      MIN_BACKEND_ENABLED_TARGETS="$2"
       shift 2
       ;;
     --min-backend-maturity-score)
@@ -238,6 +245,7 @@ backend_gate_cmd=(
   --max-backend-preflight-failed "$MAX_BACKEND_PREFLIGHT_FAILED"
   --max-run-outcome-missing-rate "$MAX_BACKEND_RUN_OUTCOME_MISSING_RATE"
   --min-aggregate-selector-matching-total "$MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL"
+  --min-enabled-targets "$MIN_BACKEND_ENABLED_TARGETS"
 )
 
 if [ "$SKIP_BACKEND_READINESS_GATE" -eq 1 ]; then

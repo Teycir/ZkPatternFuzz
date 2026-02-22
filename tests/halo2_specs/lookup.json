@@ -1,0 +1,11 @@
+{
+  "name": "lookup_halo2",
+  "k": 6,
+  "advice_columns": 4,
+  "fixed_columns": 2,
+  "instance_columns": 1,
+  "constraints": 14,
+  "private_inputs": 2,
+  "public_inputs": 1,
+  "lookups": 2
+}

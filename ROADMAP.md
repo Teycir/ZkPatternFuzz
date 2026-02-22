@@ -291,8 +291,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 ### 8.2 Shared Workstream (Week 1-2)
 - [x] Add a backend scorecard generator (`scripts/backend_maturity_scorecard.sh`) and publish `artifacts/backend_maturity/latest_scorecard.json`.
 - [x] Add CI/release gate that fails when any backend score drops below target (`>=4.5` initially, `==5.0` at cutover).
-- [ ] Expand readiness matrices to include at least 5 enabled representative targets per backend (local + external).
-- [ ] Enforce tool sandbox for all readiness/release lanes (`--enforce-tool-sandbox`) and archive gate evidence.
+- [x] Expand readiness matrices to include at least 5 enabled representative targets per backend (local + external).
+- [x] Enforce tool sandbox for all readiness/release lanes (`--enforce-tool-sandbox`) and archive gate evidence.
 
 ### 8.3 Backend-Specific Closure Plans
 
@@ -323,7 +323,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Exit criteria: Circom score `5.0` for 14 consecutive daily scorecards.
 
 ### 8.4 Milestones
-- [ ] `M0 (Week 1)`: scorecard freeze + matrix expansion + initial gate at `>=4.5`.
+- [x] `M0 (Week 1)`: scorecard freeze + matrix expansion + initial gate at `>=4.5`.
 - [ ] `M1 (Week 3)`: Halo2/Cairo critical implementation gaps closed; all backends `>=4.5`.
 - [ ] `M2 (Week 5)`: coverage-fidelity hardening complete; all backends `>=4.8`.
 - [ ] `M3 (Week 7)`: all backends sustained at `5.0/5.0` for 14 consecutive daily runs.

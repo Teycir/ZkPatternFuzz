@@ -34,6 +34,7 @@ MAX_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
 MAX_RUN_OUTCOME_MISSING_RATE="${MAX_BACKEND_RUN_OUTCOME_MISSING_RATE:-0.05}"
 MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="${MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL:-12}"
+MIN_ENABLED_TARGETS="${MIN_BACKEND_ENABLED_TARGETS:-5}"
 ENFORCE_TOOL_SANDBOX=0
 
 usage() {
@@ -63,6 +64,7 @@ Options:
   --max-run-outcome-missing-rate <f>    Dashboard gate max run_outcome_missing ratio (default: 0.05)
   --min-aggregate-selector-matching-total <int>
                                         Dashboard gate minimum aggregate selector-matching classified runs (default: 12)
+  --min-enabled-targets <int>           Dashboard gate minimum enabled targets per backend (default: 5)
   --skip-noir-integration-test          Skip test_noir_integration
   --skip-noir-constraint-coverage-test  Skip test_noir_constraint_coverage
   --skip-noir-constraint-edge-cases-test
@@ -103,6 +105,7 @@ while [[ $# -gt 0 ]]; do
     --max-backend-preflight-failed) MAX_BACKEND_PREFLIGHT_FAILED="$2"; shift 2 ;;
     --max-run-outcome-missing-rate) MAX_RUN_OUTCOME_MISSING_RATE="$2"; shift 2 ;;
     --min-aggregate-selector-matching-total) MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="$2"; shift 2 ;;
+    --min-enabled-targets) MIN_ENABLED_TARGETS="$2"; shift 2 ;;
     --skip-noir-integration-test) SKIP_NOIR_INTEGRATION_TEST=1; shift ;;
     --skip-noir-constraint-coverage-test) SKIP_NOIR_CONSTRAINT_COVERAGE_TEST=1; shift ;;
     --skip-noir-constraint-edge-cases-test) SKIP_NOIR_CONSTRAINT_EDGE_CASES_TEST=1; shift ;;
@@ -255,6 +258,7 @@ dashboard_cmd=(
   --max-backend-preflight-failed "$MAX_BACKEND_PREFLIGHT_FAILED"
   --max-run-outcome-missing-rate "$MAX_RUN_OUTCOME_MISSING_RATE"
   --min-aggregate-selector-matching-total "$MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL"
+  --min-enabled-targets "$MIN_ENABLED_TARGETS"
 )
 if [[ "$ENFORCE_DASHBOARD" -eq 1 ]]; then
   dashboard_cmd+=(--enforce)

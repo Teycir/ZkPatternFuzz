@@ -1,0 +1,11 @@
+{
+  "name": "range_halo2",
+  "k": 5,
+  "advice_columns": 4,
+  "fixed_columns": 2,
+  "instance_columns": 1,
+  "constraints": 12,
+  "private_inputs": 3,
+  "public_inputs": 1,
+  "lookups": 1
+}

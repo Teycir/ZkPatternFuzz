@@ -7,3 +7,31 @@ targets:
     framework: cairo
     alias: readiness_cairo
     enabled: true
+
+  - name: local_cairo_multiplier_add
+    target_circuit: tests/cairo_programs/multiplier_add.cairo
+    main_component: main
+    framework: cairo
+    alias: readiness_cairo
+    enabled: true
+
+  - name: local_cairo_multiplier_double
+    target_circuit: tests/cairo_programs/multiplier_double.cairo
+    main_component: main
+    framework: cairo
+    alias: readiness_cairo
+    enabled: true
+
+  - name: local_cairo_multiplier_shift
+    target_circuit: tests/cairo_programs/multiplier_shift.cairo
+    main_component: main
+    framework: cairo
+    alias: readiness_cairo
+    enabled: true
+
+  - name: external_cairo_multiplier_vendored
+    target_circuit: targets/external/readiness/cairo/multiplier_external.cairo
+    main_component: main
+    framework: cairo
+    alias: readiness_cairo
+    enabled: true

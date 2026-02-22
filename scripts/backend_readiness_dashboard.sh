@@ -13,6 +13,7 @@ MAX_RUNTIME_ERROR="${MAX_BACKEND_RUNTIME_ERROR:-0}"
 MAX_BACKEND_PREFLIGHT_FAILED="${MAX_BACKEND_PREFLIGHT_FAILED:-0}"
 MAX_RUN_OUTCOME_MISSING_RATE="${MAX_RUN_OUTCOME_MISSING_RATE:-0.05}"
 MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="${MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL:-12}"
+MIN_ENABLED_TARGETS="${MIN_BACKEND_ENABLED_TARGETS:-5}"
 ENFORCE=0
 
 usage() {
@@ -35,6 +36,7 @@ Options:
                                       Maximum run_outcome_missing ratio (per backend and aggregate) (default: 0.05)
   --min-aggregate-selector-matching-total <int>
                                       Minimum aggregate selector-matching classified runs across required backends (default: 12)
+  --min-enabled-targets <int>          Minimum enabled matrix targets per backend (default: 5)
   --enforce                             Exit non-zero when any backend fails
   -h, --help                            Show this help
 USAGE
@@ -86,6 +88,10 @@ while [[ $# -gt 0 ]]; do
       MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL="$2"
       shift 2
       ;;
+    --min-enabled-targets)
+      MIN_ENABLED_TARGETS="$2"
+      shift 2
+      ;;
     --enforce)
       ENFORCE=1
       shift
@@ -116,6 +122,7 @@ python3 - \
   "$MAX_BACKEND_PREFLIGHT_FAILED" \
   "$MAX_RUN_OUTCOME_MISSING_RATE" \
   "$MIN_AGGREGATE_SELECTOR_MATCHING_TOTAL" \
+  "$MIN_ENABLED_TARGETS" \
   "$ENFORCE" <<'PY'
 import json
 import os
@@ -137,6 +144,34 @@ def as_float(value, default=0.0):
         return default
 
 
+def count_enabled_targets(matrix_path):
+    if not matrix_path or not os.path.isfile(matrix_path):
+        return None
+
+    count = 0
+    in_target = False
+    enabled = True
+
+    with open(matrix_path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if line.startswith("- name:"):
+                if in_target and enabled:
+                    count += 1
+                in_target = True
+                enabled = True
+                continue
+
+            if in_target and line.startswith("enabled:"):
+                enabled_value = line.split(":", 1)[1].strip().strip("'\"").lower()
+                enabled = enabled_value not in {"false", "0", "no"}
+
+    if in_target and enabled:
+        count += 1
+
+    return count
+
+
 readiness_root = sys.argv[1]
 output_path = sys.argv[2]
 required_backends = [part.strip() for part in sys.argv[3].split(",") if part.strip()]
@@ -148,7 +183,8 @@ max_runtime_error = as_int(sys.argv[8], 0)
 max_backend_preflight_failed = as_int(sys.argv[9], 0)
 max_run_outcome_missing_rate = as_float(sys.argv[10], 0.05)
 min_aggregate_selector_matching_total = as_int(sys.argv[11], 12)
-enforce = as_int(sys.argv[12], 0) == 1
+min_enabled_targets = as_int(sys.argv[12], 5)
+enforce = as_int(sys.argv[13], 0) == 1
 
 backend_entries = []
 overall_pass = True
@@ -163,6 +199,8 @@ for backend in required_backends:
         "report_path": report_path,
         "present": os.path.isfile(report_path),
         "matrix_exit_code": None,
+        "matrix_path": "",
+        "enabled_targets_count": None,
         "reason_counts": {},
         "total_classified": 0,
         "completed": 0,
@@ -190,6 +228,8 @@ for backend in required_backends:
         report = json.load(handle)
 
     matrix = report.get("matrix", {})
+    matrix_path = str(matrix.get("path", ""))
+    enabled_targets_count = count_enabled_targets(matrix_path)
     reason_counts = matrix.get("reason_counts", {})
     if not isinstance(reason_counts, dict):
         reason_counts = {}
@@ -240,6 +280,12 @@ for backend in required_backends:
         gate_failures.append(
             f"selector_matching_total {selector_matching_total} < {min_selector_matching_total}"
         )
+    if enabled_targets_count is None:
+        gate_failures.append("enabled_targets_count unavailable (matrix path missing/unreadable)")
+    elif enabled_targets_count < min_enabled_targets:
+        gate_failures.append(
+            f"enabled_targets_count {enabled_targets_count} < {min_enabled_targets}"
+        )
     if completion_rate < min_overall_completion_rate:
         gate_failures.append(
             f"overall_completion_rate {completion_rate:.3f} < {min_overall_completion_rate:.3f}"
@@ -270,6 +316,8 @@ for backend in required_backends:
     entry.update(
         {
             "matrix_exit_code": matrix_exit_code,
+            "matrix_path": matrix_path,
+            "enabled_targets_count": enabled_targets_count,
             "reason_counts": numeric_reason_counts,
             "total_classified": total_classified,
             "completed": completed,
@@ -324,6 +372,7 @@ payload = {
         "max_backend_preflight_failed": max_backend_preflight_failed,
         "max_run_outcome_missing_rate": max_run_outcome_missing_rate,
         "min_aggregate_selector_matching_total": min_aggregate_selector_matching_total,
+        "min_enabled_targets": min_enabled_targets,
     },
     "backends": backend_entries,
     "aggregate": {
@@ -344,6 +393,7 @@ for entry in backend_entries:
     status = "PASS" if entry["gate_pass"] else "FAIL"
     print(
         f"[{status}] {entry['backend']}: "
+        f"enabled_targets={entry['enabled_targets_count']} "
         f"selector_completion={entry['selector_matching_completion_rate']:.3f} "
         f"selector_matching_total={entry['selector_matching_total']} "
         f"selector_mismatch_rate={entry['selector_mismatch_rate']:.3f} "

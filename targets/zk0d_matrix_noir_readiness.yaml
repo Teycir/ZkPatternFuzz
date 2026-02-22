@@ -8,6 +8,34 @@ targets:
     alias: readiness_noir
     enabled: true
 
+  - name: local_noir_add_chain
+    target_circuit: tests/noir_projects/add_chain/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
+  - name: local_noir_affine_mix
+    target_circuit: tests/noir_projects/affine_mix/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
+  - name: local_noir_cube_minus
+    target_circuit: tests/noir_projects/cube_minus/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
+  - name: external_noir_safe_product_vendored
+    target_circuit: targets/external/readiness/noir/safe_product/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: readiness_noir
+    enabled: true
+
   - name: cat3_privacy_aztec_docs_examples_circuits_hello_circuit
     target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/docs/examples/circuits/hello_circuit/Nargo.toml
     main_component: main
@@ -20,4 +48,4 @@ targets:
     main_component: main
     framework: noir
     alias: readiness_noir
-    enabled: true
+    enabled: false

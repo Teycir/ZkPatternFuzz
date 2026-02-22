@@ -1,0 +1,11 @@
+{
+  "name": "affine_halo2",
+  "k": 5,
+  "advice_columns": 3,
+  "fixed_columns": 1,
+  "instance_columns": 1,
+  "constraints": 10,
+  "private_inputs": 2,
+  "public_inputs": 1,
+  "lookups": 0
+}

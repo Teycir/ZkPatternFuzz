@@ -1,16 +1,44 @@
 version: 1
 
 targets:
-  - name: cat5_frameworks_halo2_scaffold
-    target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/halo2-scaffold/Cargo.toml
-    main_component: zk0d_mul
-    framework: halo2
-    alias: readiness_halo2
-    enabled: true
-
   - name: local_halo2_minimal_json_spec
     target_circuit: tests/halo2_specs/minimal.json
     main_component: minimal
     framework: halo2
     alias: readiness_halo2
     enabled: true
+
+  - name: local_halo2_affine_json_spec
+    target_circuit: tests/halo2_specs/affine.json
+    main_component: affine
+    framework: halo2
+    alias: readiness_halo2
+    enabled: true
+
+  - name: local_halo2_range_json_spec
+    target_circuit: tests/halo2_specs/range.json
+    main_component: range
+    framework: halo2
+    alias: readiness_halo2
+    enabled: true
+
+  - name: local_halo2_lookup_json_spec
+    target_circuit: tests/halo2_specs/lookup.json
+    main_component: lookup
+    framework: halo2
+    alias: readiness_halo2
+    enabled: true
+
+  - name: external_halo2_minimal_json_spec_vendored
+    target_circuit: targets/external/readiness/halo2/minimal_external.json
+    main_component: minimal_external
+    framework: halo2
+    alias: readiness_halo2
+    enabled: true
+
+  - name: cat5_frameworks_halo2_scaffold
+    target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/halo2-scaffold/Cargo.toml
+    main_component: zk0d_mul
+    framework: halo2
+    alias: readiness_halo2
+    enabled: false

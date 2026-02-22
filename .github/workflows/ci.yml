@@ -59,6 +59,9 @@ jobs:
       - name: Production/test separation gate
         run: python3 scripts/check_prod_test_separation.py --repo-root .
 
+      - name: Readiness matrix target coverage gate
+        run: python3 -m unittest -q tests/test_readiness_matrix_targets.py
+
       # Full warning-free lint gate across all targets/features.
       # This is stricter than a touched-crates-only policy.
       - name: Clippy (Warning-Free All Targets)

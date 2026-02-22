@@ -60,6 +60,11 @@ on:
         required: false
         default: "0.90"
         type: string
+      min_backend_enabled_targets:
+        description: Minimum enabled readiness matrix targets required per backend
+        required: false
+        default: "5"
+        type: string
       min_backend_maturity_score:
         description: Minimum maturity score required per backend (0.0-5.0)
         required: false
@@ -158,6 +163,7 @@ jobs:
             --workers ${{ inputs.readiness_workers }} \
             --required-backends "${{ inputs.required_backends }}" \
             --min-completion-rate "${{ inputs.min_backend_completion_rate }}" \
+            --min-enabled-targets "${{ inputs.min_backend_enabled_targets }}" \
             --max-runtime-error "${{ inputs.max_backend_runtime_error }}" \
             --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
             --max-run-outcome-missing-rate "${{ inputs.max_backend_run_outcome_missing_rate }}" \
@@ -177,6 +183,7 @@ jobs:
             --required-backends "${{ inputs.required_backends }}" \
             --required-maturity-backends "${{ inputs.required_maturity_backends }}" \
             --min-backend-completion-rate "${{ inputs.min_backend_completion_rate }}" \
+            --min-backend-enabled-targets "${{ inputs.min_backend_enabled_targets }}" \
             --min-backend-maturity-score "${{ inputs.min_backend_maturity_score }}" \
             --max-backend-runtime-error "${{ inputs.max_backend_runtime_error }}" \
             --max-backend-preflight-failed "${{ inputs.max_backend_preflight_failed }}" \
