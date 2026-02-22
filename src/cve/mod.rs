@@ -72,6 +72,14 @@ impl CveDatabase {
                 continue;
             }
 
+            let expanded_circuit_path = expand_env_placeholders(&pattern.regression_test.circuit_path);
+            if has_unresolved_env_placeholder(&expanded_circuit_path) {
+                errors.push(format!(
+                    "{} has unresolved env placeholder in regression_test.circuit_path '{}'. Set required environment variables.",
+                    pattern.id, pattern.regression_test.circuit_path
+                ));
+            }
+
             for tc in &pattern.regression_test.test_cases {
                 if tc.name.trim().is_empty() {
                     errors.push(format!(
@@ -405,6 +413,7 @@ pub struct RegressionTest {
 impl RegressionTest {
     /// Create from CVE pattern
     pub fn from_pattern(pattern: &CvePattern) -> Self {
+        let circuit_path = expand_env_placeholders(&pattern.regression_test.circuit_path);
         let test_cases = pattern
             .regression_test
             .test_cases
@@ -431,7 +440,7 @@ impl RegressionTest {
         Self {
             cve_id: pattern.id.clone(),
             cve_name: pattern.name.clone(),
-            circuit_path: pattern.regression_test.circuit_path.clone(),
+            circuit_path,
             test_cases,
             assertion: pattern.regression_test.assertion.clone(),
         }
@@ -442,6 +451,25 @@ impl RegressionTest {
         let mut rng = StdRng::seed_from_u64(42);
         let mut test_results = Vec::new();
         let mut passed_all = true;
+
+        if has_unresolved_env_placeholder(&self.circuit_path) {
+            return RegressionTestResult {
+                cve_id: self.cve_id.clone(),
+                passed: false,
+                test_results: self
+                    .test_cases
+                    .iter()
+                    .map(|tc| TestCaseResult {
+                        name: tc.name.clone(),
+                        passed: false,
+                        message: Some(format!(
+                            "Unresolved env placeholder in circuit path '{}'. Set required environment variables.",
+                            self.circuit_path
+                        )),
+                    })
+                    .collect(),
+            };
+        }
 
         let path = Path::new(&self.circuit_path);
         if !path.exists() {
@@ -918,6 +946,98 @@ fn has_signed_offset(value: &str, prefix: &str) -> bool {
         return false;
     };
     (sign == '+' || sign == '-') && chars.next().is_some() && chars.all(|ch| ch.is_ascii_digit())
+}
+
+fn expand_env_placeholders(input: &str) -> String {
+    let chars: Vec<char> = input.chars().collect();
+    let mut i = 0usize;
+    let mut out = String::new();
+
+    while i < chars.len() {
+        if chars[i] != '$' {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+
+        if i + 1 < chars.len() && chars[i + 1] == '{' {
+            let mut j = i + 2;
+            while j < chars.len() && chars[j] != '}' {
+                j += 1;
+            }
+            if j >= chars.len() {
+                out.push(chars[i]);
+                i += 1;
+                continue;
+            }
+
+            let inner: String = chars[i + 2..j].iter().collect();
+            let placeholder = format!("${{{}}}", inner);
+            let var_name = match inner.split_once(":-") {
+                Some((name, _legacy_default)) => name,
+                None => inner.as_str(),
+            };
+            if var_name.is_empty() {
+                out.push_str(&placeholder);
+                i = j + 1;
+                continue;
+            }
+            match std::env::var(var_name) {
+                Ok(value) => out.push_str(&value),
+                Err(std::env::VarError::NotPresent) => out.push_str(&placeholder),
+                Err(std::env::VarError::NotUnicode(_)) => out.push_str(&placeholder),
+            }
+            i = j + 1;
+            continue;
+        }
+
+        let mut j = i + 1;
+        if j < chars.len() && (chars[j].is_ascii_alphabetic() || chars[j] == '_') {
+            while j < chars.len() && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
+                j += 1;
+            }
+            let var_name: String = chars[i + 1..j].iter().collect();
+            let placeholder = format!("${}", var_name);
+            match std::env::var(&var_name) {
+                Ok(value) => out.push_str(&value),
+                Err(std::env::VarError::NotPresent) => out.push_str(&placeholder),
+                Err(std::env::VarError::NotUnicode(_)) => out.push_str(&placeholder),
+            }
+            i = j;
+            continue;
+        }
+
+        out.push(chars[i]);
+        i += 1;
+    }
+
+    out
+}
+
+fn has_unresolved_env_placeholder(input: &str) -> bool {
+    let chars: Vec<char> = input.chars().collect();
+    let mut i = 0usize;
+    while i < chars.len() {
+        if chars[i] != '$' {
+            i += 1;
+            continue;
+        }
+
+        if i + 1 < chars.len() && chars[i + 1] == '{' {
+            let mut j = i + 2;
+            while j < chars.len() && chars[j] != '}' {
+                j += 1;
+            }
+            return true;
+        }
+
+        if i + 1 < chars.len() && (chars[i + 1].is_ascii_alphabetic() || chars[i + 1] == '_') {
+            return true;
+        }
+
+        i += 1;
+    }
+    false
 }
 
 fn parse_inputs_from_source(source: &str, framework: Framework) -> Vec<InputSpec> {

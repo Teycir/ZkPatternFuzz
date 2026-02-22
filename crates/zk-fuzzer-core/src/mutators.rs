@@ -90,7 +90,7 @@ fn bit_flip(input: &FieldElement, rng: &mut impl Rng) -> FieldElement {
     let byte_idx = rng.gen_range(0..32);
     let bit_idx = rng.gen_range(0..8);
     result[byte_idx] ^= 1 << bit_idx;
-    FieldElement(result)
+    reduce_modulo_field(FieldElement(result))
 }
 
 /// Flip a random byte in the field element
@@ -98,18 +98,19 @@ fn byte_flip(input: &FieldElement, rng: &mut impl Rng) -> FieldElement {
     let mut result = input.0;
     let byte_idx = rng.gen_range(0..32);
     result[byte_idx] = rng.gen();
-    FieldElement(result)
+    reduce_modulo_field(FieldElement(result))
 }
 
-/// Apply arithmetic operations (add/sub 1, negate, double)
+/// Apply arithmetic operations (add/sub 1, field-negate, double, bitwise-not)
 fn arithmetic_mutation(input: &FieldElement, rng: &mut impl Rng) -> FieldElement {
-    let op = rng.gen_range(0..4);
+    let op = rng.gen_range(0..5);
 
     match op {
         0 => add_one(input),
         1 => sub_one(input),
-        2 => negate(input),
+        2 => field_negate(input),
         3 => double(input),
+        4 => bitwise_not_mutation(input),
         _ => input.clone(),
     }
 }
@@ -136,6 +137,11 @@ fn add_one(input: &FieldElement) -> FieldElement {
 
 /// Subtract one from the field element (with wrapping)
 fn sub_one(input: &FieldElement) -> FieldElement {
+    // In field arithmetic, 0 - 1 wraps to p - 1.
+    if input.is_zero() {
+        return FieldElement::max_value();
+    }
+
     let mut result = input.0;
     let mut borrow = 1u16;
 
@@ -150,20 +156,20 @@ fn sub_one(input: &FieldElement) -> FieldElement {
         }
     }
 
-    FieldElement(result)
+    reduce_modulo_field(FieldElement(result))
 }
 
-/// Negate the field element (bitwise NOT) with modular reduction
-///
-/// Note: Bitwise NOT doesn't produce a mathematically correct field negation,
-/// but it's useful for fuzzing to explore the input space. The result is
-/// reduced to ensure it's a valid field element.
-fn negate(input: &FieldElement) -> FieldElement {
+/// Negate the field element using true field arithmetic: -x mod p.
+fn field_negate(input: &FieldElement) -> FieldElement {
+    input.neg()
+}
+
+/// Bitwise inversion mutation (kept separate from field negation semantics).
+fn bitwise_not_mutation(input: &FieldElement) -> FieldElement {
     let mut result = [0u8; 32];
     for (i, byte) in result.iter_mut().enumerate() {
         *byte = !input.0[i];
     }
-    // Reduce to ensure validity (NOT of small values produces large values)
     reduce_modulo_field(FieldElement(result))
 }
 

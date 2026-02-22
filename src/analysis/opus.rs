@@ -32,8 +32,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use zk_core::{AttackType, Framework};
 
-const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
-
 /// Result from analyzing a single circuit
 #[derive(Debug, Clone)]
 pub struct CircuitAnalysisResult {
@@ -1107,7 +1105,7 @@ fn rewrite_zk0d_path(path: &Path) -> String {
     };
     let root = match env_root.as_deref() {
         Some(v) => v,
-        None => DEFAULT_ZK0D_BASE,
+        None => return path_str.to_string(),
     };
     let root = root.trim_end_matches(std::path::MAIN_SEPARATOR);
 

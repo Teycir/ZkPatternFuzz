@@ -799,14 +799,14 @@ gh run watch
 ### External Effectiveness Corrections (2026-02-22)
 
 #### P0: Mutation Correctness + Portability (must fix first)
-- [ ] Fix field-mutator correctness to keep generated values in-field by default:
+- [x] Fix field-mutator correctness to keep generated values in-field by default:
   - apply modular reduction in `bit_flip` / `byte_flip` outputs
   - fix `sub_one(0)` to wrap to `p-1` (field semantics), not `2^256-1`
   - replace misleading bitwise-`negate` behavior with true field negation (`p - x`) and keep bitwise inversion as a separately named mutator
-- [ ] Remove hardcoded developer-local paths from default runtime/config:
+- [x] Remove hardcoded developer-local paths from default runtime/config:
   - remove/replace `DEFAULT_ZK0D_BASE` machine-specific path assumptions
   - replace absolute local CVE fixture paths in `known_vulnerabilities.yaml` with repo-relative or env-configurable roots
-- [ ] Add regression tests that assert mutators always produce valid field elements for BN254 and preserve boundary semantics (`0`, `1`, `p-1`, `p`).
+- [x] Add regression tests that assert mutators always produce valid field elements for BN254 and preserve boundary semantics (`0`, `1`, `p-1`, `p`).
 
 #### P1: Signal Quality + Cross-Backend Depth
 - [ ] Upgrade proof-soundness mutation from random byte-noise to algebraically-aware transforms:

@@ -177,3 +177,144 @@ vulnerabilities:
     let _ = fs::remove_file(path);
     assert!(result.is_err(), "expected strict fixture to be rejected");
 }
+
+#[test]
+fn strict_fixture_validation_rejects_unresolved_circuit_path_placeholder() {
+    let missing_var = "ZKFUZZER_CVE_PATH_MISSING";
+    std::env::remove_var(missing_var);
+    let yaml = format!(
+        r#"
+version: "1.0"
+last_updated: "2026-02-22"
+vulnerabilities:
+  - id: "ZK-STRICT-ENV-BAD"
+    name: "Strict Fixture Env Path Bad"
+    severity: "high"
+    affected_circuits:
+      - pattern: "strict_env_bad"
+        versions: ["*"]
+    sources: []
+    description: "strict fixture"
+    detection:
+      oracle: "range"
+      attack_type: "boundary"
+      procedure: []
+    regression_test:
+      enabled: true
+      circuit_path: "${{{}}}/tests/circuits/safe/simple_multiplier.circom"
+      test_cases:
+        - name: "valid_case"
+          inputs:
+            a: "0x2"
+          expected_result: "valid"
+      assertion: "fixture"
+    remediation:
+      description: "n/a"
+"#,
+        missing_var
+    );
+
+    let path = write_temp_yaml(&yaml);
+    let result = CveDatabase::load_strict(&path);
+    let _ = fs::remove_file(path);
+    assert!(result.is_err(), "expected unresolved env placeholder rejection");
+    let error = result.err().expect("strict load should fail").to_string();
+    assert!(
+        error.contains("unresolved env placeholder"),
+        "expected unresolved placeholder message, got: {}",
+        error
+    );
+}
+
+#[test]
+fn strict_fixture_validation_rejects_defaulted_placeholder_when_env_missing() {
+    let missing_var = "ZKFUZZER_CVE_PATH_MISSING_WITH_DEFAULT";
+    std::env::remove_var(missing_var);
+    let yaml = format!(
+        r#"
+version: "1.0"
+last_updated: "2026-02-22"
+vulnerabilities:
+  - id: "ZK-STRICT-ENV-DEFAULT-BAD"
+    name: "Strict Fixture Env Default Bad"
+    severity: "high"
+    affected_circuits:
+      - pattern: "strict_env_default_bad"
+        versions: ["*"]
+    sources: []
+    description: "strict fixture"
+    detection:
+      oracle: "range"
+      attack_type: "boundary"
+      procedure: []
+    regression_test:
+      enabled: true
+      circuit_path: "${{{}:-tests/circuits/safe/simple_multiplier.circom}}"
+      test_cases:
+        - name: "valid_case"
+          inputs:
+            a: "0x2"
+          expected_result: "valid"
+      assertion: "fixture"
+    remediation:
+      description: "n/a"
+"#,
+        missing_var
+    );
+
+    let path = write_temp_yaml(&yaml);
+    let result = CveDatabase::load_strict(&path);
+    let _ = fs::remove_file(path);
+    assert!(
+        result.is_err(),
+        "expected strict mode to reject unresolved default placeholder"
+    );
+}
+
+#[test]
+fn regression_test_generation_expands_env_circuit_path() {
+    let home = std::env::var("HOME").expect("HOME environment variable must be set");
+    let yaml = r#"
+version: "1.0"
+last_updated: "2026-02-22"
+vulnerabilities:
+  - id: "ZK-STRICT-ENV-EXPAND"
+    name: "Strict Fixture Env Expand"
+    severity: "high"
+    affected_circuits:
+      - pattern: "strict_env_expand"
+        versions: ["*"]
+    sources: []
+    description: "strict fixture"
+    detection:
+      oracle: "range"
+      attack_type: "boundary"
+      procedure: []
+    regression_test:
+      enabled: true
+      circuit_path: "${HOME}/tests/circuits/safe/simple_multiplier.circom"
+      test_cases:
+        - name: "valid_case"
+          inputs:
+            a: "0x2"
+          expected_result: "valid"
+      assertion: "fixture"
+    remediation:
+      description: "n/a"
+"#;
+
+    let path = write_temp_yaml(yaml);
+    let db = CveDatabase::load(&path).expect("load test cve yaml");
+    let _ = fs::remove_file(path);
+    let tests = db.generate_regression_tests();
+    assert_eq!(tests.len(), 1, "expected one regression test");
+    assert!(
+        tests[0].circuit_path.starts_with(&home),
+        "expected HOME to expand in circuit path, got {}",
+        tests[0].circuit_path
+    );
+    assert!(
+        !tests[0].circuit_path.contains("${HOME}"),
+        "expected placeholder to be expanded"
+    );
+}

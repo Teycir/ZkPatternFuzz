@@ -18,6 +18,13 @@ fn test_sub_one() {
 }
 
 #[test]
+fn test_sub_one_wraps_zero_to_p_minus_one() {
+    let input = FieldElement::zero();
+    let result = sub_one(&input);
+    assert_eq!(result, FieldElement::max_value());
+}
+
+#[test]
 fn test_bit_flip() {
     let mut rng = StdRng::seed_from_u64(42);
     let input = FieldElement::zero();
@@ -33,13 +40,36 @@ fn test_bit_flip() {
 }
 
 #[test]
-fn test_negate_reduces_to_valid_field() {
-    // Negating zero gives all 0xff bytes, which exceeds the modulus
-    // After reduction, it should be less than the modulus
-    let input = FieldElement::zero();
-    let result = negate(&input);
+fn test_bit_flip_reduces_to_valid_field() {
+    let mut rng = StdRng::seed_from_u64(7);
+    let input = FieldElement::max_value();
+    let result = bit_flip(&input, &mut rng);
     let modulus = bn254_modulus_bytes();
-    // Result should be less than modulus (properly reduced)
+    assert!(compare_bytes(&result.0, &modulus) == std::cmp::Ordering::Less);
+}
+
+#[test]
+fn test_byte_flip_reduces_to_valid_field() {
+    let mut rng = StdRng::seed_from_u64(11);
+    let input = FieldElement::max_value();
+    let result = byte_flip(&input, &mut rng);
+    let modulus = bn254_modulus_bytes();
+    assert!(compare_bytes(&result.0, &modulus) == std::cmp::Ordering::Less);
+}
+
+#[test]
+fn test_field_negate_uses_true_field_negation() {
+    let input = FieldElement::from_u64(5);
+    let result = field_negate(&input);
+    assert_eq!(result, input.neg());
+}
+
+#[test]
+fn test_bitwise_not_mutation_reduces_to_valid_field() {
+    // Bitwise NOT of zero is 0xff..ff and must be reduced into the field.
+    let input = FieldElement::zero();
+    let result = bitwise_not_mutation(&input);
+    let modulus = bn254_modulus_bytes();
     assert!(compare_bytes(&result.0, &modulus) == std::cmp::Ordering::Less);
 }
 
