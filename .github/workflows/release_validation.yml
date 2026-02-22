@@ -188,7 +188,6 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/scarb" --version
-          "$HOME/.local/bin/scarb" cairo-run --version
 
       - name: Build benchmark binaries
         run: cargo build --release --bin zk0d_batch --bin zk0d_benchmark
