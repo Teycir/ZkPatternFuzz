@@ -348,8 +348,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Lookup-analysis core implemented (lookup semantics, extractor, analyzer, fuzzer) (`crates/zk-constraints/src/constraint_types.rs` and related analysis modules).
 
 ### 7.2 Active Remaining Work (Useful Now)
-- [ ] Add Halo2-specific lookup integration tests to validate Plookup coverage end to end.
-- [ ] Publish one semantic-analysis operator guide (invariants, witness extension, lookup workflows) with reproducible commands.
+- [x] Add Halo2-specific lookup integration tests to validate Plookup coverage end to end (`tests/test_halo2_lookup_integration.rs`).
+- [x] Publish one semantic-analysis operator guide (invariants, witness extension, lookup workflows) with reproducible commands (`docs/SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md`).
 
 ### 7.3 Deferred Backlog (Post-5/5 Cutover, Non-Blocking)
 - Reference implementation differential (former 7.5).

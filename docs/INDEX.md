@@ -174,6 +174,16 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+### 5i. [SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md](SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md) - **Semantic Ops Runbook**
+**For:** Running invariants, witness-extension, and Halo2 lookup semantic checks reproducibly  
+**Contains:**
+- invariant validation + checker commands
+- witness-extension regression workflow
+- Halo2 Plookup integration test workflow
+- semantic signoff checklist
+
+---
+
 ## 🤖 AI Integration
 
 ### 5.5. [MISTRAL_AI_INTEGRATION.md](MISTRAL_AI_INTEGRATION.md) - **15 min read**

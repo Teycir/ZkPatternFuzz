@@ -87,5 +87,5 @@ invariants:
 Use strict evidence validation in CI/local checks:
 
 ```bash
-cargo run --bin validate_yaml -- --yaml <campaign.yaml> --require-invariants
+cargo run --bin validate_yaml -- <campaign.yaml> --require-invariants
 ```
