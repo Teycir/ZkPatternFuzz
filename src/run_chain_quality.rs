@@ -4,7 +4,7 @@ use zk_fuzzer::chain_fuzzer::metrics::DepthMetricsSummary;
 use zk_fuzzer::chain_fuzzer::DepthMetrics;
 use zk_fuzzer::chain_fuzzer::{ChainCorpusMeta, ChainFinding, ChainSpec};
 
-use crate::chain_completed_and_unique_cov_from_path;
+use crate::run_chain_corpus::chain_completed_and_unique_cov_from_path;
 
 pub(crate) struct ChainEngagementSettings {
     pub strict: bool,

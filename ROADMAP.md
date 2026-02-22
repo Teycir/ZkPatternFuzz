@@ -279,7 +279,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 **Solution:** User-supplied invariant DSL that drives semantic oracles.
 
 #### Implementation Tasks
-- [ ] Design invariant specification YAML schema
+- [x] Design invariant specification YAML schema (`docs/INVARIANT_SPEC_SCHEMA.md`)
   ```yaml
   invariants:
     - id: "merkle_root_integrity"
@@ -934,7 +934,7 @@ gh run watch
 - [x] Publish an explicit security assumptions and threat model document for fuzzing/evidence flows and backend toolchain trust boundaries (`docs/SECURITY_THREAT_MODEL.md`)
 
 ### External Assessment Follow-Up (2026-02-21)
-- [ ] Refactor oversized engine files by responsibility boundary:
+- [x] Refactor oversized engine files by responsibility boundary:
   - [x] extract findings post-processing/storage into dedicated module (`src/fuzzer/engine/finding_pipeline.rs`) and remove duplicated evidence-mode policy logic from `attack_runner.rs`
   - [x] extract static/source scan attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_static.rs`) and reduce `attack_runner.rs` size without behavior drift
   - [x] extract advanced runtime attack handlers into dedicated module (`src/fuzzer/engine/attack_runner_advanced.rs`) for sidechannel/privacy/defi attack family isolation
@@ -947,15 +947,15 @@ gh run watch
   - [x] extract post-dispatch continuation/timeout orchestration into dedicated module (`src/fuzzer/engine/run_continuation.rs`) so continuous phase control is isolated from lifecycle entrypoint
   - [x] extract static pattern witness-selection/recording into dedicated module (`src/fuzzer/engine/run_pattern.rs`) to isolate selector/materialization flow from run orchestration
   - [x] extract report/evidence finalization into dedicated module (`src/fuzzer/engine/run_reporting.rs`) so run orchestration and reporting paths are isolated
-  - [ ] split `src/fuzzer/engine/attack_runner.rs` into attack-family dispatch modules + shared execution helpers
-  - [ ] split `src/fuzzer/engine/mod.rs` into smaller orchestration modules (init, run loop, reporting, selector/static analysis)
-- [ ] Keep `src/main.rs` as a thin CLI entrypoint by moving remaining orchestration into `run_*` modules and shared services
-- [ ] Close remaining clippy debt and prevent regression:
+  - [x] split `src/fuzzer/engine/attack_runner.rs` into attack-family dispatch modules + shared execution helpers
+  - [x] split `src/fuzzer/engine/mod.rs` into smaller orchestration modules (init, run loop, reporting, selector/static analysis)
+- [x] Keep `src/main.rs` as a thin CLI entrypoint by moving remaining orchestration into `run_*` modules and shared services
+- [x] Close remaining clippy debt and prevent regression:
   - [x] convert remaining 8+ argument functions to config/builder structs
   - [x] replace post-`Default::default()` field assignment patterns with struct literal initialization
   - [x] clean redundant variable redefinitions in `src/toolchain_bootstrap.rs`
   - [x] replace manual multiple-of checks with `.is_multiple_of()`
-  - [x] add/keep CI clippy gate at warning-free target for touched crates
+  - [x] add/keep CI clippy gate at warning-free target for all targets/features
 - [x] Delete repo-root `new_file.txt` and add a lightweight repo-hygiene check to block accidental placeholder files at root (`scripts/check_repo_hygiene.py`, `tests/test_check_repo_hygiene.py`, `.github/workflows/ci.yml`)
 - [x] Audit AI data-egress path before production usage:
   - [x] review `build_ai_circuit_context` and `src/ai/*` for source-data minimization and explicit opt-in controls
