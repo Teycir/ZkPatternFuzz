@@ -296,6 +296,96 @@ async fn external_user_adapter_requires_payloads() {
     assert!(intent_error.to_string().contains("intent_payload"));
 }
 
+#[tokio::test]
+async fn semantic_track_runner_flags_execution_evidence_intent_violation() {
+    let tmp = tempdir().expect("tempdir");
+    let project_root = tmp.path().join("sample_project_evidence");
+    fs::create_dir_all(project_root.join("src")).expect("create project source directory");
+    fs::create_dir_all(tmp.path().join("output")).expect("create output directory");
+
+    fs::write(
+        project_root.join("src").join("withdraw.circom"),
+        r#"
+        // only admin can withdraw
+        // verifier must reject forged proofs
+        template Withdraw() {
+            signal input amount;
+            signal input admin;
+        }
+        "#,
+    )
+    .expect("write sample source");
+
+    let runner = SemanticTrackRunner::new();
+    let input = TrackInput {
+        campaign_id: "campaign-semantic".to_string(),
+        run_id: "run-semantic-evidence".to_string(),
+        seed: Some(11),
+        corpus_dir: tmp.path().join("corpus"),
+        evidence_dir: tmp.path().join("evidence"),
+        output_dir: tmp.path().join("output"),
+        metadata: BTreeMap::from([
+            (
+                "semantic_root".to_string(),
+                project_root.to_string_lossy().into_owned(),
+            ),
+            ("semantic_adapter".to_string(), "external_user".to_string()),
+            (
+                "semantic_external_intent_json".to_string(),
+                r#"{
+                    "semantic_intent": {
+                      "source": "external-user",
+                      "required_behaviors": ["only admin can withdraw"],
+                      "forbidden_behaviors": ["must never bypass authorization"],
+                      "security_properties": ["security_critical:authorization"]
+                    }
+                }"#
+                .to_string(),
+            ),
+            (
+                "semantic_external_assessment_json".to_string(),
+                r#"{
+                    "exploitability": {
+                      "exploitable": true,
+                      "confidence": 95,
+                      "rationale": "Evidence shows non-admin withdrawal accepted"
+                    }
+                }"#
+                .to_string(),
+            ),
+            (
+                "semantic_execution_evidence_json".to_string(),
+                r#"{
+                    "cases": [
+                        {
+                            "id": "witness-case-1",
+                            "accepted": true,
+                            "summary": "non-admin withdraw accepted with forged proof and bypass authorization"
+                        }
+                    ]
+                }"#
+                .to_string(),
+            ),
+        ]),
+    };
+
+    runner
+        .prepare(&input)
+        .await
+        .expect("prepare should succeed");
+    let execution = runner.run(&input).await.expect("run should succeed");
+    runner
+        .validate(&execution)
+        .await
+        .expect("validate should succeed");
+
+    assert!(execution
+        .findings
+        .iter()
+        .any(|finding| finding.metadata.get("evidence_case_id")
+            == Some(&"witness-case-1".to_string())));
+}
+
 fn is_semantic_report(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())

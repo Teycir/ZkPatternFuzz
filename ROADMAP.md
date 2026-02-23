@@ -869,7 +869,7 @@ gh run watch
   - [x] Generate formal invariants from informal descriptions
   - [x] Identify security-critical properties ("must never", "always", "only if")
 - [ ] Build semantic violation detector:
-  - [ ] Compare fuzzer-generated witnesses against extracted intent
+  - [x] Compare fuzzer-generated witnesses against extracted intent (via external execution-evidence payload ingestion)
   - [x] Classify violations: exploitable vs benign
   - [x] Rank by severity based on security impact
 - [ ] Add exploitability classifier:

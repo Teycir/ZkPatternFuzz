@@ -76,6 +76,8 @@ struct SemanticIntentRecord {
 #[derive(Debug, Clone, Serialize)]
 struct SemanticViolationRecord {
     finding_id: String,
+    detector: String,
+    evidence_case_id: Option<String>,
     source_path: PathBuf,
     suspicious_marker: String,
     violation_summary: String,
@@ -96,6 +98,14 @@ struct SemanticTrackReport {
     findings_count: usize,
     intents: Vec<SemanticIntentRecord>,
     violations: Vec<SemanticViolationRecord>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct SemanticExecutionEvidenceCase {
+    case_id: String,
+    accepted: bool,
+    violates_intent: bool,
+    summary: String,
 }
 
 #[derive(Default)]
@@ -190,6 +200,84 @@ impl TrackRunner for SemanticTrackRunner {
         let dominant_intent = select_dominant_intent_line(&merged_intent);
         let mut findings = Vec::new();
         let mut violations = Vec::new();
+        let execution_evidence_cases = load_execution_evidence_cases(input)?;
+
+        for evidence_case in &execution_evidence_cases {
+            if !evidence_case_violates_intent(evidence_case, &merged_intent) {
+                continue;
+            }
+
+            let finding_id = format!("semantic-violation-{:03}", findings.len() + 1);
+            let violation_summary = format!(
+                "Execution evidence `{}` indicates semantic-intent mismatch: {}",
+                evidence_case.case_id, evidence_case.summary
+            );
+            let assessment = adapter
+                .classify_exploitability(&merged_intent, &violation_summary)
+                .await?;
+            let severity = severity_from_assessment(&assessment);
+            let fix_suggestion = "Bind witness/proof acceptance to explicit semantic invariants and reject this case in verifier/oracle validation.".to_string();
+
+            let mut metadata = BTreeMap::new();
+            metadata.insert(
+                "source_path".to_string(),
+                format!("external_execution_evidence:{}", evidence_case.case_id),
+            );
+            metadata.insert(
+                "evidence_case_id".to_string(),
+                evidence_case.case_id.clone(),
+            );
+            metadata.insert(
+                "evidence_source".to_string(),
+                "external_execution_evidence".to_string(),
+            );
+            metadata.insert(
+                "exploitability_confidence".to_string(),
+                assessment.confidence.to_string(),
+            );
+            metadata.insert(
+                "exploitable".to_string(),
+                assessment.exploitable.to_string(),
+            );
+            metadata.insert("intent_provider".to_string(), adapter_name.clone());
+            metadata.insert(
+                "generator_priority".to_string(),
+                generator_priority_for_severity(severity).to_string(),
+            );
+            metadata.insert(
+                "generator_reason".to_string(),
+                format!("semantic_evidence_violation:{}", evidence_case.case_id),
+            );
+            metadata.insert("intent_anchor".to_string(), dominant_intent.clone());
+            metadata.insert("fix_suggestion".to_string(), fix_suggestion.clone());
+
+            findings.push(TrackFinding {
+                id: finding_id.clone(),
+                track: self.track(),
+                title: format!(
+                    "Potential semantic intent violation in evidence case {}",
+                    evidence_case.case_id
+                ),
+                summary: format!(
+                    "{violation_summary}. {}. Suggested fix: {fix_suggestion}",
+                    assessment.rationale
+                ),
+                severity,
+                reproducible: true,
+                evidence_paths: vec![],
+                metadata,
+            });
+            violations.push(SemanticViolationRecord {
+                finding_id,
+                detector: "execution_evidence".to_string(),
+                evidence_case_id: Some(evidence_case.case_id.clone()),
+                source_path: PathBuf::from("external_execution_evidence"),
+                suspicious_marker: "witness_or_proof_violation".to_string(),
+                violation_summary,
+                fix_suggestion,
+                assessment,
+            });
+        }
 
         for document in source_documents
             .iter()
@@ -251,6 +339,8 @@ impl TrackRunner for SemanticTrackRunner {
             });
             violations.push(SemanticViolationRecord {
                 finding_id,
+                detector: "source_marker".to_string(),
+                evidence_case_id: None,
                 source_path: document.path.clone(),
                 suspicious_marker: marker.to_string(),
                 violation_summary,
@@ -475,6 +565,163 @@ fn parse_adapter_mode(input: &TrackInput) -> String {
         .map(|value| value.trim().to_ascii_lowercase())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "heuristic".to_string())
+}
+
+fn load_execution_evidence_cases(
+    input: &TrackInput,
+) -> PostRoadmapResult<Vec<SemanticExecutionEvidenceCase>> {
+    let Some(payload) = metadata_inline_or_file(
+        input,
+        "semantic_execution_evidence_json",
+        "semantic_execution_evidence_path",
+    )?
+    else {
+        return Ok(Vec::new());
+    };
+
+    parse_execution_evidence_cases(&payload).ok_or_else(|| {
+        PostRoadmapError::Configuration(
+            "semantic execution evidence payload is present but not parseable".to_string(),
+        )
+    })
+}
+
+fn parse_execution_evidence_cases(payload: &str) -> Option<Vec<SemanticExecutionEvidenceCase>> {
+    let value = serde_json::from_str::<serde_json::Value>(payload).ok()?;
+    let cases_value = if let Some(cases) = value.get("cases") {
+        cases.clone()
+    } else {
+        value.clone()
+    };
+    let cases = cases_value.as_array()?;
+
+    let mut parsed = Vec::new();
+    for (idx, case_value) in cases.iter().enumerate() {
+        let Some(case_object) = case_value.as_object() else {
+            continue;
+        };
+        let case_id = case_object
+            .get("id")
+            .or_else(|| case_object.get("case_id"))
+            .and_then(serde_json::Value::as_str)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("case-{}", idx + 1));
+
+        let accepted = case_object
+            .get("accepted")
+            .or_else(|| case_object.get("verified"))
+            .or_else(|| case_object.get("success"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let violates_intent = case_object
+            .get("violates_intent")
+            .or_else(|| case_object.get("semantic_violation"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let summary = build_case_summary(case_object);
+
+        parsed.push(SemanticExecutionEvidenceCase {
+            case_id,
+            accepted,
+            violates_intent,
+            summary,
+        });
+    }
+
+    Some(parsed)
+}
+
+fn build_case_summary(case_object: &serde_json::Map<String, serde_json::Value>) -> String {
+    let mut parts = Vec::new();
+    for key in [
+        "summary",
+        "description",
+        "result",
+        "observation",
+        "witness",
+        "proof",
+        "public_inputs",
+    ] {
+        if let Some(value) = case_object.get(key) {
+            match value {
+                serde_json::Value::String(text) => {
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() {
+                        parts.push(trimmed.to_string());
+                    }
+                }
+                serde_json::Value::Array(values) => {
+                    for item in values {
+                        if let Some(text) = item.as_str() {
+                            let trimmed = text.trim();
+                            if !trimmed.is_empty() {
+                                parts.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if parts.is_empty() {
+        return "No case summary provided".to_string();
+    }
+    parts.join(" | ")
+}
+
+fn evidence_case_violates_intent(
+    evidence_case: &SemanticExecutionEvidenceCase,
+    intent: &SemanticIntent,
+) -> bool {
+    if evidence_case.violates_intent {
+        return true;
+    }
+
+    let summary_lc = evidence_case.summary.to_ascii_lowercase();
+    if !evidence_case.accepted {
+        return false;
+    }
+    if !has_semantic_content(intent) {
+        return false;
+    }
+
+    let danger_terms = [
+        "unauthorized",
+        "non-admin",
+        "bypass",
+        "forged",
+        "forgery",
+        "invalid proof",
+        "without auth",
+        "without permission",
+        "replay",
+        "overflow",
+        "underflow",
+    ];
+    let has_danger_signal = danger_terms.iter().any(|term| summary_lc.contains(term));
+    if !has_danger_signal {
+        return false;
+    }
+
+    let intent_text = [
+        intent.required_behaviors.join(" "),
+        intent.forbidden_behaviors.join(" "),
+        intent.security_properties.join(" "),
+        intent.invariants.join(" "),
+    ]
+    .join(" ")
+    .to_ascii_lowercase();
+    let intent_terms = intent_text
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| token.len() >= 4)
+        .collect::<BTreeSet<_>>();
+
+    summary_lc
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| token.len() >= 4)
+        .any(|token| intent_terms.contains(token))
 }
 
 fn report_output_dir(input: &TrackInput) -> PathBuf {
