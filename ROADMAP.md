@@ -1319,7 +1319,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - [x] Detect ≥1 curve operation bug (invalid point handling, identity) (`scripts/run_crypto_curve_bug_probe.sh`; latest probe run 2026-02-23: operation_divergences=742, edge_case_failures=3, findings=745 at `artifacts/crypto/curve_bug_probe/latest_report.json`)
 - [x] Detect ≥1 pairing bug (degenerate case, bilinearity violation) (`scripts/run_crypto_pairing_bug_probe.sh`; latest probe run 2026-02-23: property_failures=80, candidate_accepts_invalid_cases=80, findings=80 at `artifacts/crypto/pairing_bug_probe/latest_report.json`)
 - [x] Property tests: 100% pass rate on reference implementation (`cargo test -p zk-track-crypto`; 14/14 passing on 2026-02-23)
-- [x] Integration with existing attack framework (`crates/zk-track-crypto` is a default post-roadmap track in `src/pipeline/post_roadmap_runner.rs`; campaigns exported from `crates/zk-track-crypto/src/lib.rs`)
+- [x] Integration with existing attack framework (`crates/zk-track-crypto/src/lib.rs` now executes field/curve/pairing campaigns through `CryptoTrackRunner::{prepare,run,validate,emit}` with scorecard + replay artifacts, and remains a default post-roadmap track in `src/pipeline/post_roadmap_runner.rs`)
 
 #### Integration Points
 - Extends `arithmetic_overflow` attack with systematic edge-case coverage
@@ -1355,7 +1355,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - [x] Split deferred work into separate crates/modules with strict boundaries:
   - [x] `crates/zk-postroadmap-core`: shared contracts (`TrackInput`, `TrackFinding`, `ReplayArtifact`, scorecard schema, error taxonomy).
   - [x] `crates/zk-track-boundary`: public-input/serialization/verifier boundary testing only.
-  - [x] `crates/zk-track-compiler`: circuit generation, compiler differential, crash/timeout classification.
+  - [x] `crates/zk-track-compiler`: circuit generation, compiler differential, crash/timeout classification, now wired through `CompilerTrackRunner::{prepare,run,validate,emit}` with scorecard + replay artifact emission.
   - [x] `crates/zk-track-semantic`: intent extraction, semantic violation ranking, exploitability classification.
   - [x] `crates/zk-track-crypto`: field/curve/pairing property fuzzing and reference checks.
   - [x] `src/pipeline/post_roadmap_runner.rs`: orchestration only (no track-specific logic).

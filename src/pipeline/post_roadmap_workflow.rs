@@ -359,7 +359,9 @@ impl Default for PostRoadmapWorkflowConfig {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::env;
     use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use chrono::Utc;
     use zk_postroadmap_core::{
@@ -371,13 +373,19 @@ mod tests {
     use super::*;
 
     fn sample_input() -> TrackInput {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let root = env::temp_dir().join(format!("zkfuzz-post-roadmap-tests-{nonce}"));
+
         TrackInput {
             campaign_id: "workflow".to_string(),
             run_id: "workflow-run".to_string(),
             seed: Some(11),
-            corpus_dir: PathBuf::from("corpus"),
-            evidence_dir: PathBuf::from("evidence"),
-            output_dir: PathBuf::from("output"),
+            corpus_dir: root.join("corpus"),
+            evidence_dir: root.join("evidence"),
+            output_dir: root.join("output"),
             metadata: BTreeMap::new(),
         }
     }
