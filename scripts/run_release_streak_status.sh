@@ -6,8 +6,13 @@ BACKEND_DAYS="${BACKEND_MATURITY_CONSECUTIVE_DAYS:-14}"
 BACKEND_TARGET_SCORE="${BACKEND_MATURITY_CONSECUTIVE_TARGET_SCORE:-5.0}"
 BACKEND_REQUIRED_BACKENDS="${BACKEND_MATURITY_CONSECUTIVE_BACKENDS:-circom,noir,cairo,halo2}"
 CIRCOM_DAYS="${CIRCOM_FLAKE_CONSECUTIVE_DAYS:-14}"
+BACKEND_SCRIPT_PATH="$ROOT_DIR/scripts/backend_maturity_scorecard.sh"
+CIRCOM_SCRIPT_PATH="$ROOT_DIR/scripts/circom_flake_gate.sh"
+BACKEND_SCORECARD_PATH="$ROOT_DIR/artifacts/backend_maturity/latest_scorecard.json"
+CIRCOM_FLAKE_PATH="$ROOT_DIR/artifacts/circom_flake/latest_report.json"
 ENFORCE=0
 VERBOSE=0
+SKIP_REFRESH=0
 
 usage() {
   cat <<'USAGE'
@@ -25,6 +30,15 @@ Options:
                                   (default: circom,noir,cairo,halo2)
   --circom-days <int>             Consecutive days target for Circom flake gate
                                   (default: 14)
+  --backend-script <path>         Override backend maturity script path
+                                  (default: scripts/backend_maturity_scorecard.sh)
+  --circom-script <path>          Override Circom flake script path
+                                  (default: scripts/circom_flake_gate.sh)
+  --backend-scorecard-path <path> Override backend scorecard JSON input path
+                                  (default: artifacts/backend_maturity/latest_scorecard.json)
+  --circom-flake-path <path>      Override Circom flake JSON input path
+                                  (default: artifacts/circom_flake/latest_report.json)
+  --skip-refresh                  Do not execute child scripts; summarize existing JSON inputs only
   --verbose                       Print raw child-script output in addition to compact summary
   --enforce                       Exit non-zero when either streak gate is failing
   -h, --help                      Show this help
@@ -48,6 +62,26 @@ while [[ $# -gt 0 ]]; do
     --circom-days)
       CIRCOM_DAYS="$2"
       shift 2
+      ;;
+    --backend-script)
+      BACKEND_SCRIPT_PATH="$2"
+      shift 2
+      ;;
+    --circom-script)
+      CIRCOM_SCRIPT_PATH="$2"
+      shift 2
+      ;;
+    --backend-scorecard-path)
+      BACKEND_SCORECARD_PATH="$2"
+      shift 2
+      ;;
+    --circom-flake-path)
+      CIRCOM_FLAKE_PATH="$2"
+      shift 2
+      ;;
+    --skip-refresh)
+      SKIP_REFRESH=1
+      shift
       ;;
     --verbose)
       VERBOSE=1
@@ -78,17 +112,14 @@ if ! [[ "$CIRCOM_DAYS" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-BACKEND_SCORECARD_PATH="$ROOT_DIR/artifacts/backend_maturity/latest_scorecard.json"
-CIRCOM_FLAKE_PATH="$ROOT_DIR/artifacts/circom_flake/latest_report.json"
-
 backend_cmd=(
-  "$ROOT_DIR/scripts/backend_maturity_scorecard.sh"
+  "$BACKEND_SCRIPT_PATH"
   --consecutive-days "$BACKEND_DAYS"
   --consecutive-target-score "$BACKEND_TARGET_SCORE"
   --consecutive-required-backends "$BACKEND_REQUIRED_BACKENDS"
 )
 circom_cmd=(
-  "$ROOT_DIR/scripts/circom_flake_gate.sh"
+  "$CIRCOM_SCRIPT_PATH"
   --required-consecutive-days "$CIRCOM_DAYS"
 )
 
@@ -105,7 +136,10 @@ cleanup() {
 trap cleanup EXIT
 
 set +e
-if [[ "$VERBOSE" -eq 1 ]]; then
+if [[ "$SKIP_REFRESH" -eq 1 ]]; then
+  backend_exit=0
+  circom_exit=0
+elif [[ "$VERBOSE" -eq 1 ]]; then
   "${backend_cmd[@]}"
   backend_exit=$?
   "${circom_cmd[@]}"
