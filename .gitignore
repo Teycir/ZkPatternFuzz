@@ -25,10 +25,15 @@ Thumbs.db
 artifacts/
 *.log
 /.rustup/
+.npm/
 ZkFuzz/.scan_run_artifacts/
 ZkFuzz/_build_cache/
 ZkFuzz/report_*/
 ZkFuzz/scan_run*/
+ZkFuzz/formal_bridge/
+ZkFuzz/progress.json
+ZkFuzz/report.json
+ZkFuzz/report.md
 
 # Development tools
 .history
