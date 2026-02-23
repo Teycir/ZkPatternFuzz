@@ -1,8 +1,16 @@
-# Mistral AI Integration for ZkPatternFuzz
+# Mistral AI Workflow Notes for ZkPatternFuzz
 
 ## Overview
 
-ZkPatternFuzz now includes comprehensive Mistral AI integration for AI-assisted security pentesting of zero-knowledge circuits. This integration enhances the fuzzing workflow with intelligent analysis, invariant generation, and result interpretation.
+Status (2026-02-23): the scanner has no hard runtime link to Mistral (or any AI provider).  
+AI is an external user/operator workflow: the user reads code and fuzzer output artifacts, then runs analysis and remediation planning out-of-band.
+
+The semantic pipeline exports handoff files (for example `ai_ingest_bundle.json` and `ai_exploitability_worklist.json`) but does not:
+- call external AI APIs from scanner runtime
+- host an embedded model runtime
+- ingest AI responses automatically into scanner execution
+
+This document should be read as workflow guidance and historical integration context, not as an active in-process AI integration contract.
 
 ## Features Implemented
 

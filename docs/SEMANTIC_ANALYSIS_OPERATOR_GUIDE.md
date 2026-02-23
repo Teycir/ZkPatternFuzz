@@ -91,6 +91,7 @@ Outputs:
 - aggregated exit report at `artifacts/semantic_exit/latest_report.json`
 
 This flow exports AI-ingest bundles and worklists only; external AI responses remain out-of-band.
+There is no hard runtime AI integration in the scanner: AI is an external user/operator workflow that reads code + emitted artifacts and then acts manually.
 
 ### 5.1 Manual precision workflow (`>= 80%`)
 

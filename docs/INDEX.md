@@ -187,16 +187,14 @@ Complete guide to all documentation files, ordered by use case and reading level
 ## 🤖 AI Integration
 
 ### 5.5. [MISTRAL_AI_INTEGRATION.md](MISTRAL_AI_INTEGRATION.md) - **15 min read**
-**For:** Using AI-assisted pentesting features   
+**For:** External AI/operator workflow guidance (no in-process AI runtime link)  
 **Contains:**
-- Mistral AI configuration guide
-- AI assistance modes explained
-- Pattern-based invariant generation
-- Result analysis and recommendations
-- YAML configuration generation
-- Best practices and examples
+- Handoff-artifact workflow (`ai_ingest_bundle.json`, worklists)
+- External AI usage model and operator responsibilities
+- Historical integration notes and migration caveats
+- Practical examples for out-of-band analysis
 
-**Start here if:** You want to enable AI-assisted security analysis
+**Start here if:** You want to run AI-assisted analysis as a user-driven external step
 
 ---
 

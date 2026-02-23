@@ -22,6 +22,8 @@ pub const TRACK_MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MAX_SOURCE_BYTES: u64 = 256 * 1024;
 const MAX_DISCOVERED_FILES: usize = 2_000;
 const REPLAY_METRIC_NAME: &str = "deterministic_replay_rate";
+const FALSE_POSITIVE_BUDGET_DIVISOR: u64 = 2;
+const FALSE_POSITIVE_BUDGET_FLOOR: u64 = 1;
 
 const SUPPORTED_CODE_EXTENSIONS: &[&str] = &["circom", "nr", "rs", "cairo", "json"];
 const SUPPORTED_DOC_EXTENSIONS: &[&str] = &["md", "txt", "rst", "adoc"];
@@ -228,16 +230,25 @@ impl TrackRunner for SemanticTrackRunner {
     }
 
     async fn prepare(&self, input: &TrackInput) -> PostRoadmapResult<()> {
-        fs::create_dir_all(report_output_dir(input)).map_err(|error| {
+        let output_dir = report_output_dir(input);
+        fs::create_dir_all(&output_dir).map_err(|error| {
             PostRoadmapError::Infrastructure(format!(
                 "failed to create semantic report output directory `{}`: {error}",
-                report_output_dir(input).display()
+                output_dir.display()
             ))
         })
     }
 
     async fn run(&self, input: &TrackInput) -> PostRoadmapResult<TrackExecution> {
         let started_at = Utc::now();
+        let report_dir = report_output_dir(input);
+        fs::create_dir_all(&report_dir).map_err(|error| {
+            PostRoadmapError::Infrastructure(format!(
+                "failed to create semantic report output directory `{}`: {error}",
+                report_dir.display()
+            ))
+        })?;
+
         let scan_roots = resolve_scan_roots(input);
         let source_paths = discover_source_files(&scan_roots)?;
 
@@ -246,6 +257,13 @@ impl TrackRunner for SemanticTrackRunner {
             if let Some(document) = load_source_document(&source_path)? {
                 source_documents.push(document);
             }
+        }
+
+        if self.intent_adapters.len() > 1 {
+            return Err(PostRoadmapError::Configuration(format!(
+                "semantic track currently supports exactly one explicit intent adapter; received {} via with_intent_adapter()",
+                self.intent_adapters.len()
+            )));
         }
 
         let selected_adapter = if self.intent_adapters.is_empty() {
@@ -374,7 +392,7 @@ impl TrackRunner for SemanticTrackRunner {
             .iter()
             .filter(|document| document.source_type == SemanticSourceType::Code)
         {
-            let Some(marker) = find_suspicious_marker(&document.raw_text) else {
+            let Some(marker) = find_suspicious_marker(&document.intent_text) else {
                 continue;
             };
             if !has_semantic_content(&merged_intent) {
@@ -442,6 +460,7 @@ impl TrackRunner for SemanticTrackRunner {
 
         let report_path = write_semantic_report(
             input,
+            &report_dir,
             &adapter_name,
             &scan_roots,
             &intent_records,
@@ -451,6 +470,7 @@ impl TrackRunner for SemanticTrackRunner {
         )?;
         let ai_ingest_bundle_path = write_ai_ingest_bundle(
             input,
+            &report_dir,
             &adapter_name,
             &scan_roots,
             &source_documents,
@@ -461,6 +481,7 @@ impl TrackRunner for SemanticTrackRunner {
         )?;
         let ai_exploitability_worklist_path = write_ai_exploitability_worklist(
             input,
+            &report_dir,
             &adapter_name,
             &scan_roots,
             &dominant_intent,
@@ -469,10 +490,9 @@ impl TrackRunner for SemanticTrackRunner {
             &findings,
         )?;
         let actionable_report_path =
-            write_semantic_actionable_report(input, &findings, &violations)?;
+            write_semantic_actionable_report(input, &report_dir, &findings, &violations)?;
 
-        let scorecard =
-            build_scorecard(source_documents.len(), intent_records.len(), findings.len());
+        let scorecard = build_scorecard(source_documents.len(), intent_records.len(), &findings);
         let replay_artifacts = vec![ReplayArtifact {
             replay_id: format!("semantic-replay-{}", input.run_id),
             track: self.track(),
@@ -1109,7 +1129,7 @@ fn severity_from_assessment(assessment: &ExploitabilityAssessment) -> FindingSev
     match (assessment.exploitable, assessment.confidence) {
         (true, confidence) if confidence >= 90 => FindingSeverity::Critical,
         (true, confidence) if confidence >= 75 => FindingSeverity::High,
-        (_, confidence) if confidence >= 55 => FindingSeverity::Medium,
+        (true, confidence) if confidence >= 55 => FindingSeverity::Medium,
         _ => FindingSeverity::Low,
     }
 }
@@ -1124,11 +1144,30 @@ fn generator_priority_for_severity(severity: FindingSeverity) -> u8 {
     }
 }
 
-fn build_scorecard(files_scanned: usize, intent_sources: usize, findings: usize) -> Scorecard {
+fn build_scorecard(
+    files_scanned: usize,
+    intent_sources: usize,
+    findings: &[TrackFinding],
+) -> Scorecard {
+    let findings_count = findings.len();
+    let false_positive_count = findings
+        .iter()
+        .filter(|finding| {
+            finding
+                .metadata
+                .get("exploitable")
+                .map(|value| value.trim().eq_ignore_ascii_case("false"))
+                .unwrap_or(false)
+        })
+        .count() as u64;
+    let false_positive_budget = (findings_count as u64)
+        .saturating_div(FALSE_POSITIVE_BUDGET_DIVISOR)
+        .saturating_add(FALSE_POSITIVE_BUDGET_FLOOR);
+
     let mut coverage_counts = BTreeMap::new();
     coverage_counts.insert("files_scanned".to_string(), files_scanned as u64);
     coverage_counts.insert("intent_sources".to_string(), intent_sources as u64);
-    coverage_counts.insert("findings".to_string(), findings as u64);
+    coverage_counts.insert("findings".to_string(), findings_count as u64);
 
     let intent_coverage = if files_scanned > 0 {
         intent_sources as f64 / files_scanned as f64
@@ -1136,7 +1175,7 @@ fn build_scorecard(files_scanned: usize, intent_sources: usize, findings: usize)
         0.0
     };
     let finding_density = if files_scanned > 0 {
-        findings as f64 / files_scanned as f64
+        findings_count as f64 / files_scanned as f64
     } else {
         0.0
     };
@@ -1166,13 +1205,14 @@ fn build_scorecard(files_scanned: usize, intent_sources: usize, findings: usize)
                 passed: true,
             },
         ],
-        false_positive_budget: findings as u64 + 2,
-        false_positive_count: 0,
+        false_positive_budget,
+        false_positive_count,
     }
 }
 
 fn write_semantic_report(
     input: &TrackInput,
+    report_dir: &Path,
     adapter_name: &str,
     roots: &[PathBuf],
     intents: &[SemanticIntentRecord],
@@ -1199,14 +1239,6 @@ fn write_semantic_report(
             input.run_id
         ))
     })?;
-
-    let report_dir = report_output_dir(input);
-    fs::create_dir_all(&report_dir).map_err(|error| {
-        PostRoadmapError::Persistence(format!(
-            "failed to create semantic report directory `{}`: {error}",
-            report_dir.display()
-        ))
-    })?;
     let report_path = report_dir.join("semantic_track_report.json");
     fs::write(&report_path, report_json).map_err(|error| {
         PostRoadmapError::Persistence(format!(
@@ -1220,6 +1252,7 @@ fn write_semantic_report(
 #[allow(clippy::too_many_arguments)]
 fn write_ai_ingest_bundle(
     input: &TrackInput,
+    report_dir: &Path,
     adapter_name: &str,
     roots: &[PathBuf],
     source_documents: &[SemanticSourceDocument],
@@ -1228,7 +1261,7 @@ fn write_ai_ingest_bundle(
     violations: &[SemanticViolationRecord],
     findings: &[TrackFinding],
 ) -> PostRoadmapResult<PathBuf> {
-    let source_documents = source_documents
+    let ai_source_documents = source_documents
         .iter()
         .map(|document| AiIngestDocument {
             path: document.path.clone(),
@@ -1244,7 +1277,7 @@ fn write_ai_ingest_bundle(
         mode: "output_only_for_external_ai".to_string(),
         adapter: adapter_name.to_string(),
         roots: roots.to_vec(),
-        source_documents,
+        source_documents: ai_source_documents,
         extracted_intents: intents.to_vec(),
         execution_evidence_cases: execution_evidence_cases.to_vec(),
         violations: violations.to_vec(),
@@ -1265,14 +1298,6 @@ fn write_ai_ingest_bundle(
             input.run_id
         ))
     })?;
-
-    let report_dir = report_output_dir(input);
-    fs::create_dir_all(&report_dir).map_err(|error| {
-        PostRoadmapError::Persistence(format!(
-            "failed to create AI ingest bundle directory `{}`: {error}",
-            report_dir.display()
-        ))
-    })?;
     let bundle_path = report_dir.join("ai_ingest_bundle.json");
     fs::write(&bundle_path, bundle_json).map_err(|error| {
         PostRoadmapError::Persistence(format!(
@@ -1284,17 +1309,18 @@ fn write_ai_ingest_bundle(
 }
 
 fn truncate_bundle_text(value: &str, max_chars: usize) -> String {
-    if value.chars().count() <= max_chars {
-        return value.to_string();
-    }
     let mut out = String::new();
-    for (index, character) in value.chars().enumerate() {
-        if index >= max_chars {
+    let mut truncated = false;
+    for character in value.chars() {
+        if out.chars().count() >= max_chars {
+            truncated = true;
             break;
         }
         out.push(character);
     }
-    out.push_str("...[truncated]");
+    if truncated {
+        out.push_str("...[truncated]");
+    }
     out
 }
 
@@ -1349,6 +1375,7 @@ fn collect_attack_vector_hints(summary: &str) -> Vec<String> {
 #[allow(clippy::too_many_arguments)]
 fn write_ai_exploitability_worklist(
     input: &TrackInput,
+    report_dir: &Path,
     adapter_name: &str,
     roots: &[PathBuf],
     dominant_intent: &str,
@@ -1469,14 +1496,6 @@ fn write_ai_exploitability_worklist(
             input.run_id
         ))
     })?;
-
-    let report_dir = report_output_dir(input);
-    fs::create_dir_all(&report_dir).map_err(|error| {
-        PostRoadmapError::Persistence(format!(
-            "failed to create AI exploitability worklist directory `{}`: {error}",
-            report_dir.display()
-        ))
-    })?;
     let worklist_path = report_dir.join("ai_exploitability_worklist.json");
     fs::write(&worklist_path, worklist_json).map_err(|error| {
         PostRoadmapError::Persistence(format!(
@@ -1489,6 +1508,7 @@ fn write_ai_exploitability_worklist(
 
 fn write_semantic_actionable_report(
     input: &TrackInput,
+    report_dir: &Path,
     findings: &[TrackFinding],
     violations: &[SemanticViolationRecord],
 ) -> PostRoadmapResult<PathBuf> {
@@ -1563,14 +1583,6 @@ fn write_semantic_actionable_report(
         PostRoadmapError::Persistence(format!(
             "failed to serialize semantic actionable report for run `{}`: {error}",
             input.run_id
-        ))
-    })?;
-
-    let report_dir = report_output_dir(input);
-    fs::create_dir_all(&report_dir).map_err(|error| {
-        PostRoadmapError::Persistence(format!(
-            "failed to create semantic actionable report directory `{}`: {error}",
-            report_dir.display()
         ))
     })?;
     let report_path = report_dir.join("semantic_actionable_report.json");

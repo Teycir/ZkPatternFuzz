@@ -379,7 +379,21 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - Phase 7 items are non-blocking while Phase 8 maturity closure remains the active release track.
 - Promote deferred items back to active only with an assigned owner, fixture plan, and explicit release impact.
 
-**Current Status:** 🟡 Partially implemented. Core P0/P1 engines are merged; remaining active work is limited to Halo2 lookup integration tests and operator documentation.
+### 7.5 Semantic Track Bug Intake (2026-02-23)
+- [ ] Fix adapter selection semantics: `with_intent_adapter()` appends to a list, but `run()` only uses `intent_adapters.first()`; enforce single-adapter API or implement deterministic adapter chaining/merge (`crates/zk-track-semantic/src/lib.rs`).
+- [ ] Make false-positive gate meaningful: `build_scorecard()` currently sets `false_positive_budget = findings + 2` and `false_positive_count = 0`, so `validate()` budget enforcement is effectively non-failing (`crates/zk-track-semantic/src/lib.rs`).
+- [ ] Fix severity mapping bug in `severity_from_assessment()`: medium branch currently matches non-exploitable findings with confidence >=55; constrain medium/high/critical branches to exploitable assessments (`crates/zk-track-semantic/src/lib.rs`).
+- [ ] Align marker scan corpus and intent corpus: marker detection uses `raw_text` while code intent extraction uses comment/doc text (`intent_text`); unify scope or codify intentional divergence (`crates/zk-track-semantic/src/lib.rs`).
+- [ ] Remove duplicate `report_output_dir()` evaluation in `prepare()` error path (`crates/zk-track-semantic/src/lib.rs`).
+- [ ] Clarify `ModelGuidedSemanticIntentAdapter` naming/contract: implementation is heuristic-augmented and does not invoke an external model; either rename or add real model-backed behavior (`crates/zk-track-semantic/src/adapters.rs`).
+- [ ] Consolidate output writer directory handling: currently each writer (`semantic_track_report`, `ai_ingest_bundle`, `ai_exploitability_worklist`, `semantic_actionable_report`) repeats `create_dir_all`; centralize and enforce `mkdir -> serialize -> write` ordering (`crates/zk-track-semantic/src/lib.rs`).
+- [ ] Remove local variable shadowing in `write_ai_ingest_bundle()` (`source_documents` parameter shadowed by local binding) for readability/safety (`crates/zk-track-semantic/src/lib.rs`).
+- [ ] Optimize `truncate_bundle_text()` to single-pass truncation to avoid double full-string traversal (`crates/zk-track-semantic/src/lib.rs`).
+- [ ] Replace magic minimum statement length (`12`) in `statement_candidates()` with a named constant and rationale (`crates/zk-track-semantic/src/adapters.rs`).
+- [ ] Reassess heuristic intent redundancy: `invariants` is currently a union of `required_behaviors`, `forbidden_behaviors`, and `security_properties`; decide whether to keep as compatibility mirror or make it semantically distinct (`crates/zk-track-semantic/src/adapters.rs`).
+- [ ] Add comment-extraction regression tests for inline/trailing block-comment forms and document expected behavior (current parser already handles common multiline block-comment flow; edge semantics should be explicit) (`crates/zk-track-semantic/src/lib.rs`).
+
+**Current Status:** 🟡 Partially implemented. Core P0/P1 engines are merged; Phase 7 now includes the semantic-track bug-intake hardening list above while Phase 8 remains the active release closure track.
 
 ---
 
@@ -879,7 +893,8 @@ gh run watch
 **Goal:** Bridge the gap between constraint satisfaction and semantic correctness by using AI to understand developer intent from documentation/comments.
 
 **Execution Policy:** This section is deferred and starts only after the current roadmap is complete (Phase 8 sustained-gate exit met). It is not part of active release gating.
-**Operator note:** semantic track currently runs in producer-only mode for AI handoff (`ai_ingest_bundle.json` output); external AI responses are handled out-of-band and are not ingested by the scanner.
+**Operator note (no hard AI link):** semantic track runs in producer-only mode for AI handoff (`ai_ingest_bundle.json` / `ai_exploitability_worklist.json`). There is no in-process AI API call path, no background model runtime, and no automatic response-ingest path in the scanner.
+**Ownership model:** AI is treated as an external user/operator that reads repository code plus generated fuzzer artifacts and acts manually (analysis, prioritization, remediation proposals) out-of-band.
 
 **The Problem:**
 - Fuzzer generates witnesses that satisfy all constraints
@@ -893,7 +908,7 @@ gh run watch
   - [x] Extract README/specification documents from project root
   - [x] Build structured intent representation (expected behaviors, invariants, security properties)
 - [x] Implement AI-powered intent analyzer:
-  - [x] Use LLM (Mistral/Claude/GPT-4) to extract semantic requirements from natural language (external-user supplied outputs, no in-process API calls)
+  - [x] Use LLM (Mistral/Claude/GPT-4) only as an external-user workflow to extract semantic requirements from natural language (no in-process API calls and no scanner-side AI execution hook)
   - [x] Generate formal invariants from informal descriptions
   - [x] Identify security-critical properties ("must never", "always", "only if")
 - [x] Build semantic violation detector:
@@ -901,8 +916,8 @@ gh run watch
   - [x] Classify violations: exploitable vs benign
   - [x] Rank by severity based on security impact
 - [x] Add exploitability classifier:
-  - [x] AI analyzes which "extra solutions" enable attacks (producer-only task export in `ai_exploitability_worklist.json`)
-  - [x] Generate proof-of-concept exploits for confirmed violations (producer-only PoC task templates for external AI)
+  - [x] External AI/user analyzes which "extra solutions" enable attacks (producer-only task export in `ai_exploitability_worklist.json`)
+  - [x] External AI/user generates proof-of-concept exploits for confirmed violations (producer-only PoC task templates; scanner does not execute or ingest AI outputs)
   - [x] Provide natural language explanations of vulnerability
 
 #### Implementation Structure
