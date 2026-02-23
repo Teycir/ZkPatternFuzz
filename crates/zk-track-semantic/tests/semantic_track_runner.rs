@@ -199,6 +199,36 @@ async fn semantic_track_runner_end_to_end_generates_report_and_findings() {
         .as_str()
         .expect("instructions string")
         .contains("does not ingest AI responses"));
+    let actionable_report_path = emitted_paths
+        .iter()
+        .find(|path| is_semantic_actionable_report(path))
+        .expect("expected semantic actionable report path");
+    let actionable_report_json =
+        fs::read_to_string(actionable_report_path).expect("read semantic actionable report");
+    let actionable_report_value: serde_json::Value =
+        serde_json::from_str(&actionable_report_json).expect("parse semantic actionable report");
+    assert_eq!(
+        actionable_report_value["mode"],
+        "output_only_for_external_ai"
+    );
+    let actionable_findings = actionable_report_value["findings"]
+        .as_array()
+        .expect("findings as array");
+    assert!(!actionable_findings.is_empty());
+    assert!(
+        actionable_findings[0]["fix_suggestion"]
+            .as_str()
+            .expect("fix_suggestion as str")
+            .contains("enforce")
+            || actionable_findings[0]["fix_suggestion"]
+                .as_str()
+                .expect("fix_suggestion as str")
+                .contains("Replace")
+            || actionable_findings[0]["fix_suggestion"]
+                .as_str()
+                .expect("fix_suggestion as str")
+                .contains("Add")
+    );
 }
 
 #[tokio::test]
@@ -411,5 +441,12 @@ fn is_ai_exploitability_worklist(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .map(|name| name == "ai_exploitability_worklist.json")
+        .unwrap_or(false)
+}
+
+fn is_semantic_actionable_report(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name == "semantic_actionable_report.json")
         .unwrap_or(false)
 }

@@ -177,6 +177,28 @@ struct AiExploitabilityWorklist {
     response_contract: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct ActionableFinding {
+    finding_id: String,
+    severity: String,
+    priority: u8,
+    title: String,
+    source_path: String,
+    fix_suggestion: String,
+    verification_checks: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SemanticActionableReport {
+    schema_version: String,
+    track_version: String,
+    run_id: String,
+    generated_at: DateTime<Utc>,
+    mode: String,
+    findings: Vec<ActionableFinding>,
+    instructions: String,
+}
+
 #[derive(Default)]
 pub struct SemanticTrackRunner {
     intent_adapters: Vec<Box<dyn SemanticIntentAdapter>>,
@@ -446,6 +468,8 @@ impl TrackRunner for SemanticTrackRunner {
             &violations,
             &findings,
         )?;
+        let actionable_report_path =
+            write_semantic_actionable_report(input, &findings, &violations)?;
 
         let scorecard =
             build_scorecard(source_documents.len(), intent_records.len(), findings.len());
@@ -464,6 +488,7 @@ impl TrackRunner for SemanticTrackRunner {
                 report_path,
                 ai_ingest_bundle_path,
                 ai_exploitability_worklist_path,
+                actionable_report_path,
             ],
             notes: "Replay deterministic semantic intent extraction + violation classification"
                 .to_string(),
@@ -1283,6 +1308,16 @@ fn severity_label(severity: FindingSeverity) -> &'static str {
     }
 }
 
+fn severity_priority(severity: FindingSeverity) -> u8 {
+    match severity {
+        FindingSeverity::Critical => 90,
+        FindingSeverity::High => 75,
+        FindingSeverity::Medium => 50,
+        FindingSeverity::Low => 25,
+        FindingSeverity::Info => 10,
+    }
+}
+
 fn collect_attack_vector_hints(summary: &str) -> Vec<String> {
     let summary_lc = summary.to_ascii_lowercase();
     let mut hints = Vec::new();
@@ -1450,6 +1485,102 @@ fn write_ai_exploitability_worklist(
         ))
     })?;
     Ok(worklist_path)
+}
+
+fn write_semantic_actionable_report(
+    input: &TrackInput,
+    findings: &[TrackFinding],
+    violations: &[SemanticViolationRecord],
+) -> PostRoadmapResult<PathBuf> {
+    let mut violation_fix = BTreeMap::new();
+    let mut violation_case = BTreeMap::new();
+    for violation in violations {
+        violation_fix.insert(
+            violation.finding_id.clone(),
+            violation.fix_suggestion.clone(),
+        );
+        if let Some(case_id) = &violation.evidence_case_id {
+            violation_case.insert(violation.finding_id.clone(), case_id.clone());
+        }
+    }
+
+    let mut actionable_findings = findings
+        .iter()
+        .map(|finding| {
+            let source_path = finding
+                .metadata
+                .get("source_path")
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            let fix_suggestion = finding
+                .metadata
+                .get("fix_suggestion")
+                .cloned()
+                .or_else(|| violation_fix.get(&finding.id).cloned())
+                .unwrap_or_else(|| {
+                    "Add explicit invariant checks and update verifier/oracle regression tests."
+                        .to_string()
+                });
+
+            let mut verification_checks = Vec::new();
+            if let Some(case_id) = violation_case.get(&finding.id) {
+                verification_checks.push(format!(
+                    "Replay execution evidence case `{case_id}` and confirm rejection after fix."
+                ));
+            }
+            verification_checks.push(format!(
+                "Add a regression test covering finding `{}` with expected reject behavior.",
+                finding.id
+            ));
+            verification_checks.push(
+                "Confirm updated constraints/verifier preserve valid proof acceptance paths."
+                    .to_string(),
+            );
+
+            ActionableFinding {
+                finding_id: finding.id.clone(),
+                severity: severity_label(finding.severity).to_string(),
+                priority: severity_priority(finding.severity),
+                title: finding.title.clone(),
+                source_path,
+                fix_suggestion,
+                verification_checks,
+            }
+        })
+        .collect::<Vec<_>>();
+    actionable_findings.sort_by(|left, right| right.priority.cmp(&left.priority));
+
+    let actionable_report = SemanticActionableReport {
+        schema_version: POST_ROADMAP_SCHEMA_VERSION.to_string(),
+        track_version: TRACK_MODULE_VERSION.to_string(),
+        run_id: input.run_id.clone(),
+        generated_at: Utc::now(),
+        mode: "output_only_for_external_ai".to_string(),
+        findings: actionable_findings,
+        instructions: "This report is producer output from ZkPatternFuzz. Use it as a prioritized remediation plan; external AI may ingest it and generate patch proposals out-of-band. The scanner does not ingest AI responses in producer-only mode.".to_string(),
+    };
+    let report_json = serde_json::to_string_pretty(&actionable_report).map_err(|error| {
+        PostRoadmapError::Persistence(format!(
+            "failed to serialize semantic actionable report for run `{}`: {error}",
+            input.run_id
+        ))
+    })?;
+
+    let report_dir = report_output_dir(input);
+    fs::create_dir_all(&report_dir).map_err(|error| {
+        PostRoadmapError::Persistence(format!(
+            "failed to create semantic actionable report directory `{}`: {error}",
+            report_dir.display()
+        ))
+    })?;
+    let report_path = report_dir.join("semantic_actionable_report.json");
+    fs::write(&report_path, report_json).map_err(|error| {
+        PostRoadmapError::Persistence(format!(
+            "failed to write semantic actionable report `{}`: {error}",
+            report_path.display()
+        ))
+    })?;
+    Ok(report_path)
 }
 
 #[cfg(test)]

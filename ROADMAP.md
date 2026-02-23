@@ -901,7 +901,7 @@ crates/zk-track-semantic/
 - [ ] Extract intent from 20+ real-world circuits with docs/comments
 - [ ] Detect ≥3 semantic violations missed by constraint-only analysis
 - [ ] Achieve ≥80% precision on exploitability classification (manual validation)
-- [ ] Generate actionable reports with fix suggestions
+- [x] Generate actionable reports with fix suggestions (`semantic_actionable_report.json`)
 
 #### Integration Points
 - Extends existing `underconstrained` attack with semantic awareness
