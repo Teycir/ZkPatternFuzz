@@ -53,6 +53,7 @@ Scope update (2026-02-22): this checklist keeps release-blocking gates only. Exp
   - `./scripts/run_non_circom_collision_stress.sh --enforce`
 - [ ] GitHub Actions `Release Validation` evidence recorded with matching thresholds and archived artifacts:
   - Scheduled strict streak lane runs daily (03:20 UTC) with 14-day maturity/flake enforcement.
+  - Local daily streak triage shortcut: `./scripts/run_release_streak_status.sh` (use `--enforce` for CI-like non-zero exit on streak failure).
   - Manual `workflow_dispatch` run includes rollback validation (`stable_ref`) for cutover sign-off.
 
 ## 6. Documentation And Risk Notes

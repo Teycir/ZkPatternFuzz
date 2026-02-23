@@ -304,6 +304,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Enforce tool sandbox for all readiness/release lanes (`--enforce-tool-sandbox`) and archive gate evidence.
 - [x] Add backend maturity history + consecutive-day streak gate (`scripts/backend_maturity_scorecard.sh`, `scripts/release_candidate_gate.sh`) to enforce 14-day `5.0` closures with runtime-error constraints.
 - [x] Automate a daily strict release-validation streak lane with persisted maturity/flake history (`.github/workflows/release_validation.yml` schedule + cache restore/save).
+- [x] Add one-command streak status runner (`scripts/run_release_streak_status.sh`) to refresh both streak trackers and print remaining-day/projection deltas for daily operations.
 
 ### 8.3 Backend-Specific Closure Plans (Release-Critical)
 
@@ -347,7 +348,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Raise Noir maturity score from `4.5` to `5.0` and begin a non-zero 14-day streak (now `5.0/5.0`, streak `1/14`; scorecard normalization counts skipped integration checks as non-executed instead of failed in `scripts/backend_maturity_scorecard.sh`).
 - [x] Raise Halo2 maturity score from `4.5` to `5.0` and begin a non-zero 14-day streak (now `5.0/5.0`, streak `1/14`; scorecard normalization counts skipped integration checks as non-executed instead of failed in `scripts/backend_maturity_scorecard.sh`).
 - [x] Raise Cairo maturity score from `4.95` to `5.0` and begin a non-zero 14-day streak (now `5.0/5.0`, streak `1/14`; scorecard applies a bounded selector-mismatch grace rate so benign low mismatch does not cap constraint-coverage fidelity in `scripts/backend_maturity_scorecard.sh`).
-- [ ] Continue Circom strict lane daily to move streak from `2/14` to `14/14` (`12` days remaining as of `2026-02-23`; projected earliest completion `2026-03-07` if consecutive passes continue).
+- [ ] Continue Circom strict lane daily to move streak from `2/14` to `14/14` (`12` days remaining as of `2026-02-23`; projected earliest completion `2026-03-07` if consecutive passes continue; run `scripts/run_release_streak_status.sh` each day to refresh both maturity + flake projections).
 
 ---
 
