@@ -1079,28 +1079,28 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
   - [x] Test: serialize in language A, deserialize in language B
 
 #### Future P1 (Post-Roadmap): Solidity Verifier Fuzzer
-- [ ] **Gas-Optimized Verifier Testing:**
-  - [ ] Generate reference verifier (unoptimized)
-  - [ ] Generate gas-optimized verifier (production)
-  - [ ] Differential testing: same inputs → same outputs
-  - [ ] Detect optimization bugs: optimized accepts, reference rejects
-- [ ] **Verifier Input Fuzzing:**
-  - [ ] Fuzz proof bytes: random mutations
-  - [ ] Fuzz public inputs: edge-case values
-  - [ ] Fuzz calldata: malformed ABI encoding
-  - [ ] Test gas limits: does verifier run out of gas?
-  - [ ] Test revert conditions: proper error handling
-- [ ] **Pairing Check Manipulation:**
-  - [ ] Modify pairing equation components
-  - [ ] Test with invalid curve points
-  - [ ] Test with points not in correct subgroup
-  - [ ] Verify rejection of malformed pairing inputs
-- [ ] **Solidity-Specific Edge Cases:**
-  - [ ] Integer overflow in gas calculations
-  - [ ] Array bounds in public input access
-  - [ ] Memory allocation edge cases
-  - [ ] Calldata vs memory confusion
-  - [ ] Reentrancy (if verifier has callbacks)
+- [x] **Gas-Optimized Verifier Testing:** (`run_solidity_verifier_fuzz_campaign` in `crates/zk-track-boundary/src/solidity_verifier_fuzzer.rs`; sample runner `scripts/run_boundary_solidity_verifier_sample.sh`)
+  - [x] Generate reference verifier (unoptimized) (`SolidityVerifierProfile::StrictParity` differential baseline)
+  - [x] Generate gas-optimized verifier (production) (`SolidityVerifierProfile::WeakGasOptimization` bug-probe profile)
+  - [x] Differential testing: same inputs → same outputs (`differential_checks=7500`, strict sample report)
+  - [x] Detect optimization bugs: optimized accepts, reference rejects (`optimized_accepts_reference_rejects=5000` on weak bug probe)
+- [x] **Verifier Input Fuzzing:** (`VerifierInputMutation` in `crates/zk-track-boundary/src/solidity_verifier_fuzzer.rs`)
+  - [x] Fuzz proof bytes: random mutations (`proof_byte_mutation`)
+  - [x] Fuzz public inputs: edge-case values (`public_input_edge_case`)
+  - [x] Fuzz calldata: malformed ABI encoding (`malformed_calldata`)
+  - [x] Test gas limits: does verifier run out of gas? (`gas_limit_stress`)
+  - [x] Test revert conditions: proper error handling (`revert_condition_probe`)
+- [x] **Pairing Check Manipulation:** (`PairingManipulationCase` in `crates/zk-track-boundary/src/solidity_verifier_fuzzer.rs`)
+  - [x] Modify pairing equation components (`pairing_equation_tamper`)
+  - [x] Test with invalid curve points (`invalid_curve_point`)
+  - [x] Test with points not in correct subgroup (`wrong_subgroup_point`)
+  - [x] Verify rejection of malformed pairing inputs (`malformed_pairing_input`)
+- [x] **Solidity-Specific Edge Cases:** (`SolidityEdgeCase` in `crates/zk-track-boundary/src/solidity_verifier_fuzzer.rs`)
+  - [x] Integer overflow in gas calculations (`gas_calculation_overflow`)
+  - [x] Array bounds in public input access (`public_input_array_bounds`)
+  - [x] Memory allocation edge cases (`memory_allocation_edge`)
+  - [x] Calldata vs memory confusion (`calldata_memory_confusion`)
+  - [x] Reentrancy (if verifier has callbacks) (`reentrancy_callback_probe`)
 
 #### Future P1 (Post-Roadmap): Cross-Component Integration Fuzzer
 - [ ] **End-to-End Workflow Testing:**
@@ -1174,8 +1174,8 @@ assert(ref_result == opt_result, "Verifier mismatch!");
 - [x] Detect ≥1 public input binding bug (verifier accepts wrong inputs) (`scripts/run_boundary_public_input_bug_probe.sh`; latest probe run 2026-02-23: verifier_profile=weak_first_input_binding, accepted_mutations=6331, findings=6331 at `artifacts/boundary/public_input_bug_probe/latest_report.json`)
 - [x] Serialization fuzzer: test 100+ edge cases per format (`scripts/run_boundary_serialization_sample.sh`; latest sample run 2026-02-23: formats=3, checks_by_format={binary:168,hex:168,base64:168} at `artifacts/boundary/serialization_sample/latest_report.json`)
 - [x] Detect ≥1 serialization bug (crash, incorrect deserialization) (`scripts/run_boundary_serialization_bug_probe.sh`; latest probe run 2026-02-23: verifier_profile=lenient_legacy, accepted_invalid_cases=212, findings=212 at `artifacts/boundary/serialization_bug_probe/latest_report.json`)
-- [ ] Solidity fuzzer: differential test 500+ proofs (reference vs optimized)
-- [ ] Detect ≥1 gas optimization bug (behavior divergence)
+- [x] Solidity fuzzer: differential test 500+ proofs (reference vs optimized) (`scripts/run_boundary_solidity_verifier_sample.sh`; latest sample run 2026-02-23: proofs=500, differential_checks=7500, divergences=0 at `artifacts/boundary/solidity_verifier_sample/latest_report.json`)
+- [x] Detect ≥1 gas optimization bug (behavior divergence) (`scripts/run_boundary_solidity_verifier_bug_probe.sh`; latest probe run 2026-02-23: differential_divergences=6000, optimized_accepts_reference_rejects=5000, findings=6000 at `artifacts/boundary/solidity_verifier_bug_probe/latest_report.json`)
 - [ ] Cross-component: test 50+ version/configuration combinations
 - [ ] Detect ≥1 integration bug (component mismatch)
 

@@ -1,6 +1,7 @@
 mod adapters;
 mod public_input_fuzzer;
 mod serialization_fuzzer;
+mod solidity_verifier_fuzzer;
 
 use std::path::PathBuf;
 
@@ -20,6 +21,11 @@ pub use serialization_fuzzer::{
     run_serialization_fuzz_campaign, CrossLanguageSerializationCase, ProofSerializationEdgeCase,
     PublicInputSerializationEdgeCase, SerializationFormat, SerializationFuzzConfig,
     SerializationFuzzFinding, SerializationFuzzReport, SerializationVerifierProfile,
+};
+pub use solidity_verifier_fuzzer::{
+    run_solidity_verifier_fuzz_campaign, PairingManipulationCase, SolidityEdgeCase,
+    SolidityVerifierFinding, SolidityVerifierFuzzConfig, SolidityVerifierFuzzReport,
+    SolidityVerifierProfile, VerifierInputMutation,
 };
 
 pub const TRACK_MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
