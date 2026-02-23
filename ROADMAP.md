@@ -445,6 +445,7 @@ Backend coverage snapshot (selected vs target floor=2):
 | `2026-02-23` | `EXT-BATCH-003` | `EXT-007, EXT-008, EXT-009` | `evidence-strict (seed=42, iter=100000, timeout=300, workers=2)` | `3` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_003/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `2026-02-23` | `EXT-BATCH-004` | `EXT-010, EXT-011, EXT-012` | `evidence-strict (seed=42, iter=1000, timeout=30, workers=1)` | `3` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_004/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `2026-02-23` | `EXT-BATCH-005` | `EXT-001, EXT-004, EXT-005` | `evidence-strict (seed=42, iter=1000, timeout=30, workers=1)` | `3` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_005/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
+| `2026-02-23` | `EXT-BATCH-006` | `EXT-004, EXT-005` | `evidence-quickcheck (seed=42, iter=1, timeout=5, workers=1, parallel)` | `2` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_006/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 
 `EXT-BATCH-001` snapshot SHAs (`artifacts/external_targets/ext_batch_001/manifests/target_snapshot.json`):
 - `EXT-001`: `c82b3072d7946a76487a8c1be463fc407045391c`
@@ -471,6 +472,10 @@ Backend coverage snapshot (selected vs target floor=2):
 - `EXT-004`: `bac0b424fe08e0da9e2522a45d77c028acf47dcd`
 - `EXT-005`: `e196b111c1bafaa61b92ae431cd3c3fe9371da05`
 
+`EXT-BATCH-006` snapshot SHAs (`artifacts/external_targets/ext_batch_006/manifests/target_snapshot.json`):
+- `EXT-004`: `396035e3fbcfb696e18dfc08f837d76b4b8931e3bfc62b82ccb6dff17cdca8ca`
+- `EXT-005`: `6df3b38e3bd0ee22d97e80fe6ca8b7730c43f6ed0dadf407574dcc6896c76560`
+
 #### 8.9.5 Logic Finding And Remediation Board
 | Finding ID | Target ID | Class | Severity | Repro Status | Owning Module | Fix Commit/PR | Verification Status |
 |---|---|---|---|---|---|---|---|
@@ -486,9 +491,9 @@ Backend coverage snapshot (selected vs target floor=2):
 | `EXT-FIND-010` | `EXT-011` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `pending` | `[ ] fixed / [ ] revalidated` |
 | `EXT-FIND-011` | `EXT-012` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `pending` | `[ ] fixed / [ ] revalidated` |
 | `EXT-FIND-012` | `EXT-001` | `target-entry-compatibility` | `medium` | `[ ] repro pending / [x] reproduced` | `external target wiring (raw ArgMax entry is not directly executable)` | `add-only wrapper target: ext001_argmax_main_wrapper.circom` | `[x] fixed / [x] revalidated` |
-| `EXT-FIND-013` | `EXT-004` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Cairo backend build path (Scarb preflight)` | `pending (needs target-specific Cairo entry/main resolution)` | `[ ] fixed / [ ] revalidated` |
-| `EXT-FIND-014` | `EXT-005` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Halo2 backend build path (EZKL build exceeds preflight timeout)` | `pending (timeout/profile tuning + target-specific build strategy)` | `[ ] fixed / [ ] revalidated` |
-| `EXT-FIND-015` | `EXT-BATCH-005` | `workflow-stability` | `medium` | `[ ] repro pending / [x] reproduced` | `run-signal report-id allocation (second-granularity collisions)` | `run folder naming now includes run_id suffix to prevent same-second collisions` | `[x] fixed / [ ] revalidated` |
+| `EXT-FIND-013` | `EXT-004` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Cairo backend build path (Scarb preflight)` | `fixed diagnostics path; now shows exact preflight cause (lockfile permission / toolchain mismatch) in run_outcome` | `[x] fixed / [x] revalidated` |
+| `EXT-FIND-014` | `EXT-005` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Halo2 backend build path (EZKL preflight)` | `fixed diagnostics path; now surfaces rustup/cargo root cause text instead of opaque timeout-only failure` | `[x] fixed / [x] revalidated` |
+| `EXT-FIND-015` | `EXT-BATCH-005` | `workflow-stability` | `medium` | `[ ] repro pending / [x] reproduced` | `run-signal report-id allocation (second-granularity collisions)` | `run folder naming now includes run_id suffix to prevent same-second collisions` | `[x] fixed / [x] revalidated` |
 
 #### 8.9.6 Hardening Exit Criteria (External Repo Track)
 - [x] At least `12` externally sourced targets validated from `/media/elements/Repos` with representation across all four backends.
