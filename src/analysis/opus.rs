@@ -27,7 +27,7 @@
 use crate::config::generator::{ConfigGenerator, DetectedPattern, PatternType};
 use crate::config::v2::{FuzzConfigV2, Invariant, InvariantOracle, InvariantType, SchedulePhase};
 use crate::config::{Attack, Campaign, FuzzConfig, Input, Parameters, ReportingConfig, Target};
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use zk_core::{AttackType, Framework};
@@ -1029,7 +1029,14 @@ pub struct GeneratedConfig {
 impl GeneratedConfig {
     /// Save configuration to file
     pub fn save(&self, output_dir: impl AsRef<Path>) -> anyhow::Result<PathBuf> {
-        self.save_with_rewrite(output_dir, None)
+        self.save_with_rewrite(output_dir, None, SavePolicy::Overwrite)?
+            .ok_or_else(|| anyhow!("internal error: overwrite save unexpectedly skipped"))
+    }
+
+    /// Save configuration to file without overwriting an existing file.
+    /// Returns `Ok(None)` when the target path already exists.
+    pub fn save_add_only(&self, output_dir: impl AsRef<Path>) -> anyhow::Result<Option<PathBuf>> {
+        self.save_with_rewrite(output_dir, None, SavePolicy::AddOnly)
     }
 
     /// Save configuration with a custom root placeholder (e.g. ${TARGET_REPO})
@@ -1043,19 +1050,47 @@ impl GeneratedConfig {
         if placeholder.is_empty() {
             return self.save(output_dir);
         }
-        self.save_with_rewrite(output_dir, Some((root.as_ref(), placeholder)))
+        self.save_with_rewrite(
+            output_dir,
+            Some((root.as_ref(), placeholder)),
+            SavePolicy::Overwrite,
+        )?
+        .ok_or_else(|| anyhow!("internal error: overwrite save unexpectedly skipped"))
+    }
+
+    /// Save configuration with placeholder without overwriting an existing file.
+    /// Returns `Ok(None)` when the target path already exists.
+    pub fn save_with_placeholder_add_only(
+        &self,
+        output_dir: impl AsRef<Path>,
+        root: impl AsRef<Path>,
+        placeholder: &str,
+    ) -> anyhow::Result<Option<PathBuf>> {
+        let placeholder = placeholder.trim();
+        if placeholder.is_empty() {
+            return self.save_add_only(output_dir);
+        }
+        self.save_with_rewrite(
+            output_dir,
+            Some((root.as_ref(), placeholder)),
+            SavePolicy::AddOnly,
+        )
     }
 
     fn save_with_rewrite(
         &self,
         output_dir: impl AsRef<Path>,
         rewrite: Option<(&Path, &str)>,
-    ) -> anyhow::Result<PathBuf> {
+        policy: SavePolicy,
+    ) -> anyhow::Result<Option<PathBuf>> {
         let output_dir = output_dir.as_ref();
         std::fs::create_dir_all(output_dir)?;
 
         let filename = format!("{}.yaml", self.circuit_name);
         let path = output_dir.join(&filename);
+        if matches!(policy, SavePolicy::AddOnly) && path.exists() {
+            return Ok(None);
+        }
 
         let mut config = self.config.clone();
         let display_path = if let Some((root, placeholder)) = rewrite {
@@ -1092,8 +1127,14 @@ impl GeneratedConfig {
         let yaml = serde_yaml::to_string(&config)?;
         std::fs::write(&path, format!("{}{}", header, yaml))?;
 
-        Ok(path)
+        Ok(Some(path))
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum SavePolicy {
+    Overwrite,
+    AddOnly,
 }
 
 fn rewrite_zk0d_path(path: &Path) -> String {

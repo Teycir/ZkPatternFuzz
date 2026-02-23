@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -32,12 +32,16 @@ struct Args {
     extensions: String,
 
     /// Save generated YAML configs (skimmer only)
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     save_configs: bool,
 
     /// Directory for generated YAML configs
-    #[arg(long, default_value = "campaigns/zk0d/skimmer")]
+    #[arg(long, default_value = "reports/zk0d/skimmer/generated_configs")]
     config_dir: String,
+
+    /// Write mode for generated YAML configs
+    #[arg(long, value_enum, default_value_t = ConfigWriteMode::AddOnly)]
+    config_write_mode: ConfigWriteMode,
 
     /// Output directory for summary
     #[arg(long, default_value = "reports/zk0d/skimmer")]
@@ -46,6 +50,12 @@ struct Args {
     /// Number of top candidates to display
     #[arg(long, default_value_t = 40)]
     top: usize,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ConfigWriteMode {
+    AddOnly,
+    Overwrite,
 }
 
 #[derive(Debug, Serialize)]
@@ -173,13 +183,32 @@ fn main() -> anyhow::Result<()> {
     if args.save_configs {
         let config_dir = Path::new(&args.config_dir);
         std::fs::create_dir_all(config_dir)?;
+        let mut saved_configs = 0usize;
+        let mut skipped_existing = 0usize;
         for gen in &generated {
-            if let Some(placeholder) = root_placeholder.as_deref() {
-                gen.save_with_placeholder(config_dir, &root, placeholder)?;
+            let saved_path = match (args.config_write_mode, root_placeholder.as_deref()) {
+                (ConfigWriteMode::Overwrite, Some(placeholder)) => {
+                    Some(gen.save_with_placeholder(config_dir, &root, placeholder)?)
+                }
+                (ConfigWriteMode::Overwrite, None) => Some(gen.save(config_dir)?),
+                (ConfigWriteMode::AddOnly, Some(placeholder)) => {
+                    gen.save_with_placeholder_add_only(config_dir, &root, placeholder)?
+                }
+                (ConfigWriteMode::AddOnly, None) => gen.save_add_only(config_dir)?,
+            };
+            if saved_path.is_some() {
+                saved_configs += 1;
             } else {
-                gen.save(config_dir)?;
+                skipped_existing += 1;
             }
         }
+        println!(
+            "Generated configs: saved={}, skipped_existing={} (mode={:?}) at {}",
+            saved_configs,
+            skipped_existing,
+            args.config_write_mode,
+            config_dir.display()
+        );
     }
 
     println!(
