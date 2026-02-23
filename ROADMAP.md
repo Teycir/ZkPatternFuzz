@@ -396,30 +396,35 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 **Target source root:** `/media/elements/Repos`.
 
 #### 8.9.1 Intake Checklist
-- [ ] Build and freeze the candidate repo inventory from `/media/elements/Repos` (name, framework, commit hash, license).
-- [ ] Select initial priority set with balanced backend coverage (Circom/Noir/Cairo/Halo2).
-- [ ] Record selected target commit SHAs and circuit entrypoints before first run.
-- [ ] Classify each target as `safe-regression` or `vulnerable-ground-truth` expectation.
-- [ ] Add each selected target into matrix YAMLs used by manual campaigns.
+- [x] Build and freeze the candidate repo inventory from `/media/elements/Repos` (name, framework, commit hash, license).
+- [x] Select initial priority set with balanced backend coverage (Circom/Noir/Cairo/Halo2).
+- [x] Record selected target commit SHAs and circuit entrypoints before first run.
+- [x] Classify each target as `safe-regression` or `vulnerable-ground-truth` expectation.
+- [x] Add each selected target into matrix YAMLs used by manual campaigns.
+
+Inventory + matrix references:
+- `targets/external_repo_inventory_2026-02-23.json`
+- `targets/zk0d_matrix_external_manual.yaml`
 
 #### 8.9.2 Target Selection Board
 | Target ID | Repo Path | Backend | Circuit/Program Entry | Expected Class | Priority | Owner | Intake Status |
 |---|---|---|---|---|---|---|---|
-| EXT-001 | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/ArgMax.circom` | `unknown` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
-| EXT-002 | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_bulk_assignment.circom` | `unknown` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-001 | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/ArgMax.circom` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
+| EXT-002 | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_bulk_assignment.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
 | EXT-003 | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_vuln_iszero.circom` | `vulnerable-ground-truth` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-004 | `/media/elements/Repos/zkml/orion` | `cairo` | `Scarb.toml` | `unknown` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
-| EXT-005 | `/media/elements/Repos/zkml/ezkl` | `halo2` | `Cargo.toml` | `unknown` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
-| EXT-006 | `/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits` | `halo2` | `zkevm-circuits/Cargo.toml` | `unknown` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
-| EXT-007 | `/media/elements/Repos` | `noir` | `TBD (second Noir target discovery)` | `unknown` | `P1` | `unassigned` | `[ ] planned / [ ] active / [ ] done` |
-| EXT-008 | `/media/elements/Repos` | `cairo` | `TBD (second Cairo target discovery)` | `unknown` | `P1` | `unassigned` | `[ ] planned / [ ] active / [ ] done` |
+| EXT-004 | `/media/elements/Repos/zkml/orion` | `cairo` | `Scarb.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
+| EXT-005 | `/media/elements/Repos/zkml/ezkl` | `halo2` | `Cargo.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
+| EXT-006 | `/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits` | `halo2` | `zkevm-circuits/Cargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-007 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `docs/examples/circuits/hello_circuit/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-008 | `/media/elements/Repos/zkml/orion` | `cairo` | `tests/ml/linear_classifier_test.cairo` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-009 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `barretenberg/docs/examples/fixtures/main/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
 
 Backend coverage snapshot (selected vs target floor=2):
 | Backend | Selected Targets | Floor | Coverage Status |
 |---|---:|---:|---|
 | Circom | 3 | 2 | `met` |
-| Noir | 0 | 2 | `gap` |
-| Cairo | 1 | 2 | `gap` |
+| Noir | 2 | 2 | `met` |
+| Cairo | 2 | 2 | `met` |
 | Halo2 | 2 | 2 | `met` |
 
 #### 8.9.3 Manual Execution Checklist
@@ -434,7 +439,7 @@ Backend coverage snapshot (selected vs target floor=2):
 |---|---|---|---|---:|---:|---:|---:|---|---|
 | `2026-02-23` | `EXT-BATCH-001` | `EXT-001, EXT-003, EXT-004, EXT-005` | `evidence-strict (seed=42, iter=100000, timeout=300, workers=2)` | `3` | `0.67 (Step 0-5 complete; Step 6-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_001/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `<YYYY-MM-DD>` | `EXT-BATCH-002` | `EXT-002, EXT-006` | `dev` | `0` | `0.00` | `0.00` | `0.00` | `artifacts/external_targets/ext_batch_002` | `[ ] pass / [ ] fail` |
-| `<YYYY-MM-DD>` | `EXT-BATCH-003` | `EXT-007, EXT-008` | `dev` | `0` | `0.00` | `0.00` | `0.00` | `artifacts/external_targets/ext_batch_003` | `[ ] pass / [ ] fail` |
+| `<YYYY-MM-DD>` | `EXT-BATCH-003` | `EXT-007, EXT-008, EXT-009` | `dev` | `0` | `0.00` | `0.00` | `0.00` | `artifacts/external_targets/ext_batch_003` | `[ ] pass / [ ] fail` |
 
 `EXT-BATCH-001` snapshot SHAs (`artifacts/external_targets/ext_batch_001/manifests/target_snapshot.json`):
 - `EXT-001`: `c82b3072d7946a76487a8c1be463fc407045391c`
