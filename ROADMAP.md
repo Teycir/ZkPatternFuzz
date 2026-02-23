@@ -865,17 +865,17 @@ gh run watch
   - [x] Parse circuit source files for inline comments and docstrings
   - [x] Extract README/specification documents from project root
   - [x] Build structured intent representation (expected behaviors, invariants, security properties)
-- [ ] Implement AI-powered intent analyzer:
+- [x] Implement AI-powered intent analyzer:
   - [x] Use LLM (Mistral/Claude/GPT-4) to extract semantic requirements from natural language (external-user supplied outputs, no in-process API calls)
   - [x] Generate formal invariants from informal descriptions
   - [x] Identify security-critical properties ("must never", "always", "only if")
-- [ ] Build semantic violation detector:
+- [x] Build semantic violation detector:
   - [x] Compare fuzzer-generated witnesses against extracted intent (via external execution-evidence payload ingestion)
   - [x] Classify violations: exploitable vs benign
   - [x] Rank by severity based on security impact
-- [ ] Add exploitability classifier:
-  - [ ] AI analyzes which "extra solutions" enable attacks
-  - [ ] Generate proof-of-concept exploits for confirmed violations
+- [x] Add exploitability classifier:
+  - [x] AI analyzes which "extra solutions" enable attacks (producer-only task export in `ai_exploitability_worklist.json`)
+  - [x] Generate proof-of-concept exploits for confirmed violations (producer-only PoC task templates for external AI)
   - [x] Provide natural language explanations of vulnerability
 
 #### Implementation Structure

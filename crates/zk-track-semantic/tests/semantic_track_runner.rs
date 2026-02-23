@@ -172,6 +172,33 @@ async fn semantic_track_runner_end_to_end_generates_report_and_findings() {
         .as_str()
         .expect("instructions string")
         .contains("does not ingest AI responses"));
+    let ai_worklist_path = emitted_paths
+        .iter()
+        .find(|path| is_ai_exploitability_worklist(path))
+        .expect("expected AI exploitability worklist path");
+    let ai_worklist_json =
+        fs::read_to_string(ai_worklist_path).expect("read AI exploitability worklist");
+    let ai_worklist_value: serde_json::Value =
+        serde_json::from_str(&ai_worklist_json).expect("parse AI exploitability worklist JSON");
+    assert_eq!(ai_worklist_value["mode"], "output_only_for_external_ai");
+    assert!(
+        ai_worklist_value["exploitability_tasks"]
+            .as_array()
+            .expect("exploitability_tasks as array")
+            .len()
+            >= 1
+    );
+    assert!(
+        ai_worklist_value["poc_generation_tasks"]
+            .as_array()
+            .expect("poc_generation_tasks as array")
+            .len()
+            >= 1
+    );
+    assert!(ai_worklist_value["instructions"]
+        .as_str()
+        .expect("instructions string")
+        .contains("does not ingest AI responses"));
 }
 
 #[tokio::test]
@@ -377,5 +404,12 @@ fn is_ai_bundle(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .map(|name| name == "ai_ingest_bundle.json")
+        .unwrap_or(false)
+}
+
+fn is_ai_exploitability_worklist(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name == "ai_exploitability_worklist.json")
         .unwrap_or(false)
 }

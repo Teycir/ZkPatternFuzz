@@ -133,6 +133,50 @@ struct AiIngestBundle {
     instructions: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct AiExploitabilityTask {
+    task_id: String,
+    finding_id: String,
+    detector: String,
+    severity: String,
+    source_path: PathBuf,
+    evidence_case_id: Option<String>,
+    evidence_case_summary: Option<String>,
+    extra_solution_candidate: bool,
+    violation_summary: String,
+    intent_anchor: String,
+    attack_vector_hints: Vec<String>,
+    requested_output_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AiPocGenerationTask {
+    task_id: String,
+    finding_id: String,
+    severity: String,
+    objective: String,
+    preconditions: Vec<String>,
+    steps_template: Vec<String>,
+    expected_outcome: String,
+    output_contract: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AiExploitabilityWorklist {
+    schema_version: String,
+    track_version: String,
+    run_id: String,
+    generated_at: DateTime<Utc>,
+    mode: String,
+    adapter: String,
+    roots: Vec<PathBuf>,
+    dominant_intent: String,
+    exploitability_tasks: Vec<AiExploitabilityTask>,
+    poc_generation_tasks: Vec<AiPocGenerationTask>,
+    instructions: String,
+    response_contract: Vec<String>,
+}
+
 #[derive(Default)]
 pub struct SemanticTrackRunner {
     intent_adapters: Vec<Box<dyn SemanticIntentAdapter>>,
@@ -393,6 +437,15 @@ impl TrackRunner for SemanticTrackRunner {
             &violations,
             &findings,
         )?;
+        let ai_exploitability_worklist_path = write_ai_exploitability_worklist(
+            input,
+            &adapter_name,
+            &scan_roots,
+            &dominant_intent,
+            &execution_evidence_cases,
+            &violations,
+            &findings,
+        )?;
 
         let scorecard =
             build_scorecard(source_documents.len(), intent_records.len(), findings.len());
@@ -407,7 +460,11 @@ impl TrackRunner for SemanticTrackRunner {
                 "semantic_track_runner_end_to_end".to_string(),
             ],
             env: BTreeMap::new(),
-            evidence_paths: vec![report_path, ai_ingest_bundle_path],
+            evidence_paths: vec![
+                report_path,
+                ai_ingest_bundle_path,
+                ai_exploitability_worklist_path,
+            ],
             notes: "Replay deterministic semantic intent extraction + violation classification"
                 .to_string(),
         }];
@@ -1214,6 +1271,185 @@ fn truncate_bundle_text(value: &str, max_chars: usize) -> String {
     }
     out.push_str("...[truncated]");
     out
+}
+
+fn severity_label(severity: FindingSeverity) -> &'static str {
+    match severity {
+        FindingSeverity::Critical => "critical",
+        FindingSeverity::High => "high",
+        FindingSeverity::Medium => "medium",
+        FindingSeverity::Low => "low",
+        FindingSeverity::Info => "info",
+    }
+}
+
+fn collect_attack_vector_hints(summary: &str) -> Vec<String> {
+    let summary_lc = summary.to_ascii_lowercase();
+    let mut hints = Vec::new();
+
+    let candidates = [
+        ("non-admin", "authorization bypass"),
+        ("unauthorized", "unauthorized access"),
+        ("bypass", "guardrail bypass"),
+        ("forged", "forged proof acceptance"),
+        ("invalid proof", "invalid proof acceptance"),
+        ("replay", "replay acceptance"),
+        ("overflow", "arithmetic overflow abuse"),
+        ("underflow", "arithmetic underflow abuse"),
+        ("without permission", "missing permission checks"),
+        ("without auth", "missing authorization checks"),
+    ];
+
+    for (needle, label) in candidates {
+        if summary_lc.contains(needle) {
+            hints.push(label.to_string());
+        }
+    }
+    if hints.is_empty() {
+        hints.push("semantic intent mismatch with accepted execution path".to_string());
+    }
+    hints
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_ai_exploitability_worklist(
+    input: &TrackInput,
+    adapter_name: &str,
+    roots: &[PathBuf],
+    dominant_intent: &str,
+    execution_evidence_cases: &[SemanticExecutionEvidenceCase],
+    violations: &[SemanticViolationRecord],
+    findings: &[TrackFinding],
+) -> PostRoadmapResult<PathBuf> {
+    let finding_severity = findings
+        .iter()
+        .map(|finding| {
+            (
+                finding.id.clone(),
+                severity_label(finding.severity).to_string(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let evidence_cases = execution_evidence_cases
+        .iter()
+        .map(|case| (case.case_id.clone(), case))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut exploitability_tasks = Vec::new();
+    let mut poc_generation_tasks = Vec::new();
+
+    for (index, violation) in violations.iter().enumerate() {
+        let task_id = format!("exploitability-task-{:03}", index + 1);
+        let severity = finding_severity
+            .get(&violation.finding_id)
+            .cloned()
+            .unwrap_or_else(|| {
+                severity_label(severity_from_assessment(&violation.assessment)).to_string()
+            });
+        let case = violation
+            .evidence_case_id
+            .as_ref()
+            .and_then(|case_id| evidence_cases.get(case_id))
+            .copied();
+        let extra_solution_candidate = violation.detector == "execution_evidence"
+            && case.map(|item| item.accepted).unwrap_or(false);
+        let evidence_case_summary = case.map(|item| item.summary.clone());
+        let attack_vector_hints = collect_attack_vector_hints(&violation.violation_summary);
+
+        exploitability_tasks.push(AiExploitabilityTask {
+            task_id: task_id.clone(),
+            finding_id: violation.finding_id.clone(),
+            detector: violation.detector.clone(),
+            severity: severity.clone(),
+            source_path: violation.source_path.clone(),
+            evidence_case_id: violation.evidence_case_id.clone(),
+            evidence_case_summary: evidence_case_summary.clone(),
+            extra_solution_candidate,
+            violation_summary: violation.violation_summary.clone(),
+            intent_anchor: dominant_intent.to_string(),
+            attack_vector_hints: attack_vector_hints.clone(),
+            requested_output_fields: vec![
+                "exploitable (boolean)".to_string(),
+                "confidence (0-100 integer)".to_string(),
+                "attack_path (short text)".to_string(),
+                "asset_at_risk (short text)".to_string(),
+                "required_preconditions (array of strings)".to_string(),
+                "recommended_fix_validation (array of checks)".to_string(),
+            ],
+        });
+
+        if violation.assessment.exploitable {
+            let mut preconditions = Vec::new();
+            if let Some(case_id) = &violation.evidence_case_id {
+                preconditions.push(format!("reproduce execution evidence case `{case_id}`"));
+            }
+            preconditions.push(format!("preserve intent anchor `{dominant_intent}`"));
+            preconditions.push(format!("target severity `{severity}`"));
+
+            poc_generation_tasks.push(AiPocGenerationTask {
+                task_id: format!("poc-task-{:03}", poc_generation_tasks.len() + 1),
+                finding_id: violation.finding_id.clone(),
+                severity,
+                objective: format!(
+                    "Demonstrate exploit for semantic violation `{}`",
+                    violation.violation_summary
+                ),
+                preconditions,
+                steps_template: vec![
+                    "Set up baseline valid witness/proof flow.".to_string(),
+                    "Apply the violating witness/proof/public-input mutation.".to_string(),
+                    "Demonstrate unauthorized/invalid acceptance condition.".to_string(),
+                    "Capture reproducible command, input payload, and observed output."
+                        .to_string(),
+                    "Add verifier/constraint assertion that blocks the exploit and rerun."
+                        .to_string(),
+                ],
+                expected_outcome: "Provide a minimal reproducible exploit case plus a validation snippet showing the proposed fix rejects it.".to_string(),
+                output_contract: "Return JSON with keys: poc_title, prerequisites, exploit_steps, expected_result, fix_verification_steps, residual_risk.".to_string(),
+            });
+        }
+    }
+
+    let worklist = AiExploitabilityWorklist {
+        schema_version: POST_ROADMAP_SCHEMA_VERSION.to_string(),
+        track_version: TRACK_MODULE_VERSION.to_string(),
+        run_id: input.run_id.clone(),
+        generated_at: Utc::now(),
+        mode: "output_only_for_external_ai".to_string(),
+        adapter: adapter_name.to_string(),
+        roots: roots.to_vec(),
+        dominant_intent: dominant_intent.to_string(),
+        exploitability_tasks,
+        poc_generation_tasks,
+        instructions: "This worklist is producer output from ZkPatternFuzz. External AI should ingest it, analyze extra-solution attack viability, and return exploitability + PoC outputs out-of-band. The scanner does not ingest AI responses in producer-only mode.".to_string(),
+        response_contract: vec![
+            "exploitability_responses must map to exploitability_tasks by task_id".to_string(),
+            "poc_responses must map to poc_generation_tasks by task_id".to_string(),
+            "each response must be machine-readable JSON without markdown wrappers".to_string(),
+        ],
+    };
+    let worklist_json = serde_json::to_string_pretty(&worklist).map_err(|error| {
+        PostRoadmapError::Persistence(format!(
+            "failed to serialize AI exploitability worklist for run `{}`: {error}",
+            input.run_id
+        ))
+    })?;
+
+    let report_dir = report_output_dir(input);
+    fs::create_dir_all(&report_dir).map_err(|error| {
+        PostRoadmapError::Persistence(format!(
+            "failed to create AI exploitability worklist directory `{}`: {error}",
+            report_dir.display()
+        ))
+    })?;
+    let worklist_path = report_dir.join("ai_exploitability_worklist.json");
+    fs::write(&worklist_path, worklist_json).map_err(|error| {
+        PostRoadmapError::Persistence(format!(
+            "failed to write AI exploitability worklist `{}`: {error}",
+            worklist_path.display()
+        ))
+    })?;
+    Ok(worklist_path)
 }
 
 #[cfg(test)]
