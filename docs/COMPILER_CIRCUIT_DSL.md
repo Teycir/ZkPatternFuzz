@@ -149,6 +149,18 @@ Generated artifacts:
 - `<output>/<pattern_id>/<backend>/*` generated circuits and DSL payloads
 - `<output>/latest_report.json` summary of counts per pattern/backend
 
+10-pattern known-bug campaign sample:
+
+```bash
+scripts/run_circuit_gen_adversarial_top10_sample.sh
+```
+
+This sample ingests:
+- `tests/datasets/circuit_gen/external_ai_patterns.top10.sample.json`
+
+And emits:
+- `artifacts/circuit_gen/adversarial_top10_sample/latest_report.json`
+
 ### Pattern Bundle Schema (JSON)
 
 - `source`: producer identity (for example `external_ai_user`)

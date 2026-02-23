@@ -1014,7 +1014,7 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
 - [x] Find ≥1 compiler crash/timeout on adversarial inputs (`scripts/run_circuit_gen_crash_detection_sample.sh`; latest sample run 2026-02-23: timeout=1 crash=1 at `artifacts/circuit_gen/crash_detection_sample/latest_report.json`)
 - [x] Differential mode: test 100+ circuits × 3 compiler versions (`scripts/run_circuit_gen_differential_version_matrix_sample.sh`; latest sample run 2026-02-23: 120 circuits × 3 compiler labels at `artifacts/circuit_gen/differential_version_matrix_sample/latest_report.json`)
 - [ ] Detect ≥1 optimization regression (constraint count increase)
-- [ ] AI generates ≥10 adversarial patterns from known bugs
+- [x] AI generates ≥10 adversarial patterns from known bugs (`scripts/run_circuit_gen_adversarial_top10_sample.sh`; input bundle `tests/datasets/circuit_gen/external_ai_patterns.top10.sample.json`; latest sample run 2026-02-23: 10 patterns at `artifacts/circuit_gen/adversarial_top10_sample/latest_report.json`)
 - [ ] Integration tests validate generated circuits compile on ≥1 backend
 
 #### Value Proposition

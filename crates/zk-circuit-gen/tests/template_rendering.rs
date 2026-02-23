@@ -297,6 +297,27 @@ fn adversarial_generator_consumes_external_ai_bundle() {
 }
 
 #[test]
+fn adversarial_generator_supports_ten_plus_external_patterns() {
+    let tmp = tempdir().expect("tempdir");
+    let bundle_json =
+        include_str!("../../../tests/datasets/circuit_gen/external_ai_patterns.top10.sample.json");
+    let bundle = parse_external_ai_pattern_bundle_json(bundle_json).expect("bundle parse");
+
+    let mut config = AdversarialGenerationConfig::new(tmp.path());
+    config.seed = 2027;
+    let report =
+        generate_adversarial_corpus_from_external_patterns(&bundle, &config).expect("generate");
+
+    assert_eq!(report.total_patterns, 10);
+    assert!(report.total_circuits >= 10);
+    assert!(report.report_path.exists());
+    assert!(report
+        .patterns
+        .iter()
+        .all(|pattern| !pattern.issue_refs.is_empty()));
+}
+
+#[test]
 fn adversarial_pattern_evolution_increases_priority_from_crash_feedback() {
     let bundle_json = r#"
 {

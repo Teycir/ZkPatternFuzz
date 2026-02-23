@@ -1,0 +1,174 @@
+{
+  "source": "external_ai_user",
+  "generated_at": "2026-02-23T00:00:00Z",
+  "notes": [
+    "10-pattern campaign generated from external issue triage",
+    "each pattern maps to a known compiler stress class"
+  ],
+  "patterns": [
+    {
+      "pattern_id": "circom_deep_template_recursion",
+      "rationale": "Stress recursive template expansion and deep expression trees.",
+      "issue_refs": [
+        "https://github.com/iden3/circom/issues/1234"
+      ],
+      "target_backends": [
+        "circom"
+      ],
+      "mutation_strategies": [
+        "deep_nesting"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 9
+    },
+    {
+      "pattern_id": "circom_constraint_fanout_memory",
+      "rationale": "Trigger memory-heavy constraint expansion paths in optimizer stages.",
+      "issue_refs": [
+        "https://github.com/iden3/circom/issues/1903"
+      ],
+      "target_backends": [
+        "circom"
+      ],
+      "mutation_strategies": [
+        "wide_constraints"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 8
+    },
+    {
+      "pattern_id": "circom_optimizer_loop_stress",
+      "rationale": "Exercise pathological loop lowering and pass scheduling pressure.",
+      "issue_refs": [
+        "https://github.com/iden3/circom/issues/1767"
+      ],
+      "target_backends": [
+        "circom"
+      ],
+      "mutation_strategies": [
+        "pathological_loops"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 7
+    },
+    {
+      "pattern_id": "noir_type_inference_boundary",
+      "rationale": "Probe mixed integer/field coercions near type inference boundaries.",
+      "issue_refs": [
+        "https://github.com/noir-lang/noir/issues/6789"
+      ],
+      "target_backends": [
+        "noir"
+      ],
+      "mutation_strategies": [
+        "mixed_types"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 8
+    },
+    {
+      "pattern_id": "noir_constraint_widening",
+      "rationale": "Stress constraint graph widening and IR rewriting over large equalities.",
+      "issue_refs": [
+        "https://github.com/noir-lang/noir/issues/6991"
+      ],
+      "target_backends": [
+        "noir"
+      ],
+      "mutation_strategies": [
+        "wide_constraints"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 6
+    },
+    {
+      "pattern_id": "halo2_selector_density",
+      "rationale": "Exercise high selector density and gate assignment pressure.",
+      "issue_refs": [
+        "https://github.com/privacy-scaling-explorations/halo2/issues/764"
+      ],
+      "target_backends": [
+        "halo2"
+      ],
+      "mutation_strategies": [
+        "wide_constraints"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 6
+    },
+    {
+      "pattern_id": "halo2_expression_depth",
+      "rationale": "Push expression depth to expose synthesis edge behavior.",
+      "issue_refs": [
+        "https://github.com/privacy-scaling-explorations/halo2/issues/755"
+      ],
+      "target_backends": [
+        "halo2"
+      ],
+      "mutation_strategies": [
+        "deep_nesting"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 5
+    },
+    {
+      "pattern_id": "cairo_loop_optimizer_edge",
+      "rationale": "Stress loop handling in lowering and optimization passes.",
+      "issue_refs": [
+        "https://github.com/starkware-libs/cairo/issues/3205"
+      ],
+      "target_backends": [
+        "cairo"
+      ],
+      "mutation_strategies": [
+        "pathological_loops"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 5
+    },
+    {
+      "pattern_id": "cairo_felt_integer_cast",
+      "rationale": "Target felt/u128 conversion boundaries for checker and optimizer behavior.",
+      "issue_refs": [
+        "https://github.com/starkware-libs/cairo/issues/2871"
+      ],
+      "target_backends": [
+        "cairo"
+      ],
+      "mutation_strategies": [
+        "mixed_types"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 5
+    },
+    {
+      "pattern_id": "cross_backend_malformed_ir_guard",
+      "rationale": "Inject malformed tail tokens to verify parser and validator hard-fail paths.",
+      "issue_refs": [
+        "https://github.com/iden3/circom/issues/1688",
+        "https://github.com/noir-lang/noir/issues/6401"
+      ],
+      "target_backends": [
+        "circom",
+        "noir",
+        "halo2",
+        "cairo"
+      ],
+      "mutation_strategies": [
+        "malformed_ir"
+      ],
+      "circuits_per_backend": 1,
+      "mutation_intensity": 2,
+      "priority": 9
+    }
+  ]
+}
