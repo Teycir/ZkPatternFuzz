@@ -4,11 +4,12 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::tempdir;
 use zk_circuit_gen::{
-    evolve_patterns_from_feedback, generate_adversarial_corpus_from_external_patterns,
-    generate_bulk_corpus, generate_random_circuit_dsl, parse_dsl_yaml,
-    parse_external_ai_pattern_bundle_json, parse_pattern_feedback_json, render_backend_template,
-    render_mutated_template, AdversarialGenerationConfig, Assignment, Backend,
-    BulkGenerationConfig, CircuitDsl, ConstraintEq, Expression, MutationStrategy,
+    evolve_patterns_from_feedback, extract_semantic_intent_from_text,
+    generate_adversarial_corpus_from_external_patterns, generate_bulk_corpus,
+    generate_random_circuit_dsl, parse_dsl_yaml, parse_external_ai_pattern_bundle_json,
+    parse_pattern_feedback_json, render_backend_template, render_mutated_template,
+    AdversarialGenerationConfig, Assignment, Backend, BulkGenerationConfig, CircuitDsl,
+    ConstraintEq, Expression, MutationStrategy, SemanticIntentKind,
 };
 
 fn sample_dsl() -> CircuitDsl {
@@ -346,4 +347,48 @@ fn adversarial_pattern_evolution_increases_priority_from_crash_feedback() {
     assert!(evolved.patterns[0].priority > 1);
     assert!(evolved.patterns[0].mutation_intensity > 2);
     assert!(evolved.patterns[0].circuits_per_backend > 3);
+}
+
+#[test]
+fn semantic_intent_extraction_reads_comments_and_docs() {
+    let source = r#"
+template Main() {
+  signal input admin;
+  signal output out;
+  // only admin can mint
+  /* users must not mint without admin role */
+  out <== admin;
+}
+"#;
+    let docs = r#"
+Minting must require admin authorization.
+Amount must be less than 1000.
+"#;
+
+    let extraction = extract_semantic_intent_from_text(source, Some(docs), Some(Backend::Circom));
+    assert_eq!(extraction.source_backend, Some(Backend::Circom));
+    assert!(extraction.comment_lines.len() >= 2);
+    assert!(extraction.documentation_lines.len() >= 2);
+    assert!(extraction
+        .signals
+        .iter()
+        .any(|signal| signal.kind == SemanticIntentKind::AccessControl));
+    assert!(extraction
+        .signals
+        .iter()
+        .any(|signal| signal.kind == SemanticIntentKind::BoundaryCondition));
+    assert!(extraction
+        .signals
+        .iter()
+        .any(|signal| signal.kind == SemanticIntentKind::ForbiddenBehavior));
+}
+
+#[test]
+fn semantic_intent_extraction_dedups_identical_statements() {
+    let source = r#"
+// only admin can mint
+// only admin can mint
+"#;
+    let extraction = extract_semantic_intent_from_text(source, None, None);
+    assert_eq!(extraction.signals.len(), 1);
 }

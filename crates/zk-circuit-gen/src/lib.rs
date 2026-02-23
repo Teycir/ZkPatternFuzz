@@ -279,6 +279,31 @@ pub struct PatternFeedbackBatch {
     pub entries: Vec<PatternFeedback>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticIntentKind {
+    RequiredBehavior,
+    ForbiddenBehavior,
+    AccessControl,
+    BoundaryCondition,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SemanticIntentSignal {
+    pub kind: SemanticIntentKind,
+    pub statement: String,
+    pub confidence: u8,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SemanticIntentExtraction {
+    pub source_backend: Option<Backend>,
+    pub signals: Vec<SemanticIntentSignal>,
+    pub comment_lines: Vec<String>,
+    pub documentation_lines: Vec<String>,
+}
+
 pub fn parse_dsl_yaml(value: &str) -> Result<CircuitDsl, CircuitGenError> {
     serde_yaml::from_str(value).map_err(CircuitGenError::ParseYaml)
 }
@@ -295,6 +320,55 @@ pub fn parse_external_ai_pattern_bundle_json(
 
 pub fn parse_pattern_feedback_json(value: &str) -> Result<PatternFeedbackBatch, CircuitGenError> {
     serde_json::from_str(value).map_err(CircuitGenError::Json)
+}
+
+pub fn extract_semantic_intent_from_text(
+    source_code: &str,
+    documentation: Option<&str>,
+    source_backend: Option<Backend>,
+) -> SemanticIntentExtraction {
+    let comment_lines = collect_comment_lines(source_code);
+    let documentation_lines = documentation
+        .map(|value| {
+            value
+                .lines()
+                .map(normalize_whitespace)
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let mut dedup = BTreeSet::new();
+    let mut signals = Vec::new();
+    for (source, line) in comment_lines
+        .iter()
+        .map(|line| ("comment", line))
+        .chain(documentation_lines.iter().map(|line| ("doc", line)))
+    {
+        if let Some(mut signal) = classify_semantic_intent_line(line) {
+            signal.source = source.to_string();
+            let key = format!(
+                "{}::{}",
+                match signal.kind {
+                    SemanticIntentKind::RequiredBehavior => "required",
+                    SemanticIntentKind::ForbiddenBehavior => "forbidden",
+                    SemanticIntentKind::AccessControl => "access_control",
+                    SemanticIntentKind::BoundaryCondition => "boundary",
+                },
+                signal.statement.to_ascii_lowercase()
+            );
+            if dedup.insert(key) {
+                signals.push(signal);
+            }
+        }
+    }
+
+    SemanticIntentExtraction {
+        source_backend,
+        signals,
+        comment_lines,
+        documentation_lines,
+    }
 }
 
 pub fn render_backend_template(
@@ -934,6 +1008,153 @@ fn sanitize_fs_token(raw: &str) -> String {
         }
     }
     out.trim_matches('_').to_string()
+}
+
+fn normalize_whitespace(raw: &str) -> String {
+    raw.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn collect_comment_lines(source: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut in_block = false;
+
+    for raw_line in source.lines() {
+        let mut line = raw_line;
+        loop {
+            if in_block {
+                if let Some(end) = line.find("*/") {
+                    let comment = normalize_whitespace(&line[..end]);
+                    if !comment.is_empty() {
+                        lines.push(comment);
+                    }
+                    in_block = false;
+                    line = &line[(end + 2)..];
+                    if line.is_empty() {
+                        break;
+                    }
+                    continue;
+                }
+                let comment = normalize_whitespace(line);
+                if !comment.is_empty() {
+                    lines.push(comment);
+                }
+                break;
+            }
+
+            let line_comment_idx = line.find("//");
+            let block_comment_idx = line.find("/*");
+            match (line_comment_idx, block_comment_idx) {
+                (Some(line_idx), Some(block_idx)) if block_idx < line_idx => {
+                    let after = &line[(block_idx + 2)..];
+                    if let Some(end) = after.find("*/") {
+                        let comment = normalize_whitespace(&after[..end]);
+                        if !comment.is_empty() {
+                            lines.push(comment);
+                        }
+                        line = &after[(end + 2)..];
+                        if line.is_empty() {
+                            break;
+                        }
+                    } else {
+                        let comment = normalize_whitespace(after);
+                        if !comment.is_empty() {
+                            lines.push(comment);
+                        }
+                        in_block = true;
+                        break;
+                    }
+                }
+                (Some(line_idx), _) => {
+                    let comment = normalize_whitespace(&line[(line_idx + 2)..]);
+                    if !comment.is_empty() {
+                        lines.push(comment);
+                    }
+                    break;
+                }
+                (None, Some(block_idx)) => {
+                    let after = &line[(block_idx + 2)..];
+                    if let Some(end) = after.find("*/") {
+                        let comment = normalize_whitespace(&after[..end]);
+                        if !comment.is_empty() {
+                            lines.push(comment);
+                        }
+                        line = &after[(end + 2)..];
+                        if line.is_empty() {
+                            break;
+                        }
+                    } else {
+                        let comment = normalize_whitespace(after);
+                        if !comment.is_empty() {
+                            lines.push(comment);
+                        }
+                        in_block = true;
+                        break;
+                    }
+                }
+                (None, None) => break,
+            }
+        }
+    }
+    lines
+}
+
+fn classify_semantic_intent_line(raw: &str) -> Option<SemanticIntentSignal> {
+    let statement = normalize_whitespace(raw);
+    if statement.is_empty() {
+        return None;
+    }
+    let lower = statement.to_ascii_lowercase();
+
+    let has_access = [
+        "admin",
+        "owner",
+        "authorized",
+        "permission",
+        "role",
+        "caller",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    let has_forbidden = [
+        "must not", "never", "forbid", "disallow", "reject", "cannot", "without",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    let has_required = ["must", "require", "ensure", "only", "verify", "enforce"]
+        .iter()
+        .any(|token| lower.contains(token));
+    let has_boundary = [
+        "at least",
+        "at most",
+        "less than",
+        "greater than",
+        "between",
+        "non-zero",
+        "nonzero",
+        "range",
+        "bound",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+
+    let (kind, confidence) = if has_forbidden {
+        (SemanticIntentKind::ForbiddenBehavior, 88)
+    } else if has_access && has_required {
+        (SemanticIntentKind::AccessControl, 92)
+    } else if has_boundary {
+        (SemanticIntentKind::BoundaryCondition, 84)
+    } else if has_required {
+        (SemanticIntentKind::RequiredBehavior, 80)
+    } else {
+        return None;
+    };
+
+    Some(SemanticIntentSignal {
+        kind,
+        statement,
+        confidence,
+        source: String::new(),
+    })
 }
 
 fn validate_dsl(dsl: &CircuitDsl) -> Result<ValidatedDsl, CircuitGenError> {

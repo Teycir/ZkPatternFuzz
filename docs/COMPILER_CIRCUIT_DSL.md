@@ -171,3 +171,27 @@ updates priority/intensity from compiler outcomes:
 - crash-like outcomes (`crash`, `timeout`, `internal_compiler_error`) raise priority
 - crash-like outcomes increase `mutation_intensity` and `circuits_per_backend`
 - patterns are re-sorted by priority before generation
+
+## Semantic Intent Extraction
+
+Use the semantic intent extractor to collect requirement statements from circuit comments
+and optional operator docs:
+
+```bash
+scripts/run_circuit_gen_semantic_sample.sh
+```
+
+Direct command:
+
+```bash
+cargo run -q -p zk-circuit-gen --example extract_semantic_intent -- \
+  --backend circom \
+  --source-file tests/datasets/circuit_gen/semantic_source.sample.circom \
+  --doc-file tests/datasets/circuit_gen/semantic_doc.sample.md \
+  --output-json artifacts/circuit_gen/semantic_intent_sample/latest_report.json
+```
+
+Extraction output includes:
+- `signals[]`: normalized semantic requirement statements with kind/confidence
+- `comment_lines[]`: raw comment-derived statements
+- `documentation_lines[]`: raw doc-derived statements

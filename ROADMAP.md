@@ -943,7 +943,7 @@ crates/zk-track-semantic/
     - [x] Evolve patterns based on compiler crash feedback
 
 - [ ] **Semantic Intent Validation:**
-  - [ ] Extract semantic intent from circuit comments/docs
+  - [x] Extract semantic intent from circuit comments/docs (`extract_semantic_intent_from_text` in `crates/zk-circuit-gen/src/lib.rs`; CLI in `crates/zk-circuit-gen/examples/extract_semantic_intent.rs`; sample runner `scripts/run_circuit_gen_semantic_sample.sh`; sample inputs `tests/datasets/circuit_gen/semantic_source.sample.circom`, `tests/datasets/circuit_gen/semantic_doc.sample.md`; latest sample run 2026-02-23: `artifacts/circuit_gen/semantic_intent_sample/latest_report.json`)
   - [ ] Compile generated circuit and extract constraint count/structure
   - [ ] Verify compiled constraints match intended semantics
   - [ ] Detect constraint gaps (satisfiable but violates intent)
