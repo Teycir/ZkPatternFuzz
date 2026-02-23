@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
+use zk_core::constants::BN254_SCALAR_MODULUS_HEX;
 
 #[test]
 fn test_corpus_add() {
@@ -166,4 +167,19 @@ fn test_load_enforces_max_size() {
     assert!(reader.len() <= 2);
 
     let _ = fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn test_serialized_corpus_rejects_non_canonical_inputs() {
+    let corpus = SerializableCorpus {
+        version: "1.0".to_string(),
+        entries: vec![SerializableEntry {
+            inputs: vec![format!("0x{}", BN254_SCALAR_MODULUS_HEX)],
+            coverage_hash: 123,
+            discovered_new_coverage: false,
+        }],
+    };
+
+    let entries = corpus.to_entries();
+    assert!(entries.is_empty());
 }

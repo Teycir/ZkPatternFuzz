@@ -256,11 +256,13 @@ impl FuzzingEngine {
             ),
         ];
 
+        let expected_constraint_count = Self::expected_constraint_count(executor.as_ref());
+
         // Phase 0 Fix: Wire semantic oracles from config
         Self::add_semantic_oracles_from_config(
             &config,
             executor.field_modulus(),
-            executor.num_constraints(),
+            expected_constraint_count,
             executor.num_public_inputs(),
             &mut oracles,
         );

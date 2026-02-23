@@ -33,7 +33,7 @@ pub fn load_test_case(path: &Path) -> anyhow::Result<CorpusEntry> {
         let hex = v
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Input {} is not a string", i))?;
-        let fe = FieldElement::from_hex(hex)
+        let fe = FieldElement::from_hex_checked(hex)
             .map_err(|e| anyhow::anyhow!("Invalid hex at input {}: {}", i, e))?;
         inputs.push(fe);
     }

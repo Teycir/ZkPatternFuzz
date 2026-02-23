@@ -143,3 +143,46 @@ ai_assistant:
     assert_eq!(ai.max_tokens, 512);
     assert_eq!(ai.modes.len(), 2);
 }
+
+#[cfg(unix)]
+#[test]
+fn test_v2_env_expansion_nonunicode_does_not_panic() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let env_key = format!("ZKFUZZ_NONUNICODE_{}", unique);
+    let env_value = OsString::from_vec(vec![0x66, 0x6f, 0x80, 0x6f]);
+    std::env::set_var(&env_key, &env_value);
+
+    let path = std::env::temp_dir().join(format!("zkf_env_v2_{}.yaml", unique));
+    let yaml = format!(
+        r#"
+campaign:
+  name: "env-test"
+  version: "2.0"
+  target:
+    framework: "circom"
+    circuit_path: "./dummy.circom"
+    main_component: "Main"
+inputs:
+  - name: "${{{}}}"
+    type: "field"
+attacks:
+  - type: "underconstrained"
+    description: "test"
+"#,
+        env_key
+    );
+    std::fs::write(&path, yaml).unwrap();
+
+    let config = FuzzConfig::from_yaml_v2(path.to_str().unwrap())
+        .expect("v2 parsing should not panic on non-unicode env var");
+    assert_eq!(config.inputs[0].name, format!("${{{}}}", env_key));
+
+    std::fs::remove_file(path).ok();
+    std::env::remove_var(env_key);
+}

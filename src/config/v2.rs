@@ -937,7 +937,9 @@ fn expand_env_string(input: &str) -> String {
                 Err(std::env::VarError::NotPresent) => {
                     out.push_str(&format!("${{{}}}", name));
                 }
-                Err(e) => panic!("Invalid environment variable {}: {}", var_name, e),
+                Err(std::env::VarError::NotUnicode(_)) => {
+                    out.push_str(&format!("${{{}}}", name));
+                }
             }
             continue;
         }
@@ -961,7 +963,10 @@ fn expand_env_string(input: &str) -> String {
                 out.push('$');
                 out.push_str(&name);
             }
-            Err(e) => panic!("Invalid environment variable {}: {}", name, e),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                out.push('$');
+                out.push_str(&name);
+            }
         }
     }
 

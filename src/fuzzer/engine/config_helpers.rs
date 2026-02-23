@@ -2,6 +2,16 @@ use super::prelude::*;
 use super::FuzzingEngine;
 
 impl FuzzingEngine {
+    pub(super) fn expected_constraint_count(executor: &dyn CircuitExecutor) -> usize {
+        if let Some(inspector) = executor.constraint_inspector() {
+            let constraints = inspector.get_constraints();
+            if !constraints.is_empty() {
+                return constraints.len();
+            }
+        }
+        executor.num_constraints()
+    }
+
     fn split_bracket_index(name: &str) -> Option<(&str, usize)> {
         let open = name.rfind('[')?;
         let close = name.rfind(']')?;
@@ -570,7 +580,7 @@ impl FuzzingEngine {
         Self::add_semantic_oracles_from_config(
             &self.config,
             self.executor.field_modulus(),
-            self.executor.num_constraints(),
+            Self::expected_constraint_count(self.executor.as_ref()),
             self.executor.num_public_inputs(),
             &mut oracles,
         );

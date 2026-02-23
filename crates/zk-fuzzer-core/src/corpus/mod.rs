@@ -369,7 +369,7 @@ impl SerializableCorpus {
                 let inputs: Result<Vec<FieldElement>, _> = e
                     .inputs
                     .iter()
-                    .map(|hex| FieldElement::from_hex(hex))
+                    .map(|hex| FieldElement::from_hex_checked(hex))
                     .collect();
 
                 match inputs {

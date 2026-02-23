@@ -383,20 +383,7 @@ impl FuzzingEngineCore {
                 .iter()
                 .any(|oracle| oracle.requires_constraint_count());
             let constraint_count = if needs_constraint_count {
-                let count = if !result.coverage.evaluated_constraints.is_empty() {
-                    result.coverage.evaluated_constraints.len()
-                } else if !result.coverage.satisfied_constraints.is_empty() {
-                    result.coverage.satisfied_constraints.len()
-                } else if let Some(inspector) = executor.constraint_inspector() {
-                    let constraints = inspector.get_constraints();
-                    if constraints.is_empty() {
-                        executor.num_constraints()
-                    } else {
-                        constraints.len()
-                    }
-                } else {
-                    executor.num_constraints()
-                };
+                let count = self.resolve_constraint_count(executor);
                 self.constraint_count_cache = Some(count);
                 Some(count)
             } else {
@@ -465,6 +452,19 @@ impl FuzzingEngineCore {
     pub fn export_corpus(&self, output_dir: &std::path::Path) -> anyhow::Result<usize> {
         let entries = self.corpus.all_entries();
         corpus_storage::export_interesting_cases(&entries, output_dir)
+    }
+
+    fn resolve_constraint_count(&self, executor: &dyn CircuitExecutor) -> usize {
+        if let Some(cached) = self.constraint_count_cache {
+            return cached;
+        }
+        if let Some(inspector) = executor.constraint_inspector() {
+            let constraints = inspector.get_constraints();
+            if !constraints.is_empty() {
+                return constraints.len();
+            }
+        }
+        executor.num_constraints()
     }
 
     fn run_oracles(
