@@ -285,6 +285,20 @@ Verification output includes:
   `Circuit allows X, but docs say "Y".`
 - embedded `compiled_structure` metrics for correlation
 
+Semantic-violation sample (expected `mismatched_intents >= 5`):
+
+```bash
+scripts/run_circuit_gen_semantic_violation_sample.sh
+```
+
+Sample inputs:
+- `tests/datasets/circuit_gen/semantic_source.no_intent.sample.circom`
+- `tests/datasets/circuit_gen/semantic_doc.boundary_violations.sample.md`
+- `tests/datasets/circuit_gen/structure_dsl.sample.yaml`
+
+Sample output:
+- `artifacts/circuit_gen/semantic_violation_sample/latest_report.json`
+
 ## Differential Compiler Matrix
 
 Use differential matrix mode to compare structure metrics across compiler labels and backends:

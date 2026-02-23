@@ -715,6 +715,28 @@ template Main() {
 }
 
 #[test]
+fn semantic_violation_sample_detects_at_least_five_boundary_gaps() {
+    let source =
+        include_str!("../../../tests/datasets/circuit_gen/semantic_source.no_intent.sample.circom");
+    let docs = include_str!(
+        "../../../tests/datasets/circuit_gen/semantic_doc.boundary_violations.sample.md"
+    );
+    let dsl = parse_dsl_yaml(include_str!(
+        "../../../tests/datasets/circuit_gen/structure_dsl.sample.yaml"
+    ))
+    .expect("dsl parse");
+
+    let intent = extract_semantic_intent_from_text(source, Some(docs), Some(Backend::Circom));
+    let report = verify_compiled_constraints_match_intent(&dsl, Backend::Circom, &intent)
+        .expect("semantic verification");
+
+    assert!(report.total_intents >= 6);
+    assert!(report.mismatched_intents >= 5);
+    assert!(report.constraint_gaps.len() >= 5);
+    assert!(report.narrative_findings.len() >= 5);
+}
+
+#[test]
 fn differential_matrix_compares_compiler_versions_and_backends() {
     let dsl = sample_dsl();
     let report = run_differential_compiler_matrix(

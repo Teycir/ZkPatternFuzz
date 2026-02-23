@@ -1009,8 +1009,8 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
 ```
 
 #### Exit Criteria
-- [ ] Generate 1000+ syntactically valid circuits per backend
-- [ ] Detect ≥5 semantic intent violations (constraints don't match docs)
+- [x] Generate 1000+ syntactically valid circuits per backend (`scripts/run_circuit_gen_bulk_sample.sh`; latest sample run 2026-02-23: 4000 total with 1000/backend at `artifacts/circuit_gen/bulk_latest/latest_report.json`)
+- [x] Detect ≥5 semantic intent violations (constraints don't match docs) (`scripts/run_circuit_gen_semantic_violation_sample.sh`; latest sample run 2026-02-23: `mismatched_intents=6` at `artifacts/circuit_gen/semantic_violation_sample/latest_report.json`)
 - [x] Find ≥1 compiler crash/timeout on adversarial inputs (`scripts/run_circuit_gen_crash_detection_sample.sh`; latest sample run 2026-02-23: timeout=1 crash=1 at `artifacts/circuit_gen/crash_detection_sample/latest_report.json`)
 - [x] Differential mode: test 100+ circuits × 3 compiler versions (`scripts/run_circuit_gen_differential_version_matrix_sample.sh`; latest sample run 2026-02-23: 120 circuits × 3 compiler labels at `artifacts/circuit_gen/differential_version_matrix_sample/latest_report.json`)
 - [x] Detect ≥1 optimization regression (constraint count increase) (`scripts/run_circuit_gen_differential_regression_sample.sh`; latest sample run 2026-02-23: `optimization_regressions=1` at `artifacts/circuit_gen/differential_regression_sample/latest_report.json`)

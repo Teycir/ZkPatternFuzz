@@ -1,0 +1,6 @@
+- Amount must be less than 5000.
+- Amount must be greater than 10.
+- Amount must stay between 100 and 200.
+- Value must be at most 2048.
+- Value must be at least 32.
+- Amount must remain in a strict range under 999.
