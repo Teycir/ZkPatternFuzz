@@ -1210,69 +1210,69 @@ assert(ref_result == opt_result, "Verifier mismatch!");
 - Implementation bugs can break soundness
 
 #### Future P1 (Post-Roadmap): Field Arithmetic Fuzzer
-- [ ] **Edge-Case Value Generator:**
-  - [ ] Special values: `0`, `1`, `-1`, `p/2`, `p-1`, `p`, `p+1`
-  - [ ] Algebraic properties: squares, non-squares, generators, primitive roots
-  - [ ] Random values: uniform distribution across field
-  - [ ] Boundary values: near-zero, near-modulus
-- [ ] **Operation Coverage:**
-  - [ ] Addition: `a + b` (overflow, underflow, identity)
-  - [ ] Subtraction: `a - b` (negative results, wraparound)
-  - [ ] Multiplication: `a * b` (overflow, zero, one)
-  - [ ] Division: `a / b` (division by zero, inverse computation)
-  - [ ] Exponentiation: `a^b` (large exponents, zero exponent)
-  - [ ] Modular reduction: verify `(a op b) mod p == expected`
-- [ ] **Property Testing:**
-  - [ ] Commutativity: `a + b == b + a`
-  - [ ] Associativity: `(a + b) + c == a + (b + c)`
-  - [ ] Distributivity: `a * (b + c) == a*b + a*c`
-  - [ ] Identity: `a + 0 == a`, `a * 1 == a`
-  - [ ] Inverse: `a * a^(-1) == 1` (for `a != 0`)
+- [x] **Edge-Case Value Generator:** (`generate_field_edge_values` + `generate_field_values` in `crates/zk-track-crypto/src/generators.rs`; campaign runner `scripts/run_crypto_field_sample.sh`)
+  - [x] Special values: `0`, `1`, `-1`, `p/2`, `p-1`, `p`, `p+1`
+  - [x] Algebraic properties: squares, non-squares, generators, primitive roots
+  - [x] Random values: uniform distribution across field
+  - [x] Boundary values: near-zero, near-modulus
+- [x] **Operation Coverage:** (`FieldOperation` + `run_field_arithmetic_fuzz_campaign` in `crates/zk-track-crypto/src/field_fuzzer.rs`)
+  - [x] Addition: `a + b` (overflow, underflow, identity)
+  - [x] Subtraction: `a - b` (negative results, wraparound)
+  - [x] Multiplication: `a * b` (overflow, zero, one)
+  - [x] Division: `a / b` (division by zero, inverse computation)
+  - [x] Exponentiation: `a^b` (large exponents, zero exponent)
+  - [x] Modular reduction: verify `(a op b) mod p == expected`
+- [x] **Property Testing:** (`FieldProperty` checks in `crates/zk-track-crypto/src/field_fuzzer.rs`)
+  - [x] Commutativity: `a + b == b + a`
+  - [x] Associativity: `(a + b) + c == a + (b + c)`
+  - [x] Distributivity: `a * (b + c) == a*b + a*c`
+  - [x] Identity: `a + 0 == a`, `a * 1 == a`
+  - [x] Inverse: `a * a^(-1) == 1` (for `a != 0`)
 
 #### Future P1 (Post-Roadmap): Curve Operation Fuzzer
-- [ ] **Point Generator:**
-  - [ ] Identity/infinity point: `O`
-  - [ ] Generator point: `G`
-  - [ ] Random valid points: `[k]G` for random `k`
-  - [ ] Low-order points: points with small order
-  - [ ] Invalid points: not on curve `y^2 != x^3 + ax + b`
-  - [ ] Points at infinity in different representations
-- [ ] **Operation Coverage:**
-  - [ ] Point addition: `P + Q`
-  - [ ] Point doubling: `2P`
-  - [ ] Scalar multiplication: `[k]P`
-  - [ ] Multi-scalar multiplication: `[k1]P1 + [k2]P2`
-  - [ ] Point negation: `-P`
-  - [ ] Point validation: `is_on_curve(P)`
-- [ ] **Edge Case Testing:**
-  - [ ] Adding identity: `P + O == P`
-  - [ ] Adding inverse: `P + (-P) == O`
-  - [ ] Doubling identity: `2O == O`
-  - [ ] Zero scalar: `[0]P == O`
-  - [ ] One scalar: `[1]P == P`
-  - [ ] Large scalar: `[p]P` (order wraparound)
-  - [ ] Invalid point rejection: operations on invalid points must fail
+- [x] **Point Generator:** (`CurvePointType` + `generate_curve_point` in `crates/zk-track-crypto/src/generators.rs`; campaign runner `scripts/run_crypto_curve_sample.sh`)
+  - [x] Identity/infinity point: `O`
+  - [x] Generator point: `G`
+  - [x] Random valid points: `[k]G` for random `k`
+  - [x] Low-order points: points with small order
+  - [x] Invalid points: not on curve `y^2 != x^3 + ax + b`
+  - [x] Points at infinity in different representations
+- [x] **Operation Coverage:** (`CurveOperation` + `evaluate_curve_operation` in `crates/zk-track-crypto/src/curve_fuzzer.rs`)
+  - [x] Point addition: `P + Q`
+  - [x] Point doubling: `2P`
+  - [x] Scalar multiplication: `[k]P`
+  - [x] Multi-scalar multiplication: `[k1]P1 + [k2]P2`
+  - [x] Point negation: `-P`
+  - [x] Point validation: `is_on_curve(P)`
+- [x] **Edge Case Testing:** (`CurveEdgeCase` + `run_edge_case_checks` in `crates/zk-track-crypto/src/curve_fuzzer.rs`)
+  - [x] Adding identity: `P + O == P`
+  - [x] Adding inverse: `P + (-P) == O`
+  - [x] Doubling identity: `2O == O`
+  - [x] Zero scalar: `[0]P == O`
+  - [x] One scalar: `[1]P == P`
+  - [x] Large scalar: `[p]P` (order wraparound)
+  - [x] Invalid point rejection: operations on invalid points must fail
 
 #### Future P1 (Post-Roadmap): Pairing Fuzzer
-- [ ] **Input Combination Matrix:**
-  - [ ] G1 inputs: `{O, G1, random, low-order, invalid}` (5 cases)
-  - [ ] G2 inputs: `{O, G2, random, low-order, invalid}` (5 cases)
-  - [ ] Systematic testing: 5 × 5 = 25 combinations
-- [ ] **Pairing Properties:**
-  - [ ] Bilinearity: `e([a]P, [b]Q) == e(P, Q)^(ab)`
-  - [ ] Non-degeneracy: `e(G1, G2) != 1`
-  - [ ] Identity: `e(O, Q) == 1`, `e(P, O) == 1`
-  - [ ] Linearity in G1: `e(P1 + P2, Q) == e(P1, Q) * e(P2, Q)`
-  - [ ] Linearity in G2: `e(P, Q1 + Q2) == e(P, Q1) * e(P, Q2)`
-- [ ] **Degenerate Cases:**
-  - [ ] Both inputs identity: `e(O, O)`
-  - [ ] One input identity: `e(G1, O)`, `e(O, G2)`
-  - [ ] Low-order inputs: detect subgroup attacks
-  - [ ] Invalid inputs: must reject or handle safely
+- [x] **Input Combination Matrix:** (`PairingInputType` + `run_pairing_fuzz_campaign` in `crates/zk-track-crypto/src/pairing_fuzzer.rs`; campaign runner `scripts/run_crypto_pairing_sample.sh`)
+  - [x] G1 inputs: `{O, G1, random, low-order, invalid}` (5 cases)
+  - [x] G2 inputs: `{O, G2, random, low-order, invalid}` (5 cases)
+  - [x] Systematic testing: 5 × 5 = 25 combinations
+- [x] **Pairing Properties:** (`PairingProperty` in `crates/zk-track-crypto/src/pairing_fuzzer.rs`)
+  - [x] Bilinearity: `e([a]P, [b]Q) == e(P, Q)^(ab)`
+  - [x] Non-degeneracy: `e(G1, G2) != 1`
+  - [x] Identity: `e(O, Q) == 1`, `e(P, O) == 1`
+  - [x] Linearity in G1: `e(P1 + P2, Q) == e(P1, Q) * e(P2, Q)`
+  - [x] Linearity in G2: `e(P, Q1 + Q2) == e(P, Q1) * e(P, Q2)`
+- [x] **Degenerate Cases:** (`resolve_pairing_input` strict vs weak handling in `crates/zk-track-crypto/src/pairing_fuzzer.rs`)
+  - [x] Both inputs identity: `e(O, O)`
+  - [x] One input identity: `e(G1, O)`, `e(O, G2)`
+  - [x] Low-order inputs: detect subgroup attacks
+  - [x] Invalid inputs: must reject or handle safely
 
 #### Implementation Structure
 ```
-crates/zk-crypto-fuzz/
+crates/zk-track-crypto/
 ├── src/
 │   ├── field_fuzzer.rs       # Field arithmetic testing
 │   ├── curve_fuzzer.rs       # Elliptic curve operations
@@ -1280,7 +1280,11 @@ crates/zk-crypto-fuzz/
 │   ├── generators.rs         # Edge-case value generation
 │   ├── property_checker.rs   # Algebraic property validation
 │   └── oracle.rs             # Reference implementation comparison
-src/attacks/crypto_primitives.rs  # Attack integration
+├── examples/
+│   ├── run_field_arithmetic_fuzz_campaign.rs
+│   ├── run_curve_operation_fuzz_campaign.rs
+│   └── run_pairing_fuzz_campaign.rs
+scripts/run_crypto_*_sample.sh and scripts/run_crypto_*_bug_probe.sh
 ```
 
 #### Workflow Example
@@ -1308,14 +1312,14 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 ```
 
 #### Exit Criteria
-- [ ] Field fuzzer: test 100+ operations × 10 edge-case values = 1000+ tests
-- [ ] Curve fuzzer: test 50+ operations × 7 point types = 350+ tests
-- [ ] Pairing fuzzer: test 25 input combinations × 5 properties = 125+ tests
-- [ ] Detect ≥1 field arithmetic bug (incorrect reduction, overflow)
-- [ ] Detect ≥1 curve operation bug (invalid point handling, identity)
-- [ ] Detect ≥1 pairing bug (degenerate case, bilinearity violation)
-- [ ] Property tests: 100% pass rate on reference implementation
-- [ ] Integration with existing attack framework
+- [x] Field fuzzer: test 100+ operations × 10 edge-case values = 1000+ tests (`scripts/run_crypto_field_sample.sh`; latest sample run 2026-02-23: checks=2680, operation_divergences=0, property_failures=0 at `artifacts/crypto/field_sample/latest_report.json`)
+- [x] Curve fuzzer: test 50+ operations × 7 point types = 350+ tests (`scripts/run_crypto_curve_sample.sh`; latest sample run 2026-02-23: operation_checks=2100, edge_case_checks=7, operation_divergences=0 at `artifacts/crypto/curve_sample/latest_report.json`)
+- [x] Pairing fuzzer: test 25 input combinations × 5 properties = 125+ tests (`scripts/run_crypto_pairing_sample.sh`; latest sample run 2026-02-23: combinations=25, checks=125, property_failures=0 at `artifacts/crypto/pairing_sample/latest_report.json`)
+- [x] Detect ≥1 field arithmetic bug (incorrect reduction, overflow) (`scripts/run_crypto_field_bug_probe.sh`; latest probe run 2026-02-23: operation_divergences=290, property_failures=4, findings=294 at `artifacts/crypto/field_bug_probe/latest_report.json`)
+- [x] Detect ≥1 curve operation bug (invalid point handling, identity) (`scripts/run_crypto_curve_bug_probe.sh`; latest probe run 2026-02-23: operation_divergences=742, edge_case_failures=3, findings=745 at `artifacts/crypto/curve_bug_probe/latest_report.json`)
+- [x] Detect ≥1 pairing bug (degenerate case, bilinearity violation) (`scripts/run_crypto_pairing_bug_probe.sh`; latest probe run 2026-02-23: property_failures=80, candidate_accepts_invalid_cases=80, findings=80 at `artifacts/crypto/pairing_bug_probe/latest_report.json`)
+- [x] Property tests: 100% pass rate on reference implementation (`cargo test -p zk-track-crypto`; 14/14 passing on 2026-02-23)
+- [x] Integration with existing attack framework (`crates/zk-track-crypto` is a default post-roadmap track in `src/pipeline/post_roadmap_runner.rs`; campaigns exported from `crates/zk-track-crypto/src/lib.rs`)
 
 #### Integration Points
 - Extends `arithmetic_overflow` attack with systematic edge-case coverage
@@ -1330,7 +1334,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - **Reference comparison:** Detect divergence from canonical implementations
 - **Proactive:** Find bugs before they reach production circuits
 
-**Status:** ⏸ Deferred (post-roadmap backlog; queued after current roadmap completion)
+**Status:** ⏸ Deferred execution policy remains, but implementation/evidence are complete (`scripts/run_crypto_*_sample.sh`, `scripts/run_crypto_*_bug_probe.sh`, `artifacts/crypto/*/latest_report.json`)
 
 ---
 

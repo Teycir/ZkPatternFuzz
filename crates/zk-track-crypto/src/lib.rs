@@ -1,7 +1,32 @@
+mod curve_fuzzer;
+mod field_fuzzer;
+mod generators;
+mod oracle;
+mod pairing_fuzzer;
+mod property_checker;
+
 use std::path::PathBuf;
 
 use async_trait::async_trait;
 use zk_postroadmap_core::{PostRoadmapResult, TrackExecution, TrackInput, TrackKind, TrackRunner};
+
+pub use curve_fuzzer::{
+    run_curve_operation_fuzz_campaign, CurveEdgeCase, CurveImplementationProfile, CurveOperation,
+    CurveOperationFuzzConfig, CurveOperationFuzzFinding, CurveOperationFuzzReport,
+};
+pub use field_fuzzer::{
+    run_field_arithmetic_fuzz_campaign, FieldArithmeticFuzzConfig, FieldArithmeticFuzzFinding,
+    FieldArithmeticFuzzReport, FieldImplementationProfile, FieldOperation, FieldProperty,
+};
+pub use generators::{
+    field_modulus, generate_curve_point, generate_field_edge_values, generate_field_values,
+    generate_pairing_input, CurvePointSample, CurvePointType, PairingInputSample, PairingInputType,
+    TOY_CURVE_ORDER, TOY_PAIRING_GENERATOR, TOY_PAIRING_ORDER, TOY_PAIRING_TARGET_MODULUS,
+};
+pub use pairing_fuzzer::{
+    run_pairing_fuzz_campaign, PairingFuzzConfig, PairingFuzzFinding, PairingFuzzReport,
+    PairingImplementationProfile, PairingProperty,
+};
 
 pub const TRACK_MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
