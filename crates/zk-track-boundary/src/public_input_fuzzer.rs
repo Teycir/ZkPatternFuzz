@@ -69,6 +69,22 @@ impl PublicInputAttackScenario {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicInputVerifierProfile {
+    StrictBinding,
+    WeakFirstInputBinding,
+}
+
+impl PublicInputVerifierProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StrictBinding => "strict_binding",
+            Self::WeakFirstInputBinding => "weak_first_input_binding",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PublicInputManipulationConfig {
     pub seed: u64,
@@ -76,6 +92,7 @@ pub struct PublicInputManipulationConfig {
     pub public_inputs_per_proof: usize,
     pub mutation_strategies: Vec<PublicInputMutationStrategy>,
     pub attack_scenarios: Vec<PublicInputAttackScenario>,
+    pub verifier_profile: PublicInputVerifierProfile,
 }
 
 impl PublicInputManipulationConfig {
@@ -86,6 +103,7 @@ impl PublicInputManipulationConfig {
             public_inputs_per_proof: 3,
             mutation_strategies: PublicInputMutationStrategy::ALL.to_vec(),
             attack_scenarios: PublicInputAttackScenario::ALL.to_vec(),
+            verifier_profile: PublicInputVerifierProfile::StrictBinding,
         }
     }
 }
@@ -105,6 +123,7 @@ pub struct PublicInputManipulationReport {
     pub seed: u64,
     pub proofs: usize,
     pub public_inputs_per_proof: usize,
+    pub verifier_profile: PublicInputVerifierProfile,
     pub total_mutation_checks: usize,
     pub rejected_mutations: usize,
     pub accepted_mutations: usize,
@@ -135,12 +154,12 @@ pub fn run_public_input_manipulation_campaign(
     for case_index in 0..config.proofs {
         let case_id = format!("proof_{case_index:05}");
         let original_inputs = random_public_inputs(&mut rng, width);
-        let proof = generate_bound_proof(&original_inputs);
+        let proof = generate_proof_with_profile(config.verifier_profile, &original_inputs);
 
         for strategy in &strategies {
             let mutated_inputs =
                 mutate_public_inputs(&original_inputs, *strategy, case_index, &mut rng);
-            let accepted = verify_bound_proof(&proof, &mutated_inputs);
+            let accepted = verify_with_profile(config.verifier_profile, &proof, &mutated_inputs);
 
             total_mutation_checks += 1;
             *strategy_checks
@@ -168,7 +187,7 @@ pub fn run_public_input_manipulation_campaign(
         for scenario in &scenarios {
             let mutated_inputs =
                 mutate_attack_scenario(&original_inputs, *scenario, case_index, &mut rng);
-            let accepted = verify_bound_proof(&proof, &mutated_inputs);
+            let accepted = verify_with_profile(config.verifier_profile, &proof, &mutated_inputs);
 
             total_mutation_checks += 1;
             *attack_scenario_checks
@@ -199,6 +218,7 @@ pub fn run_public_input_manipulation_campaign(
         seed: config.seed,
         proofs: config.proofs,
         public_inputs_per_proof: width,
+        verifier_profile: config.verifier_profile,
         total_mutation_checks,
         rejected_mutations,
         accepted_mutations,
@@ -272,6 +292,42 @@ fn generate_bound_proof(public_inputs: &[String]) -> Vec<u8> {
 
 fn verify_bound_proof(proof: &[u8], public_inputs: &[String]) -> bool {
     generate_bound_proof(public_inputs) == proof
+}
+
+fn generate_first_input_bound_proof(public_inputs: &[String]) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(b"zk-track-boundary-public-input-binding-v1");
+    if let Some(first) = public_inputs.first() {
+        hasher.update(0usize.to_le_bytes());
+        hasher.update((first.len() as u64).to_le_bytes());
+        hasher.update(first.as_bytes());
+    }
+    hasher.finalize().to_vec()
+}
+
+fn generate_proof_with_profile(
+    profile: PublicInputVerifierProfile,
+    public_inputs: &[String],
+) -> Vec<u8> {
+    match profile {
+        PublicInputVerifierProfile::StrictBinding => generate_bound_proof(public_inputs),
+        PublicInputVerifierProfile::WeakFirstInputBinding => {
+            generate_first_input_bound_proof(public_inputs)
+        }
+    }
+}
+
+fn verify_with_profile(
+    profile: PublicInputVerifierProfile,
+    proof: &[u8],
+    public_inputs: &[String],
+) -> bool {
+    match profile {
+        PublicInputVerifierProfile::StrictBinding => verify_bound_proof(proof, public_inputs),
+        PublicInputVerifierProfile::WeakFirstInputBinding => {
+            generate_first_input_bound_proof(public_inputs) == proof
+        }
+    }
 }
 
 fn mutate_public_inputs(
@@ -441,5 +497,26 @@ mod tests {
                     > 0
             );
         }
+    }
+
+    #[test]
+    fn weak_binding_profile_detects_public_input_binding_bugs() {
+        let mut config = PublicInputManipulationConfig::new();
+        config.seed = 42;
+        config.proofs = 50;
+        config.public_inputs_per_proof = 3;
+        config.verifier_profile = PublicInputVerifierProfile::WeakFirstInputBinding;
+        let report = run_public_input_manipulation_campaign(&config);
+
+        assert!(report.accepted_mutations > 0);
+        assert!(!report.findings.is_empty());
+        assert!(
+            report
+                .attack_scenario_accepted
+                .get(PublicInputAttackScenario::ValueInflation.as_str())
+                .copied()
+                .unwrap_or(0)
+                > 0
+        );
     }
 }

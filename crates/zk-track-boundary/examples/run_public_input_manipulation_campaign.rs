@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use zk_track_boundary::{
     run_public_input_manipulation_campaign, PublicInputAttackScenario,
-    PublicInputManipulationConfig, PublicInputMutationStrategy,
+    PublicInputManipulationConfig, PublicInputMutationStrategy, PublicInputVerifierProfile,
 };
 
 #[derive(Debug, Clone)]
@@ -16,6 +16,7 @@ struct CliArgs {
     public_inputs_per_proof: usize,
     mutation_strategies: Vec<PublicInputMutationStrategy>,
     attack_scenarios: Vec<PublicInputAttackScenario>,
+    verifier_profile: PublicInputVerifierProfile,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -26,6 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     config.public_inputs_per_proof = args.public_inputs_per_proof;
     config.mutation_strategies = args.mutation_strategies;
     config.attack_scenarios = args.attack_scenarios;
+    config.verifier_profile = args.verifier_profile;
 
     if let Some(parent) = args.output_json.parent() {
         fs::create_dir_all(parent)?;
@@ -55,6 +57,7 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
     let mut public_inputs_per_proof = 3usize;
     let mut mutation_strategies = PublicInputMutationStrategy::ALL.to_vec();
     let mut attack_scenarios = PublicInputAttackScenario::ALL.to_vec();
+    let mut verifier_profile = PublicInputVerifierProfile::StrictBinding;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -73,6 +76,10 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
             "--attack-scenarios" => {
                 attack_scenarios =
                     parse_attack_scenarios(&next_value(&mut args, "--attack-scenarios")?)?;
+            }
+            "--verifier-profile" => {
+                verifier_profile =
+                    parse_verifier_profile(&next_value(&mut args, "--verifier-profile")?)?;
             }
             "--help" | "-h" => {
                 print_help();
@@ -96,6 +103,7 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
         public_inputs_per_proof,
         mutation_strategies,
         attack_scenarios,
+        verifier_profile,
     })
 }
 
@@ -158,6 +166,14 @@ fn parse_attack_scenarios(raw: &str) -> Result<Vec<PublicInputAttackScenario>, B
     Ok(parsed)
 }
 
+fn parse_verifier_profile(raw: &str) -> Result<PublicInputVerifierProfile, Box<dyn Error>> {
+    match raw.to_ascii_lowercase().as_str() {
+        "strict_binding" => Ok(PublicInputVerifierProfile::StrictBinding),
+        "weak_first_input_binding" => Ok(PublicInputVerifierProfile::WeakFirstInputBinding),
+        _ => Err(format!("unsupported verifier profile `{raw}`").into()),
+    }
+}
+
 fn print_help() {
     println!(
         "\
@@ -176,6 +192,7 @@ Options:
   --public-inputs-per-proof <n>    Number of public inputs per proof (default: 3)
   --mutation-strategies <csv>      Strategy list (default: bit_flip,field_boundary,reordering,truncation,duplication,type_confusion)
   --attack-scenarios <csv>         Scenario list (default: identity_swap,value_inflation,merkle_root_swap)
+  --verifier-profile <name>        strict_binding | weak_first_input_binding (default: strict_binding)
 "
     );
 }

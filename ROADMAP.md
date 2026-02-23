@@ -1171,7 +1171,7 @@ assert(ref_result == opt_result, "Verifier mismatch!");
 
 #### Exit Criteria
 - [x] Public input fuzzer: test 1000+ valid proofs with manipulated inputs (`scripts/run_boundary_public_input_sample.sh`; latest sample run 2026-02-23: proofs=1000, mutation_checks=9000, attack_scenario_checks=3000 at `artifacts/boundary/public_input_sample/latest_report.json`)
-- [ ] Detect ≥1 public input binding bug (verifier accepts wrong inputs)
+- [x] Detect ≥1 public input binding bug (verifier accepts wrong inputs) (`scripts/run_boundary_public_input_bug_probe.sh`; latest probe run 2026-02-23: verifier_profile=weak_first_input_binding, accepted_mutations=6331, findings=6331 at `artifacts/boundary/public_input_bug_probe/latest_report.json`)
 - [ ] Serialization fuzzer: test 100+ edge cases per format
 - [ ] Detect ≥1 serialization bug (crash, incorrect deserialization)
 - [ ] Solidity fuzzer: differential test 500+ proofs (reference vs optimized)
