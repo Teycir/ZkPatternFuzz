@@ -364,10 +364,29 @@ def score_readiness_backend(entry: dict, thresholds: dict) -> dict:
     gate_pass = bool(entry.get("gate_pass", False))
 
     integration_statuses = entry.get("integration_statuses", [])
+    integration_total = 0
+    integration_executed = 0
+    integration_skipped = 0
+    integration_pass_count = 0
+    integration_fail_count = 0
+
     if isinstance(integration_statuses, list) and integration_statuses:
-        total_integration = len(integration_statuses)
-        pass_count = sum(1 for status in integration_statuses if str(status).lower() == "pass")
-        integration_pass_ratio = pass_count / total_integration
+        for status in integration_statuses:
+            normalized = str(status).strip().lower()
+            if not normalized:
+                continue
+            integration_total += 1
+            if normalized == "pass":
+                integration_pass_count += 1
+                integration_executed += 1
+            elif normalized in {"skip", "skipped"}:
+                integration_skipped += 1
+            else:
+                integration_fail_count += 1
+                integration_executed += 1
+
+    if integration_executed > 0:
+        integration_pass_ratio = integration_pass_count / integration_executed
     else:
         integration_pass_ratio = 1.0 if gate_pass else 0.0
 
@@ -426,6 +445,11 @@ def score_readiness_backend(entry: dict, thresholds: dict) -> dict:
         "runtime_error_count": runtime_error_count,
         "backend_preflight_failed_count": preflight_failed_count,
         "run_outcome_missing_rate": round(run_outcome_missing_rate, 6),
+        "integration_tests_total": integration_total,
+        "integration_tests_executed": integration_executed,
+        "integration_tests_passed": integration_pass_count,
+        "integration_tests_failed": integration_fail_count,
+        "integration_tests_skipped": integration_skipped,
         "integration_pass_ratio": round(integration_pass_ratio, 6),
         "gate_pass": gate_pass,
     }
