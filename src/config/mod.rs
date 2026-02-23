@@ -217,9 +217,6 @@ impl FuzzConfig {
     pub fn from_yaml(path: &str) -> anyhow::Result<Self> {
         let mut config = Self::from_yaml_v2(path)
             .with_context(|| format!("Failed to load config (v2) from {}", path))?;
-        // Policy: output artifacts always go under the user-home ZkFuzz directory
-        // (cross-platform equivalent). Ignore YAML/env custom output dirs.
-        config.reporting.output_dir = default_output_dir();
         // Backward-compat: hoist legacy `campaign.parameters.additional: { ... }` into the
         // flattened `parameters` key/value map so older templates don't silently no-op.
         if config

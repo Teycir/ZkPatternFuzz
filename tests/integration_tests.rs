@@ -324,6 +324,39 @@ inputs:
     assert_eq!(config.unwrap().inputs.len(), 4);
 }
 
+/// Test that reporting.output_dir from YAML is preserved (not overridden to ~/ZkFuzz)
+#[test]
+fn test_reporting_output_dir_from_yaml_is_preserved() {
+    let config_content = r#"
+campaign:
+  name: "OutputDir Preservation"
+  version: "1.0"
+  target:
+    framework: circom
+    circuit_path: "./test.circom"
+    main_component: "Main"
+
+attacks:
+  - type: underconstrained
+    description: "test"
+
+inputs:
+  - name: "x"
+    type: "field"
+
+reporting:
+  output_dir: "./artifacts/external_targets/test_defined_place"
+  formats: ["json", "markdown"]
+"#;
+
+    let file = create_temp_config(config_content);
+    let config = FuzzConfig::from_yaml(file.path().to_str().unwrap()).unwrap();
+    assert_eq!(
+        config.reporting.output_dir,
+        std::path::PathBuf::from("./artifacts/external_targets/test_defined_place")
+    );
+}
+
 /// Test framework types are recognized
 #[test]
 fn test_framework_types() {
