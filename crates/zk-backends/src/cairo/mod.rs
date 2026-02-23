@@ -358,8 +358,8 @@ impl CairoTarget {
         };
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Scarb build failed: {}", stderr);
+            let details = crate::util::command_output_summary(&output);
+            anyhow::bail!("Scarb build failed: {}", details);
         }
 
         // Find the compiled Sierra file

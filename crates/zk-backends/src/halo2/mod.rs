@@ -289,8 +289,8 @@ impl Halo2Target {
         let output = self.run_cargo_build(project_dir, self.cargo_toolchain.as_deref())?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            anyhow::bail!("Failed to build Halo2 circuit: {}", stderr);
+            let details = crate::util::command_output_summary(&output);
+            anyhow::bail!("Failed to build Halo2 circuit: {}", details);
         }
 
         // Try to run the circuit's info command if it has one

@@ -12,6 +12,39 @@ use std::time::Duration;
 #[cfg(not(unix))]
 use std::time::Instant;
 
+fn truncate_for_diagnostics(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::new();
+    let mut count = 0usize;
+    for ch in trimmed.chars() {
+        if count >= max_chars {
+            out.push_str(" ...<truncated>");
+            break;
+        }
+        out.push(ch);
+        count = count.saturating_add(1);
+    }
+    out
+}
+
+pub(crate) fn command_output_summary(output: &Output) -> String {
+    const MAX_DIAG_CHARS: usize = 2_000;
+
+    let stderr = truncate_for_diagnostics(&String::from_utf8_lossy(&output.stderr), MAX_DIAG_CHARS);
+    let stdout = truncate_for_diagnostics(&String::from_utf8_lossy(&output.stdout), MAX_DIAG_CHARS);
+
+    match (!stderr.is_empty(), !stdout.is_empty()) {
+        (true, true) => format!("stderr: {}\nstdout: {}", stderr, stdout),
+        (true, false) => format!("stderr: {}", stderr),
+        (false, true) => format!("stdout: {}", stdout),
+        (false, false) => "no command output captured".to_string(),
+    }
+}
+
 pub(crate) fn timeout_from_env(var: &str, default_secs: u64) -> Duration {
     let fallback = Duration::from_secs(default_secs.max(1));
     match std::env::var(var) {
@@ -447,8 +480,8 @@ impl Drop for DirLock {
 #[cfg(test)]
 mod tests {
     use super::{
-        candidate_writable_bind_paths, command_targets_backend_tool, run_with_timeout,
-        timeout_from_env,
+        candidate_writable_bind_paths, command_output_summary, command_targets_backend_tool,
+        run_with_timeout, timeout_from_env,
     };
     use std::path::PathBuf;
     use std::process::Command;
@@ -487,6 +520,18 @@ mod tests {
         let timeout = timeout_from_env(key, 7);
         std::env::remove_var(key);
         assert_eq!(timeout, Duration::from_secs(7));
+    }
+
+    #[test]
+    fn test_command_output_summary_uses_stdout_when_stderr_empty() {
+        let output = Command::new("rustc")
+            .arg("--version")
+            .output()
+            .expect("rustc --version should run");
+
+        let summary = command_output_summary(&output);
+        assert!(summary.contains("stdout:"));
+        assert!(summary.contains("rustc"));
     }
 
     #[test]
