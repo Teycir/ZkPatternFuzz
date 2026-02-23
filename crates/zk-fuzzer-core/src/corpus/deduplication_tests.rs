@@ -106,7 +106,7 @@ fn test_hash_deduplication_mode_filters_duplicates() {
 }
 
 #[test]
-fn test_capacity_drop_is_counted_separately_from_duplicates() {
+fn test_capacity_eviction_keeps_accepting_unique_findings() {
     let mut dedup = SemanticDeduplicator::with_config(DeduplicationConfig {
         use_semantic: true,
         similarity_threshold: 0.8,
@@ -117,9 +117,48 @@ fn test_capacity_drop_is_counted_separately_from_duplicates() {
     let finding2 = make_finding(AttackType::Boundary, "merkle_path");
 
     assert!(dedup.add(finding1));
-    assert!(!dedup.add(finding2));
+    assert!(dedup.add(finding2));
     assert_eq!(dedup.stats().duplicates_filtered, 0);
-    assert_eq!(dedup.stats().dropped_capacity, 1);
+    assert_eq!(dedup.stats().dropped_capacity, 0);
+    assert_eq!(dedup.stats().evicted_capacity, 1);
+    assert_eq!(dedup.unique_findings().len(), 1);
+}
+
+#[test]
+fn test_duplicate_at_capacity_counts_as_duplicate_not_capacity_drop() {
+    let mut dedup = SemanticDeduplicator::with_config(DeduplicationConfig {
+        use_semantic: true,
+        similarity_threshold: 0.8,
+        max_findings: 1,
+    });
+
+    let finding1 = make_finding(AttackType::Collision, "nullifier_collision");
+    let finding2 = make_finding(AttackType::Collision, "nullifier_collision");
+
+    assert!(dedup.add(finding1));
+    assert!(!dedup.add(finding2));
+    assert_eq!(dedup.stats().duplicates_filtered, 1);
+    assert_eq!(dedup.stats().dropped_capacity, 0);
+    assert_eq!(dedup.stats().evicted_capacity, 0);
+}
+
+#[test]
+fn test_capacity_eviction_hash_mode_keeps_accepting_unique_findings() {
+    let mut dedup = SemanticDeduplicator::with_config(DeduplicationConfig {
+        use_semantic: false,
+        similarity_threshold: 0.8,
+        max_findings: 1,
+    });
+
+    let finding1 = make_finding(AttackType::Collision, "nullifier_collision");
+    let finding2 = make_finding(AttackType::Boundary, "merkle_path");
+
+    assert!(dedup.add(finding1));
+    assert!(dedup.add(finding2));
+    assert_eq!(dedup.stats().duplicates_filtered, 0);
+    assert_eq!(dedup.stats().dropped_capacity, 0);
+    assert_eq!(dedup.stats().evicted_capacity, 1);
+    assert_eq!(dedup.unique_findings().len(), 1);
 }
 
 #[test]

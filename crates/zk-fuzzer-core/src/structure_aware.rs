@@ -416,7 +416,7 @@ impl StructureAwareMutator {
                 // Small difference (collision attempt)
                 let mut bytes = input.0;
                 bytes[31] ^= 1;
-                FieldElement(bytes)
+                FieldElement::from_bytes_reduced(&bytes)
             }
             _ => crate::mutators::mutate_field_element(input, rng),
         }

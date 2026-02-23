@@ -369,6 +369,10 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Make finding clustering deterministic across runs (remove `HashMap` iteration-order sensitivity) (`crates/zk-fuzzer-core/src/corpus/deduplication.rs`).
 - [x] De-duplicate BN254 modulus initialization in overflow oracle by reusing centralized constants helper (`crates/zk-fuzzer-core/src/oracle.rs`, `crates/zk-fuzzer-core/src/constants.rs`).
 - [x] Reduce lock hold time in `CoverageTracker::record_hit` by avoiding nested write-lock lifetime overlap (`crates/zk-fuzzer-core/src/coverage.rs`).
+- [x] Feed adaptive power scheduling with live per-seed metrics (selection/findings/new-coverage counts, avg exec time, path frequency) instead of static placeholders (`crates/zk-fuzzer-core/src/engine.rs`).
+- [x] Add canonical field constructors (`from_bytes_checked`, `from_bytes_reduced`, `from_hex_checked`) and apply canonical-by-default parsing/mutation in runtime ingestion paths (`crates/zk-core/src/field.rs`, `src/fuzzer/engine/corpus_manager.rs`, `src/fuzzer/engine/chain_runner.rs`, `src/chain_fuzzer/mutator.rs`, `src/fuzzer/grammar/mod.rs`, `crates/zk-fuzzer-core/src/structure_aware.rs`).
+- [x] Make CVE range-oracle construction modulus-aware by plumbing explicit field modulus through `CveOracle` constructors and using `RangeProofOracle::new_with_modulus` (`src/cve/mod.rs`).
+- [x] Reduce lock hold time in `CoverageTracker::record_execution` by releasing `constraint_hits` before updating `max_coverage` (`crates/zk-fuzzer-core/src/coverage.rs`).
 
 ---
 

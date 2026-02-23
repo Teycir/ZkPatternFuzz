@@ -131,6 +131,8 @@ pub struct DeduplicationStats {
     pub duplicates_filtered: u64,
     /// Findings dropped because max capacity was reached
     pub dropped_capacity: u64,
+    /// Existing retained findings evicted to make room at max capacity
+    pub evicted_capacity: u64,
 }
 
 impl SemanticDeduplicator {
@@ -147,6 +149,53 @@ impl SemanticDeduplicator {
             config,
             stats: DeduplicationStats::default(),
         }
+    }
+
+    fn severity_rank(severity: Severity) -> u8 {
+        match severity {
+            Severity::Info => 0,
+            Severity::Low => 1,
+            Severity::Medium => 2,
+            Severity::High => 3,
+            Severity::Critical => 4,
+        }
+    }
+
+    fn retention_rank(&self, finding: &Finding) -> (u8, u16, [u8; 32]) {
+        let severity_rank = Self::severity_rank(finding.severity);
+        let confidence_rank = (calculate_confidence(finding) * 1000.0).round() as u16;
+        let hash = self.finding_hash(finding);
+        (severity_rank, confidence_rank, hash)
+    }
+
+    fn evict_one_hash_entry(&mut self) -> bool {
+        let candidate = self
+            .seen_hashes
+            .iter()
+            .map(|(hash, finding)| (self.retention_rank(finding), *hash))
+            .min_by_key(|(rank, _)| *rank)
+            .map(|(_, hash)| hash);
+        if let Some(hash) = candidate {
+            self.seen_hashes.remove(&hash);
+            self.stats.evicted_capacity += 1;
+            return true;
+        }
+        false
+    }
+
+    fn evict_one_semantic_entry(&mut self) -> bool {
+        let candidate = self
+            .seen_fingerprints
+            .iter()
+            .map(|(fp, finding)| (self.retention_rank(finding), fp.clone()))
+            .min_by_key(|(rank, _)| *rank)
+            .map(|(_, fp)| fp);
+        if let Some(fp) = candidate {
+            self.seen_fingerprints.remove(&fp);
+            self.stats.evicted_capacity += 1;
+            return true;
+        }
+        false
     }
 
     /// Compute semantic fingerprint for a finding
@@ -243,44 +292,47 @@ impl SemanticDeduplicator {
         self.stats.total_processed += 1;
 
         if !self.config.use_semantic {
-            if self.seen_hashes.len() >= self.config.max_findings {
-                self.stats.dropped_capacity += 1;
-                return false;
-            }
-
             let hash = self.finding_hash(&finding);
-            use std::collections::hash_map::Entry;
-            match self.seen_hashes.entry(hash) {
-                Entry::Occupied(_) => {
-                    self.stats.duplicates_filtered += 1;
-                    false
-                }
-                Entry::Vacant(e) => {
-                    e.insert(finding);
-                    self.stats.unique_findings += 1;
-                    true
-                }
+            if self.seen_hashes.contains_key(&hash) {
+                self.stats.duplicates_filtered += 1;
+                return false;
             }
-        } else {
-            if self.seen_fingerprints.len() >= self.config.max_findings {
+
+            if self.config.max_findings == 0 {
                 self.stats.dropped_capacity += 1;
                 return false;
             }
 
-            let fp = self.fingerprint(&finding);
-
-            use std::collections::hash_map::Entry;
-            match self.seen_fingerprints.entry(fp) {
-                Entry::Occupied(_) => {
-                    self.stats.duplicates_filtered += 1;
-                    false
-                }
-                Entry::Vacant(e) => {
-                    e.insert(finding);
-                    self.stats.unique_findings += 1;
-                    true
-                }
+            if self.seen_hashes.len() >= self.config.max_findings && !self.evict_one_hash_entry() {
+                self.stats.dropped_capacity += 1;
+                return false;
             }
+
+            self.seen_hashes.insert(hash, finding);
+            self.stats.unique_findings += 1;
+            true
+        } else {
+            let fp = self.fingerprint(&finding);
+            if self.seen_fingerprints.contains_key(&fp) {
+                self.stats.duplicates_filtered += 1;
+                return false;
+            }
+
+            if self.config.max_findings == 0 {
+                self.stats.dropped_capacity += 1;
+                return false;
+            }
+
+            if self.seen_fingerprints.len() >= self.config.max_findings
+                && !self.evict_one_semantic_entry()
+            {
+                self.stats.dropped_capacity += 1;
+                return false;
+            }
+
+            self.seen_fingerprints.insert(fp, finding);
+            self.stats.unique_findings += 1;
+            true
         }
     }
 

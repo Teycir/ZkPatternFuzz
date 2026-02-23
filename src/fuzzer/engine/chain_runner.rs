@@ -275,7 +275,7 @@ impl FuzzingEngine {
             fn parse_field_element_str(raw: &str) -> anyhow::Result<FieldElement> {
                 let trimmed = raw.trim();
                 if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
-                    return FieldElement::from_hex(trimmed);
+                    return FieldElement::from_hex_checked(trimmed);
                 }
 
                 // Decimal string
@@ -289,7 +289,7 @@ impl FuzzingEngine {
                         bytes.len()
                     );
                 }
-                Ok(FieldElement::from_bytes(&bytes))
+                FieldElement::from_bytes_checked(&bytes)
             }
 
             fn load_seed_vec_from_json(

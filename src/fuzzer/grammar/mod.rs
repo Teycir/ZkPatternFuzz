@@ -239,7 +239,7 @@ impl InputGrammar {
                 hasher.update(secret.to_bytes());
                 hasher.update(blinding.to_bytes());
                 let digest = hasher.finalize();
-                vec![FieldElement::from_bytes(&digest)]
+                vec![FieldElement::from_bytes_reduced(&digest)]
             }
             InputType::Signature => {
                 // EdDSA signature: (R, s)
@@ -252,7 +252,10 @@ impl InputGrammar {
                 let mut bytes = vec![0u8; len];
                 rng.fill(&mut bytes[..]);
                 // Pack into field elements (32 bytes each)
-                bytes.chunks(32).map(FieldElement::from_bytes).collect()
+                bytes
+                    .chunks(32)
+                    .map(FieldElement::from_bytes_reduced)
+                    .collect()
             }
         }
     }

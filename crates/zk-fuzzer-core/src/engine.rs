@@ -11,12 +11,61 @@ use anyhow::{anyhow, Result};
 use parking_lot::RwLock;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
 use std::time::{Duration, Instant};
 use zk_core::{CircuitExecutor, ExecutionResult, FieldElement, Finding, TestCase, TestMetadata};
+
+#[derive(Debug, Clone, Default)]
+struct SeedRuntimeMetrics {
+    selection_count: u64,
+    findings_count: u64,
+    new_coverage_count: u64,
+    execution_count: u64,
+    total_exec_time_micros: u128,
+    last_finding_at: Option<Instant>,
+}
+
+impl SeedRuntimeMetrics {
+    fn record_selection(&mut self) {
+        self.selection_count = self.selection_count.saturating_add(1);
+    }
+
+    fn record_execution(&mut self, exec_time: Duration) {
+        self.execution_count = self.execution_count.saturating_add(1);
+        self.total_exec_time_micros = self
+            .total_exec_time_micros
+            .saturating_add(exec_time.as_micros());
+    }
+
+    fn record_new_coverage(&mut self) {
+        self.new_coverage_count = self.new_coverage_count.saturating_add(1);
+    }
+
+    fn record_findings(&mut self, findings: usize, now: Instant) {
+        self.findings_count = self.findings_count.saturating_add(findings as u64);
+        self.last_finding_at = Some(now);
+    }
+
+    fn avg_execution_time_or(&self, fallback: Duration) -> Duration {
+        if self.execution_count == 0 {
+            return fallback;
+        }
+        let avg_micros = self.total_exec_time_micros / self.execution_count as u128;
+        let clamped = avg_micros.min(u64::MAX as u128) as u64;
+        Duration::from_micros(clamped)
+    }
+
+    fn time_since_finding_or(&self, fallback: Duration) -> Duration {
+        match self.last_finding_at {
+            Some(timestamp) => timestamp.elapsed(),
+            None => fallback,
+        }
+    }
+}
 
 /// Core engine state shared by higher-level orchestrators.
 pub struct FuzzingEngineCore {
@@ -33,6 +82,9 @@ pub struct FuzzingEngineCore {
     input_count: usize,
     oracles: Vec<Box<dyn BugOracle>>,
     constraint_count_cache: Option<usize>,
+    seed_metrics: HashMap<u64, SeedRuntimeMetrics>,
+    coverage_frequency: HashMap<u64, u64>,
+    last_selected_seed_hash: Option<u64>,
 }
 
 impl FuzzingEngineCore {
@@ -120,21 +172,41 @@ impl FuzzingEngineCore {
     pub fn generate_test_case(&mut self) -> TestCase {
         if let Some(entry) = self.corpus.get_random(&mut self.rng) {
             if entry.test_case.inputs.is_empty() {
+                self.last_selected_seed_hash = None;
                 return self.generate_random_test_case();
             }
 
+            let seed_hash = entry.coverage_hash;
+            let fallback_avg_time = *self.avg_exec_time.read();
+            let fallback_since_finding = self
+                .start_time
+                .map(|t| t.elapsed())
+                .unwrap_or(Duration::ZERO);
+            let (selection_count, new_coverage_count, findings_count, avg_execution_time, time_since_finding) = {
+                let runtime = self.seed_metrics.entry(seed_hash).or_default();
+                runtime.record_selection();
+                (
+                    runtime.selection_count.max(entry.execution_count),
+                    runtime
+                        .new_coverage_count
+                        .max(if entry.discovered_new_coverage { 1 } else { 0 }),
+                    runtime.findings_count,
+                    runtime.avg_execution_time_or(fallback_avg_time),
+                    runtime.time_since_finding_or(fallback_since_finding),
+                )
+            };
+            let path_frequency = self.coverage_frequency.get(&seed_hash).copied().unwrap_or(1);
+            self.last_selected_seed_hash = Some(seed_hash);
+
             let metrics = TestCaseMetrics {
-                selection_count: entry.execution_count,
-                new_coverage_count: if entry.discovered_new_coverage { 1 } else { 0 },
-                findings_count: 0,
-                avg_execution_time: Duration::from_micros(100),
-                path_frequency: 1,
+                selection_count,
+                new_coverage_count,
+                findings_count,
+                avg_execution_time,
+                path_frequency,
                 generation: entry.test_case.metadata.generation as u32,
                 depth: entry.test_case.metadata.generation as u32,
-                time_since_finding: match self.start_time.map(|t| t.elapsed()) {
-                    Some(value) => value,
-                    None => Duration::ZERO,
-                },
+                time_since_finding,
             };
 
             let energy = self.power_scheduler.calculate_energy(&metrics);
@@ -202,6 +274,7 @@ impl FuzzingEngineCore {
                 },
             }
         } else {
+            self.last_selected_seed_hash = None;
             self.generate_random_test_case()
         }
     }
@@ -228,11 +301,23 @@ impl FuzzingEngineCore {
         executor: &dyn CircuitExecutor,
         test_case: &TestCase,
     ) -> ExecutionResult {
+        let selected_seed_hash = self.last_selected_seed_hash.take();
         let exec_start = Instant::now();
         let mut result = executor.execute_sync(&test_case.inputs);
         let exec_time = exec_start.elapsed();
 
         self.execution_count.fetch_add(1, Ordering::Relaxed);
+        let frequency = self
+            .coverage_frequency
+            .entry(result.coverage.coverage_hash)
+            .or_default();
+        *frequency = frequency.saturating_add(1);
+        if let Some(seed_hash) = selected_seed_hash {
+            self.seed_metrics
+                .entry(seed_hash)
+                .or_default()
+                .record_execution(exec_time);
+        }
 
         {
             let mut avg_time = self.avg_exec_time.write();
@@ -265,6 +350,12 @@ impl FuzzingEngineCore {
 
         if is_new {
             result.coverage.mark_new_coverage();
+            if let Some(seed_hash) = selected_seed_hash {
+                self.seed_metrics
+                    .entry(seed_hash)
+                    .or_default()
+                    .record_new_coverage();
+            }
         }
 
         if is_new && result.success {
@@ -303,6 +394,12 @@ impl FuzzingEngineCore {
             let oracle_findings = self.run_oracles(test_case, &result.outputs, constraint_count);
             if !oracle_findings.is_empty() {
                 let mut findings = self.findings.write();
+                if let Some(seed_hash) = selected_seed_hash {
+                    self.seed_metrics
+                        .entry(seed_hash)
+                        .or_default()
+                        .record_findings(oracle_findings.len(), Instant::now());
+                }
                 findings.extend(oracle_findings);
             }
         }
@@ -506,6 +603,9 @@ impl FuzzingEngineCoreBuilder {
             input_count: input_count.max(1),
             oracles: self.oracles,
             constraint_count_cache: self.constraint_count_cache,
+            seed_metrics: HashMap::new(),
+            coverage_frequency: HashMap::new(),
+            last_selected_seed_hash: None,
         })
     }
 }

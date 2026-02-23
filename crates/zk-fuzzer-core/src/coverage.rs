@@ -79,15 +79,17 @@ impl CoverageTracker {
         // Check if this is new coverage
         let is_new_constraint_coverage = self.record_coverage_hash(coverage.coverage_hash);
 
-        // Record individual hits
-        {
+        // Record individual hits and compute coverage under one lock scope.
+        let current_coverage = {
             let mut hits = self.constraint_hits.write();
             for &constraint_id in satisfied_constraints {
                 *hits.entry(constraint_id).or_insert(0) += 1;
             }
+            hits.len()
+        };
 
-            // Update max coverage
-            let current_coverage = hits.len();
+        // Update max coverage after releasing constraint-hits lock.
+        {
             let mut max = self.max_coverage.write();
             if current_coverage > *max {
                 *max = current_coverage;

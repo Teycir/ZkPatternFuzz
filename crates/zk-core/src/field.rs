@@ -4,6 +4,7 @@ use crate::constants::{
 use num_bigint::BigUint;
 use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::cmp::Ordering;
 
 /// Field element representation (32 bytes for bn254)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -87,6 +88,28 @@ impl FieldElement {
         Self(result)
     }
 
+    /// Create from bytes and reject non-canonical values (>= field modulus).
+    pub fn from_bytes_checked(bytes: &[u8]) -> anyhow::Result<Self> {
+        if bytes.len() > 32 {
+            anyhow::bail!(
+                "Field element bytes too long: {} bytes (max 32)",
+                bytes.len()
+            );
+        }
+
+        let element = Self::from_bytes(bytes);
+        if element.to_biguint().cmp(bn254_modulus_biguint()) != Ordering::Less {
+            anyhow::bail!("Field element is not canonical (value must be < modulus)");
+        }
+        Ok(element)
+    }
+
+    /// Create from bytes and always reduce modulo field modulus.
+    pub fn from_bytes_reduced(bytes: &[u8]) -> Self {
+        let value = BigUint::from_bytes_be(bytes) % bn254_modulus_biguint();
+        Self::from_bytes(&value.to_bytes_be())
+    }
+
     /// Get raw bytes
     pub fn to_bytes(&self) -> [u8; 32] {
         self.0
@@ -168,6 +191,15 @@ impl FieldElement {
         Ok(Self(bytes))
     }
 
+    /// Parse a hex string into a canonical FieldElement (< modulus).
+    pub fn from_hex_checked(hex_str: &str) -> anyhow::Result<Self> {
+        let value = Self::from_hex(hex_str)?;
+        if !value.is_canonical() {
+            anyhow::bail!("Field element hex literal is not canonical (>= modulus)");
+        }
+        Ok(value)
+    }
+
     pub fn to_hex(&self) -> String {
         format!("0x{}", hex::encode(self.0))
     }
@@ -190,6 +222,11 @@ impl FieldElement {
     /// Convert to BigUint for large number operations
     pub fn to_biguint(&self) -> num_bigint::BigUint {
         num_bigint::BigUint::from_bytes_be(&self.0)
+    }
+
+    /// Return true when value is in canonical field range [0, p-1].
+    pub fn is_canonical(&self) -> bool {
+        self.to_biguint().cmp(bn254_modulus_biguint()) == Ordering::Less
     }
 
     /// Try to convert to u64 if the value fits

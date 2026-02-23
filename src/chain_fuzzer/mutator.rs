@@ -557,7 +557,7 @@ impl ChainMutator {
                 if byte_idx < 32 {
                     bytes[byte_idx] ^= 1 << bit_idx;
                 }
-                inputs[idx] = FieldElement::from_bytes(&bytes);
+                inputs[idx] = FieldElement::from_bytes_reduced(&bytes);
                 idx
             } else {
                 0
@@ -608,7 +608,7 @@ impl ChainMutator {
                 if byte_idx < 32 {
                     bytes[byte_idx] ^= 1 << bit_idx;
                 }
-                FieldElement::from_bytes(&bytes)
+                FieldElement::from_bytes_reduced(&bytes)
             }
             _ => {
                 // Random replacement

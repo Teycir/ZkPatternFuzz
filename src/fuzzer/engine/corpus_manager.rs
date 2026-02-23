@@ -327,7 +327,7 @@ impl FuzzingEngine {
     pub(super) fn parse_field_string(raw: &str) -> Option<FieldElement> {
         let trimmed = raw.trim();
         if trimmed.starts_with("0x") || trimmed.starts_with("0X") {
-            return match FieldElement::from_hex(trimmed) {
+            return match FieldElement::from_hex_checked(trimmed) {
                 Ok(value) => Some(value),
                 Err(err) => {
                     tracing::debug!("Invalid corpus hex field literal '{}': {}", trimmed, err);
@@ -344,7 +344,17 @@ impl FuzzingEngine {
         let mut buf = [0u8; 32];
         let start = 32usize.saturating_sub(bytes.len());
         buf[start..start + bytes.len()].copy_from_slice(&bytes);
-        Some(FieldElement(buf))
+        match FieldElement::from_bytes_checked(&buf) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                tracing::debug!(
+                    "Invalid non-canonical corpus decimal field literal '{}': {}",
+                    trimmed,
+                    err
+                );
+                None
+            }
+        }
     }
 
     /// Load corpus from a previous run for resumption (Phase 0: Milestone 0.2)

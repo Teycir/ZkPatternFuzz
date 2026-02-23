@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
+use zk_core::constants::bn254_modulus_bytes;
 use zk_core::{AttackType, FieldElement, Finding, Framework, ProofOfConcept, Severity, TestCase};
 
 /// Complete CVE database loaded from YAML
@@ -1393,7 +1394,9 @@ fn parse_yaml_number(
         } else {
             modulus - rem
         };
-        return Ok(vec![FieldElement::from_bytes(&value.to_bytes_be())]);
+        let canonical = FieldElement::from_bytes_checked(&value.to_bytes_be())
+            .map_err(|err| format!("Failed to encode canonical field value from '{}': {}", i, err))?;
+        return Ok(vec![canonical]);
     }
 
     Err(format!("Unsupported numeric input '{}'", number))
@@ -1427,14 +1430,31 @@ fn parse_string_as_field_element(
     value: &str,
     field_modulus: &[u8; 32],
 ) -> Result<FieldElement, String> {
-    if let Ok(bytes) = crate::config::parser::expand_value_placeholder(value, field_modulus) {
-        return Ok(FieldElement::from_bytes(&bytes));
+    fn parse_bytes(bytes: &[u8], raw_literal: &str, allow_raw: bool) -> Result<FieldElement, String> {
+        if allow_raw {
+            return Ok(FieldElement::from_bytes(bytes));
+        }
+        FieldElement::from_bytes_checked(bytes).map_err(|err| {
+            format!(
+                "Non-canonical field literal '{}': {} (prefix with 'raw:' to allow non-canonical test inputs)",
+                raw_literal, err
+            )
+        })
+    }
+
+    let (allow_raw, inner_value) = match value.strip_prefix("raw:") {
+        Some(stripped) => (true, stripped.trim()),
+        None => (false, value),
+    };
+
+    if let Ok(bytes) = crate::config::parser::expand_value_placeholder(inner_value, field_modulus) {
+        return parse_bytes(&bytes, value, allow_raw);
     }
 
     // Allow odd-nibble hex values such as "0x2" by left-padding one nibble.
-    if let Some(hex_part) = value
+    if let Some(hex_part) = inner_value
         .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
+        .or_else(|| inner_value.strip_prefix("0X"))
     {
         let normalized = hex_part.replace('_', "");
         if !normalized.is_empty() && normalized.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -1444,8 +1464,8 @@ fn parse_string_as_field_element(
                 format!("0{}", normalized)
             };
             let decoded =
-                hex::decode(&even).map_err(|e| format!("Invalid hex '{}': {}", value, e))?;
-            return Ok(FieldElement::from_bytes(&decoded));
+                hex::decode(&even).map_err(|e| format!("Invalid hex '{}': {}", inner_value, e))?;
+            return parse_bytes(&decoded, value, allow_raw);
         }
     }
 
@@ -1466,14 +1486,21 @@ pub struct CveOracle {
 }
 
 impl CveOracle {
-    fn with_active_patterns(database: CveDatabase, active_patterns: Vec<String>) -> Self {
+    fn with_active_patterns(
+        database: CveDatabase,
+        active_patterns: Vec<String>,
+        field_modulus: [u8; 32],
+    ) -> Self {
         let oracle_config = OracleConfig::default();
         Self {
             database,
             active_patterns,
             nullifier_oracle: Mutex::new(NullifierOracle::new(oracle_config.clone())),
             merkle_oracle: Mutex::new(MerkleOracle::new(oracle_config.clone())),
-            range_oracle: Mutex::new(RangeProofOracle::new(oracle_config.clone())),
+            range_oracle: Mutex::new(RangeProofOracle::new_with_modulus(
+                oracle_config.clone(),
+                field_modulus,
+            )),
             commitment_oracle: Mutex::new(CommitmentOracle::new(oracle_config)),
         }
     }
@@ -1616,22 +1643,36 @@ impl CveOracle {
 
     /// Create oracle with all patterns active
     pub fn new(database: CveDatabase) -> Self {
+        Self::new_with_modulus(database, bn254_modulus_bytes())
+    }
+
+    /// Create oracle with all patterns active using explicit field modulus.
+    pub fn new_with_modulus(database: CveDatabase, field_modulus: [u8; 32]) -> Self {
         let active_patterns = database
             .vulnerabilities
             .iter()
             .map(|p| p.id.clone())
             .collect();
-        Self::with_active_patterns(database, active_patterns)
+        Self::with_active_patterns(database, active_patterns, field_modulus)
     }
 
     /// Create oracle for specific circuit
     pub fn for_circuit(database: CveDatabase, circuit_name: &str) -> Self {
+        Self::for_circuit_with_modulus(database, circuit_name, bn254_modulus_bytes())
+    }
+
+    /// Create oracle for specific circuit using explicit field modulus.
+    pub fn for_circuit_with_modulus(
+        database: CveDatabase,
+        circuit_name: &str,
+        field_modulus: [u8; 32],
+    ) -> Self {
         let active_patterns = database
             .patterns_for_circuit(circuit_name)
             .iter()
             .map(|p| p.id.clone())
             .collect();
-        Self::with_active_patterns(database, active_patterns)
+        Self::with_active_patterns(database, active_patterns, field_modulus)
     }
 
     /// Check test case against known CVE patterns
