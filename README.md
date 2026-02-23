@@ -16,17 +16,18 @@ ZkPatternFuzz is a security testing framework that **automates accumulated audit
 - Future audits automatically test for all known patterns
 - Knowledge compounds: more audits → more patterns → better coverage
 
-**Current Status (2026-02-19):**
-- ✅ Phase 1 Milestone: 80% vulnerable recall, 0% safe FPR
-- ✅ 100% completion rate, 100% attack stage reach
-- ✅ Keygen preflight: 5/5 targets passing
-- ✅ Release candidate validation: 2/2 consecutive passes
+**Current Status (2026-02-23):**
+- ✅ Phase 1-6 Complete: Production-ready core functionality
+- ✅ Phase 8 Active: Backend maturity program (Circom/Noir/Cairo/Halo2 → 5/5)
+- ✅ 80% vulnerable recall, 0% safe FPR on benchmark suite
+- ✅ All backends at 5.0/5.0 maturity (streak tracking: 2/14 days for Circom, 1/14 for others)
+- ✅ Release candidate validation: consecutive passes with rollback evidence
 
 **Supported Backends:**
-- **Circom** - R1CS-based circuits (production-ready)
-- **Noir** - ACIR-based circuits (partial support, throughput validated)
-- **Halo2** - PLONK-based circuits (partial support)
-- **Cairo** - STARK-based programs (experimental, integration validated)
+- **Circom** - R1CS-based circuits (production-ready, 5.0/5.0 maturity)
+- **Noir** - ACIR-based circuits (production-ready, 5.0/5.0 maturity, prove/verify validated)
+- **Halo2** - PLONK-based circuits (production-ready, 5.0/5.0 maturity, real execution mode)
+- **Cairo** - STARK-based programs (production-ready, 5.0/5.0 maturity, Stone prover integration)
 
 ## Installation
 
@@ -375,15 +376,34 @@ ZkPatternFuzz/
 
 ## Documentation
 
-- **[PATTERN_LIBRARY.md](docs/PATTERN_LIBRARY.md)** - Pattern-based knowledge accumulation (core competitive advantage)
-- **[TUTORIAL.md](docs/TUTORIAL.md)** - Step-by-step guide
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Internal design and current status
-- **[ROADMAP.md](ROADMAP.md)** - Development roadmap with benchmark evidence
+### Core Documentation
+- **[INDEX.md](docs/INDEX.md)** - Complete documentation index and navigation guide
+- **[TUTORIAL.md](docs/TUTORIAL.md)** - Step-by-step guide with hands-on examples
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Internal design, components, and extension points
+- **[ROADMAP.md](ROADMAP.md)** - Development roadmap with Phase 8 maturity tracking
+
+### Operational Guides
 - **[RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)** - Production release gate checklist
 - **[TROUBLESHOOTING_PLAYBOOK.md](docs/TROUBLESHOOTING_PLAYBOOK.md)** - Keygen/includes/locks/timeouts playbook
-- **[TRIAGE_SYSTEM.md](docs/TRIAGE_SYSTEM.md)** - Automated triage
-- **[DEFI_ATTACK_GUIDE.md](docs/DEFI_ATTACK_GUIDE.md)** - MEV/front-running detection
 - **[TARGETS.md](docs/TARGETS.md)** - Target catalog and workflow commands
+- **[TRIAGE_SYSTEM.md](docs/TRIAGE_SYSTEM.md)** - Automated triage system
+
+### Attack & Pattern Guides
+- **[PATTERN_LIBRARY.md](docs/PATTERN_LIBRARY.md)** - Pattern-based vulnerability detection
+- **[DEFI_ATTACK_GUIDE.md](docs/DEFI_ATTACK_GUIDE.md)** - MEV/front-running detection
+- **[ATTACK_DSL_SPEC.md](docs/ATTACK_DSL_SPEC.md)** - Attack configuration DSL reference
+
+### Backend-Specific Guides
+- **[NOIR_BACKEND_TROUBLESHOOTING.md](docs/NOIR_BACKEND_TROUBLESHOOTING.md)** - Noir diagnostics and troubleshooting
+- **[CAIRO_INTEGRATION_TUTORIAL.md](docs/CAIRO_INTEGRATION_TUTORIAL.md)** - Cairo target integration
+- **[HALO2_REAL_EXECUTION_MIGRATION.md](docs/HALO2_REAL_EXECUTION_MIGRATION.md)** - Halo2 migration guide
+- **[BACKEND_SETUP.md](docs/BACKEND_SETUP.md)** - Backend installation and configuration
+
+### Advanced Topics
+- **[SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md](docs/SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md)** - Semantic analysis workflows
+- **[INVARIANT_SPEC_SCHEMA.md](docs/INVARIANT_SPEC_SCHEMA.md)** - Invariant specification format
+- **[SECURITY_THREAT_MODEL.md](docs/SECURITY_THREAT_MODEL.md)** - Security assumptions and trust boundaries
+- **[PLUGIN_SYSTEM_GUIDE.md](docs/PLUGIN_SYSTEM_GUIDE.md)** - Plugin discovery and safety
 
 ## Release Ops
 

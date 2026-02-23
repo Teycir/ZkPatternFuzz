@@ -71,20 +71,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ## 📚 Detailed Guides
 
-### 3. [VULNERABILITIES.md](VULNERABILITIES.md) - **15 min read**
-**For:** Understanding what bugs ZkPatternFuzz can find  
-**Contains:**
-- 7 critical vulnerability classes
-- Real-world examples (Tornado Cash, Semaphore, etc.)
-- Detection rates and false positive rates
-- Attack configurations for each vulnerability
-- Vulnerability statistics
-
-**Start here if:** You want to know what this tool actually finds
-
----
-
-### 4. [TUTORIAL.md](TUTORIAL.md) - **30 min read**
+### 3. [TUTORIAL.md](TUTORIAL.md) - **30 min read**
 **For:** Step-by-step learning with hands-on examples  
 **Contains:**
 - Detailed walkthrough
@@ -97,7 +84,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5. [TARGETS.md](TARGETS.md) - **Target List**
+### 5. [TARGETS.md](TARGETS.md) - **Target Catalog**
 **For:** Running evidence campaigns on zk0d  
 **Contains:**
 - Target set for discovery metric
@@ -186,15 +173,16 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ## 🤖 AI Integration
 
-### 5.5. [MISTRAL_AI_INTEGRATION.md](MISTRAL_AI_INTEGRATION.md) - **15 min read**
-**For:** External AI/operator workflow guidance (no in-process AI runtime link)  
+### 5.5. AI-Assisted Analysis - **External Workflow**
+**For:** Using AI for semantic analysis and vulnerability assessment  
 **Contains:**
-- Handoff-artifact workflow (`ai_ingest_bundle.json`, worklists)
+- Handoff-artifact workflow (ai_ingest_bundle.json, worklists)
 - External AI usage model and operator responsibilities
-- Historical integration notes and migration caveats
 - Practical examples for out-of-band analysis
 
-**Start here if:** You want to run AI-assisted analysis as a user-driven external step
+**Note:** ZkPatternFuzz produces AI-ready artifacts but does not include in-process AI runtime. AI analysis is performed externally by operators.
+
+**Start here if:** You want to integrate AI-assisted analysis into your workflow
 
 ---
 
