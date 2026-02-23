@@ -75,6 +75,7 @@ impl Attack for ArithmeticTester {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 

@@ -378,6 +378,7 @@ impl BatchVerificationFinding {
             severity: self.severity,
             description: self.description.clone(),
             poc,
+            class: None,
             location: Some(format!(
                 "batch_size={}, positions={:?}, method={}",
                 self.batch_size,

@@ -113,6 +113,7 @@ impl QuantumResistanceAttack {
                     proof: None,
                 },
                 location: location.clone(),
+                class: None,
             });
         }
 

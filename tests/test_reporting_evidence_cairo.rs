@@ -16,6 +16,7 @@ fn test_generate_cairo_repro_script() {
         description: "Cairo script generation".to_string(),
         poc: ProofOfConcept::default(),
         location: None,
+        class: None,
     };
 
     let cmd = generate_cairo_repro_script(&script_path, &finding, &program_path)
@@ -36,6 +37,7 @@ fn test_generate_cairo_proof_missing_witness_returns_failure() {
         description: "Missing witness".to_string(),
         poc: ProofOfConcept::default(),
         location: None,
+        class: None,
     };
     let program_path = temp_dir.path().join("program.json");
     std::fs::write(&program_path, "{}").unwrap();

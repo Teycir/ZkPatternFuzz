@@ -484,6 +484,7 @@ impl MevTestResult {
                 proof: None,
             },
             location: Some(format!("mev:{}", self.vulnerability_type.as_str())),
+            class: None,
         }
     }
 }

@@ -99,6 +99,7 @@ impl CanonicalizationChecker {
                                     proof: None,
                                 },
                                 location: None,
+                                class: None,
                             });
                         }
                     }
@@ -124,6 +125,7 @@ impl CanonicalizationChecker {
                                     proof: None,
                                 },
                                 location: None,
+                                class: None,
                             });
                         }
                     }
@@ -150,6 +152,7 @@ impl CanonicalizationChecker {
                                     proof: None,
                                 },
                                 location: None,
+                                class: None,
                             });
                         }
                     }

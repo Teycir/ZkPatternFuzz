@@ -141,6 +141,7 @@ impl FrontRunningResult {
                 "front_running:{}",
                 self.vulnerability_type.as_str()
             )),
+            class: Some(zk_core::FindingClass::OracleViolation),
         }
     }
 }

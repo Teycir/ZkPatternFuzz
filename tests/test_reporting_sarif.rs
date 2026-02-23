@@ -9,6 +9,7 @@ fn test_sarif_builder() {
         description: "Test finding".to_string(),
         poc: ProofOfConcept::default(),
         location: Some("test.circom:42".to_string()),
+        class: None,
     }];
 
     let report = SarifBuilder::new("zk-fuzzer", "0.1.0")
@@ -39,6 +40,7 @@ fn test_location_parsing_from_finding_location() {
         description: "location parsing".to_string(),
         poc: ProofOfConcept::default(),
         location: Some("test.circom:42:10".to_string()),
+        class: None,
     };
     let report = SarifBuilder::new("test", "1.0.0")
         .add_findings(&[finding])
@@ -68,6 +70,7 @@ fn test_location_parsing_windows_path_with_line_and_column() {
         description: "windows path parsing".to_string(),
         poc: ProofOfConcept::default(),
         location: Some("C:\\repo\\test.circom:12:3".to_string()),
+        class: None,
     };
     let report = SarifBuilder::new("test", "1.0.0")
         .add_findings(&[finding])
@@ -97,6 +100,7 @@ fn test_location_parsing_invalid_suffix_keeps_plain_path() {
         description: "invalid suffix path parsing".to_string(),
         poc: ProofOfConcept::default(),
         location: Some("test.circom:not_a_number".to_string()),
+        class: None,
     };
     let report = SarifBuilder::new("test", "1.0.0")
         .add_findings(&[finding])
@@ -157,6 +161,7 @@ fn test_hamming_fingerprint() {
         description: "Test collision".to_string(),
         poc: ProofOfConcept::default(),
         location: None,
+        class: None,
     }];
 
     let report = SarifBuilder::new("test", "1.0.0")

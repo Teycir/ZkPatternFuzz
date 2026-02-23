@@ -129,6 +129,7 @@ impl MultiCircuitFuzzer {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
                 continue;
             };
@@ -153,6 +154,7 @@ impl MultiCircuitFuzzer {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
             }
         }
@@ -220,6 +222,7 @@ impl MultiCircuitFuzzer {
                         proof: None,
                     },
                     location: finding.location.map(|loc| format!("{}:{}", name, loc)),
+                    class: None,
                 });
             }
         }

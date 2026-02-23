@@ -118,6 +118,7 @@ impl WitnessFuzzer {
                             proof: None,
                         },
                         location: None,
+                        class: None,
                     });
                 }
             } else if result1.success != result2.success || result2.success != result3.success {
@@ -137,6 +138,7 @@ impl WitnessFuzzer {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
             }
         }
@@ -181,6 +183,7 @@ impl WitnessFuzzer {
                                 proof: None,
                             },
                             location: None,
+                            class: None,
                         });
                     }
 
@@ -208,6 +211,7 @@ impl WitnessFuzzer {
                             proof: None,
                         },
                         location: None,
+                        class: None,
                     });
                 }
             }
@@ -277,6 +281,7 @@ impl WitnessFuzzer {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
             }
 
@@ -298,6 +303,7 @@ impl WitnessFuzzer {
                             proof: None,
                         },
                         location: None,
+                        class: None,
                     });
                 }
             }

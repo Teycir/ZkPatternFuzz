@@ -129,6 +129,7 @@ impl TrustedSetupAttack {
                         proof: Some(proof_a),
                     },
                     location: Some("trusted_setup:cross_verification".to_string()),
+                    class: None,
                 });
             }
         }
@@ -227,6 +228,7 @@ fn artifact_finding(severity: Severity, description: String, location: Option<St
         severity,
         description,
         poc: ProofOfConcept::default(),
+        class: None,
         location,
     }
 }

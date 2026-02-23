@@ -69,6 +69,7 @@ impl DeterminismOracle {
                             proof: None,
                         },
                         location: None,
+                        class: None,
                     });
                     break;
                 }
@@ -88,6 +89,7 @@ impl DeterminismOracle {
                             proof: None,
                         },
                         location: None,
+                        class: None,
                     });
                     break;
                 }

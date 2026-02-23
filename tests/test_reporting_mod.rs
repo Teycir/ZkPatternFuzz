@@ -10,6 +10,7 @@ fn test_report_creation() {
         description: "Test finding".to_string(),
         poc: ProofOfConcept::default(),
         location: None,
+        class: None,
     }];
 
     let report = FuzzReport::new(
@@ -31,6 +32,7 @@ fn test_finding_serialization_roundtrip() {
         description: "Test collision finding".to_string(),
         poc: ProofOfConcept::default(),
         location: Some("test_circuit.circom:42".to_string()),
+        class: None,
     };
 
     // Serialize to JSON
@@ -81,6 +83,7 @@ fn test_finding_roundtrip_preserves_counterexample_fields() {
             proof: Some(vec![7, 8, 9]),
         },
         location: Some("Invariant: sample".to_string()),
+        class: None,
     };
 
     let json = serde_json::to_string(&original).expect("serialize finding with counterexample");
@@ -113,6 +116,7 @@ fn test_markdown_report_includes_counterexample_public_outputs() {
             proof: Some(vec![1, 2, 3]),
         },
         location: Some("Invariant: auto_spec_range_x".to_string()),
+        class: None,
     }];
 
     let config = ReportingConfig {

@@ -1,5 +1,7 @@
 //! Oracles for detecting bugs and vulnerabilities
 
+use std::collections::VecDeque;
+
 use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity, TestCase};
 
 /// Oracle trait for bug detection
@@ -213,6 +215,7 @@ impl BugOracle for UnderconstrainedOracle {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
             }
         } else {
@@ -343,6 +346,7 @@ impl ConstraintCountOracle {
                     proof: None,
                 },
                 location: None,
+                class: None,
             });
         }
 
@@ -365,6 +369,7 @@ impl ConstraintCountOracle {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
             }
         }
@@ -462,7 +467,7 @@ pub struct ProofForgeryOracle {
     /// Whether we've warned about missing integration
     warned_no_integration: bool,
     /// Recent proof/input pairs for cross-verification testing
-    proof_history: Vec<(Vec<u8>, Vec<FieldElement>)>,
+    proof_history: VecDeque<(Vec<u8>, Vec<FieldElement>)>,
     /// Maximum history size
     max_history: usize,
 }
@@ -473,7 +478,7 @@ impl ProofForgeryOracle {
             attempts: 0,
             successful_forgeries: 0,
             warned_no_integration: false,
-            proof_history: Vec::new(),
+            proof_history: VecDeque::new(),
             max_history: 100,
         }
     }
@@ -487,9 +492,9 @@ impl ProofForgeryOracle {
     /// Record a proof for later cross-verification testing
     pub fn record_proof(&mut self, proof: Vec<u8>, public_inputs: Vec<FieldElement>) {
         if self.proof_history.len() >= self.max_history {
-            self.proof_history.remove(0);
+            self.proof_history.pop_front();
         }
-        self.proof_history.push((proof, public_inputs));
+        self.proof_history.push_back((proof, public_inputs));
     }
 
     /// Check if a proof verifies for different public inputs (soundness violation)
@@ -529,6 +534,7 @@ impl ProofForgeryOracle {
                     proof: Some(proof.to_vec()),
                 },
                 location: None,
+                class: None,
             });
         }
 
@@ -659,6 +665,7 @@ impl BugOracle for ArithmeticOverflowOracle {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
             }
         }
@@ -677,6 +684,7 @@ impl BugOracle for ArithmeticOverflowOracle {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
             }
         }
@@ -707,10 +715,41 @@ impl ArithmeticOverflowOracle {
     }
 
     fn is_near_boundary(&self, value: &[u8; 32]) -> bool {
-        // Check if within 1000 of zero or modulus
-        let near_zero = value.iter().take(28).all(|&b| b == 0);
-        let near_max = value.iter().take(28).all(|&b| b == 0x30); // Rough check for bn254
+        // Check if within 1000 of zero or modulus using exact field modulus bytes.
+        const BOUNDARY_DELTA: u16 = 1000;
+        let near_zero = Self::is_small_be(value, BOUNDARY_DELTA);
+        let near_max = Self::sub_be(&self.field_modulus, value)
+            .as_ref()
+            .is_some_and(|distance| Self::is_small_be(distance, BOUNDARY_DELTA));
         near_zero || near_max
+    }
+
+    fn is_small_be(value: &[u8; 32], threshold: u16) -> bool {
+        if value[..30].iter().any(|&byte| byte != 0) {
+            return false;
+        }
+        u16::from_be_bytes([value[30], value[31]]) <= threshold
+    }
+
+    fn sub_be(a: &[u8; 32], b: &[u8; 32]) -> Option<[u8; 32]> {
+        if a < b {
+            return None;
+        }
+        let mut out = [0u8; 32];
+        let mut borrow = 0u16;
+        for i in (0..32).rev() {
+            let av = a[i] as u16;
+            let bv = b[i] as u16;
+            let subtrahend = bv + borrow;
+            if av >= subtrahend {
+                out[i] = (av - subtrahend) as u8;
+                borrow = 0;
+            } else {
+                out[i] = (av + 256 - subtrahend) as u8;
+                borrow = 1;
+            }
+        }
+        Some(out)
     }
 }
 

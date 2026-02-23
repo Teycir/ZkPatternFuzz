@@ -454,6 +454,7 @@ fn test_semantic_deduplication() {
             proof: None,
         },
         location: Some("nullifier_generation".to_string()),
+        class: None,
     };
 
     let finding2 = Finding {
@@ -467,6 +468,7 @@ fn test_semantic_deduplication() {
             proof: None,
         },
         location: Some("nullifier_generation".to_string()),
+        class: None,
     };
 
     let finding3 = Finding {
@@ -480,6 +482,7 @@ fn test_semantic_deduplication() {
             proof: None,
         },
         location: Some("merkle_path".to_string()),
+        class: None,
     };
 
     // First finding should be added
@@ -503,6 +506,7 @@ fn test_confidence_scoring() {
         description: "Low confidence finding".to_string(),
         poc: ProofOfConcept::default(),
         location: None,
+        class: None,
     };
 
     let high_confidence = Finding {
@@ -516,6 +520,7 @@ fn test_confidence_scoring() {
             proof: None,
         },
         location: Some("nullifier".to_string()),
+        class: None,
     };
 
     let low_score = calculate_confidence(&low_confidence);

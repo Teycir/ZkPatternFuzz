@@ -142,6 +142,7 @@ impl FrozenWireDetector {
                     ),
                     poc: Default::default(),
                     location: None,
+                    class: None,
                 });
             }
         }

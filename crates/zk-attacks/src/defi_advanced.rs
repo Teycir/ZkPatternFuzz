@@ -99,6 +99,7 @@ impl DefiAdvancedAttack {
                                 proof: None,
                             },
                             location: Some("defi:ordering_dependency".to_string()),
+                            class: None,
                         });
                         break;
                     }
@@ -134,6 +135,7 @@ impl DefiAdvancedAttack {
                         proof: None,
                     },
                     location: Some("defi:front_running_signal".to_string()),
+                    class: None,
                 });
             }
         }

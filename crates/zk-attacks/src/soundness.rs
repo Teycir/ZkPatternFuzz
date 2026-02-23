@@ -73,6 +73,7 @@ impl Attack for SoundnessTester {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 
@@ -133,6 +134,7 @@ impl Attack for SoundnessTester {
                             proof: Some(mutated),
                         },
                         location: None,
+                        class: None,
                     });
                     break;
                 }
@@ -171,6 +173,7 @@ impl Attack for SoundnessTester {
                             proof: Some(valid_proof.clone()),
                         },
                         location: None,
+                        class: None,
                     });
                     break;
                 }

@@ -106,6 +106,7 @@ impl RangeProofOracle {
                     proof: None,
                 },
                 location: Some("range_lower_bound".to_string()),
+                class: None,
             });
         }
 
@@ -129,6 +130,7 @@ impl RangeProofOracle {
                     proof: None,
                 },
                 location: Some("range_upper_bound".to_string()),
+                class: None,
             });
         }
 
@@ -166,6 +168,7 @@ impl RangeProofOracle {
                     proof: None,
                 },
                 location: Some("signed_boundary".to_string()),
+                class: None,
             });
         }
 
@@ -192,6 +195,7 @@ impl RangeProofOracle {
                         proof: None,
                     },
                     location: Some("modulus_boundary".to_string()),
+                    class: None,
                 });
             }
         }
@@ -254,6 +258,7 @@ impl RangeProofOracle {
                         proof: None,
                     },
                     location: Some("range_consistency".to_string()),
+                    class: None,
                 });
             }
         }

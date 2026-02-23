@@ -23,5 +23,6 @@ pub use invariants::{
 };
 pub use traits::{Attack, AttackContext, OracleConfig, OracleStats, SemanticOracle};
 pub use types::{
-    AttackType, CoverageMap, Finding, Framework, ProofOfConcept, Severity, TestCase, TestMetadata,
+    AttackType, CoverageMap, Finding, FindingClass, Framework, ProofOfConcept, Severity, TestCase,
+    TestMetadata,
 };

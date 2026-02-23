@@ -242,6 +242,7 @@ impl CvePattern {
                 self.sources.join(", ")
             ),
             poc,
+            class: None,
             location,
         }
     }

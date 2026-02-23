@@ -66,6 +66,7 @@ impl FuzzingEngine {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 };
 
                 self.with_findings_write(|store| store.push(finding.clone()))?;
@@ -169,6 +170,7 @@ impl FuzzingEngine {
                                 proof: None,
                             },
                             location: None,
+                            class: None,
                         };
 
                         self.with_findings_write(|store| store.push(finding.clone()))?;

@@ -269,6 +269,7 @@ fn test_adaptive_scheduler_budget_allocation() {
             description: "Test finding".to_string(),
             poc: ProofOfConcept::default(),
             location: None,
+            class: None,
         }],
         near_misses: vec![],
         iterations: 100,
@@ -387,6 +388,7 @@ fn test_yaml_suggestions() {
             description: "Test finding".to_string(),
             poc: ProofOfConcept::default(),
             location: None,
+            class: None,
         }],
         near_misses: vec![NearMissEvent {
             event_type: NearMissType::AlmostOutOfRange,

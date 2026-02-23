@@ -21,6 +21,7 @@ fn sample_finding() -> Finding {
             proof: None,
         },
         location: Some("merkle.circom:42".to_string()),
+        class: None,
     }
 }
 

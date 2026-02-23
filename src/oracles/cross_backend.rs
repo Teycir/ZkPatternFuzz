@@ -62,6 +62,7 @@ impl CrossBackendDifferential {
                 ),
                 poc: Default::default(),
                 location: None,
+                class: None,
             });
         }
 
@@ -88,6 +89,7 @@ impl CrossBackendDifferential {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
                 continue;
             }
@@ -115,6 +117,7 @@ impl CrossBackendDifferential {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 });
                 continue;
             }
@@ -149,6 +152,7 @@ impl CrossBackendDifferential {
                             proof: None,
                         },
                         location: None,
+                        class: None,
                     });
                 }
             }

@@ -136,6 +136,7 @@ impl MerkleOracle {
                     ),
                     poc,
                     location: Some("merkle_path_validation".to_string()),
+                    class: None,
                 });
             }
         }
@@ -182,6 +183,7 @@ impl MerkleOracle {
                 proof: None,
             },
             location: Some("merkle_path_validation".to_string()),
+            class: None,
         }
     }
 
@@ -226,6 +228,7 @@ impl MerkleOracle {
                     ),
                     poc,
                     location: Some("merkle_proof_uniqueness".to_string()),
+                    class: None,
                 });
             }
         }
@@ -276,6 +279,7 @@ impl MerkleOracle {
                         proof: None,
                     },
                     location: Some(format!("merkle_level_{}", i)),
+                    class: None,
                 });
             }
         }

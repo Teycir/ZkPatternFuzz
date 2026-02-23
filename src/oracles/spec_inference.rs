@@ -848,6 +848,7 @@ impl SpecInferenceOracle {
                             proof: None,
                         },
                         location: None,
+                        class: None,
                     });
                     break; // One violation per spec is enough
                 }

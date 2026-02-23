@@ -31,6 +31,7 @@ fn test_score_update_with_findings() {
             description: "Test".to_string(),
             poc: ProofOfConcept::default(),
             location: None,
+            class: None,
         }],
         near_misses: vec![],
         iterations: 100,

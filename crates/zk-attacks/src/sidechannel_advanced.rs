@@ -102,6 +102,7 @@ impl SidechannelAdvancedAttack {
                             proof: None,
                         },
                         location: Some("sidechannel:timing_variance".to_string()),
+                        class: None,
                     });
                 }
             }
@@ -137,6 +138,7 @@ impl SidechannelAdvancedAttack {
                             proof: None,
                         },
                         location: Some("sidechannel:metadata_leakage".to_string()),
+                        class: None,
                     });
                 }
             }

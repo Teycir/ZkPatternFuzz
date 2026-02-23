@@ -95,6 +95,7 @@ impl FuzzingEngine {
                             .display()
                             .to_string(),
                     ),
+                    class: None,
                 };
                 store.push(finding.clone());
                 if let Some(p) = progress {

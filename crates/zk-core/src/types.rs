@@ -157,12 +157,20 @@ pub struct Finding {
     pub severity: Severity,
     pub description: String,
     pub poc: ProofOfConcept,
+    pub class: Option<FindingClass>,
     pub location: Option<String>,
 }
 
 impl Finding {
     /// Phase 3C: Classify this finding based on its characteristics
     pub fn classify(&self) -> FindingClass {
+        if let Some(class) = self.class {
+            return class;
+        }
+        self.infer_class_from_content()
+    }
+
+    fn infer_class_from_content(&self) -> FindingClass {
         let desc_lower = self.description.to_lowercase();
         let has_cross_witness_evidence = self
             .poc
@@ -194,10 +202,11 @@ impl serde::Serialize for Finding {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Finding", 8)?;
-        state.serialize_field("attack_type", &format!("{:?}", self.attack_type))?;
+        let mut state = serializer.serialize_struct("Finding", 9)?;
+        state.serialize_field("attack_type", &self.attack_type)?;
         state.serialize_field("severity", &self.severity)?;
         state.serialize_field("description", &self.description)?;
+        state.serialize_field("class", &self.classify())?;
         state.serialize_field("location", &self.location)?;
         state.serialize_field(
             "poc_witness_a",
@@ -245,6 +254,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
             AttackType,
             Severity,
             Description,
+            Class,
             Location,
             PocWitnessA,
             PocWitnessB,
@@ -268,6 +278,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                 let mut attack_type: Option<String> = None;
                 let mut severity: Option<Severity> = None;
                 let mut description: Option<String> = None;
+                let mut class: Option<FindingClass> = None;
                 let mut location: Option<Option<String>> = None;
                 let mut poc_witness_a: Option<Vec<String>> = None;
                 let mut poc_witness_b: Option<Option<Vec<String>>> = None;
@@ -284,6 +295,9 @@ impl<'de> serde::Deserialize<'de> for Finding {
                         }
                         Field::Description => {
                             description = Some(map.next_value()?);
+                        }
+                        Field::Class => {
+                            class = Some(map.next_value()?);
                         }
                         Field::Location => {
                             location = Some(map.next_value()?);
@@ -305,79 +319,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
 
                 let attack_type_str =
                     attack_type.ok_or_else(|| de::Error::missing_field("attack_type"))?;
-                let parsed_attack_type = match attack_type_str.as_str() {
-                    "Underconstrained" => AttackType::Underconstrained,
-                    "Soundness" => AttackType::Soundness,
-                    "ArithmeticOverflow" => AttackType::ArithmeticOverflow,
-                    "ConstraintBypass" => AttackType::ConstraintBypass,
-                    "TrustedSetup" => AttackType::TrustedSetup,
-                    "WitnessLeakage" => AttackType::WitnessLeakage,
-                    "ReplayAttack" => AttackType::ReplayAttack,
-                    "Collision" => AttackType::Collision,
-                    "Boundary" => AttackType::Boundary,
-                    "BitDecomposition" => AttackType::BitDecomposition,
-                    "Malleability" => AttackType::Malleability,
-                    "VerificationFuzzing" => AttackType::VerificationFuzzing,
-                    "WitnessFuzzing" => AttackType::WitnessFuzzing,
-                    "Differential" => AttackType::Differential,
-                    "InformationLeakage" => AttackType::InformationLeakage,
-                    "TimingSideChannel" => AttackType::TimingSideChannel,
-                    "CircuitComposition" => AttackType::CircuitComposition,
-                    "RecursiveProof" => AttackType::RecursiveProof,
-                    "ConstraintInference" => AttackType::ConstraintInference,
-                    "Metamorphic" => AttackType::Metamorphic,
-                    "ConstraintSlice" => AttackType::ConstraintSlice,
-                    "SpecInference" => AttackType::SpecInference,
-                    "WitnessCollision" => AttackType::WitnessCollision,
-                    "Mev" => AttackType::Mev,
-                    "FrontRunning" => AttackType::FrontRunning,
-                    "ZkEvm" => AttackType::ZkEvm,
-                    "BatchVerification" => AttackType::BatchVerification,
-                    "SidechannelAdvanced" => AttackType::SidechannelAdvanced,
-                    "QuantumResistance" => AttackType::QuantumResistance,
-                    "PrivacyAdvanced" => AttackType::PrivacyAdvanced,
-                    "DefiAdvanced" => AttackType::DefiAdvanced,
-                    "CircomStaticLint" => AttackType::CircomStaticLint,
-                    _ => {
-                        return Err(de::Error::unknown_variant(
-                            &attack_type_str,
-                            &[
-                                "Underconstrained",
-                                "Soundness",
-                                "ArithmeticOverflow",
-                                "ConstraintBypass",
-                                "TrustedSetup",
-                                "WitnessLeakage",
-                                "ReplayAttack",
-                                "Collision",
-                                "Boundary",
-                                "BitDecomposition",
-                                "Malleability",
-                                "VerificationFuzzing",
-                                "WitnessFuzzing",
-                                "Differential",
-                                "InformationLeakage",
-                                "TimingSideChannel",
-                                "CircuitComposition",
-                                "RecursiveProof",
-                                "ConstraintInference",
-                                "Metamorphic",
-                                "ConstraintSlice",
-                                "SpecInference",
-                                "WitnessCollision",
-                                "Mev",
-                                "FrontRunning",
-                                "ZkEvm",
-                                "BatchVerification",
-                                "SidechannelAdvanced",
-                                "QuantumResistance",
-                                "PrivacyAdvanced",
-                                "DefiAdvanced",
-                                "CircomStaticLint",
-                            ],
-                        ))
-                    }
-                };
+                let parsed_attack_type = parse_attack_type_compat(&attack_type_str)?;
 
                 let witness_a = poc_witness_a.unwrap_or_default();
                 let mut parsed_witness_a: Vec<FieldElement> = Vec::with_capacity(witness_a.len());
@@ -423,6 +365,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     severity: severity.ok_or_else(|| de::Error::missing_field("severity"))?,
                     description: description
                         .ok_or_else(|| de::Error::missing_field("description"))?,
+                    class,
                     location: location.unwrap_or_default(),
                     poc: ProofOfConcept {
                         witness_a: parsed_witness_a,
@@ -438,6 +381,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
             "attack_type",
             "severity",
             "description",
+            "class",
             "location",
             "poc_witness_a",
             "poc_witness_b",
@@ -446,6 +390,37 @@ impl<'de> serde::Deserialize<'de> for Finding {
         ];
         deserializer.deserialize_struct("Finding", FIELDS, FindingVisitor)
     }
+}
+
+fn parse_attack_type_compat<E: serde::de::Error>(raw: &str) -> Result<AttackType, E> {
+    use serde::de::value::{Error as ValueError, StrDeserializer};
+
+    if let Ok(parsed) = AttackType::deserialize(StrDeserializer::<ValueError>::new(raw)) {
+        return Ok(parsed);
+    }
+
+    let normalized = to_snake_case(raw);
+    AttackType::deserialize(StrDeserializer::<ValueError>::new(normalized.as_str())).map_err(|_| {
+        E::custom(format!(
+            "unsupported attack_type '{}'; expected snake_case or PascalCase variant",
+            raw
+        ))
+    })
+}
+
+fn to_snake_case(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len() + 8);
+    for (idx, ch) in raw.chars().enumerate() {
+        if ch.is_ascii_uppercase() {
+            if idx > 0 && !out.ends_with('_') {
+                out.push('_');
+            }
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// Proof of concept for reproducing a finding

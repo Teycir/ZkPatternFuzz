@@ -77,6 +77,7 @@ impl UnderconstrainedDetector {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 
@@ -148,6 +149,7 @@ impl UnderconstrainedDetector {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
 
             if findings.len() >= self.samples {
@@ -204,6 +206,7 @@ impl UnderconstrainedDetector {
                     ),
                     poc: ProofOfConcept::default(),
                     location: None,
+                    class: None,
                 });
             }
 
@@ -252,6 +255,7 @@ impl UnderconstrainedDetector {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
 
             if findings.len() >= self.samples {

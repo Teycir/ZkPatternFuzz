@@ -153,6 +153,7 @@ impl FuzzingEngine {
                         proof: Some(valid_proof),
                     },
                     location: None,
+                    class: None,
                 };
 
                 self.with_findings_write(|store| store.push(finding.clone()))?;

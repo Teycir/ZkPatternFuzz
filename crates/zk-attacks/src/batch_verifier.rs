@@ -841,6 +841,7 @@ impl BatchBypassFinding {
                 public_inputs: Vec::new(),
                 proof: None,
             },
+            class: None,
             location: Some(format!(
                 "batch_size={}, indices={:?}, method={}",
                 self.batch_size,

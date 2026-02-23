@@ -46,6 +46,7 @@ fn test_suggestions_from_findings() {
                 description: "Test 1".to_string(),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             },
             Finding {
                 attack_type: AttackType::Underconstrained,
@@ -53,6 +54,7 @@ fn test_suggestions_from_findings() {
                 description: "Test 2".to_string(),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             },
             Finding {
                 attack_type: AttackType::Underconstrained,
@@ -60,6 +62,7 @@ fn test_suggestions_from_findings() {
                 description: "Test 3".to_string(),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             },
         ],
         statistics: Default::default(),

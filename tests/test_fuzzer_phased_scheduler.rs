@@ -197,6 +197,7 @@ async fn test_schedule_fail_on_findings_severity() {
             proof: None,
         },
         location: Some("sample.circom".to_string()),
+        class: None,
     }];
 
     let results = scheduler

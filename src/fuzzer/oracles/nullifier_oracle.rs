@@ -109,6 +109,7 @@ impl NullifierOracle {
                     ),
                     poc,
                     location: Some("nullifier_generation".to_string()),
+                    class: None,
                 });
             }
         }
@@ -149,6 +150,7 @@ impl NullifierOracle {
                     ),
                     poc,
                     location: Some("nullifier_derivation".to_string()),
+                    class: None,
                 });
             }
         }
@@ -186,6 +188,7 @@ impl NullifierOracle {
             ),
             poc,
             location: Some("nullifier_entropy".to_string()),
+            class: None,
         })
     }
 

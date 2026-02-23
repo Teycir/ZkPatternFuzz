@@ -28,6 +28,7 @@ fn make_finding(attack_type: AttackType, witness: Vec<FieldElement>) -> Finding 
             proof: None,
         },
         location: None,
+        class: None,
     }
 }
 
@@ -43,6 +44,7 @@ fn make_invariant_finding(attack_type: AttackType, witness: Vec<FieldElement>) -
             proof: None,
         },
         location: None,
+        class: None,
     }
 }
 

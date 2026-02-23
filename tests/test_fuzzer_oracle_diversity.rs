@@ -74,6 +74,7 @@ fn test_finding_recording() {
         description: "Test finding".to_string(),
         poc: ProofOfConcept::default(),
         location: Some("test.circom:42".to_string()),
+        class: None,
     };
 
     tracker.record_finding(&finding);

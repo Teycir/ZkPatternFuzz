@@ -961,6 +961,7 @@ impl ConstraintInferenceEngine {
                     proof: None,
                 },
                 location: None,
+                class: None,
             })
             .collect()
     }

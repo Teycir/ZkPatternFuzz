@@ -14,6 +14,7 @@ impl Attack for ExampleAttack {
             description: "Example plugin attack executed".to_string(),
             poc: ProofOfConcept::default(),
             location: None,
+            class: None,
         }]
     }
 

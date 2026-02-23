@@ -292,6 +292,7 @@ fn make_finding(severity: Severity, description: String, location: Option<String
             public_inputs: Vec::new(),
             proof: None,
         },
+        class: None,
         location,
     }
 }

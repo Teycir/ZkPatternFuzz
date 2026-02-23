@@ -481,6 +481,7 @@ impl FuzzingEngine {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 })
                 .collect();
             self.with_findings_write(|store| store.extend(findings.iter().cloned()))?;
@@ -765,6 +766,7 @@ impl FuzzingEngine {
                     proof: None,
                 },
                 location: None,
+                class: None,
             };
 
             self.with_findings_write(|store| store.push(finding.clone()))?;
@@ -840,6 +842,7 @@ impl FuzzingEngine {
                             proof: None,
                         },
                         location: None,
+                        class: None,
                     };
 
                     self.with_findings_write(|store| store.push(finding.clone()))?;

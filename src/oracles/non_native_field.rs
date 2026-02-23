@@ -197,6 +197,7 @@ impl NonNativeFieldOracle {
                         proof: None,
                     },
                     location: Some(format!("limb_wire:{}", target)),
+                    class: None,
                 })
             }
             LimbBoundaryCaseKind::SumOverflow => {
@@ -222,6 +223,7 @@ impl NonNativeFieldOracle {
                     location: case
                         .relation_constraint_index
                         .map(|idx| format!("reconstruction_constraint:{}", idx)),
+                    class: Some(zk_core::FindingClass::OracleViolation),
                 })
             }
             LimbBoundaryCaseKind::CarryPropagation => {
@@ -259,6 +261,7 @@ impl NonNativeFieldOracle {
                     location: case
                         .relation_constraint_index
                         .map(|idx| format!("carry_constraint:{}", idx)),
+                    class: Some(zk_core::FindingClass::OracleViolation),
                 })
             }
             LimbBoundaryCaseKind::LimbZero | LimbBoundaryCaseKind::LimbMax => None,

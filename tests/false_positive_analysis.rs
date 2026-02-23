@@ -490,6 +490,7 @@ mod unit_tests {
                     description: "False positive".to_string(),
                     poc: Default::default(),
                     location: None,
+                    class: None,
                 }]
             } else {
                 vec![]

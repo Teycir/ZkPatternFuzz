@@ -377,6 +377,7 @@ impl FuzzingEngine {
                         proof: None,
                     },
                     location: Some("witness_extension".to_string()),
+                    class: None,
                 }
             })
             .collect::<Vec<_>>();

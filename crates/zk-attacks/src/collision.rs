@@ -448,6 +448,7 @@ impl Attack for CollisionDetector {
                                     proof: None,
                                 },
                                 location: None,
+                                class: None,
                             });
                         }
                     }
@@ -473,6 +474,7 @@ impl Attack for CollisionDetector {
                                     proof: None,
                                 },
                                 location: None,
+                                class: None,
                             });
                         }
                     }
@@ -493,6 +495,7 @@ impl Attack for CollisionDetector {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 
@@ -519,6 +522,7 @@ impl Attack for CollisionDetector {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 
@@ -534,6 +538,7 @@ impl Attack for CollisionDetector {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 

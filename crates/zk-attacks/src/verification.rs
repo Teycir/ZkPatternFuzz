@@ -132,6 +132,7 @@ impl VerificationFuzzer {
                             proof: Some(mutated),
                         },
                         location: None,
+                        class: None,
                     });
                 }
                 Ok(false) => {
@@ -178,6 +179,7 @@ impl VerificationFuzzer {
                             proof: Some(malformed),
                         },
                         location: None,
+                        class: None,
                     });
                 }
                 Ok(false) => {
@@ -201,6 +203,7 @@ impl VerificationFuzzer {
                                 proof: Some(malformed),
                             },
                             location: None,
+                            class: None,
                         });
                     }
                 }
@@ -227,6 +230,7 @@ impl VerificationFuzzer {
                 description: "Empty proof accepted by verifier".to_string(),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 
@@ -238,6 +242,7 @@ impl VerificationFuzzer {
                 description: "Proof verified with empty public inputs".to_string(),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 
@@ -255,6 +260,7 @@ impl VerificationFuzzer {
                     proof: Some(zero_proof),
                 },
                 location: None,
+                class: None,
             });
         }
 
@@ -272,6 +278,7 @@ impl VerificationFuzzer {
                     proof: Some(ones_proof),
                 },
                 location: None,
+                class: None,
             });
         }
 
@@ -294,6 +301,7 @@ impl VerificationFuzzer {
                         proof: Some(edge_proof),
                     },
                     location: None,
+                    class: None,
                 });
             }
         }

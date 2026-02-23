@@ -721,6 +721,7 @@ impl Attack for BoundaryTester {
                                         proof: None,
                                     },
                                     location: None,
+                                    class: None,
                                 });
                             }
 
@@ -751,6 +752,7 @@ impl Attack for BoundaryTester {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 
@@ -767,6 +769,7 @@ impl Attack for BoundaryTester {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 
@@ -782,6 +785,7 @@ impl Attack for BoundaryTester {
                 ),
                 poc: ProofOfConcept::default(),
                 location: None,
+                class: None,
             });
         }
 

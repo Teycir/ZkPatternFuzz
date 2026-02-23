@@ -48,6 +48,7 @@ impl FuzzingEngine {
                 proof: None,
             },
             location: Some(format!("Invariant: {}", violation.invariant_name)),
+            class: None,
         };
 
         self.with_findings_write(|findings| findings.push(finding))?;
@@ -162,6 +163,7 @@ impl FuzzingEngine {
                         proof: None,
                     },
                     location: Some(format!("Invariant: {}", invariant.name)),
+                    class: None,
                 });
             }
         }

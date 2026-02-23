@@ -13,6 +13,7 @@ fn make_finding(attack_type: AttackType, severity: Severity, description: &str) 
             proof: None,
         },
         location: Some("test.circom:42".to_string()),
+        class: None,
     }
 }
 

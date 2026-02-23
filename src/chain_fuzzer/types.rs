@@ -908,6 +908,7 @@ impl ChainFinding {
                 proof: None,
             },
             location: self.finding.location.clone(),
+            class: None,
         }
     }
 

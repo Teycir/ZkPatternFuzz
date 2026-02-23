@@ -244,6 +244,7 @@ impl ZkEvmTestResult {
                 proof: None,
             },
             location: self.opcode.clone().map(|op| format!("opcode:{}", op)),
+            class: None,
         }
     }
 }

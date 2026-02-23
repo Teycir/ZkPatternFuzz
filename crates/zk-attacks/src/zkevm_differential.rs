@@ -681,6 +681,7 @@ impl DifferentialFinding {
                 public_inputs: Vec::new(),
                 proof: None,
             },
+            class: None,
             location: Some(format!(
                 "tx_from={}, mismatch={}",
                 hex::encode(self.transaction.from),

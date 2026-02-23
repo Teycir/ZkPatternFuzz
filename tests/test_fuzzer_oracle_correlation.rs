@@ -17,6 +17,7 @@ fn make_finding(
             proof: None,
         },
         location: None,
+        class: None,
     }
 }
 
@@ -36,6 +37,7 @@ fn make_invariant_finding(
             proof: None,
         },
         location: None,
+        class: None,
     }
 }
 

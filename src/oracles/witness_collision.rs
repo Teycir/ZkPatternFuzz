@@ -314,6 +314,7 @@ impl WitnessCollisionDetector {
                         proof: None,
                     },
                     location: None,
+                    class: None,
                 }
             })
             .collect()

@@ -93,6 +93,7 @@ impl CommitmentOracle {
                     ),
                     poc,
                     location: Some("commitment_binding".to_string()),
+                    class: None,
                 });
             }
         }
@@ -126,6 +127,7 @@ impl CommitmentOracle {
                     proof: None,
                 },
                 location: Some("commitment_hiding".to_string()),
+                class: None,
             });
         }
 
@@ -161,6 +163,7 @@ impl CommitmentOracle {
                     proof: None,
                 },
                 location: Some("commitment_randomness".to_string()),
+                class: None,
             });
         }
 

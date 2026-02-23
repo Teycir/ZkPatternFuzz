@@ -624,6 +624,7 @@ impl FuzzingEngine {
                                 proof: None,
                             },
                             location: Some(format!("chain:{}", chain.name)),
+                            class: None,
                         };
 
                         let chain_finding = ChainFinding::new(

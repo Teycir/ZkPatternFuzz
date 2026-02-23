@@ -158,6 +158,7 @@ impl ProofMalleabilityScanner {
                             proof: Some(mutated),
                         },
                         location: None,
+                        class: None,
                     });
                 }
             }

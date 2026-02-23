@@ -5,6 +5,7 @@ fn make_finding(description: &str, witness_b: Option<Vec<FieldElement>>) -> Find
         attack_type: AttackType::Underconstrained,
         severity: Severity::High,
         description: description.to_string(),
+        class: None,
         location: None,
         poc: ProofOfConcept {
             witness_a: vec![FieldElement::from_u64(1)],
@@ -145,4 +146,33 @@ fn deserialize_finding_supports_phase3_and_advanced_attack_variants() {
     )
     .expect("deserialize CircomStaticLint finding");
     assert_eq!(circom_static.attack_type, AttackType::CircomStaticLint);
+}
+
+#[test]
+fn serialize_finding_uses_structured_attack_type_and_class() {
+    let finding = make_finding("Invariant violated: output uniqueness", None);
+    let value = serde_json::to_value(&finding).expect("serialize finding");
+    assert_eq!(
+        value.get("attack_type").and_then(|v| v.as_str()),
+        Some("underconstrained")
+    );
+    assert_eq!(
+        value.get("class").and_then(|v| v.as_str()),
+        Some("invariant_violation")
+    );
+}
+
+#[test]
+fn deserialize_finding_accepts_snake_case_attack_type() {
+    let finding: Finding = serde_json::from_str(
+        r#"{
+                "attack_type":"constraint_inference",
+                "severity":"high",
+                "description":"constraint inference test",
+                "location":null,
+                "poc_witness_a":[]
+            }"#,
+    )
+    .expect("deserialize snake_case attack_type");
+    assert_eq!(finding.attack_type, AttackType::ConstraintInference);
 }

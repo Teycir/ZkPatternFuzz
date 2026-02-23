@@ -51,6 +51,7 @@ fn non_circom_static_findings(
                     ),
                     poc: ProofOfConcept::default(),
                     location: source_location(source_path, hint.line),
+                    class: None,
                 });
             }
         }
@@ -68,6 +69,7 @@ fn non_circom_static_findings(
                     ),
                     poc: ProofOfConcept::default(),
                     location: source_location(source_path, None),
+                    class: None,
                 });
             }
         }
@@ -85,6 +87,7 @@ fn non_circom_static_findings(
                     ),
                     poc: ProofOfConcept::default(),
                     location: source_location(source_path, issue.line),
+                    class: None,
                 });
             }
         }

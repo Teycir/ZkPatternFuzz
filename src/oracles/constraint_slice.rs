@@ -343,6 +343,7 @@ impl ConstraintSliceOracle {
                     description: format!("Potential information leak: {}", leak.description),
                     poc: ProofOfConcept::default(),
                     location: Some(format!("constraint_{}", leak.constraint_id)),
+                    class: None,
                 });
             }
         }
@@ -429,6 +430,7 @@ impl ConstraintSliceOracle {
                         "outputs {} and {} (wire {})",
                         cone.output_index, i, cone.output_wire
                     )),
+                    class: Some(zk_core::FindingClass::OracleViolation),
                 });
             }
         }

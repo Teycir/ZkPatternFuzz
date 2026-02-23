@@ -16,6 +16,7 @@ fn test_generate_noir_repro_script() {
         description: "Noir script generation".to_string(),
         poc: ProofOfConcept::default(),
         location: None,
+        class: None,
     };
 
     let cmd = generate_noir_repro_script(&script_path, &finding, &project_path)
@@ -36,6 +37,7 @@ fn test_generate_noir_proof_missing_witness_returns_failure() {
         description: "Missing witness".to_string(),
         poc: ProofOfConcept::default(),
         location: None,
+        class: None,
     };
 
     let (_proof, result) = generate_noir_proof(temp_dir.path(), &finding, temp_dir.path())

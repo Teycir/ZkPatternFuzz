@@ -333,6 +333,7 @@ impl TaintAnalyzer {
                 description: tf.description,
                 poc: ProofOfConcept::default(),
                 location: Some(format!("signal_{}", tf.signal_index)),
+                class: None,
             })
             .collect()
     }

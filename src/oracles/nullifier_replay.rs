@@ -164,6 +164,7 @@ impl NullifierReplayScanner {
                             proof: None,
                         },
                         location: None,
+                        class: None,
                     });
                     break;
                 }

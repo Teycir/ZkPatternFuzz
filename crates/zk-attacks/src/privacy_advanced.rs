@@ -106,6 +106,7 @@ impl PrivacyAdvancedAttack {
                         proof: None,
                     },
                     location: Some("privacy:metadata_entropy".to_string()),
+                    class: None,
                 });
             }
         }
@@ -127,6 +128,7 @@ impl PrivacyAdvancedAttack {
                             proof: None,
                         },
                         location: Some("privacy:timing_variance".to_string()),
+                        class: None,
                     });
                 }
             }

@@ -13,6 +13,7 @@ fn make_finding(attack_type: AttackType, location: &str) -> Finding {
             proof: None,
         },
         location: Some(location.to_string()),
+        class: None,
     }
 }
 

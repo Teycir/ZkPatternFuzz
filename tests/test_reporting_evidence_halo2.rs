@@ -17,6 +17,7 @@ fn test_generate_halo2_repro_script_writes_verify_helper() {
         description: "Halo2 script generation".to_string(),
         poc: ProofOfConcept::default(),
         location: None,
+        class: None,
     };
 
     let cmd = generate_halo2_repro_script(&script_path, &finding, Some(&spec_path))

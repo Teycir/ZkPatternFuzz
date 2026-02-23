@@ -261,6 +261,7 @@ impl FuzzingEngine {
                 self.core.execution_count(),
                 duration
             )),
+            class: Some(zk_core::FindingClass::Hang),
         };
 
         self.with_findings_write(|findings| findings.push(finding))?;
@@ -297,6 +298,7 @@ impl FuzzingEngine {
                 self.core.execution_count(),
                 error_msg
             )),
+            class: Some(zk_core::FindingClass::Crash),
         };
 
         self.with_findings_write(|findings| findings.push(finding))?;

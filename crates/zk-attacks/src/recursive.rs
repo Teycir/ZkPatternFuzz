@@ -1089,6 +1089,7 @@ impl RecursiveAttack {
                 proof: None,
             },
             location: Some(format!("recursive_snark::{}", vuln_type.as_str())),
+            class: None,
         }
     }
 }
