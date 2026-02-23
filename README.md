@@ -36,6 +36,12 @@ ZkPatternFuzz is a security testing framework that **automates accumulated audit
 - Rust 1.70+
 - Z3 SMT solver (optional, for symbolic execution)
 
+Z3 setup by OS:
+- Linux (dynamic): install `z3` + `libz3-dev` (package names vary by distro).
+- macOS (dynamic): `brew install z3`.
+- Windows: solver crates default to static-link Z3 to avoid missing `z3.h`/system-lib issues.
+  For static builds, install CMake + a C/C++ toolchain (MSVC Build Tools).
+
 ### Build
 
 ```bash

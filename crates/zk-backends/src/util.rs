@@ -4,8 +4,13 @@ use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
-use std::time::{Duration, Instant};
+#[cfg(not(unix))]
+use std::process::Child;
+use std::process::{Command, Output, Stdio};
+use std::sync::mpsc;
+use std::time::Duration;
+#[cfg(not(unix))]
+use std::time::Instant;
 
 pub(crate) fn timeout_from_env(var: &str, default_secs: u64) -> Duration {
     let fallback = Duration::from_secs(default_secs.max(1));
@@ -57,22 +62,21 @@ fn prepare_child_process_group(cmd: &mut Command) {
 #[cfg(not(unix))]
 fn prepare_child_process_group(_cmd: &mut Command) {}
 
-#[cfg(unix)]
-fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
-    let pgid = child.id() as i32;
-    // Best-effort kill of the whole process group.
-    // SAFETY: `pgid` is derived from the spawned child PID and used only as
-    // a target identifier for `killpg`; no borrowed memory is involved.
-    let rc = unsafe { libc::killpg(pgid, libc::SIGKILL) };
-    if rc == 0 {
-        return Ok(());
-    }
-    child.kill()
-}
-
 #[cfg(not(unix))]
 fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
     child.kill()
+}
+
+#[cfg(unix)]
+fn kill_process_group_by_pid(pid: u32) -> std::io::Result<()> {
+    // SAFETY: PID comes from a live child process ID and is only used as
+    // the process-group selector for `killpg`.
+    let rc = unsafe { libc::killpg(pid as i32, libc::SIGKILL) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
 pub(crate) fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<Output> {
@@ -80,35 +84,64 @@ pub(crate) fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<O
     let spawn_cmd = sandboxed_cmd.as_mut().unwrap_or(cmd);
     prepare_child_process_group(spawn_cmd);
 
-    let mut child = spawn_cmd
+    let child = spawn_cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .with_context(|| "Failed to spawn external command")?;
 
-    let start = Instant::now();
-    loop {
-        if let Some(_status) = child
-            .try_wait()
-            .context("Failed waiting on external command")?
-        {
-            return child
-                .wait_with_output()
-                .context("Failed collecting external command output");
-        }
+    #[cfg(unix)]
+    {
+        let child_id = child.id();
+        let (tx, rx) = mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let _ = tx.send(child.wait_with_output());
+        });
 
-        if start.elapsed() >= timeout {
-            if let Err(e) = kill_child_tree(&mut child) {
-                tracing::warn!("Failed to kill timed out process subtree: {}", e);
+        return match rx.recv_timeout(timeout) {
+            Ok(output) => output.context("Failed collecting external command output"),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if let Err(e) = kill_process_group_by_pid(child_id) {
+                    tracing::warn!("Failed to kill timed out process subtree: {}", e);
+                }
+                // Give the waiter a short grace period to observe process termination.
+                let _ = rx.recv_timeout(Duration::from_secs(1));
+                anyhow::bail!("Command timed out after {:?}", timeout);
             }
-            if let Err(e) = child.wait() {
-                tracing::warn!("Failed to wait for timed out process: {}", e);
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!("External command waiter disconnected unexpectedly")
             }
-            anyhow::bail!("Command timed out after {:?}", timeout);
-        }
+        };
+    }
 
-        std::thread::sleep(Duration::from_millis(5));
+    #[cfg(not(unix))]
+    {
+        let mut child = child;
+        let start = Instant::now();
+        loop {
+            if let Some(_status) = child
+                .try_wait()
+                .context("Failed waiting on external command")?
+            {
+                return child
+                    .wait_with_output()
+                    .context("Failed collecting external command output");
+            }
+
+            if start.elapsed() >= timeout {
+                if let Err(e) = kill_child_tree(&mut child) {
+                    tracing::warn!("Failed to kill timed out process subtree: {}", e);
+                }
+                if let Err(e) = child.wait() {
+                    tracing::warn!("Failed to wait for timed out process: {}", e);
+                }
+                anyhow::bail!("Command timed out after {:?}", timeout);
+            }
+
+            // Non-Unix fallback keeps bounded polling because `killpg` is unavailable.
+            std::thread::sleep(Duration::from_millis(25));
+        }
     }
 }
 

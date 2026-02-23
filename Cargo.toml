@@ -77,8 +77,6 @@ zk-track-compiler = { path = "crates/zk-track-compiler" }
 zk-track-semantic = { path = "crates/zk-track-semantic" }
 zk-track-crypto = { path = "crates/zk-track-crypto" }
 
-# SMT Solver for symbolic execution
-z3 = "0.12"
 num_cpus = "1.16"
 crossbeam = "0.8.4"
 parking_lot = "0.12"
@@ -108,7 +106,7 @@ default = []
 symbolic = []  # Enable full symbolic execution
 acir-bytecode = ["zk-constraints/acir-bytecode"]
 attack-plugins = ["zk-attacks/plugin-loader"]
-z3-static = ["z3/static-link-z3", "zk-constraints/z3-static", "zk-symbolic/z3-static"]
+z3-static = ["zk-constraints/z3-static", "zk-symbolic/z3-static"]
 
 [profile.dev]
 debug = 0

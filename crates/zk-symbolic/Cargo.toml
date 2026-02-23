@@ -12,9 +12,14 @@ anyhow = "1.0"
 num-bigint = "0.4"
 rand = "0.8"
 tracing = "0.1"
-z3 = "0.12"
 hex = "0.4"
 parking_lot = "0.12"
+
+[target.'cfg(not(windows))'.dependencies]
+z3 = "0.12"
+
+[target.'cfg(windows)'.dependencies]
+z3 = { version = "0.12", features = ["static-link-z3"] }
 
 [features]
 default = []

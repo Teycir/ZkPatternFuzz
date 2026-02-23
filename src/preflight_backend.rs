@@ -1,11 +1,37 @@
 use anyhow::Context;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use zk_fuzzer::config::FuzzConfig;
+
+fn is_bare_program_name(path: &Path) -> bool {
+    let mut components = path.components();
+    matches!(
+        components.next(),
+        Some(std::path::Component::Normal(_))
+    ) && components.next().is_none()
+}
+
+fn validate_snarkjs_override_path(
+    path: &Path,
+    allow_external_tool_overrides: bool,
+) -> anyhow::Result<()> {
+    if allow_external_tool_overrides || is_bare_program_name(path) {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Invalid config: circom_snarkjs_path '{}' is not a bare executable name. \
+         Absolute/relative path overrides are blocked by default to reduce untrusted-config \
+         command execution risk. Set allow_external_tool_overrides: true to allow this override.",
+        path.display()
+    );
+}
 
 fn parse_preflight_executor_options(
     config: &FuzzConfig,
 ) -> anyhow::Result<zk_fuzzer::executor::ExecutorFactoryOptions> {
     let additional = &config.campaign.parameters.additional;
+    let allow_external_tool_overrides = additional
+        .get_bool("allow_external_tool_overrides")
+        .unwrap_or(false);
     let mut options = zk_fuzzer::executor::ExecutorFactoryOptions {
         build_dir_base: additional
             .get_path("build_dir_base")
@@ -39,7 +65,10 @@ fn parse_preflight_executor_options(
         }
     }
     options.circom_ptau_path = additional.get_path("circom_ptau_path");
-    options.circom_snarkjs_path = additional.get_path("circom_snarkjs_path");
+    if let Some(snarkjs_path) = additional.get_path("circom_snarkjs_path") {
+        validate_snarkjs_override_path(snarkjs_path.as_path(), allow_external_tool_overrides)?;
+        options.circom_snarkjs_path = Some(snarkjs_path);
+    }
     if let Some(skip_compile) = additional.get_bool("circom_skip_compile_if_artifacts") {
         options.circom_skip_compile_if_artifacts = skip_compile;
     }

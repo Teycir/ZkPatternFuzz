@@ -13,13 +13,18 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tempfile = "3.10"
 tracing = "0.1"
-z3 = "0.12"
 
 # Optional ACIR bytecode decoding
 base64 = { version = "0.22", optional = true }
 flate2 = { version = "1.0", optional = true, default-features = false, features = ["zlib"] }
 bincode = { version = "2.0", optional = true, features = ["serde"] }
 acir = { version = "0.46", optional = true }
+
+[target.'cfg(not(windows))'.dependencies]
+z3 = "0.12"
+
+[target.'cfg(windows)'.dependencies]
+z3 = { version = "0.12", features = ["static-link-z3"] }
 
 [features]
 default = []

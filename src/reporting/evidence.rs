@@ -152,6 +152,14 @@ pub struct EvidenceGenerator {
 }
 
 impl EvidenceGenerator {
+    fn is_bare_program_name(path: &Path) -> bool {
+        let mut components = path.components();
+        matches!(
+            components.next(),
+            Some(std::path::Component::Normal(_))
+        ) && components.next().is_none()
+    }
+
     /// Create a new evidence generator
     pub fn new(config: FuzzConfig, output_dir: PathBuf) -> Self {
         let additional = &config.campaign.parameters.additional;
@@ -207,6 +215,24 @@ impl EvidenceGenerator {
     /// Resolve the snarkjs command to use
     fn resolve_snarkjs_cmd(&self) -> anyhow::Result<String> {
         if let Some(ref path) = self.snarkjs_path {
+            let allow_external_tool_overrides = self
+                .config
+                .campaign
+                .parameters
+                .additional
+                .get_bool("allow_external_tool_overrides")
+                .unwrap_or(false);
+            if !allow_external_tool_overrides && !Self::is_bare_program_name(path) {
+                anyhow::bail!(
+                    "Configured circom_snarkjs_path '{}' is not a bare executable name. \
+                     Absolute/relative path overrides are blocked by default; set \
+                     allow_external_tool_overrides: true to allow this override.",
+                    path.display()
+                );
+            }
+            if Self::is_bare_program_name(path) {
+                return Ok(path.display().to_string());
+            }
             if path.exists() {
                 return Ok(path.display().to_string());
             }

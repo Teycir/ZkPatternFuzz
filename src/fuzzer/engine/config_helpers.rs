@@ -2,6 +2,29 @@ use super::prelude::*;
 use super::FuzzingEngine;
 
 impl FuzzingEngine {
+    fn is_bare_program_name(path: &std::path::Path) -> bool {
+        let mut components = path.components();
+        matches!(
+            components.next(),
+            Some(std::path::Component::Normal(_))
+        ) && components.next().is_none()
+    }
+
+    fn validate_snarkjs_override_path(
+        path: &std::path::Path,
+        allow_external_tool_overrides: bool,
+    ) -> anyhow::Result<()> {
+        if allow_external_tool_overrides || Self::is_bare_program_name(path) {
+            return Ok(());
+        }
+        anyhow::bail!(
+            "Invalid config: circom_snarkjs_path '{}' is not a bare executable name. \
+             Absolute/relative path overrides are blocked by default to reduce untrusted-config \
+             command execution risk. Set allow_external_tool_overrides: true to allow this override.",
+            path.display()
+        );
+    }
+
     pub(super) fn expected_constraint_count(executor: &dyn CircuitExecutor) -> usize {
         if let Some(inspector) = executor.constraint_inspector() {
             let constraints = inspector.get_constraints();
@@ -422,6 +445,8 @@ impl FuzzingEngine {
     ) -> anyhow::Result<ExecutorFactoryOptions> {
         let additional = &config.campaign.parameters.additional;
         let mut options = ExecutorFactoryOptions::default();
+        let allow_external_tool_overrides =
+            Self::additional_bool(additional, "allow_external_tool_overrides").unwrap_or(false);
 
         let base = Self::additional_path(additional, "build_dir_base")
             .or_else(|| Self::additional_path(additional, "build_dir"));
@@ -460,6 +485,10 @@ impl FuzzingEngine {
             options.circom_ptau_path = Some(ptau_path);
         }
         if let Some(snarkjs_path) = Self::additional_path(additional, "circom_snarkjs_path") {
+            Self::validate_snarkjs_override_path(
+                snarkjs_path.as_path(),
+                allow_external_tool_overrides,
+            )?;
             options.circom_snarkjs_path = Some(snarkjs_path);
         }
         if let Some(skip_compile) =
@@ -777,5 +806,27 @@ impl FuzzingEngine {
             Some(value) => value as usize,
             None => 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FuzzingEngine;
+    use std::path::Path;
+
+    #[test]
+    fn snarkjs_override_requires_explicit_opt_in_for_path_like_values() {
+        let err = FuzzingEngine::validate_snarkjs_override_path(
+            Path::new("/tmp/snarkjs"),
+            false,
+        )
+        .expect_err("path-like override should be rejected without explicit opt-in");
+        assert!(err.to_string().contains("allow_external_tool_overrides"));
+    }
+
+    #[test]
+    fn snarkjs_override_allows_bare_program_name_by_default() {
+        FuzzingEngine::validate_snarkjs_override_path(Path::new("snarkjs"), false)
+            .expect("bare executable names should remain allowed");
     }
 }
