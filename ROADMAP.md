@@ -899,8 +899,9 @@ crates/zk-track-semantic/
 
 #### Exit Criteria
 - Progress tracking artifact: `scripts/build_semantic_exit_report.py` -> `artifacts/semantic_exit/latest_report.json` (counts intent extraction, semantic violations, actionable report coverage, optional manual precision labels).
-- [ ] Extract intent from 20+ real-world circuits with docs/comments
-- [ ] Detect ≥3 semantic violations missed by constraint-only analysis
+- Campaign runner: `scripts/run_semantic_exit_sample.sh` (emits semantic artifacts and refreshes `artifacts/semantic_exit/latest_report.json`).
+- [x] Extract intent from 20+ real-world circuits with docs/comments (latest sample: 183 intent sources on 2026-02-23)
+- [x] Detect ≥3 semantic violations missed by constraint-only analysis (latest sample: 24 semantic violations on 2026-02-23)
 - [ ] Achieve ≥80% precision on exploitability classification (manual validation)
 - [x] Generate actionable reports with fix suggestions (`semantic_actionable_report.json`)
 

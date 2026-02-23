@@ -77,3 +77,17 @@ Use this before semantic-related signoff:
 4. `test_halo2_lookup_integration` passes.
 
 If any step fails, block semantic signoff and fix before release-candidate promotion.
+
+## 5) Post-Roadmap Semantic Exit Sample (Deferred Lane)
+
+The semantic intent track is currently deferred from release gating, but you can run the producer-only sample campaign to refresh exit metrics:
+
+```bash
+scripts/run_semantic_exit_sample.sh
+```
+
+Outputs:
+- semantic run artifacts under `artifacts/semantic_campaign/post_roadmap/semantic/semantic-exit-sample/`
+- aggregated exit report at `artifacts/semantic_exit/latest_report.json`
+
+This flow exports AI-ingest bundles and worklists only; external AI responses remain out-of-band.
