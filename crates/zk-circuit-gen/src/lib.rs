@@ -304,6 +304,22 @@ pub struct SemanticIntentExtraction {
     pub documentation_lines: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompiledCircuitStructure {
+    pub circuit_name: String,
+    pub backend: Backend,
+    pub constraint_count: usize,
+    pub assignment_count: usize,
+    pub signal_count: usize,
+    pub intermediate_count: usize,
+    pub expression_node_count: usize,
+    pub max_expression_depth: usize,
+    pub signal_reference_count: usize,
+    pub unique_signal_references: usize,
+    pub rendered_line_count: usize,
+    pub rendered_byte_size: usize,
+}
+
 pub fn parse_dsl_yaml(value: &str) -> Result<CircuitDsl, CircuitGenError> {
     serde_yaml::from_str(value).map_err(CircuitGenError::ParseYaml)
 }
@@ -369,6 +385,68 @@ pub fn extract_semantic_intent_from_text(
         comment_lines,
         documentation_lines,
     }
+}
+
+pub fn compile_and_extract_structure(
+    dsl: &CircuitDsl,
+    backend: Backend,
+) -> Result<CompiledCircuitStructure, CircuitGenError> {
+    let validated = validate_dsl(dsl)?;
+    let rendered = render_backend_template(dsl, backend)?;
+
+    let mut expression_node_count = 0usize;
+    let mut max_expression_depth = 0usize;
+    let mut signal_references = 0usize;
+    let mut unique_signal_refs = BTreeSet::new();
+
+    for assignment in &dsl.assignments {
+        collect_expression_metrics(
+            &assignment.expression,
+            1,
+            &mut expression_node_count,
+            &mut max_expression_depth,
+            &mut signal_references,
+            &mut unique_signal_refs,
+        );
+    }
+    for constraint in &dsl.constraints {
+        collect_expression_metrics(
+            &constraint.left,
+            1,
+            &mut expression_node_count,
+            &mut max_expression_depth,
+            &mut signal_references,
+            &mut unique_signal_refs,
+        );
+        collect_expression_metrics(
+            &constraint.right,
+            1,
+            &mut expression_node_count,
+            &mut max_expression_depth,
+            &mut signal_references,
+            &mut unique_signal_refs,
+        );
+    }
+
+    let signal_count = dsl.public_inputs.len()
+        + dsl.private_inputs.len()
+        + dsl.outputs.len()
+        + validated.intermediates.len();
+
+    Ok(CompiledCircuitStructure {
+        circuit_name: dsl.name.clone(),
+        backend,
+        constraint_count: dsl.constraints.len(),
+        assignment_count: dsl.assignments.len(),
+        signal_count,
+        intermediate_count: validated.intermediates.len(),
+        expression_node_count,
+        max_expression_depth,
+        signal_reference_count: signal_references,
+        unique_signal_references: unique_signal_refs.len(),
+        rendered_line_count: rendered.lines().count(),
+        rendered_byte_size: rendered.len(),
+    })
 }
 
 pub fn render_backend_template(
@@ -895,6 +973,45 @@ fn random_leaf_expression<R: Rng>(rng: &mut R, available: &[String]) -> Expressi
     } else {
         Expression::Constant {
             value: rng.gen_range(-9..=9),
+        }
+    }
+}
+
+fn collect_expression_metrics(
+    expression: &Expression,
+    depth: usize,
+    node_count: &mut usize,
+    max_depth: &mut usize,
+    signal_references: &mut usize,
+    unique_signal_refs: &mut BTreeSet<String>,
+) {
+    *node_count += 1;
+    *max_depth = (*max_depth).max(depth);
+    match expression {
+        Expression::Signal { name } => {
+            *signal_references += 1;
+            unique_signal_refs.insert(name.clone());
+        }
+        Expression::Constant { .. } => {}
+        Expression::Add { left, right }
+        | Expression::Sub { left, right }
+        | Expression::Mul { left, right } => {
+            collect_expression_metrics(
+                left,
+                depth + 1,
+                node_count,
+                max_depth,
+                signal_references,
+                unique_signal_refs,
+            );
+            collect_expression_metrics(
+                right,
+                depth + 1,
+                node_count,
+                max_depth,
+                signal_references,
+                unique_signal_refs,
+            );
         }
     }
 }

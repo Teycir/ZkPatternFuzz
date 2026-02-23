@@ -195,3 +195,28 @@ Extraction output includes:
 - `signals[]`: normalized semantic requirement statements with kind/confidence
 - `comment_lines[]`: raw comment-derived statements
 - `documentation_lines[]`: raw doc-derived statements
+
+## Compile + Structure Extraction
+
+Use the structure extractor to compile DSL into backend template output and emit
+constraint/shape metrics:
+
+```bash
+scripts/run_circuit_gen_structure_sample.sh
+```
+
+Direct command:
+
+```bash
+cargo run -q -p zk-circuit-gen --example compile_and_extract_structure -- \
+  --dsl-file tests/datasets/circuit_gen/structure_dsl.sample.yaml \
+  --backend circom \
+  --output-json artifacts/circuit_gen/structure_sample/latest_report.json
+```
+
+Reported metrics include:
+- `constraint_count`, `assignment_count`
+- `signal_count`, `intermediate_count`
+- `expression_node_count`, `max_expression_depth`
+- `signal_reference_count`, `unique_signal_references`
+- rendered template size (`rendered_line_count`, `rendered_byte_size`)

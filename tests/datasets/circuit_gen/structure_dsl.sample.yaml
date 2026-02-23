@@ -1,0 +1,18 @@
+name: structure_probe
+public_inputs: [admin, bound]
+private_inputs: [value]
+outputs: [out]
+assignments:
+  - target: tmp
+    expression:
+      op: sub
+      left: { op: signal, name: bound }
+      right: { op: signal, name: value }
+  - target: out
+    expression:
+      op: mul
+      left: { op: signal, name: admin }
+      right: { op: signal, name: tmp }
+constraints:
+  - left: { op: signal, name: out }
+    right: { op: constant, value: 0 }

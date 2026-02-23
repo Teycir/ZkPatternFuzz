@@ -4,12 +4,13 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::tempdir;
 use zk_circuit_gen::{
-    evolve_patterns_from_feedback, extract_semantic_intent_from_text,
-    generate_adversarial_corpus_from_external_patterns, generate_bulk_corpus,
-    generate_random_circuit_dsl, parse_dsl_yaml, parse_external_ai_pattern_bundle_json,
-    parse_pattern_feedback_json, render_backend_template, render_mutated_template,
-    AdversarialGenerationConfig, Assignment, Backend, BulkGenerationConfig, CircuitDsl,
-    ConstraintEq, Expression, MutationStrategy, SemanticIntentKind,
+    compile_and_extract_structure, evolve_patterns_from_feedback,
+    extract_semantic_intent_from_text, generate_adversarial_corpus_from_external_patterns,
+    generate_bulk_corpus, generate_random_circuit_dsl, parse_dsl_yaml,
+    parse_external_ai_pattern_bundle_json, parse_pattern_feedback_json, render_backend_template,
+    render_mutated_template, AdversarialGenerationConfig, Assignment, Backend,
+    BulkGenerationConfig, CircuitDsl, ConstraintEq, Expression, MutationStrategy,
+    SemanticIntentKind,
 };
 
 fn sample_dsl() -> CircuitDsl {
@@ -391,4 +392,24 @@ fn semantic_intent_extraction_dedups_identical_statements() {
 "#;
     let extraction = extract_semantic_intent_from_text(source, None, None);
     assert_eq!(extraction.signals.len(), 1);
+}
+
+#[test]
+fn compile_structure_extraction_reports_constraint_and_shape_metrics() {
+    let dsl = sample_dsl();
+    let summary =
+        compile_and_extract_structure(&dsl, Backend::Circom).expect("structure extraction");
+
+    assert_eq!(summary.circuit_name, "membership_check");
+    assert_eq!(summary.backend, Backend::Circom);
+    assert_eq!(summary.constraint_count, 1);
+    assert_eq!(summary.assignment_count, 2);
+    assert_eq!(summary.signal_count, 5);
+    assert_eq!(summary.intermediate_count, 1);
+    assert!(summary.expression_node_count > 0);
+    assert!(summary.max_expression_depth >= 2);
+    assert!(summary.signal_reference_count >= 5);
+    assert!(summary.unique_signal_references >= 4);
+    assert!(summary.rendered_line_count > 0);
+    assert!(summary.rendered_byte_size > 0);
 }
