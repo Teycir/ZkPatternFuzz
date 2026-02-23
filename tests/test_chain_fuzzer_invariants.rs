@@ -64,3 +64,23 @@ fn test_equality_violation() {
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].assertion_name, "bad_wiring");
 }
+
+#[test]
+fn test_relation_supported_rejects_malformed_indices_without_panic() {
+    let malformed = [
+        "step[999999999999999999999999999999999].out[0] == step[1].in[0]",
+        "unique(step[*].out[999999999999999999999999999999999])",
+        "step[abc].success == true",
+    ];
+
+    for relation in malformed {
+        let result =
+            std::panic::catch_unwind(|| CrossStepInvariantChecker::relation_supported(relation));
+        assert!(
+            result.is_ok(),
+            "relation_supported should never panic for relation '{}'",
+            relation
+        );
+        assert_eq!(result.unwrap(), false);
+    }
+}

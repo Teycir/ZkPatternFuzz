@@ -150,7 +150,7 @@ impl FuzzingEngine {
         Self::reconcile_inputs_with_executor(&mut config, executor.as_ref())?;
         let additional = &config.campaign.parameters.additional;
 
-        let num_constraints = executor.num_constraints().max(100);
+        let num_constraints = executor.num_constraints().max(1);
         let coverage = create_coverage_tracker(num_constraints);
 
         // Phase 0 Fix: Make corpus size configurable instead of hardcoded 10000

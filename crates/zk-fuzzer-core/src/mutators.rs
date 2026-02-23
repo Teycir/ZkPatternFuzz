@@ -3,22 +3,9 @@
 //! All arithmetic mutations perform proper modular reduction to ensure
 //! generated field elements are valid (within the BN254 scalar field).
 
-use crate::constants::{BN254_MODULUS, BN254_MODULUS_MINUS_ONE};
+use crate::constants::{bn254_modulus_bytes, bn254_modulus_minus_one_bytes};
 use rand::Rng;
 use zk_core::FieldElement;
-
-/// BN254 scalar field modulus as bytes for comparison
-/// Lazy-initialized for efficiency
-fn bn254_modulus_bytes() -> [u8; 32] {
-    let mut modulus = [0u8; 32];
-    // This should always succeed since BN254_MODULUS is a valid constant
-    if let Ok(decoded) = hex::decode(BN254_MODULUS) {
-        if decoded.len() == 32 {
-            modulus.copy_from_slice(&decoded);
-        }
-    }
-    modulus
-}
 
 /// Compare two 32-byte big-endian integers
 /// Returns Ordering::Less if a < b, Equal if a == b, Greater if a > b
@@ -204,12 +191,8 @@ fn boundary_mutation(rng: &mut impl Rng) -> FieldElement {
             reduce_modulo_field(FieldElement([0xff; 32]))
         }
         3 => {
-            // bn254 scalar field p - 1 (using centralized constant)
-            let mut bytes = [0u8; 32];
-            if let Ok(decoded) = hex::decode(BN254_MODULUS_MINUS_ONE) {
-                bytes.copy_from_slice(&decoded);
-            }
-            FieldElement(bytes)
+            // bn254 scalar field p - 1 (using centralized constant bytes)
+            FieldElement(bn254_modulus_minus_one_bytes())
         }
         _ => FieldElement::zero(),
     }

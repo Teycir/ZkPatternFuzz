@@ -106,22 +106,26 @@ fn test_hash_deduplication_mode_filters_duplicates() {
 }
 
 #[test]
-fn test_capacity_eviction_keeps_accepting_unique_findings() {
+fn test_capacity_eviction_replaces_only_when_incoming_is_stronger() {
     let mut dedup = SemanticDeduplicator::with_config(DeduplicationConfig {
         use_semantic: true,
         similarity_threshold: 0.8,
         max_findings: 1,
     });
 
-    let finding1 = make_finding(AttackType::Collision, "nullifier_collision");
-    let finding2 = make_finding(AttackType::Boundary, "merkle_path");
+    let mut finding1 = make_finding(AttackType::Collision, "nullifier_collision");
+    finding1.severity = Severity::Low;
+    let mut finding2 = make_finding(AttackType::Boundary, "merkle_path");
+    finding2.severity = Severity::Critical;
 
     assert!(dedup.add(finding1));
     assert!(dedup.add(finding2));
     assert_eq!(dedup.stats().duplicates_filtered, 0);
     assert_eq!(dedup.stats().dropped_capacity, 0);
     assert_eq!(dedup.stats().evicted_capacity, 1);
-    assert_eq!(dedup.unique_findings().len(), 1);
+    let retained = dedup.unique_findings();
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0].severity, Severity::Critical);
 }
 
 #[test]
@@ -143,22 +147,72 @@ fn test_duplicate_at_capacity_counts_as_duplicate_not_capacity_drop() {
 }
 
 #[test]
-fn test_capacity_eviction_hash_mode_keeps_accepting_unique_findings() {
+fn test_capacity_rejects_weaker_unique_finding_when_full() {
+    let mut dedup = SemanticDeduplicator::with_config(DeduplicationConfig {
+        use_semantic: true,
+        similarity_threshold: 0.8,
+        max_findings: 1,
+    });
+
+    let mut critical = make_finding(AttackType::Collision, "nullifier_collision");
+    critical.severity = Severity::Critical;
+    let mut low = make_finding(AttackType::Boundary, "merkle_path");
+    low.severity = Severity::Low;
+
+    assert!(dedup.add(critical));
+    assert!(!dedup.add(low));
+    assert_eq!(dedup.stats().duplicates_filtered, 0);
+    assert_eq!(dedup.stats().dropped_capacity, 1);
+    assert_eq!(dedup.stats().evicted_capacity, 0);
+    let retained = dedup.unique_findings();
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0].severity, Severity::Critical);
+}
+
+#[test]
+fn test_capacity_eviction_hash_mode_replaces_only_when_incoming_is_stronger() {
     let mut dedup = SemanticDeduplicator::with_config(DeduplicationConfig {
         use_semantic: false,
         similarity_threshold: 0.8,
         max_findings: 1,
     });
 
-    let finding1 = make_finding(AttackType::Collision, "nullifier_collision");
-    let finding2 = make_finding(AttackType::Boundary, "merkle_path");
+    let mut finding1 = make_finding(AttackType::Collision, "nullifier_collision");
+    finding1.severity = Severity::Low;
+    let mut finding2 = make_finding(AttackType::Boundary, "merkle_path");
+    finding2.severity = Severity::Critical;
 
     assert!(dedup.add(finding1));
     assert!(dedup.add(finding2));
     assert_eq!(dedup.stats().duplicates_filtered, 0);
     assert_eq!(dedup.stats().dropped_capacity, 0);
     assert_eq!(dedup.stats().evicted_capacity, 1);
-    assert_eq!(dedup.unique_findings().len(), 1);
+    let retained = dedup.unique_findings();
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0].severity, Severity::Critical);
+}
+
+#[test]
+fn test_capacity_rejects_weaker_unique_finding_when_full_hash_mode() {
+    let mut dedup = SemanticDeduplicator::with_config(DeduplicationConfig {
+        use_semantic: false,
+        similarity_threshold: 0.8,
+        max_findings: 1,
+    });
+
+    let mut critical = make_finding(AttackType::Collision, "nullifier_collision");
+    critical.severity = Severity::Critical;
+    let mut low = make_finding(AttackType::Boundary, "merkle_path");
+    low.severity = Severity::Low;
+
+    assert!(dedup.add(critical));
+    assert!(!dedup.add(low));
+    assert_eq!(dedup.stats().duplicates_filtered, 0);
+    assert_eq!(dedup.stats().dropped_capacity, 1);
+    assert_eq!(dedup.stats().evicted_capacity, 0);
+    let retained = dedup.unique_findings();
+    assert_eq!(retained.len(), 1);
+    assert_eq!(retained[0].severity, Severity::Critical);
 }
 
 #[test]

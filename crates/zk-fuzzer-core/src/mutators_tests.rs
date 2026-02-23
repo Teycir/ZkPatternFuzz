@@ -1,5 +1,5 @@
 use super::*;
-use crate::constants::BN254_HALF_MODULUS;
+use crate::constants::{bn254_modulus_minus_one_bytes, BN254_HALF_MODULUS};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::cmp::Ordering;
@@ -77,10 +77,7 @@ fn test_bitwise_not_mutation_reduces_to_valid_field() {
 #[test]
 fn test_add_one_with_overflow_reduces() {
     // Start with p-1 (maximum valid field element)
-    let mut p_minus_one = [0u8; 32];
-    if let Ok(decoded) = hex::decode(BN254_MODULUS_MINUS_ONE) {
-        p_minus_one.copy_from_slice(&decoded);
-    }
+    let p_minus_one = bn254_modulus_minus_one_bytes();
     let input = FieldElement(p_minus_one);
 
     // Adding 1 to p-1 gives p, which should reduce to 0

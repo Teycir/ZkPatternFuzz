@@ -182,7 +182,13 @@ impl FuzzingEngineCore {
                 .start_time
                 .map(|t| t.elapsed())
                 .unwrap_or(Duration::ZERO);
-            let (selection_count, new_coverage_count, findings_count, avg_execution_time, time_since_finding) = {
+            let (
+                selection_count,
+                new_coverage_count,
+                findings_count,
+                avg_execution_time,
+                time_since_finding,
+            ) = {
                 let runtime = self.seed_metrics.entry(seed_hash).or_default();
                 runtime.record_selection();
                 (
@@ -195,7 +201,11 @@ impl FuzzingEngineCore {
                     runtime.time_since_finding_or(fallback_since_finding),
                 )
             };
-            let path_frequency = self.coverage_frequency.get(&seed_hash).copied().unwrap_or(1);
+            let path_frequency = self
+                .coverage_frequency
+                .get(&seed_hash)
+                .copied()
+                .unwrap_or(1);
             self.last_selected_seed_hash = Some(seed_hash);
 
             let metrics = TestCaseMetrics {
@@ -373,20 +383,22 @@ impl FuzzingEngineCore {
                 .iter()
                 .any(|oracle| oracle.requires_constraint_count());
             let constraint_count = if needs_constraint_count {
-                if self.constraint_count_cache.is_none() {
-                    let count = if let Some(inspector) = executor.constraint_inspector() {
-                        let constraints = inspector.get_constraints();
-                        if constraints.is_empty() {
-                            executor.num_constraints()
-                        } else {
-                            constraints.len()
-                        }
-                    } else {
+                let count = if !result.coverage.evaluated_constraints.is_empty() {
+                    result.coverage.evaluated_constraints.len()
+                } else if !result.coverage.satisfied_constraints.is_empty() {
+                    result.coverage.satisfied_constraints.len()
+                } else if let Some(inspector) = executor.constraint_inspector() {
+                    let constraints = inspector.get_constraints();
+                    if constraints.is_empty() {
                         executor.num_constraints()
-                    };
-                    self.constraint_count_cache = Some(count);
-                }
-                self.constraint_count_cache
+                    } else {
+                        constraints.len()
+                    }
+                } else {
+                    executor.num_constraints()
+                };
+                self.constraint_count_cache = Some(count);
+                Some(count)
             } else {
                 None
             };

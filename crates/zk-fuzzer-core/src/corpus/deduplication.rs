@@ -161,37 +161,44 @@ impl SemanticDeduplicator {
         }
     }
 
-    fn retention_rank(&self, finding: &Finding) -> (u8, u16, [u8; 32]) {
+    fn retention_priority(&self, finding: &Finding) -> (u8, u16) {
         let severity_rank = Self::severity_rank(finding.severity);
         let confidence_rank = (calculate_confidence(finding) * 1000.0).round() as u16;
+        (severity_rank, confidence_rank)
+    }
+
+    fn retention_rank(&self, finding: &Finding) -> (u8, u16, [u8; 32]) {
+        let (severity_rank, confidence_rank) = self.retention_priority(finding);
         let hash = self.finding_hash(finding);
         (severity_rank, confidence_rank, hash)
     }
 
-    fn evict_one_hash_entry(&mut self) -> bool {
-        let candidate = self
-            .seen_hashes
+    fn worst_hash_entry(&self) -> Option<([u8; 32], (u8, u16))> {
+        self.seen_hashes
             .iter()
             .map(|(hash, finding)| (self.retention_rank(finding), *hash))
             .min_by_key(|(rank, _)| *rank)
-            .map(|(_, hash)| hash);
-        if let Some(hash) = candidate {
-            self.seen_hashes.remove(&hash);
+            .map(|((sev, conf, _), hash)| (hash, (sev, conf)))
+    }
+
+    fn worst_semantic_entry(&self) -> Option<(SemanticFingerprint, (u8, u16))> {
+        self.seen_fingerprints
+            .iter()
+            .map(|(fp, finding)| (self.retention_rank(finding), fp.clone()))
+            .min_by_key(|(rank, _)| *rank)
+            .map(|((sev, conf, _), fp)| (fp, (sev, conf)))
+    }
+
+    fn evict_hash_entry(&mut self, hash: [u8; 32]) -> bool {
+        if self.seen_hashes.remove(&hash).is_some() {
             self.stats.evicted_capacity += 1;
             return true;
         }
         false
     }
 
-    fn evict_one_semantic_entry(&mut self) -> bool {
-        let candidate = self
-            .seen_fingerprints
-            .iter()
-            .map(|(fp, finding)| (self.retention_rank(finding), fp.clone()))
-            .min_by_key(|(rank, _)| *rank)
-            .map(|(_, fp)| fp);
-        if let Some(fp) = candidate {
-            self.seen_fingerprints.remove(&fp);
+    fn evict_semantic_entry(&mut self, fp: SemanticFingerprint) -> bool {
+        if self.seen_fingerprints.remove(&fp).is_some() {
             self.stats.evicted_capacity += 1;
             return true;
         }
@@ -303,9 +310,21 @@ impl SemanticDeduplicator {
                 return false;
             }
 
-            if self.seen_hashes.len() >= self.config.max_findings && !self.evict_one_hash_entry() {
-                self.stats.dropped_capacity += 1;
-                return false;
+            if self.seen_hashes.len() >= self.config.max_findings {
+                let incoming_priority = self.retention_priority(&finding);
+                let Some((worst_hash, worst_priority)) = self.worst_hash_entry() else {
+                    self.stats.dropped_capacity += 1;
+                    return false;
+                };
+                // Replace only when incoming is strictly better than the weakest retained finding.
+                if incoming_priority <= worst_priority {
+                    self.stats.dropped_capacity += 1;
+                    return false;
+                }
+                if !self.evict_hash_entry(worst_hash) {
+                    self.stats.dropped_capacity += 1;
+                    return false;
+                }
             }
 
             self.seen_hashes.insert(hash, finding);
@@ -323,11 +342,21 @@ impl SemanticDeduplicator {
                 return false;
             }
 
-            if self.seen_fingerprints.len() >= self.config.max_findings
-                && !self.evict_one_semantic_entry()
-            {
-                self.stats.dropped_capacity += 1;
-                return false;
+            if self.seen_fingerprints.len() >= self.config.max_findings {
+                let incoming_priority = self.retention_priority(&finding);
+                let Some((worst_fp, worst_priority)) = self.worst_semantic_entry() else {
+                    self.stats.dropped_capacity += 1;
+                    return false;
+                };
+                // Replace only when incoming is strictly better than the weakest retained finding.
+                if incoming_priority <= worst_priority {
+                    self.stats.dropped_capacity += 1;
+                    return false;
+                }
+                if !self.evict_semantic_entry(worst_fp) {
+                    self.stats.dropped_capacity += 1;
+                    return false;
+                }
             }
 
             self.seen_fingerprints.insert(fp, finding);

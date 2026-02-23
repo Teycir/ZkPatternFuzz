@@ -22,6 +22,7 @@ pub use nullifier_oracle::NullifierOracle;
 pub use range_oracle::RangeProofOracle;
 pub use zk_core::{OracleConfig, OracleStats, SemanticOracle};
 
+use zk_core::constants::bn254_modulus_bytes;
 use zk_core::{FieldElement, Finding, TestCase};
 
 /// Combined oracle that runs multiple semantic checks
@@ -38,11 +39,19 @@ impl CombinedSemanticOracle {
 
     /// Create with all default oracles enabled
     pub fn with_all_oracles(config: OracleConfig) -> Self {
+        Self::with_all_oracles_with_modulus(config, bn254_modulus_bytes())
+    }
+
+    /// Create with all default oracles enabled and explicit field modulus.
+    pub fn with_all_oracles_with_modulus(config: OracleConfig, field_modulus: [u8; 32]) -> Self {
         let mut combined = Self::new();
         combined.add_oracle(Box::new(NullifierOracle::new(config.clone())));
         combined.add_oracle(Box::new(MerkleOracle::new(config.clone())));
         combined.add_oracle(Box::new(CommitmentOracle::new(config.clone())));
-        combined.add_oracle(Box::new(RangeProofOracle::new(config)));
+        combined.add_oracle(Box::new(RangeProofOracle::new_with_modulus(
+            config,
+            field_modulus,
+        )));
         combined
     }
 

@@ -26,7 +26,7 @@ impl<'de> Deserialize<'de> for FieldElement {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        FieldElement::from_hex(&s).map_err(serde::de::Error::custom)
+        FieldElement::from_hex_checked(&s).map_err(serde::de::Error::custom)
     }
 }
 

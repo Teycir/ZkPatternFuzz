@@ -376,6 +376,13 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Make `AdditionalConfig` numeric getters non-panicking on malformed values (warn + ignore invalid strings instead of crashing process) (`src/config/additional.rs`).
 - [x] Wire `ConstraintCountOracle` expected count to executor-reported circuit constraints instead of campaign ceiling limits (`src/fuzzer/engine/config_helpers.rs`, `src/fuzzer/engine/engine_init.rs`).
 - [x] Canonicalize invariant field-literal parsing (`hex`/`decimal`/`2^N`) so non-canonical bounds are rejected from normal invariant evaluation paths (`src/fuzzer/invariant_checker.rs`).
+- [x] Make deduplicator capacity replacement rank-aware: only evict when incoming finding is strictly stronger than current weakest retained finding (prevents low-severity replacement of critical findings) (`crates/zk-fuzzer-core/src/corpus/deduplication.rs`).
+- [x] Remove panic paths from cross-step chain assertion parsing; malformed/overflow indices now parse as unsupported relation and fail through normal config validation (`src/chain_fuzzer/invariants.rs`, `src/config/mod.rs`).
+- [x] Use real circuit constraint count (with `max(1)` safety only) when initializing coverage tracker to preserve accurate percentage reporting on small circuits (`src/fuzzer/engine/engine_init.rs`).
+- [x] Enforce canonical field elements during serde deserialization by switching `FieldElement` JSON/YAML parse path to `from_hex_checked` (`crates/zk-core/src/field.rs`).
+- [x] Feed constraint-count oracle with per-execution observed counts (execution coverage first, inspector/metadata fallback) instead of one-time cached value (`crates/zk-fuzzer-core/src/engine.rs`).
+- [x] Add modulus-aware semantic oracle helper: `CombinedSemanticOracle::with_all_oracles_with_modulus(...)` and route default helper through explicit modulus wiring (`src/fuzzer/oracles/mod.rs`).
+- [x] Remove mutator-local BN254 modulus hex decode + zero fallback and use centralized byte helper directly (`crates/zk-fuzzer-core/src/mutators.rs`, `crates/zk-fuzzer-core/src/constants.rs`).
 
 ---
 
