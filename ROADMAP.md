@@ -389,6 +389,107 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Make attack-phase progress snapshots distinguishable at boundaries by using consistent per-attack phase index plus `phase_progress` (start `0.0`, complete `1.0`) instead of overlapping integer jumps (`src/fuzzer/engine/run_dispatch.rs`).
 - [x] Replace repeated-subtraction field reduction in mutators with bounded BigUint modulo for stable performance on high-value mutations (`crates/zk-fuzzer-core/src/mutators.rs`).
 
+### 8.9 External Target Hardening Plan (`/media/elements/Repos`)
+
+**Goal:** pressure-test logic-bug discoverability on real-world third-party ZK repositories selected by operators.
+**Execution mode:** manual checks only (no cron dependency for this track).
+**Target source root:** `/media/elements/Repos`.
+
+#### 8.9.1 Intake Checklist
+- [ ] Build and freeze the candidate repo inventory from `/media/elements/Repos` (name, framework, commit hash, license).
+- [ ] Select initial priority set with balanced backend coverage (Circom/Noir/Cairo/Halo2).
+- [ ] Record selected target commit SHAs and circuit entrypoints before first run.
+- [ ] Classify each target as `safe-regression` or `vulnerable-ground-truth` expectation.
+- [ ] Add each selected target into matrix YAMLs used by manual campaigns.
+
+#### 8.9.2 Target Selection Board
+| Target ID | Repo Path | Backend | Circuit/Program Entry | Expected Class | Priority | Owner | Intake Status |
+|---|---|---|---|---|---|---|---|
+| EXT-001 | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/ArgMax.circom` | `unknown` | `P0` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-002 | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_bulk_assignment.circom` | `unknown` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-003 | `/media/elements/Repos/zkFuzz` | `noir` | `noir/examples/artificial/div/Nargo.toml` | `unknown` | `P0` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-004 | `/media/elements/Repos/zkml/orion` | `cairo` | `Scarb.toml` | `unknown` | `P0` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-005 | `/media/elements/Repos/zkml/ezkl` | `halo2` | `Cargo.toml` | `unknown` | `P0` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-006 | `/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits` | `halo2` | `zkevm-circuits/Cargo.toml` | `unknown` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-007 | `/media/elements/Repos` | `noir` | `TBD (second Noir target discovery)` | `unknown` | `P1` | `unassigned` | `[ ] planned / [ ] active / [ ] done` |
+| EXT-008 | `/media/elements/Repos` | `cairo` | `TBD (second Cairo target discovery)` | `unknown` | `P1` | `unassigned` | `[ ] planned / [ ] active / [ ] done` |
+
+Backend coverage snapshot (selected vs target floor=2):
+| Backend | Selected Targets | Floor | Coverage Status |
+|---|---:|---:|---|
+| Circom | 2 | 2 | `met` |
+| Noir | 1 | 2 | `gap` |
+| Cairo | 1 | 2 | `gap` |
+| Halo2 | 2 | 2 | `met` |
+
+#### 8.9.3 Manual Execution Checklist
+- [ ] Run backend readiness dashboard after each target-batch update (`scripts/backend_readiness_dashboard.sh`).
+- [ ] Run backend maturity scorecard after each target-batch update (`scripts/backend_maturity_scorecard.sh --consecutive-days 14 --consecutive-target-score 5.0`).
+- [ ] Run backend effectiveness report on the latest outcomes (`python3 scripts/build_backend_effectiveness_report.py --repo-root .`).
+- [ ] Run release streak status wrapper after each manual validation batch (`scripts/run_release_streak_status.sh`).
+- [ ] Archive evidence paths for each batch under `artifacts/` and link them in the run ledger table.
+
+#### 8.9.4 Manual Run Ledger
+| Run Date (UTC) | Batch ID | Targets Included | Command Profile | Total Runs | Completion Rate | Recall | Safe High-Conf FPR | Evidence Bundle | Gate Result |
+|---|---|---|---|---:|---:|---:|---:|---|---|
+| `<YYYY-MM-DD>` | `EXT-BATCH-001` | `EXT-001, EXT-003, EXT-004, EXT-005` | `dev` | `0` | `0.00` | `0.00` | `0.00` | `artifacts/external_targets/ext_batch_001` | `[ ] pass / [ ] fail` |
+| `<YYYY-MM-DD>` | `EXT-BATCH-002` | `EXT-002, EXT-006` | `dev` | `0` | `0.00` | `0.00` | `0.00` | `artifacts/external_targets/ext_batch_002` | `[ ] pass / [ ] fail` |
+| `<YYYY-MM-DD>` | `EXT-BATCH-003` | `EXT-007, EXT-008` | `dev` | `0` | `0.00` | `0.00` | `0.00` | `artifacts/external_targets/ext_batch_003` | `[ ] pass / [ ] fail` |
+
+#### 8.9.5 Logic Finding And Remediation Board
+| Finding ID | Target ID | Class | Severity | Repro Status | Owning Module | Fix Commit/PR | Verification Status |
+|---|---|---|---|---|---|---|---|
+| `EXT-FIND-001` | `EXT-001` | `logic` | `high` | `[ ] repro pending / [ ] reproduced` | `<module/path>` | `<hash-or-pr>` | `[ ] fixed / [ ] revalidated` |
+| `EXT-FIND-002` | `EXT-002` | `runtime` | `medium` | `[ ] repro pending / [ ] reproduced` | `<module/path>` | `<hash-or-pr>` | `[ ] fixed / [ ] revalidated` |
+
+#### 8.9.6 Hardening Exit Criteria (External Repo Track)
+- [ ] At least `12` externally sourced targets validated from `/media/elements/Repos` with representation across all four backends.
+- [ ] At least `3` manual batches executed with archived evidence and complete run-ledger rows.
+- [ ] No unresolved `high` or `critical` externally reproducible logic findings remain open.
+- [ ] External-target effectiveness report shows non-zero runs for each backend and no unresolved backend assignment gaps.
+
+#### 8.9.7 Full-Flow Exploit Validation (Step-by-Step)
+Objective for this flow: findings count only when they are reproducible and backed by exploit evidence, then converted into code fixes and regression tests.
+
+Flow checklist:
+- [ ] Step 0: Environment and build readiness (`scripts/install_all_backends.sh`, `cargo build --release`).
+- [ ] Step 1: Target intake and snapshot freeze (`scripts/copy_external_targets.sh` or explicit rsync; record repo path + commit SHA in the target board).
+- [ ] Step 2: SKIM pass to generate attack hypotheses (`scripts/zeroday_workflow.sh skim <repo_path>`).
+- [ ] Step 3: EVIDENCE pass to produce deterministic findings (`scripts/zeroday_workflow.sh evidence <campaign.yaml> --seed <seed> --iterations <n> --timeout <s>`).
+- [ ] Step 4: Optional formal verification for under-constraint claims (`scripts/zeroday_workflow.sh verify <circuit.circom>`).
+- [ ] Step 5: Exploit proof packaging (minimal repro inputs/witnesses, replay command, expected vulnerable behavior, observed behavior).
+- [ ] Step 6: Issue logging and root-cause mapping (owning module + failure mode + severity + exploit confidence).
+- [ ] Step 7: Code adjustment + regression tests (`tests/**`), followed by rerun of the same exploit replay to confirm fix.
+- [ ] Step 8: Post-fix gate reruns (`scripts/backend_readiness_dashboard.sh`, `scripts/backend_maturity_scorecard.sh`, `python3 scripts/build_backend_effectiveness_report.py --repo-root .`, `scripts/run_release_streak_status.sh`).
+
+Step-by-step execution tracker:
+| Step | Command/Action | Required Artifact | Pass Criteria | Status |
+|---|---|---|---|---|
+| 0 | `cargo build --release` | Build log | Release binaries produced | `[ ]` |
+| 1 | Import + snapshot target | Target manifest row with commit SHA | Target reproducibility frozen | `[ ]` |
+| 2 | `scripts/zeroday_workflow.sh skim <repo_path>` | `reports/zk0d/skimmer/*` | Candidate invariants/configs generated | `[ ]` |
+| 3 | `scripts/zeroday_workflow.sh evidence <campaign.yaml> ...` | Evidence report bundle | At least one deterministic finding candidate | `[ ]` |
+| 4 | `scripts/zeroday_workflow.sh verify <circuit.circom>` (optional) | Formal result (`SAFE/UNSAFE/UNKNOWN`) | Result archived for claim strengthening | `[ ]` |
+| 5 | Exploit replay command | Repro script + input fixture | Replay reproduces vulnerable behavior on demand | `[ ]` |
+| 6 | Triage + root cause | Issue board row | Severity + owner + module assigned | `[ ]` |
+| 7 | Patch + tests | Commit + regression test case | Replay now fails exploit condition; tests green | `[ ]` |
+| 8 | Gate reruns | Readiness/maturity/effectiveness outputs | No regression in required gates | `[ ]` |
+
+Exploit proof requirements (must all be present before claiming confirmed bug):
+| Requirement | Description | Evidence Path | Status |
+|---|---|---|---|
+| Minimal Repro | Smallest input/witness set that triggers bug | `artifacts/external_targets/<batch>/repro/*` | `[ ]` |
+| Deterministic Replay | One command to reproduce with fixed seed/config | `artifacts/external_targets/<batch>/replay_command.txt` | `[ ]` |
+| Expected vs Observed | Security expectation and concrete violating output | `artifacts/external_targets/<batch>/exploit_notes.md` | `[ ]` |
+| Blast Radius | Affected backend(s), circuit family, severity rationale | `artifacts/external_targets/<batch>/impact.md` | `[ ]` |
+| Fix Validation | Replay after patch no longer reproduces exploit | `artifacts/external_targets/<batch>/post_fix_replay.log` | `[ ]` |
+
+Issue-to-code-adjustment tracker:
+| Issue ID | Target ID | Exploit Reproduced | Root Cause Module | Code Change | Regression Test | Post-Fix Replay | Final Status |
+|---|---|---|---|---|---|---|---|
+| `EXT-ISSUE-001` | `EXT-001` | `[ ]` | `<path/to/module.rs>` | `<commit/pr>` | `tests/<file>` | `[ ]` | `[ ] open / [ ] fixed / [ ] verified` |
+| `EXT-ISSUE-002` | `EXT-003` | `[ ]` | `<path/to/module.rs>` | `<commit/pr>` | `tests/<file>` | `[ ]` | `[ ] open / [ ] fixed / [ ] verified` |
+
 ---
 
 ## 🧠 Phase 7: Semantic Analysis & Complex Bug Detection
