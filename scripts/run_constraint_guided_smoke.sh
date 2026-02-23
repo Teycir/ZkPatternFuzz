@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+REBUILD_SCRIPT="$PROJECT_ROOT/scripts/rebuild_release_binaries.sh"
+FUZZER_BIN="$PROJECT_ROOT/target/release/zk-fuzzer"
+
 usage() {
   cat <<'EOF'
 Usage: scripts/run_constraint_guided_smoke.sh [options]
@@ -247,35 +252,35 @@ reporting:
   output_dir: "$ZKF_REPORT_DIR"
 EOF
 
-build_cmd=(cargo build --release)
-if [[ "$ZKF_ENABLE_ACIR_BYTECODE" == "1" ]]; then
-  build_cmd+=(--features acir-bytecode)
-fi
-if [[ "$ZKF_CARGO_OFFLINE" == "1" ]]; then
-  build_cmd+=(--offline)
-fi
-
 if [[ "$ZKF_SKIP_BUILD" != "1" ]]; then
   echo "Building..."
-  "${build_cmd[@]}"
+  if [[ ! -x "$REBUILD_SCRIPT" ]]; then
+    echo "Rebuild script not found or not executable: $REBUILD_SCRIPT" >&2
+    exit 1
+  fi
+  rebuild_cmd=("$REBUILD_SCRIPT" --project-root "$PROJECT_ROOT" --if-changed --bin zk-fuzzer)
+  if [[ "$ZKF_ENABLE_ACIR_BYTECODE" == "1" ]]; then
+    rebuild_cmd+=(--features acir-bytecode)
+  fi
+  if [[ "$ZKF_CARGO_OFFLINE" == "1" ]]; then
+    rebuild_cmd+=(--offline)
+  fi
+  "${rebuild_cmd[@]}"
 fi
 
-run_cmd=(cargo run --release --)
-if [[ "$ZKF_ENABLE_ACIR_BYTECODE" == "1" ]]; then
-  run_cmd=(cargo run --release --features acir-bytecode --)
-fi
-if [[ "$ZKF_CARGO_OFFLINE" == "1" ]]; then
-  run_cmd=(cargo run --release --offline --)
+if [[ ! -x "$FUZZER_BIN" ]]; then
+  echo "Release fuzzer binary not found/executable: $FUZZER_BIN" >&2
+  exit 1
 fi
 
 baseline_log="$ZKF_WORK_DIR/baseline.log"
 tuned_log="$ZKF_WORK_DIR/tuned.log"
 
 echo "Running baseline..."
-"${run_cmd[@]}" --config "$baseline" --workers "$ZKF_WORKERS" --seed "$ZKF_SEED" --verbose | tee "$baseline_log"
+"$FUZZER_BIN" --config "$baseline" --workers "$ZKF_WORKERS" --seed "$ZKF_SEED" --verbose | tee "$baseline_log"
 
 echo "Running tuned..."
-"${run_cmd[@]}" --config "$tuned" --workers "$ZKF_WORKERS" --seed "$ZKF_SEED" --verbose | tee "$tuned_log"
+"$FUZZER_BIN" --config "$tuned" --workers "$ZKF_WORKERS" --seed "$ZKF_SEED" --verbose | tee "$tuned_log"
 
 echo "Summary:"
 grep -E "Constraint-guided seeds:" -m 1 "$baseline_log" || echo "Baseline: no constraint-guided seed summary found"

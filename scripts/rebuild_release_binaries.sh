@@ -10,6 +10,8 @@ Options:
   --force                 Force clean rebuild even if no source change is detected
   --if-changed            Rebuild only when fingerprint changed (default)
   --no-clean              Skip `cargo clean` before rebuild
+  --features <list>       Cargo features to pass to release build
+  --offline               Use cargo --offline for release build
   --bin <name>            Build only this release binary (can be repeated)
   -h, --help              Show this help
 
@@ -24,6 +26,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 FORCE_REBUILD=0
 DO_CLEAN=1
+BUILD_FEATURES=""
+BUILD_OFFLINE=0
 declare -a BIN_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -41,6 +45,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-clean)
       DO_CLEAN=0
+      shift
+      ;;
+    --features)
+      BUILD_FEATURES="$2"
+      shift 2
+      ;;
+    --offline)
+      BUILD_OFFLINE=1
       shift
       ;;
     --bin)
@@ -82,7 +94,10 @@ compute_fingerprint() {
     )"
   fi
 
-  printf '%s\n%s\n%s\n%s\n' "$git_head" "$git_state" "$rustc_ver" "$cargo_ver" \
+  local build_opts
+  build_opts="features=${BUILD_FEATURES};offline=${BUILD_OFFLINE};bins=${BIN_ARGS[*]:-all}"
+
+  printf '%s\n%s\n%s\n%s\n%s\n' "$git_head" "$git_state" "$rustc_ver" "$cargo_ver" "$build_opts" \
     | sha256sum | awk '{print $1}'
 }
 
@@ -114,14 +129,22 @@ if [[ "$DO_CLEAN" -eq 1 ]]; then
 fi
 
 if [[ "${#BIN_ARGS[@]}" -eq 0 ]]; then
-  cargo build --release --bins
+  build_cmd=(cargo build --release --bins)
 else
   build_cmd=(cargo build --release)
   for bin_name in "${BIN_ARGS[@]}"; do
     build_cmd+=(--bin "$bin_name")
   done
-  "${build_cmd[@]}"
 fi
+
+if [[ -n "$BUILD_FEATURES" ]]; then
+  build_cmd+=(--features "$BUILD_FEATURES")
+fi
+if [[ "$BUILD_OFFLINE" -eq 1 ]]; then
+  build_cmd+=(--offline)
+fi
+
+"${build_cmd[@]}"
 
 mkdir -p "$STAMP_DIR"
 printf '%s\n' "$current_fingerprint" > "$STAMP_FILE"
