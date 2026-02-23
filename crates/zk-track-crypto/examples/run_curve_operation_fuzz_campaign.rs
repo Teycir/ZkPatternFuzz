@@ -67,12 +67,21 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
         match arg.as_str() {
             "--output-json" => output_json = PathBuf::from(next_value(&mut args, "--output-json")?),
             "--seed" => seed = next_value(&mut args, "--seed")?.parse::<u64>()?,
-            "--iterations" => iterations = next_value(&mut args, "--iterations")?.parse::<usize>()?,
-            "--point-types" => point_types = parse_point_types(&next_value(&mut args, "--point-types")?)?,
-            "--operations" => operations = parse_operations(&next_value(&mut args, "--operations")?)?,
-            "--edge-cases" => edge_cases = parse_edge_cases(&next_value(&mut args, "--edge-cases")?)?,
+            "--iterations" => {
+                iterations = next_value(&mut args, "--iterations")?.parse::<usize>()?
+            }
+            "--point-types" => {
+                point_types = parse_point_types(&next_value(&mut args, "--point-types")?)?
+            }
+            "--operations" => {
+                operations = parse_operations(&next_value(&mut args, "--operations")?)?
+            }
+            "--edge-cases" => {
+                edge_cases = parse_edge_cases(&next_value(&mut args, "--edge-cases")?)?
+            }
             "--implementation-profile" => {
-                implementation_profile = parse_profile(&next_value(&mut args, "--implementation-profile")?)?
+                implementation_profile =
+                    parse_profile(&next_value(&mut args, "--implementation-profile")?)?
             }
             "--help" | "-h" => {
                 print_help();
@@ -93,14 +102,21 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
     })
 }
 
-fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<String, Box<dyn Error>> {
+fn next_value(
+    args: &mut impl Iterator<Item = String>,
+    flag: &str,
+) -> Result<String, Box<dyn Error>> {
     args.next()
         .ok_or_else(|| format!("{flag} requires a value").into())
 }
 
 fn parse_point_types(raw: &str) -> Result<Vec<CurvePointType>, Box<dyn Error>> {
     let mut parsed = Vec::new();
-    for token in raw.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
         let point_type = match token.to_ascii_lowercase().as_str() {
             "identity" => CurvePointType::Identity,
             "generator" => CurvePointType::Generator,
@@ -123,7 +139,11 @@ fn parse_point_types(raw: &str) -> Result<Vec<CurvePointType>, Box<dyn Error>> {
 
 fn parse_operations(raw: &str) -> Result<Vec<CurveOperation>, Box<dyn Error>> {
     let mut parsed = Vec::new();
-    for token in raw.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
         let operation = match token.to_ascii_lowercase().as_str() {
             "point_addition" => CurveOperation::PointAddition,
             "point_doubling" => CurveOperation::PointDoubling,
@@ -145,7 +165,11 @@ fn parse_operations(raw: &str) -> Result<Vec<CurveOperation>, Box<dyn Error>> {
 
 fn parse_edge_cases(raw: &str) -> Result<Vec<CurveEdgeCase>, Box<dyn Error>> {
     let mut parsed = Vec::new();
-    for token in raw.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
         let edge_case = match token.to_ascii_lowercase().as_str() {
             "adding_identity" => CurveEdgeCase::AddingIdentity,
             "adding_inverse" => CurveEdgeCase::AddingInverse,

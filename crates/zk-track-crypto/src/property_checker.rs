@@ -37,7 +37,12 @@ impl PropertyCheckRecord {
     }
 }
 
-pub fn bool_property(property: &str, expected: bool, observed: bool, reason: &str) -> PropertyCheckRecord {
+pub fn bool_property(
+    property: &str,
+    expected: bool,
+    observed: bool,
+    reason: &str,
+) -> PropertyCheckRecord {
     if expected == observed {
         PropertyCheckRecord::pass(property.to_string(), expected.to_string())
     } else {

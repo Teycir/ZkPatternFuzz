@@ -14,7 +14,8 @@ use zk_postroadmap_core::{
 };
 
 pub use adapters::{
-    ExploitabilityAssessment, ExternalUserSemanticIntentAdapter, HeuristicSemanticIntentAdapter,
+    ExploitabilityAssessment, ExternalUserSemanticIntentAdapter,
+    HeuristicAugmentedSemanticIntentAdapter, HeuristicSemanticIntentAdapter,
     ModelGuidedSemanticIntentAdapter, SemanticIntent, SemanticIntentAdapter,
 };
 
@@ -64,7 +65,6 @@ enum SemanticSourceType {
 struct SemanticSourceDocument {
     path: PathBuf,
     source_type: SemanticSourceType,
-    raw_text: String,
     intent_text: String,
 }
 
@@ -594,15 +594,23 @@ fn default_adapter_from_metadata(
 ) -> PostRoadmapResult<Box<dyn SemanticIntentAdapter>> {
     let adapter_mode = parse_adapter_mode(input);
     match adapter_mode.as_str() {
-        "model_guided" | "model-guided" | "llm" | "ai" => {
-            let model_name = input
+        "heuristic_augmented"
+        | "heuristic-augmented"
+        | "guided_heuristic"
+        | "guided-heuristic"
+        | "model_guided"
+        | "model-guided"
+        | "llm"
+        | "ai" => {
+            let guidance_label = input
                 .metadata
-                .get("semantic_model_name")
+                .get("semantic_guidance_label")
+                .or_else(|| input.metadata.get("semantic_model_name"))
                 .or_else(|| input.metadata.get("semantic_model"))
                 .map(|value| value.trim())
                 .filter(|value| !value.is_empty())
                 .unwrap_or("mistral");
-            let mut adapter = ModelGuidedSemanticIntentAdapter::new(model_name);
+            let mut adapter = HeuristicAugmentedSemanticIntentAdapter::new(guidance_label);
             if let Some(system_prompt) = input
                 .metadata
                 .get("semantic_system_prompt")
@@ -977,7 +985,6 @@ fn load_source_document(path: &Path) -> PostRoadmapResult<Option<SemanticSourceD
     Ok(Some(SemanticSourceDocument {
         path: path.to_path_buf(),
         source_type,
-        raw_text,
         intent_text,
     }))
 }
@@ -1310,13 +1317,15 @@ fn write_ai_ingest_bundle(
 
 fn truncate_bundle_text(value: &str, max_chars: usize) -> String {
     let mut out = String::new();
+    let mut count = 0usize;
     let mut truncated = false;
     for character in value.chars() {
-        if out.chars().count() >= max_chars {
+        if count >= max_chars {
             truncated = true;
             break;
         }
         out.push(character);
+        count += 1;
     }
     if truncated {
         out.push_str("...[truncated]");
@@ -1622,6 +1631,19 @@ mod tests {
         assert!(comments.contains("only admin can withdraw"));
         assert!(comments.contains("TODO: bypass auth in debug mode"));
         assert!(comments.contains("verifier must reject forged proofs"));
+    }
+
+    #[test]
+    fn detects_inline_block_and_trailing_line_comments() {
+        let source = r#"
+            let x = /* bypass must never ship */ 1;
+            let y = 2; // verifier should reject forged proof
+            let z = 3; /* enforce range checks */
+        "#;
+        let comments = extract_comment_and_doc_text(source);
+        assert!(comments.contains("bypass must never ship"));
+        assert!(comments.contains("verifier should reject forged proof"));
+        assert!(comments.contains("enforce range checks"));
     }
 
     #[test]

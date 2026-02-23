@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_ROOT="${OUTPUT_ROOT:-$ROOT_DIR/artifacts/semantic_campaign}"
 RUN_ID="${RUN_ID:-semantic-exit-sample}"
 SEMANTIC_ROOTS="${SEMANTIC_ROOTS:-tests,docs,targets/zkbugs/dataset/halo2}"
-ADAPTER="${ADAPTER:-model_guided}"
-MODEL_NAME="${MODEL_NAME:-mistral}"
+ADAPTER="${ADAPTER:-heuristic_augmented}"
+GUIDANCE_LABEL="${GUIDANCE_LABEL:-${MODEL_NAME:-mistral}}"
 EXIT_REPORT_OUT="${EXIT_REPORT_OUT:-$ROOT_DIR/artifacts/semantic_exit/latest_report.json}"
 MANUAL_LABELS_PATH="${MANUAL_LABELS_PATH:-}"
 ENFORCE_EXIT="${ENFORCE_EXIT:-false}"
@@ -18,7 +18,7 @@ cargo run -q -p zk-track-semantic --example semantic_exit_campaign -- \
   --run-id "$RUN_ID" \
   --semantic-roots "$SEMANTIC_ROOTS" \
   --adapter "$ADAPTER" \
-  --model-name "$MODEL_NAME"
+  --guidance-label "$GUIDANCE_LABEL"
 
 printf '[semantic-exit] building exit report\n'
 CMD=(

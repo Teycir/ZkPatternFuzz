@@ -4,8 +4,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use zk_track_crypto::{
-    run_pairing_fuzz_campaign, PairingFuzzConfig, PairingImplementationProfile,
-    PairingInputType, PairingProperty,
+    run_pairing_fuzz_campaign, PairingFuzzConfig, PairingImplementationProfile, PairingInputType,
+    PairingProperty,
 };
 
 #[derive(Debug, Clone)]
@@ -66,9 +66,12 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
             "--seed" => seed = next_value(&mut args, "--seed")?.parse::<u64>()?,
             "--g1-inputs" => g1_inputs = parse_inputs(&next_value(&mut args, "--g1-inputs")?)?,
             "--g2-inputs" => g2_inputs = parse_inputs(&next_value(&mut args, "--g2-inputs")?)?,
-            "--properties" => properties = parse_properties(&next_value(&mut args, "--properties")?)?,
+            "--properties" => {
+                properties = parse_properties(&next_value(&mut args, "--properties")?)?
+            }
             "--implementation-profile" => {
-                implementation_profile = parse_profile(&next_value(&mut args, "--implementation-profile")?)?
+                implementation_profile =
+                    parse_profile(&next_value(&mut args, "--implementation-profile")?)?
             }
             "--help" | "-h" => {
                 print_help();
@@ -88,14 +91,21 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
     })
 }
 
-fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<String, Box<dyn Error>> {
+fn next_value(
+    args: &mut impl Iterator<Item = String>,
+    flag: &str,
+) -> Result<String, Box<dyn Error>> {
     args.next()
         .ok_or_else(|| format!("{flag} requires a value").into())
 }
 
 fn parse_inputs(raw: &str) -> Result<Vec<PairingInputType>, Box<dyn Error>> {
     let mut parsed = Vec::new();
-    for token in raw.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
         let input_type = match token.to_ascii_lowercase().as_str() {
             "identity" => PairingInputType::Identity,
             "generator" => PairingInputType::Generator,
@@ -118,7 +128,11 @@ fn parse_inputs(raw: &str) -> Result<Vec<PairingInputType>, Box<dyn Error>> {
 
 fn parse_properties(raw: &str) -> Result<Vec<PairingProperty>, Box<dyn Error>> {
     let mut parsed = Vec::new();
-    for token in raw.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
         let property = match token.to_ascii_lowercase().as_str() {
             "bilinearity" => PairingProperty::Bilinearity,
             "non_degeneracy" => PairingProperty::NonDegeneracy,

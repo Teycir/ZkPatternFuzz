@@ -11,8 +11,8 @@ const DEFAULT_OUTPUT_DIR: &str = "artifacts/semantic_campaign";
 const DEFAULT_RUN_ID: &str = "semantic-exit-sample";
 const DEFAULT_CAMPAIGN_ID: &str = "semantic-exit-campaign";
 const DEFAULT_SEMANTIC_ROOTS: &str = "tests,docs,targets/zkbugs/dataset/halo2";
-const DEFAULT_ADAPTER: &str = "model_guided";
-const DEFAULT_MODEL_NAME: &str = "mistral";
+const DEFAULT_ADAPTER: &str = "heuristic_augmented";
+const DEFAULT_GUIDANCE_LABEL: &str = "mistral";
 const DEFAULT_SYSTEM_PROMPT: &str =
     "strict formal extraction for semantic security intent from docs/comments";
 const DEFAULT_EXECUTION_EVIDENCE_JSON: &str = r#"{
@@ -45,7 +45,7 @@ struct CliArgs {
     campaign_id: String,
     semantic_roots: String,
     adapter: String,
-    model_name: String,
+    guidance_label: String,
     system_prompt: String,
     execution_evidence_json: String,
 }
@@ -56,7 +56,7 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
     let mut campaign_id = DEFAULT_CAMPAIGN_ID.to_string();
     let mut semantic_roots = DEFAULT_SEMANTIC_ROOTS.to_string();
     let mut adapter = DEFAULT_ADAPTER.to_string();
-    let mut model_name = DEFAULT_MODEL_NAME.to_string();
+    let mut guidance_label = DEFAULT_GUIDANCE_LABEL.to_string();
     let mut system_prompt = DEFAULT_SYSTEM_PROMPT.to_string();
     let mut execution_evidence_json = DEFAULT_EXECUTION_EVIDENCE_JSON.to_string();
 
@@ -78,8 +78,8 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
             "--adapter" => {
                 adapter = next_value(&mut args, "--adapter")?;
             }
-            "--model-name" => {
-                model_name = next_value(&mut args, "--model-name")?;
+            "--guidance-label" | "--model-name" => {
+                guidance_label = next_value(&mut args, "--guidance-label/--model-name")?;
             }
             "--system-prompt" => {
                 system_prompt = next_value(&mut args, "--system-prompt")?;
@@ -112,7 +112,7 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
         campaign_id,
         semantic_roots,
         adapter,
-        model_name,
+        guidance_label,
         system_prompt,
         execution_evidence_json,
     })
@@ -142,7 +142,7 @@ Options:
   --campaign-id <id>                Campaign ID (default: {DEFAULT_CAMPAIGN_ID})
   --semantic-roots <csv>            Comma-separated scan roots (default: {DEFAULT_SEMANTIC_ROOTS})
   --adapter <name>                  semantic adapter mode (default: {DEFAULT_ADAPTER})
-  --model-name <name>               model name metadata (default: {DEFAULT_MODEL_NAME})
+  --guidance-label <name>           heuristic guidance label (legacy alias: --model-name)
   --system-prompt <text>            system prompt metadata
   --execution-evidence-json <json>  inline execution evidence payload
   --execution-evidence-path <path>  execution evidence payload file
@@ -181,7 +181,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let metadata = BTreeMap::from([
         ("semantic_roots".to_string(), args.semantic_roots.clone()),
         ("semantic_adapter".to_string(), args.adapter.clone()),
-        ("semantic_model_name".to_string(), args.model_name.clone()),
+        (
+            "semantic_guidance_label".to_string(),
+            args.guidance_label.clone(),
+        ),
         (
             "semantic_system_prompt".to_string(),
             args.system_prompt.clone(),

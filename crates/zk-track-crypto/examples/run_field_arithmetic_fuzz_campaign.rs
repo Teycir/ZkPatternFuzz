@@ -66,10 +66,15 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
             "--random-values" => {
                 random_values = next_value(&mut args, "--random-values")?.parse::<usize>()?
             }
-            "--operations" => operations = parse_operations(&next_value(&mut args, "--operations")?)?,
-            "--properties" => properties = parse_properties(&next_value(&mut args, "--properties")?)?,
+            "--operations" => {
+                operations = parse_operations(&next_value(&mut args, "--operations")?)?
+            }
+            "--properties" => {
+                properties = parse_properties(&next_value(&mut args, "--properties")?)?
+            }
             "--implementation-profile" => {
-                implementation_profile = parse_profile(&next_value(&mut args, "--implementation-profile")?)?
+                implementation_profile =
+                    parse_profile(&next_value(&mut args, "--implementation-profile")?)?
             }
             "--help" | "-h" => {
                 print_help();
@@ -89,14 +94,21 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
     })
 }
 
-fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<String, Box<dyn Error>> {
+fn next_value(
+    args: &mut impl Iterator<Item = String>,
+    flag: &str,
+) -> Result<String, Box<dyn Error>> {
     args.next()
         .ok_or_else(|| format!("{flag} requires a value").into())
 }
 
 fn parse_operations(raw: &str) -> Result<Vec<FieldOperation>, Box<dyn Error>> {
     let mut parsed = Vec::new();
-    for token in raw.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
         let operation = match token.to_ascii_lowercase().as_str() {
             "addition" => FieldOperation::Addition,
             "subtraction" => FieldOperation::Subtraction,
@@ -120,7 +132,11 @@ fn parse_operations(raw: &str) -> Result<Vec<FieldOperation>, Box<dyn Error>> {
 
 fn parse_properties(raw: &str) -> Result<Vec<FieldProperty>, Box<dyn Error>> {
     let mut parsed = Vec::new();
-    for token in raw.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
         let property = match token.to_ascii_lowercase().as_str() {
             "commutativity" => FieldProperty::Commutativity,
             "associativity" => FieldProperty::Associativity,

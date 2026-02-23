@@ -380,20 +380,20 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - Promote deferred items back to active only with an assigned owner, fixture plan, and explicit release impact.
 
 ### 7.5 Semantic Track Bug Intake (2026-02-23)
-- [ ] Fix adapter selection semantics: `with_intent_adapter()` appends to a list, but `run()` only uses `intent_adapters.first()`; enforce single-adapter API or implement deterministic adapter chaining/merge (`crates/zk-track-semantic/src/lib.rs`).
-- [ ] Make false-positive gate meaningful: `build_scorecard()` currently sets `false_positive_budget = findings + 2` and `false_positive_count = 0`, so `validate()` budget enforcement is effectively non-failing (`crates/zk-track-semantic/src/lib.rs`).
-- [ ] Fix severity mapping bug in `severity_from_assessment()`: medium branch currently matches non-exploitable findings with confidence >=55; constrain medium/high/critical branches to exploitable assessments (`crates/zk-track-semantic/src/lib.rs`).
-- [ ] Align marker scan corpus and intent corpus: marker detection uses `raw_text` while code intent extraction uses comment/doc text (`intent_text`); unify scope or codify intentional divergence (`crates/zk-track-semantic/src/lib.rs`).
-- [ ] Remove duplicate `report_output_dir()` evaluation in `prepare()` error path (`crates/zk-track-semantic/src/lib.rs`).
-- [ ] Clarify `ModelGuidedSemanticIntentAdapter` naming/contract: implementation is heuristic-augmented and does not invoke an external model; either rename or add real model-backed behavior (`crates/zk-track-semantic/src/adapters.rs`).
-- [ ] Consolidate output writer directory handling: currently each writer (`semantic_track_report`, `ai_ingest_bundle`, `ai_exploitability_worklist`, `semantic_actionable_report`) repeats `create_dir_all`; centralize and enforce `mkdir -> serialize -> write` ordering (`crates/zk-track-semantic/src/lib.rs`).
-- [ ] Remove local variable shadowing in `write_ai_ingest_bundle()` (`source_documents` parameter shadowed by local binding) for readability/safety (`crates/zk-track-semantic/src/lib.rs`).
-- [ ] Optimize `truncate_bundle_text()` to single-pass truncation to avoid double full-string traversal (`crates/zk-track-semantic/src/lib.rs`).
-- [ ] Replace magic minimum statement length (`12`) in `statement_candidates()` with a named constant and rationale (`crates/zk-track-semantic/src/adapters.rs`).
-- [ ] Reassess heuristic intent redundancy: `invariants` is currently a union of `required_behaviors`, `forbidden_behaviors`, and `security_properties`; decide whether to keep as compatibility mirror or make it semantically distinct (`crates/zk-track-semantic/src/adapters.rs`).
-- [ ] Add comment-extraction regression tests for inline/trailing block-comment forms and document expected behavior (current parser already handles common multiline block-comment flow; edge semantics should be explicit) (`crates/zk-track-semantic/src/lib.rs`).
+- [x] Fix adapter selection semantics: `with_intent_adapter()` appends to a list, but `run()` only uses `intent_adapters.first()`; enforce single-adapter API or implement deterministic adapter chaining/merge (`crates/zk-track-semantic/src/lib.rs`).
+- [x] Make false-positive gate meaningful: `build_scorecard()` currently sets `false_positive_budget = findings + 2` and `false_positive_count = 0`, so `validate()` budget enforcement is effectively non-failing (`crates/zk-track-semantic/src/lib.rs`).
+- [x] Fix severity mapping bug in `severity_from_assessment()`: medium branch currently matches non-exploitable findings with confidence >=55; constrain medium/high/critical branches to exploitable assessments (`crates/zk-track-semantic/src/lib.rs`).
+- [x] Align marker scan corpus and intent corpus: marker detection uses `raw_text` while code intent extraction uses comment/doc text (`intent_text`); unify scope or codify intentional divergence (`crates/zk-track-semantic/src/lib.rs`).
+- [x] Remove duplicate `report_output_dir()` evaluation in `prepare()` error path (`crates/zk-track-semantic/src/lib.rs`).
+- [x] Clarify naming/contract for model-labeled adapter: canonicalized to `HeuristicAugmentedSemanticIntentAdapter` with legacy `ModelGuidedSemanticIntentAdapter` alias retained for compatibility; no in-process model invocation contract (`crates/zk-track-semantic/src/adapters.rs`, `crates/zk-track-semantic/src/lib.rs`).
+- [x] Consolidate output writer directory handling: currently each writer (`semantic_track_report`, `ai_ingest_bundle`, `ai_exploitability_worklist`, `semantic_actionable_report`) repeats `create_dir_all`; centralize and enforce `mkdir -> serialize -> write` ordering (`crates/zk-track-semantic/src/lib.rs`).
+- [x] Remove local variable shadowing in `write_ai_ingest_bundle()` (`source_documents` parameter shadowed by local binding) for readability/safety (`crates/zk-track-semantic/src/lib.rs`).
+- [x] Optimize `truncate_bundle_text()` to single-pass truncation to avoid double full-string traversal (`crates/zk-track-semantic/src/lib.rs`).
+- [x] Replace magic minimum statement length (`12`) in `statement_candidates()` with a named constant and rationale (`crates/zk-track-semantic/src/adapters.rs`).
+- [x] Reassess heuristic intent redundancy: made `invariants` semantically distinct by synthesizing normalized `invariant.*` statements per candidate instead of mirroring the other three fields (`crates/zk-track-semantic/src/adapters.rs`).
+- [x] Add comment-extraction regression tests for inline/trailing block-comment forms and document expected behavior (current parser already handles common multiline block-comment flow; edge semantics should be explicit) (`crates/zk-track-semantic/src/lib.rs`).
 
-**Current Status:** 🟡 Partially implemented. Core P0/P1 engines are merged; Phase 7 now includes the semantic-track bug-intake hardening list above while Phase 8 remains the active release closure track.
+**Current Status:** 🟡 Partially implemented. Core P0/P1 engines are merged and the semantic-track bug-intake hardening checklist is complete; deferred semantic backlog items remain non-blocking while Phase 8 stays the active release closure track.
 
 ---
 

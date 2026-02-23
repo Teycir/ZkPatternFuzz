@@ -203,10 +203,7 @@ pub fn run_field_arithmetic_fuzz_campaign(
                         case_id: format!("field-op-{left_idx:03}-{right_idx:03}"),
                         category: "operation_mismatch".to_string(),
                         check_name: operation.as_str().to_string(),
-                        reason: format!(
-                            "candidate {} diverged from reference",
-                            operation.as_str()
-                        ),
+                        reason: format!("candidate {} diverged from reference", operation.as_str()),
                         expected: field_eval_to_string(&expected),
                         observed: field_eval_to_string(&observed),
                     });
@@ -453,9 +450,13 @@ fn run_property_checks(
 
                 let lhs = candidate_field_eval(
                     FieldOperation::Addition,
-                    &as_value(
-                        candidate_field_eval(FieldOperation::Addition, left, mid, modulus, profile),
-                    ),
+                    &as_value(candidate_field_eval(
+                        FieldOperation::Addition,
+                        left,
+                        mid,
+                        modulus,
+                        profile,
+                    )),
                     right,
                     modulus,
                     profile,
@@ -463,9 +464,13 @@ fn run_property_checks(
                 let rhs = candidate_field_eval(
                     FieldOperation::Addition,
                     left,
-                    &as_value(
-                        candidate_field_eval(FieldOperation::Addition, mid, right, modulus, profile),
-                    ),
+                    &as_value(candidate_field_eval(
+                        FieldOperation::Addition,
+                        mid,
+                        right,
+                        modulus,
+                        profile,
+                    )),
                     modulus,
                     profile,
                 );
@@ -513,13 +518,8 @@ fn run_property_checks(
                     modulus,
                     profile,
                 ));
-                let rhs = candidate_field_eval(
-                    FieldOperation::Addition,
-                    &lm,
-                    &lr,
-                    modulus,
-                    profile,
-                );
+                let rhs =
+                    candidate_field_eval(FieldOperation::Addition, &lm, &lr, modulus, profile);
 
                 let record = bool_property(
                     "distributivity",

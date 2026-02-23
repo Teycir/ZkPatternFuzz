@@ -79,6 +79,8 @@ const SECURITY_CRITICAL_MARKERS: &[&str] = &[
     "nullifier",
     "replay",
 ];
+// Ignore tiny fragments that are usually identifiers or syntax noise.
+const MIN_STATEMENT_CANDIDATE_LEN: usize = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SemanticIntent {
@@ -111,10 +113,13 @@ pub trait SemanticIntentAdapter: Send + Sync {
 pub struct HeuristicSemanticIntentAdapter;
 
 #[derive(Debug, Clone)]
-pub struct ModelGuidedSemanticIntentAdapter {
-    model_name: String,
+pub struct HeuristicAugmentedSemanticIntentAdapter {
+    guidance_label: String,
     system_prompt: Option<String>,
 }
+
+// Backward-compatible alias for callers that still use the old type name.
+pub type ModelGuidedSemanticIntentAdapter = HeuristicAugmentedSemanticIntentAdapter;
 
 #[derive(Debug, Clone)]
 pub struct ExternalUserSemanticIntentAdapter {
@@ -123,16 +128,16 @@ pub struct ExternalUserSemanticIntentAdapter {
     exploitability_payload: Option<String>,
 }
 
-impl Default for ModelGuidedSemanticIntentAdapter {
+impl Default for HeuristicAugmentedSemanticIntentAdapter {
     fn default() -> Self {
         Self::new("mistral")
     }
 }
 
-impl ModelGuidedSemanticIntentAdapter {
-    pub fn new(model_name: impl Into<String>) -> Self {
+impl HeuristicAugmentedSemanticIntentAdapter {
+    pub fn new(guidance_label: impl Into<String>) -> Self {
         Self {
-            model_name: model_name.into(),
+            guidance_label: guidance_label.into(),
             system_prompt: None,
         }
     }
@@ -173,6 +178,7 @@ impl SemanticIntentAdapter for HeuristicSemanticIntentAdapter {
         let mut required_behaviors = BTreeSet::new();
         let mut forbidden_behaviors = BTreeSet::new();
         let mut security_properties = BTreeSet::new();
+        let mut invariants = BTreeSet::new();
 
         for statement in statement_candidates(source_text) {
             let statement_lc = statement.to_ascii_lowercase();
@@ -191,14 +197,17 @@ impl SemanticIntentAdapter for HeuristicSemanticIntentAdapter {
                 forbidden_behaviors.insert(statement.clone());
             }
             if has_security {
-                security_properties.insert(statement);
+                security_properties.insert(statement.clone());
+            }
+            if let Some(invariant) = synthesize_formal_invariant(&statement) {
+                invariants.insert(invariant);
+            } else {
+                invariants.insert(format!(
+                    "invariant.observed:{}",
+                    normalize_statement(&statement)
+                ));
             }
         }
-
-        let mut invariants = BTreeSet::new();
-        invariants.extend(required_behaviors.iter().cloned());
-        invariants.extend(forbidden_behaviors.iter().cloned());
-        invariants.extend(security_properties.iter().cloned());
 
         Ok(SemanticIntent {
             source: self.provider_name().to_string(),
@@ -257,9 +266,9 @@ impl SemanticIntentAdapter for HeuristicSemanticIntentAdapter {
 }
 
 #[async_trait]
-impl SemanticIntentAdapter for ModelGuidedSemanticIntentAdapter {
+impl SemanticIntentAdapter for HeuristicAugmentedSemanticIntentAdapter {
     fn provider_name(&self) -> &'static str {
-        "model-guided-semantic-v1"
+        "heuristic-augmented-semantic-v1"
     }
 
     async fn extract_intent(&self, source_text: &str) -> PostRoadmapResult<SemanticIntent> {
@@ -304,7 +313,7 @@ impl SemanticIntentAdapter for ModelGuidedSemanticIntentAdapter {
         security_properties.extend(base.security_properties.drain(..));
         security_properties.extend(security_critical_properties.into_iter());
 
-        base.source = format!("{}:{}", self.provider_name(), self.model_name);
+        base.source = format!("{}:{}", self.provider_name(), self.guidance_label);
         base.invariants = invariants.into_iter().collect();
         base.security_properties = security_properties.into_iter().collect();
         Ok(base)
@@ -343,8 +352,8 @@ impl SemanticIntentAdapter for ModelGuidedSemanticIntentAdapter {
         assessment.confidence = adjusted_confidence.clamp(0, 100) as u8;
         assessment.exploitable = assessment.exploitable || assessment.confidence >= 70;
         assessment.rationale = format!(
-            "{}; model_guided_adjustment=formal:{} security_critical:{} model:{}",
-            assessment.rationale, formal_count, security_critical_count, self.model_name
+            "{}; heuristic_augmented_adjustment=formal:{} security_critical:{} guidance_label:{}",
+            assessment.rationale, formal_count, security_critical_count, self.guidance_label
         );
         Ok(assessment)
     }
@@ -628,11 +637,11 @@ fn statement_candidates(source_text: &str) -> Vec<String> {
 
         for segment in normalized.split(['.', ';']) {
             let candidate = segment.trim();
-            if candidate.len() < 12 {
+            if candidate.len() < MIN_STATEMENT_CANDIDATE_LEN {
                 continue;
             }
             let collapsed = candidate.split_whitespace().collect::<Vec<_>>().join(" ");
-            if collapsed.len() >= 12 {
+            if collapsed.len() >= MIN_STATEMENT_CANDIDATE_LEN {
                 statements.insert(collapsed);
             }
         }

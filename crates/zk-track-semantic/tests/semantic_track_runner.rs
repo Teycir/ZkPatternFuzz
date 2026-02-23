@@ -2,12 +2,52 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use async_trait::async_trait;
 use tempfile::tempdir;
-use zk_postroadmap_core::{TrackInput, TrackRunner};
+use zk_postroadmap_core::{PostRoadmapResult, TrackInput, TrackRunner};
 use zk_track_semantic::{
-    ExternalUserSemanticIntentAdapter, HeuristicSemanticIntentAdapter,
-    ModelGuidedSemanticIntentAdapter, SemanticIntentAdapter, SemanticTrackRunner,
+    ExploitabilityAssessment, ExternalUserSemanticIntentAdapter,
+    HeuristicAugmentedSemanticIntentAdapter, HeuristicSemanticIntentAdapter, SemanticIntent,
+    SemanticIntentAdapter, SemanticTrackRunner,
 };
+
+#[derive(Debug, Default)]
+struct NonExploitableHighConfidenceAdapter;
+
+#[async_trait]
+impl SemanticIntentAdapter for NonExploitableHighConfidenceAdapter {
+    fn provider_name(&self) -> &'static str {
+        "non-exploitable-high-confidence-test-adapter"
+    }
+
+    async fn extract_intent(&self, source_text: &str) -> PostRoadmapResult<SemanticIntent> {
+        if source_text.trim().is_empty() {
+            return Ok(SemanticIntent {
+                source: self.provider_name().to_string(),
+                ..SemanticIntent::default()
+            });
+        }
+        Ok(SemanticIntent {
+            source: self.provider_name().to_string(),
+            required_behaviors: vec!["verifier must reject unauthorized operations".to_string()],
+            forbidden_behaviors: vec!["must never bypass authorization".to_string()],
+            security_properties: vec!["authorization".to_string()],
+            invariants: vec!["invariant.authorization:no_bypass".to_string()],
+        })
+    }
+
+    async fn classify_exploitability(
+        &self,
+        _intent: &SemanticIntent,
+        _violation_summary: &str,
+    ) -> PostRoadmapResult<ExploitabilityAssessment> {
+        Ok(ExploitabilityAssessment {
+            exploitable: false,
+            confidence: 80,
+            rationale: "non-exploitable test fixture".to_string(),
+        })
+    }
+}
 
 #[tokio::test]
 async fn heuristic_adapter_extracts_semantic_intent_and_exploitability() {
@@ -36,8 +76,8 @@ async fn heuristic_adapter_extracts_semantic_intent_and_exploitability() {
 }
 
 #[tokio::test]
-async fn model_guided_adapter_synthesizes_formal_invariants() {
-    let adapter = ModelGuidedSemanticIntentAdapter::new("mistral-large")
+async fn heuristic_augmented_adapter_synthesizes_formal_invariants() {
+    let adapter = HeuristicAugmentedSemanticIntentAdapter::new("mistral-large")
         .with_system_prompt("strict formal extraction for security invariants");
     let intent = adapter
         .extract_intent(
@@ -100,9 +140,12 @@ async fn semantic_track_runner_end_to_end_generates_report_and_findings() {
                 "semantic_root".to_string(),
                 project_root.to_string_lossy().into_owned(),
             ),
-            ("semantic_adapter".to_string(), "model_guided".to_string()),
             (
-                "semantic_model_name".to_string(),
+                "semantic_adapter".to_string(),
+                "heuristic_augmented".to_string(),
+            ),
+            (
+                "semantic_guidance_label".to_string(),
                 "mistral-large".to_string(),
             ),
             (
@@ -155,7 +198,7 @@ async fn semantic_track_runner_end_to_end_generates_report_and_findings() {
             >= 1
     );
     let adapter = report_value["adapter"].as_str().expect("adapter as str");
-    assert_eq!(adapter, "model-guided-semantic-v1");
+    assert_eq!(adapter, "heuristic-augmented-semantic-v1");
     let findings = execution.findings.as_slice();
     assert!(findings
         .iter()
@@ -421,6 +464,222 @@ async fn semantic_track_runner_flags_execution_evidence_intent_violation() {
         .iter()
         .any(|finding| finding.metadata.get("evidence_case_id")
             == Some(&"witness-case-1".to_string())));
+}
+
+#[tokio::test]
+async fn semantic_track_runner_rejects_multiple_explicit_intent_adapters() {
+    let tmp = tempdir().expect("tempdir");
+    let project_root = tmp.path().join("sample_project_multi_adapter");
+    fs::create_dir_all(project_root.join("src")).expect("create project source directory");
+    fs::create_dir_all(tmp.path().join("output")).expect("create output directory");
+
+    fs::write(
+        project_root.join("src").join("withdraw.circom"),
+        r#"
+        // only admin can withdraw
+        template Withdraw() {
+            // TODO: bypass auth checks
+            signal input amount;
+        }
+        "#,
+    )
+    .expect("write sample source");
+
+    let runner = SemanticTrackRunner::new()
+        .with_intent_adapter(Box::new(HeuristicSemanticIntentAdapter))
+        .with_intent_adapter(Box::new(HeuristicAugmentedSemanticIntentAdapter::new(
+            "mistral",
+        )));
+    let input = TrackInput {
+        campaign_id: "campaign-semantic".to_string(),
+        run_id: "run-semantic-multi-adapter".to_string(),
+        seed: Some(17),
+        corpus_dir: tmp.path().join("corpus"),
+        evidence_dir: tmp.path().join("evidence"),
+        output_dir: tmp.path().join("output"),
+        metadata: BTreeMap::from([(
+            "semantic_root".to_string(),
+            project_root.to_string_lossy().into_owned(),
+        )]),
+    };
+
+    runner
+        .prepare(&input)
+        .await
+        .expect("prepare should succeed");
+    let error = runner
+        .run(&input)
+        .await
+        .expect_err("multiple explicit adapters must be rejected");
+    assert!(error
+        .to_string()
+        .contains("supports exactly one explicit intent adapter"));
+}
+
+#[tokio::test]
+async fn semantic_track_runner_keeps_non_exploitable_high_confidence_findings_low_severity() {
+    let tmp = tempdir().expect("tempdir");
+    let project_root = tmp.path().join("sample_project_low_severity");
+    fs::create_dir_all(project_root.join("src")).expect("create project source directory");
+    fs::create_dir_all(tmp.path().join("output")).expect("create output directory");
+
+    fs::write(
+        project_root.join("README.md"),
+        "Only admin can withdraw and verifier must reject unauthorized actions.\n",
+    )
+    .expect("write readme");
+    fs::write(
+        project_root.join("src").join("withdraw.circom"),
+        r#"
+        // TODO: temporary bypass guard for local debug
+        template Withdraw() {
+            signal input amount;
+        }
+        "#,
+    )
+    .expect("write sample source");
+
+    let runner = SemanticTrackRunner::new()
+        .with_intent_adapter(Box::new(NonExploitableHighConfidenceAdapter));
+    let input = TrackInput {
+        campaign_id: "campaign-semantic".to_string(),
+        run_id: "run-semantic-low-severity".to_string(),
+        seed: Some(19),
+        corpus_dir: tmp.path().join("corpus"),
+        evidence_dir: tmp.path().join("evidence"),
+        output_dir: tmp.path().join("output"),
+        metadata: BTreeMap::from([(
+            "semantic_root".to_string(),
+            project_root.to_string_lossy().into_owned(),
+        )]),
+    };
+
+    runner
+        .prepare(&input)
+        .await
+        .expect("prepare should succeed");
+    let execution = runner.run(&input).await.expect("run should succeed");
+    assert!(!execution.findings.is_empty());
+    assert!(execution.findings.iter().all(|finding| {
+        finding.severity == zk_postroadmap_core::FindingSeverity::Low
+            && finding
+                .metadata
+                .get("exploitable")
+                .map(|value| value == "false")
+                .unwrap_or(false)
+    }));
+    runner
+        .validate(&execution)
+        .await
+        .expect("single non-exploitable finding should stay within FP budget");
+}
+
+#[tokio::test]
+async fn semantic_track_runner_false_positive_budget_can_fail_validation() {
+    let tmp = tempdir().expect("tempdir");
+    let project_root = tmp.path().join("sample_project_fp_budget");
+    fs::create_dir_all(project_root.join("src")).expect("create project source directory");
+    fs::create_dir_all(tmp.path().join("output")).expect("create output directory");
+
+    fs::write(
+        project_root.join("README.md"),
+        "Only admin can withdraw and verifier must reject unauthorized actions.\n",
+    )
+    .expect("write readme");
+    for index in 0..3 {
+        fs::write(
+            project_root
+                .join("src")
+                .join(format!("withdraw_{index}.circom")),
+            r#"
+            // TODO: temporary bypass guard for local debug
+            template Withdraw() {
+                signal input amount;
+            }
+            "#,
+        )
+        .expect("write sample source");
+    }
+
+    let runner = SemanticTrackRunner::new()
+        .with_intent_adapter(Box::new(NonExploitableHighConfidenceAdapter));
+    let input = TrackInput {
+        campaign_id: "campaign-semantic".to_string(),
+        run_id: "run-semantic-fp-budget".to_string(),
+        seed: Some(23),
+        corpus_dir: tmp.path().join("corpus"),
+        evidence_dir: tmp.path().join("evidence"),
+        output_dir: tmp.path().join("output"),
+        metadata: BTreeMap::from([(
+            "semantic_root".to_string(),
+            project_root.to_string_lossy().into_owned(),
+        )]),
+    };
+
+    runner
+        .prepare(&input)
+        .await
+        .expect("prepare should succeed");
+    let execution = runner.run(&input).await.expect("run should succeed");
+    let error = runner
+        .validate(&execution)
+        .await
+        .expect_err("false-positive budget should fail when too many non-exploitable findings");
+    assert!(error
+        .to_string()
+        .contains("semantic false-positive budget exceeded"));
+}
+
+#[tokio::test]
+async fn semantic_track_runner_ignores_markers_outside_intent_text_scope() {
+    let tmp = tempdir().expect("tempdir");
+    let project_root = tmp.path().join("sample_project_marker_scope");
+    fs::create_dir_all(project_root.join("src")).expect("create project source directory");
+    fs::create_dir_all(tmp.path().join("output")).expect("create output directory");
+
+    fs::write(
+        project_root.join("README.md"),
+        "Only admin can withdraw and verifier must reject unauthorized actions.\n",
+    )
+    .expect("write readme");
+    fs::write(
+        project_root.join("src").join("withdraw.circom"),
+        r#"
+        template Withdraw() {
+            signal input amount;
+            signal output flagged;
+            flagged <== amount + 1;
+            // No comments with suspicious markers here.
+            var marker = "TODO bypass auth in string literal only";
+        }
+        "#,
+    )
+    .expect("write sample source");
+
+    let runner = SemanticTrackRunner::new()
+        .with_intent_adapter(Box::new(NonExploitableHighConfidenceAdapter));
+    let input = TrackInput {
+        campaign_id: "campaign-semantic".to_string(),
+        run_id: "run-semantic-marker-scope".to_string(),
+        seed: Some(29),
+        corpus_dir: tmp.path().join("corpus"),
+        evidence_dir: tmp.path().join("evidence"),
+        output_dir: tmp.path().join("output"),
+        metadata: BTreeMap::from([(
+            "semantic_root".to_string(),
+            project_root.to_string_lossy().into_owned(),
+        )]),
+    };
+
+    runner
+        .prepare(&input)
+        .await
+        .expect("prepare should succeed");
+    let execution = runner.run(&input).await.expect("run should succeed");
+    assert!(
+        execution.findings.is_empty(),
+        "markers from non-comment code literals should not trigger findings"
+    );
 }
 
 fn is_semantic_report(path: &Path) -> bool {

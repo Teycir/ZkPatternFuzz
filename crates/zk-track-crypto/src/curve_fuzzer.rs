@@ -151,7 +151,9 @@ enum CurveEval {
     Error(&'static str),
 }
 
-pub fn run_curve_operation_fuzz_campaign(config: &CurveOperationFuzzConfig) -> CurveOperationFuzzReport {
+pub fn run_curve_operation_fuzz_campaign(
+    config: &CurveOperationFuzzConfig,
+) -> CurveOperationFuzzReport {
     let point_types = dedup_point_types(&config.point_types);
     let operations = dedup_operations(&config.operations);
     let edge_cases = dedup_edge_cases(&config.edge_cases);
@@ -342,7 +344,10 @@ fn evaluate_curve_operation(
     }
 }
 
-fn resolve_curve_value(point: &CurvePointSample, profile: CurveImplementationProfile) -> Result<u64, &'static str> {
+fn resolve_curve_value(
+    point: &CurvePointSample,
+    profile: CurveImplementationProfile,
+) -> Result<u64, &'static str> {
     if point.value.is_none() {
         if profile == CurveImplementationProfile::WeakInvalidHandling {
             return Ok(0);
@@ -505,12 +510,7 @@ fn run_edge_case_checks(
             }
         };
 
-        let check = bool_property(
-            edge_case.as_str(),
-            true,
-            expected == observed,
-            &reason,
-        );
+        let check = bool_property(edge_case.as_str(), true, expected == observed, &reason);
         if !check.passed {
             report.edge_case_failures += 1;
             *report
