@@ -35,6 +35,82 @@ fn maybe_write_ai_artifact(output_dir: &Path, file_name: &str, content: &str) {
     }
 }
 
+struct CampaignPipeline;
+
+impl CampaignPipeline {
+    fn apply_resume_mode(config: &mut zk_fuzzer::config::FuzzConfig, options: &CampaignRunOptions) {
+        if !options.resume {
+            return;
+        }
+
+        let corpus_path = if let Some(ref dir) = options.corpus_dir {
+            std::path::PathBuf::from(dir)
+        } else {
+            config.reporting.output_dir.join("corpus")
+        };
+
+        if corpus_path.exists() {
+            tracing::info!("Resume mode: loading corpus from {:?}", corpus_path);
+            config.campaign.parameters.additional.insert(
+                "resume_corpus_dir".to_string(),
+                serde_yaml::Value::String(corpus_path.display().to_string()),
+            );
+            println!("📂 Resuming from corpus: {}", corpus_path.display());
+        } else {
+            tracing::warn!(
+                "Resume requested but corpus directory not found: {:?}",
+                corpus_path
+            );
+            println!(
+                "⚠️  Corpus directory not found, starting fresh: {}",
+                corpus_path.display()
+            );
+        }
+    }
+
+    fn print_dry_run_summary(
+        config: &zk_fuzzer::config::FuzzConfig,
+        options: &CampaignRunOptions,
+        ai_enabled: bool,
+        ai_generated_invariant_count: usize,
+        ai_generated_yaml: bool,
+        formal_bridge_options: &FormalBridgeOptions,
+        formal_bridge_invariant_count: usize,
+        imported_formal_invariants: usize,
+    ) {
+        println!("\n✓ Configuration is valid");
+        println!("  Campaign: {}", config.campaign.name);
+        println!("  Target: {:?}", config.campaign.target.framework);
+        println!("  Attacks: {}", config.attacks.len());
+        println!("  Inputs: {}", config.inputs.len());
+        if options.resume {
+            println!("  Resume: enabled");
+        }
+        if ai_enabled {
+            println!(
+                "  AI: enabled (invariants: {}, config_suggestion: {})",
+                ai_generated_invariant_count,
+                if ai_generated_yaml {
+                    "generated"
+                } else {
+                    "not_generated"
+                }
+            );
+        }
+        if formal_bridge_options.enabled {
+            println!(
+                "  Formal bridge: enabled (system: {:?}, invariants: {}, imported_now: {})",
+                formal_bridge_options.system,
+                formal_bridge_invariant_count,
+                imported_formal_invariants
+            );
+        }
+        if let Some(ref profile) = options.profile {
+            println!("  Profile: {}", profile);
+        }
+    }
+}
+
 pub(crate) async fn run_campaign(
     config_path: &str,
     options: CampaignRunOptions,
@@ -321,32 +397,7 @@ pub(crate) async fn run_campaign(
         );
     }
 
-    // Handle resume mode
-    if options.resume {
-        let corpus_path = if let Some(ref dir) = options.corpus_dir {
-            std::path::PathBuf::from(dir)
-        } else {
-            config.reporting.output_dir.join("corpus")
-        };
-
-        if corpus_path.exists() {
-            tracing::info!("Resume mode: loading corpus from {:?}", corpus_path);
-            config.campaign.parameters.additional.insert(
-                "resume_corpus_dir".to_string(),
-                serde_yaml::Value::String(corpus_path.display().to_string()),
-            );
-            println!("📂 Resuming from corpus: {}", corpus_path.display());
-        } else {
-            tracing::warn!(
-                "Resume requested but corpus directory not found: {:?}",
-                corpus_path
-            );
-            println!(
-                "⚠️  Corpus directory not found, starting fresh: {}",
-                corpus_path.display()
-            );
-        }
-    }
+    CampaignPipeline::apply_resume_mode(&mut config, &options);
 
     let mut ai_generated_invariant_count = 0usize;
     let mut ai_generated_yaml = false;
@@ -394,36 +445,16 @@ pub(crate) async fn run_campaign(
 
     if options.dry_run {
         tracing::info!("Dry run mode - configuration validated successfully");
-        println!("\n✓ Configuration is valid");
-        println!("  Campaign: {}", config.campaign.name);
-        println!("  Target: {:?}", config.campaign.target.framework);
-        println!("  Attacks: {}", config.attacks.len());
-        println!("  Inputs: {}", config.inputs.len());
-        if options.resume {
-            println!("  Resume: enabled");
-        }
-        if ai_assistant.is_some() {
-            println!(
-                "  AI: enabled (invariants: {}, config_suggestion: {})",
-                ai_generated_invariant_count,
-                if ai_generated_yaml {
-                    "generated"
-                } else {
-                    "not_generated"
-                }
-            );
-        }
-        if formal_bridge_options.enabled {
-            println!(
-                "  Formal bridge: enabled (system: {:?}, invariants: {}, imported_now: {})",
-                formal_bridge_options.system,
-                formal_bridge_invariants.len(),
-                imported_formal_invariants
-            );
-        }
-        if let Some(ref p) = options.profile {
-            println!("  Profile: {}", p);
-        }
+        CampaignPipeline::print_dry_run_summary(
+            &config,
+            &options,
+            ai_assistant.is_some(),
+            ai_generated_invariant_count,
+            ai_generated_yaml,
+            &formal_bridge_options,
+            formal_bridge_invariants.len(),
+            imported_formal_invariants,
+        );
         return Ok(());
     }
 

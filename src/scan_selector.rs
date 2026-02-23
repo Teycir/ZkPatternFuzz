@@ -597,7 +597,7 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
         }
     }
 
-    println!("PATTERN FILTER START");
+    tracing::debug!("PATTERN FILTER START");
     let mut summary = ScanRegexPatternSummary {
         total_patterns: patterns.len(),
         required_k_of_n: selector_config.policy.k_of_n.unwrap_or(1),
@@ -606,7 +606,7 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
     };
     let mut matched_pattern_ids: BTreeSet<String> = BTreeSet::new();
     for (idx, pattern) in patterns.iter().enumerate() {
-        println!(
+        tracing::debug!(
             "pattern filter {}/{} {}",
             idx + 1,
             patterns.len(),
@@ -655,14 +655,21 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
                 .map(|m| m.trim())
                 .filter(|m| !m.is_empty())
             {
-                println!(
+                tracing::debug!(
                     "pattern hit {}: {} (matches: {}, weight: {:.2}, lines: {:?})",
-                    pattern.id, message, occurrences, pattern.weight, lines
+                    pattern.id,
+                    message,
+                    occurrences,
+                    pattern.weight,
+                    lines
                 );
             } else {
-                println!(
+                tracing::debug!(
                     "pattern hit {} (matches: {}, weight: {:.2}, lines: {:?})",
-                    pattern.id, occurrences, pattern.weight, lines
+                    pattern.id,
+                    occurrences,
+                    pattern.weight,
+                    lines
                 );
             }
         }
@@ -712,17 +719,20 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
     let groups_pass = summary.group_matches.iter().all(|group| group.passed);
     summary.selector_passed = global_k_pass && global_score_pass && groups_pass;
 
-    println!("PATTERN FILTER END");
+    tracing::debug!("PATTERN FILTER END");
     let match_ratio = if summary.total_patterns == 0 {
         0.0
     } else {
         (summary.matched_patterns as f64 / summary.total_patterns as f64) * 100.0
     };
-    println!(
+    tracing::debug!(
         "pattern summary: matched {}/{} ({:.1}%), total regex hits: {}",
-        summary.matched_patterns, summary.total_patterns, match_ratio, summary.total_occurrences
+        summary.matched_patterns,
+        summary.total_patterns,
+        match_ratio,
+        summary.total_occurrences
     );
-    println!(
+    tracing::debug!(
         "pattern gate: k_of_n {}/{} (required {}), score {:.2}/{:.2} => {}",
         summary.matched_patterns,
         summary.total_patterns,
@@ -736,7 +746,7 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
         }
     );
     for group in &summary.group_matches {
-        println!(
+        tracing::debug!(
             "pattern group {}: k_of_n {}/{} (required {}), score {:.2}/{:.2} => {}",
             group.name,
             group.matched_patterns,
@@ -753,12 +763,14 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
         } else {
             (hit.occurrences as f64 / summary.total_occurrences as f64) * 100.0
         };
-        println!(
+        tracing::debug!(
             "pattern frequency {}: {} hits ({:.1}%)",
-            hit.id, hit.occurrences, frequency
+            hit.id,
+            hit.occurrences,
+            frequency
         );
     }
-    println!(
+    tracing::debug!(
         "pattern selector verdict: {}",
         if summary.selector_passed {
             "PASS"
