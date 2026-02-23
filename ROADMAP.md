@@ -351,6 +351,13 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Raise Cairo maturity score from `4.95` to `5.0` and begin a non-zero 14-day streak (now `5.0/5.0`, streak `1/14`; scorecard applies a bounded selector-mismatch grace rate so benign low mismatch does not cap constraint-coverage fidelity in `scripts/backend_maturity_scorecard.sh`).
 - [ ] Continue Circom strict lane daily to move streak from `2/14` to `14/14` (`12` days remaining as of `2026-02-23`; projected earliest completion `2026-03-07` if consecutive passes continue; run `scripts/run_release_streak_status.sh` each day to refresh both maturity + flake projections).
 
+### 8.7 Logic Error Triage (2026-02-23)
+- [x] Harden UTC date-boundary determinism in Circom flake streak tests so the two-day streak assertion cannot flake around midnight (`tests/test_circom_flake_gate.py`).
+- [x] Harden isolated worker response-file cleanup: ignore expected `NotFound` during cleanup and keep warning logs for unexpected remove failures (`src/executor/isolated.rs`).
+- [x] Replace isolated executor 5ms poll sleep loop with timeout-capable process wait semantics to avoid busy-wait CPU burn under long-running workers (`src/executor/isolated.rs`).
+- [x] Add corrupted-history recovery for Circom flake gate history loads (fallback to empty history + explicit warning instead of raw JSON parse crash) (`scripts/circom_flake_gate.sh`).
+- Triage note: lock-free approximate counters are currently intentional/documented (`src/corpus/lockfree.rs`) and contention tests validate first-wins bitmap accounting (`tests/concurrency_stress_tests.rs`), so those claims are not currently tracked as blockers.
+
 ---
 
 ## 🧠 Phase 7: Semantic Analysis & Complex Bug Detection

@@ -52,13 +52,21 @@ class CircomFlakeGateTests(unittest.TestCase):
             _write_passing_summary(summary)
             _write_keygen_report(keygen, passes=True)
 
-            yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+            now = datetime.now(timezone.utc)
+            yesterday = now - timedelta(days=1)
             history_payload = {
-                "generated_utc": yesterday.isoformat(),
+                "generated_utc": now.isoformat(),
                 "entries": [
                     {
                         "generated_utc": yesterday.isoformat(),
                         "day_utc": yesterday.date().isoformat(),
+                        "lane_pass": True,
+                        "keygen_setup_keys_pass": True,
+                        "compile_prove_verify_pass": True,
+                    },
+                    {
+                        "generated_utc": now.isoformat(),
+                        "day_utc": now.date().isoformat(),
                         "lane_pass": True,
                         "keygen_setup_keys_pass": True,
                         "compile_prove_verify_pass": True,
@@ -141,6 +149,55 @@ class CircomFlakeGateTests(unittest.TestCase):
             self.assertFalse(payload["latest_signals"]["keygen_setup_keys_pass"])
             self.assertEqual(payload["remaining_streak_days"], 1)
             self.assertIsNone(payload["projected_completion_day_utc"])
+            self.assertTrue(history.exists())
+
+    def test_gate_recovers_from_corrupted_history_file(self):
+        with tempfile.TemporaryDirectory(prefix="zkfuzz_circom_flake_corrupt_history_") as tmpdir:
+            root = Path(tmpdir)
+            bench_root = root / "bench"
+            summary = bench_root / "benchmark_20260222_000000" / "summary.json"
+            keygen = root / "keygen_preflight.json"
+            history = root / "history.json"
+            report = root / "report.json"
+
+            _write_passing_summary(summary)
+            _write_keygen_report(keygen, passes=True)
+            history.write_text("{ invalid json\n", encoding="utf-8")
+
+            proc = subprocess.run(
+                [
+                    str(_script_path()),
+                    "--benchmark-root",
+                    str(bench_root),
+                    "--benchmark-summary",
+                    str(summary),
+                    "--keygen-preflight",
+                    str(keygen),
+                    "--history-path",
+                    str(history),
+                    "--output",
+                    str(report),
+                    "--required-consecutive-days",
+                    "1",
+                    "--enforce",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(
+                proc.returncode,
+                0,
+                msg=f"stdout={proc.stdout}\nstderr={proc.stderr}",
+            )
+            self.assertIn("ignoring invalid history file", proc.stderr)
+            payload = json.loads(report.read_text(encoding="utf-8"))
+            self.assertTrue(payload["overall_pass"])
+            self.assertEqual(payload["current_streak_days"], 1)
+            repaired_history = json.loads(history.read_text(encoding="utf-8"))
+            self.assertIsInstance(repaired_history.get("entries"), list)
+            self.assertGreaterEqual(len(repaired_history["entries"]), 1)
 
 
 if __name__ == "__main__":

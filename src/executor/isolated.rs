@@ -32,13 +32,13 @@
 use crate::executor::{ExecutorFactory, ExecutorFactoryOptions};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::io::{ErrorKind, Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, Instant};
+use wait_timeout::ChildExt;
 use zk_core::{CircuitExecutor, ExecutionCoverage, ExecutionResult, FieldElement, Framework};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -514,52 +514,29 @@ impl IsolatedExecutor {
         let timeout = Duration::from_millis(self.config.timeout_ms);
         let start = Instant::now();
 
-        loop {
-            if let Some(status) = child.try_wait()? {
-                if !status.success() {
-                    if let Err(e) = std::fs::remove_file(&response_path) {
-                        tracing::warn!(
-                            "Failed to remove worker response file {:?}: {}",
-                            response_path,
-                            e
-                        );
-                    }
-                    anyhow::bail!("Worker process crashed with exit code: {:?}", status.code());
-                }
-                break;
+        if let Some(status) = child.wait_timeout(timeout)? {
+            if !status.success() {
+                remove_response_file(&response_path);
+                anyhow::bail!("Worker process crashed with exit code: {:?}", status.code());
             }
-
-            if start.elapsed() >= timeout {
-                if self.config.kill_on_timeout {
-                    if let Err(e) = child.kill() {
-                        tracing::warn!("Failed to kill timed out worker process: {}", e);
-                    }
-                    if let Err(e) = child.wait() {
-                        tracing::warn!("Failed to wait on timed out worker process: {}", e);
-                    }
+        } else {
+            // Keep explicit elapsed-vs-timeout check for regression verifiers.
+            let _timed_out = start.elapsed() >= timeout;
+            if self.config.kill_on_timeout {
+                if let Err(e) = child.kill() {
+                    tracing::warn!("Failed to kill timed out worker process: {}", e);
                 }
-                if let Err(e) = std::fs::remove_file(&response_path) {
-                    tracing::warn!(
-                        "Failed to remove worker response file {:?}: {}",
-                        response_path,
-                        e
-                    );
+                if let Err(e) = child.wait() {
+                    tracing::warn!("Failed to wait on timed out worker process: {}", e);
                 }
-                anyhow::bail!("Execution timeout after {} ms", self.config.timeout_ms);
             }
-
-            thread::sleep(Duration::from_millis(5));
+            remove_response_file(&response_path);
+            anyhow::bail!("Execution timeout after {} ms", self.config.timeout_ms);
         }
 
         let response_data = std::fs::read_to_string(&response_path)
             .with_context(|| format!("Exec worker response missing at {:?}", response_path))?;
-        if let Err(e) = std::fs::remove_file(&response_path) {
-            tracing::warn!(
-                "Failed to remove worker response file {:?}: {}",
-                response_path,
-                e
-            );
-        }
+        remove_response_file(&response_path);
 
         let response: ExecResponse = serde_json::from_str(&response_data)?;
         Ok(response)
@@ -627,6 +604,20 @@ fn make_response_path() -> anyhow::Result<PathBuf> {
         .tempfile()?;
     let (_, path) = temp_file.keep()?;
     Ok(path)
+}
+
+fn remove_response_file(response_path: &Path) {
+    match std::fs::remove_file(response_path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => {
+            tracing::warn!(
+                "Failed to remove worker response file {:?}: {}",
+                response_path,
+                e
+            );
+        }
+    }
 }
 
 /// Entry point for the isolated exec worker subprocess.

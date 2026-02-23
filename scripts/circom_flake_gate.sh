@@ -145,7 +145,20 @@ def parse_dt(value: str) -> Optional[datetime]:
 
 
 def load_history_entries(path: Path) -> List[dict]:
-    payload = load_json(str(path))
+    try:
+        payload = load_json(str(path))
+    except json.JSONDecodeError as exc:
+        print(
+            f"[circom_flake_gate] warning: ignoring invalid history file {path}: {exc}",
+            file=sys.stderr,
+        )
+        return []
+    except OSError as exc:
+        print(
+            f"[circom_flake_gate] warning: unable to read history file {path}: {exc}",
+            file=sys.stderr,
+        )
+        return []
     if payload is None:
         return []
     if isinstance(payload, dict):
