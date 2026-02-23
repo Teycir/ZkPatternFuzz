@@ -929,7 +929,7 @@ crates/zk-track-semantic/
 
 #### Future P1 (Post-Roadmap): Adversarial Circuit Generation & Compiler Testing
 - [ ] **Programmatic Circuit Generation:**
-  - [ ] Design circuit generation DSL with backend-specific syntax templates (Circom/Noir/Halo2/Cairo)
+  - [x] Design circuit generation DSL with backend-specific syntax templates (Circom/Noir/Halo2/Cairo) (`crates/zk-circuit-gen`, `docs/COMPILER_CIRCUIT_DSL.md`)
   - [ ] Implement bulk generator: produce 1000+ random circuits per backend
   - [ ] Add mutation strategies:
     - [ ] Deep nesting (trigger stack/recursion limits)

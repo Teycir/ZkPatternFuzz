@@ -20,6 +20,7 @@ members = [
     "crates/zk-track-compiler",
     "crates/zk-track-semantic",
     "crates/zk-track-crypto",
+    "crates/zk-circuit-gen",
 ]
 
 [dependencies]
