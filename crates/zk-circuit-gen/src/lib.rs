@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -436,6 +439,104 @@ pub struct DifferentialVersionMatrixReport {
     pub output_dir: PathBuf,
     pub report_path: PathBuf,
     pub circuits_rows: Vec<DifferentialCircuitMatrixRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompilerProbeCase {
+    pub case_id: String,
+    pub compiler_id: String,
+    pub source_path: PathBuf,
+    pub command: Vec<String>,
+    pub timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CompilerExecutionStatus {
+    Success,
+    Timeout,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum CompilerFailureClass {
+    Timeout,
+    Crash,
+    InternalCompilerError,
+    UserError,
+    UnknownError,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompilerProbeResult {
+    pub case_id: String,
+    pub compiler_id: String,
+    pub source_path: PathBuf,
+    pub command: Vec<String>,
+    pub timeout_ms: u64,
+    pub duration_ms: u128,
+    pub status: CompilerExecutionStatus,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub failure_class: Option<CompilerFailureClass>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompilerBugReport {
+    pub bug_id: String,
+    pub case_id: String,
+    pub compiler_id: String,
+    pub failure_class: CompilerFailureClass,
+    pub summary: String,
+    pub repro_command: Vec<String>,
+    pub repro_source_path: PathBuf,
+    pub stderr_excerpt: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompilerCrashDetectionReport {
+    pub total_cases: usize,
+    pub succeeded: usize,
+    pub timed_out: usize,
+    pub failed: usize,
+    pub class_counts: BTreeMap<CompilerFailureClass, usize>,
+    pub results: Vec<CompilerProbeResult>,
+    pub bug_reports: Vec<CompilerBugReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct KnownCompilerBugExpectation {
+    pub bug_id: String,
+    pub compiler_id: String,
+    pub expected_class: CompilerFailureClass,
+    pub source_pattern: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegressionStatus {
+    Fixed,
+    Reproduced,
+    MissingSignal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompilerBugRegressionResult {
+    pub bug_id: String,
+    pub compiler_id: String,
+    pub expected_class: CompilerFailureClass,
+    pub status: RegressionStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompilerBugRegressionReport {
+    pub total_expectations: usize,
+    pub fixed: usize,
+    pub reproduced: usize,
+    pub missing_signal: usize,
+    pub results: Vec<CompilerBugRegressionResult>,
 }
 
 pub fn parse_dsl_yaml(value: &str) -> Result<CircuitDsl, CircuitGenError> {
@@ -994,6 +1095,178 @@ pub fn run_differential_version_matrix_campaign(
     };
     fs::write(&report_path, serde_json::to_string_pretty(&report)? + "\n")?;
     Ok(report)
+}
+
+pub fn run_compiler_probe_case(
+    case: &CompilerProbeCase,
+) -> Result<CompilerProbeResult, CircuitGenError> {
+    if case.command.is_empty() {
+        return Err(CircuitGenError::Validation(format!(
+            "probe case `{}` command must not be empty",
+            case.case_id
+        )));
+    }
+    if case.timeout_ms == 0 {
+        return Err(CircuitGenError::Validation(format!(
+            "probe case `{}` timeout_ms must be greater than zero",
+            case.case_id
+        )));
+    }
+
+    let start = Instant::now();
+    let mut child = Command::new(&case.command[0])
+        .args(&case.command[1..])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let timeout = Duration::from_millis(case.timeout_ms);
+    let mut timed_out = false;
+
+    loop {
+        if let Some(_status) = child.try_wait()? {
+            break;
+        }
+        if start.elapsed() > timeout {
+            timed_out = true;
+            let _ = child.kill();
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    let output = child.wait_with_output()?;
+    let duration_ms = start.elapsed().as_millis();
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let exit_code = output.status.code();
+    let status = if timed_out {
+        CompilerExecutionStatus::Timeout
+    } else if output.status.success() {
+        CompilerExecutionStatus::Success
+    } else {
+        CompilerExecutionStatus::Failed
+    };
+    let failure_class = classify_compiler_failure(status, exit_code, &stderr, &stdout);
+
+    Ok(CompilerProbeResult {
+        case_id: case.case_id.clone(),
+        compiler_id: case.compiler_id.clone(),
+        source_path: case.source_path.clone(),
+        command: case.command.clone(),
+        timeout_ms: case.timeout_ms,
+        duration_ms,
+        status,
+        exit_code,
+        stdout,
+        stderr,
+        failure_class,
+    })
+}
+
+pub fn run_compiler_crash_detection(
+    cases: &[CompilerProbeCase],
+    repro_dir: impl Into<PathBuf>,
+) -> Result<CompilerCrashDetectionReport, CircuitGenError> {
+    if cases.is_empty() {
+        return Err(CircuitGenError::Validation(
+            "compiler crash detection requires at least one probe case".to_string(),
+        ));
+    }
+    let repro_dir = repro_dir.into();
+    fs::create_dir_all(&repro_dir)?;
+
+    let mut results = Vec::new();
+    for case in cases {
+        results.push(run_compiler_probe_case(case)?);
+    }
+
+    let bug_reports = generate_compiler_bug_reports(&results, &repro_dir)?;
+    let succeeded = results
+        .iter()
+        .filter(|result| result.status == CompilerExecutionStatus::Success)
+        .count();
+    let timed_out = results
+        .iter()
+        .filter(|result| result.status == CompilerExecutionStatus::Timeout)
+        .count();
+    let failed = results
+        .iter()
+        .filter(|result| result.status == CompilerExecutionStatus::Failed)
+        .count();
+
+    let mut class_counts: BTreeMap<CompilerFailureClass, usize> = BTreeMap::new();
+    for result in &results {
+        if let Some(class) = result.failure_class {
+            *class_counts.entry(class).or_insert(0) += 1;
+        }
+    }
+
+    Ok(CompilerCrashDetectionReport {
+        total_cases: results.len(),
+        succeeded,
+        timed_out,
+        failed,
+        class_counts,
+        results,
+        bug_reports,
+    })
+}
+
+pub fn evaluate_known_compiler_bug_regressions(
+    report: &CompilerCrashDetectionReport,
+    expectations: &[KnownCompilerBugExpectation],
+) -> CompilerBugRegressionReport {
+    let mut results = Vec::new();
+    for expectation in expectations {
+        let matched_result = report.results.iter().find(|result| {
+            result.compiler_id == expectation.compiler_id
+                && (result
+                    .source_path
+                    .to_string_lossy()
+                    .contains(&expectation.source_pattern)
+                    || result.case_id.contains(&expectation.source_pattern))
+        });
+
+        let status = if let Some(result) = matched_result {
+            if result.failure_class == Some(expectation.expected_class) {
+                RegressionStatus::Reproduced
+            } else {
+                RegressionStatus::Fixed
+            }
+        } else {
+            RegressionStatus::MissingSignal
+        };
+
+        results.push(CompilerBugRegressionResult {
+            bug_id: expectation.bug_id.clone(),
+            compiler_id: expectation.compiler_id.clone(),
+            expected_class: expectation.expected_class,
+            status,
+        });
+    }
+
+    let fixed = results
+        .iter()
+        .filter(|result| result.status == RegressionStatus::Fixed)
+        .count();
+    let reproduced = results
+        .iter()
+        .filter(|result| result.status == RegressionStatus::Reproduced)
+        .count();
+    let missing_signal = results
+        .iter()
+        .filter(|result| result.status == RegressionStatus::MissingSignal)
+        .count();
+
+    CompilerBugRegressionReport {
+        total_expectations: expectations.len(),
+        fixed,
+        reproduced,
+        missing_signal,
+        results,
+    }
 }
 
 pub fn render_backend_template(
@@ -1676,6 +1949,144 @@ fn build_constraint_gap_narratives(gaps: &[ConstraintGapFinding]) -> Vec<String>
             )
         })
         .collect()
+}
+
+fn classify_compiler_failure(
+    status: CompilerExecutionStatus,
+    exit_code: Option<i32>,
+    stderr: &str,
+    stdout: &str,
+) -> Option<CompilerFailureClass> {
+    if status == CompilerExecutionStatus::Success {
+        return None;
+    }
+    if status == CompilerExecutionStatus::Timeout {
+        return Some(CompilerFailureClass::Timeout);
+    }
+
+    let combined = format!("{stderr}\n{stdout}").to_ascii_lowercase();
+    let crash_tokens = [
+        "segmentation fault",
+        "sigsegv",
+        "signal 11",
+        "bus error",
+        "illegal instruction",
+        "aborted (core dumped)",
+        "stack overflow",
+    ];
+    let ice_tokens = [
+        "internal compiler error",
+        "thread 'main' panicked",
+        "assertion failed",
+        "panic",
+    ];
+    let user_tokens = [
+        "syntax error",
+        "parse error",
+        "type error",
+        "unknown signal",
+        "undeclared",
+        "missing",
+        "invalid",
+    ];
+
+    if crash_tokens.iter().any(|token| combined.contains(token)) {
+        return Some(CompilerFailureClass::Crash);
+    }
+    if ice_tokens.iter().any(|token| combined.contains(token)) {
+        return Some(CompilerFailureClass::InternalCompilerError);
+    }
+    if user_tokens.iter().any(|token| combined.contains(token)) {
+        return Some(CompilerFailureClass::UserError);
+    }
+    if let Some(code) = exit_code {
+        if code >= 128 {
+            return Some(CompilerFailureClass::Crash);
+        }
+    }
+    Some(CompilerFailureClass::UnknownError)
+}
+
+fn generate_compiler_bug_reports(
+    results: &[CompilerProbeResult],
+    repro_dir: &PathBuf,
+) -> Result<Vec<CompilerBugReport>, CircuitGenError> {
+    let mut reports = Vec::new();
+    for result in results {
+        let Some(class) = result.failure_class else {
+            continue;
+        };
+        let bug_id = format!(
+            "{}_{}_{}",
+            sanitize_fs_token(&result.compiler_id),
+            sanitize_fs_token(&result.case_id),
+            class_label(class)
+        );
+        let repro_name = format!(
+            "{}_{}",
+            sanitize_fs_token(&result.case_id),
+            result
+                .source_path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("txt")
+        );
+        let repro_source_path = repro_dir.join(repro_name);
+        if result.source_path.exists() {
+            let payload = fs::read(&result.source_path)?;
+            fs::write(&repro_source_path, payload)?;
+        } else {
+            fs::write(
+                &repro_source_path,
+                format!(
+                    "source missing: {}\ncompiler_id={}\ncase_id={}\n",
+                    result.source_path.display(),
+                    result.compiler_id,
+                    result.case_id
+                ),
+            )?;
+        }
+
+        let stderr_excerpt = result.stderr.lines().take(8).collect::<Vec<_>>().join("\n");
+        let summary = match class {
+            CompilerFailureClass::Timeout => {
+                "Compiler invocation exceeded timeout threshold".to_string()
+            }
+            CompilerFailureClass::Crash => {
+                "Compiler process crashed (segfault/signal level failure)".to_string()
+            }
+            CompilerFailureClass::InternalCompilerError => {
+                "Compiler reported internal error/panic".to_string()
+            }
+            CompilerFailureClass::UserError => {
+                "Compiler rejected input due to user-facing validation error".to_string()
+            }
+            CompilerFailureClass::UnknownError => {
+                "Compiler failed with unknown error pattern".to_string()
+            }
+        };
+        reports.push(CompilerBugReport {
+            bug_id,
+            case_id: result.case_id.clone(),
+            compiler_id: result.compiler_id.clone(),
+            failure_class: class,
+            summary,
+            repro_command: result.command.clone(),
+            repro_source_path,
+            stderr_excerpt,
+        });
+    }
+    Ok(reports)
+}
+
+fn class_label(class: CompilerFailureClass) -> &'static str {
+    match class {
+        CompilerFailureClass::Timeout => "timeout",
+        CompilerFailureClass::Crash => "crash",
+        CompilerFailureClass::InternalCompilerError => "ice",
+        CompilerFailureClass::UserError => "user_error",
+        CompilerFailureClass::UnknownError => "unknown",
+    }
 }
 
 fn collect_expression_metrics(

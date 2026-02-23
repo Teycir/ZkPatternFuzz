@@ -957,12 +957,12 @@ crates/zk-track-semantic/
   - [x] Detect optimization regressions (constraint count increases) (`optimization_regression` detection in `compare_compiled_structures`)
   - [x] Version matrix testing: test N circuits × M compiler versions (`run_differential_version_matrix_campaign` in `crates/zk-circuit-gen/src/lib.rs`; CLI `crates/zk-circuit-gen/examples/run_differential_version_matrix.rs`; sample runner `scripts/run_circuit_gen_differential_version_matrix_sample.sh`; latest sample run 2026-02-23: `artifacts/circuit_gen/differential_version_matrix_sample/latest_report.json`)
 
-- [ ] **Compiler Crash/Bug Detection:**
-  - [ ] Timeout detection (compilation hangs)
-  - [ ] Crash detection (segfault, panic, assertion failure)
-  - [ ] Error message classification (ICE vs user error)
-  - [ ] Automatic bug report generation with minimal repro
-  - [ ] Regression suite: known compiler bugs must stay fixed
+- [x] **Compiler Crash/Bug Detection:**
+  - [x] Timeout detection (compilation hangs) (`run_compiler_probe_case` status timeout + class timeout in `crates/zk-circuit-gen/src/lib.rs`; sample run 2026-02-23: `artifacts/circuit_gen/crash_detection_sample/latest_report.json`)
+  - [x] Crash detection (segfault, panic, assertion failure) (`classify_compiler_failure` + crash tokens and signal-exit handling in `crates/zk-circuit-gen/src/lib.rs`; sample run includes `case_crash`)
+  - [x] Error message classification (ICE vs user error) (`CompilerFailureClass::{InternalCompilerError,UserError}` + classification heuristics in `crates/zk-circuit-gen/src/lib.rs`; sample run includes `case_ice`, `case_user_error`)
+  - [x] Automatic bug report generation with minimal repro (`generate_compiler_bug_reports` in `crates/zk-circuit-gen/src/lib.rs`; CLI in `crates/zk-circuit-gen/examples/run_compiler_crash_detector.rs`; sample runner `scripts/run_circuit_gen_crash_detection_sample.sh`)
+  - [x] Regression suite: known compiler bugs must stay fixed (`evaluate_known_compiler_bug_regressions` + `RegressionStatus` in `crates/zk-circuit-gen/src/lib.rs`; probe expectations in `tests/datasets/circuit_gen/compiler_probe_cases.sample.json`)
 
 #### Implementation Structure
 ```
@@ -1011,7 +1011,7 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
 #### Exit Criteria
 - [ ] Generate 1000+ syntactically valid circuits per backend
 - [ ] Detect ≥5 semantic intent violations (constraints don't match docs)
-- [ ] Find ≥1 compiler crash/timeout on adversarial inputs
+- [x] Find ≥1 compiler crash/timeout on adversarial inputs (`scripts/run_circuit_gen_crash_detection_sample.sh`; latest sample run 2026-02-23: timeout=1 crash=1 at `artifacts/circuit_gen/crash_detection_sample/latest_report.json`)
 - [x] Differential mode: test 100+ circuits × 3 compiler versions (`scripts/run_circuit_gen_differential_version_matrix_sample.sh`; latest sample run 2026-02-23: 120 circuits × 3 compiler labels at `artifacts/circuit_gen/differential_version_matrix_sample/latest_report.json`)
 - [ ] Detect ≥1 optimization regression (constraint count increase)
 - [ ] AI generates ≥10 adversarial patterns from known bugs

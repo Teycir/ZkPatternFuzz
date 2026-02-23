@@ -1,0 +1,59 @@
+{
+  "cases": [
+    {
+      "case_id": "case_success",
+      "compiler_id": "circom_v2_1",
+      "source_path": "tests/datasets/circuit_gen/semantic_source.sample.circom",
+      "command": ["bash", "-lc", "echo ok"],
+      "timeout_ms": 200
+    },
+    {
+      "case_id": "case_timeout",
+      "compiler_id": "circom_v2_1",
+      "source_path": "tests/datasets/circuit_gen/semantic_source.sample.circom",
+      "command": ["bash", "-lc", "sleep 0.3"],
+      "timeout_ms": 40
+    },
+    {
+      "case_id": "case_crash",
+      "compiler_id": "circom_v2_1",
+      "source_path": "tests/datasets/circuit_gen/semantic_source.sample.circom",
+      "command": ["bash", "-lc", "echo segmentation fault 1>&2; exit 139"],
+      "timeout_ms": 200
+    },
+    {
+      "case_id": "case_ice",
+      "compiler_id": "circom_v2_1",
+      "source_path": "tests/datasets/circuit_gen/semantic_source.sample.circom",
+      "command": ["bash", "-lc", "echo internal compiler error: assertion failed 1>&2; exit 101"],
+      "timeout_ms": 200
+    },
+    {
+      "case_id": "case_user_error",
+      "compiler_id": "circom_v2_1",
+      "source_path": "tests/datasets/circuit_gen/semantic_source.sample.circom",
+      "command": ["bash", "-lc", "echo syntax error at line 1 1>&2; exit 1"],
+      "timeout_ms": 200
+    }
+  ],
+  "expectations": [
+    {
+      "bug_id": "known_bug_segfault",
+      "compiler_id": "circom_v2_1",
+      "expected_class": "crash",
+      "source_pattern": "case_crash"
+    },
+    {
+      "bug_id": "known_bug_ice",
+      "compiler_id": "circom_v2_1",
+      "expected_class": "internal_compiler_error",
+      "source_pattern": "case_ice"
+    },
+    {
+      "bug_id": "known_bug_timeout",
+      "compiler_id": "circom_v2_1",
+      "expected_class": "timeout",
+      "source_pattern": "case_timeout"
+    }
+  ]
+}

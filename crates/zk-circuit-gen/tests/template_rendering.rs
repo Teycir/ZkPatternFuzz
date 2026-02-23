@@ -4,15 +4,18 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::tempdir;
 use zk_circuit_gen::{
-    compare_compiled_structures, compile_and_extract_structure, evolve_patterns_from_feedback,
+    compare_compiled_structures, compile_and_extract_structure,
+    evaluate_known_compiler_bug_regressions, evolve_patterns_from_feedback,
     extract_semantic_intent_from_text, generate_adversarial_corpus_from_external_patterns,
     generate_bulk_corpus, generate_random_circuit_dsl, parse_dsl_yaml,
     parse_external_ai_pattern_bundle_json, parse_pattern_feedback_json, render_backend_template,
     render_mutated_template, render_semantic_constraint_report_markdown,
-    run_differential_compiler_matrix, run_differential_version_matrix_campaign,
-    verify_compiled_constraints_match_intent, AdversarialGenerationConfig, Assignment, Backend,
-    BulkGenerationConfig, CircuitDsl, ConstraintEq, DifferentialComparisonAxis,
-    DifferentialVersionMatrixConfig, Expression, MutationStrategy, SemanticIntentKind,
+    run_compiler_crash_detection, run_compiler_probe_case, run_differential_compiler_matrix,
+    run_differential_version_matrix_campaign, verify_compiled_constraints_match_intent,
+    AdversarialGenerationConfig, Assignment, Backend, BulkGenerationConfig, CircuitDsl,
+    CompilerExecutionStatus, CompilerFailureClass, CompilerProbeCase, ConstraintEq,
+    DifferentialComparisonAxis, DifferentialVersionMatrixConfig, Expression,
+    KnownCompilerBugExpectation, MutationStrategy, RegressionStatus, SemanticIntentKind,
 };
 
 fn sample_dsl() -> CircuitDsl {
@@ -602,4 +605,178 @@ fn differential_version_matrix_campaign_runs_n_times_m() {
         .circuits_rows
         .iter()
         .all(|row| row.report_path.exists()));
+}
+
+#[test]
+fn compiler_probe_case_detects_timeout() {
+    let tmp = tempdir().expect("tempdir");
+    let source_path = tmp.path().join("timeout_probe.circom");
+    fs::write(&source_path, "template Main() {}").expect("write source");
+
+    let case = CompilerProbeCase {
+        case_id: "case_timeout".to_string(),
+        compiler_id: "circom_v2_1".to_string(),
+        source_path,
+        command: vec![
+            "bash".to_string(),
+            "-lc".to_string(),
+            "sleep 0.2".to_string(),
+        ],
+        timeout_ms: 30,
+    };
+
+    let result = run_compiler_probe_case(&case).expect("probe result");
+    assert_eq!(result.status, CompilerExecutionStatus::Timeout);
+    assert_eq!(result.failure_class, Some(CompilerFailureClass::Timeout));
+}
+
+#[test]
+fn crash_detection_classifies_failures_and_generates_bug_reports() {
+    let tmp = tempdir().expect("tempdir");
+    let source_path = tmp.path().join("probe_input.circom");
+    fs::write(&source_path, "template Main() {}").expect("write source");
+
+    let cases = vec![
+        CompilerProbeCase {
+            case_id: "case_success".to_string(),
+            compiler_id: "circom_v2_1".to_string(),
+            source_path: source_path.clone(),
+            command: vec!["bash".to_string(), "-lc".to_string(), "echo ok".to_string()],
+            timeout_ms: 100,
+        },
+        CompilerProbeCase {
+            case_id: "case_crash".to_string(),
+            compiler_id: "circom_v2_1".to_string(),
+            source_path: source_path.clone(),
+            command: vec![
+                "bash".to_string(),
+                "-lc".to_string(),
+                "echo segmentation fault 1>&2; exit 139".to_string(),
+            ],
+            timeout_ms: 100,
+        },
+        CompilerProbeCase {
+            case_id: "case_ice".to_string(),
+            compiler_id: "circom_v2_1".to_string(),
+            source_path: source_path.clone(),
+            command: vec![
+                "bash".to_string(),
+                "-lc".to_string(),
+                "echo internal compiler error: assertion failed 1>&2; exit 101".to_string(),
+            ],
+            timeout_ms: 100,
+        },
+        CompilerProbeCase {
+            case_id: "case_user_error".to_string(),
+            compiler_id: "circom_v2_1".to_string(),
+            source_path: source_path.clone(),
+            command: vec![
+                "bash".to_string(),
+                "-lc".to_string(),
+                "echo syntax error at line 1 1>&2; exit 1".to_string(),
+            ],
+            timeout_ms: 100,
+        },
+    ];
+
+    let report =
+        run_compiler_crash_detection(&cases, tmp.path().join("repros")).expect("crash detection");
+    assert_eq!(report.total_cases, 4);
+    assert_eq!(report.succeeded, 1);
+    assert_eq!(report.failed, 3);
+    assert_eq!(report.timed_out, 0);
+    assert_eq!(
+        report.class_counts.get(&CompilerFailureClass::Crash),
+        Some(&1)
+    );
+    assert_eq!(
+        report
+            .class_counts
+            .get(&CompilerFailureClass::InternalCompilerError),
+        Some(&1)
+    );
+    assert_eq!(
+        report.class_counts.get(&CompilerFailureClass::UserError),
+        Some(&1)
+    );
+    assert_eq!(report.bug_reports.len(), 3);
+    assert!(report
+        .bug_reports
+        .iter()
+        .all(|entry| entry.repro_source_path.exists()));
+}
+
+#[test]
+fn known_bug_regression_report_marks_reproduced_fixed_and_missing() {
+    let tmp = tempdir().expect("tempdir");
+    let source_path = tmp.path().join("probe_input.circom");
+    fs::write(&source_path, "template Main() {}").expect("write source");
+
+    let cases = vec![
+        CompilerProbeCase {
+            case_id: "case_crash".to_string(),
+            compiler_id: "circom_v2_1".to_string(),
+            source_path: source_path.clone(),
+            command: vec![
+                "bash".to_string(),
+                "-lc".to_string(),
+                "echo segmentation fault 1>&2; exit 139".to_string(),
+            ],
+            timeout_ms: 100,
+        },
+        CompilerProbeCase {
+            case_id: "case_user_error".to_string(),
+            compiler_id: "circom_v2_1".to_string(),
+            source_path: source_path.clone(),
+            command: vec![
+                "bash".to_string(),
+                "-lc".to_string(),
+                "echo syntax error at line 1 1>&2; exit 1".to_string(),
+            ],
+            timeout_ms: 100,
+        },
+    ];
+    let report =
+        run_compiler_crash_detection(&cases, tmp.path().join("repros")).expect("crash detection");
+
+    let expectations = vec![
+        KnownCompilerBugExpectation {
+            bug_id: "bug_reproduced".to_string(),
+            compiler_id: "circom_v2_1".to_string(),
+            expected_class: CompilerFailureClass::Crash,
+            source_pattern: "case_crash".to_string(),
+        },
+        KnownCompilerBugExpectation {
+            bug_id: "bug_fixed".to_string(),
+            compiler_id: "circom_v2_1".to_string(),
+            expected_class: CompilerFailureClass::Crash,
+            source_pattern: "case_user_error".to_string(),
+        },
+        KnownCompilerBugExpectation {
+            bug_id: "bug_missing".to_string(),
+            compiler_id: "circom_v2_1".to_string(),
+            expected_class: CompilerFailureClass::Timeout,
+            source_pattern: "case_timeout".to_string(),
+        },
+    ];
+
+    let regression = evaluate_known_compiler_bug_regressions(&report, &expectations);
+    assert_eq!(regression.total_expectations, 3);
+    assert_eq!(regression.reproduced, 1);
+    assert_eq!(regression.fixed, 1);
+    assert_eq!(regression.missing_signal, 1);
+    assert!(regression
+        .results
+        .iter()
+        .any(|entry| entry.bug_id == "bug_reproduced"
+            && entry.status == RegressionStatus::Reproduced));
+    assert!(regression
+        .results
+        .iter()
+        .any(|entry| entry.bug_id == "bug_fixed" && entry.status == RegressionStatus::Fixed));
+    assert!(regression
+        .results
+        .iter()
+        .any(|entry| entry.bug_id == "bug_missing"
+            && entry.status == RegressionStatus::MissingSignal));
 }

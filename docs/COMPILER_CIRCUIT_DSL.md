@@ -296,3 +296,36 @@ cargo run -q -p zk-circuit-gen --example run_differential_version_matrix -- \
 Campaign output:
 - `latest_report.json` aggregate totals (`total_observations`, `total_comparisons`)
 - `circuits/*.json` per-circuit differential reports
+
+## Compiler Crash/Bug Detection
+
+Run crash/timeout classification and bug-report generation:
+
+```bash
+scripts/run_circuit_gen_crash_detection_sample.sh
+```
+
+Direct command:
+
+```bash
+cargo run -q -p zk-circuit-gen --example run_compiler_crash_detector -- \
+  --probe-json tests/datasets/circuit_gen/compiler_probe_cases.sample.json \
+  --output-dir artifacts/circuit_gen/crash_detection_sample
+```
+
+Crash detector output (`latest_report.json`) includes:
+- `crash_report.total_cases`, `succeeded`, `timed_out`, `failed`
+- `crash_report.class_counts` for `timeout|crash|internal_compiler_error|user_error|unknown_error`
+- `crash_report.results[]` per probe with command, duration, status, exit code, stdout/stderr
+- `crash_report.bug_reports[]` with:
+  - stable `bug_id`
+  - repro command
+  - copied repro source path in `<output>/repros/`
+  - stderr excerpt
+- optional `regression_report` against known bug expectations:
+  - statuses: `reproduced`, `fixed`, `missing_signal`
+
+Sample probe dataset:
+- `tests/datasets/circuit_gen/compiler_probe_cases.sample.json`
+  - includes success/timeout/crash/ICE/user-error cases
+  - includes known-bug expectations for regression checks
