@@ -1,45 +1,27 @@
 {
-  "campaign_name": "scan_cveX16_scroll_missing_constraint",
-  "campaign_path": "/tmp/zkfuzz_scan/cveX16_scroll_missing_constraint__b273dbf5d2564a77.yaml",
-  "command": "scan",
-  "output_dir": "/home/teycir/Repos/ZkPatternFuzz/ZkFuzz/.scan_run_artifacts/scan_run20260220_162518/auto__cveX16_scroll_missing_constraint",
-  "pid": 2711850,
-  "progress": {
-    "campaign_name": "scan_cveX16_scroll_missing_constraint",
-    "command": "scan",
-    "details": {
-      "attack_idx": 0,
-      "attack_type": "Underconstrained",
-      "attacks_total": 8,
-      "elapsed_seconds": 435,
-      "heartbeat": true
-    },
-    "mode_label": "evidence",
-    "output_dir": "/home/teycir/Repos/ZkPatternFuzz/ZkFuzz/.scan_run_artifacts/scan_run20260220_162518/auto__cveX16_scroll_missing_constraint",
-    "progress": {
-      "overall_fraction": 0.09090909090909093,
-      "overall_percent": 9.090909090909092,
-      "phase_progress": null,
-      "step_current": 2,
-      "step_fraction": "2/11",
-      "steps_done": 1,
-      "steps_total": 11
-    },
-    "run_id": "20260220_162518_scan_cveX16_scroll_missing_constraint__b273dbf5d2564a77_pid2711850",
-    "stage": "attack_progress",
-    "updated_unix_seconds": 1771605228
+  "campaign_name": "EXT-BATCH-001 VulnerableIsZero Evidence",
+  "campaign_path": "artifacts/external_targets/ext_batch_001/repro/ext003_test_vuln_iszero_campaign.yaml",
+  "command": "evidence",
+  "duration_seconds": 300,
+  "ended_utc": "2026-02-23T20:53:19.319288829+00:00",
+  "metrics": {
+    "critical_findings": true,
+    "findings_total": 1519,
+    "total_executions": 5533
   },
-  "run_id": "20260220_162518_scan_cveX16_scroll_missing_constraint__b273dbf5d2564a77_pid2711850",
+  "output_dir": "/home/teycir/Repos/ZkPatternFuzz/ZkFuzz",
+  "pid": 1951723,
+  "run_id": "20260223_204819_evidence_ext003_test_vuln_iszero_campaign_pid1951723",
   "run_window": {
-    "expected_latest_end_local": "2026-02-20T17:26:48.676032048+01:00",
-    "expected_latest_end_utc": "2026-02-20T16:26:48.676032048+00:00",
+    "expected_latest_end_local": "2026-02-23T21:53:19.180772983+01:00",
+    "expected_latest_end_utc": "2026-02-23T20:53:19.180772983+00:00",
     "note": "For this command, --timeout is enforced as a total wall-clock budget for the run.",
-    "started_local": "2026-02-20T17:25:18.676032048+01:00",
-    "started_utc": "2026-02-20T16:25:18.676032048+00:00",
-    "timeout_seconds": 90,
+    "started_local": "2026-02-23T21:48:19.180772983+01:00",
+    "started_utc": "2026-02-23T20:48:19.180772983+00:00",
+    "timeout_seconds": 300,
     "timeout_semantics": "wall_clock"
   },
-  "stage": "engine_progress",
-  "started_utc": "2026-02-20T16:25:18.676032048+00:00",
-  "status": "running"
+  "stage": "completed",
+  "started_utc": "2026-02-23T20:48:19.180772983+00:00",
+  "status": "completed_with_critical_findings"
 }

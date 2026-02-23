@@ -1,23 +1,27 @@
 {
-  "campaign_name": "scan_cveX15_scroll_missing_overflow_constraint",
-  "campaign_path": "/tmp/zkfuzz_scan/cveX15_scroll_missing_overflow_constraint__c7b4b20199f10021.yaml",
+  "campaign_name": "EXT-BATCH-001 VulnerableIsZero Evidence",
+  "campaign_path": "artifacts/external_targets/ext_batch_001/repro/ext003_test_vuln_iszero_campaign.yaml",
   "command": "evidence",
-  "duration_seconds": 0,
-  "ended_utc": "2026-02-18T10:18:31.873108528+00:00",
-  "error": "Backend preflight failed while initializing executor: Circom compilation failed: \u001b[0m\u001b[1m\u001b[38;5;9merror[P1012]\u001b[0m\u001b[1m: illegal expression\u001b[0m\n   \u001b[0m\u001b[34m┌─\u001b[0m \"test_circuit.circom\":12:5\n   \u001b[0m\u001b[34m│\u001b[0m\n\u001b[0m\u001b[34m12\u001b[0m \u001b[0m\u001b[34m│\u001b[0m     \u001b[0m\u001b[31mintermediate >= 0;\u001b[0m\n   \u001b[0m\u001b[34m│\u001b[0m     \u001b[0m\u001b[31m^^^^^^^^^^^^^^^^^^\u001b[0m \u001b[0m\u001b[31mhere\u001b[0m\n\n\u001b[0m\u001b[1m\u001b[38;5;9merror[P1012]\u001b[0m\u001b[1m: illegal expression\u001b[0m\n   \u001b[0m\u001b[34m┌─\u001b[0m \"test_circuit.circom\":13:5\n   \u001b[0m\u001b[34m│\u001b[0m\n\u001b[0m\u001b[34m13\u001b[0m \u001b[0m\u001b[34m│\u001b[0m     \u001b[0m\u001b[31mintermediate <= 10000;\u001b[0m\n   \u001b[0m\u001b[34m│\u001b[0m     \u001b[0m\u001b[31m^^^^^^^^^^^^^^^^^^^^^^\u001b[0m \u001b[0m\u001b[31mhere\u001b[0m\n\n\u001b[31mprevious errors were found\u001b[0m\n",
+  "duration_seconds": 300,
+  "ended_utc": "2026-02-23T20:53:19.319288829+00:00",
+  "metrics": {
+    "critical_findings": true,
+    "findings_total": 1519,
+    "total_executions": 5533
+  },
   "output_dir": "/home/teycir/Repos/ZkPatternFuzz/ZkFuzz",
-  "pid": 1381891,
-  "run_id": "20260218_101831_evidence_cveX15_scroll_missing_overflow_constraint__c7b4b20199f10021_pid1381891",
+  "pid": 1951723,
+  "run_id": "20260223_204819_evidence_ext003_test_vuln_iszero_campaign_pid1951723",
   "run_window": {
-    "expected_latest_end_local": "2026-02-18T11:18:46.833869512+01:00",
-    "expected_latest_end_utc": "2026-02-18T10:18:46.833869512+00:00",
+    "expected_latest_end_local": "2026-02-23T21:53:19.180772983+01:00",
+    "expected_latest_end_utc": "2026-02-23T20:53:19.180772983+00:00",
     "note": "For this command, --timeout is enforced as a total wall-clock budget for the run.",
-    "started_local": "2026-02-18T11:18:31.833869512+01:00",
-    "started_utc": "2026-02-18T10:18:31.833869512+00:00",
-    "timeout_seconds": 15,
+    "started_local": "2026-02-23T21:48:19.180772983+01:00",
+    "started_utc": "2026-02-23T20:48:19.180772983+00:00",
+    "timeout_seconds": 300,
     "timeout_semantics": "wall_clock"
   },
-  "stage": "preflight_backend",
-  "started_utc": "2026-02-18T10:18:31.833869512+00:00",
-  "status": "failed"
+  "stage": "completed",
+  "started_utc": "2026-02-23T20:48:19.180772983+00:00",
+  "status": "completed_with_critical_findings"
 }
