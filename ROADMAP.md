@@ -1054,10 +1054,10 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
   - [x] Truncation: remove trailing public inputs
   - [x] Duplication: repeat public inputs
   - [x] Type confusion: interpret field element as different type
-- [ ] **Attack Scenarios:**
-  - [ ] Proof for user A, public input changed to user B (identity swap)
-  - [ ] Proof for amount 100, public input changed to 1000 (value inflation)
-  - [ ] Proof for valid merkle root, public input changed to attacker's root
+- [x] **Attack Scenarios:** (`PublicInputAttackScenario` + `mutate_attack_scenario` in `crates/zk-track-boundary/src/public_input_fuzzer.rs`; exercised by `scripts/run_boundary_public_input_sample.sh`)
+  - [x] Proof for user A, public input changed to user B (identity swap)
+  - [x] Proof for amount 100, public input changed to 1000 (value inflation)
+  - [x] Proof for valid merkle root, public input changed to attacker's root
 
 #### Future P1 (Post-Roadmap): Serialization/Deserialization Fuzzer
 - [ ] **Proof Serialization Edge Cases:**
@@ -1170,7 +1170,7 @@ assert(ref_result == opt_result, "Verifier mismatch!");
 ```
 
 #### Exit Criteria
-- [x] Public input fuzzer: test 1000+ valid proofs with manipulated inputs (`scripts/run_boundary_public_input_sample.sh`; latest sample run 2026-02-23: proofs=1000, mutation_checks=6000 at `artifacts/boundary/public_input_sample/latest_report.json`)
+- [x] Public input fuzzer: test 1000+ valid proofs with manipulated inputs (`scripts/run_boundary_public_input_sample.sh`; latest sample run 2026-02-23: proofs=1000, mutation_checks=9000, attack_scenario_checks=3000 at `artifacts/boundary/public_input_sample/latest_report.json`)
 - [ ] Detect ≥1 public input binding bug (verifier accepts wrong inputs)
 - [ ] Serialization fuzzer: test 100+ edge cases per format
 - [ ] Detect ≥1 serialization bug (crash, incorrect deserialization)

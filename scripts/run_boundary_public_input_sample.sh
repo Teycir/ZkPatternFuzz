@@ -8,6 +8,7 @@ SEED="${SEED:-13370}"
 PROOFS="${PROOFS:-1000}"
 PUBLIC_INPUTS_PER_PROOF="${PUBLIC_INPUTS_PER_PROOF:-3}"
 MUTATION_STRATEGIES="${MUTATION_STRATEGIES:-bit_flip,field_boundary,reordering,truncation,duplication,type_confusion}"
+ATTACK_SCENARIOS="${ATTACK_SCENARIOS:-identity_swap,value_inflation,merkle_root_swap}"
 
 mkdir -p "$OUTPUT_DIR"
 echo "[boundary] running public input manipulation campaign"
@@ -16,6 +17,7 @@ cargo run -q -p zk-track-boundary --example run_public_input_manipulation_campai
   --seed "$SEED" \
   --proofs "$PROOFS" \
   --public-inputs-per-proof "$PUBLIC_INPUTS_PER_PROOF" \
-  --mutation-strategies "$MUTATION_STRATEGIES"
+  --mutation-strategies "$MUTATION_STRATEGIES" \
+  --attack-scenarios "$ATTACK_SCENARIOS"
 
 echo "[boundary] report: $OUTPUT_JSON"

@@ -4,8 +4,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use zk_track_boundary::{
-    run_public_input_manipulation_campaign, PublicInputManipulationConfig,
-    PublicInputMutationStrategy,
+    run_public_input_manipulation_campaign, PublicInputAttackScenario,
+    PublicInputManipulationConfig, PublicInputMutationStrategy,
 };
 
 #[derive(Debug, Clone)]
@@ -15,6 +15,7 @@ struct CliArgs {
     proofs: usize,
     public_inputs_per_proof: usize,
     mutation_strategies: Vec<PublicInputMutationStrategy>,
+    attack_scenarios: Vec<PublicInputAttackScenario>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -24,6 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     config.proofs = args.proofs;
     config.public_inputs_per_proof = args.public_inputs_per_proof;
     config.mutation_strategies = args.mutation_strategies;
+    config.attack_scenarios = args.attack_scenarios;
 
     if let Some(parent) = args.output_json.parent() {
         fs::create_dir_all(parent)?;
@@ -52,6 +54,7 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
     let mut proofs = 1_000usize;
     let mut public_inputs_per_proof = 3usize;
     let mut mutation_strategies = PublicInputMutationStrategy::ALL.to_vec();
+    let mut attack_scenarios = PublicInputAttackScenario::ALL.to_vec();
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -66,6 +69,10 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
             "--mutation-strategies" => {
                 mutation_strategies =
                     parse_mutation_strategies(&next_value(&mut args, "--mutation-strategies")?)?;
+            }
+            "--attack-scenarios" => {
+                attack_scenarios =
+                    parse_attack_scenarios(&next_value(&mut args, "--attack-scenarios")?)?;
             }
             "--help" | "-h" => {
                 print_help();
@@ -88,6 +95,7 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
         proofs,
         public_inputs_per_proof,
         mutation_strategies,
+        attack_scenarios,
     })
 }
 
@@ -127,6 +135,29 @@ fn parse_mutation_strategies(
     Ok(parsed)
 }
 
+fn parse_attack_scenarios(raw: &str) -> Result<Vec<PublicInputAttackScenario>, Box<dyn Error>> {
+    let mut parsed = Vec::new();
+    for token in raw
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
+        let scenario = match token.to_ascii_lowercase().as_str() {
+            "identity_swap" => PublicInputAttackScenario::IdentitySwap,
+            "value_inflation" => PublicInputAttackScenario::ValueInflation,
+            "merkle_root_swap" => PublicInputAttackScenario::MerkleRootSwap,
+            _ => return Err(format!("unsupported attack scenario `{token}`").into()),
+        };
+        if !parsed.contains(&scenario) {
+            parsed.push(scenario);
+        }
+    }
+    if parsed.is_empty() {
+        return Err("attack scenario list must not be empty".into());
+    }
+    Ok(parsed)
+}
+
 fn print_help() {
     println!(
         "\
@@ -144,6 +175,7 @@ Options:
   --proofs <n>                     Number of valid proofs to test (default: 1000)
   --public-inputs-per-proof <n>    Number of public inputs per proof (default: 3)
   --mutation-strategies <csv>      Strategy list (default: bit_flip,field_boundary,reordering,truncation,duplication,type_confusion)
+  --attack-scenarios <csv>         Scenario list (default: identity_swap,value_inflation,merkle_root_swap)
 "
     );
 }
