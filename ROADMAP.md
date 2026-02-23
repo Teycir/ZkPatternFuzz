@@ -305,6 +305,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add backend maturity history + consecutive-day streak gate (`scripts/backend_maturity_scorecard.sh`, `scripts/release_candidate_gate.sh`) to enforce 14-day `5.0` closures with runtime-error constraints.
 - [x] Automate a daily strict release-validation streak lane with persisted maturity/flake history (`.github/workflows/release_validation.yml` schedule + cache restore/save).
 - [x] Add one-command streak status runner (`scripts/run_release_streak_status.sh`) to refresh both streak trackers and print remaining-day/projection deltas for daily operations (wired into `.github/workflows/release_validation.yml` summary output).
+- [x] Add regression coverage for streak calculators and run it in CI quick gates (`tests/test_backend_maturity_scorecard.py`, `tests/test_circom_flake_gate.py`, `.github/workflows/ci.yml`).
 
 ### 8.3 Backend-Specific Closure Plans (Release-Critical)
 

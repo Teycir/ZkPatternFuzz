@@ -138,6 +138,25 @@ class BackendMaturityScorecardTests(unittest.TestCase):
             self.assertEqual(payload["gate_failures"], [])
             self.assertIn("consecutive_gate", payload)
             self.assertFalse(payload["consecutive_gate"]["enabled"])
+            noir_entry = next(
+                entry for entry in payload["backends"] if entry["backend"] == "noir"
+            )
+            self.assertEqual(
+                noir_entry["evidence"]["integration_tests_total"],
+                2,
+            )
+            self.assertEqual(
+                noir_entry["evidence"]["integration_tests_executed"],
+                2,
+            )
+            self.assertEqual(
+                noir_entry["evidence"]["integration_tests_skipped"],
+                0,
+            )
+            self.assertEqual(
+                noir_entry["evidence"]["integration_pass_ratio"],
+                1.0,
+            )
 
     def test_scorecard_enforce_fails_when_required_backend_below_threshold(self):
         with tempfile.TemporaryDirectory(prefix="zkfuzz_maturity_fail_") as tmpdir:
@@ -296,10 +315,12 @@ class BackendMaturityScorecardTests(unittest.TestCase):
             self.assertTrue(payload["overall_pass"])
             self.assertTrue(payload["consecutive_gate"]["enabled"])
             self.assertTrue(payload["consecutive_gate"]["overall_pass"])
-            self.assertGreaterEqual(
-                payload["consecutive_gate"]["per_backend"]["halo2"]["current_streak_days"],
-                3,
-            )
+            backend_gate = payload["consecutive_gate"]["per_backend"]["halo2"]
+            self.assertGreaterEqual(backend_gate["current_streak_days"], 3)
+            self.assertEqual(backend_gate["required_streak_days"], 3)
+            self.assertEqual(backend_gate["remaining_streak_days"], 0)
+            self.assertIsInstance(backend_gate["projected_completion_day_utc"], str)
+            self.assertTrue(backend_gate["projected_completion_day_utc"])
 
     def test_scorecard_enforce_fails_when_consecutive_day_streak_breaks(self):
         with tempfile.TemporaryDirectory(prefix="zkfuzz_maturity_streak_fail_") as tmpdir:
@@ -401,6 +422,78 @@ class BackendMaturityScorecardTests(unittest.TestCase):
                     for msg in payload["gate_failures"]
                 )
             )
+            backend_gate = payload["consecutive_gate"]["per_backend"]["halo2"]
+            self.assertEqual(backend_gate["required_streak_days"], 3)
+            self.assertGreaterEqual(backend_gate["remaining_streak_days"], 1)
+            self.assertIsInstance(backend_gate["projected_completion_day_utc"], str)
+            self.assertTrue(backend_gate["projected_completion_day_utc"])
+
+    def test_scorecard_treats_skipped_integration_as_non_executed(self):
+        with tempfile.TemporaryDirectory(prefix="zkfuzz_maturity_skipped_integration_") as tmpdir:
+            root = Path(tmpdir)
+            readiness_path = root / "backend_readiness.json"
+            output_path = root / "scorecard.json"
+
+            _write_json(
+                readiness_path,
+                {
+                    "thresholds": {
+                        "min_selector_matching_total": 4,
+                        "min_overall_completion_rate": 0.4,
+                        "max_selector_mismatch_rate": 0.7,
+                        "max_run_outcome_missing_rate": 0.05,
+                    },
+                    "backends": [
+                        {
+                            "backend": "halo2",
+                            "matrix_exit_code": 0,
+                            "selector_matching_completion_rate": 1.0,
+                            "selector_matching_total": 8,
+                            "selector_mismatch_rate": 0.0,
+                            "completion_rate": 1.0,
+                            "runtime_error_count": 0,
+                            "backend_preflight_failed_count": 0,
+                            "run_outcome_missing_rate": 0.0,
+                            "integration_statuses": ["skipped", "skipped"],
+                            "gate_pass": True,
+                        }
+                    ],
+                },
+            )
+
+            proc = subprocess.run(
+                [
+                    str(_script_path()),
+                    "--readiness-dashboard",
+                    str(readiness_path),
+                    "--benchmark-root",
+                    str(root / "benchmark_runs"),
+                    "--output",
+                    str(output_path),
+                    "--required-backends",
+                    "halo2",
+                    "--min-score",
+                    "4.5",
+                    "--enforce",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(
+                proc.returncode,
+                0,
+                msg=f"stdout={proc.stdout}\nstderr={proc.stderr}",
+            )
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            halo2 = next(entry for entry in payload["backends"] if entry["backend"] == "halo2")
+            self.assertEqual(halo2["score_total"], 5.0)
+            self.assertEqual(halo2["evidence"]["integration_tests_total"], 2)
+            self.assertEqual(halo2["evidence"]["integration_tests_executed"], 0)
+            self.assertEqual(halo2["evidence"]["integration_tests_skipped"], 2)
+            self.assertEqual(halo2["evidence"]["integration_tests_failed"], 0)
+            self.assertEqual(halo2["evidence"]["integration_pass_ratio"], 1.0)
 
 
 if __name__ == "__main__":

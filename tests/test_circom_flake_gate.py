@@ -98,6 +98,9 @@ class CircomFlakeGateTests(unittest.TestCase):
             payload = json.loads(report.read_text(encoding="utf-8"))
             self.assertTrue(payload["overall_pass"])
             self.assertGreaterEqual(payload["current_streak_days"], 2)
+            self.assertEqual(payload["remaining_streak_days"], 0)
+            self.assertIsInstance(payload["projected_completion_day_utc"], str)
+            self.assertTrue(payload["projected_completion_day_utc"])
 
     def test_enforced_gate_fails_when_latest_keygen_signal_fails(self):
         with tempfile.TemporaryDirectory(prefix="zkfuzz_circom_flake_fail_") as tmpdir:
@@ -136,6 +139,8 @@ class CircomFlakeGateTests(unittest.TestCase):
             payload = json.loads(report.read_text(encoding="utf-8"))
             self.assertFalse(payload["overall_pass"])
             self.assertFalse(payload["latest_signals"]["keygen_setup_keys_pass"])
+            self.assertEqual(payload["remaining_streak_days"], 1)
+            self.assertIsNone(payload["projected_completion_day_utc"])
 
 
 if __name__ == "__main__":
