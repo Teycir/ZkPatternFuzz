@@ -9,6 +9,8 @@ ADAPTER="${ADAPTER:-model_guided}"
 MODEL_NAME="${MODEL_NAME:-mistral}"
 EXIT_REPORT_OUT="${EXIT_REPORT_OUT:-$ROOT_DIR/artifacts/semantic_exit/latest_report.json}"
 MANUAL_LABELS_PATH="${MANUAL_LABELS_PATH:-}"
+ENFORCE_EXIT="${ENFORCE_EXIT:-false}"
+MIN_MANUAL_LABELS="${MIN_MANUAL_LABELS:-10}"
 
 printf '[semantic-exit] running semantic campaign example\n'
 cargo run -q -p zk-track-semantic --example semantic_exit_campaign -- \
@@ -28,6 +30,10 @@ CMD=(
 if [[ -n "$MANUAL_LABELS_PATH" ]]; then
   CMD+=(--manual-labels "$MANUAL_LABELS_PATH")
 fi
+if [[ "${ENFORCE_EXIT,,}" == "true" ]]; then
+  CMD+=(--enforce)
+fi
+CMD+=(--min-manual-labels "$MIN_MANUAL_LABELS")
 "${CMD[@]}"
 
 printf '[semantic-exit] report ready: %s\n' "$EXIT_REPORT_OUT"

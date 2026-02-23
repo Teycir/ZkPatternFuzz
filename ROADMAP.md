@@ -902,7 +902,7 @@ crates/zk-track-semantic/
 - Campaign runner: `scripts/run_semantic_exit_sample.sh` (emits semantic artifacts and refreshes `artifacts/semantic_exit/latest_report.json`).
 - [x] Extract intent from 20+ real-world circuits with docs/comments (latest sample: 183 intent sources on 2026-02-23)
 - [x] Detect ≥3 semantic violations missed by constraint-only analysis (latest sample: 24 semantic violations on 2026-02-23)
-- [ ] Achieve ≥80% precision on exploitability classification (manual validation)
+- [x] Achieve ≥80% precision on exploitability classification (manual validation) (latest sample: 0.8333 precision with 24 reviewed labels on 2026-02-23 via `tests/datasets/semantic/manual_labels.semantic_exit_sample.v1.json`)
 - [x] Generate actionable reports with fix suggestions (`semantic_actionable_report.json`)
 
 #### Integration Points

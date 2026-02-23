@@ -1,0 +1,176 @@
+{
+  "version": "v1",
+  "scope": "semantic_exit_sample_manual_validation",
+  "reviewed_on": "2026-02-23",
+  "reviewer": "operator_baseline",
+  "labels": [
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-001",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-002",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-003",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-004",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-005",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-006",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-007",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-008",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-009",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-010",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-011",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-012",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-013",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-014",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-015",
+      "exploitable": false,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-016",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-017",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-018",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-019",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-020",
+      "exploitable": false,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-021",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-022",
+      "exploitable": true,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-023",
+      "exploitable": false,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    },
+    {
+      "run_id": "semantic-exit-sample",
+      "finding_id": "semantic-violation-024",
+      "exploitable": false,
+      "review_status": "reviewed",
+      "review_notes": "baseline manual triage for semantic exit sample v1"
+    }
+  ]
+}

@@ -91,3 +91,27 @@ Outputs:
 - aggregated exit report at `artifacts/semantic_exit/latest_report.json`
 
 This flow exports AI-ingest bundles and worklists only; external AI responses remain out-of-band.
+
+### 5.1 Manual precision workflow (`>= 80%`)
+
+Generate a review template from the latest semantic report:
+
+```bash
+python3 scripts/generate_semantic_manual_labels_template.py \
+  --search-root artifacts/semantic_campaign \
+  --output artifacts/semantic_exit/manual_labels_template.json
+```
+
+After manual review, rerun the sample with labels and enforce precision:
+
+```bash
+MANUAL_LABELS_PATH=tests/datasets/semantic/manual_labels.semantic_exit_sample.v1.json \
+ENFORCE_EXIT=true \
+MIN_MANUAL_LABELS=20 \
+scripts/run_semantic_exit_sample.sh
+```
+
+The report includes:
+- matched manual labels
+- precision score
+- `manual_precision_ge_0_80` gate result

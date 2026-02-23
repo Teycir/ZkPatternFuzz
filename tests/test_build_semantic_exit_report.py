@@ -119,11 +119,15 @@ class BuildSemanticExitReportTests(unittest.TestCase):
                 {"run_id": "run-1", "finding_id": "f-1", "exploitable": True},
                 {"run_id": "run-1", "finding_id": "f-2", "exploitable": True},
                 {"run_id": "run-1", "finding_id": "f-3", "exploitable": False},
+                {"run_id": "run-1", "finding_id": "f-4", "exploitable": None},
             ]
         }
-        labels = reporter.parse_manual_labels(labels_payload)
+        parsed = reporter.parse_manual_labels(labels_payload)
+        self.assertEqual(parsed["provided_labels"], 4)
+        self.assertEqual(parsed["usable_labels"], 3)
+        self.assertEqual(parsed["ignored_labels"], 1)
         stats = reporter.compute_manual_precision(
-            labels,
+            parsed["rows"],
             {
                 ("run-1", "f-1"): True,
                 ("run-1", "f-2"): False,
@@ -135,6 +139,37 @@ class BuildSemanticExitReportTests(unittest.TestCase):
         self.assertEqual(stats["true_positive"], 1)
         self.assertEqual(stats["false_positive"], 1)
         self.assertEqual(stats["precision"], 0.5)
+
+    def test_precision_target_requires_minimum_label_count(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            run1 = root / "post_roadmap" / "semantic" / "run-1"
+            _write_json(
+                run1 / "semantic_track_report.json",
+                {
+                    "run_id": "run-1",
+                    "extracted_intent_sources": 30,
+                    "violations": [
+                        {"finding_id": "f-1", "assessment": {"exploitable": True}},
+                        {"finding_id": "f-2", "assessment": {"exploitable": True}},
+                    ],
+                },
+            )
+            _write_json(
+                run1 / "semantic_actionable_report.json",
+                {"findings": [{"fix_suggestion": "Add guard"}]},
+            )
+            labels_payload = {
+                "labels": [
+                    {"run_id": "run-1", "finding_id": "f-1", "exploitable": True},
+                    {"run_id": "run-1", "finding_id": "f-2", "exploitable": True},
+                ]
+            }
+            reports = reporter.discover_semantic_reports(root)
+            report = reporter.build_report(
+                reports, labels_payload, minimum_manual_labels=3
+            )
+            self.assertFalse(report["targets"]["manual_precision_ge_0_80"])
 
 
 if __name__ == "__main__":

@@ -54,20 +54,36 @@ def _count_fix_suggestions(actionable_report: Optional[Dict[str, Any]]) -> int:
 
 def parse_manual_labels(
     labels_payload: Dict[str, Any],
-) -> List[Tuple[str, str, bool]]:
+) -> Dict[str, Any]:
     labels = labels_payload.get("labels")
     if not isinstance(labels, list):
-        return []
+        return {
+            "rows": [],
+            "provided_labels": 0,
+            "usable_labels": 0,
+            "ignored_labels": 0,
+        }
     parsed: List[Tuple[str, str, bool]] = []
+    provided_labels = 0
+    ignored_labels = 0
     for item in labels:
         if not isinstance(item, dict):
+            ignored_labels += 1
             continue
+        provided_labels += 1
         run_id = str(item.get("run_id") or "").strip()
         finding_id = str(item.get("finding_id") or "").strip()
-        if not run_id or not finding_id:
+        exploitable = item.get("exploitable")
+        if not run_id or not finding_id or not isinstance(exploitable, bool):
+            ignored_labels += 1
             continue
-        parsed.append((run_id, finding_id, bool(item.get("exploitable", False))))
-    return parsed
+        parsed.append((run_id, finding_id, exploitable))
+    return {
+        "rows": parsed,
+        "provided_labels": provided_labels,
+        "usable_labels": len(parsed),
+        "ignored_labels": ignored_labels,
+    }
 
 
 def compute_manual_precision(
@@ -111,6 +127,7 @@ def compute_manual_precision(
 def build_report(
     semantic_reports: List[Path],
     manual_labels_payload: Optional[Dict[str, Any]],
+    minimum_manual_labels: int = 10,
 ) -> Dict[str, Any]:
     run_rows: List[Dict[str, Any]] = []
     prediction_index: Dict[Tuple[str, str], bool] = {}
@@ -156,22 +173,34 @@ def build_report(
     if manual_labels_payload is None:
         manual_precision = {
             "evaluated": False,
+            "provided_labels": 0,
+            "usable_labels": 0,
+            "ignored_labels": 0,
             "matched_labels": 0,
             "predicted_positive": 0,
             "true_positive": 0,
             "false_positive": 0,
             "precision": None,
+            "minimum_required_labels": minimum_manual_labels,
         }
     else:
-        labels = parse_manual_labels(manual_labels_payload)
-        precision_stats = compute_manual_precision(labels, prediction_index)
-        manual_precision = {"evaluated": True, **precision_stats}
+        parsed_labels = parse_manual_labels(manual_labels_payload)
+        precision_stats = compute_manual_precision(
+            parsed_labels["rows"], prediction_index
+        )
+        manual_precision = {
+            "evaluated": True,
+            "minimum_required_labels": minimum_manual_labels,
+            **parsed_labels,
+            **precision_stats,
+        }
 
     intents_target_met = total_intent_sources >= 20
     violations_target_met = total_semantic_violations >= 3
     actionable_target_met = actionable_reports_with_suggestions >= 1 and total_fix_suggestions >= 1
     precision_target_met = bool(
         manual_precision["evaluated"]
+        and manual_precision["matched_labels"] >= minimum_manual_labels
         and isinstance(manual_precision["precision"], float)
         and manual_precision["precision"] >= 0.8
     )
@@ -225,6 +254,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         action="store_true",
         help="Exit non-zero if available targets are not met",
     )
+    parser.add_argument(
+        "--min-manual-labels",
+        type=int,
+        default=10,
+        help="Minimum matched manual labels required when evaluating precision target",
+    )
     args = parser.parse_args(argv)
 
     repo_root = Path(args.repo_root).resolve()
@@ -244,7 +279,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             labels_path = (repo_root / labels_path).resolve()
         manual_labels_payload = load_json(labels_path)
 
-    report = build_report(reports, manual_labels_payload)
+    report = build_report(
+        reports,
+        manual_labels_payload,
+        minimum_manual_labels=max(1, int(args.min_manual_labels)),
+    )
     report["repo_root"] = str(repo_root)
     report["search_root"] = str(search_root)
     report["manual_labels_path"] = args.manual_labels or None
