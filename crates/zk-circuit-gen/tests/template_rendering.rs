@@ -4,13 +4,14 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::tempdir;
 use zk_circuit_gen::{
-    compile_and_extract_structure, evolve_patterns_from_feedback,
+    compare_compiled_structures, compile_and_extract_structure, evolve_patterns_from_feedback,
     extract_semantic_intent_from_text, generate_adversarial_corpus_from_external_patterns,
     generate_bulk_corpus, generate_random_circuit_dsl, parse_dsl_yaml,
     parse_external_ai_pattern_bundle_json, parse_pattern_feedback_json, render_backend_template,
-    render_mutated_template, verify_compiled_constraints_match_intent, AdversarialGenerationConfig,
-    Assignment, Backend, BulkGenerationConfig, CircuitDsl, ConstraintEq, Expression,
-    MutationStrategy, SemanticIntentKind,
+    render_mutated_template, render_semantic_constraint_report_markdown,
+    run_differential_compiler_matrix, verify_compiled_constraints_match_intent,
+    AdversarialGenerationConfig, Assignment, Backend, BulkGenerationConfig, CircuitDsl,
+    ConstraintEq, DifferentialComparisonAxis, Expression, MutationStrategy, SemanticIntentKind,
 };
 
 fn sample_dsl() -> CircuitDsl {
@@ -476,6 +477,7 @@ template Main() {
     assert_eq!(report.matched_intents, 3);
     assert_eq!(report.mismatched_intents, 0);
     assert!(report.constraint_gaps.is_empty());
+    assert!(report.narrative_findings.is_empty());
 }
 
 #[test]
@@ -511,6 +513,9 @@ template Main() {
     assert_eq!(report.matched_intents, 0);
     assert_eq!(report.mismatched_intents, 1);
     assert_eq!(report.constraint_gaps.len(), 1);
+    assert_eq!(report.narrative_findings.len(), 1);
+    assert!(report.narrative_findings[0].contains("Circuit allows"));
+    assert!(report.narrative_findings[0].contains("docs say"));
     assert!(report.constraint_gaps[0].satisfiable_candidate);
     assert_eq!(
         report.constraint_gaps[0].intent_kind,
@@ -520,4 +525,53 @@ template Main() {
         .checks
         .iter()
         .any(|check| check.intent_kind == SemanticIntentKind::BoundaryCondition && !check.matched));
+
+    let markdown = render_semantic_constraint_report_markdown(&report);
+    assert!(markdown.contains("Semantic Constraint Match Report"));
+    assert!(markdown.contains("Circuit allows"));
+    assert!(markdown.contains("docs say"));
+}
+
+#[test]
+fn differential_matrix_compares_compiler_versions_and_backends() {
+    let dsl = sample_dsl();
+    let report = run_differential_compiler_matrix(
+        &dsl,
+        &[Backend::Circom, Backend::Noir],
+        &["circom_v2_0".to_string(), "circom_v2_1".to_string()],
+    )
+    .expect("run differential matrix");
+
+    assert_eq!(report.observations.len(), 4);
+    assert_eq!(report.comparisons.len(), 4);
+    assert_eq!(report.optimization_regressions, 0);
+    assert!(report
+        .comparisons
+        .iter()
+        .any(|entry| entry.axis == DifferentialComparisonAxis::CompilerVersion));
+    assert!(report
+        .comparisons
+        .iter()
+        .any(|entry| entry.axis == DifferentialComparisonAxis::Backend));
+}
+
+#[test]
+fn differential_structure_comparison_flags_optimization_regression() {
+    let dsl = sample_dsl();
+    let lhs = compile_and_extract_structure(&dsl, Backend::Circom).expect("lhs");
+    let mut rhs = lhs.clone();
+    rhs.constraint_count += 5;
+
+    let comparison = compare_compiled_structures(
+        DifferentialComparisonAxis::CompilerVersion,
+        "circom_v2_0",
+        "circom_v2_1",
+        &lhs,
+        &rhs,
+        Some(Backend::Circom),
+        None,
+    );
+    assert_eq!(comparison.constraint_delta, 5);
+    assert!(comparison.optimization_regression);
+    assert!(!comparison.structure_match);
 }

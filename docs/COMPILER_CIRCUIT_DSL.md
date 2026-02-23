@@ -237,11 +237,40 @@ cargo run -q -p zk-circuit-gen --example verify_semantic_constraint_match -- \
   --doc-file tests/datasets/circuit_gen/semantic_doc.sample.md \
   --dsl-file tests/datasets/circuit_gen/structure_dsl.sample.yaml \
   --backend circom \
-  --output-json artifacts/circuit_gen/semantic_constraint_match_sample/latest_report.json
+  --output-json artifacts/circuit_gen/semantic_constraint_match_sample/latest_report.json \
+  --output-markdown artifacts/circuit_gen/semantic_constraint_match_sample/latest_report.md
 ```
 
 Verification output includes:
 - `total_intents`, `matched_intents`, `mismatched_intents`
 - `checks[]` per intent statement (`matched` + `evidence[]`)
 - `constraint_gaps[]` for mismatched intents (`reason`, `satisfiable_candidate`)
+- `narrative_findings[]` with explicit phrasing:
+  `Circuit allows X, but docs say "Y".`
 - embedded `compiled_structure` metrics for correlation
+
+## Differential Compiler Matrix
+
+Use differential matrix mode to compare structure metrics across compiler labels and backends:
+
+```bash
+scripts/run_circuit_gen_differential_sample.sh
+```
+
+Direct command:
+
+```bash
+cargo run -q -p zk-circuit-gen --example run_differential_compiler_matrix -- \
+  --dsl-file tests/datasets/circuit_gen/structure_dsl.sample.yaml \
+  --backends circom,noir \
+  --compiler-ids circom_v2_0,circom_v2_1 \
+  --output-json artifacts/circuit_gen/differential_sample/latest_report.json
+```
+
+Matrix report includes:
+- `observations[]`: per `(compiler_id, backend)` compiled structure metrics
+- `comparisons[]`:
+  - `axis=compiler_version` (same backend, different compiler labels)
+  - `axis=backend` (same compiler label, different backends)
+- `constraint_delta` and other structure deltas
+- `optimization_regression` (true when candidate constraint count increases)

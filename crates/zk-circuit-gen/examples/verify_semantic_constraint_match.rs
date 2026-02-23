@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 use zk_circuit_gen::{
     extract_semantic_intent_from_text, parse_dsl_json, parse_dsl_yaml,
-    verify_compiled_constraints_match_intent, Backend, CircuitDsl,
+    render_semantic_constraint_report_markdown, verify_compiled_constraints_match_intent, Backend,
+    CircuitDsl,
 };
 
 #[derive(Debug, Clone)]
@@ -15,6 +16,7 @@ struct CliArgs {
     backend: Backend,
     doc_file: Option<PathBuf>,
     output_json: Option<PathBuf>,
+    output_markdown: Option<PathBuf>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -28,11 +30,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         extract_semantic_intent_from_text(&source_code, docs.as_deref(), Some(args.backend));
     let report = verify_compiled_constraints_match_intent(&dsl, args.backend, &intent)?;
     let payload = serde_json::to_string_pretty(&report)? + "\n";
+    let markdown = render_semantic_constraint_report_markdown(&report);
 
     if let Some(path) = &args.output_json {
         fs::write(path, payload)?;
     } else {
         print!("{payload}");
+    }
+    if let Some(path) = &args.output_markdown {
+        fs::write(path, markdown)?;
     }
 
     eprintln!(
@@ -51,6 +57,7 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
     let mut backend = None;
     let mut doc_file = None;
     let mut output_json = None;
+    let mut output_markdown = None;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -63,6 +70,9 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
             "--doc-file" => doc_file = Some(PathBuf::from(next_value(&mut args, "--doc-file")?)),
             "--output-json" => {
                 output_json = Some(PathBuf::from(next_value(&mut args, "--output-json")?))
+            }
+            "--output-markdown" => {
+                output_markdown = Some(PathBuf::from(next_value(&mut args, "--output-markdown")?))
             }
             "--help" | "-h" => {
                 print_help();
@@ -78,6 +88,7 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
         backend: backend.ok_or("--backend is required")?,
         doc_file,
         output_json,
+        output_markdown,
     })
 }
 
@@ -135,6 +146,7 @@ Options:
   --backend <name>        Required backend (circom,noir,halo2,cairo)
   --doc-file <path>       Optional docs file
   --output-json <path>    Optional output path (default: stdout)
+  --output-markdown <path> Optional markdown report path
 "
     );
 }

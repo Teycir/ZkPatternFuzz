@@ -338,6 +338,7 @@ pub struct SemanticConstraintVerificationReport {
     pub mismatched_intents: usize,
     pub checks: Vec<IntentConstraintCheck>,
     pub constraint_gaps: Vec<ConstraintGapFinding>,
+    pub narrative_findings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -346,6 +347,47 @@ pub struct ConstraintGapFinding {
     pub statement: String,
     pub reason: String,
     pub satisfiable_candidate: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompilerStructureObservation {
+    pub compiler_id: String,
+    pub backend: Backend,
+    pub structure: CompiledCircuitStructure,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DifferentialComparisonAxis {
+    CompilerVersion,
+    Backend,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DifferentialStructureComparison {
+    pub axis: DifferentialComparisonAxis,
+    pub lhs_id: String,
+    pub rhs_id: String,
+    pub backend: Option<Backend>,
+    pub compiler_id: Option<String>,
+    pub circuit_name: String,
+    pub constraint_delta: i64,
+    pub assignment_delta: i64,
+    pub signal_delta: i64,
+    pub expression_node_delta: i64,
+    pub max_expression_depth_delta: i64,
+    pub structure_match: bool,
+    pub optimization_regression: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DifferentialCompilerMatrixReport {
+    pub circuit_name: String,
+    pub compiler_ids: Vec<String>,
+    pub backends: Vec<Backend>,
+    pub observations: Vec<CompilerStructureObservation>,
+    pub comparisons: Vec<DifferentialStructureComparison>,
+    pub optimization_regressions: usize,
 }
 
 pub fn parse_dsl_yaml(value: &str) -> Result<CircuitDsl, CircuitGenError> {
@@ -583,6 +625,7 @@ pub fn verify_compiled_constraints_match_intent(
     let total_intents = checks.len();
     let mismatched_intents = total_intents.saturating_sub(matched_intents);
     let constraint_gaps = detect_constraint_gaps(&structure, &checks);
+    let narrative_findings = build_constraint_gap_narratives(&constraint_gaps);
 
     Ok(SemanticConstraintVerificationReport {
         backend,
@@ -593,6 +636,246 @@ pub fn verify_compiled_constraints_match_intent(
         mismatched_intents,
         checks,
         constraint_gaps,
+        narrative_findings,
+    })
+}
+
+pub fn render_semantic_constraint_report_markdown(
+    report: &SemanticConstraintVerificationReport,
+) -> String {
+    let mut out = String::new();
+    out.push_str("# Semantic Constraint Match Report\n\n");
+    out.push_str(&format!("- Circuit: `{}`\n", report.circuit_name));
+    out.push_str(&format!("- Backend: `{}`\n", report.backend.as_str()));
+    out.push_str(&format!("- Intents: `{}`\n", report.total_intents));
+    out.push_str(&format!("- Matched: `{}`\n", report.matched_intents));
+    out.push_str(&format!(
+        "- Mismatched: `{}`\n\n",
+        report.mismatched_intents
+    ));
+
+    out.push_str("## Findings\n\n");
+    if report.narrative_findings.is_empty() {
+        out.push_str("- No semantic mismatches detected.\n");
+    } else {
+        for finding in &report.narrative_findings {
+            out.push_str(&format!("- {finding}\n"));
+        }
+    }
+
+    out.push_str("\n## Gap Details\n\n");
+    if report.constraint_gaps.is_empty() {
+        out.push_str("- No constraint gaps detected.\n");
+    } else {
+        for gap in &report.constraint_gaps {
+            out.push_str(&format!(
+                "- Kind: `{:?}` | Intent: \"{}\" | Reason: {} | Satisfiable candidate: `{}`\n",
+                gap.intent_kind, gap.statement, gap.reason, gap.satisfiable_candidate
+            ));
+        }
+    }
+
+    out
+}
+
+pub fn compile_same_circuit_with_compiler_ids(
+    dsl: &CircuitDsl,
+    backend: Backend,
+    compiler_ids: &[String],
+) -> Result<Vec<CompilerStructureObservation>, CircuitGenError> {
+    if compiler_ids.is_empty() {
+        return Err(CircuitGenError::Validation(
+            "compiler_ids must include at least one entry".to_string(),
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for compiler_id in compiler_ids {
+        let trimmed = compiler_id.trim();
+        if trimmed.is_empty() {
+            return Err(CircuitGenError::Validation(
+                "compiler_id entries must not be empty".to_string(),
+            ));
+        }
+        if !seen.insert(trimmed.to_string()) {
+            return Err(CircuitGenError::Validation(format!(
+                "duplicate compiler_id `{}`",
+                trimmed
+            )));
+        }
+    }
+
+    let mut observations = Vec::new();
+    for compiler_id in compiler_ids {
+        let structure = compile_and_extract_structure(dsl, backend)?;
+        observations.push(CompilerStructureObservation {
+            compiler_id: compiler_id.trim().to_string(),
+            backend,
+            structure,
+        });
+    }
+    Ok(observations)
+}
+
+pub fn compare_compiled_structures(
+    axis: DifferentialComparisonAxis,
+    lhs_id: impl Into<String>,
+    rhs_id: impl Into<String>,
+    lhs: &CompiledCircuitStructure,
+    rhs: &CompiledCircuitStructure,
+    backend: Option<Backend>,
+    compiler_id: Option<String>,
+) -> DifferentialStructureComparison {
+    let lhs_id = lhs_id.into();
+    let rhs_id = rhs_id.into();
+    let constraint_delta = rhs.constraint_count as i64 - lhs.constraint_count as i64;
+    let assignment_delta = rhs.assignment_count as i64 - lhs.assignment_count as i64;
+    let signal_delta = rhs.signal_count as i64 - lhs.signal_count as i64;
+    let expression_node_delta = rhs.expression_node_count as i64 - lhs.expression_node_count as i64;
+    let max_expression_depth_delta =
+        rhs.max_expression_depth as i64 - lhs.max_expression_depth as i64;
+    let structure_match = constraint_delta == 0
+        && assignment_delta == 0
+        && signal_delta == 0
+        && expression_node_delta == 0
+        && max_expression_depth_delta == 0;
+    let optimization_regression = constraint_delta > 0;
+
+    DifferentialStructureComparison {
+        axis,
+        lhs_id,
+        rhs_id,
+        backend,
+        compiler_id,
+        circuit_name: lhs.circuit_name.clone(),
+        constraint_delta,
+        assignment_delta,
+        signal_delta,
+        expression_node_delta,
+        max_expression_depth_delta,
+        structure_match,
+        optimization_regression,
+    }
+}
+
+pub fn run_differential_compiler_matrix(
+    dsl: &CircuitDsl,
+    backends: &[Backend],
+    compiler_ids: &[String],
+) -> Result<DifferentialCompilerMatrixReport, CircuitGenError> {
+    if backends.is_empty() {
+        return Err(CircuitGenError::Validation(
+            "at least one backend is required for differential matrix".to_string(),
+        ));
+    }
+
+    let mut observations = Vec::new();
+    for backend in dedup_backends(backends) {
+        let backend_runs = compile_same_circuit_with_compiler_ids(dsl, backend, compiler_ids)?;
+        observations.extend(backend_runs);
+    }
+
+    let mut comparisons = Vec::new();
+    let deduped_backends = dedup_backends(backends);
+    let deduped_compilers = dedup_compiler_ids(compiler_ids)?;
+
+    // Compare versions inside each backend.
+    for backend in &deduped_backends {
+        for lhs_index in 0..deduped_compilers.len() {
+            for rhs_index in (lhs_index + 1)..deduped_compilers.len() {
+                let lhs = observations
+                    .iter()
+                    .find(|entry| {
+                        entry.backend == *backend
+                            && entry.compiler_id == deduped_compilers[lhs_index]
+                    })
+                    .ok_or_else(|| {
+                        CircuitGenError::Validation(format!(
+                            "missing observation for backend={} compiler_id={}",
+                            backend.as_str(),
+                            deduped_compilers[lhs_index]
+                        ))
+                    })?;
+                let rhs = observations
+                    .iter()
+                    .find(|entry| {
+                        entry.backend == *backend
+                            && entry.compiler_id == deduped_compilers[rhs_index]
+                    })
+                    .ok_or_else(|| {
+                        CircuitGenError::Validation(format!(
+                            "missing observation for backend={} compiler_id={}",
+                            backend.as_str(),
+                            deduped_compilers[rhs_index]
+                        ))
+                    })?;
+                comparisons.push(compare_compiled_structures(
+                    DifferentialComparisonAxis::CompilerVersion,
+                    lhs.compiler_id.clone(),
+                    rhs.compiler_id.clone(),
+                    &lhs.structure,
+                    &rhs.structure,
+                    Some(*backend),
+                    None,
+                ));
+            }
+        }
+    }
+
+    // Compare backends for each compiler id.
+    for compiler_id in &deduped_compilers {
+        for lhs_index in 0..deduped_backends.len() {
+            for rhs_index in (lhs_index + 1)..deduped_backends.len() {
+                let lhs = observations
+                    .iter()
+                    .find(|entry| {
+                        entry.compiler_id == *compiler_id
+                            && entry.backend == deduped_backends[lhs_index]
+                    })
+                    .ok_or_else(|| {
+                        CircuitGenError::Validation(format!(
+                            "missing observation for compiler_id={} backend={}",
+                            compiler_id,
+                            deduped_backends[lhs_index].as_str()
+                        ))
+                    })?;
+                let rhs = observations
+                    .iter()
+                    .find(|entry| {
+                        entry.compiler_id == *compiler_id
+                            && entry.backend == deduped_backends[rhs_index]
+                    })
+                    .ok_or_else(|| {
+                        CircuitGenError::Validation(format!(
+                            "missing observation for compiler_id={} backend={}",
+                            compiler_id,
+                            deduped_backends[rhs_index].as_str()
+                        ))
+                    })?;
+                comparisons.push(compare_compiled_structures(
+                    DifferentialComparisonAxis::Backend,
+                    deduped_backends[lhs_index].as_str().to_string(),
+                    deduped_backends[rhs_index].as_str().to_string(),
+                    &lhs.structure,
+                    &rhs.structure,
+                    None,
+                    Some(compiler_id.clone()),
+                ));
+            }
+        }
+    }
+
+    let optimization_regressions = comparisons
+        .iter()
+        .filter(|comparison| comparison.optimization_regression)
+        .count();
+
+    Ok(DifferentialCompilerMatrixReport {
+        circuit_name: dsl.name.clone(),
+        compiler_ids: deduped_compilers,
+        backends: deduped_backends,
+        observations,
+        comparisons,
+        optimization_regressions,
     })
 }
 
@@ -1257,6 +1540,27 @@ fn detect_constraint_gaps(
     gaps
 }
 
+fn build_constraint_gap_narratives(gaps: &[ConstraintGapFinding]) -> Vec<String> {
+    gaps.iter()
+        .map(|gap| {
+            let allowed = match gap.intent_kind {
+                SemanticIntentKind::AccessControl => {
+                    "actions without required authorization checks"
+                }
+                SemanticIntentKind::BoundaryCondition => "out-of-range values",
+                SemanticIntentKind::ForbiddenBehavior => "behavior that should be blocked",
+                SemanticIntentKind::RequiredBehavior => {
+                    "execution paths that bypass required behavior"
+                }
+            };
+            format!(
+                "Circuit allows {allowed}, but docs say \"{}\". ({})",
+                gap.statement, gap.reason
+            )
+        })
+        .collect()
+}
+
 fn collect_expression_metrics(
     expression: &Expression,
     depth: usize,
@@ -1392,6 +1696,28 @@ fn dedup_mutation_strategies(strategies: &[MutationStrategy]) -> Vec<MutationStr
         }
     }
     deduped
+}
+
+fn dedup_compiler_ids(ids: &[String]) -> Result<Vec<String>, CircuitGenError> {
+    if ids.is_empty() {
+        return Err(CircuitGenError::Validation(
+            "compiler_ids must include at least one entry".to_string(),
+        ));
+    }
+    let mut deduped = Vec::new();
+    let mut seen = BTreeSet::new();
+    for id in ids {
+        let trimmed = id.trim();
+        if trimmed.is_empty() {
+            return Err(CircuitGenError::Validation(
+                "compiler_id entries must not be empty".to_string(),
+            ));
+        }
+        if seen.insert(trimmed.to_string()) {
+            deduped.push(trimmed.to_string());
+        }
+    }
+    Ok(deduped)
 }
 
 fn sanitize_fs_token(raw: &str) -> String {

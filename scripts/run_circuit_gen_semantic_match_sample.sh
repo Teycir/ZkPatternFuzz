@@ -15,6 +15,7 @@ cargo run -q -p zk-circuit-gen --example verify_semantic_constraint_match -- \
   --doc-file "$DOC_FILE" \
   --dsl-file "$DSL_FILE" \
   --backend "$BACKEND" \
-  --output-json "$OUTPUT_DIR/latest_report.json"
+  --output-json "$OUTPUT_DIR/latest_report.json" \
+  --output-markdown "$OUTPUT_DIR/latest_report.md"
 
 echo "[circuit-gen] report: $OUTPUT_DIR/latest_report.json"

@@ -942,19 +942,19 @@ crates/zk-track-semantic/
     - [x] Generate circuit patterns designed to trigger specific edge cases
     - [x] Evolve patterns based on compiler crash feedback
 
-- [ ] **Semantic Intent Validation:**
+- [x] **Semantic Intent Validation:**
   - [x] Extract semantic intent from circuit comments/docs (`extract_semantic_intent_from_text` in `crates/zk-circuit-gen/src/lib.rs`; CLI in `crates/zk-circuit-gen/examples/extract_semantic_intent.rs`; sample runner `scripts/run_circuit_gen_semantic_sample.sh`; sample inputs `tests/datasets/circuit_gen/semantic_source.sample.circom`, `tests/datasets/circuit_gen/semantic_doc.sample.md`; latest sample run 2026-02-23: `artifacts/circuit_gen/semantic_intent_sample/latest_report.json`)
   - [x] Compile generated circuit and extract constraint count/structure (`compile_and_extract_structure` in `crates/zk-circuit-gen/src/lib.rs`; CLI in `crates/zk-circuit-gen/examples/compile_and_extract_structure.rs`; sample runner `scripts/run_circuit_gen_structure_sample.sh`; sample input `tests/datasets/circuit_gen/structure_dsl.sample.yaml`; latest sample run 2026-02-23: `artifacts/circuit_gen/structure_sample/latest_report.json`)
   - [x] Verify compiled constraints match intended semantics (`verify_compiled_constraints_match_intent` in `crates/zk-circuit-gen/src/lib.rs`; CLI in `crates/zk-circuit-gen/examples/verify_semantic_constraint_match.rs`; sample runner `scripts/run_circuit_gen_semantic_match_sample.sh`; latest sample run 2026-02-23: `artifacts/circuit_gen/semantic_constraint_match_sample/latest_report.json`)
   - [x] Detect constraint gaps (satisfiable but violates intent) (`constraint_gaps[]` in `SemanticConstraintVerificationReport` via `detect_constraint_gaps` in `crates/zk-circuit-gen/src/lib.rs`; validated in `crates/zk-circuit-gen/tests/template_rendering.rs`; latest sample run 2026-02-23: `artifacts/circuit_gen/semantic_constraint_match_sample/latest_report.json`)
-  - [ ] Report: "Circuit allows X but docs say 'only Y'"
+  - [x] Report: "Circuit allows X but docs say 'only Y'" (`narrative_findings[]` + `render_semantic_constraint_report_markdown` in `crates/zk-circuit-gen/src/lib.rs`; markdown output wiring in `crates/zk-circuit-gen/examples/verify_semantic_constraint_match.rs`; sample runner emits `artifacts/circuit_gen/semantic_constraint_match_sample/latest_report.md`)
 
 - [ ] **Differential Compiler Testing:**
-  - [ ] Compile same circuit with multiple compilers (Circom v2.0 vs v2.1)
-  - [ ] Compile same circuit across backends (Circom vs Noir for compatible logic)
-  - [ ] Compare constraint counts (unexpected differences = bug)
-  - [ ] Compare constraint structure (same logic → same constraints)
-  - [ ] Detect optimization regressions (constraint count increases)
+  - [x] Compile same circuit with multiple compilers (Circom v2.0 vs v2.1) (`compile_same_circuit_with_compiler_ids` in `crates/zk-circuit-gen/src/lib.rs`; matrix CLI `crates/zk-circuit-gen/examples/run_differential_compiler_matrix.rs`; sample run 2026-02-23: `artifacts/circuit_gen/differential_sample/latest_report.json`)
+  - [x] Compile same circuit across backends (Circom vs Noir for compatible logic) (`run_differential_compiler_matrix` evaluates backend-axis comparisons in `crates/zk-circuit-gen/src/lib.rs`)
+  - [x] Compare constraint counts (unexpected differences = bug) (`constraint_delta` emitted in `DifferentialStructureComparison`)
+  - [x] Compare constraint structure (same logic → same constraints) (`structure_match` + expression/signal/depth deltas emitted in matrix report)
+  - [x] Detect optimization regressions (constraint count increases) (`optimization_regression` detection in `compare_compiled_structures`)
   - [ ] Version matrix testing: test N circuits × M compiler versions
 
 - [ ] **Compiler Crash/Bug Detection:**
