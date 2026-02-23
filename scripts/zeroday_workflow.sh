@@ -28,7 +28,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 FUZZER="$PROJECT_ROOT/target/release/zk-fuzzer"
 SKIMMER="$PROJECT_ROOT/target/release/zk0d_skimmer"
 PICUS_DIR="${PICUS_DIR:-/tmp/Picus}"
-PICUS_BIN="$PICUS_DIR/run-picus"
+PICUS_BIN="${PICUS_BIN:-}"
 
 # Default values
 DEFAULT_ITERATIONS=50000
@@ -58,6 +58,35 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+resolve_picus_bin() {
+    # Priority:
+    # 1) Explicit PICUS_BIN
+    # 2) PICUS_DIR/run-picus
+    # 3) run-picus on PATH
+    # 4) picus on PATH (wrapper style install)
+    if [[ -n "${PICUS_BIN:-}" && -x "${PICUS_BIN:-}" ]]; then
+        printf '%s\n' "$PICUS_BIN"
+        return 0
+    fi
+
+    if [[ -n "${PICUS_DIR:-}" && -x "${PICUS_DIR:-}/run-picus" ]]; then
+        printf '%s\n' "${PICUS_DIR}/run-picus"
+        return 0
+    fi
+
+    if command -v run-picus >/dev/null 2>&1; then
+        command -v run-picus
+        return 0
+    fi
+
+    if command -v picus >/dev/null 2>&1; then
+        command -v picus
+        return 0
+    fi
+
+    return 1
 }
 
 # Ensure release build exists
@@ -224,13 +253,15 @@ phase_verify() {
         exit 1
     fi
     
-    if [[ ! -f "$PICUS_BIN" ]]; then
-        log_error "Picus not found at: $PICUS_BIN"
-        log_error "Install Picus or set PICUS_DIR environment variable"
+    local picus_bin=""
+    if ! picus_bin="$(resolve_picus_bin)"; then
+        log_error "Picus not found via PICUS_BIN, PICUS_DIR/run-picus, run-picus PATH, or picus PATH"
+        log_error "Set PICUS_BIN explicitly or PICUS_DIR to your Picus installation"
         log_error "See: VERIDISE_INTEGRATION.md"
         exit 1
     fi
-    
+
+    log_info "Using Picus binary: $picus_bin"
     log_info "Running Picus formal verification..."
     
     local picus_args=(--timeout "$timeout" --solver "$solver")
@@ -239,12 +270,21 @@ phase_verify() {
         picus_args+=(--json "$output_json")
     fi
     
-    cd "$PICUS_DIR" || exit 1
-    
-    "$PICUS_BIN" "${picus_args[@]}" "$circuit"
-    local result=$?
-    
-    cd "$PROJECT_ROOT" || exit 1
+    local picus_tmp
+    picus_tmp="$(mktemp)"
+    set +e
+    "$picus_bin" "${picus_args[@]}" "$circuit" 2>&1 | tee "$picus_tmp"
+    local result=${PIPESTATUS[0]}
+    set -e
+    local picus_output
+    picus_output="$(cat "$picus_tmp")"
+    rm -f "$picus_tmp"
+
+    # Some Picus builds print an inconclusive message while returning 0.
+    # Treat this as UNKNOWN to avoid misclassifying ambiguous proofs as SAFE.
+    if [[ "$picus_output" == *"Cannot determine whether the circuit is properly constrained"* ]]; then
+        result=10
+    fi
     
     echo ""
     case $result in
@@ -407,7 +447,8 @@ show_help() {
     echo "  6. deep      - Targeted edge-case hunting"
     echo ""
     echo "Environment Variables:"
-    echo "  PICUS_DIR    Path to Picus installation (default: /tmp/Picus)"
+    echo "  PICUS_BIN    Absolute path to Picus executable (highest priority)"
+    echo "  PICUS_DIR    Path to Picus installation (expects PICUS_DIR/run-picus; default: /tmp/Picus)"
     echo ""
     echo "See docs/AI_PENTEST_RULES.md for classification rules."
     echo "See VERIDISE_INTEGRATION.md for Picus installation."
