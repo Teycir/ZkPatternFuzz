@@ -1015,7 +1015,7 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
 - [x] Differential mode: test 100+ circuits × 3 compiler versions (`scripts/run_circuit_gen_differential_version_matrix_sample.sh`; latest sample run 2026-02-23: 120 circuits × 3 compiler labels at `artifacts/circuit_gen/differential_version_matrix_sample/latest_report.json`)
 - [x] Detect ≥1 optimization regression (constraint count increase) (`scripts/run_circuit_gen_differential_regression_sample.sh`; latest sample run 2026-02-23: `optimization_regressions=1` at `artifacts/circuit_gen/differential_regression_sample/latest_report.json`)
 - [x] AI generates ≥10 adversarial patterns from known bugs (`scripts/run_circuit_gen_adversarial_top10_sample.sh`; input bundle `tests/datasets/circuit_gen/external_ai_patterns.top10.sample.json`; latest sample run 2026-02-23: 10 patterns at `artifacts/circuit_gen/adversarial_top10_sample/latest_report.json`)
-- [ ] Integration tests validate generated circuits compile on ≥1 backend
+- [x] Integration tests validate generated circuits compile on ≥1 backend (`generated_halo2_templates_compile_with_rustc_stub_backend` in `crates/zk-circuit-gen/tests/template_rendering.rs`; sample runner `scripts/run_circuit_gen_backend_compile_integration_sample.sh`; latest sample run 2026-02-23: 20/20 succeeded at `artifacts/circuit_gen/backend_compile_integration_sample/latest_report.json`)
 
 #### Value Proposition
 - **Compiler hardening:** Find bugs before production deployment

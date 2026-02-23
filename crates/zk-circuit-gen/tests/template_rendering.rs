@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::process::Command;
 
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -57,6 +58,160 @@ fn sample_dsl() -> CircuitDsl {
             right: Expression::Constant { value: 0 },
         }],
     }
+}
+
+fn compile_halo2_template_with_rustc_stub(
+    compile_dir: &std::path::Path,
+    case_id: &str,
+    rendered: &str,
+) -> Result<(bool, String), Box<dyn std::error::Error>> {
+    let wrapper_path = compile_dir.join(format!("{case_id}.rs"));
+    let artifact_path = compile_dir.join(format!("lib{case_id}.rlib"));
+    let wrapper = format!("{}\n\n{}", halo2_stub_prelude(), rendered);
+    fs::write(&wrapper_path, wrapper)?;
+
+    let output = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg("--crate-type=lib")
+        .arg(&wrapper_path)
+        .arg("-o")
+        .arg(&artifact_path)
+        .output()?;
+    if output.status.success() {
+        return Ok((true, String::new()));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr_excerpt = stderr.lines().take(12).collect::<Vec<_>>().join("\n");
+    Ok((false, stderr_excerpt))
+}
+
+fn halo2_stub_prelude() -> &'static str {
+    r#"#![allow(dead_code)]
+#![allow(unused_imports)]
+
+mod halo2_proofs {
+    pub mod circuit {
+        pub trait Layouter<F> {}
+        #[derive(Clone, Debug)]
+        pub struct SimpleFloorPlanner;
+        #[derive(Clone, Debug)]
+        pub struct Value<F>(pub Option<F>);
+    }
+
+    pub mod poly {
+        #[derive(Clone, Copy, Debug)]
+        pub struct Rotation;
+        impl Rotation {
+            pub fn cur() -> Self {
+                Self
+            }
+        }
+    }
+
+    pub mod plonk {
+        use super::circuit::Layouter;
+        use super::poly::Rotation;
+        use std::marker::PhantomData;
+
+        #[derive(Clone, Copy, Debug)]
+        pub struct Advice;
+
+        #[derive(Clone, Copy, Debug)]
+        pub struct Column<T> {
+            _index: usize,
+            _marker: PhantomData<T>,
+        }
+
+        #[derive(Clone, Debug)]
+        pub struct Error;
+
+        #[derive(Clone, Debug)]
+        pub struct Expression<F> {
+            _marker: PhantomData<F>,
+        }
+
+        impl<F> std::ops::Sub for Expression<F> {
+            type Output = Expression<F>;
+            fn sub(self, _rhs: Self) -> Self::Output {
+                Expression {
+                    _marker: PhantomData,
+                }
+            }
+        }
+
+        pub struct VirtualCells<F> {
+            _marker: PhantomData<F>,
+        }
+
+        impl<F> VirtualCells<F> {
+            pub fn query_advice(
+                &mut self,
+                _column: Column<Advice>,
+                _rotation: Rotation,
+            ) -> Expression<F> {
+                Expression {
+                    _marker: PhantomData,
+                }
+            }
+        }
+
+        pub struct ConstraintSystem<F> {
+            next: usize,
+            _marker: PhantomData<F>,
+        }
+
+        impl<F> ConstraintSystem<F> {
+            pub fn advice_column(&mut self) -> Column<Advice> {
+                let index = self.next;
+                self.next += 1;
+                Column {
+                    _index: index,
+                    _marker: PhantomData,
+                }
+            }
+
+            pub fn create_gate(
+                &mut self,
+                _name: &str,
+                mut gate: impl FnMut(&mut VirtualCells<F>) -> Vec<Expression<F>>,
+            ) {
+                let mut cells = VirtualCells {
+                    _marker: PhantomData,
+                };
+                let _ = gate(&mut cells);
+            }
+        }
+
+        impl<F> Default for ConstraintSystem<F> {
+            fn default() -> Self {
+                Self {
+                    next: 0,
+                    _marker: PhantomData,
+                }
+            }
+        }
+
+        pub trait Circuit<F>: Sized {
+            type Config: Clone;
+            type FloorPlanner;
+            fn without_witnesses(&self) -> Self;
+            fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config;
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                layouter: impl Layouter<F>,
+            ) -> Result<(), Error>;
+        }
+    }
+}
+
+mod halo2curves {
+    pub mod bn256 {
+        #[derive(Clone, Copy, Debug)]
+        pub struct Fr(pub u64);
+    }
+}
+"#
 }
 
 #[test]
@@ -648,6 +803,30 @@ fn differential_version_matrix_campaign_runs_n_times_m() {
         .circuits_rows
         .iter()
         .all(|row| row.report_path.exists()));
+}
+
+#[test]
+fn generated_halo2_templates_compile_with_rustc_stub_backend() {
+    let tmp = tempdir().expect("tempdir");
+    let compile_dir = tmp.path().join("compile");
+    fs::create_dir_all(&compile_dir).expect("create compile dir");
+
+    let mut rng = StdRng::seed_from_u64(20260223);
+    for ordinal in 0..6 {
+        let dsl = generate_random_circuit_dsl(&mut rng, Backend::Halo2, ordinal);
+        let rendered = render_backend_template(&dsl, Backend::Halo2).expect("rendered");
+        let (success, stderr_excerpt) = compile_halo2_template_with_rustc_stub(
+            &compile_dir,
+            &format!("halo2_case_{ordinal}"),
+            &rendered,
+        )
+        .expect("compile probe");
+        assert!(
+            success,
+            "halo2 template failed to compile for circuit `{}`: {}",
+            dsl.name, stderr_excerpt
+        );
+    }
 }
 
 #[test]

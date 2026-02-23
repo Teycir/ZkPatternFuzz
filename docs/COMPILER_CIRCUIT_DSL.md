@@ -107,6 +107,30 @@ Artifacts:
 - `<output>/<backend>/*.dsl.json` source DSL payloads
 - `<output>/latest_report.json` generation summary
 
+## Backend Compile Integration (>=1 Backend)
+
+Use compile-integration mode to validate generated templates compile on at least
+one backend. Current integration target is `halo2` templates compiled with `rustc`
+using local shim modules for `halo2_proofs`/`halo2curves` symbols.
+
+```bash
+scripts/run_circuit_gen_backend_compile_integration_sample.sh
+```
+
+Direct command:
+
+```bash
+cargo run -q -p zk-circuit-gen --example run_backend_compile_integration -- \
+  --backend halo2 \
+  --circuits 20 \
+  --seed 1337 \
+  --output-json artifacts/circuit_gen/backend_compile_integration_sample/latest_report.json
+```
+
+Output fields:
+- `circuits`, `succeeded`, `failed`
+- per-case `results[]` with `success` and `stderr_excerpt`
+
 ## Mutation Strategies
 
 Enable mutation variants during generation with:
