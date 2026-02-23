@@ -1,4 +1,5 @@
 mod adapters;
+mod cross_component_fuzzer;
 mod public_input_fuzzer;
 mod serialization_fuzzer;
 mod solidity_verifier_fuzzer;
@@ -11,6 +12,11 @@ use zk_postroadmap_core::{PostRoadmapResult, TrackExecution, TrackInput, TrackKi
 pub use adapters::{
     BoundaryProtocolAdapter, BoundaryProtocolCase, BoundaryProtocolResult, SerializationAdapter,
     VerifierAdapter,
+};
+pub use cross_component_fuzzer::{
+    run_cross_component_fuzz_campaign, ComponentMismatchCase, CrossComponentFinding,
+    CrossComponentFuzzConfig, CrossComponentFuzzReport, CrossComponentVerifierProfile,
+    WorkflowFaultStage,
 };
 pub use public_input_fuzzer::{
     run_public_input_manipulation_campaign, PublicInputAttackScenario,

@@ -1103,16 +1103,16 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
   - [x] Reentrancy (if verifier has callbacks) (`reentrancy_callback_probe`)
 
 #### Future P1 (Post-Roadmap): Cross-Component Integration Fuzzer
-- [ ] **End-to-End Workflow Testing:**
-  - [ ] Circuit → Prover → Verifier (full pipeline)
-  - [ ] Test each boundary independently
-  - [ ] Inject faults at each stage
-  - [ ] Verify fault detection
-- [ ] **Component Mismatch Detection:**
-  - [ ] Prover version X, Verifier version Y
-  - [ ] Circuit compiled with flags A, Verifier expects flags B
-  - [ ] Trusted setup ceremony mismatch
-  - [ ] Curve parameter mismatch (BN254 vs BLS12-381)
+- [x] **End-to-End Workflow Testing:** (`run_cross_component_fuzz_campaign` in `crates/zk-track-boundary/src/cross_component_fuzzer.rs`; sample runner `scripts/run_boundary_cross_component_sample.sh`)
+  - [x] Circuit → Prover → Verifier (full pipeline) (`end_to_end_checks=60`)
+  - [x] Test each boundary independently (`checks_by_fault_stage` includes all stage categories)
+  - [x] Inject faults at each stage (`WorkflowFaultStage::{circuit_stage,prover_stage,verifier_stage,transport_boundary}`)
+  - [x] Verify fault detection (strict profile reports `differential_divergences=0`, bug probe surfaces stage divergences)
+- [x] **Component Mismatch Detection:** (`ComponentMismatchCase` in `crates/zk-track-boundary/src/cross_component_fuzzer.rs`)
+  - [x] Prover version X, Verifier version Y (`prover_verifier_version_mismatch`)
+  - [x] Circuit compiled with flags A, Verifier expects flags B (`circuit_verifier_flag_mismatch`)
+  - [x] Trusted setup ceremony mismatch (`trusted_setup_mismatch`)
+  - [x] Curve parameter mismatch (BN254 vs BLS12-381) (`curve_parameter_mismatch`)
 
 #### Implementation Structure
 ```
@@ -1176,8 +1176,8 @@ assert(ref_result == opt_result, "Verifier mismatch!");
 - [x] Detect ≥1 serialization bug (crash, incorrect deserialization) (`scripts/run_boundary_serialization_bug_probe.sh`; latest probe run 2026-02-23: verifier_profile=lenient_legacy, accepted_invalid_cases=212, findings=212 at `artifacts/boundary/serialization_bug_probe/latest_report.json`)
 - [x] Solidity fuzzer: differential test 500+ proofs (reference vs optimized) (`scripts/run_boundary_solidity_verifier_sample.sh`; latest sample run 2026-02-23: proofs=500, differential_checks=7500, divergences=0 at `artifacts/boundary/solidity_verifier_sample/latest_report.json`)
 - [x] Detect ≥1 gas optimization bug (behavior divergence) (`scripts/run_boundary_solidity_verifier_bug_probe.sh`; latest probe run 2026-02-23: differential_divergences=6000, optimized_accepts_reference_rejects=5000, findings=6000 at `artifacts/boundary/solidity_verifier_bug_probe/latest_report.json`)
-- [ ] Cross-component: test 50+ version/configuration combinations
-- [ ] Detect ≥1 integration bug (component mismatch)
+- [x] Cross-component: test 50+ version/configuration combinations (`scripts/run_boundary_cross_component_sample.sh`; latest sample run 2026-02-23: combinations=60, configuration_combinations_tested=60, checks=540 at `artifacts/boundary/cross_component_sample/latest_report.json`)
+- [x] Detect ≥1 integration bug (component mismatch) (`scripts/run_boundary_cross_component_bug_probe.sh`; latest probe run 2026-02-23: differential_divergences=360, candidate_accepts_reference_rejects=360, findings=360 at `artifacts/boundary/cross_component_bug_probe/latest_report.json`)
 
 #### Integration Points
 - Extends `verification_fuzzing` attack with boundary-specific tests
