@@ -86,3 +86,22 @@ let noir = render_backend_template(&dsl, Backend::Noir)?;
 - This is a syntax-template layer for generator design and corpus creation.
 - It is intentionally conservative and deterministic for reproducible fuzz artifacts.
 - Advanced constructs (lookups, custom gates, recursive templates) are future extensions.
+
+## Bulk Generator
+
+Use the bundled bulk generator to produce random circuits per backend:
+
+```bash
+scripts/run_circuit_gen_bulk_sample.sh
+```
+
+Defaults:
+- `CIRCUITS_PER_BACKEND=1000`
+- `BACKENDS=circom,noir,halo2,cairo`
+- `SEED=1337`
+- output root: `artifacts/circuit_gen/bulk_latest`
+
+Artifacts:
+- `<output>/circom/*.circom`, `<output>/noir/*.nr`, `<output>/halo2/*.rs`, `<output>/cairo/*.cairo`
+- `<output>/<backend>/*.dsl.json` source DSL payloads
+- `<output>/latest_report.json` generation summary

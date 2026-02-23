@@ -1,5 +1,9 @@
 use std::collections::BTreeSet;
+use std::fs;
+use std::path::PathBuf;
 
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -13,6 +17,17 @@ pub enum Backend {
 }
 
 impl Backend {
+    pub const ALL: [Backend; 4] = [Self::Circom, Self::Noir, Self::Halo2, Self::Cairo];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Circom => "circom",
+            Self::Noir => "noir",
+            Self::Halo2 => "halo2",
+            Self::Cairo => "cairo",
+        }
+    }
+
     pub fn file_extension(self) -> &'static str {
         match self {
             Self::Circom => "circom",
@@ -77,8 +92,10 @@ pub enum Expression {
 pub enum CircuitGenError {
     #[error("failed to parse DSL YAML: {0}")]
     ParseYaml(#[from] serde_yaml::Error),
-    #[error("failed to parse DSL JSON: {0}")]
-    ParseJson(#[from] serde_json::Error),
+    #[error("JSON serialization/parsing error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("filesystem error: {0}")]
+    Io(#[from] std::io::Error),
     #[error("invalid DSL: {0}")]
     Validation(String),
 }
@@ -88,12 +105,48 @@ struct ValidatedDsl {
     intermediates: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BulkGenerationConfig {
+    pub output_dir: PathBuf,
+    pub circuits_per_backend: usize,
+    pub seed: u64,
+    pub backends: Vec<Backend>,
+}
+
+impl BulkGenerationConfig {
+    pub fn new(output_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            output_dir: output_dir.into(),
+            circuits_per_backend: 1_000,
+            seed: 1_337,
+            backends: Backend::ALL.to_vec(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BackendGenerationSummary {
+    pub backend: Backend,
+    pub generated: usize,
+    pub output_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BulkGenerationReport {
+    pub seed: u64,
+    pub circuits_per_backend: usize,
+    pub total_circuits: usize,
+    pub output_dir: PathBuf,
+    pub report_path: PathBuf,
+    pub backends: Vec<BackendGenerationSummary>,
+}
+
 pub fn parse_dsl_yaml(value: &str) -> Result<CircuitDsl, CircuitGenError> {
     serde_yaml::from_str(value).map_err(CircuitGenError::ParseYaml)
 }
 
 pub fn parse_dsl_json(value: &str) -> Result<CircuitDsl, CircuitGenError> {
-    serde_json::from_str(value).map_err(CircuitGenError::ParseJson)
+    serde_json::from_str(value).map_err(CircuitGenError::Json)
 }
 
 pub fn render_backend_template(
@@ -106,6 +159,154 @@ pub fn render_backend_template(
         Backend::Noir => Ok(render_noir(dsl)),
         Backend::Halo2 => Ok(render_halo2(dsl, &validated)),
         Backend::Cairo => Ok(render_cairo(dsl)),
+    }
+}
+
+pub fn generate_random_circuit_dsl<R: Rng>(
+    rng: &mut R,
+    backend: Backend,
+    ordinal: usize,
+) -> CircuitDsl {
+    let name = format!("gen_{}_{}", backend.as_str(), ordinal);
+
+    let public_count = rng.gen_range(1..=3);
+    let private_count = rng.gen_range(1..=4);
+    let output_count = rng.gen_range(1..=2);
+    let intermediate_count = rng.gen_range(1..=4);
+    let constraint_count = rng.gen_range(1..=4);
+
+    let public_inputs = (0..public_count)
+        .map(|idx| format!("pub_{idx}"))
+        .collect::<Vec<_>>();
+    let private_inputs = (0..private_count)
+        .map(|idx| format!("priv_{idx}"))
+        .collect::<Vec<_>>();
+    let outputs = (0..output_count)
+        .map(|idx| format!("out_{idx}"))
+        .collect::<Vec<_>>();
+
+    let mut available = Vec::new();
+    available.extend(public_inputs.iter().cloned());
+    available.extend(private_inputs.iter().cloned());
+
+    let mut assignments = Vec::new();
+    for idx in 0..intermediate_count {
+        let target = format!("tmp_{idx}");
+        let expression = random_expression(rng, &available, 2);
+        assignments.push(Assignment {
+            target: target.clone(),
+            expression,
+        });
+        available.push(target);
+    }
+
+    for output in &outputs {
+        let expression = random_expression(rng, &available, 2);
+        assignments.push(Assignment {
+            target: output.clone(),
+            expression,
+        });
+        available.push(output.clone());
+    }
+
+    let mut constraints = Vec::new();
+    for _ in 0..constraint_count {
+        let left_name = available[rng.gen_range(0..available.len())].clone();
+        constraints.push(ConstraintEq {
+            left: Expression::Signal { name: left_name },
+            right: random_expression(rng, &available, 2),
+        });
+    }
+
+    CircuitDsl {
+        name,
+        public_inputs,
+        private_inputs,
+        outputs,
+        assignments,
+        constraints,
+    }
+}
+
+pub fn generate_bulk_corpus(
+    config: &BulkGenerationConfig,
+) -> Result<BulkGenerationReport, CircuitGenError> {
+    if config.circuits_per_backend == 0 {
+        return Err(CircuitGenError::Validation(
+            "circuits_per_backend must be greater than zero".to_string(),
+        ));
+    }
+    if config.backends.is_empty() {
+        return Err(CircuitGenError::Validation(
+            "at least one backend must be selected for bulk generation".to_string(),
+        ));
+    }
+
+    fs::create_dir_all(&config.output_dir)?;
+    let mut rng = StdRng::seed_from_u64(config.seed);
+    let mut backend_rows = Vec::new();
+
+    for backend in &config.backends {
+        let backend_dir = config.output_dir.join(backend.as_str());
+        fs::create_dir_all(&backend_dir)?;
+
+        for ordinal in 0..config.circuits_per_backend {
+            let dsl = generate_random_circuit_dsl(&mut rng, *backend, ordinal);
+            let rendered = render_backend_template(&dsl, *backend)?;
+            let file_name = format!("{}.{}", dsl.name, backend.file_extension());
+            let dsl_name = format!("{}.dsl.json", dsl.name);
+
+            fs::write(backend_dir.join(file_name), rendered)?;
+            fs::write(
+                backend_dir.join(dsl_name),
+                serde_json::to_string_pretty(&dsl)? + "\n",
+            )?;
+        }
+
+        backend_rows.push(BackendGenerationSummary {
+            backend: *backend,
+            generated: config.circuits_per_backend,
+            output_dir: backend_dir,
+        });
+    }
+
+    let total_circuits = config.circuits_per_backend * config.backends.len();
+    let report_path = config.output_dir.join("latest_report.json");
+    let report = BulkGenerationReport {
+        seed: config.seed,
+        circuits_per_backend: config.circuits_per_backend,
+        total_circuits,
+        output_dir: config.output_dir.clone(),
+        report_path: report_path.clone(),
+        backends: backend_rows,
+    };
+    fs::write(&report_path, serde_json::to_string_pretty(&report)? + "\n")?;
+    Ok(report)
+}
+
+fn random_expression<R: Rng>(rng: &mut R, available: &[String], depth: usize) -> Expression {
+    if depth == 0 || rng.gen_bool(0.40) {
+        return random_leaf_expression(rng, available);
+    }
+    let left = Box::new(random_expression(rng, available, depth - 1));
+    let right = Box::new(random_expression(rng, available, depth - 1));
+    match rng.gen_range(0..3) {
+        0 => Expression::Add { left, right },
+        1 => Expression::Sub { left, right },
+        _ => Expression::Mul { left, right },
+    }
+}
+
+fn random_leaf_expression<R: Rng>(rng: &mut R, available: &[String]) -> Expression {
+    if !available.is_empty() && rng.gen_bool(0.75) {
+        let index = rng.gen_range(0..available.len());
+        Expression::Signal {
+            name: available[index].clone(),
+        }
+    } else {
+        Expression::Constant {
+            value: rng.gen_range(-9..=9),
+        }
     }
 }
 

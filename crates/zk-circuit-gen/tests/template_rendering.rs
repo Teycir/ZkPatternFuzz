@@ -1,6 +1,11 @@
+use std::fs;
+
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use tempfile::tempdir;
 use zk_circuit_gen::{
-    parse_dsl_yaml, render_backend_template, Assignment, Backend, CircuitDsl, ConstraintEq,
-    Expression,
+    generate_bulk_corpus, generate_random_circuit_dsl, parse_dsl_yaml, render_backend_template,
+    Assignment, Backend, BulkGenerationConfig, CircuitDsl, ConstraintEq, Expression,
 };
 
 fn sample_dsl() -> CircuitDsl {
@@ -111,4 +116,59 @@ fn rejects_unassigned_output() {
     let error = render_backend_template(&dsl, Backend::Noir)
         .expect_err("unassigned output should fail validation");
     assert!(error.to_string().contains("never assigned"));
+}
+
+#[test]
+fn random_dsl_generation_renders_across_backends() {
+    let mut rng = StdRng::seed_from_u64(7);
+    for backend in Backend::ALL {
+        for ordinal in 0..32 {
+            let dsl = generate_random_circuit_dsl(&mut rng, backend, ordinal);
+            let rendered = render_backend_template(&dsl, backend).expect("rendered");
+            assert!(!rendered.trim().is_empty());
+        }
+    }
+}
+
+#[test]
+fn bulk_generator_writes_expected_files_and_report() {
+    let tmp = tempdir().expect("tempdir");
+    let mut config = BulkGenerationConfig::new(tmp.path());
+    config.circuits_per_backend = 5;
+    config.seed = 99;
+    config.backends = vec![Backend::Circom, Backend::Noir];
+
+    let report = generate_bulk_corpus(&config).expect("bulk generation");
+    assert_eq!(report.circuits_per_backend, 5);
+    assert_eq!(report.total_circuits, 10);
+    assert_eq!(report.backends.len(), 2);
+    assert!(report.report_path.exists());
+
+    for backend in [Backend::Circom, Backend::Noir] {
+        let dir = tmp.path().join(backend.as_str());
+        let entries = fs::read_dir(&dir)
+            .expect("read backend dir")
+            .map(|entry| entry.expect("entry").path())
+            .collect::<Vec<_>>();
+        let source_files = entries
+            .iter()
+            .filter(|path| {
+                path.extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext == backend.file_extension())
+                    .unwrap_or(false)
+            })
+            .count();
+        let dsl_files = entries
+            .iter()
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.ends_with(".dsl.json"))
+                    .unwrap_or(false)
+            })
+            .count();
+        assert_eq!(source_files, 5);
+        assert_eq!(dsl_files, 5);
+    }
 }
