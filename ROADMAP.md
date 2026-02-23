@@ -410,11 +410,11 @@ Inventory + matrix references:
 | Target ID | Repo Path | Backend | Circuit/Program Entry | Expected Class | Priority | Owner | Intake Status |
 |---|---|---|---|---|---|---|---|
 | EXT-001 | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/ArgMax.circom` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
-| EXT-002 | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_bulk_assignment.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-002 | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_bulk_assignment.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
 | EXT-003 | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_vuln_iszero.circom` | `vulnerable-ground-truth` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
 | EXT-004 | `/media/elements/Repos/zkml/orion` | `cairo` | `Scarb.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
 | EXT-005 | `/media/elements/Repos/zkml/ezkl` | `halo2` | `Cargo.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
-| EXT-006 | `/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits` | `halo2` | `zkevm-circuits/Cargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-006 | `/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits` | `halo2` | `zkevm-circuits/Cargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
 | EXT-007 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `docs/examples/circuits/hello_circuit/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
 | EXT-008 | `/media/elements/Repos/zkml/orion` | `cairo` | `tests/ml/linear_classifier_test.cairo` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
 | EXT-009 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `barretenberg/docs/examples/fixtures/main/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
@@ -432,13 +432,13 @@ Backend coverage snapshot (selected vs target floor=2):
 - [ ] Run backend maturity scorecard after each target-batch update (`scripts/backend_maturity_scorecard.sh --consecutive-days 14 --consecutive-target-score 5.0`).
 - [ ] Run backend effectiveness report on the latest outcomes (`python3 scripts/build_backend_effectiveness_report.py --repo-root .`).
 - [ ] Run release streak status wrapper after each manual validation batch (`scripts/run_release_streak_status.sh`).
-- [ ] Archive evidence paths for each batch under `artifacts/` and link them in the run ledger table.
+- [x] Archive evidence paths for each batch under `artifacts/` and link them in the run ledger table.
 
 #### 8.9.4 Manual Run Ledger
 | Run Date (UTC) | Batch ID | Targets Included | Command Profile | Total Runs | Completion Rate | Recall | Safe High-Conf FPR | Evidence Bundle | Gate Result |
 |---|---|---|---|---:|---:|---:|---:|---|---|
 | `2026-02-23` | `EXT-BATCH-001` | `EXT-001, EXT-003, EXT-004, EXT-005` | `evidence-strict (seed=42, iter=100000, timeout=300, workers=2)` | `3` | `0.67 (Step 0-5 complete; Step 6-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_001/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
-| `<YYYY-MM-DD>` | `EXT-BATCH-002` | `EXT-002, EXT-006` | `dev` | `0` | `0.00` | `0.00` | `0.00` | `artifacts/external_targets/ext_batch_002` | `[ ] pass / [ ] fail` |
+| `2026-02-23` | `EXT-BATCH-002` | `EXT-002, EXT-006` | `evidence-strict (seed=42, iter=100000, timeout=300, workers=2)` | `2` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_002/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `<YYYY-MM-DD>` | `EXT-BATCH-003` | `EXT-007, EXT-008, EXT-009` | `dev` | `0` | `0.00` | `0.00` | `0.00` | `artifacts/external_targets/ext_batch_003` | `[ ] pass / [ ] fail` |
 
 `EXT-BATCH-001` snapshot SHAs (`artifacts/external_targets/ext_batch_001/manifests/target_snapshot.json`):
@@ -447,11 +447,15 @@ Backend coverage snapshot (selected vs target floor=2):
 - `EXT-004`: `bac0b424fe08e0da9e2522a45d77c028acf47dcd`
 - `EXT-005`: `e196b111c1bafaa61b92ae431cd3c3fe9371da05`
 
+`EXT-BATCH-002` snapshot SHAs (`artifacts/external_targets/ext_batch_002/manifests/target_snapshot.json`):
+- `EXT-002`: `072bf1fbbd1c9ecad58d4f6d2204c3b96e7fec17`
+- `EXT-006`: `18f5bc268ca11988690c7cf59fc4615372ce99f2`
+
 #### 8.9.5 Logic Finding And Remediation Board
 | Finding ID | Target ID | Class | Severity | Repro Status | Owning Module | Fix Commit/PR | Verification Status |
 |---|---|---|---|---|---|---|---|
 | `EXT-FIND-001` | `EXT-001` | `logic` | `high` | `[ ] repro pending / [ ] reproduced` | `<module/path>` | `<hash-or-pr>` | `[ ] fixed / [ ] revalidated` |
-| `EXT-FIND-002` | `EXT-002` | `runtime` | `medium` | `[ ] repro pending / [ ] reproduced` | `<module/path>` | `<hash-or-pr>` | `[ ] fixed / [ ] revalidated` |
+| `EXT-FIND-002` | `EXT-002` | `compile-logic` | `high` | `[ ] repro pending / [x] reproduced` | `/media/elements/Repos/zkFuzz/tests/sample/test_bulk_assignment.circom:19` | `n/a (external target; triage artifact)` | `[ ] fixed / [ ] revalidated` |
 | `EXT-FIND-003` | `EXT-003` | `runtime-control` | `high` | `[ ] repro pending / [x] reproduced` | `src/fuzzer/engine/attack_runner_novel.rs`, `src/oracles/witness_collision.rs`, `src/fuzzer/engine/run_reporting.rs` | `working-tree patch (timeout budget + collision cap + timeout-aware finalization)` | `[x] fixed / [x] revalidated` |
 | `EXT-FIND-004` | `EXT-003` | `repro-evidence-gap` | `high` | `[ ] repro pending / [x] reproduced` | `report extraction flow` | `query schema alignment + exploit replay artifacts` | `[x] fixed / [x] revalidated` |
 
@@ -476,6 +480,8 @@ Flow checklist:
 - [ ] Step 8: Post-fix gate reruns (`scripts/backend_readiness_dashboard.sh`, `scripts/backend_maturity_scorecard.sh`, `python3 scripts/build_backend_effectiveness_report.py --repo-root .`, `scripts/run_release_streak_status.sh`).
 
 Current batch status (`EXT-BATCH-001`): Step 0-5 completed with archived artifacts. Latest evidence run completed at wall-clock budget with `status=completed_with_critical_findings`, `findings_total=1519`, `total_executions=5533` (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/run_outcome.json`). Picus verification is now wired and discovered from PATH (`/home/teycir/.local/bin/picus`); current formal outcome for `test_vuln_iszero.circom` is `UNKNOWN` (`artifacts/external_targets/ext_batch_001/logs/step4_verify_ext003_after_picus_classification_fix_escalated.log`). Deterministic exploit replay is now packaged and passing (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/replay_ext003_iszero_exploit.log`).
+
+Current batch status (`EXT-BATCH-002`): Step 0-3 completed with archived artifacts in `artifacts/external_targets/ext_batch_002/{logs,manifests,reports,repro}`. `EXT-002` failed at backend preflight with reproducible target compile error (`error[T3001] Out of bounds exception` in `test_bulk_assignment.circom:19`, `artifacts/external_targets/ext_batch_002/reports/run_signals/report_1771884140/misc/run_outcome.json`). `EXT-006` failed at backend preflight due offline toolchain fetch (`dns error` while rustup synced `nightly-2024-07-07`, `artifacts/external_targets/ext_batch_002/reports/run_signals/report_1771884148/misc/run_outcome.json`).
 
 Latest evidence severity breakdown (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/report.json`):
 - `critical=3`, `high=1`, `medium=1515`
