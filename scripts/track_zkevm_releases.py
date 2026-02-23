@@ -100,7 +100,7 @@ def _resolve_tag_commit(repo_path: Path, tag_name: str) -> str:
             f"Release tag '{tag_name}' was not found on origin remote for {repo_path}"
         )
 
-    # Prefer dereferenced annotated-tag commit (^{}), fallback to direct tag line.
+    # Prefer dereferenced annotated-tag commit (^{}), recovery to direct tag line.
     deref = [line for line in lines if line.endswith("^{}")]
     chosen = deref[0] if deref else lines[0]
     commit = chosen.split()[0]

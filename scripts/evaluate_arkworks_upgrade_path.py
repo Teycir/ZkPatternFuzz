@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 try:
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python <3.11 fallback
+except ModuleNotFoundError:  # pragma: no cover - Python <3.11 recovery
     import tomli as tomllib  # type: ignore
 
 

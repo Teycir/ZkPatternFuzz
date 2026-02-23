@@ -314,7 +314,7 @@ selector_policy:
 }
 
 #[test]
-fn run_doc_command_extraction_uses_context_fallback() {
+fn run_doc_command_extraction_uses_context_recovery() {
     let doc = serde_json::json!({
         "status": "panic",
         "context": {

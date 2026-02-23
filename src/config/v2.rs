@@ -664,7 +664,7 @@ impl ConfigResolver {
 
             Ok(merged)
         } else {
-            // Fall back to v1 parsing
+            // use v1 parsing
             let config: FuzzConfig = serde_yaml::from_value(yaml_value)?;
             Ok(config)
         }

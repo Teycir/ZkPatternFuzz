@@ -139,7 +139,7 @@ fn deserialize_finding_supports_phase3_and_advanced_attack_variants() {
                 "attack_type":"CircomStaticLint",
                 "severity":"high",
                 "description":"circom static lint test",
-                "location":"mock.circom:10",
+                "location":"sample.circom:10",
                 "poc_witness_a":[]
             }"#,
     )

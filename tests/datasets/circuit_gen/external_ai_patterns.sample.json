@@ -1,0 +1,44 @@
+{
+  "source": "external_ai_user",
+  "generated_at": "2026-02-23T00:00:00Z",
+  "notes": [
+    "patterns derived from external issue triage"
+  ],
+  "patterns": [
+    {
+      "pattern_id": "circom_deep_template_ice",
+      "rationale": "Stress recursive template expansion on known parser/optimizer crash paths.",
+      "issue_refs": [
+        "https://github.com/iden3/circom/issues/1234"
+      ],
+      "target_backends": [
+        "circom"
+      ],
+      "mutation_strategies": [
+        "deep_nesting",
+        "pathological_loops"
+      ],
+      "circuits_per_backend": 8,
+      "mutation_intensity": 4,
+      "priority": 5
+    },
+    {
+      "pattern_id": "noir_type_solver_overflow",
+      "rationale": "Exercise mixed-type interactions and wide constraints around type inference.",
+      "issue_refs": [
+        "https://github.com/noir-lang/noir/issues/6789"
+      ],
+      "target_backends": [
+        "noir",
+        "halo2"
+      ],
+      "mutation_strategies": [
+        "mixed_types",
+        "wide_constraints"
+      ],
+      "circuits_per_backend": 6,
+      "mutation_intensity": 3,
+      "priority": 4
+    }
+  ]
+}

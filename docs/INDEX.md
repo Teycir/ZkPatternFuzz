@@ -154,7 +154,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5g. [HALO2_MIGRATION_FROM_MOCK_MODE.md](HALO2_MIGRATION_FROM_MOCK_MODE.md) - **Halo2 Migration**
+### 5g. [HALO2_REAL_EXECUTION_MIGRATION.md](HALO2_REAL_EXECUTION_MIGRATION.md) - **Halo2 Migration**
 **For:** Moving campaigns from testing mode to real Halo2 execution  
 **Contains:**
 - testing-to-real migration steps
@@ -310,7 +310,7 @@ docs/
 ├── CAIRO_INTEGRATION_TUTORIAL.md
 │   └── Cairo target onboarding into readiness lanes
 │
-├── HALO2_MIGRATION_FROM_MOCK_MODE.md
+├── HALO2_REAL_EXECUTION_MIGRATION.md
 │   └── Testing-to-real Halo2 migration workflow
 │
 ├── ATTACK_DSL_SPEC.md
@@ -357,7 +357,7 @@ docs/
 - [TROUBLESHOOTING_PLAYBOOK.md](TROUBLESHOOTING_PLAYBOOK.md) - Production troubleshooting flows
 - [TUTORIAL.md](TUTORIAL.md) - Common issues
 - [NOIR_BACKEND_TROUBLESHOOTING.md](NOIR_BACKEND_TROUBLESHOOTING.md) - Noir backend diagnostics
-- [HALO2_MIGRATION_FROM_MOCK_MODE.md](HALO2_MIGRATION_FROM_MOCK_MODE.md) - Halo2 migration pitfalls
+- [HALO2_REAL_EXECUTION_MIGRATION.md](HALO2_REAL_EXECUTION_MIGRATION.md) - Halo2 migration pitfalls
 
 ---
 

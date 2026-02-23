@@ -1,6 +1,6 @@
-# Halo2 Migration Guide From Mock Mode
+# Halo2 Migration Guide From Legacy Test Mode
 
-Guide to move campaigns from mock execution into real Halo2-backed execution.
+Guide to move campaigns from legacy test execution into real Halo2-backed execution.
 
 ## 1. Why Migrate
 

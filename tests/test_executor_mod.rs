@@ -102,7 +102,7 @@ fn halo2_constraint_checks_with_json_spec() {
 }
 
 #[test]
-fn halo2_wire_label_fallback_for_metadata_only_json_spec() {
+fn halo2_wire_label_recovery_for_metadata_only_json_spec() {
     let json = r#"
         {
           "name": "minimal_halo2",
@@ -130,7 +130,7 @@ fn halo2_wire_label_fallback_for_metadata_only_json_spec() {
 }
 
 #[test]
-fn cairo_wire_label_fallback_covers_all_input_indices() {
+fn cairo_wire_label_recovery_covers_all_input_indices() {
     if CairoTarget::check_cairo_available().is_err() {
         return;
     }

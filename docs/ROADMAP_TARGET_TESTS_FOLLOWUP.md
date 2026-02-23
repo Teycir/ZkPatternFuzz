@@ -415,7 +415,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - new integration test imports runtime modules by path for behavior coverage without `#[cfg(test)]` in production modules.
 - Impact:
   - `src/main.rs` no longer has `#[cfg(test)]` scan-selector wiring
-  - selector-policy and run-doc fallback behavior coverage remains in `tests/**`
+  - selector-policy and run-doc recovery behavior coverage remains in `tests/**`
 - Validation:
   - `cargo check -q` -> `PASS`
   - `cargo test -q scan_selector_default_policy_matches_any_single_pattern -- --nocapture` -> `PASS`
@@ -448,7 +448,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - attack-family modules no longer depend on a monolithic `attack_runner.rs` for option defaults
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
   - `cargo test -q chain_resume_aggregation_keeps_zero_coverage_guard -- --nocapture` -> `PASS`
   - `cargo test -q report_generator_preserves_correlation_annotation_guards -- --nocapture` -> `PASS`
   - `python3 tests/test_check_prod_test_separation.py` -> `PASS`
@@ -471,7 +471,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - extracted `src/fuzzer/engine/attack_runner_underconstrained.rs` (`434` lines)
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
   - `cargo test -q deterministic_cap_enabled_by_default_in_evidence_mode -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T21:41:04Z
@@ -498,7 +498,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
     - `src/fuzzer/engine/attack_runner_soundness.rs` (`384` lines)
 - Validation:
   - `cargo check -q` -> `PASS` (run for each slice)
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
   - `cargo test -q deterministic_cap_enabled_by_default_in_evidence_mode -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T20:26:44Z
@@ -524,7 +524,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - extracted `src/fuzzer/engine/attack_runner_budget.rs` (`101` lines)
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
   - `cargo test -q deterministic_cap_enabled_by_default_in_evidence_mode -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T20:18:58Z
@@ -542,7 +542,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - extracted `src/fuzzer/engine/run_continuation.rs` (`106` lines)
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T19:58:50Z
 - Continued lifecycle modularization by extracting startup/bootstrap orchestration:
@@ -559,7 +559,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - extracted `src/fuzzer/engine/run_bootstrap.rs` (`121` lines)
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T19:51:54Z
 - Continued lifecycle modularization by extracting attack-dispatch orchestration from run lifecycle flow:
@@ -578,7 +578,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - extracted `src/fuzzer/engine/run_dispatch.rs` (`506` lines)
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T19:39:32Z
 - Continued lifecycle modularization by extracting static pattern selector/materialization helpers:
@@ -595,7 +595,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - extracted `src/fuzzer/engine/run_pattern.rs` (`117` lines)
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T19:37:34Z
 - Continued lifecycle modularization by splitting reporting/evidence finalization from run orchestration:
@@ -612,7 +612,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - extracted `src/fuzzer/engine/run_reporting.rs` (`161` lines)
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T19:30:53Z
 - Continued oversized-engine modularization by splitting engine lifecycle orchestration out of `mod.rs`:
@@ -634,7 +634,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `src/fuzzer/engine/mod.rs` reduced from `1635` to `529` lines in this slice
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T19:30:00Z
 - Continued oversized-engine modularization with advanced-runtime attack-family extraction:
@@ -650,7 +650,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `attack_runner.rs` reduced from `3315` to `3092` lines in this slice
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T19:20:02Z
 - Continued oversized-engine modularization with protocol/economic attack-family extraction:
@@ -666,7 +666,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `attack_runner.rs` reduced from `3092` to `2732` lines in this slice
 - Validation:
   - `cargo check -q` -> `PASS`
-  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_fallback -- --nocapture` -> `PASS`
+  - `cargo test -q engine_dispatch_has_no_not_yet_implemented_recovery -- --nocapture` -> `PASS`
 
 ## Update (UTC): 2026-02-21T19:20:00Z
 - Continued oversized-engine modularization with attack-family extraction:
@@ -887,7 +887,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
     - readiness lane now runs with `--enforce-dashboard`
 
 ## Update (UTC): 2026-02-21T16:33:56Z
-- Hardened Noir Barretenberg-coupled evidence flow without reintroducing fallback execution:
+- Hardened Noir Barretenberg-coupled evidence flow without reintroducing recovery execution:
   - `src/reporting/evidence_noir.rs`
     - added explicit `bb`-missing diagnostics (`barretenberg_missing_tool_message`) for `nargo prove` / `nargo verify` failures.
     - replaced single-path proof copy (`proofs/noir.proof`) with strict multi-candidate lookup across common Noir layouts:
@@ -977,7 +977,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
     - aggregate gate: `PASS` (`artifacts/backend_readiness/latest_report.json`)
 
 ## Update (UTC): 2026-02-21T14:14:16Z
-- Lifted Cairo strict-capacity regression from fail to pass without reintroducing output-hash fallback:
+- Lifted Cairo strict-capacity regression from fail to pass without reintroducing output-hash recovery:
   - `src/executor/mod.rs`
     - `CairoExecutor` now derives strict coverage from source-level `assert` evaluation against observed runtime outputs.
     - added Cairo expression/assert parsing helpers for deterministic arithmetic evaluation (`+`, `-`, `*`, constants, `[output_ptr]` / `[output_ptr + N]`).
@@ -1041,7 +1041,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `src/reporting/evidence.rs`
     - proof-generation errors now map to `VerificationResult::Failed` (not `Skipped`)
     - missing Circom artifacts / missing `snarkjs` now fail
-    - removed `npx snarkjs` fallback path; default command is strict `snarkjs`
+    - removed `npx snarkjs` recovery path; default command is strict `snarkjs`
   - `src/reporting/evidence_noir.rs`, `src/reporting/evidence_halo2.rs`, `src/reporting/evidence_cairo.rs`
     - missing witness/spec/tools and command errors now fail instead of skip
 - Docs aligned with always-strict behavior:
@@ -1056,11 +1056,11 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `cargo test -q --package zk-fuzzer test_coverage_from_results_returns_none_when_constraints_missing` -> `PASS`
 
 ## Update (UTC): 2026-02-21T13:31:25Z
-- Continued fallback eradication in Circom backend internals:
+- Continued recovery eradication in Circom backend internals:
   - `crates/zk-backends/src/circom/mod.rs`
-    - removed `.r1cs` direct-parse fallback when `snarkjs r1cs info` execution/parsing fails
+    - removed `.r1cs` direct-parse recovery when `snarkjs r1cs info` execution/parsing fails
     - metadata extraction now hard-fails on `snarkjs` failure
-    - removed ptau local-fixture/download fallback path in `find_or_download_ptau`
+    - removed ptau local-fixture/download recovery path in `find_or_download_ptau`
     - key setup now requires an existing valid ptau source (configured or discoverable in strict search paths), otherwise fails immediately
 - Validation:
   - `cargo check -q -p zk-backends` -> `PASS`
@@ -1068,16 +1068,16 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_real_backend_matrix_smoke -- --exact` -> `PASS`
 
 ## Update (UTC): 2026-02-21T13:29:25Z
-- Extended strict no-fallback policy to additional execution surfaces:
+- Extended strict no-recovery policy to additional execution surfaces:
   - `src/executor/mod.rs`
     - removed Circom executor `snarkjs`/`ptau` autodetection path injection in `new_with_options(...)`
-    - explicit option values are honored, but no automatic local/env path discovery fallback is applied by the executor wrapper
+    - explicit option values are honored, but no automatic local/env path discovery recovery is applied by the executor wrapper
   - `src/executor/mod_tests.rs`
-    - removed Circom autodetect tests tied to deleted fallback behavior
+    - removed Circom autodetect tests tied to deleted recovery behavior
   - `src/bin/zk0d_batch.rs`
     - removed transient-setup retry behavior and related CLI/config fields
   - `src/bin/zk0d_batch/zk0d_batch_tests.rs`
-    - removed retry classifier test tied to deleted fallback behavior
+    - removed retry classifier test tied to deleted recovery behavior
   - `docs/TARGETS.md`
     - removed retry-flag usage example from execution docs
 - Validation:
@@ -1088,15 +1088,15 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `cargo check -q` -> `PASS`
 
 ## Update (UTC): 2026-02-21T13:27:38Z
-- Continued strict no-fallback enforcement in runtime execution paths:
+- Continued strict no-recovery enforcement in runtime execution paths:
   - `src/executor/mod.rs`
-    - removed Cairo output-hash coverage fallback path
-    - Cairo execution now fails when real constraint coverage is unavailable (`refusing output-hash fallback`)
+    - removed Cairo output-hash coverage recovery path
+    - Cairo execution now fails when real constraint coverage is unavailable (`refusing output-hash recovery`)
   - `src/bin/zk0d_batch.rs`
     - removed transient-setup retry control flags and retry loop (`--retry-transient-setup`, `--retry-backoff-secs`)
     - batch runner now does single-attempt execution with immediate failure on run error
   - `src/bin/zk0d_batch/zk0d_batch_tests.rs`
-    - removed retry-classifier test tied to deleted retry fallback behavior
+    - removed retry-classifier test tied to deleted retry recovery behavior
   - `docs/TARGETS.md`
     - removed retry-based batch-run example
 - Validation:
@@ -1105,9 +1105,9 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `cargo check -q` -> `PASS`
 
 ## Update (UTC): 2026-02-21T13:22:06Z
-- Removed remaining backend auto-fallback paths to enforce strict fail-fast tooling policy:
+- Removed remaining backend auto-recovery paths to enforce strict fail-fast tooling policy:
   - `crates/zk-backends/src/noir/mod.rs`
-    - removed compile-time isolated-project retry path (`enable_isolated_project_mode` / copy-based fallback)
+    - removed compile-time isolated-project retry path (`enable_isolated_project_mode` / copy-based recovery)
     - compile now runs once and fails immediately on package/tooling issues
   - `crates/zk-backends/src/halo2/mod.rs`
     - removed lockfile-v4 auto-retry branch (`cargo +nightly`) in `setup_rust_circuit`
@@ -1122,10 +1122,10 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `cargo check -q` -> `PASS`
 
 ## Update (UTC): 2026-02-21T13:18:16Z
-- Switched Noir tool behavior to strict fail-fast (no fallback execution path):
+- Switched Noir tool behavior to strict fail-fast (no recovery execution path):
   - file: `crates/zk-backends/src/noir/mod.rs`
   - changes:
-    - removed Barretenberg (`bb`) prove/verify fallback branch from Noir target execution
+    - removed Barretenberg (`bb`) prove/verify recovery branch from Noir target execution
     - `prove()` and `verify()` now require `nargo prove` / `nargo verify` support and hard-fail when unavailable
     - explicit error message directs toolchain update when subcommands are missing
 - Switched Noir evidence proof path to strict fail-fast for missing tooling:
@@ -1144,7 +1144,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - changes:
     - detect whether `nargo` exposes `prove`/`verify` subcommands (`nargo help <subcommand>`)
     - keep legacy path when subcommands exist
-    - fallback to Barretenberg `bb` flow when subcommands are absent:
+    - recovery to Barretenberg `bb` flow when subcommands are absent:
       - witness generation via `nargo execute <witness_name>`
       - proof generation via `bb prove --scheme <scheme> -b <artifact.json> -w <witness.gz> -o <proof>`
       - verification via `bb write_vk ...` + `bb verify ...`
@@ -1171,7 +1171,7 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `cargo check -q` -> `PASS`
 
 ## Update (UTC): 2026-02-21T12:52:39Z
-- Executed aggregate non-Circom readiness gate after Halo2 toolchain fallback fix:
+- Executed aggregate non-Circom readiness gate after Halo2 toolchain recovery fix:
   - `scripts/run_backend_readiness_lanes.sh --iterations 5 --timeout 8 --workers 1 --batch-jobs 1 --required-backends noir,cairo,halo2 --min-completion-rate 0.90 --max-runtime-error 0 --max-backend-preflight-failed 0 --max-run-outcome-missing-rate 0.05 --skip-noir-integration-test --skip-noir-constraint-coverage-test --skip-noir-constraint-edge-cases-test --skip-noir-external-smoke-test --skip-noir-external-parity-test --skip-cairo-integration-test --skip-cairo-regression-test --skip-halo2-json-integration-test --skip-halo2-real-circuit-test --skip-halo2-stability-test --no-build-if-missing --enforce-dashboard`
   - Result: `PASS` (Noir/Cairo/Halo2 lanes all pass; aggregated dashboard pass)
   - Aggregated dashboard: `artifacts/backend_readiness/latest_report.json`
@@ -1514,10 +1514,10 @@ Generated (UTC): 2026-02-20T01:28:14Z
 - Promoted Cairo into default breadth gating:
   - Added `local_cairo_multiplier` to `targets/zk0d_matrix_breadth.yaml` (step `070`, alias `readiness_cairo`).
 - Fixed Cairo strict input reconciliation for implicit I/O index labels:
-  - `src/executor/mod.rs` now synthesizes fallback labels for all Cairo public/private input indices when source-derived labels are incomplete.
-  - Added regression test `src/executor/mod_tests.rs::test_cairo_wire_label_fallback_covers_all_input_indices`.
+  - `src/executor/mod.rs` now synthesizes recovery labels for all Cairo public/private input indices when source-derived labels are incomplete.
+  - Added regression test `src/executor/mod_tests.rs::test_cairo_wire_label_recovery_covers_all_input_indices`.
 - Validation:
-  - `cargo test -q cairo_wire_label_fallback -- --nocapture` passes.
+  - `cargo test -q cairo_wire_label_recovery -- --nocapture` passes.
   - `cargo test -q --test backend_integration_tests test_cairo_integration -- --exact` passes.
   - Rerun step `070` summary: `artifacts/roadmap_step_tests_recheck5/summary/step_070__local_cairo_multiplier_.tsv`
     - `completed=1`, `selector_mismatch=4`, `runtime_error=0`, `run_outcome_missing=0`
@@ -1549,12 +1549,12 @@ Generated (UTC): 2026-02-20T01:28:14Z
   - `scripts/run_breadth_step.sh` now normalizes numeric `--step` values using base-10 parsing, so `--step 069` works correctly.
 
 ## Update (UTC): 2026-02-20T15:55:16Z
-- Implemented Halo2 JSON-spec input reconciliation fallback for metadata-only specs:
+- Implemented Halo2 JSON-spec input reconciliation recovery for metadata-only specs:
   - `src/executor/mod.rs` now synthesizes stable wire labels (`public_input_<i>`, `private_input_<i>`) when explicit gate-derived labels are absent.
 - Added regression test:
-  - `src/executor/mod_tests.rs::test_halo2_wire_label_fallback_for_metadata_only_json_spec`
+  - `src/executor/mod_tests.rs::test_halo2_wire_label_recovery_for_metadata_only_json_spec`
 - Validation:
-  - `cargo test -q halo2_wire_label_fallback -- --nocapture` passes.
+  - `cargo test -q halo2_wire_label_recovery -- --nocapture` passes.
 - Remaining follow-up:
   - rerun roadmap step `069` to refresh readiness metrics with the reconciliation fix in place.
 

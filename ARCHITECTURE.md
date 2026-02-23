@@ -496,7 +496,7 @@ pub fn my_mutation(input: &[FieldElement], rng: &mut impl Rng) -> Vec<FieldEleme
 ### Bottlenecks
 
 1. **Circuit Execution**: Dominates runtime (90%+)
-   - Mitigation: Parallel workers, fast mock mode
+   - Mitigation: Parallel workers, fast fixture mode
 
 2. **Corpus Lock Contention**: High with many workers
    - Mitigation: Read-heavy workload, batch updates
@@ -515,7 +515,7 @@ pub fn my_mutation(input: &[FieldElement], rng: &mut impl Rng) -> Vec<FieldEleme
 
 ### Unit Tests
 - Individual components in isolation
-- Mock dependencies
+- Fixture dependencies
 - Fast execution (<1s per test)
 
 ### Integration Tests

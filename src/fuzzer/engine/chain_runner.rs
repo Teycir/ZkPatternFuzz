@@ -870,13 +870,13 @@ impl FuzzingEngine {
 
             if constraints.is_empty() {
                 tracing::error!(
-                    "Missing constraint coverage for chain step {} ('{}'); refusing fallback hashing",
+                    "Missing constraint coverage for chain step {} ('{}'); refusing recovery hashing",
                     step.step_index,
                     step.circuit_ref
                 );
                 anyhow::bail!(
                     "Missing constraint coverage for chain step {} ('{}'). \
-                     Chain coverage requires real constraint hits and cannot fall back to output hashing.",
+                     Chain coverage requires real constraint hits and cannot use output hashing.",
                     step.step_index,
                     step.circuit_ref
                 );

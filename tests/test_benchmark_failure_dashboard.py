@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
+from contextlib import contextmanager
 import importlib.util
 import os
 from pathlib import Path
 import unittest
-from unittest import mock
 
 
 def _load_dashboard_module():
@@ -20,48 +20,56 @@ def _load_dashboard_module():
 dashboard = _load_dashboard_module()
 
 
+@contextmanager
+def _patched_env(overrides=None, clear=False):
+    original = os.environ.copy()
+    try:
+        if clear:
+            os.environ.clear()
+        if overrides:
+            os.environ.update(overrides)
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(original)
+
+
 class FailureDashboardThresholdTests(unittest.TestCase):
     def test_resolve_thresholds_defaults(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with _patched_env({}, clear=True):
             resolved = dashboard._resolve_thresholds([])
         self.assertEqual(resolved, dashboard.CLASS_THRESHOLDS)
 
     def test_resolve_thresholds_env_override(self):
-        with mock.patch.dict(
-            os.environ, {"ZKF_FAILURE_MAX_RATE_SETUP_TOOLING": "0.20"}, clear=True
-        ):
+        with _patched_env({"ZKF_FAILURE_MAX_RATE_SETUP_TOOLING": "0.20"}, clear=True):
             resolved = dashboard._resolve_thresholds([])
         self.assertEqual(resolved["setup_tooling"], 0.20)
         self.assertEqual(resolved["timeouts"], dashboard.CLASS_THRESHOLDS["timeouts"])
 
     def test_resolve_thresholds_cli_overrides_env(self):
-        with mock.patch.dict(
-            os.environ, {"ZKF_FAILURE_MAX_RATE_SETUP_TOOLING": "0.20"}, clear=True
-        ):
+        with _patched_env({"ZKF_FAILURE_MAX_RATE_SETUP_TOOLING": "0.20"}, clear=True):
             resolved = dashboard._resolve_thresholds(["setup_tooling=0.25"])
         self.assertEqual(resolved["setup_tooling"], 0.25)
 
     def test_resolve_thresholds_invalid_env_value(self):
-        with mock.patch.dict(
-            os.environ, {"ZKF_FAILURE_MAX_RATE_SETUP_TOOLING": "invalid"}, clear=True
-        ):
+        with _patched_env({"ZKF_FAILURE_MAX_RATE_SETUP_TOOLING": "invalid"}, clear=True):
             with self.assertRaisesRegex(ValueError, r"\$ZKF_FAILURE_MAX_RATE_SETUP_TOOLING"):
                 dashboard._resolve_thresholds([])
 
     def test_resolve_thresholds_invalid_cli_class(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with _patched_env({}, clear=True):
             with self.assertRaisesRegex(ValueError, r"Unknown failure class"):
                 dashboard._resolve_thresholds(["not_a_class=0.2"])
 
     def test_resolve_thresholds_invalid_cli_format(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with _patched_env({}, clear=True):
             with self.assertRaisesRegex(ValueError, r"expected CLASS=RATE"):
                 dashboard._resolve_thresholds(["setup_tooling"])
 
     def test_dashboard_output_schema_stable(self):
         summary = {"generated_utc": "2026-02-18T00:00:00Z", "total_runs": 10}
         outcomes = [{"reason_counts": {"none": 10}}]
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with _patched_env({}, clear=True):
             thresholds = dashboard._resolve_thresholds([])
         payload = dashboard._dashboard(
             summary,

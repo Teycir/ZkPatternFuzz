@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Core Features
 - Coverage-guided fuzzing engine with parallel execution
-- Support for 5 ZK backends: Circom, Noir, Halo2, Cairo, Mock
+- Support for 4 production ZK backends: Circom, Noir, Halo2, Cairo
 - Power scheduling algorithms (FAST, COE, EXPLORE, MMOPT, RARE, SEEK)
 - Structure-aware mutation for ZK-specific data types
 - Corpus management with automatic minimization
@@ -86,7 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Stone-prover integration
   - Execution trace generation
   - Hint detection
-- **Mock**: Testing backend
+- **Fixture**: Testing utility (unit tests only)
   - Configurable constraints
   - Deterministic execution
   - Underconstrained simulation

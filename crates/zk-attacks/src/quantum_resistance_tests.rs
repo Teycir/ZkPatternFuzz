@@ -15,7 +15,7 @@ fn quantum_resistance_scans_source_patterns() {
     let attack = QuantumResistanceAttack::new(QuantumResistanceConfig::default());
     let findings = attack.scan_source(
         "component Main { signal input sig; // uses ecdsa_verify helper }",
-        Some("mock.circom".to_string()),
+        Some("sample.circom".to_string()),
         &[FieldElement::from_u64(1)],
     );
 
@@ -30,7 +30,7 @@ fn quantum_resistance_uses_word_boundary_matching() {
     let attack = QuantumResistanceAttack::new(QuantumResistanceConfig::default());
     let findings = attack.scan_source(
         "template Main() { signal input x; // brsa and ecdsa_verifyx are not primitives }",
-        Some("mock.circom".to_string()),
+        Some("sample.circom".to_string()),
         &[FieldElement::from_u64(1)],
     );
 

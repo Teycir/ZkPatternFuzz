@@ -133,7 +133,7 @@ impl FuzzingEngine {
                         .collect()
                 })
             } else {
-                // Fall back to rayon global pool, still parallel.
+                // use rayon global pool, still parallel.
                 test_cases
                     .par_iter()
                     .enumerate()
@@ -365,7 +365,7 @@ impl FuzzingEngine {
         }
         if witnesses.is_empty() {
             tracing::warn!(
-                "Skipping non-native field oracle: no witness samples available after fallback generation"
+                "Skipping non-native field oracle: no witness samples available after recovery generation"
             );
             return Ok(());
         }

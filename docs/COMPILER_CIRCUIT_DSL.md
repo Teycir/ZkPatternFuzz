@@ -100,8 +100,74 @@ Defaults:
 - `BACKENDS=circom,noir,halo2,cairo`
 - `SEED=1337`
 - output root: `artifacts/circuit_gen/bulk_latest`
+- no mutation strategies enabled by default
 
 Artifacts:
 - `<output>/circom/*.circom`, `<output>/noir/*.nr`, `<output>/halo2/*.rs`, `<output>/cairo/*.cairo`
 - `<output>/<backend>/*.dsl.json` source DSL payloads
 - `<output>/latest_report.json` generation summary
+
+## Mutation Strategies
+
+Enable mutation variants during generation with:
+
+```bash
+MUTATION_STRATEGIES=deep_nesting,wide_constraints,pathological_loops,mixed_types,malformed_ir \
+MUTATION_INTENSITY=3 \
+scripts/run_circuit_gen_bulk_sample.sh
+```
+
+Implemented strategies:
+- `deep_nesting`: deep arithmetic expression chains (stack/recursion pressure)
+- `wide_constraints`: large batches of extra equality constraints (memory/optimizer pressure)
+- `pathological_loops`: backend-specific high-iteration loop snippets (compiler pass stress)
+- `mixed_types`: backend-specific type-mixing snippets (`Field`/integer or felt/u128 boundaries)
+- `malformed_ir`: deliberately broken token injection (`@@MALFORMED_IR@@`) for parser/validator fail paths
+
+## External AI Adversarial Pattern Flow
+
+The generator supports external AI as a producer of adversarial pattern bundles.
+No in-process AI API calls are used; the operator supplies JSON.
+
+Run sample flow:
+
+```bash
+scripts/run_circuit_gen_adversarial_sample.sh
+```
+
+Core entrypoint:
+
+```bash
+cargo run -q -p zk-circuit-gen --example generate_adversarial_corpus -- \
+  --patterns-json tests/datasets/circuit_gen/external_ai_patterns.sample.json \
+  --feedback-json tests/datasets/circuit_gen/external_ai_feedback.sample.json \
+  --output-dir artifacts/circuit_gen/adversarial_sample
+```
+
+Generated artifacts:
+- `<output>/effective_patterns.json` (post-feedback evolved bundle)
+- `<output>/<pattern_id>/<backend>/*` generated circuits and DSL payloads
+- `<output>/latest_report.json` summary of counts per pattern/backend
+
+### Pattern Bundle Schema (JSON)
+
+- `source`: producer identity (for example `external_ai_user`)
+- `generated_at`: timestamp string
+- `patterns[]`:
+  - `pattern_id`: stable identifier
+  - `rationale`: why this should trigger compiler edge behavior
+  - `issue_refs[]`: issue links/ids used by external AI analysis
+  - `target_backends[]`: any of `circom|noir|halo2|cairo`
+  - `mutation_strategies[]`: optional strategy list
+  - `circuits_per_backend`: base circuits per backend
+  - `mutation_intensity`: intensity for mutation rendering
+  - `priority`: optional scheduling priority
+
+### Feedback Evolution
+
+`generate_adversarial_corpus` accepts optional feedback JSON (`PatternFeedbackBatch`) and
+updates priority/intensity from compiler outcomes:
+
+- crash-like outcomes (`crash`, `timeout`, `internal_compiler_error`) raise priority
+- crash-like outcomes increase `mutation_intensity` and `circuits_per_backend`
+- patterns are re-sorted by priority before generation

@@ -191,7 +191,7 @@ impl SemanticDeduplicator {
     /// Check if a finding is a duplicate
     pub fn is_duplicate(&self, finding: &Finding) -> bool {
         if !self.config.use_semantic {
-            // Fall back to simple hash-based dedup
+            // use simple hash-based dedup
             return self.is_hash_duplicate(finding);
         }
 

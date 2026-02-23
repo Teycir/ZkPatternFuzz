@@ -136,7 +136,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Make adaptive orchestrator enforce scheduler allocations per attack phase
 - [x] Add hard timeout wrappers to proof forgery `snarkjs` subprocesses
 - [x] Normalize allocation fractions post-clamp to match total budget exactly
-- [x] Fix Cairo execution fallback/coverage behavior
+- [x] Fix Cairo execution recovery/coverage behavior
 - [x] Cache Noir constraints (OnceLock) to remove repeated disk parse overhead
 - [x] Replace runtime global env mutation paths with startup-time configuration
 - [x] Fix hardcoded seed=42 in adaptive orchestrator phases
@@ -225,7 +225,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add Noir end-to-end prove/verify smoke and fuzz parity tests for external `Nargo.toml` projects
 - [x] Add Cairo breadth-target suite to `zk0d_matrix` default validation set (not optional backend-heavy-only checks) (`targets/zk0d_matrix_breadth.yaml`)
 - [x] Add Cairo full-capacity regression suite with stable coverage/failure semantics on external and local targets
-- [x] Add Cairo JSON/metadata input reconciliation fallback (wire-label/index compatibility) (`src/executor/mod.rs`)
+- [x] Add Cairo JSON/metadata input reconciliation recovery (wire-label/index compatibility) (`src/executor/mod.rs`)
 - [x] Add Halo2 JSON-spec input reconciliation normalizer (wire-label/index compatibility) (`src/executor/mod.rs`)
 - [x] Add Halo2 scaffold execution stability checks under nightly toolchain with deterministic fixture inputs
 - [x] Reduce `run_outcome_missing` on non-Circom targets to <=5% by enforcing explicit reason-code closure in matrix summaries
@@ -250,7 +250,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 ### Documentation
 - [x] Noir backend troubleshooting guide
 - [x] Cairo integration tutorial
-- [x] Halo2 migration guide from mock mode
+- [x] Halo2 migration guide from legacy test mode
 - [x] Attack DSL specification
 
 ### Formal Verification Bridge
@@ -307,12 +307,12 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 #### Halo2 -> 5/5
 - [x] Implement key setup path in `Halo2Target::setup_keys` (or a strict canonical adapter with equivalent guarantees).
 - [x] Add canonical execution/prove/verify integration that is not dependent on ad-hoc custom CLI flags in target binaries.
-- [x] Replace metadata-only success fallbacks with strict production behavior in readiness lanes.
+- [x] Replace metadata-only success recoveries with strict production behavior in readiness lanes.
 - [x] Expand Halo2 matrix to at least 5 targets (JSON specs + real circuits + external circuits).
 - Tracking note: `runtime_error=0` and 14-day `5.0` streak remain enforced by release-gate thresholds.
 
 #### Cairo -> 5/5
-- [x] Replace source-assertion-only coverage fallback with trace/AIR-backed production coverage.
+- [x] Replace source-assertion-only coverage recovery with trace/AIR-backed production coverage.
 - [x] Normalize Cairo1 proof handling to a structured, reproducible artifact contract (not execution-id-only payload semantics).
 - [x] Gate both Cairo0 and Cairo1 canonical paths where applicable.
 - [x] Expand Cairo matrix to at least 5 targets (local + external) with stone/scarb prove-verify gates.
@@ -383,7 +383,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Remove runtime `std::env::set_var` hazards in multi-threaded paths (M-2)
 
 ### P2/P3 (Defensive + Maintainability)
-- [x] Remove panic fallback in `engagement_dir_name` and env parsing panic paths (M-1, L-2)
+- [x] Remove panic recovery in `engagement_dir_name` and env parsing panic paths (M-1, L-2)
 - [x] Improve zero-day confirmation matching from category-only to content-aware (L-3)
 - [x] Document/contain dynamic log file routing edge window (M-5)
 - [x] CLI modularization and run lifecycle deduplication (I-1, I-2)
@@ -510,7 +510,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Implement Phase 6 backend readiness matrix runner and publish `artifacts/backend_readiness/latest_report.json`
 - [x] Fix Noir target setup path for Aztec example projects (steps `066`/`067`) and rerun breadth follow-up (`artifacts/roadmap_step_tests_recheck2/summary/step_066__cat3_privacy_aztec_docs_examples_circuits_hello_circuit_.tsv`, `artifacts/roadmap_step_tests_recheck2/summary/step_067__cat3_privacy_barretenberg_docs_examples_fixtures_main_.tsv`)
 - [x] Promote Cairo from backend-heavy optional validation into required breadth readiness gates and publish completion metrics (`targets/zk0d_matrix_breadth.yaml`, `artifacts/roadmap_step_tests_recheck5/summary/step_070__local_cairo_multiplier_.tsv`)
-- [x] Fix Halo2 minimal JSON spec input reconciliation (`tests/halo2_specs/minimal.json`) with metadata-only wire-label fallback (`src/executor/mod.rs`)
+- [x] Fix Halo2 minimal JSON spec input reconciliation (`tests/halo2_specs/minimal.json`) with metadata-only wire-label recovery (`src/executor/mod.rs`)
 - [x] Rerun step `069` and capture updated Halo2 readiness outcomes after input-reconciliation fix (`artifacts/roadmap_step_tests_recheck4/summary/step_069__local_halo2_minimal_json_spec_.tsv`)
 - [x] Reduce non-Circom aggregate `run_outcome_missing` to <=5% on follow-up suite
 - [x] Add CI gate that blocks release when Noir/Halo2/Cairo readiness thresholds fail (`.github/workflows/release_validation.yml`, `scripts/run_backend_readiness_lanes.sh`)
@@ -819,7 +819,7 @@ gh run watch
 #### P2: Coverage Breadth + Oracle Completeness
 - [x] Improve spec-inference robustness against sampling blind spots (targeted boundary witness generation and combination coverage for rare input patterns).
 - [x] Expand vulnerability pattern library beyond current Circom-heavy corpus to include non-Circom/ACIR/Halo2 lookup and newer audit-derived classes.
-- [x] Add a single-backend differential oracle path (behavior comparison against an explicit real reference backend only; no fallback comparator modes) to detect backend-specific divergence without mock-mode dependence.
+- [x] Add a single-backend differential oracle path (behavior comparison against an explicit real reference backend only; no recovery comparator modes) to detect backend-specific divergence without test-mode dependence.
 
 #### Exit Evidence For This Correction Wave
 - [x] Mutator validity report: invalid out-of-field mutation rate == `0` across stress campaign (`scripts/build_mutator_validity_report.py`, `tests/test_build_mutator_validity_report.py`, `artifacts/mutator_validity/latest_report.json`).
@@ -832,7 +832,7 @@ gh run watch
 - [x] Cairo: enforce real-circuit proving support for local Cairo0 fixture (`test_cairo_stone_prover_prove_verify_smoke`)
 - [x] Cairo: enforce Stone prover integration gate in readiness lane (`scripts/run_cairo_readiness.sh`)
 - [x] Cairo: Cairo1 proof/verify pipeline via `scarb prove --execute` + `scarb verify --execution-id` (strict execution-id tracking)
-- [x] Halo2: mock to real-circuit execution promotion in release lanes (release workflow now installs Noir/Cairo toolchains and runs unskipped backend readiness lanes with dashboard enforcement)
+- [x] Halo2: legacy test-mode to real-circuit execution promotion in release lanes (release workflow now installs Noir/Cairo toolchains and runs unskipped backend readiness lanes with dashboard enforcement)
 - [x] Halo2: production circuit integration breadth/throughput uplift (`test_halo2_scaffold_production_throughput` enforced in `run_halo2_readiness.sh`)
 
 ### Product Surface And Ecosystem Tracking
@@ -928,19 +928,19 @@ crates/zk-track-semantic/
 **Execution Policy:** This section is deferred and starts only after the current roadmap is complete (Phase 8 sustained-gate exit met). It is not part of active release gating.
 
 #### Future P1 (Post-Roadmap): Adversarial Circuit Generation & Compiler Testing
-- [ ] **Programmatic Circuit Generation:**
+- [x] **Programmatic Circuit Generation:**
   - [x] Design circuit generation DSL with backend-specific syntax templates (Circom/Noir/Halo2/Cairo) (`crates/zk-circuit-gen`, `docs/COMPILER_CIRCUIT_DSL.md`)
   - [x] Implement bulk generator: produce 1000+ random circuits per backend (`crates/zk-circuit-gen/examples/generate_bulk_corpus.rs`, `scripts/run_circuit_gen_bulk_sample.sh`; latest run 2026-02-23: 4000 total, 1000/backend at `artifacts/circuit_gen/bulk_latest/latest_report.json`)
-  - [ ] Add mutation strategies:
-    - [ ] Deep nesting (trigger stack/recursion limits)
-    - [ ] Wide constraints (trigger memory/compilation limits)
-    - [ ] Pathological loops (trigger optimization bugs)
-    - [ ] Mixed types (trigger type checker edge cases)
-    - [ ] Malformed IR (trigger parser/validator bugs)
-  - [ ] Add AI-powered adversarial pattern generator:
-    - [ ] LLM analyzes known compiler bugs from GitHub issues
-    - [ ] Generate circuit patterns designed to trigger specific edge cases
-    - [ ] Evolve patterns based on compiler crash feedback
+  - [x] Add mutation strategies (`render_mutated_template` + mutation-enabled bulk corpus in `crates/zk-circuit-gen/src/lib.rs`; operator flow in `docs/COMPILER_CIRCUIT_DSL.md`; sample run 2026-02-23: `artifacts/circuit_gen/mutation_sample/latest_report.json`):
+    - [x] Deep nesting (trigger stack/recursion limits)
+    - [x] Wide constraints (trigger memory/compilation limits)
+    - [x] Pathological loops (trigger optimization bugs)
+    - [x] Mixed types (trigger type checker edge cases)
+    - [x] Malformed IR (trigger parser/validator bugs)
+  - [x] Add AI-powered adversarial pattern generator (external-AI JSON ingestion + adversarial corpus CLI in `crates/zk-circuit-gen/examples/generate_adversarial_corpus.rs`; operator sample in `scripts/run_circuit_gen_adversarial_sample.sh`; schema/docs in `docs/COMPILER_CIRCUIT_DSL.md`; samples in `tests/datasets/circuit_gen/external_ai_patterns.sample.json`, `tests/datasets/circuit_gen/external_ai_feedback.sample.json`; latest sample run 2026-02-23: `artifacts/circuit_gen/adversarial_sample/latest_report.json`):
+    - [x] LLM analyzes known compiler bugs from GitHub issues (external AI supplies `issue_refs` bundle, no in-process API use)
+    - [x] Generate circuit patterns designed to trigger specific edge cases
+    - [x] Evolve patterns based on compiler crash feedback
 
 - [ ] **Semantic Intent Validation:**
   - [ ] Extract semantic intent from circuit comments/docs

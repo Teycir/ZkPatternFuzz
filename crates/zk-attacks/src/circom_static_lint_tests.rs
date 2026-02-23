@@ -34,7 +34,7 @@ component main = Main();
 "#;
 
     let lint = CircomStaticLint::new(CircomStaticLintConfig::default());
-    let findings = lint.scan_source(source, Some("mock.circom".to_string()));
+    let findings = lint.scan_source(source, Some("test.circom".to_string()));
     assert!(!findings.is_empty());
     assert!(findings
         .iter()
@@ -79,7 +79,7 @@ component main = Main();
         max_findings_per_check: 10,
         case_sensitive: false,
     });
-    let findings = lint.scan_source(source, Some("mock.circom".to_string()));
+    let findings = lint.scan_source(source, Some("test.circom".to_string()));
 
     assert!(findings.iter().any(|finding| {
         finding
@@ -113,7 +113,7 @@ component main = Main();
         max_findings_per_check: 10,
         case_sensitive: false,
     });
-    let findings = lint.scan_source(source, Some("mock.circom".to_string()));
+    let findings = lint.scan_source(source, Some("test.circom".to_string()));
     assert!(
         findings.is_empty(),
         "commented-out risky patterns should not trigger findings, got {:?}",

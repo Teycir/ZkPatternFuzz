@@ -20,7 +20,7 @@ def _write_matrix(path: Path, enabled_targets: int = 5) -> None:
         lines.extend(
             [
                 f"  - name: target_{i}",
-                f"    target_circuit: tests/mock_target_{i}",
+                f"    target_circuit: tests/fixture_target_{i}",
                 "    enabled: true",
             ]
         )
@@ -41,7 +41,7 @@ def _write_backend_report(
             "exit_code": 0,
             "reason_counts": reason_counts,
         },
-        "integration_tests": [{"name": "mock", "status": "pass"}],
+        "integration_tests": [{"name": "fixture", "status": "pass"}],
     }
     report_path = readiness_root / backend / "latest_report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)

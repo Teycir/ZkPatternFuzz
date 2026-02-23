@@ -588,8 +588,8 @@ impl FuzzingEngine {
         let mut out = baseline_inputs.to_vec();
         for (input_idx, value) in out.iter_mut().enumerate() {
             let wire_idx = wire_indices.get(input_idx).copied().unwrap_or(input_idx);
-            let fallback = format!("w_{}", wire_idx);
-            if let Some(candidate) = assignments.get(&fallback) {
+            let recovery = format!("w_{}", wire_idx);
+            if let Some(candidate) = assignments.get(&recovery) {
                 *value = candidate.clone();
                 continue;
             }
@@ -710,7 +710,7 @@ impl FuzzingEngine {
         let oracle = ConstraintSliceOracle::new().with_samples(samples_per_cone);
 
         // Generate a base witness that successfully executes.
-        // Start with fresh generation, then fall back to corpus-derived witnesses.
+        // Start with fresh generation, then use corpus-derived witnesses.
         let mut base_witness_inputs: Option<Vec<FieldElement>> = None;
         let attempts = base_witness_attempts.max(1);
         for _ in 0..attempts {
@@ -733,14 +733,14 @@ impl FuzzingEngine {
             for witness in self.collect_corpus_inputs(corpus_probe_count) {
                 if self.wall_clock_timeout_reached() {
                     tracing::warn!(
-                        "Stopping constraint-slice corpus witness fallback early: wall-clock timeout reached"
+                        "Stopping constraint-slice corpus witness recovery early: wall-clock timeout reached"
                     );
                     break;
                 }
                 let result = self.executor.execute_sync(&witness);
                 if result.success {
                     tracing::info!(
-                        "Constraint-slice base witness recovered via corpus fallback (probe_count={})",
+                        "Constraint-slice base witness recovered via corpus recovery (probe_count={})",
                         corpus_probe_count
                     );
                     base_witness_inputs = Some(witness);
@@ -751,7 +751,7 @@ impl FuzzingEngine {
 
         let Some(base_witness_inputs) = base_witness_inputs else {
             tracing::warn!(
-                "Skipping constraint slice attack: failed to find a valid base witness after {} generated attempts plus corpus fallback",
+                "Skipping constraint slice attack: failed to find a valid base witness after {} generated attempts plus corpus recovery",
                 attempts,
             );
             return Ok(());

@@ -322,7 +322,7 @@ impl FuzzingEngine {
 
             let reference_backend = reference_backend.ok_or_else(|| {
                 anyhow::anyhow!(
-                    "Single-backend differential requires explicit cross_backend.reference_backend; fallback comparators are disallowed"
+                    "Single-backend differential requires explicit cross_backend.reference_backend; recovery comparators are disallowed"
                 )
             })?;
             let reference_circuit_path = reference_circuit_path

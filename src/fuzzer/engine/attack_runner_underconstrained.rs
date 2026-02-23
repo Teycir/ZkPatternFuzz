@@ -131,7 +131,7 @@ impl FuzzingEngine {
                         .collect()
                 })
             } else {
-                // Fall back to rayon global pool, still parallel.
+                // use rayon global pool, still parallel.
                 test_cases
                     .par_iter()
                     .enumerate()

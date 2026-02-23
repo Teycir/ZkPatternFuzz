@@ -303,7 +303,7 @@ async fn semantic_track_runner_rejects_external_user_adapter_in_producer_only_mo
 }
 
 #[tokio::test]
-async fn external_user_adapter_uses_supplied_payload_without_fallback() {
+async fn external_user_adapter_uses_supplied_payload_without_recovery() {
     let adapter = ExternalUserSemanticIntentAdapter::new("external-mistral-user")
         .with_intent_payload(
             r#"{

@@ -55,11 +55,11 @@ impl FuzzingEngine {
         aliases
     }
 
-    fn canonical_input_label(raw: &str, fallback_idx: usize) -> String {
+    fn canonical_input_label(raw: &str, recovery_idx: usize) -> String {
         let trimmed = raw.trim();
         let label = trimmed.strip_prefix("main.").unwrap_or(trimmed).trim();
         if label.is_empty() {
-            format!("input_{}", fallback_idx)
+            format!("input_{}", recovery_idx)
         } else {
             label.to_string()
         }
@@ -688,7 +688,7 @@ impl FuzzingEngine {
             }
             _ => {
                 tracing::error!(
-                    "Invalid pruning strategy '{}'; refusing to apply fallback",
+                    "Invalid pruning strategy '{}'; refusing to apply recovery",
                     value
                 );
                 anyhow::bail!(

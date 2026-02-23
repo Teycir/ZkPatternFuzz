@@ -196,7 +196,7 @@ async fn test_schedule_fail_on_findings_severity() {
             public_inputs: Vec::new(),
             proof: None,
         },
-        location: Some("mock.circom".to_string()),
+        location: Some("sample.circom".to_string()),
     }];
 
     let results = scheduler

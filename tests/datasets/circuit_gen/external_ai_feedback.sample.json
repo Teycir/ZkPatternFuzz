@@ -1,0 +1,22 @@
+{
+  "entries": [
+    {
+      "pattern_id": "circom_deep_template_ice",
+      "backend": "circom",
+      "class": "internal_compiler_error",
+      "hits": 2
+    },
+    {
+      "pattern_id": "noir_type_solver_overflow",
+      "backend": "noir",
+      "class": "timeout",
+      "hits": 1
+    },
+    {
+      "pattern_id": "noir_type_solver_overflow",
+      "backend": "halo2",
+      "class": "success",
+      "hits": 3
+    }
+  ]
+}

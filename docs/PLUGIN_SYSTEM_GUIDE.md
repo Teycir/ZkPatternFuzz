@@ -46,14 +46,14 @@ If a plugin name is present:
 If a plugin name is present but not found:
 
 - `engagement_strict: true` -> hard error; run aborts.
-- `engagement_strict: false` -> warning; engine continues and can fall back to built-in attack handling.
+- `engagement_strict: false` -> warning; engine continues and can use built-in attack handling.
 
 ## Strict-Mode Behavior
 
 Strict engagement safeguards relevant to plugins:
 
 - Missing explicit plugin is a contract violation and fails the run.
-- Any configured attack that does not execute (plugin missing and no runnable fallback) fails strict mode.
+- Any configured attack that does not execute (plugin missing and no runnable recovery) fails strict mode.
 
 Recommended strict settings for production engagements:
 

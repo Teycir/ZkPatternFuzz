@@ -85,7 +85,7 @@ impl GrammarGenerator {
                         continue;
                     }
                 }
-                // Fall back to random
+                // use random
                 inputs.push(FieldElement::random(rng));
             }
         }

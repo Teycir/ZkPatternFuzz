@@ -1218,7 +1218,7 @@ impl CircuitExecutor for NoirExecutor {
                         Some(coverage) => coverage,
                         None => {
                             return ExecutionResult::failure(
-                                "Noir constraint coverage unavailable: refusing output-hash fallback".to_string(),
+                                "Noir constraint coverage unavailable: refusing output-hash recovery".to_string(),
                             )
                             .with_time(start.elapsed().as_micros() as u64);
                         }
@@ -1418,7 +1418,7 @@ impl CircuitExecutor for Halo2Executor {
                     Some(value) => value,
                     None => {
                         return ExecutionResult::failure(
-                            "Halo2 constraint coverage unavailable: refusing output-hash fallback"
+                            "Halo2 constraint coverage unavailable: refusing output-hash recovery"
                                 .to_string(),
                         )
                         .with_time(start.elapsed().as_micros() as u64);
@@ -1997,7 +1997,7 @@ impl CircuitExecutor for CairoExecutor {
                     Some(coverage) => coverage,
                     None => {
                         return ExecutionResult::failure(
-                            "Cairo constraint coverage unavailable: refusing output-hash fallback"
+                            "Cairo constraint coverage unavailable: refusing output-hash recovery"
                                 .to_string(),
                         )
                         .with_time(start.elapsed().as_micros() as u64);

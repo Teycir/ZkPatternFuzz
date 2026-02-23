@@ -177,13 +177,13 @@ pub(crate) fn engagement_dir_name(run_id: &str) -> String {
     match run_id_epoch_dir(run_id) {
         Some(dir_name) => dir_name,
         None => {
-            let fallback = format!("report_{}", sanitize_slug(run_id));
+            let recovery = format!("report_{}", sanitize_slug(run_id));
             tracing::warn!(
-                "Run id '{}' does not contain a valid timestamp prefix; using fallback engagement dir '{}'",
+                "Run id '{}' does not contain a valid timestamp prefix; using recovery engagement dir '{}'",
                 run_id,
-                fallback
+                recovery
             );
-            fallback
+            recovery
         }
     }
 }

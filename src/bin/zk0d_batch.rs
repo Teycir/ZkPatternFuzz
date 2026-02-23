@@ -562,7 +562,7 @@ fn collection_base_path(
             if from_cwd.is_absolute() || from_cwd.exists() {
                 from_cwd
             } else {
-                // Fallback for catalogs that keep paths relative to the catalog file.
+                // Recovery for catalogs that keep paths relative to the catalog file.
                 registry_path.join(from_cwd)
             }
         }

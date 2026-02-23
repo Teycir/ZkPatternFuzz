@@ -59,7 +59,7 @@ async fn test_constraint_slice_withdraw_real_circuit() {
             from_inspector
         } else {
             // Some Circom circuits expose only public inputs (no explicit `signal output`),
-            // so mirror the engine fallback and use the first post-input wire.
+            // so mirror the engine recovery and use the first post-input wire.
             let num_inputs = executor.num_public_inputs() + executor.num_private_inputs();
             vec![num_inputs]
         }

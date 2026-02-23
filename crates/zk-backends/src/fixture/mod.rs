@@ -1,7 +1,11 @@
 //! Deterministic fixture executor for tests and local validation.
 //!
-//! Provides a lightweight `CircuitExecutor` implementation without external
-//! tooling dependencies.
+//! **IMPORTANT: This is NOT a production backend. It is a testing utility only.**
+//!
+//! This module provides a lightweight `CircuitExecutor` implementation without external
+//! tooling dependencies. It simulates circuit behavior for unit tests and should never
+//! be used for actual security audits. All production fuzzing must use real backends:
+//! Circom, Noir, Halo2, or Cairo.
 
 use crate::TargetCircuit;
 use async_trait::async_trait;

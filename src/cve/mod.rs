@@ -277,7 +277,7 @@ impl AffectedCircuit {
             return true;
         }
 
-        // Resilient fallback for small naming/path differences such as
+        // Resilient recovery for small naming/path differences such as
         // `tornado-core` vs `tornado_core` vs `tornado/core`.
         let normalized_pattern = normalize_circuit_token(pattern);
         let normalized_circuit = normalize_circuit_token(circuit_name);

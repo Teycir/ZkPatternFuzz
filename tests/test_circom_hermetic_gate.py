@@ -150,8 +150,8 @@ class CircomHermeticGateTests(unittest.TestCase):
                 "\n".join(payload["gate_failures"]),
             )
 
-    def test_enforced_gate_uses_repo_node_modules_fallback_include_root(self):
-        with tempfile.TemporaryDirectory(prefix="zkfuzz_circom_hermetic_root_fallback_") as tmpdir:
+    def test_enforced_gate_uses_repo_node_modules_recovery_include_root(self):
+        with tempfile.TemporaryDirectory(prefix="zkfuzz_circom_hermetic_root_recovery_") as tmpdir:
             root = Path(tmpdir)
             bins = _prepare_local_bins(root, include_circomlib_in_bins=False)
             report = root / "report.json"

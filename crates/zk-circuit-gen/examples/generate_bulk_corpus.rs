@@ -2,7 +2,7 @@ use std::env;
 use std::error::Error;
 use std::path::PathBuf;
 
-use zk_circuit_gen::{generate_bulk_corpus, Backend, BulkGenerationConfig};
+use zk_circuit_gen::{generate_bulk_corpus, Backend, BulkGenerationConfig, MutationStrategy};
 
 const DEFAULT_OUTPUT_DIR: &str = "artifacts/circuit_gen/bulk_latest";
 const DEFAULT_CIRCUITS_PER_BACKEND: usize = 1_000;
@@ -14,6 +14,8 @@ struct CliArgs {
     circuits_per_backend: usize,
     seed: u64,
     backends: Vec<Backend>,
+    mutation_strategies: Vec<MutationStrategy>,
+    mutation_intensity: usize,
 }
 
 fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
@@ -21,6 +23,8 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
     let mut circuits_per_backend = DEFAULT_CIRCUITS_PER_BACKEND;
     let mut seed = DEFAULT_SEED;
     let mut backends = Backend::ALL.to_vec();
+    let mut mutation_strategies = Vec::new();
+    let mut mutation_intensity = 3usize;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -35,6 +39,14 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
                 let value = next_value(&mut args, "--backends")?;
                 backends = parse_backends(&value)?;
             }
+            "--mutation-strategies" => {
+                let value = next_value(&mut args, "--mutation-strategies")?;
+                mutation_strategies = parse_mutation_strategies(&value)?;
+            }
+            "--mutation-intensity" => {
+                mutation_intensity =
+                    next_value(&mut args, "--mutation-intensity")?.parse::<usize>()?
+            }
             "--help" | "-h" => {
                 print_help();
                 std::process::exit(0);
@@ -48,6 +60,8 @@ fn parse_args() -> Result<CliArgs, Box<dyn Error>> {
         circuits_per_backend,
         seed,
         backends,
+        mutation_strategies,
+        mutation_intensity,
     })
 }
 
@@ -81,6 +95,26 @@ fn parse_backends(value: &str) -> Result<Vec<Backend>, Box<dyn Error>> {
     Ok(out)
 }
 
+fn parse_mutation_strategies(value: &str) -> Result<Vec<MutationStrategy>, Box<dyn Error>> {
+    let mut out = Vec::new();
+    for item in value
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
+        let strategy = match item.to_ascii_lowercase().as_str() {
+            "deep_nesting" => MutationStrategy::DeepNesting,
+            "wide_constraints" => MutationStrategy::WideConstraints,
+            "pathological_loops" => MutationStrategy::PathologicalLoops,
+            "mixed_types" => MutationStrategy::MixedTypes,
+            "malformed_ir" => MutationStrategy::MalformedIr,
+            _ => return Err(format!("unsupported mutation strategy `{item}`").into()),
+        };
+        out.push(strategy);
+    }
+    Ok(out)
+}
+
 fn print_help() {
     println!(
         "\
@@ -96,6 +130,8 @@ Options:
   --circuits-per-backend <count>   Circuits to generate per backend (default: {DEFAULT_CIRCUITS_PER_BACKEND})
   --seed <u64>                     RNG seed (default: {DEFAULT_SEED})
   --backends <csv>                 Backend list (circom,noir,halo2,cairo)
+  --mutation-strategies <csv>      Optional mutations (deep_nesting,wide_constraints,pathological_loops,mixed_types,malformed_ir)
+  --mutation-intensity <n>         Mutation intensity (default: 3)
 "
     );
 }
@@ -106,12 +142,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     config.circuits_per_backend = args.circuits_per_backend;
     config.seed = args.seed;
     config.backends = args.backends;
+    config.mutation_strategies = args.mutation_strategies;
+    config.mutation_intensity = args.mutation_intensity;
 
     let report = generate_bulk_corpus(&config)?;
     println!(
-        "bulk circuit generation complete: total={} per_backend={} report={}",
+        "bulk circuit generation complete: total={} per_backend={} mutation_strategies={} report={}",
         report.total_circuits,
         report.circuits_per_backend,
+        report.mutation_strategies.len(),
         report.report_path.display(),
     );
     Ok(())

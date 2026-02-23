@@ -78,7 +78,6 @@ if ! cargo build --release 2>&1 | tail -5; then
     exit 1
 fi
 
-USE_MOCK=false
 if [ ! -d "$ZK0D_BASE" ]; then
     log_warn "zk0d collection not found at $ZK0D_BASE"
     log_warn "Set ZK0D_BASE environment variable to the correct path"

@@ -36,11 +36,11 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Auto-generated baseline attacks now always include `soundness` (with `forge_attempts: 1000`) plus static scanners (`quantum_resistance`, and `circom_static_lint` for Circom).
 - Improved CVE oracle routing for recall:
   - Added routing aliases for generic labels such as `underconstrained`, `soundness`, `boundary`, `arithmetic_overflow`, and `assigned_not_constrained`.
-  - Added fallback from `detection.oracle` to `detection.attack_type` plus debug logging for unmapped routes.
+  - Added recovery from `detection.oracle` to `detection.attack_type` plus debug logging for unmapped routes.
 - Added strict/evidence runtime floors for key attack budgets to reduce under-sampling in readiness runs:
   - Floors now enforce minimum depth for `soundness.forge_attempts`, `metamorphic.num_tests`, `constraint_slice.samples_per_cone`, `constraint_slice.base_witness_attempts`, `spec_inference.sample_count`, and `witness_collision.samples`.
   - Updated `templates/traits/base.yaml` defaults for novel attacks to meet these strict minima out-of-the-box.
-- Removed generic runtime "not yet implemented" dispatch fallback:
+- Removed generic runtime "not yet implemented" dispatch recovery:
   - Added explicit `BitDecomposition` routing and made engine attack dispatch exhaustively typed, so new `AttackType` variants now require explicit runtime handling at compile time.
 - Upgraded CVE pattern template budgets to stricter defaults aligned with readiness depth:
   - `forge_attempts: 1000`, `samples_per_cone: 32`, `base_witness_attempts: 32`, `sample_count: 1000`, `num_tests: 256`, `witness_collision.samples: 2000`.
@@ -52,7 +52,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added up-front CVE preflight to disable non-compiling/non-loadable targets before execution begins, reducing noisy failures and speeding triage feedback.
   - Added persistent preflight cache (`target/autonomous_cve_preflight_cache.json`) plus refresh flag (`ZKFUZZ_CVE_PREFLIGHT_REFRESH=1`) to avoid repeated probing of known infrastructure-broken targets.
   - Regression failures now surface backend execution errors directly in testcase output (`Expected valid but execution failed: <backend error>`), speeding root-cause triage.
-  - Constraint-slice now uses a stronger base-witness search (higher default attempts + corpus fallback) so the attack is less likely to skip on difficult circuits.
+  - Constraint-slice now uses a stronger base-witness search (higher default attempts + corpus recovery) so the attack is less likely to skip on difficult circuits.
   - Autonomous CVE summary now reports normalized top failure reasons and expected-valid/expected-invalid mismatch counters to speed recall triage.
 - Improved Noir backend prove/verify path parity:
   - Unified proof artifact handling to use both `<project>.proof` and `main.proof` candidate paths for read/write compatibility across Noir toolchain variations.
@@ -82,7 +82,7 @@ This plan adds 5 advanced security analysis capabilities to ZkPatternFuzz using 
   - Added regression coverage in `tests/cli_command_parity_tests.rs` for root help parity and legacy command smoke paths.
 - Started `main.rs` decomposition with zero-behavior-change extraction:
   - Moved CLI structs/enums and run option types into `src/cli/mod.rs` (`Cli`, `Commands`, `BinsCommands`, `ScanFamily`, `CampaignRunOptions`, `ChainRunOptions`).
-  - Added `CommandRequest` normalization in `src/cli/mod.rs` so command-shape resolution (including legacy `--config` fallback) is centralized outside `main.rs`.
+  - Added `CommandRequest` normalization in `src/cli/mod.rs` so command-shape resolution (including legacy `--config` recovery) is centralized outside `main.rs`.
   - Began scan-dispatch extraction by moving framework parsing and scan-shape validation helpers into `src/scan_dispatch.rs` (`parse_framework_arg`, `detect_pattern_has_chains`, `validate_scan_pattern_complexity`).
   - Moved run-option artifact serialization helpers (`campaign_run_options_doc`, `chain_run_options_doc`) out of `main.rs` into `src/cli/mod.rs`.
   - Kept command-parity regression green (`tests/cli_command_parity_tests.rs`) after extraction.

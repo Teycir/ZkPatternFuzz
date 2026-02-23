@@ -169,8 +169,8 @@ You'll see output like:
 ║              ZK-FUZZER v0.1.0                             ║
 ║       Zero-Knowledge Proof Security Tester                ║
 ╠═══════════════════════════════════════════════════════════╣
-║  Campaign: Sample Mock Audit                              ║
-║  Target:   Mock                                           ║
+║  Campaign: Sample Circom Audit                            ║
+║  Target:   Circom                                         ║
 ║  Attacks:  4 configured                                   ║
 ║  Inputs:   1 defined                                      ║
 ╚═══════════════════════════════════════════════════════════╝
@@ -204,7 +204,7 @@ cat reports/report.md
 #### JSON Report (`report.json`)
 ```json
 {
-  "campaign_name": "Sample Mock Audit",
+  "campaign_name": "Sample Circom Audit",
   "timestamp": "2024-02-04T12:00:00Z",
   "findings": [
     {

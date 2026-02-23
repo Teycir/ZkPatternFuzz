@@ -189,7 +189,7 @@ scripts/release_candidate_validate_twice.sh \
 | `filesystem_permission_denied` | Permission issue in output/build paths | Fix path permissions or move output root |
 | `run_outcome_missing` | Per-template outcome file absent | Inspect crash/abort conditions in logs |
 | `run_outcome_invalid_json` | Corrupt outcome artifact | Check process interruption/crash during write |
-| `runtime_error` | Generic failure fallback | Inspect `error` + `stage` in run outcome |
+| `runtime_error` | Generic failure recovery | Inspect `error` + `stage` in run outcome |
 
 ## 8. Useful Environment Variables
 

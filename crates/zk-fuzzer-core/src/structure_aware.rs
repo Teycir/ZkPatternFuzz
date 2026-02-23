@@ -218,7 +218,7 @@ impl StructureAwareMutator {
     /// Mutate inputs based on their structure
     pub fn mutate(&self, inputs: &[FieldElement], rng: &mut impl Rng) -> Vec<FieldElement> {
         if self.structures.is_empty() {
-            // Fall back to byte-level mutation with framework-specific heuristics
+            // use byte-level mutation with framework-specific heuristics
             return inputs
                 .iter()
                 .enumerate()

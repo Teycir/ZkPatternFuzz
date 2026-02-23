@@ -39,7 +39,7 @@ fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
     if rc == 0 {
         return Ok(());
     }
-    // Fall back to killing only the direct child when group kill is unavailable.
+    // use killing only the direct child when group kill is unavailable.
     child.kill()
 }
 
