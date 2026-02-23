@@ -114,33 +114,13 @@ impl FuzzingEngine {
             test_cases.push(tc);
         }
 
-        // Execute in parallel and collect results with indices
-        // Mode 3 optimization: collect only (index, result) to avoid cloning TestCase
+        // Execute in bounded chunks so wall-clock timeout can be enforced mid-attack.
         let executor = self.executor.clone();
-        let indexed_results: Vec<(usize, ExecutionResult)> =
-            if let Some(ref pool) = self.thread_pool {
-                // Reuse cached thread pool instead of creating new one per attack
-                pool.install(|| {
-                    test_cases
-                        .par_iter()
-                        .enumerate()
-                        .map(|(i, tc)| {
-                            let result = executor.execute_sync(&tc.inputs);
-                            (i, result)
-                        })
-                        .collect()
-                })
-            } else {
-                // use rayon global pool, still parallel.
-                test_cases
-                    .par_iter()
-                    .enumerate()
-                    .map(|(i, tc)| {
-                        let result = executor.execute_sync(&tc.inputs);
-                        (i, result)
-                    })
-                    .collect()
-            };
+        let execution_chunk_size = config
+            .get("execution_chunk_size")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(32)
+            .clamp(1, 256) as usize;
 
         // Group by output hash to find collisions
         // Mode 3: Pre-size HashMap to avoid rehashing
@@ -148,16 +128,67 @@ impl FuzzingEngine {
         let num_pairs = test_cases.len();
         let mut output_map: std::collections::HashMap<Vec<u8>, Vec<usize>> =
             std::collections::HashMap::with_capacity(num_pairs / 2);
+        let mut chunk_start = 0usize;
 
-        for (idx, result) in indexed_results {
-            if result.success {
-                let output_hash = self.hash_output(&result.outputs);
-                output_map.entry(output_hash).or_default().push(idx);
+        'execution_loop: while chunk_start < test_cases.len() {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping underconstrained attack execution early: wall-clock timeout reached"
+                );
+                break;
             }
 
-            if let Some(p) = progress {
-                p.inc();
+            let chunk_end = (chunk_start + execution_chunk_size).min(test_cases.len());
+            let chunk = &test_cases[chunk_start..chunk_end];
+
+            let indexed_results: Vec<(usize, ExecutionResult, Duration)> =
+                if let Some(ref pool) = self.thread_pool {
+                    pool.install(|| {
+                        chunk
+                            .par_iter()
+                            .enumerate()
+                            .map(|(offset, tc)| {
+                                let idx = chunk_start + offset;
+                                let exec_start = Instant::now();
+                                let result = executor.execute_sync(&tc.inputs);
+                                (idx, result, exec_start.elapsed())
+                            })
+                            .collect()
+                    })
+                } else {
+                    chunk
+                        .par_iter()
+                        .enumerate()
+                        .map(|(offset, tc)| {
+                            let idx = chunk_start + offset;
+                            let exec_start = Instant::now();
+                            let result = executor.execute_sync(&tc.inputs);
+                            (idx, result, exec_start.elapsed())
+                        })
+                        .collect()
+                };
+
+            for (idx, result, exec_time) in indexed_results {
+                self.observe_execution_result(&result, exec_time);
+
+                if result.success {
+                    let output_hash = self.hash_output(&result.outputs);
+                    output_map.entry(output_hash).or_default().push(idx);
+                }
+
+                if let Some(p) = progress {
+                    p.inc();
+                }
+
+                if self.wall_clock_timeout_reached() {
+                    tracing::warn!(
+                        "Stopping underconstrained attack post-processing early: wall-clock timeout reached"
+                    );
+                    break 'execution_loop;
+                }
             }
+
+            chunk_start = chunk_end;
         }
 
         // Check for collisions

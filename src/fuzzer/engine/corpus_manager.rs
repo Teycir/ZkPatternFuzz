@@ -456,6 +456,14 @@ impl FuzzingEngine {
             .execute_and_learn(self.executor.as_ref(), test_case)
     }
 
+    pub(super) fn observe_execution_result(
+        &mut self,
+        result: &ExecutionResult,
+        exec_time: std::time::Duration,
+    ) {
+        self.core.observe_execution_result(result, exec_time);
+    }
+
     /// Export corpus to disk for persistence
     pub fn export_corpus(&self, output_dir: &std::path::Path) -> anyhow::Result<usize> {
         self.core.export_corpus(output_dir)

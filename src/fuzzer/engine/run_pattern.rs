@@ -15,7 +15,12 @@ impl FuzzingEngine {
                 );
                 return None;
             }
-            let result = self.executor.execute_sync(&inputs);
+            let test_case = TestCase {
+                inputs: inputs.clone(),
+                expected_output: None,
+                metadata: TestMetadata::default(),
+            };
+            let result = self.execute_and_learn(&test_case);
             if result.success {
                 return Some(inputs);
             }
@@ -28,8 +33,9 @@ impl FuzzingEngine {
                 );
                 return None;
             }
-            let candidate = self.generate_test_case().inputs;
-            let result = self.executor.execute_sync(&candidate);
+            let test_case = self.generate_test_case();
+            let candidate = test_case.inputs.clone();
+            let result = self.execute_and_learn(&test_case);
             if result.success {
                 return Some(candidate);
             }

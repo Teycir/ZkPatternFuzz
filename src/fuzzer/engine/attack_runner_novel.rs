@@ -261,7 +261,12 @@ impl FuzzingEngine {
         let mut base_witness = None;
 
         for witness in self.collect_corpus_inputs(base_witness_attempts.saturating_mul(2).max(8)) {
-            if self.executor.execute_sync(&witness).success {
+            let test_case = TestCase {
+                inputs: witness.clone(),
+                expected_output: None,
+                metadata: TestMetadata::default(),
+            };
+            if self.execute_and_learn(&test_case).success {
                 base_witness = Some(witness);
                 break;
             }
@@ -271,9 +276,9 @@ impl FuzzingEngine {
                 if self.wall_clock_timeout_reached() {
                     break;
                 }
-                let candidate = self.generate_test_case().inputs;
-                if self.executor.execute_sync(&candidate).success {
-                    base_witness = Some(candidate);
+                let candidate = self.generate_test_case();
+                if self.execute_and_learn(&candidate).success {
+                    base_witness = Some(candidate.inputs);
                     break;
                 }
             }
@@ -722,7 +727,7 @@ impl FuzzingEngine {
                 break;
             }
             let candidate = self.generate_test_case();
-            let result = self.executor.execute_sync(&candidate.inputs);
+            let result = self.execute_and_learn(&candidate);
             if result.success {
                 base_witness_inputs = Some(candidate.inputs);
                 break;
@@ -738,7 +743,12 @@ impl FuzzingEngine {
                     );
                     break;
                 }
-                let result = self.executor.execute_sync(&witness);
+                let test_case = TestCase {
+                    inputs: witness.clone(),
+                    expected_output: None,
+                    metadata: TestMetadata::default(),
+                };
+                let result = self.execute_and_learn(&test_case);
                 if result.success {
                     tracing::info!(
                         "Constraint-slice base witness recovered via corpus recovery (probe_count={})",

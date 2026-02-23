@@ -120,73 +120,104 @@ impl FuzzingEngine {
         }
 
         let executor = self.executor.clone();
-        let indexed_results: Vec<(usize, ExecutionResult)> =
-            if let Some(ref pool) = self.thread_pool {
-                // Reuse cached thread pool instead of creating new one per attack
-                pool.install(|| {
-                    test_cases
-                        .par_iter()
-                        .enumerate()
-                        .map(|(i, tc)| {
-                            let result = executor.execute_sync(&tc.inputs);
-                            (i, result)
-                        })
-                        .collect()
-                })
-            } else {
-                // use rayon global pool, still parallel.
-                test_cases
-                    .par_iter()
-                    .enumerate()
-                    .map(|(i, tc)| {
-                        let result = executor.execute_sync(&tc.inputs);
-                        (i, result)
-                    })
-                    .collect()
-            };
+        let execution_chunk_size = config
+            .get("execution_chunk_size")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(32)
+            .clamp(1, 256) as usize;
 
         // Mode 3: Pre-size HashMap to avoid rehashing
         // Store indices to avoid cloning TestCase
         let mut hash_map: std::collections::HashMap<Vec<u8>, usize> =
             std::collections::HashMap::with_capacity(test_cases.len());
+        let mut chunk_start = 0usize;
 
-        for (idx, result) in indexed_results {
-            if result.success {
-                let output_hash = self.hash_output(&result.outputs);
+        'execution_loop: while chunk_start < test_cases.len() {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping collision attack execution early: wall-clock timeout reached"
+                );
+                break;
+            }
 
-                if let Some(&existing_idx) = hash_map.get(&output_hash) {
-                    let existing = &test_cases[existing_idx];
-                    let test_case = &test_cases[idx];
-                    if existing.inputs != test_case.inputs {
-                        let finding = Finding {
-                            attack_type: AttackType::Collision,
-                            severity: Severity::Critical,
-                            description: "Found collision: different inputs produce same output"
-                                .to_string(),
-                            poc: super::ProofOfConcept {
-                                witness_a: existing.inputs.clone(),
-                                witness_b: Some(test_case.inputs.clone()),
-                                public_inputs: vec![],
-                                proof: None,
-                            },
-                            location: None,
-                            class: None,
-                        };
+            let chunk_end = (chunk_start + execution_chunk_size).min(test_cases.len());
+            let chunk = &test_cases[chunk_start..chunk_end];
 
-                        self.with_findings_write(|store| store.push(finding.clone()))?;
-
-                        if let Some(p) = progress {
-                            p.log_finding("CRITICAL", &finding.description);
-                        }
-                    }
+            let indexed_results: Vec<(usize, ExecutionResult, Duration)> =
+                if let Some(ref pool) = self.thread_pool {
+                    pool.install(|| {
+                        chunk
+                            .par_iter()
+                            .enumerate()
+                            .map(|(offset, tc)| {
+                                let idx = chunk_start + offset;
+                                let exec_start = Instant::now();
+                                let result = executor.execute_sync(&tc.inputs);
+                                (idx, result, exec_start.elapsed())
+                            })
+                            .collect()
+                    })
                 } else {
-                    hash_map.insert(output_hash, idx);
+                    chunk
+                        .par_iter()
+                        .enumerate()
+                        .map(|(offset, tc)| {
+                            let idx = chunk_start + offset;
+                            let exec_start = Instant::now();
+                            let result = executor.execute_sync(&tc.inputs);
+                            (idx, result, exec_start.elapsed())
+                        })
+                        .collect()
+                };
+
+            for (idx, result, exec_time) in indexed_results {
+                self.observe_execution_result(&result, exec_time);
+
+                if result.success {
+                    let output_hash = self.hash_output(&result.outputs);
+
+                    if let Some(&existing_idx) = hash_map.get(&output_hash) {
+                        let existing = &test_cases[existing_idx];
+                        let test_case = &test_cases[idx];
+                        if existing.inputs != test_case.inputs {
+                            let finding = Finding {
+                                attack_type: AttackType::Collision,
+                                severity: Severity::Critical,
+                                description: "Found collision: different inputs produce same output"
+                                    .to_string(),
+                                poc: super::ProofOfConcept {
+                                    witness_a: existing.inputs.clone(),
+                                    witness_b: Some(test_case.inputs.clone()),
+                                    public_inputs: vec![],
+                                    proof: None,
+                                },
+                                location: None,
+                                class: None,
+                            };
+
+                            self.with_findings_write(|store| store.push(finding.clone()))?;
+
+                            if let Some(p) = progress {
+                                p.log_finding("CRITICAL", &finding.description);
+                            }
+                        }
+                    } else {
+                        hash_map.insert(output_hash, idx);
+                    }
+                }
+
+                if let Some(p) = progress {
+                    p.inc();
+                }
+
+                if self.wall_clock_timeout_reached() {
+                    tracing::warn!(
+                        "Stopping collision attack post-processing early: wall-clock timeout reached"
+                    );
+                    break 'execution_loop;
                 }
             }
-
-            if let Some(p) = progress {
-                p.inc();
-            }
+            chunk_start = chunk_end;
         }
 
         self.run_nullifier_replay_attack(config, AttackType::Collision, progress)?;

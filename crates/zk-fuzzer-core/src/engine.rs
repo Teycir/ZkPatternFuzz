@@ -406,6 +406,51 @@ impl FuzzingEngineCore {
         result
     }
 
+    /// Record execution metrics for an externally executed test case.
+    ///
+    /// This is used by attack modules that execute test cases directly (for example,
+    /// parallelized attack loops) so run-level metrics remain accurate.
+    pub fn observe_execution_result(&mut self, result: &ExecutionResult, exec_time: Duration) {
+        self.execution_count.fetch_add(1, Ordering::Relaxed);
+        let frequency = self
+            .coverage_frequency
+            .entry(result.coverage.coverage_hash)
+            .or_default();
+        *frequency = frequency.saturating_add(1);
+
+        {
+            let mut avg_time = self.avg_exec_time.write();
+            let current_avg_micros = avg_time.as_micros() as f64;
+            let new_exec_micros = exec_time.as_micros() as f64;
+            let updated_avg = current_avg_micros * 0.9 + new_exec_micros * 0.1;
+            *avg_time = Duration::from_micros(updated_avg as u64);
+        }
+
+        let is_new = if result.coverage.satisfied_constraints.is_empty()
+            && result.coverage.evaluated_constraints.is_empty()
+        {
+            self.coverage
+                .record_coverage_hash(result.coverage.coverage_hash)
+        } else {
+            self.coverage.record_execution(&result.coverage)
+        };
+
+        {
+            let mut stats = self.stats.write();
+            stats.executions = self.execution_count.load(Ordering::Relaxed);
+            stats.corpus_size = self.corpus.len();
+            stats.crashes = self.findings.read().len() as u64;
+            stats.unique_crashes = self.findings.read().len() as u64;
+            stats.coverage_percentage = self.coverage.coverage_percentage();
+            if is_new {
+                stats.new_coverage_count += 1;
+            }
+            if let Some(start) = self.start_time {
+                stats.update_exec_rate(start);
+            }
+        }
+    }
+
     pub fn execute_and_learn(
         &mut self,
         executor: &dyn CircuitExecutor,

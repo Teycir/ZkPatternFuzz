@@ -75,7 +75,7 @@ impl FuzzingEngine {
     }
 
     pub(super) fn enforce_invariants(
-        &self,
+        &mut self,
         invariants: &[crate::config::v2::Invariant],
     ) -> Vec<Finding> {
         use crate::config::v2::{InvariantOracle, InvariantType};
@@ -143,7 +143,12 @@ impl FuzzingEngine {
                 }
             }
 
-            let result = self.executor.execute_sync(&witness);
+            let test_case = TestCase {
+                inputs: witness.clone(),
+                expected_output: None,
+                metadata: TestMetadata::default(),
+            };
+            let result = self.execute_and_learn(&test_case);
             if result.success {
                 let severity = self.severity_from_invariant(invariant);
                 let counterexample_preview =
