@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 
 use rand::rngs::StdRng;
@@ -11,6 +12,7 @@ use zk_circuit_gen::{
     parse_external_ai_pattern_bundle_json, parse_pattern_feedback_json, render_backend_template,
     render_mutated_template, render_semantic_constraint_report_markdown,
     run_compiler_crash_detection, run_compiler_probe_case, run_differential_compiler_matrix,
+    run_differential_compiler_matrix_with_constraint_overrides,
     run_differential_version_matrix_campaign, verify_compiled_constraints_match_intent,
     AdversarialGenerationConfig, Assignment, Backend, BulkGenerationConfig, CircuitDsl,
     CompilerExecutionStatus, CompilerFailureClass, CompilerProbeCase, ConstraintEq,
@@ -599,6 +601,26 @@ fn differential_structure_comparison_flags_optimization_regression() {
     assert_eq!(comparison.constraint_delta, 5);
     assert!(comparison.optimization_regression);
     assert!(!comparison.structure_match);
+}
+
+#[test]
+fn differential_matrix_constraint_override_detects_optimization_regression() {
+    let dsl = sample_dsl();
+    let mut overrides = BTreeMap::new();
+    overrides.insert("circom_v2_1".to_string(), 3usize);
+    let report = run_differential_compiler_matrix_with_constraint_overrides(
+        &dsl,
+        &[Backend::Circom],
+        &["circom_v2_0".to_string(), "circom_v2_1".to_string()],
+        &overrides,
+    )
+    .expect("run differential matrix with overrides");
+
+    assert_eq!(report.observations.len(), 2);
+    assert_eq!(report.comparisons.len(), 1);
+    assert_eq!(report.optimization_regressions, 1);
+    assert!(report.comparisons[0].optimization_regression);
+    assert_eq!(report.comparisons[0].constraint_delta, 3);
 }
 
 #[test]

@@ -309,6 +309,31 @@ Campaign output:
 - `latest_report.json` aggregate totals (`total_observations`, `total_comparisons`)
 - `circuits/*.json` per-circuit differential reports
 
+## Differential Optimization Regression Probe
+
+Use regression probe mode to validate the optimization-regression detector with
+operator-provided constraint deltas per compiler label.
+
+```bash
+scripts/run_circuit_gen_differential_regression_sample.sh
+```
+
+Direct command:
+
+```bash
+cargo run -q -p zk-circuit-gen --example run_differential_regression_probe -- \
+  --dsl-file tests/datasets/circuit_gen/structure_dsl.sample.yaml \
+  --backends circom \
+  --compiler-ids circom_v2_0,circom_v2_1 \
+  --constraint-overrides circom_v2_1:+3 \
+  --output-json artifacts/circuit_gen/differential_regression_sample/latest_report.json
+```
+
+Probe output:
+- `optimization_regressions` should be `>= 1` when a later compiler label has
+  increased `constraint_count`
+- `comparisons[]` includes positive `constraint_delta` and `optimization_regression=true`
+
 ## Compiler Crash/Bug Detection
 
 Run crash/timeout classification and bug-report generation:

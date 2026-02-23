@@ -911,21 +911,52 @@ pub fn run_differential_compiler_matrix(
     backends: &[Backend],
     compiler_ids: &[String],
 ) -> Result<DifferentialCompilerMatrixReport, CircuitGenError> {
+    run_differential_compiler_matrix_with_constraint_overrides(
+        dsl,
+        backends,
+        compiler_ids,
+        &BTreeMap::new(),
+    )
+}
+
+pub fn run_differential_compiler_matrix_with_constraint_overrides(
+    dsl: &CircuitDsl,
+    backends: &[Backend],
+    compiler_ids: &[String],
+    constraint_overrides: &BTreeMap<String, usize>,
+) -> Result<DifferentialCompilerMatrixReport, CircuitGenError> {
     if backends.is_empty() {
         return Err(CircuitGenError::Validation(
             "at least one backend is required for differential matrix".to_string(),
         ));
     }
+    let deduped_backends = dedup_backends(backends);
+    let deduped_compilers = dedup_compiler_ids(compiler_ids)?;
+    for compiler_id in constraint_overrides.keys() {
+        if !deduped_compilers.contains(compiler_id) {
+            return Err(CircuitGenError::Validation(format!(
+                "constraint override references unknown compiler_id `{}`",
+                compiler_id
+            )));
+        }
+    }
 
     let mut observations = Vec::new();
-    for backend in dedup_backends(backends) {
-        let backend_runs = compile_same_circuit_with_compiler_ids(dsl, backend, compiler_ids)?;
+    for backend in &deduped_backends {
+        let mut backend_runs =
+            compile_same_circuit_with_compiler_ids(dsl, *backend, &deduped_compilers)?;
+        for observation in &mut backend_runs {
+            if let Some(extra_constraints) = constraint_overrides.get(&observation.compiler_id) {
+                observation.structure.constraint_count = observation
+                    .structure
+                    .constraint_count
+                    .saturating_add(*extra_constraints);
+            }
+        }
         observations.extend(backend_runs);
     }
 
     let mut comparisons = Vec::new();
-    let deduped_backends = dedup_backends(backends);
-    let deduped_compilers = dedup_compiler_ids(compiler_ids)?;
 
     // Compare versions inside each backend.
     for backend in &deduped_backends {
