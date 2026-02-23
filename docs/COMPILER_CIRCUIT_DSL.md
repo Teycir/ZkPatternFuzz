@@ -274,3 +274,25 @@ Matrix report includes:
   - `axis=backend` (same compiler label, different backends)
 - `constraint_delta` and other structure deltas
 - `optimization_regression` (true when candidate constraint count increases)
+
+## Differential Version Matrix Campaign (N x M)
+
+Run large-sample differential testing across generated circuits and compiler labels:
+
+```bash
+scripts/run_circuit_gen_differential_version_matrix_sample.sh
+```
+
+Direct command:
+
+```bash
+cargo run -q -p zk-circuit-gen --example run_differential_version_matrix -- \
+  --output-dir artifacts/circuit_gen/differential_version_matrix_sample \
+  --circuits 120 \
+  --backends circom \
+  --compiler-ids circom_v2_0,circom_v2_1,circom_v2_2
+```
+
+Campaign output:
+- `latest_report.json` aggregate totals (`total_observations`, `total_comparisons`)
+- `circuits/*.json` per-circuit differential reports

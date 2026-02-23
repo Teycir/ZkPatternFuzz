@@ -949,13 +949,13 @@ crates/zk-track-semantic/
   - [x] Detect constraint gaps (satisfiable but violates intent) (`constraint_gaps[]` in `SemanticConstraintVerificationReport` via `detect_constraint_gaps` in `crates/zk-circuit-gen/src/lib.rs`; validated in `crates/zk-circuit-gen/tests/template_rendering.rs`; latest sample run 2026-02-23: `artifacts/circuit_gen/semantic_constraint_match_sample/latest_report.json`)
   - [x] Report: "Circuit allows X but docs say 'only Y'" (`narrative_findings[]` + `render_semantic_constraint_report_markdown` in `crates/zk-circuit-gen/src/lib.rs`; markdown output wiring in `crates/zk-circuit-gen/examples/verify_semantic_constraint_match.rs`; sample runner emits `artifacts/circuit_gen/semantic_constraint_match_sample/latest_report.md`)
 
-- [ ] **Differential Compiler Testing:**
+- [x] **Differential Compiler Testing:**
   - [x] Compile same circuit with multiple compilers (Circom v2.0 vs v2.1) (`compile_same_circuit_with_compiler_ids` in `crates/zk-circuit-gen/src/lib.rs`; matrix CLI `crates/zk-circuit-gen/examples/run_differential_compiler_matrix.rs`; sample run 2026-02-23: `artifacts/circuit_gen/differential_sample/latest_report.json`)
   - [x] Compile same circuit across backends (Circom vs Noir for compatible logic) (`run_differential_compiler_matrix` evaluates backend-axis comparisons in `crates/zk-circuit-gen/src/lib.rs`)
   - [x] Compare constraint counts (unexpected differences = bug) (`constraint_delta` emitted in `DifferentialStructureComparison`)
   - [x] Compare constraint structure (same logic → same constraints) (`structure_match` + expression/signal/depth deltas emitted in matrix report)
   - [x] Detect optimization regressions (constraint count increases) (`optimization_regression` detection in `compare_compiled_structures`)
-  - [ ] Version matrix testing: test N circuits × M compiler versions
+  - [x] Version matrix testing: test N circuits × M compiler versions (`run_differential_version_matrix_campaign` in `crates/zk-circuit-gen/src/lib.rs`; CLI `crates/zk-circuit-gen/examples/run_differential_version_matrix.rs`; sample runner `scripts/run_circuit_gen_differential_version_matrix_sample.sh`; latest sample run 2026-02-23: `artifacts/circuit_gen/differential_version_matrix_sample/latest_report.json`)
 
 - [ ] **Compiler Crash/Bug Detection:**
   - [ ] Timeout detection (compilation hangs)
@@ -1012,7 +1012,7 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
 - [ ] Generate 1000+ syntactically valid circuits per backend
 - [ ] Detect ≥5 semantic intent violations (constraints don't match docs)
 - [ ] Find ≥1 compiler crash/timeout on adversarial inputs
-- [ ] Differential mode: test 100+ circuits × 3 compiler versions
+- [x] Differential mode: test 100+ circuits × 3 compiler versions (`scripts/run_circuit_gen_differential_version_matrix_sample.sh`; latest sample run 2026-02-23: 120 circuits × 3 compiler labels at `artifacts/circuit_gen/differential_version_matrix_sample/latest_report.json`)
 - [ ] Detect ≥1 optimization regression (constraint count increase)
 - [ ] AI generates ≥10 adversarial patterns from known bugs
 - [ ] Integration tests validate generated circuits compile on ≥1 backend

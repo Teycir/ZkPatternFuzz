@@ -390,6 +390,54 @@ pub struct DifferentialCompilerMatrixReport {
     pub optimization_regressions: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DifferentialVersionMatrixConfig {
+    pub output_dir: PathBuf,
+    pub circuits: usize,
+    pub seed: u64,
+    pub backends: Vec<Backend>,
+    pub compiler_ids: Vec<String>,
+}
+
+impl DifferentialVersionMatrixConfig {
+    pub fn new(output_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            output_dir: output_dir.into(),
+            circuits: 120,
+            seed: 42,
+            backends: vec![Backend::Circom],
+            compiler_ids: vec![
+                "circom_v2_0".to_string(),
+                "circom_v2_1".to_string(),
+                "circom_v2_2".to_string(),
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DifferentialCircuitMatrixRow {
+    pub circuit_name: String,
+    pub observation_count: usize,
+    pub comparison_count: usize,
+    pub optimization_regressions: usize,
+    pub report_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DifferentialVersionMatrixReport {
+    pub seed: u64,
+    pub circuits: usize,
+    pub compiler_ids: Vec<String>,
+    pub backends: Vec<Backend>,
+    pub total_observations: usize,
+    pub total_comparisons: usize,
+    pub optimization_regressions: usize,
+    pub output_dir: PathBuf,
+    pub report_path: PathBuf,
+    pub circuits_rows: Vec<DifferentialCircuitMatrixRow>,
+}
+
 pub fn parse_dsl_yaml(value: &str) -> Result<CircuitDsl, CircuitGenError> {
     serde_yaml::from_str(value).map_err(CircuitGenError::ParseYaml)
 }
@@ -877,6 +925,75 @@ pub fn run_differential_compiler_matrix(
         comparisons,
         optimization_regressions,
     })
+}
+
+pub fn run_differential_version_matrix_campaign(
+    config: &DifferentialVersionMatrixConfig,
+) -> Result<DifferentialVersionMatrixReport, CircuitGenError> {
+    if config.circuits == 0 {
+        return Err(CircuitGenError::Validation(
+            "differential version matrix requires circuits > 0".to_string(),
+        ));
+    }
+    let compiler_ids = dedup_compiler_ids(&config.compiler_ids)?;
+    if compiler_ids.len() < 2 {
+        return Err(CircuitGenError::Validation(
+            "differential version matrix requires at least 2 compiler ids".to_string(),
+        ));
+    }
+    let backends = dedup_backends(&config.backends);
+    if backends.is_empty() {
+        return Err(CircuitGenError::Validation(
+            "differential version matrix requires at least one backend".to_string(),
+        ));
+    }
+
+    fs::create_dir_all(&config.output_dir)?;
+    let circuits_dir = config.output_dir.join("circuits");
+    fs::create_dir_all(&circuits_dir)?;
+
+    let mut rng = StdRng::seed_from_u64(config.seed);
+    let mut total_observations = 0usize;
+    let mut total_comparisons = 0usize;
+    let mut optimization_regressions = 0usize;
+    let mut circuits_rows = Vec::new();
+
+    for ordinal in 0..config.circuits {
+        let mut dsl = generate_random_circuit_dsl(&mut rng, backends[0], ordinal);
+        dsl.name = format!("matrix_{}", ordinal);
+
+        let report = run_differential_compiler_matrix(&dsl, &backends, &compiler_ids)?;
+        let report_path = circuits_dir.join(format!("{}.json", dsl.name));
+        fs::write(&report_path, serde_json::to_string_pretty(&report)? + "\n")?;
+
+        total_observations += report.observations.len();
+        total_comparisons += report.comparisons.len();
+        optimization_regressions += report.optimization_regressions;
+
+        circuits_rows.push(DifferentialCircuitMatrixRow {
+            circuit_name: dsl.name,
+            observation_count: report.observations.len(),
+            comparison_count: report.comparisons.len(),
+            optimization_regressions: report.optimization_regressions,
+            report_path,
+        });
+    }
+
+    let report_path = config.output_dir.join("latest_report.json");
+    let report = DifferentialVersionMatrixReport {
+        seed: config.seed,
+        circuits: config.circuits,
+        compiler_ids,
+        backends,
+        total_observations,
+        total_comparisons,
+        optimization_regressions,
+        output_dir: config.output_dir.clone(),
+        report_path: report_path.clone(),
+        circuits_rows,
+    };
+    fs::write(&report_path, serde_json::to_string_pretty(&report)? + "\n")?;
+    Ok(report)
 }
 
 pub fn render_backend_template(

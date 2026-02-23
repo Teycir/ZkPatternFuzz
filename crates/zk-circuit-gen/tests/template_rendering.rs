@@ -9,9 +9,10 @@ use zk_circuit_gen::{
     generate_bulk_corpus, generate_random_circuit_dsl, parse_dsl_yaml,
     parse_external_ai_pattern_bundle_json, parse_pattern_feedback_json, render_backend_template,
     render_mutated_template, render_semantic_constraint_report_markdown,
-    run_differential_compiler_matrix, verify_compiled_constraints_match_intent,
-    AdversarialGenerationConfig, Assignment, Backend, BulkGenerationConfig, CircuitDsl,
-    ConstraintEq, DifferentialComparisonAxis, Expression, MutationStrategy, SemanticIntentKind,
+    run_differential_compiler_matrix, run_differential_version_matrix_campaign,
+    verify_compiled_constraints_match_intent, AdversarialGenerationConfig, Assignment, Backend,
+    BulkGenerationConfig, CircuitDsl, ConstraintEq, DifferentialComparisonAxis,
+    DifferentialVersionMatrixConfig, Expression, MutationStrategy, SemanticIntentKind,
 };
 
 fn sample_dsl() -> CircuitDsl {
@@ -574,4 +575,31 @@ fn differential_structure_comparison_flags_optimization_regression() {
     assert_eq!(comparison.constraint_delta, 5);
     assert!(comparison.optimization_regression);
     assert!(!comparison.structure_match);
+}
+
+#[test]
+fn differential_version_matrix_campaign_runs_n_times_m() {
+    let tmp = tempdir().expect("tempdir");
+    let mut config = DifferentialVersionMatrixConfig::new(tmp.path());
+    config.circuits = 12;
+    config.seed = 101;
+    config.backends = vec![Backend::Circom];
+    config.compiler_ids = vec![
+        "circom_v2_0".to_string(),
+        "circom_v2_1".to_string(),
+        "circom_v2_2".to_string(),
+    ];
+
+    let report = run_differential_version_matrix_campaign(&config).expect("matrix campaign");
+    assert_eq!(report.circuits, 12);
+    assert_eq!(report.compiler_ids.len(), 3);
+    assert_eq!(report.backends, vec![Backend::Circom]);
+    assert_eq!(report.total_observations, 12 * 3);
+    assert_eq!(report.total_comparisons, 12 * 3); // C(3,2)=3 per circuit
+    assert!(report.report_path.exists());
+    assert_eq!(report.circuits_rows.len(), 12);
+    assert!(report
+        .circuits_rows
+        .iter()
+        .all(|row| row.report_path.exists()));
 }
