@@ -488,7 +488,7 @@ Backend coverage snapshot (selected vs target floor=2):
 | `EXT-FIND-012` | `EXT-001` | `target-entry-compatibility` | `medium` | `[ ] repro pending / [x] reproduced` | `external target wiring (raw ArgMax entry is not directly executable)` | `add-only wrapper target: ext001_argmax_main_wrapper.circom` | `[x] fixed / [x] revalidated` |
 | `EXT-FIND-013` | `EXT-004` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Cairo backend build path (Scarb preflight)` | `pending (needs target-specific Cairo entry/main resolution)` | `[ ] fixed / [ ] revalidated` |
 | `EXT-FIND-014` | `EXT-005` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Halo2 backend build path (EZKL build exceeds preflight timeout)` | `pending (timeout/profile tuning + target-specific build strategy)` | `[ ] fixed / [ ] revalidated` |
-| `EXT-FIND-015` | `EXT-BATCH-005` | `workflow-stability` | `medium` | `[ ] repro pending / [x] reproduced` | `run-signal report-id allocation (second-granularity collisions)` | `pending (high-entropy run-signal IDs)` | `[ ] fixed / [ ] revalidated` |
+| `EXT-FIND-015` | `EXT-BATCH-005` | `workflow-stability` | `medium` | `[ ] repro pending / [x] reproduced` | `run-signal report-id allocation (second-granularity collisions)` | `run folder naming now includes run_id suffix to prevent same-second collisions` | `[x] fixed / [ ] revalidated` |
 
 #### 8.9.6 Hardening Exit Criteria (External Repo Track)
 - [x] At least `12` externally sourced targets validated from `/media/elements/Repos` with representation across all four backends.
