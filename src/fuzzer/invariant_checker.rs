@@ -332,13 +332,23 @@ impl InvariantChecker {
                 if byte_idx < 32 {
                     bytes[byte_idx] = 1 << bit_pos;
                 }
-                return Some(FieldElement(bytes));
+                return match FieldElement::from_bytes_checked(&bytes) {
+                    Ok(value) => Some(value),
+                    Err(err) => {
+                        tracing::debug!(
+                            "Power literal '{}' is not canonical for field modulus: {}",
+                            s,
+                            err
+                        );
+                        None
+                    }
+                };
             }
         }
 
         // Hex format
         if s.starts_with("0x") || s.starts_with("0X") {
-            return match FieldElement::from_hex(s) {
+            return match FieldElement::from_hex_checked(s) {
                 Ok(value) => Some(value),
                 Err(err) => {
                     tracing::debug!("Invalid hex field literal '{}': {}", s, err);
@@ -351,10 +361,13 @@ impl InvariantChecker {
         if let Some(value) = num_bigint::BigUint::parse_bytes(s.as_bytes(), 10) {
             let bytes = value.to_bytes_be();
             if bytes.len() <= 32 {
-                let mut buf = [0u8; 32];
-                let start = 32 - bytes.len();
-                buf[start..].copy_from_slice(&bytes);
-                return Some(FieldElement(buf));
+                return match FieldElement::from_bytes_checked(&bytes) {
+                    Ok(value) => Some(value),
+                    Err(err) => {
+                        tracing::debug!("Invalid decimal field literal '{}': {}", s, err);
+                        None
+                    }
+                };
             }
         }
 

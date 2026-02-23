@@ -256,7 +256,12 @@ impl FuzzingEngine {
         ];
 
         // Phase 0 Fix: Wire semantic oracles from config
-        Self::add_semantic_oracles_from_config(&config, executor.field_modulus(), &mut oracles);
+        Self::add_semantic_oracles_from_config(
+            &config,
+            executor.field_modulus(),
+            executor.num_constraints(),
+            &mut oracles,
+        );
         let disabled = Self::disabled_oracle_names(&config);
         if !disabled.is_empty() {
             oracles.retain(|o| !disabled.contains(&Self::normalize_oracle_name(o.name())));

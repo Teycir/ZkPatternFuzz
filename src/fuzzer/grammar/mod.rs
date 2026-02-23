@@ -265,8 +265,13 @@ impl InputGrammar {
         // Check for interesting values first
         if !spec.interesting.is_empty() && rng.gen_bool(0.3) {
             let idx = rng.gen_range(0..spec.interesting.len());
-            if let Ok(fe) = FieldElement::from_hex(&spec.interesting[idx]) {
+            if let Ok(fe) = FieldElement::from_hex_checked(&spec.interesting[idx]) {
                 return fe;
+            } else {
+                tracing::debug!(
+                    "Ignoring non-canonical grammar interesting value '{}'",
+                    spec.interesting[idx]
+                );
             }
         }
 
@@ -316,9 +321,14 @@ impl InputGrammar {
                 // Use interesting value
                 if let Some(spec) = self.inputs.iter().find(|i| !i.interesting.is_empty()) {
                     let idx = rng.gen_range(0..spec.interesting.len());
-                    if let Ok(fe) = FieldElement::from_hex(&spec.interesting[idx]) {
+                    if let Ok(fe) = FieldElement::from_hex_checked(&spec.interesting[idx]) {
                         let target_idx = rng.gen_range(0..new_inputs.len());
                         new_inputs[target_idx] = fe;
+                    } else {
+                        tracing::debug!(
+                            "Skipping non-canonical grammar interesting mutation value '{}'",
+                            spec.interesting[idx]
+                        );
                     }
                 }
             }

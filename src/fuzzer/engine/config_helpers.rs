@@ -259,6 +259,7 @@ impl FuzzingEngine {
     pub(super) fn add_semantic_oracles_from_config(
         config: &FuzzConfig,
         field_modulus: [u8; 32],
+        expected_constraint_count: usize,
         oracles: &mut Vec<Box<dyn BugOracle>>,
     ) {
         use crate::fuzzer::oracle::{ConstraintCountOracle, ProofForgeryOracle};
@@ -362,8 +363,15 @@ impl FuzzingEngine {
                     ))))
                 }
                 Some(OracleKind::ConstraintCount) => {
-                    let expected = config.campaign.parameters.max_constraints as usize;
-                    add_oracle(Box::new(ConstraintCountOracle::new(expected)));
+                    if expected_constraint_count == 0 {
+                        tracing::warn!(
+                            "Skipping ConstraintCountOracle: executor reported zero constraints"
+                        );
+                    } else {
+                        add_oracle(Box::new(ConstraintCountOracle::new(
+                            expected_constraint_count,
+                        )));
+                    }
                 }
                 Some(OracleKind::ProofForgery) => add_oracle(Box::new(ProofForgeryOracle::new())),
                 Some(OracleKind::Underconstrained) | Some(OracleKind::ArithmeticOverflow) => {
@@ -559,6 +567,7 @@ impl FuzzingEngine {
         Self::add_semantic_oracles_from_config(
             &self.config,
             self.executor.field_modulus(),
+            self.executor.num_constraints(),
             &mut oracles,
         );
         let disabled = Self::disabled_oracle_names(&self.config);

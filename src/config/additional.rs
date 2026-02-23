@@ -74,10 +74,29 @@ impl AdditionalConfig {
 
     pub fn get_usize(&self, key: &str) -> Option<usize> {
         match self.extra.get(key)? {
-            serde_yaml::Value::Number(n) => n.as_u64().map(|v| v as usize),
+            serde_yaml::Value::Number(n) => n.as_u64().and_then(|v| match usize::try_from(v) {
+                Ok(value) => Some(value),
+                Err(err) => {
+                    tracing::warn!(
+                        "Ignoring non-usize numeric config value for '{}': {} ({})",
+                        key,
+                        v,
+                        err
+                    );
+                    None
+                }
+            }),
             serde_yaml::Value::String(s) => match s.parse::<usize>() {
                 Ok(value) => Some(value),
-                Err(err) => panic!("Invalid usize value for '{}': '{}': {}", key, s, err),
+                Err(err) => {
+                    tracing::warn!(
+                        "Ignoring invalid usize config value for '{}': '{}': {}",
+                        key,
+                        s,
+                        err
+                    );
+                    None
+                }
             },
             _ => None,
         }
@@ -95,7 +114,15 @@ impl AdditionalConfig {
             serde_yaml::Value::Number(n) => n.as_u64(),
             serde_yaml::Value::String(s) => match s.parse::<u64>() {
                 Ok(value) => Some(value),
-                Err(err) => panic!("Invalid u64 value for '{}': '{}': {}", key, s, err),
+                Err(err) => {
+                    tracing::warn!(
+                        "Ignoring invalid u64 config value for '{}': '{}': {}",
+                        key,
+                        s,
+                        err
+                    );
+                    None
+                }
             },
             _ => None,
         }
@@ -106,7 +133,15 @@ impl AdditionalConfig {
             serde_yaml::Value::Number(n) => n.as_f64(),
             serde_yaml::Value::String(s) => match s.parse::<f64>() {
                 Ok(value) => Some(value),
-                Err(err) => panic!("Invalid f64 value for '{}': '{}': {}", key, s, err),
+                Err(err) => {
+                    tracing::warn!(
+                        "Ignoring invalid f64 config value for '{}': '{}': {}",
+                        key,
+                        s,
+                        err
+                    );
+                    None
+                }
             },
             _ => None,
         }

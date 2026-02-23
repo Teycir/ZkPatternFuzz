@@ -23,3 +23,24 @@ fn hoists_legacy_additional_mapping() {
     assert_eq!(cfg.get_bool("per_exec_isolation"), Some(true));
     assert!(!cfg.contains_key("additional"));
 }
+
+#[test]
+fn invalid_numeric_strings_do_not_panic() {
+    let mut cfg = AdditionalConfig::default();
+    cfg.insert(
+        "bad_usize".to_string(),
+        serde_yaml::Value::String("not-a-usize".to_string()),
+    );
+    cfg.insert(
+        "bad_u64".to_string(),
+        serde_yaml::Value::String("not-a-u64".to_string()),
+    );
+    cfg.insert(
+        "bad_f64".to_string(),
+        serde_yaml::Value::String("not-a-f64".to_string()),
+    );
+
+    assert_eq!(cfg.get_usize("bad_usize"), None);
+    assert_eq!(cfg.get_u64("bad_u64"), None);
+    assert_eq!(cfg.get_f64("bad_f64"), None);
+}

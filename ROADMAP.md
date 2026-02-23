@@ -373,6 +373,9 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add canonical field constructors (`from_bytes_checked`, `from_bytes_reduced`, `from_hex_checked`) and apply canonical-by-default parsing/mutation in runtime ingestion paths (`crates/zk-core/src/field.rs`, `src/fuzzer/engine/corpus_manager.rs`, `src/fuzzer/engine/chain_runner.rs`, `src/chain_fuzzer/mutator.rs`, `src/fuzzer/grammar/mod.rs`, `crates/zk-fuzzer-core/src/structure_aware.rs`).
 - [x] Make CVE range-oracle construction modulus-aware by plumbing explicit field modulus through `CveOracle` constructors and using `RangeProofOracle::new_with_modulus` (`src/cve/mod.rs`).
 - [x] Reduce lock hold time in `CoverageTracker::record_execution` by releasing `constraint_hits` before updating `max_coverage` (`crates/zk-fuzzer-core/src/coverage.rs`).
+- [x] Make `AdditionalConfig` numeric getters non-panicking on malformed values (warn + ignore invalid strings instead of crashing process) (`src/config/additional.rs`).
+- [x] Wire `ConstraintCountOracle` expected count to executor-reported circuit constraints instead of campaign ceiling limits (`src/fuzzer/engine/config_helpers.rs`, `src/fuzzer/engine/engine_init.rs`).
+- [x] Canonicalize invariant field-literal parsing (`hex`/`decimal`/`2^N`) so non-canonical bounds are rejected from normal invariant evaluation paths (`src/fuzzer/invariant_checker.rs`).
 
 ---
 

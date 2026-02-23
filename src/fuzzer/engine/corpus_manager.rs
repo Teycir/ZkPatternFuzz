@@ -17,8 +17,13 @@ impl FuzzingEngine {
         // Add interesting values from input specs
         for input in &self.config.inputs {
             for interesting in &input.interesting {
-                if let Ok(fe) = FieldElement::from_hex(interesting) {
-                    self.add_to_corpus(self.create_test_case_with_value(fe));
+                match FieldElement::from_hex_checked(interesting) {
+                    Ok(fe) => self.add_to_corpus(self.create_test_case_with_value(fe)),
+                    Err(err) => tracing::warn!(
+                        "Ignoring non-canonical interesting corpus seed '{}': {}",
+                        interesting,
+                        err
+                    ),
                 }
             }
         }
@@ -30,7 +35,7 @@ impl FuzzingEngine {
         ];
 
         for hex in boundary_values {
-            if let Ok(fe) = FieldElement::from_hex(hex) {
+            if let Ok(fe) = FieldElement::from_hex_checked(hex) {
                 self.add_to_corpus(self.create_test_case_with_value(fe));
             }
         }
