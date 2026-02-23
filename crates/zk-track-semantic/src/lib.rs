@@ -14,7 +14,8 @@ use zk_postroadmap_core::{
 };
 
 pub use adapters::{
-    ExploitabilityAssessment, HeuristicSemanticIntentAdapter, SemanticIntent, SemanticIntentAdapter,
+    ExploitabilityAssessment, ExternalUserSemanticIntentAdapter, HeuristicSemanticIntentAdapter,
+    ModelGuidedSemanticIntentAdapter, SemanticIntent, SemanticIntentAdapter,
 };
 
 pub const TRACK_MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -78,6 +79,7 @@ struct SemanticViolationRecord {
     source_path: PathBuf,
     suspicious_marker: String,
     violation_summary: String,
+    fix_suggestion: String,
     assessment: ExploitabilityAssessment,
 }
 
@@ -145,12 +147,24 @@ impl TrackRunner for SemanticTrackRunner {
             }
         }
 
-        let fallback_adapter = HeuristicSemanticIntentAdapter;
-        let adapter: &dyn SemanticIntentAdapter = self
-            .intent_adapters
-            .first()
-            .map(|adapter| adapter.as_ref())
-            .unwrap_or(&fallback_adapter);
+        let selected_adapter = if self.intent_adapters.is_empty() {
+            Some(default_adapter_from_metadata(input)?)
+        } else {
+            None
+        };
+        let adapter: &dyn SemanticIntentAdapter =
+            if let Some(adapter) = self.intent_adapters.first() {
+                adapter.as_ref()
+            } else {
+                selected_adapter
+                    .as_ref()
+                    .map(|adapter| adapter.as_ref())
+                    .ok_or_else(|| {
+                        PostRoadmapError::Internal(
+                            "semantic adapter selection failed unexpectedly".to_string(),
+                        )
+                    })?
+            };
         let adapter_name = adapter.provider_name().to_string();
 
         let mut intent_records = Vec::new();
@@ -197,6 +211,7 @@ impl TrackRunner for SemanticTrackRunner {
                 .await?;
             let severity = severity_from_assessment(&assessment);
             let source_path = document.path.display().to_string();
+            let fix_suggestion = fix_suggestion_for_marker(marker, &dominant_intent);
 
             let mut metadata = BTreeMap::new();
             metadata.insert("source_path".to_string(), source_path.clone());
@@ -219,12 +234,16 @@ impl TrackRunner for SemanticTrackRunner {
                 format!("semantic_violation:{marker}:{source_path}"),
             );
             metadata.insert("intent_anchor".to_string(), dominant_intent.clone());
+            metadata.insert("fix_suggestion".to_string(), fix_suggestion.clone());
 
             findings.push(TrackFinding {
                 id: finding_id.clone(),
                 track: self.track(),
                 title: format!("Potential semantic intent violation in {source_path}"),
-                summary: format!("{violation_summary}. {}", assessment.rationale),
+                summary: format!(
+                    "{violation_summary}. {}. Suggested fix: {fix_suggestion}",
+                    assessment.rationale
+                ),
                 severity,
                 reproducible: true,
                 evidence_paths: vec![document.path.clone()],
@@ -235,6 +254,7 @@ impl TrackRunner for SemanticTrackRunner {
                 source_path: document.path.clone(),
                 suspicious_marker: marker.to_string(),
                 violation_summary,
+                fix_suggestion,
                 assessment,
             });
         }
@@ -340,6 +360,121 @@ impl TrackRunner for SemanticTrackRunner {
         }
         Ok(emitted_paths.into_iter().collect())
     }
+}
+
+fn default_adapter_from_metadata(
+    input: &TrackInput,
+) -> PostRoadmapResult<Box<dyn SemanticIntentAdapter>> {
+    let adapter_mode = parse_adapter_mode(input);
+    match adapter_mode.as_str() {
+        "model_guided" | "model-guided" | "llm" | "ai" => {
+            let model_name = input
+                .metadata
+                .get("semantic_model_name")
+                .or_else(|| input.metadata.get("semantic_model"))
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .unwrap_or("mistral");
+            let mut adapter = ModelGuidedSemanticIntentAdapter::new(model_name);
+            if let Some(system_prompt) = input
+                .metadata
+                .get("semantic_system_prompt")
+                .or_else(|| input.metadata.get("semantic_prompt"))
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+            {
+                adapter = adapter.with_system_prompt(system_prompt.to_string());
+            }
+            Ok(Box::new(adapter))
+        }
+        "external" | "external_user" | "external-user" | "user_ai" | "external_ai" => {
+            let actor_label = input
+                .metadata
+                .get("semantic_external_actor")
+                .or_else(|| input.metadata.get("semantic_model_name"))
+                .or_else(|| input.metadata.get("semantic_model"))
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .unwrap_or("external-ai-user");
+            let intent_payload = metadata_inline_or_file(
+                input,
+                "semantic_external_intent_json",
+                "semantic_external_intent_path",
+            )?;
+            let exploitability_payload = metadata_inline_or_file(
+                input,
+                "semantic_external_assessment_json",
+                "semantic_external_assessment_path",
+            )?;
+
+            if intent_payload.is_none() {
+                return Err(PostRoadmapError::Configuration(
+                    "external semantic adapter requires `semantic_external_intent_json` or `semantic_external_intent_path`".to_string(),
+                ));
+            }
+            if exploitability_payload.is_none() {
+                return Err(PostRoadmapError::Configuration(
+                    "external semantic adapter requires `semantic_external_assessment_json` or `semantic_external_assessment_path`".to_string(),
+                ));
+            }
+
+            let mut adapter = ExternalUserSemanticIntentAdapter::new(actor_label.to_string());
+            if let Some(payload) = intent_payload {
+                adapter = adapter.with_intent_payload(payload);
+            }
+            if let Some(payload) = exploitability_payload {
+                adapter = adapter.with_exploitability_payload(payload);
+            }
+
+            Ok(Box::new(adapter))
+        }
+        _ => Ok(Box::new(HeuristicSemanticIntentAdapter)),
+    }
+}
+
+fn metadata_inline_or_file(
+    input: &TrackInput,
+    inline_key: &str,
+    path_key: &str,
+) -> PostRoadmapResult<Option<String>> {
+    if let Some(inline) = input
+        .metadata
+        .get(inline_key)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(Some(inline.to_string()));
+    }
+
+    if let Some(path_value) = input
+        .metadata
+        .get(path_key)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        let path = PathBuf::from(path_value);
+        let payload = fs::read_to_string(&path).map_err(|error| {
+            PostRoadmapError::Configuration(format!(
+                "failed to read `{}` payload file `{}`: {error}",
+                path_key,
+                path.display()
+            ))
+        })?;
+        return Ok(Some(payload));
+    }
+
+    Ok(None)
+}
+
+fn parse_adapter_mode(input: &TrackInput) -> String {
+    input
+        .metadata
+        .get("semantic_adapter")
+        .or_else(|| input.metadata.get("semantic_intent_adapter"))
+        .or_else(|| input.metadata.get("semantic_provider"))
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "heuristic".to_string())
 }
 
 fn report_output_dir(input: &TrackInput) -> PathBuf {
@@ -622,6 +757,23 @@ fn find_suspicious_marker(raw_text: &str) -> Option<&'static str> {
         .iter()
         .copied()
         .find(|marker| raw_text_lc.contains(marker))
+}
+
+fn fix_suggestion_for_marker(marker: &str, intent_anchor: &str) -> String {
+    match marker {
+        "bypass" | "skip verification" | "disable verification" | "allow_invalid" => format!(
+            "Remove `{marker}` behavior and enforce `{intent_anchor}` with an explicit verifier/constraint assertion."
+        ),
+        "todo" | "fixme" | "hack" | "temporary" | "debug only" => format!(
+            "Replace `{marker}` placeholder with production constraints aligned to `{intent_anchor}` before release."
+        ),
+        "unchecked" => format!(
+            "Add explicit range/permission checks so `{intent_anchor}` is validated instead of unchecked execution."
+        ),
+        _ => format!(
+            "Review semantic guardrails and enforce `{intent_anchor}` as a hard invariant in runtime and tests."
+        ),
+    }
 }
 
 fn severity_from_assessment(assessment: &ExploitabilityAssessment) -> FindingSeverity {

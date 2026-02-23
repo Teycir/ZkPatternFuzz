@@ -865,9 +865,9 @@ gh run watch
   - [x] Extract README/specification documents from project root
   - [x] Build structured intent representation (expected behaviors, invariants, security properties)
 - [ ] Implement AI-powered intent analyzer:
-  - [ ] Use LLM (Mistral/Claude/GPT-4) to extract semantic requirements from natural language
-  - [ ] Generate formal invariants from informal descriptions
-  - [ ] Identify security-critical properties ("must never", "always", "only if")
+  - [x] Use LLM (Mistral/Claude/GPT-4) to extract semantic requirements from natural language (external-user supplied outputs, no in-process API calls)
+  - [x] Generate formal invariants from informal descriptions
+  - [x] Identify security-critical properties ("must never", "always", "only if")
 - [ ] Build semantic violation detector:
   - [ ] Compare fuzzer-generated witnesses against extracted intent
   - [x] Classify violations: exploitable vs benign
