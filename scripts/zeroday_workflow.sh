@@ -91,9 +91,23 @@ resolve_picus_bin() {
 
 # Ensure release build exists
 ensure_build() {
-    if [[ ! -f "$FUZZER" ]]; then
+    local needs_build=false
+    if [[ ! -f "$FUZZER" || ! -f "$SKIMMER" ]]; then
+        needs_build=true
+    fi
+
+    # Rebuild when key skimmer/workflow sources are newer than release binaries.
+    if [[ "$needs_build" == "false" ]]; then
+        if [[ "$PROJECT_ROOT/src/bin/zk0d_skimmer.rs" -nt "$SKIMMER" ]] \
+            || [[ "$PROJECT_ROOT/src/analysis/opus.rs" -nt "$SKIMMER" ]] \
+            || [[ "$PROJECT_ROOT/scripts/zeroday_workflow.sh" -nt "$SKIMMER" ]]; then
+            needs_build=true
+        fi
+    fi
+
+    if [[ "$needs_build" == "true" ]]; then
         log_info "Building release version..."
-        cd "$PROJECT_ROOT" && cargo build --release
+        cd "$PROJECT_ROOT" && cargo build --release --bin zk-fuzzer --bin zk0d_skimmer
     fi
 }
 
@@ -101,6 +115,9 @@ ensure_build() {
 phase_skim() {
     local repo_path="$1"
     local output_dir="${2:-reports/zk0d/skimmer}"
+    local config_dir="${3:-$output_dir/generated_configs}"
+    local save_configs="${ZKF_SKIM_SAVE_CONFIGS:-true}"
+    local config_write_mode="${ZKF_SKIM_CONFIG_WRITE_MODE:-add-only}"
     
     log_info "=== PHASE 1: SKIM (Hints Only) ==="
     log_info "Target: $repo_path"
@@ -119,7 +136,9 @@ phase_skim() {
         --min-confidence 0.15 \
         --top 40 \
         --output-dir "$output_dir" \
-        --save-configs
+        --config-dir "$config_dir" \
+        --save-configs "$save_configs" \
+        --config-write-mode "$config_write_mode"
     
     log_success "Skimmer complete!"
     echo ""
@@ -149,6 +168,119 @@ validate_campaign() {
         local inv_count=$(grep -c "name:" "$campaign" | head -1 || echo "0")
         log_info "Found invariants in campaign"
     fi
+}
+
+# Generic strict correction without mutating the original campaign YAML.
+# Adds required strict attacks only; if correction is not applicable, returns original path.
+prepare_evidence_campaign() {
+    local campaign="$1"
+    local apply_generic="${ZKF_EVIDENCE_GENERIC_CORRECT:-true}"
+    if [[ "$apply_generic" != "true" ]]; then
+        echo "$campaign"
+        return 0
+    fi
+
+    local stage_dir="${ZKF_CAMPAIGN_STAGE_DIR:-/tmp/zkfuzz_campaign_stage}"
+    mkdir -p "$stage_dir"
+    local stamp
+    stamp="$(date -u +%Y%m%d_%H%M%S)"
+    local base
+    base="$(basename "$campaign")"
+    local stem="${base%.yaml}"
+    if [[ "$stem" == "$base" ]]; then
+        stem="${base%.yml}"
+    fi
+    local staged="$stage_dir/${stem}.strict_${stamp}.yaml"
+
+    local py_out
+    set +e
+    py_out="$(python3 - "$campaign" "$staged" <<'PY'
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except Exception as exc:
+    print(f"SKIP_NOT_APPLICABLE:missing_yaml_dependency:{exc}")
+    sys.exit(30)
+
+src = Path(sys.argv[1])
+dst = Path(sys.argv[2])
+
+try:
+    data = yaml.safe_load(src.read_text(encoding="utf-8"))
+except Exception as exc:
+    print(f"SKIP_NOT_APPLICABLE:parse_error:{exc}")
+    sys.exit(30)
+
+if not isinstance(data, dict):
+    print("SKIP_NOT_APPLICABLE:root_not_mapping")
+    sys.exit(30)
+
+attacks = data.get("attacks")
+if not isinstance(attacks, list):
+    print("SKIP_NOT_APPLICABLE:attacks_missing_or_not_list")
+    sys.exit(30)
+
+required = [
+    ("underconstrained", "Detect unconstrained witness behavior"),
+    ("soundness", "Strict soundness checks"),
+    ("constraint_inference", "Infer potentially missing constraints"),
+    ("metamorphic", "Metamorphic consistency checks"),
+    ("constraint_slice", "Constraint slice checks"),
+    ("spec_inference", "Spec inference checks"),
+    ("witness_collision", "Witness collision checks"),
+    ("boundary", "Boundary mutation checks"),
+]
+
+existing = set()
+for item in attacks:
+    if isinstance(item, dict):
+        attack_type = item.get("type")
+        if isinstance(attack_type, str) and attack_type.strip():
+            existing.add(attack_type.strip().lower())
+
+missing = [(attack_type, desc) for attack_type, desc in required if attack_type not in existing]
+if not missing:
+    print("UNCHANGED")
+    sys.exit(20)
+
+# Additive-only correction: append missing strict attacks, preserve all existing fields.
+for attack_type, desc in missing:
+    attacks.append(
+        {
+            "type": attack_type,
+            "description": f"Generic strict fallback: {desc}",
+        }
+    )
+
+dst.parent.mkdir(parents=True, exist_ok=True)
+dst.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+print("CORRECTED:" + ",".join(attack_type for attack_type, _ in missing))
+sys.exit(0)
+PY
+)"
+    local rc=$?
+    set -e
+
+    if [[ $rc -eq 0 ]]; then
+        log_info "Generic campaign correction applied: ${py_out}. Using staged campaign: ${staged}" >&2
+        echo "$staged"
+        return 0
+    fi
+    if [[ $rc -eq 20 ]]; then
+        echo "$campaign"
+        return 0
+    fi
+    if [[ $rc -eq 30 ]]; then
+        log_warn "Generic campaign correction skipped (not applicable): ${py_out}. Preserving original campaign to avoid precision loss." >&2
+        echo "$campaign"
+        return 0
+    fi
+
+    log_warn "Generic campaign correction failed (${py_out}); preserving original campaign to avoid destabilizing YAML." >&2
+    echo "$campaign"
+    return 0
 }
 
 # Phase 3: EVIDENCE
@@ -187,18 +319,23 @@ phase_evidence() {
     done
     
     log_info "=== PHASE 3: EVIDENCE (Deterministic Fuzzing) ==="
+    local prepared_campaign
+    prepared_campaign="$(prepare_evidence_campaign "$campaign")"
     log_info "Campaign: $campaign"
+    if [[ "$prepared_campaign" != "$campaign" ]]; then
+        log_info "Using staged corrected campaign: $prepared_campaign"
+    fi
     log_info "Iterations: $iterations"
     log_info "Timeout: ${timeout}s"
     log_info "Seed: $seed"
     log_info "Workers: $workers"
     
     ensure_build
-    validate_campaign "$campaign"
+    validate_campaign "$prepared_campaign"
     
     log_info "Starting evidence run..."
     
-    "$FUZZER" evidence "$campaign" \
+    "$FUZZER" evidence "$prepared_campaign" \
         --seed "$seed" \
         --iterations "$iterations" \
         --timeout "$timeout" \
@@ -421,7 +558,7 @@ show_help() {
     echo "ZkPatternFuzz 0-Day Discovery Workflow"
     echo ""
     echo "Usage:"
-    echo "  $0 skim <repo_path>                     Phase 1: Rapid heuristic scan"
+    echo "  $0 skim <repo_path> [output_dir] [config_dir]  Phase 1: Rapid heuristic scan"
     echo "  $0 evidence <campaign.yaml> [options]   Phase 3: Bounded evidence run"
     echo "  $0 verify <circuit.circom> [options]    Phase 4: Formal verification (Picus)"
     echo "  $0 deep <campaign.yaml> [options]       Phase 6: Deep edge-case fuzzing"
