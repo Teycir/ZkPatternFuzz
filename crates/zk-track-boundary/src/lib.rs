@@ -1,5 +1,6 @@
 mod adapters;
 mod public_input_fuzzer;
+mod serialization_fuzzer;
 
 use std::path::PathBuf;
 
@@ -14,6 +15,11 @@ pub use public_input_fuzzer::{
     run_public_input_manipulation_campaign, PublicInputAttackScenario,
     PublicInputManipulationConfig, PublicInputManipulationFinding, PublicInputManipulationReport,
     PublicInputMutationStrategy, PublicInputVerifierProfile,
+};
+pub use serialization_fuzzer::{
+    run_serialization_fuzz_campaign, CrossLanguageSerializationCase, ProofSerializationEdgeCase,
+    PublicInputSerializationEdgeCase, SerializationFormat, SerializationFuzzConfig,
+    SerializationFuzzFinding, SerializationFuzzReport, SerializationVerifierProfile,
 };
 
 pub const TRACK_MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");

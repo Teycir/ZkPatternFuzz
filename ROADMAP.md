@@ -1060,23 +1060,23 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
   - [x] Proof for valid merkle root, public input changed to attacker's root
 
 #### Future P1 (Post-Roadmap): Serialization/Deserialization Fuzzer
-- [ ] **Proof Serialization Edge Cases:**
-  - [ ] Empty proof: zero-length byte array
-  - [ ] Truncated proof: valid proof with bytes removed
-  - [ ] Oversized proof: valid proof with extra bytes appended
-  - [ ] Invalid encoding: malformed field elements, points not on curve
-  - [ ] Endianness: big-endian vs little-endian confusion
-  - [ ] Padding: extra zeros, non-canonical representations
-- [ ] **Public Input Serialization:**
-  - [ ] Array length mismatch: serialize N inputs, deserialize as M
-  - [ ] Type confusion: serialize as field, deserialize as bytes
-  - [ ] Encoding variants: hex vs base64 vs binary
-  - [ ] Delimiter confusion: comma vs space vs newline
-- [ ] **Cross-Language Serialization:**
-  - [ ] Rust prover → JavaScript verifier (snarkjs)
-  - [ ] Circom → Solidity verifier (ABI encoding)
-  - [ ] Noir → TypeScript verifier (JSON encoding)
-  - [ ] Test: serialize in language A, deserialize in language B
+- [x] **Proof Serialization Edge Cases:** (`ProofSerializationEdgeCase` + `mutate_proof_payload` in `crates/zk-track-boundary/src/serialization_fuzzer.rs`; sample runner `scripts/run_boundary_serialization_sample.sh`)
+  - [x] Empty proof: zero-length byte array
+  - [x] Truncated proof: valid proof with bytes removed
+  - [x] Oversized proof: valid proof with extra bytes appended
+  - [x] Invalid encoding: malformed field elements, points not on curve
+  - [x] Endianness: big-endian vs little-endian confusion
+  - [x] Padding: extra zeros, non-canonical representations
+- [x] **Public Input Serialization:** (`PublicInputSerializationEdgeCase` + `mutate_public_inputs_payload` in `crates/zk-track-boundary/src/serialization_fuzzer.rs`)
+  - [x] Array length mismatch: serialize N inputs, deserialize as M
+  - [x] Type confusion: serialize as field, deserialize as bytes
+  - [x] Encoding variants: hex vs base64 vs binary
+  - [x] Delimiter confusion: comma vs space vs newline
+- [x] **Cross-Language Serialization:** (`CrossLanguageSerializationCase` + `mutate_cross_language_payload` in `crates/zk-track-boundary/src/serialization_fuzzer.rs`)
+  - [x] Rust prover → JavaScript verifier (snarkjs)
+  - [x] Circom → Solidity verifier (ABI encoding)
+  - [x] Noir → TypeScript verifier (JSON encoding)
+  - [x] Test: serialize in language A, deserialize in language B
 
 #### Future P1 (Post-Roadmap): Solidity Verifier Fuzzer
 - [ ] **Gas-Optimized Verifier Testing:**
@@ -1116,7 +1116,7 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
 
 #### Implementation Structure
 ```
-crates/zk-boundary-fuzz/
+crates/zk-track-boundary/
 ├── src/
 │   ├── public_input_fuzzer.rs    # Public input manipulation
 │   ├── serialization_fuzzer.rs   # Encoding/decoding edge cases
@@ -1172,8 +1172,8 @@ assert(ref_result == opt_result, "Verifier mismatch!");
 #### Exit Criteria
 - [x] Public input fuzzer: test 1000+ valid proofs with manipulated inputs (`scripts/run_boundary_public_input_sample.sh`; latest sample run 2026-02-23: proofs=1000, mutation_checks=9000, attack_scenario_checks=3000 at `artifacts/boundary/public_input_sample/latest_report.json`)
 - [x] Detect ≥1 public input binding bug (verifier accepts wrong inputs) (`scripts/run_boundary_public_input_bug_probe.sh`; latest probe run 2026-02-23: verifier_profile=weak_first_input_binding, accepted_mutations=6331, findings=6331 at `artifacts/boundary/public_input_bug_probe/latest_report.json`)
-- [ ] Serialization fuzzer: test 100+ edge cases per format
-- [ ] Detect ≥1 serialization bug (crash, incorrect deserialization)
+- [x] Serialization fuzzer: test 100+ edge cases per format (`scripts/run_boundary_serialization_sample.sh`; latest sample run 2026-02-23: formats=3, checks_by_format={binary:168,hex:168,base64:168} at `artifacts/boundary/serialization_sample/latest_report.json`)
+- [x] Detect ≥1 serialization bug (crash, incorrect deserialization) (`scripts/run_boundary_serialization_bug_probe.sh`; latest probe run 2026-02-23: verifier_profile=lenient_legacy, accepted_invalid_cases=212, findings=212 at `artifacts/boundary/serialization_bug_probe/latest_report.json`)
 - [ ] Solidity fuzzer: differential test 500+ proofs (reference vs optimized)
 - [ ] Detect ≥1 gas optimization bug (behavior divergence)
 - [ ] Cross-component: test 50+ version/configuration combinations
