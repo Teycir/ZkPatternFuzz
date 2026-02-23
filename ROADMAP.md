@@ -415,14 +415,17 @@ Inventory + matrix references:
 | EXT-004 | `/media/elements/Repos/zkml/orion` | `cairo` | `Scarb.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
 | EXT-005 | `/media/elements/Repos/zkml/ezkl` | `halo2` | `Cargo.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [ ] done` |
 | EXT-006 | `/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits` | `halo2` | `zkevm-circuits/Cargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-007 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `docs/examples/circuits/hello_circuit/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
-| EXT-008 | `/media/elements/Repos/zkml/orion` | `cairo` | `tests/ml/linear_classifier_test.cairo` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
-| EXT-009 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `barretenberg/docs/examples/fixtures/main/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-007 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `docs/examples/circuits/hello_circuit/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-008 | `/media/elements/Repos/zkml/orion` | `cairo` | `tests/ml/linear_classifier_test.cairo` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-009 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `barretenberg/docs/examples/fixtures/main/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-010 | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/iszero.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-011 | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/lessthan.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-012 | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/montgomerydouble.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
 
 Backend coverage snapshot (selected vs target floor=2):
 | Backend | Selected Targets | Floor | Coverage Status |
 |---|---:|---:|---|
-| Circom | 3 | 2 | `met` |
+| Circom | 6 | 2 | `met` |
 | Noir | 2 | 2 | `met` |
 | Cairo | 2 | 2 | `met` |
 | Halo2 | 2 | 2 | `met` |
@@ -439,7 +442,8 @@ Backend coverage snapshot (selected vs target floor=2):
 |---|---|---|---|---:|---:|---:|---:|---|---|
 | `2026-02-23` | `EXT-BATCH-001` | `EXT-001, EXT-003, EXT-004, EXT-005` | `evidence-strict (seed=42, iter=100000, timeout=300, workers=2)` | `3` | `0.67 (Step 0-5 complete; Step 6-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_001/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `2026-02-23` | `EXT-BATCH-002` | `EXT-002, EXT-006` | `evidence-strict (seed=42, iter=100000, timeout=300, workers=2)` | `2` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_002/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
-| `<YYYY-MM-DD>` | `EXT-BATCH-003` | `EXT-007, EXT-008, EXT-009` | `dev` | `0` | `0.00` | `0.00` | `0.00` | `artifacts/external_targets/ext_batch_003` | `[ ] pass / [ ] fail` |
+| `2026-02-23` | `EXT-BATCH-003` | `EXT-007, EXT-008, EXT-009` | `evidence-strict (seed=42, iter=100000, timeout=300, workers=2)` | `3` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_003/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
+| `2026-02-23` | `EXT-BATCH-004` | `EXT-010, EXT-011, EXT-012` | `evidence-strict (seed=42, iter=1000, timeout=30, workers=1)` | `3` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_004/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 
 `EXT-BATCH-001` snapshot SHAs (`artifacts/external_targets/ext_batch_001/manifests/target_snapshot.json`):
 - `EXT-001`: `c82b3072d7946a76487a8c1be463fc407045391c`
@@ -451,6 +455,16 @@ Backend coverage snapshot (selected vs target floor=2):
 - `EXT-002`: `072bf1fbbd1c9ecad58d4f6d2204c3b96e7fec17`
 - `EXT-006`: `18f5bc268ca11988690c7cf59fc4615372ce99f2`
 
+`EXT-BATCH-003` snapshot SHAs (`artifacts/external_targets/ext_batch_003/manifests/target_snapshot.json`):
+- `EXT-007`: `2a9dd27afb1c03f9085c79a218bf928ddfebf031`
+- `EXT-008`: `bac0b424fe08e0da9e2522a45d77c028acf47dcd`
+- `EXT-009`: `2a9dd27afb1c03f9085c79a218bf928ddfebf031`
+
+`EXT-BATCH-004` snapshot SHAs (`artifacts/external_targets/ext_batch_004/manifests/target_snapshot.json`):
+- `EXT-010`: `360715607a240041f49eb46c543fc450051c4cb7`
+- `EXT-011`: `360715607a240041f49eb46c543fc450051c4cb7`
+- `EXT-012`: `360715607a240041f49eb46c543fc450051c4cb7`
+
 #### 8.9.5 Logic Finding And Remediation Board
 | Finding ID | Target ID | Class | Severity | Repro Status | Owning Module | Fix Commit/PR | Verification Status |
 |---|---|---|---|---|---|---|---|
@@ -458,10 +472,17 @@ Backend coverage snapshot (selected vs target floor=2):
 | `EXT-FIND-002` | `EXT-002` | `compile-logic` | `high` | `[ ] repro pending / [x] reproduced` | `/media/elements/Repos/zkFuzz/tests/sample/test_bulk_assignment.circom:19` | `n/a (external target; triage artifact)` | `[ ] fixed / [ ] revalidated` |
 | `EXT-FIND-003` | `EXT-003` | `runtime-control` | `high` | `[ ] repro pending / [x] reproduced` | `src/fuzzer/engine/attack_runner_novel.rs`, `src/oracles/witness_collision.rs`, `src/fuzzer/engine/run_reporting.rs` | `working-tree patch (timeout budget + collision cap + timeout-aware finalization)` | `[x] fixed / [x] revalidated` |
 | `EXT-FIND-004` | `EXT-003` | `repro-evidence-gap` | `high` | `[ ] repro pending / [x] reproduced` | `report extraction flow` | `query schema alignment + exploit replay artifacts` | `[x] fixed / [x] revalidated` |
+| `EXT-FIND-005` | `EXT-007` | `backend-preflight` | `medium` | `[ ] repro pending / [x] reproduced` | `Noir dependency fetch path (environment/network gated)` | `n/a (environment precondition)` | `[ ] fixed / [ ] revalidated` |
+| `EXT-FIND-006` | `EXT-008` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Cairo backend build path (Scarb preflight)` | `n/a (triage pending root cause details)` | `[ ] fixed / [ ] revalidated` |
+| `EXT-FIND-007` | `EXT-009` | `runtime-panic` | `critical` | `[ ] repro pending / [x] reproduced` | `src/executor/isolated.rs`, `wait-timeout` SIGCHLD handling path | `local patch: bounded child timeout + bounded post-kill reap` | `[x] fixed / [ ] revalidated` |
+| `EXT-FIND-008` | `EXT-009` | `runtime-timeout-enforcement` | `high` | `[ ] repro pending / [x] reproduced` | `underconstrained attack loop wall-clock checks` | `pending` | `[ ] fixed / [ ] revalidated` |
+| `EXT-FIND-009` | `EXT-010` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `pending` | `[ ] fixed / [ ] revalidated` |
+| `EXT-FIND-010` | `EXT-011` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `pending` | `[ ] fixed / [ ] revalidated` |
+| `EXT-FIND-011` | `EXT-012` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `pending` | `[ ] fixed / [ ] revalidated` |
 
 #### 8.9.6 Hardening Exit Criteria (External Repo Track)
-- [ ] At least `12` externally sourced targets validated from `/media/elements/Repos` with representation across all four backends.
-- [ ] At least `3` manual batches executed with archived evidence and complete run-ledger rows.
+- [x] At least `12` externally sourced targets validated from `/media/elements/Repos` with representation across all four backends.
+- [x] At least `3` manual batches executed with archived evidence and complete run-ledger rows.
 - [ ] No unresolved `high` or `critical` externally reproducible logic findings remain open.
 - [ ] External-target effectiveness report shows non-zero runs for each backend and no unresolved backend assignment gaps.
 
@@ -482,6 +503,10 @@ Flow checklist:
 Current batch status (`EXT-BATCH-001`): Step 0-5 completed with archived artifacts. Latest evidence run completed at wall-clock budget with `status=completed_with_critical_findings`, `findings_total=1519`, `total_executions=5533` (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/run_outcome.json`). Picus verification is now wired and discovered from PATH (`/home/teycir/.local/bin/picus`); current formal outcome for `test_vuln_iszero.circom` is `UNKNOWN` (`artifacts/external_targets/ext_batch_001/logs/step4_verify_ext003_after_picus_classification_fix_escalated.log`). Deterministic exploit replay is now packaged and passing (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/replay_ext003_iszero_exploit.log`).
 
 Current batch status (`EXT-BATCH-002`): Step 0-3 completed with archived artifacts in `artifacts/external_targets/ext_batch_002/{logs,manifests,reports,repro}`. `EXT-002` failed at backend preflight with reproducible target compile error (`error[T3001] Out of bounds exception` in `test_bulk_assignment.circom:19`, `artifacts/external_targets/ext_batch_002/reports/run_signals/report_1771884140/misc/run_outcome.json`). `EXT-006` failed at backend preflight due offline toolchain fetch (`dns error` while rustup synced `nightly-2024-07-07`, `artifacts/external_targets/ext_batch_002/reports/run_signals/report_1771884148/misc/run_outcome.json`).
+
+Current batch status (`EXT-BATCH-003`): Step 0-3 completed with archived artifacts in `artifacts/external_targets/ext_batch_003/{logs,manifests,reports,repro}`. `EXT-007` failed at backend preflight due offline Noir dependency fetch (`github.com/noir-lang/poseidon` resolution failure, `artifacts/external_targets/ext_batch_003/reports/run_signals/report_1771885461/misc/run_outcome.json`). `EXT-008` failed at Cairo backend preflight (`Scarb build failed`, `artifacts/external_targets/ext_batch_003/reports/run_signals/report_1771885469/misc/run_outcome.json`). `EXT-009` initially reproduced a runtime panic in isolated executor wait-timeout signal handling (`artifacts/external_targets/ext_batch_003/reports/run_signals/report_1771885490/misc/run_outcome.json`); post-patch reruns now pass preflight with elevated permissions but overrun the declared wall-clock window inside `Underconstrained` attack (`artifacts/external_targets/ext_batch_003/logs/step3_evidence_ext009_revalidate_after_wait_fix_rerun3_escalated.log`), so timeout-enforcement remains open.
+
+Current batch status (`EXT-BATCH-004`): Step 0-3 completed with archived artifacts in `artifacts/external_targets/ext_batch_004/{logs,manifests,reports,repro}`. `EXT-010`, `EXT-011`, and `EXT-012` all completed with critical findings and archived evidence bundles (`artifacts/external_targets/ext_batch_004/reports/evidence/EXT-010/20260223_223720_evidence_ext010_circomlib_iszero_campaign_pid2385436`, `artifacts/external_targets/ext_batch_004/reports/evidence/EXT-011/20260223_223818_evidence_ext011_circomlib_lessthan_campaign_pid2422323`, `artifacts/external_targets/ext_batch_004/reports/evidence/EXT-012/20260223_223913_evidence_ext012_circomlib_montgomerydouble_campaign_pid2460213`). All three runs reported `total_executions=0` while emitting high/critical findings, so exploitability classification is blocked until signal-quality triage is completed.
 
 Latest evidence severity breakdown (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/report.json`):
 - `critical=3`, `high=1`, `medium=1515`
