@@ -106,6 +106,126 @@ MATRIX_LOG="$OUTPUT_DIR/matrix_${STAMP}.log"
 SUMMARY_TSV="$OUTPUT_DIR/summary_${STAMP}.tsv"
 LATEST_JSON="$OUTPUT_DIR/latest_report.json"
 
+declare -a TARGET_ROWS=()
+load_target_rows() {
+  mapfile -t TARGET_ROWS < <(
+    awk '
+      /^  - name: / {
+        if (in_target && enabled == "true") {
+          printf("%s\t%s\t%s\t%s\t%s\n", name, target_circuit, main_component, framework, alias);
+        }
+        in_target = 1;
+        name = $3;
+        target_circuit = "";
+        main_component = "main";
+        framework = "circom";
+        alias = "always";
+        enabled = "true";
+        next;
+      }
+      in_target && /^    target_circuit: / { sub(/^    target_circuit: /, "", $0); target_circuit = $0; next; }
+      in_target && /^    main_component: / { sub(/^    main_component: /, "", $0); main_component = $0; next; }
+      in_target && /^    framework: / { sub(/^    framework: /, "", $0); framework = $0; next; }
+      in_target && /^    alias: / { sub(/^    alias: /, "", $0); alias = $0; next; }
+      in_target && /^    enabled: / { sub(/^    enabled: /, "", $0); enabled = $0; next; }
+      END {
+        if (in_target && enabled == "true") {
+          printf("%s\t%s\t%s\t%s\t%s\n", name, target_circuit, main_component, framework, alias);
+        }
+      }
+    ' "$MATRIX"
+  )
+}
+
+load_target_rows
+if [[ "${#TARGET_ROWS[@]}" -eq 0 ]]; then
+  echo "No enabled targets found in matrix: $MATRIX" >&2
+  exit 1
+fi
+
+# Keep tracked Noir fixture inputs stable even when readiness runs are interrupted.
+declare -a PROVER_PROJECTS=()
+declare -A PROVER_PROJECT_STATES=()
+declare -A PROVER_PROJECT_BACKUPS=()
+PROVER_STATES_RESTORED=0
+PROVER_BACKUP_DIR="$OUTPUT_DIR/.prover_restore_${STAMP}_$$"
+mkdir -p "$PROVER_BACKUP_DIR"
+
+sanitize_backup_name() {
+  printf "%s" "$1" | sed 's#[^A-Za-z0-9._-]#_#g'
+}
+
+capture_prover_state() {
+  local target_circuit="$1"
+  local project_dir
+  project_dir="$(dirname "$target_circuit")"
+  if [[ "$project_dir" != /* ]]; then
+    project_dir="$ROOT_DIR/$project_dir"
+  fi
+
+  if [[ -n "${PROVER_PROJECT_STATES[$project_dir]+set}" ]]; then
+    return
+  fi
+
+  local prover_path="$project_dir/Prover.toml"
+  PROVER_PROJECTS+=("$project_dir")
+
+  if [[ -f "$prover_path" ]]; then
+    local backup_name backup_path
+    backup_name="$(sanitize_backup_name "$project_dir")"
+    backup_path="$PROVER_BACKUP_DIR/${backup_name}.Prover.toml"
+    cp "$prover_path" "$backup_path"
+    PROVER_PROJECT_STATES["$project_dir"]="present"
+    PROVER_PROJECT_BACKUPS["$project_dir"]="$backup_path"
+  else
+    PROVER_PROJECT_STATES["$project_dir"]="absent"
+  fi
+}
+
+restore_prover_states() {
+  if [[ "$PROVER_STATES_RESTORED" -eq 1 ]]; then
+    return
+  fi
+  PROVER_STATES_RESTORED=1
+
+  local project_dir state prover_path backup_path
+  for project_dir in "${PROVER_PROJECTS[@]}"; do
+    state="${PROVER_PROJECT_STATES[$project_dir]:-absent}"
+    prover_path="$project_dir/Prover.toml"
+    if [[ "$state" == "present" ]]; then
+      backup_path="${PROVER_PROJECT_BACKUPS[$project_dir]:-}"
+      if [[ -n "$backup_path" && -f "$backup_path" ]]; then
+        cp "$backup_path" "$prover_path"
+      fi
+    else
+      rm -f "$prover_path"
+    fi
+  done
+  rm -rf "$PROVER_BACKUP_DIR"
+}
+
+handle_termination_signal() {
+  local exit_code="$1"
+  restore_prover_states
+  trap - EXIT INT TERM
+  exit "$exit_code"
+}
+
+for row in "${TARGET_ROWS[@]}"; do
+  IFS=$'\t' read -r _target_name target_circuit _main_component framework _alias <<< "$row"
+  if [[ "$framework" == "noir" && "$target_circuit" == *"Nargo.toml" ]]; then
+    capture_prover_state "$target_circuit"
+  fi
+done
+
+if [[ -f "$ROOT_DIR/tests/noir_projects/multiplier/Nargo.toml" ]]; then
+  capture_prover_state "$ROOT_DIR/tests/noir_projects/multiplier/Nargo.toml"
+fi
+
+trap restore_prover_states EXIT
+trap 'handle_termination_signal 130' INT
+trap 'handle_termination_signal 143' TERM
+
 INTEGRATION_EXIT=0
 INTEGRATION_STATUS="skipped"
 if ! $SKIP_INTEGRATION_TEST; then
@@ -194,39 +314,6 @@ if ! $SKIP_EXTERNAL_PARITY_TEST; then
   else
     EXTERNAL_PARITY_STATUS="fail"
   fi
-fi
-
-mapfile -t TARGET_ROWS < <(
-  awk '
-    /^  - name: / {
-      if (in_target && enabled == "true") {
-        printf("%s\t%s\t%s\t%s\t%s\n", name, target_circuit, main_component, framework, alias);
-      }
-      in_target = 1;
-      name = $3;
-      target_circuit = "";
-      main_component = "main";
-      framework = "circom";
-      alias = "always";
-      enabled = "true";
-      next;
-    }
-    in_target && /^    target_circuit: / { sub(/^    target_circuit: /, "", $0); target_circuit = $0; next; }
-    in_target && /^    main_component: / { sub(/^    main_component: /, "", $0); main_component = $0; next; }
-    in_target && /^    framework: / { sub(/^    framework: /, "", $0); framework = $0; next; }
-    in_target && /^    alias: / { sub(/^    alias: /, "", $0); alias = $0; next; }
-    in_target && /^    enabled: / { sub(/^    enabled: /, "", $0); enabled = $0; next; }
-    END {
-      if (in_target && enabled == "true") {
-        printf("%s\t%s\t%s\t%s\t%s\n", name, target_circuit, main_component, framework, alias);
-      }
-    }
-  ' "$MATRIX"
-)
-
-if [[ "${#TARGET_ROWS[@]}" -eq 0 ]]; then
-  echo "No enabled targets found in matrix: $MATRIX" >&2
-  exit 1
 fi
 
 echo -e "target\texit_code\treason_code\treason_count" > "$SUMMARY_TSV"

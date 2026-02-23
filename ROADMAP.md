@@ -1,12 +1,12 @@
 # ZkPatternFuzz Production Roadmap
 
-Date: 2026-02-22  
+Date: 2026-02-23  
 Status: Active  
 Primary goal: make the scanner production-grade for real multi-target runs with high recall and high runtime stability, and drive every supported circuit framework to a measurable 5/5 maturity score.
 
 ---
 
-## 📊 Status Overview (2026-02-22)
+## 📊 Status Overview (2026-02-23)
 
 ### Phase Implementation Progress
 - ✅ Phase 0: Reliability Blockers (implementation completed)
@@ -274,12 +274,21 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 **Goal:** reach and sustain `5.0/5.0` maturity for Circom, Noir, Cairo, and Halo2 using a single, release-gated scorecard.
 **Track:** active parallel execution track for backend maturity closure while Phase 7 semantic-analysis work remains planned.
 
-### Baseline Snapshot (2026-02-22)
+### Historical Baseline Snapshot (2026-02-22)
 - Noir: `4.0/5.0`
 - Halo2: `3.1/5.0`
 - Cairo: `2.8/5.0`
 - Circom: `4.5/5.0` (finalized in Week 1 scorecard freeze)
 - Cross-backend readiness: `4.2/5.0`
+
+### Latest Scorecard Snapshot (2026-02-23)
+- Noir: `4.5/5.0`
+- Halo2: `4.5/5.0`
+- Cairo: `4.617/5.0`
+- Circom: `5.0/5.0`
+- Cross-backend readiness: `4.539/5.0`
+- 14-day maturity streak progress: `circom=2/14`, `noir=0/14`, `cairo=0/14`, `halo2=0/14`
+- Circom flake streak progress: `2/14`
 
 ### 8.1 Maturity Rubric (5 points total)
 1. `Execution fidelity (1.0)`: deterministic outputs + no infra-skip on required targets.
@@ -333,6 +342,12 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 ### 8.5 Global Exit Criteria (Release Gate)
 - [x] Zero unresolved backend-specific release blockers (`scripts/release_candidate_gate.sh` -> `backend_release_blockers.json`).
 - [x] Release candidate gate enforces and archives 5/5 evidence bundles (including 14-day consecutive scorecard thresholds) (`scripts/release_candidate_gate.sh` -> evidence bundle manifest/archive).
+
+### 8.6 Active Closure Tasks (2026-02-23)
+- [ ] Raise Noir maturity score from `4.5` to `5.0` (current gaps: execution fidelity `0.8`, operational hardening `0.7`) and begin a non-zero 14-day streak.
+- [ ] Raise Halo2 maturity score from `4.5` to `5.0` (current gaps: execution fidelity `0.8`, operational hardening `0.7`) and begin a non-zero 14-day streak.
+- [ ] Raise Cairo maturity score from `4.617` to `5.0` (current gaps: execution fidelity `0.867`, constraint coverage `0.95`, operational hardening `0.8`) and begin a non-zero 14-day streak.
+- [ ] Continue Circom strict lane daily to move streak from `2/14` to `14/14`.
 
 ---
 
@@ -1433,4 +1448,8 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - Phase 3A required-check report: `artifacts/phase3a_validation/phase3a_report.json` (required checks `PASS`, backend-heavy checks currently `skip`)
 - Phase 3 speedup report: `artifacts/benchmark_runs_speedup_v2/speedup_report.json` (`serial=133.345s`, `parallel=70.790s`, `speedup=1.884x`, collisions `0`)
 - Release candidate validation now records two consecutive gate passes (`artifacts/release_candidate_validation/release_candidate_report.json`)
+- Latest backend maturity scorecard refresh: `artifacts/backend_maturity/latest_scorecard.json` (`generated_utc=2026-02-23T14:27:46Z`; scores: `circom=5.0`, `cairo=4.617`, `noir=4.5`, `halo2=4.5`)
+- Latest maturity streak state: `artifacts/backend_maturity/latest_scorecard.json` (`circom=2/14`, `noir=0/14`, `cairo=0/14`, `halo2=0/14`; gate pending)
+- Latest Circom flake streak state: `artifacts/circom_flake/latest_report.json` (`generated_utc=2026-02-23T14:27:52Z`, `current_streak_days=2`, `required=14`)
+- Noir readiness runner now snapshots/restores `Prover.toml` for matrix projects to avoid dirty tracked fixtures on interrupted runs (`scripts/run_noir_readiness.sh`)
 - Nightly CI matrix is operational with fast-smoke and deep-scheduled lanes
