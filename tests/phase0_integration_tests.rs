@@ -524,25 +524,28 @@ defi_advanced:
 #[tokio::test]
 async fn test_continuous_fuzzing_loop() {
     let mut config = create_test_config();
+    // Scope this test to continuous loop behavior only so runtime is deterministic
+    // under parallel suite load and does not depend on attack-phase cost variance.
+    config.attacks.clear();
+    config.campaign.parameters.additional.insert(
+        "symbolic_enabled".to_string(),
+        serde_yaml::Value::Bool(false),
+    );
 
-    // Configure continuous fuzzing
+    // Configure continuous fuzzing with a deterministic iteration target.
     config.campaign.parameters.additional.insert(
         "fuzzing_iterations".to_string(),
-        serde_yaml::Value::Number(1000.into()),
-    );
-    config.campaign.parameters.additional.insert(
-        "fuzzing_timeout_seconds".to_string(),
-        serde_yaml::Value::Number(30.into()),
+        serde_yaml::Value::Number(200.into()),
     );
 
     let mut engine = FuzzingEngine::new(config, Some(42), 1).unwrap();
     let report = engine.run(None).await.unwrap();
 
-    // Verify we ran significant iterations. Keep threshold conservative because
-    // this integration suite often runs under heavy parallel test load.
+    // With attacks disabled and no wall-clock timeout override, the loop should
+    // complete the configured iteration budget deterministically.
     assert!(
-        report.statistics.total_executions >= 50,
-        "Should have run at least 50 executions, got {}",
+        report.statistics.total_executions >= 200,
+        "Should have run at least the configured 200 executions, got {}",
         report.statistics.total_executions
     );
 }

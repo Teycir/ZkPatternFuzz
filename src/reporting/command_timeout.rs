@@ -137,7 +137,7 @@ fn resolve_current_dir(cmd: &Command) -> anyhow::Result<PathBuf> {
     Ok(absolute.canonicalize().unwrap_or(absolute))
 }
 
-fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
+fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut paths = BTreeSet::<PathBuf>::new();
     paths.insert(cwd.to_path_buf());
     paths.insert(PathBuf::from("/tmp"));
@@ -184,10 +184,17 @@ fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
         }
     }
 
-    paths
-        .into_iter()
-        .filter(|p| p.exists())
-        .collect::<Vec<PathBuf>>()
+    let mut writable_paths = Vec::with_capacity(paths.len());
+    for path in paths {
+        if path.exists() {
+            writable_paths.push(path);
+            continue;
+        }
+        std::fs::create_dir_all(&path)?;
+        writable_paths.push(path);
+    }
+
+    Ok(writable_paths)
 }
 
 fn find_binary_on_path(name: &str) -> bool {
@@ -228,7 +235,7 @@ fn maybe_wrap_with_tool_sandbox(cmd: &Command) -> anyhow::Result<Option<Command>
         }
 
         let cwd = resolve_current_dir(cmd)?;
-        let writable_paths = candidate_writable_bind_paths(cmd, &cwd);
+        let writable_paths = candidate_writable_bind_paths(cmd, &cwd)?;
         let mut wrapped = Command::new(&sandbox_bin);
         wrapped
             .arg("--die-with-parent")

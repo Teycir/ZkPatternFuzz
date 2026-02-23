@@ -847,6 +847,18 @@ gh run watch
 - [x] Add strict external-tool sandbox execution mode (namespace/seccomp wrapper) for backend commands (`circom`, `snarkjs`, `nargo`, `scarb`, `cargo`) and enforce it in release readiness lanes (`crates/zk-backends/src/util.rs`, `src/reporting/command_timeout.rs`, `scripts/run_backend_readiness_lanes.sh`, `.github/workflows/release_validation.yml`)
 - [x] Publish an explicit security assumptions and threat model document for fuzzing/evidence flows and backend toolchain trust boundaries (`docs/SECURITY_THREAT_MODEL.md`)
 
+#### New Findings Snapshot (2026-02-23)
+- [x] **High:** backend timeout env parsing no longer panics on invalid values; invalid env now logs and falls back to bounded defaults (`crates/zk-backends/src/util.rs`)
+- [x] **Medium:** backend timeout handling now terminates the full subprocess tree via process-group kill semantics (`crates/zk-backends/src/util.rs`)
+- [x] **Medium:** sandbox-required mode now creates missing writable bind directories before sandbox launch (`crates/zk-backends/src/util.rs`, `src/reporting/command_timeout.rs`)
+- [x] **Medium:** `test_continuous_fuzzing_loop` is stabilized by deterministic loop-only configuration and assertion (`tests/phase0_integration_tests.rs`)
+
+#### Validation Run Snapshot (2026-02-23)
+- `cargo test --workspace --all-targets` -> one failure (`test_continuous_fuzzing_loop` in `tests/phase0_integration_tests.rs`)
+- `cargo test -p zk-fuzzer --test phase0_integration_tests test_continuous_fuzzing_loop -- --nocapture` -> passed on repeated isolated reruns
+- No code changes were made in this validation snapshot; findings recorded for follow-up patching
+- Follow-up patch validation (post-snapshot): `cargo test -q -p zk-backends util::tests:: -- --test-threads=1`, `cargo test -q -p zk-fuzzer --test test_reporting_command_timeout -- --test-threads=1`, `cargo test -q -p zk-fuzzer --test phase0_integration_tests test_continuous_fuzzing_loop -- --test-threads=1` -> all pass
+
 ### AI-Powered Semantic Intent Analysis (2026-02-22)
 
 **Goal:** Bridge the gap between constraint satisfaction and semantic correctness by using AI to understand developer intent from documentation/comments.

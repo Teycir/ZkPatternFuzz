@@ -4,23 +4,81 @@ use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 pub(crate) fn timeout_from_env(var: &str, default_secs: u64) -> Duration {
+    let fallback = Duration::from_secs(default_secs.max(1));
     match std::env::var(var) {
         Ok(raw) => match raw.trim().parse::<u64>() {
             Ok(secs) => Duration::from_secs(secs.max(1)),
-            Err(err) => panic!("Invalid {}='{}': {}", var, raw, err),
+            Err(err) => {
+                tracing::warn!(
+                    "Invalid {}='{}' ({}); falling back to {}s",
+                    var,
+                    raw,
+                    err,
+                    fallback.as_secs()
+                );
+                fallback
+            }
         },
-        Err(std::env::VarError::NotPresent) => Duration::from_secs(default_secs.max(1)),
-        Err(e) => panic!("Invalid {} value: {}", var, e),
+        Err(std::env::VarError::NotPresent) => fallback,
+        Err(e) => {
+            tracing::warn!(
+                "Invalid {} value ({}); falling back to {}s",
+                var,
+                e,
+                fallback.as_secs()
+            );
+            fallback
+        }
     }
+}
+
+#[cfg(unix)]
+fn prepare_child_process_group(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    // Put the spawned command in its own process group so timeout enforcement can
+    // terminate the entire subtree (e.g., shell-launched descendants).
+    // SAFETY: `pre_exec` runs in the child process immediately before `exec`.
+    // The closure performs one async-signal-safe libc call (`setpgid`) and
+    // returns an OS error on failure without touching shared process state.
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn prepare_child_process_group(_cmd: &mut Command) {}
+
+#[cfg(unix)]
+fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
+    let pgid = child.id() as i32;
+    // Best-effort kill of the whole process group.
+    // SAFETY: `pgid` is derived from the spawned child PID and used only as
+    // a target identifier for `killpg`; no borrowed memory is involved.
+    let rc = unsafe { libc::killpg(pgid, libc::SIGKILL) };
+    if rc == 0 {
+        return Ok(());
+    }
+    child.kill()
+}
+
+#[cfg(not(unix))]
+fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
+    child.kill()
 }
 
 pub(crate) fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<Output> {
     let mut sandboxed_cmd = maybe_wrap_with_tool_sandbox(cmd)?;
     let spawn_cmd = sandboxed_cmd.as_mut().unwrap_or(cmd);
+    prepare_child_process_group(spawn_cmd);
 
     let mut child = spawn_cmd
         .stdin(Stdio::null())
@@ -41,8 +99,8 @@ pub(crate) fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<O
         }
 
         if start.elapsed() >= timeout {
-            if let Err(e) = child.kill() {
-                tracing::warn!("Failed to kill timed out process: {}", e);
+            if let Err(e) = kill_child_tree(&mut child) {
+                tracing::warn!("Failed to kill timed out process subtree: {}", e);
             }
             if let Err(e) = child.wait() {
                 tracing::warn!("Failed to wait for timed out process: {}", e);
@@ -125,7 +183,7 @@ fn resolve_current_dir(cmd: &Command) -> Result<PathBuf> {
     })
 }
 
-fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
+fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = BTreeSet::<PathBuf>::new();
     paths.insert(cwd.to_path_buf());
     paths.insert(PathBuf::from("/tmp"));
@@ -172,10 +230,22 @@ fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Vec<PathBuf> {
         }
     }
 
-    paths
-        .into_iter()
-        .filter(|p| p.exists())
-        .collect::<Vec<PathBuf>>()
+    let mut writable_paths = Vec::with_capacity(paths.len());
+    for path in paths {
+        if path.exists() {
+            writable_paths.push(path);
+            continue;
+        }
+        std::fs::create_dir_all(&path).with_context(|| {
+            format!(
+                "Failed to create sandbox writable directory '{}'",
+                path.display()
+            )
+        })?;
+        writable_paths.push(path);
+    }
+
+    Ok(writable_paths)
 }
 
 fn find_binary_on_path(name: &str) -> bool {
@@ -217,7 +287,7 @@ fn maybe_wrap_with_tool_sandbox(cmd: &Command) -> Result<Option<Command>> {
         }
 
         let cwd = resolve_current_dir(cmd)?;
-        let writable_paths = candidate_writable_bind_paths(cmd, &cwd);
+        let writable_paths = candidate_writable_bind_paths(cmd, &cwd)?;
 
         let mut wrapped = Command::new(&sandbox_bin);
         wrapped
@@ -343,8 +413,13 @@ impl Drop for DirLock {
 
 #[cfg(test)]
 mod tests {
-    use super::command_targets_backend_tool;
+    use super::{
+        candidate_writable_bind_paths, command_targets_backend_tool, run_with_timeout,
+        timeout_from_env,
+    };
+    use std::path::PathBuf;
     use std::process::Command;
+    use std::time::Duration;
 
     #[test]
     fn test_command_targets_backend_tool_direct_binaries() {
@@ -370,5 +445,65 @@ mod tests {
         let mut cmd = Command::new("sh");
         cmd.arg("-c").arg("echo hi");
         assert!(!command_targets_backend_tool(&cmd));
+    }
+
+    #[test]
+    fn test_timeout_from_env_invalid_value_uses_default() {
+        let key = "ZK_FUZZER_TEST_TIMEOUT_PARSE_INVALID";
+        std::env::set_var(key, "not-a-number");
+        let timeout = timeout_from_env(key, 7);
+        std::env::remove_var(key);
+        assert_eq!(timeout, Duration::from_secs(7));
+    }
+
+    #[test]
+    fn test_candidate_writable_bind_paths_creates_missing_env_dirs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let missing = temp.path().join("missing-sandbox-cache");
+        assert!(
+            !missing.exists(),
+            "precondition: test directory should start absent"
+        );
+
+        let mut cmd = Command::new("cargo");
+        cmd.env("SCARB_CACHE", &missing);
+
+        let paths =
+            candidate_writable_bind_paths(&cmd, temp.path()).expect("collect writable bind paths");
+
+        assert!(
+            missing.exists(),
+            "writable path should be created for sandbox bind"
+        );
+        assert!(
+            paths.contains(&missing),
+            "created writable path should be included in bind list"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_run_with_timeout_kills_process_subtree() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let marker_path = temp.path().join("timed_out_subprocess_marker.txt");
+        let marker_env: PathBuf = marker_path.clone();
+
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            .arg("(sleep 0.4; printf leaked > \"$MARKER_PATH\") & wait");
+        cmd.env("MARKER_PATH", marker_env);
+
+        let err = run_with_timeout(&mut cmd, Duration::from_millis(100))
+            .expect_err("command should time out");
+        assert!(
+            err.to_string().contains("timed out"),
+            "expected timeout error, got: {err}"
+        );
+
+        std::thread::sleep(Duration::from_millis(700));
+        assert!(
+            !marker_path.exists(),
+            "timed out command subtree should be fully terminated"
+        );
     }
 }
