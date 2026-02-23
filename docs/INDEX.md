@@ -4,6 +4,16 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ## 🔒 AI Pentest Rule (Read First)
 
+### 0a. [AGENTS.md](../AGENTS.md) - **Session Contract**
+**For:** Every new agent session in this repository  
+**Contains:**
+- mandatory mission (find vulns, then prove exploitability or non-exploitability)
+- required step-by-step flow
+- definition of done and artifact requirements
+- tooling expectations linked to host inventory
+
+**Start here if:** You need per-session execution contract and completion criteria
+
 ### 0. [AI_PENTEST_RULES.md](AI_PENTEST_RULES.md) - **Required**
 **For:** Any AI agent running pentests  
 **Contains:**
@@ -168,6 +178,16 @@ Complete guide to all documentation files, ordered by use case and reading level
 - witness-extension regression workflow
 - Halo2 Plookup integration test workflow
 - semantic signoff checklist
+
+---
+
+### 5j. [TOOLS_AVAILABLE_ON_HOST.md](TOOLS_AVAILABLE_ON_HOST.md) - **Local Tool Inventory**
+**For:** Verifying what vulnerability-discovery and formal/proof tools are actually installed on this workstation  
+**Contains:**
+- installed vs missing tool status
+- resolved binary paths and versions
+- usage mapping for discovery vs exploit proof vs non-exploitability proof
+- quick recheck commands for manual operations
 
 ---
 
