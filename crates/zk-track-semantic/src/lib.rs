@@ -100,12 +100,37 @@ struct SemanticTrackReport {
     violations: Vec<SemanticViolationRecord>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 struct SemanticExecutionEvidenceCase {
     case_id: String,
     accepted: bool,
     violates_intent: bool,
     summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AiIngestDocument {
+    path: PathBuf,
+    source_type: SemanticSourceType,
+    intent_excerpt: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct AiIngestBundle {
+    schema_version: String,
+    track_version: String,
+    run_id: String,
+    generated_at: DateTime<Utc>,
+    mode: String,
+    adapter: String,
+    roots: Vec<PathBuf>,
+    source_documents: Vec<AiIngestDocument>,
+    extracted_intents: Vec<SemanticIntentRecord>,
+    execution_evidence_cases: Vec<SemanticExecutionEvidenceCase>,
+    violations: Vec<SemanticViolationRecord>,
+    findings: Vec<TrackFinding>,
+    ai_prompt_hints: Vec<String>,
+    instructions: String,
 }
 
 #[derive(Default)]
@@ -358,6 +383,16 @@ impl TrackRunner for SemanticTrackRunner {
             source_documents.len(),
             findings.len(),
         )?;
+        let ai_ingest_bundle_path = write_ai_ingest_bundle(
+            input,
+            &adapter_name,
+            &scan_roots,
+            &source_documents,
+            &intent_records,
+            &execution_evidence_cases,
+            &violations,
+            &findings,
+        )?;
 
         let scorecard =
             build_scorecard(source_documents.len(), intent_records.len(), findings.len());
@@ -372,7 +407,7 @@ impl TrackRunner for SemanticTrackRunner {
                 "semantic_track_runner_end_to_end".to_string(),
             ],
             env: BTreeMap::new(),
-            evidence_paths: vec![report_path],
+            evidence_paths: vec![report_path, ai_ingest_bundle_path],
             notes: "Replay deterministic semantic intent extraction + violation classification"
                 .to_string(),
         }];
@@ -478,45 +513,10 @@ fn default_adapter_from_metadata(
             Ok(Box::new(adapter))
         }
         "external" | "external_user" | "external-user" | "user_ai" | "external_ai" => {
-            let actor_label = input
-                .metadata
-                .get("semantic_external_actor")
-                .or_else(|| input.metadata.get("semantic_model_name"))
-                .or_else(|| input.metadata.get("semantic_model"))
-                .map(|value| value.trim())
-                .filter(|value| !value.is_empty())
-                .unwrap_or("external-ai-user");
-            let intent_payload = metadata_inline_or_file(
-                input,
-                "semantic_external_intent_json",
-                "semantic_external_intent_path",
-            )?;
-            let exploitability_payload = metadata_inline_or_file(
-                input,
-                "semantic_external_assessment_json",
-                "semantic_external_assessment_path",
-            )?;
-
-            if intent_payload.is_none() {
-                return Err(PostRoadmapError::Configuration(
-                    "external semantic adapter requires `semantic_external_intent_json` or `semantic_external_intent_path`".to_string(),
-                ));
-            }
-            if exploitability_payload.is_none() {
-                return Err(PostRoadmapError::Configuration(
-                    "external semantic adapter requires `semantic_external_assessment_json` or `semantic_external_assessment_path`".to_string(),
-                ));
-            }
-
-            let mut adapter = ExternalUserSemanticIntentAdapter::new(actor_label.to_string());
-            if let Some(payload) = intent_payload {
-                adapter = adapter.with_intent_payload(payload);
-            }
-            if let Some(payload) = exploitability_payload {
-                adapter = adapter.with_exploitability_payload(payload);
-            }
-
-            Ok(Box::new(adapter))
+            let _ = input;
+            Err(PostRoadmapError::Configuration(
+                "producer-only mode: semantic runner does not ingest external AI payloads; use generated `ai_ingest_bundle.json` as external AI input".to_string(),
+            ))
         }
         _ => Ok(Box::new(HeuristicSemanticIntentAdapter)),
     }
@@ -1133,6 +1133,87 @@ fn write_semantic_report(
         ))
     })?;
     Ok(report_path)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_ai_ingest_bundle(
+    input: &TrackInput,
+    adapter_name: &str,
+    roots: &[PathBuf],
+    source_documents: &[SemanticSourceDocument],
+    intents: &[SemanticIntentRecord],
+    execution_evidence_cases: &[SemanticExecutionEvidenceCase],
+    violations: &[SemanticViolationRecord],
+    findings: &[TrackFinding],
+) -> PostRoadmapResult<PathBuf> {
+    let source_documents = source_documents
+        .iter()
+        .map(|document| AiIngestDocument {
+            path: document.path.clone(),
+            source_type: document.source_type,
+            intent_excerpt: truncate_bundle_text(&document.intent_text, 280),
+        })
+        .collect::<Vec<_>>();
+    let bundle = AiIngestBundle {
+        schema_version: POST_ROADMAP_SCHEMA_VERSION.to_string(),
+        track_version: TRACK_MODULE_VERSION.to_string(),
+        run_id: input.run_id.clone(),
+        generated_at: Utc::now(),
+        mode: "output_only_for_external_ai".to_string(),
+        adapter: adapter_name.to_string(),
+        roots: roots.to_vec(),
+        source_documents,
+        extracted_intents: intents.to_vec(),
+        execution_evidence_cases: execution_evidence_cases.to_vec(),
+        violations: violations.to_vec(),
+        findings: findings.to_vec(),
+        ai_prompt_hints: vec![
+            "Infer protocol intent from extracted_intents and source_documents.".to_string(),
+            "Prioritize violations where detector=execution_evidence and accepted=true cases imply forbidden behavior."
+                .to_string(),
+            "For each high-confidence finding, suggest a concrete verifier/constraint-level fix.".to_string(),
+            "Output machine-readable exploitability verdicts with confidence scores.".to_string(),
+        ],
+        instructions: "This bundle is producer output from ZkPatternFuzz. External AI should ingest this JSON and return analysis out-of-band. The scanner does not ingest AI responses in producer-only mode."
+            .to_string(),
+    };
+    let bundle_json = serde_json::to_string_pretty(&bundle).map_err(|error| {
+        PostRoadmapError::Persistence(format!(
+            "failed to serialize AI ingest bundle for run `{}`: {error}",
+            input.run_id
+        ))
+    })?;
+
+    let report_dir = report_output_dir(input);
+    fs::create_dir_all(&report_dir).map_err(|error| {
+        PostRoadmapError::Persistence(format!(
+            "failed to create AI ingest bundle directory `{}`: {error}",
+            report_dir.display()
+        ))
+    })?;
+    let bundle_path = report_dir.join("ai_ingest_bundle.json");
+    fs::write(&bundle_path, bundle_json).map_err(|error| {
+        PostRoadmapError::Persistence(format!(
+            "failed to write AI ingest bundle `{}`: {error}",
+            bundle_path.display()
+        ))
+    })?;
+    Ok(bundle_path)
+}
+
+fn truncate_bundle_text(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let mut out = String::new();
+    for (index, character) in value.chars().enumerate() {
+        if index >= max_chars {
+            break;
+        }
+        out.push(character);
+    }
+    out.push_str("...[truncated]");
+    out
 }
 
 #[cfg(test)]

@@ -852,6 +852,7 @@ gh run watch
 **Goal:** Bridge the gap between constraint satisfaction and semantic correctness by using AI to understand developer intent from documentation/comments.
 
 **Execution Policy:** This section is deferred and starts only after the current roadmap is complete (Phase 8 sustained-gate exit met). It is not part of active release gating.
+**Operator note:** semantic track currently runs in producer-only mode for AI handoff (`ai_ingest_bundle.json` output); external AI responses are handled out-of-band and are not ingested by the scanner.
 
 **The Problem:**
 - Fuzzer generates witnesses that satisfy all constraints

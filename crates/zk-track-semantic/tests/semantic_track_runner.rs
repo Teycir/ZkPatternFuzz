@@ -160,10 +160,22 @@ async fn semantic_track_runner_end_to_end_generates_report_and_findings() {
     assert!(findings
         .iter()
         .all(|finding| finding.metadata.contains_key("fix_suggestion")));
+    let ai_bundle_path = emitted_paths
+        .iter()
+        .find(|path| is_ai_bundle(path))
+        .expect("expected AI ingest bundle path");
+    let ai_bundle_json = fs::read_to_string(ai_bundle_path).expect("read AI ingest bundle");
+    let ai_bundle_value: serde_json::Value =
+        serde_json::from_str(&ai_bundle_json).expect("parse AI ingest bundle JSON");
+    assert_eq!(ai_bundle_value["mode"], "output_only_for_external_ai");
+    assert!(ai_bundle_value["instructions"]
+        .as_str()
+        .expect("instructions string")
+        .contains("does not ingest AI responses"));
 }
 
 #[tokio::test]
-async fn semantic_track_runner_external_user_mode_accepts_user_supplied_ai_outputs() {
+async fn semantic_track_runner_rejects_external_user_adapter_in_producer_only_mode() {
     let tmp = tempdir().expect("tempdir");
     let project_root = tmp.path().join("sample_project_external");
     fs::create_dir_all(project_root.join("src")).expect("create project source directory");
@@ -224,21 +236,13 @@ async fn semantic_track_runner_external_user_mode_accepts_user_supplied_ai_outpu
         .prepare(&input)
         .await
         .expect("prepare should succeed");
-    let execution = runner.run(&input).await.expect("run should succeed");
-    runner
-        .validate(&execution)
+    let error = runner
+        .run(&input)
         .await
-        .expect("validate should succeed");
-
-    assert!(!execution.findings.is_empty());
-    assert!(execution
-        .findings
-        .iter()
-        .all(|finding| finding.summary.contains("Suggested fix")));
-    assert!(execution
-        .findings
-        .iter()
-        .all(|finding| finding.metadata.get("intent_provider").is_some()));
+        .expect_err("external adapter should be disabled in producer-only mode");
+    assert!(error
+        .to_string()
+        .contains("producer-only mode: semantic runner does not ingest external AI payloads"));
 }
 
 #[tokio::test]
@@ -329,30 +333,6 @@ async fn semantic_track_runner_flags_execution_evidence_intent_violation() {
                 "semantic_root".to_string(),
                 project_root.to_string_lossy().into_owned(),
             ),
-            ("semantic_adapter".to_string(), "external_user".to_string()),
-            (
-                "semantic_external_intent_json".to_string(),
-                r#"{
-                    "semantic_intent": {
-                      "source": "external-user",
-                      "required_behaviors": ["only admin can withdraw"],
-                      "forbidden_behaviors": ["must never bypass authorization"],
-                      "security_properties": ["security_critical:authorization"]
-                    }
-                }"#
-                .to_string(),
-            ),
-            (
-                "semantic_external_assessment_json".to_string(),
-                r#"{
-                    "exploitability": {
-                      "exploitable": true,
-                      "confidence": 95,
-                      "rationale": "Evidence shows non-admin withdrawal accepted"
-                    }
-                }"#
-                .to_string(),
-            ),
             (
                 "semantic_execution_evidence_json".to_string(),
                 r#"{
@@ -390,5 +370,12 @@ fn is_semantic_report(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .map(|name| name == "semantic_track_report.json")
+        .unwrap_or(false)
+}
+
+fn is_ai_bundle(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name == "ai_ingest_bundle.json")
         .unwrap_or(false)
 }
