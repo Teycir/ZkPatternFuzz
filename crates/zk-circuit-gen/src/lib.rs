@@ -320,6 +320,34 @@ pub struct CompiledCircuitStructure {
     pub rendered_byte_size: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IntentConstraintCheck {
+    pub intent_kind: SemanticIntentKind,
+    pub statement: String,
+    pub matched: bool,
+    pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SemanticConstraintVerificationReport {
+    pub backend: Backend,
+    pub circuit_name: String,
+    pub compiled_structure: CompiledCircuitStructure,
+    pub total_intents: usize,
+    pub matched_intents: usize,
+    pub mismatched_intents: usize,
+    pub checks: Vec<IntentConstraintCheck>,
+    pub constraint_gaps: Vec<ConstraintGapFinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ConstraintGapFinding {
+    pub intent_kind: SemanticIntentKind,
+    pub statement: String,
+    pub reason: String,
+    pub satisfiable_candidate: bool,
+}
+
 pub fn parse_dsl_yaml(value: &str) -> Result<CircuitDsl, CircuitGenError> {
     serde_yaml::from_str(value).map_err(CircuitGenError::ParseYaml)
 }
@@ -446,6 +474,125 @@ pub fn compile_and_extract_structure(
         unique_signal_references: unique_signal_refs.len(),
         rendered_line_count: rendered.lines().count(),
         rendered_byte_size: rendered.len(),
+    })
+}
+
+pub fn verify_compiled_constraints_match_intent(
+    dsl: &CircuitDsl,
+    backend: Backend,
+    intent: &SemanticIntentExtraction,
+) -> Result<SemanticConstraintVerificationReport, CircuitGenError> {
+    let structure = compile_and_extract_structure(dsl, backend)?;
+    let features = collect_constraint_features(dsl);
+
+    let mut checks = Vec::new();
+    for signal in &intent.signals {
+        let statement_lower = signal.statement.to_ascii_lowercase();
+        let mut evidence = Vec::new();
+        let matched = match signal.kind {
+            SemanticIntentKind::AccessControl => {
+                let access_hits = features
+                    .signal_refs
+                    .iter()
+                    .filter(|name| is_access_control_signal(name))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !access_hits.is_empty() {
+                    evidence.push(format!(
+                        "access-control signals referenced in constraints/assignments: {}",
+                        access_hits.join(", ")
+                    ));
+                    true
+                } else {
+                    evidence.push(
+                        "no access-control signal names detected in compiled constraint graph"
+                            .to_string(),
+                    );
+                    false
+                }
+            }
+            SemanticIntentKind::BoundaryCondition => {
+                let numeric_targets = extract_numeric_tokens(&statement_lower);
+                let has_boundary_signal = features
+                    .signal_refs
+                    .iter()
+                    .any(|name| is_boundary_signal(name));
+                let has_arithmetic_guard = features.has_sub || features.has_mul;
+                let has_numeric_anchor = if numeric_targets.is_empty() {
+                    !features.constants.is_empty()
+                } else {
+                    numeric_targets
+                        .iter()
+                        .all(|value| features.constants.contains(value))
+                };
+                if has_boundary_signal {
+                    evidence.push("boundary-oriented signal names present".to_string());
+                }
+                if has_arithmetic_guard {
+                    evidence.push(
+                        "arithmetic guard operations (sub/mul) present in compiled expressions"
+                            .to_string(),
+                    );
+                }
+                if has_numeric_anchor {
+                    evidence.push(
+                        "numeric boundary anchors detected in constraint expressions".to_string(),
+                    );
+                }
+                has_boundary_signal && has_arithmetic_guard && has_numeric_anchor
+            }
+            SemanticIntentKind::ForbiddenBehavior => {
+                let has_negation_word = [
+                    "must not", "never", "forbid", "disallow", "reject", "cannot", "without",
+                ]
+                .iter()
+                .any(|token| statement_lower.contains(token));
+                let has_guard = features.constraint_count > 0 && !features.signal_refs.is_empty();
+                if has_negation_word {
+                    evidence.push("forbidden semantic statement recognized".to_string());
+                }
+                if has_guard {
+                    evidence.push(
+                        "compiled circuit contains explicit constraints to enforce behavior"
+                            .to_string(),
+                    );
+                }
+                has_negation_word && has_guard
+            }
+            SemanticIntentKind::RequiredBehavior => {
+                let has_constraints = features.constraint_count > 0;
+                let has_signal_relationships = features.signal_ref_count > 1;
+                if has_constraints {
+                    evidence.push("at least one explicit equality constraint found".to_string());
+                }
+                if has_signal_relationships {
+                    evidence.push("multi-signal relationships present in expressions".to_string());
+                }
+                has_constraints && has_signal_relationships
+            }
+        };
+        checks.push(IntentConstraintCheck {
+            intent_kind: signal.kind,
+            statement: signal.statement.clone(),
+            matched,
+            evidence,
+        });
+    }
+
+    let matched_intents = checks.iter().filter(|check| check.matched).count();
+    let total_intents = checks.len();
+    let mismatched_intents = total_intents.saturating_sub(matched_intents);
+    let constraint_gaps = detect_constraint_gaps(&structure, &checks);
+
+    Ok(SemanticConstraintVerificationReport {
+        backend,
+        circuit_name: dsl.name.clone(),
+        compiled_structure: structure,
+        total_intents,
+        matched_intents,
+        mismatched_intents,
+        checks,
+        constraint_gaps,
     })
 }
 
@@ -975,6 +1122,139 @@ fn random_leaf_expression<R: Rng>(rng: &mut R, available: &[String]) -> Expressi
             value: rng.gen_range(-9..=9),
         }
     }
+}
+
+#[derive(Debug, Default)]
+struct ConstraintFeatures {
+    constraint_count: usize,
+    signal_ref_count: usize,
+    signal_refs: BTreeSet<String>,
+    constants: BTreeSet<i64>,
+    has_sub: bool,
+    has_mul: bool,
+}
+
+fn collect_constraint_features(dsl: &CircuitDsl) -> ConstraintFeatures {
+    let mut features = ConstraintFeatures {
+        constraint_count: dsl.constraints.len(),
+        ..ConstraintFeatures::default()
+    };
+    for assignment in &dsl.assignments {
+        collect_expression_features(&assignment.expression, &mut features);
+    }
+    for constraint in &dsl.constraints {
+        collect_expression_features(&constraint.left, &mut features);
+        collect_expression_features(&constraint.right, &mut features);
+    }
+    features
+}
+
+fn collect_expression_features(expression: &Expression, features: &mut ConstraintFeatures) {
+    match expression {
+        Expression::Signal { name } => {
+            features.signal_ref_count += 1;
+            features.signal_refs.insert(name.to_ascii_lowercase());
+        }
+        Expression::Constant { value } => {
+            features.constants.insert(*value);
+        }
+        Expression::Add { left, right } => {
+            collect_expression_features(left, features);
+            collect_expression_features(right, features);
+        }
+        Expression::Sub { left, right } => {
+            features.has_sub = true;
+            collect_expression_features(left, features);
+            collect_expression_features(right, features);
+        }
+        Expression::Mul { left, right } => {
+            features.has_mul = true;
+            collect_expression_features(left, features);
+            collect_expression_features(right, features);
+        }
+    }
+}
+
+fn is_access_control_signal(name: &str) -> bool {
+    ["admin", "owner", "auth", "role", "permission", "caller"]
+        .iter()
+        .any(|token| name.contains(token))
+}
+
+fn is_boundary_signal(name: &str) -> bool {
+    [
+        "bound",
+        "limit",
+        "min",
+        "max",
+        "range",
+        "amount",
+        "value",
+        "threshold",
+    ]
+    .iter()
+    .any(|token| name.contains(token))
+}
+
+fn extract_numeric_tokens(raw: &str) -> Vec<i64> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    for ch in raw.chars() {
+        if ch.is_ascii_digit() || (ch == '-' && current.is_empty()) {
+            current.push(ch);
+            continue;
+        }
+        if !current.is_empty() {
+            if let Ok(value) = current.parse::<i64>() {
+                out.push(value);
+            }
+            current.clear();
+        }
+    }
+    if !current.is_empty() {
+        if let Ok(value) = current.parse::<i64>() {
+            out.push(value);
+        }
+    }
+    out
+}
+
+fn detect_constraint_gaps(
+    structure: &CompiledCircuitStructure,
+    checks: &[IntentConstraintCheck],
+) -> Vec<ConstraintGapFinding> {
+    let mut gaps = Vec::new();
+    for check in checks {
+        if check.matched {
+            continue;
+        }
+        let reason = match check.intent_kind {
+            SemanticIntentKind::AccessControl => {
+                "no explicit access-control relationship detected in compiled constraints"
+                    .to_string()
+            }
+            SemanticIntentKind::BoundaryCondition => {
+                "boundary intent has no matching numeric/guard evidence in constraints".to_string()
+            }
+            SemanticIntentKind::ForbiddenBehavior => {
+                "forbidden behavior intent is not blocked by compiled constraints".to_string()
+            }
+            SemanticIntentKind::RequiredBehavior => {
+                "required behavior intent is not backed by explicit constraint structure"
+                    .to_string()
+            }
+        };
+        let satisfiable_candidate = structure.constraint_count > 0
+            && structure.assignment_count > 0
+            && structure.signal_count > 0;
+        gaps.push(ConstraintGapFinding {
+            intent_kind: check.intent_kind,
+            statement: check.statement.clone(),
+            reason,
+            satisfiable_candidate,
+        });
+    }
+    gaps
 }
 
 fn collect_expression_metrics(

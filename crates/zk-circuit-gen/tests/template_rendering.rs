@@ -8,9 +8,9 @@ use zk_circuit_gen::{
     extract_semantic_intent_from_text, generate_adversarial_corpus_from_external_patterns,
     generate_bulk_corpus, generate_random_circuit_dsl, parse_dsl_yaml,
     parse_external_ai_pattern_bundle_json, parse_pattern_feedback_json, render_backend_template,
-    render_mutated_template, AdversarialGenerationConfig, Assignment, Backend,
-    BulkGenerationConfig, CircuitDsl, ConstraintEq, Expression, MutationStrategy,
-    SemanticIntentKind,
+    render_mutated_template, verify_compiled_constraints_match_intent, AdversarialGenerationConfig,
+    Assignment, Backend, BulkGenerationConfig, CircuitDsl, ConstraintEq, Expression,
+    MutationStrategy, SemanticIntentKind,
 };
 
 fn sample_dsl() -> CircuitDsl {
@@ -412,4 +412,112 @@ fn compile_structure_extraction_reports_constraint_and_shape_metrics() {
     assert!(summary.unique_signal_references >= 4);
     assert!(summary.rendered_line_count > 0);
     assert!(summary.rendered_byte_size > 0);
+}
+
+#[test]
+fn semantic_constraint_verification_matches_extracted_intent() {
+    let source = r#"
+template Main() {
+  // only admin can mint
+  // amount must be less than 1000
+  // users must not mint without admin role
+}
+"#;
+
+    let dsl = CircuitDsl {
+        name: "semantic_guard".to_string(),
+        public_inputs: vec!["admin".to_string(), "bound".to_string()],
+        private_inputs: vec!["amount".to_string()],
+        outputs: vec!["out".to_string()],
+        assignments: vec![
+            Assignment {
+                target: "tmp".to_string(),
+                expression: Expression::Sub {
+                    left: Box::new(Expression::Signal {
+                        name: "bound".to_string(),
+                    }),
+                    right: Box::new(Expression::Signal {
+                        name: "amount".to_string(),
+                    }),
+                },
+            },
+            Assignment {
+                target: "out".to_string(),
+                expression: Expression::Mul {
+                    left: Box::new(Expression::Signal {
+                        name: "admin".to_string(),
+                    }),
+                    right: Box::new(Expression::Signal {
+                        name: "tmp".to_string(),
+                    }),
+                },
+            },
+        ],
+        constraints: vec![
+            ConstraintEq {
+                left: Expression::Signal {
+                    name: "bound".to_string(),
+                },
+                right: Expression::Constant { value: 1000 },
+            },
+            ConstraintEq {
+                left: Expression::Signal {
+                    name: "out".to_string(),
+                },
+                right: Expression::Constant { value: 0 },
+            },
+        ],
+    };
+
+    let intent = extract_semantic_intent_from_text(source, None, Some(Backend::Circom));
+    let report = verify_compiled_constraints_match_intent(&dsl, Backend::Circom, &intent)
+        .expect("semantic verification");
+    assert_eq!(report.total_intents, 3);
+    assert_eq!(report.matched_intents, 3);
+    assert_eq!(report.mismatched_intents, 0);
+    assert!(report.constraint_gaps.is_empty());
+}
+
+#[test]
+fn semantic_constraint_verification_reports_mismatch_when_boundary_unenforced() {
+    let source = r#"
+template Main() {
+  // amount must be less than 5000
+}
+"#;
+    let dsl = CircuitDsl {
+        name: "boundary_mismatch".to_string(),
+        public_inputs: vec!["amount".to_string()],
+        private_inputs: vec![],
+        outputs: vec!["out".to_string()],
+        assignments: vec![Assignment {
+            target: "out".to_string(),
+            expression: Expression::Signal {
+                name: "amount".to_string(),
+            },
+        }],
+        constraints: vec![ConstraintEq {
+            left: Expression::Signal {
+                name: "amount".to_string(),
+            },
+            right: Expression::Constant { value: 1000 },
+        }],
+    };
+
+    let intent = extract_semantic_intent_from_text(source, None, Some(Backend::Circom));
+    let report = verify_compiled_constraints_match_intent(&dsl, Backend::Circom, &intent)
+        .expect("semantic verification");
+    assert_eq!(report.total_intents, 1);
+    assert_eq!(report.matched_intents, 0);
+    assert_eq!(report.mismatched_intents, 1);
+    assert_eq!(report.constraint_gaps.len(), 1);
+    assert!(report.constraint_gaps[0].satisfiable_candidate);
+    assert_eq!(
+        report.constraint_gaps[0].intent_kind,
+        SemanticIntentKind::BoundaryCondition
+    );
+    assert!(report
+        .checks
+        .iter()
+        .any(|check| check.intent_kind == SemanticIntentKind::BoundaryCondition && !check.matched));
 }

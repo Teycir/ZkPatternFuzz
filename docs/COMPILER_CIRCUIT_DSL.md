@@ -220,3 +220,28 @@ Reported metrics include:
 - `expression_node_count`, `max_expression_depth`
 - `signal_reference_count`, `unique_signal_references`
 - rendered template size (`rendered_line_count`, `rendered_byte_size`)
+
+## Semantic Constraint Match Verification
+
+Use semantic match verification to check if compiled constraints align with extracted intent:
+
+```bash
+scripts/run_circuit_gen_semantic_match_sample.sh
+```
+
+Direct command:
+
+```bash
+cargo run -q -p zk-circuit-gen --example verify_semantic_constraint_match -- \
+  --source-file tests/datasets/circuit_gen/semantic_source.sample.circom \
+  --doc-file tests/datasets/circuit_gen/semantic_doc.sample.md \
+  --dsl-file tests/datasets/circuit_gen/structure_dsl.sample.yaml \
+  --backend circom \
+  --output-json artifacts/circuit_gen/semantic_constraint_match_sample/latest_report.json
+```
+
+Verification output includes:
+- `total_intents`, `matched_intents`, `mismatched_intents`
+- `checks[]` per intent statement (`matched` + `evidence[]`)
+- `constraint_gaps[]` for mismatched intents (`reason`, `satisfiable_candidate`)
+- embedded `compiled_structure` metrics for correlation
