@@ -4,10 +4,8 @@ use super::FuzzingEngine;
 impl FuzzingEngine {
     fn is_bare_program_name(path: &std::path::Path) -> bool {
         let mut components = path.components();
-        matches!(
-            components.next(),
-            Some(std::path::Component::Normal(_))
-        ) && components.next().is_none()
+        matches!(components.next(), Some(std::path::Component::Normal(_)))
+            && components.next().is_none()
     }
 
     fn validate_snarkjs_override_path(
@@ -816,11 +814,8 @@ mod tests {
 
     #[test]
     fn snarkjs_override_requires_explicit_opt_in_for_path_like_values() {
-        let err = FuzzingEngine::validate_snarkjs_override_path(
-            Path::new("/tmp/snarkjs"),
-            false,
-        )
-        .expect_err("path-like override should be rejected without explicit opt-in");
+        let err = FuzzingEngine::validate_snarkjs_override_path(Path::new("/tmp/snarkjs"), false)
+            .expect_err("path-like override should be rejected without explicit opt-in");
         assert!(err.to_string().contains("allow_external_tool_overrides"));
     }
 

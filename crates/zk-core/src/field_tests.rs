@@ -25,9 +25,7 @@ fn from_bytes_checked_rejects_non_canonical_values() {
     let modulus = FieldElement::from_hex(&modulus_hex).expect("modulus hex must parse");
     let err = FieldElement::from_bytes_checked(&modulus.to_bytes())
         .expect_err("modulus itself must be rejected as non-canonical");
-    assert!(err
-        .to_string()
-        .contains("must be < modulus"));
+    assert!(err.to_string().contains("must be < modulus"));
 }
 
 #[test]

@@ -4,10 +4,8 @@ use zk_fuzzer::config::FuzzConfig;
 
 fn is_bare_program_name(path: &Path) -> bool {
     let mut components = path.components();
-    matches!(
-        components.next(),
-        Some(std::path::Component::Normal(_))
-    ) && components.next().is_none()
+    matches!(components.next(), Some(std::path::Component::Normal(_)))
+        && components.next().is_none()
 }
 
 fn validate_snarkjs_override_path(

@@ -91,4 +91,3 @@ pub fn build_foundation_sprint_state(
         },
     }
 }
-

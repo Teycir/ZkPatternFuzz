@@ -150,4 +150,3 @@ pub fn default_post_roadmap_tracks() -> Vec<Box<dyn TrackRunner>> {
         Box::new(zk_track_crypto::CryptoTrackRunner::new()),
     ]
 }
-

@@ -1394,8 +1394,12 @@ fn parse_yaml_number(
         } else {
             modulus - rem
         };
-        let canonical = FieldElement::from_bytes_checked(&value.to_bytes_be())
-            .map_err(|err| format!("Failed to encode canonical field value from '{}': {}", i, err))?;
+        let canonical = FieldElement::from_bytes_checked(&value.to_bytes_be()).map_err(|err| {
+            format!(
+                "Failed to encode canonical field value from '{}': {}",
+                i, err
+            )
+        })?;
         return Ok(vec![canonical]);
     }
 
@@ -1430,7 +1434,11 @@ fn parse_string_as_field_element(
     value: &str,
     field_modulus: &[u8; 32],
 ) -> Result<FieldElement, String> {
-    fn parse_bytes(bytes: &[u8], raw_literal: &str, allow_raw: bool) -> Result<FieldElement, String> {
+    fn parse_bytes(
+        bytes: &[u8],
+        raw_literal: &str,
+        allow_raw: bool,
+    ) -> Result<FieldElement, String> {
         if allow_raw {
             return Ok(FieldElement::from_bytes(bytes));
         }
