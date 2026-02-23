@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REBUILD_SCRIPT="$ROOT_DIR/scripts/rebuild_release_binaries.sh"
 READINESS_ROOT="$ROOT_DIR/artifacts/backend_readiness"
 REGISTRY="$ROOT_DIR/targets/fuzzer_registry.prod.yaml"
 BATCH_BIN="$ROOT_DIR/target/release/zk0d_batch"
@@ -149,6 +150,22 @@ if [[ "$ENFORCE_TOOL_SANDBOX" -eq 1 ]]; then
   export ZKFUZZ_EXTERNAL_TOOL_SANDBOX=required
   export ZKFUZZ_EXTERNAL_TOOL_SANDBOX_BIN="${ZKFUZZ_EXTERNAL_TOOL_SANDBOX_BIN:-bwrap}"
   echo "Backend external-tool sandbox: required (${ZKFUZZ_EXTERNAL_TOOL_SANDBOX_BIN})"
+fi
+
+if [[ "$NO_BUILD_IF_MISSING" -eq 0 ]]; then
+  if [[ "$BATCH_BIN" == "$ROOT_DIR/target/release/zk0d_batch" || "$BATCH_BIN" == "target/release/zk0d_batch" ]]; then
+    if [[ ! -x "$REBUILD_SCRIPT" ]]; then
+      echo "Rebuild script not found or not executable: $REBUILD_SCRIPT" >&2
+      exit 1
+    fi
+    "$REBUILD_SCRIPT" --project-root "$ROOT_DIR" --if-changed --bin zk0d_batch
+    BATCH_BIN="$ROOT_DIR/target/release/zk0d_batch"
+  fi
+fi
+
+if [[ ! -x "$BATCH_BIN" ]]; then
+  echo "zk0d_batch binary not found/executable: $BATCH_BIN" >&2
+  exit 1
 fi
 
 run_lane() {

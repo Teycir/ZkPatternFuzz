@@ -16,6 +16,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REBUILD_SCRIPT="$ROOT_DIR/scripts/rebuild_release_binaries.sh"
 
 # Colors
 RED='\033[0;31m'
@@ -141,7 +142,11 @@ mkdir -p "$OUTPUT_DIR"
 
 # Build release binary
 log_section "Building ZkPatternFuzz"
-if cargo build --release 2>&1 | tail -5; then
+if [[ ! -x "$REBUILD_SCRIPT" ]]; then
+    log_error "Rebuild script not found or not executable: $REBUILD_SCRIPT"
+    exit 1
+fi
+if "$REBUILD_SCRIPT" --project-root "$ROOT_DIR" --if-changed >/dev/null 2>&1; then
     log_info "Build successful"
 else
     log_error "Build failed"

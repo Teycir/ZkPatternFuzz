@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REBUILD_SCRIPT="$ROOT_DIR/scripts/rebuild_release_binaries.sh"
+DEFAULT_BATCH_BIN_REL="target/release/zk0d_batch"
+DEFAULT_BATCH_BIN_ABS="$ROOT_DIR/target/release/zk0d_batch"
 
 usage() {
   cat <<'EOF'
@@ -75,12 +78,24 @@ if [[ ! -f "$REGISTRY" ]]; then
   exit 1
 fi
 
+if $BUILD_IF_MISSING; then
+  if [[ "$BATCH_BIN" == "$DEFAULT_BATCH_BIN_REL" || "$BATCH_BIN" == "$DEFAULT_BATCH_BIN_ABS" ]]; then
+    if [[ ! -x "$REBUILD_SCRIPT" ]]; then
+      echo "Rebuild script not found or not executable: $REBUILD_SCRIPT" >&2
+      exit 1
+    fi
+    "$REBUILD_SCRIPT" --project-root "$ROOT_DIR" --if-changed --bin zk0d_batch
+    BATCH_BIN="$DEFAULT_BATCH_BIN_ABS"
+  fi
+fi
+
 if [[ ! -x "$BATCH_BIN" ]]; then
   if ! $BUILD_IF_MISSING; then
     echo "zk0d_batch binary not found/executable: $BATCH_BIN" >&2
-    exit 1
+  else
+    echo "zk0d_batch binary not found/executable after rebuild gate: $BATCH_BIN" >&2
   fi
-  cargo build --release --bin zk0d_batch
+  exit 1
 fi
 
 mkdir -p "$OUTPUT_DIR"

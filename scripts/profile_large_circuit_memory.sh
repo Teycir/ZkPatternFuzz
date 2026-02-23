@@ -2,6 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REBUILD_SCRIPT="$ROOT_DIR/scripts/rebuild_release_binaries.sh"
+DEFAULT_BATCH_BIN_REL="target/release/zk0d_batch"
+DEFAULT_BATCH_BIN_ABS="$ROOT_DIR/target/release/zk0d_batch"
 OUTPUT_DIR="$ROOT_DIR/artifacts/memory_profiles"
 MATRICES="targets/zk0d_matrix_noir_readiness.yaml,targets/zk0d_matrix_cairo_readiness.yaml,targets/zk0d_matrix_halo2_readiness.yaml"
 REGISTRY="targets/fuzzer_registry.prod.yaml"
@@ -86,12 +89,24 @@ for v in "$MAX_TARGETS" "$MAX_TARGETS_PER_FRAMEWORK" "$BATCH_JOBS" "$WORKERS" "$
   fi
 done
 
+if $BUILD_IF_MISSING; then
+  if [[ "$BATCH_BIN" == "$DEFAULT_BATCH_BIN_REL" || "$BATCH_BIN" == "$DEFAULT_BATCH_BIN_ABS" ]]; then
+    if [[ ! -x "$REBUILD_SCRIPT" ]]; then
+      echo "Rebuild script not found or not executable: $REBUILD_SCRIPT" >&2
+      exit 1
+    fi
+    "$REBUILD_SCRIPT" --project-root "$ROOT_DIR" --if-changed --bin zk0d_batch >/dev/null
+    BATCH_BIN="$DEFAULT_BATCH_BIN_ABS"
+  fi
+fi
+
 if [[ ! -x "$BATCH_BIN" ]]; then
   if ! $BUILD_IF_MISSING; then
     echo "zk0d_batch binary not found/executable: $BATCH_BIN" >&2
-    exit 1
+  else
+    echo "zk0d_batch binary not found/executable after rebuild gate: $BATCH_BIN" >&2
   fi
-  cargo build --release --bin zk0d_batch >/dev/null
+  exit 1
 fi
 
 mkdir -p "$OUTPUT_DIR/raw"

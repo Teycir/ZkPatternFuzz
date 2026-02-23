@@ -25,6 +25,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+REBUILD_SCRIPT="$PROJECT_ROOT/scripts/rebuild_release_binaries.sh"
 FUZZER="$PROJECT_ROOT/target/release/zk-fuzzer"
 SKIMMER="$PROJECT_ROOT/target/release/zk0d_skimmer"
 PICUS_DIR="${PICUS_DIR:-/tmp/Picus}"
@@ -89,25 +90,19 @@ resolve_picus_bin() {
     return 1
 }
 
-# Ensure release build exists
+# Ensure release build exists and is fresh for current source state.
 ensure_build() {
-    local needs_build=false
-    if [[ ! -f "$FUZZER" || ! -f "$SKIMMER" ]]; then
-        needs_build=true
+    if [[ ! -x "$REBUILD_SCRIPT" ]]; then
+        log_error "Rebuild script not found or not executable: $REBUILD_SCRIPT"
+        exit 1
     fi
 
-    # Rebuild when key skimmer/workflow sources are newer than release binaries.
-    if [[ "$needs_build" == "false" ]]; then
-        if [[ "$PROJECT_ROOT/src/bin/zk0d_skimmer.rs" -nt "$SKIMMER" ]] \
-            || [[ "$PROJECT_ROOT/src/analysis/opus.rs" -nt "$SKIMMER" ]] \
-            || [[ "$PROJECT_ROOT/scripts/zeroday_workflow.sh" -nt "$SKIMMER" ]]; then
-            needs_build=true
-        fi
-    fi
+    log_info "Checking release binaries freshness..."
+    "$REBUILD_SCRIPT" --project-root "$PROJECT_ROOT" --if-changed --bin zk-fuzzer --bin zk0d_skimmer
 
-    if [[ "$needs_build" == "true" ]]; then
-        log_info "Building release version..."
-        cd "$PROJECT_ROOT" && cargo build --release --bin zk-fuzzer --bin zk0d_skimmer
+    if [[ ! -x "$FUZZER" || ! -x "$SKIMMER" ]]; then
+        log_error "Required release binaries missing after rebuild: $FUZZER / $SKIMMER"
+        exit 1
     fi
 }
 
