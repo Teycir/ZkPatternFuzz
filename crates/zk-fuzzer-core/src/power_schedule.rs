@@ -132,6 +132,10 @@ impl PowerScheduler {
         if metrics.path_frequency == 0 {
             return self.max_energy;
         }
+        if self.total_edges == 0 {
+            // Early campaign: avoid collapsing to floor energy before edge baseline exists.
+            return self.base_energy.max(self.min_energy);
+        }
 
         // Inverse relationship with path frequency
         let rarity_factor = (self.total_edges as f64 / metrics.path_frequency as f64).min(16.0);

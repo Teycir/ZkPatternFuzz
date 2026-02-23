@@ -91,6 +91,8 @@ impl InputPattern {
 pub struct SemanticDeduplicator {
     /// Seen fingerprints with their representative finding
     seen_fingerprints: HashMap<SemanticFingerprint, Finding>,
+    /// Seen hash keys with representative finding (used when semantic mode is disabled)
+    seen_hashes: HashMap<[u8; 32], Finding>,
     /// Configuration
     config: DeduplicationConfig,
     /// Statistics
@@ -127,6 +129,8 @@ pub struct DeduplicationStats {
     pub unique_findings: u64,
     /// Duplicates filtered
     pub duplicates_filtered: u64,
+    /// Findings dropped because max capacity was reached
+    pub dropped_capacity: u64,
 }
 
 impl SemanticDeduplicator {
@@ -139,6 +143,7 @@ impl SemanticDeduplicator {
     pub fn with_config(config: DeduplicationConfig) -> Self {
         Self {
             seen_fingerprints: HashMap::new(),
+            seen_hashes: HashMap::new(),
             config,
             stats: DeduplicationStats::default(),
         }
@@ -199,8 +204,7 @@ impl SemanticDeduplicator {
         self.seen_fingerprints.contains_key(&fp)
     }
 
-    /// Simple hash-based duplicate check
-    fn is_hash_duplicate(&self, finding: &Finding) -> bool {
+    fn finding_hash(&self, finding: &Finding) -> [u8; 32] {
         // Hash the full POC
         let mut hasher = Sha256::new();
         for fe in &finding.poc.witness_a {
@@ -211,42 +215,82 @@ impl SemanticDeduplicator {
                 hasher.update(fe.0);
             }
         }
+        for fe in &finding.poc.public_inputs {
+            hasher.update(fe.0);
+        }
+        if let Some(ref proof) = finding.poc.proof {
+            hasher.update(proof);
+        }
         hasher.update(format!("{:?}", finding.attack_type).as_bytes());
-        let _hash = hasher.finalize();
+        hasher.update(format!("{:?}", finding.severity).as_bytes());
+        hasher.update(finding.description.as_bytes());
+        if let Some(ref location) = finding.location {
+            hasher.update(location.as_bytes());
+        }
+        if let Some(ref class) = finding.class {
+            hasher.update(format!("{:?}", class).as_bytes());
+        }
+        hasher.finalize().into()
+    }
 
-        // Would need a hash set to track - simplified here
-        false
+    /// Simple hash-based duplicate check
+    fn is_hash_duplicate(&self, finding: &Finding) -> bool {
+        self.seen_hashes.contains_key(&self.finding_hash(finding))
     }
 
     /// Add finding if not duplicate, return whether it was added
     pub fn add(&mut self, finding: Finding) -> bool {
         self.stats.total_processed += 1;
 
-        if self.seen_fingerprints.len() >= self.config.max_findings {
-            // Evict oldest entries (simplified - just skip)
-            self.stats.duplicates_filtered += 1;
-            return false;
-        }
-
-        let fp = self.fingerprint(&finding);
-
-        use std::collections::hash_map::Entry;
-        match self.seen_fingerprints.entry(fp) {
-            Entry::Occupied(_) => {
-                self.stats.duplicates_filtered += 1;
-                false
+        if !self.config.use_semantic {
+            if self.seen_hashes.len() >= self.config.max_findings {
+                self.stats.dropped_capacity += 1;
+                return false;
             }
-            Entry::Vacant(e) => {
-                e.insert(finding);
-                self.stats.unique_findings += 1;
-                true
+
+            let hash = self.finding_hash(&finding);
+            use std::collections::hash_map::Entry;
+            match self.seen_hashes.entry(hash) {
+                Entry::Occupied(_) => {
+                    self.stats.duplicates_filtered += 1;
+                    false
+                }
+                Entry::Vacant(e) => {
+                    e.insert(finding);
+                    self.stats.unique_findings += 1;
+                    true
+                }
+            }
+        } else {
+            if self.seen_fingerprints.len() >= self.config.max_findings {
+                self.stats.dropped_capacity += 1;
+                return false;
+            }
+
+            let fp = self.fingerprint(&finding);
+
+            use std::collections::hash_map::Entry;
+            match self.seen_fingerprints.entry(fp) {
+                Entry::Occupied(_) => {
+                    self.stats.duplicates_filtered += 1;
+                    false
+                }
+                Entry::Vacant(e) => {
+                    e.insert(finding);
+                    self.stats.unique_findings += 1;
+                    true
+                }
             }
         }
     }
 
     /// Get all unique findings
     pub fn unique_findings(&self) -> Vec<&Finding> {
-        self.seen_fingerprints.values().collect()
+        if self.config.use_semantic {
+            self.seen_fingerprints.values().collect()
+        } else {
+            self.seen_hashes.values().collect()
+        }
     }
 
     /// Get deduplication statistics
@@ -299,7 +343,8 @@ impl SemanticDeduplicator {
 
     /// Cluster similar findings together
     pub fn cluster_findings(&self) -> Vec<FindingCluster> {
-        let findings: Vec<_> = self.seen_fingerprints.values().collect();
+        let mut findings = self.unique_findings();
+        findings.sort_by_key(|finding| self.finding_hash(finding));
         let mut clusters: Vec<FindingCluster> = Vec::new();
 
         for finding in findings {
@@ -329,6 +374,7 @@ impl SemanticDeduplicator {
     /// Reset the deduplicator
     pub fn reset(&mut self) {
         self.seen_fingerprints.clear();
+        self.seen_hashes.clear();
         self.stats = DeduplicationStats::default();
     }
 }

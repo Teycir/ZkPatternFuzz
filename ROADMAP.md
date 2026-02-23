@@ -358,6 +358,18 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add corrupted-history recovery for Circom flake gate history loads (fallback to empty history + explicit warning instead of raw JSON parse crash) (`scripts/circom_flake_gate.sh`).
 - Triage note: lock-free approximate counters are currently intentional/documented (`src/corpus/lockfree.rs`) and contention tests validate first-wins bitmap accounting (`tests/concurrency_stress_tests.rs`), so those claims are not currently tracked as blockers.
 
+### 8.8 Core Logic Error Intake (2026-02-23)
+- [x] Canonicalize `FieldElement::random()` output to BN254 scalar field range (`crates/zk-core/src/field.rs`).
+- [x] Implement real hash-mode deduplication (remove always-false duplicate fallback) (`crates/zk-fuzzer-core/src/corpus/deduplication.rs`).
+- [x] Include scoped public inputs in underconstrained collision PoCs (`crates/zk-fuzzer-core/src/oracle.rs`).
+- [x] Prevent repeated variance spam in `ConstraintCountOracle` after first min/max divergence finding (`crates/zk-fuzzer-core/src/oracle.rs`).
+- [x] Separate dedup capacity drops from true duplicate counters (`crates/zk-fuzzer-core/src/corpus/deduplication.rs`).
+- [x] Make `Explore` schedule startup behavior non-degenerate when global edge count is still zero (`crates/zk-fuzzer-core/src/power_schedule.rs`).
+- [x] Let power-schedule energy influence mutation depth beyond the fixed `10` cap while retaining bounded cost (`crates/zk-fuzzer-core/src/engine.rs`).
+- [x] Make finding clustering deterministic across runs (remove `HashMap` iteration-order sensitivity) (`crates/zk-fuzzer-core/src/corpus/deduplication.rs`).
+- [x] De-duplicate BN254 modulus initialization in overflow oracle by reusing centralized constants helper (`crates/zk-fuzzer-core/src/oracle.rs`, `crates/zk-fuzzer-core/src/constants.rs`).
+- [x] Reduce lock hold time in `CoverageTracker::record_hit` by avoiding nested write-lock lifetime overlap (`crates/zk-fuzzer-core/src/coverage.rs`).
+
 ---
 
 ## 🧠 Phase 7: Semantic Analysis & Complex Bug Detection

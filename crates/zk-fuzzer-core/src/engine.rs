@@ -176,7 +176,8 @@ impl FuzzingEngineCore {
                 }
             } else {
                 let mut inputs = entry.test_case.inputs.clone();
-                let num_mutations = self.rng.gen_range(1..=energy.min(10));
+                // Keep mutation bursts bounded while preserving scheduler differentiation.
+                let num_mutations = self.rng.gen_range(1..=energy.clamp(1, 64));
                 for _ in 0..num_mutations {
                     let idx = self.rng.gen_range(0..inputs.len().max(1));
                     if idx < inputs.len() {

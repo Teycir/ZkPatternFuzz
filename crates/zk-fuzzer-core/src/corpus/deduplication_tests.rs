@@ -87,3 +87,66 @@ fn test_confidence_score() {
     let confidence = calculate_confidence(&finding);
     assert!(confidence > 0.9);
 }
+
+#[test]
+fn test_hash_deduplication_mode_filters_duplicates() {
+    let mut dedup = SemanticDeduplicator::with_config(DeduplicationConfig {
+        use_semantic: false,
+        similarity_threshold: 0.8,
+        max_findings: 100,
+    });
+
+    let finding1 = make_finding(AttackType::Collision, "nullifier_collision");
+    let finding2 = make_finding(AttackType::Collision, "nullifier_collision");
+
+    assert!(dedup.add(finding1));
+    assert!(!dedup.add(finding2));
+    assert_eq!(dedup.stats().unique_findings, 1);
+    assert_eq!(dedup.stats().duplicates_filtered, 1);
+}
+
+#[test]
+fn test_capacity_drop_is_counted_separately_from_duplicates() {
+    let mut dedup = SemanticDeduplicator::with_config(DeduplicationConfig {
+        use_semantic: true,
+        similarity_threshold: 0.8,
+        max_findings: 1,
+    });
+
+    let finding1 = make_finding(AttackType::Collision, "nullifier_collision");
+    let finding2 = make_finding(AttackType::Boundary, "merkle_path");
+
+    assert!(dedup.add(finding1));
+    assert!(!dedup.add(finding2));
+    assert_eq!(dedup.stats().duplicates_filtered, 0);
+    assert_eq!(dedup.stats().dropped_capacity, 1);
+}
+
+#[test]
+fn test_cluster_findings_is_deterministic_for_same_dataset() {
+    let finding_a = make_finding(AttackType::Collision, "nullifier_collision_a");
+    let finding_b = make_finding(AttackType::Collision, "nullifier_collision_b");
+    let finding_c = make_finding(AttackType::Boundary, "merkle_path");
+
+    let mut first = SemanticDeduplicator::new();
+    assert!(first.add(finding_a.clone()));
+    assert!(first.add(finding_b.clone()));
+    assert!(first.add(finding_c.clone()));
+
+    let mut second = SemanticDeduplicator::new();
+    assert!(second.add(finding_b));
+    assert!(second.add(finding_c));
+    assert!(second.add(finding_a));
+
+    let summarize = |clusters: Vec<FindingCluster>| -> Vec<(AttackType, usize)> {
+        clusters
+            .into_iter()
+            .map(|cluster| (cluster.representative.attack_type, cluster.members.len()))
+            .collect()
+    };
+
+    assert_eq!(
+        summarize(first.cluster_findings()),
+        summarize(second.cluster_findings())
+    );
+}

@@ -81,3 +81,15 @@ fn test_energy_clamping() {
 
     assert!(scheduler.calculate_energy(&extreme) <= scheduler.max_energy);
 }
+
+#[test]
+fn test_explore_schedule_zero_global_edges_keeps_startup_energy() {
+    let mut scheduler = PowerScheduler::new(PowerSchedule::Explore);
+    scheduler.update_globals(Duration::from_micros(100), 0);
+
+    let metrics = TestCaseMetrics {
+        path_frequency: 1,
+        ..Default::default()
+    };
+    assert!(scheduler.calculate_energy(&metrics) > 1);
+}

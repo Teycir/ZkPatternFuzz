@@ -1,5 +1,18 @@
+use num_bigint::BigUint;
 use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::sync::OnceLock;
+
+fn bn254_modulus() -> &'static BigUint {
+    static MODULUS: OnceLock<BigUint> = OnceLock::new();
+    MODULUS.get_or_init(|| {
+        BigUint::parse_bytes(
+            b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
+            10,
+        )
+        .expect("BN254 modulus constant must parse")
+    })
+}
 
 /// Field element representation (32 bytes for bn254)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -56,7 +69,8 @@ impl FieldElement {
     pub fn random(rng: &mut impl Rng) -> Self {
         let mut bytes = [0u8; 32];
         rng.fill(&mut bytes);
-        Self(bytes)
+        let value = BigUint::from_bytes_be(&bytes) % bn254_modulus();
+        Self::from_bytes(&value.to_bytes_be())
     }
 
     pub fn from_u64(value: u64) -> Self {
@@ -90,16 +104,9 @@ impl FieldElement {
 
     /// Field addition (mod p) using BN254 arithmetic.
     pub fn add(&self, other: &Self) -> Self {
-        use num_bigint::BigUint;
-        let modulus = BigUint::parse_bytes(
-            b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
-            10,
-        )
-        .unwrap();
-
         let a = BigUint::from_bytes_be(&self.0);
         let b = BigUint::from_bytes_be(&other.0);
-        let result = (a + b) % &modulus;
+        let result = (a + b) % bn254_modulus();
 
         let result_bytes = result.to_bytes_be();
         Self::from_bytes(&result_bytes)
@@ -107,21 +114,15 @@ impl FieldElement {
 
     /// Field subtraction (mod p) using BN254 arithmetic.
     pub fn sub(&self, other: &Self) -> Self {
-        use num_bigint::BigUint;
-        let modulus = BigUint::parse_bytes(
-            b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
-            10,
-        )
-        .unwrap();
-
         let a = BigUint::from_bytes_be(&self.0);
         let b = BigUint::from_bytes_be(&other.0);
+        let modulus = bn254_modulus();
 
         // (a - b + p) % p to handle underflow
         let result = if a >= b {
-            (a - b) % &modulus
+            (a - b) % modulus
         } else {
-            (&modulus - (b - a) % &modulus) % &modulus
+            (modulus - (b - a) % modulus) % modulus
         };
 
         let result_bytes = result.to_bytes_be();
@@ -136,16 +137,9 @@ impl FieldElement {
 
     /// Field multiplication (mod p) using BN254 arithmetic.
     pub fn mul(&self, other: &Self) -> Self {
-        use num_bigint::BigUint;
-        let modulus = BigUint::parse_bytes(
-            b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
-            10,
-        )
-        .unwrap();
-
         let a = BigUint::from_bytes_be(&self.0);
         let b = BigUint::from_bytes_be(&other.0);
-        let result = (a * b) % &modulus;
+        let result = (a * b) % bn254_modulus();
 
         let result_bytes = result.to_bytes_be();
         Self::from_bytes(&result_bytes)
@@ -210,10 +204,13 @@ impl FieldElement {
 
     /// Try to convert to u64 if the value fits
     pub fn to_u64(&self) -> Option<u64> {
-        use num_bigint::BigUint;
         use num_traits::ToPrimitive;
 
         let big_value = BigUint::from_bytes_be(&self.0);
         big_value.to_u64()
     }
 }
+
+#[cfg(test)]
+#[path = "field_tests.rs"]
+mod tests;

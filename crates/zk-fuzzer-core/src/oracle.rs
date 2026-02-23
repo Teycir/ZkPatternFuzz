@@ -1,5 +1,6 @@
 //! Oracles for detecting bugs and vulnerabilities
 
+use crate::constants::bn254_modulus_bytes;
 use std::collections::VecDeque;
 
 use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity, TestCase};
@@ -211,7 +212,7 @@ impl BugOracle for UnderconstrainedOracle {
                     poc: ProofOfConcept {
                         witness_a: existing.inputs.clone(),
                         witness_b: Some(test_case.inputs.clone()),
-                        public_inputs: vec![],
+                        public_inputs: public_inputs.to_vec(),
                         proof: None,
                     },
                     location: None,
@@ -272,6 +273,8 @@ pub struct ConstraintCountOracle {
     max_count: Option<usize>,
     /// Last observed constraint count
     last_count: Option<usize>,
+    /// Whether count-variance finding has already been emitted
+    variance_reported: bool,
     /// Whether we've warned about missing constraint inspector
     warned_no_inspector: bool,
     /// Number of checks performed
@@ -287,6 +290,7 @@ impl ConstraintCountOracle {
             min_count: None,
             max_count: None,
             last_count: None,
+            variance_reported: false,
             warned_no_inspector: false,
             check_count: 0,
             finding_count: 0,
@@ -352,7 +356,8 @@ impl ConstraintCountOracle {
 
         // Check for variance in observed counts (shouldn't vary for static circuits)
         if let (Some(min), Some(max)) = (self.min_count, self.max_count) {
-            if min != max {
+            if min != max && !self.variance_reported {
+                self.variance_reported = true;
                 self.finding_count += 1;
                 return Some(Finding {
                     attack_type: AttackType::Underconstrained,
@@ -436,6 +441,7 @@ impl BugOracle for ConstraintCountOracle {
         self.min_count = None;
         self.max_count = None;
         self.last_count = None;
+        self.variance_reported = false;
         self.warned_no_inspector = false;
         self.check_count = 0;
         self.finding_count = 0;
@@ -625,22 +631,13 @@ pub struct ArithmeticOverflowOracle {
 
 impl ArithmeticOverflowOracle {
     pub fn new() -> Self {
-        Self::new_with_modulus(default_bn254_modulus())
+        Self::new_with_modulus(bn254_modulus_bytes())
     }
 
     /// Create oracle with an explicit field modulus
     pub fn new_with_modulus(field_modulus: [u8; 32]) -> Self {
         Self { field_modulus }
     }
-}
-
-fn default_bn254_modulus() -> [u8; 32] {
-    let mut modulus = [0u8; 32];
-    let hex = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
-    if let Ok(decoded) = hex::decode(hex) {
-        modulus.copy_from_slice(&decoded);
-    }
-    modulus
 }
 
 impl Default for ArithmeticOverflowOracle {

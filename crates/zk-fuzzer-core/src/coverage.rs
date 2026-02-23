@@ -52,11 +52,13 @@ impl CoverageTracker {
 
     /// Record a constraint hit
     pub fn record_hit(&self, constraint_id: usize) {
-        let mut hits = self.constraint_hits.write();
-        *hits.entry(constraint_id).or_insert(0) += 1;
+        let current_coverage = {
+            let mut hits = self.constraint_hits.write();
+            *hits.entry(constraint_id).or_insert(0) += 1;
+            hits.len()
+        };
 
-        // Update max coverage
-        let current_coverage = hits.len();
+        // Update max coverage after releasing constraint-hits lock.
         let mut max = self.max_coverage.write();
         if current_coverage > *max {
             *max = current_coverage;
