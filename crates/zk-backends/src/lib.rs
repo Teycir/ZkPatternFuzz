@@ -1,5 +1,6 @@
 //! Backend integrations for ZkPatternFuzz.
 
+#[path = "fixture/mod.rs"]
 pub mod fixture;
 pub mod registry;
 mod util;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::constants::BN254_SCALAR_MODULUS_HEX;
 
 fn make_finding(description: &str, witness_b: Option<Vec<FieldElement>>) -> Finding {
     Finding {
@@ -175,4 +176,26 @@ fn deserialize_finding_accepts_snake_case_attack_type() {
     )
     .expect("deserialize snake_case attack_type");
     assert_eq!(finding.attack_type, AttackType::ConstraintInference);
+}
+
+#[test]
+fn deserialize_finding_rejects_non_canonical_field_elements() {
+    let modulus_hex = format!("0x{}", BN254_SCALAR_MODULUS_HEX);
+    let payload = format!(
+        r#"{{
+            "attack_type":"underconstrained",
+            "severity":"high",
+            "description":"non-canonical witness",
+            "location":null,
+            "poc_witness_a":["{}"],
+            "poc_public_inputs":[]
+        }}"#,
+        modulus_hex
+    );
+
+    let parsed = serde_json::from_str::<Finding>(&payload);
+    assert!(
+        parsed.is_err(),
+        "finding deserialization must reject non-canonical field elements"
+    );
 }

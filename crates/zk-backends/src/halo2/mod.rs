@@ -1014,18 +1014,18 @@ impl TargetCircuit for Halo2Target {
             Halo2Field::Pasta => {
                 // Pallas scalar field
                 let mut modulus = [0u8; 32];
-                if let Ok(decoded) = hex::decode(
-                    "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
-                ) {
+                if let Ok(decoded) =
+                    hex::decode("40000000000000000000000000000000224698fc094cf91b992d30ed00000001")
+                {
                     modulus.copy_from_slice(&decoded);
                 }
                 modulus
             }
             Halo2Field::Bls12_381 => {
                 let mut modulus = [0u8; 32];
-                if let Ok(decoded) = hex::decode(
-                    "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",
-                ) {
+                if let Ok(decoded) =
+                    hex::decode("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001")
+                {
                     modulus.copy_from_slice(&decoded);
                 }
                 modulus

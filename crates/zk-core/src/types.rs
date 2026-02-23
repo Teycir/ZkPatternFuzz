@@ -324,7 +324,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                 let witness_a = poc_witness_a.unwrap_or_default();
                 let mut parsed_witness_a: Vec<FieldElement> = Vec::with_capacity(witness_a.len());
                 for hex in &witness_a {
-                    let field = FieldElement::from_hex(hex).map_err(|e| {
+                    let field = FieldElement::from_hex_checked(hex).map_err(|e| {
                         de::Error::custom(format!("invalid poc.witness_a element '{}': {}", hex, e))
                     })?;
                     parsed_witness_a.push(field);
@@ -334,7 +334,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                     Some(witness_b) => {
                         let mut parsed: Vec<FieldElement> = Vec::with_capacity(witness_b.len());
                         for hex in &witness_b {
-                            let field = FieldElement::from_hex(hex).map_err(|e| {
+                            let field = FieldElement::from_hex_checked(hex).map_err(|e| {
                                 de::Error::custom(format!(
                                     "invalid poc.witness_b element '{}': {}",
                                     hex, e
@@ -351,7 +351,7 @@ impl<'de> serde::Deserialize<'de> for Finding {
                 let mut parsed_public_inputs: Vec<FieldElement> =
                     Vec::with_capacity(public_inputs.len());
                 for hex in &public_inputs {
-                    let field = FieldElement::from_hex(hex).map_err(|e| {
+                    let field = FieldElement::from_hex_checked(hex).map_err(|e| {
                         de::Error::custom(format!(
                             "invalid poc.public_inputs element '{}': {}",
                             hex, e

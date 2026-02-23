@@ -51,7 +51,7 @@ fn test_underconstrained_oracle_scopes_public_inputs() {
 
 #[test]
 fn test_constraint_count_oracle_emits_variance_once() {
-    let mut oracle = ConstraintCountOracle::new(8);
+    let mut oracle = ConstraintCountOracle::new(8).with_public_input_count(1);
     let test_case = TestCase {
         inputs: vec![FieldElement::from_u64(1), FieldElement::from_u64(2)],
         expected_output: None,
@@ -59,22 +59,29 @@ fn test_constraint_count_oracle_emits_variance_once() {
     };
 
     assert!(oracle.check_with_count(&test_case, 8).is_none());
-    assert!(oracle.check_with_count(&test_case, 7).is_some()); // mismatch
+    let mismatch = oracle
+        .check_with_count(&test_case, 7)
+        .expect("first mismatch should be reported");
+    assert_eq!(mismatch.severity, Severity::High);
+    assert_eq!(mismatch.poc.public_inputs, vec![FieldElement::from_u64(1)]);
 
-    let variance = oracle.check_with_count(&test_case, 8);
-    assert!(variance.is_some());
-    let variance = variance.expect("variance finding expected");
+    // Once counts diverge, variance emits once (critical) and then stops.
+    let variance = oracle
+        .check_with_count(&test_case, 7)
+        .expect("variance finding expected");
     assert_eq!(variance.severity, Severity::Critical);
+    assert_eq!(variance.poc.public_inputs, vec![FieldElement::from_u64(1)]);
 
-    // Once emitted, the same min/max variance should not repeatedly fire.
+    // Repeated mismatches are de-duplicated; variance is also single-shot.
+    assert!(oracle.check_with_count(&test_case, 7).is_none());
     assert!(oracle.check_with_count(&test_case, 8).is_none());
 }
 
 #[test]
 fn test_arithmetic_overflow_oracle() {
-    let mut oracle = ArithmeticOverflowOracle::new();
+    let mut oracle = ArithmeticOverflowOracle::new().with_public_input_count(1);
     let test_case = TestCase {
-        inputs: vec![FieldElement([0xff; 32])], // Definitely overflow
+        inputs: vec![FieldElement([0xff; 32]), FieldElement::from_u64(42)], // Definitely overflow
         expected_output: None,
         metadata: zk_core::TestMetadata::default(),
     };
@@ -82,5 +89,7 @@ fn test_arithmetic_overflow_oracle() {
 
     let finding = oracle.check(&test_case, &output);
     assert!(finding.is_some());
-    assert_eq!(finding.unwrap().attack_type, AttackType::ArithmeticOverflow);
+    let finding = finding.expect("overflow finding expected");
+    assert_eq!(finding.attack_type, AttackType::ArithmeticOverflow);
+    assert_eq!(finding.poc.public_inputs, vec![FieldElement([0xff; 32])]);
 }

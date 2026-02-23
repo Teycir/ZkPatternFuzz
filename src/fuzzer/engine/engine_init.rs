@@ -250,9 +250,10 @@ impl FuzzingEngine {
             Box::new(
                 UnderconstrainedOracle::new().with_public_input_count(executor.num_public_inputs()),
             ),
-            Box::new(ArithmeticOverflowOracle::new_with_modulus(
-                executor.field_modulus(),
-            )),
+            Box::new(
+                ArithmeticOverflowOracle::new_with_modulus(executor.field_modulus())
+                    .with_public_input_count(executor.num_public_inputs()),
+            ),
         ];
 
         // Phase 0 Fix: Wire semantic oracles from config
@@ -260,6 +261,7 @@ impl FuzzingEngine {
             &config,
             executor.field_modulus(),
             executor.num_constraints(),
+            executor.num_public_inputs(),
             &mut oracles,
         );
         let disabled = Self::disabled_oracle_names(&config);

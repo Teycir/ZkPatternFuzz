@@ -260,6 +260,7 @@ impl FuzzingEngine {
         config: &FuzzConfig,
         field_modulus: [u8; 32],
         expected_constraint_count: usize,
+        public_input_count: usize,
         oracles: &mut Vec<Box<dyn BugOracle>>,
     ) {
         use crate::fuzzer::oracle::{ConstraintCountOracle, ProofForgeryOracle};
@@ -368,9 +369,10 @@ impl FuzzingEngine {
                             "Skipping ConstraintCountOracle: executor reported zero constraints"
                         );
                     } else {
-                        add_oracle(Box::new(ConstraintCountOracle::new(
-                            expected_constraint_count,
-                        )));
+                        add_oracle(Box::new(
+                            ConstraintCountOracle::new(expected_constraint_count)
+                                .with_public_input_count(public_input_count),
+                        ));
                     }
                 }
                 Some(OracleKind::ProofForgery) => add_oracle(Box::new(ProofForgeryOracle::new())),
@@ -558,9 +560,10 @@ impl FuzzingEngine {
                 UnderconstrainedOracle::new()
                     .with_public_input_count(self.executor.num_public_inputs()),
             ),
-            Box::new(ArithmeticOverflowOracle::new_with_modulus(
-                self.executor.field_modulus(),
-            )),
+            Box::new(
+                ArithmeticOverflowOracle::new_with_modulus(self.executor.field_modulus())
+                    .with_public_input_count(self.executor.num_public_inputs()),
+            ),
         ];
 
         // Reuse semantic oracle configuration for validation
@@ -568,6 +571,7 @@ impl FuzzingEngine {
             &self.config,
             self.executor.field_modulus(),
             self.executor.num_constraints(),
+            self.executor.num_public_inputs(),
             &mut oracles,
         );
         let disabled = Self::disabled_oracle_names(&self.config);

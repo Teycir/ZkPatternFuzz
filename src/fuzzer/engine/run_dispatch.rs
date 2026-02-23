@@ -39,9 +39,9 @@ impl FuzzingEngine {
 
         let mut wall_clock_timed_out = false;
         for (attack_idx, attack_config) in self.config.attacks.clone().into_iter().enumerate() {
+            let attack_phase_index = 1u64.saturating_add(attack_idx as u64);
             if self.wall_clock_timeout_reached() {
                 wall_clock_timed_out = true;
-                let phases_completed = 1u64.saturating_add(attack_idx as u64);
                 tracing::warn!(
                     "Global wall-clock timeout reached before attack {:?}; ending run early",
                     attack_config.attack_type
@@ -50,7 +50,7 @@ impl FuzzingEngine {
                     mode_label,
                     "timeout_reached",
                     phases_total,
-                    phases_completed,
+                    attack_phase_index,
                     Some(0.0),
                     serde_json::json!({
                         "reason": "wall_clock_timeout",
@@ -62,12 +62,11 @@ impl FuzzingEngine {
                 break;
             }
 
-            let phases_completed = 1u64.saturating_add(attack_idx as u64);
             self.write_progress_snapshot(
                 mode_label,
                 "attack_start",
                 phases_total,
-                phases_completed,
+                attack_phase_index,
                 Some(0.0),
                 serde_json::json!({
                     "attack_idx": attack_idx,
@@ -121,10 +120,10 @@ impl FuzzingEngine {
                             let overall = if phases_total == 0 {
                                 0.0
                             } else {
-                                (phases_completed as f64 / phases_total as f64).clamp(0.0, 1.0)
+                                (attack_phase_index as f64 / phases_total as f64).clamp(0.0, 1.0)
                             };
                             let steps_total = phases_total.max(1);
-                            let steps_done = phases_completed.min(steps_total);
+                            let steps_done = attack_phase_index.min(steps_total);
                             let step_current = (steps_done.saturating_add(1)).min(steps_total);
                             let elapsed = heartbeat_start.elapsed().as_secs();
 
@@ -414,7 +413,7 @@ impl FuzzingEngine {
                             progress,
                             Some((
                                 phases_total,
-                                phases_completed,
+                                attack_phase_index,
                                 attack_idx as u64,
                                 attacks_total,
                             )),
@@ -453,13 +452,12 @@ impl FuzzingEngine {
                 new_findings,
                 findings_after
             );
-            let phases_completed = 1u64.saturating_add((attack_idx as u64).saturating_add(1));
             self.write_progress_snapshot(
                 mode_label,
                 "attack_complete",
                 phases_total,
-                phases_completed,
-                Some(0.0),
+                attack_phase_index,
+                Some(1.0),
                 serde_json::json!({
                     "attack_idx": attack_idx,
                     "attacks_total": attacks_total,
@@ -480,7 +478,6 @@ impl FuzzingEngine {
 
             if self.wall_clock_timeout_reached() {
                 wall_clock_timed_out = true;
-                let phases_completed = 1u64.saturating_add((attack_idx as u64).saturating_add(1));
                 tracing::warn!(
                     "Global wall-clock timeout reached after attack {:?}; ending run early",
                     attack_config.attack_type
@@ -489,8 +486,8 @@ impl FuzzingEngine {
                     mode_label,
                     "timeout_reached",
                     phases_total,
-                    phases_completed,
-                    Some(0.0),
+                    attack_phase_index,
+                    Some(1.0),
                     serde_json::json!({
                         "reason": "wall_clock_timeout",
                         "elapsed_seconds": start_time.elapsed().as_secs_f64(),

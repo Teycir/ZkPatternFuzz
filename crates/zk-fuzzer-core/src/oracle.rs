@@ -275,8 +275,12 @@ pub struct ConstraintCountOracle {
     last_count: Option<usize>,
     /// Whether count-variance finding has already been emitted
     variance_reported: bool,
+    /// Whether count-mismatch finding has already been emitted
+    mismatch_reported: bool,
     /// Whether we've warned about missing constraint inspector
     warned_no_inspector: bool,
+    /// Number of public inputs (for scoping PoC evidence)
+    pub num_public_inputs: Option<usize>,
     /// Number of checks performed
     check_count: u64,
     /// Number of findings produced
@@ -291,10 +295,18 @@ impl ConstraintCountOracle {
             max_count: None,
             last_count: None,
             variance_reported: false,
+            mismatch_reported: false,
             warned_no_inspector: false,
+            num_public_inputs: None,
             check_count: 0,
             finding_count: 0,
         }
+    }
+
+    /// Configure how many leading inputs are public for PoC evidence.
+    pub fn with_public_input_count(mut self, num_public: usize) -> Self {
+        self.num_public_inputs = Some(num_public);
+        self
     }
 
     /// Record an observed constraint count from execution
@@ -320,6 +332,11 @@ impl ConstraintCountOracle {
     /// - Count varies between executions (shouldn't happen for static circuits)
     pub fn check_with_count(&mut self, test_case: &TestCase, count: usize) -> Option<Finding> {
         self.check_count += 1;
+        let scoped_public_inputs = self
+            .num_public_inputs
+            .map(|n| n.min(test_case.inputs.len()))
+            .map(|n| test_case.inputs[..n].to_vec())
+            .unwrap_or_default();
 
         // Update incremental min/max tracking
         self.min_count = Some(match self.min_count {
@@ -333,7 +350,8 @@ impl ConstraintCountOracle {
         self.last_count = Some(count);
 
         // Check if count differs from expected
-        if count != self.expected_count {
+        if count != self.expected_count && !self.mismatch_reported {
+            self.mismatch_reported = true;
             self.finding_count += 1;
             return Some(Finding {
                 attack_type: AttackType::Underconstrained, // Constraint count mismatch often indicates underconstrained
@@ -346,7 +364,7 @@ impl ConstraintCountOracle {
                 poc: ProofOfConcept {
                     witness_a: test_case.inputs.clone(),
                     witness_b: None,
-                    public_inputs: vec![],
+                    public_inputs: scoped_public_inputs.clone(),
                     proof: None,
                 },
                 location: None,
@@ -370,7 +388,7 @@ impl ConstraintCountOracle {
                     poc: ProofOfConcept {
                         witness_a: test_case.inputs.clone(),
                         witness_b: None,
-                        public_inputs: vec![],
+                        public_inputs: scoped_public_inputs,
                         proof: None,
                     },
                     location: None,
@@ -442,6 +460,7 @@ impl BugOracle for ConstraintCountOracle {
         self.max_count = None;
         self.last_count = None;
         self.variance_reported = false;
+        self.mismatch_reported = false;
         self.warned_no_inspector = false;
         self.check_count = 0;
         self.finding_count = 0;
@@ -627,6 +646,8 @@ impl BugOracle for ProofForgeryOracle {
 /// Oracle for detecting arithmetic overflows
 pub struct ArithmeticOverflowOracle {
     pub field_modulus: [u8; 32],
+    /// Number of public inputs (for scoping PoC evidence)
+    pub num_public_inputs: Option<usize>,
 }
 
 impl ArithmeticOverflowOracle {
@@ -636,7 +657,16 @@ impl ArithmeticOverflowOracle {
 
     /// Create oracle with an explicit field modulus
     pub fn new_with_modulus(field_modulus: [u8; 32]) -> Self {
-        Self { field_modulus }
+        Self {
+            field_modulus,
+            num_public_inputs: None,
+        }
+    }
+
+    /// Configure how many leading inputs are public for PoC evidence.
+    pub fn with_public_input_count(mut self, num_public: usize) -> Self {
+        self.num_public_inputs = Some(num_public);
+        self
     }
 }
 
@@ -648,6 +678,11 @@ impl Default for ArithmeticOverflowOracle {
 
 impl BugOracle for ArithmeticOverflowOracle {
     fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
+        let scoped_public_inputs = self
+            .num_public_inputs
+            .map(|n| n.min(test_case.inputs.len()))
+            .map(|n| test_case.inputs[..n].to_vec())
+            .unwrap_or_default();
         // Check if any input is >= field modulus
         for input in &test_case.inputs {
             if self.is_overflow(&input.0) {
@@ -658,7 +693,7 @@ impl BugOracle for ArithmeticOverflowOracle {
                     poc: ProofOfConcept {
                         witness_a: test_case.inputs.clone(),
                         witness_b: None,
-                        public_inputs: vec![],
+                        public_inputs: scoped_public_inputs.clone(),
                         proof: None,
                     },
                     location: None,
@@ -677,7 +712,7 @@ impl BugOracle for ArithmeticOverflowOracle {
                     poc: ProofOfConcept {
                         witness_a: test_case.inputs.clone(),
                         witness_b: None,
-                        public_inputs: vec![],
+                        public_inputs: scoped_public_inputs,
                         proof: None,
                     },
                     location: None,

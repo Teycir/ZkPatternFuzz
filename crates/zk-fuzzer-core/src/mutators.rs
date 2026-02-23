@@ -5,6 +5,7 @@
 
 use crate::constants::{bn254_modulus_bytes, bn254_modulus_minus_one_bytes};
 use rand::Rng;
+use zk_core::constants::bn254_modulus_biguint;
 use zk_core::FieldElement;
 
 /// Compare two 32-byte big-endian integers
@@ -19,42 +20,17 @@ fn compare_bytes(a: &[u8; 32], b: &[u8; 32]) -> std::cmp::Ordering {
     std::cmp::Ordering::Equal
 }
 
-/// Subtract b from a (big-endian), assuming a >= b
-/// Returns a - b
-fn subtract_bytes(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
-    let mut result = [0u8; 32];
-    let mut borrow = 0i16;
-
-    for i in (0..32).rev() {
-        let diff = a[i] as i16 - b[i] as i16 - borrow;
-        if diff < 0 {
-            result[i] = (diff + 256) as u8;
-            borrow = 1;
-        } else {
-            result[i] = diff as u8;
-            borrow = 0;
-        }
-    }
-
-    result
-}
-
 /// Reduce a field element modulo the BN254 scalar field prime
 ///
-/// Repeatedly subtracts the modulus until the value is in the valid range [0, p-1].
-/// This handles any value, including values much larger than p (e.g., bitwise NOT of zero).
+/// Uses BigUint modulo for bounded and predictable runtime even when
+/// values are far above the modulus (e.g. bitwise-not mutations).
 fn reduce_modulo_field(fe: FieldElement) -> FieldElement {
     let modulus = bn254_modulus_bytes();
-    let mut current = fe.0;
-
-    // Keep subtracting modulus while current >= modulus
-    // For values close to 2^256, this might need multiple iterations
-    // but in practice, fuzzing mutations rarely produce values > 2p
-    while compare_bytes(&current, &modulus) != std::cmp::Ordering::Less {
-        current = subtract_bytes(&current, &modulus);
+    if compare_bytes(&fe.0, &modulus) == std::cmp::Ordering::Less {
+        return fe;
     }
-
-    FieldElement(current)
+    let reduced = fe.to_biguint() % bn254_modulus_biguint();
+    FieldElement::from_bytes(&reduced.to_bytes_be())
 }
 
 /// Apply a random mutation to a field element
