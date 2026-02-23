@@ -2,7 +2,7 @@
   "schema_version": "1",
   "track_version": "0.1.0",
   "run_id": "compat-run",
-  "generated_at": "2026-02-23T16:31:08.768436595Z",
+  "generated_at": "2026-02-23T17:04:59.543999783Z",
   "mode": "output_only_for_external_ai",
   "adapter": "heuristic-semantic-v1",
   "roots": [
@@ -6427,7 +6427,7 @@
     {
       "path": "./crates/zk-constraints/src/r1cs_to_smt.rs",
       "source_type": "code",
-      "intent_excerpt": "! R1CS to SMT translation using Z3.\n!\n! This module provides a direct R1CS -> Z3 encoding that can be used to\n! generate concrete inputs satisfying a circuit's constraints.\nBN254 scalar field modulus (decimal string)\nR1CS to SMT translator using integer arithmetic with modular re...[truncated]"
+      "intent_excerpt": "! R1CS to SMT translation using Z3.\n!\n! This module provides a direct R1CS -> Z3 encoding that can be used to\n! generate concrete inputs satisfying a circuit's constraints.\nR1CS to SMT translator using integer arithmetic with modular reduction.\nCreate a new translator for a given...[truncated]"
     },
     {
       "path": "./crates/zk-constraints/src/r1cs_to_smt_tests.rs",
@@ -6445,6 +6445,11 @@
       "intent_excerpt": "a + b = 10 (underconstrained: many valid (a,b) pairs)\nMust be different from original"
     },
     {
+      "path": "./crates/zk-core/src/constants.rs",
+      "source_type": "code",
+      "intent_excerpt": "BN254 scalar modulus in decimal form.\nBN254 scalar modulus in big-endian hex (without 0x prefix).\nBN254 scalar modulus minus one in decimal form.\nBN254 scalar modulus minus one in big-endian hex (without 0x prefix).\nBN254 scalar modulus plus one in decimal form.\n(p - 1) / 2 for B...[truncated]"
+    },
+    {
       "path": "./crates/zk-core/src/error.rs",
       "source_type": "code",
       "intent_excerpt": ""
@@ -6457,7 +6462,7 @@
     {
       "path": "./crates/zk-core/src/field.rs",
       "source_type": "code",
-      "intent_excerpt": "Field element representation (32 bytes for bn254)\nCustom serde implementation to serialize as hex string\nMaximum field value (p - 1 for BN254 scalar field)\nBN254 scalar field: p - 1\nHalf of the field modulus: (p - 1) / 2\nDeprecated: Use from_u64() instead for clarity\nCreate from ...[truncated]"
+      "intent_excerpt": "Field element representation (32 bytes for bn254)\nCustom serde implementation to serialize as hex string\nMaximum field value (p - 1 for BN254 scalar field)\nHalf of the field modulus: (p - 1) / 2\nDeprecated: Use from_u64() instead for clarity\nCreate from raw bytes (big-endian, pad...[truncated]"
     },
     {
       "path": "./crates/zk-core/src/field_tests.rs",
@@ -6497,7 +6502,7 @@
     {
       "path": "./crates/zk-fuzzer-core/src/constants.rs",
       "source_type": "code",
-      "intent_excerpt": "! Centralized field constants for ZK circuits\n!\n! This module provides consistent field modulus values to avoid\n! inconsistencies across different parts of the codebase.\nBN254 scalar field modulus (also known as alt_bn128 or bn256)\np = 21888242871839275222246405745257275088548364...[truncated]"
+      "intent_excerpt": "! Centralized field constants for ZK circuits\n!\n! This module provides consistent field modulus values to avoid\n! inconsistencies across different parts of the codebase.\nBN254 scalar field modulus (also known as alt_bn128 or bn256).\nCanonical value is defined in `zk_core::constan...[truncated]"
     },
     {
       "path": "./crates/zk-fuzzer-core/src/constants_tests.rs",
@@ -8303,11 +8308,6 @@
       "path": "./targets/external/semaphore/apps/docs/versioned_docs/version-V2/credits.md",
       "source_type": "documentation",
       "intent_excerpt": "---\nsidebar_position: 9\n---\n\n# Credits\n\nSemaphore V2 is the work of several people, for a complete list of contributors you can visit our [Github pages](https://github.com/semaphore-protocol/semaphore/graphs/contributors).\n\n-   [Barry WhiteHat](https://github.com/barryWhiteHat)\n-...[truncated]"
-    },
-    {
-      "path": "./targets/external/semaphore/apps/docs/versioned_docs/version-V2/deployed-contracts.md",
-      "source_type": "documentation",
-      "intent_excerpt": "---\nsidebar_position: 5\n---\n\n# Deployed contracts\n\n## Verifiers\n\n| Contract       | Goerli                                                                                          | Arbitrum One                                                                            |\n| ------...[truncated]"
     },
     {
       "path": "./targets/external/semaphore/apps/docs/versioned_docs/version-V2/glossary.md",

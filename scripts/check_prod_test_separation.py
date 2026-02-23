@@ -17,6 +17,7 @@ PATH_ATTR_PATTERN = re.compile(r'^\s*#\[\s*path\s*=\s*"([^"]+)"\s*\]')
 USE_TEST_SYMBOL_PATTERN = re.compile(
     r"\b(?:pub(?:\([^)]*\))?\s+)?use\s+[^;]*(?:\btests\b|_tests\b)"
 )
+TEST_ATTR_PATTERN = re.compile(r"^#!?\[(?:[A-Za-z_][A-Za-z0-9_]*::)*test(?:[(\]]|$)")
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,15 @@ def _is_test_path(path_str: str) -> bool:
     return "/tests/" in f"/{norm}/"
 
 
+def _is_test_attribute_line(raw_attr: str) -> bool:
+    compact = re.sub(r"\s+", "", raw_attr)
+    if compact.startswith("#[cfg(test)]") or compact.startswith("#![cfg(test)]"):
+        return True
+    if compact.startswith("#[cfg_attr(test,") or compact.startswith("#![cfg_attr(test,"):
+        return True
+    return TEST_ATTR_PATTERN.match(compact) is not None
+
+
 def collect_violations(repo_root: Path, search_roots: Iterable[str]) -> List[Violation]:
     violations: List[Violation] = []
 
@@ -75,6 +85,17 @@ def collect_violations(repo_root: Path, search_roots: Iterable[str]) -> List[Vio
             pending_attrs: List[str] = []
             for idx, raw_line in enumerate(lines, start=1):
                 stripped = raw_line.strip()
+
+                # Repository policy: root production tree (src/**) must not define test attributes.
+                if rel.parts and rel.parts[0] == "src" and _is_test_attribute_line(stripped):
+                    violations.append(
+                        Violation(
+                            path=str(rel),
+                            line=idx,
+                            kind="test_attribute_in_src",
+                            code=raw_line.rstrip(),
+                        )
+                    )
 
                 if stripped.startswith("#["):
                     pending_attrs.append(stripped)

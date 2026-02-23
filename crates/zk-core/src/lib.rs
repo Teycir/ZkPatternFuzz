@@ -1,5 +1,7 @@
 //! Core types and traits for ZkPatternFuzz.
 
+pub mod constants;
+
 mod error;
 mod executor;
 mod field;

@@ -4,13 +4,10 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-
-const BN254_MODULUS_MINUS_ONE: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495616";
-const BN254_MODULUS: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
-const BN254_MODULUS_PLUS_ONE: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495618";
+use zk_core::constants::{
+    BN254_SCALAR_MODULUS_DECIMAL, BN254_SCALAR_MODULUS_MINUS_ONE_DECIMAL,
+    BN254_SCALAR_MODULUS_PLUS_ONE_DECIMAL,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
@@ -352,9 +349,9 @@ fn mutate_public_inputs(
         PublicInputMutationStrategy::FieldBoundary => {
             let boundary_values = [
                 "0",
-                BN254_MODULUS_MINUS_ONE,
-                BN254_MODULUS,
-                BN254_MODULUS_PLUS_ONE,
+                BN254_SCALAR_MODULUS_MINUS_ONE_DECIMAL,
+                BN254_SCALAR_MODULUS_DECIMAL,
+                BN254_SCALAR_MODULUS_PLUS_ONE_DECIMAL,
             ];
             let slot = case_index % mutated.len();
             let value = boundary_values[case_index % boundary_values.len()];

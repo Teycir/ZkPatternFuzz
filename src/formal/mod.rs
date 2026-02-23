@@ -21,6 +21,7 @@ pub use properties::{CircuitProperty, PropertyExtractor};
 
 use crate::analysis::symbolic::SymbolicConstraint;
 use std::path::Path;
+use zk_core::constants::BN254_SCALAR_MODULUS_DECIMAL;
 use zk_core::ConstraintEquation;
 
 /// Target proof system
@@ -125,9 +126,7 @@ impl Default for FormalConfig {
             output_dir: "./proofs".to_string(),
             generate_skeletons: true,
             include_comments: true,
-            field_modulus:
-                "21888242871839275222246405745257275088548364400416034343698204186575808495617"
-                    .to_string(),
+            field_modulus: BN254_SCALAR_MODULUS_DECIMAL.to_string(),
             custom_imports: Vec::new(),
         }
     }
@@ -270,15 +269,13 @@ pub fn generate_soundness_proof(
     constraints: &[ConstraintEquation],
     system: ProofSystem,
 ) -> ProofResult {
-    let modulus = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
-
     match system {
         ProofSystem::Lean4 => {
-            let exporter = LeanExporter::new(modulus);
+            let exporter = LeanExporter::new(BN254_SCALAR_MODULUS_DECIMAL);
             exporter.export_circuit(circuit_name, constraints)
         }
         ProofSystem::Coq => {
-            let exporter = CoqExporter::new(modulus);
+            let exporter = CoqExporter::new(BN254_SCALAR_MODULUS_DECIMAL);
             exporter.export_circuit(circuit_name, constraints)
         }
     }

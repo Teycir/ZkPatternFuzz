@@ -8,6 +8,7 @@
 use crate::limb_analysis::{LimbAnalysisReport, LimbReconstruction};
 use num_bigint::BigUint;
 use std::collections::{HashMap, HashSet};
+use zk_core::constants::bn254_modulus_biguint;
 use zk_core::FieldElement;
 
 /// Classification of generated limb-boundary fuzzing cases.
@@ -352,11 +353,7 @@ fn biguint_to_field_element(value: &BigUint) -> Option<FieldElement> {
 }
 
 fn bn254_field_modulus() -> BigUint {
-    BigUint::parse_bytes(
-        b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
-        10,
-    )
-    .expect("hardcoded BN254 modulus must parse")
+    bn254_modulus_biguint().clone()
 }
 
 fn dedup_cases(cases: Vec<LimbBoundaryCase>) -> Vec<LimbBoundaryCase> {

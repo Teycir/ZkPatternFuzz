@@ -14,6 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+use zk_core::constants::bn254_modulus_bytes;
 use zk_core::ConstraintEquation;
 use zk_core::FieldElement;
 use zk_core::Framework;
@@ -1037,11 +1038,7 @@ impl TargetCircuit for NoirTarget {
 
     fn field_modulus(&self) -> [u8; 32] {
         // Noir uses BN254 (Barretenberg backend)
-        let hex_str = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
-        let decoded = hex::decode(hex_str).expect("Noir BN254 modulus constant must be valid hex");
-        let mut modulus = [0u8; 32];
-        modulus.copy_from_slice(&decoded);
-        modulus
+        bn254_modulus_bytes()
     }
 
     fn field_name(&self) -> &str {

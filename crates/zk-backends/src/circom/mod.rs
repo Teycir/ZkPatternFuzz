@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, OnceLock};
 use tempfile::Builder;
+use zk_core::constants::bn254_modulus_bytes;
 use zk_core::ConstraintEquation;
 use zk_core::FieldElement;
 use zk_core::Framework;
@@ -2049,9 +2050,7 @@ fn resolve_circom_prime(prime: &str) -> Option<[u8; 32]> {
     // Well-known aliases
     match normalised.as_str() {
         "bn128" | "bn254" | "altbn128" | "altbn128_" => {
-            return hex_to_modulus(
-                "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
-            );
+            return Some(bn254_modulus_bytes());
         }
         "bls12381" => {
             return hex_to_modulus(

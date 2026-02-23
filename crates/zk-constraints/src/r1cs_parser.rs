@@ -13,7 +13,11 @@ use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
+use zk_core::constants::bn254_modulus_biguint;
 use zk_core::FieldElement;
+
+#[cfg(test)]
+const BN254_MODULUS: &str = zk_core::constants::BN254_SCALAR_MODULUS_DECIMAL;
 
 /// R1CS constraint: (A·w) * (B·w) = (C·w)
 #[derive(Debug, Clone)]
@@ -102,10 +106,6 @@ pub struct R1CS {
     /// Whether custom gates are used (Ultra/Turbo PLONK)
     pub custom_gates_used: bool,
 }
-
-/// BN254 scalar field modulus
-const BN254_MODULUS: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
 
 impl R1CS {
     /// Parse .r1cs binary file
@@ -213,10 +213,9 @@ impl R1CS {
         }
 
         // Check field size is BN254
-        let bn254_modulus = BigUint::parse_bytes(BN254_MODULUS.as_bytes(), 10)
-            .ok_or_else(|| anyhow!("Failed to parse BN254 modulus"))?;
+        let bn254_modulus = bn254_modulus_biguint();
 
-        if self.field_size != bn254_modulus {
+        if &self.field_size != bn254_modulus {
             tracing::warn!("Non-BN254 field detected. Field size: {}", self.field_size);
         }
 

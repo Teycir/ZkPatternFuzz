@@ -18,11 +18,11 @@ use z3::ast::{Ast, Bool, Int};
 use z3::{Config, Context, Model, SatResult, Solver};
 
 use super::r1cs_parser::{R1CSConstraint, R1CS};
+use zk_core::constants::BN254_SCALAR_MODULUS_DECIMAL;
 use zk_core::FieldElement;
 
-/// BN254 scalar field modulus
-const BN254_MODULUS: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+#[cfg(test)]
+const BN254_MODULUS: &str = BN254_SCALAR_MODULUS_DECIMAL;
 
 /// Result of alternative witness search
 #[derive(Debug, Clone)]
@@ -68,7 +68,7 @@ impl<'ctx> AltWitnessSolver<'ctx> {
     /// Create a new solver for the given R1CS
     pub fn new(ctx: &'ctx Context, r1cs: &R1CS) -> Self {
         let modulus_str = if r1cs.field_size == BigUint::from(0u32) {
-            BN254_MODULUS.to_string()
+            BN254_SCALAR_MODULUS_DECIMAL.to_string()
         } else {
             r1cs.field_size.to_str_radix(10)
         };
@@ -132,7 +132,7 @@ impl<'ctx> AltWitnessSolver<'ctx> {
     ) -> Self {
         let modulus_str = match field_size {
             Some(fs) if *fs != BigUint::from(0u32) => fs.to_str_radix(10),
-            _ => BN254_MODULUS.to_string(),
+            _ => BN254_SCALAR_MODULUS_DECIMAL.to_string(),
         };
 
         let modulus = match Int::from_str(ctx, &modulus_str) {

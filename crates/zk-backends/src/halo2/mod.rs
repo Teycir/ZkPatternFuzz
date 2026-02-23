@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 use zk_constraints::{
     ConstraintChecker, ConstraintParser, ParsedConstraintSet, UnknownLookupPolicy,
 };
+use zk_core::constants::bn254_modulus_bytes;
 use zk_core::FieldElement;
 use zk_core::Framework;
 
@@ -1008,21 +1009,28 @@ impl TargetCircuit for Halo2Target {
     }
 
     fn field_modulus(&self) -> [u8; 32] {
-        let hex_str = match self.config.field {
-            Halo2Field::Bn254 => "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+        match self.config.field {
+            Halo2Field::Bn254 => bn254_modulus_bytes(),
             Halo2Field::Pasta => {
                 // Pallas scalar field
-                "40000000000000000000000000000000224698fc094cf91b992d30ed00000001"
+                let mut modulus = [0u8; 32];
+                if let Ok(decoded) = hex::decode(
+                    "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
+                ) {
+                    modulus.copy_from_slice(&decoded);
+                }
+                modulus
             }
             Halo2Field::Bls12_381 => {
-                "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001"
+                let mut modulus = [0u8; 32];
+                if let Ok(decoded) = hex::decode(
+                    "73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001",
+                ) {
+                    modulus.copy_from_slice(&decoded);
+                }
+                modulus
             }
-        };
-        let mut modulus = [0u8; 32];
-        if let Ok(decoded) = hex::decode(hex_str) {
-            modulus.copy_from_slice(&decoded);
         }
-        modulus
     }
 
     fn field_name(&self) -> &str {

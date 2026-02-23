@@ -495,6 +495,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Document hard no-mixing policy: production modules (`src/**`, `crates/**`) must not import, re-export, or depend on test-only modules/helpers
 - [x] Document hard placement policy: test bodies belong only in `tests/**`; no `#[cfg(test)]` modules or `*_tests.rs` files in production trees
 - [x] Add CI guard that fails if production modules expose test-only symbols/re-exports
+- [x] Enforce root `src/**` test-attribute ban in CI (`scripts/check_prod_test_separation.py`) and remove remaining inline `#[cfg(test)]`/`#[test]` modules from root production files (`src/fuzzer/engine/attack_runner_static.rs`, `src/fuzzer/engine/attack_runner_novel.rs`, `src/pipeline/post_roadmap_workflow.rs`, `src/pipeline/post_roadmap_runner.rs`, `src/pipeline/post_roadmap_foundation.rs`, `src/bin/zk0d_benchmark.rs`)
 
 ### Attack Coverage
 - [x] Wire previously non-executed attack families into runtime dispatch

@@ -2,7 +2,7 @@
   "schema_version": "1",
   "track_version": "0.1.0",
   "run_id": "compat-run",
-  "generated_at": "2026-02-23T16:31:06.050970801Z",
+  "generated_at": "2026-02-23T17:04:56.394860499Z",
   "mode": "strict_sample",
   "seed": 1337,
   "cases_per_adapter": 1,

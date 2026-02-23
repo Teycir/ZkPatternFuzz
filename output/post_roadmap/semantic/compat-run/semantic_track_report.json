@@ -2,7 +2,7 @@
   "schema_version": "1",
   "track_version": "0.1.0",
   "run_id": "compat-run",
-  "generated_at": "2026-02-23T16:31:08.730320676Z",
+  "generated_at": "2026-02-23T17:04:59.507722089Z",
   "adapter": "heuristic-semantic-v1",
   "roots": [
     "."

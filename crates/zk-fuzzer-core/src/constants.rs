@@ -3,36 +3,32 @@
 //! This module provides consistent field modulus values to avoid
 //! inconsistencies across different parts of the codebase.
 
-/// BN254 scalar field modulus (also known as alt_bn128 or bn256)
-/// p = 21888242871839275222246405745257275088548364400416034343698204186575808495617
-pub const BN254_MODULUS: &str = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
+use zk_core::constants::{
+    bn254_modulus_bytes as core_bn254_modulus_bytes,
+    bn254_modulus_minus_one_bytes as core_bn254_modulus_minus_one_bytes,
+    BN254_SCALAR_HALF_MODULUS_HEX, BN254_SCALAR_MODULUS_HEX, BN254_SCALAR_MODULUS_MINUS_ONE_HEX,
+};
+
+/// BN254 scalar field modulus (also known as alt_bn128 or bn256).
+/// Canonical value is defined in `zk_core::constants`.
+pub const BN254_MODULUS: &str = BN254_SCALAR_MODULUS_HEX;
 
 /// BN254 scalar field modulus minus one (p - 1)
 /// Useful for boundary testing
-pub const BN254_MODULUS_MINUS_ONE: &str =
-    "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000";
+pub const BN254_MODULUS_MINUS_ONE: &str = BN254_SCALAR_MODULUS_MINUS_ONE_HEX;
 
 /// Half of BN254 modulus: (p - 1) / 2
 /// Useful for sign-related testing
-pub const BN254_HALF_MODULUS: &str =
-    "183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000";
+pub const BN254_HALF_MODULUS: &str = BN254_SCALAR_HALF_MODULUS_HEX;
 
 /// Get the BN254 modulus as a 32-byte array
 pub fn bn254_modulus_bytes() -> [u8; 32] {
-    let mut modulus = [0u8; 32];
-    if let Ok(decoded) = hex::decode(BN254_MODULUS) {
-        modulus.copy_from_slice(&decoded);
-    }
-    modulus
+    core_bn254_modulus_bytes()
 }
 
 /// Get the BN254 modulus minus one as a 32-byte array
 pub fn bn254_modulus_minus_one_bytes() -> [u8; 32] {
-    let mut modulus = [0u8; 32];
-    if let Ok(decoded) = hex::decode(BN254_MODULUS_MINUS_ONE) {
-        modulus.copy_from_slice(&decoded);
-    }
-    modulus
+    core_bn254_modulus_minus_one_bytes()
 }
 
 /// Supported field types for ZK circuits

@@ -1,18 +1,9 @@
+use crate::constants::{
+    bn254_modulus_biguint, BN254_SCALAR_HALF_MODULUS_HEX, BN254_SCALAR_MODULUS_MINUS_ONE_HEX,
+};
 use num_bigint::BigUint;
 use rand::Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::sync::OnceLock;
-
-fn bn254_modulus() -> &'static BigUint {
-    static MODULUS: OnceLock<BigUint> = OnceLock::new();
-    MODULUS.get_or_init(|| {
-        BigUint::parse_bytes(
-            b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
-            10,
-        )
-        .expect("BN254 modulus constant must parse")
-    })
-}
 
 /// Field element representation (32 bytes for bn254)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -51,8 +42,7 @@ impl FieldElement {
 
     /// Maximum field value (p - 1 for BN254 scalar field)
     pub fn max_value() -> Self {
-        // BN254 scalar field: p - 1
-        match Self::from_hex("0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000") {
+        match Self::from_hex(&format!("0x{}", BN254_SCALAR_MODULUS_MINUS_ONE_HEX)) {
             Ok(value) => value,
             Err(err) => panic!("Invalid hardcoded BN254 max_value constant: {}", err),
         }
@@ -60,7 +50,7 @@ impl FieldElement {
 
     /// Half of the field modulus: (p - 1) / 2
     pub fn half_modulus() -> Self {
-        match Self::from_hex("0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000") {
+        match Self::from_hex(&format!("0x{}", BN254_SCALAR_HALF_MODULUS_HEX)) {
             Ok(value) => value,
             Err(err) => panic!("Invalid hardcoded BN254 half_modulus constant: {}", err),
         }
@@ -69,7 +59,7 @@ impl FieldElement {
     pub fn random(rng: &mut impl Rng) -> Self {
         let mut bytes = [0u8; 32];
         rng.fill(&mut bytes);
-        let value = BigUint::from_bytes_be(&bytes) % bn254_modulus();
+        let value = BigUint::from_bytes_be(&bytes) % bn254_modulus_biguint();
         Self::from_bytes(&value.to_bytes_be())
     }
 
@@ -106,7 +96,7 @@ impl FieldElement {
     pub fn add(&self, other: &Self) -> Self {
         let a = BigUint::from_bytes_be(&self.0);
         let b = BigUint::from_bytes_be(&other.0);
-        let result = (a + b) % bn254_modulus();
+        let result = (a + b) % bn254_modulus_biguint();
 
         let result_bytes = result.to_bytes_be();
         Self::from_bytes(&result_bytes)
@@ -116,7 +106,7 @@ impl FieldElement {
     pub fn sub(&self, other: &Self) -> Self {
         let a = BigUint::from_bytes_be(&self.0);
         let b = BigUint::from_bytes_be(&other.0);
-        let modulus = bn254_modulus();
+        let modulus = bn254_modulus_biguint();
 
         // (a - b + p) % p to handle underflow
         let result = if a >= b {
@@ -139,7 +129,7 @@ impl FieldElement {
     pub fn mul(&self, other: &Self) -> Self {
         let a = BigUint::from_bytes_be(&self.0);
         let b = BigUint::from_bytes_be(&other.0);
-        let result = (a * b) % bn254_modulus();
+        let result = (a * b) % bn254_modulus_biguint();
 
         let result_bytes = result.to_bytes_be();
         Self::from_bytes(&result_bytes)

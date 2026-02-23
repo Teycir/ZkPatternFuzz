@@ -2,7 +2,7 @@
   "schema_version": "1",
   "track_version": "0.1.0",
   "run_id": "compat-run",
-  "generated_at": "2026-02-23T16:31:08.825755685Z",
+  "generated_at": "2026-02-23T17:04:59.597916257Z",
   "mode": "output_only_for_external_ai",
   "findings": [
     {

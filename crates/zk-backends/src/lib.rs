@@ -36,6 +36,7 @@ pub use halo2::analysis as halo2_analysis;
 #[cfg(feature = "noir")]
 pub use noir::analysis as noir_analysis;
 
+use zk_core::constants::bn254_modulus_bytes;
 use zk_core::{FieldElement, Framework};
 
 /// Common trait for all ZK circuit targets.
@@ -72,12 +73,7 @@ pub trait TargetCircuit: Send + Sync {
     /// compatibility, but every concrete backend should override this.
     fn field_modulus(&self) -> [u8; 32] {
         // BN254 scalar field – default for backwards compat
-        let mut modulus = [0u8; 32];
-        let hex_str = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
-        if let Ok(decoded) = hex::decode(hex_str) {
-            modulus.copy_from_slice(&decoded);
-        }
-        modulus
+        bn254_modulus_bytes()
     }
 
     /// Human-readable field-prime name (e.g. "bn254", "pasta", "bls12-381",

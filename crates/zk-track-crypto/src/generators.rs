@@ -1,13 +1,9 @@
-use std::sync::OnceLock;
-
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
-
-const BN254_MODULUS: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+use zk_core::constants::bn254_modulus_biguint;
 
 pub const TOY_CURVE_ORDER: u64 = 10_177;
 pub const TOY_PAIRING_ORDER: u64 = 101;
@@ -96,10 +92,7 @@ pub struct PairingInputSample {
 }
 
 pub fn field_modulus() -> &'static BigUint {
-    static MODULUS: OnceLock<BigUint> = OnceLock::new();
-    MODULUS.get_or_init(|| {
-        BigUint::parse_bytes(BN254_MODULUS.as_bytes(), 10).expect("valid BN254 modulus")
-    })
+    bn254_modulus_biguint()
 }
 
 pub fn generate_field_edge_values(modulus: &BigUint) -> Vec<BigUint> {

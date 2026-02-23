@@ -17,9 +17,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-
-const DEFAULT_FIELD_MODULUS: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+use zk_core::constants::BN254_SCALAR_MODULUS_DECIMAL;
 
 /// Runtime controls for formal bridge generation.
 #[derive(Debug, Clone)]
@@ -341,11 +339,11 @@ fn export_obligations_module(
 ) -> super::ProofResult {
     match system {
         ProofSystem::Lean4 => {
-            let exporter = LeanExporter::new(DEFAULT_FIELD_MODULUS);
+            let exporter = LeanExporter::new(BN254_SCALAR_MODULUS_DECIMAL);
             exporter.export_module("FuzzBridge", obligations)
         }
         ProofSystem::Coq => {
-            let exporter = CoqExporter::new(DEFAULT_FIELD_MODULUS);
+            let exporter = CoqExporter::new(BN254_SCALAR_MODULUS_DECIMAL);
             exporter.export_module("FuzzBridge", obligations)
         }
     }

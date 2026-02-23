@@ -1,3 +1,4 @@
+use crate::constants::bn254_modulus_bytes;
 use crate::{CircuitInfo, FieldElement, Framework};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -225,12 +226,7 @@ pub trait CircuitExecutor: Send + Sync {
     fn field_modulus(&self) -> [u8; 32] {
         // Default to BN254 scalar field modulus for backwards compatibility
         // Implementations should override for their specific field
-        let mut modulus = [0u8; 32];
-        let hex = "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001";
-        if let Ok(decoded) = hex::decode(hex) {
-            modulus.copy_from_slice(&decoded);
-        }
-        modulus
+        bn254_modulus_bytes()
     }
 
     /// Get the field prime name (e.g., "bn254", "bls12-381", "pallas")

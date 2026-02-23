@@ -4,13 +4,11 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use zk_core::constants::{
+    BN254_SCALAR_MODULUS_DECIMAL, BN254_SCALAR_MODULUS_MINUS_ONE_DECIMAL,
+    BN254_SCALAR_MODULUS_PLUS_ONE_DECIMAL,
+};
 
-const BN254_MODULUS_MINUS_ONE: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495616";
-const BN254_MODULUS: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
-const BN254_MODULUS_PLUS_ONE: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495618";
 const MIN_GAS_REFERENCE: u64 = 250_000;
 const MIN_GAS_WEAK_FAIL_OPEN: u64 = 90_000;
 const CALLDATA_SELECTOR: [u8; 4] = [0x19, 0x28, 0x65, 0xab];
@@ -551,9 +549,9 @@ fn mutate_input_case(
             let boundary_values = [
                 "0",
                 "1",
-                BN254_MODULUS_MINUS_ONE,
-                BN254_MODULUS,
-                BN254_MODULUS_PLUS_ONE,
+                BN254_SCALAR_MODULUS_MINUS_ONE_DECIMAL,
+                BN254_SCALAR_MODULUS_DECIMAL,
+                BN254_SCALAR_MODULUS_PLUS_ONE_DECIMAL,
             ];
             let slot = case_index % case.public_inputs.len();
             let value = boundary_values[case_index % boundary_values.len()];

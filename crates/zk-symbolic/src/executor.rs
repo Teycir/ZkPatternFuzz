@@ -9,11 +9,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use z3::ast::Ast;
 use z3::{ast, Config, Context, SatResult, Solver};
+use zk_core::constants::BN254_SCALAR_MODULUS_DECIMAL;
 use zk_core::FieldElement;
-
-/// BN254 scalar field modulus
-const BN254_MODULUS: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
 
 /// Symbolic value representation
 #[derive(Debug, Clone)]
@@ -383,7 +380,7 @@ impl Z3Solver {
     pub fn new() -> Self {
         Self {
             timeout_ms: 5000,
-            modulus: BN254_MODULUS.to_string(),
+            modulus: BN254_SCALAR_MODULUS_DECIMAL.to_string(),
             random_seed: None,
         }
     }

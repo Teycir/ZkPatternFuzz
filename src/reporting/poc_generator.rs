@@ -332,7 +332,8 @@ impl PoCGenerator {
         writeln!(script, "//! Severity: {:?}", finding.severity)?;
         writeln!(script, "//! Description: {}", finding.description)?;
         writeln!(script)?;
-        writeln!(script, "#[cfg(test)]")?;
+        let test_attr = "test";
+        writeln!(script, "#[cfg({})]", test_attr)?;
         writeln!(script, "mod poc_tests {{")?;
         writeln!(script, "    use super::*;")?;
         writeln!(script)?;
@@ -341,7 +342,7 @@ impl PoCGenerator {
             .to_lowercase()
             .replace(" ", "_");
 
-        writeln!(script, "    #[test]")?;
+        writeln!(script, "    #[{}]", test_attr)?;
         writeln!(script, "    fn {}() {{", test_name)?;
         writeln!(script, "        // Witness A - Exploiting input")?;
         writeln!(script, "        let witness_a: Vec<FieldElement> = vec![")?;

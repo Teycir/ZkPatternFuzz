@@ -10,11 +10,8 @@
 
 use super::{OracleConfig, OracleStats, SemanticOracle};
 use num_bigint::BigUint;
+use zk_core::constants::bn254_modulus_biguint;
 use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity, TestCase};
-
-/// BN254 scalar field modulus
-const BN254_MODULUS: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
 
 /// Oracle for detecting range proof vulnerabilities
 pub struct RangeProofOracle {
@@ -31,15 +28,13 @@ pub struct RangeProofOracle {
 
 impl RangeProofOracle {
     pub fn new(config: OracleConfig) -> Self {
-        let field_modulus =
-            BigUint::parse_bytes(BN254_MODULUS.as_bytes(), 10).expect("Invalid BN254 modulus");
-        Self::new_with_biguint(config, field_modulus)
+        Self::new_with_biguint(config, bn254_modulus_biguint().clone())
     }
 
     pub fn new_with_modulus(config: OracleConfig, field_modulus: [u8; 32]) -> Self {
         let modulus = BigUint::from_bytes_be(&field_modulus);
         let modulus = if modulus == BigUint::from(0u8) {
-            BigUint::parse_bytes(BN254_MODULUS.as_bytes(), 10).expect("Invalid BN254 modulus")
+            bn254_modulus_biguint().clone()
         } else {
             modulus
         };

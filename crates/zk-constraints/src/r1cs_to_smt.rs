@@ -8,11 +8,11 @@ use z3::ast::{Ast, Bool, Int};
 use z3::{Config, Context, SatResult, Solver};
 
 use super::r1cs_parser::{R1CSConstraint, R1CS};
+use zk_core::constants::BN254_SCALAR_MODULUS_DECIMAL;
 use zk_core::FieldElement;
 
-/// BN254 scalar field modulus (decimal string)
-const BN254_MODULUS: &str =
-    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+#[cfg(test)]
+const BN254_MODULUS: &str = BN254_SCALAR_MODULUS_DECIMAL;
 
 /// R1CS to SMT translator using integer arithmetic with modular reduction.
 pub struct R1CSToSMT<'ctx> {
@@ -25,7 +25,7 @@ impl<'ctx> R1CSToSMT<'ctx> {
     /// Create a new translator for a given R1CS instance.
     pub fn new(ctx: &'ctx Context, r1cs: &R1CS) -> Self {
         let modulus_str = if r1cs.field_size == BigUint::from(0u32) {
-            BN254_MODULUS.to_string()
+            BN254_SCALAR_MODULUS_DECIMAL.to_string()
         } else {
             r1cs.field_size.to_str_radix(10)
         };
