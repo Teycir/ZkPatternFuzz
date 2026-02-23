@@ -1,0 +1,65 @@
+version: 1
+
+targets:
+  - name: ext001_circomlib_ml_argmax
+    target_circuit: /media/elements/Repos/zkml/circomlib-ml/circuits/ArgMax.circom
+    main_component: main
+    framework: circom
+    alias: external_manual
+    enabled: true
+
+  - name: ext002_zkfuzz_bulk_assignment
+    target_circuit: /media/elements/Repos/zkFuzz/tests/sample/test_bulk_assignment.circom
+    main_component: main
+    framework: circom
+    alias: external_manual
+    enabled: true
+
+  - name: ext003_zkfuzz_vulnerable_iszero
+    target_circuit: /media/elements/Repos/zkFuzz/tests/sample/test_vuln_iszero.circom
+    main_component: VulnerableIsZero
+    framework: circom
+    alias: external_manual
+    enabled: true
+
+  - name: ext004_orion_scarb
+    target_circuit: /media/elements/Repos/zkml/orion/Scarb.toml
+    main_component: main
+    framework: cairo
+    alias: external_manual
+    enabled: true
+
+  - name: ext005_ezkl_cargo
+    target_circuit: /media/elements/Repos/zkml/ezkl/Cargo.toml
+    main_component: main
+    framework: halo2
+    alias: external_manual
+    enabled: true
+
+  - name: ext006_zkevm_circuits_cargo
+    target_circuit: /media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits/zkevm-circuits/Cargo.toml
+    main_component: zkevm
+    framework: halo2
+    alias: external_manual
+    enabled: true
+
+  - name: ext007_aztec_hello_circuit
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/docs/examples/circuits/hello_circuit/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: external_manual
+    enabled: true
+
+  - name: ext008_orion_linear_classifier_test
+    target_circuit: /media/elements/Repos/zkml/orion/tests/ml/linear_classifier_test.cairo
+    main_component: main
+    framework: cairo
+    alias: external_manual
+    enabled: true
+
+  - name: ext009_aztec_barretenberg_fixture_main
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/docs/examples/fixtures/main/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: external_manual
+    enabled: true
