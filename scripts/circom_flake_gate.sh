@@ -240,6 +240,12 @@ history_entries.append(new_entry)
 daily_entries = collapse_daily_latest(history_entries)
 streak_days = compute_streak(daily_entries)
 required_enabled = required_days > 0
+remaining_days = max(required_days - streak_days, 0) if required_enabled else 0
+projected_completion_day_utc = (
+    (generated_utc.date() + timedelta(days=remaining_days)).isoformat()
+    if required_enabled and streak_days > 0
+    else None
+)
 overall_pass = True if not required_enabled else streak_days >= required_days
 
 failures: List[str] = []
@@ -265,6 +271,8 @@ report = {
     "required_consecutive_days": required_days,
     "required_gate_enabled": required_enabled,
     "current_streak_days": streak_days,
+    "remaining_streak_days": remaining_days,
+    "projected_completion_day_utc": projected_completion_day_utc,
     "overall_pass": overall_pass,
     "history_path": str(history_path),
     "history_daily_entries": len(daily_entries),
@@ -294,6 +302,7 @@ with output_path.open("w", encoding="utf-8") as handle:
 print(f"circom flake gate report: {output_path}")
 print(
     f"streak={streak_days} required={required_days} "
+    f"remaining={remaining_days} projected_completion_day_utc={projected_completion_day_utc} "
     f"keygen_pass={keygen_pass} benchmark_gate_pass={benchmark_gate_pass}"
 )
 

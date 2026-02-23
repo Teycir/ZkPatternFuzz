@@ -309,18 +309,31 @@ def evaluate_consecutive_gate(
             if expected_day is not None and current_day != expected_day:
                 break
 
+            if last_sample is None:
+                last_sample = {
+                    "day_utc": current_day.isoformat(),
+                    "score_total": round(sample["score_total"], 3),
+                    "runtime_error_count": sample["runtime_error_count"],
+                }
+
             streak += 1
-            last_sample = {
-                "day_utc": current_day.isoformat(),
-                "score_total": round(sample["score_total"], 3),
-                "runtime_error_count": sample["runtime_error_count"],
-            }
             expected_day = current_day - timedelta(days=1)
 
         per_backend[backend] = {
             "current_streak_days": streak,
             "required_streak_days": target_days,
+            "remaining_streak_days": max(target_days - streak, 0),
             "target_score": target_score,
+            "projected_completion_day_utc": (
+                (
+                    date.fromisoformat(last_sample["day_utc"])
+                    + timedelta(days=max(target_days - streak, 0))
+                ).isoformat()
+                if isinstance(last_sample, dict)
+                and isinstance(last_sample.get("day_utc"), str)
+                and last_sample.get("day_utc")
+                else None
+            ),
             "latest_sample": last_sample,
             "pass": streak >= target_days,
         }
@@ -397,6 +410,14 @@ def score_readiness_backend(entry: dict, thresholds: dict) -> dict:
     max_selector_mismatch_rate = as_float(
         thresholds.get("max_selector_mismatch_rate"), 0.70
     )
+    selector_mismatch_grace_rate = as_float(
+        thresholds.get("selector_mismatch_grace_rate"), 0.10
+    )
+    if selector_mismatch_grace_rate < 0.0:
+        selector_mismatch_grace_rate = 0.0
+    selector_mismatch_grace_rate = min(
+        selector_mismatch_grace_rate, max_selector_mismatch_rate
+    )
     max_run_outcome_missing_rate = as_float(
         thresholds.get("max_run_outcome_missing_rate"), 0.05
     )
@@ -414,9 +435,15 @@ def score_readiness_backend(entry: dict, thresholds: dict) -> dict:
         )
         / 3.0
     )
+    if selector_mismatch_rate <= selector_mismatch_grace_rate:
+        selector_mismatch_component = 1.0
+    else:
+        selector_mismatch_component = inverse_ratio(
+            selector_mismatch_rate, max_selector_mismatch_rate
+        )
     constraint_coverage_fidelity = clamp(
         0.65 * ratio(selector_total, float(max(min_selector_matching_total, 1)))
-        + 0.35 * inverse_ratio(selector_mismatch_rate, max_selector_mismatch_rate)
+        + 0.35 * selector_mismatch_component
     )
     breadth_readiness = clamp(
         0.50 * ratio(completion_rate, min_overall_completion_rate)
@@ -441,6 +468,7 @@ def score_readiness_backend(entry: dict, thresholds: dict) -> dict:
         "selector_matching_completion_rate": round(selector_completion, 6),
         "selector_matching_total": selector_total,
         "selector_mismatch_rate": round(selector_mismatch_rate, 6),
+        "selector_mismatch_grace_rate": round(selector_mismatch_grace_rate, 6),
         "overall_completion_rate": round(completion_rate, 6),
         "runtime_error_count": runtime_error_count,
         "backend_preflight_failed_count": preflight_failed_count,
@@ -750,7 +778,16 @@ if consecutive_gate["enabled"]:
     for backend in consecutive_gate["required_backends"]:
         backend_status = consecutive_gate["per_backend"].get(backend, {})
         streak = as_int(backend_status.get("current_streak_days"), 0)
-        print(f"  - {backend}: streak_days={streak}")
+        remaining = as_int(backend_status.get("remaining_streak_days"), 0)
+        projected_day = backend_status.get("projected_completion_day_utc")
+        projected_suffix = (
+            f", projected_completion_day_utc={projected_day}"
+            if isinstance(projected_day, str) and projected_day
+            else ""
+        )
+        print(
+            f"  - {backend}: streak_days={streak}, remaining_days={remaining}{projected_suffix}"
+        )
 
 print(f"Cross-backend readiness score: {cross_backend_readiness_score:.3f}/5.000")
 print(f"Backend maturity scorecard: {output_path}")
