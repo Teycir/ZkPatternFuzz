@@ -340,3 +340,16 @@ fn engagement_dir_name_invalid_run_id_never_panics() {
     let dir = result.expect("string");
     assert!(!dir.trim().is_empty());
 }
+
+#[test]
+fn run_id_epoch_dir_is_unique_for_same_second_different_runs() {
+    let run_a = "20260223_230159_evidence_alpha_pid1111";
+    let run_b = "20260223_230159_evidence_beta_pid2222";
+
+    let dir_a = run_id_epoch_dir(run_a).expect("dir for run_a");
+    let dir_b = run_id_epoch_dir(run_b).expect("dir for run_b");
+
+    assert_ne!(dir_a, dir_b, "same-second runs must not share one folder");
+    assert!(dir_a.starts_with("report_"), "dir_a should keep report_ prefix");
+    assert!(dir_b.starts_with("report_"), "dir_b should keep report_ prefix");
+}

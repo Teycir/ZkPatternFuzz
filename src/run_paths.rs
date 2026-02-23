@@ -150,7 +150,12 @@ pub(crate) fn run_id_epoch_dir(run_id: &str) -> Option<String> {
         }
     };
     let started_utc = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
-    Some(format!("report_{}", started_utc.timestamp()))
+    // Include run_id in the folder name so same-second runs never collide.
+    Some(format!(
+        "report_{}_{}",
+        started_utc.timestamp(),
+        sanitize_slug(run_id)
+    ))
 }
 
 pub(crate) fn engagement_dir_name(run_id: &str) -> String {
