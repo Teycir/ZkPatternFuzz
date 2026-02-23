@@ -260,6 +260,12 @@ jobs:
             --max-backend-preflight-failed "$MAX_BACKEND_PREFLIGHT_FAILED" \
             --max-backend-run-outcome-missing-rate "$MAX_BACKEND_RUN_OUTCOME_MISSING_RATE"
 
+      - name: Capture compact streak status
+        if: always()
+        run: |
+          ./scripts/run_release_streak_status.sh > .github_release_streak_status.txt
+          cat .github_release_streak_status.txt
+
       - name: Publish streak summary
         if: always()
         run: |
@@ -281,7 +287,12 @@ jobs:
               per_backend = gate.get("per_backend", {}) if isinstance(gate, dict) else {}
               for backend in sorted(per_backend):
                   entry = per_backend.get(backend, {})
-                  lines.append(f"  - {backend}: streak_days={entry.get('streak_days')}")
+                  lines.append(
+                      f"- {backend}: streak_days={entry.get('current_streak_days')}/"
+                      f"{entry.get('required_streak_days')}, "
+                      f"remaining_days={entry.get('remaining_streak_days')}, "
+                      f"projected_completion_day_utc={entry.get('projected_completion_day_utc')}"
+                  )
           else:
               lines.append("- Backend maturity consecutive gate: missing scorecard artifact")
 
@@ -290,10 +301,18 @@ jobs:
               payload = json.loads(flake.read_text(encoding="utf-8"))
               lines.append(
                   f"- Circom flake consecutive gate: {'PASS' if payload.get('overall_pass') else 'FAIL'} "
-                  f"(streak_days={payload.get('streak_days')}, required_days={payload.get('required_consecutive_days')})"
+                  f"(streak_days={payload.get('current_streak_days')}/{payload.get('required_consecutive_days')}, "
+                  f"remaining_days={payload.get('remaining_streak_days')}, "
+                  f"projected_completion_day_utc={payload.get('projected_completion_day_utc')})"
               )
           else:
               lines.append("- Circom flake consecutive gate: missing flake artifact")
+
+          compact = Path(".github_release_streak_status.txt")
+          if compact.is_file():
+              lines.extend(["", "### Compact Status", "", "```text"])
+              lines.extend(compact.read_text(encoding="utf-8").rstrip().splitlines())
+              lines.append("```")
 
           summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
           print(summary_path.read_text(encoding="utf-8"))
