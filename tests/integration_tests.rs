@@ -539,8 +539,9 @@ fn test_isolated_executor_timeout_path_exists() {
     );
 
     assert!(
-        source.contains("child.wait()"),
-        "IsolatedExecutor should wait() after kill() to reap zombie process"
+        source.contains("child.wait()")
+            || source.contains("wait_for_child_with_timeout(child, Duration::from_secs(2))"),
+        "IsolatedExecutor should reap killed child process after timeout"
     );
 
     // Verify the timeout error message exists

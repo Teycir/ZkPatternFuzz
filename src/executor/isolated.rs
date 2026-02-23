@@ -38,7 +38,6 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use wait_timeout::ChildExt;
 use zk_core::{CircuitExecutor, ExecutionCoverage, ExecutionResult, FieldElement, Framework};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -514,7 +513,7 @@ impl IsolatedExecutor {
         let timeout = Duration::from_millis(self.config.timeout_ms);
         let start = Instant::now();
 
-        if let Some(status) = child.wait_timeout(timeout)? {
+        if let Some(status) = wait_for_child_with_timeout(&mut child, timeout)? {
             if !status.success() {
                 remove_response_file(&response_path);
                 anyhow::bail!("Worker process crashed with exit code: {:?}", status.code());
@@ -523,12 +522,7 @@ impl IsolatedExecutor {
             // Keep explicit elapsed-vs-timeout check for regression verifiers.
             let _timed_out = start.elapsed() >= timeout;
             if self.config.kill_on_timeout {
-                if let Err(e) = child.kill() {
-                    tracing::warn!("Failed to kill timed out worker process: {}", e);
-                }
-                if let Err(e) = child.wait() {
-                    tracing::warn!("Failed to wait on timed out worker process: {}", e);
-                }
+                terminate_timed_out_child(&mut child);
             }
             remove_response_file(&response_path);
             anyhow::bail!("Execution timeout after {} ms", self.config.timeout_ms);
@@ -616,6 +610,52 @@ fn remove_response_file(response_path: &Path) {
                 response_path,
                 e
             );
+        }
+    }
+}
+
+fn wait_for_child_with_timeout(
+    child: &mut std::process::Child,
+    timeout: Duration,
+) -> anyhow::Result<Option<std::process::ExitStatus>> {
+    let start = Instant::now();
+    let mut poll_delay = Duration::from_millis(2);
+    let max_poll_delay = Duration::from_millis(25);
+
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .context("Failed waiting on worker process")?
+        {
+            return Ok(Some(status));
+        }
+
+        if start.elapsed() >= timeout {
+            return Ok(None);
+        }
+
+        std::thread::sleep(poll_delay);
+        poll_delay = (poll_delay * 2).min(max_poll_delay);
+    }
+}
+
+fn terminate_timed_out_child(child: &mut std::process::Child) {
+    if let Err(e) = child.kill() {
+        // If the child already exited there is nothing left to kill.
+        if e.kind() != ErrorKind::InvalidInput {
+            tracing::warn!("Failed to kill timed out worker process: {}", e);
+        }
+    }
+
+    match wait_for_child_with_timeout(child, Duration::from_secs(2)) {
+        Ok(Some(_status)) => {}
+        Ok(None) => {
+            tracing::warn!(
+                "Timed out waiting for timed-out worker process to terminate after kill"
+            );
+        }
+        Err(e) => {
+            tracing::warn!("Failed waiting on timed-out worker process after kill: {}", e);
         }
     }
 }
