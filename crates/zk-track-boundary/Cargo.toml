@@ -7,4 +7,8 @@ description = "Deferred boundary track runner (public input/serialization/verifi
 
 [dependencies]
 async-trait = "0.1"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
 zk-postroadmap-core = { path = "../zk-postroadmap-core" }

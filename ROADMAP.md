@@ -1042,18 +1042,18 @@ src/attacks/compiler_fuzzing.rs  # Attack integration
 - Gas-optimized verifiers may have different behavior than reference
 
 #### Future P0 (Post-Roadmap): Public Input Manipulation Fuzzer
-- [ ] **Valid Proof + Manipulated Public Inputs:**
-  - [ ] Generate valid proof for witness W with public inputs P
-  - [ ] Mutate public inputs: P' = mutate(P)
-  - [ ] Test verification: verify(proof, P') should REJECT
-  - [ ] Bug if accepts: verifier doesn't check public inputs correctly
-- [ ] **Mutation Strategies:**
-  - [ ] Bit flips: flip random bits in public input encoding
-  - [ ] Field boundary: replace with 0, p-1, p, p+1
-  - [ ] Reordering: swap public input positions
-  - [ ] Truncation: remove trailing public inputs
-  - [ ] Duplication: repeat public inputs
-  - [ ] Type confusion: interpret field element as different type
+- [x] **Valid Proof + Manipulated Public Inputs:** (`run_public_input_manipulation_campaign` in `crates/zk-track-boundary/src/public_input_fuzzer.rs`; sample runner `scripts/run_boundary_public_input_sample.sh`)
+  - [x] Generate valid proof for witness W with public inputs P (`generate_bound_proof` in `crates/zk-track-boundary/src/public_input_fuzzer.rs`)
+  - [x] Mutate public inputs: P' = mutate(P) (`mutate_public_inputs` in `crates/zk-track-boundary/src/public_input_fuzzer.rs`)
+  - [x] Test verification: verify(proof, P') should REJECT (`verify_bound_proof` and campaign report counts in `artifacts/boundary/public_input_sample/latest_report.json`)
+  - [x] Bug if accepts: verifier doesn't check public inputs correctly (`findings[]` + `accepted_mutations` in campaign report)
+- [x] **Mutation Strategies:** (`PublicInputMutationStrategy` in `crates/zk-track-boundary/src/public_input_fuzzer.rs`)
+  - [x] Bit flips: flip random bits in public input encoding
+  - [x] Field boundary: replace with 0, p-1, p, p+1
+  - [x] Reordering: swap public input positions
+  - [x] Truncation: remove trailing public inputs
+  - [x] Duplication: repeat public inputs
+  - [x] Type confusion: interpret field element as different type
 - [ ] **Attack Scenarios:**
   - [ ] Proof for user A, public input changed to user B (identity swap)
   - [ ] Proof for amount 100, public input changed to 1000 (value inflation)
@@ -1170,7 +1170,7 @@ assert(ref_result == opt_result, "Verifier mismatch!");
 ```
 
 #### Exit Criteria
-- [ ] Public input fuzzer: test 1000+ valid proofs with manipulated inputs
+- [x] Public input fuzzer: test 1000+ valid proofs with manipulated inputs (`scripts/run_boundary_public_input_sample.sh`; latest sample run 2026-02-23: proofs=1000, mutation_checks=6000 at `artifacts/boundary/public_input_sample/latest_report.json`)
 - [ ] Detect ≥1 public input binding bug (verifier accepts wrong inputs)
 - [ ] Serialization fuzzer: test 100+ edge cases per format
 - [ ] Detect ≥1 serialization bug (crash, incorrect deserialization)

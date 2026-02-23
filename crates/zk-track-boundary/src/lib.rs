@@ -1,4 +1,5 @@
 mod adapters;
+mod public_input_fuzzer;
 
 use std::path::PathBuf;
 
@@ -8,6 +9,10 @@ use zk_postroadmap_core::{PostRoadmapResult, TrackExecution, TrackInput, TrackKi
 pub use adapters::{
     BoundaryProtocolAdapter, BoundaryProtocolCase, BoundaryProtocolResult, SerializationAdapter,
     VerifierAdapter,
+};
+pub use public_input_fuzzer::{
+    run_public_input_manipulation_campaign, PublicInputManipulationConfig,
+    PublicInputManipulationFinding, PublicInputManipulationReport, PublicInputMutationStrategy,
 };
 
 pub const TRACK_MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
