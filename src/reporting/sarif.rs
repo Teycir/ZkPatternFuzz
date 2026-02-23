@@ -39,6 +39,7 @@
 //!     severity: Severity::High,
 //!     description: "Example finding".to_string(),
 //!     poc: ProofOfConcept::default(),
+//!     class: None,
 //!     location: None,
 //! }];
 //!

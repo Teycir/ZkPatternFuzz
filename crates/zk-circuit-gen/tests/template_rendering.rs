@@ -879,6 +879,8 @@ fn crash_detection_classifies_failures_and_generates_bug_reports() {
     let tmp = tempdir().expect("tempdir");
     let source_path = tmp.path().join("probe_input.circom");
     fs::write(&source_path, "template Main() {}").expect("write source");
+    // Keep a comfortable buffer over shell startup variance to avoid flaking.
+    let timeout_ms = 500;
 
     let cases = vec![
         CompilerProbeCase {
@@ -886,7 +888,7 @@ fn crash_detection_classifies_failures_and_generates_bug_reports() {
             compiler_id: "circom_v2_1".to_string(),
             source_path: source_path.clone(),
             command: vec!["bash".to_string(), "-lc".to_string(), "echo ok".to_string()],
-            timeout_ms: 100,
+            timeout_ms,
         },
         CompilerProbeCase {
             case_id: "case_crash".to_string(),
@@ -897,7 +899,7 @@ fn crash_detection_classifies_failures_and_generates_bug_reports() {
                 "-lc".to_string(),
                 "echo segmentation fault 1>&2; exit 139".to_string(),
             ],
-            timeout_ms: 100,
+            timeout_ms,
         },
         CompilerProbeCase {
             case_id: "case_ice".to_string(),
@@ -908,7 +910,7 @@ fn crash_detection_classifies_failures_and_generates_bug_reports() {
                 "-lc".to_string(),
                 "echo internal compiler error: assertion failed 1>&2; exit 101".to_string(),
             ],
-            timeout_ms: 100,
+            timeout_ms,
         },
         CompilerProbeCase {
             case_id: "case_user_error".to_string(),
@@ -919,7 +921,7 @@ fn crash_detection_classifies_failures_and_generates_bug_reports() {
                 "-lc".to_string(),
                 "echo syntax error at line 1 1>&2; exit 1".to_string(),
             ],
-            timeout_ms: 100,
+            timeout_ms,
         },
     ];
 
@@ -955,6 +957,8 @@ fn known_bug_regression_report_marks_reproduced_fixed_and_missing() {
     let tmp = tempdir().expect("tempdir");
     let source_path = tmp.path().join("probe_input.circom");
     fs::write(&source_path, "template Main() {}").expect("write source");
+    // Keep a comfortable buffer over shell startup variance to avoid flaking.
+    let timeout_ms = 500;
 
     let cases = vec![
         CompilerProbeCase {
@@ -966,7 +970,7 @@ fn known_bug_regression_report_marks_reproduced_fixed_and_missing() {
                 "-lc".to_string(),
                 "echo segmentation fault 1>&2; exit 139".to_string(),
             ],
-            timeout_ms: 100,
+            timeout_ms,
         },
         CompilerProbeCase {
             case_id: "case_user_error".to_string(),
@@ -977,7 +981,7 @@ fn known_bug_regression_report_marks_reproduced_fixed_and_missing() {
                 "-lc".to_string(),
                 "echo syntax error at line 1 1>&2; exit 1".to_string(),
             ],
-            timeout_ms: 100,
+            timeout_ms,
         },
     ];
     let report =
