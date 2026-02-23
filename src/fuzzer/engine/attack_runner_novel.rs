@@ -1334,11 +1334,16 @@ impl FuzzingEngine {
             .get("scope_public_inputs")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
+        let max_collisions = config
+            .get("max_collisions")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(512) as usize;
 
         tracing::info!("Running witness collision detection ({} samples)", samples);
 
         let mut detector = WitnessCollisionDetector::new()
             .with_samples(samples)
+            .with_max_collisions(max_collisions)
             .with_public_input_scope(scope_public_inputs);
 
         if scope_public_inputs {
@@ -1372,6 +1377,25 @@ impl FuzzingEngine {
             detector = detector.with_public_input_indices(public_input_indices);
         }
 
+        let config_timeout = config
+            .get("timeout_ms")
+            .and_then(|v| v.as_u64())
+            .map(Duration::from_millis);
+        let attack_timeout = match (config_timeout, self.wall_clock_remaining()) {
+            (Some(config_limit), Some(wall_clock_remaining)) => {
+                Some(config_limit.min(wall_clock_remaining))
+            }
+            (Some(config_limit), None) => Some(config_limit),
+            (None, Some(wall_clock_remaining)) => Some(wall_clock_remaining),
+            (None, None) => None,
+        };
+        if let Some(limit) = attack_timeout {
+            tracing::info!(
+                "Witness collision detection time budget: {} ms",
+                limit.as_millis()
+            );
+        }
+
         // Generate witnesses
         let mut witnesses = Vec::with_capacity(samples);
         for _ in 0..samples {
@@ -1384,7 +1408,9 @@ impl FuzzingEngine {
             witnesses.push(self.generate_test_case().inputs);
         }
 
-        let collisions = detector.run(self.executor.as_ref(), &witnesses).await;
+        let collisions = detector
+            .run_with_budget(self.executor.as_ref(), &witnesses, attack_timeout)
+            .await;
         let findings = detector.to_findings(&collisions);
 
         if !findings.is_empty() {
@@ -1403,4 +1429,3 @@ impl FuzzingEngine {
         Ok(())
     }
 }
-

@@ -27,6 +27,7 @@
 
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use zk_core::{AttackType, CircuitExecutor, FieldElement, Finding, ProofOfConcept, Severity};
 
 type WitnessCollisionEntry = (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>);
@@ -128,6 +129,8 @@ pub struct WitnessCollisionDetector {
     scope_public_inputs: bool,
     /// Explicit public input indices (input vector positions)
     public_input_indices: Option<Vec<usize>>,
+    /// Maximum number of collisions to retain per run
+    max_collisions: usize,
 }
 
 impl Default for WitnessCollisionDetector {
@@ -144,6 +147,7 @@ impl WitnessCollisionDetector {
             equivalence_classes: Vec::new(),
             scope_public_inputs: true,
             public_input_indices: None,
+            max_collisions: 512,
         }
     }
 
@@ -168,6 +172,12 @@ impl WitnessCollisionDetector {
     /// Provide explicit public input indices (input vector positions)
     pub fn with_public_input_indices(mut self, indices: Vec<usize>) -> Self {
         self.public_input_indices = Some(indices);
+        self
+    }
+
+    /// Cap retained collisions to keep downstream validation bounded.
+    pub fn with_max_collisions(mut self, max_collisions: usize) -> Self {
+        self.max_collisions = max_collisions.max(1);
         self
     }
 
@@ -213,6 +223,16 @@ impl WitnessCollisionDetector {
         executor: &dyn CircuitExecutor,
         witnesses: &[Vec<FieldElement>],
     ) -> Vec<WitnessCollision> {
+        self.run_with_budget(executor, witnesses, None).await
+    }
+
+    /// Run collision detection with an optional wall-clock budget.
+    pub async fn run_with_budget(
+        &self,
+        executor: &dyn CircuitExecutor,
+        witnesses: &[Vec<FieldElement>],
+        max_duration: Option<Duration>,
+    ) -> Vec<WitnessCollision> {
         let mut output_map: HashMap<String, WitnessCollisionEntry> = HashMap::new();
         let mut collisions = Vec::new();
         let num_public = executor.num_public_inputs();
@@ -222,10 +242,41 @@ impl WitnessCollisionDetector {
         // Memory safety: cap witness storage at 10k to prevent OOM
         const MAX_STORED_WITNESSES: usize = 10_000;
         let safe_sample_count = self.sample_count.min(MAX_STORED_WITNESSES);
+        let start = Instant::now();
 
         // Execute all witnesses and collect outputs
-        for witness in witnesses.iter().take(safe_sample_count) {
-            let result = executor.execute(witness).await;
+        for (index, witness) in witnesses.iter().take(safe_sample_count).enumerate() {
+            let result = if let Some(limit) = max_duration {
+                let elapsed = start.elapsed();
+                if elapsed >= limit {
+                    tracing::warn!(
+                        "Witness collision detector reached time budget after {} / {} samples",
+                        index,
+                        safe_sample_count
+                    );
+                    break;
+                }
+                let remaining = limit.saturating_sub(elapsed);
+                if remaining.is_zero() {
+                    tracing::warn!(
+                        "Witness collision detector exhausted remaining time before sample {}",
+                        index
+                    );
+                    break;
+                }
+                match tokio::time::timeout(remaining, executor.execute(witness)).await {
+                    Ok(result) => result,
+                    Err(_) => {
+                        tracing::warn!(
+                            "Witness collision detector timed out during sample {} execution",
+                            index
+                        );
+                        break;
+                    }
+                }
+            } else {
+                executor.execute(witness).await
+            };
             if result.success {
                 let indices_used: Vec<usize> = if let Some(indices) = explicit_public_indices {
                     indices.clone()
@@ -266,6 +317,14 @@ impl WitnessCollisionDetector {
                             outputs: existing_outputs.clone(),
                             is_expected: false,
                         });
+                        if collisions.len() >= self.max_collisions {
+                            tracing::warn!(
+                                "Witness collision detector reached max_collisions={} after {} samples",
+                                self.max_collisions,
+                                index.saturating_add(1)
+                            );
+                            break;
+                        }
                     }
                 } else {
                     output_map.insert(hash, (witness.clone(), result.outputs, public_inputs));
@@ -291,7 +350,7 @@ impl WitnessCollisionDetector {
             .map(|_| generator(&mut rng))
             .collect();
 
-        self.run(executor, &witnesses).await
+        self.run_with_budget(executor, &witnesses, None).await
     }
 
     /// Convert collisions to findings
