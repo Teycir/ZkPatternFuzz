@@ -85,6 +85,23 @@ Guardrail model:
 The runner enforces a CPU-based guardrail on `jobs * batch_jobs * workers` unless
 `--allow-oversubscription` is explicitly set.
 
+### Roadmap External Repo Audit Set
+
+To run the roadmap-defined external repository set (`EXT-001..EXT-012`):
+
+```bash
+cargo run --release --bin zk0d_matrix -- \
+  --matrix targets/zk0d_matrix_external_manual.yaml \
+  --alias external_manual \
+  --jobs 1 \
+  --batch-jobs 1 \
+  --workers 1 \
+  --seed 42 \
+  --iterations 200 \
+  --timeout 60 \
+  --summary-tsv artifacts/external_targets/manual/latest_summary.tsv
+```
+
 ## Repeated-Trial Benchmark Suites
 
 Use `zk0d_benchmark` to run vulnerable/safe suites with repeated trials and

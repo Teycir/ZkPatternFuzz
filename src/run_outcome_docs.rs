@@ -78,6 +78,7 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
             || message.contains("unable to update")
             || message.contains("could not clone")
             || message.contains("failed to clone")
+            || message.contains("failed to fetch into")
             || message.contains("couldn't find remote ref")
             || message.contains("network failure seems to have happened")
             || message.contains("spurious network error")
@@ -89,6 +90,11 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
         message.contains("not all inputs have been set")
             || message.contains("input map is missing")
             || message.contains("missing required circom signals")
+    };
+    let is_circom_compilation_failure = |message: &str| -> bool {
+        message.contains("circom compilation failed")
+            || message.contains("failed to run circom compiler")
+            || (message.contains("out of bounds exception") && message.contains(".circom"))
     };
 
     if status == "completed_with_critical_findings" {
@@ -121,7 +127,7 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
     if stage == "preflight_backend" && is_dependency_resolution_failure(&error_lc) {
         return Some("backend_dependency_resolution_failed");
     }
-    if error_lc.contains("circom compilation failed") {
+    if is_circom_compilation_failure(&error_lc) {
         return Some("circom_compilation_failed");
     }
     if error_lc.contains("key generation failed")
@@ -255,42 +261,4 @@ pub(crate) fn failed_run_doc_with_window(ctx: RunOutcomeDocContext<'_>) -> serde
         "wall_clock",
     );
     doc
-}
-
-#[cfg(test)]
-mod tests {
-    use super::classify_run_reason_code;
-
-    #[test]
-    fn classifies_dependency_resolution_failures_in_preflight() {
-        let doc = serde_json::json!({
-            "status": "failed",
-            "stage": "preflight_backend",
-            "error": "Scarb failed to load source for dependency alexandria_math"
-        });
-        let code = classify_run_reason_code(&doc);
-        assert_eq!(code, Some("backend_dependency_resolution_failed"));
-    }
-
-    #[test]
-    fn classifies_input_contract_mismatch() {
-        let doc = serde_json::json!({
-            "status": "failed",
-            "stage": "engine_run",
-            "error": "witness calculator failed: Not all inputs have been set. Only 5 out of 6"
-        });
-        let code = classify_run_reason_code(&doc);
-        assert_eq!(code, Some("backend_input_contract_mismatch"));
-    }
-
-    #[test]
-    fn classifies_backend_tooling_missing_before_generic_preflight_failure() {
-        let doc = serde_json::json!({
-            "status": "failed",
-            "stage": "preflight_backend",
-            "error": "snarkjs not found in PATH"
-        });
-        let code = classify_run_reason_code(&doc);
-        assert_eq!(code, Some("backend_tooling_missing"));
-    }
 }

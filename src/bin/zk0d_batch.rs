@@ -1123,6 +1123,7 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
             || message.contains("unable to update")
             || message.contains("could not clone")
             || message.contains("failed to clone")
+            || message.contains("failed to fetch into")
             || message.contains("couldn't find remote ref")
             || message.contains("network failure seems to have happened")
             || message.contains("spurious network error")
@@ -1134,6 +1135,11 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
         message.contains("not all inputs have been set")
             || message.contains("input map is missing")
             || message.contains("missing required circom signals")
+    };
+    let is_circom_compilation_failure = |message: &str| -> bool {
+        message.contains("circom compilation failed")
+            || message.contains("failed to run circom compiler")
+            || (message.contains("out of bounds exception") && message.contains(".circom"))
     };
 
     if status == "completed_with_critical_findings" {
@@ -1172,7 +1178,7 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
     if stage == "preflight_backend" && is_dependency_resolution_failure(&error_lc) {
         return "backend_dependency_resolution_failed";
     }
-    if error_lc.contains("circom compilation failed") {
+    if is_circom_compilation_failure(&error_lc) {
         return "circom_compilation_failed";
     }
     if error_lc.contains("key generation failed")

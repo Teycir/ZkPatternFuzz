@@ -39,5 +39,64 @@ mod zk0d_batch_under_test {
             );
             assert_eq!(parse_correlation_oracle_count(description), Some(3));
         }
+
+        #[test]
+        fn classify_fetch_into_as_dependency_resolution_failure() {
+            let doc = serde_json::json!({
+                "status": "failed",
+                "stage": "preflight_backend",
+                "error": "Scarb build failed: failed to fetch into: /tmp/scarb/registry/git/db/alexandria.git"
+            });
+            assert_eq!(
+                classify_run_reason_code(&doc),
+                "backend_dependency_resolution_failed"
+            );
+        }
+
+        #[test]
+        fn classify_circom_wrapper_oob_as_compilation_failure() {
+            let doc = serde_json::json!({
+                "status": "failed",
+                "stage": "preflight_backend",
+                "error": "Failed to run circom compiler for '/tmp/x.circom'. Last errors: error[T3001]: Out of bounds exception"
+            });
+            assert_eq!(classify_run_reason_code(&doc), "circom_compilation_failed");
+        }
+
+        #[test]
+        fn classify_dependency_resolution_failures_in_preflight() {
+            let doc = serde_json::json!({
+                "status": "failed",
+                "stage": "preflight_backend",
+                "error": "Scarb failed to load source for dependency alexandria_math"
+            });
+            assert_eq!(
+                classify_run_reason_code(&doc),
+                "backend_dependency_resolution_failed"
+            );
+        }
+
+        #[test]
+        fn classify_input_contract_mismatch() {
+            let doc = serde_json::json!({
+                "status": "failed",
+                "stage": "engine_run",
+                "error": "witness calculator failed: Not all inputs have been set. Only 5 out of 6"
+            });
+            assert_eq!(
+                classify_run_reason_code(&doc),
+                "backend_input_contract_mismatch"
+            );
+        }
+
+        #[test]
+        fn classify_backend_tooling_missing_before_generic_preflight_failure() {
+            let doc = serde_json::json!({
+                "status": "failed",
+                "stage": "preflight_backend",
+                "error": "snarkjs not found in PATH"
+            });
+            assert_eq!(classify_run_reason_code(&doc), "backend_tooling_missing");
+        }
     }
 }

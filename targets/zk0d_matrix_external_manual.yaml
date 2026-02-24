@@ -63,3 +63,24 @@ targets:
     framework: noir
     alias: external_manual
     enabled: true
+
+  - name: ext010_circuits_circomlib_iszero
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/test/circuits/iszero.circom
+    main_component: main
+    framework: circom
+    alias: external_manual
+    enabled: true
+
+  - name: ext011_circuits_circomlib_lessthan
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/test/circuits/lessthan.circom
+    main_component: main
+    framework: circom
+    alias: external_manual
+    enabled: true
+
+  - name: ext012_circuits_circomlib_montgomerydouble
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/test/circuits/montgomerydouble.circom
+    main_component: main
+    framework: circom
+    alias: external_manual
+    enabled: true

@@ -101,6 +101,39 @@
       "git_dirty_count": 5,
       "license_file": "/media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/LICENSE",
       "license_hint": "Apache License"
+    },
+    {
+      "target_id": "EXT-010",
+      "repo_path": "/media/elements/Repos/zk0d/cat3_privacy/circuits",
+      "framework": "circom",
+      "entrypoint": "node_modules/circomlib/test/circuits/iszero.circom",
+      "expected_class": "safe-regression",
+      "git_head": "360715607a240041f49eb46c543fc450051c4cb7",
+      "git_dirty_count": 0,
+      "license_file": null,
+      "license_hint": null
+    },
+    {
+      "target_id": "EXT-011",
+      "repo_path": "/media/elements/Repos/zk0d/cat3_privacy/circuits",
+      "framework": "circom",
+      "entrypoint": "node_modules/circomlib/test/circuits/lessthan.circom",
+      "expected_class": "safe-regression",
+      "git_head": "360715607a240041f49eb46c543fc450051c4cb7",
+      "git_dirty_count": 0,
+      "license_file": null,
+      "license_hint": null
+    },
+    {
+      "target_id": "EXT-012",
+      "repo_path": "/media/elements/Repos/zk0d/cat3_privacy/circuits",
+      "framework": "circom",
+      "entrypoint": "node_modules/circomlib/test/circuits/montgomerydouble.circom",
+      "expected_class": "safe-regression",
+      "git_head": "360715607a240041f49eb46c543fc450051c4cb7",
+      "git_dirty_count": 0,
+      "license_file": null,
+      "license_hint": null
     }
   ]
 }
