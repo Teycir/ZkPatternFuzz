@@ -61,6 +61,20 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+prepare_runtime_environment() {
+    local requested_dir="${ZKF_RUN_SIGNAL_DIR:-$PROJECT_ROOT/artifacts/run_signals}"
+    local fallback_dir="$PROJECT_ROOT/artifacts/run_signals"
+
+    if mkdir -p "$requested_dir" 2>/dev/null; then
+        export ZKF_RUN_SIGNAL_DIR="$requested_dir"
+        return 0
+    fi
+
+    mkdir -p "$fallback_dir"
+    export ZKF_RUN_SIGNAL_DIR="$fallback_dir"
+    log_warn "Run-signal directory '$requested_dir' is not writable. Using '$fallback_dir' instead."
+}
+
 resolve_picus_bin() {
     # Priority:
     # 1) Explicit PICUS_BIN
@@ -326,6 +340,7 @@ phase_evidence() {
     log_info "Workers: $workers"
     
     ensure_build
+    prepare_runtime_environment
     validate_campaign "$prepared_campaign"
     
     log_info "Starting evidence run..."
@@ -486,6 +501,7 @@ phase_deep() {
     log_info "Seed: $seed"
     
     ensure_build
+    prepare_runtime_environment
     validate_campaign "$campaign"
     
     log_info "Starting deep fuzzing run..."
