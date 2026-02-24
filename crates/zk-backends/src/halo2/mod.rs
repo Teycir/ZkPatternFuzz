@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -21,12 +22,14 @@ use zk_core::FieldElement;
 use zk_core::Framework;
 
 fn halo2_external_command_timeout() -> std::time::Duration {
-    crate::util::timeout_from_env("ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS", 120)
+    crate::util::timeout_from_env("ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS", 600)
 }
 
 const CARGO_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_CARGO_BIN_CANDIDATES";
 const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES";
 const HALO2_GO_PROXY_CACHE_DIR_ENV: &str = "ZK_FUZZER_HALO2_GO_PROXY_CACHE_DIR";
+const HALO2_CARGO_HOME_CACHE_SEED_ENV: &str = "ZK_FUZZER_HALO2_CARGO_HOME_CACHE_SEED";
+const HALO2_USE_HOST_CARGO_HOME_ENV: &str = "ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME";
 
 fn halo2_cargo_toolchain_from_env() -> Option<String> {
     if let Ok(value) = std::env::var("ZK_FUZZER_HALO2_CARGO_TOOLCHAIN") {
@@ -40,6 +43,16 @@ fn halo2_cargo_toolchain_from_env() -> Option<String> {
 
 fn halo2_strict_readiness_mode() -> bool {
     match std::env::var("ZKFUZZ_HALO2_STRICT_READINESS") {
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    }
+}
+
+fn halo2_use_host_cargo_home() -> bool {
+    match std::env::var(HALO2_USE_HOST_CARGO_HOME_ENV) {
         Ok(value) => matches!(
             value.trim().to_ascii_lowercase().as_str(),
             "1" | "true" | "yes" | "on"
@@ -140,6 +153,106 @@ fn halo2_local_go_proxy_cache_dir() -> Option<PathBuf> {
     }
 
     None
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    if !src.exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(dst)
+        .with_context(|| format!("Failed creating cache dir '{}'", dst.display()))?;
+
+    for entry in fs::read_dir(src)
+        .with_context(|| format!("Failed reading cache dir '{}'", src.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("Failed reading entry under '{}'", src.display()))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        let file_type = entry.file_type().with_context(|| {
+            format!(
+                "Failed reading file type for cache entry '{}'",
+                src_path.display()
+            )
+        })?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+            continue;
+        }
+        if dst_path.exists() {
+            continue;
+        }
+        fs::copy(&src_path, &dst_path).with_context(|| {
+            format!(
+                "Failed copying cache seed '{}' -> '{}'",
+                src_path.display(),
+                dst_path.display()
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
+fn cargo_home_has_entries(cargo_home: &Path) -> bool {
+    [
+        cargo_home.join("registry").join("index"),
+        cargo_home.join("registry").join("cache"),
+        cargo_home.join("git").join("db"),
+        cargo_home.join("git").join("checkouts"),
+    ]
+    .iter()
+    .any(|dir| nonempty_dir(dir))
+}
+
+fn warm_cargo_home_from_seed(cargo_home: &Path) -> bool {
+    let marker = cargo_home.join(".zkfuzz_seeded_from_home");
+    if marker.exists() {
+        return cargo_home_has_entries(cargo_home);
+    }
+
+    let explicit_seed = std::env::var_os(HALO2_CARGO_HOME_CACHE_SEED_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    let default_seed = dirs::home_dir().map(|home| home.join(".cargo"));
+    let Some(seed) = explicit_seed.or(default_seed) else {
+        return false;
+    };
+    if !seed.exists() {
+        return false;
+    }
+
+    let mut copied_any = false;
+    for rel in [
+        "registry/index",
+        "registry/cache",
+        "git/db",
+        "git/checkouts",
+    ] {
+        let src = seed.join(rel);
+        let dst = cargo_home.join(rel);
+        if !src.exists() {
+            continue;
+        }
+        if let Err(err) = copy_dir_recursive(&src, &dst) {
+            tracing::warn!(
+                "Failed warming Cargo cache from '{}' into '{}': {}",
+                src.display(),
+                dst.display(),
+                err
+            );
+            continue;
+        }
+        copied_any = true;
+    }
+
+    if copied_any {
+        let _ = fs::write(&marker, "seeded-from-home-cache\n");
+    }
+    copied_any
 }
 
 /// Halo2 circuit target
@@ -399,6 +512,28 @@ impl Halo2Target {
         };
 
         std::fs::create_dir_all(&build_dir)?;
+
+        // Keep Cargo state under the local build cache for portability and to avoid
+        // writes into user-global paths when scanning external targets.
+        if !halo2_use_host_cargo_home() {
+            let cargo_home = build_dir.join("_cargo_home");
+            fs::create_dir_all(&cargo_home)?;
+            let _ = warm_cargo_home_from_seed(&cargo_home);
+            if std::env::var_os("CARGO_NET_OFFLINE").is_none()
+                && cargo_home_has_entries(&cargo_home)
+            {
+                command.env("CARGO_NET_OFFLINE", "true");
+            }
+            command.env("CARGO_HOME", &cargo_home);
+        } else if std::env::var_os("CARGO_HOME").is_none() {
+            let cargo_home = build_dir.join("_cargo_home");
+            fs::create_dir_all(&cargo_home)?;
+            command.env("CARGO_HOME", &cargo_home);
+        }
+
+        if std::env::var_os("CARGO_NET_GIT_FETCH_WITH_CLI").is_none() {
+            command.env("CARGO_NET_GIT_FETCH_WITH_CLI", "true");
+        }
 
         // Keep Go module/toolchain cache local to the Halo2 build dir so external
         // projects with Go build scripts do not depend on host-global cache paths.

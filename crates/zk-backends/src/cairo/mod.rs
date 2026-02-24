@@ -283,6 +283,74 @@ fn parse_cairo_version_from_manifest(manifest_path: &Path) -> Option<String> {
     None
 }
 
+fn should_skip_scarb_project_entry(name: &str) -> bool {
+    matches!(
+        name,
+        ".git" | ".github" | ".vscode" | ".idea" | ".scarb" | "target" | "node_modules"
+    )
+}
+
+fn copy_scarb_project_tree(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst)
+        .with_context(|| format!("Failed to create Scarb project mirror '{}'", dst.display()))?;
+
+    for entry in fs::read_dir(src)
+        .with_context(|| format!("Failed to read Scarb project dir '{}'", src.display()))?
+    {
+        let entry = entry.with_context(|| {
+            format!(
+                "Failed reading Scarb project entry under '{}'",
+                src.display()
+            )
+        })?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+
+        if should_skip_scarb_project_entry(&file_name) {
+            continue;
+        }
+
+        let file_type = entry.file_type().with_context(|| {
+            format!(
+                "Failed reading file type for Scarb project entry '{}'",
+                src_path.display()
+            )
+        })?;
+        if file_type.is_symlink() {
+            tracing::debug!(
+                "Skipping symlink while mirroring Scarb project '{}'",
+                src_path.display()
+            );
+            continue;
+        }
+
+        if file_type.is_dir() {
+            copy_scarb_project_tree(&src_path, &dst_path)?;
+            continue;
+        }
+
+        if let Some(parent) = dst_path.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Failed creating Scarb project mirror parent '{}'",
+                    parent.display()
+                )
+            })?;
+        }
+        fs::copy(&src_path, &dst_path).with_context(|| {
+            format!(
+                "Failed mirroring Scarb project file '{}' -> '{}'",
+                src_path.display(),
+                dst_path.display()
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     if !src.exists() {
         return Ok(());
@@ -354,6 +422,8 @@ pub struct CairoTarget {
     runtime_coverage_sample: Mutex<Option<CairoRuntimeCoverageSample>>,
     /// Most recent Scarb binary candidate that worked for this target.
     selected_scarb_binary: Mutex<Option<String>>,
+    /// Writable mirror of the Scarb project used for build/run commands.
+    prepared_scarb_project_dir: OnceLock<PathBuf>,
 }
 
 /// Cairo version
@@ -456,6 +526,7 @@ impl CairoTarget {
             config: CairoConfig::default(),
             runtime_coverage_sample: Mutex::new(None),
             selected_scarb_binary: Mutex::new(None),
+            prepared_scarb_project_dir: OnceLock::new(),
         })
     }
 
@@ -531,6 +602,67 @@ impl CairoTarget {
     fn cairo_version_hint(&self, project_dir: &Path) -> Option<String> {
         let manifest = find_scarb_manifest(project_dir)?;
         parse_cairo_version_from_manifest(&manifest)
+    }
+
+    fn source_scarb_project_dir(&self) -> Result<PathBuf> {
+        let start_dir = if self.source_path.is_dir() {
+            self.source_path.as_path()
+        } else if self
+            .source_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case("Scarb.toml"))
+        {
+            self.source_path.parent().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Scarb manifest path has no parent directory: '{}'",
+                    self.source_path.display()
+                )
+            })?
+        } else {
+            self.source_path.parent().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cairo source path has no parent directory: '{}'",
+                    self.source_path.display()
+                )
+            })?
+        };
+
+        let manifest = find_scarb_manifest(start_dir).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not locate Scarb.toml for Cairo target '{}'",
+                self.source_path.display()
+            )
+        })?;
+        manifest
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| anyhow::anyhow!("Scarb.toml has no parent directory"))
+    }
+
+    fn ensure_prepared_scarb_project_dir(&self) -> Result<PathBuf> {
+        if let Some(existing) = self.prepared_scarb_project_dir.get() {
+            return Ok(existing.clone());
+        }
+
+        let source_project_dir = self.source_scarb_project_dir()?;
+        let prepared_dir = self.build_dir.join("_scarb_project");
+        if prepared_dir.exists() {
+            fs::remove_dir_all(&prepared_dir).with_context(|| {
+                format!(
+                    "Failed to clear stale Scarb project mirror '{}'",
+                    prepared_dir.display()
+                )
+            })?;
+        }
+        copy_scarb_project_tree(&source_project_dir, &prepared_dir)?;
+
+        let _ = self.prepared_scarb_project_dir.set(prepared_dir.clone());
+        Ok(self
+            .prepared_scarb_project_dir
+            .get()
+            .cloned()
+            .unwrap_or(prepared_dir))
     }
 
     fn warm_cache_from_home_if_available(&self, cache_dir: &Path) -> bool {
@@ -842,14 +974,11 @@ impl CairoTarget {
 
     /// Compile Cairo 1 program using scarb
     fn compile_cairo1(&mut self) -> Result<()> {
-        let project_dir = self
-            .source_path
-            .parent()
-            .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
+        let project_dir = self.ensure_prepared_scarb_project_dir()?;
 
         self.run_scarb_command_with_fallback(
             "Scarb build failed for all configured candidates",
-            project_dir,
+            &project_dir,
             |cmd| {
                 cmd.args(["build"]);
             },
@@ -1076,10 +1205,7 @@ impl CairoTarget {
     /// Execute Cairo 1 program
     fn execute_cairo1(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
         self.store_runtime_coverage_sample(None);
-        let project_dir = self
-            .source_path
-            .parent()
-            .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
+        let project_dir = self.ensure_prepared_scarb_project_dir()?;
 
         // Create args JSON
         let args: Vec<String> = inputs
@@ -1090,7 +1216,7 @@ impl CairoTarget {
 
         let output = self.run_scarb_command_with_fallback(
             "Failed to run scarb cairo-run across configured candidates",
-            project_dir,
+            &project_dir,
             |cmd| {
                 cmd.args(["cairo-run", "--", &args_json]);
             },

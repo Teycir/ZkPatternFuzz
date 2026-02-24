@@ -29,6 +29,7 @@ fn circom_external_command_timeout() -> std::time::Duration {
 const CIRCOM_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_CIRCOM_BIN_CANDIDATES";
 const CIRCOM_VERSION_CANDIDATES_ENV: &str = "ZK_FUZZER_CIRCOM_VERSION_CANDIDATES";
 const SNARKJS_PATH_CANDIDATES_ENV: &str = "ZK_FUZZER_SNARKJS_PATH_CANDIDATES";
+const CIRCOM_PTAU_SEARCH_PATHS_ENV: &str = "ZK_FUZZER_CIRCOM_PTAU_SEARCH_PATHS";
 
 fn circom_command_candidates(preferred: Option<&str>) -> Vec<String> {
     let bin_candidates_raw = std::env::var(CIRCOM_BIN_CANDIDATES_ENV).ok();
@@ -1606,6 +1607,13 @@ impl CircomTarget {
 
     /// Find existing powers of tau file.
     fn find_ptau(&self) -> Result<PathBuf> {
+        fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+            if paths.iter().any(|existing| existing == &path) {
+                return;
+            }
+            paths.push(path);
+        }
+
         if let Some(path) = &self.ptau_path_override {
             if is_valid_ptau_file(path)? {
                 return Ok(path.clone());
@@ -1615,9 +1623,26 @@ impl CircomTarget {
                 path.display()
             );
         }
-        // Check for existing ptau files
-        let ptau_dirs = vec![self.build_dir.clone(), PathBuf::from(".")];
-        let mut ptau_dirs = ptau_dirs;
+
+        let mut ptau_dirs = Vec::<PathBuf>::new();
+        push_unique_path(&mut ptau_dirs, self.build_dir.clone());
+        push_unique_path(&mut ptau_dirs, PathBuf::from("."));
+
+        if let Ok(cwd) = std::env::current_dir() {
+            // Standard local bootstrap locations used by this repository.
+            push_unique_path(&mut ptau_dirs, cwd.join("bins").join("ptau"));
+            push_unique_path(
+                &mut ptau_dirs,
+                cwd.join("tests").join("circuits").join("build"),
+            );
+        }
+
+        if let Some(raw) = std::env::var_os(CIRCOM_PTAU_SEARCH_PATHS_ENV) {
+            for candidate in std::env::split_paths(&raw) {
+                push_unique_path(&mut ptau_dirs, candidate);
+            }
+        }
+
         if let Some(home) = dirs::home_dir() {
             ptau_dirs.push(home.join(".snarkjs"));
         } else {
