@@ -87,17 +87,183 @@ fn halo2_auto_online_retry_enabled() -> bool {
     }
 }
 
-fn output_suggests_offline_dependency_miss(output: &std::process::Output) -> bool {
-    let text = format!(
+fn command_output_text(output: &std::process::Output) -> String {
+    format!(
         "{}\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     )
-    .to_ascii_lowercase();
+}
+
+fn output_suggests_offline_dependency_miss(output: &std::process::Output) -> bool {
+    let text = command_output_text(output).to_ascii_lowercase();
     text.contains("you are in the offline mode (--offline)")
         || text.contains("offline mode")
         || text.contains("can't checkout from")
         || text.contains("failed to load source for dependency")
+}
+
+fn parse_git_db_repo_paths_from_text(text: &str) -> Vec<PathBuf> {
+    let marker = "/git/db/";
+    let bytes = text.as_bytes();
+    let mut cursor = 0usize;
+    let mut repos = Vec::<PathBuf>::new();
+
+    while cursor < text.len() {
+        let Some(relative_start) = text[cursor..].find(marker) else {
+            break;
+        };
+        let marker_start = cursor + relative_start;
+        let mut start = marker_start;
+        while start > 0 {
+            let prev = bytes[start - 1];
+            if prev.is_ascii_whitespace()
+                || matches!(prev, b'`' | b'\'' | b'"' | b'(' | b'[' | b'{')
+            {
+                break;
+            }
+            start -= 1;
+        }
+
+        let mut end = marker_start + marker.len();
+        while end < bytes.len() {
+            let next = bytes[end];
+            if next.is_ascii_whitespace()
+                || matches!(
+                    next,
+                    b'`' | b'\'' | b'"' | b')' | b']' | b'}' | b',' | b';'
+                )
+            {
+                break;
+            }
+            end += 1;
+        }
+
+        let raw = text[start..end]
+            .trim_matches(|ch: char| {
+                ch == '`'
+                    || ch == '\''
+                    || ch == '"'
+                    || ch == '('
+                    || ch == ')'
+                    || ch == '['
+                    || ch == ']'
+                    || ch == '{'
+                    || ch == '}'
+                    || ch == ','
+                    || ch == ';'
+            })
+            .trim();
+        if !raw.is_empty() {
+            let repo = PathBuf::from(raw);
+            let parent_name = repo
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .and_then(|name| name.to_str());
+            if parent_name == Some("db") && !repos.iter().any(|existing| existing == &repo) {
+                repos.push(repo);
+            }
+        }
+
+        cursor = end.max(marker_start + marker.len());
+    }
+
+    repos
+}
+
+fn git_db_repo_has_content(repo_dir: &Path) -> bool {
+    nonempty_dir(&repo_dir.join("objects").join("pack"))
+        || nonempty_dir(&repo_dir.join("refs").join("heads"))
+        || nonempty_dir(&repo_dir.join("refs").join("commit"))
+}
+
+fn git_db_repo_prefix(repo_dir: &Path) -> Option<String> {
+    let name = repo_dir.file_name()?.to_str()?;
+    let (prefix, suffix) = name.rsplit_once('-')?;
+    if suffix.len() < 6 || !suffix.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(prefix.to_string())
+}
+
+fn warm_git_db_aliases_from_output(output: &std::process::Output) -> bool {
+    let text = command_output_text(output);
+    let missing_repos = parse_git_db_repo_paths_from_text(&text);
+    let mut repaired_any = false;
+
+    for missing_repo in missing_repos {
+        if git_db_repo_has_content(&missing_repo) {
+            continue;
+        }
+        let Some(parent) = missing_repo.parent() else {
+            continue;
+        };
+        let Some(expected_prefix) = git_db_repo_prefix(&missing_repo) else {
+            continue;
+        };
+
+        let mut repaired_this_repo = false;
+        let entries = match fs::read_dir(parent) {
+            Ok(entries) => entries,
+            Err(err) => {
+                tracing::debug!(
+                    "Cannot inspect Cargo git db parent '{}' for alias repair: {}",
+                    parent.display(),
+                    err
+                );
+                continue;
+            }
+        };
+
+        for entry in entries {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let candidate = entry.path();
+            if candidate == missing_repo || !candidate.is_dir() {
+                continue;
+            }
+            let Some(candidate_prefix) = git_db_repo_prefix(&candidate) else {
+                continue;
+            };
+            if candidate_prefix != expected_prefix || !git_db_repo_has_content(&candidate) {
+                continue;
+            }
+
+            match copy_dir_recursive(&candidate, &missing_repo) {
+                Ok(()) if git_db_repo_has_content(&missing_repo) => {
+                    tracing::info!(
+                        "Repaired Cargo git db alias '{}' using seed '{}'",
+                        missing_repo.display(),
+                        candidate.display()
+                    );
+                    repaired_any = true;
+                    repaired_this_repo = true;
+                }
+                Ok(()) => {
+                    tracing::debug!(
+                        "Alias repair copied '{}' into '{}' but repo is still empty",
+                        candidate.display(),
+                        missing_repo.display()
+                    );
+                }
+                Err(err) => {
+                    tracing::debug!(
+                        "Failed alias repair '{}' <- '{}': {}",
+                        missing_repo.display(),
+                        candidate.display(),
+                        err
+                    );
+                }
+            }
+
+            if repaired_this_repo {
+                break;
+            }
+        }
+    }
+
+    repaired_any
 }
 
 fn halo2_rustup_toolchain_cascade_enabled() -> bool {
@@ -149,6 +315,45 @@ fn parse_rust_version_from_manifest(manifest_path: &Path) -> Option<String> {
         }
 
         let Some(after_key) = line.strip_prefix("rust-version") else {
+            continue;
+        };
+        let Some(after_eq) = after_key.trim().strip_prefix('=') else {
+            continue;
+        };
+        let parsed = after_eq.trim().trim_matches('"').trim_matches('\'').trim();
+        if parsed.is_empty() {
+            return None;
+        }
+        return Some(parsed.to_string());
+    }
+
+    None
+}
+
+fn parse_channel_from_rust_toolchain_file(toolchain_path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(toolchain_path).ok()?;
+
+    for raw_line in raw.lines() {
+        let line = raw_line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') || line.contains('=') {
+            break;
+        }
+
+        let parsed = line.trim_matches('"').trim_matches('\'').trim();
+        if !parsed.is_empty() {
+            return Some(parsed.to_string());
+        }
+    }
+
+    for raw_line in raw.lines() {
+        let line = raw_line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some(after_key) = line.strip_prefix("channel") else {
             continue;
         };
         let Some(after_eq) = after_key.trim().strip_prefix('=') else {
@@ -421,7 +626,7 @@ fn halo2_svm_releases_candidates_from_env() -> Vec<PathBuf> {
     paths
 }
 
-fn resolve_svm_releases_list_file(build_dir: &Path) -> Option<PathBuf> {
+fn resolve_svm_releases_list_file(_build_dir: &Path) -> Option<PathBuf> {
     if let Ok(explicit) = std::env::var(HALO2_SVM_RELEASES_LIST_JSON_ENV) {
         let path = PathBuf::from(explicit.trim());
         if path.is_file() {
@@ -454,31 +659,7 @@ fn resolve_svm_releases_list_file(build_dir: &Path) -> Option<PathBuf> {
         }
     }
 
-    let fallback = build_dir.join("_svm").join("releases_list.json");
-    if !fallback.is_file() {
-        if let Some(parent) = fallback.parent() {
-            if let Err(err) = fs::create_dir_all(parent) {
-                tracing::warn!(
-                    "Failed creating local SVM releases list parent '{}': {}",
-                    parent.display(),
-                    err
-                );
-                return None;
-            }
-        }
-
-        let payload = r#"{"builds":[],"releases":{}}"#;
-        if let Err(err) = fs::write(&fallback, payload) {
-            tracing::warn!(
-                "Failed writing local SVM releases list '{}': {}",
-                fallback.display(),
-                err
-            );
-            return None;
-        }
-    }
-
-    Some(fallback)
+    None
 }
 
 fn halo2_successful_build_cache() -> &'static Mutex<HashSet<String>> {
@@ -712,6 +893,17 @@ impl Halo2Target {
             }
         };
 
+        if let Some(manifest_dir) = cargo_path.parent() {
+            for candidate in [
+                manifest_dir.join("rust-toolchain"),
+                manifest_dir.join("rust-toolchain.toml"),
+            ] {
+                if let Some(channel) = parse_channel_from_rust_toolchain_file(&candidate) {
+                    push_unique_string(&mut hints, channel);
+                }
+            }
+        }
+
         if let Some(rust_version) = parse_rust_version_from_manifest(&cargo_path) {
             for candidate in rust_toolchain_hints_from_version(&rust_version) {
                 push_unique_string(&mut hints, candidate);
@@ -814,9 +1006,10 @@ impl Halo2Target {
             }
             command.env("CARGO_HOME", &cargo_home);
         } else if std::env::var_os("CARGO_HOME").is_none() {
-            let cargo_home = build_dir.join("_cargo_home");
-            fs::create_dir_all(&cargo_home)?;
-            command.env("CARGO_HOME", &cargo_home);
+            tracing::debug!(
+                "{} enabled and CARGO_HOME unset; using Cargo default home",
+                HALO2_USE_HOST_CARGO_HOME_ENV
+            );
         }
 
         if std::env::var_os("CARGO_NET_GIT_FETCH_WITH_CLI").is_none() {
@@ -940,6 +1133,43 @@ impl Halo2Target {
                         candidate.label,
                         crate::util::command_failure_summary(&output)
                     ));
+                    if output_suggests_offline_dependency_miss(&output) {
+                        if warm_git_db_aliases_from_output(&output) {
+                            let Some(repair_timeout) = compute_attempt_timeout() else {
+                                failures.push(format!(
+                                    "{}(offline-repair): total timeout budget exhausted after {:.2}s",
+                                    candidate.label,
+                                    started.elapsed().as_secs_f64()
+                                ));
+                                break;
+                            };
+                            let mut repaired_cmd = self.cargo_command_with_binary_and_toolchain(
+                                &candidate.binary,
+                                candidate.toolchain.as_deref(),
+                                false,
+                            )?;
+                            configure(&mut repaired_cmd);
+                            match crate::util::run_with_timeout(&mut repaired_cmd, repair_timeout) {
+                                Ok(repaired_output) if repaired_output.status.success() => {
+                                    self.remember_selected_cargo_binary(&candidate.binary);
+                                    return Ok(repaired_output);
+                                }
+                                Ok(repaired_output) => {
+                                    failures.push(format!(
+                                        "{}(offline-repair): {}",
+                                        candidate.label,
+                                        crate::util::command_failure_summary(&repaired_output)
+                                    ));
+                                }
+                                Err(err) => {
+                                    failures.push(format!(
+                                        "{}(offline-repair): {}",
+                                        candidate.label, err
+                                    ));
+                                }
+                            }
+                        }
+                    }
                     if allow_online_retry && output_suggests_offline_dependency_miss(&output) {
                         let Some(retry_timeout) = compute_attempt_timeout() else {
                             failures.push(format!(

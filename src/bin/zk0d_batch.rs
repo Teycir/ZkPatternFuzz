@@ -15,6 +15,8 @@ const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
 const RUN_SIGNAL_DIR_ENV: &str = "ZKF_RUN_SIGNAL_DIR";
 const BUILD_CACHE_DIR_ENV: &str = "ZKF_BUILD_CACHE_DIR";
 const HALO2_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS";
+const HALO2_MIN_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_MIN_EXTERNAL_TIMEOUT_SECS";
+const HALO2_USE_HOST_CARGO_HOME_ENV: &str = "ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME";
 const CAIRO_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS";
 const SCARB_DOWNLOAD_TIMEOUT_ENV: &str = "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS";
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
@@ -835,7 +837,10 @@ fn run_scan(
         .env(RUN_SIGNAL_DIR_ENV, &run_signal_dir)
         .env(BUILD_CACHE_DIR_ENV, &build_cache_dir);
     if std::env::var_os(HALO2_EXTERNAL_TIMEOUT_ENV).is_none() {
-        cmd.env(HALO2_EXTERNAL_TIMEOUT_ENV, run_cfg.timeout.to_string());
+        cmd.env(
+            HALO2_EXTERNAL_TIMEOUT_ENV,
+            halo2_effective_external_timeout_secs(run_cfg.framework, run_cfg.timeout).to_string(),
+        );
     }
     if std::env::var_os(CAIRO_EXTERNAL_TIMEOUT_ENV).is_none() {
         cmd.env(CAIRO_EXTERNAL_TIMEOUT_ENV, run_cfg.timeout.to_string());
@@ -845,6 +850,16 @@ fn run_scan(
     }
     if let Some(run_root) = run_cfg.scan_run_root {
         cmd.env(SCAN_RUN_ROOT_ENV, run_root);
+    }
+    if should_prefer_host_cargo_home(run_cfg.framework, run_cfg.target_circuit) {
+        if std::env::var_os(HALO2_USE_HOST_CARGO_HOME_ENV).is_none() {
+            cmd.env(HALO2_USE_HOST_CARGO_HOME_ENV, "1");
+        }
+        if std::env::var_os("CARGO_HOME").is_none() {
+            if let Some(home) = dirs::home_dir() {
+                cmd.env("CARGO_HOME", home.join(".cargo"));
+            }
+        }
     }
     cmd.arg("scan")
         .arg(&template.path)
@@ -925,6 +940,36 @@ fn run_scan(
         stdout,
         stderr,
     })
+}
+
+fn halo2_effective_external_timeout_secs(framework: &str, requested_timeout: u64) -> u64 {
+    if !framework.eq_ignore_ascii_case("halo2") {
+        return requested_timeout;
+    }
+
+    let floor = std::env::var(HALO2_MIN_EXTERNAL_TIMEOUT_ENV)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(180);
+
+    requested_timeout.max(floor)
+}
+
+fn should_prefer_host_cargo_home(framework: &str, target_circuit: &str) -> bool {
+    if !framework.eq_ignore_ascii_case("halo2") {
+        return false;
+    }
+
+    let target_path = Path::new(target_circuit);
+    if !target_path.is_absolute() {
+        return false;
+    }
+
+    let Ok(workspace_root) = std::env::current_dir() else {
+        return false;
+    };
+    !target_path.starts_with(&workspace_root)
 }
 
 fn effective_family(template_family: Family, family_override: Family) -> Family {

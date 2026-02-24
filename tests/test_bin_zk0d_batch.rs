@@ -199,5 +199,74 @@ mod zk0d_batch_under_test {
                 .stdout
                 .contains(&format!("{}=1", SCARB_DOWNLOAD_TIMEOUT_ENV)));
         }
+
+        #[test]
+        fn run_scan_prefers_host_cache_for_external_halo2_targets() {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let script_path = temp.path().join("print_env.sh");
+            std::fs::write(&script_path, "#!/usr/bin/env bash\nenv\n").expect("write script");
+            let mut perms = std::fs::metadata(&script_path)
+                .expect("metadata")
+                .permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&script_path, perms).expect("chmod");
+
+            let template = TemplateInfo {
+                file_name: "dummy.yaml".to_string(),
+                path: temp.path().join("dummy.yaml"),
+                family: Family::Auto,
+            };
+            std::fs::write(&template.path, "campaign:\n  name: dummy\n").expect("write template");
+
+            let cfg = ScanRunConfig {
+                bin_path: script_path.as_path(),
+                target_circuit: "/tmp/external-zkevm/Cargo.toml",
+                framework: "halo2",
+                main_component: "main",
+                workers: 1,
+                seed: 1,
+                iterations: 1,
+                timeout: 1,
+                scan_run_root: Some("scan_run_test"),
+                scan_output_root: temp.path(),
+                dry_run: false,
+                artifacts_root: temp.path(),
+            };
+
+            let out = run_scan(cfg, &template, Family::Auto, false, "auto__dummy")
+                .expect("run_scan should execute helper script");
+            assert!(out.success, "helper script should exit successfully");
+            assert!(out
+                .stdout
+                .contains(&format!("{}=1", HALO2_USE_HOST_CARGO_HOME_ENV)));
+            assert!(out
+                .stdout
+                .contains(&format!("{}=180", HALO2_EXTERNAL_TIMEOUT_ENV)));
+            assert!(out.stdout.contains("CARGO_HOME="));
+        }
+
+        #[test]
+        fn host_cache_preference_targets_external_halo2_only() {
+            assert!(should_prefer_host_cargo_home(
+                "halo2",
+                "/tmp/external-zkevm/Cargo.toml"
+            ));
+            assert!(!should_prefer_host_cargo_home(
+                "halo2",
+                "relative/local/Cargo.toml"
+            ));
+            assert!(!should_prefer_host_cargo_home(
+                "circom",
+                "/tmp/external-zkevm/Cargo.toml"
+            ));
+        }
+
+        #[test]
+        fn halo2_external_timeout_floor_applies_only_to_halo2() {
+            assert_eq!(halo2_effective_external_timeout_secs("halo2", 5), 180);
+            assert_eq!(halo2_effective_external_timeout_secs("halo2", 180), 180);
+            assert_eq!(halo2_effective_external_timeout_secs("circom", 5), 5);
+        }
+
     }
 }
