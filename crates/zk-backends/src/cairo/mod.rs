@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -23,17 +24,77 @@ fn cairo_external_command_timeout() -> std::time::Duration {
 
 const SCARB_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_SCARB_BIN_CANDIDATES";
 const SCARB_VERSION_CANDIDATES_ENV: &str = "ZK_FUZZER_SCARB_VERSION_CANDIDATES";
+const SCARB_TOOLCHAIN_DIR_ENV: &str = "ZK_FUZZER_SCARB_TOOLCHAIN_DIR";
+const SCARB_AUTO_DOWNLOAD_ENV: &str = "ZK_FUZZER_SCARB_AUTO_DOWNLOAD";
+const SCARB_CACHE_ENV: &str = "SCARB_CACHE";
+const SCARB_CONFIG_ENV: &str = "SCARB_CONFIG";
+const SCARB_OFFLINE_ENV: &str = "SCARB_OFFLINE";
+const SCARB_HOME_CACHE_SEED_ENV: &str = "ZK_FUZZER_SCARB_HOME_CACHE_SEED";
 
-fn scarb_command_candidates(preferred: Option<&str>) -> Vec<String> {
+fn scarb_download_timeout() -> std::time::Duration {
+    crate::util::timeout_from_env("ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS", 240)
+}
+
+fn push_unique_candidate(candidates: &mut Vec<String>, candidate: impl Into<String>) {
+    let candidate = candidate.into();
+    if candidate.trim().is_empty() {
+        return;
+    }
+    if candidates.iter().any(|existing| existing == &candidate) {
+        return;
+    }
+    candidates.push(candidate);
+}
+
+fn env_flag_enabled(name: &str, default_value: bool) -> bool {
+    match std::env::var(name) {
+        Ok(raw) => match raw.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => true,
+            "0" | "false" | "no" | "off" => false,
+            _ => default_value,
+        },
+        Err(std::env::VarError::NotPresent) => default_value,
+        Err(_) => default_value,
+    }
+}
+
+fn scarb_command_candidates(
+    preferred: Option<&str>,
+    extra_bin_candidates: &[String],
+    extra_version_candidates: &[String],
+) -> Vec<String> {
     let bin_candidates_raw = std::env::var(SCARB_BIN_CANDIDATES_ENV).ok();
     let version_candidates_raw = std::env::var(SCARB_VERSION_CANDIDATES_ENV).ok();
 
-    crate::util::build_command_candidates(
+    let mut candidates = crate::util::build_command_candidates(
         preferred,
         bin_candidates_raw.as_deref(),
         version_candidates_raw.as_deref(),
         "scarb",
-    )
+    );
+
+    for candidate in extra_bin_candidates {
+        if candidate.trim().is_empty() {
+            continue;
+        }
+        if candidates.iter().any(|existing| existing == candidate) {
+            continue;
+        }
+        candidates.insert(0, candidate.clone());
+    }
+    for version in extra_version_candidates {
+        let parsed = version.trim();
+        if parsed.is_empty() {
+            continue;
+        }
+        let candidate = format!("scarb-{parsed}");
+        if candidates.iter().any(|existing| existing == &candidate) {
+            continue;
+        }
+        candidates.insert(0, candidate);
+    }
+
+    candidates
 }
 
 fn run_scarb_with_fallback<F>(
@@ -50,6 +111,225 @@ where
         context,
         configure,
     )
+}
+
+fn detect_host_scarb_asset_triples() -> Vec<&'static str> {
+    match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("x86_64", "linux") => vec!["x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"],
+        ("aarch64", "linux") => vec!["aarch64-unknown-linux-gnu", "aarch64-unknown-linux-musl"],
+        ("x86_64", "macos") => vec!["x86_64-apple-darwin"],
+        ("aarch64", "macos") => vec!["aarch64-apple-darwin"],
+        _ => Vec::new(),
+    }
+}
+
+fn resolve_scarb_toolchain_dir() -> PathBuf {
+    if let Some(raw) = std::env::var_os(SCARB_TOOLCHAIN_DIR_ENV) {
+        if !raw.is_empty() {
+            return PathBuf::from(raw);
+        }
+    }
+    PathBuf::from("/tmp/zkfuzz_toolchains")
+}
+
+fn run_toolchain_setup_command(
+    program: &str,
+    args: &[String],
+    context: &str,
+) -> Result<std::process::Output> {
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+    let output = crate::util::run_with_timeout(&mut cmd, scarb_download_timeout())
+        .with_context(|| format!("Failed to run {}", program))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "{}: {}",
+            context,
+            crate::util::command_failure_summary(&output)
+        );
+    }
+    Ok(output)
+}
+
+fn ensure_versioned_scarb_binary(version: &str) -> Option<String> {
+    let parsed = version.trim();
+    if parsed.is_empty() {
+        return None;
+    }
+
+    let toolchain_root = resolve_scarb_toolchain_dir();
+    let triples = detect_host_scarb_asset_triples();
+    if triples.is_empty() {
+        return None;
+    }
+
+    for triple in &triples {
+        let candidate = toolchain_root
+            .join(format!("scarb-v{parsed}-{triple}"))
+            .join("bin")
+            .join("scarb");
+        if candidate.exists() {
+            return Some(candidate.display().to_string());
+        }
+    }
+
+    if !env_flag_enabled(SCARB_AUTO_DOWNLOAD_ENV, true) {
+        return None;
+    }
+
+    if let Err(err) = fs::create_dir_all(&toolchain_root) {
+        tracing::warn!(
+            "Failed to create Scarb toolchain directory '{}': {}",
+            toolchain_root.display(),
+            err
+        );
+        return None;
+    }
+
+    for triple in triples {
+        let archive_name = format!("scarb-v{parsed}-{triple}.tar.gz");
+        let archive_path = toolchain_root.join(&archive_name);
+        let download_url = format!(
+            "https://github.com/software-mansion/scarb/releases/download/v{parsed}/{archive_name}"
+        );
+
+        let curl_args = vec![
+            "-L".to_string(),
+            "--fail".to_string(),
+            "--retry".to_string(),
+            "2".to_string(),
+            "-o".to_string(),
+            archive_path.display().to_string(),
+            download_url,
+        ];
+        if let Err(err) = run_toolchain_setup_command(
+            "curl",
+            &curl_args,
+            "Failed downloading versioned scarb toolchain",
+        ) {
+            tracing::warn!("Skipping scarb toolchain candidate {}: {}", triple, err);
+            continue;
+        }
+
+        let tar_args = vec![
+            "-xzf".to_string(),
+            archive_path.display().to_string(),
+            "-C".to_string(),
+            toolchain_root.display().to_string(),
+        ];
+        if let Err(err) =
+            run_toolchain_setup_command("tar", &tar_args, "Failed extracting scarb toolchain")
+        {
+            tracing::warn!("Skipping extracted scarb toolchain {}: {}", triple, err);
+            continue;
+        }
+
+        let candidate = toolchain_root
+            .join(format!("scarb-v{parsed}-{triple}"))
+            .join("bin")
+            .join("scarb");
+        if candidate.exists() {
+            return Some(candidate.display().to_string());
+        }
+    }
+
+    None
+}
+
+fn find_scarb_manifest(start_dir: &Path) -> Option<PathBuf> {
+    let mut current = Some(start_dir);
+    while let Some(dir) = current {
+        let candidate = dir.join("Scarb.toml");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        current = dir.parent();
+    }
+    None
+}
+
+fn parse_cairo_version_from_manifest(manifest_path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(manifest_path).ok()?;
+    let mut in_package = false;
+
+    for raw_line in raw.lines() {
+        let line = raw_line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            in_package = line == "[package]";
+            continue;
+        }
+
+        if !in_package {
+            continue;
+        }
+
+        let Some(after_key) = line.strip_prefix("cairo-version") else {
+            continue;
+        };
+        let Some(after_eq) = after_key.trim().strip_prefix('=') else {
+            continue;
+        };
+        let parsed = after_eq.trim().trim_matches('"').trim_matches('\'').trim();
+        if parsed.is_empty() {
+            return None;
+        }
+        return Some(parsed.to_string());
+    }
+
+    None
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    if !src.exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(dst)
+        .with_context(|| format!("Failed to create cache dir '{}'", dst.display()))?;
+
+    for entry in fs::read_dir(src)
+        .with_context(|| format!("Failed to read cache dir '{}'", src.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("Failed reading entry under '{}'", src.display()))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+            continue;
+        }
+
+        if dst_path.exists() {
+            continue;
+        }
+        fs::copy(&src_path, &dst_path).with_context(|| {
+            format!(
+                "Failed copying cache seed '{}' -> '{}'",
+                src_path.display(),
+                dst_path.display()
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
+fn cache_has_registry_entries(cache_dir: &Path) -> bool {
+    let registry_dir = cache_dir.join("registry").join("git");
+    for rel in ["db", "checkouts"] {
+        let dir = registry_dir.join(rel);
+        let Ok(mut entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        if entries.next().is_some() {
+            return true;
+        }
+    }
+    false
 }
 
 /// Cairo circuit target with full backend integration
@@ -248,17 +528,126 @@ impl CairoTarget {
         }
     }
 
+    fn cairo_version_hint(&self, project_dir: &Path) -> Option<String> {
+        let manifest = find_scarb_manifest(project_dir)?;
+        parse_cairo_version_from_manifest(&manifest)
+    }
+
+    fn warm_cache_from_home_if_available(&self, cache_dir: &Path) -> bool {
+        let marker = cache_dir.join(".zkfuzz_seeded_from_home");
+        if marker.exists() {
+            return cache_has_registry_entries(cache_dir);
+        }
+
+        let explicit_home_seed = std::env::var_os(SCARB_HOME_CACHE_SEED_ENV)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        let default_home_seed = dirs::home_dir().map(|home| home.join(".cache").join("scarb"));
+        let Some(home_seed) = explicit_home_seed.or(default_home_seed) else {
+            return false;
+        };
+        if !home_seed.exists() {
+            return false;
+        }
+
+        let mut copied_any = false;
+        for rel in ["registry/git/db", "registry/git/checkouts"] {
+            let src = home_seed.join(rel);
+            let dst = cache_dir.join(rel);
+            if !src.exists() {
+                continue;
+            }
+            if let Err(err) = copy_dir_recursive(&src, &dst) {
+                tracing::warn!(
+                    "Failed warming Scarb cache from '{}' into '{}': {}",
+                    src.display(),
+                    dst.display(),
+                    err
+                );
+                continue;
+            }
+            copied_any = true;
+        }
+
+        if copied_any {
+            let _ = fs::write(&marker, "seeded-from-home-cache\n");
+        }
+        copied_any
+    }
+
+    fn configure_scarb_command_env(&self, cmd: &mut Command, project_dir: &Path) {
+        cmd.env("SCARB_TARGET_DIR", &self.build_dir);
+
+        let explicit_cache = std::env::var_os(SCARB_CACHE_ENV).filter(|value| !value.is_empty());
+        if explicit_cache.is_none() {
+            let local_cache = self.build_dir.join("_scarb_cache");
+            if let Err(err) = fs::create_dir_all(&local_cache) {
+                tracing::warn!(
+                    "Failed creating local Scarb cache dir '{}': {}",
+                    local_cache.display(),
+                    err
+                );
+            } else {
+                cmd.env(SCARB_CACHE_ENV, &local_cache);
+                let _ = self.warm_cache_from_home_if_available(&local_cache);
+                if std::env::var_os(SCARB_OFFLINE_ENV)
+                    .filter(|value| !value.is_empty())
+                    .is_none()
+                    && cache_has_registry_entries(&local_cache)
+                {
+                    // Prefer cache-only dependency resolution when a local cache exists.
+                    cmd.env(SCARB_OFFLINE_ENV, "true");
+                }
+            }
+        }
+
+        if std::env::var_os(SCARB_CONFIG_ENV)
+            .filter(|value| !value.is_empty())
+            .is_none()
+        {
+            let local_config = self.build_dir.join("_scarb_config");
+            if let Err(err) = fs::create_dir_all(&local_config) {
+                tracing::warn!(
+                    "Failed creating local Scarb config dir '{}': {}",
+                    local_config.display(),
+                    err
+                );
+            } else {
+                cmd.env(SCARB_CONFIG_ENV, &local_config);
+            }
+        }
+
+        cmd.current_dir(project_dir);
+    }
+
     fn run_scarb_command_with_fallback<F>(
         &self,
         context: &str,
-        configure: F,
+        project_dir: &Path,
+        mut configure: F,
     ) -> Result<std::process::Output>
     where
         F: FnMut(&mut Command),
     {
         let preferred = self.selected_scarb_binary();
-        let candidates = scarb_command_candidates(preferred.as_deref());
-        let (output, candidate) = run_scarb_with_fallback(&candidates, context, configure)?;
+        let mut extra_bin_candidates = Vec::new();
+        let mut extra_version_candidates = Vec::new();
+        if let Some(version) = self.cairo_version_hint(project_dir) {
+            push_unique_candidate(&mut extra_version_candidates, version.clone());
+            if let Some(versioned_binary) = ensure_versioned_scarb_binary(&version) {
+                push_unique_candidate(&mut extra_bin_candidates, versioned_binary);
+            }
+        }
+
+        let candidates = scarb_command_candidates(
+            preferred.as_deref(),
+            &extra_bin_candidates,
+            &extra_version_candidates,
+        );
+        let (output, candidate) = run_scarb_with_fallback(&candidates, context, |cmd| {
+            self.configure_scarb_command_env(cmd, project_dir);
+            configure(cmd);
+        })?;
         self.remember_selected_scarb_binary(&candidate);
         Ok(output)
     }
@@ -335,7 +724,7 @@ impl CairoTarget {
         };
 
         // Try Scarb (Cairo 1 toolchain), including configured fallback candidates.
-        let candidates = scarb_command_candidates(None);
+        let candidates = scarb_command_candidates(None, &[], &[]);
         let (output, candidate) = run_scarb_with_fallback(
             &candidates,
             "No working Scarb candidate found for Cairo1 toolchain detection",
@@ -460,10 +849,9 @@ impl CairoTarget {
 
         self.run_scarb_command_with_fallback(
             "Scarb build failed for all configured candidates",
+            project_dir,
             |cmd| {
-                cmd.args(["build"])
-                    .env("SCARB_TARGET_DIR", &self.build_dir)
-                    .current_dir(project_dir);
+                cmd.args(["build"]);
             },
         )?;
 
@@ -479,10 +867,14 @@ impl CairoTarget {
                 )
             })?;
             let path = entry.path();
-            if path
-                .extension()
-                .is_some_and(|e| e == "sierra.json" || e == "casm.json")
-            {
+            let file_name = path.file_name().and_then(|value| value.to_str());
+            let is_compiled_artifact = file_name.is_some_and(|name| {
+                name.ends_with(".sierra.json")
+                    || name.ends_with(".casm.json")
+                    || name.ends_with(".sierra")
+                    || name.ends_with(".casm")
+            });
+            if is_compiled_artifact {
                 self.compiled_path = Some(path);
                 break;
             }
@@ -698,9 +1090,9 @@ impl CairoTarget {
 
         let output = self.run_scarb_command_with_fallback(
             "Failed to run scarb cairo-run across configured candidates",
+            project_dir,
             |cmd| {
-                cmd.args(["cairo-run", "--", &args_json])
-                    .current_dir(project_dir);
+                cmd.args(["cairo-run", "--", &args_json]);
             },
         )?;
 
@@ -1058,12 +1450,12 @@ impl TargetCircuit for CairoTarget {
             let args_json = Self::cairo1_arguments_json(witness);
             let output = self.run_scarb_command_with_fallback(
                 "Failed to run scarb prove --execute across configured candidates",
+                project_dir,
                 |cmd| {
                     cmd.args(["prove", "--execute", "--output", "standard"]);
                     if !witness.is_empty() {
                         cmd.args(["--arguments", &args_json]);
                     }
-                    cmd.current_dir(project_dir);
                 },
             )?;
 
@@ -1165,9 +1557,9 @@ impl TargetCircuit for CairoTarget {
 
             let output = self.run_scarb_command_with_fallback(
                 "Failed to run scarb verify across configured candidates",
+                project_dir,
                 |cmd| {
-                    cmd.args(["verify", "--execution-id", &artifact.execution_id])
-                        .current_dir(project_dir);
+                    cmd.args(["verify", "--execution-id", &artifact.execution_id]);
                 },
             )?;
             return Ok(output.status.success());

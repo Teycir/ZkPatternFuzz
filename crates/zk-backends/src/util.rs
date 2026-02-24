@@ -17,18 +17,26 @@ fn truncate_for_diagnostics(text: &str, max_chars: usize) -> String {
     if trimmed.is_empty() {
         return String::new();
     }
-
-    let mut out = String::new();
-    let mut count = 0usize;
-    for ch in trimmed.chars() {
-        if count >= max_chars {
-            out.push_str(" ...<truncated>");
-            break;
-        }
-        out.push(ch);
-        count = count.saturating_add(1);
+    if max_chars == 0 {
+        return String::new();
     }
-    out
+
+    let total_chars = trimmed.chars().count();
+    if total_chars <= max_chars {
+        return trimmed.to_string();
+    }
+
+    let head_len = max_chars / 2;
+    let tail_len = max_chars.saturating_sub(head_len);
+    let skipped = total_chars.saturating_sub(head_len + tail_len);
+
+    let head: String = trimmed.chars().take(head_len).collect();
+    let tail: String = trimmed
+        .chars()
+        .skip(total_chars.saturating_sub(tail_len))
+        .collect();
+
+    format!("{} ...<truncated {} chars>... {}", head, skipped, tail)
 }
 
 pub(crate) fn command_output_summary(output: &Output) -> String {
