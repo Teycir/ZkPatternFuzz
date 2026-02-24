@@ -47,6 +47,23 @@ pub(crate) fn run_signal_dir() -> PathBuf {
         std::process::exit(2);
     };
 
+    let path = if path.is_absolute() {
+        path
+    } else {
+        let cwd = match std::env::current_dir() {
+            Ok(cwd) => cwd,
+            Err(err) => {
+                eprintln!(
+                    "[zk-fuzzer] ERROR: cannot resolve current directory for run-signal dir '{}': {}",
+                    path.display(),
+                    err
+                );
+                std::process::exit(2);
+            }
+        };
+        cwd.join(path)
+    };
+
     if let Err(err) = std::fs::create_dir_all(&path) {
         eprintln!(
             "[zk-fuzzer] ERROR: cannot create run-signal dir '{}': {}",
@@ -68,7 +85,23 @@ fn build_cache_dir() -> PathBuf {
     if let Some(v) = read_optional_env("ZKF_BUILD_CACHE_DIR") {
         let trimmed = v.trim();
         if !trimmed.is_empty() {
-            let path = PathBuf::from(trimmed);
+            let raw_path = PathBuf::from(trimmed);
+            let path = if raw_path.is_absolute() {
+                raw_path
+            } else {
+                let cwd = match std::env::current_dir() {
+                    Ok(cwd) => cwd,
+                    Err(err) => {
+                        eprintln!(
+                            "[zk-fuzzer] ERROR: cannot resolve current directory for build cache dir '{}': {}",
+                            raw_path.display(),
+                            err
+                        );
+                        std::process::exit(2);
+                    }
+                };
+                cwd.join(raw_path)
+            };
             if let Err(err) = std::fs::create_dir_all(&path) {
                 eprintln!(
                     "[zk-fuzzer] ERROR: cannot create build cache dir '{}': {}",
