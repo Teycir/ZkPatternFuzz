@@ -23,6 +23,7 @@ Thumbs.db
 # Reports and outputs
 /reports/
 /output/post_roadmap/
+/output/external_targets/
 artifacts/
 *.log
 /.rustup/

@@ -198,34 +198,45 @@ fn selector_for_target(
     args: &Args,
     target: &MatrixTarget,
 ) -> anyhow::Result<(&'static str, String)> {
-    let alias = target.alias.clone().or_else(|| args.alias.clone());
-    let collection = target
-        .collection
-        .clone()
-        .or_else(|| args.collection.clone());
-    let template = target.template.clone().or_else(|| args.template.clone());
+    let mut cli_selected: Vec<(&'static str, String)> = Vec::new();
+    if let Some(value) = args.alias.clone() {
+        cli_selected.push(("alias", value));
+    }
+    if let Some(value) = args.collection.clone() {
+        cli_selected.push(("collection", value));
+    }
+    if let Some(value) = args.template.clone() {
+        cli_selected.push(("template", value));
+    }
+    if cli_selected.len() > 1 {
+        anyhow::bail!(
+            "CLI selector conflict: choose exactly one of --alias, --collection, --template"
+        );
+    }
+    if let Some(selected) = cli_selected.into_iter().next() {
+        return Ok(selected);
+    }
 
-    let mut selected: Vec<(&'static str, String)> = Vec::new();
-    if let Some(value) = alias {
-        selected.push(("alias", value));
+    let mut target_selected: Vec<(&'static str, String)> = Vec::new();
+    if let Some(value) = target.alias.clone() {
+        target_selected.push(("alias", value));
     }
-    if let Some(value) = collection {
-        selected.push(("collection", value));
+    if let Some(value) = target.collection.clone() {
+        target_selected.push(("collection", value));
     }
-    if let Some(value) = template {
-        selected.push(("template", value));
+    if let Some(value) = target.template.clone() {
+        target_selected.push(("template", value));
     }
-
-    if selected.is_empty() {
-        return Ok(("alias", "always".to_string()));
-    }
-    if selected.len() > 1 {
+    if target_selected.len() > 1 {
         anyhow::bail!(
             "Target '{}' has conflicting selector config (alias/collection/template); choose exactly one",
             target.name
         );
     }
-    Ok(selected.remove(0))
+    Ok(target_selected
+        .into_iter()
+        .next()
+        .unwrap_or(("alias", "always".to_string())))
 }
 
 fn run_target(

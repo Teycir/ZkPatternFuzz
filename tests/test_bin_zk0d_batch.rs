@@ -194,9 +194,6 @@ mod zk0d_batch_under_test {
                 .contains(&format!("{}=1", HALO2_EXTERNAL_TIMEOUT_ENV)));
             assert!(out
                 .stdout
-                .contains(&format!("{}=1", HALO2_TOTAL_TIMEOUT_ENV)));
-            assert!(out
-                .stdout
                 .contains(&format!("{}=1", CAIRO_EXTERNAL_TIMEOUT_ENV)));
             assert!(out
                 .stdout

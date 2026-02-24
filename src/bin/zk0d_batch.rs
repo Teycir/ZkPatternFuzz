@@ -15,7 +15,6 @@ const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
 const RUN_SIGNAL_DIR_ENV: &str = "ZKF_RUN_SIGNAL_DIR";
 const BUILD_CACHE_DIR_ENV: &str = "ZKF_BUILD_CACHE_DIR";
 const HALO2_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS";
-const HALO2_TOTAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_TOTAL_TIMEOUT_SECS";
 const CAIRO_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS";
 const SCARB_DOWNLOAD_TIMEOUT_ENV: &str = "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS";
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
@@ -837,9 +836,6 @@ fn run_scan(
         .env(BUILD_CACHE_DIR_ENV, &build_cache_dir);
     if std::env::var_os(HALO2_EXTERNAL_TIMEOUT_ENV).is_none() {
         cmd.env(HALO2_EXTERNAL_TIMEOUT_ENV, run_cfg.timeout.to_string());
-    }
-    if std::env::var_os(HALO2_TOTAL_TIMEOUT_ENV).is_none() {
-        cmd.env(HALO2_TOTAL_TIMEOUT_ENV, run_cfg.timeout.to_string());
     }
     if std::env::var_os(CAIRO_EXTERNAL_TIMEOUT_ENV).is_none() {
         cmd.env(CAIRO_EXTERNAL_TIMEOUT_ENV, run_cfg.timeout.to_string());

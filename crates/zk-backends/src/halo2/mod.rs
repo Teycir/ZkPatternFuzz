@@ -31,6 +31,7 @@ const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCH
 const HALO2_GO_PROXY_CACHE_DIR_ENV: &str = "ZK_FUZZER_HALO2_GO_PROXY_CACHE_DIR";
 const HALO2_CARGO_HOME_CACHE_SEED_ENV: &str = "ZK_FUZZER_HALO2_CARGO_HOME_CACHE_SEED";
 const HALO2_USE_HOST_CARGO_HOME_ENV: &str = "ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME";
+const HALO2_AUTO_ONLINE_RETRY_ENV: &str = "ZK_FUZZER_HALO2_AUTO_ONLINE_RETRY";
 const HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV: &str = "ZK_FUZZER_HALO2_TOOLCHAIN_CASCADE_LIMIT";
 const HALO2_RUSTUP_TOOLCHAIN_CASCADE_ENV: &str = "ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE";
 const HALO2_SVM_RELEASES_LIST_JSON_ENV: &str = "SVM_RELEASES_LIST_JSON";
@@ -74,6 +75,29 @@ fn halo2_use_host_cargo_home() -> bool {
         ),
         Err(_) => false,
     }
+}
+
+fn halo2_auto_online_retry_enabled() -> bool {
+    match std::env::var(HALO2_AUTO_ONLINE_RETRY_ENV) {
+        Ok(value) => !matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        ),
+        Err(_) => true,
+    }
+}
+
+fn output_suggests_offline_dependency_miss(output: &std::process::Output) -> bool {
+    let text = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
+    .to_ascii_lowercase();
+    text.contains("you are in the offline mode (--offline)")
+        || text.contains("offline mode")
+        || text.contains("can't checkout from")
+        || text.contains("failed to load source for dependency")
 }
 
 fn halo2_rustup_toolchain_cascade_enabled() -> bool {
@@ -755,6 +779,7 @@ impl Halo2Target {
         &self,
         binary: &str,
         toolchain: Option<&str>,
+        force_online: bool,
     ) -> Result<Command> {
         let mut command = Command::new(binary);
         if let Some(toolchain) = toolchain {
@@ -779,10 +804,13 @@ impl Halo2Target {
             let cargo_home = build_dir.join("_cargo_home");
             fs::create_dir_all(&cargo_home)?;
             let _ = warm_cargo_home_from_seed(&cargo_home);
-            if std::env::var_os("CARGO_NET_OFFLINE").is_none()
+            if !force_online
+                && std::env::var_os("CARGO_NET_OFFLINE").is_none()
                 && cargo_home_has_entries(&cargo_home)
             {
                 command.env("CARGO_NET_OFFLINE", "true");
+            } else if force_online {
+                command.env_remove("CARGO_NET_OFFLINE");
             }
             command.env("CARGO_HOME", &cargo_home);
         } else if std::env::var_os("CARGO_HOME").is_none() {
@@ -869,29 +897,36 @@ impl Halo2Target {
         let started = std::time::Instant::now();
         let mut failures = Vec::<String>::new();
         let mut labels_seen = Vec::<String>::new();
+        let allow_online_retry = halo2_auto_online_retry_enabled();
+
+        let compute_attempt_timeout = || -> Option<std::time::Duration> {
+            if let Some(total) = total_budget {
+                let elapsed = started.elapsed();
+                let remaining = total.saturating_sub(elapsed);
+                if remaining.is_zero() {
+                    return None;
+                }
+                return Some(std::cmp::min(per_attempt_timeout, remaining));
+            }
+            Some(per_attempt_timeout)
+        };
 
         for candidate in &candidates {
             labels_seen.push(candidate.label.clone());
             let mut cmd = self.cargo_command_with_binary_and_toolchain(
                 &candidate.binary,
                 candidate.toolchain.as_deref(),
+                false,
             )?;
             configure(&mut cmd);
 
-            let attempt_timeout = if let Some(total) = total_budget {
-                let elapsed = started.elapsed();
-                let remaining = total.saturating_sub(elapsed);
-                if remaining.is_zero() {
-                    failures.push(format!(
-                        "{}: total timeout budget exhausted after {:.2}s",
-                        candidate.label,
-                        elapsed.as_secs_f64()
-                    ));
-                    break;
-                }
-                std::cmp::min(per_attempt_timeout, remaining)
-            } else {
-                per_attempt_timeout
+            let Some(attempt_timeout) = compute_attempt_timeout() else {
+                failures.push(format!(
+                    "{}: total timeout budget exhausted after {:.2}s",
+                    candidate.label,
+                    started.elapsed().as_secs_f64()
+                ));
+                break;
             };
 
             match crate::util::run_with_timeout(&mut cmd, attempt_timeout) {
@@ -905,6 +940,38 @@ impl Halo2Target {
                         candidate.label,
                         crate::util::command_failure_summary(&output)
                     ));
+                    if allow_online_retry && output_suggests_offline_dependency_miss(&output) {
+                        let Some(retry_timeout) = compute_attempt_timeout() else {
+                            failures.push(format!(
+                                "{}(online): total timeout budget exhausted after {:.2}s",
+                                candidate.label,
+                                started.elapsed().as_secs_f64()
+                            ));
+                            break;
+                        };
+                        let mut retry_cmd = self.cargo_command_with_binary_and_toolchain(
+                            &candidate.binary,
+                            candidate.toolchain.as_deref(),
+                            true,
+                        )?;
+                        configure(&mut retry_cmd);
+                        match crate::util::run_with_timeout(&mut retry_cmd, retry_timeout) {
+                            Ok(retry_output) if retry_output.status.success() => {
+                                self.remember_selected_cargo_binary(&candidate.binary);
+                                return Ok(retry_output);
+                            }
+                            Ok(retry_output) => {
+                                failures.push(format!(
+                                    "{}(online): {}",
+                                    candidate.label,
+                                    crate::util::command_failure_summary(&retry_output)
+                                ));
+                            }
+                            Err(err) => {
+                                failures.push(format!("{}(online): {}", candidate.label, err));
+                            }
+                        }
+                    }
                 }
                 Err(err) => {
                     failures.push(format!("{}: {}", candidate.label, err));

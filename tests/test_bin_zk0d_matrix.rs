@@ -107,5 +107,64 @@ tail
             };
             assert!(target_run_counts_as_failure(&summary));
         }
+
+        #[test]
+        fn selector_for_target_cli_alias_overrides_matrix_alias() {
+            let args = Args::try_parse_from([
+                "zk0d_matrix",
+                "--matrix",
+                "targets/zk0d_matrix.yaml",
+                "--alias",
+                "cveX07_aztec_plonk_zero_bug",
+            ])
+            .expect("parse args");
+
+            let target = MatrixTarget {
+                name: "ext001".to_string(),
+                target_circuit: "/tmp/demo.circom".to_string(),
+                main_component: "main".to_string(),
+                framework: "circom".to_string(),
+                alias: Some("external_manual".to_string()),
+                collection: None,
+                template: None,
+                enabled: true,
+            };
+
+            let (key, value) = selector_for_target(&args, &target).expect("selector");
+            assert_eq!(key, "alias");
+            assert_eq!(value, "cveX07_aztec_plonk_zero_bug");
+        }
+
+        #[test]
+        fn selector_for_target_rejects_conflicting_cli_selectors() {
+            let args = Args::try_parse_from([
+                "zk0d_matrix",
+                "--matrix",
+                "targets/zk0d_matrix.yaml",
+                "--alias",
+                "foo",
+                "--template",
+                "bar.yaml",
+            ])
+            .expect("parse args");
+
+            let target = MatrixTarget {
+                name: "ext001".to_string(),
+                target_circuit: "/tmp/demo.circom".to_string(),
+                main_component: "main".to_string(),
+                framework: "circom".to_string(),
+                alias: Some("external_manual".to_string()),
+                collection: None,
+                template: None,
+                enabled: true,
+            };
+
+            let err = selector_for_target(&args, &target).expect_err("selector should fail");
+            let rendered = format!("{err:#}");
+            assert!(
+                rendered.contains("CLI selector conflict"),
+                "unexpected error: {rendered}"
+            );
+        }
     }
 }
