@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
+const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
 const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
 const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
@@ -92,6 +93,10 @@ struct Args {
     /// Timeout per run (seconds)
     #[arg(long, default_value_t = 1_800)]
     timeout: u64,
+
+    /// Root directory for scan output artifacts (defaults to HOME/ZkFuzz)
+    #[arg(long)]
+    output_root: Option<String>,
 
     /// Emit per-template reason codes as TSV to stdout (for external harness ingestion)
     #[arg(long, default_value_t = false)]
@@ -188,6 +193,7 @@ struct ScanRunConfig<'a> {
     iterations: u64,
     timeout: u64,
     scan_run_root: Option<&'a str>,
+    scan_output_root: &'a Path,
     dry_run: bool,
     artifacts_root: &'a Path,
 }
@@ -818,6 +824,7 @@ fn run_scan(
 ) -> anyhow::Result<ScanRunResult> {
     let family_str = family.as_str();
     let mut cmd = Command::new(run_cfg.bin_path);
+    cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.scan_output_root);
     if let Some(run_root) = run_cfg.scan_run_root {
         cmd.env(SCAN_RUN_ROOT_ENV, run_root);
     }
@@ -857,7 +864,9 @@ fn run_scan(
             String::new()
         };
         println!(
-            "[DRY RUN] {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}",
+            "[DRY RUN] {}={} {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}",
+            SCAN_OUTPUT_ROOT_ENV,
+            run_cfg.scan_output_root.display(),
             run_cfg.bin_path.display(),
             template.path.display(),
             family_str,
@@ -987,11 +996,19 @@ fn scan_output_suffix(template: &TemplateInfo, family: Family) -> String {
     format!("{}__{}", family.as_str(), normalized)
 }
 
-fn scan_output_root() -> PathBuf {
-    match dirs::home_dir() {
+fn resolve_scan_output_root(override_root: Option<&str>) -> anyhow::Result<PathBuf> {
+    if let Some(raw) = override_root {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            anyhow::bail!("--output-root cannot be empty");
+        }
+        return Ok(PathBuf::from(trimmed));
+    }
+
+    Ok(match dirs::home_dir() {
         Some(home) => home.join("ZkFuzz"),
         None => PathBuf::from("./ZkFuzz"),
-    }
+    })
 }
 
 fn reserve_batch_scan_run_root(artifacts_root: &Path) -> anyhow::Result<String> {
@@ -1480,7 +1497,8 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    let artifacts_root = scan_output_root().join(".scan_run_artifacts");
+    let scan_output_root = resolve_scan_output_root(args.output_root.as_deref())?;
+    let artifacts_root = scan_output_root.join(".scan_run_artifacts");
 
     let run_cfg_base = ScanRunConfig {
         bin_path: &bin_path,
@@ -1492,6 +1510,7 @@ fn main() -> anyhow::Result<()> {
         iterations: args.iterations,
         timeout: args.timeout,
         scan_run_root: None,
+        scan_output_root: &scan_output_root,
         dry_run: args.dry_run,
         artifacts_root: &artifacts_root,
     };

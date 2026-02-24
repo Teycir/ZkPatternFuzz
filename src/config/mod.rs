@@ -191,6 +191,12 @@ pub struct ReportingConfig {
 }
 
 fn default_output_dir() -> PathBuf {
+    if let Some(raw) = std::env::var_os("ZKF_SCAN_OUTPUT_ROOT") {
+        let candidate = PathBuf::from(raw);
+        if !candidate.as_os_str().is_empty() {
+            return candidate;
+        }
+    }
     match dirs::home_dir() {
         Some(home) => home.join("ZkFuzz"),
         None => PathBuf::from("./ZkFuzz"),

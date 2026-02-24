@@ -14,6 +14,8 @@ mod zk0d_matrix_under_test {
                 "targets/zk0d_matrix.yaml",
                 "--registry",
                 "targets/fuzzer_registry.yaml",
+                "--output-root",
+                "artifacts/external_targets/manual/scan_output",
                 "--jobs",
                 "2",
                 "--workers",
@@ -23,8 +25,33 @@ mod zk0d_matrix_under_test {
 
             assert_eq!(args.matrix, "targets/zk0d_matrix.yaml");
             assert_eq!(args.registry, "targets/fuzzer_registry.yaml");
+            assert_eq!(
+                args.output_root.as_deref(),
+                Some("artifacts/external_targets/manual/scan_output")
+            );
             assert_eq!(args.jobs, 2);
             assert_eq!(args.workers, 4);
+        }
+
+        #[test]
+        fn resolve_matrix_output_root_defaults_from_summary_path() {
+            let args = Args::try_parse_from([
+                "zk0d_matrix",
+                "--matrix",
+                "targets/zk0d_matrix.yaml",
+                "--registry",
+                "targets/fuzzer_registry.yaml",
+                "--summary-tsv",
+                "artifacts/external_targets/manual/latest_summary.tsv",
+            ])
+            .expect("parse matrix args");
+            let parsed = resolve_matrix_output_root(&args).expect("resolve matrix output root");
+            assert_eq!(
+                parsed,
+                Some(std::path::PathBuf::from(
+                    "artifacts/external_targets/manual/scan_output"
+                ))
+            );
         }
 
         #[test]

@@ -71,6 +71,10 @@ struct Args {
     #[arg(long)]
     summary_tsv: Option<String>,
 
+    /// Optional output root passed through to each child `zk0d_batch` run
+    #[arg(long)]
+    output_root: Option<String>,
+
     /// Allow oversubscribed jobs*batch_jobs*workers beyond CPU-based guardrail
     #[arg(long, default_value_t = false)]
     allow_oversubscription: bool,
@@ -187,6 +191,7 @@ fn run_target(
     args: &Args,
     batch_bin: &Path,
     target: &MatrixTarget,
+    output_root: Option<&Path>,
 ) -> anyhow::Result<TargetRunSummary> {
     let (selector_key, selector_value) = selector_for_target(args, target)?;
 
@@ -212,6 +217,9 @@ fn run_target(
         .arg("--timeout")
         .arg(args.timeout.to_string())
         .arg("--emit-reason-tsv");
+    if let Some(root) = output_root {
+        cmd.arg("--output-root").arg(root);
+    }
 
     if args.skip_validate {
         cmd.arg("--skip-validate");
@@ -290,6 +298,22 @@ fn build_batch_binary(args: &Args, batch_bin: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn resolve_matrix_output_root(args: &Args) -> anyhow::Result<Option<PathBuf>> {
+    if let Some(raw) = args.output_root.as_deref() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            anyhow::bail!("--output-root cannot be empty");
+        }
+        return Ok(Some(PathBuf::from(trimmed)));
+    }
+
+    Ok(args
+        .summary_tsv
+        .as_deref()
+        .and_then(|path| Path::new(path).parent())
+        .map(|parent| parent.join("scan_output")))
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -308,14 +332,18 @@ fn main() -> anyhow::Result<()> {
         .with_context(|| format!("Failed to read '{}'", args.matrix))?;
     let matrix: MatrixFile = serde_yaml::from_str(&matrix_raw)
         .with_context(|| format!("Failed to parse matrix YAML '{}'", args.matrix))?;
-    let enabled_targets: Vec<MatrixTarget> =
-        matrix.targets.into_iter().filter(|t| t.enabled).collect();
+    let enabled_targets: Vec<MatrixTarget> = matrix
+        .targets
+        .into_iter()
+        .filter(|t| t.enabled)
+        .collect();
     if enabled_targets.is_empty() {
         anyhow::bail!("No enabled targets in matrix '{}'", args.matrix);
     }
 
     let batch_bin = PathBuf::from("target/release/zk0d_batch");
     build_batch_binary(&args, &batch_bin)?;
+    let matrix_output_root = resolve_matrix_output_root(&args)?;
 
     println!(
         "Running {} targets (jobs={}, batch_jobs={}, workers={})",
@@ -333,7 +361,7 @@ fn main() -> anyhow::Result<()> {
     let mut summaries = pool.install(|| {
         enabled_targets
             .par_iter()
-            .map(|target| run_target(&args, &batch_bin, target))
+            .map(|target| run_target(&args, &batch_bin, target, matrix_output_root.as_deref()))
             .collect::<Vec<_>>()
     });
 

@@ -16,6 +16,8 @@ mod zk0d_batch_under_test {
                 "circuits/demo.circom",
                 "--framework",
                 "circom",
+                "--output-root",
+                "artifacts/external_targets/manual/scan_output",
                 "--jobs",
                 "2",
                 "--workers",
@@ -26,8 +28,22 @@ mod zk0d_batch_under_test {
             assert_eq!(args.template.as_deref(), Some("cveX01.yaml"));
             assert_eq!(args.target_circuit.as_deref(), Some("circuits/demo.circom"));
             assert_eq!(args.framework, "circom");
+            assert_eq!(
+                args.output_root.as_deref(),
+                Some("artifacts/external_targets/manual/scan_output")
+            );
             assert_eq!(args.jobs, 2);
             assert_eq!(args.workers, 4);
+        }
+
+        #[test]
+        fn resolve_scan_output_root_uses_cli_override() {
+            let root = resolve_scan_output_root(Some("artifacts/external_targets/manual/scan_output"))
+                .expect("resolve output root");
+            assert_eq!(
+                root,
+                std::path::PathBuf::from("artifacts/external_targets/manual/scan_output")
+            );
         }
 
         #[test]
