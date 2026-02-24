@@ -222,7 +222,22 @@ impl Halo2Target {
                 command.arg(format!("+{trimmed}"));
             }
         }
+        // Keep Go module/toolchain cache local to the Halo2 build dir so external
+        // projects with Go build scripts do not depend on host-global cache paths.
+        let go_root = self.build_dir.join("go");
+        let go_mod_cache = go_root.join("pkg").join("mod");
+        let go_build_cache = go_root.join("cache");
+        let _ = std::fs::create_dir_all(&go_mod_cache);
+        let _ = std::fs::create_dir_all(&go_build_cache);
+
         command.env("CARGO_TARGET_DIR", &self.build_dir);
+        command
+            .env("GOPATH", &go_root)
+            .env("GOMODCACHE", &go_mod_cache)
+            .env("GOCACHE", &go_build_cache);
+        if std::env::var_os("GOTOOLCHAIN").is_none() {
+            command.env("GOTOOLCHAIN", "local");
+        }
         command
     }
 

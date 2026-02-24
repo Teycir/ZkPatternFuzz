@@ -1521,7 +1521,9 @@ impl CveOracle {
         let mut guard = match oracle.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("Semantic oracle state mutex poisoned; continuing with recovered state");
+                tracing::warn!(
+                    "Semantic oracle state mutex poisoned; continuing with recovered state"
+                );
                 poisoned.into_inner()
             }
         };

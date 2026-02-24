@@ -211,16 +211,8 @@ impl RangeProofOracle {
         }
 
         // Find min and max accepted values
-        let min_accepted = self
-            .accepted_values
-            .iter()
-            .map(|(v, _)| v)
-            .min()?;
-        let max_accepted = self
-            .accepted_values
-            .iter()
-            .map(|(v, _)| v)
-            .max()?;
+        let min_accepted = self.accepted_values.iter().map(|(v, _)| v).min()?;
+        let max_accepted = self.accepted_values.iter().map(|(v, _)| v).max()?;
 
         // If current value is way outside the "normal" range, flag it
         let range = max_accepted - min_accepted;

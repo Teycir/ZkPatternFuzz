@@ -74,6 +74,98 @@ pub(crate) fn timeout_from_env(var: &str, default_secs: u64) -> Duration {
     }
 }
 
+pub(crate) fn parse_command_candidates(raw: Option<&str>) -> Vec<String> {
+    let mut parsed = Vec::new();
+    let Some(raw) = raw else {
+        return parsed;
+    };
+
+    for token in raw.split([',', ';']) {
+        let candidate = token.trim();
+        if candidate.is_empty() {
+            continue;
+        }
+        if parsed.iter().any(|existing| existing == candidate) {
+            continue;
+        }
+        parsed.push(candidate.to_string());
+    }
+
+    parsed
+}
+
+pub(crate) fn build_command_candidates(
+    preferred: Option<&str>,
+    binary_candidates_raw: Option<&str>,
+    version_candidates_raw: Option<&str>,
+    default_binary: &str,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+
+    if let Some(preferred) = preferred.map(str::trim).filter(|value| !value.is_empty()) {
+        candidates.push(preferred.to_string());
+    }
+
+    for candidate in parse_command_candidates(binary_candidates_raw) {
+        if candidates.iter().any(|existing| existing == &candidate) {
+            continue;
+        }
+        candidates.push(candidate);
+    }
+
+    for version in parse_command_candidates(version_candidates_raw) {
+        let by_version_binary = format!("{default_binary}-{version}");
+        if candidates
+            .iter()
+            .any(|existing| existing == &by_version_binary)
+        {
+            continue;
+        }
+        candidates.push(by_version_binary);
+    }
+
+    if !candidates.iter().any(|existing| existing == default_binary) {
+        candidates.push(default_binary.to_string());
+    }
+
+    candidates
+}
+
+pub(crate) fn run_command_with_fallback<F>(
+    candidates: &[String],
+    timeout: Duration,
+    context: &str,
+    mut configure: F,
+) -> Result<(Output, String)>
+where
+    F: FnMut(&mut Command),
+{
+    let mut failures = Vec::new();
+
+    for candidate in candidates {
+        let mut cmd = Command::new(candidate);
+        configure(&mut cmd);
+
+        match run_with_timeout(&mut cmd, timeout) {
+            Ok(output) if output.status.success() => {
+                return Ok((output, candidate.clone()));
+            }
+            Ok(output) => {
+                failures.push(format!("{candidate}: {}", command_output_summary(&output)));
+            }
+            Err(err) => {
+                failures.push(format!("{candidate}: {err}"));
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "{context}. Candidates tried: {}. Last errors: {}",
+        candidates.join(", "),
+        failures.join(" || ")
+    )
+}
+
 #[cfg(unix)]
 fn prepare_child_process_group(cmd: &mut Command) {
     use std::os::unix::process::CommandExt;
@@ -480,7 +572,8 @@ impl Drop for DirLock {
 #[cfg(test)]
 mod tests {
     use super::{
-        candidate_writable_bind_paths, command_output_summary, command_targets_backend_tool,
+        build_command_candidates, candidate_writable_bind_paths, command_output_summary,
+        command_targets_backend_tool, parse_command_candidates, run_command_with_fallback,
         run_with_timeout, timeout_from_env,
     };
     use std::path::PathBuf;
@@ -532,6 +625,44 @@ mod tests {
         let summary = command_output_summary(&output);
         assert!(summary.contains("stdout:"));
         assert!(summary.contains("rustc"));
+    }
+
+    #[test]
+    fn test_parse_command_candidates_splits_and_dedupes() {
+        let parsed = parse_command_candidates(Some("scarb-2.5.3, scarb-2.5.3;scarb-2.9.0"));
+        assert_eq!(parsed, vec!["scarb-2.5.3", "scarb-2.9.0"]);
+    }
+
+    #[test]
+    fn test_build_command_candidates_orders_preferred_then_fallbacks() {
+        let candidates = build_command_candidates(
+            Some("scarb-2.5.3"),
+            Some("scarb-2.9.0,scarb-2.5.3"),
+            Some("2.15.1"),
+            "scarb",
+        );
+
+        assert_eq!(
+            candidates,
+            vec!["scarb-2.5.3", "scarb-2.9.0", "scarb-2.15.1", "scarb"]
+        );
+    }
+
+    #[test]
+    fn test_run_command_with_fallback_uses_next_candidate() {
+        let candidates = vec!["definitely-missing-binary".to_string(), "rustc".to_string()];
+        let (output, used) = run_command_with_fallback(
+            &candidates,
+            Duration::from_secs(5),
+            "fallback command test failed",
+            |cmd| {
+                cmd.arg("--version");
+            },
+        )
+        .expect("expected fallback command execution to succeed");
+
+        assert_eq!(used, "rustc");
+        assert!(output.status.success());
     }
 
     #[test]

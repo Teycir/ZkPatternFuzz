@@ -21,6 +21,37 @@ fn cairo_external_command_timeout() -> std::time::Duration {
     crate::util::timeout_from_env("ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS", 120)
 }
 
+const SCARB_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_SCARB_BIN_CANDIDATES";
+const SCARB_VERSION_CANDIDATES_ENV: &str = "ZK_FUZZER_SCARB_VERSION_CANDIDATES";
+
+fn scarb_command_candidates(preferred: Option<&str>) -> Vec<String> {
+    let bin_candidates_raw = std::env::var(SCARB_BIN_CANDIDATES_ENV).ok();
+    let version_candidates_raw = std::env::var(SCARB_VERSION_CANDIDATES_ENV).ok();
+
+    crate::util::build_command_candidates(
+        preferred,
+        bin_candidates_raw.as_deref(),
+        version_candidates_raw.as_deref(),
+        "scarb",
+    )
+}
+
+fn run_scarb_with_fallback<F>(
+    candidates: &[String],
+    context: &str,
+    configure: F,
+) -> Result<(std::process::Output, String)>
+where
+    F: FnMut(&mut Command),
+{
+    crate::util::run_command_with_fallback(
+        candidates,
+        cairo_external_command_timeout(),
+        context,
+        configure,
+    )
+}
+
 /// Cairo circuit target with full backend integration
 pub struct CairoTarget {
     /// Path to the Cairo source file or project
@@ -41,6 +72,8 @@ pub struct CairoTarget {
     config: CairoConfig,
     /// Last runtime-backed coverage sample captured during execution.
     runtime_coverage_sample: Mutex<Option<CairoRuntimeCoverageSample>>,
+    /// Most recent Scarb binary candidate that worked for this target.
+    selected_scarb_binary: Mutex<Option<String>>,
 }
 
 /// Cairo version
@@ -142,6 +175,7 @@ impl CairoTarget {
             cairo_version,
             config: CairoConfig::default(),
             runtime_coverage_sample: Mutex::new(None),
+            selected_scarb_binary: Mutex::new(None),
         })
     }
 
@@ -169,7 +203,9 @@ impl CairoTarget {
         match self.runtime_coverage_sample.lock() {
             Ok(guard) => guard.clone(),
             Err(poisoned) => {
-                tracing::warn!("cairo runtime coverage sample lock poisoned; returning recovered sample");
+                tracing::warn!(
+                    "cairo runtime coverage sample lock poisoned; returning recovered sample"
+                );
                 poisoned.into_inner().clone()
             }
         }
@@ -179,11 +215,52 @@ impl CairoTarget {
         let mut guard = match self.runtime_coverage_sample.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("cairo runtime coverage sample lock poisoned; storing recovered sample");
+                tracing::warn!(
+                    "cairo runtime coverage sample lock poisoned; storing recovered sample"
+                );
                 poisoned.into_inner()
             }
         };
         *guard = sample;
+    }
+
+    fn selected_scarb_binary(&self) -> Option<String> {
+        match self.selected_scarb_binary.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => {
+                tracing::warn!("selected_scarb_binary lock poisoned; returning recovered value");
+                poisoned.into_inner().clone()
+            }
+        }
+    }
+
+    fn remember_selected_scarb_binary(&self, candidate: &str) {
+        let mut guard = match self.selected_scarb_binary.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("selected_scarb_binary lock poisoned; storing recovered value");
+                poisoned.into_inner()
+            }
+        };
+        if guard.as_deref() != Some(candidate) {
+            tracing::info!("Using Scarb candidate '{}'", candidate);
+            *guard = Some(candidate.to_string());
+        }
+    }
+
+    fn run_scarb_command_with_fallback<F>(
+        &self,
+        context: &str,
+        configure: F,
+    ) -> Result<std::process::Output>
+    where
+        F: FnMut(&mut Command),
+    {
+        let preferred = self.selected_scarb_binary();
+        let candidates = scarb_command_candidates(preferred.as_deref());
+        let (output, candidate) = run_scarb_with_fallback(&candidates, context, configure)?;
+        self.remember_selected_scarb_binary(&candidate);
+        Ok(output)
     }
 
     /// Detect Cairo version from the source file
@@ -246,20 +323,23 @@ impl CairoTarget {
             Err(e) => e,
         };
 
-        // Try Scarb (Cairo 1 toolchain).
-        let output = {
-            let mut cmd = Command::new("scarb");
-            cmd.arg("--version");
-            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
-                .context("scarb not found in PATH")?
-        };
-        if !output.status.success() {
-            let scarb_stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!(
-                "No Cairo toolchain detected. Cairo0 check failed: {}. Scarb check failed with status {}: {}",
-                cairo0_error,
-                output.status,
-                scarb_stderr.trim()
+        // Try Scarb (Cairo 1 toolchain), including configured fallback candidates.
+        let candidates = scarb_command_candidates(None);
+        let (output, candidate) = run_scarb_with_fallback(
+            &candidates,
+            "No working Scarb candidate found for Cairo1 toolchain detection",
+            |cmd| {
+                cmd.arg("--version");
+            },
+        )
+        .with_context(|| {
+            format!("No Cairo toolchain detected. Cairo0 check failed: {cairo0_error}")
+        })?;
+
+        if candidate != "scarb" {
+            tracing::info!(
+                "Cairo toolchain detection selected fallback Scarb '{}'",
+                candidate
             );
         }
 
@@ -355,19 +435,14 @@ impl CairoTarget {
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
 
-        let output = {
-            let mut cmd = Command::new("scarb");
-            cmd.args(["build"])
-                .env("SCARB_TARGET_DIR", &self.build_dir)
-                .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
-                .context("Failed to run scarb build")?
-        };
-
-        if !output.status.success() {
-            let details = crate::util::command_output_summary(&output);
-            anyhow::bail!("Scarb build failed: {}", details);
-        }
+        self.run_scarb_command_with_fallback(
+            "Scarb build failed for all configured candidates",
+            |cmd| {
+                cmd.args(["build"])
+                    .env("SCARB_TARGET_DIR", &self.build_dir)
+                    .current_dir(project_dir);
+            },
+        )?;
 
         // Find the compiled Sierra file
         let target_dir = self.build_dir.join("dev");
@@ -466,7 +541,9 @@ impl CairoTarget {
         let _guard = match cairo_io_lock().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("cairo IO lock poisoned during execute; continuing with recovered lock");
+                tracing::warn!(
+                    "cairo IO lock poisoned during execute; continuing with recovered lock"
+                );
                 poisoned.into_inner()
             }
         };
@@ -596,18 +673,13 @@ impl CairoTarget {
             .collect();
         let args_json = format!("[{}]", args.join(", "));
 
-        let output = {
-            let mut cmd = Command::new("scarb");
-            cmd.args(["cairo-run", "--", &args_json])
-                .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
-                .context("Failed to run scarb cairo-run")?
-        };
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Cairo 1 execution failed: {}", stderr);
-        }
+        let output = self.run_scarb_command_with_fallback(
+            "Failed to run scarb cairo-run across configured candidates",
+            |cmd| {
+                cmd.args(["cairo-run", "--", &args_json])
+                    .current_dir(project_dir);
+            },
+        )?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         self.parse_cairo1_output(&stdout)
@@ -928,24 +1000,15 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn num_constraints(&self) -> usize {
-        self.metadata
-            .as_ref()
-            .map(|m| m.num_steps)
-            .unwrap_or(0)
+        self.metadata.as_ref().map(|m| m.num_steps).unwrap_or(0)
     }
 
     fn num_private_inputs(&self) -> usize {
-        self.metadata
-            .as_ref()
-            .map(|m| m.num_inputs)
-            .unwrap_or(0)
+        self.metadata.as_ref().map(|m| m.num_inputs).unwrap_or(0)
     }
 
     fn num_public_inputs(&self) -> usize {
-        self.metadata
-            .as_ref()
-            .map(|m| m.num_outputs)
-            .unwrap_or(0)
+        self.metadata.as_ref().map(|m| m.num_outputs).unwrap_or(0)
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -956,7 +1019,9 @@ impl TargetCircuit for CairoTarget {
         let _guard = match cairo_io_lock().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("cairo IO lock poisoned during prove; continuing with recovered lock");
+                tracing::warn!(
+                    "cairo IO lock poisoned during prove; continuing with recovered lock"
+                );
                 poisoned.into_inner()
             }
         };
@@ -968,20 +1033,16 @@ impl TargetCircuit for CairoTarget {
                 .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
 
             let args_json = Self::cairo1_arguments_json(witness);
-            let output = {
-                let mut cmd = Command::new("scarb");
-                cmd.args(["prove", "--execute", "--output", "standard"]);
-                if !witness.is_empty() {
-                    cmd.args(["--arguments", &args_json]);
-                }
-                cmd.current_dir(project_dir);
-                crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
-                    .context("Failed to run scarb prove --execute for Cairo1")?
-            };
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                anyhow::bail!("Cairo1 proof generation failed: {}", stderr);
-            }
+            let output = self.run_scarb_command_with_fallback(
+                "Failed to run scarb prove --execute across configured candidates",
+                |cmd| {
+                    cmd.args(["prove", "--execute", "--output", "standard"]);
+                    if !witness.is_empty() {
+                        cmd.args(["--arguments", &args_json]);
+                    }
+                    cmd.current_dir(project_dir);
+                },
+            )?;
 
             let stdout = String::from_utf8_lossy(&output.stdout);
             let execution_id = Self::parse_cairo1_execution_id(&stdout).ok_or_else(|| {
@@ -1063,7 +1124,9 @@ impl TargetCircuit for CairoTarget {
         let _guard = match cairo_io_lock().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("cairo IO lock poisoned during verify; continuing with recovered lock");
+                tracing::warn!(
+                    "cairo IO lock poisoned during verify; continuing with recovered lock"
+                );
                 poisoned.into_inner()
             }
         };
@@ -1077,13 +1140,13 @@ impl TargetCircuit for CairoTarget {
             let artifact = Self::parse_cairo1_proof_artifact(proof)
                 .context("Cairo1 verify requires structured proof artifact contract")?;
 
-            let output = {
-                let mut cmd = Command::new("scarb");
-                cmd.args(["verify", "--execution-id", &artifact.execution_id])
-                    .current_dir(project_dir);
-                crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
-                    .context("Failed to run scarb verify for Cairo1")?
-            };
+            let output = self.run_scarb_command_with_fallback(
+                "Failed to run scarb verify across configured candidates",
+                |cmd| {
+                    cmd.args(["verify", "--execution-id", &artifact.execution_id])
+                        .current_dir(project_dir);
+                },
+            )?;
             return Ok(output.status.success());
         }
 

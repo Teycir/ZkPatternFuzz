@@ -473,9 +473,10 @@ impl CrossStepInvariantChecker {
                 let value_b = self.get_field_value(trace, step_b, field_b)?;
 
                 if value_a != value_b {
-                    let (Some(step_idx_a), Some(step_idx_b)) =
-                        (self.step_ref_to_index(step_a), self.step_ref_to_index(step_b))
-                    else {
+                    let (Some(step_idx_a), Some(step_idx_b)) = (
+                        self.step_ref_to_index(step_a),
+                        self.step_ref_to_index(step_b),
+                    ) else {
                         return None;
                     };
                     let step_indices = vec![step_idx_a, step_idx_b];
@@ -605,9 +606,10 @@ impl CrossStepInvariantChecker {
                 let value_b = self.get_field_value(trace, step_b, field_b)?;
 
                 if value_a == value_b {
-                    let (Some(step_idx_a), Some(step_idx_b)) =
-                        (self.step_ref_to_index(step_a), self.step_ref_to_index(step_b))
-                    else {
+                    let (Some(step_idx_a), Some(step_idx_b)) = (
+                        self.step_ref_to_index(step_a),
+                        self.step_ref_to_index(step_b),
+                    ) else {
                         return None;
                     };
                     let step_indices = vec![step_idx_a, step_idx_b];

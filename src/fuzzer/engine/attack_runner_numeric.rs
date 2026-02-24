@@ -39,6 +39,10 @@ impl FuzzingEngine {
         let field_modulus = self.get_field_modulus();
 
         for value in test_values {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!("Stopping arithmetic attack early: wall-clock timeout reached");
+                break;
+            }
             let expanded =
                 match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
                     Ok(bytes) => bytes,
@@ -109,11 +113,13 @@ impl FuzzingEngine {
 
         // Generate and execute in parallel
         let mut test_cases = Vec::with_capacity(samples);
+        let mut timed_out = false;
         for _ in 0..samples {
             if self.wall_clock_timeout_reached() {
                 tracing::warn!(
                     "Stopping collision attack witness generation early: wall-clock timeout reached"
                 );
+                timed_out = true;
                 break;
             }
             test_cases.push(self.generate_test_case());
@@ -137,10 +143,15 @@ impl FuzzingEngine {
                 tracing::warn!(
                     "Stopping collision attack execution early: wall-clock timeout reached"
                 );
+                timed_out = true;
                 break;
             }
 
-            let chunk_end = (chunk_start + execution_chunk_size).min(test_cases.len());
+            let chunk_size = match self.wall_clock_remaining() {
+                Some(remaining) if remaining <= Duration::from_secs(15) => 1usize,
+                _ => execution_chunk_size,
+            };
+            let chunk_end = (chunk_start + chunk_size).min(test_cases.len());
             let chunk = &test_cases[chunk_start..chunk_end];
 
             let indexed_results: Vec<(usize, ExecutionResult, Duration)> =
@@ -183,8 +194,9 @@ impl FuzzingEngine {
                             let finding = Finding {
                                 attack_type: AttackType::Collision,
                                 severity: Severity::Critical,
-                                description: "Found collision: different inputs produce same output"
-                                    .to_string(),
+                                description:
+                                    "Found collision: different inputs produce same output"
+                                        .to_string(),
                                 poc: super::ProofOfConcept {
                                     witness_a: existing.inputs.clone(),
                                     witness_b: Some(test_case.inputs.clone()),
@@ -214,10 +226,18 @@ impl FuzzingEngine {
                     tracing::warn!(
                         "Stopping collision attack post-processing early: wall-clock timeout reached"
                     );
+                    timed_out = true;
                     break 'execution_loop;
                 }
             }
             chunk_start = chunk_end;
+        }
+
+        if timed_out {
+            tracing::warn!(
+                "Skipping nullifier replay follow-up: collision attack already hit wall-clock timeout"
+            );
+            return Ok(());
         }
 
         self.run_nullifier_replay_attack(config, AttackType::Collision, progress)?;
@@ -319,7 +339,13 @@ impl FuzzingEngine {
 
         let field_modulus = self.get_field_modulus();
 
+        let mut timed_out = false;
         for value in test_values {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!("Stopping boundary attack early: wall-clock timeout reached");
+                timed_out = true;
+                break;
+            }
             let expanded =
                 match crate::config::parser::expand_value_placeholder(&value, &field_modulus) {
                     Ok(bytes) => bytes,
@@ -345,6 +371,13 @@ impl FuzzingEngine {
             if let Some(p) = progress {
                 p.inc();
             }
+        }
+
+        if timed_out {
+            tracing::warn!(
+                "Skipping canonicalization follow-up: boundary attack already hit wall-clock timeout"
+            );
+            return Ok(());
         }
 
         self.run_canonicalization_attack(config, AttackType::Boundary, progress)?;

@@ -350,6 +350,12 @@ fn run_id_epoch_dir_is_unique_for_same_second_different_runs() {
     let dir_b = run_id_epoch_dir(run_b).expect("dir for run_b");
 
     assert_ne!(dir_a, dir_b, "same-second runs must not share one folder");
-    assert!(dir_a.starts_with("report_"), "dir_a should keep report_ prefix");
-    assert!(dir_b.starts_with("report_"), "dir_b should keep report_ prefix");
+    assert!(
+        dir_a.starts_with("report_"),
+        "dir_a should keep report_ prefix"
+    );
+    assert!(
+        dir_b.starts_with("report_"),
+        "dir_b should keep report_ prefix"
+    );
 }

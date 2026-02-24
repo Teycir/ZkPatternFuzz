@@ -1037,9 +1037,10 @@ impl FuzzingEngine {
             Self::additional_f64(additional, "spec_inference_time_budget_fraction")
                 .unwrap_or(0.30)
                 .clamp(0.05, 0.90);
-        let min_ms_per_sample = Self::additional_u64(additional, "spec_inference_min_ms_per_sample")
-            .unwrap_or(120)
-            .max(1);
+        let min_ms_per_sample =
+            Self::additional_u64(additional, "spec_inference_min_ms_per_sample")
+                .unwrap_or(120)
+                .max(1);
         let min_ms_per_violation_attempt =
             Self::additional_u64(additional, "spec_inference_min_ms_per_violation_attempt")
                 .unwrap_or(220)
@@ -1060,7 +1061,9 @@ impl FuzzingEngine {
 
             let capped_samples = sample_count.min(sample_cap).max(1);
             let capped_violation_attempts = configured_violation_attempts.min(violation_cap).max(1);
-            if capped_samples < sample_count || capped_violation_attempts < configured_violation_attempts {
+            if capped_samples < sample_count
+                || capped_violation_attempts < configured_violation_attempts
+            {
                 tracing::warn!(
                     "Spec inference runtime budget applied: samples {} -> {}, violation_attempts {} -> {} (budget={:.2}s, fraction={:.2})",
                     sample_count,

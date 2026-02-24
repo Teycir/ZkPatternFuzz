@@ -655,7 +655,10 @@ fn terminate_timed_out_child(child: &mut std::process::Child) {
             );
         }
         Err(e) => {
-            tracing::warn!("Failed waiting on timed-out worker process after kill: {}", e);
+            tracing::warn!(
+                "Failed waiting on timed-out worker process after kill: {}",
+                e
+            );
         }
     }
 }

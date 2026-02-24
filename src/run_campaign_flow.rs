@@ -116,6 +116,7 @@ pub(crate) async fn run_campaign(
     options: CampaignRunOptions,
 ) -> anyhow::Result<()> {
     let started_utc = Utc::now();
+    let run_wall_clock_started = std::time::Instant::now();
     let command = options.command_label;
     let run_id = make_run_id(command, Some(config_path));
     let mut stage: &'static str;
@@ -456,6 +457,41 @@ pub(crate) async fn run_campaign(
             imported_formal_invariants,
         );
         return Ok(());
+    }
+
+    if let Some(total_timeout) = options.timeout {
+        // Reserve a small tail budget for final report/save cleanup so the full
+        // command respects the user wall-clock timeout.
+        const RUN_TIMEOUT_TAIL_RESERVE_SECS: u64 = 2;
+        let total_timeout = total_timeout.max(1);
+        let elapsed = run_wall_clock_started.elapsed();
+        let consumed_ceil = elapsed
+            .as_secs()
+            .saturating_add(u64::from(elapsed.subsec_nanos() > 0));
+        let consumed_with_reserve = consumed_ceil.saturating_add(RUN_TIMEOUT_TAIL_RESERVE_SECS);
+
+        if consumed_with_reserve >= total_timeout {
+            stage = "preflight_timeout";
+            let reason = format!(
+                "Global wall-clock timeout exhausted before engine start (budget={}s, consumed~{}s, reserve={}s)",
+                total_timeout, consumed_ceil, RUN_TIMEOUT_TAIL_RESERVE_SECS
+            );
+            write_failed_mode_run_artifact_with_reason(&lifecycle_ctx, stage, reason.clone(), None);
+            anyhow::bail!("{}", reason);
+        }
+
+        let remaining = total_timeout.saturating_sub(consumed_with_reserve).max(1);
+        config.campaign.parameters.additional.insert(
+            "fuzzing_timeout_seconds".to_string(),
+            serde_yaml::Value::Number(serde_yaml::Number::from(remaining)),
+        );
+        tracing::info!(
+            "Adjusted engine wall-clock budget to {}s (consumed~{}s setup/preflight + {}s tail reserve, requested total {}s)",
+            remaining,
+            consumed_ceil,
+            RUN_TIMEOUT_TAIL_RESERVE_SECS,
+            total_timeout
+        );
     }
 
     // While the engine is running, periodically mirror progress snapshots (progress.json) into

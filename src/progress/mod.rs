@@ -31,9 +31,7 @@ impl ProgressReporter {
             )
             .map(|style| style.progress_chars("█▓▒░"))
             .unwrap_or_else(|_| ProgressStyle::default_bar());
-        main_bar.set_style(
-            main_style,
-        );
+        main_bar.set_style(main_style);
         main_bar.set_message(format!("Fuzzing: {}", campaign_name));
 
         // Stats bar (spinner with stats)
@@ -41,9 +39,7 @@ impl ProgressReporter {
         let stats_style = ProgressStyle::default_spinner()
             .template("{spinner:.yellow} {msg}")
             .unwrap_or_else(|_| ProgressStyle::default_spinner());
-        stats_bar.set_style(
-            stats_style,
-        );
+        stats_bar.set_style(stats_style);
         stats_bar.enable_steady_tick(Duration::from_millis(100));
 
         Self {

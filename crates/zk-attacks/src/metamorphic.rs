@@ -679,13 +679,18 @@ impl MetamorphicOracle {
                     } else {
                         (
                             false,
-                            Some("Execution failed differently between equivalent inputs".to_string()),
+                            Some(
+                                "Execution failed differently between equivalent inputs"
+                                    .to_string(),
+                            ),
                         )
                     }
                 } else {
                     (
                         false,
-                        Some("Execution success/failure mismatch for equivalent inputs".to_string()),
+                        Some(
+                            "Execution success/failure mismatch for equivalent inputs".to_string(),
+                        ),
                     )
                 }
             }

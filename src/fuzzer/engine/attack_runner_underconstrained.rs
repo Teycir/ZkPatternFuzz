@@ -104,11 +104,13 @@ impl FuzzingEngine {
         };
 
         let mut test_cases = Vec::with_capacity(witness_pairs);
+        let mut timed_out = false;
         for _ in 0..witness_pairs {
             if self.wall_clock_timeout_reached() {
                 tracing::warn!(
                     "Stopping underconstrained attack witness generation early: wall-clock timeout reached"
                 );
+                timed_out = true;
                 break;
             }
             let mut tc = self.generate_test_case();
@@ -144,10 +146,15 @@ impl FuzzingEngine {
                 tracing::warn!(
                     "Stopping underconstrained attack execution early: wall-clock timeout reached"
                 );
+                timed_out = true;
                 break;
             }
 
-            let chunk_end = (chunk_start + execution_chunk_size).min(test_cases.len());
+            let chunk_size = match self.wall_clock_remaining() {
+                Some(remaining) if remaining <= Duration::from_secs(15) => 1usize,
+                _ => execution_chunk_size,
+            };
+            let chunk_end = (chunk_start + chunk_size).min(test_cases.len());
             let chunk = &test_cases[chunk_start..chunk_end];
 
             let indexed_results: Vec<(usize, ExecutionResult, Duration)> =
@@ -193,6 +200,7 @@ impl FuzzingEngine {
                     tracing::warn!(
                         "Stopping underconstrained attack post-processing early: wall-clock timeout reached"
                     );
+                    timed_out = true;
                     break 'execution_loop;
                 }
             }
@@ -202,6 +210,13 @@ impl FuzzingEngine {
 
         // Check for collisions
         for (_hash, witness_indices) in output_map {
+            if self.wall_clock_timeout_reached() {
+                tracing::warn!(
+                    "Stopping underconstrained collision scan early: wall-clock timeout reached"
+                );
+                timed_out = true;
+                break;
+            }
             // Collect TestCases for indices that produced same output
             let witnesses: Vec<&TestCase> = witness_indices
                 .iter()
@@ -235,6 +250,13 @@ impl FuzzingEngine {
                     p.log_finding("CRITICAL", &finding.description);
                 }
             }
+        }
+
+        if timed_out {
+            tracing::warn!(
+                "Skipping frozen-wire follow-up: underconstrained attack already hit wall-clock timeout"
+            );
+            return Ok(());
         }
 
         self.run_frozen_wire_detector(config, progress)?;

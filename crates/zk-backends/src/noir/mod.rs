@@ -420,7 +420,9 @@ impl NoirTarget {
         let _guard = match noir_io_lock().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("noir IO lock poisoned during compile; continuing with recovered lock");
+                tracing::warn!(
+                    "noir IO lock poisoned during compile; continuing with recovered lock"
+                );
                 poisoned.into_inner()
             }
         };
@@ -878,7 +880,9 @@ impl NoirTarget {
         let _guard = match noir_io_lock().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("noir IO lock poisoned during execute; continuing with recovered lock");
+                tracing::warn!(
+                    "noir IO lock poisoned during execute; continuing with recovered lock"
+                );
                 poisoned.into_inner()
             }
         };
@@ -1069,10 +1073,7 @@ impl TargetCircuit for NoirTarget {
     }
 
     fn num_constraints(&self) -> usize {
-        self.metadata
-            .as_ref()
-            .map(|m| m.num_opcodes)
-            .unwrap_or(0)
+        self.metadata.as_ref().map(|m| m.num_opcodes).unwrap_or(0)
     }
 
     fn num_private_inputs(&self) -> usize {
@@ -1118,7 +1119,9 @@ impl TargetCircuit for NoirTarget {
         let _guard = match noir_io_lock().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("noir IO lock poisoned during prove; continuing with recovered lock");
+                tracing::warn!(
+                    "noir IO lock poisoned during prove; continuing with recovered lock"
+                );
                 poisoned.into_inner()
             }
         };
@@ -1180,7 +1183,9 @@ impl TargetCircuit for NoirTarget {
         let _guard = match noir_io_lock().lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::warn!("noir IO lock poisoned during verify; continuing with recovered lock");
+                tracing::warn!(
+                    "noir IO lock poisoned during verify; continuing with recovered lock"
+                );
                 poisoned.into_inner()
             }
         };
