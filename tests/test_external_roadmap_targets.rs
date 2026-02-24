@@ -60,8 +60,12 @@ fn external_roadmap_matrix_matches_inventory_targets() {
 
     let mut matrix_by_ext_id: BTreeMap<String, &MatrixTarget> = BTreeMap::new();
     for matrix_target in &matrix.targets {
-        let ext_id = ext_id_from_matrix_name(&matrix_target.name)
-            .unwrap_or_else(|| panic!("matrix target '{}' missing extNNN prefix", matrix_target.name));
+        let ext_id = ext_id_from_matrix_name(&matrix_target.name).unwrap_or_else(|| {
+            panic!(
+                "matrix target '{}' missing extNNN prefix",
+                matrix_target.name
+            )
+        });
         assert!(
             matrix_target.enabled,
             "matrix target '{}' must be enabled for manual roadmap audits",
@@ -101,7 +105,8 @@ fn external_roadmap_matrix_matches_inventory_targets() {
             "framework mismatch for {}",
             inv.target_id
         );
-        let expected_target_circuit = format!("{}/{}", inv.repo_path.trim_end_matches('/'), inv.entrypoint);
+        let expected_target_circuit =
+            format!("{}/{}", inv.repo_path.trim_end_matches('/'), inv.entrypoint);
         assert_eq!(
             matrix_target.target_circuit, expected_target_circuit,
             "target_circuit mismatch for {}",

@@ -38,8 +38,9 @@ mod zk0d_batch_under_test {
 
         #[test]
         fn resolve_scan_output_root_uses_cli_override() {
-            let root = resolve_scan_output_root(Some("artifacts/external_targets/manual/scan_output"))
-                .expect("resolve output root");
+            let root =
+                resolve_scan_output_root(Some("artifacts/external_targets/manual/scan_output"))
+                    .expect("resolve output root");
             assert_eq!(
                 root,
                 std::path::PathBuf::from("artifacts/external_targets/manual/scan_output")

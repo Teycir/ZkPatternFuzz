@@ -332,11 +332,8 @@ fn main() -> anyhow::Result<()> {
         .with_context(|| format!("Failed to read '{}'", args.matrix))?;
     let matrix: MatrixFile = serde_yaml::from_str(&matrix_raw)
         .with_context(|| format!("Failed to parse matrix YAML '{}'", args.matrix))?;
-    let enabled_targets: Vec<MatrixTarget> = matrix
-        .targets
-        .into_iter()
-        .filter(|t| t.enabled)
-        .collect();
+    let enabled_targets: Vec<MatrixTarget> =
+        matrix.targets.into_iter().filter(|t| t.enabled).collect();
     if enabled_targets.is_empty() {
         anyhow::bail!("No enabled targets in matrix '{}'", args.matrix);
     }
