@@ -58,6 +58,11 @@ fn legacy_subcommand_help_smoke() {
 
 #[test]
 fn config_without_subcommand_defaults_to_run_mode() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let signal_dir = temp.path().join("run_signals");
+    let cache_dir = temp.path().join("build_cache");
+    let output_root = temp.path().join("scan_output");
+
     let config_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("campaigns")
         .join("examples")
@@ -73,6 +78,9 @@ fn config_without_subcommand_defaults_to_run_mode() {
         .arg(config_path)
         .arg("--dry-run")
         .arg("--simple-progress")
+        .env("ZKF_RUN_SIGNAL_DIR", &signal_dir)
+        .env("ZKF_BUILD_CACHE_DIR", &cache_dir)
+        .env("ZKF_SCAN_OUTPUT_ROOT", &output_root)
         .output()
         .expect("Failed to run legacy default mode");
 

@@ -1,9 +1,50 @@
+use anyhow::Context;
 use chrono::{DateTime, Utc};
+use std::path::PathBuf;
 use zk_fuzzer::config::{apply_profile, FuzzConfig, ProfileName};
 
 use crate::run_lifecycle::{write_failed_run_artifact_with_error, FailedRunArtifactErrorContext};
 use crate::scan_output::apply_scan_output_suffix_if_present;
 use crate::set_run_log_context_for_campaign;
+
+const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
+
+fn required_scan_output_root() -> anyhow::Result<PathBuf> {
+    let raw = std::env::var(SCAN_OUTPUT_ROOT_ENV).with_context(|| {
+        format!(
+            "{} is required and must point to a writable path",
+            SCAN_OUTPUT_ROOT_ENV
+        )
+    })?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("{} is set but empty", SCAN_OUTPUT_ROOT_ENV);
+    }
+
+    let path = PathBuf::from(trimmed);
+    let resolved = if path.is_absolute() {
+        path
+    } else {
+        std::env::current_dir()
+            .with_context(|| {
+                format!(
+                    "cannot resolve current directory for {} '{}'",
+                    SCAN_OUTPUT_ROOT_ENV,
+                    path.display()
+                )
+            })?
+            .join(path)
+    };
+
+    std::fs::create_dir_all(&resolved).with_context(|| {
+        format!(
+            "cannot create {} '{}'",
+            SCAN_OUTPUT_ROOT_ENV,
+            resolved.display()
+        )
+    })?;
+    Ok(resolved)
+}
 
 pub(crate) fn announce_report_dir_and_bind_log_context(
     dry_run: bool,
@@ -79,6 +120,9 @@ pub(crate) fn load_campaign_config_with_optional_profile(
             }
         }
     }
+
+    // Runtime contract: output root comes from environment only.
+    config.reporting.output_dir = required_scan_output_root()?;
 
     apply_scan_output_suffix_if_present(&mut config)?;
     Ok(config)

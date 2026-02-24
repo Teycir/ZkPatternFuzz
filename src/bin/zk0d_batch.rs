@@ -12,6 +12,8 @@ use std::time::Instant;
 
 const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
 const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
+const RUN_SIGNAL_DIR_ENV: &str = "ZKF_RUN_SIGNAL_DIR";
+const BUILD_CACHE_DIR_ENV: &str = "ZKF_BUILD_CACHE_DIR";
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
 const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
 const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
@@ -94,7 +96,7 @@ struct Args {
     #[arg(long, default_value_t = 1_800)]
     timeout: u64,
 
-    /// Root directory for scan output artifacts (defaults to HOME/ZkFuzz)
+    /// Root directory for scan output artifacts (overrides ZKF_SCAN_OUTPUT_ROOT)
     #[arg(long)]
     output_root: Option<String>,
 
@@ -823,8 +825,12 @@ fn run_scan(
     output_suffix: &str,
 ) -> anyhow::Result<ScanRunResult> {
     let family_str = family.as_str();
+    let run_signal_dir = run_cfg.scan_output_root.join("run_signals");
+    let build_cache_dir = run_cfg.scan_output_root.join("_build_cache");
     let mut cmd = Command::new(run_cfg.bin_path);
-    cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.scan_output_root);
+    cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.scan_output_root)
+        .env(RUN_SIGNAL_DIR_ENV, &run_signal_dir)
+        .env(BUILD_CACHE_DIR_ENV, &build_cache_dir);
     if let Some(run_root) = run_cfg.scan_run_root {
         cmd.env(SCAN_RUN_ROOT_ENV, run_root);
     }
@@ -864,9 +870,13 @@ fn run_scan(
             String::new()
         };
         println!(
-            "[DRY RUN] {}={} {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}",
+            "[DRY RUN] {}={} {}={} {}={} {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}",
             SCAN_OUTPUT_ROOT_ENV,
             run_cfg.scan_output_root.display(),
+            RUN_SIGNAL_DIR_ENV,
+            run_signal_dir.display(),
+            BUILD_CACHE_DIR_ENV,
+            build_cache_dir.display(),
             run_cfg.bin_path.display(),
             template.path.display(),
             family_str,
@@ -1005,10 +1015,20 @@ fn resolve_scan_output_root(override_root: Option<&str>) -> anyhow::Result<PathB
         return Ok(PathBuf::from(trimmed));
     }
 
-    Ok(match dirs::home_dir() {
-        Some(home) => home.join("ZkFuzz"),
-        None => PathBuf::from("./ZkFuzz"),
-    })
+    let raw = std::env::var(SCAN_OUTPUT_ROOT_ENV).with_context(|| {
+        format!(
+            "{} is required when --output-root is not provided",
+            SCAN_OUTPUT_ROOT_ENV
+        )
+    })?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!(
+            "{} is set but empty; provide a writable output root",
+            SCAN_OUTPUT_ROOT_ENV
+        );
+    }
+    Ok(PathBuf::from(trimmed))
 }
 
 fn reserve_batch_scan_run_root(artifacts_root: &Path) -> anyhow::Result<String> {

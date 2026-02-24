@@ -16,49 +16,7 @@ pub(crate) fn read_optional_env(name: &str) -> Option<String> {
 }
 
 pub(crate) fn run_signal_dir() -> PathBuf {
-    // Base folder where "easy to find" run folders are written.
-    //
-    // Default matches your requested structure:
-    //   /home/<user>/ZkFuzz/report_<epoch>/
-    //
-    // Override with:
-    //   ZKF_RUN_SIGNAL_DIR=/some/other/base
-    //
-    // If writing outside the repo is not allowed in your environment, set it back to:
-    //   ZKF_RUN_SIGNAL_DIR=reports/_run_signals
-    let path = if let Some(v) = read_optional_env("ZKF_RUN_SIGNAL_DIR") {
-        let trimmed = v.trim();
-        if !trimmed.is_empty() {
-            PathBuf::from(trimmed)
-        } else {
-            eprintln!("[zk-fuzzer] ERROR: ZKF_RUN_SIGNAL_DIR is set but empty");
-            std::process::exit(2);
-        }
-    } else if let Some(home) = dirs::home_dir() {
-        home.join("ZkFuzz")
-    } else {
-        eprintln!(
-            "[zk-fuzzer] ERROR: cannot resolve a home directory (set ZKF_RUN_SIGNAL_DIR explicitly)"
-        );
-        std::process::exit(2);
-    };
-
-    let path = if path.is_absolute() {
-        path
-    } else {
-        let cwd = match std::env::current_dir() {
-            Ok(cwd) => cwd,
-            Err(err) => {
-                eprintln!(
-                    "[zk-fuzzer] ERROR: cannot resolve current directory for run-signal dir '{}': {}",
-                    path.display(),
-                    err
-                );
-                std::process::exit(2);
-            }
-        };
-        cwd.join(path)
-    };
+    let path = required_env_path("ZKF_RUN_SIGNAL_DIR");
 
     if let Err(err) = std::fs::create_dir_all(&path) {
         eprintln!(
@@ -72,45 +30,7 @@ pub(crate) fn run_signal_dir() -> PathBuf {
 }
 
 fn build_cache_dir() -> PathBuf {
-    // Build artifacts are large and should not live inside engagement report folders.
-    // Default:
-    //   /home/<user>/ZkFuzz/_build_cache/
-    //
-    // Override with:
-    //   ZKF_BUILD_CACHE_DIR=/some/other/path
-    if let Some(v) = read_optional_env("ZKF_BUILD_CACHE_DIR") {
-        let trimmed = v.trim();
-        if !trimmed.is_empty() {
-            let raw_path = PathBuf::from(trimmed);
-            let path = if raw_path.is_absolute() {
-                raw_path
-            } else {
-                let cwd = match std::env::current_dir() {
-                    Ok(cwd) => cwd,
-                    Err(err) => {
-                        eprintln!(
-                            "[zk-fuzzer] ERROR: cannot resolve current directory for build cache dir '{}': {}",
-                            raw_path.display(),
-                            err
-                        );
-                        std::process::exit(2);
-                    }
-                };
-                cwd.join(raw_path)
-            };
-            if let Err(err) = std::fs::create_dir_all(&path) {
-                eprintln!(
-                    "[zk-fuzzer] ERROR: cannot create build cache dir '{}': {}",
-                    path.display(),
-                    err
-                );
-                std::process::exit(2);
-            }
-            return path;
-        }
-    }
-
-    let path = run_signal_dir().join("_build_cache");
+    let path = required_env_path("ZKF_BUILD_CACHE_DIR");
     if let Err(err) = std::fs::create_dir_all(&path) {
         eprintln!(
             "[zk-fuzzer] ERROR: cannot create build cache dir '{}': {}",
@@ -120,6 +40,48 @@ fn build_cache_dir() -> PathBuf {
         std::process::exit(2);
     }
     path
+}
+
+fn required_env_path(name: &str) -> PathBuf {
+    let raw = match std::env::var(name) {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => {
+            eprintln!(
+                "[zk-fuzzer] ERROR: {} is required and must point to a writable path",
+                name
+            );
+            std::process::exit(2);
+        }
+        Err(err) => {
+            eprintln!("[zk-fuzzer] ERROR: invalid {} value: {}", name, err);
+            std::process::exit(2);
+        }
+    };
+
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        eprintln!("[zk-fuzzer] ERROR: {} is set but empty", name);
+        std::process::exit(2);
+    }
+
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute() {
+        path
+    } else {
+        let cwd = match std::env::current_dir() {
+            Ok(cwd) => cwd,
+            Err(err) => {
+                eprintln!(
+                    "[zk-fuzzer] ERROR: cannot resolve current directory for {} '{}': {}",
+                    name,
+                    path.display(),
+                    err
+                );
+                std::process::exit(2);
+            }
+        };
+        cwd.join(path)
+    }
 }
 
 pub(crate) fn normalize_build_paths(config: &mut FuzzConfig, run_id: &str) {

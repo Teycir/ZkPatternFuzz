@@ -1,4 +1,5 @@
 use crate::cli::ScanFamily;
+use anyhow::Context;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -7,10 +8,50 @@ pub(crate) struct ScanFindingsSummary {
 }
 
 pub(crate) fn scan_default_output_dir() -> PathBuf {
-    match dirs::home_dir() {
-        Some(home) => home.join("ZkFuzz"),
-        None => PathBuf::from("./ZkFuzz"),
+    let raw = std::env::var("ZKF_SCAN_OUTPUT_ROOT").unwrap_or_else(|err| {
+        eprintln!(
+            "[zk-fuzzer] ERROR: ZKF_SCAN_OUTPUT_ROOT is required for scan output: {}",
+            err
+        );
+        std::process::exit(2);
+    });
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        eprintln!("[zk-fuzzer] ERROR: ZKF_SCAN_OUTPUT_ROOT is set but empty");
+        std::process::exit(2);
     }
+
+    let path = PathBuf::from(trimmed);
+    let resolved = if path.is_absolute() {
+        path
+    } else {
+        let cwd = std::env::current_dir().unwrap_or_else(|err| {
+            eprintln!(
+                "[zk-fuzzer] ERROR: cannot resolve current directory for ZKF_SCAN_OUTPUT_ROOT '{}': {}",
+                path.display(),
+                err
+            );
+            std::process::exit(2);
+        });
+        cwd.join(path)
+    };
+
+    std::fs::create_dir_all(&resolved)
+        .with_context(|| {
+            format!(
+                "cannot create output root '{}'",
+                resolved.display()
+            )
+        })
+        .unwrap_or_else(|err| {
+            eprintln!(
+                "[zk-fuzzer] ERROR: cannot initialize ZKF_SCAN_OUTPUT_ROOT '{}': {}",
+                resolved.display(),
+                err
+            );
+            std::process::exit(2);
+        });
+    resolved
 }
 
 fn read_scan_progress_step_fraction(progress_path: &Path) -> Option<String> {
@@ -112,7 +153,7 @@ where
         ScanFamily::Multi => {
             if mono_has_explicit_corpus_dir {
                 anyhow::bail!(
-                    "--corpus-dir is mono-only. Multi/chain scans use chain corpus under ~/ZkFuzz."
+                    "--corpus-dir is mono-only. Multi/chain scans use chain corpus under ZKF_SCAN_OUTPUT_ROOT."
                 );
             }
             run_scan_mode_with_progress("multi", output_dir, multi_run()).await
