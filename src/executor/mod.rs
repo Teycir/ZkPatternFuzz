@@ -1019,12 +1019,14 @@ impl CircuitExecutor for CircomExecutor {
 
 impl ConstraintInspector for CircomExecutor {
     fn get_constraints(&self) -> Vec<ConstraintEquation> {
-        self.constraints
-            .get()
-            .expect(
-                "Circom constraints cache not initialized; executor construction must preload constraints",
-            )
-            .clone()
+        if let Some(constraints) = self.constraints.get() {
+            constraints.clone()
+        } else {
+            tracing::error!(
+                "Circom constraints cache not initialized; returning empty constraint set"
+            );
+            Vec::new()
+        }
     }
 
     fn check_constraints(&self, witness: &[FieldElement]) -> Vec<ConstraintResult> {
@@ -1787,10 +1789,13 @@ impl CairoExecutor {
         inputs: &[FieldElement],
         outputs: &[FieldElement],
     ) -> bool {
-        let cached = *self
-            .cairo1_runtime_probe_passed
-            .lock()
-            .expect("cairo1 runtime probe lock poisoned");
+        let cached = match self.cairo1_runtime_probe_passed.lock() {
+            Ok(guard) => *guard,
+            Err(poisoned) => {
+                tracing::warn!("cairo1 runtime probe lock poisoned; reusing recovered flag");
+                *poisoned.into_inner()
+            }
+        };
         if cached {
             return true;
         }
@@ -1814,10 +1819,16 @@ impl CairoExecutor {
             }
         };
         if verified {
-            *self
-                .cairo1_runtime_probe_passed
-                .lock()
-                .expect("cairo1 runtime probe lock poisoned") = true;
+            let mut guard = match self.cairo1_runtime_probe_passed.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    tracing::warn!(
+                        "cairo1 runtime probe lock poisoned while storing probe result; continuing"
+                    );
+                    poisoned.into_inner()
+                }
+            };
+            *guard = true;
         }
         verified
     }

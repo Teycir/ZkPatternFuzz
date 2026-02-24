@@ -25,20 +25,24 @@ impl ProgressReporter {
 
         // Main progress bar
         let main_bar = multi.add(ProgressBar::new(total_iterations));
+        let main_style = ProgressStyle::default_bar()
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) {msg}",
+            )
+            .map(|style| style.progress_chars("█▓▒░"))
+            .unwrap_or_else(|_| ProgressStyle::default_bar());
         main_bar.set_style(
-            ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) {msg}")
-                .unwrap()
-                .progress_chars("█▓▒░"),
+            main_style,
         );
         main_bar.set_message(format!("Fuzzing: {}", campaign_name));
 
         // Stats bar (spinner with stats)
         let stats_bar = multi.add(ProgressBar::new_spinner());
+        let stats_style = ProgressStyle::default_spinner()
+            .template("{spinner:.yellow} {msg}")
+            .unwrap_or_else(|_| ProgressStyle::default_spinner());
         stats_bar.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.yellow} {msg}")
-                .unwrap(),
+            stats_style,
         );
         stats_bar.enable_steady_tick(Duration::from_millis(100));
 

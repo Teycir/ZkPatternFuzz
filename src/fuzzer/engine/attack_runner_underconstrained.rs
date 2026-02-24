@@ -79,6 +79,15 @@ impl FuzzingEngine {
             self.config.inputs.len()
         );
 
+        if public_input_positions.is_empty() {
+            tracing::warn!(
+                "Skipping witness-collision underconstrained check: target exposes 0 public inputs, \
+                 so output collisions across different private witnesses are expected."
+            );
+            self.run_frozen_wire_detector(config, progress)?;
+            return Ok(());
+        }
+
         // Generate fixed public inputs that will be shared across all test cases
         let fixed_public = if public_input_positions.is_empty() {
             None
@@ -210,7 +219,10 @@ impl FuzzingEngine {
                     poc: super::ProofOfConcept {
                         witness_a: witnesses[0].inputs.clone(),
                         witness_b: Some(witnesses[1].inputs.clone()),
-                        public_inputs: vec![],
+                        public_inputs: public_input_positions
+                            .iter()
+                            .filter_map(|&pos| witnesses[0].inputs.get(pos).cloned())
+                            .collect(),
                         proof: None,
                     },
                     location: None,

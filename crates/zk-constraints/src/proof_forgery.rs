@@ -204,7 +204,21 @@ impl ProofForgeryDetector {
 
         stats.num_alternatives = 1;
 
-        let alt_witness = alt_result.alternative_witness.as_ref().unwrap();
+        let Some(alt_witness) = alt_result.alternative_witness.as_ref() else {
+            stats.total_time_ms = start.elapsed().as_millis() as u64;
+            return ProofForgeryResult {
+                is_underconstrained: false,
+                forgery_verified: false,
+                original_public_inputs: self.extract_public_inputs(witness),
+                original_public_outputs: self.extract_public_outputs(witness),
+                alternative_private_inputs: None,
+                verification_result: None,
+                stats,
+                error: Some(
+                    "Alternative witness was expected but missing from solver result".to_string(),
+                ),
+            };
+        };
         let alt_private = self.extract_private_inputs(alt_witness);
 
         // Step 2: If we have proving infrastructure, generate and verify proof

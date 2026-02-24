@@ -146,8 +146,13 @@ impl MerkleOracle {
             let lengths: Vec<_> = self.path_lengths.keys().collect();
             if lengths.len() == 2 {
                 // Auto-detect expected depth from most common length
-                let (len1, count1) = self.path_lengths.iter().next().unwrap();
-                let (len2, count2) = self.path_lengths.iter().nth(1).unwrap();
+                let mut lengths_iter = self.path_lengths.iter();
+                let Some((len1, count1)) = lengths_iter.next() else {
+                    return None;
+                };
+                let Some((len2, count2)) = lengths_iter.next() else {
+                    return None;
+                };
 
                 // If one is much more common, the other might be a bypass
                 if *count1 > *count2 * 10 && path_len == *len2 {

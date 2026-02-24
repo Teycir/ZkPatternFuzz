@@ -121,7 +121,9 @@ impl LookupFuzzer {
             numeric_values.dedup();
 
             let min = numeric_values[0];
-            let max = *numeric_values.last().expect("numeric_values not empty");
+            let Some(&max) = numeric_values.last() else {
+                continue;
+            };
             let present = numeric_values.iter().copied().collect::<HashSet<_>>();
 
             if self.config.fuzz_boundary_values {

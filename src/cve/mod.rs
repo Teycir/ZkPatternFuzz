@@ -1518,9 +1518,13 @@ impl CveOracle {
         test_case: &TestCase,
         output: &[FieldElement],
     ) -> Option<Finding> {
-        let mut guard = oracle
-            .lock()
-            .expect("semantic oracle state mutex poisoned; aborting CVE check");
+        let mut guard = match oracle.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("Semantic oracle state mutex poisoned; continuing with recovered state");
+                poisoned.into_inner()
+            }
+        };
         guard.check(test_case, output)
     }
 

@@ -84,3 +84,28 @@ fn test_metamorphic_relation() {
     assert_eq!(relation.severity, Severity::Critical);
     assert!(relation.description.is_some());
 }
+
+#[test]
+fn test_output_unchanged_passes_when_both_fail_same_way() {
+    let oracle = MetamorphicOracle::new();
+    let base = ExecutionResult::failure("constraint unsatisfied".to_string());
+    let transformed = ExecutionResult::failure("constraint unsatisfied".to_string());
+
+    let (passed, reason) = oracle.check_expected(&base, &transformed, &ExpectedBehavior::OutputUnchanged);
+    assert!(passed);
+    assert!(reason.is_none());
+}
+
+#[test]
+fn test_output_unchanged_fails_when_both_fail_differently() {
+    let oracle = MetamorphicOracle::new();
+    let base = ExecutionResult::failure("constraint unsatisfied".to_string());
+    let transformed = ExecutionResult::failure("index out of bounds".to_string());
+
+    let (passed, reason) = oracle.check_expected(&base, &transformed, &ExpectedBehavior::OutputUnchanged);
+    assert!(!passed);
+    assert_eq!(
+        reason.as_deref(),
+        Some("Execution failed differently between equivalent inputs")
+    );
+}

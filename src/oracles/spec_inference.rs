@@ -309,8 +309,9 @@ impl SpecInferenceOracle {
                 continue;
             }
 
-            let min = *values.iter().min().unwrap();
-            let max = *values.iter().max().unwrap();
+            let (Some(&min), Some(&max)) = (values.iter().min(), values.iter().max()) else {
+                continue;
+            };
             let unique_count = values
                 .iter()
                 .copied()
@@ -377,10 +378,9 @@ impl SpecInferenceOracle {
                 continue;
             }
 
-            let min = *values
-                .iter()
-                .min()
-                .expect("values is non-empty when inferring non-zero constraints");
+            let Some(&min) = values.iter().min() else {
+                continue;
+            };
             if min > 3 {
                 // No evidence of a small-domain input; skip to reduce false positives.
                 continue;

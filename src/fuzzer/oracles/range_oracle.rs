@@ -215,14 +215,12 @@ impl RangeProofOracle {
             .accepted_values
             .iter()
             .map(|(v, _)| v)
-            .min()
-            .expect("accepted_values is non-empty due to length check");
+            .min()?;
         let max_accepted = self
             .accepted_values
             .iter()
             .map(|(v, _)| v)
-            .max()
-            .expect("accepted_values is non-empty due to length check");
+            .max()?;
 
         // If current value is way outside the "normal" range, flag it
         let range = max_accepted - min_accepted;

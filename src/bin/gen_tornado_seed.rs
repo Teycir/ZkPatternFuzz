@@ -486,10 +486,12 @@ fn load_input_json(path: &str) -> Result<Map<String, Value>> {
         Value::Object(map) => map,
         _ => bail!("input json must be object or array"),
     };
-    Ok(normalize_value(Value::Object(obj))
+    let normalized = normalize_value(Value::Object(obj));
+    let object = normalized
         .as_object()
         .cloned()
-        .expect("normalize_value(Value::Object(_)) always returns Value::Object"))
+        .ok_or_else(|| anyhow::anyhow!("normalized input is not a JSON object"))?;
+    Ok(object)
 }
 
 fn normalize_value(value: Value) -> Value {

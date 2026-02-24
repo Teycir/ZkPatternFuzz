@@ -306,8 +306,9 @@ impl ChainCorpus {
                 .or_default()
                 .insert(e.coverage_bits);
 
-            let meta = per_chain.get_mut(&e.spec_name).expect("just inserted");
-            meta.max_depth = meta.max_depth.max(e.depth_reached);
+            if let Some(meta) = per_chain.get_mut(&e.spec_name) {
+                meta.max_depth = meta.max_depth.max(e.depth_reached);
+            }
         }
 
         for (name, uniq) in per_chain_unique {

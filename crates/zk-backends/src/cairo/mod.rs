@@ -166,17 +166,24 @@ impl CairoTarget {
     }
 
     pub fn latest_runtime_coverage_sample(&self) -> Option<CairoRuntimeCoverageSample> {
-        self.runtime_coverage_sample
-            .lock()
-            .expect("cairo runtime coverage sample lock poisoned")
-            .clone()
+        match self.runtime_coverage_sample.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => {
+                tracing::warn!("cairo runtime coverage sample lock poisoned; returning recovered sample");
+                poisoned.into_inner().clone()
+            }
+        }
     }
 
     fn store_runtime_coverage_sample(&self, sample: Option<CairoRuntimeCoverageSample>) {
-        *self
-            .runtime_coverage_sample
-            .lock()
-            .expect("cairo runtime coverage sample lock poisoned") = sample;
+        let mut guard = match self.runtime_coverage_sample.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("cairo runtime coverage sample lock poisoned; storing recovered sample");
+                poisoned.into_inner()
+            }
+        };
+        *guard = sample;
     }
 
     /// Detect Cairo version from the source file
@@ -456,9 +463,13 @@ impl CairoTarget {
             anyhow::bail!("Program not compiled. Call compile() first.");
         }
 
-        let _guard = cairo_io_lock()
-            .lock()
-            .expect("cairo IO lock poisoned during execute");
+        let _guard = match cairo_io_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("cairo IO lock poisoned during execute; continuing with recovered lock");
+                poisoned.into_inner()
+            }
+        };
         self.execute_cairo_inner(inputs)
     }
 
@@ -899,8 +910,13 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn field_modulus(&self) -> [u8; 32] {
-        let decoded =
-            hex::decode(STARK252_MODULUS_HEX).expect("STARK252 modulus constant must be valid hex");
+        let decoded = match hex::decode(STARK252_MODULUS_HEX) {
+            Ok(decoded) => decoded,
+            Err(err) => {
+                tracing::error!("Failed to decode STARK252 modulus constant: {}", err);
+                Vec::new()
+            }
+        };
         let mut modulus = [0u8; 32];
         let start = 32usize.saturating_sub(decoded.len());
         modulus[start..].copy_from_slice(&decoded[..decoded.len().min(32)]);
@@ -915,21 +931,21 @@ impl TargetCircuit for CairoTarget {
         self.metadata
             .as_ref()
             .map(|m| m.num_steps)
-            .expect("Cairo metadata unavailable; call compile() before querying num_constraints")
+            .unwrap_or(0)
     }
 
     fn num_private_inputs(&self) -> usize {
         self.metadata
             .as_ref()
             .map(|m| m.num_inputs)
-            .expect("Cairo metadata unavailable; call compile() before querying num_private_inputs")
+            .unwrap_or(0)
     }
 
     fn num_public_inputs(&self) -> usize {
         self.metadata
             .as_ref()
             .map(|m| m.num_outputs)
-            .expect("Cairo metadata unavailable; call compile() before querying num_public_inputs")
+            .unwrap_or(0)
     }
 
     fn execute(&self, inputs: &[FieldElement]) -> Result<Vec<FieldElement>> {
@@ -937,9 +953,13 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn prove(&self, witness: &[FieldElement]) -> Result<Vec<u8>> {
-        let _guard = cairo_io_lock()
-            .lock()
-            .expect("cairo IO lock poisoned during prove");
+        let _guard = match cairo_io_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("cairo IO lock poisoned during prove; continuing with recovered lock");
+                poisoned.into_inner()
+            }
+        };
 
         if self.cairo_version == CairoVersion::Cairo1 {
             let project_dir = self
@@ -1040,9 +1060,13 @@ impl TargetCircuit for CairoTarget {
     }
 
     fn verify(&self, proof: &[u8], _public_inputs: &[FieldElement]) -> Result<bool> {
-        let _guard = cairo_io_lock()
-            .lock()
-            .expect("cairo IO lock poisoned during verify");
+        let _guard = match cairo_io_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("cairo IO lock poisoned during verify; continuing with recovered lock");
+                poisoned.into_inner()
+            }
+        };
 
         if self.cairo_version == CairoVersion::Cairo1 {
             let project_dir = self

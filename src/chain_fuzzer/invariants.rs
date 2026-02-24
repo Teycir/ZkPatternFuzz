@@ -473,12 +473,12 @@ impl CrossStepInvariantChecker {
                 let value_b = self.get_field_value(trace, step_b, field_b)?;
 
                 if value_a != value_b {
-                    let step_indices = vec![
-                        self.step_ref_to_index(step_a)
-                            .expect("Specific step reference must resolve to an index"),
-                        self.step_ref_to_index(step_b)
-                            .expect("Specific step reference must resolve to an index"),
-                    ];
+                    let (Some(step_idx_a), Some(step_idx_b)) =
+                        (self.step_ref_to_index(step_a), self.step_ref_to_index(step_b))
+                    else {
+                        return None;
+                    };
+                    let step_indices = vec![step_idx_a, step_idx_b];
                     Some(
                         CrossStepViolation::new(
                             &assertion.original.name,
@@ -605,12 +605,12 @@ impl CrossStepInvariantChecker {
                 let value_b = self.get_field_value(trace, step_b, field_b)?;
 
                 if value_a == value_b {
-                    let step_indices = vec![
-                        self.step_ref_to_index(step_a)
-                            .expect("Specific step reference must resolve to an index"),
-                        self.step_ref_to_index(step_b)
-                            .expect("Specific step reference must resolve to an index"),
-                    ];
+                    let (Some(step_idx_a), Some(step_idx_b)) =
+                        (self.step_ref_to_index(step_a), self.step_ref_to_index(step_b))
+                    else {
+                        return None;
+                    };
+                    let step_indices = vec![step_idx_a, step_idx_b];
                     Some(
                         CrossStepViolation::new(
                             &assertion.original.name,

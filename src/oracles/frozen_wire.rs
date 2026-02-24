@@ -106,7 +106,9 @@ impl FrozenWireDetector {
             }
 
             if values.len() == 1 {
-                let frozen_value = values.iter().next().unwrap();
+                let Some(frozen_value) = values.iter().next() else {
+                    continue;
+                };
                 let is_zero = frozen_value.iter().all(|b| *b == 0);
                 let is_one = {
                     let mut one = [0u8; 32];

@@ -192,10 +192,8 @@ fn main() -> Result<()> {{
     println!("Loading circuit spec from: {{}}", circuit_spec_path);
     println!("Loading witness from: {{}}", witness_path);
 
-    let witness_content = fs::read_to_string(witness_path)
-        .expect("Failed to read witness");
-    let witness: Map<String, Value> =
-        serde_json::from_str(&witness_content).expect("Failed to parse witness");
+    let witness_content = fs::read_to_string(witness_path)?;
+    let witness: Map<String, Value> = serde_json::from_str(&witness_content)?;
 
     let mut target = Halo2Target::new(circuit_spec_path)?;
     target.setup()?;

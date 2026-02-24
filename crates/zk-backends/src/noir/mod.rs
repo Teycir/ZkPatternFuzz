@@ -417,9 +417,13 @@ impl NoirTarget {
         let nargo_version = Self::check_nargo_available()?;
         tracing::debug!("Using nargo: {}", nargo_version);
 
-        let _guard = noir_io_lock()
-            .lock()
-            .expect("noir IO lock poisoned during compile");
+        let _guard = match noir_io_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("noir IO lock poisoned during compile; continuing with recovered lock");
+                poisoned.into_inner()
+            }
+        };
         let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.build_dir)?;
 
         let compile_project = |this: &Self| -> Result<std::process::Output> {
@@ -745,9 +749,13 @@ impl NoirTarget {
 
     /// Load ACIR text via `nargo compile --print-acir` when available.
     pub fn load_acir_text(&self) -> Option<String> {
-        let _guard = noir_io_lock()
-            .lock()
-            .expect("noir IO lock poisoned while loading ACIR text");
+        let _guard = match noir_io_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("noir IO lock poisoned while loading ACIR text; continuing");
+                poisoned.into_inner()
+            }
+        };
         let _dir_lock = match crate::util::DirLock::acquire_shared(&self.build_dir) {
             Ok(lock) => lock,
             Err(err) => {
@@ -803,9 +811,13 @@ impl NoirTarget {
     }
 
     fn build_acir_info(&self) -> Result<NoirAcirInfo> {
-        let _guard = noir_io_lock()
-            .lock()
-            .expect("noir IO lock poisoned while building ACIR info");
+        let _guard = match noir_io_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("noir IO lock poisoned while building ACIR info; continuing");
+                poisoned.into_inner()
+            }
+        };
         let _dir_lock = crate::util::DirLock::acquire_shared(&self.build_dir)?;
 
         let output = {
@@ -863,9 +875,13 @@ impl NoirTarget {
             anyhow::bail!("Circuit not compiled. Call compile() first.");
         }
 
-        let _guard = noir_io_lock()
-            .lock()
-            .expect("noir IO lock poisoned during execute");
+        let _guard = match noir_io_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("noir IO lock poisoned during execute; continuing with recovered lock");
+                poisoned.into_inner()
+            }
+        };
         let _dir_lock = crate::util::DirLock::acquire_exclusive(self.active_project_path())?;
 
         // Create Prover.toml with inputs
@@ -1049,21 +1065,20 @@ impl TargetCircuit for NoirTarget {
         self.metadata
             .as_ref()
             .map(|m| m.name.as_str())
-            .expect("Noir metadata unavailable; call compile() before querying name")
+            .unwrap_or("noir_target")
     }
 
     fn num_constraints(&self) -> usize {
         self.metadata
             .as_ref()
             .map(|m| m.num_opcodes)
-            .expect("Noir metadata unavailable; call compile() before querying num_constraints")
+            .unwrap_or(0)
     }
 
     fn num_private_inputs(&self) -> usize {
-        let metadata = self
-            .metadata
-            .as_ref()
-            .expect("Noir metadata unavailable; call compile() before querying num_private_inputs");
+        let Some(metadata) = self.metadata.as_ref() else {
+            return 0;
+        };
         if !metadata.abi.parameters.is_empty() {
             return metadata
                 .abi
@@ -1076,10 +1091,9 @@ impl TargetCircuit for NoirTarget {
     }
 
     fn num_public_inputs(&self) -> usize {
-        let metadata = self
-            .metadata
-            .as_ref()
-            .expect("Noir metadata unavailable; call compile() before querying num_public_inputs");
+        let Some(metadata) = self.metadata.as_ref() else {
+            return 0;
+        };
         let public = metadata
             .abi
             .parameters
@@ -1101,9 +1115,13 @@ impl TargetCircuit for NoirTarget {
             anyhow::bail!("Circuit not compiled. Call compile() first.");
         }
 
-        let _guard = noir_io_lock()
-            .lock()
-            .expect("noir IO lock poisoned during prove");
+        let _guard = match noir_io_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("noir IO lock poisoned during prove; continuing with recovered lock");
+                poisoned.into_inner()
+            }
+        };
         let _dir_lock = crate::util::DirLock::acquire_exclusive(self.active_project_path())?;
 
         // Create Prover.toml
@@ -1159,9 +1177,13 @@ impl TargetCircuit for NoirTarget {
         validate_proof_artifact_bytes(proof)
             .context("Invalid Noir proof artifact format before verify")?;
 
-        let _guard = noir_io_lock()
-            .lock()
-            .expect("noir IO lock poisoned during verify");
+        let _guard = match noir_io_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("noir IO lock poisoned during verify; continuing with recovered lock");
+                poisoned.into_inner()
+            }
+        };
         let _dir_lock = crate::util::DirLock::acquire_exclusive(self.active_project_path())?;
 
         // Persist deterministic verify-inputs contract for reproducibility/debugging.

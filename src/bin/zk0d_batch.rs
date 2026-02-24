@@ -730,11 +730,7 @@ fn resolve_selection(
         && selected_aliases.is_empty()
         && selected_templates.is_empty()
     {
-        if registry_file.aliases.contains_key("always") {
-            let values = registry_file
-                .aliases
-                .get("always")
-                .expect("checked contains_key");
+        if let Some(values) = registry_file.aliases.get("always") {
             for value in values {
                 append_selector_value(
                     &mut requested_templates,

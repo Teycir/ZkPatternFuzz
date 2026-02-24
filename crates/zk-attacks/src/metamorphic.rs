@@ -673,8 +673,20 @@ impl MetamorphicOracle {
                             Some("Output changed when it should have stayed the same".to_string()),
                         )
                     }
+                } else if !base.success && !transformed.success {
+                    if base.error == transformed.error {
+                        (true, None)
+                    } else {
+                        (
+                            false,
+                            Some("Execution failed differently between equivalent inputs".to_string()),
+                        )
+                    }
                 } else {
-                    (false, Some("Execution failed".to_string()))
+                    (
+                        false,
+                        Some("Execution success/failure mismatch for equivalent inputs".to_string()),
+                    )
                 }
             }
             ExpectedBehavior::OutputChanged => {

@@ -317,8 +317,9 @@ fi
         std::fs::set_permissions(path, perms)?;
     }
 
-    Ok(format!(
-        "cd {} && ./repro.sh",
-        path.parent().unwrap().display()
-    ))
+    let repro_dir = path
+        .parent()
+        .map(|parent| parent.display().to_string())
+        .unwrap_or_else(|| ".".to_string());
+    Ok(format!("cd {} && ./repro.sh", repro_dir))
 }

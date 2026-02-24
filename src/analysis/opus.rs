@@ -632,7 +632,11 @@ impl OpusAnalyzer {
         hints.retain(|h| h.confidence >= self.config.min_zero_day_confidence);
 
         // Sort by confidence (highest first)
-        hints.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+        hints.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         hints
     }

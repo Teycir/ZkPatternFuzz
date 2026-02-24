@@ -626,6 +626,36 @@ impl FuzzingEngine {
             "metamorphic_num_tests_cap",
             "metamorphic.num_tests",
         );
+        let additional = &self.config.campaign.parameters.additional;
+        let time_budget_fraction =
+            Self::additional_f64(additional, "metamorphic_time_budget_fraction")
+                .unwrap_or(0.25)
+                .clamp(0.05, 0.80);
+        let min_ms_per_test = Self::additional_u64(additional, "metamorphic_min_ms_per_test")
+            .unwrap_or(250)
+            .max(1);
+        let attack_time_budget = self.wall_clock_remaining().map(|remaining| {
+            let budget_seconds = (remaining.as_secs_f64() * time_budget_fraction).max(1.0);
+            Duration::from_secs_f64(budget_seconds).min(remaining)
+        });
+        let num_tests = if let Some(budget) = attack_time_budget {
+            let time_based_cap = ((budget.as_millis() / min_ms_per_test as u128) as usize).max(1);
+            let capped = num_tests.min(time_based_cap).max(1);
+            if capped < num_tests {
+                tracing::warn!(
+                    "Metamorphic runtime budget applied: num_tests {} -> {} (budget={:.2}s, min_ms_per_test={}, fraction={:.2})",
+                    num_tests,
+                    capped,
+                    budget.as_secs_f64(),
+                    min_ms_per_test,
+                    time_budget_fraction
+                );
+            }
+            capped
+        } else {
+            num_tests
+        };
+        let attack_started_at = Instant::now();
 
         tracing::info!(
             "Running metamorphic testing with {} base witnesses",
@@ -640,6 +670,15 @@ impl FuzzingEngine {
 
         // Generate base witnesses and test metamorphic relations
         for _ in 0..num_tests {
+            if let Some(budget) = attack_time_budget {
+                if attack_started_at.elapsed() >= budget {
+                    tracing::warn!(
+                        "Stopping metamorphic attack early: local attack budget reached ({:.2}s)",
+                        budget.as_secs_f64()
+                    );
+                    break;
+                }
+            }
             if self.wall_clock_timeout_reached() {
                 tracing::warn!("Stopping metamorphic attack early: wall-clock timeout reached");
                 break;
@@ -962,6 +1001,10 @@ impl FuzzingEngine {
             "spec_inference_sample_count_cap",
             "spec_inference.sample_count",
         );
+        let configured_violation_attempts = config
+            .get("violation_attempts")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as usize;
         let configured_auto_invariant_cap = config
             .get("auto_invariant_cap")
             .and_then(|v| v.as_u64())
@@ -989,10 +1032,55 @@ impl FuzzingEngine {
             );
         }
 
+        let additional = &self.config.campaign.parameters.additional;
+        let time_budget_fraction =
+            Self::additional_f64(additional, "spec_inference_time_budget_fraction")
+                .unwrap_or(0.30)
+                .clamp(0.05, 0.90);
+        let min_ms_per_sample = Self::additional_u64(additional, "spec_inference_min_ms_per_sample")
+            .unwrap_or(120)
+            .max(1);
+        let min_ms_per_violation_attempt =
+            Self::additional_u64(additional, "spec_inference_min_ms_per_violation_attempt")
+                .unwrap_or(220)
+                .max(1);
+
+        let attack_time_budget = self.wall_clock_remaining().map(|remaining| {
+            let budget_seconds = (remaining.as_secs_f64() * time_budget_fraction).max(1.0);
+            Duration::from_secs_f64(budget_seconds).min(remaining)
+        });
+
+        let (sample_count, violation_attempts) = if let Some(budget) = attack_time_budget {
+            let budget_ms = budget.as_millis() as usize;
+            let sample_budget_ms = budget_ms / 2;
+            let violation_budget_ms = budget_ms.saturating_sub(sample_budget_ms);
+            let sample_cap = (sample_budget_ms / min_ms_per_sample as usize).max(1);
+            let violation_cap =
+                (violation_budget_ms / min_ms_per_violation_attempt as usize).max(1);
+
+            let capped_samples = sample_count.min(sample_cap).max(1);
+            let capped_violation_attempts = configured_violation_attempts.min(violation_cap).max(1);
+            if capped_samples < sample_count || capped_violation_attempts < configured_violation_attempts {
+                tracing::warn!(
+                    "Spec inference runtime budget applied: samples {} -> {}, violation_attempts {} -> {} (budget={:.2}s, fraction={:.2})",
+                    sample_count,
+                    capped_samples,
+                    configured_violation_attempts,
+                    capped_violation_attempts,
+                    budget.as_secs_f64(),
+                    time_budget_fraction
+                );
+            }
+            (capped_samples, capped_violation_attempts)
+        } else {
+            (sample_count, configured_violation_attempts.max(1))
+        };
+
         tracing::info!("Running spec inference attack ({} samples)", sample_count);
 
         let oracle = SpecInferenceOracle::new()
             .with_sample_count(sample_count)
+            .with_violation_attempts(violation_attempts)
             .with_confidence_threshold(0.9)
             .with_wire_labels(self.input_labels());
 

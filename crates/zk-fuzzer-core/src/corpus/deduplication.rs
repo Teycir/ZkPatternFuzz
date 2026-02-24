@@ -68,8 +68,10 @@ impl InputPattern {
         // Check for single non-zero
         let non_zero_count = inputs.iter().filter(|fe| !fe.is_zero()).count();
         if non_zero_count == 1 {
-            let pos = inputs.iter().position(|fe| !fe.is_zero()).unwrap();
-            return Self::SingleNonZero(pos);
+            if let Some(pos) = inputs.iter().position(|fe| !fe.is_zero()) {
+                return Self::SingleNonZero(pos);
+            }
+            return Self::Mixed;
         }
 
         // Check for boundary values (0, 1, max, half_max)

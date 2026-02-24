@@ -260,7 +260,9 @@ impl LookupCoverageAnalyzer {
             values.dedup();
 
             let min = values[0];
-            let max = *values.last().expect("values not empty");
+            let Some(&max) = values.last() else {
+                continue;
+            };
             let span = max.saturating_sub(min) as usize;
             if span > self.config.max_table_gap_scan {
                 continue;

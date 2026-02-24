@@ -753,7 +753,11 @@ impl ConstraintInferenceEngine {
         );
 
         // Sort by confidence descending
-        all_implied.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+        all_implied.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Only keep confirmed violations after execution
         tracing::info!(

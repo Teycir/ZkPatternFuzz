@@ -323,7 +323,7 @@ impl FuzzingEngine {
         let now_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|duration| duration.as_secs());
-        let now_epoch = now_epoch.expect("System clock is before UNIX_EPOCH");
+        let now_epoch = now_epoch.unwrap_or(0);
 
         let overall = if phases_total == 0 {
             0.0
