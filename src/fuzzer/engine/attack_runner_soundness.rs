@@ -129,8 +129,23 @@ impl FuzzingEngine {
                 mutated_public
             };
 
-            // Try to verify with mutated inputs
-            let verified = self.executor.verify(&valid_proof, &mutated_public)?;
+            // Try to verify with mutated inputs. Verifier failures are expected for many
+            // malformed combinations and should not abort the whole campaign.
+            let verified = match self.executor.verify(&valid_proof, &mutated_public) {
+                Ok(value) => value,
+                Err(err) => {
+                    tracing::debug!(
+                        "Soundness attempt {}/{} skipped: verifier rejected mutated inputs: {}",
+                        attempt + 1,
+                        forge_attempts,
+                        err
+                    );
+                    if let Some(p) = progress {
+                        p.inc();
+                    }
+                    continue;
+                }
+            };
             let oracle_findings = self.core.check_proof_forgery(
                 &valid_inputs,
                 &mutated_public,

@@ -71,6 +71,26 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
         .unwrap_or_default()
         .to_ascii_lowercase();
 
+    let is_dependency_resolution_failure = |message: &str| -> bool {
+        message.contains("failed to load source for dependency")
+            || message.contains("failed to get `")
+            || message.contains("failed to update")
+            || message.contains("unable to update")
+            || message.contains("could not clone")
+            || message.contains("failed to clone")
+            || message.contains("couldn't find remote ref")
+            || message.contains("network failure seems to have happened")
+            || message.contains("spurious network error")
+            || message.contains("index-pack failed")
+            || message.contains("failed to download")
+            || message.contains("checksum failed")
+    };
+    let is_input_contract_mismatch = |message: &str| -> bool {
+        message.contains("not all inputs have been set")
+            || message.contains("input map is missing")
+            || message.contains("missing required circom signals")
+    };
+
     if status == "completed_with_critical_findings" {
         return Some("critical_findings_detected");
     }
@@ -98,6 +118,9 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
     {
         return Some("backend_tooling_missing");
     }
+    if stage == "preflight_backend" && is_dependency_resolution_failure(&error_lc) {
+        return Some("backend_dependency_resolution_failed");
+    }
     if error_lc.contains("circom compilation failed") {
         return Some("circom_compilation_failed");
     }
@@ -112,6 +135,9 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
     }
     if stage == "acquire_output_lock" {
         return Some("output_dir_locked");
+    }
+    if is_input_contract_mismatch(&error_lc) {
+        return Some("backend_input_contract_mismatch");
     }
     if stage == "preflight_backend" {
         return Some("backend_preflight_failed");
@@ -229,4 +255,42 @@ pub(crate) fn failed_run_doc_with_window(ctx: RunOutcomeDocContext<'_>) -> serde
         "wall_clock",
     );
     doc
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_run_reason_code;
+
+    #[test]
+    fn classifies_dependency_resolution_failures_in_preflight() {
+        let doc = serde_json::json!({
+            "status": "failed",
+            "stage": "preflight_backend",
+            "error": "Scarb failed to load source for dependency alexandria_math"
+        });
+        let code = classify_run_reason_code(&doc);
+        assert_eq!(code, Some("backend_dependency_resolution_failed"));
+    }
+
+    #[test]
+    fn classifies_input_contract_mismatch() {
+        let doc = serde_json::json!({
+            "status": "failed",
+            "stage": "engine_run",
+            "error": "witness calculator failed: Not all inputs have been set. Only 5 out of 6"
+        });
+        let code = classify_run_reason_code(&doc);
+        assert_eq!(code, Some("backend_input_contract_mismatch"));
+    }
+
+    #[test]
+    fn classifies_backend_tooling_missing_before_generic_preflight_failure() {
+        let doc = serde_json::json!({
+            "status": "failed",
+            "stage": "preflight_backend",
+            "error": "snarkjs not found in PATH"
+        });
+        let code = classify_run_reason_code(&doc);
+        assert_eq!(code, Some("backend_tooling_missing"));
+    }
 }

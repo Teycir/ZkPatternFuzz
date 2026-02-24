@@ -1116,6 +1116,25 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
+    let is_dependency_resolution_failure = |message: &str| -> bool {
+        message.contains("failed to load source for dependency")
+            || message.contains("failed to get `")
+            || message.contains("failed to update")
+            || message.contains("unable to update")
+            || message.contains("could not clone")
+            || message.contains("failed to clone")
+            || message.contains("couldn't find remote ref")
+            || message.contains("network failure seems to have happened")
+            || message.contains("spurious network error")
+            || message.contains("index-pack failed")
+            || message.contains("failed to download")
+            || message.contains("checksum failed")
+    };
+    let is_input_contract_mismatch = |message: &str| -> bool {
+        message.contains("not all inputs have been set")
+            || message.contains("input map is missing")
+            || message.contains("missing required circom signals")
+    };
 
     if status == "completed_with_critical_findings" {
         return "critical_findings_detected";
@@ -1150,6 +1169,9 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
     {
         return "backend_tooling_missing";
     }
+    if stage == "preflight_backend" && is_dependency_resolution_failure(&error_lc) {
+        return "backend_dependency_resolution_failed";
+    }
     if error_lc.contains("circom compilation failed") {
         return "circom_compilation_failed";
     }
@@ -1164,6 +1186,9 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
     }
     if stage == "acquire_output_lock" {
         return "output_dir_locked";
+    }
+    if is_input_contract_mismatch(&error_lc) {
+        return "backend_input_contract_mismatch";
     }
     if stage == "preflight_backend" {
         return "backend_preflight_failed";

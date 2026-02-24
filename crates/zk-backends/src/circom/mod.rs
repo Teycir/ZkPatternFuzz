@@ -761,6 +761,40 @@ where
     )
 }
 
+fn run_snarkjs_with_fallback_capture<F>(
+    preferred: Option<&Path>,
+    context: &str,
+    mut configure: F,
+) -> Result<(Output, String)>
+where
+    F: FnMut(&mut Command),
+{
+    let candidates = snarkjs_command_candidates(preferred);
+    let mut failures = Vec::new();
+    let mut labels_seen = Vec::new();
+
+    for candidate in candidates {
+        let (candidate_label, mut cmd) = match candidate {
+            SnarkjsCommandCandidate::Explicit(path) => {
+                (path.display().to_string(), snarkjs_command_for(Some(&path)))
+            }
+            SnarkjsCommandCandidate::Npx => ("npx snarkjs".to_string(), snarkjs_command_for(None)),
+        };
+        labels_seen.push(candidate_label.clone());
+        configure(&mut cmd);
+        match crate::util::run_with_timeout(&mut cmd, circom_external_command_timeout()) {
+            Ok(output) => return Ok((output, candidate_label)),
+            Err(err) => failures.push(format!("{candidate_label}: {err}")),
+        }
+    }
+
+    anyhow::bail!(
+        "{context}. Candidates tried: {}. Last errors: {}",
+        labels_seen.join(", "),
+        failures.join(" || ")
+    )
+}
+
 fn circom_io_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -1639,8 +1673,9 @@ impl CircomTarget {
 
         // Convert inputs to named map based on metadata
         let input_map = self.inputs_to_map(inputs)?;
-
-        calculator.calculate(&input_map)
+        calculator
+            .calculate(&input_map)
+            .with_context(|| self.input_map_debug_context(inputs.len(), &input_map))
     }
 
     /// Convert input array to named signal map
@@ -1746,7 +1781,105 @@ impl CircomTarget {
             }
         }
 
+        self.validate_input_map_against_metadata(&map)?;
         Ok(map)
+    }
+
+    fn input_map_signal_present(map: &HashMap<String, Vec<String>>, signal: &str) -> bool {
+        if let Some((base, idx)) = split_array_index(signal) {
+            if map
+                .get(base)
+                .and_then(|values| values.get(idx))
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                return true;
+            }
+            if map
+                .get(signal)
+                .and_then(|values| values.first())
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                return true;
+            }
+            return false;
+        }
+
+        map.get(signal)
+            .and_then(|values| values.first())
+            .is_some_and(|value| !value.trim().is_empty())
+    }
+
+    fn validate_input_map_against_metadata(
+        &self,
+        map: &HashMap<String, Vec<String>>,
+    ) -> Result<()> {
+        let Some(metadata) = &self.metadata else {
+            return Ok(());
+        };
+        if metadata.input_signals.is_empty() {
+            return Ok(());
+        }
+
+        let mut missing = Vec::new();
+        for raw_name in &metadata.input_signals {
+            let clean_name = raw_name.strip_prefix("main.").unwrap_or(raw_name);
+            if !Self::input_map_signal_present(map, clean_name) {
+                missing.push(clean_name.to_string());
+            }
+        }
+
+        if !missing.is_empty() {
+            let preview = missing
+                .iter()
+                .take(10)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::bail!(
+                "Input map is missing {} required Circom signals (first: {})",
+                missing.len(),
+                preview
+            );
+        }
+
+        Ok(())
+    }
+
+    fn input_map_debug_context(
+        &self,
+        provided_input_values: usize,
+        map: &HashMap<String, Vec<String>>,
+    ) -> String {
+        let mut map_keys = map
+            .iter()
+            .map(|(name, values)| format!("{}[{}]", name, values.len()))
+            .collect::<Vec<_>>();
+        map_keys.sort();
+
+        if let Some(metadata) = &self.metadata {
+            let expected_preview = metadata
+                .input_signals
+                .iter()
+                .map(|name| name.strip_prefix("main.").unwrap_or(name).to_string())
+                .take(16)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "Circom witness input context: provided_values={}, expected_signals={} (public={}, private={}), expected_preview=[{}], provided_map_keys=[{}]",
+                provided_input_values,
+                metadata.input_signals.len(),
+                metadata.num_public_inputs,
+                metadata.num_private_inputs,
+                expected_preview,
+                map_keys.join(", ")
+            )
+        } else {
+            format!(
+                "Circom witness input context: provided_values={}, metadata=missing, provided_map_keys=[{}]",
+                provided_input_values,
+                map_keys.join(", ")
+            )
+        }
     }
 
     fn constraints_json_path(&self) -> Result<PathBuf> {
@@ -2320,7 +2453,7 @@ impl TargetCircuit for CircomTarget {
         std::fs::write(&public_path, &public_json)?;
 
         // Verify
-        let (output, _candidate) = run_snarkjs_with_fallback(
+        let (output, _candidate) = run_snarkjs_with_fallback_capture(
             self.snarkjs_path_override.as_deref(),
             "Failed to verify proof",
             |cmd| {
@@ -2334,9 +2467,21 @@ impl TargetCircuit for CircomTarget {
             },
         )?;
 
-        // snarkjs outputs "OK!" on success
+        // snarkjs prints "OK!" on success; invalid proofs commonly return non-zero exit.
         let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(output.status.success() && stdout.contains("OK"))
+        if output.status.success() && stdout.contains("OK") {
+            return Ok(true);
+        }
+        if snarkjs_output_is_invalid_proof(&output) {
+            return Ok(false);
+        }
+        if output.status.success() {
+            return Ok(false);
+        }
+        anyhow::bail!(
+            "Proof verification command failed: {}",
+            crate::util::command_failure_summary(&output)
+        )
     }
 }
 
@@ -2449,6 +2594,15 @@ fn snarkjs_output_reports_error(output: &Output) -> bool {
     }
 
     contains_error_marker(&output.stdout) || contains_error_marker(&output.stderr)
+}
+
+fn snarkjs_output_is_invalid_proof(output: &Output) -> bool {
+    let stdout = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+    stdout.contains("invalid proof")
+        || stderr.contains("invalid proof")
+        || stdout.contains("proof is not valid")
+        || stderr.contains("proof is not valid")
 }
 
 /// Circom-specific analysis utilities
