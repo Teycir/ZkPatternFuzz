@@ -129,7 +129,7 @@ fn resolve_scarb_toolchain_dir() -> PathBuf {
             return PathBuf::from(raw);
         }
     }
-    PathBuf::from("/tmp/zkfuzz_toolchains")
+    std::env::temp_dir().join("zkfuzz_toolchains")
 }
 
 fn run_toolchain_setup_command(

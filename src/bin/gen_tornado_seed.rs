@@ -334,6 +334,10 @@ fn main() -> Result<()> {
 fn preset_defaults(preset: &str) -> Result<Defaults> {
     let mut defaults = Defaults::default();
     if preset == "tornado" {
+        let default_build_root = std::env::temp_dir()
+            .join("zkfuzzer_tornado_seed_rs")
+            .to_string_lossy()
+            .to_string();
         let zk0d_base = std::env::var("ZK0D_BASE")
             .context("ZK0D_BASE is required when using --preset tornado")?;
         defaults.circuit = Some(
@@ -343,7 +347,7 @@ fn preset_defaults(preset: &str) -> Result<Defaults> {
                 .to_string(),
         );
         defaults.output = Some("campaigns/zk0d/tornado_withdraw_seed_inputs.json".to_string());
-        defaults.build_root = Some("/tmp/zkfuzzer_tornado_seed_rs".to_string());
+        defaults.build_root = Some(default_build_root);
         defaults.levels = 20;
         defaults.ensure_pragma = true;
         defaults

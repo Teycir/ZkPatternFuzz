@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ZkPatternFuzz Benchmark Runner
 #
 # Runs the known-bug benchmark suite and generates reports.

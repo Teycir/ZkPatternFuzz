@@ -2,6 +2,7 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
@@ -14,6 +15,55 @@ const ARRAY_FLAGS = new Set([
   'symlink',
   'input',
 ]);
+
+function stripQuotes(value) {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return trimmed.slice(1, -1);
+    }
+  }
+  return trimmed;
+}
+
+function loadEnvMaster(repoRoot) {
+  const candidates = [];
+  if (process.env.ZKF_ENV_MASTER_FILE) {
+    candidates.push(process.env.ZKF_ENV_MASTER_FILE);
+  }
+  candidates.push(
+    path.join(repoRoot, '.env.master'),
+    path.join(repoRoot, '.env.paths'),
+    path.join(repoRoot, '.env')
+  );
+
+  let envFile = null;
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      envFile = candidate;
+      break;
+    }
+  }
+  if (!envFile) {
+    return;
+  }
+
+  const lines = fs.readFileSync(envFile, 'utf8').split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const noExport = line.startsWith('export ') ? line.slice(7).trim() : line;
+    const eq = noExport.indexOf('=');
+    if (eq <= 0) continue;
+    const key = noExport.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (Object.prototype.hasOwnProperty.call(process.env, key)) continue;
+    const value = stripQuotes(noExport.slice(eq + 1));
+    process.env[key] = value;
+  }
+}
 
 function parseArgs(argv) {
   const args = {
@@ -232,12 +282,13 @@ function parseExtractSpec(spec) {
 function main() {
   const args = parseArgs(process.argv);
   const repoRoot = path.resolve(__dirname, '..');
+  loadEnvMaster(repoRoot);
   const preset = args.preset || 'tornado';
 
   const defaults = {
     circuit: null,
     output: null,
-    buildRoot: '/tmp/zkfuzzer_seed',
+    buildRoot: path.join(os.tmpdir(), 'zkfuzzer_seed'),
     levels: 0,
     ensurePragma: false,
     replace: [],
@@ -251,16 +302,18 @@ function main() {
   };
 
   if (preset === 'tornado') {
-    const zk0dBase = process.env.ZK0D_BASE || '/media/elements/Repos/zk0d';
-    defaults.circuit = path.join(
-      zk0dBase,
-      'cat3_privacy',
-      'tornado-core',
-      'circuits',
-      'withdraw.circom'
-    );
+    const zk0dBase = process.env.ZK0D_BASE;
+    if (zk0dBase) {
+      defaults.circuit = path.join(
+        zk0dBase,
+        'cat3_privacy',
+        'tornado-core',
+        'circuits',
+        'withdraw.circom'
+      );
+    }
     defaults.output = path.join(repoRoot, 'campaigns', 'zk0d', 'tornado_withdraw_seed_inputs.json');
-    defaults.buildRoot = '/tmp/zkfuzzer_tornado_seed';
+    defaults.buildRoot = path.join(os.tmpdir(), 'zkfuzzer_tornado_seed');
     defaults.levels = 20;
     defaults.ensurePragma = true;
     defaults.replace.push('signal private input=>signal input');
@@ -279,11 +332,11 @@ function main() {
 
   const circuitPath = args.circuit || defaults.circuit;
   if (!circuitPath) {
-    throw new Error('Missing --circuit (or use --preset tornado).');
+    throw new Error('Missing --circuit. For --preset tornado, set ZK0D_BASE in env master or shell env.');
   }
 
   const outputPath = args.output || defaults.output || path.join(process.cwd(), 'seed_inputs.json');
-  const buildRoot = args.build_dir || defaults.buildRoot || '/tmp/zkfuzzer_seed';
+  const buildRoot = args.build_dir || defaults.buildRoot || path.join(os.tmpdir(), 'zkfuzzer_seed');
   const levels = Number(args.levels || defaults.levels || 0);
   const ensurePragmaFlag = args.ensure_pragma === 'true' || args.ensure_pragma === true || defaults.ensurePragma;
 

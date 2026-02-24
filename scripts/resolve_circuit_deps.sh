@@ -1,5 +1,5 @@
-#!/bin/bash
-# Resolve Circuit Dependencies for zk0d Collection (uses ${ZK0D_BASE:-/media/elements/Repos/zk0d})
+#!/usr/bin/env bash
+# Resolve Circuit Dependencies for zk0d Collection (uses $ZK0D_BASE)
 #
 # Installs npm dependencies required for circuit compilation.
 # Creates a ready-to-use environment for fuzzing real ZK circuits.
@@ -13,7 +13,11 @@
 
 set -euo pipefail
 
-ZK0D_BASE="${ZK0D_BASE:-/media/elements/Repos/zk0d}"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$PROJECT_ROOT/scripts/load_env_master.sh"
+load_env_master "$PROJECT_ROOT"
+
+ZK0D_BASE="${ZK0D_BASE:-}"
 CHECK_ONLY=false
 CIRCUIT_FILTER=""
 
@@ -243,10 +247,15 @@ main() {
     echo "  ZK Circuit Dependency Resolver"
     echo "========================================"
     echo ""
-    
+
+    if [ -z "$ZK0D_BASE" ]; then
+        log_error "ZK0D_BASE is not set"
+        log_error "Set ZK0D_BASE in env master or shell environment"
+        exit 1
+    fi
+
     if [ ! -d "$ZK0D_BASE" ]; then
         log_error "zk0d collection not found at: $ZK0D_BASE"
-        log_error "Set ZK0D_BASE environment variable to the correct path"
         exit 1
     fi
     

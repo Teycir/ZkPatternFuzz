@@ -11,9 +11,110 @@
 //
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-// Reuse the target's vendored node_modules.
-import { buildPoseidon } from "/media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlibjs/main.js";
+function stripQuotes(value) {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return trimmed.slice(1, -1);
+    }
+  }
+  return trimmed;
+}
+
+function loadEnvMaster() {
+  const repoRoot = path.resolve(path.dirname(process.argv[1] || "."), "..");
+  const candidates = [];
+
+  if (process.env.ZKF_ENV_MASTER_FILE) {
+    candidates.push(process.env.ZKF_ENV_MASTER_FILE);
+  }
+  candidates.push(
+    path.join(repoRoot, ".env.master"),
+    path.join(repoRoot, ".env.paths"),
+    path.join(repoRoot, ".env"),
+  );
+
+  let envFile = null;
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      envFile = candidate;
+      break;
+    }
+  }
+  if (!envFile) {
+    return repoRoot;
+  }
+
+  const lines = fs.readFileSync(envFile, "utf8").split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const noExport = line.startsWith("export ") ? line.slice(7).trim() : line;
+    const eq = noExport.indexOf("=");
+    if (eq <= 0) continue;
+    const key = noExport.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (Object.prototype.hasOwnProperty.call(process.env, key)) continue;
+    process.env[key] = stripQuotes(noExport.slice(eq + 1));
+  }
+
+  return repoRoot;
+}
+
+const REPO_ROOT = loadEnvMaster();
+
+async function loadBuildPoseidon() {
+  const candidates = [];
+
+  if (process.env.CIRCUIT_NODE_MODULES_DIR) {
+    candidates.push(
+      path.join(process.env.CIRCUIT_NODE_MODULES_DIR, "circomlibjs", "main.js"),
+    );
+  }
+  if (process.env.ZK0D_BASE) {
+    candidates.push(
+      path.join(
+        process.env.ZK0D_BASE,
+        "cat3_privacy",
+        "circuits",
+        "node_modules",
+        "circomlibjs",
+        "main.js",
+      ),
+    );
+  }
+  candidates.push(path.join(process.cwd(), "node_modules", "circomlibjs", "main.js"));
+  candidates.push(path.join(REPO_ROOT, "node_modules", "circomlibjs", "main.js"));
+
+  for (const candidate of candidates) {
+    if (!candidate || !fs.existsSync(candidate)) {
+      continue;
+    }
+    const mod = await import(pathToFileURL(candidate).href);
+    if (typeof mod.buildPoseidon === "function") {
+      return mod.buildPoseidon;
+    }
+  }
+
+  try {
+    const mod = await import("circomlibjs");
+    if (typeof mod.buildPoseidon === "function") {
+      return mod.buildPoseidon;
+    }
+  } catch {
+    // Keep error handling below for a clear message.
+  }
+
+  throw new Error(
+    "Could not resolve circomlibjs buildPoseidon. Set CIRCUIT_NODE_MODULES_DIR or ZK0D_BASE, or install circomlibjs locally.",
+  );
+}
+
+const buildPoseidon = await loadBuildPoseidon();
 
 const OUT_PATH =
   process.argv[2] ??

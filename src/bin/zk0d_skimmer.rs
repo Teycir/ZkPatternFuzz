@@ -5,8 +5,6 @@ use std::path::{Path, PathBuf};
 use zk_fuzzer::analysis::opus::{GeneratedConfig, OpusAnalyzer, OpusConfig, ZeroDayCategory};
 use zk_fuzzer::targets::circom_analysis;
 
-const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
-
 #[derive(Parser, Debug)]
 #[command(name = "zk0d_skimmer")]
 #[command(about = "Skim zk0d repository for promising circuits (hints only)")]
@@ -116,8 +114,7 @@ fn main() -> anyhow::Result<()> {
         Some(value) => value,
         None => {
             anyhow::bail!(
-                "Missing zk0d root: pass --root or set ZK0D_BASE (example: {})",
-                DEFAULT_ZK0D_BASE
+                "Missing zk0d root: pass --root or set ZK0D_BASE (example: ./targets/zk0d)"
             );
         }
     };
@@ -493,7 +490,7 @@ fn root_placeholder(root: &Path, override_placeholder: Option<&str>) -> Option<S
         Err(std::env::VarError::NotPresent) => None,
         Err(e) => panic!("Invalid ZK0D_BASE value: {}", e),
     };
-    if root_str == DEFAULT_ZK0D_BASE || env_root.as_deref() == Some(root_str.as_ref()) {
+    if env_root.as_deref() == Some(root_str.as_ref()) {
         Some("${ZK0D_BASE}".to_string())
     } else {
         None

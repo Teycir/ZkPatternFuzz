@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 echo "╔════════════════════════════════════════════════════════╗"
@@ -8,6 +8,14 @@ echo "╚═══════════════════════�
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/scripts/load_env_master.sh"
+load_env_master "$PROJECT_ROOT"
+
+HALO2_INSTALL_DIR="${INSTALL_DIR:-}"
+if [ -z "$HALO2_INSTALL_DIR" ] && [ -n "${ZK0D_BASE:-}" ]; then
+    HALO2_INSTALL_DIR="${ZK0D_BASE%/}/cat3_privacy"
+fi
 
 # Check prerequisites
 echo "🔍 Checking prerequisites..."
@@ -65,7 +73,7 @@ check_backend "Cairo" "scarb" "2\." || check_backend "Cairo" "cairo-compile" "2\
 
 echo ""
 echo -n "  Halo2: "
-if [ -d "/media/elements/Repos/zk0d/cat3_privacy/halo2-test-circuits" ]; then
+if [ -n "$HALO2_INSTALL_DIR" ] && [ -d "$HALO2_INSTALL_DIR/halo2-test-circuits" ]; then
     echo "✅ Test circuits available"
 else
     echo "❌ Test circuits not found"
@@ -82,7 +90,7 @@ echo "1. Reload your shell:"
 echo "   source ~/.bashrc"
 echo ""
 echo "2. Test ZkPatternFuzz backends:"
-echo "   cd /home/teycir/Repos/ZkPatternFuzz"
+echo "   cd $PROJECT_ROOT"
 echo "   cargo test --package zk-backends --lib"
 echo ""
 echo "3. Run full backend verification:"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Baseline Verification Script
 # Verifies that the fuzzer produces consistent results for CI regression testing
 set -e

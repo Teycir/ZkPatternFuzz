@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Production Benchmark Suite for ZkPatternFuzz
 #
 # Runs fuzzing campaigns against real circuits from the zk0d collection.
@@ -14,12 +14,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/load_env_master.sh"
+load_env_master "$ROOT_DIR"
 REBUILD_SCRIPT="$ROOT_DIR/scripts/rebuild_release_binaries.sh"
 
 # Configuration
-ZK0D_BASE="${ZK0D_BASE:-/media/elements/Repos/zk0d}"
-OUTPUT_DIR="./reports/benchmarks"
-CAMPAIGNS_DIR="${CAMPAIGNS_DIR:-./tests/campaigns}"
+ZK0D_BASE="${ZK0D_BASE:-}"
+OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/reports/benchmarks}"
+CAMPAIGNS_DIR="${CAMPAIGNS_DIR:-$ROOT_DIR/tests/campaigns}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 QUICK_MODE=false
 CIRCUIT_FILTER=""
@@ -58,6 +60,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [ -z "$ZK0D_BASE" ]; then
+    log_error "ZK0D_BASE is not set"
+    log_error "Set ZK0D_BASE in env master or shell environment"
+    exit 1
+fi
+
+if [ ! -d "$ZK0D_BASE" ]; then
+    log_error "zk0d collection not found at $ZK0D_BASE"
+    exit 1
+fi
+
 # Set timeouts based on mode
 if $QUICK_MODE; then
     TORNADO_TIMEOUT=60
@@ -81,12 +94,6 @@ fi
 if ! "$REBUILD_SCRIPT" --project-root "$ROOT_DIR" --if-changed >/dev/null 2>&1; then
     log_error "Failed to build release binary"
     exit 1
-fi
-
-if [ ! -d "$ZK0D_BASE" ]; then
-    log_warn "zk0d collection not found at $ZK0D_BASE"
-    log_warn "Set ZK0D_BASE environment variable to the correct path"
-    log_warn "Benchmark will rely on staged circuits under ./circuits/"
 fi
 
 # Initialize results file

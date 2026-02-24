@@ -3,6 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$PROJECT_ROOT/scripts/load_env_master.sh"
+load_env_master "$PROJECT_ROOT"
+
 REBUILD_SCRIPT="$PROJECT_ROOT/scripts/rebuild_release_binaries.sh"
 FUZZER_BIN="$PROJECT_ROOT/target/release/zk-fuzzer"
 
@@ -19,7 +22,7 @@ Core options (set once, used for both baseline + tuned):
   --work-dir PATH           Working dir for configs/logs (default: /tmp/zkfuzz_runs)
   --workers N               Worker count (default: 1)
   --seed N                  RNG seed (default: 1)
-  --zk0d-root PATH           zk0d root (default: /media/elements/Repos/zk0d)
+  --zk0d-root PATH          zk0d root (default: \$ZK0D_BASE)
 
 Constraint-guided tuning (applies to tuned run only):
   --cg-max-depth N
@@ -38,11 +41,11 @@ Build/run controls:
 
 Examples:
   scripts/run_constraint_guided_smoke.sh --circuit /path/to.circom --inputs 12 --workers 2
-  scripts/run_constraint_guided_smoke.sh --zk0d-root ${ZK0D_BASE:-/media/elements/Repos/zk0d} --cg-max-depth 30
+  scripts/run_constraint_guided_smoke.sh --zk0d-root "$ZK0D_BASE" --cg-max-depth 30
 EOF
 }
 
-ZK0D_ROOT="${ZK0D_ROOT:-/media/elements/Repos/zk0d}"
+ZK0D_ROOT="${ZK0D_ROOT:-${ZK0D_BASE:-}}"
 ZKF_CIRCUIT_PATH="${ZKF_CIRCUIT_PATH:-}"
 ZKF_MAIN_COMPONENT="${ZKF_MAIN_COMPONENT:-main}"
 ZKF_INPUT_COUNT="${ZKF_INPUT_COUNT:-10}"

@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Setup Real ZK Circuits for Integration Testing
 #
 # This script compiles real-world ZK circuits for testing with ZkPatternFuzz.
-# It uses circuits from the zk0d collection at ${ZK0D_BASE:-/media/elements/Repos/zk0d}
+# It uses circuits from the zk0d collection at ${ZK0D_BASE}
 #
 # Prerequisites:
 #   - Node.js v18+ 
@@ -14,10 +14,13 @@
 
 set -euo pipefail
 
-ZK0D_BASE="${ZK0D_BASE:-/media/elements/Repos/zk0d}"
-SUBMODULE_BASE="${SUBMODULE_BASE:-./circuits/real}"
-OUTPUT_DIR="./circuits/compiled"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$PROJECT_ROOT/scripts/load_env_master.sh"
+load_env_master "$PROJECT_ROOT"
+
+ZK0D_BASE="${ZK0D_BASE:-}"
+SUBMODULE_BASE="${SUBMODULE_BASE:-$PROJECT_ROOT/circuits/real}"
+OUTPUT_DIR="${OUTPUT_DIR:-$PROJECT_ROOT/circuits/compiled}"
 TORNADO_BASE_OVERRIDE="${TORNADO_BASE:-}"
 SEMAPHORE_BASE_OVERRIDE="${SEMAPHORE_BASE:-}"
 IDEN3_BASE_OVERRIDE="${IDEN3_BASE:-}"
@@ -103,18 +106,22 @@ resolve_source_mode() {
     local mode="$SOURCE_MODE"
 
     if [ "$mode" = "auto" ]; then
-        if [ -d "$ZK0D_BASE" ]; then
+        if [ -n "$ZK0D_BASE" ] && [ -d "$ZK0D_BASE" ]; then
             mode="zk0d"
         elif [ -d "$SUBMODULE_BASE/tornado-core" ] || [ -d "$SUBMODULE_BASE/semaphore" ]; then
             mode="submodules"
         else
             log_error "No circuit sources found."
-            log_error "Expected zk0d at $ZK0D_BASE or submodules under $SUBMODULE_BASE"
+            log_error "Set ZK0D_BASE to your zk0d root or initialize submodules under $SUBMODULE_BASE"
             exit 1
         fi
     fi
 
     if [ "$mode" = "zk0d" ]; then
+        if [ -z "$ZK0D_BASE" ] || [ ! -d "$ZK0D_BASE" ]; then
+            log_error "SOURCE_MODE=zk0d requires a valid ZK0D_BASE path"
+            exit 1
+        fi
         log_info "Using zk0d dataset at $ZK0D_BASE"
         SNARKJS_BASE="$ZK0D_BASE/cat5_frameworks/snarkjs/test"
         TORNADO_BASE="$ZK0D_BASE/cat3_privacy/tornado-core"

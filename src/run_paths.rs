@@ -34,16 +34,12 @@ pub(crate) fn run_signal_dir() -> PathBuf {
             eprintln!("[zk-fuzzer] ERROR: ZKF_RUN_SIGNAL_DIR is set but empty");
             std::process::exit(2);
         }
-    } else if let Some(home) = read_optional_env("HOME") {
-        let home = home.trim();
-        if !home.is_empty() {
-            PathBuf::from(home).join("ZkFuzz")
-        } else {
-            eprintln!("[zk-fuzzer] ERROR: HOME is set but empty");
-            std::process::exit(2);
-        }
+    } else if let Some(home) = dirs::home_dir() {
+        home.join("ZkFuzz")
     } else {
-        eprintln!("[zk-fuzzer] ERROR: neither ZKF_RUN_SIGNAL_DIR nor HOME is available");
+        eprintln!(
+            "[zk-fuzzer] ERROR: cannot resolve a home directory (set ZKF_RUN_SIGNAL_DIR explicitly)"
+        );
         std::process::exit(2);
     };
 

@@ -1,9 +1,23 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 echo "=== Setting Up Halo2 Backend & Test Circuits ==="
 
-INSTALL_DIR="/media/elements/Repos/zk0d/cat3_privacy"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/scripts/load_env_master.sh"
+load_env_master "$PROJECT_ROOT"
+
+INSTALL_DIR="${INSTALL_DIR:-}"
+if [ -z "$INSTALL_DIR" ] && [ -n "${ZK0D_BASE:-}" ]; then
+    INSTALL_DIR="${ZK0D_BASE%/}/cat3_privacy"
+fi
+if [ -z "$INSTALL_DIR" ]; then
+    echo "❌ INSTALL_DIR is not set"
+    echo "Set INSTALL_DIR or ZK0D_BASE in env master or shell environment"
+    exit 1
+fi
+mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
 # 1. Clone PSE Halo2 (Privacy Scaling Explorations)

@@ -100,7 +100,7 @@ impl PoCGenerator {
     fn generate_shell(&self, finding: &Finding) -> anyhow::Result<String> {
         let mut script = String::new();
 
-        writeln!(script, "#!/bin/bash")?;
+        writeln!(script, "#!/usr/bin/env bash")?;
         writeln!(script, "# ZkPatternFuzz Proof of Concept")?;
         writeln!(script, "# Attack Type: {:?}", finding.attack_type)?;
         writeln!(script, "# Severity: {:?}", finding.severity)?;

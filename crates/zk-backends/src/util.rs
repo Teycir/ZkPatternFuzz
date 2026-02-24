@@ -405,7 +405,7 @@ fn resolve_current_dir(cmd: &Command) -> Result<PathBuf> {
 fn candidate_writable_bind_paths(cmd: &Command, cwd: &Path) -> Result<Vec<PathBuf>> {
     let mut paths = BTreeSet::<PathBuf>::new();
     paths.insert(cwd.to_path_buf());
-    paths.insert(PathBuf::from("/tmp"));
+    paths.insert(std::env::temp_dir());
 
     let tracked_env = [
         "HOME",
