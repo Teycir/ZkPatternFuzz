@@ -34,23 +34,21 @@ mod zk0d_matrix_under_test {
         }
 
         #[test]
-        fn resolve_matrix_output_root_defaults_from_summary_path() {
+        fn resolve_matrix_output_root_uses_cli_override() {
             let args = Args::try_parse_from([
                 "zk0d_matrix",
                 "--matrix",
                 "targets/zk0d_matrix.yaml",
                 "--registry",
                 "targets/fuzzer_registry.yaml",
-                "--summary-tsv",
-                "artifacts/external_targets/manual/latest_summary.tsv",
+                "--output-root",
+                "artifacts/external_targets/manual/scan_output",
             ])
             .expect("parse matrix args");
             let parsed = resolve_matrix_output_root(&args).expect("resolve matrix output root");
             assert_eq!(
                 parsed,
-                Some(std::path::PathBuf::from(
-                    "artifacts/external_targets/manual/scan_output"
-                ))
+                std::path::PathBuf::from("artifacts/external_targets/manual/scan_output")
             );
         }
 
@@ -69,6 +67,19 @@ tail
             assert_eq!(rows.len(), 2);
             assert_eq!(rows[0].reason_code, "completed");
             assert_eq!(rows[1].reason_code, "key_generation_failed");
+        }
+
+        #[test]
+        fn infer_reason_code_from_output_detects_unknown_alias() {
+            let code =
+                infer_reason_code_from_output(1, "", "Error: Unknown alias 'external_manual'");
+            assert_eq!(code.as_deref(), Some("selector_alias_unknown"));
+        }
+
+        #[test]
+        fn infer_reason_code_from_output_falls_back_for_nonzero_exit() {
+            let code = infer_reason_code_from_output(1, "", "random failure");
+            assert_eq!(code.as_deref(), Some("batch_failed_no_reason"));
         }
     }
 }

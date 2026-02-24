@@ -7,6 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
+
 #[derive(Parser, Debug)]
 #[command(name = "zk0d_matrix")]
 #[command(about = "Run zk0d target matrix via zk0d_batch with guarded parallelism")]
@@ -71,7 +73,7 @@ struct Args {
     #[arg(long)]
     summary_tsv: Option<String>,
 
-    /// Optional output root passed through to each child `zk0d_batch` run
+    /// Output root passed through to each child `zk0d_batch` run (overrides ZKF_SCAN_OUTPUT_ROOT)
     #[arg(long)]
     output_root: Option<String>,
 
@@ -153,6 +155,26 @@ fn parse_reason_tsv_rows(stdout: &str) -> Vec<ReasonRow> {
     rows
 }
 
+fn infer_reason_code_from_output(exit_code: i32, stdout: &str, stderr: &str) -> Option<String> {
+    let joined = format!("{}\n{}", stdout, stderr).to_ascii_lowercase();
+    if joined.contains("unknown alias") {
+        return Some("selector_alias_unknown".to_string());
+    }
+    if joined.contains("unknown collection") {
+        return Some("selector_collection_unknown".to_string());
+    }
+    if joined.contains("unknown item") || joined.contains("unknown template") {
+        return Some("selector_template_unknown".to_string());
+    }
+    if joined.contains("selection resolved to zero templates") {
+        return Some("selector_resolved_empty".to_string());
+    }
+    if exit_code != 0 {
+        return Some("batch_failed_no_reason".to_string());
+    }
+    None
+}
+
 fn selector_for_target(
     args: &Args,
     target: &MatrixTarget,
@@ -191,7 +213,7 @@ fn run_target(
     args: &Args,
     batch_bin: &Path,
     target: &MatrixTarget,
-    output_root: Option<&Path>,
+    output_root: &Path,
 ) -> anyhow::Result<TargetRunSummary> {
     let (selector_key, selector_value) = selector_for_target(args, target)?;
 
@@ -216,10 +238,9 @@ fn run_target(
         .arg(args.iterations.to_string())
         .arg("--timeout")
         .arg(args.timeout.to_string())
-        .arg("--emit-reason-tsv");
-    if let Some(root) = output_root {
-        cmd.arg("--output-root").arg(root);
-    }
+        .arg("--emit-reason-tsv")
+        .arg("--output-root")
+        .arg(output_root);
 
     if args.skip_validate {
         cmd.arg("--skip-validate");
@@ -247,7 +268,11 @@ fn run_target(
         *reason_counts.entry(row.reason_code).or_insert(0) += 1;
     }
     if reason_counts.is_empty() {
-        reason_counts.insert("none".to_string(), 1);
+        if let Some(code) = infer_reason_code_from_output(exit_code, &stdout, &stderr) {
+            reason_counts.insert(code, 1);
+        } else {
+            reason_counts.insert("none".to_string(), 1);
+        }
     }
 
     Ok(TargetRunSummary {
@@ -298,20 +323,29 @@ fn build_batch_binary(args: &Args, batch_bin: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn resolve_matrix_output_root(args: &Args) -> anyhow::Result<Option<PathBuf>> {
+fn resolve_matrix_output_root(args: &Args) -> anyhow::Result<PathBuf> {
     if let Some(raw) = args.output_root.as_deref() {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
             anyhow::bail!("--output-root cannot be empty");
         }
-        return Ok(Some(PathBuf::from(trimmed)));
+        return Ok(PathBuf::from(trimmed));
     }
 
-    Ok(args
-        .summary_tsv
-        .as_deref()
-        .and_then(|path| Path::new(path).parent())
-        .map(|parent| parent.join("scan_output")))
+    let raw = std::env::var(SCAN_OUTPUT_ROOT_ENV).with_context(|| {
+        format!(
+            "{} is required when --output-root is not provided",
+            SCAN_OUTPUT_ROOT_ENV
+        )
+    })?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!(
+            "{} is set but empty; provide a writable output root",
+            SCAN_OUTPUT_ROOT_ENV
+        );
+    }
+    Ok(PathBuf::from(trimmed))
 }
 
 fn main() -> anyhow::Result<()> {
@@ -358,7 +392,7 @@ fn main() -> anyhow::Result<()> {
     let mut summaries = pool.install(|| {
         enabled_targets
             .par_iter()
-            .map(|target| run_target(&args, &batch_bin, target, matrix_output_root.as_deref()))
+            .map(|target| run_target(&args, &batch_bin, target, &matrix_output_root))
             .collect::<Vec<_>>()
     });
 
