@@ -48,29 +48,98 @@ fn halo2_strict_readiness_mode() -> bool {
     }
 }
 
+fn resolve_existing_dir(raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let path = PathBuf::from(trimmed);
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        std::env::current_dir().ok()?.join(path)
+    };
+
+    if absolute.is_dir() {
+        Some(absolute)
+    } else {
+        None
+    }
+}
+
+fn nonempty_dir(path: &Path) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
+    match std::fs::read_dir(path) {
+        Ok(mut entries) => entries.next().is_some(),
+        Err(_) => false,
+    }
+}
+
+fn go_env_value(key: &str) -> Option<String> {
+    let output = Command::new("go").args(["env", key]).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
 fn halo2_local_go_proxy_cache_dir() -> Option<PathBuf> {
     if let Ok(value) = std::env::var(HALO2_GO_PROXY_CACHE_DIR_ENV) {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            let path = PathBuf::from(trimmed);
-            if path.is_dir() {
+        if !value.trim().is_empty() {
+            if let Some(path) = resolve_existing_dir(&value) {
                 return Some(path);
             }
             tracing::warn!(
                 "{} points to a non-directory path: '{}'",
                 HALO2_GO_PROXY_CACHE_DIR_ENV,
-                path.display()
+                value
             );
         }
     }
 
-    let home = std::env::var("HOME").ok()?;
-    let path = PathBuf::from(home).join("go/pkg/mod/cache/download");
-    if path.is_dir() {
-        Some(path)
-    } else {
-        None
+    if let Ok(gomodcache) = std::env::var("GOMODCACHE") {
+        if let Some(base) = resolve_existing_dir(&gomodcache) {
+            let cache = base.join("cache").join("download");
+            if nonempty_dir(&cache) {
+                return Some(cache);
+            }
+        }
     }
+    if let Some(gomodcache) = go_env_value("GOMODCACHE") {
+        if let Some(base) = resolve_existing_dir(&gomodcache) {
+            let cache = base.join("cache").join("download");
+            if nonempty_dir(&cache) {
+                return Some(cache);
+            }
+        }
+    }
+
+    if let Ok(gopath) = std::env::var("GOPATH") {
+        for root in std::env::split_paths(&gopath) {
+            let cache = root.join("pkg").join("mod").join("cache").join("download");
+            if nonempty_dir(&cache) {
+                return Some(cache);
+            }
+        }
+    }
+    if let Some(gopath) = go_env_value("GOPATH") {
+        for root in std::env::split_paths(&gopath) {
+            let cache = root.join("pkg").join("mod").join("cache").join("download");
+            if nonempty_dir(&cache) {
+                return Some(cache);
+            }
+        }
+    }
+
+    None
 }
 
 /// Halo2 circuit target
