@@ -45,6 +45,23 @@ pub(crate) fn command_output_summary(output: &Output) -> String {
     }
 }
 
+pub(crate) fn command_failure_summary(output: &Output) -> String {
+    format!("exit={}; {}", output.status, command_output_summary(output))
+}
+
+pub(crate) fn command_version_line(output: &Output) -> Option<String> {
+    for stream in [&output.stdout, &output.stderr] {
+        let text = String::from_utf8_lossy(stream);
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
 pub(crate) fn timeout_from_env(var: &str, default_secs: u64) -> Duration {
     let fallback = Duration::from_secs(default_secs.max(1));
     match std::env::var(var) {
@@ -186,7 +203,7 @@ where
             Ok(output) => {
                 failures.push(format!(
                     "{candidate_label}: {}",
-                    command_output_summary(&output)
+                    command_failure_summary(&output)
                 ));
             }
             Err(err) => {
@@ -608,9 +625,9 @@ impl Drop for DirLock {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_command_candidates, candidate_writable_bind_paths, command_output_summary,
-        command_targets_backend_tool, parse_command_candidates, run_command_with_fallback,
-        run_with_timeout, timeout_from_env,
+        build_command_candidates, candidate_writable_bind_paths, command_failure_summary,
+        command_output_summary, command_targets_backend_tool, command_version_line,
+        parse_command_candidates, run_command_with_fallback, run_with_timeout, timeout_from_env,
     };
     use std::path::PathBuf;
     use std::process::Command;
@@ -661,6 +678,26 @@ mod tests {
         let summary = command_output_summary(&output);
         assert!(summary.contains("stdout:"));
         assert!(summary.contains("rustc"));
+    }
+
+    #[test]
+    fn test_command_failure_summary_includes_exit() {
+        let output = Command::new("rustc")
+            .arg("--bad-flag-that-fails")
+            .output()
+            .expect("rustc with bad flag should execute");
+        let summary = command_failure_summary(&output);
+        assert!(summary.contains("exit="));
+    }
+
+    #[test]
+    fn test_command_version_line_prefers_first_non_empty_line() {
+        let output = Command::new("rustc")
+            .arg("--version")
+            .output()
+            .expect("rustc --version should run");
+        let version = command_version_line(&output).expect("version line expected");
+        assert!(version.contains("rustc"));
     }
 
     #[test]

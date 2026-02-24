@@ -26,12 +26,6 @@ fn noir_external_command_timeout() -> std::time::Duration {
 const NARGO_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_NARGO_BIN_CANDIDATES";
 const NARGO_VERSION_CANDIDATES_ENV: &str = "ZK_FUZZER_NARGO_VERSION_CANDIDATES";
 
-fn command_output_text(output: &std::process::Output) -> String {
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    format!("stdout: {}\nstderr: {}", stdout.trim(), stderr.trim())
-}
-
 fn nargo_missing_subcommand_message(stdout: &str, stderr: &str, subcommand: &str) -> bool {
     let combined = format!("{stdout}\n{stderr}").to_ascii_lowercase();
     combined.contains("unrecognized subcommand")
@@ -342,7 +336,7 @@ impl NoirTarget {
         anyhow::bail!(
             "Failed probing nargo subcommand '{}': {}",
             subcommand,
-            command_output_text(&output)
+            crate::util::command_failure_summary(&output)
         )
     }
 
@@ -478,7 +472,12 @@ impl NoirTarget {
             );
         }
 
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        crate::util::command_version_line(&output).ok_or_else(|| {
+            anyhow::anyhow!(
+                "nargo --version returned empty output: {}",
+                crate::util::command_failure_summary(&output)
+            )
+        })
     }
 
     /// Compile the Noir project
@@ -1213,7 +1212,7 @@ impl TargetCircuit for NoirTarget {
         if !output.status.success() {
             anyhow::bail!(
                 "Noir proof generation failed: {}",
-                command_output_text(&output)
+                crate::util::command_failure_summary(&output)
             );
         }
 

@@ -991,11 +991,16 @@ impl CircomTarget {
         if !output.status.success() {
             anyhow::bail!(
                 "circom --version failed: {}",
-                format_command_failure(&output)
+                crate::util::command_failure_summary(&output)
             );
         }
 
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        crate::util::command_version_line(&output).ok_or_else(|| {
+            anyhow::anyhow!(
+                "circom --version returned empty output: {}",
+                crate::util::command_failure_summary(&output)
+            )
+        })
     }
 
     /// Check if snarkjs is available
@@ -1004,25 +1009,12 @@ impl CircomTarget {
             cmd.arg("--version");
         })?;
 
-        // snarkjs may print version/help text to stdout even when returning a
-        // non-zero status (observed with some npm-distributed builds).
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let version = if !stdout.is_empty() { stdout } else { stderr };
-
-        if version.is_empty() {
-            anyhow::bail!(
-                "snarkjs --version failed: {}",
-                format_command_failure(&output)
-            );
-        }
-
-        Ok(version
-            .lines()
-            .next()
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string())
+        crate::util::command_version_line(&output).ok_or_else(|| {
+            anyhow::anyhow!(
+                "snarkjs --version returned empty output: {}",
+                crate::util::command_failure_summary(&output)
+            )
+        })
     }
 
     /// Compile the circuit to R1CS and generate WASM witness calculator
@@ -1205,7 +1197,7 @@ impl CircomTarget {
             anyhow::bail!(
                 "snarkjs r1cs info failed for '{}': {}",
                 r1cs_path.display(),
-                format_command_failure(&output)
+                crate::util::command_failure_summary(&output)
             );
         }
         let (num_constraints, num_private_inputs, num_public_inputs, num_outputs) =
@@ -1529,13 +1521,16 @@ impl CircomTarget {
         )?;
 
         if !output.status.success() || snarkjs_output_reports_error(&output) {
-            anyhow::bail!("Key generation failed: {}", format_command_failure(&output));
+            anyhow::bail!(
+                "Key generation failed: {}",
+                crate::util::command_failure_summary(&output)
+            );
         }
         if !is_valid_zkey_file(&zkey_path)? {
             anyhow::bail!(
                 "Generated proving key is invalid (bad header): {}. {}",
                 zkey_path.display(),
-                format_command_failure(&output)
+                crate::util::command_failure_summary(&output)
             );
         }
 
@@ -1558,7 +1553,7 @@ impl CircomTarget {
         if !output.status.success() || snarkjs_output_reports_error(&output) {
             anyhow::bail!(
                 "Verification key export failed: {}",
-                format_command_failure(&output)
+                crate::util::command_failure_summary(&output)
             );
         }
         if !is_valid_json_file(&vkey_path)? {
@@ -2259,7 +2254,7 @@ impl TargetCircuit for CircomTarget {
             if !output.status.success() {
                 anyhow::bail!(
                     "Witness calculation failed: {}",
-                    format_command_failure(&output)
+                    crate::util::command_failure_summary(&output)
                 );
             }
         }
@@ -2283,7 +2278,7 @@ impl TargetCircuit for CircomTarget {
         if !output.status.success() {
             anyhow::bail!(
                 "Proof generation failed: {}",
-                format_command_failure(&output)
+                crate::util::command_failure_summary(&output)
             );
         }
 
@@ -2445,36 +2440,6 @@ fn is_valid_json_file(path: &Path) -> Result<bool> {
     let raw = std::fs::read(path)
         .with_context(|| format!("Failed to read json file '{}'", path.display()))?;
     Ok(serde_json::from_slice::<serde_json::Value>(&raw).is_ok())
-}
-
-fn format_command_failure(output: &Output) -> String {
-    const MAX_LEN: usize = 1200;
-
-    fn compact(bytes: &[u8]) -> String {
-        let text = String::from_utf8_lossy(bytes);
-        text.split_whitespace().collect::<Vec<_>>().join(" ")
-    }
-
-    let mut parts = vec![format!("exit={}", output.status)];
-    let stderr = compact(&output.stderr);
-    let stdout = compact(&output.stdout);
-
-    if !stderr.is_empty() {
-        parts.push(format!("stderr={}", stderr));
-    }
-    if !stdout.is_empty() {
-        parts.push(format!("stdout={}", stdout));
-    }
-    if parts.len() == 1 {
-        parts.push("no stdout/stderr".to_string());
-    }
-
-    let mut message = parts.join("; ");
-    if message.len() > MAX_LEN {
-        message.truncate(MAX_LEN);
-        message.push_str("...");
-    }
-    message
 }
 
 fn snarkjs_output_reports_error(output: &Output) -> bool {

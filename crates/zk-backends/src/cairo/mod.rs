@@ -303,7 +303,10 @@ impl CairoTarget {
             let output = crate::util::run_with_timeout(&mut cmd, cairo_external_command_timeout())
                 .context("cairo-compile not found in PATH")?;
             if !output.status.success() {
-                anyhow::bail!("cairo-compile --version failed");
+                anyhow::bail!(
+                    "cairo-compile --version failed: {}",
+                    crate::util::command_failure_summary(&output)
+                );
             }
 
             let mut run_cmd = Command::new("cairo-run");
@@ -312,10 +315,18 @@ impl CairoTarget {
                 crate::util::run_with_timeout(&mut run_cmd, cairo_external_command_timeout())
                     .context("cairo-run not found in PATH")?;
             if !run_output.status.success() {
-                anyhow::bail!("cairo-run --version failed");
+                anyhow::bail!(
+                    "cairo-run --version failed: {}",
+                    crate::util::command_failure_summary(&run_output)
+                );
             }
 
-            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            crate::util::command_version_line(&output).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "cairo-compile --version returned empty output: {}",
+                    crate::util::command_failure_summary(&output)
+                )
+            })
         })();
 
         let cairo0_error = match cairo0 {
@@ -343,10 +354,14 @@ impl CairoTarget {
             );
         }
 
-        Ok((
-            CairoVersion::Cairo1,
-            String::from_utf8_lossy(&output.stdout).trim().to_string(),
-        ))
+        let version = crate::util::command_version_line(&output).ok_or_else(|| {
+            anyhow::anyhow!(
+                "scarb --version returned empty output: {}",
+                crate::util::command_failure_summary(&output)
+            )
+        })?;
+
+        Ok((CairoVersion::Cairo1, version))
     }
 
     /// Check if stone-prover is available
@@ -358,11 +373,19 @@ impl CairoTarget {
                 .context("stone-prover not found")?
         };
 
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-        } else {
-            anyhow::bail!("stone-prover --version failed")
+        if !output.status.success() {
+            anyhow::bail!(
+                "stone-prover --version failed: {}",
+                crate::util::command_failure_summary(&output)
+            );
         }
+
+        crate::util::command_version_line(&output).ok_or_else(|| {
+            anyhow::anyhow!(
+                "stone-prover --version returned empty output: {}",
+                crate::util::command_failure_summary(&output)
+            )
+        })
     }
 
     /// Compile the Cairo program
