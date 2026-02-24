@@ -1178,6 +1178,19 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
             || message.contains("failed to run circom compiler")
             || (message.contains("out of bounds exception") && message.contains(".circom"))
     };
+    let is_backend_toolchain_mismatch = |message: &str| -> bool {
+        let scarb_compile_mismatch = message.contains("scarb build failed")
+            && message.contains("could not compile `")
+            && (message.contains("error[e")
+                || message.contains("identifier not found")
+                || message.contains("type annotations needed")
+                || message.contains("unsupported"));
+        let rust_toolchain_mismatch = message.contains("requires rustc")
+            || message.contains("the package requires")
+            || message.contains("is not supported by this compiler")
+            || message.contains("cargo-features");
+        scarb_compile_mismatch || rust_toolchain_mismatch
+    };
 
     if status == "completed_with_critical_findings" {
         return "critical_findings_detected";
@@ -1214,6 +1227,9 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
     }
     if stage == "preflight_backend" && is_dependency_resolution_failure(&error_lc) {
         return "backend_dependency_resolution_failed";
+    }
+    if stage == "preflight_backend" && is_backend_toolchain_mismatch(&error_lc) {
+        return "backend_toolchain_mismatch";
     }
     if is_circom_compilation_failure(&error_lc) {
         return "circom_compilation_failed";

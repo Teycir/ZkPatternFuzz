@@ -95,6 +95,16 @@ mod zk0d_batch_under_test {
         }
 
         #[test]
+        fn classify_backend_toolchain_mismatch_in_preflight() {
+            let doc = serde_json::json!({
+                "status": "failed",
+                "stage": "preflight_backend",
+                "error": "Scarb build failed for all configured candidates. Last errors: scarb: error[E0006]: Identifier not found. error: could not compile `orion` due to previous errors"
+            });
+            assert_eq!(classify_run_reason_code(&doc), "backend_toolchain_mismatch");
+        }
+
+        #[test]
         fn classify_input_contract_mismatch() {
             let doc = serde_json::json!({
                 "status": "failed",
@@ -153,9 +163,11 @@ mod zk0d_batch_under_test {
             let out = run_scan(cfg, &template, Family::Auto, false, "auto__dummy")
                 .expect("run_scan should execute helper script");
             assert!(out.success, "helper script should exit successfully");
-            assert!(
-                out.stdout.contains(&format!("{}={}", SCAN_OUTPUT_ROOT_ENV, temp.path().display()))
-            );
+            assert!(out.stdout.contains(&format!(
+                "{}={}",
+                SCAN_OUTPUT_ROOT_ENV,
+                temp.path().display()
+            )));
             assert!(out.stdout.contains(&format!(
                 "{}={}",
                 RUN_SIGNAL_DIR_ENV,

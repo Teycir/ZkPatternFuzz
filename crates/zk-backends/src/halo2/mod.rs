@@ -9,7 +9,7 @@ use crate::TargetCircuit;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -30,6 +30,8 @@ const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCH
 const HALO2_GO_PROXY_CACHE_DIR_ENV: &str = "ZK_FUZZER_HALO2_GO_PROXY_CACHE_DIR";
 const HALO2_CARGO_HOME_CACHE_SEED_ENV: &str = "ZK_FUZZER_HALO2_CARGO_HOME_CACHE_SEED";
 const HALO2_USE_HOST_CARGO_HOME_ENV: &str = "ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME";
+const HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV: &str = "ZK_FUZZER_HALO2_TOOLCHAIN_CASCADE_LIMIT";
+const HALO2_RUSTUP_TOOLCHAIN_CASCADE_ENV: &str = "ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE";
 
 fn halo2_cargo_toolchain_from_env() -> Option<String> {
     if let Ok(value) = std::env::var("ZK_FUZZER_HALO2_CARGO_TOOLCHAIN") {
@@ -59,6 +61,117 @@ fn halo2_use_host_cargo_home() -> bool {
         ),
         Err(_) => false,
     }
+}
+
+fn halo2_rustup_toolchain_cascade_enabled() -> bool {
+    match std::env::var(HALO2_RUSTUP_TOOLCHAIN_CASCADE_ENV) {
+        Ok(value) => !matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        ),
+        Err(_) => true,
+    }
+}
+
+fn halo2_toolchain_cascade_limit() -> usize {
+    let default_limit = 8usize;
+    let parsed = std::env::var(HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .unwrap_or(default_limit);
+    parsed.clamp(1, 32)
+}
+
+fn push_unique_string(values: &mut Vec<String>, candidate: impl Into<String>) {
+    let candidate = candidate.into();
+    if candidate.trim().is_empty() {
+        return;
+    }
+    if values.iter().any(|existing| existing == &candidate) {
+        return;
+    }
+    values.push(candidate);
+}
+
+fn parse_rust_version_from_manifest(manifest_path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(manifest_path).ok()?;
+    let mut in_package = false;
+
+    for raw_line in raw.lines() {
+        let line = raw_line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            in_package = line == "[package]";
+            continue;
+        }
+        if !in_package {
+            continue;
+        }
+
+        let Some(after_key) = line.strip_prefix("rust-version") else {
+            continue;
+        };
+        let Some(after_eq) = after_key.trim().strip_prefix('=') else {
+            continue;
+        };
+        let parsed = after_eq.trim().trim_matches('"').trim_matches('\'').trim();
+        if parsed.is_empty() {
+            return None;
+        }
+        return Some(parsed.to_string());
+    }
+
+    None
+}
+
+fn rust_toolchain_hints_from_version(version: &str) -> Vec<String> {
+    let mut hints = Vec::new();
+    let trimmed = version.trim().trim_start_matches('v');
+    if trimmed.is_empty() {
+        return hints;
+    }
+    push_unique_string(&mut hints, trimmed.to_string());
+
+    let parts: Vec<&str> = trimmed.split('.').collect();
+    if parts.len() == 2 {
+        push_unique_string(&mut hints, format!("{}.{}.0", parts[0], parts[1]));
+    }
+    if parts.len() >= 3 {
+        push_unique_string(&mut hints, format!("{}.{}", parts[0], parts[1]));
+    }
+
+    hints
+}
+
+fn discover_rustup_toolchains() -> Vec<String> {
+    if !halo2_rustup_toolchain_cascade_enabled() {
+        return Vec::new();
+    }
+
+    let mut cmd = Command::new("rustup");
+    cmd.args(["toolchain", "list"]);
+    let output = match crate::util::run_with_timeout(&mut cmd, std::time::Duration::from_secs(5)) {
+        Ok(output) if output.status.success() => output,
+        Ok(_) | Err(_) => return Vec::new(),
+    };
+
+    let mut toolchains = Vec::new();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let first = line.split_whitespace().next().unwrap_or_default().trim();
+        if first.is_empty()
+            || first.starts_with("info:")
+            || first.starts_with("error:")
+            || first.starts_with('(')
+        {
+            continue;
+        }
+        push_unique_string(&mut toolchains, first.trim_end_matches(',').to_string());
+    }
+    toolchains
 }
 
 fn resolve_existing_dir(raw: &str) -> Option<PathBuf> {
@@ -253,6 +366,11 @@ fn warm_cargo_home_from_seed(cargo_home: &Path) -> bool {
         let _ = fs::write(&marker, "seeded-from-home-cache\n");
     }
     copied_any
+}
+
+fn halo2_successful_build_cache() -> &'static Mutex<HashSet<String>> {
+    static CACHE: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
 /// Halo2 circuit target
@@ -463,6 +581,32 @@ impl Halo2Target {
         )
     }
 
+    fn inferred_manifest_toolchain_hints(&self) -> Vec<String> {
+        let mut hints = Vec::<String>::new();
+        let cargo_path = if self.circuit_path.is_dir() {
+            self.circuit_path.join("Cargo.toml")
+        } else if self
+            .circuit_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("cargo.toml"))
+        {
+            self.circuit_path.clone()
+        } else {
+            match self.circuit_path.parent() {
+                Some(parent) => parent.join("Cargo.toml"),
+                None => return hints,
+            }
+        };
+
+        if let Some(rust_version) = parse_rust_version_from_manifest(&cargo_path) {
+            for candidate in rust_toolchain_hints_from_version(&rust_version) {
+                push_unique_string(&mut hints, candidate);
+            }
+        }
+        hints
+    }
+
     fn cargo_toolchain_candidates(&self) -> Vec<Option<String>> {
         let mut candidates: Vec<Option<String>> = Vec::new();
 
@@ -484,11 +628,38 @@ impl Halo2Target {
             candidates.push(entry);
         }
 
-        if !candidates.iter().any(|existing| existing.is_none()) {
-            candidates.push(None);
+        for candidate in self.inferred_manifest_toolchain_hints() {
+            let entry = Some(candidate);
+            if candidates.iter().any(|existing| existing == &entry) {
+                continue;
+            }
+            candidates.push(entry);
         }
 
-        candidates
+        for candidate in discover_rustup_toolchains() {
+            let entry = Some(candidate);
+            if candidates.iter().any(|existing| existing == &entry) {
+                continue;
+            }
+            candidates.push(entry);
+        }
+
+        let mut trimmed: Vec<Option<String>> = Vec::new();
+        for entry in candidates {
+            if entry.is_none() {
+                continue;
+            }
+            if trimmed.len() >= halo2_toolchain_cascade_limit() {
+                continue;
+            }
+            trimmed.push(entry);
+        }
+
+        if !trimmed.iter().any(|existing| existing.is_none()) {
+            trimmed.push(None);
+        }
+
+        trimmed
     }
 
     fn cargo_command_with_binary_and_toolchain(
@@ -628,7 +799,45 @@ impl Halo2Target {
         self.run_cargo_command_with_fallback("Failed to build Halo2 circuit", |cmd| {
             cmd.args(["build", "--release"]).current_dir(project_dir);
         })
-        .context("Failed to build Halo2 circuit")
+        .with_context(|| {
+            format!(
+                "Cargo toolchain cascade exhausted; set {} (comma-separated) or ZK_FUZZER_HALO2_CARGO_TOOLCHAIN to pin a known-good Rust toolchain",
+                HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV
+            )
+        })
+    }
+
+    fn build_cache_key(&self, cargo_path: &Path, project_dir: &Path) -> String {
+        let project = project_dir
+            .canonicalize()
+            .unwrap_or_else(|_| project_dir.to_path_buf());
+        let build = self
+            .build_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.build_dir.clone());
+        let mtime = fs::metadata(cargo_path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|dur| dur.as_secs())
+            .unwrap_or_default();
+        format!("{}::{}::{}", project.display(), build.display(), mtime)
+    }
+
+    fn is_build_cached(&self, key: &str) -> bool {
+        let cache = match halo2_successful_build_cache().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        cache.contains(key)
+    }
+
+    fn record_cached_build(&self, key: String) {
+        let mut cache = match halo2_successful_build_cache().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        cache.insert(key);
     }
 
     /// Load and configure the circuit
@@ -674,13 +883,22 @@ impl Halo2Target {
             )
         })?;
 
-        // Build the project
-        tracing::info!("Building Halo2 Rust project...");
-        let output = self.run_cargo_build(project_dir)?;
+        let build_key = self.build_cache_key(cargo_path, project_dir);
+        if self.is_build_cached(&build_key) {
+            tracing::info!(
+                "Skipping Halo2 cargo build; using cached successful build for '{}'",
+                project_dir.display()
+            );
+        } else {
+            // Build the project
+            tracing::info!("Building Halo2 Rust project...");
+            let output = self.run_cargo_build(project_dir)?;
 
-        if !output.status.success() {
-            let details = crate::util::command_output_summary(&output);
-            anyhow::bail!("Failed to build Halo2 circuit: {}", details);
+            if !output.status.success() {
+                let details = crate::util::command_output_summary(&output);
+                anyhow::bail!("Failed to build Halo2 circuit: {}", details);
+            }
+            self.record_cached_build(build_key);
         }
 
         // Try to run the circuit's info command if it has one

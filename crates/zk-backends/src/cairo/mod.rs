@@ -26,10 +26,12 @@ const SCARB_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_SCARB_BIN_CANDIDATES";
 const SCARB_VERSION_CANDIDATES_ENV: &str = "ZK_FUZZER_SCARB_VERSION_CANDIDATES";
 const SCARB_TOOLCHAIN_DIR_ENV: &str = "ZK_FUZZER_SCARB_TOOLCHAIN_DIR";
 const SCARB_AUTO_DOWNLOAD_ENV: &str = "ZK_FUZZER_SCARB_AUTO_DOWNLOAD";
+const SCARB_ARCHIVE_DIR_ENV: &str = "ZK_FUZZER_SCARB_ARCHIVE_DIR";
 const SCARB_CACHE_ENV: &str = "SCARB_CACHE";
 const SCARB_CONFIG_ENV: &str = "SCARB_CONFIG";
 const SCARB_OFFLINE_ENV: &str = "SCARB_OFFLINE";
 const SCARB_HOME_CACHE_SEED_ENV: &str = "ZK_FUZZER_SCARB_HOME_CACHE_SEED";
+const SCARB_VERSION_CASCADE_LIMIT_ENV: &str = "ZK_FUZZER_SCARB_VERSION_CASCADE_LIMIT";
 
 fn scarb_download_timeout() -> std::time::Duration {
     crate::util::timeout_from_env("ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS", 240)
@@ -56,6 +58,197 @@ fn env_flag_enabled(name: &str, default_value: bool) -> bool {
         Err(std::env::VarError::NotPresent) => default_value,
         Err(_) => default_value,
     }
+}
+
+fn parse_semver_part(raw: &str) -> Option<u64> {
+    let digits: String = raw.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse::<u64>().ok()
+}
+
+fn parse_semver_triplet(raw: &str) -> Option<(u64, u64, u64)> {
+    let trimmed = raw.trim().trim_start_matches('v');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut parts = trimmed.split('.');
+    let major = parse_semver_part(parts.next()?)?;
+    let minor = parse_semver_part(parts.next()?)?;
+    let patch = match parts.next() {
+        Some(raw_patch) => parse_semver_part(raw_patch)?,
+        None => 0,
+    };
+    Some((major, minor, patch))
+}
+
+fn scarb_version_cascade_limit() -> usize {
+    let default_limit = 10usize;
+    let parsed = std::env::var(SCARB_VERSION_CASCADE_LIMIT_ENV)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .unwrap_or(default_limit);
+    parsed.clamp(1, 64)
+}
+
+fn discover_scarb_versions_from_path() -> Vec<String> {
+    let mut versions = Vec::new();
+    let Some(path_os) = std::env::var_os("PATH") else {
+        return versions;
+    };
+
+    for dir in std::env::split_paths(&path_os) {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let Some(version) = name.strip_prefix("scarb-") else {
+                continue;
+            };
+            if parse_semver_triplet(version).is_none() {
+                continue;
+            }
+            push_unique_candidate(&mut versions, version.to_string());
+        }
+    }
+
+    versions
+}
+
+fn discover_scarb_versions_from_toolchain_dir() -> Vec<String> {
+    let mut versions = Vec::new();
+    let toolchain_root = resolve_scarb_toolchain_dir();
+    let Ok(entries) = fs::read_dir(&toolchain_root) else {
+        return versions;
+    };
+
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let Some(after_prefix) = name.strip_prefix("scarb-v") else {
+            continue;
+        };
+        let Some((version, _rest)) = after_prefix.split_once('-') else {
+            continue;
+        };
+        if parse_semver_triplet(version).is_none() {
+            continue;
+        }
+        if !entry.path().join("bin").join("scarb").is_file() {
+            continue;
+        }
+        push_unique_candidate(&mut versions, version.to_string());
+    }
+
+    versions
+}
+
+fn resolve_versioned_scarb_binary_on_path(version: &str) -> Option<String> {
+    let trimmed = version.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let binary_name = format!("scarb-{trimmed}");
+    let Some(path_os) = std::env::var_os("PATH") else {
+        return None;
+    };
+
+    for dir in std::env::split_paths(&path_os) {
+        let candidate = dir.join(&binary_name);
+        if candidate.is_file() {
+            return Some(candidate.display().to_string());
+        }
+    }
+    None
+}
+
+fn collect_scarb_version_cascade(version_hint: Option<&str>) -> Vec<String> {
+    let hint_parsed = version_hint.and_then(parse_semver_triplet);
+    let mut versions = Vec::<String>::new();
+
+    if let Some(hint) = version_hint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        push_unique_candidate(&mut versions, hint.to_string());
+    }
+
+    let env_versions = std::env::var(SCARB_VERSION_CANDIDATES_ENV).ok();
+    for version in crate::util::parse_command_candidates(env_versions.as_deref()) {
+        if parse_semver_triplet(&version).is_none() {
+            continue;
+        }
+        push_unique_candidate(&mut versions, version);
+    }
+    for version in discover_scarb_versions_from_path() {
+        push_unique_candidate(&mut versions, version);
+    }
+    for version in discover_scarb_versions_from_toolchain_dir() {
+        push_unique_candidate(&mut versions, version);
+    }
+
+    if let Some(hint_key) = hint_parsed {
+        versions.sort_by(|left, right| {
+            let left_key = parse_semver_triplet(left);
+            let right_key = parse_semver_triplet(right);
+            let left_score = left_key.map(|(major, minor, patch)| {
+                let tier = if major == hint_key.0 && minor == hint_key.1 {
+                    0u8
+                } else if major == hint_key.0 {
+                    1u8
+                } else {
+                    2u8
+                };
+                (
+                    tier,
+                    major.abs_diff(hint_key.0),
+                    minor.abs_diff(hint_key.1),
+                    patch.abs_diff(hint_key.2),
+                )
+            });
+            let right_score = right_key.map(|(major, minor, patch)| {
+                let tier = if major == hint_key.0 && minor == hint_key.1 {
+                    0u8
+                } else if major == hint_key.0 {
+                    1u8
+                } else {
+                    2u8
+                };
+                (
+                    tier,
+                    major.abs_diff(hint_key.0),
+                    minor.abs_diff(hint_key.1),
+                    patch.abs_diff(hint_key.2),
+                )
+            });
+
+            left_score.cmp(&right_score).then_with(|| left.cmp(right))
+        });
+    } else {
+        versions.sort_by(|left, right| {
+            let left_key = parse_semver_triplet(left);
+            let right_key = parse_semver_triplet(right);
+            right_key.cmp(&left_key).then_with(|| left.cmp(right))
+        });
+    }
+
+    let limit = scarb_version_cascade_limit();
+    if versions.len() > limit {
+        versions.truncate(limit);
+    }
+    versions
 }
 
 fn scarb_command_candidates(
@@ -173,10 +366,6 @@ fn ensure_versioned_scarb_binary(version: &str) -> Option<String> {
         }
     }
 
-    if !env_flag_enabled(SCARB_AUTO_DOWNLOAD_ENV, true) {
-        return None;
-    }
-
     if let Err(err) = fs::create_dir_all(&toolchain_root) {
         tracing::warn!(
             "Failed to create Scarb toolchain directory '{}': {}",
@@ -186,28 +375,65 @@ fn ensure_versioned_scarb_binary(version: &str) -> Option<String> {
         return None;
     }
 
+    let allow_download = env_flag_enabled(SCARB_AUTO_DOWNLOAD_ENV, true);
+    let local_archive_dir = std::env::var_os(SCARB_ARCHIVE_DIR_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+
     for triple in triples {
         let archive_name = format!("scarb-v{parsed}-{triple}.tar.gz");
         let archive_path = toolchain_root.join(&archive_name);
-        let download_url = format!(
-            "https://github.com/software-mansion/scarb/releases/download/v{parsed}/{archive_name}"
-        );
+        let mut archive_ready = archive_path.is_file();
 
-        let curl_args = vec![
-            "-L".to_string(),
-            "--fail".to_string(),
-            "--retry".to_string(),
-            "2".to_string(),
-            "-o".to_string(),
-            archive_path.display().to_string(),
-            download_url,
-        ];
-        if let Err(err) = run_toolchain_setup_command(
-            "curl",
-            &curl_args,
-            "Failed downloading versioned scarb toolchain",
-        ) {
-            tracing::warn!("Skipping scarb toolchain candidate {}: {}", triple, err);
+        if !archive_ready {
+            if let Some(local_dir) = local_archive_dir.as_ref() {
+                let local_archive = local_dir.join(&archive_name);
+                if local_archive.is_file() {
+                    if let Err(err) = fs::copy(&local_archive, &archive_path) {
+                        tracing::warn!(
+                            "Skipping local Scarb archive candidate '{}': failed copying '{}' -> '{}': {}",
+                            triple,
+                            local_archive.display(),
+                            archive_path.display(),
+                            err
+                        );
+                        continue;
+                    }
+                    archive_ready = true;
+                }
+            }
+        }
+
+        if !archive_ready {
+            if !allow_download {
+                continue;
+            }
+
+            let download_url = format!(
+                "https://github.com/software-mansion/scarb/releases/download/v{parsed}/{archive_name}"
+            );
+
+            let curl_args = vec![
+                "-L".to_string(),
+                "--fail".to_string(),
+                "--retry".to_string(),
+                "2".to_string(),
+                "-o".to_string(),
+                archive_path.display().to_string(),
+                download_url,
+            ];
+            if let Err(err) = run_toolchain_setup_command(
+                "curl",
+                &curl_args,
+                "Failed downloading versioned scarb toolchain",
+            ) {
+                tracing::warn!("Skipping scarb toolchain candidate {}: {}", triple, err);
+                continue;
+            }
+            archive_ready = true;
+        }
+
+        if !archive_ready {
             continue;
         }
 
@@ -764,8 +990,17 @@ impl CairoTarget {
         let preferred = self.selected_scarb_binary();
         let mut extra_bin_candidates = Vec::new();
         let mut extra_version_candidates = Vec::new();
-        if let Some(version) = self.cairo_version_hint(project_dir) {
+
+        let version_hint = self.cairo_version_hint(project_dir);
+        for version in collect_scarb_version_cascade(version_hint.as_deref()) {
             push_unique_candidate(&mut extra_version_candidates, version.clone());
+            if let Some(binary_path) = resolve_versioned_scarb_binary_on_path(&version) {
+                push_unique_candidate(&mut extra_bin_candidates, binary_path);
+            }
+        }
+
+        // For the manifest hint, try provisioning a versioned Scarb binary on demand.
+        if let Some(version) = version_hint {
             if let Some(versioned_binary) = ensure_versioned_scarb_binary(&version) {
                 push_unique_candidate(&mut extra_bin_candidates, versioned_binary);
             }
@@ -776,10 +1011,17 @@ impl CairoTarget {
             &extra_bin_candidates,
             &extra_version_candidates,
         );
-        let (output, candidate) = run_scarb_with_fallback(&candidates, context, |cmd| {
-            self.configure_scarb_command_env(cmd, project_dir);
-            configure(cmd);
-        })?;
+        let (output, candidate) =
+            run_scarb_with_fallback(&candidates, context, |cmd| {
+                self.configure_scarb_command_env(cmd, project_dir);
+                configure(cmd);
+            })
+            .with_context(|| {
+                format!(
+                    "Toolchain cascade exhausted; set {} with explicit versions (comma-separated) to force a known-good Scarb toolchain",
+                    SCARB_VERSION_CANDIDATES_ENV
+                )
+            })?;
         self.remember_selected_scarb_binary(&candidate);
         Ok(output)
     }

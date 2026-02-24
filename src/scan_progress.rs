@@ -37,12 +37,7 @@ pub(crate) fn scan_default_output_dir() -> PathBuf {
     };
 
     std::fs::create_dir_all(&resolved)
-        .with_context(|| {
-            format!(
-                "cannot create output root '{}'",
-                resolved.display()
-            )
-        })
+        .with_context(|| format!("cannot create output root '{}'", resolved.display()))
         .unwrap_or_else(|err| {
             eprintln!(
                 "[zk-fuzzer] ERROR: cannot initialize ZKF_SCAN_OUTPUT_ROOT '{}': {}",
