@@ -431,10 +431,10 @@ Backend coverage snapshot (selected vs target floor=2):
 | Halo2 | 2 | 2 | `met` |
 
 #### 8.9.3 Manual Execution Checklist
-- [ ] Run backend readiness dashboard after each target-batch update (`scripts/backend_readiness_dashboard.sh`).
-- [ ] Run backend maturity scorecard after each target-batch update (`scripts/backend_maturity_scorecard.sh --consecutive-days 14 --consecutive-target-score 5.0`).
-- [ ] Run backend effectiveness report on the latest outcomes (`python3 scripts/build_backend_effectiveness_report.py --repo-root .`).
-- [ ] Run release streak status wrapper after each manual validation batch (`scripts/run_release_streak_status.sh`).
+- [x] Run backend readiness dashboard after each target-batch update (`scripts/backend_readiness_dashboard.sh`).
+- [x] Run backend maturity scorecard after each target-batch update (`scripts/backend_maturity_scorecard.sh --consecutive-days 14 --consecutive-target-score 5.0`).
+- [x] Run backend effectiveness report on the latest outcomes (`python3 scripts/build_backend_effectiveness_report.py --repo-root .`).
+- [x] Run release streak status wrapper after each manual validation batch (`scripts/run_release_streak_status.sh`).
 - [x] Archive evidence paths for each batch under `artifacts/` and link them in the run ledger table.
 
 #### 8.9.4 Manual Run Ledger
@@ -446,6 +446,7 @@ Backend coverage snapshot (selected vs target floor=2):
 | `2026-02-23` | `EXT-BATCH-004` | `EXT-010, EXT-011, EXT-012` | `evidence-strict (seed=42, iter=1000, timeout=30, workers=1)` | `3` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_004/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `2026-02-23` | `EXT-BATCH-005` | `EXT-001, EXT-004, EXT-005` | `evidence-strict (seed=42, iter=1000, timeout=30, workers=1)` | `3` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_005/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `2026-02-23` | `EXT-BATCH-006` | `EXT-004, EXT-005` | `evidence-quickcheck (seed=42, iter=1, timeout=5, workers=1, parallel)` | `2` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_006/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
+| `2026-02-24` | `EXT-BATCH-008` | `EXT-010, EXT-011, EXT-012` | `evidence-quickcheck (seed=42, iter=200, timeout=20, workers=1)` | `3` | `1.00 (Step 0-8 complete for signal-quality revalidation)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_008/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 
 `EXT-BATCH-001` snapshot SHAs (`artifacts/external_targets/ext_batch_001/manifests/target_snapshot.json`):
 - `EXT-001`: `c82b3072d7946a76487a8c1be463fc407045391c`
@@ -476,6 +477,11 @@ Backend coverage snapshot (selected vs target floor=2):
 - `EXT-004`: `396035e3fbcfb696e18dfc08f837d76b4b8931e3bfc62b82ccb6dff17cdca8ca`
 - `EXT-005`: `6df3b38e3bd0ee22d97e80fe6ca8b7730c43f6ed0dadf407574dcc6896c76560`
 
+`EXT-BATCH-008` snapshot SHAs (`artifacts/external_targets/ext_batch_008/manifests/target_snapshot.json`):
+- `EXT-010`: `360715607a240041f49eb46c543fc450051c4cb7`
+- `EXT-011`: `360715607a240041f49eb46c543fc450051c4cb7`
+- `EXT-012`: `360715607a240041f49eb46c543fc450051c4cb7`
+
 #### 8.9.5 Logic Finding And Remediation Board
 | Finding ID | Target ID | Class | Severity | Repro Status | Owning Module | Fix Commit/PR | Verification Status |
 |---|---|---|---|---|---|---|---|
@@ -487,9 +493,9 @@ Backend coverage snapshot (selected vs target floor=2):
 | `EXT-FIND-006` | `EXT-008` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Cairo backend build path (Scarb preflight)` | `n/a (triage pending root cause details)` | `[ ] fixed / [ ] revalidated` |
 | `EXT-FIND-007` | `EXT-009` | `runtime-panic` | `critical` | `[ ] repro pending / [x] reproduced` | `src/executor/isolated.rs`, `wait-timeout` SIGCHLD handling path | `local patch: bounded child timeout + bounded post-kill reap` | `[x] fixed / [ ] revalidated` |
 | `EXT-FIND-008` | `EXT-009` | `runtime-timeout-enforcement` | `high` | `[ ] repro pending / [x] reproduced` | `underconstrained attack loop wall-clock checks` | `pending` | `[ ] fixed / [ ] revalidated` |
-| `EXT-FIND-009` | `EXT-010` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `pending` | `[ ] fixed / [ ] revalidated` |
-| `EXT-FIND-010` | `EXT-011` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `pending` | `[ ] fixed / [ ] revalidated` |
-| `EXT-FIND-011` | `EXT-012` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `pending` | `[ ] fixed / [ ] revalidated` |
+| `EXT-FIND-009` | `EXT-010` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `8041daf` (chunked execution observation + metric accounting) + `fdb16a4` (local writable run-signal fallback) | `[x] fixed / [x] revalidated` |
+| `EXT-FIND-010` | `EXT-011` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `8041daf` (chunked execution observation + metric accounting) + `fdb16a4` (local writable run-signal fallback) | `[x] fixed / [x] revalidated` |
+| `EXT-FIND-011` | `EXT-012` | `signal-quality` | `high` | `[ ] repro pending / [x] reproduced` | `report/attack metric accounting (findings emitted with 0 executions)` | `8041daf` (chunked execution observation + metric accounting) + `fdb16a4` (local writable run-signal fallback) | `[x] fixed / [x] revalidated` |
 | `EXT-FIND-012` | `EXT-001` | `target-entry-compatibility` | `medium` | `[ ] repro pending / [x] reproduced` | `external target wiring (raw ArgMax entry is not directly executable)` | `add-only wrapper target: ext001_argmax_main_wrapper.circom` | `[x] fixed / [x] revalidated` |
 | `EXT-FIND-013` | `EXT-004` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Cairo backend build path (Scarb preflight)` | `fixed diagnostics path; now shows exact preflight cause (lockfile permission / toolchain mismatch) in run_outcome` | `[x] fixed / [x] revalidated` |
 | `EXT-FIND-014` | `EXT-005` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Halo2 backend build path (EZKL preflight)` | `fixed diagnostics path; now surfaces rustup/cargo root cause text instead of opaque timeout-only failure` | `[x] fixed / [x] revalidated` |
@@ -525,6 +531,8 @@ Current batch status (`EXT-BATCH-004`): Step 0-3 completed with archived artifac
 
 Current batch status (`EXT-BATCH-005`): Step 0-3 completed with archived artifacts in `artifacts/external_targets/ext_batch_005/{logs,manifests,reports,repro}`. `EXT-001` raw target entry (`circuits/ArgMax.circom`) failed preflight due missing `main` component declaration (`artifacts/external_targets/ext_batch_005/reports/run_signals/report_1771887699/misc/run_outcome.json`), then completed successfully via add-only wrapper correction (`artifacts/external_targets/ext_batch_005/repro/ext001_argmax_main_wrapper.circom`) with `status=completed` and `findings_total=0` (`artifacts/external_targets/ext_batch_005/reports/run_signals/report_1771887978/misc/run_outcome.json`). `EXT-004` remains blocked at Cairo preflight (`Scarb build failed`, `artifacts/external_targets/ext_batch_005/reports/run_signals/report_1771887795/misc/run_outcome.json`). `EXT-005` remains blocked at Halo2 preflight build timeout (`Failed to build Halo2 circuit: Command timed out after 120s`, `artifacts/external_targets/ext_batch_005/reports/run_signals/report_1771887824/misc/run_outcome.json`). Initial parallel `EXT-004`/`EXT-005` run also exposed run-signal ID collision at second granularity (`report_1771887719`), recorded as a workflow-stability finding.
 
+Current batch status (`EXT-BATCH-008`): Step 0-8 completed for the `EXT-010/011/012` signal-quality revalidation scope with archived artifacts in `artifacts/external_targets/ext_batch_008/{logs,manifests,reports,repro}`. All three reruns now report non-zero execution counts (`total_executions=800` each) under the same quick profile that previously yielded `0` executions (`artifacts/external_targets/ext_batch_008/reports/evidence/EXT-010/run_outcome.json`, `artifacts/external_targets/ext_batch_008/reports/evidence/EXT-011/run_outcome.json`, `artifacts/external_targets/ext_batch_008/reports/evidence/EXT-012/run_outcome.json`). Post-fix gate reruns executed and archived (`artifacts/external_targets/ext_batch_008/logs/step8_backend_readiness_dashboard.log`, `artifacts/external_targets/ext_batch_008/logs/step8_backend_maturity_scorecard.log`, `artifacts/external_targets/ext_batch_008/logs/step8_backend_effectiveness_report.log`, `artifacts/external_targets/ext_batch_008/logs/step8_release_streak_status.log`).
+
 Latest evidence severity breakdown (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/report.json`):
 - `critical=3`, `high=1`, `medium=1515`
 - top attack-type volume: `arithmetic_overflow=1482`, `metamorphic=33`, `underconstrained=2`, `constraint_inference=1`, `witness_collision=1`
@@ -540,7 +548,7 @@ Step-by-step execution tracker:
 | 5 | Exploit replay command | Repro script + input fixture | Replay reproduces vulnerable behavior on demand | `[x]` (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/{replay_command.txt,replay_ext003_iszero_exploit.py,replay_ext003_iszero_exploit.log,exploit_notes.md}`) |
 | 6 | Triage + root cause | Issue board row | Severity + owner + module assigned | `[x]` (`EXT-ISSUE-002` logged in issue-to-code-adjustment tracker) |
 | 7 | Patch + tests | Commit + regression test case | Replay now fails exploit condition; tests green | `[ ]` |
-| 8 | Gate reruns | Readiness/maturity/effectiveness outputs | No regression in required gates | `[ ]` |
+| 8 | Gate reruns | Readiness/maturity/effectiveness outputs | No regression in required gates | `[x]` |
 
 Exploit proof requirements (must all be present before claiming confirmed bug):
 | Requirement | Description | Evidence Path | Status |
