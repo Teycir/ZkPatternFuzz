@@ -26,6 +26,7 @@ fn halo2_external_command_timeout() -> std::time::Duration {
 
 const CARGO_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_CARGO_BIN_CANDIDATES";
 const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES";
+const HALO2_GO_PROXY_CACHE_DIR_ENV: &str = "ZK_FUZZER_HALO2_GO_PROXY_CACHE_DIR";
 
 fn halo2_cargo_toolchain_from_env() -> Option<String> {
     if let Ok(value) = std::env::var("ZK_FUZZER_HALO2_CARGO_TOOLCHAIN") {
@@ -44,6 +45,31 @@ fn halo2_strict_readiness_mode() -> bool {
             "1" | "true" | "yes" | "on"
         ),
         Err(_) => false,
+    }
+}
+
+fn halo2_local_go_proxy_cache_dir() -> Option<PathBuf> {
+    if let Ok(value) = std::env::var(HALO2_GO_PROXY_CACHE_DIR_ENV) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            let path = PathBuf::from(trimmed);
+            if path.is_dir() {
+                return Some(path);
+            }
+            tracing::warn!(
+                "{} points to a non-directory path: '{}'",
+                HALO2_GO_PROXY_CACHE_DIR_ENV,
+                path.display()
+            );
+        }
+    }
+
+    let home = std::env::var("HOME").ok()?;
+    let path = PathBuf::from(home).join("go/pkg/mod/cache/download");
+    if path.is_dir() {
+        Some(path)
+    } else {
+        None
     }
 }
 
@@ -295,19 +321,39 @@ impl Halo2Target {
                 command.arg(format!("+{trimmed}"));
             }
         }
+        let build_dir = if self.build_dir.is_absolute() {
+            self.build_dir.clone()
+        } else {
+            std::env::current_dir()
+                .context("Failed resolving cwd for Halo2 build dir")?
+                .join(&self.build_dir)
+        };
+
+        std::fs::create_dir_all(&build_dir)?;
+
         // Keep Go module/toolchain cache local to the Halo2 build dir so external
         // projects with Go build scripts do not depend on host-global cache paths.
-        let go_root = self.build_dir.join("go");
+        let go_root = build_dir.join("go");
         let go_mod_cache = go_root.join("pkg").join("mod");
         let go_build_cache = go_root.join("cache");
         std::fs::create_dir_all(&go_mod_cache)?;
         std::fs::create_dir_all(&go_build_cache)?;
 
-        command.env("CARGO_TARGET_DIR", &self.build_dir);
+        command.env("CARGO_TARGET_DIR", &build_dir);
         command
             .env("GOPATH", &go_root)
             .env("GOMODCACHE", &go_mod_cache)
             .env("GOCACHE", &go_build_cache);
+
+        if std::env::var_os("GOPROXY").is_none() {
+            if let Some(cache_dir) = halo2_local_go_proxy_cache_dir() {
+                command.env("GOPROXY", format!("file://{}", cache_dir.display()));
+                if std::env::var_os("GOSUMDB").is_none() {
+                    command.env("GOSUMDB", "off");
+                }
+            }
+        }
+
         if std::env::var_os("GOTOOLCHAIN").is_none() {
             command.env("GOTOOLCHAIN", "local");
         }
