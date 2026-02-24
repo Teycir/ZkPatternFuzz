@@ -175,6 +175,25 @@ fn infer_reason_code_from_output(exit_code: i32, stdout: &str, stderr: &str) -> 
     None
 }
 
+fn target_run_counts_as_failure(summary: &TargetRunSummary) -> bool {
+    if summary.exit_code == 0 {
+        return false;
+    }
+
+    let mut has_critical_signal = false;
+    for reason in summary.reason_counts.keys() {
+        match reason.as_str() {
+            "critical_findings_detected" => {
+                has_critical_signal = true;
+            }
+            "completed" | "selector_mismatch" => {}
+            _ => return true,
+        }
+    }
+
+    !has_critical_signal
+}
+
 fn selector_for_target(
     args: &Args,
     target: &MatrixTarget,
@@ -411,7 +430,7 @@ fn main() -> anyhow::Result<()> {
                     "{}\texit={}\treasons:{}",
                     result.name, result.exit_code, reason_summary
                 );
-                if result.exit_code != 0 {
+                if target_run_counts_as_failure(&result) {
                     failures += 1;
                 }
                 flattened.push(result);

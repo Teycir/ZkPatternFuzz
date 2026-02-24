@@ -624,6 +624,253 @@ fn needs_semicolon(line: &str) -> bool {
     trimmed.contains("===") || trimmed.contains("<==")
 }
 
+fn circom_missing_main_error(stderr: &str) -> bool {
+    let lowered = stderr.to_ascii_lowercase();
+    lowered.contains("error[p1001]") && lowered.contains("no main specified")
+}
+
+fn template_param_count_from_decl_suffix(raw_suffix: &str) -> Option<usize> {
+    let open = raw_suffix.find('(')?;
+    let close = raw_suffix[open + 1..].find(')')?;
+    let params = &raw_suffix[open + 1..open + 1 + close];
+    let count = params
+        .split(',')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .count();
+    Some(count)
+}
+
+fn extract_template_declarations(source: &str) -> Vec<(String, usize)> {
+    let mut templates = Vec::new();
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        let Some(after_prefix) = trimmed.strip_prefix("template ") else {
+            continue;
+        };
+        let name: String = after_prefix
+            .chars()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            .collect();
+        if name.is_empty() {
+            continue;
+        }
+        let suffix = &after_prefix[name.len()..];
+        let Some(param_count) = template_param_count_from_decl_suffix(suffix) else {
+            continue;
+        };
+        if templates.iter().any(|(existing, _)| existing == &name) {
+            continue;
+        }
+        templates.push((name, param_count));
+    }
+    templates
+}
+
+fn parse_component_main_rhs_candidates(source: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    for line in source.lines() {
+        let mut normalized = line.trim();
+        if normalized.starts_with("//") {
+            normalized = normalized.trim_start_matches('/').trim_start();
+        }
+        if !normalized.contains("component main") {
+            continue;
+        }
+        let Some((_, rhs)) = normalized.split_once('=') else {
+            continue;
+        };
+        let rhs = rhs.split(';').next().unwrap_or_default().trim();
+        if rhs.is_empty() {
+            continue;
+        }
+        if candidates.iter().any(|existing| existing == rhs) {
+            continue;
+        }
+        candidates.push(rhs.to_string());
+    }
+    candidates
+}
+
+fn build_template_invocation(name: &str, param_count: usize, value: usize) -> String {
+    if param_count == 0 {
+        return format!("{name}()");
+    }
+    let args = std::iter::repeat(value.to_string())
+        .take(param_count)
+        .collect::<Vec<_>>();
+    format!("{name}({})", args.join(", "))
+}
+
+fn synthetic_main_candidates(
+    source: &str,
+    compile_path: &Path,
+    configured_main_component: &str,
+) -> Vec<String> {
+    let mut candidates = parse_component_main_rhs_candidates(source);
+    let declarations = extract_template_declarations(source);
+
+    let mut known_param_counts = HashMap::<String, usize>::new();
+    for (name, param_count) in &declarations {
+        known_param_counts.insert(name.clone(), *param_count);
+    }
+
+    let configured = configured_main_component.trim();
+    if !configured.is_empty() && !configured.eq_ignore_ascii_case("main") {
+        if let Some(param_count) = known_param_counts.get(configured).copied() {
+            for seed in [1usize, 5usize] {
+                let candidate = build_template_invocation(configured, param_count, seed);
+                if !candidates.iter().any(|existing| existing == &candidate) {
+                    candidates.push(candidate);
+                }
+            }
+        } else {
+            let candidate = format!("{configured}()");
+            if !candidates.iter().any(|existing| existing == &candidate) {
+                candidates.push(candidate);
+            }
+        }
+    }
+
+    if let Some(stem) = compile_path.file_stem().and_then(|value| value.to_str()) {
+        if let Some(param_count) = known_param_counts.get(stem).copied() {
+            for seed in [1usize, 5usize] {
+                let candidate = build_template_invocation(stem, param_count, seed);
+                if !candidates.iter().any(|existing| existing == &candidate) {
+                    candidates.push(candidate);
+                }
+            }
+        }
+    }
+
+    for (name, param_count) in declarations {
+        for seed in [1usize, 5usize] {
+            let candidate = build_template_invocation(&name, param_count, seed);
+            if !candidates.iter().any(|existing| existing == &candidate) {
+                candidates.push(candidate);
+            }
+            if param_count == 0 {
+                break;
+            }
+        }
+    }
+
+    candidates
+}
+
+fn synthetic_main_wrapper_source(include_path: &Path, main_rhs: &str) -> String {
+    format!(
+        "pragma circom 2.0.0;\ninclude \"{}\";\ncomponent main = {};\n",
+        include_path.display(),
+        main_rhs
+    )
+}
+
+fn has_explicit_component_main(source: &str) -> bool {
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") || trimmed.starts_with('*') {
+            continue;
+        }
+        if trimmed.contains("component main") {
+            return true;
+        }
+    }
+    false
+}
+
+fn try_compile_with_synthetic_main(
+    compile_path: &Path,
+    build_dir_str: &str,
+    include_paths: &[PathBuf],
+    candidates: &[String],
+    configured_main_component: &str,
+) -> Result<Option<String>> {
+    let source = std::fs::read_to_string(compile_path).with_context(|| {
+        format!(
+            "Failed reading Circom source '{}' for synthetic-main recovery",
+            compile_path.display()
+        )
+    })?;
+    let synth_candidates =
+        synthetic_main_candidates(&source, compile_path, configured_main_component);
+    if synth_candidates.is_empty() {
+        return Ok(None);
+    }
+
+    let temp_dir = create_temp_dir()?;
+    let wrapper_name = compile_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "main_wrapper.circom".to_string());
+    let wrapper_path = temp_dir.path().join(wrapper_name);
+    let include_abs = std::fs::canonicalize(compile_path).with_context(|| {
+        format!(
+            "Failed canonicalizing Circom source path '{}' for synthetic-main recovery",
+            compile_path.display()
+        )
+    })?;
+
+    let mut fallback_errors = Vec::new();
+    for main_rhs in synth_candidates {
+        let wrapper_source = synthetic_main_wrapper_source(&include_abs, &main_rhs);
+        std::fs::write(&wrapper_path, wrapper_source).with_context(|| {
+            format!(
+                "Failed writing synthetic-main wrapper '{}'",
+                wrapper_path.display()
+            )
+        })?;
+        let wrapper_path_str = wrapper_path.to_str().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Non-UTF8 synthetic-main wrapper path: {}",
+                wrapper_path.display()
+            )
+        })?;
+
+        match run_circom_with_fallback(
+            candidates,
+            "Circom synthetic-main fallback compile failed",
+            |cmd| {
+                for include in include_paths {
+                    cmd.arg("-l").arg(include);
+                }
+                cmd.args([
+                    wrapper_path_str,
+                    "--r1cs",
+                    "--wasm",
+                    "--sym",
+                    "--json",
+                    "-o",
+                    build_dir_str,
+                ]);
+            },
+        ) {
+            Ok((output, selected_candidate)) if output.status.success() => {
+                tracing::info!(
+                    "Circom synthetic-main fallback succeeded with '{}': component main = {}",
+                    selected_candidate,
+                    main_rhs
+                );
+                return Ok(Some(selected_candidate));
+            }
+            Ok((output, _)) => {
+                fallback_errors.push(crate::util::command_failure_summary(&output));
+            }
+            Err(err) => fallback_errors.push(err.to_string()),
+        }
+    }
+
+    if !fallback_errors.is_empty() {
+        tracing::warn!(
+            "Circom synthetic-main fallback exhausted for '{}': {}",
+            compile_path.display(),
+            fallback_errors.join(" || ")
+        );
+    }
+    Ok(None)
+}
+
 fn hash_path(path: &Path) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -1122,8 +1369,26 @@ impl CircomTarget {
             "Failed to run circom compiler for '{}'",
             compile_path.display()
         );
-        let (output, selected_candidate) =
-            run_circom_with_fallback(&candidates, &compile_context, |cmd| {
+        let compile_source = std::fs::read_to_string(&compile_path).with_context(|| {
+            format!(
+                "Failed reading Circom source '{}' before compile",
+                compile_path.display()
+            )
+        })?;
+
+        let mut selected_candidate: Option<String> = None;
+        if !has_explicit_component_main(&compile_source) {
+            selected_candidate = try_compile_with_synthetic_main(
+                &compile_path,
+                build_dir_str,
+                &self.include_paths,
+                &candidates,
+                &self.main_component,
+            )?;
+        }
+
+        if selected_candidate.is_none() {
+            match run_circom_with_fallback(&candidates, &compile_context, |cmd| {
                 for include in &self.include_paths {
                     cmd.arg("-l").arg(include);
                 }
@@ -1136,16 +1401,38 @@ impl CircomTarget {
                     "-o",
                     build_dir_str,
                 ]);
-            })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!(
-                "Circom compilation failed for '{}': {}",
-                compile_path.display(),
-                stderr
-            );
+            }) {
+                Ok((output, candidate)) => {
+                    if !output.status.success() {
+                        anyhow::bail!(
+                            "Circom compilation failed for '{}': {}",
+                            compile_path.display(),
+                            crate::util::command_failure_summary(&output)
+                        );
+                    }
+                    selected_candidate = Some(candidate);
+                }
+                Err(err) => {
+                    if circom_missing_main_error(&err.to_string()) {
+                        selected_candidate = try_compile_with_synthetic_main(
+                            &compile_path,
+                            build_dir_str,
+                            &self.include_paths,
+                            &candidates,
+                            &self.main_component,
+                        )?;
+                        if selected_candidate.is_none() {
+                            return Err(err);
+                        }
+                    } else {
+                        return Err(err);
+                    }
+                }
+            }
         }
+
+        let selected_candidate =
+            selected_candidate.unwrap_or_else(|| "unknown_circom_candidate".to_string());
 
         tracing::info!(
             "Circom compilation successful (command candidate: {})",

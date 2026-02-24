@@ -14,6 +14,10 @@ const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
 const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
 const RUN_SIGNAL_DIR_ENV: &str = "ZKF_RUN_SIGNAL_DIR";
 const BUILD_CACHE_DIR_ENV: &str = "ZKF_BUILD_CACHE_DIR";
+const HALO2_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS";
+const HALO2_TOTAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_TOTAL_TIMEOUT_SECS";
+const CAIRO_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS";
+const SCARB_DOWNLOAD_TIMEOUT_ENV: &str = "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS";
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
 const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
 const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
@@ -831,6 +835,18 @@ fn run_scan(
     cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.scan_output_root)
         .env(RUN_SIGNAL_DIR_ENV, &run_signal_dir)
         .env(BUILD_CACHE_DIR_ENV, &build_cache_dir);
+    if std::env::var_os(HALO2_EXTERNAL_TIMEOUT_ENV).is_none() {
+        cmd.env(HALO2_EXTERNAL_TIMEOUT_ENV, run_cfg.timeout.to_string());
+    }
+    if std::env::var_os(HALO2_TOTAL_TIMEOUT_ENV).is_none() {
+        cmd.env(HALO2_TOTAL_TIMEOUT_ENV, run_cfg.timeout.to_string());
+    }
+    if std::env::var_os(CAIRO_EXTERNAL_TIMEOUT_ENV).is_none() {
+        cmd.env(CAIRO_EXTERNAL_TIMEOUT_ENV, run_cfg.timeout.to_string());
+    }
+    if std::env::var_os(SCARB_DOWNLOAD_TIMEOUT_ENV).is_none() {
+        cmd.env(SCARB_DOWNLOAD_TIMEOUT_ENV, run_cfg.timeout.to_string());
+    }
     if let Some(run_root) = run_cfg.scan_run_root {
         cmd.env(SCAN_RUN_ROOT_ENV, run_root);
     }
@@ -1179,6 +1195,9 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
             || (message.contains("out of bounds exception") && message.contains(".circom"))
     };
     let is_backend_toolchain_mismatch = |message: &str| -> bool {
+        let cascade_exhausted = message.contains("toolchain cascade exhausted")
+            || message.contains("scarb build failed for all configured candidates")
+            || message.contains("no working scarb candidate found");
         let scarb_compile_mismatch = message.contains("scarb build failed")
             && message.contains("could not compile `")
             && (message.contains("error[e")
@@ -1189,7 +1208,7 @@ fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
             || message.contains("the package requires")
             || message.contains("is not supported by this compiler")
             || message.contains("cargo-features");
-        scarb_compile_mismatch || rust_toolchain_mismatch
+        cascade_exhausted || scarb_compile_mismatch || rust_toolchain_mismatch
     };
 
     if status == "completed_with_critical_findings" {

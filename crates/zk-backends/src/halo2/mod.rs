@@ -24,6 +24,7 @@ use zk_core::Framework;
 fn halo2_external_command_timeout() -> std::time::Duration {
     crate::util::timeout_from_env("ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS", 600)
 }
+const HALO2_TOTAL_TIMEOUT_SECS_ENV: &str = "ZK_FUZZER_HALO2_TOTAL_TIMEOUT_SECS";
 
 const CARGO_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_CARGO_BIN_CANDIDATES";
 const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES";
@@ -32,6 +33,18 @@ const HALO2_CARGO_HOME_CACHE_SEED_ENV: &str = "ZK_FUZZER_HALO2_CARGO_HOME_CACHE_
 const HALO2_USE_HOST_CARGO_HOME_ENV: &str = "ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME";
 const HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV: &str = "ZK_FUZZER_HALO2_TOOLCHAIN_CASCADE_LIMIT";
 const HALO2_RUSTUP_TOOLCHAIN_CASCADE_ENV: &str = "ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE";
+const HALO2_SVM_RELEASES_LIST_JSON_ENV: &str = "SVM_RELEASES_LIST_JSON";
+const HALO2_SVM_RELEASES_LIST_JSON_CANDIDATES_ENV: &str =
+    "ZK_FUZZER_HALO2_SVM_RELEASES_LIST_JSON_CANDIDATES";
+
+fn halo2_total_timeout_budget() -> Option<std::time::Duration> {
+    let raw = std::env::var(HALO2_TOTAL_TIMEOUT_SECS_ENV).ok()?;
+    let secs = raw.trim().parse::<u64>().ok()?;
+    if secs == 0 {
+        return None;
+    }
+    Some(std::time::Duration::from_secs(secs))
+}
 
 fn halo2_cargo_toolchain_from_env() -> Option<String> {
     if let Ok(value) = std::env::var("ZK_FUZZER_HALO2_CARGO_TOOLCHAIN") {
@@ -366,6 +379,82 @@ fn warm_cargo_home_from_seed(cargo_home: &Path) -> bool {
         let _ = fs::write(&marker, "seeded-from-home-cache\n");
     }
     copied_any
+}
+
+fn halo2_svm_releases_candidates_from_env() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let raw = std::env::var(HALO2_SVM_RELEASES_LIST_JSON_CANDIDATES_ENV).ok();
+    for candidate in crate::util::parse_command_candidates(raw.as_deref()) {
+        let path = PathBuf::from(candidate.trim());
+        if path.as_os_str().is_empty() {
+            continue;
+        }
+        if paths.iter().any(|existing| existing == &path) {
+            continue;
+        }
+        paths.push(path);
+    }
+    paths
+}
+
+fn resolve_svm_releases_list_file(build_dir: &Path) -> Option<PathBuf> {
+    if let Ok(explicit) = std::env::var(HALO2_SVM_RELEASES_LIST_JSON_ENV) {
+        let path = PathBuf::from(explicit.trim());
+        if path.is_file() {
+            return Some(path);
+        }
+        tracing::warn!(
+            "{} is set but file is missing: '{}'",
+            HALO2_SVM_RELEASES_LIST_JSON_ENV,
+            explicit
+        );
+    }
+
+    for candidate in halo2_svm_releases_candidates_from_env() {
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        for candidate in [
+            home.join(".svm").join("list.json"),
+            home.join(".local")
+                .join("share")
+                .join("svm")
+                .join("list.json"),
+        ] {
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    let fallback = build_dir.join("_svm").join("releases_list.json");
+    if !fallback.is_file() {
+        if let Some(parent) = fallback.parent() {
+            if let Err(err) = fs::create_dir_all(parent) {
+                tracing::warn!(
+                    "Failed creating local SVM releases list parent '{}': {}",
+                    parent.display(),
+                    err
+                );
+                return None;
+            }
+        }
+
+        let payload = r#"{"builds":[],"releases":{}}"#;
+        if let Err(err) = fs::write(&fallback, payload) {
+            tracing::warn!(
+                "Failed writing local SVM releases list '{}': {}",
+                fallback.display(),
+                err
+            );
+            return None;
+        }
+    }
+
+    Some(fallback)
 }
 
 fn halo2_successful_build_cache() -> &'static Mutex<HashSet<String>> {
@@ -732,6 +821,12 @@ impl Halo2Target {
         if std::env::var_os("GOTOOLCHAIN").is_none() {
             command.env("GOTOOLCHAIN", "local");
         }
+
+        if std::env::var_os(HALO2_SVM_RELEASES_LIST_JSON_ENV).is_none() {
+            if let Some(path) = resolve_svm_releases_list_file(&build_dir) {
+                command.env(HALO2_SVM_RELEASES_LIST_JSON_ENV, path);
+            }
+        }
         Ok(command)
     }
 
@@ -769,30 +864,59 @@ impl Halo2Target {
                 })
             })
             .collect::<Vec<_>>();
+        let per_attempt_timeout = halo2_external_command_timeout();
+        let total_budget = halo2_total_timeout_budget();
+        let started = std::time::Instant::now();
+        let mut failures = Vec::<String>::new();
+        let mut labels_seen = Vec::<String>::new();
 
-        let (output, selected_label) = crate::util::run_candidate_commands_with_fallback(
-            &candidates,
-            halo2_external_command_timeout(),
-            context,
-            |candidate| candidate.label.clone(),
-            |candidate| {
-                let mut cmd = self.cargo_command_with_binary_and_toolchain(
-                    &candidate.binary,
-                    candidate.toolchain.as_deref(),
-                )?;
-                configure(&mut cmd);
-                Ok(cmd)
-            },
-        )?;
+        for candidate in &candidates {
+            labels_seen.push(candidate.label.clone());
+            let mut cmd = self.cargo_command_with_binary_and_toolchain(
+                &candidate.binary,
+                candidate.toolchain.as_deref(),
+            )?;
+            configure(&mut cmd);
 
-        if let Some(selected) = candidates
-            .iter()
-            .find(|candidate| candidate.label == selected_label)
-        {
-            self.remember_selected_cargo_binary(&selected.binary);
+            let attempt_timeout = if let Some(total) = total_budget {
+                let elapsed = started.elapsed();
+                let remaining = total.saturating_sub(elapsed);
+                if remaining.is_zero() {
+                    failures.push(format!(
+                        "{}: total timeout budget exhausted after {:.2}s",
+                        candidate.label,
+                        elapsed.as_secs_f64()
+                    ));
+                    break;
+                }
+                std::cmp::min(per_attempt_timeout, remaining)
+            } else {
+                per_attempt_timeout
+            };
+
+            match crate::util::run_with_timeout(&mut cmd, attempt_timeout) {
+                Ok(output) if output.status.success() => {
+                    self.remember_selected_cargo_binary(&candidate.binary);
+                    return Ok(output);
+                }
+                Ok(output) => {
+                    failures.push(format!(
+                        "{}: {}",
+                        candidate.label,
+                        crate::util::command_failure_summary(&output)
+                    ));
+                }
+                Err(err) => {
+                    failures.push(format!("{}: {}", candidate.label, err));
+                }
+            }
         }
 
-        Ok(output)
+        anyhow::bail!(
+            "{context}. Candidates tried: {}. Last errors: {}",
+            labels_seen.join(", "),
+            failures.join(" || ")
+        )
     }
 
     fn run_cargo_build(&self, project_dir: &Path) -> Result<std::process::Output> {

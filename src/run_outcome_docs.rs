@@ -97,6 +97,9 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
             || (message.contains("out of bounds exception") && message.contains(".circom"))
     };
     let is_backend_toolchain_mismatch = |message: &str| -> bool {
+        let cascade_exhausted = message.contains("toolchain cascade exhausted")
+            || message.contains("scarb build failed for all configured candidates")
+            || message.contains("no working scarb candidate found");
         let scarb_compile_mismatch = message.contains("scarb build failed")
             && message.contains("could not compile `")
             && (message.contains("error[e")
@@ -107,7 +110,7 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
             || message.contains("the package requires")
             || message.contains("is not supported by this compiler")
             || message.contains("cargo-features");
-        scarb_compile_mismatch || rust_toolchain_mismatch
+        cascade_exhausted || scarb_compile_mismatch || rust_toolchain_mismatch
     };
 
     if status == "completed_with_critical_findings" {
@@ -199,12 +202,15 @@ pub(crate) fn log_run_reason_code(doc: &serde_json::Value) {
         .get("stage")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    tracing::info!(
-        "run_outcome_classified: reason_code={} status={} stage={}",
-        code,
-        status,
-        stage
-    );
+    // Logging should never crash the run lifecycle (e.g., broken stderr pipe in parent process).
+    let _ = std::panic::catch_unwind(|| {
+        tracing::info!(
+            "run_outcome_classified: reason_code={} status={} stage={}",
+            code,
+            status,
+            stage
+        );
+    });
 }
 
 pub(crate) fn running_run_doc_with_window(ctx: RunOutcomeDocContext<'_>) -> serde_json::Value {

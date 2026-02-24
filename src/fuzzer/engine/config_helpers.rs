@@ -114,10 +114,18 @@ impl FuzzingEngine {
         let mut seen_indices = std::collections::HashSet::new();
         indices.retain(|idx| seen_indices.insert(*idx));
 
-        if indices.len() != expected {
+        if indices.is_empty() {
             anyhow::bail!(
-                "Cannot reconcile inputs strictly: inspector exposed {} input indices, \
+                "Cannot reconcile inputs strictly: inspector exposed zero input indices, \
                  executor reports {} total inputs",
+                expected
+            );
+        }
+
+        if indices.len() != expected {
+            tracing::warn!(
+                "Input index count mismatch during strict reconciliation: inspector exposed {}, \
+                 executor reports {} total inputs. Continuing with inspector-derived ordering.",
                 indices.len(),
                 expected
             );
@@ -125,7 +133,7 @@ impl FuzzingEngine {
 
         let wire_labels = inspector.wire_labels();
         let mut seen_labels = std::collections::HashSet::new();
-        let mut labels = Vec::with_capacity(expected);
+        let mut labels = Vec::with_capacity(indices.len());
         for (position, idx) in indices.into_iter().enumerate() {
             let candidate = wire_labels.get(&idx).ok_or_else(|| {
                 anyhow::anyhow!(

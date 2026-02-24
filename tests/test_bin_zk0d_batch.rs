@@ -105,6 +105,16 @@ mod zk0d_batch_under_test {
         }
 
         #[test]
+        fn classify_backend_toolchain_mismatch_when_cascade_is_exhausted() {
+            let doc = serde_json::json!({
+                "status": "failed",
+                "stage": "preflight_backend",
+                "error": "Toolchain cascade exhausted; set ZK_FUZZER_SCARB_VERSION_CANDIDATES with explicit versions"
+            });
+            assert_eq!(classify_run_reason_code(&doc), "backend_toolchain_mismatch");
+        }
+
+        #[test]
         fn classify_input_contract_mismatch() {
             let doc = serde_json::json!({
                 "status": "failed",
@@ -179,6 +189,18 @@ mod zk0d_batch_under_test {
                 temp.path().join("_build_cache").display()
             )));
             assert!(out.stdout.contains("ZKF_SCAN_RUN_ROOT=scan_run_test"));
+            assert!(out
+                .stdout
+                .contains(&format!("{}=1", HALO2_EXTERNAL_TIMEOUT_ENV)));
+            assert!(out
+                .stdout
+                .contains(&format!("{}=1", HALO2_TOTAL_TIMEOUT_ENV)));
+            assert!(out
+                .stdout
+                .contains(&format!("{}=1", CAIRO_EXTERNAL_TIMEOUT_ENV)));
+            assert!(out
+                .stdout
+                .contains(&format!("{}=1", SCARB_DOWNLOAD_TIMEOUT_ENV)));
         }
     }
 }

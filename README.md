@@ -19,8 +19,8 @@ ZkPatternFuzz is a security testing framework that **automates accumulated audit
 **Current Status (2026-02-23):**
 - ✅ Phase 1-6 Complete: Production-ready core functionality
 - ✅ Phase 8 Active: Backend maturity program (Circom/Noir/Cairo/Halo2 → 5/5)
-- ✅ 80% vulnerable recall, 0% safe FPR on benchmark suite
-- ✅ All backends at 5.0/5.0 maturity (streak tracking: 2/14 days for Circom, 1/14 for others)
+- ✅ 80% vulnerable recall, 0% safe FPR on benchmark suite (as of 2026-02-19)
+- ✅ All backends at 5.0/5.0 maturity (14-day sustained streak in progress)
 - ✅ Release candidate validation: consecutive passes with rollback evidence
 
 **Supported Backends:**
@@ -34,7 +34,7 @@ ZkPatternFuzz is a security testing framework that **automates accumulated audit
 ### Prerequisites
 
 - Rust 1.70+
-- Z3 SMT solver (optional, for symbolic execution)
+- Z3 SMT solver (optional, required for symbolic execution and witness extension attacks)
 
 Z3 setup by OS:
 - Linux (dynamic): install `z3` + `libz3-dev` (package names vary by distro).
@@ -71,17 +71,17 @@ Notes:
 ## Quick Start
 
 ```bash
-# Run a campaign
-cargo run --release -- --config campaigns/example_audit.yaml
+# Run a campaign (DeFi audit example)
+cargo run --release -- --config campaigns/examples/defi_audit.yaml
 
 # Run with AI assistance (Mistral model)
 cargo run --release -- --config templates/ai_assisted_audit.yaml
 
 # With verbose output
-cargo run --release -- --config campaigns/example_audit.yaml --verbose
+cargo run --release -- --config campaigns/examples/defi_audit.yaml --verbose
 
 # Custom worker count
-cargo run --release -- --config campaigns/example_audit.yaml --workers 8
+cargo run --release -- --config campaigns/examples/defi_audit.yaml --workers 8
 
 # Run benchmark suite
 cargo run --release --bin zk0d_benchmark -- \
@@ -101,7 +101,7 @@ ZkPatternFuzz integrates Mistral AI for intelligent security analysis:
 - **Vulnerability Explanation**: Natural language explanations of found vulnerabilities
 
 **AI Models Supported:**
-- Mistral (default) - Optimized for ZK circuit analysis
+- Mistral (default) - Prompt-engineered for ZK circuit analysis
 - Claude - Advanced reasoning capabilities
 - GPT-4 - General-purpose AI assistance
 
@@ -219,15 +219,15 @@ reporting:
 
 **Pattern Library Structure:**
 ```
-patterns/
-├── production/              # Battle-tested patterns
-│   ├── underconstrained/
-│   ├── soundness/
-│   ├── collision/
-│   └── defi_specific/
-├── experimental/            # New patterns under validation
-└── cve_signatures/          # Public CVE detection patterns
+campaigns/
+├── cve/patterns/            # CVE detection patterns (22 real vulnerabilities)
+├── benchmark/patterns/      # Benchmark suite patterns
+├── mode2/patterns/          # Advanced detection patterns
+└── examples/                # Example campaign configurations
+tests/patterns/              # Test pattern library
 ```
+
+Note: Patterns are embedded in campaign YAML files. See `campaigns/cve/patterns/` for production CVE patterns.
 
 ### Detection Techniques
 
@@ -297,7 +297,7 @@ attacks:
 
 ## CVE Test Suite
 
-22 real-world vulnerabilities from zkBugs dataset, encoded as detection patterns:
+23 real-world vulnerabilities from zkBugs dataset, encoded as detection patterns:
 
 ```bash
 # Verify circuits exist
@@ -310,6 +310,7 @@ cargo test --test autonomous_cve_tests -- --nocapture
 **Coverage:**
 - 11 Critical severity
 - 11 High severity
+- 1 Medium severity
 - 9 projects (Iden3, Self.xyz, SuccinctLabs, etc.)
 - Includes CVE-2024-42459 (EdDSA malleability)
 
@@ -529,7 +530,7 @@ ecne verify circuit.circom --spec invariants.txt
 - DeFi-specific attacks (MEV, front-running)
 
 **Optimal Stack Cost:** $0 (all open-source)  
-**Combined Coverage:** ~90% of known vulnerability classes  
+**Combined Coverage:** High coverage across known vulnerability classes (static + dynamic + formal)  
 **Time Investment:** 1-2 hours automated + manual formal verification as needed
 
 ## Contributing

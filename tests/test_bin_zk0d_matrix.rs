@@ -81,5 +81,31 @@ tail
             let code = infer_reason_code_from_output(1, "", "random failure");
             assert_eq!(code.as_deref(), Some("batch_failed_no_reason"));
         }
+
+        #[test]
+        fn target_run_critical_findings_only_is_not_counted_as_failure() {
+            let summary = TargetRunSummary {
+                name: "ext003".to_string(),
+                exit_code: 1,
+                reason_counts: std::collections::BTreeMap::from([
+                    ("critical_findings_detected".to_string(), 1usize),
+                    ("selector_mismatch".to_string(), 4usize),
+                ]),
+            };
+            assert!(!target_run_counts_as_failure(&summary));
+        }
+
+        #[test]
+        fn target_run_noncritical_reason_is_counted_as_failure() {
+            let summary = TargetRunSummary {
+                name: "ext008".to_string(),
+                exit_code: 1,
+                reason_counts: std::collections::BTreeMap::from([(
+                    "backend_toolchain_mismatch".to_string(),
+                    1usize,
+                )]),
+            };
+            assert!(target_run_counts_as_failure(&summary));
+        }
     }
 }
