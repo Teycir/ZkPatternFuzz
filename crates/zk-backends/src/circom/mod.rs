@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Output};
 use std::sync::{Mutex, OnceLock};
 use tempfile::Builder;
 use zk_core::constants::bn254_modulus_bytes;
@@ -23,75 +23,42 @@ use zk_core::Framework;
 fn circom_external_command_timeout() -> std::time::Duration {
     // Default chosen to prevent pathological hangs without being too aggressive for large circuits.
     // Override with e.g. `ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS=300` for slower machines/circuits.
-    const DEFAULT_SECS: u64 = 60;
-
-    match std::env::var("ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS") {
-        Ok(raw) => match raw.trim().parse::<u64>() {
-            Ok(secs) => std::time::Duration::from_secs(secs.max(1)),
-            Err(err) => {
-                tracing::warn!(
-                    "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS='{}': {}; using default {}s",
-                    raw,
-                    err,
-                    DEFAULT_SECS
-                );
-                std::time::Duration::from_secs(DEFAULT_SECS)
-            }
-        },
-        Err(std::env::VarError::NotPresent) => std::time::Duration::from_secs(DEFAULT_SECS),
-        Err(e) => {
-            tracing::warn!(
-                "Invalid ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS value: {}; using default {}s",
-                e,
-                DEFAULT_SECS
-            );
-            std::time::Duration::from_secs(DEFAULT_SECS)
-        }
-    }
+    crate::util::timeout_from_env("ZK_FUZZER_CIRCOM_EXTERNAL_TIMEOUT_SECS", 60)
 }
 
-fn run_with_timeout(cmd: &mut Command, timeout: std::time::Duration) -> Result<Output> {
-    let mut child = cmd
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .with_context(|| "Failed to spawn external command")?;
+const CIRCOM_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_CIRCOM_BIN_CANDIDATES";
+const CIRCOM_VERSION_CANDIDATES_ENV: &str = "ZK_FUZZER_CIRCOM_VERSION_CANDIDATES";
+const SNARKJS_PATH_CANDIDATES_ENV: &str = "ZK_FUZZER_SNARKJS_PATH_CANDIDATES";
 
-    let start = std::time::Instant::now();
-    loop {
-        if let Some(status) = child.try_wait()? {
-            let mut stdout_pipe = child
-                .stdout
-                .take()
-                .ok_or_else(|| anyhow::anyhow!("Timed command missing stdout pipe"))?;
-            let mut stdout = Vec::new();
-            stdout_pipe.read_to_end(&mut stdout)?;
-            let mut stderr_pipe = child
-                .stderr
-                .take()
-                .ok_or_else(|| anyhow::anyhow!("Timed command missing stderr pipe"))?;
-            let mut stderr = Vec::new();
-            stderr_pipe.read_to_end(&mut stderr)?;
-            return Ok(Output {
-                status,
-                stdout,
-                stderr,
-            });
-        }
+fn circom_command_candidates(preferred: Option<&str>) -> Vec<String> {
+    let bin_candidates_raw = std::env::var(CIRCOM_BIN_CANDIDATES_ENV).ok();
+    let version_candidates_raw = std::env::var(CIRCOM_VERSION_CANDIDATES_ENV).ok();
 
-        if start.elapsed() >= timeout {
-            if let Err(e) = child.kill() {
-                tracing::warn!("Failed to kill timed out process: {}", e);
-            }
-            if let Err(e) = child.wait() {
-                tracing::warn!("Failed to wait for timed out process: {}", e);
-            }
-            anyhow::bail!("Command timed out after {:?}", timeout)
-        }
+    crate::util::build_command_candidates(
+        preferred,
+        bin_candidates_raw.as_deref(),
+        version_candidates_raw.as_deref(),
+        "circom",
+    )
+}
 
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
+fn run_circom_with_fallback<F>(
+    candidates: &[String],
+    context: &str,
+    mut configure: F,
+) -> Result<(Output, String)>
+where
+    F: FnMut(&mut Command),
+{
+    crate::util::run_command_with_fallback(
+        candidates,
+        circom_external_command_timeout(),
+        context,
+        |cmd| {
+            apply_local_bins_path(cmd);
+            configure(cmd);
+        },
+    )
 }
 
 /// Circom circuit target with full backend integration
@@ -733,6 +700,67 @@ fn snarkjs_command_for(path: Option<&Path>) -> Command {
     cmd
 }
 
+#[derive(Debug, Clone)]
+enum SnarkjsCommandCandidate {
+    Explicit(PathBuf),
+    Npx,
+}
+
+fn snarkjs_command_candidates(preferred: Option<&Path>) -> Vec<SnarkjsCommandCandidate> {
+    let mut candidates = Vec::new();
+
+    if let Some(path) = preferred {
+        candidates.push(SnarkjsCommandCandidate::Explicit(path.to_path_buf()));
+    }
+
+    let env_candidates_raw = std::env::var(SNARKJS_PATH_CANDIDATES_ENV).ok();
+    for candidate in crate::util::parse_command_candidates(env_candidates_raw.as_deref()) {
+        let path = PathBuf::from(candidate);
+        if candidates.iter().any(|existing| {
+            matches!(
+                existing,
+                SnarkjsCommandCandidate::Explicit(existing_path) if existing_path == &path
+            )
+        }) {
+            continue;
+        }
+        candidates.push(SnarkjsCommandCandidate::Explicit(path));
+    }
+
+    candidates.push(SnarkjsCommandCandidate::Npx);
+    candidates
+}
+
+fn run_snarkjs_with_fallback<F>(
+    preferred: Option<&Path>,
+    context: &str,
+    mut configure: F,
+) -> Result<(Output, String)>
+where
+    F: FnMut(&mut Command),
+{
+    let candidates = snarkjs_command_candidates(preferred);
+    crate::util::run_candidate_commands_with_fallback(
+        &candidates,
+        circom_external_command_timeout(),
+        context,
+        |candidate| match candidate {
+            SnarkjsCommandCandidate::Explicit(path) => path.display().to_string(),
+            SnarkjsCommandCandidate::Npx => "npx snarkjs".to_string(),
+        },
+        |candidate| {
+            let mut cmd = match candidate {
+                SnarkjsCommandCandidate::Explicit(path) => {
+                    snarkjs_command_for(Some(path.as_path()))
+                }
+                SnarkjsCommandCandidate::Npx => snarkjs_command_for(None),
+            };
+            configure(&mut cmd);
+            Ok(cmd)
+        },
+    )
+}
+
 fn circom_io_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
@@ -837,7 +865,7 @@ wc(wasm).then(async (calc) => {{\n\
         let output = {
             let mut cmd = Command::new("node");
             cmd.arg(&script_path);
-            run_with_timeout(&mut cmd, cmd_timeout)
+            crate::util::run_with_timeout(&mut cmd, cmd_timeout)
         }
         .context("Failed to run witness calculator")?;
         if !output.status.success() {
@@ -954,11 +982,11 @@ impl CircomTarget {
 
     /// Check if circom is available
     pub fn check_circom_available() -> Result<String> {
-        let mut cmd = Command::new("circom");
-        apply_local_bins_path(&mut cmd);
-        cmd.arg("--version");
-        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
-            .context("circom not found in PATH")?;
+        let candidates = circom_command_candidates(None);
+        let (output, _candidate) =
+            run_circom_with_fallback(&candidates, "circom not found in PATH", |cmd| {
+                cmd.arg("--version");
+            })?;
 
         if !output.status.success() {
             anyhow::bail!(
@@ -972,10 +1000,9 @@ impl CircomTarget {
 
     /// Check if snarkjs is available
     pub fn check_snarkjs_available() -> Result<String> {
-        let mut cmd = snarkjs_command_for(None);
-        cmd.arg("--version");
-        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
-            .context("snarkjs not found")?;
+        let (output, _candidate) = run_snarkjs_with_fallback(None, "snarkjs not found", |cmd| {
+            cmd.arg("--version");
+        })?;
 
         // snarkjs may print version/help text to stdout even when returning a
         // non-zero status (observed with some npm-distributed builds).
@@ -1056,11 +1083,7 @@ impl CircomTarget {
             maybe_prepare_circom2_source(&source, &self.circuit_path, &self.main_component)?;
 
         // Compile circuit
-        let mut cmd = Command::new("circom");
-        apply_local_bins_path(&mut cmd);
-        for include in &self.include_paths {
-            cmd.arg("-l").arg(include);
-        }
+        let candidates = circom_command_candidates(None);
         let compile_path_str = compile_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 compile path: {}", compile_path.display()))?;
@@ -1068,21 +1091,24 @@ impl CircomTarget {
             .build_dir
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 build dir: {}", self.build_dir.display()))?;
-        cmd.args([
-            compile_path_str,
-            "--r1cs",
-            "--wasm",
-            "--sym",
-            "--json",
-            "-o",
-            build_dir_str,
-        ]);
-        let output =
-            run_with_timeout(&mut cmd, circom_external_command_timeout()).with_context(|| {
-                format!(
-                    "Failed to run circom compiler for '{}'",
-                    compile_path.display()
-                )
+        let compile_context = format!(
+            "Failed to run circom compiler for '{}'",
+            compile_path.display()
+        );
+        let (output, selected_candidate) =
+            run_circom_with_fallback(&candidates, &compile_context, |cmd| {
+                for include in &self.include_paths {
+                    cmd.arg("-l").arg(include);
+                }
+                cmd.args([
+                    compile_path_str,
+                    "--r1cs",
+                    "--wasm",
+                    "--sym",
+                    "--json",
+                    "-o",
+                    build_dir_str,
+                ]);
             })?;
 
         if !output.status.success() {
@@ -1094,7 +1120,10 @@ impl CircomTarget {
             );
         }
 
-        tracing::info!("Circom compilation successful");
+        tracing::info!(
+            "Circom compilation successful (command candidate: {})",
+            selected_candidate
+        );
 
         // Parse R1CS info to get metadata
         self.parse_r1cs_info()?;
@@ -1165,10 +1194,13 @@ impl CircomTarget {
         let r1cs_path_str = r1cs_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("Non-UTF8 r1cs path: {}", r1cs_path.display()))?;
-        let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
-        cmd.args(["r1cs", "info", r1cs_path_str]);
-        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
-            .context("Failed to run snarkjs r1cs info")?;
+        let (output, _candidate) = run_snarkjs_with_fallback(
+            self.snarkjs_path_override.as_deref(),
+            "Failed to run snarkjs r1cs info",
+            |cmd| {
+                cmd.args(["r1cs", "info", r1cs_path_str]);
+            },
+        )?;
         if !output.status.success() {
             anyhow::bail!(
                 "snarkjs r1cs info failed for '{}': {}",
@@ -1482,16 +1514,19 @@ impl CircomTarget {
 
         // Generate zkey (proving key)
         tracing::info!("Generating proving key...");
-        let mut setup_cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
-        setup_cmd.args([
-            "groth16",
-            "setup",
-            r1cs_path_str,
-            ptau_path_str,
-            zkey_path_str,
-        ]);
-        let output = run_with_timeout(&mut setup_cmd, circom_external_command_timeout())
-            .context("Failed to generate proving key")?;
+        let (output, _candidate) = run_snarkjs_with_fallback(
+            self.snarkjs_path_override.as_deref(),
+            "Failed to generate proving key",
+            |cmd| {
+                cmd.args([
+                    "groth16",
+                    "setup",
+                    r1cs_path_str,
+                    ptau_path_str,
+                    zkey_path_str,
+                ]);
+            },
+        )?;
 
         if !output.status.success() || snarkjs_output_reports_error(&output) {
             anyhow::bail!("Key generation failed: {}", format_command_failure(&output));
@@ -1506,16 +1541,19 @@ impl CircomTarget {
 
         // Export verification key
         tracing::info!("Exporting verification key...");
-        let mut export_cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
-        export_cmd.args([
-            "zkey",
-            "export",
-            "verificationkey",
-            zkey_path_str,
-            vkey_path_str,
-        ]);
-        let output = run_with_timeout(&mut export_cmd, circom_external_command_timeout())
-            .context("Failed to export verification key")?;
+        let (output, _candidate) = run_snarkjs_with_fallback(
+            self.snarkjs_path_override.as_deref(),
+            "Failed to export verification key",
+            |cmd| {
+                cmd.args([
+                    "zkey",
+                    "export",
+                    "verificationkey",
+                    zkey_path_str,
+                    vkey_path_str,
+                ]);
+            },
+        )?;
 
         if !output.status.success() || snarkjs_output_reports_error(&output) {
             anyhow::bail!(
@@ -1897,10 +1935,13 @@ impl CircomTarget {
                 .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Non-UTF8 temp path: {}", temp_path.display()))?;
 
-            let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
-            cmd.args(["r1cs", "export", "json", r1cs_path_str, temp_path_str]);
-            let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
-                .context("Failed to export R1CS constraints")?;
+            let (output, _candidate) = run_snarkjs_with_fallback(
+                self.snarkjs_path_override.as_deref(),
+                "Failed to export R1CS constraints",
+                |cmd| {
+                    cmd.args(["r1cs", "export", "json", r1cs_path_str, temp_path_str]);
+                },
+            )?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2201,16 +2242,19 @@ impl TargetCircuit for CircomTarget {
             let input_path_str = input_path
                 .to_str()
                 .ok_or_else(|| anyhow::anyhow!("Non-UTF8 input path: {}", input_path.display()))?;
-            let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
-            cmd.args([
-                "wtns",
-                "calculate",
-                calc_wasm_path_str,
-                input_path_str,
-                witness_path_str,
-            ]);
-            let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
-                .context("Failed to calculate witness for proof")?;
+            let (output, _candidate) = run_snarkjs_with_fallback(
+                self.snarkjs_path_override.as_deref(),
+                "Failed to calculate witness for proof",
+                |cmd| {
+                    cmd.args([
+                        "wtns",
+                        "calculate",
+                        calc_wasm_path_str,
+                        input_path_str,
+                        witness_path_str,
+                    ]);
+                },
+            )?;
 
             if !output.status.success() {
                 anyhow::bail!(
@@ -2221,17 +2265,20 @@ impl TargetCircuit for CircomTarget {
         }
 
         // Generate proof
-        let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
-        cmd.args([
-            "groth16",
-            "prove",
-            zkey_path_str,
-            witness_path_str,
-            proof_path_str,
-            public_path_str,
-        ]);
-        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
-            .context("Failed to generate proof")?;
+        let (output, _candidate) = run_snarkjs_with_fallback(
+            self.snarkjs_path_override.as_deref(),
+            "Failed to generate proof",
+            |cmd| {
+                cmd.args([
+                    "groth16",
+                    "prove",
+                    zkey_path_str,
+                    witness_path_str,
+                    proof_path_str,
+                    public_path_str,
+                ]);
+            },
+        )?;
 
         if !output.status.success() {
             anyhow::bail!(
@@ -2278,16 +2325,19 @@ impl TargetCircuit for CircomTarget {
         std::fs::write(&public_path, &public_json)?;
 
         // Verify
-        let mut cmd = snarkjs_command_for(self.snarkjs_path_override.as_deref());
-        cmd.args([
-            "groth16",
-            "verify",
-            vkey_path_str,
-            public_path_str,
-            proof_path_str,
-        ]);
-        let output = run_with_timeout(&mut cmd, circom_external_command_timeout())
-            .context("Failed to verify proof")?;
+        let (output, _candidate) = run_snarkjs_with_fallback(
+            self.snarkjs_path_override.as_deref(),
+            "Failed to verify proof",
+            |cmd| {
+                cmd.args([
+                    "groth16",
+                    "verify",
+                    vkey_path_str,
+                    public_path_str,
+                    proof_path_str,
+                ]);
+            },
+        )?;
 
         // snarkjs outputs "OK!" on success
         let stdout = String::from_utf8_lossy(&output.stdout);
