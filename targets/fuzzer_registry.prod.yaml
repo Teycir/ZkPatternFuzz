@@ -66,6 +66,7 @@ aliases:
   all: ["always"]
   always: ["always"]
   deep: ["always"]
+  external_manual: ["always"]
   readiness_noir: ["noir_readiness"]
   readiness_cairo: ["cairo_readiness"]
   readiness_halo2: ["halo2_readiness"]

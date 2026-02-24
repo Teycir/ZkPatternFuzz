@@ -29,6 +29,11 @@ struct MatrixTarget {
     enabled: bool,
 }
 
+#[derive(Debug, Deserialize)]
+struct FuzzerRegistry {
+    aliases: BTreeMap<String, Vec<String>>,
+}
+
 fn ext_id_from_matrix_name(name: &str) -> Option<String> {
     let prefix = name.split('_').next()?.to_ascii_lowercase();
     if prefix.len() == 6
@@ -113,4 +118,21 @@ fn external_roadmap_matrix_matches_inventory_targets() {
             inv.target_id
         );
     }
+}
+
+#[test]
+fn external_manual_alias_exists_in_registry() {
+    let registry_raw =
+        fs::read_to_string("targets/fuzzer_registry.yaml").expect("read fuzzer registry yaml");
+    let registry: FuzzerRegistry =
+        serde_yaml::from_str(&registry_raw).expect("parse fuzzer registry yaml");
+
+    let alias_values = registry
+        .aliases
+        .get("external_manual")
+        .expect("missing alias external_manual in fuzzer registry");
+    assert!(
+        !alias_values.is_empty(),
+        "alias external_manual must map to at least one collection/template"
+    );
 }

@@ -43,6 +43,7 @@ aliases:
   all: ["always"]
   always: ["always"]
   deep: ["always"]
+  external_manual: ["always"]
   cveX01_dark_forest_missing_bit_length: ["cveX01_dark_forest_missing_bit_length.yaml"]
   cveX02_bigint_missing_bit_length: ["cveX02_bigint_missing_bit_length.yaml"]
   cveX03_circom_pairing_missing_output_check: ["cveX03_circom_pairing_missing_output_check.yaml"]
