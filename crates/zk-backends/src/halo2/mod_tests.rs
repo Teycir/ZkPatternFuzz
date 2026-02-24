@@ -241,7 +241,9 @@ fn test_halo2_cargo_command_uses_configured_toolchain() {
 
     let mut target = Halo2Target::new(spec_path.to_str().unwrap()).unwrap();
     target.cargo_toolchain = Some("nightly".to_string());
-    let command = target.cargo_command();
+    let command = target
+        .cargo_command_with_binary_and_toolchain("cargo", target.cargo_toolchain.as_deref())
+        .expect("cargo command should be constructed");
     let args: Vec<String> = command
         .get_args()
         .map(|arg| arg.to_string_lossy().to_string())

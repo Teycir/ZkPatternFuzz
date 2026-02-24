@@ -23,6 +23,9 @@ fn noir_external_command_timeout() -> std::time::Duration {
     crate::util::timeout_from_env("ZK_FUZZER_NOIR_EXTERNAL_TIMEOUT_SECS", 60)
 }
 
+const NARGO_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_NARGO_BIN_CANDIDATES";
+const NARGO_VERSION_CANDIDATES_ENV: &str = "ZK_FUZZER_NARGO_VERSION_CANDIDATES";
+
 fn command_output_text(output: &std::process::Output) -> String {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -114,6 +117,8 @@ pub struct NoirTarget {
     verification_key: Option<Vec<u8>>,
     /// Cached ACIR constraint info
     acir_info: OnceLock<NoirAcirInfo>,
+    /// Most recent Nargo binary candidate that worked for this target.
+    selected_nargo_binary: Mutex<Option<String>>,
 }
 
 /// Metadata extracted from compiled Noir circuit
@@ -239,33 +244,87 @@ impl NoirTarget {
         self.build_dir.join("nargo_home")
     }
 
-    fn nargo_command(&self) -> Result<Command> {
+    fn selected_nargo_binary(&self) -> Option<String> {
+        match self.selected_nargo_binary.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => {
+                tracing::warn!("selected_nargo_binary lock poisoned; returning recovered value");
+                poisoned.into_inner().clone()
+            }
+        }
+    }
+
+    fn remember_selected_nargo_binary(&self, candidate: &str) {
+        let mut guard = match self.selected_nargo_binary.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("selected_nargo_binary lock poisoned; storing recovered value");
+                poisoned.into_inner()
+            }
+        };
+        if guard.as_deref() != Some(candidate) {
+            tracing::info!("Using Nargo candidate '{}'", candidate);
+            *guard = Some(candidate.to_string());
+        }
+    }
+
+    fn nargo_command_candidates(&self) -> Vec<String> {
+        let preferred = self.selected_nargo_binary();
+        let bin_candidates_raw = std::env::var(NARGO_BIN_CANDIDATES_ENV).ok();
+        let version_candidates_raw = std::env::var(NARGO_VERSION_CANDIDATES_ENV).ok();
+        crate::util::build_command_candidates(
+            preferred.as_deref(),
+            bin_candidates_raw.as_deref(),
+            version_candidates_raw.as_deref(),
+            "nargo",
+        )
+    }
+
+    fn run_nargo_command_with_fallback<F>(
+        &self,
+        context: &str,
+        mut configure: F,
+    ) -> Result<std::process::Output>
+    where
+        F: FnMut(&mut Command),
+    {
         std::fs::create_dir_all(&self.build_dir)?;
         let nargo_home = self.nargo_home_dir();
         std::fs::create_dir_all(&nargo_home)?;
-
         let cargo_home = nargo_home.join("cargo");
         std::fs::create_dir_all(&cargo_home)?;
+        let project_dir = self.active_project_path().to_path_buf();
+        let build_dir = self.build_dir.clone();
+        let candidates = self.nargo_command_candidates();
 
-        let mut command = Command::new("nargo");
-        command
-            .current_dir(self.active_project_path())
-            .env("HOME", &nargo_home)
-            .env("NARGO_HOME", &nargo_home)
-            .env("CARGO_HOME", &cargo_home)
-            .env("NARGO_TARGET_DIR", &self.build_dir)
-            .env("CARGO_TARGET_DIR", &self.build_dir);
+        let (output, candidate) = crate::util::run_command_with_fallback(
+            &candidates,
+            noir_external_command_timeout(),
+            context,
+            |cmd| {
+                cmd.current_dir(&project_dir)
+                    .env("HOME", &nargo_home)
+                    .env("NARGO_HOME", &nargo_home)
+                    .env("CARGO_HOME", &cargo_home)
+                    .env("NARGO_TARGET_DIR", &build_dir)
+                    .env("CARGO_TARGET_DIR", &build_dir);
+                configure(cmd);
+            },
+        )?;
 
-        Ok(command)
+        self.remember_selected_nargo_binary(&candidate);
+        Ok(output)
     }
 
     fn ensure_nargo_subcommand(&self, subcommand: &str) -> Result<()> {
-        let output = {
-            let mut cmd = self.nargo_command()?;
-            cmd.args(["help", subcommand]);
-            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-                .with_context(|| format!("Failed probing nargo subcommand '{subcommand}'"))?
-        };
+        let output = self
+            .run_nargo_command_with_fallback(
+                &format!("Failed probing nargo subcommand '{subcommand}'"),
+                |cmd| {
+                    cmd.args(["help", subcommand]);
+                },
+            )
+            .with_context(|| format!("Failed probing nargo subcommand '{subcommand}'"))?;
 
         if output.status.success() {
             return Ok(());
@@ -382,6 +441,7 @@ impl NoirTarget {
             proving_key: None,
             verification_key: None,
             acir_info: OnceLock::new(),
+            selected_nargo_binary: Mutex::new(None),
         })
     }
 
@@ -393,13 +453,29 @@ impl NoirTarget {
 
     /// Check if nargo is available
     pub fn check_nargo_available() -> Result<String> {
-        let mut cmd = Command::new("nargo");
-        cmd.arg("--version");
-        let output = crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-            .context("nargo not found in PATH")?;
+        let bin_candidates_raw = std::env::var(NARGO_BIN_CANDIDATES_ENV).ok();
+        let version_candidates_raw = std::env::var(NARGO_VERSION_CANDIDATES_ENV).ok();
+        let candidates = crate::util::build_command_candidates(
+            None,
+            bin_candidates_raw.as_deref(),
+            version_candidates_raw.as_deref(),
+            "nargo",
+        );
+        let (output, candidate) = crate::util::run_command_with_fallback(
+            &candidates,
+            noir_external_command_timeout(),
+            "No working nargo candidate found",
+            |cmd| {
+                cmd.arg("--version");
+            },
+        )
+        .context("nargo not found in PATH")?;
 
-        if !output.status.success() {
-            anyhow::bail!("nargo --version failed");
+        if candidate != "nargo" {
+            tracing::info!(
+                "Noir tool detection selected fallback Nargo '{}'",
+                candidate
+            );
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -429,10 +505,10 @@ impl NoirTarget {
         let _dir_lock = crate::util::DirLock::acquire_exclusive(&self.build_dir)?;
 
         let compile_project = |this: &Self| -> Result<std::process::Output> {
-            let mut cmd = this.nargo_command()?;
-            cmd.args(["compile"]);
-            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-                .context("Failed to run nargo compile")
+            this.run_nargo_command_with_fallback("Failed to run nargo compile", |cmd| {
+                cmd.args(["compile"]);
+            })
+            .context("Failed to run nargo compile")
         };
 
         // Compile the project
@@ -466,12 +542,11 @@ impl NoirTarget {
         let name = self.parse_project_name(&content)?;
 
         // Get circuit info using nargo info
-        let output = {
-            let mut command = self.nargo_command()?;
-            command.args(["info", "--json"]);
-            crate::util::run_with_timeout(&mut command, noir_external_command_timeout())
-                .context("Failed to run nargo info --json")?
-        };
+        let output = self
+            .run_nargo_command_with_fallback("Failed to run nargo info --json", |command| {
+                command.args(["info", "--json"]);
+            })
+            .context("Failed to run nargo info --json")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("nargo info --json failed: {}", stderr);
@@ -770,21 +845,16 @@ impl NoirTarget {
             }
         };
 
-        let output = {
-            let mut cmd = match self.nargo_command() {
-                Ok(cmd) => cmd,
-                Err(err) => {
-                    tracing::warn!("Failed building nargo command: {}", err);
-                    return None;
-                }
-            };
-            cmd.args(["compile", "--print-acir"]);
-            match crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout()) {
-                Ok(output) => output,
-                Err(err) => {
-                    tracing::warn!("Failed running 'nargo compile --print-acir': {}", err);
-                    return None;
-                }
+        let output = match self.run_nargo_command_with_fallback(
+            "Failed running 'nargo compile --print-acir' across configured candidates",
+            |cmd| {
+                cmd.args(["compile", "--print-acir"]);
+            },
+        ) {
+            Ok(output) => output,
+            Err(err) => {
+                tracing::warn!("Failed running 'nargo compile --print-acir': {}", err);
+                return None;
             }
         };
 
@@ -822,12 +892,11 @@ impl NoirTarget {
         };
         let _dir_lock = crate::util::DirLock::acquire_shared(&self.build_dir)?;
 
-        let output = {
-            let mut cmd = self.nargo_command()?;
-            cmd.args(["compile", "--print-acir"]);
-            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-                .context("Failed to run nargo compile --print-acir")?
-        };
+        let output = self
+            .run_nargo_command_with_fallback("Failed to run nargo compile --print-acir", |cmd| {
+                cmd.args(["compile", "--print-acir"]);
+            })
+            .context("Failed to run nargo compile --print-acir")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("Nargo ACIR print failed: {}", stderr);
@@ -894,22 +963,24 @@ impl NoirTarget {
         let _prover_guard = ScopedFileOverwrite::overwrite(prover_path, prover_toml.as_bytes())?;
 
         // Execute using nargo execute (JSON output is version-dependent)
-        let output = {
-            let mut cmd = self.nargo_command()?;
-            cmd.args(["execute", "--json"]);
-            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-                .context("Failed to execute Noir circuit")?
-        };
+        let output = self
+            .run_nargo_command_with_fallback("Failed to execute Noir circuit", |cmd| {
+                cmd.args(["execute", "--json"]);
+            })
+            .context("Failed to execute Noir circuit")?;
 
         let output = if output.status.success() {
             output
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.contains("unexpected argument '--json'") {
-                let mut cmd = self.nargo_command()?;
-                cmd.args(["execute"]);
-                crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-                    .context("Failed to execute Noir circuit without --json")?
+                self.run_nargo_command_with_fallback(
+                    "Failed to execute Noir circuit without --json",
+                    |cmd| {
+                        cmd.args(["execute"]);
+                    },
+                )
+                .context("Failed to execute Noir circuit without --json")?
             } else {
                 anyhow::bail!("Noir execution failed: {}", stderr);
             }
@@ -1133,12 +1204,11 @@ impl TargetCircuit for NoirTarget {
         let _prover_guard = ScopedFileOverwrite::overwrite(prover_path, prover_toml.as_bytes())?;
 
         self.ensure_nargo_subcommand("prove")?;
-        let output = {
-            let mut cmd = self.nargo_command()?;
-            cmd.args(["prove"]);
-            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-                .context("Failed to generate Noir proof")?
-        };
+        let output = self
+            .run_nargo_command_with_fallback("Failed to generate Noir proof", |cmd| {
+                cmd.args(["prove"]);
+            })
+            .context("Failed to generate Noir proof")?;
 
         if !output.status.success() {
             anyhow::bail!(
@@ -1204,12 +1274,11 @@ impl TargetCircuit for NoirTarget {
         }
 
         self.ensure_nargo_subcommand("verify")?;
-        let output = {
-            let mut cmd = self.nargo_command()?;
-            cmd.args(["verify"]);
-            crate::util::run_with_timeout(&mut cmd, noir_external_command_timeout())
-                .context("Failed to verify Noir proof")?
-        };
+        let output = self
+            .run_nargo_command_with_fallback("Failed to verify Noir proof", |cmd| {
+                cmd.args(["verify"]);
+            })
+            .context("Failed to verify Noir proof")?;
 
         Ok(output.status.success())
     }

@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use zk_constraints::{
     ConstraintChecker, ConstraintParser, ParsedConstraintSet, UnknownLookupPolicy,
 };
@@ -23,6 +23,9 @@ use zk_core::Framework;
 fn halo2_external_command_timeout() -> std::time::Duration {
     crate::util::timeout_from_env("ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS", 120)
 }
+
+const CARGO_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_CARGO_BIN_CANDIDATES";
+const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES";
 
 fn halo2_cargo_toolchain_from_env() -> Option<String> {
     if let Ok(value) = std::env::var("ZK_FUZZER_HALO2_CARGO_TOOLCHAIN") {
@@ -63,6 +66,8 @@ pub struct Halo2Target {
     config: Halo2Config,
     /// Optional cargo toolchain suffix (e.g. nightly).
     cargo_toolchain: Option<String>,
+    /// Most recent Cargo binary candidate that worked for this target.
+    selected_cargo_binary: Mutex<Option<String>>,
     /// Cached PLONK constraints and lookup tables (if available)
     plonk_constraints: OnceLock<ParsedConstraintSet>,
 }
@@ -198,6 +203,7 @@ impl Halo2Target {
             build_dir,
             config: Halo2Config::default(),
             cargo_toolchain: halo2_cargo_toolchain_from_env(),
+            selected_cargo_binary: Mutex::new(None),
             plonk_constraints: OnceLock::new(),
         })
     }
@@ -214,8 +220,75 @@ impl Halo2Target {
         self
     }
 
-    fn cargo_command_with_toolchain(&self, toolchain: Option<&str>) -> Command {
-        let mut command = Command::new("cargo");
+    fn selected_cargo_binary(&self) -> Option<String> {
+        match self.selected_cargo_binary.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => {
+                tracing::warn!("selected_cargo_binary lock poisoned; returning recovered value");
+                poisoned.into_inner().clone()
+            }
+        }
+    }
+
+    fn remember_selected_cargo_binary(&self, candidate: &str) {
+        let mut guard = match self.selected_cargo_binary.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("selected_cargo_binary lock poisoned; storing recovered value");
+                poisoned.into_inner()
+            }
+        };
+        if guard.as_deref() != Some(candidate) {
+            tracing::info!("Using Cargo candidate '{}'", candidate);
+            *guard = Some(candidate.to_string());
+        }
+    }
+
+    fn cargo_binary_candidates(&self) -> Vec<String> {
+        let preferred = self.selected_cargo_binary();
+        let bin_candidates_raw = std::env::var(CARGO_BIN_CANDIDATES_ENV).ok();
+        crate::util::build_command_candidates(
+            preferred.as_deref(),
+            bin_candidates_raw.as_deref(),
+            None,
+            "cargo",
+        )
+    }
+
+    fn cargo_toolchain_candidates(&self) -> Vec<Option<String>> {
+        let mut candidates: Vec<Option<String>> = Vec::new();
+
+        if let Some(toolchain) = self
+            .cargo_toolchain
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            candidates.push(Some(toolchain.to_string()));
+        }
+
+        let env_candidates_raw = std::env::var(HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV).ok();
+        for candidate in crate::util::parse_command_candidates(env_candidates_raw.as_deref()) {
+            let entry = Some(candidate);
+            if candidates.iter().any(|existing| existing == &entry) {
+                continue;
+            }
+            candidates.push(entry);
+        }
+
+        if !candidates.iter().any(|existing| existing.is_none()) {
+            candidates.push(None);
+        }
+
+        candidates
+    }
+
+    fn cargo_command_with_binary_and_toolchain(
+        &self,
+        binary: &str,
+        toolchain: Option<&str>,
+    ) -> Result<Command> {
+        let mut command = Command::new(binary);
         if let Some(toolchain) = toolchain {
             let trimmed = toolchain.trim();
             if !trimmed.is_empty() {
@@ -227,8 +300,8 @@ impl Halo2Target {
         let go_root = self.build_dir.join("go");
         let go_mod_cache = go_root.join("pkg").join("mod");
         let go_build_cache = go_root.join("cache");
-        let _ = std::fs::create_dir_all(&go_mod_cache);
-        let _ = std::fs::create_dir_all(&go_build_cache);
+        std::fs::create_dir_all(&go_mod_cache)?;
+        std::fs::create_dir_all(&go_build_cache)?;
 
         command.env("CARGO_TARGET_DIR", &self.build_dir);
         command
@@ -238,22 +311,74 @@ impl Halo2Target {
         if std::env::var_os("GOTOOLCHAIN").is_none() {
             command.env("GOTOOLCHAIN", "local");
         }
-        command
+        Ok(command)
     }
 
-    fn cargo_command(&self) -> Command {
-        self.cargo_command_with_toolchain(self.cargo_toolchain.as_deref())
-    }
-
-    fn run_cargo_build(
+    fn run_cargo_command_with_fallback<F>(
         &self,
-        project_dir: &Path,
-        toolchain: Option<&str>,
-    ) -> Result<std::process::Output> {
-        let mut cmd = self.cargo_command_with_toolchain(toolchain);
-        cmd.args(["build", "--release"]).current_dir(project_dir);
-        crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout())
-            .context("Failed to build Halo2 circuit")
+        context: &str,
+        mut configure: F,
+    ) -> Result<std::process::Output>
+    where
+        F: FnMut(&mut Command),
+    {
+        #[derive(Clone)]
+        struct CargoCandidate {
+            binary: String,
+            toolchain: Option<String>,
+            label: String,
+        }
+
+        let binaries = self.cargo_binary_candidates();
+        let toolchains = self.cargo_toolchain_candidates();
+        let candidates = binaries
+            .iter()
+            .flat_map(|binary| {
+                toolchains.iter().map(move |toolchain| CargoCandidate {
+                    binary: binary.clone(),
+                    toolchain: toolchain.clone(),
+                    label: format!(
+                        "{}{}",
+                        binary,
+                        toolchain
+                            .as_ref()
+                            .map(|value| format!("+{value}"))
+                            .unwrap_or_default()
+                    ),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let (output, selected_label) = crate::util::run_candidate_commands_with_fallback(
+            &candidates,
+            halo2_external_command_timeout(),
+            context,
+            |candidate| candidate.label.clone(),
+            |candidate| {
+                let mut cmd = self.cargo_command_with_binary_and_toolchain(
+                    &candidate.binary,
+                    candidate.toolchain.as_deref(),
+                )?;
+                configure(&mut cmd);
+                Ok(cmd)
+            },
+        )?;
+
+        if let Some(selected) = candidates
+            .iter()
+            .find(|candidate| candidate.label == selected_label)
+        {
+            self.remember_selected_cargo_binary(&selected.binary);
+        }
+
+        Ok(output)
+    }
+
+    fn run_cargo_build(&self, project_dir: &Path) -> Result<std::process::Output> {
+        self.run_cargo_command_with_fallback("Failed to build Halo2 circuit", |cmd| {
+            cmd.args(["build", "--release"]).current_dir(project_dir);
+        })
+        .context("Failed to build Halo2 circuit")
     }
 
     /// Load and configure the circuit
@@ -301,7 +426,7 @@ impl Halo2Target {
 
         // Build the project
         tracing::info!("Building Halo2 Rust project...");
-        let output = self.run_cargo_build(project_dir, self.cargo_toolchain.as_deref())?;
+        let output = self.run_cargo_build(project_dir)?;
 
         if !output.status.success() {
             let details = crate::util::command_output_summary(&output);
@@ -318,20 +443,24 @@ impl Halo2Target {
     /// Get circuit info by running the binary
     fn get_circuit_info_from_binary(&self, project_dir: &Path) -> Halo2Metadata {
         // Try to run with --info flag
-        let output = {
-            let mut cmd = self.cargo_command();
-            cmd.args(["run", "--release", "--", "--info"])
-                .current_dir(project_dir);
-            match crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()) {
-                Ok(output) => Some(output),
-                Err(err) => {
-                    tracing::warn!(
-                        "Failed to run Halo2 --info command in '{}': {}",
-                        project_dir.display(),
-                        err
-                    );
-                    None
-                }
+        let output = match self.run_cargo_command_with_fallback(
+            &format!(
+                "Failed to run Halo2 --info command in '{}'",
+                project_dir.display()
+            ),
+            |cmd| {
+                cmd.args(["run", "--release", "--", "--info"])
+                    .current_dir(project_dir);
+            },
+        ) {
+            Ok(output) => Some(output),
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to run Halo2 --info command in '{}': {}",
+                    project_dir.display(),
+                    err
+                );
+                None
             }
         };
 
@@ -512,21 +641,26 @@ impl Halo2Target {
         purpose: &str,
         candidates: &[&str],
     ) -> Option<String> {
-        let output = {
-            let mut cmd = self.cargo_command();
-            cmd.args(["run", "--release", "--", "--help"])
-                .current_dir(project_dir);
-            match crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()) {
-                Ok(output) => output,
-                Err(err) => {
-                    tracing::warn!(
-                        "Failed to inspect Halo2 {} flags in '{}': {}",
-                        purpose,
-                        project_dir.display(),
-                        err
-                    );
-                    return None;
-                }
+        let output = match self.run_cargo_command_with_fallback(
+            &format!(
+                "Failed to inspect Halo2 {} flags in '{}'",
+                purpose,
+                project_dir.display()
+            ),
+            |cmd| {
+                cmd.args(["run", "--release", "--", "--help"])
+                    .current_dir(project_dir);
+            },
+        ) {
+            Ok(output) => output,
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to inspect Halo2 {} flags in '{}': {}",
+                    purpose,
+                    project_dir.display(),
+                    err
+                );
+                return None;
             }
         };
 
@@ -569,11 +703,14 @@ impl Halo2Target {
         project_dir: &Path,
         flag: &str,
     ) -> Result<std::process::Output> {
-        let mut cmd = self.cargo_command();
-        cmd.args(["run", "--release", "--", flag])
-            .current_dir(project_dir);
-        crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout())
-            .with_context(|| format!("Failed running Halo2 key setup command '{flag}'"))
+        self.run_cargo_command_with_fallback(
+            &format!("Failed running Halo2 key setup command '{flag}'"),
+            |cmd| {
+                cmd.args(["run", "--release", "--", flag])
+                    .current_dir(project_dir);
+            },
+        )
+        .with_context(|| format!("Failed running Halo2 key setup command '{flag}'"))
     }
 
     fn find_existing_key_artifacts(&self, project_dir: &Path) -> Option<(Vec<u8>, Vec<u8>)> {
@@ -806,20 +943,24 @@ impl Halo2Target {
         &self,
         project_dir: &Path,
     ) -> Option<ParsedConstraintSet> {
-        let output = {
-            let mut cmd = self.cargo_command();
-            cmd.args(["run", "--release", "--", "--constraints"])
-                .current_dir(project_dir);
-            match crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout()) {
-                Ok(output) => output,
-                Err(err) => {
-                    tracing::warn!(
-                        "Failed to extract Halo2 constraints via binary run in '{}': {}",
-                        project_dir.display(),
-                        err
-                    );
-                    return None;
-                }
+        let output = match self.run_cargo_command_with_fallback(
+            &format!(
+                "Failed to extract Halo2 constraints via binary run in '{}'",
+                project_dir.display()
+            ),
+            |cmd| {
+                cmd.args(["run", "--release", "--", "--constraints"])
+                    .current_dir(project_dir);
+            },
+        ) {
+            Ok(output) => output,
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to extract Halo2 constraints via binary run in '{}': {}",
+                    project_dir.display(),
+                    err
+                );
+                return None;
             }
         };
 
@@ -948,13 +1089,15 @@ impl Halo2Target {
         let execute_flag = execute_flag.expect("checked is_some");
 
         let input_json = serde_json::to_string(&Self::encode_field_elements_hex(inputs))?;
-        let output = {
-            let mut cmd = self.cargo_command();
-            cmd.args(["run", "--release", "--", &execute_flag, &input_json])
-                .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout())
-                .with_context(|| format!("Failed to run Halo2 execute command '{execute_flag}'"))?
-        };
+        let output = self
+            .run_cargo_command_with_fallback(
+                &format!("Failed to run Halo2 execute command '{execute_flag}'"),
+                |cmd| {
+                    cmd.args(["run", "--release", "--", &execute_flag, &input_json])
+                        .current_dir(project_dir);
+                },
+            )
+            .with_context(|| format!("Failed to run Halo2 execute command '{execute_flag}'"))?;
 
         if !output.status.success() {
             anyhow::bail!(
@@ -1109,13 +1252,15 @@ impl TargetCircuit for Halo2Target {
 
         let witness_json = serde_json::to_string(&Self::encode_field_elements_hex(witness))?;
 
-        let output = {
-            let mut cmd = self.cargo_command();
-            cmd.args(["run", "--release", "--", &prove_flag, &witness_json])
-                .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout())
-                .with_context(|| format!("Failed to run Halo2 prove command '{prove_flag}'"))?
-        };
+        let output = self
+            .run_cargo_command_with_fallback(
+                &format!("Failed to run Halo2 prove command '{prove_flag}'"),
+                |cmd| {
+                    cmd.args(["run", "--release", "--", &prove_flag, &witness_json])
+                        .current_dir(project_dir);
+                },
+            )
+            .with_context(|| format!("Failed to run Halo2 prove command '{prove_flag}'"))?;
 
         if output.status.success() {
             return Ok(output.stdout);
@@ -1153,20 +1298,22 @@ impl TargetCircuit for Halo2Target {
 
         let proof_hex = hex::encode(proof);
         let inputs_json = serde_json::to_string(&Self::encode_field_elements_hex(public_inputs))?;
-        let output = {
-            let mut cmd = self.cargo_command();
-            cmd.args([
-                "run",
-                "--release",
-                "--",
-                &verify_flag,
-                &proof_hex,
-                &inputs_json,
-            ])
-            .current_dir(project_dir);
-            crate::util::run_with_timeout(&mut cmd, halo2_external_command_timeout())
-                .with_context(|| format!("Failed to run Halo2 verify command '{verify_flag}'"))?
-        };
+        let output = self
+            .run_cargo_command_with_fallback(
+                &format!("Failed to run Halo2 verify command '{verify_flag}'"),
+                |cmd| {
+                    cmd.args([
+                        "run",
+                        "--release",
+                        "--",
+                        &verify_flag,
+                        &proof_hex,
+                        &inputs_json,
+                    ])
+                    .current_dir(project_dir);
+                },
+            )
+            .with_context(|| format!("Failed to run Halo2 verify command '{verify_flag}'"))?;
         Ok(output.status.success())
     }
 }

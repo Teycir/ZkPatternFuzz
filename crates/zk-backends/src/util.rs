@@ -140,28 +140,64 @@ pub(crate) fn run_command_with_fallback<F>(
 where
     F: FnMut(&mut Command),
 {
+    run_candidate_commands_with_fallback(
+        candidates,
+        timeout,
+        context,
+        |candidate| candidate.clone(),
+        |candidate| {
+            let mut cmd = Command::new(candidate);
+            configure(&mut cmd);
+            Ok(cmd)
+        },
+    )
+}
+
+pub(crate) fn run_candidate_commands_with_fallback<T, L, B>(
+    candidates: &[T],
+    timeout: Duration,
+    context: &str,
+    mut label: L,
+    mut build: B,
+) -> Result<(Output, String)>
+where
+    L: FnMut(&T) -> String,
+    B: FnMut(&T) -> Result<Command>,
+{
     let mut failures = Vec::new();
+    let mut labels_seen = Vec::new();
 
     for candidate in candidates {
-        let mut cmd = Command::new(candidate);
-        configure(&mut cmd);
+        let candidate_label = label(candidate);
+        labels_seen.push(candidate_label.clone());
+
+        let mut cmd = match build(candidate) {
+            Ok(cmd) => cmd,
+            Err(err) => {
+                failures.push(format!("{candidate_label}: {err}"));
+                continue;
+            }
+        };
 
         match run_with_timeout(&mut cmd, timeout) {
             Ok(output) if output.status.success() => {
-                return Ok((output, candidate.clone()));
+                return Ok((output, candidate_label));
             }
             Ok(output) => {
-                failures.push(format!("{candidate}: {}", command_output_summary(&output)));
+                failures.push(format!(
+                    "{candidate_label}: {}",
+                    command_output_summary(&output)
+                ));
             }
             Err(err) => {
-                failures.push(format!("{candidate}: {err}"));
+                failures.push(format!("{candidate_label}: {err}"));
             }
         }
     }
 
     anyhow::bail!(
         "{context}. Candidates tried: {}. Last errors: {}",
-        candidates.join(", "),
+        labels_seen.join(", "),
         failures.join(" || ")
     )
 }
