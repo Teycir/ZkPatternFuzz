@@ -1,0 +1,11 @@
+{
+  "run_overrides": {
+    "batch_jobs": 1,
+    "workers": 1,
+    "iterations": 200,
+    "timeout": 300,
+    "env": {
+      "ZKF_HIGH_CONFIDENCE_MIN_ORACLES": 2
+    }
+  }
+}

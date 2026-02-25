@@ -235,6 +235,7 @@ targets:
     framework: circom
     alias: always
     enabled: true
+    run_overrides_file: external/target_run_overrides/ext013_circomlib_ml_relu.json
 
     intel:
       dataset: zkbugs
@@ -260,6 +261,7 @@ targets:
     framework: circom
     alias: always
     enabled: true
+    run_overrides_file: external/target_run_overrides/ext014_circomlib_ml_dense.json
 
     intel:
       dataset: zkbugs
@@ -285,6 +287,7 @@ targets:
     framework: cairo
     alias: always
     enabled: true
+    run_overrides_file: external/target_run_overrides/ext015_orion_svm_classifier_test.json
 
     intel:
       dataset: zkbugs
@@ -299,6 +302,7 @@ targets:
     framework: noir
     alias: always
     enabled: true
+    run_overrides_file: external/target_run_overrides/ext016_aztec_barretenberg_fixture_recursive.json
     intel:
       dataset: zkbugs
       source_root: /home/teycir/Documents/ZkDatasets

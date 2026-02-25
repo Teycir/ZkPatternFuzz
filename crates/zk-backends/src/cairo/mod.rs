@@ -427,7 +427,12 @@ fn ensure_versioned_scarb_binary(version: &str) -> Option<String> {
                 &curl_args,
                 "Failed downloading versioned scarb toolchain",
             ) {
-                tracing::warn!("Skipping scarb toolchain candidate {}: {}", triple, err);
+                tracing::warn!(
+                    "Skipping scarb toolchain candidate version {} ({}) due to setup error: {}",
+                    parsed,
+                    triple,
+                    err
+                );
                 continue;
             }
             archive_ready = true;
@@ -446,7 +451,12 @@ fn ensure_versioned_scarb_binary(version: &str) -> Option<String> {
         if let Err(err) =
             run_toolchain_setup_command("tar", &tar_args, "Failed extracting scarb toolchain")
         {
-            tracing::warn!("Skipping extracted scarb toolchain {}: {}", triple, err);
+            tracing::warn!(
+                "Skipping extracted scarb toolchain version {} ({}) due to extraction error: {}",
+                parsed,
+                triple,
+                err
+            );
             continue;
         }
 
@@ -868,7 +878,14 @@ impl CairoTarget {
 
     fn ensure_prepared_scarb_project_dir(&self) -> Result<PathBuf> {
         if let Some(existing) = self.prepared_scarb_project_dir.get() {
-            return Ok(existing.clone());
+            let manifest = existing.join("Scarb.toml");
+            if manifest.exists() {
+                return Ok(existing.clone());
+            }
+            tracing::warn!(
+                "Prepared Scarb project dir '{}' is stale (missing Scarb.toml); rebuilding mirror",
+                existing.display()
+            );
         }
 
         let source_project_dir = self.source_scarb_project_dir()?;
@@ -992,16 +1009,18 @@ impl CairoTarget {
         let mut extra_version_candidates = Vec::new();
 
         let version_hint = self.cairo_version_hint(project_dir);
-        for version in collect_scarb_version_cascade(version_hint.as_deref()) {
+        let version_cascade = collect_scarb_version_cascade(version_hint.as_deref());
+        for version in &version_cascade {
             push_unique_candidate(&mut extra_version_candidates, version.clone());
-            if let Some(binary_path) = resolve_versioned_scarb_binary_on_path(&version) {
+            if let Some(binary_path) = resolve_versioned_scarb_binary_on_path(version) {
                 push_unique_candidate(&mut extra_bin_candidates, binary_path);
             }
         }
 
-        // For the manifest hint, try provisioning a versioned Scarb binary on demand.
-        if let Some(version) = version_hint {
-            if let Some(versioned_binary) = ensure_versioned_scarb_binary(&version) {
+        // Provision all semver-compatible cascade candidates so fallback can use locally
+        // materialized versioned binaries even when only `scarb` is present on PATH.
+        for version in &version_cascade {
+            if let Some(versioned_binary) = ensure_versioned_scarb_binary(version) {
                 push_unique_candidate(&mut extra_bin_candidates, versioned_binary);
             }
         }
@@ -1522,11 +1541,16 @@ impl CairoTarget {
     }
 
     fn cairo1_arguments_json(inputs: &[FieldElement]) -> String {
-        let args: Vec<String> = inputs
-            .iter()
-            .map(|fe| format!("\"{}\"", field_element_to_decimal(fe)))
-            .collect();
+        let args: Vec<String> = inputs.iter().map(field_element_to_decimal).collect();
         format!("[{}]", args.join(", "))
+    }
+
+    fn cairo1_arguments_cli(inputs: &[FieldElement]) -> String {
+        inputs
+            .iter()
+            .map(field_element_to_decimal)
+            .collect::<Vec<_>>()
+            .join(",")
     }
 
     fn cairo1_witness_digest_hex(inputs: &[FieldElement]) -> String {
@@ -1810,19 +1834,17 @@ impl TargetCircuit for CairoTarget {
         };
 
         if self.cairo_version == CairoVersion::Cairo1 {
-            let project_dir = self
-                .source_path
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
+            let project_dir = self.ensure_prepared_scarb_project_dir()?;
 
             let args_json = Self::cairo1_arguments_json(witness);
+            let args_cli = Self::cairo1_arguments_cli(witness);
             let output = self.run_scarb_command_with_fallback(
                 "Failed to run scarb prove --execute across configured candidates",
-                project_dir,
+                &project_dir,
                 |cmd| {
                     cmd.args(["prove", "--execute", "--output", "standard"]);
                     if !witness.is_empty() {
-                        cmd.args(["--arguments", &args_json]);
+                        cmd.args(["--arguments", &args_cli]);
                     }
                 },
             )?;
@@ -1915,17 +1937,14 @@ impl TargetCircuit for CairoTarget {
         };
 
         if self.cairo_version == CairoVersion::Cairo1 {
-            let project_dir = self
-                .source_path
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("Cairo source path has no parent directory"))?;
+            let project_dir = self.ensure_prepared_scarb_project_dir()?;
 
             let artifact = Self::parse_cairo1_proof_artifact(proof)
                 .context("Cairo1 verify requires structured proof artifact contract")?;
 
             let output = self.run_scarb_command_with_fallback(
                 "Failed to run scarb verify across configured candidates",
-                project_dir,
+                &project_dir,
                 |cmd| {
                     cmd.args(["verify", "--execution-id", &artifact.execution_id]);
                 },

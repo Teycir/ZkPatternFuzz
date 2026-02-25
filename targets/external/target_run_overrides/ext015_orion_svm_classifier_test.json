@@ -1,0 +1,13 @@
+{
+  "run_overrides": {
+    "batch_jobs": 1,
+    "workers": 1,
+    "iterations": 200,
+    "timeout": 420,
+    "env": {
+      "ZKF_HIGH_CONFIDENCE_MIN_ORACLES": 2,
+      "ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS": 360,
+      "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS": 360
+    }
+  }
+}

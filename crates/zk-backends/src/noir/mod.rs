@@ -169,7 +169,11 @@ pub enum NoirType {
     #[serde(rename = "boolean")]
     Boolean,
     #[serde(rename = "array")]
-    Array { length: usize, typ: Box<NoirType> },
+    Array {
+        length: usize,
+        #[serde(alias = "type")]
+        typ: Box<NoirType>,
+    },
     #[serde(rename = "string")]
     String { length: usize },
     #[serde(rename = "struct")]

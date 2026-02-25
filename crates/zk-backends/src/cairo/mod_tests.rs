@@ -48,7 +48,7 @@ fn test_cairo1_arguments_json_serialization() {
         FieldElement::from_u64(3),
         FieldElement::from_u64(42),
     ]);
-    assert_eq!(args, "[\"3\", \"42\"]");
+    assert_eq!(args, "[3, 42]");
 }
 
 #[test]

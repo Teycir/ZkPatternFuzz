@@ -84,7 +84,7 @@ impl FuzzingEngine {
                 Ok(proof) => proof,
                 Err(err) => {
                     proof_generation_failures += 1;
-                    last_proof_error = Some(err.to_string());
+                    last_proof_error = Some(format!("{:#}", err));
                     tracing::debug!(
                         "Soundness attempt {}/{} skipped: witness failed proof generation: {}",
                         attempt + 1,
