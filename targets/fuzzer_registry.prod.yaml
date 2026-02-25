@@ -38,6 +38,20 @@ collections:
       - cveX25_aleo_non_committing_encryption.yaml
       - cveX26_light_protocol_non_atomic_state.yaml
       - cveX27_zkemail_underconstrained_spoofing.yaml
+      - cveX39_scroll_modgadget_underconstrained_mulmod.yaml
+      - cveX40_scroll_create_static_context_escape.yaml
+      - cveX41_scroll_rlpu64_lt128_underconstrained.yaml
+      - cveX42_telepathy_illformed_bigint_commitment.yaml
+      - cveX43_selfxyz_smt_aliasing_fake_noninclusion.yaml
+      - cveX44_selfxyz_packbytes_poseidon_second_preimage.yaml
+      - cveX45_risc0_underconstrained_division.yaml
+      - cveX46_risc0_multistep_3reg_validation_gap.yaml
+      - cveX47_sp1_chip_ordering_vkroot_missing_checks.yaml
+      - cveX48_openvm_fri_verifier_overflow.yaml
+      - cveX49_penumbra_unsound_fixed_point_arithmetic.yaml
+      - cveX50_herodotus_mmr_range_check_gaps.yaml
+      - cveX51_circomlib_montgomery_windowmulfix_underconstrained.yaml
+      - cveX52_lurk_neptune_zero_padding_soundness.yaml
   noir_readiness:
     registry: local_cve_patterns
     description: "Noir readiness profile (constraint/soundness focused)"
@@ -66,7 +80,6 @@ aliases:
   all: ["always"]
   always: ["always"]
   deep: ["always"]
-  external_manual: ["always"]
   readiness_noir: ["noir_readiness"]
   readiness_cairo: ["cairo_readiness"]
   readiness_halo2: ["halo2_readiness"]
@@ -109,3 +122,31 @@ aliases:
   cveX36_halo2_constraint_metadata_readiness_probe: ["cveX36_halo2_constraint_metadata_readiness_probe.yaml"]
   cveX37_halo2_plonk_lookup_readiness_probe: ["cveX37_halo2_plonk_lookup_readiness_probe.yaml"]
   cveX38_halo2_profile_k_readiness_probe: ["cveX38_halo2_profile_k_readiness_probe.yaml"]
+  cveX39_scroll_modgadget_underconstrained_mulmod:
+    - cveX39_scroll_modgadget_underconstrained_mulmod.yaml
+  cveX40_scroll_create_static_context_escape:
+    - cveX40_scroll_create_static_context_escape.yaml
+  cveX41_scroll_rlpu64_lt128_underconstrained:
+    - cveX41_scroll_rlpu64_lt128_underconstrained.yaml
+  cveX42_telepathy_illformed_bigint_commitment:
+    - cveX42_telepathy_illformed_bigint_commitment.yaml
+  cveX43_selfxyz_smt_aliasing_fake_noninclusion:
+    - cveX43_selfxyz_smt_aliasing_fake_noninclusion.yaml
+  cveX44_selfxyz_packbytes_poseidon_second_preimage:
+    - cveX44_selfxyz_packbytes_poseidon_second_preimage.yaml
+  cveX45_risc0_underconstrained_division:
+    - cveX45_risc0_underconstrained_division.yaml
+  cveX46_risc0_multistep_3reg_validation_gap:
+    - cveX46_risc0_multistep_3reg_validation_gap.yaml
+  cveX47_sp1_chip_ordering_vkroot_missing_checks:
+    - cveX47_sp1_chip_ordering_vkroot_missing_checks.yaml
+  cveX48_openvm_fri_verifier_overflow:
+    - cveX48_openvm_fri_verifier_overflow.yaml
+  cveX49_penumbra_unsound_fixed_point_arithmetic:
+    - cveX49_penumbra_unsound_fixed_point_arithmetic.yaml
+  cveX50_herodotus_mmr_range_check_gaps:
+    - cveX50_herodotus_mmr_range_check_gaps.yaml
+  cveX51_circomlib_montgomery_windowmulfix_underconstrained:
+    - cveX51_circomlib_montgomery_windowmulfix_underconstrained.yaml
+  cveX52_lurk_neptune_zero_padding_soundness:
+    - cveX52_lurk_neptune_zero_padding_soundness.yaml

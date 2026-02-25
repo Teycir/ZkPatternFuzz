@@ -17,5 +17,4 @@ aliases:
   all: ["dev_fast"]
   always: ["dev_fast"]
   deep: ["dev_fast"]
-  external_manual: ["dev_fast"]
   dev: ["dev_fast"]
