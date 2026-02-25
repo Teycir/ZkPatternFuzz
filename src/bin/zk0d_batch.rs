@@ -14,9 +14,12 @@ const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
 const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
 const RUN_SIGNAL_DIR_ENV: &str = "ZKF_RUN_SIGNAL_DIR";
 const BUILD_CACHE_DIR_ENV: &str = "ZKF_BUILD_CACHE_DIR";
+const SHARED_BUILD_CACHE_DIR_ENV: &str = "ZKF_SHARED_BUILD_CACHE_DIR";
 const HALO2_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS";
 const HALO2_MIN_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_MIN_EXTERNAL_TIMEOUT_SECS";
 const HALO2_USE_HOST_CARGO_HOME_ENV: &str = "ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME";
+const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES";
+const HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV: &str = "ZK_FUZZER_HALO2_TOOLCHAIN_CASCADE_LIMIT";
 const CAIRO_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS";
 const SCARB_DOWNLOAD_TIMEOUT_ENV: &str = "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS";
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
@@ -831,7 +834,7 @@ fn run_scan(
 ) -> anyhow::Result<ScanRunResult> {
     let family_str = family.as_str();
     let run_signal_dir = run_cfg.scan_output_root.join("run_signals");
-    let build_cache_dir = run_cfg.scan_output_root.join("_build_cache");
+    let build_cache_dir = resolve_build_cache_dir(run_cfg.scan_output_root);
     let mut cmd = Command::new(run_cfg.bin_path);
     cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.scan_output_root)
         .env(RUN_SIGNAL_DIR_ENV, &run_signal_dir)
@@ -851,14 +854,26 @@ fn run_scan(
     if let Some(run_root) = run_cfg.scan_run_root {
         cmd.env(SCAN_RUN_ROOT_ENV, run_root);
     }
-    if should_prefer_host_cargo_home(run_cfg.framework, run_cfg.target_circuit) {
+    if is_external_target(run_cfg.target_circuit) && run_cfg.framework.eq_ignore_ascii_case("halo2")
+    {
+        let auto_candidates = auto_halo2_toolchain_candidates();
+
+        // External targets often live outside the writable workspace; keep Halo2 Cargo state
+        // local and avoid broad toolchain cascades that trigger rustup network fetches.
         if std::env::var_os(HALO2_USE_HOST_CARGO_HOME_ENV).is_none() {
-            cmd.env(HALO2_USE_HOST_CARGO_HOME_ENV, "1");
+            cmd.env(HALO2_USE_HOST_CARGO_HOME_ENV, "0");
         }
-        if std::env::var_os("CARGO_HOME").is_none() {
-            if let Some(home) = dirs::home_dir() {
-                cmd.env("CARGO_HOME", home.join(".cargo"));
+        if std::env::var_os(HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV).is_none() {
+            if !auto_candidates.is_empty() {
+                cmd.env(
+                    HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV,
+                    auto_candidates.join(","),
+                );
             }
+        }
+        if std::env::var_os(HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV).is_none() {
+            let cascade_limit = auto_candidates.len().clamp(1, 8);
+            cmd.env(HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV, cascade_limit.to_string());
         }
     }
     cmd.arg("scan")
@@ -942,6 +957,18 @@ fn run_scan(
     })
 }
 
+fn resolve_build_cache_dir(scan_output_root: &Path) -> PathBuf {
+    for env_name in [BUILD_CACHE_DIR_ENV, SHARED_BUILD_CACHE_DIR_ENV] {
+        if let Ok(raw) = std::env::var(env_name) {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed);
+            }
+        }
+    }
+    scan_output_root.join("_build_cache")
+}
+
 fn halo2_effective_external_timeout_secs(framework: &str, requested_timeout: u64) -> u64 {
     if !framework.eq_ignore_ascii_case("halo2") {
         return requested_timeout;
@@ -956,11 +983,85 @@ fn halo2_effective_external_timeout_secs(framework: &str, requested_timeout: u64
     requested_timeout.max(floor)
 }
 
-fn should_prefer_host_cargo_home(framework: &str, target_circuit: &str) -> bool {
-    if !framework.eq_ignore_ascii_case("halo2") {
-        return false;
+fn push_unique_nonempty(values: &mut Vec<String>, candidate: impl Into<String>) {
+    let candidate = candidate.into();
+    let trimmed = candidate.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    if values.iter().any(|existing| existing == trimmed) {
+        return;
+    }
+    values.push(trimmed.to_string());
+}
+
+fn parse_rustup_toolchain_names(raw: &str) -> Vec<String> {
+    let mut parsed = Vec::new();
+    for line in raw.lines() {
+        let first = line.split_whitespace().next().unwrap_or_default().trim();
+        if first.is_empty() || first.starts_with("info:") || first.starts_with("error:") {
+            continue;
+        }
+        push_unique_nonempty(&mut parsed, first.trim_end_matches(','));
+    }
+    parsed
+}
+
+fn rustup_stdout(args: &[&str]) -> Option<String> {
+    let output = Command::new("rustup").args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn auto_halo2_toolchain_candidates() -> Vec<String> {
+    let mut candidates = Vec::<String>::new();
+
+    if let Some(active) = rustup_stdout(&["show", "active-toolchain"]) {
+        if let Some(toolchain) = active.split_whitespace().next() {
+            push_unique_nonempty(&mut candidates, toolchain);
+        }
     }
 
+    let installed = rustup_stdout(&["toolchain", "list"])
+        .map(|raw| parse_rustup_toolchain_names(&raw))
+        .unwrap_or_default();
+    let installed_set = installed.iter().cloned().collect::<BTreeSet<String>>();
+
+    for preferred in [
+        "nightly-x86_64-unknown-linux-gnu",
+        "nightly",
+        "stable-x86_64-unknown-linux-gnu",
+        "stable",
+    ] {
+        if installed_set.contains(preferred) {
+            push_unique_nonempty(&mut candidates, preferred);
+        }
+    }
+
+    for name in &installed {
+        if name.starts_with("nightly-") {
+            push_unique_nonempty(&mut candidates, name);
+        }
+    }
+    for name in &installed {
+        if name.starts_with("stable-") {
+            push_unique_nonempty(&mut candidates, name);
+        }
+    }
+    for name in &installed {
+        push_unique_nonempty(&mut candidates, name);
+    }
+
+    const MAX_AUTO_TOOLCHAINS: usize = 6;
+    if candidates.len() > MAX_AUTO_TOOLCHAINS {
+        candidates.truncate(MAX_AUTO_TOOLCHAINS);
+    }
+    candidates
+}
+
+fn is_external_target(target_circuit: &str) -> bool {
     let target_path = Path::new(target_circuit);
     if !target_path.is_absolute() {
         return false;
@@ -1406,7 +1507,13 @@ fn collect_template_outcome_reasons(
                 suffix,
                 status,
                 stage,
-                reason_code: classify_run_reason_code(&parsed).to_string(),
+                reason_code: parsed
+                    .get("reason_code")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| classify_run_reason_code(&parsed).to_string()),
                 high_confidence_detected: report_has_high_confidence_finding(&report_path),
             }
         })
@@ -1747,4 +1854,36 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_rustup_toolchain_names, push_unique_nonempty};
+
+    #[test]
+    fn parse_rustup_toolchain_names_extracts_first_token_and_filters_noise() {
+        let raw = "\
+nightly-x86_64-unknown-linux-gnu (default)\n\
+stable-x86_64-unknown-linux-gnu\n\
+info: syncing channel updates\n\
+error: network unavailable\n";
+        let parsed = parse_rustup_toolchain_names(raw);
+        assert_eq!(
+            parsed,
+            vec![
+                "nightly-x86_64-unknown-linux-gnu".to_string(),
+                "stable-x86_64-unknown-linux-gnu".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn push_unique_nonempty_dedupes_and_ignores_empty_values() {
+        let mut values = Vec::new();
+        push_unique_nonempty(&mut values, "");
+        push_unique_nonempty(&mut values, "nightly");
+        push_unique_nonempty(&mut values, "nightly");
+        push_unique_nonempty(&mut values, " stable ");
+        assert_eq!(values, vec!["nightly".to_string(), "stable".to_string()]);
+    }
 }

@@ -1,7 +1,7 @@
 use chrono::Utc;
 use std::path::{Path, PathBuf};
 
-use super::run_outcome_docs::log_run_reason_code;
+use super::run_outcome_docs::{log_run_reason_code, standardize_run_outcome_doc};
 use super::{engagement_root_dir, run_signal_dir};
 
 pub(crate) fn best_effort_write_json(path: &Path, value: &serde_json::Value) {
@@ -191,8 +191,9 @@ pub(crate) fn mirror_mode_output_snapshot(
 }
 
 pub(crate) fn update_engagement_summary(report_dir: &Path, value: &serde_json::Value) {
+    let value = standardize_run_outcome_doc(value);
     let now = Utc::now().to_rfc3339();
-    let command = get_command_from_doc(value);
+    let command = get_command_from_doc(&value);
     let mode = mode_folder_from_command(&command).to_string();
 
     let summary_path = report_dir.join("summary.json");
@@ -245,6 +246,7 @@ pub(crate) fn update_engagement_summary(report_dir: &Path, value: &serde_json::V
         }
     }
 
+    recompute_summary_totals(&mut summary);
     best_effort_write_json(&summary_path, &summary);
 
     // Markdown summary (human-friendly).
@@ -283,11 +285,43 @@ pub(crate) fn update_engagement_summary(report_dir: &Path, value: &serde_json::V
                     .and_then(|s| s.as_str())
                     .unwrap_or_default();
                 md.push_str(&format!("- Status: `{}`\n", status));
+                if let Some(status_family) = v.get("status_family").and_then(|s| s.as_str()) {
+                    md.push_str(&format!("- Status family: `{}`\n", status_family));
+                }
+                if let Some(reason_code) = v.get("reason_code").and_then(|s| s.as_str()) {
+                    md.push_str(&format!("- Reason code: `{}`\n", reason_code));
+                }
                 md.push_str(&format!("- Run ID: `{}`\n", run_id));
                 md.push_str(&format!("- Campaign: `{}`\n", campaign));
                 md.push_str(&format!("- Started (UTC): `{}`\n", started));
                 if !ended.is_empty() {
                     md.push_str(&format!("- Ended (UTC): `{}`\n", ended));
+                }
+                if let Some(qualification) = v.get("discovery_qualification") {
+                    if let Some(state) = qualification
+                        .get("discovery_state")
+                        .and_then(|state| state.as_str())
+                    {
+                        md.push_str(&format!("- Discovery state: `{}`\n", state));
+                    }
+                    if let Some(proof) = qualification
+                        .get("proof_status")
+                        .and_then(|status| status.as_str())
+                    {
+                        md.push_str(&format!("- Proof status: `{}`\n", proof));
+                    }
+                    if let Some(priority) = qualification
+                        .get("analysis_priority")
+                        .and_then(|priority| priority.as_str())
+                    {
+                        md.push_str(&format!("- Analysis priority: `{}`\n", priority));
+                    }
+                    if let Some(next_step) = qualification
+                        .get("next_step")
+                        .and_then(|step| step.as_str())
+                    {
+                        md.push_str(&format!("- Next step: `{}`\n", next_step));
+                    }
                 }
 
                 if let Some(window) = v.get("run_window") {
@@ -341,6 +375,97 @@ pub(crate) fn update_engagement_summary(report_dir: &Path, value: &serde_json::V
     }
 }
 
+fn recompute_summary_totals(summary: &mut serde_json::Value) {
+    let Some(modes) = summary.get("modes").and_then(|m| m.as_object()) else {
+        return;
+    };
+    let modes_len = modes.len();
+
+    let mut running = 0u64;
+    let mut completed = 0u64;
+    let mut failed = 0u64;
+    let mut unknown = 0u64;
+    let mut pending_proof = 0u64;
+    let mut candidate_vulnerabilities = 0u64;
+    let mut critical_modes = 0u64;
+
+    for mode_doc in modes.values() {
+        let status_family = mode_doc
+            .get("status_family")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| {
+                match mode_doc
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                {
+                    "running" => "running",
+                    "completed" | "completed_with_critical_findings" => "completed",
+                    "failed" | "failed_engagement_contract" | "stale_interrupted" | "panic" => {
+                        "failed"
+                    }
+                    _ => "unknown",
+                }
+            });
+        match status_family {
+            "running" => running += 1,
+            "completed" => completed += 1,
+            "failed" => failed += 1,
+            _ => unknown += 1,
+        }
+
+        if mode_doc
+            .get("discovery_qualification")
+            .and_then(|q| q.get("proof_status"))
+            .and_then(|v| v.as_str())
+            .map(|v| v == "pending_proof")
+            .unwrap_or(false)
+        {
+            pending_proof += 1;
+        }
+
+        if mode_doc
+            .get("discovery_qualification")
+            .and_then(|q| q.get("discovery_state"))
+            .and_then(|v| v.as_str())
+            .map(|v| v == "candidate_vulnerability")
+            .unwrap_or(false)
+        {
+            candidate_vulnerabilities += 1;
+        }
+
+        if mode_doc
+            .get("metrics")
+            .and_then(|metrics| metrics.get("critical_findings"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            || mode_doc
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(|status| status == "completed_with_critical_findings")
+                .unwrap_or(false)
+        {
+            critical_modes += 1;
+        }
+    }
+
+    if let Some(obj) = summary.as_object_mut() {
+        obj.insert(
+            "totals".to_string(),
+            serde_json::json!({
+                "modes_total": modes_len,
+                "running": running,
+                "completed": completed,
+                "failed": failed,
+                "unknown": unknown,
+                "pending_proof": pending_proof,
+                "candidate_vulnerabilities": candidate_vulnerabilities,
+                "critical_modes": critical_modes,
+            }),
+        );
+    }
+}
+
 pub(crate) fn scan_public_root_from_output_dir(output_dir: &Path) -> Option<PathBuf> {
     let run_root_dir = output_dir.parent()?;
     let artifacts_dir = run_root_dir.parent()?;
@@ -362,6 +487,11 @@ pub(crate) fn write_scan_timestamp_totals_if_applicable(
 }
 
 pub(crate) fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
+    let value = standardize_run_outcome_doc(value);
+    write_global_run_signal_standardized(run_id, &value);
+}
+
+fn write_global_run_signal_standardized(run_id: &str, value: &serde_json::Value) {
     let base = run_signal_dir();
     let report_dir = engagement_root_dir(run_id);
     ensure_engagement_layout(&report_dir);
@@ -387,13 +517,14 @@ pub(crate) fn write_global_run_signal(run_id: &str, value: &serde_json::Value) {
 }
 
 pub(crate) fn write_run_artifacts(output_dir: &Path, run_id: &str, value: &serde_json::Value) {
-    log_run_reason_code(value);
+    let value = standardize_run_outcome_doc(value);
+    log_run_reason_code(&value);
 
     // Minimal artifacts contract: avoid redundant run history + mirrored reports.
     // - `run_outcome.json` is the single authoritative per-mode status file (also used for resume).
     // - engagement-wide `log/events.jsonl` is the run history (includes run_id).
-    best_effort_write_json(&output_dir.join("run_outcome.json"), value);
-    write_scan_timestamp_totals_if_applicable(output_dir, value);
-    mirror_mode_output_snapshot(output_dir, run_id, value);
-    write_global_run_signal(run_id, value);
+    best_effort_write_json(&output_dir.join("run_outcome.json"), &value);
+    write_scan_timestamp_totals_if_applicable(output_dir, &value);
+    mirror_mode_output_snapshot(output_dir, run_id, &value);
+    write_global_run_signal_standardized(run_id, &value);
 }

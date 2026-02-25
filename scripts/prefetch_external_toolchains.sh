@@ -12,6 +12,7 @@ CACHE_ROOT="${ZKFUZZ_TOOLCHAIN_CACHE_ROOT:-$PROJECT_ROOT/build/toolchains}"
 SCARB_ARCHIVE_DIR="${ZK_FUZZER_SCARB_ARCHIVE_DIR:-$CACHE_ROOT/scarb_archives}"
 SCARB_TOOLCHAIN_DIR="${ZK_FUZZER_SCARB_TOOLCHAIN_DIR:-$CACHE_ROOT/scarb_toolchains}"
 HALO2_CARGO_HOME_SEED="${ZK_FUZZER_HALO2_CARGO_HOME_CACHE_SEED:-$CACHE_ROOT/cargo_home_seed}"
+WORKSPACE_CARGO_HOME="${ZKFUZZ_WORKSPACE_CARGO_HOME:-$CACHE_ROOT/workspace_cargo_home}"
 NOIR_CACHE_ROOT="${ZKFUZZ_NOIR_CACHE_ROOT:-$CACHE_ROOT/noir_cache}"
 NOIR_NARGO_HOME="${ZKFUZZ_NOIR_NARGO_HOME:-$NOIR_CACHE_ROOT/nargo_home}"
 NOIR_CARGO_HOME="${ZKFUZZ_NOIR_CARGO_HOME:-$NOIR_CACHE_ROOT/cargo_home}"
@@ -30,6 +31,7 @@ mkdir -p \
   "$SCARB_ARCHIVE_DIR" \
   "$SCARB_TOOLCHAIN_DIR" \
   "$HALO2_CARGO_HOME_SEED" \
+  "$WORKSPACE_CARGO_HOME" \
   "$NOIR_NARGO_HOME" \
   "$NOIR_CARGO_HOME" \
   "$NOIR_TARGET_DIR" \
@@ -781,8 +783,22 @@ if ! $prefetch_rustup_ready; then
 fi
 
 if command -v cargo >/dev/null 2>&1; then
-  IFS=',' read -r -a env_halo2_toolchains <<< "${ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES:-}"
   halo2_try_toolchains=()
+  preferred_halo2_toolchain=""
+  echo "[prefetch] cargo fetch for workspace: $PROJECT_ROOT/Cargo.toml"
+  workspace_fetch_log="$PREFETCH_LOG_DIR/workspace_cargo_fetch.log"
+  if RUSTUP_HOME="$RUSTUP_HOME_FOR_FETCH" \
+    CARGO_HOME="$WORKSPACE_CARGO_HOME" \
+    CARGO_NET_GIT_FETCH_WITH_CLI=true \
+    cargo fetch --manifest-path "$PROJECT_ROOT/Cargo.toml" >"$workspace_fetch_log" 2>&1; then
+    cat "$workspace_fetch_log"
+  else
+    cat "$workspace_fetch_log"
+    emit_granular_error "WORKSPACE" "cargo_fetch" "$PROJECT_ROOT/Cargo.toml" "cargo" "$workspace_fetch_log"
+    echo "[prefetch] warn: workspace dependency prefetch failed"
+  fi
+
+  IFS=',' read -r -a env_halo2_toolchains <<< "${ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES:-}"
   for tc in "${env_halo2_toolchains[@]}" "nightly" "nightly-2024-07-07" "stable"; do
     tc="${tc//[$'\t\r\n ']}"
     [[ -z "$tc" ]] && continue
@@ -815,6 +831,9 @@ if command -v cargo >/dev/null 2>&1; then
       if run_halo2_cargo_fetch_attempt "$manifest" "$tc" "$needs_next_lock_bump" >"$fetch_log" 2>&1; then
         cat "$fetch_log"
         fetched=true
+        if [[ -z "$preferred_halo2_toolchain" ]]; then
+          preferred_halo2_toolchain="$tc"
+        fi
         break
       fi
       cat "$fetch_log"
@@ -825,6 +844,9 @@ if command -v cargo >/dev/null 2>&1; then
         if run_halo2_sanitized_fetch_fallback "$manifest" "$tc" "$needs_next_lock_bump" >"$sanitized_fetch_log" 2>&1; then
           cat "$sanitized_fetch_log"
           fetched=true
+          if [[ -z "$preferred_halo2_toolchain" ]]; then
+            preferred_halo2_toolchain="$tc"
+          fi
           break
         fi
         cat "$sanitized_fetch_log"
@@ -836,6 +858,8 @@ if command -v cargo >/dev/null 2>&1; then
     fi
   done
 else
+  halo2_try_toolchains=()
+  preferred_halo2_toolchain=""
   echo "[prefetch] cargo not found; skipping halo2 dependency prefetch"
 fi
 
@@ -862,9 +886,16 @@ export ZK_FUZZER_SCARB_ARCHIVE_DIR="$SCARB_ARCHIVE_DIR"
 export ZK_FUZZER_SCARB_TOOLCHAIN_DIR="$SCARB_TOOLCHAIN_DIR"
 export ZK_FUZZER_SCARB_AUTO_DOWNLOAD=false
 export ZK_FUZZER_HALO2_CARGO_HOME_CACHE_SEED="$HALO2_CARGO_HOME_SEED"
+export CARGO_HOME="$WORKSPACE_CARGO_HOME"
 export ZK_FUZZER_HALO2_AUTO_ONLINE_RETRY=true
 export ZK_FUZZER_HALO2_GO_PROXY_CACHE_DIR="$HALO2_GO_PROXY_CACHE_DIR"
 EOF
+if [[ ${#halo2_try_toolchains[@]} -gt 0 ]]; then
+  echo "export ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES=\"$(join_csv halo2_try_toolchains)\""
+fi
+if [[ -n "${preferred_halo2_toolchain:-}" ]]; then
+  echo "export ZK_FUZZER_HALO2_CARGO_TOOLCHAIN=\"$preferred_halo2_toolchain\""
+fi
 if $prefetch_rustup_ready; then
   echo "export RUSTUP_HOME=\"$RUSTUP_HOME_PREFETCH\""
 fi

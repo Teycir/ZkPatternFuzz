@@ -129,10 +129,7 @@ fn parse_git_db_repo_paths_from_text(text: &str) -> Vec<PathBuf> {
         while end < bytes.len() {
             let next = bytes[end];
             if next.is_ascii_whitespace()
-                || matches!(
-                    next,
-                    b'`' | b'\'' | b'"' | b')' | b']' | b'}' | b',' | b';'
-                )
+                || matches!(next, b'`' | b'\'' | b'"' | b')' | b']' | b'}' | b',' | b';')
             {
                 break;
             }
@@ -1331,34 +1328,71 @@ impl Halo2Target {
 
     /// Get circuit info by running the binary
     fn get_circuit_info_from_binary(&self, project_dir: &Path) -> Halo2Metadata {
-        // Try to run with --info flag
-        let output = match self.run_cargo_command_with_fallback(
-            &format!(
-                "Failed to run Halo2 --info command in '{}'",
-                project_dir.display()
-            ),
-            |cmd| {
-                cmd.args(["run", "--release", "--", "--info"])
-                    .current_dir(project_dir);
-            },
+        // Metadata probing is best-effort. Use a single lightweight attempt to avoid
+        // burning the full toolchain cascade budget on targets that do not support --info.
+        let probe_context = format!(
+            "Failed to run Halo2 --info command in '{}'",
+            project_dir.display()
+        );
+        let selected_binary = self
+            .selected_cargo_binary()
+            .unwrap_or_else(|| "cargo".to_string());
+        let mut probe_cmd = match self.cargo_command_with_binary_and_toolchain(
+            &selected_binary,
+            self.cargo_toolchain.as_deref(),
+            false,
         ) {
-            Ok(output) => Some(output),
+            Ok(cmd) => cmd,
             Err(err) => {
-                tracing::warn!(
-                    "Failed to run Halo2 --info command in '{}': {}",
-                    project_dir.display(),
-                    err
-                );
-                None
+                tracing::warn!("{}: {}", probe_context, err);
+                return Halo2Metadata {
+                    name: self.name.clone(),
+                    k: self.config.k,
+                    num_advice_columns: 0,
+                    num_fixed_columns: 0,
+                    num_instance_columns: 0,
+                    num_constraints: 0,
+                    num_private_inputs: 0,
+                    num_public_inputs: 0,
+                    num_lookups: 0,
+                };
             }
         };
+        probe_cmd
+            .args(["run", "--release", "--", "--info"])
+            .current_dir(project_dir);
 
-        if let Some(output) = output {
-            if output.status.success() {
+        let probe_timeout =
+            std::cmp::min(halo2_external_command_timeout(), std::time::Duration::from_secs(45));
+
+        match crate::util::run_with_timeout(&mut probe_cmd, probe_timeout) {
+            Ok(output) if output.status.success() => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 if let Ok(info) = serde_json::from_str(&stdout) {
                     return info;
                 }
+                tracing::debug!(
+                    "Halo2 --info probe in '{}' succeeded but output was not JSON metadata",
+                    project_dir.display()
+                );
+            }
+            Ok(output) => {
+                let text_lc = command_output_text(&output).to_ascii_lowercase();
+                if text_lc.contains("unexpected argument '--info'") {
+                    tracing::info!(
+                        "Skipping Halo2 metadata probe in '{}': target binary does not support --info",
+                        project_dir.display()
+                    );
+                } else {
+                    tracing::warn!(
+                        "{}: {}",
+                        probe_context,
+                        crate::util::command_failure_summary(&output)
+                    );
+                }
+            }
+            Err(err) => {
+                tracing::warn!("{}: {}", probe_context, err);
             }
         }
 

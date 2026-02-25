@@ -2,6 +2,23 @@ use anyhow::Context;
 use std::path::{Path, PathBuf};
 use zk_fuzzer::config::FuzzConfig;
 
+const BUILD_CACHE_DIR_ENV: &str = "ZKF_BUILD_CACHE_DIR";
+
+fn build_dir_base_from_env() -> Option<PathBuf> {
+    let raw = std::env::var(BUILD_CACHE_DIR_ENV).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute() {
+        Some(path)
+    } else {
+        std::env::current_dir().ok().map(|cwd| cwd.join(path))
+    }
+}
+
 fn is_bare_program_name(path: &Path) -> bool {
     let mut components = path.components();
     matches!(components.next(), Some(std::path::Component::Normal(_)))
@@ -30,10 +47,13 @@ fn parse_preflight_executor_options(
     let allow_external_tool_overrides = additional
         .get_bool("allow_external_tool_overrides")
         .unwrap_or(false);
+    let build_dir_base = additional
+        .get_path("build_dir_base")
+        .or_else(|| additional.get_path("build_dir"))
+        .or_else(build_dir_base_from_env);
+
     let mut options = zk_fuzzer::executor::ExecutorFactoryOptions {
-        build_dir_base: additional
-            .get_path("build_dir_base")
-            .or_else(|| additional.get_path("build_dir")),
+        build_dir_base,
         circom_build_dir: additional.get_path("circom_build_dir"),
         noir_build_dir: additional.get_path("noir_build_dir"),
         halo2_build_dir: additional.get_path("halo2_build_dir"),

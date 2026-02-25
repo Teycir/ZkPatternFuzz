@@ -10,7 +10,7 @@ use crate::output_lock::acquire_output_dir_lock;
 use crate::preflight_backend::run_backend_preflight;
 use crate::run_outcome_docs::{
     failed_run_doc_with_window, log_run_reason_code, running_run_doc_with_window,
-    RunOutcomeDocContext,
+    standardize_run_outcome_doc, RunOutcomeDocContext,
 };
 use crate::{normalize_build_paths, set_run_log_context_for_campaign};
 
@@ -258,13 +258,14 @@ pub(crate) fn initialize_campaign_run_lifecycle(
 }
 
 pub(crate) fn write_failed_run_artifact(run_id: &str, value: &serde_json::Value) {
-    log_run_reason_code(value);
+    let value = standardize_run_outcome_doc(value);
+    log_run_reason_code(&value);
 
     // Keep failure artifacts within the engagement folder to avoid scattering files.
     let report_dir = engagement_root_dir(run_id);
     let failed_dir = report_dir.join("_failed_runs");
-    best_effort_write_json(&failed_dir.join(format!("{}.json", run_id)), value);
-    write_global_run_signal(run_id, value);
+    best_effort_write_json(&failed_dir.join(format!("{}.json", run_id)), &value);
+    write_global_run_signal(run_id, &value);
 }
 
 pub(crate) struct FailedRunArtifactErrorContext<'a> {

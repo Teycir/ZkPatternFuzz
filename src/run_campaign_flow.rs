@@ -386,7 +386,7 @@ pub(crate) async fn run_campaign(
 
     // Print banner
     print_banner(&config);
-    let run_start = Local::now();
+    let run_start = started_utc.with_timezone(&Local);
     print_run_window(run_start, options.timeout);
 
     if !options.dry_run {

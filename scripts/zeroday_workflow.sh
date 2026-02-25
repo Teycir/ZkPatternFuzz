@@ -30,6 +30,13 @@ FUZZER="$PROJECT_ROOT/target/release/zk-fuzzer"
 SKIMMER="$PROJECT_ROOT/target/release/zk0d_skimmer"
 PICUS_DIR="${PICUS_DIR:-/tmp/Picus}"
 PICUS_BIN="${PICUS_BIN:-}"
+LOAD_ENV_MASTER_SCRIPT="$PROJECT_ROOT/scripts/load_env_master.sh"
+
+if [[ -f "$LOAD_ENV_MASTER_SCRIPT" ]]; then
+    # shellcheck disable=SC1090
+    source "$LOAD_ENV_MASTER_SCRIPT"
+    load_env_master "$PROJECT_ROOT"
+fi
 
 # Default values
 DEFAULT_ITERATIONS=50000
@@ -59,6 +66,37 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+load_prefetch_env_hints() {
+    local candidates=()
+    local env_file=""
+
+    if [[ -n "${ZKFUZZ_PREFETCH_ENV_HINTS_FILE:-}" ]]; then
+        candidates+=("$ZKFUZZ_PREFETCH_ENV_HINTS_FILE")
+    fi
+    candidates+=("$PROJECT_ROOT/build/toolchains/prefetch.env")
+
+    for candidate in "${candidates[@]}"; do
+        if [[ -f "$candidate" ]]; then
+            env_file="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$env_file" ]]; then
+        return 0
+    fi
+
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_file"
+    set +a
+    # Cache-first defaults when prefetch hints are available.
+    if [[ -z "${ZKF_ENSURE_BUILD_NO_CLEAN:-}" ]]; then
+        export ZKF_ENSURE_BUILD_NO_CLEAN=1
+    fi
+    log_info "Loaded local toolchain cache hints: $env_file"
 }
 
 prepare_runtime_environment() {
@@ -112,7 +150,20 @@ ensure_build() {
     fi
 
     log_info "Checking release binaries freshness..."
-    "$REBUILD_SCRIPT" --project-root "$PROJECT_ROOT" --if-changed --bin zk-fuzzer --bin zk0d_skimmer
+    local rebuild_args=(
+        --project-root "$PROJECT_ROOT"
+        --if-changed
+        --bin zk-fuzzer
+        --bin zk0d_skimmer
+    )
+    if [[ "${ZKF_ENSURE_BUILD_NO_CLEAN:-0}" == "1" ]]; then
+        rebuild_args+=(--no-clean)
+    fi
+    if [[ "${ZKF_ENSURE_BUILD_OFFLINE:-0}" == "1" ]]; then
+        rebuild_args+=(--offline)
+    fi
+
+    "$REBUILD_SCRIPT" "${rebuild_args[@]}"
 
     if [[ ! -x "$FUZZER" || ! -x "$SKIMMER" ]]; then
         log_error "Required release binaries missing after rebuild: $FUZZER / $SKIMMER"
@@ -177,6 +228,312 @@ validate_campaign() {
         local inv_count=$(grep -c "name:" "$campaign" | head -1 || echo "0")
         log_info "Found invariants in campaign"
     fi
+}
+
+extract_halo2_manifest_from_campaign() {
+    local campaign="$1"
+    python3 - "$campaign" <<'PY'
+import pathlib
+import re
+import sys
+
+campaign_path = pathlib.Path(sys.argv[1])
+try:
+    lines = campaign_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+except Exception:
+    sys.exit(0)
+
+framework = None
+circuit_path = None
+main_component = ""
+
+for line in lines:
+    if framework is None:
+        match = re.match(r"^\s*framework\s*:\s*(.+?)\s*$", line)
+        if match:
+            value = match.group(1).split("#", 1)[0].strip().strip('"').strip("'")
+            if value:
+                framework = value
+    if circuit_path is None:
+        match = re.match(r"^\s*circuit_path\s*:\s*(.+?)\s*$", line)
+        if match:
+            value = match.group(1).split("#", 1)[0].strip().strip('"').strip("'")
+            if value:
+                circuit_path = value
+    if not main_component:
+        match = re.match(r"^\s*main_component\s*:\s*(.+?)\s*$", line)
+        if match:
+            value = match.group(1).split("#", 1)[0].strip().strip('"').strip("'")
+            if value:
+                main_component = value
+    if framework is not None and circuit_path is not None:
+        if main_component:
+            break
+
+if (framework or "").lower() != "halo2" or not circuit_path:
+    sys.exit(0)
+
+candidate = pathlib.Path(circuit_path).expanduser()
+if not candidate.is_absolute():
+    candidate = (campaign_path.parent / candidate).resolve()
+
+manifest = candidate / "Cargo.toml" if candidate.is_dir() else candidate
+if manifest.is_file() and manifest.name.lower() == "cargo.toml":
+    print(f"{manifest.resolve()}\t{circuit_path}\t{main_component}")
+PY
+}
+
+run_halo2_prewarm_attempt() {
+    local manifest="$1"
+    local mode="$2"
+    local toolchain="$3"
+    local timeout_secs="$4"
+    local log_file="$5"
+    local target_dir="$6"
+
+    local -a cmd=(cargo)
+    if [[ -n "$toolchain" ]]; then
+        cmd+=("+$toolchain")
+    fi
+    if [[ "$mode" == "constraints" ]]; then
+        cmd+=(run --release --manifest-path "$manifest" -- --constraints)
+    else
+        cmd+=(build --release --manifest-path "$manifest")
+    fi
+
+    {
+        echo "[prewarm] mode=$mode toolchain=${toolchain:-default} target_dir=${target_dir:-default} command=${cmd[*]}"
+    } >>"$log_file"
+
+    if command -v timeout >/dev/null 2>&1; then
+        if [[ -n "$target_dir" ]]; then
+            CARGO_TARGET_DIR="$target_dir" timeout --preserve-status "${timeout_secs}s" "${cmd[@]}" >>"$log_file" 2>&1
+        else
+            timeout --preserve-status "${timeout_secs}s" "${cmd[@]}" >>"$log_file" 2>&1
+        fi
+    else
+        if [[ -n "$target_dir" ]]; then
+            CARGO_TARGET_DIR="$target_dir" "${cmd[@]}" >>"$log_file" 2>&1
+        else
+            "${cmd[@]}" >>"$log_file" 2>&1
+        fi
+    fi
+}
+
+apply_halo2_runtime_toolchain() {
+    local toolchain="$1"
+    toolchain="${toolchain//[$'\t\r\n ']}"
+    if [[ -z "$toolchain" || "$toolchain" == "default" ]]; then
+        return 0
+    fi
+
+    export ZK_FUZZER_HALO2_CARGO_TOOLCHAIN="$toolchain"
+
+    local -a merged=("$toolchain")
+    local -a current=()
+    IFS=',' read -r -a current <<< "${ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES:-}"
+    for candidate in "${current[@]}"; do
+        candidate="${candidate//[$'\t\r\n ']}"
+        [[ -z "$candidate" ]] && continue
+        local duplicate=false
+        for existing in "${merged[@]}"; do
+            if [[ "$existing" == "$candidate" ]]; then
+                duplicate=true
+                break
+            fi
+        done
+        $duplicate && continue
+        merged+=("$candidate")
+    done
+
+    local IFS=,
+    export ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES="${merged[*]}"
+    log_info "Pinned Halo2 cargo toolchain for this run: $toolchain"
+}
+
+prewarm_halo2_campaign_target() {
+    local campaign="$1"
+    local mode="${ZKF_HALO2_PREWARM_MODE:-constraints}"
+    local mode_lc="${mode,,}"
+    case "$mode_lc" in
+        0|off|false|no)
+            return 0
+            ;;
+        constraints|build)
+            ;;
+        *)
+            log_warn "Unknown ZKF_HALO2_PREWARM_MODE='$mode'; defaulting to 'constraints'"
+            mode_lc="constraints"
+            ;;
+    esac
+
+    local context
+    context="$(extract_halo2_manifest_from_campaign "$campaign" || true)"
+    local manifest
+    local circuit_path_raw
+    local main_component
+    IFS=$'\t' read -r manifest circuit_path_raw main_component <<< "$context"
+    if [[ -z "$manifest" ]]; then
+        return 0
+    fi
+
+    local prewarm_log_dir="${ZKF_HALO2_PREWARM_LOG_DIR:-$PROJECT_ROOT/artifacts/external_targets/prewarm_logs}"
+    local prewarm_marker_dir="${ZKF_HALO2_PREWARM_MARKER_DIR:-$PROJECT_ROOT/build/toolchains/prewarm_markers}"
+    local prewarm_timeout_secs="${ZKF_HALO2_PREWARM_TIMEOUT_SECS:-1800}"
+    mkdir -p "$prewarm_log_dir" "$prewarm_marker_dir"
+
+    local shared_target_dir=""
+    if [[ -n "${ZKF_BUILD_CACHE_DIR:-}" ]]; then
+        shared_target_dir="$(python3 - "$circuit_path_raw" "$main_component" "$ZKF_BUILD_CACHE_DIR" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+circuit_path = sys.argv[1]
+main_component = sys.argv[2]
+base_dir = pathlib.Path(sys.argv[3])
+
+path_obj = pathlib.Path(circuit_path)
+if path_obj.is_dir():
+    name = path_obj.name or "circuit"
+else:
+    name = (path_obj.stem or path_obj.name or "circuit")
+
+combined = name
+if main_component and main_component not in combined:
+    combined = f"{combined}_{main_component}"
+
+digest = hashlib.sha256(f"{circuit_path}|{main_component}".encode("utf-8")).hexdigest()[:12]
+raw = f"{combined}__{digest}"
+sanitized = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in raw)
+if not sanitized:
+    sanitized = "circuit"
+
+print((base_dir / "halo2" / sanitized).as_posix())
+PY
+)"
+        if [[ -n "$shared_target_dir" ]]; then
+            mkdir -p "$shared_target_dir"
+        fi
+    fi
+
+    local manifest_hash=""
+    manifest_hash="$(sha256sum "$manifest" 2>/dev/null | awk '{print $1}' || true)"
+    local lock_path
+    lock_path="$(dirname "$manifest")/Cargo.lock"
+    if [[ -f "$lock_path" ]]; then
+        local lock_hash=""
+        lock_hash="$(sha256sum "$lock_path" 2>/dev/null | awk '{print $1}' || true)"
+        if [[ -n "$lock_hash" ]]; then
+            manifest_hash="${manifest_hash}_${lock_hash}"
+        fi
+    fi
+    if [[ -z "$manifest_hash" ]]; then
+        manifest_hash="$(date -u +%s)"
+    fi
+    if [[ -n "$shared_target_dir" ]]; then
+        local target_hash=""
+        target_hash="$(printf '%s' "$shared_target_dir" | sha256sum 2>/dev/null | awk '{print $1}' || true)"
+        if [[ -n "$target_hash" ]]; then
+            manifest_hash="${manifest_hash}_${target_hash}"
+        fi
+    fi
+
+    local marker_key_input="${manifest}|${mode_lc}|${manifest_hash}"
+    local marker_key=""
+    marker_key="$(printf '%s' "$marker_key_input" | sha256sum 2>/dev/null | awk '{print substr($1,1,24)}' || true)"
+    if [[ -z "$marker_key" ]]; then
+        marker_key="$(date -u +%s)"
+    fi
+    local marker_path="$prewarm_marker_dir/halo2_${mode_lc}_${marker_key}.ok"
+    if [[ -f "$marker_path" ]]; then
+        local cached_toolchain=""
+        cached_toolchain="$(sed -n 's/.*toolchain=\([^ ]*\).*/\1/p' "$marker_path" | tail -n 1 || true)"
+        apply_halo2_runtime_toolchain "$cached_toolchain"
+        log_info "Halo2 prewarm cache hit: $manifest"
+        return 0
+    fi
+
+    local timestamp
+    timestamp="$(date -u +%Y%m%d_%H%M%S)"
+    local base_label
+    base_label="$(basename "$(dirname "$manifest")")"
+    local prewarm_log="$prewarm_log_dir/halo2_prewarm_${base_label}_${timestamp}.log"
+
+    local toolchain_candidates=()
+    local -a env_toolchains=()
+    IFS=',' read -r -a env_toolchains <<< "${ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES:-}"
+    for tc in "${env_toolchains[@]}" "nightly" "nightly-2024-07-07" "stable" ""; do
+        tc="${tc//[$'\t\r\n ']}"
+        local duplicate=false
+        for existing in "${toolchain_candidates[@]:-}"; do
+            if [[ "$existing" == "$tc" ]]; then
+                duplicate=true
+                break
+            fi
+        done
+        $duplicate && continue
+        toolchain_candidates+=("$tc")
+    done
+
+    local rc=1
+    local selected_toolchain=""
+    if [[ "$mode_lc" == "constraints" ]]; then
+        log_info "Prewarming Halo2 target (constraints): $manifest"
+        : >"$prewarm_log"
+        for tc in "${toolchain_candidates[@]}"; do
+            if run_halo2_prewarm_attempt "$manifest" "constraints" "$tc" "$prewarm_timeout_secs" "$prewarm_log" "$shared_target_dir"; then
+                rc=0
+                selected_toolchain="$tc"
+                break
+            fi
+            rc=$?
+        done
+
+        if [[ $rc -ne 0 ]]; then
+            local fallback_log="${prewarm_log%.log}_build_fallback.log"
+            log_warn "Halo2 constraints prewarm failed; retrying cargo build (see $prewarm_log)"
+            : >"$fallback_log"
+            rc=1
+            for tc in "${toolchain_candidates[@]}"; do
+                if run_halo2_prewarm_attempt "$manifest" "build" "$tc" "$prewarm_timeout_secs" "$fallback_log" "$shared_target_dir"; then
+                    rc=0
+                    selected_toolchain="$tc"
+                    break
+                fi
+                rc=$?
+            done
+            if [[ $rc -eq 0 ]]; then
+                printf '%s mode=build_fallback manifest=%s toolchain=%s\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$manifest" "${selected_toolchain:-default}" > "$marker_path"
+                apply_halo2_runtime_toolchain "$selected_toolchain"
+                log_info "Halo2 prewarm fallback complete: $manifest"
+                return 0
+            fi
+            log_warn "Halo2 prewarm fallback failed (exit $rc); continuing (see $fallback_log)"
+            return 0
+        fi
+    else
+        log_info "Prewarming Halo2 target (build): $manifest"
+        : >"$prewarm_log"
+        for tc in "${toolchain_candidates[@]}"; do
+            if run_halo2_prewarm_attempt "$manifest" "build" "$tc" "$prewarm_timeout_secs" "$prewarm_log" "$shared_target_dir"; then
+                rc=0
+                selected_toolchain="$tc"
+                break
+            fi
+            rc=$?
+        done
+        if [[ $rc -ne 0 ]]; then
+            log_warn "Halo2 build prewarm failed (exit $rc); continuing (see $prewarm_log)"
+            return 0
+        fi
+    fi
+
+    printf '%s mode=%s manifest=%s toolchain=%s\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$mode_lc" "$manifest" "${selected_toolchain:-default}" > "$marker_path"
+    apply_halo2_runtime_toolchain "$selected_toolchain"
+    log_info "Halo2 prewarm complete: $manifest"
 }
 
 # Generic strict correction without mutating the original campaign YAML.
@@ -342,6 +699,7 @@ phase_evidence() {
     ensure_build
     prepare_runtime_environment
     validate_campaign "$prepared_campaign"
+    prewarm_halo2_campaign_target "$prepared_campaign"
     
     log_info "Starting evidence run..."
     
@@ -611,6 +969,8 @@ main() {
     
     local command="$1"
     shift
+
+    load_prefetch_env_hints
     
     case "$command" in
         skim)

@@ -591,6 +591,43 @@ Issue-to-code-adjustment tracker:
 | `EXT-ISSUE-003` | `EXT-003` | `[ ]` | `src/fuzzer/engine/attack_runner_novel.rs`, `src/oracles/witness_collision.rs`, `src/fuzzer/engine/run_reporting.rs` | `Add detector time budget + max collision cap + timeout-aware report finalization short-circuit` | `tests/test_oracles_witness_collision.rs` | `[x]` (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/step3_evidence_ext003_rerun3_escalated.log`) | `[ ] open / [x] fixed / [x] verified` |
 | `EXT-ISSUE-004` | `EXT-003` | `[x]` | `reporting schema / operator query mismatch` | Use `poc_witness_a` / `poc_witness_b` / `poc_public_inputs` fields when extracting PoCs from report artifacts | `n/a` | `[x]` (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/replay_ext003_iszero_exploit.log`) | `[ ] open / [x] fixed / [x] verified` |
 
+#### 8.9.8 Follow-Up Snapshot (2026-02-24)
+
+Scope for this snapshot:
+- latest per-target run-state from `artifacts/**/run_signals/*/summary.json` (including `ext_batch_012` reruns),
+- proof artifact verification under `artifacts/external_targets/*/reports/evidence/*`,
+- backend readiness gate status from `artifacts/backend_readiness/latest_report.json`.
+
+High-level state:
+- Tracked external targets: `12` (`EXT-001`..`EXT-012`).
+- Proven exploit with deterministic replay: `1` target (`EXT-003`).
+- Discovery signal present but still `pending_proof`: `4` targets (`EXT-006`, `EXT-010`, `EXT-011`, `EXT-012`).
+- Completed with no findings in latest run: `4` targets (`EXT-001`, `EXT-002`, `EXT-007`, `EXT-009`).
+- Blocked or unstable due backend preflight/runtime setup: `3` targets (`EXT-004`, `EXT-005`, `EXT-008`).
+
+Latest target state (manual checks only):
+| Target | Latest Status | Findings / Executions | Proof State | Current Note |
+|---|---|---:|---|---|
+| `EXT-001` | `completed` | `0 / 800` | `pending_proof` | Wrapper target runs cleanly; no exploit signal in latest rerun (`artifacts/external_targets/ext_batch_012/run_signals/report_1771938763_20260224_131243_evidence_ext001_circomlibml_argmax_wrapper_campaign_pid28572/summary.json`). |
+| `EXT-002` | `completed` | `0 / 25` | `pending_proof` | Latest run is clean, but earlier runs repeatedly hit external target compile failure (`test_bulk_assignment.circom:19`, out-of-bounds). |
+| `EXT-003` | `proved_exploitable` | `n/a` | `exploitable` | Deterministic replay + exploit notes + impact packaged (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/{replay_command.txt,replay_ext003_iszero_exploit.log,exploit_notes.md,impact.md}`). |
+| `EXT-004` | `failed@preflight_backend` | `0 / 0` | `pending_proof` | Cairo/Scarb preflight blocked (lockfile permission failure); no evidence run reached attack execution. |
+| `EXT-005` | `failed@preflight_backend` | `0 / 0` | `pending_proof` | Halo2 build blocked (nightly toolchain fetch/DNS dependency under current environment). |
+| `EXT-006` | `completed` | `6 / 17` | `pending_proof` | zkevm evidence now completes in-bounds after reruns (`artifacts/external_targets/ext_batch_012/run_signals/report_1771939182_20260224_131942_evidence_ext006_zkevm_circuits_campaign_pid72229/summary.json`). |
+| `EXT-007` | `completed` | `0 / 184` | `pending_proof` | Standalone hello-circuit path is stable; no findings in latest successful run. |
+| `EXT-008` | `completed` | `0 / 0` | `pending_proof` | Marked completed in latest run but still operationally unstable (13/14 attempts failed preflight in history; Scarb/toolchain incompatibility remains open). |
+| `EXT-009` | `completed` | `0 / 257` | `pending_proof` | Aztec barretenberg fixture now stable and non-finding on latest successful rerun. |
+| `EXT-010` | `completed_with_critical_findings` | `4 / 4` | `pending_proof` | Repeated positive signal across batches (max observed findings `34`) but no deterministic exploit package yet. |
+| `EXT-011` | `completed` | `15 / 3` | `pending_proof` | Repeated positive signal across batches (max observed findings `66`) but no deterministic exploit package yet. |
+| `EXT-012` | `completed` | `3 / 1` | `pending_proof` | Repeated positive signal across batches (max observed findings `12`) but no deterministic exploit package yet. |
+
+Proof artifact inventory check:
+- `EXT-003` is currently the only target with full exploit proof artifact set (`replay_command.txt`, `exploit_notes.md`, `impact.md`, replay log).
+- No `no_exploit_proof.md` artifacts are present for the remaining targets; they remain explicitly `pending_proof`.
+
+Backend readiness context for this follow-up:
+- `artifacts/backend_readiness/latest_report.json` => `overall_pass=true` (Noir/Cairo/Halo2 gates all pass with `runtime_error_count=0`, `backend_preflight_failed_count=0`, `run_outcome_missing_rate=0`).
+
 ---
 
 ## 🧠 Phase 7: Semantic Analysis & Complex Bug Detection
@@ -1691,6 +1728,24 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - [x] Review `lib.rs` public re-export surface and decide whether to keep broad exports or introduce a smaller prelude-oriented API
 
 ---
+
+### External Target Recheck (2026-02-25)
+- [x] EXT-004 `preflight_backend` rerun no longer reproduces the Scarb lockfile permission failure.
+  - Run: `./scripts/zeroday_workflow.sh evidence artifacts/external_targets/ext_batch_006/repro/ext004_orion_scarb_campaign.yaml --iterations 200 --timeout 90 --seed 42 --workers 1`
+  - Outcome: `status=completed`, `stage=completed`, `reason_code=completed`
+  - Evidence: `artifacts/external_targets/recheck/run_signals_ext004/report_1771976147_20260224_233547_evidence_ext004_orion_scarb_campaign_pid3974196/summary.json`
+  - Log: `artifacts/external_targets/recheck/logs/ext004_recheck.log`
+- [ ] EXT-005 `preflight_backend` remains open in non-escalated rerun; backend dependency/toolchain resolution still fails.
+  - Run: `./scripts/zeroday_workflow.sh evidence artifacts/external_targets/ext_batch_006/repro/ext005_ezkl_halo2_campaign.yaml --iterations 200 --timeout 180 --seed 42 --workers 1`
+  - Outcome: `status=failed`, `stage=preflight_backend`, `reason_code=backend_dependency_resolution_failed`
+  - Failure signals: cargo toolchain cascade exhaustion and dependency fetch failures (`github.com`, `binaries.soliditylang.org`) in this environment.
+  - Evidence: `artifacts/external_targets/recheck/run_signals_ext005/report_1771976381_20260224_233941_evidence_ext005_ezkl_halo2_campaign_pid3978565/summary.json`
+  - Log: `artifacts/external_targets/recheck/logs/ext005_recheck.log`
+- [ ] EXT-005 escalated rerun ended and remains open (manual checks only).
+  - Outcome: `status=failed`, `stage=preflight_timeout`, `reason_code=wall_clock_timeout`
+  - Note: preflight eventually passed, but global wall-clock budget was exhausted before engine start (`budget=180s`, `consumed~1396s`).
+  - Evidence: `artifacts/external_targets/recheck/run_signals_ext005_escalated/report_1771977003_20260224_235003_evidence_ext005_ezkl_halo2_campaign_pid4042372/summary.json`
+  - Log: `artifacts/external_targets/recheck/logs/ext005_recheck_escalated.log`
 
 ## 📝 Notes
 

@@ -267,6 +267,5 @@ mod zk0d_batch_under_test {
             assert_eq!(halo2_effective_external_timeout_secs("halo2", 180), 180);
             assert_eq!(halo2_effective_external_timeout_secs("circom", 5), 5);
         }
-
     }
 }

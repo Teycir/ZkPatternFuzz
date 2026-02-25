@@ -70,6 +70,12 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
+    let panic_message_lc = obj
+        .get("panic")
+        .and_then(|v| v.get("message"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
 
     let is_dependency_resolution_failure = |message: &str| -> bool {
         message.contains("failed to load source for dependency")
@@ -125,6 +131,12 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
     if status == "stale_interrupted" {
         return Some("stale_interrupted");
     }
+    if status == "panic" {
+        if panic_message_lc.contains("missing required 'command' in run document") {
+            return Some("artifact_mirror_panic_missing_command");
+        }
+        return Some("panic");
+    }
     if status == "running" {
         return None;
     }
@@ -173,6 +185,9 @@ pub(crate) fn classify_run_reason_code(doc: &serde_json::Value) -> Option<&'stat
     if stage == "preflight_readiness" {
         return Some("readiness_failed");
     }
+    if stage == "preflight_selector" {
+        return Some("selector_mismatch");
+    }
     if stage == "parse_chains" && reason_lc.contains("requires chains") {
         return Some("missing_chains_definition");
     }
@@ -191,7 +206,14 @@ pub(crate) fn log_run_reason_code(doc: &serde_json::Value) {
     {
         return;
     }
-    let Some(code) = classify_run_reason_code(doc) else {
+    let code = doc
+        .get("reason_code")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .or_else(|| classify_run_reason_code(doc).map(|value| value.to_string()));
+    let Some(code) = code else {
         return;
     };
     let status = doc
@@ -206,11 +228,197 @@ pub(crate) fn log_run_reason_code(doc: &serde_json::Value) {
     let _ = std::panic::catch_unwind(|| {
         tracing::info!(
             "run_outcome_classified: reason_code={} status={} stage={}",
-            code,
+            code.as_str(),
             status,
             stage
         );
     });
+}
+
+fn reason_code_from_doc_or_classification(doc: &serde_json::Value) -> String {
+    if let Some(code) = doc
+        .get("reason_code")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return code.to_string();
+    }
+
+    if let Some(code) = classify_run_reason_code(doc) {
+        return code.to_string();
+    }
+
+    match doc
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+    {
+        "running" => "running".to_string(),
+        _ => "unknown".to_string(),
+    }
+}
+
+fn status_family(status: &str) -> &'static str {
+    match status {
+        "running" => "running",
+        "completed" | "completed_with_critical_findings" => "completed",
+        "failed" | "failed_engagement_contract" | "stale_interrupted" | "panic" => "failed",
+        _ => "unknown",
+    }
+}
+
+fn is_terminal(status: &str) -> bool {
+    !matches!(status, "running")
+}
+
+fn findings_total_from_doc(doc: &serde_json::Value) -> u64 {
+    let Some(metrics) = doc.get("metrics") else {
+        return 0;
+    };
+    metrics
+        .get("findings_total")
+        .and_then(|v| v.as_u64())
+        .or_else(|| metrics.get("chain_findings_total").and_then(|v| v.as_u64()))
+        .or_else(|| metrics.get("total_findings").and_then(|v| v.as_u64()))
+        .unwrap_or(0)
+}
+
+fn critical_findings_from_doc(doc: &serde_json::Value) -> bool {
+    if let Some(metrics) = doc.get("metrics") {
+        if let Some(value) = metrics.get("critical_findings").and_then(|v| v.as_bool()) {
+            return value;
+        }
+    }
+    matches!(
+        doc.get("status").and_then(|v| v.as_str()),
+        Some("completed_with_critical_findings")
+    )
+}
+
+fn discovery_state(status: &str, findings_total: u64, critical_findings: bool) -> &'static str {
+    match status {
+        "running" => "in_progress",
+        "completed_with_critical_findings" => "candidate_vulnerability",
+        "completed" => {
+            if critical_findings || findings_total > 0 {
+                "candidate_vulnerability"
+            } else {
+                "no_vulnerability_observed"
+            }
+        }
+        "failed_engagement_contract" => "engagement_contract_failed",
+        "stale_interrupted" => "stale_interrupted",
+        "failed" | "panic" => "run_failed",
+        _ => "unknown",
+    }
+}
+
+fn proof_status(discovery_state: &str) -> &'static str {
+    match discovery_state {
+        "candidate_vulnerability" | "no_vulnerability_observed" => "pending_proof",
+        _ => "not_ready",
+    }
+}
+
+fn analysis_priority(discovery_state: &str) -> &'static str {
+    match discovery_state {
+        "candidate_vulnerability" => "high",
+        "run_failed" | "engagement_contract_failed" | "stale_interrupted" => "high",
+        "no_vulnerability_observed" => "medium",
+        "in_progress" => "low",
+        _ => "medium",
+    }
+}
+
+fn next_step(discovery_state: &str) -> &'static str {
+    match discovery_state {
+        "candidate_vulnerability" => {
+            "Build deterministic replay evidence and prove exploitability or bounded non-exploitability."
+        }
+        "no_vulnerability_observed" => {
+            "Run bounded non-exploitability proof campaign and record explicit assumptions and limits."
+        }
+        "run_failed" => {
+            "Fix root cause from stage/error, rerun campaign, then re-qualify discovery outcome."
+        }
+        "engagement_contract_failed" => {
+            "Fix engagement contract and readiness failures, then rerun strict evidence mode."
+        }
+        "stale_interrupted" => {
+            "Inspect logs for interruption cause (OOM/SIGKILL/external stop) and rerun deterministically."
+        }
+        "in_progress" => "Wait for terminal status before vulnerability qualification.",
+        _ => "Inspect run artifact manually and assign qualification state.",
+    }
+}
+
+fn analysis_input_path(output_dir: Option<&str>, rel: &str) -> Option<String> {
+    output_dir.map(|root| {
+        let trimmed = root.trim_end_matches('/');
+        format!("{}/{}", trimmed, rel)
+    })
+}
+
+pub(crate) fn standardize_run_outcome_doc(doc: &serde_json::Value) -> serde_json::Value {
+    let status = doc
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let reason_code = reason_code_from_doc_or_classification(doc);
+    let status_family = status_family(status);
+    let terminal = is_terminal(status);
+    let findings_total = findings_total_from_doc(doc);
+    let critical_findings = critical_findings_from_doc(doc);
+    let discovery_state = discovery_state(status, findings_total, critical_findings);
+    let proof_status = proof_status(discovery_state);
+    let analysis_priority = analysis_priority(discovery_state);
+    let output_dir = doc.get("output_dir").and_then(|v| v.as_str());
+
+    let mut normalized = match doc.as_object() {
+        Some(_) => doc.clone(),
+        None => serde_json::json!({ "raw": doc }),
+    };
+
+    if let Some(obj) = normalized.as_object_mut() {
+        obj.insert(
+            "artifact_schema".to_string(),
+            serde_json::json!({
+                "name": "zkfuzz.run_outcome",
+                "version": "1.0.0",
+            }),
+        );
+        obj.insert(
+            "reason_code".to_string(),
+            serde_json::Value::String(reason_code),
+        );
+        obj.insert(
+            "status_family".to_string(),
+            serde_json::Value::String(status_family.to_string()),
+        );
+        obj.insert("terminal".to_string(), serde_json::Value::Bool(terminal));
+        obj.insert(
+            "discovery_qualification".to_string(),
+            serde_json::json!({
+                "discovery_state": discovery_state,
+                "proof_status": proof_status,
+                "analysis_priority": analysis_priority,
+                "findings_total": findings_total,
+                "critical_findings": critical_findings,
+                "next_step": next_step(discovery_state),
+                "ready_for_followup": terminal,
+                "triage_source": "auto_inferred",
+                "analysis_inputs": {
+                    "run_outcome_json": analysis_input_path(output_dir, "run_outcome.json"),
+                    "report_json": analysis_input_path(output_dir, "report.json"),
+                    "chain_report_json": analysis_input_path(output_dir, "chain_report.json"),
+                    "evidence_summary_json": analysis_input_path(output_dir, "evidence/summary.json"),
+                },
+            }),
+        );
+    }
+
+    normalized
 }
 
 pub(crate) fn running_run_doc_with_window(ctx: RunOutcomeDocContext<'_>) -> serde_json::Value {
