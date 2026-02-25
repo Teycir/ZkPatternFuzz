@@ -814,22 +814,3 @@ impl FuzzingEngine {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::FuzzingEngine;
-    use std::path::Path;
-
-    #[test]
-    fn snarkjs_override_requires_explicit_opt_in_for_path_like_values() {
-        let err = FuzzingEngine::validate_snarkjs_override_path(Path::new("/tmp/snarkjs"), false)
-            .expect_err("path-like override should be rejected without explicit opt-in");
-        assert!(err.to_string().contains("allow_external_tool_overrides"));
-    }
-
-    #[test]
-    fn snarkjs_override_allows_bare_program_name_by_default() {
-        FuzzingEngine::validate_snarkjs_override_path(Path::new("snarkjs"), false)
-            .expect("bare executable names should remain allowed");
-    }
-}

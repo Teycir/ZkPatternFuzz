@@ -1,0 +1,1830 @@
+{
+  "format_version": 1,
+  "description": "Known legacy prod/test separation violations; CI fails on any new entries.",
+  "violations": [
+    {
+      "path": "crates/zk-attacks/src/batch_verification.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/batch_verification.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/batch_verification.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/batch_verification_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 10
+    },
+    {
+      "path": "crates/zk-attacks/src/batch_verification_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "batch_verification_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/batch_verifier.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/batch_verifier.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/batch_verifier.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/batch_verifier_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 5
+    },
+    {
+      "path": "crates/zk-attacks/src/batch_verifier_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "batch_verifier_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/boundary.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/boundary.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/boundary.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/boundary_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 11
+    },
+    {
+      "path": "crates/zk-attacks/src/boundary_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "boundary_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/circom_static_lint.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/circom_static_lint.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/circom_static_lint.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/circom_static_lint_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 5
+    },
+    {
+      "path": "crates/zk-attacks/src/circom_static_lint_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "circom_static_lint_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/collision.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/collision.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/collision.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/collision_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 11
+    },
+    {
+      "path": "crates/zk-attacks/src/collision_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "collision_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/constraint_inference.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/constraint_inference.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/constraint_inference.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/constraint_inference_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-attacks/src/constraint_inference_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "constraint_inference_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/defi_advanced.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/defi_advanced.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/defi_advanced.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/defi_advanced_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-attacks/src/defi_advanced_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "defi_advanced_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/metamorphic.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/metamorphic.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/metamorphic.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/metamorphic.rs",
+      "kind": "test_symbol_import_or_reexport",
+      "code": "/// Unknown/General - use only identity and permutation tests",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/metamorphic_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 8
+    },
+    {
+      "path": "crates/zk-attacks/src/metamorphic_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "metamorphic_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/privacy_advanced.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/privacy_advanced.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/privacy_advanced.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/privacy_advanced_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-attacks/src/privacy_advanced_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "privacy_advanced_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/quantum_resistance.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/quantum_resistance.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/quantum_resistance.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/quantum_resistance_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 4
+    },
+    {
+      "path": "crates/zk-attacks/src/quantum_resistance_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "quantum_resistance_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/recursive.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/recursive.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/recursive.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/recursive_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 10
+    },
+    {
+      "path": "crates/zk-attacks/src/recursive_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "recursive_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/registry.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/registry.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/registry.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/registry_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/registry_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "registry_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/sidechannel_advanced.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/sidechannel_advanced.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/sidechannel_advanced.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/sidechannel_advanced_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-attacks/src/sidechannel_advanced_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "sidechannel_advanced_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/trusted_setup.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/trusted_setup.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/trusted_setup.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/trusted_setup_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 4
+    },
+    {
+      "path": "crates/zk-attacks/src/trusted_setup_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "trusted_setup_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/underconstrained.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/underconstrained.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/underconstrained.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/underconstrained_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-attacks/src/underconstrained_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "underconstrained_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/verification.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/verification.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/verification.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/verification_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-attacks/src/verification_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "verification_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/witness.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/witness.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/witness.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/witness_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-attacks/src/witness_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "witness_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm_differential.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm_differential.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm_differential.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm_differential_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 5
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm_differential_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "zkevm_differential_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 10
+    },
+    {
+      "path": "crates/zk-attacks/src/zkevm_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "zkevm_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/cairo/mod.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/cairo/mod.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/cairo/mod.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/cairo/mod_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 7
+    },
+    {
+      "path": "crates/zk-backends/src/cairo/mod_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "mod_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/circom/mod.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/circom/mod.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/circom/mod.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/circom/mod_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 4
+    },
+    {
+      "path": "crates/zk-backends/src/circom/mod_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "mod_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/halo2/mod.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/halo2/mod.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/halo2/mod.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/halo2/mod_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 12
+    },
+    {
+      "path": "crates/zk-backends/src/halo2/mod_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "mod_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/noir/mod.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/noir/mod.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/noir/mod.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/noir/mod_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 13
+    },
+    {
+      "path": "crates/zk-backends/src/noir/mod_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "mod_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/util.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-backends/src/util.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 12
+    },
+    {
+      "path": "crates/zk-constraints/src/alt_witness_solver.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-constraints/src/alt_witness_solver.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/alt_witness_solver.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/alt_witness_solver_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-constraints/src/alt_witness_solver_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "alt_witness_solver_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/constraint_types.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/constraint_types.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/constraint_types.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/constraint_types_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 18
+    },
+    {
+      "path": "crates/zk-constraints/src/constraint_types_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "constraint_types_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_analysis.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_analysis.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_analysis.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_analysis_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 4
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_analysis_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "limb_analysis_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_boundary_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_boundary_fuzzer.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_boundary_fuzzer.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_boundary_fuzzer_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 4
+    },
+    {
+      "path": "crates/zk-constraints/src/limb_boundary_fuzzer_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "limb_boundary_fuzzer_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_coverage.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_coverage.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_coverage.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_coverage_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_coverage_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "lookup_coverage_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_extractor.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_extractor.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_extractor.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_extractor_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_extractor_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "lookup_extractor_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_fuzzer.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_fuzzer.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_fuzzer_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-constraints/src/lookup_fuzzer_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "lookup_fuzzer_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/proof_forgery.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/proof_forgery.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/proof_forgery.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/proof_forgery_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-constraints/src/proof_forgery_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "proof_forgery_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_parser.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_parser.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_parser.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_parser_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 6
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_parser_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "r1cs_parser_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_to_smt.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_to_smt.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_to_smt.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_to_smt_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/r1cs_to_smt_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "r1cs_to_smt_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/underconstrained_exploit.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/underconstrained_exploit.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/underconstrained_exploit.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-constraints/src/underconstrained_exploit_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-constraints/src/underconstrained_exploit_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "underconstrained_exploit_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-core/src/field.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-core/src/field.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-core/src/field.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-core/src/field_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-core/src/field_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "field_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-core/src/invariants.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-core/src/invariants.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 10
+    },
+    {
+      "path": "crates/zk-core/src/types.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-core/src/types.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-core/src/types.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-core/src/types_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 7
+    },
+    {
+      "path": "crates/zk-core/src/types_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "types_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/constants.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/constants.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/constants.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/constants_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/constants_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "constants_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/deduplication.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/deduplication.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/deduplication.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/deduplication_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 12
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/deduplication_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "deduplication_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/delta_debug.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/delta_debug.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/delta_debug.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/delta_debug_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 5
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/delta_debug_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "delta_debug_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/minimizer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/minimizer.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/minimizer.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/minimizer_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/minimizer_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "minimizer_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/mod.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/mod.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/mod.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/mod_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 7
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/mod_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "mod_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/storage.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/storage.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/storage.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/storage_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/corpus/storage_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "storage_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/coverage.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/coverage.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/coverage.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/coverage_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 7
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/coverage_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "coverage_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/engine.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/engine.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/engine.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/engine_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/engine_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "engine_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/mutators.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/mutators.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/mutators.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/mutators_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 14
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/mutators_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "mutators_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/oracle.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/oracle.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/oracle.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/oracle_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 4
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/oracle_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "oracle_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/power_schedule.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/power_schedule.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/power_schedule.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/power_schedule_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 7
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/power_schedule_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "power_schedule_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/structure_aware.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/structure_aware.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/structure_aware.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/structure_aware_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 4
+    },
+    {
+      "path": "crates/zk-fuzzer-core/src/structure_aware_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "structure_aware_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-postroadmap-core/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-postroadmap-core/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-symbolic/src/concolic.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/concolic.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/concolic.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/concolic_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-symbolic/src/concolic_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "concolic_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/constraint_guided.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/constraint_guided.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/constraint_guided.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/constraint_guided_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/constraint_guided_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "constraint_guided_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/enhanced.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/enhanced.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/enhanced.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/enhanced_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 11
+    },
+    {
+      "path": "crates/zk-symbolic/src/enhanced_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "enhanced_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/executor.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/executor.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/executor.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/executor_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 8
+    },
+    {
+      "path": "crates/zk-symbolic/src/executor_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "executor_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/symbolic_v2.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/symbolic_v2.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/symbolic_v2.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/symbolic_v2_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 8
+    },
+    {
+      "path": "crates/zk-symbolic/src/symbolic_v2_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "symbolic_v2_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/targeted.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/targeted.rs",
+      "kind": "test_module_decl_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/targeted.rs",
+      "kind": "test_path_attr_in_production",
+      "code": "mod tests;",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-symbolic/src/targeted_tests.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 6
+    },
+    {
+      "path": "crates/zk-symbolic/src/targeted_tests.rs",
+      "kind": "test_file_in_production_tree",
+      "code": "targeted_tests.rs",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-boundary/src/cross_component_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-boundary/src/cross_component_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-boundary/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-boundary/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-boundary/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[tokio::test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-boundary/src/public_input_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-boundary/src/public_input_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 4
+    },
+    {
+      "path": "crates/zk-track-boundary/src/serialization_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-boundary/src/serialization_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-boundary/src/solidity_verifier_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-boundary/src/solidity_verifier_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-compiler/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-compiler/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-compiler/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[tokio::test]",
+      "count": 4
+    },
+    {
+      "path": "crates/zk-track-crypto/src/curve_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-crypto/src/curve_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-crypto/src/field_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-crypto/src/field_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-crypto/src/generators.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-crypto/src/generators.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-crypto/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-crypto/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 2
+    },
+    {
+      "path": "crates/zk-track-crypto/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[tokio::test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-crypto/src/pairing_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-crypto/src/pairing_fuzzer.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 3
+    },
+    {
+      "path": "crates/zk-track-semantic/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[cfg(test)]",
+      "count": 1
+    },
+    {
+      "path": "crates/zk-track-semantic/src/lib.rs",
+      "kind": "test_attribute_in_production",
+      "code": "#[test]",
+      "count": 5
+    }
+  ]
+}
