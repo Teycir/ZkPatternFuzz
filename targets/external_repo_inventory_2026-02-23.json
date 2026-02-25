@@ -1,5 +1,5 @@
 {
-  "snapshot_date": "2026-02-23",
+  "snapshot_date": "2026-02-25",
   "source_root": "/media/elements/Repos",
   "purpose": "External target hardening intake inventory",
   "targets": [
@@ -12,7 +12,8 @@
       "git_head": "c82b3072d7946a76487a8c1be463fc407045391c",
       "git_dirty_count": 0,
       "license_file": "/media/elements/Repos/zkml/circomlib-ml/LICENSE",
-      "license_hint": "GNU GENERAL PUBLIC LICENSE"
+      "license_hint": "GNU GENERAL PUBLIC LICENSE",
+      "target_name": "circomlib_ml_argmax"
     },
     {
       "target_id": "EXT-002",
@@ -23,7 +24,8 @@
       "git_head": "072bf1fbbd1c9ecad58d4f6d2204c3b96e7fec17",
       "git_dirty_count": 0,
       "license_file": "/media/elements/Repos/zkFuzz/LICENSE",
-      "license_hint": "GNU GENERAL PUBLIC LICENSE"
+      "license_hint": "GNU GENERAL PUBLIC LICENSE",
+      "target_name": "zkfuzz_bulk_assignment"
     },
     {
       "target_id": "EXT-003",
@@ -34,7 +36,8 @@
       "git_head": "072bf1fbbd1c9ecad58d4f6d2204c3b96e7fec17",
       "git_dirty_count": 0,
       "license_file": "/media/elements/Repos/zkFuzz/LICENSE",
-      "license_hint": "GNU GENERAL PUBLIC LICENSE"
+      "license_hint": "GNU GENERAL PUBLIC LICENSE",
+      "target_name": "zkfuzz_vulnerable_iszero"
     },
     {
       "target_id": "EXT-004",
@@ -45,7 +48,8 @@
       "git_head": "bac0b424fe08e0da9e2522a45d77c028acf47dcd",
       "git_dirty_count": 0,
       "license_file": "/media/elements/Repos/zkml/orion/LICENSE",
-      "license_hint": "MIT License"
+      "license_hint": "MIT License",
+      "target_name": "orion_scarb_root"
     },
     {
       "target_id": "EXT-005",
@@ -56,7 +60,8 @@
       "git_head": "e196b111c1bafaa61b92ae431cd3c3fe9371da05",
       "git_dirty_count": 0,
       "license_file": null,
-      "license_hint": null
+      "license_hint": null,
+      "target_name": "ezkl_main_cargo"
     },
     {
       "target_id": "EXT-006",
@@ -67,7 +72,8 @@
       "git_head": "18f5bc268ca11988690c7cf59fc4615372ce99f2",
       "git_dirty_count": 1,
       "license_file": "/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits/LICENSE",
-      "license_hint": "MIT License"
+      "license_hint": "MIT License",
+      "target_name": "zkevm_circuits_main"
     },
     {
       "target_id": "EXT-007",
@@ -78,7 +84,8 @@
       "git_head": "2a9dd27afb1c03f9085c79a218bf928ddfebf031",
       "git_dirty_count": 5,
       "license_file": "/media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/LICENSE",
-      "license_hint": "Apache License"
+      "license_hint": "Apache License",
+      "target_name": "aztec_hello_circuit"
     },
     {
       "target_id": "EXT-008",
@@ -89,7 +96,8 @@
       "git_head": "bac0b424fe08e0da9e2522a45d77c028acf47dcd",
       "git_dirty_count": 0,
       "license_file": "/media/elements/Repos/zkml/orion/LICENSE",
-      "license_hint": "MIT License"
+      "license_hint": "MIT License",
+      "target_name": "orion_linear_classifier_test"
     },
     {
       "target_id": "EXT-009",
@@ -100,7 +108,8 @@
       "git_head": "2a9dd27afb1c03f9085c79a218bf928ddfebf031",
       "git_dirty_count": 5,
       "license_file": "/media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/LICENSE",
-      "license_hint": "Apache License"
+      "license_hint": "Apache License",
+      "target_name": "aztec_barretenberg_fixture_main"
     },
     {
       "target_id": "EXT-010",
@@ -111,7 +120,8 @@
       "git_head": "360715607a240041f49eb46c543fc450051c4cb7",
       "git_dirty_count": 0,
       "license_file": null,
-      "license_hint": null
+      "license_hint": null,
+      "target_name": "circomlib_iszero"
     },
     {
       "target_id": "EXT-011",
@@ -122,7 +132,8 @@
       "git_head": "360715607a240041f49eb46c543fc450051c4cb7",
       "git_dirty_count": 0,
       "license_file": null,
-      "license_hint": null
+      "license_hint": null,
+      "target_name": "circomlib_lessthan"
     },
     {
       "target_id": "EXT-012",
@@ -133,7 +144,56 @@
       "git_head": "360715607a240041f49eb46c543fc450051c4cb7",
       "git_dirty_count": 0,
       "license_file": null,
-      "license_hint": null
+      "license_hint": null,
+      "target_name": "circomlib_montgomerydouble"
+    },
+    {
+      "target_id": "EXT-013",
+      "target_name": "circomlib_ml_relu",
+      "repo_path": "/media/elements/Repos/zkml/circomlib-ml",
+      "framework": "circom",
+      "entrypoint": "circuits/ReLU.circom",
+      "expected_class": "safe-regression",
+      "git_head": "c82b3072d7946a76487a8c1be463fc407045391c",
+      "git_dirty_count": 0,
+      "license_file": "/media/elements/Repos/zkml/circomlib-ml/LICENSE",
+      "license_hint": "GNU GENERAL PUBLIC LICENSE"
+    },
+    {
+      "target_id": "EXT-014",
+      "target_name": "circomlib_ml_dense",
+      "repo_path": "/media/elements/Repos/zkml/circomlib-ml",
+      "framework": "circom",
+      "entrypoint": "circuits/Dense.circom",
+      "expected_class": "safe-regression",
+      "git_head": "c82b3072d7946a76487a8c1be463fc407045391c",
+      "git_dirty_count": 0,
+      "license_file": "/media/elements/Repos/zkml/circomlib-ml/LICENSE",
+      "license_hint": "GNU GENERAL PUBLIC LICENSE"
+    },
+    {
+      "target_id": "EXT-015",
+      "target_name": "orion_svm_classifier_test",
+      "repo_path": "/media/elements/Repos/zkml/orion",
+      "framework": "cairo",
+      "entrypoint": "tests/ml/svm_classifier_test.cairo",
+      "expected_class": "safe-regression",
+      "git_head": "bac0b424fe08e0da9e2522a45d77c028acf47dcd",
+      "git_dirty_count": 0,
+      "license_file": "/media/elements/Repos/zkml/orion/LICENSE",
+      "license_hint": "MIT License"
+    },
+    {
+      "target_id": "EXT-016",
+      "target_name": "aztec_barretenberg_fixture_recursive",
+      "repo_path": "/media/elements/Repos/zk0d/cat3_privacy/aztec-packages",
+      "framework": "noir",
+      "entrypoint": "barretenberg/docs/examples/fixtures/recursive/Nargo.toml",
+      "expected_class": "safe-regression",
+      "git_head": "2a9dd27afb1c03f9085c79a218bf928ddfebf031",
+      "git_dirty_count": 0,
+      "license_file": "/media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/LICENSE",
+      "license_hint": "Apache License"
     }
   ]
 }

@@ -5,82 +5,304 @@ targets:
     target_circuit: /media/elements/Repos/zkml/circomlib-ml/circuits/ArgMax.circom
     main_component: main
     framework: circom
-    alias: external_manual
+    alias: always
     enabled: true
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: circom
+        known_issue_count: 45
+      repo_prior:
+        key: iden3/circomlib
+        match_mode: repo_basename_unique_or_alias
+        known_issue_count: 9
+        known_issue_dsls:
+          - circom
+        audit_report_count: 1
+        audit_ids:
+          - veridise-circomlib
+        auditors:
+          - Veridise/EF/0xPARC
   - name: ext002_zkfuzz_bulk_assignment
     target_circuit: /media/elements/Repos/zkFuzz/tests/sample/test_bulk_assignment.circom
     main_component: main
     framework: circom
-    alias: external_manual
-    enabled: true
+    alias: always
+    enabled: false
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: circom
+        known_issue_count: 45
   - name: ext003_zkfuzz_vulnerable_iszero
     target_circuit: /media/elements/Repos/zkFuzz/tests/sample/test_vuln_iszero.circom
     main_component: VulnerableIsZero
     framework: circom
-    alias: external_manual
-    enabled: true
+    alias: always
+    enabled: false
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: circom
+        known_issue_count: 45
   - name: ext004_orion_scarb
     target_circuit: /media/elements/Repos/zkml/orion/Scarb.toml
     main_component: main
     framework: cairo
-    alias: external_manual
+    alias: always
     enabled: true
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: cairo
+        known_issue_count: 8
   - name: ext005_ezkl_cargo
     target_circuit: /media/elements/Repos/zkml/ezkl/Cargo.toml
     main_component: main
     framework: halo2
-    alias: external_manual
+    alias: always
     enabled: true
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: halo2
+        known_issue_count: 35
   - name: ext006_zkevm_circuits_cargo
     target_circuit: /media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits/zkevm-circuits/Cargo.toml
     main_component: zkevm
     framework: halo2
-    alias: external_manual
+    alias: always
     enabled: true
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: halo2
+        known_issue_count: 35
+      repo_prior:
+        key: scroll-tech/zkevm-circuits
+        match_mode: path_hint_zkevm_circuits
+        known_issue_count: 26
+        known_issue_dsls:
+          - halo2
+        audit_report_count: 5
+        audit_ids:
+          - trailofbits-scroll
+          - trailofbits-scroll-2
+          - trailofbits-scroll-3
+          - zellic-scroll
+          - zellic-scroll-2
+        auditors:
+          - Trail of Bits
+          - Zellic
   - name: ext007_aztec_hello_circuit
     target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/docs/examples/circuits/hello_circuit/Nargo.toml
     main_component: main
     framework: noir
-    alias: external_manual
+    alias: always
     enabled: true
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: noir
+        known_issue_count: 0
   - name: ext008_orion_linear_classifier_test
     target_circuit: /media/elements/Repos/zkml/orion/tests/ml/linear_classifier_test.cairo
     main_component: main
     framework: cairo
-    alias: external_manual
+    alias: always
     enabled: true
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: cairo
+        known_issue_count: 8
   - name: ext009_aztec_barretenberg_fixture_main
     target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/docs/examples/fixtures/main/Nargo.toml
     main_component: main
     framework: noir
-    alias: external_manual
+    alias: always
     enabled: true
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: noir
+        known_issue_count: 0
   - name: ext010_circuits_circomlib_iszero
     target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/test/circuits/iszero.circom
     main_component: main
     framework: circom
-    alias: external_manual
+    alias: always
     enabled: true
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: circom
+        known_issue_count: 45
+      repo_prior:
+        key: iden3/circomlib
+        match_mode: path_hint_circomlib
+        known_issue_count: 9
+        known_issue_dsls:
+          - circom
+        audit_report_count: 1
+        audit_ids:
+          - veridise-circomlib
+        auditors:
+          - Veridise/EF/0xPARC
   - name: ext011_circuits_circomlib_lessthan
     target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/test/circuits/lessthan.circom
     main_component: main
     framework: circom
-    alias: external_manual
+    alias: always
     enabled: true
 
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: circom
+        known_issue_count: 45
+      repo_prior:
+        key: iden3/circomlib
+        match_mode: path_hint_circomlib
+        known_issue_count: 9
+        known_issue_dsls:
+          - circom
+        audit_report_count: 1
+        audit_ids:
+          - veridise-circomlib
+        auditors:
+          - Veridise/EF/0xPARC
   - name: ext012_circuits_circomlib_montgomerydouble
     target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/test/circuits/montgomerydouble.circom
     main_component: main
     framework: circom
-    alias: external_manual
+    alias: always
     enabled: true
+
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: circom
+        known_issue_count: 45
+      repo_prior:
+        key: iden3/circomlib
+        match_mode: path_hint_circomlib
+        known_issue_count: 9
+        known_issue_dsls:
+          - circom
+        audit_report_count: 1
+        audit_ids:
+          - veridise-circomlib
+        auditors:
+          - Veridise/EF/0xPARC
+  - name: circomlib_ml_relu
+    target_circuit: /media/elements/Repos/zkml/circomlib-ml/circuits/ReLU.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: circom
+        known_issue_count: 45
+      repo_prior:
+        key: iden3/circomlib
+        match_mode: repo_basename_unique_or_alias
+        known_issue_count: 9
+        known_issue_dsls:
+          - circom
+        audit_report_count: 1
+        audit_ids:
+          - veridise-circomlib
+        auditors:
+          - Veridise/EF/0xPARC
+  - name: circomlib_ml_dense
+    target_circuit: /media/elements/Repos/zkml/circomlib-ml/circuits/Dense.circom
+    main_component: main
+    framework: circom
+    alias: always
+    enabled: true
+
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: circom
+        known_issue_count: 45
+      repo_prior:
+        key: iden3/circomlib
+        match_mode: repo_basename_unique_or_alias
+        known_issue_count: 9
+        known_issue_dsls:
+          - circom
+        audit_report_count: 1
+        audit_ids:
+          - veridise-circomlib
+        auditors:
+          - Veridise/EF/0xPARC
+  - name: orion_svm_classifier_test
+    target_circuit: /media/elements/Repos/zkml/orion/tests/ml/svm_classifier_test.cairo
+    main_component: main
+    framework: cairo
+    alias: always
+    enabled: true
+
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: cairo
+        known_issue_count: 8
+  - name: aztec_barretenberg_fixture_recursive
+    target_circuit: /media/elements/Repos/zk0d/cat3_privacy/aztec-packages/barretenberg/docs/examples/fixtures/recursive/Nargo.toml
+    main_component: main
+    framework: noir
+    alias: always
+    enabled: true
+    intel:
+      dataset: zkbugs
+      source_root: /home/teycir/Documents/ZkDatasets
+      synced_on: '2026-02-25'
+      framework_prior:
+        key: noir
+        known_issue_count: 0

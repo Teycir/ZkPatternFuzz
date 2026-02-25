@@ -405,34 +405,47 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Record selected target commit SHAs and circuit entrypoints before first run.
 - [x] Classify each target as `safe-regression` or `vulnerable-ground-truth` expectation.
 - [x] Add each selected target into matrix YAMLs used by manual campaigns.
+- [x] Attach stable human-readable target names (slug aliases) so `EXT-###` IDs are not the only label in planning/reporting.
 
 Inventory + matrix references:
 - `targets/external_repo_inventory_2026-02-23.json`
 - `targets/zk0d_matrix_external_manual.yaml`
+- `targets/external_repo_catalog_all_2026-02-25.json` (full discovered catalog; all supported entrypoints)
+- `targets/zk0d_matrix_external_all.yaml` (auto-generated all-target matrix, `enabled: false` by default)
 
 #### 8.9.2 Target Selection Board
-| Target ID | Repo Path | Backend | Circuit/Program Entry | Expected Class | Priority | Owner | Intake Status |
-|---|---|---|---|---|---|---|---|
-| EXT-001 | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/ArgMax.circom` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-002 | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_bulk_assignment.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-003 | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_vuln_iszero.circom` | `vulnerable-ground-truth` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-004 | `/media/elements/Repos/zkml/orion` | `cairo` | `Scarb.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-005 | `/media/elements/Repos/zkml/ezkl` | `halo2` | `Cargo.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-006 | `/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits` | `halo2` | `zkevm-circuits/Cargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-007 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `docs/examples/circuits/hello_circuit/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-008 | `/media/elements/Repos/zkml/orion` | `cairo` | `tests/ml/linear_classifier_test.cairo` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-009 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `barretenberg/docs/examples/fixtures/main/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-010 | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/iszero.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-011 | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/lessthan.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-012 | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/montgomerydouble.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| Target ID | Target Name | Repo Path | Backend | Circuit/Program Entry | Expected Class | Priority | Owner | Intake Status |
+|---|---|---|---|---|---|---|---|---|
+| EXT-001 | `circomlib_ml_argmax` | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/ArgMax.circom` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-002 | `zkfuzz_bulk_assignment` | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_bulk_assignment.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-003 | `zkfuzz_vulnerable_iszero` | `/media/elements/Repos/zkFuzz` | `circom` | `tests/sample/test_vuln_iszero.circom` | `vulnerable-ground-truth` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-004 | `orion_scarb_root` | `/media/elements/Repos/zkml/orion` | `cairo` | `Scarb.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-005 | `ezkl_main_cargo` | `/media/elements/Repos/zkml/ezkl` | `halo2` | `Cargo.toml` | `safe-regression` | `P0` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-006 | `zkevm_circuits_main` | `/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits` | `halo2` | `zkevm-circuits/Cargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-007 | `aztec_hello_circuit` | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `docs/examples/circuits/hello_circuit/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-008 | `orion_linear_classifier_test` | `/media/elements/Repos/zkml/orion` | `cairo` | `tests/ml/linear_classifier_test.cairo` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-009 | `aztec_barretenberg_fixture_main` | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `barretenberg/docs/examples/fixtures/main/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-010 | `circomlib_iszero` | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/iszero.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-011 | `circomlib_lessthan` | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/lessthan.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-012 | `circomlib_montgomerydouble` | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/montgomerydouble.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-013 | `circomlib_ml_relu` | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/ReLU.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-014 | `circomlib_ml_dense` | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/Dense.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-015 | `orion_svm_classifier_test` | `/media/elements/Repos/zkml/orion` | `cairo` | `tests/ml/svm_classifier_test.cairo` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-016 | `aztec_barretenberg_fixture_recursive` | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `barretenberg/docs/examples/fixtures/recursive/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
 
 Backend coverage snapshot (selected vs target floor=2):
 | Backend | Selected Targets | Floor | Coverage Status |
 |---|---:|---:|---|
-| Circom | 6 | 2 | `met` |
-| Noir | 2 | 2 | `met` |
-| Cairo | 2 | 2 | `met` |
+| Circom | 8 | 2 | `met` |
+| Noir | 3 | 2 | `met` |
+| Cairo | 3 | 2 | `met` |
 | Halo2 | 2 | 2 | `met` |
+
+All-target catalog snapshot (`2026-02-25`):
+- Repositories scanned: `78`
+- Repositories with supported entrypoints: `20`
+- Supported entrypoints discovered: `628` (`circom=412`, `noir=184`, `cairo=1`, `halo2=31`)
+- Note: execution board remains curated (`EXT-001`..`EXT-016`); full catalog is tracked separately for exhaustive intake.
 
 #### 8.9.3 Manual Execution Checklist
 - [x] Run backend readiness dashboard after each target-batch update (`scripts/backend_readiness_dashboard.sh`).
@@ -499,6 +512,12 @@ Backend coverage snapshot (selected vs target floor=2):
 - `EXT-001`: `c82b3072d7946a76487a8c1be463fc407045391c`
 - `EXT-002`: `072bf1fbbd1c9ecad58d4f6d2204c3b96e7fec17`
 - `EXT-008`: `bac0b424fe08e0da9e2522a45d77c028acf47dcd`
+
+Intake expansion snapshot SHAs (`2026-02-25`, pre-run freeze):
+- `EXT-013` (`circomlib_ml_relu`): `c82b3072d7946a76487a8c1be463fc407045391c`
+- `EXT-014` (`circomlib_ml_dense`): `c82b3072d7946a76487a8c1be463fc407045391c`
+- `EXT-015` (`orion_svm_classifier_test`): `bac0b424fe08e0da9e2522a45d77c028acf47dcd`
+- `EXT-016` (`aztec_barretenberg_fixture_recursive`): `2a9dd27afb1c03f9085c79a218bf928ddfebf031`
 
 #### 8.9.5 Logic Finding And Remediation Board
 | Finding ID | Target ID | Class | Severity | Repro Status | Owning Module | Fix Commit/PR | Verification Status |
@@ -599,11 +618,14 @@ Scope for this snapshot:
 - backend readiness gate status from `artifacts/backend_readiness/latest_report.json`.
 
 High-level state:
-- Tracked external targets: `12` (`EXT-001`..`EXT-012`).
+- Tracked external targets with completed manual state snapshots: `12` (`EXT-001`..`EXT-012`).
+- Intake-expanded targets pending first manual run: `4` (`EXT-013`..`EXT-016`).
+- Full discovered catalog coverage: `628` supported entrypoints across `20` repos (`targets/external_repo_catalog_all_2026-02-25.json`).
+- External matrices enriched with dataset priors from `/home/teycir/Documents/ZkDatasets` (`targets/zk0d_matrix_external_manual.yaml`, `targets/zk0d_matrix_external_all.yaml`).
 - Proven exploit with deterministic replay: `1` target (`EXT-003`).
-- Discovery signal present but still `pending_proof`: `4` targets (`EXT-006`, `EXT-010`, `EXT-011`, `EXT-012`).
+- Discovery signal present but still `pending_proof`: `5` targets (`EXT-005`, `EXT-006`, `EXT-010`, `EXT-011`, `EXT-012`).
 - Completed with no findings in latest run: `4` targets (`EXT-001`, `EXT-002`, `EXT-007`, `EXT-009`).
-- Blocked or unstable due backend preflight/runtime setup: `3` targets (`EXT-004`, `EXT-005`, `EXT-008`).
+- Blocked or unstable due backend preflight/runtime setup: `2` targets (`EXT-004`, `EXT-008`).
 
 Latest target state (manual checks only):
 | Target | Latest Status | Findings / Executions | Proof State | Current Note |
@@ -612,7 +634,7 @@ Latest target state (manual checks only):
 | `EXT-002` | `completed` | `0 / 25` | `pending_proof` | Latest run is clean, but earlier runs repeatedly hit external target compile failure (`test_bulk_assignment.circom:19`, out-of-bounds). |
 | `EXT-003` | `proved_exploitable` | `n/a` | `exploitable` | Deterministic replay + exploit notes + impact packaged (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/{replay_command.txt,replay_ext003_iszero_exploit.log,exploit_notes.md,impact.md}`). |
 | `EXT-004` | `failed@preflight_backend` | `0 / 0` | `pending_proof` | Cairo/Scarb preflight blocked (lockfile permission failure); no evidence run reached attack execution. |
-| `EXT-005` | `failed@preflight_backend` | `0 / 0` | `pending_proof` | Halo2 build blocked (nightly toolchain fetch/DNS dependency under current environment). |
+| `EXT-005` | `completed` | `6 / 17` | `pending_proof` | Continuation rerun reached engine execution with local `SVM_RELEASES_LIST_JSON` override; current findings are low-correlation metamorphic base-execution failures and remain unproven (`artifacts/external_targets/recheck_ext005_continue_20260225/reports/ext005_triage.md`). |
 | `EXT-006` | `completed` | `6 / 17` | `pending_proof` | zkevm evidence now completes in-bounds after reruns (`artifacts/external_targets/ext_batch_012/run_signals/report_1771939182_20260224_131942_evidence_ext006_zkevm_circuits_campaign_pid72229/summary.json`). |
 | `EXT-007` | `completed` | `0 / 184` | `pending_proof` | Standalone hello-circuit path is stable; no findings in latest successful run. |
 | `EXT-008` | `completed` | `0 / 0` | `pending_proof` | Marked completed in latest run but still operationally unstable (13/14 attempts failed preflight in history; Scarb/toolchain incompatibility remains open). |
@@ -1746,6 +1768,48 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Note: preflight eventually passed, but global wall-clock budget was exhausted before engine start (`budget=180s`, `consumed~1396s`).
   - Evidence: `artifacts/external_targets/recheck/run_signals_ext005_escalated/report_1771977003_20260224_235003_evidence_ext005_ezkl_halo2_campaign_pid4042372/summary.json`
   - Log: `artifacts/external_targets/recheck/logs/ext005_recheck_escalated.log`
+- [ ] EXT-005 bounded follow-up rerun remains open; deterministic preflight failure reproduces under cache-first local settings.
+  - Run: `ZKF_SCAN_OUTPUT_ROOT=artifacts/external_targets/recheck_ext005_followup/scan_output_ext005 ZKF_RUN_SIGNAL_DIR=artifacts/external_targets/recheck_ext005_followup/run_signals_ext005 ZKF_BUILD_CACHE_DIR=artifacts/external_targets/recheck/build_cache ZKF_HALO2_PREWARM_MODE=off ZK_FUZZER_HALO2_AUTO_ONLINE_RETRY=false ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE=false ZK_FUZZER_HALO2_CARGO_TOOLCHAIN=nightly-2025-12-01 ./scripts/zeroday_workflow.sh evidence artifacts/external_targets/ext_batch_006/repro/ext005_ezkl_halo2_campaign.yaml --iterations 20 --timeout 600 --seed 42 --workers 1`
+  - Outcome: `status=failed`, `stage=preflight_backend`, `reason_code=backend_toolchain_mismatch`
+  - Failure signals: `svm-rs-builds` build script still requires remote release metadata and fails on DNS lookup for `https://binaries.soliditylang.org/linux-amd64/list.json` in this environment.
+  - Evidence: `artifacts/external_targets/recheck_ext005_followup/run_signals_ext005/report_1771982941_20260225_012901_evidence_ext005_ezkl_halo2_campaign_pid120126/summary.json`
+  - Log: `artifacts/external_targets/recheck_ext005_followup/logs/ext005_followup.log`
+- [x] EXT-005 continuation rerun reached engine execution with cache-first `SVM_RELEASES_LIST_JSON` override and completed in bounded mode.
+  - Run: `ZKF_SCAN_OUTPUT_ROOT=artifacts/external_targets/recheck_ext005_continue_20260225/scan_output_ext005 ZKF_RUN_SIGNAL_DIR=artifacts/external_targets/recheck_ext005_continue_20260225/run_signals_ext005 ZKF_BUILD_CACHE_DIR=artifacts/external_targets/recheck/build_cache ZKF_HALO2_PREWARM_MODE=off ZK_FUZZER_HALO2_AUTO_ONLINE_RETRY=false ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE=false ZK_FUZZER_HALO2_CARGO_TOOLCHAIN=nightly-2025-12-01 ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES=nightly-2025-12-01 SVM_RELEASES_LIST_JSON=artifacts/external_targets/recheck_ext005_continue_20260225/manifests/svm_releases_linux_amd64.json ./scripts/zeroday_workflow.sh evidence artifacts/external_targets/ext_batch_006/repro/ext005_ezkl_halo2_campaign.yaml --iterations 20 --timeout 600 --seed 42 --workers 1`
+  - Outcome: `status=completed`, `stage=completed`, `reason_code=completed`, `total_executions=17`, `findings_total=6`
+  - Evidence: `artifacts/external_targets/recheck_ext005_continue_20260225/run_signals_ext005/report_1771983844_20260225_014404_evidence_ext005_ezkl_halo2_campaign_pid137750/summary.json`
+  - Log: `artifacts/external_targets/recheck_ext005_continue_20260225/logs/ext005_continue_run.log`
+- [ ] EXT-005 proof remains open after triage (`pending_proof`).
+  - Triage outcome: all 6 findings are low-correlation metamorphic `Base execution failed` signals and do not yet demonstrate exploitability.
+  - Backend signal observed during run: repeated Halo2 constraint-extraction incompatibility (`error: unexpected argument '--constraints' found`).
+  - Triage artifact: `artifacts/external_targets/recheck_ext005_continue_20260225/reports/ext005_triage.md`
+- [x] EXT-005 deterministic replay harness added for one continuation candidate and evidence artifacts created.
+  - Replay harness: `tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure` (fixed witness from continuation finding set).
+  - Evidence pack: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/{replay_command.txt,no_exploit_proof.md,impact.md}`
+  - Pre-fix replay log: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/prepatch_replay.log`
+- [x] EXT-005 Halo2 constraint-extraction adapter hardening completed.
+  - `crates/zk-backends/src/halo2/mod.rs`: cache unsupported `--constraints` capability state and cache empty parsed constraints after first failed extraction (no repeated extraction retries).
+  - `src/executor/mod.rs`: when Halo2 target is known to not support `--constraints`, fall back to output-hash coverage instead of unconditional coverage-unavailable failure.
+  - Local validation: `cargo test -p zk-backends --quiet`; `cargo test --test backend_integration_tests test_halo2_ext005_ezkl_replay_base_execution_failure -- --nocapture`.
+- [ ] EXT-005 post-fix bounded replay remains blocked; proof status stays `pending_proof`.
+  - Post-fix replay command was bounded with `timeout 300s` and ended `failed:124` (timeout) before assertion completion.
+  - Post-fix log: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_replay.log`
+  - Status marker: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_status.txt`
+  - Bounded rerun command (same env/toolchain overrides) also ended `124` (`POSTPATCH_RERUN_STATUS=124`).
+  - Bounded rerun log: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_replay_rerun.log`
+  - Bounded rerun status marker: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_status_rerun.txt`
+- [x] EXT-005 extended-window replay produced a deterministic post-fix outcome in one long-window run.
+  - Run: same post-fix replay command with `timeout 900s`
+  - Outcome: `POSTPATCH_LONGRUN_STATUS=101` after `~491s`; test reached assertion and observed executor success output instead of strict missing-coverage failure.
+  - Interpretation: adapter fallback path is active for this witness; the failure in that run was stale pre-fix assertion in replay harness.
+  - Extended replay log: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_replay_longrun.log`
+  - Extended replay status marker: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_status_longrun.txt`
+- [x] EXT-005 replay harness assertion updated for post-fix behavior.
+  - `tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure` now expects successful execution with output-hash fallback coverage when `--constraints` export is unsupported.
+- [ ] EXT-005 long-window post-assertion validation remains unstable (`pending_proof`).
+  - Follow-up run after harness assertion update ended `124` (`POSTPATCH_LONGRUN_POSTASSERT_STATUS=124`) before assertion completion.
+  - Follow-up log: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_replay_longrun_postassert.log`
+  - Follow-up status marker: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_status_longrun_postassert.txt`
 
 ## 📝 Notes
 

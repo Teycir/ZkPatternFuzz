@@ -92,7 +92,7 @@ To run the roadmap-defined external repository set (`EXT-001..EXT-012`):
 ```bash
 cargo run --release --bin zk0d_matrix -- \
   --matrix targets/zk0d_matrix_external_manual.yaml \
-  --alias external_manual \
+  --alias always \
   --jobs 1 \
   --batch-jobs 1 \
   --workers 1 \
