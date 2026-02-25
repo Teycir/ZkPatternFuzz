@@ -8,7 +8,7 @@ use std::time::Instant;
 use zk_fuzzer::config::Framework;
 use zk_fuzzer::executor::{
     CairoExecutor, CircomExecutor, CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions,
-    Halo2Executor, NoirExecutor,
+    ExecutionCoverage, Halo2Executor, NoirExecutor,
 };
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CairoTarget, CircomTarget, Halo2Target, NoirTarget, TargetCircuit};
@@ -104,6 +104,20 @@ fn halo2_real_repo_path() -> PathBuf {
         return PathBuf::from(path);
     }
     zk0d_base_path().join("cat5_frameworks/halo2-scaffold")
+}
+
+fn ext005_ezkl_manifest_path() -> PathBuf {
+    if let Ok(path) = std::env::var("EXT005_EZKL_PATH") {
+        return PathBuf::from(path);
+    }
+    PathBuf::from("/media/elements/Repos/zkml/ezkl/Cargo.toml")
+}
+
+fn ext005_ezkl_build_dir() -> PathBuf {
+    if let Ok(path) = std::env::var("EXT005_EZKL_BUILD_DIR") {
+        return PathBuf::from(path);
+    }
+    std::env::temp_dir().join("zk0d_halo2_ext005_replay_build")
 }
 
 fn noir_external_nargo_projects() -> Vec<(&'static str, PathBuf)> {
@@ -1487,6 +1501,123 @@ fn test_halo2_real_circuit_constraint_coverage() {
     assert!(
         !result.coverage.satisfied_constraints.is_empty(),
         "Expected constraint-level coverage for Halo2 executor"
+    );
+}
+
+/// Deterministic replay harness for EXT-005 (EZKL) after adapter hardening.
+///
+/// This verifies the post-fix behavior for the `Base execution failed` finding class:
+/// project execution succeeds even when host-side `--constraints` extraction is unsupported,
+/// and executor coverage falls back to output-hash mode.
+#[test]
+fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
+    if !require_real_backends("test_halo2_ext005_ezkl_replay_base_execution_failure") {
+        return;
+    }
+
+    let manifest_path = ext005_ezkl_manifest_path();
+    if !manifest_path.exists() {
+        println!(
+            "test_halo2_ext005_ezkl_replay_base_execution_failure: SKIP_INFRA (Missing EXT-005 manifest at {})",
+            manifest_path.display()
+        );
+        return;
+    }
+
+    if let Err(err) = configure_halo2_real_env() {
+        println!(
+            "test_halo2_ext005_ezkl_replay_base_execution_failure: SKIP_INFRA ({err})"
+        );
+        return;
+    }
+
+    let build_dir = ext005_ezkl_build_dir();
+    let executor = match expect_or_skip_infra(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure",
+        "create Halo2 executor",
+        Halo2Executor::new_with_build_dir(
+            manifest_path.to_str().unwrap(),
+            "main",
+            build_dir.clone(),
+        ),
+    ) {
+        Some(executor) => executor,
+        None => return,
+    };
+
+    // Fixed witness copied from EXT-005 continuation finding #1.
+    let witness = vec![
+        FieldElement::from_hex("0x0e0a77c19a0fdf2f406e2b6f7879462e36fc76959f60cd29ac96341c4ffffffa")
+            .expect("valid finding witness hex"),
+    ];
+
+    let result = executor.execute_sync(&witness);
+    assert!(
+        result.success,
+        "Expected Halo2 executor success via output-hash fallback, got error {:?}",
+        result.error
+    );
+    assert!(
+        !result.outputs.is_empty(),
+        "Expected successful execution to produce at least one output"
+    );
+    let expected_fallback = ExecutionCoverage::with_output_hash(&result.outputs);
+    assert!(
+        result.coverage.coverage_hash == expected_fallback.coverage_hash,
+        "Expected output-hash fallback coverage, got coverage_hash={} expected={}",
+        result.coverage.coverage_hash,
+        expected_fallback.coverage_hash
+    );
+    assert!(
+        result.coverage.satisfied_constraints.is_empty()
+            && result.coverage.evaluated_constraints.is_empty(),
+        "Expected fallback execution coverage with no extracted constraint IDs"
+    );
+
+    let mut target = match expect_or_skip_infra(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure",
+        "create Halo2 target",
+        Halo2Target::new(manifest_path.to_str().unwrap()),
+    ) {
+        Some(target) => target,
+        None => return,
+    };
+    target = target.with_build_dir(build_dir.join("target_replay"));
+
+    if let None = expect_or_skip_infra(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure",
+        "setup Halo2 target",
+        target.setup(),
+    ) {
+        return;
+    }
+
+    let direct_outputs = match expect_or_skip_infra(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure",
+        "direct Halo2 target execute",
+        target.execute(&witness),
+    ) {
+        Some(outputs) => outputs,
+        None => return,
+    };
+    assert!(
+        !direct_outputs.is_empty(),
+        "Expected direct Halo2 target execution to produce at least one output"
+    );
+    assert_eq!(
+        result.outputs, direct_outputs,
+        "Executor output should match direct target execution output for replay witness"
+    );
+
+    let parsed = target.load_plonk_constraints();
+    assert!(
+        parsed.constraints.is_empty(),
+        "Expected empty extracted PLONK constraints for EXT-005 replay target"
+    );
+    assert_eq!(
+        target.constraint_export_supported(),
+        Some(false),
+        "Expected EXT-005 target to be marked as unsupported for --constraints export"
     );
 }
 
