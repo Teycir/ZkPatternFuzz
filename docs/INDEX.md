@@ -191,6 +191,16 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+### 5k. [ALPHA_OPERATING_PLAYBOOK.md](ALPHA_OPERATING_PLAYBOOK.md) - **Proof Closure Workflow**
+**For:** Converting scan output into exploit/non-exploit proof artifacts quickly  
+**Contains:**
+- alpha definition for this repo
+- proof-closure oriented run loop
+- deterministic replay artifact scaffolding
+- minimal KPI set for usefulness (`proof_closure_rate`, backlog, blocker rate)
+
+---
+
 ## 🤖 AI Integration
 
 ### 5.5. AI-Assisted Analysis - **External Workflow**
@@ -200,7 +210,8 @@ Complete guide to all documentation files, ordered by use case and reading level
 - External AI usage model and operator responsibilities
 - Practical examples for out-of-band analysis
 
-**Note:** ZkPatternFuzz produces AI-ready artifacts but does not include in-process AI runtime. AI analysis is performed externally by operators.
+**Note:** ZkPatternFuzz produces AI-ready artifacts and is designed for external AI analysis by operators.  
+Optional `ai_assistant` behavior is local offline heuristic support and must not be treated as proof evidence.
 
 **Start here if:** You want to integrate AI-assisted analysis into your workflow
 
@@ -346,7 +357,7 @@ docs/
 
 **YAML Configuration**
 - [tests/campaigns/](../tests/campaigns/) - Real examples
-- `cargo run --bin zk0d_config_migrate -- <config.yaml> --check` - Legacy-shape migration check
+- `cargo run --bin validate_yaml -- <config.yaml> --require-invariants` - Strict YAML contract validation
 - [ATTACK_DSL_SPEC.md](ATTACK_DSL_SPEC.md) - Attack schema and type vocabulary
 
 **Attack Types**

@@ -1,5 +1,5 @@
 # AI-Assisted Security Audit Configuration
-# Uses Mistral AI model for invariant generation and result analysis
+# External AI analysis is primary. Local ai_assistant is optional offline heuristic support.
 
 campaign:
   name: "AI-Assisted Circuit Audit"
@@ -15,10 +15,10 @@ campaign:
     oracle_validation: true
     per_exec_isolation: true
 
-# AI Assistant Configuration (Mistral AI by default)
+# AI Assistant Configuration (local heuristic helper)
 ai_assistant:
   enabled: true
-  model: "mistral"  # Options: "mistral", "claude", "gpt-4"
+  model: "mistral"  # Heuristic profile label (not proof source)
   temperature: 0.7
   max_tokens: 1000
   modes:
@@ -26,7 +26,7 @@ ai_assistant:
     - result_analysis
     - config_suggestion
     - vulnerability_explanation
-  # Optional: Custom API endpoint
+  # Optional: Endpoint/API fields for external wrappers if you explicitly wire them
   # endpoint: "https://api.mistral.ai/v1"
   # Optional: API key (can also be set via environment variable)
   # api_key: "your-api-key"

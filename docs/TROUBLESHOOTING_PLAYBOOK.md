@@ -17,10 +17,10 @@ Run these first:
 cargo run --release --bin zk-fuzzer -- preflight <campaign.yaml> --setup-keys
 
 # Inspect available batch templates and aliases
-cargo run --release --bin zk0d_batch -- --list-catalog
+cargo run --release --bin zkpatternfuzz -- --list-catalog
 
 # Run batch and print per-template reason codes
-cargo run --release --bin zk0d_batch -- \
+cargo run --release --bin zkpatternfuzz -- \
   --alias always \
   --target-circuit <target.circom> \
   --main-component <Main> \

@@ -263,7 +263,7 @@ Automated testing and quality gates for release validation.
 
 **Components:**
 - `zk0d_benchmark` (`src/bin/zk0d_benchmark.rs`): parallel benchmark runner with configurable profiles
-- `zk0d_batch` (`src/bin/zk0d_batch.rs`): batch execution for campaign matrices
+- `zkpatternfuzz` (`src/bin/zkpatternfuzz.rs`): batch execution for campaign matrices
 - `zk0d_matrix` (`src/bin/zk0d_matrix.rs`): multi-target validation orchestrator
 
 **Validation Scripts:**

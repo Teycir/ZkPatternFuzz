@@ -62,7 +62,9 @@ Follow Rust best practices:
 
 - Do not mix production and test concerns in the same runtime path.
 - Production modules (`src/**`, `crates/**`) must not import or re-export test-only code.
-- Place test bodies in `tests/**` or dedicated `*_tests.rs` files gated with `#[cfg(test)]`.
+- Place test bodies in `tests/**` only.
+- Do not add `#[cfg(test)]`, `#[test]`, `mod tests`, `#[path = "*tests*"]`, `tests.rs`, `*_tests.rs`, or `test_*.rs` under production trees (`src/**`, `crates/**`).
+- CI enforces this via `scripts/check_prod_test_separation.py` with a baseline gate for legacy debt; any new violation fails the build.
 - Do not add production-only recovery logic or public exports just to make tests compile.
 
 ### 3. Test Your Changes
@@ -174,25 +176,9 @@ Commit message prefixes:
 
 ## Testing
 
-### Unit Tests
+### Tests
 
-Add tests in the same file as the code:
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_feature() {
-        // Test implementation
-    }
-}
-```
-
-### Integration Tests
-
-Add tests in `tests/` directory:
+Add tests in `tests/` directory only:
 
 ```rust
 #[tokio::test]

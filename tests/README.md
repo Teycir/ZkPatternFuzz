@@ -48,10 +48,10 @@ cargo run --release -- scan tests/patterns/scan_smoke_mono.yaml \
 
 ```bash
 # List collections/aliases/templates
-cargo run --release --bin zk0d_batch -- --list-catalog
+cargo run --release --bin zkpatternfuzz -- --list-catalog
 
 # Run always-on mono templates for a mono target
-cargo run --release --bin zk0d_batch -- \
+cargo run --release --bin zkpatternfuzz -- \
   --alias always \
   --target-topology mono \
   --target-circuit tests/ground_truth/chains/mode123_smoke/mode123_main.circom \

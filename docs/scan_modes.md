@@ -101,21 +101,21 @@ Use a registry file (`targets/fuzzer_registry.yaml`) with:
 - `collections`
 - `aliases`
 
-Run via batch catalog runner (`zk0d_batch`):
+Run via batch catalog runner (`zkpatternfuzz`):
 
 ```bash
 # Inspect catalog
-cargo run --release --bin zk0d_batch -- --list-catalog
+cargo run --release --bin zkpatternfuzz -- --list-catalog
 
 # Run always-on collection
-cargo run --release --bin zk0d_batch -- \
+cargo run --release --bin zkpatternfuzz -- \
   --alias always \
   --target-circuit /path/to/target.circom \
   --main-component Main \
   --framework circom
 
 # Run selected collection
-cargo run --release --bin zk0d_batch -- \
+cargo run --release --bin zkpatternfuzz -- \
   --collection always \
   --target-circuit /path/to/target.circom \
   --main-component Main \

@@ -170,7 +170,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Add nightly benchmark trend artifacts
 - [x] Add explicit environment config separation (dev/prod profiles)
 - [x] Add scan/report contract compatibility assertions
-- [x] Add reason-code aggregation in `zk0d_batch`
+- [x] Add reason-code aggregation in `zkpatternfuzz`
 
 ### Exit Criteria
 - [x] Vulnerable-set recall >=80%
@@ -221,7 +221,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 ### Implementation Tasks
 - [x] Add backend-specific readiness profiles in `targets/fuzzer_registry.prod.yaml` for Noir, Halo2, and Cairo circuit families
 - [x] Add Noir preflight hardening for package-resolution and ABI artifact-path variants
-- [x] Add selector-mismatch synthetic outcome classification in `zk0d_batch` to eliminate validation-skip `run_outcome_missing` gaps
+- [x] Add selector-mismatch synthetic outcome classification in `zkpatternfuzz` to eliminate validation-skip `run_outcome_missing` gaps
 - [x] Add Noir end-to-end prove/verify smoke and fuzz parity tests for external `Nargo.toml` projects
 - [x] Add Cairo breadth-target suite to `zk0d_matrix` default validation set (not optional backend-heavy-only checks) (`targets/zk0d_matrix_breadth.yaml`)
 - [x] Add Cairo full-capacity regression suite with stable coverage/failure semantics on external and local targets
@@ -391,7 +391,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Prevent soundness attack verifier errors from aborting full campaigns by treating verifier transport/runtime failures as per-attempt skips (`src/fuzzer/engine/attack_runner_soundness.rs`).
 - [x] Harden Circom proof verification semantics so `snarkjs` "Invalid proof" returns `Ok(false)` instead of bubbling as a fatal runtime error (`crates/zk-backends/src/circom/mod.rs`).
 - [x] Add explicit witness-input contract diagnostics (required signal coverage + provided map shape) for Circom witness generation failures (`crates/zk-backends/src/circom/mod.rs`).
-- [x] Extend run outcome reason-code classifier with dependency-resolution and backend-input-contract mismatch buckets for clearer external-target triage (`src/run_outcome_docs.rs`, `src/bin/zk0d_batch.rs`).
+- [x] Extend run outcome reason-code classifier with dependency-resolution and backend-input-contract mismatch buckets for clearer external-target triage (`src/run_outcome_docs.rs`, `src/bin/zkpatternfuzz.rs`).
 
 ### 8.9 External Target Hardening Plan (`/media/elements/Repos`)
 
@@ -428,10 +428,10 @@ Inventory + matrix references:
 | EXT-010 | `circomlib_iszero` | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/iszero.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
 | EXT-011 | `circomlib_lessthan` | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/lessthan.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
 | EXT-012 | `circomlib_montgomerydouble` | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | `circom` | `node_modules/circomlib/test/circuits/montgomerydouble.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
-| EXT-013 | `circomlib_ml_relu` | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/ReLU.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
-| EXT-014 | `circomlib_ml_dense` | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/Dense.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
-| EXT-015 | `orion_svm_classifier_test` | `/media/elements/Repos/zkml/orion` | `cairo` | `tests/ml/svm_classifier_test.cairo` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
-| EXT-016 | `aztec_barretenberg_fixture_recursive` | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `barretenberg/docs/examples/fixtures/recursive/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [ ] active / [ ] done` |
+| EXT-013 | `circomlib_ml_relu` | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/ReLU.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-014 | `circomlib_ml_dense` | `/media/elements/Repos/zkml/circomlib-ml` | `circom` | `circuits/Dense.circom` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-015 | `orion_svm_classifier_test` | `/media/elements/Repos/zkml/orion` | `cairo` | `tests/ml/svm_classifier_test.cairo` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
+| EXT-016 | `aztec_barretenberg_fixture_recursive` | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | `noir` | `barretenberg/docs/examples/fixtures/recursive/Nargo.toml` | `safe-regression` | `P1` | `unassigned` | `[x] planned / [x] active / [x] done` |
 
 Backend coverage snapshot (selected vs target floor=2):
 | Backend | Selected Targets | Floor | Coverage Status |
@@ -453,6 +453,8 @@ All-target catalog snapshot (`2026-02-25`):
 - [x] Run backend effectiveness report on the latest outcomes (`python3 scripts/build_backend_effectiveness_report.py --repo-root .`).
 - [x] Run release streak status wrapper after each manual validation batch (`scripts/run_release_streak_status.sh`).
 - [x] Archive evidence paths for each batch under `artifacts/` and link them in the run ledger table.
+- [x] Execute first-run manual evidence coverage for all intake-expanded targets (`EXT-013`, `EXT-014`, `EXT-015`, `EXT-016`) via one dedicated batch and archive artifacts (`artifacts/external_targets/ext_batch_013/reports/batch_summary.md`).
+- [x] Update follow-up snapshot state rows for `EXT-013`..`EXT-016` immediately after first-run evidence; keep proof status `pending_proof` unless replay or bounded non-exploit evidence exists.
 
 #### 8.9.4 Manual Run Ledger
 | Run Date (UTC) | Batch ID | Targets Included | Command Profile | Total Runs | Completion Rate | Recall | Safe High-Conf FPR | Evidence Bundle | Gate Result |
@@ -466,6 +468,7 @@ All-target catalog snapshot (`2026-02-25`):
 | `2026-02-24` | `EXT-BATCH-008` | `EXT-010, EXT-011, EXT-012` | `evidence-quickcheck (seed=42, iter=200, timeout=20, workers=1)` | `3` | `1.00 (Step 0-8 complete for signal-quality revalidation)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_008/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `2026-02-24` | `EXT-BATCH-010` | `EXT-002, EXT-006, EXT-007, EXT-008, EXT-009` | `evidence-quickcheck (seed=42, iter=200, timeout=60, workers=1; EXT-006 local-copy rerun timeout=300 with local Go module/cache env)` | `5` | `0.44 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_010/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 | `2026-02-24` | `EXT-BATCH-011` | `EXT-001, EXT-002, EXT-008` | `evidence-quickcheck (seed=42, iter=200, timeout=60, workers=1; EXT-008 rerun with warm local Scarb cache)` | `3` | `0.00 (Step 0-3 complete; Step 4-8 pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_011/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
+| `2026-02-25` | `EXT-BATCH-013` | `EXT-013, EXT-014, EXT-015, EXT-016` | `evidence-quickcheck (seed=42, iter=200, timeout=90, workers=1; EXT-016 local-copy rerun after Noir preflight compatibility fixes)` | `4 (executed; reruns applied where needed)` | `1.00 (Step 0-3 complete; proof branch pending)` | `n/a` | `n/a` | `artifacts/external_targets/ext_batch_013/{logs,manifests,reports,repro}` | `[ ] pass / [x] fail` |
 
 `EXT-BATCH-001` snapshot SHAs (`artifacts/external_targets/ext_batch_001/manifests/target_snapshot.json`):
 - `EXT-001`: `c82b3072d7946a76487a8c1be463fc407045391c`
@@ -519,6 +522,12 @@ Intake expansion snapshot SHAs (`2026-02-25`, pre-run freeze):
 - `EXT-015` (`orion_svm_classifier_test`): `bac0b424fe08e0da9e2522a45d77c028acf47dcd`
 - `EXT-016` (`aztec_barretenberg_fixture_recursive`): `2a9dd27afb1c03f9085c79a218bf928ddfebf031`
 
+`EXT-BATCH-013` snapshot SHAs (`artifacts/external_targets/ext_batch_013/manifests/target_snapshot.json`):
+- `EXT-013`: `c82b3072d7946a76487a8c1be463fc407045391c`
+- `EXT-014`: `c82b3072d7946a76487a8c1be463fc407045391c`
+- `EXT-015`: `bac0b424fe08e0da9e2522a45d77c028acf47dcd`
+- `EXT-016`: `2a9dd27afb1c03f9085c79a218bf928ddfebf031`
+
 #### 8.9.5 Logic Finding And Remediation Board
 | Finding ID | Target ID | Class | Severity | Repro Status | Owning Module | Fix Commit/PR | Verification Status |
 |---|---|---|---|---|---|---|---|
@@ -537,9 +546,13 @@ Intake expansion snapshot SHAs (`2026-02-25`, pre-run freeze):
 | `EXT-FIND-013` | `EXT-004` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Cairo backend build path (Scarb preflight)` | `fixed diagnostics path; now shows exact preflight cause (lockfile permission / toolchain mismatch) in run_outcome` | `[x] fixed / [x] revalidated` |
 | `EXT-FIND-014` | `EXT-005` | `backend-preflight` | `high` | `[ ] repro pending / [x] reproduced` | `Halo2 backend build path (EZKL preflight)` | `fixed diagnostics path; now surfaces rustup/cargo root cause text instead of opaque timeout-only failure` | `[x] fixed / [x] revalidated` |
 | `EXT-FIND-015` | `EXT-BATCH-005` | `workflow-stability` | `medium` | `[ ] repro pending / [x] reproduced` | `run-signal report-id allocation (second-granularity collisions)` | `run folder naming now includes run_id suffix to prevent same-second collisions` | `[x] fixed / [x] revalidated` |
+| `EXT-FIND-016` | `EXT-016` | `backend-preflight` | `medium` | `[ ] repro pending / [x] reproduced` | `Noir recursive fixture compile path under read-only external checkout` | `add-only local-copy campaign: artifacts/external_targets/ext_batch_013/repro/ext016_aztec_barretenberg_fixture_recursive_local_campaign.yaml` | `[x] fixed / [x] revalidated` |
+| `EXT-FIND-017` | `EXT-016` | `backend-compatibility` | `high` | `[ ] repro pending / [x] reproduced` | `Noir ABI parser expected array key 'typ' and rejected modern artifacts using key 'type'` | `deserializer compatibility patch + regression test (`crates/zk-backends/src/noir/{mod.rs,mod_tests.rs}`)` | `[x] fixed / [x] revalidated` |
+| `EXT-FIND-018` | `EXT-016` | `runtime-input-reconciliation` | `high` | `[ ] repro pending / [x] reproduced` | `strict input reconciliation hard-failed when inspector labels were incomplete / oversized` | `reconciliation fallback + index truncation hardening (`src/fuzzer/engine/config_helpers.rs`)` | `[x] fixed / [x] revalidated` |
 
 #### 8.9.6 Hardening Exit Criteria (External Repo Track)
 - [x] At least `12` externally sourced targets validated from `/media/elements/Repos` with representation across all four backends.
+- [x] All `16` curated manual targets in `targets/zk0d_matrix_external_manual.yaml` have at least one archived evidence run (`EXT-BATCH-013` closed first-run coverage for `EXT-013..016`).
 - [x] At least `3` manual batches executed with archived evidence and complete run-ledger rows.
 - [ ] No unresolved `high` or `critical` externally reproducible logic findings remain open.
 - [ ] External-target effectiveness report shows non-zero runs for each backend and no unresolved backend assignment gaps.
@@ -573,6 +586,8 @@ Current batch status (`EXT-BATCH-008`): Step 0-8 completed for the `EXT-010/011/
 Current batch status (`EXT-BATCH-010`): Step 0-3 completed for unresolved target reruns with archived artifacts in `artifacts/external_targets/ext_batch_010/{logs,manifests,reports,repro}` and summary in `artifacts/external_targets/ext_batch_010/reports/batch_summary.md`. `EXT-002` still fails at Circom preflight with reproducible target compile error (`error[T3001] Out of bounds` at `test_bulk_assignment.circom:19`, `artifacts/external_targets/ext_batch_010/run_signals/report_1771895663_20260224_011423_evidence_ext002_test_bulk_assignment_campaign_pid3443089/misc/run_outcome.json`). `EXT-006` now completes in local-copy mode with local Go module cache/proxy env (`status=completed`, `duration_seconds=298`, `total_executions=17`, `findings_total=22`, `artifacts/external_targets/ext_batch_010/run_signals/report_1771896044_20260224_012044_evidence_ext006_zkevm_circuits_local_campaign_pid3451941/misc/run_outcome.json`). `EXT-007` original path still reproduces the package mismatch preflight failure (`Selected package hello_circuit was not found`), but add-only standalone correction now completes with non-zero executions and in-budget runtime (`duration_seconds=57`, `total_executions=184`, `artifacts/external_targets/ext_batch_010/run_signals/report_1771895175_20260224_010615_evidence_ext007_aztec_hello_circuit_standalone_campaign_pid3375657/misc/run_outcome.json`). `EXT-008` local-copy rerun still fails at Cairo preflight, now with root-cause evidence showing dependency/toolchain compile incompatibilities in the Orion stack (`artifacts/external_targets/ext_batch_010/run_signals/report_1771895929_20260224_011849_evidence_ext008_orion_linear_classifier_local_campaign_pid3449205/misc/run_outcome.json`). `EXT-009` now completes (`status=completed`, `total_executions=257`, `findings_total=0`), no longer reproduces the prior runtime panic, and timeout enforcement is revalidated on matching settings (`duration_seconds=60` with `timeout_seconds=60`, `artifacts/external_targets/ext_batch_010/run_signals/report_1771894723_20260224_005843_evidence_ext009_aztec_barretenberg_fixture_campaign_pid3274630/misc/run_outcome.json`).
 
 Current batch status (`EXT-BATCH-011`): Step 0-3 completed for focused unresolved-target retest with archived artifacts in `artifacts/external_targets/ext_batch_011/{logs,manifests,reports,repro}` and summary in `artifacts/external_targets/ext_batch_011/reports/batch_summary.md`. `EXT-001` now reproduces a runtime failure in engine run (`Failed to verify proof` after `ArgMax_4` witness assertion failure, with schema reconciliation warning `config has 1, executor expects 6`) (`artifacts/external_targets/ext_batch_011/run_signals/report_1771899258_20260224_021418_evidence_ext001_circomlibml_argmax_wrapper_campaign_pid3604780/misc/run_outcome.json`). `EXT-002` remains a reproducible external target compile failure (`error[T3001] Out of bounds` at `test_bulk_assignment.circom:19`) (`artifacts/external_targets/ext_batch_011/run_signals/report_1771899286_20260224_021446_evidence_ext002_test_bulk_assignment_campaign_pid3628308/misc/run_outcome.json`). `EXT-008` local-copy rerun with warm local Scarb cache avoids pure clone-only noise and again fails at Cairo preflight with dependency/toolchain incompatibility signal in Orion (`artifacts/external_targets/ext_batch_011/run_signals/report_1771899400_20260224_021640_evidence_ext008_orion_linear_classifier_local_campaign_pid3631535/misc/run_outcome.json`).
+
+Current batch status (`EXT-BATCH-013`): Step 0-3 completed for intake-expanded first-run coverage with archived artifacts in `artifacts/external_targets/ext_batch_013/{logs,manifests,reports,repro}` and summary in `artifacts/external_targets/ext_batch_013/reports/batch_summary.md`. `EXT-013` first completed with candidate signal (`status=completed`, `findings_total=44`, `total_executions=82`) (`artifacts/external_targets/ext_batch_013/run_signals/report_1772029839_20260225_143039_evidence_ext013_circomlib_ml_relu_campaign_pid76365/misc/run_outcome.json`), then received bounded non-exploit replay evidence (`artifacts/external_targets/ext_batch_013/reports/evidence/EXT-013/run_20260225_ext013_relu_bounded_non_exploit/{replay_command.txt,no_exploit_proof.md,impact.md,replay_ext013_relu_non_exploit.log}`). `EXT-014` completes cleanly with non-zero executions (`status=completed`, `findings_total=0`, `total_executions=220`) (`artifacts/external_targets/ext_batch_013/run_signals/report_1772029940_20260225_143220_evidence_ext014_circomlib_ml_dense_campaign_pid113787/misc/run_outcome.json`). `EXT-015` completes but exhausts wall-clock budget during setup (`status=completed`, `findings_total=0`, `total_executions=0`) and remains proof-incomplete (`artifacts/external_targets/ext_batch_013/run_signals/report_1772030038_20260225_143358_evidence_ext015_orion_svm_classifier_test_campaign_pid157380/misc/run_outcome.json`). `EXT-016` required local-copy rerun plus Noir ABI/input-reconciliation fixes before reaching stable execution; latest rerun now completes (`status=completed`, `findings_total=0`, `total_executions=403`) (`artifacts/external_targets/ext_batch_013/run_signals/report_1772030581_20260225_144301_evidence_ext016_aztec_barretenberg_fixture_recursive_local_campaign_pid171511/misc/run_outcome.json`).
 
 Latest evidence severity breakdown (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/report.json`):
 - `critical=3`, `high=1`, `medium=1515`
@@ -610,7 +625,7 @@ Issue-to-code-adjustment tracker:
 | `EXT-ISSUE-003` | `EXT-003` | `[ ]` | `src/fuzzer/engine/attack_runner_novel.rs`, `src/oracles/witness_collision.rs`, `src/fuzzer/engine/run_reporting.rs` | `Add detector time budget + max collision cap + timeout-aware report finalization short-circuit` | `tests/test_oracles_witness_collision.rs` | `[x]` (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/step3_evidence_ext003_rerun3_escalated.log`) | `[ ] open / [x] fixed / [x] verified` |
 | `EXT-ISSUE-004` | `EXT-003` | `[x]` | `reporting schema / operator query mismatch` | Use `poc_witness_a` / `poc_witness_b` / `poc_public_inputs` fields when extracting PoCs from report artifacts | `n/a` | `[x]` (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/replay_ext003_iszero_exploit.log`) | `[ ] open / [x] fixed / [x] verified` |
 
-#### 8.9.8 Follow-Up Snapshot (2026-02-24)
+#### 8.9.8 Follow-Up Snapshot (2026-02-25)
 
 Scope for this snapshot:
 - latest per-target run-state from `artifacts/**/run_signals/*/summary.json` (including `ext_batch_012` reruns),
@@ -618,14 +633,16 @@ Scope for this snapshot:
 - backend readiness gate status from `artifacts/backend_readiness/latest_report.json`.
 
 High-level state:
-- Tracked external targets with completed manual state snapshots: `12` (`EXT-001`..`EXT-012`).
-- Intake-expanded targets pending first manual run: `4` (`EXT-013`..`EXT-016`).
+- Tracked external targets with completed manual state snapshots: `16` (`EXT-001`..`EXT-016`).
+- Intake-expanded targets pending first manual run: `0` (`EXT-BATCH-013` executed for `EXT-013`..`EXT-016`).
+- First-run closure plan: closed for all currently curated manual targets (`16/16` have archived evidence runs).
 - Full discovered catalog coverage: `628` supported entrypoints across `20` repos (`targets/external_repo_catalog_all_2026-02-25.json`).
 - External matrices enriched with dataset priors from `/home/teycir/Documents/ZkDatasets` (`targets/zk0d_matrix_external_manual.yaml`, `targets/zk0d_matrix_external_all.yaml`).
 - Proven exploit with deterministic replay: `1` target (`EXT-003`).
+- Bounded non-exploit evidence packaged: `1` target (`EXT-013`).
 - Discovery signal present but still `pending_proof`: `5` targets (`EXT-005`, `EXT-006`, `EXT-010`, `EXT-011`, `EXT-012`).
-- Completed with no findings in latest run: `4` targets (`EXT-001`, `EXT-002`, `EXT-007`, `EXT-009`).
-- Blocked or unstable due backend preflight/runtime setup: `2` targets (`EXT-004`, `EXT-008`).
+- Completed with no findings in latest run: `6` targets (`EXT-001`, `EXT-002`, `EXT-007`, `EXT-009`, `EXT-014`, `EXT-016`).
+- Blocked or unstable due backend preflight/runtime setup: `3` targets (`EXT-004`, `EXT-008`, `EXT-015`).
 
 Latest target state (manual checks only):
 | Target | Latest Status | Findings / Executions | Proof State | Current Note |
@@ -642,10 +659,15 @@ Latest target state (manual checks only):
 | `EXT-010` | `completed_with_critical_findings` | `4 / 4` | `pending_proof` | Repeated positive signal across batches (max observed findings `34`) but no deterministic exploit package yet. |
 | `EXT-011` | `completed` | `15 / 3` | `pending_proof` | Repeated positive signal across batches (max observed findings `66`) but no deterministic exploit package yet. |
 | `EXT-012` | `completed` | `3 / 1` | `pending_proof` | Repeated positive signal across batches (max observed findings `12`) but no deterministic exploit package yet. |
+| `EXT-013` | `completed` | `44 / 82` | `not_exploitable_within_bounds` | Candidate signal triaged with deterministic bounded replay; no accepted wrong-output witness in bounded campaign (`artifacts/external_targets/ext_batch_013/reports/evidence/EXT-013/run_20260225_ext013_relu_bounded_non_exploit/no_exploit_proof.md`). |
+| `EXT-014` | `completed` | `0 / 220` | `pending_proof` | First-run evidence completed cleanly with no validated findings in bounded run (`artifacts/external_targets/ext_batch_013/run_signals/report_1772029940_20260225_143220_evidence_ext014_circomlib_ml_dense_campaign_pid113787/summary.json`). |
+| `EXT-015` | `failed@preflight_backend` | `0 / 0` | `pending_proof` | Continuation rerun remains blocked by deterministic Scarb/Cairo toolchain mismatch (`backend_toolchain_mismatch=4`; selector mismatch `37`) and no exploit/non-exploit proof could be produced (`artifacts/external_targets/recheck_ext015_continue_20260225/reports/ext015_triage.md`, `artifacts/external_targets/recheck_ext015_continue_20260225/logs/ext015_batch_run.log`). |
+| `EXT-016` | `completed` | `0 / 403` | `pending_proof` | First-run evidence completed after local-copy and Noir compatibility fixes; no findings observed in bounded run (`artifacts/external_targets/ext_batch_013/run_signals/report_1772030581_20260225_144301_evidence_ext016_aztec_barretenberg_fixture_recursive_local_campaign_pid171511/summary.json`). |
 
 Proof artifact inventory check:
-- `EXT-003` is currently the only target with full exploit proof artifact set (`replay_command.txt`, `exploit_notes.md`, `impact.md`, replay log).
-- No `no_exploit_proof.md` artifacts are present for the remaining targets; they remain explicitly `pending_proof`.
+- `EXT-003` has full exploit proof artifact set (`replay_command.txt`, `exploit_notes.md`, `impact.md`, replay log).
+- `EXT-013` now has bounded non-exploit proof artifacts (`replay_command.txt`, `no_exploit_proof.md`, `impact.md`, replay log).
+- Remaining unresolved targets stay `pending_proof` until exploit replay or bounded/formal non-exploit evidence is packaged.
 
 Backend readiness context for this follow-up:
 - `artifacts/backend_readiness/latest_report.json` => `overall_pass=true` (Noir/Cairo/Halo2 gates all pass with `runtime_error_count=0`, `backend_preflight_failed_count=0`, `run_outcome_missing_rate=0`).
@@ -775,7 +797,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Document hard no-mixing policy: production modules (`src/**`, `crates/**`) must not import, re-export, or depend on test-only modules/helpers
 - [x] Document hard placement policy: test bodies belong only in `tests/**`; no `#[cfg(test)]` modules or `*_tests.rs` files in production trees
 - [x] Add CI guard that fails if production modules expose test-only symbols/re-exports
-- [x] Enforce root `src/**` test-attribute ban in CI (`scripts/check_prod_test_separation.py`) and remove remaining inline `#[cfg(test)]`/`#[test]` modules from root production files (`src/fuzzer/engine/attack_runner_static.rs`, `src/fuzzer/engine/attack_runner_novel.rs`, `src/pipeline/post_roadmap_workflow.rs`, `src/pipeline/post_roadmap_runner.rs`, `src/pipeline/post_roadmap_foundation.rs`, `src/bin/zk0d_benchmark.rs`)
+- [x] Enforce production-tree (`src/**`, `crates/**`) no-mixing gate in CI (`scripts/check_prod_test_separation.py`) with baseline tracking (`config/prod_test_separation_baseline.json`) so new prod/test coupling is rejected immediately while legacy debt is explicit.
 
 ### Attack Coverage
 - [x] Wire previously non-executed attack families into runtime dispatch
@@ -789,7 +811,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Add first-class trusted-setup module
 
 ### Tooling & Infrastructure
-- [x] Add batch run reason-code aggregation in `zk0d_batch`
+- [x] Add batch run reason-code aggregation in `zkpatternfuzz`
 - [x] Add collision-safe automatic scan run-root allocation
 - [x] Add `zk-fuzzer preflight` command
 - [x] Add regex selector policy controls
@@ -797,7 +819,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 - [x] Add `zk-fuzzer bins bootstrap` command
 - [x] Add deterministic ptau autodiscovery precedence
 - [x] Add `zk0d_matrix` multi-target runner
-- [x] Add retry-on-transient-setup policy in `zk0d_batch`
+- [x] Add retry-on-transient-setup policy in `zkpatternfuzz`
 - [x] Add repeated-trial benchmark harness (`zk0d_benchmark`)
 - [x] Add CI benchmark regression gates
 - [x] Add explicit environment config separation (dev/prod profiles)
@@ -924,7 +946,7 @@ Source: 2026-02-18 logic audit snapshot (13 findings: High=3, Medium=5, Low=3, I
 
 ### Run 2: Panic Blocker (After Writable-Root Fix)
 - **Command:** `cargo run --quiet --bin zk0d_benchmark -- --config-profile dev --suite safe_regression,vulnerable_ground_truth --trials 2 --jobs 4 --batch-jobs 1 --workers 1 --iterations 200 --timeout 15 --output-dir artifacts/benchmark_runs`
-- **Fix Applied:** Set child `zk0d_batch` environment under benchmark output root to avoid host-home permission failures
+- **Fix Applied:** Set child `zkpatternfuzz` environment under benchmark output root to avoid host-home permission failures
 - **Outcome:** Permission-denied setup blocker cleared, but runs hit panic blocker `Missing required 'command' in run document` during evidence/report mirroring
 - **Status:** Phase 0/1 remain unmet
 
@@ -975,7 +997,7 @@ cargo check -q
 cargo check -q --workspace
 cargo check -q --bin zk-fuzzer
 cargo check -q --bin zk0d_matrix
-cargo check -q --bin zk0d_batch
+cargo check -q --bin zkpatternfuzz
 cargo check -q --bin zk0d_benchmark
 ```
 

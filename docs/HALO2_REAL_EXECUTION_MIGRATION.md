@@ -45,14 +45,20 @@ ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2
 HALO2_THROUGHPUT_ROUNDS=2 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_halo2_scaffold_production_throughput -- --exact
 ```
 
-## 5. Run Halo2 Readiness Lane
+## 5. Run Halo2 Readiness Directly
 
 ```bash
-scripts/run_halo2_readiness.sh --workers 2 --iterations 100 --timeout 20
-cat artifacts/backend_readiness/halo2/latest_report.json
+cargo run --release --bin zkpatternfuzz -- \
+  --pattern-yaml campaigns/cve/patterns/cveX36_halo2_constraint_metadata_readiness_probe.yaml \
+  --target-circuit targets/external/readiness/halo2/minimal_external.json \
+  --framework halo2 \
+  --main-component main \
+  --workers 2 \
+  --iterations 100 \
+  --timeout 20 \
+  --output-root artifacts/backend_readiness/halo2 \
+  --report-json artifacts/backend_readiness/halo2/latest_findings.json
 ```
-
-Primary lane targets come from `targets/zk0d_matrix_halo2_readiness.yaml`.
 
 ## 6. Common Migration Pitfalls
 
@@ -60,15 +66,8 @@ Primary lane targets come from `targets/zk0d_matrix_halo2_readiness.yaml`.
 |---|---|---|
 | `runtime_error` on JSON spec | Input metadata mismatch or malformed spec | Validate spec fields and rerun single target |
 | `backend_preflight_failed` | Nightly/toolchain or build dependency issues | `export RUSTUP_TOOLCHAIN=nightly`, rebuild target |
-| High `selector_mismatch` | Alias/templates not aligned with target semantics | Tune alias/template set (`readiness_halo2`) |
-| Wrong `main_component` behavior | Component name does not match target | Update `main_component` in matrix/campaign |
-
-## 7. Run Full Non-Circom Gate
-
-```bash
-scripts/run_backend_readiness_lanes.sh --enforce-dashboard
-cat artifacts/backend_readiness/latest_report.json
-```
+| High `selector_mismatch` | Alias/templates not aligned with target semantics | Tune pattern selection set |
+| Wrong `main_component` behavior | Component name does not match target | Update `main_component` in run config |
 
 ## 8. Exit Criteria For Halo2 Migration
 

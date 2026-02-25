@@ -10,23 +10,39 @@ This document describes how to run reusable attack-pattern YAML against concrete
 
 ## Catalog-Driven Batch Runs
 
+Default behavior (no `--pattern-yaml`, `--collection`, `--alias`, `--template`):
+- auto-discover and run all pattern-compatible YAML files in the repository.
+
 List collections, aliases, and templates:
 
 ```bash
-cargo run --release --bin zk0d_batch -- --list-catalog
+cargo run --release --bin zkpatternfuzz -- --list-catalog
 ```
 
 Run always-on patterns:
 
 ```bash
-cargo run --release --bin zk0d_batch -- \
+cargo run --release --bin zkpatternfuzz -- \
   --alias always \
   --target-circuit /media/elements/Repos/zk0d/path/to/target.circom \
   --main-component Main \
   --framework circom
 ```
 
-### Strict 3-Check Gate (Enforced by `zk0d_batch`)
+Run with direct JSON config + explicit YAML pattern paths:
+
+```bash
+cargo run --release --bin zkpatternfuzz -- \
+  --config-json targets/external/target_run_overrides/ext015_orion_svm_classifier_test.json \
+  --pattern-yaml campaigns/cve/patterns/cveX34_cairo_multiplier_assert_readiness_probe.yaml \
+  --target-circuit /media/elements/Repos/zkml/orion/tests/ml/svm_classifier_test.cairo \
+  --framework cairo \
+  --main-component main \
+  --output-root artifacts/simple_flow \
+  --report-json artifacts/simple_flow/findings.json
+```
+
+### Strict 3-Check Gate (Enforced by `zkpatternfuzz`)
 
 Every batch run enforces:
 
@@ -45,7 +61,7 @@ Gate 2/3 (completion line): PASS ...
 Gate 3/3 (artifact reconciliation): PASS ...
 ```
 
-If any gate fails, `zk0d_batch` exits non-zero.
+If any gate fails, `zkpatternfuzz` exits non-zero.
 
 To suppress live progress lines (for quieter CI logs), pass:
 
@@ -56,77 +72,11 @@ To suppress live progress lines (for quieter CI logs), pass:
 Run additional patterns:
 
 ```bash
-cargo run --release --bin zk0d_batch -- \
+cargo run --release --bin zkpatternfuzz -- \
   --alias deep \
   --target-circuit /media/elements/Repos/zk0d/path/to/target.circom \
   --main-component Main \
   --framework circom
-```
-
-## Matrix Runs Across Multiple Targets
-
-For multi-target campaigns (parallel-safe target matrix + per-target reason-code aggregation):
-
-```bash
-cargo run --release --bin zk0d_matrix -- \
-  --matrix targets/zk0d_matrix.yaml \
-  --alias always \
-  --jobs 2 \
-  --batch-jobs 1 \
-  --workers 2 \
-  --summary-tsv artifacts/zk0d_matrix_summary.tsv
-```
-
-Guardrail model:
-- `jobs` = parallel targets
-- `batch-jobs` = template parallelism inside each target's `zk0d_batch`
-- `workers` = scan workers per template run
-
-The runner enforces a CPU-based guardrail on `jobs * batch_jobs * workers` unless
-`--allow-oversubscription` is explicitly set.
-
-### Roadmap External Repo Audit Set
-
-To run the roadmap-defined external repository set (`EXT-001..EXT-012`):
-
-```bash
-cargo run --release --bin zk0d_matrix -- \
-  --matrix targets/zk0d_matrix_external_manual.yaml \
-  --alias always \
-  --jobs 1 \
-  --batch-jobs 1 \
-  --workers 1 \
-  --seed 42 \
-  --iterations 200 \
-  --timeout 60 \
-  --summary-tsv artifacts/external_targets/manual/latest_summary.tsv
-```
-
-## Repeated-Trial Benchmark Suites
-
-Use `zk0d_benchmark` to run vulnerable/safe suites with repeated trials and
-aggregate recall/precision/FPR metrics (with 95% Wilson confidence intervals):
-
-```bash
-cargo run --release --bin zk0d_benchmark -- \
-  --config-profile dev \
-  --trials 3 \
-  --jobs 2 \
-  --batch-jobs 1 \
-  --workers 2
-```
-
-For explicit per-backend effectiveness slices (Circom/Noir/Cairo/Halo2), use
-the dedicated multibackend suite:
-
-```bash
-cargo run --release --bin zk0d_benchmark -- \
-  --suites targets/benchmark_suites.multibackend.dev.yaml \
-  --suite safe_regression_multibackend,vulnerable_ground_truth_multibackend \
-  --trials 1 \
-  --jobs 1 \
-  --batch-jobs 1 \
-  --workers 1
 ```
 
 Then build a per-backend report:
@@ -215,27 +165,26 @@ Config profiles:
 - No profile:
   - Backward-compatible defaults (`targets/benchmark_suites.yaml`, `targets/benchmark_registry.yaml`).
 
-`zk0d_batch` also supports profile-based registry selection:
+`zkpatternfuzz` also supports profile-based registry selection:
 
 ```bash
 # Fast development catalog
-cargo run --release --bin zk0d_batch -- --config-profile dev --list-catalog
+cargo run --release --bin zkpatternfuzz -- --config-profile dev --list-catalog
 
 # Production CVE catalog
-cargo run --release --bin zk0d_batch -- --config-profile prod --list-catalog
+cargo run --release --bin zkpatternfuzz -- --config-profile prod --list-catalog
 ```
 
-To run only real-world suite entries, first enable those targets in
-`targets/benchmark_suites.yaml`, then select the suite explicitly:
+To run a tighter set, pass explicit pattern files:
 
 ```bash
-cargo run --release --bin zk0d_benchmark -- \
-  --suites targets/benchmark_suites.yaml \
-  --suite real_world_examples \
-  --trials 5 \
-  --jobs 2 \
-  --batch-jobs 1 \
-  --workers 2
+cargo run --release --bin zkpatternfuzz -- \
+  --pattern-yaml campaigns/cve/patterns/cveX01_dark_forest_missing_bit_length.yaml,campaigns/cve/patterns/cveX04_semaphore_missing_range_check.yaml \
+  --target-circuit /path/to/target.circom \
+  --framework circom \
+  --main-component main \
+  --output-root artifacts/simple_flow \
+  --report-json artifacts/simple_flow/findings.json
 ```
 
 ## Release Validation Workflow (Scheduled + Manual)

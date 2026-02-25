@@ -48,7 +48,7 @@ targets:
 ## 4. Reproduce A Single Failing Target
 
 ```bash
-target/release/zk0d_batch \
+target/release/zkpatternfuzz \
   --registry targets/fuzzer_registry.prod.yaml \
   --alias readiness_noir \
   --target-circuit /path/to/project/Nargo.toml \

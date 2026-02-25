@@ -141,7 +141,6 @@ attacks:
 ```bash
 cargo run -- --dry-run --config <campaign.yaml>
 scripts/validate_yaml.sh <campaign.yaml>
-cargo run --bin zk0d_config_migrate -- <campaign.yaml> --check
 ```
 
 ## 8. Recommended Readiness Baseline Set

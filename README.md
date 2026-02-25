@@ -74,7 +74,7 @@ Notes:
 # Run a campaign (DeFi audit example)
 cargo run --release -- --config campaigns/examples/defi_audit.yaml
 
-# Run with AI assistance (Mistral model)
+# Run with AI-assisted workflow (external AI + local heuristics)
 cargo run --release -- --config templates/ai_assisted_audit.yaml
 
 # With verbose output
@@ -83,27 +83,31 @@ cargo run --release -- --config campaigns/examples/defi_audit.yaml --verbose
 # Custom worker count
 cargo run --release -- --config campaigns/examples/defi_audit.yaml --workers 8
 
-# Run benchmark suite
-cargo run --release --bin zk0d_benchmark -- \
-  --config-profile dev \
-  --suite safe_regression,vulnerable_ground_truth \
-  --trials 2 --workers 4
+# Minimal direct flow: JSON config + YAML patterns -> fuzz -> JSON findings
+cargo run --release --bin zkpatternfuzz -- \
+  --config-json targets/external/target_run_overrides/ext015_orion_svm_classifier_test.json \
+  --pattern-yaml campaigns/cve/patterns/cveX34_cairo_multiplier_assert_readiness_probe.yaml \
+  --target-circuit /media/elements/Repos/zkml/orion/tests/ml/svm_classifier_test.cairo \
+  --framework cairo \
+  --main-component main \
+  --output-root artifacts/simple_flow \
+  --report-json artifacts/simple_flow/findings.json
 ```
 
-## AI-Assisted Pentesting
+## AI-Assisted Workflow
 
-ZkPatternFuzz integrates Mistral AI for intelligent security analysis:
+ZkPatternFuzz uses an **external AI workflow by default** and optional **local offline heuristic assistance**.
 
-**AI Features:**
-- **Invariant Generation**: Automatically generate candidate invariants from circuit patterns
-- **Result Analysis**: Intelligent analysis of fuzzing results with actionable recommendations
-- **Config Suggestions**: AI-generated YAML configuration tailored to your circuit
-- **Vulnerability Explanation**: Natural language explanations of found vulnerabilities
+**Execution model:**
+- **External AI (primary):** operators analyze emitted artifacts (`run_outcome.json`, `report.json`, bundles) out-of-band.
+- **Local heuristic assistant (optional):** `ai_assistant` can generate deterministic, offline helper suggestions.
+- **No AI proof semantics:** AI output is triage input only; exploitability/non-exploitability still requires replay/formal evidence.
 
-**AI Models Supported:**
-- Mistral (default) - Prompt-engineered for ZK circuit analysis
-- Claude - Advanced reasoning capabilities
-- GPT-4 - General-purpose AI assistance
+**Local heuristic features (optional):**
+- Candidate invariant suggestions
+- Result summary suggestions
+- YAML suggestion drafts
+- Basic finding explanation templates
 
 ## Attack Types
 
@@ -339,7 +343,7 @@ Options:
 ```
 ZkPatternFuzz/
 ├── src/                     # Main application
-│   ├── bin/                 # Binary executables (zk-fuzzer, zk0d_benchmark, etc.)
+│   ├── bin/                 # Binary executables (zk-fuzzer, zkpatternfuzz, validate_yaml)
 │   ├── attacks/             # Attack implementations
 │   ├── executor/            # Circuit execution abstraction
 │   ├── fuzzer/              # Fuzzing engine

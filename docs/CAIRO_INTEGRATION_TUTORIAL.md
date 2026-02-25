@@ -7,7 +7,7 @@ Step-by-step path to move a Cairo target into the readiness pipeline.
 ```bash
 scarb --version
 scarb cairo-run --version
-cargo build --release --bin zk0d_batch
+cargo build --release --bin zkpatternfuzz
 ```
 
 If Scarb/Cairo is missing, install with `scripts/install_cairo.sh`.
@@ -26,7 +26,7 @@ ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_cairo
 ## 3. Run A Single Cairo Batch
 
 ```bash
-target/release/zk0d_batch \
+target/release/zkpatternfuzz \
   --registry targets/fuzzer_registry.prod.yaml \
   --alias readiness_cairo \
   --target-circuit tests/cairo_programs/multiplier.cairo \
@@ -39,35 +39,24 @@ target/release/zk0d_batch \
   --emit-reason-tsv
 ```
 
-## 4. Add/Verify Cairo Matrix Entry
-
-`targets/zk0d_matrix_cairo_readiness.yaml`:
-
-```yaml
-targets:
-  - name: local_cairo_multiplier
-    target_circuit: tests/cairo_programs/multiplier.cairo
-    main_component: main
-    framework: cairo
-    alias: readiness_cairo
-    enabled: true
-```
-
-## 5. Run Cairo Readiness Lane
+## 4. Run Cairo Readiness Directly
 
 ```bash
-scripts/run_cairo_readiness.sh --workers 2 --iterations 250 --timeout 30
-cat artifacts/backend_readiness/cairo/latest_report.json
+cargo run --release --bin zkpatternfuzz -- \
+  --pattern-yaml campaigns/cve/patterns/cveX34_cairo_multiplier_assert_readiness_probe.yaml \
+  --target-circuit tests/cairo_programs/multiplier.cairo \
+  --framework cairo \
+  --main-component main \
+  --workers 2 \
+  --iterations 250 \
+  --timeout 30 \
+  --output-root artifacts/backend_readiness/cairo \
+  --report-json artifacts/backend_readiness/cairo/latest_findings.json
 ```
 
 Artifacts to check:
-- lane report: `artifacts/backend_readiness/cairo/latest_report.json`
-- matrix summary TSV: `artifacts/backend_readiness/cairo/summary_<timestamp>.tsv`
-- matrix log: `artifacts/backend_readiness/cairo/matrix_<timestamp>.log`
-
-## 6. Promote To Full Multi-Backend Gate
-
-Run all non-Circom readiness lanes:
+- findings report: `artifacts/backend_readiness/cairo/latest_findings.json`
+- run outcomes under `artifacts/backend_readiness/cairo/.scan_run_artifacts/`
 
 ```bash
 scripts/run_backend_readiness_lanes.sh --enforce-dashboard
