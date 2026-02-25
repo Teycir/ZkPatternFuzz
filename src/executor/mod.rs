@@ -1419,11 +1419,19 @@ impl CircuitExecutor for Halo2Executor {
                 let coverage = match coverage_from_results(self.check_constraints(inputs)) {
                     Some(value) => value,
                     None => {
-                        return ExecutionResult::failure(
-                            "Halo2 constraint coverage unavailable: refusing output-hash recovery"
-                                .to_string(),
-                        )
-                        .with_time(start.elapsed().as_micros() as u64);
+                        if self.target.constraint_export_supported() == Some(false) {
+                            tracing::info!(
+                                "Halo2 target '{}' does not support --constraints export; using output-hash coverage fallback",
+                                self.target.name()
+                            );
+                            ExecutionCoverage::with_output_hash(&outputs)
+                        } else {
+                            return ExecutionResult::failure(
+                                "Halo2 constraint coverage unavailable: refusing output-hash recovery"
+                                    .to_string(),
+                            )
+                            .with_time(start.elapsed().as_micros() as u64);
+                        }
                     }
                 };
                 ExecutionResult::success(outputs, coverage)

@@ -685,6 +685,8 @@ pub struct Halo2Target {
     cargo_toolchain: Option<String>,
     /// Most recent Cargo binary candidate that worked for this target.
     selected_cargo_binary: Mutex<Option<String>>,
+    /// Whether the project CLI supports the `--constraints` export flag.
+    constraint_flag_support: Mutex<Option<bool>>,
     /// Cached PLONK constraints and lookup tables (if available)
     plonk_constraints: OnceLock<ParsedConstraintSet>,
 }
@@ -821,6 +823,7 @@ impl Halo2Target {
             config: Halo2Config::default(),
             cargo_toolchain: halo2_cargo_toolchain_from_env(),
             selected_cargo_binary: Mutex::new(None),
+            constraint_flag_support: Mutex::new(None),
             plonk_constraints: OnceLock::new(),
         })
     }
@@ -859,6 +862,34 @@ impl Halo2Target {
             tracing::info!("Using Cargo candidate '{}'", candidate);
             *guard = Some(candidate.to_string());
         }
+    }
+
+    fn constraints_flag_support(&self) -> Option<bool> {
+        match self.constraint_flag_support.lock() {
+            Ok(guard) => *guard,
+            Err(poisoned) => {
+                tracing::warn!("constraint_flag_support lock poisoned; returning recovered value");
+                *poisoned.into_inner()
+            }
+        }
+    }
+
+    fn remember_constraints_flag_support(&self, supported: bool) {
+        let mut guard = match self.constraint_flag_support.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::warn!("constraint_flag_support lock poisoned; storing recovered value");
+                poisoned.into_inner()
+            }
+        };
+        if *guard != Some(supported) {
+            tracing::info!("Halo2 --constraints support detected: {}", supported);
+        }
+        *guard = Some(supported);
+    }
+
+    pub fn constraint_export_supported(&self) -> Option<bool> {
+        self.constraints_flag_support()
     }
 
     fn cargo_binary_candidates(&self) -> Vec<String> {
@@ -1859,13 +1890,25 @@ impl Halo2Target {
             return parsed;
         }
 
-        ParsedConstraintSet::default()
+        let empty = ParsedConstraintSet::default();
+        if self.plonk_constraints.set(empty.clone()).is_err() {
+            tracing::warn!("PLONK constraint cache already initialized while caching empty constraints");
+        }
+        empty
     }
 
     fn try_extract_constraints_from_binary(
         &self,
         project_dir: &Path,
     ) -> Option<ParsedConstraintSet> {
+        if self.constraints_flag_support() == Some(false) {
+            tracing::debug!(
+                "Skipping Halo2 constraint extraction in '{}': --constraints unsupported",
+                project_dir.display()
+            );
+            return None;
+        }
+
         let output = match self.run_cargo_command_with_fallback(
             &format!(
                 "Failed to extract Halo2 constraints via binary run in '{}'",
@@ -1876,13 +1919,28 @@ impl Halo2Target {
                     .current_dir(project_dir);
             },
         ) {
-            Ok(output) => output,
+            Ok(output) => {
+                self.remember_constraints_flag_support(true);
+                output
+            }
             Err(err) => {
-                tracing::warn!(
-                    "Failed to extract Halo2 constraints via binary run in '{}': {}",
-                    project_dir.display(),
-                    err
-                );
+                let err_text = err.to_string();
+                let err_lc = err_text.to_ascii_lowercase();
+                if err_lc.contains("unexpected argument '--constraints'")
+                    || err_lc.contains("unexpected argument \"--constraints\"")
+                {
+                    self.remember_constraints_flag_support(false);
+                    tracing::info!(
+                        "Skipping Halo2 constraint extraction in '{}': target binary does not support --constraints",
+                        project_dir.display()
+                    );
+                } else {
+                    tracing::warn!(
+                        "Failed to extract Halo2 constraints via binary run in '{}': {}",
+                        project_dir.display(),
+                        err
+                    );
+                }
                 return None;
             }
         };
