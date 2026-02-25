@@ -41,7 +41,7 @@ crates/zk-symbolic/src/executor.rs|let modulus = ast::Int::from_str(ctx, &self.m
 crates/zk-symbolic/src/symbolic_v2.rs|return states.into_iter().next().unwrap();
 src/analysis/opus.rs|hints.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
 src/bin/gen_tornado_seed.rs|.expect("normalize_value(Value::Object(_)) always returns Value::Object"))
-src/bin/zk0d_batch.rs|.expect("checked contains_key");
+src/bin/zkpatternfuzz.rs|.expect("checked contains_key");
 src/chain_fuzzer/corpus.rs|let meta = per_chain.get_mut(&e.spec_name).expect("just inserted");
 src/chain_fuzzer/invariants.rs|.expect("Specific step reference must resolve to an index"),
 src/cve/mod.rs|.expect("semantic oracle state mutex poisoned; aborting CVE check");

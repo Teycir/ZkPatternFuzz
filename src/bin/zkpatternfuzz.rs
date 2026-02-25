@@ -1,7 +1,7 @@
 use anyhow::Context;
 use chrono::Utc;
 use clap::{Parser, ValueEnum};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,9 +29,13 @@ const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
 const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
 
 #[derive(Parser, Debug)]
-#[command(name = "zk0d_batch")]
+#[command(name = "zkpatternfuzz")]
 #[command(about = "Batch runner for YAML attack-pattern catalogs")]
 struct Args {
+    /// Path to JSON/YAML run config (target/env/iterations/timeouts); `run_overrides` wrapper is supported
+    #[arg(long)]
+    config_json: Option<String>,
+
     /// Path to fuzzer registry YAML
     #[arg(long)]
     registry: Option<String>,
@@ -45,16 +49,24 @@ struct Args {
     list_catalog: bool,
 
     /// Comma-separated collection names to run
+    /// If no selector flags are provided, all discovered pattern YAML files are executed.
     #[arg(long)]
     collection: Option<String>,
 
     /// Comma-separated alias names to run
+    /// If no selector flags are provided, all discovered pattern YAML files are executed.
     #[arg(long)]
     alias: Option<String>,
 
     /// Comma-separated template filenames to run
+    /// If no selector flags are provided, all discovered pattern YAML files are executed.
     #[arg(long)]
     template: Option<String>,
+
+    /// Comma-separated pattern YAML paths (bypasses registry selectors)
+    /// If omitted with no selector flags, the runner auto-discovers all pattern-compatible YAML files.
+    #[arg(long)]
+    pattern_yaml: Option<String>,
 
     /// Target circuit path used for all selected templates
     #[arg(long)]
@@ -111,6 +123,10 @@ struct Args {
     /// Emit per-template reason codes as TSV to stdout (for external harness ingestion)
     #[arg(long, default_value_t = false)]
     emit_reason_tsv: bool,
+
+    /// Write compact JSON findings report for this batch run
+    #[arg(long)]
+    report_json: Option<String>,
 
     /// Disable batch-level progress lines (enabled by default)
     #[arg(long, default_value_t = false)]
@@ -192,12 +208,56 @@ struct TemplateInfo {
 type TemplateIndex = BTreeMap<String, TemplateInfo>;
 type CollectionIndex = BTreeMap<String, Vec<String>>;
 
+#[derive(Debug, Deserialize, Clone, Default)]
+struct BatchFileConfig {
+    #[serde(default)]
+    target_circuit: Option<String>,
+    #[serde(default)]
+    main_component: Option<String>,
+    #[serde(default)]
+    framework: Option<String>,
+    #[serde(default)]
+    family: Option<String>,
+    #[serde(default)]
+    collection: Option<String>,
+    #[serde(default)]
+    alias: Option<String>,
+    #[serde(default)]
+    template: Option<String>,
+    #[serde(default)]
+    pattern_yaml: Option<String>,
+    #[serde(default)]
+    jobs: Option<usize>,
+    #[serde(default)]
+    workers: Option<usize>,
+    #[serde(default)]
+    seed: Option<u64>,
+    #[serde(default)]
+    iterations: Option<u64>,
+    #[serde(default)]
+    timeout: Option<u64>,
+    #[serde(default)]
+    env: BTreeMap<String, serde_yaml::Value>,
+    #[serde(default)]
+    extra_args: Vec<String>,
+    #[serde(default)]
+    output_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct EffectiveFileConfig {
+    env: BTreeMap<String, String>,
+    extra_args: Vec<String>,
+}
+
 #[derive(Clone, Copy)]
 struct ScanRunConfig<'a> {
     bin_path: &'a Path,
     target_circuit: &'a str,
     framework: &'a str,
     main_component: &'a str,
+    env_overrides: &'a BTreeMap<String, String>,
+    extra_args: &'a [String],
     workers: usize,
     seed: u64,
     iterations: u64,
@@ -211,11 +271,13 @@ struct ScanRunConfig<'a> {
 #[derive(Debug, Clone)]
 struct TemplateOutcomeReason {
     template_file: String,
+    template_path: String,
     suffix: String,
     status: Option<String>,
     stage: Option<String>,
     reason_code: String,
     high_confidence_detected: bool,
+    finding_count: usize,
 }
 
 struct ScanRunResult {
@@ -307,6 +369,22 @@ fn report_has_high_confidence_finding(report_path: &Path) -> bool {
         report_path,
         high_confidence_min_oracles_from_env(),
     )
+}
+
+fn report_finding_count(report_path: &Path) -> usize {
+    let raw = match fs::read_to_string(report_path) {
+        Ok(raw) => raw,
+        Err(_) => return 0,
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(parsed) => parsed,
+        Err(_) => return 0,
+    };
+    parsed
+        .get("findings")
+        .and_then(|v| v.as_array())
+        .map(|entries| entries.len())
+        .unwrap_or(0)
 }
 
 fn high_confidence_min_oracles_from_env() -> usize {
@@ -445,6 +523,128 @@ fn split_csv(input: Option<&str>) -> Vec<String> {
         .collect()
 }
 
+fn yaml_key(name: &str) -> serde_yaml::Value {
+    serde_yaml::Value::String(name.to_string())
+}
+
+fn env_value_to_string(value: &serde_yaml::Value) -> anyhow::Result<Option<String>> {
+    let rendered = match value {
+        serde_yaml::Value::Null => return Ok(None),
+        serde_yaml::Value::Bool(v) => {
+            if *v {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
+        }
+        serde_yaml::Value::Number(v) => v.to_string(),
+        serde_yaml::Value::String(v) => v.clone(),
+        other => anyhow::bail!(
+            "Unsupported env override value type: {:?}. Use scalar string/number/bool.",
+            other
+        ),
+    };
+    Ok(Some(rendered))
+}
+
+fn load_batch_file_config(raw_path: &str) -> anyhow::Result<BatchFileConfig> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("--config-json cannot be empty");
+    }
+    let path = PathBuf::from(trimmed);
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read config file '{}'", path.display()))?;
+    let mut parsed: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse config file '{}'", path.display()))?;
+
+    if let Some(map) = parsed.as_mapping_mut() {
+        if let Some(inner) = map.get(yaml_key("run_overrides")) {
+            parsed = inner.clone();
+        } else if let Some(inner) = map.get(yaml_key("run")) {
+            parsed = inner.clone();
+        } else if let Some(inner) = map.get(yaml_key("config")) {
+            parsed = inner.clone();
+        }
+    }
+
+    serde_yaml::from_value(parsed).with_context(|| {
+        format!(
+            "Failed to decode config file '{}'. Expected keys such as pattern_yaml/target_circuit/workers/iterations/timeout/env.",
+            path.display()
+        )
+    })
+}
+
+fn apply_file_config(args: &mut Args, cfg: BatchFileConfig) -> anyhow::Result<EffectiveFileConfig> {
+    if args.target_circuit.is_none() {
+        args.target_circuit = cfg.target_circuit;
+    }
+    if args.collection.is_none() {
+        args.collection = cfg.collection;
+    }
+    if args.alias.is_none() {
+        args.alias = cfg.alias;
+    }
+    if args.template.is_none() {
+        args.template = cfg.template;
+    }
+    if args.pattern_yaml.is_none() {
+        args.pattern_yaml = cfg.pattern_yaml;
+    }
+    if let Some(value) = cfg.main_component {
+        args.main_component = value;
+    }
+    if let Some(value) = cfg.framework {
+        args.framework = value;
+    }
+    if let Some(value) = cfg.family {
+        args.family = value;
+    }
+    if let Some(value) = cfg.jobs {
+        if value == 0 {
+            anyhow::bail!("Invalid config: jobs cannot be zero");
+        }
+        args.jobs = value;
+    }
+    if let Some(value) = cfg.workers {
+        if value == 0 {
+            anyhow::bail!("Invalid config: workers cannot be zero");
+        }
+        args.workers = value;
+    }
+    if let Some(value) = cfg.seed {
+        args.seed = value;
+    }
+    if let Some(value) = cfg.iterations {
+        args.iterations = value;
+    }
+    if let Some(value) = cfg.timeout {
+        if value == 0 {
+            anyhow::bail!("Invalid config: timeout cannot be zero");
+        }
+        args.timeout = value;
+    }
+    if let Some(value) = cfg.output_root {
+        args.output_root = Some(value);
+    }
+
+    let mut env = BTreeMap::new();
+    for (key, value) in cfg.env {
+        if key.trim().is_empty() {
+            anyhow::bail!("Invalid config: env key cannot be empty");
+        }
+        if let Some(rendered) = env_value_to_string(&value)? {
+            env.insert(key, rendered);
+        }
+    }
+
+    Ok(EffectiveFileConfig {
+        env,
+        extra_args: cfg.extra_args,
+    })
+}
+
 fn expand_env_placeholders(input: &str) -> String {
     let chars: Vec<char> = input.chars().collect();
     let mut i = 0usize;
@@ -528,6 +728,10 @@ fn validate_pattern_only_yaml(path: &Path) -> anyhow::Result<()> {
         "profiles",
         "active_profile",
         "patterns",
+        "selector_policy",
+        "selector_synonyms",
+        "synonym_bundles",
+        "selector_normalization",
         "target_traits",
         "invariants",
         "schedule",
@@ -585,7 +789,7 @@ fn collection_base_path(
         None => {
             let source = registry.url.as_deref().unwrap_or("<no-path-no-url>");
             anyhow::bail!(
-                "Registry '{}' has no local `path` (source: '{}'). Remote registries are not executable by zk0d_batch.",
+                "Registry '{}' has no local `path` (source: '{}'). Remote registries are not executable by zkpatternfuzz.",
                 collection.registry,
                 source
             );
@@ -746,26 +950,9 @@ fn resolve_selection(
         && selected_aliases.is_empty()
         && selected_templates.is_empty()
     {
-        if let Some(values) = registry_file.aliases.get("always") {
-            for value in values {
-                append_selector_value(
-                    &mut requested_templates,
-                    by_collection,
-                    template_index,
-                    value,
-                    "Default alias 'always'",
-                )?;
-            }
-        } else {
-            for name in registry_file.collections.keys() {
-                append_selector_value(
-                    &mut requested_templates,
-                    by_collection,
-                    template_index,
-                    name,
-                    "Collection selection",
-                )?;
-            }
+        // Default mode: run all available YAML templates from the registry index.
+        for template_name in template_index.keys() {
+            requested_templates.push(template_name.clone());
         }
     }
 
@@ -839,6 +1026,9 @@ fn run_scan(
     cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.scan_output_root)
         .env(RUN_SIGNAL_DIR_ENV, &run_signal_dir)
         .env(BUILD_CACHE_DIR_ENV, &build_cache_dir);
+    for (key, value) in run_cfg.env_overrides {
+        cmd.env(key, value);
+    }
     if std::env::var_os(HALO2_EXTERNAL_TIMEOUT_ENV).is_none() {
         cmd.env(
             HALO2_EXTERNAL_TIMEOUT_ENV,
@@ -895,6 +1085,9 @@ fn run_scan(
         .arg("--timeout")
         .arg(run_cfg.timeout.to_string())
         .arg("--simple-progress");
+    if !run_cfg.extra_args.is_empty() {
+        cmd.args(run_cfg.extra_args);
+    }
 
     // Validation dry-runs should not materialize scan output roots.
     if !validate_only {
@@ -911,8 +1104,13 @@ fn run_scan(
         } else {
             String::new()
         };
+        let extra_args = if run_cfg.extra_args.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", run_cfg.extra_args.join(" "))
+        };
         println!(
-            "[DRY RUN] {}={} {}={} {}={} {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}",
+            "[DRY RUN] {}={} {}={} {}={} {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}{}",
             SCAN_OUTPUT_ROOT_ENV,
             run_cfg.scan_output_root.display(),
             RUN_SIGNAL_DIR_ENV,
@@ -929,6 +1127,7 @@ fn run_scan(
             run_cfg.seed,
             run_cfg.iterations,
             run_cfg.timeout,
+            extra_args,
             suffix_arg,
             if validate_only { " --dry-run" } else { "" }
         );
@@ -1453,11 +1652,13 @@ fn collect_template_outcome_reasons(
             if !run_outcome_path.exists() {
                 return TemplateOutcomeReason {
                     template_file: template.file_name.clone(),
+                    template_path: template.path.display().to_string(),
                     suffix,
                     status: None,
                     stage: None,
                     reason_code: "run_outcome_missing".to_string(),
                     high_confidence_detected: false,
+                    finding_count: 0,
                 };
             }
 
@@ -1466,11 +1667,13 @@ fn collect_template_outcome_reasons(
                 Err(_) => {
                     return TemplateOutcomeReason {
                         template_file: template.file_name.clone(),
+                        template_path: template.path.display().to_string(),
                         suffix,
                         status: None,
                         stage: None,
                         reason_code: "run_outcome_unreadable".to_string(),
                         high_confidence_detected: false,
+                        finding_count: 0,
                     };
                 }
             };
@@ -1480,11 +1683,13 @@ fn collect_template_outcome_reasons(
                 Err(_) => {
                     return TemplateOutcomeReason {
                         template_file: template.file_name.clone(),
+                        template_path: template.path.display().to_string(),
                         suffix,
                         status: None,
                         stage: None,
                         reason_code: "run_outcome_invalid_json".to_string(),
                         high_confidence_detected: false,
+                        finding_count: 0,
                     };
                 }
             };
@@ -1504,6 +1709,7 @@ fn collect_template_outcome_reasons(
 
             TemplateOutcomeReason {
                 template_file: template.file_name.clone(),
+                template_path: template.path.display().to_string(),
                 suffix,
                 status,
                 stage,
@@ -1515,6 +1721,7 @@ fn collect_template_outcome_reasons(
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| classify_run_reason_code(&parsed).to_string()),
                 high_confidence_detected: report_has_high_confidence_finding(&report_path),
+                finding_count: report_finding_count(&report_path),
             }
         })
         .collect()
@@ -1559,10 +1766,12 @@ fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
     }
 
     println!("REASON_TSV_START");
-    println!("template\tsuffix\treason_code\tstatus\tstage\thigh_confidence_detected");
+    println!(
+        "template\tsuffix\treason_code\tstatus\tstage\thigh_confidence_detected\tfinding_count"
+    );
     for reason in reasons {
         println!(
-            "{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
             reason.template_file,
             reason.suffix,
             reason.reason_code,
@@ -1573,9 +1782,157 @@ fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
             } else {
                 "0"
             },
+            reason.finding_count,
         );
     }
     println!("REASON_TSV_END");
+}
+
+#[derive(Debug, Serialize)]
+struct PatternReportRow {
+    pattern_file: String,
+    pattern_path: String,
+    output_suffix: String,
+    reason_code: String,
+    status: String,
+    stage: String,
+    finding_count: usize,
+    high_confidence_detected: bool,
+    matched: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchFindingsReport<'a> {
+    report_schema: &'static str,
+    generated_utc: String,
+    verdict: &'static str,
+    target_circuit: &'a str,
+    framework: &'a str,
+    main_component: &'a str,
+    input: BatchReportInput<'a>,
+    run: BatchReportRun,
+    totals: BatchReportTotals,
+    patterns: Vec<PatternReportRow>,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchReportInput<'a> {
+    config_json: Option<&'a str>,
+    registry: Option<&'a str>,
+    collection: Option<&'a str>,
+    alias: Option<&'a str>,
+    template: Option<&'a str>,
+    pattern_yaml: Option<&'a str>,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchReportRun {
+    jobs: usize,
+    workers: usize,
+    seed: u64,
+    iterations: u64,
+    timeout: u64,
+    output_root: String,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchReportTotals {
+    expected_patterns: usize,
+    executed_patterns: usize,
+    failed_patterns: usize,
+    matched_patterns: usize,
+    total_findings: usize,
+    high_confidence_patterns: usize,
+}
+
+fn write_report_json(
+    args: &Args,
+    path: &Path,
+    target_circuit: &str,
+    reasons: &[TemplateOutcomeReason],
+    expected_count: usize,
+    executed: usize,
+    failures: usize,
+    scan_output_root: &Path,
+) -> anyhow::Result<()> {
+    let matched_patterns = reasons
+        .iter()
+        .filter(|reason| reason.finding_count > 0)
+        .count();
+    let total_findings = reasons.iter().map(|reason| reason.finding_count).sum::<usize>();
+    let high_confidence_patterns = reasons
+        .iter()
+        .filter(|reason| reason.high_confidence_detected)
+        .count();
+    let verdict = if failures > 0 {
+        "run_failed"
+    } else if matched_patterns > 0 {
+        "matching_patterns_found"
+    } else {
+        "no_matching_patterns_found"
+    };
+
+    let patterns = reasons
+        .iter()
+        .map(|reason| PatternReportRow {
+            pattern_file: reason.template_file.clone(),
+            pattern_path: reason.template_path.clone(),
+            output_suffix: reason.suffix.clone(),
+            reason_code: reason.reason_code.clone(),
+            status: reason.status.clone().unwrap_or_else(|| "unknown".to_string()),
+            stage: reason.stage.clone().unwrap_or_else(|| "unknown".to_string()),
+            finding_count: reason.finding_count,
+            high_confidence_detected: reason.high_confidence_detected,
+            matched: reason.finding_count > 0,
+        })
+        .collect::<Vec<_>>();
+
+    let report = BatchFindingsReport {
+        report_schema: "zkfuzz.batch_findings.v1",
+        generated_utc: Utc::now().to_rfc3339(),
+        verdict,
+        target_circuit,
+        framework: &args.framework,
+        main_component: &args.main_component,
+        input: BatchReportInput {
+            config_json: args.config_json.as_deref(),
+            registry: args.registry.as_deref(),
+            collection: args.collection.as_deref(),
+            alias: args.alias.as_deref(),
+            template: args.template.as_deref(),
+            pattern_yaml: args.pattern_yaml.as_deref(),
+        },
+        run: BatchReportRun {
+            jobs: args.jobs,
+            workers: args.workers,
+            seed: args.seed,
+            iterations: args.iterations,
+            timeout: args.timeout,
+            output_root: scan_output_root.display().to_string(),
+        },
+        totals: BatchReportTotals {
+            expected_patterns: expected_count,
+            executed_patterns: executed,
+            failed_patterns: failures,
+            matched_patterns,
+            total_findings,
+            high_confidence_patterns,
+        },
+        patterns,
+    };
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create report_json parent directory '{}'",
+                parent.display()
+            )
+        })?;
+    }
+    let encoded = serde_json::to_string_pretty(&report)?;
+    fs::write(path, encoded)
+        .with_context(|| format!("Failed to write report JSON '{}'", path.display()))?;
+    Ok(())
 }
 
 fn is_selector_mismatch_validation(stdout: &str, stderr: &str) -> bool {
@@ -1618,36 +1975,301 @@ fn write_selector_mismatch_outcome(
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+fn resolve_explicit_pattern_selection(
+    raw_paths: &[String],
+    family_override: Family,
+) -> anyhow::Result<Vec<TemplateInfo>> {
+    let mut dedup = BTreeSet::new();
+    let mut selected = Vec::new();
+    for raw in raw_paths {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let path = PathBuf::from(trimmed);
+        let canonical = path.to_string_lossy().to_string();
+        if !dedup.insert(canonical.clone()) {
+            continue;
+        }
+        let file_name = path
+            .file_name()
+            .and_then(|v| v.to_str())
+            .unwrap_or(trimmed)
+            .to_string();
+        validate_template_name(&file_name)?;
+        let family = validate_template_compatibility(
+            &TemplateInfo {
+                file_name: file_name.clone(),
+                path: path.clone(),
+                family: template_family_from_name(&file_name)?,
+            },
+            family_override,
+        )?;
+        selected.push(TemplateInfo {
+            file_name,
+            path,
+            family,
+        });
+    }
 
+    if selected.is_empty() {
+        anyhow::bail!("pattern_yaml resolved to zero usable pattern paths");
+    }
+
+    Ok(selected)
+}
+
+fn should_skip_pattern_discovery_dir(name: &str) -> bool {
+    matches!(
+        name,
+        ".git"
+            | "target"
+            | "artifacts"
+            | "node_modules"
+            | "vendor"
+            | "ZkFuzz"
+            | "reports"
+            | "build"
+    )
+}
+
+fn discover_all_pattern_templates(repo_root: &Path) -> anyhow::Result<Vec<TemplateInfo>> {
+    let mut stack = vec![repo_root.to_path_buf()];
+    let mut discovered = Vec::<TemplateInfo>::new();
+    let mut dedup = BTreeSet::<String>::new();
+
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                let name = entry.file_name();
+                let Some(name) = name.to_str() else {
+                    continue;
+                };
+                if should_skip_pattern_discovery_dir(name) {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let Some(ext) = path.extension().and_then(|v| v.to_str()) else {
+                continue;
+            };
+            if ext != "yaml" && ext != "yml" {
+                continue;
+            }
+
+            let canonical = path.display().to_string();
+            if !dedup.insert(canonical) {
+                continue;
+            }
+
+            let Some(file_name) = path.file_name().and_then(|v| v.to_str()) else {
+                continue;
+            };
+            if validate_template_name(file_name).is_err() {
+                continue;
+            }
+            if validate_pattern_only_yaml(&path).is_err() {
+                continue;
+            }
+
+            let family = template_family_from_name(file_name)?;
+            discovered.push(TemplateInfo {
+                file_name: file_name.to_string(),
+                path,
+                family,
+            });
+        }
+    }
+
+    discovered.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(discovered)
+}
+
+fn pattern_regex_signature(path: &Path) -> anyhow::Result<Option<Vec<String>>> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read pattern YAML '{}'", path.display()))?;
+    let doc: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse pattern YAML '{}'", path.display()))?;
+    let Some(root) = doc.as_mapping() else {
+        return Ok(None);
+    };
+    let patterns_key = yaml_key("patterns");
+    let Some(patterns) = root.get(&patterns_key) else {
+        return Ok(None);
+    };
+    let Some(items) = patterns.as_sequence() else {
+        return Ok(None);
+    };
+    let mut selectors = Vec::<String>::new();
+    for item in items {
+        let Some(map) = item.as_mapping() else {
+            continue;
+        };
+        let pattern_key = yaml_key("pattern");
+        let kind_key = yaml_key("kind");
+        let Some(pattern) = map.get(&pattern_key).and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let kind = map
+            .get(&kind_key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("regex")
+            .trim()
+            .to_ascii_lowercase();
+        selectors.push(format!("{}::{}", kind, pattern.trim()));
+    }
+    if selectors.is_empty() {
+        return Ok(None);
+    }
+    selectors.sort();
+    selectors.dedup();
+    Ok(Some(selectors))
+}
+
+fn pattern_specificity_score(path: &Path) -> i64 {
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => return 0,
+    };
+    let doc: serde_yaml::Value = match serde_yaml::from_str(&raw) {
+        Ok(doc) => doc,
+        Err(_) => return 0,
+    };
+    let Some(root) = doc.as_mapping() else {
+        return 0;
+    };
+    let mut score = 0i64;
+    if root.contains_key(&yaml_key("profiles")) {
+        score += 4;
+    }
+    if root.contains_key(&yaml_key("active_profile")) {
+        score += 4;
+    }
+    if root.contains_key(&yaml_key("selector_policy")) {
+        score += 1;
+    }
+    if root.contains_key(&yaml_key("selector_synonyms")) {
+        score += 1;
+    }
+    if root.contains_key(&yaml_key("selector_normalization")) {
+        score += 1;
+    }
+    score + (raw.len() as i64 / 1024)
+}
+
+fn dedupe_patterns_by_signature(
+    selected: Vec<TemplateInfo>,
+) -> anyhow::Result<(Vec<TemplateInfo>, Vec<(TemplateInfo, TemplateInfo)>)> {
+    let mut kept = Vec::<TemplateInfo>::new();
+    let mut dropped = Vec::<(TemplateInfo, TemplateInfo)>::new();
+    let mut signature_to_index = BTreeMap::<String, usize>::new();
+
+    for template in selected {
+        let signature = pattern_regex_signature(&template.path)?;
+        let Some(signature) = signature else {
+            kept.push(template);
+            continue;
+        };
+        let key = signature.join("\n");
+        if let Some(existing_idx) = signature_to_index.get(&key).copied() {
+            let existing = kept[existing_idx].clone();
+            let existing_score = pattern_specificity_score(&existing.path);
+            let incoming_score = pattern_specificity_score(&template.path);
+            let incoming_better = incoming_score > existing_score
+                || (incoming_score == existing_score && template.path < existing.path);
+            if incoming_better {
+                kept[existing_idx] = template.clone();
+                dropped.push((existing, template.clone()));
+            } else {
+                dropped.push((template.clone(), existing));
+            }
+            continue;
+        }
+        signature_to_index.insert(key, kept.len());
+        kept.push(template);
+    }
+
+    Ok((kept, dropped))
+}
+
+fn main() -> anyhow::Result<()> {
+    let mut args = Args::parse();
+    let effective_file_cfg = if let Some(path) = args.config_json.clone() {
+        let cfg = load_batch_file_config(&path)?;
+        apply_file_config(&mut args, cfg)?
+    } else {
+        EffectiveFileConfig::default()
+    };
     let family_override = parse_family(&args.family)?;
 
-    let registry_path_raw = args
-        .registry
-        .clone()
-        .unwrap_or_else(|| default_registry_for_profile(args.config_profile).to_string());
-    let registry_path = PathBuf::from(&registry_path_raw);
-    let registry_dir = registry_path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
+    let explicit_patterns = split_csv(args.pattern_yaml.as_deref());
+    let using_explicit_patterns = !explicit_patterns.is_empty();
+    let has_registry_selectors =
+        args.collection.is_some() || args.alias.is_some() || args.template.is_some();
 
-    let raw = std::fs::read_to_string(&registry_path)
-        .with_context(|| format!("Failed to read registry YAML '{}'", registry_path.display()))?;
-    let registry_file: RegistryFile = serde_yaml::from_str(&raw).with_context(|| {
-        format!(
-            "Failed to parse registry YAML '{}'",
-            registry_path.display()
-        )
-    })?;
+    let selected = if using_explicit_patterns {
+        if args.list_catalog {
+            anyhow::bail!("--list-catalog cannot be combined with --pattern-yaml");
+        }
+        resolve_explicit_pattern_selection(&explicit_patterns, family_override)?
+    } else if !has_registry_selectors {
+        if args.list_catalog {
+            anyhow::bail!("--list-catalog requires registry mode; omit --list-catalog for auto-discovery mode");
+        }
+        let repo_root = std::env::current_dir().context("Failed to resolve current directory")?;
+        let discovered = discover_all_pattern_templates(&repo_root)?;
+        if discovered.is_empty() {
+            anyhow::bail!(
+                "Auto-discovery found zero pattern-compatible YAML files under '{}'. Use --pattern-yaml or registry selectors.",
+                repo_root.display()
+            );
+        }
+        discovered
+    } else {
+        let registry_path_raw = args
+            .registry
+            .clone()
+            .unwrap_or_else(|| default_registry_for_profile(args.config_profile).to_string());
+        let registry_path = PathBuf::from(&registry_path_raw);
+        let registry_dir = registry_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
 
-    let (template_index, by_collection) = build_template_index(&registry_file, &registry_dir)?;
+        let raw = std::fs::read_to_string(&registry_path).with_context(|| {
+            format!("Failed to read registry YAML '{}'", registry_path.display())
+        })?;
+        let registry_file: RegistryFile = serde_yaml::from_str(&raw).with_context(|| {
+            format!(
+                "Failed to parse registry YAML '{}'",
+                registry_path.display()
+            )
+        })?;
+        let (template_index, by_collection) = build_template_index(&registry_file, &registry_dir)?;
 
-    if args.list_catalog {
-        print_catalog(&registry_file, &template_index, &by_collection);
-        return Ok(());
-    }
+        if args.list_catalog {
+            print_catalog(&registry_file, &template_index, &by_collection);
+            return Ok(());
+        }
+
+        args.registry = Some(registry_path_raw);
+        resolve_selection(&args, &registry_file, &template_index, &by_collection)?
+    };
 
     let target_circuit_raw = args.target_circuit.as_deref().ok_or_else(|| {
         anyhow::anyhow!("Missing required --target-circuit (unless --list-catalog is used)")
@@ -1669,7 +2291,20 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    let selected = resolve_selection(&args, &registry_file, &template_index, &by_collection)?;
+    let (selected, signature_dupes) = dedupe_patterns_by_signature(selected)?;
+    if !signature_dupes.is_empty() {
+        eprintln!(
+            "Skipped {} full-overlap duplicate patterns (same normalized selector set):",
+            signature_dupes.len()
+        );
+        for (dup, kept) in signature_dupes.iter().take(20) {
+            eprintln!(
+                "  - {} -> kept {}",
+                dup.path.display(),
+                kept.path.display()
+            );
+        }
+    }
 
     let mut selected_with_family: Vec<(TemplateInfo, Family)> = Vec::with_capacity(selected.len());
     for template in selected {
@@ -1708,6 +2343,8 @@ fn main() -> anyhow::Result<()> {
         target_circuit: &target_circuit,
         framework: &args.framework,
         main_component: &args.main_component,
+        env_overrides: &effective_file_cfg.env,
+        extra_args: &effective_file_cfg.extra_args,
         workers: args.workers,
         seed: args.seed,
         iterations: args.iterations,
@@ -1837,8 +2474,9 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
+    let mut reasons = Vec::new();
     if !args.dry_run {
-        let reasons = collect_template_outcome_reasons(
+        reasons = collect_template_outcome_reasons(
             &artifacts_root,
             batch_run_root.as_deref(),
             &selected_with_family,
@@ -1849,41 +2487,24 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    if let Some(path_raw) = args.report_json.as_deref() {
+        let path = PathBuf::from(path_raw);
+        write_report_json(
+            &args,
+            &path,
+            &target_circuit,
+            &reasons,
+            expected_count,
+            executed,
+            failures,
+            &scan_output_root,
+        )?;
+        println!("Wrote findings report JSON: {}", path.display());
+    }
+
     if !gate2_ok || !gate3_ok {
         std::process::exit(1);
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{parse_rustup_toolchain_names, push_unique_nonempty};
-
-    #[test]
-    fn parse_rustup_toolchain_names_extracts_first_token_and_filters_noise() {
-        let raw = "\
-nightly-x86_64-unknown-linux-gnu (default)\n\
-stable-x86_64-unknown-linux-gnu\n\
-info: syncing channel updates\n\
-error: network unavailable\n";
-        let parsed = parse_rustup_toolchain_names(raw);
-        assert_eq!(
-            parsed,
-            vec![
-                "nightly-x86_64-unknown-linux-gnu".to_string(),
-                "stable-x86_64-unknown-linux-gnu".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn push_unique_nonempty_dedupes_and_ignores_empty_values() {
-        let mut values = Vec::new();
-        push_unique_nonempty(&mut values, "");
-        push_unique_nonempty(&mut values, "nightly");
-        push_unique_nonempty(&mut values, "nightly");
-        push_unique_nonempty(&mut values, " stable ");
-        assert_eq!(values, vec!["nightly".to_string(), "stable".to_string()]);
-    }
 }

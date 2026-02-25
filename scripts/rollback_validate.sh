@@ -89,7 +89,7 @@ cargo "${CARGO_ARGS[@]}" build --release --all-features
 
 echo "Running rollback smoke checks..."
 ./target/release/zk-fuzzer --help >/dev/null
-cargo "${CARGO_ARGS[@]}" run --release --bin zk0d_batch -- --config-profile dev --list-catalog >/dev/null
+cargo "${CARGO_ARGS[@]}" run --release --bin zkpatternfuzz -- --config-profile dev --list-catalog >/dev/null
 
 popd >/dev/null
 echo "Rollback validation passed for ref: $STABLE_REF"

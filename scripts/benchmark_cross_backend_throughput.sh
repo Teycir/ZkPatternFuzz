@@ -25,9 +25,9 @@ Options:
   --iterations <N>                    Iterations per scan (default: 20)
   --timeout <sec>                     Timeout per scan in seconds (default: 20)
   --workers <N>                       Workers per scan (default: 2)
-  --batch-jobs <N>                    Template jobs passed to zk0d_batch (default: 1)
+  --batch-jobs <N>                    Template jobs passed to zkpatternfuzz (default: 1)
   --include-integration-tests         Include backend integration tests in lane runtime
-  --no-build-if-missing               Do not build zk0d_batch when missing
+  --no-build-if-missing               Do not build zkpatternfuzz when missing
   --enforce                           Exit non-zero if any backend run fails
   -h, --help                          Show this help
 EOF
