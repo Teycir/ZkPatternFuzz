@@ -184,6 +184,9 @@ echo \"{}=${{{}:-}}\"\n",
             let env_overrides = std::collections::BTreeMap::new();
             let extra_args: Vec<String> = Vec::new();
 
+            let run_signal_dir = temp.path().join("run_signals");
+            let build_cache_dir = temp.path().join("_build_cache");
+
             let cfg = ScanRunConfig {
                 bin_path: script_path.as_path(),
                 target_circuit: "circuits/demo.circom",
@@ -197,6 +200,8 @@ echo \"{}=${{{}:-}}\"\n",
                 timeout: 1,
                 scan_run_root: Some("scan_run_test"),
                 scan_output_root: temp.path(),
+                run_signal_dir: &run_signal_dir,
+                build_cache_dir: &build_cache_dir,
                 dry_run: false,
                 artifacts_root: temp.path(),
             };
@@ -266,6 +271,9 @@ echo \"{}=${{{}:-}}\"\n",
             let env_overrides = std::collections::BTreeMap::new();
             let extra_args: Vec<String> = Vec::new();
 
+            let run_signal_dir = temp.path().join("run_signals");
+            let build_cache_dir = temp.path().join("_build_cache");
+
             let cfg = ScanRunConfig {
                 bin_path: script_path.as_path(),
                 target_circuit: "/tmp/external-zkevm/Cargo.toml",
@@ -279,6 +287,8 @@ echo \"{}=${{{}:-}}\"\n",
                 timeout: 1,
                 scan_run_root: Some("scan_run_test"),
                 scan_output_root: temp.path(),
+                run_signal_dir: &run_signal_dir,
+                build_cache_dir: &build_cache_dir,
                 dry_run: false,
                 artifacts_root: temp.path(),
             };
