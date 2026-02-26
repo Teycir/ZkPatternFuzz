@@ -190,6 +190,11 @@ impl Default for UnderconstrainedOracle {
 impl BugOracle for UnderconstrainedOracle {
     fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
         let num_public = self.num_public_inputs.unwrap_or_default();
+        // With no public inputs, output collisions across private witnesses are
+        // expected and are not actionable underconstrained findings.
+        if num_public == 0 {
+            return None;
+        }
         if !self.matches_fixed_public_inputs(test_case, num_public) {
             return None;
         }
@@ -683,6 +688,7 @@ impl BugOracle for ArithmeticOverflowOracle {
             .map(|n| n.min(test_case.inputs.len()))
             .map(|n| test_case.inputs[..n].to_vec())
             .unwrap_or_default();
+        let has_observable_public_inputs = !scoped_public_inputs.is_empty();
         // Check if any input is >= field modulus
         for input in &test_case.inputs {
             if self.is_overflow(&input.0) {
@@ -705,6 +711,9 @@ impl BugOracle for ArithmeticOverflowOracle {
         // Check if output indicates wrapping
         for fe in output {
             if self.is_near_boundary(&fe.0) {
+                if !has_observable_public_inputs {
+                    continue;
+                }
                 return Some(Finding {
                     attack_type: AttackType::ArithmeticOverflow,
                     severity: Severity::Medium,

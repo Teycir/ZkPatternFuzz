@@ -207,3 +207,42 @@ fn test_legacy_behavior_without_independence() {
     // Legacy: 2 oracles = HIGH (ignores group independence)
     assert_eq!(correlated[0].confidence, ConfidenceLevel::High);
 }
+
+#[test]
+fn test_vacuous_empty_interface_evidence_does_not_inflate_group_confidence() {
+    let correlator = OracleCorrelator::new();
+    let witness = vec![FieldElement::one()];
+    let findings = vec![
+        Finding {
+            attack_type: AttackType::Underconstrained,
+            severity: Severity::Critical,
+            description: "Different witnesses produce identical output".to_string(),
+            poc: ProofOfConcept {
+                witness_a: witness.clone(),
+                witness_b: Some(vec![FieldElement::from_u64(2)]),
+                public_inputs: vec![],
+                proof: None,
+            },
+            location: None,
+            class: None,
+        },
+        Finding {
+            attack_type: AttackType::ArithmeticOverflow,
+            severity: Severity::Medium,
+            description: "Output near field boundary - potential overflow".to_string(),
+            poc: ProofOfConcept {
+                witness_a: witness.clone(),
+                witness_b: None,
+                public_inputs: vec![],
+                proof: None,
+            },
+            location: None,
+            class: None,
+        },
+    ];
+
+    let correlated = correlator.correlate(&findings);
+    assert_eq!(correlated.len(), 1);
+    assert_eq!(correlated[0].independent_group_count, 0);
+    assert_eq!(correlated[0].confidence, ConfidenceLevel::Low);
+}

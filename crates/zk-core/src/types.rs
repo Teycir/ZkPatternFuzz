@@ -178,6 +178,7 @@ impl Finding {
             .as_ref()
             .map(|witness| !witness.is_empty())
             .unwrap_or(false);
+        let has_observable_public_inputs = !self.poc.public_inputs.is_empty();
 
         if desc_lower.contains("hang") || desc_lower.contains("timeout") {
             FindingClass::Hang
@@ -185,7 +186,7 @@ impl Finding {
             FindingClass::Crash
         } else if desc_lower.contains("invariant") && desc_lower.contains("violated") {
             FindingClass::InvariantViolation
-        } else if has_cross_witness_evidence
+        } else if (has_cross_witness_evidence && has_observable_public_inputs)
             || desc_lower.contains("oracle violation")
             || desc_lower.contains("oracle-confirmed")
         {

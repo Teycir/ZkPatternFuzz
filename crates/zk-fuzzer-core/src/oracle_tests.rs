@@ -3,15 +3,22 @@ use super::*;
 #[test]
 fn test_underconstrained_oracle() {
     let mut oracle = UnderconstrainedOracle::new();
-    let test_case = TestCase {
+    let test_case_a = TestCase {
         inputs: vec![FieldElement::zero()],
+        expected_output: None,
+        metadata: zk_core::TestMetadata::default(),
+    };
+    let test_case_b = TestCase {
+        inputs: vec![FieldElement::from_u64(7)],
         expected_output: None,
         metadata: zk_core::TestMetadata::default(),
     };
     let output = vec![FieldElement::one()];
 
-    // First check should not find anything
-    assert!(oracle.check(&test_case, &output).is_none());
+    // No public inputs configured: collisions are inapplicable and must not emit.
+    assert!(oracle.check(&test_case_a, &output).is_none());
+    assert!(oracle.check(&test_case_b, &output).is_none());
+    assert_eq!(oracle.collision_count, 0);
 }
 
 #[test]
@@ -92,4 +99,18 @@ fn test_arithmetic_overflow_oracle() {
     let finding = finding.expect("overflow finding expected");
     assert_eq!(finding.attack_type, AttackType::ArithmeticOverflow);
     assert_eq!(finding.poc.public_inputs, vec![FieldElement([0xff; 32])]);
+}
+
+#[test]
+fn test_arithmetic_overflow_boundary_ignored_without_public_inputs() {
+    let mut oracle = ArithmeticOverflowOracle::new().with_public_input_count(0);
+    let test_case = TestCase {
+        inputs: vec![FieldElement::from_u64(1)],
+        expected_output: None,
+        metadata: zk_core::TestMetadata::default(),
+    };
+    let output = vec![FieldElement::zero()];
+
+    // With no observable public interface, boundary-only output signals are inapplicable.
+    assert!(oracle.check(&test_case, &output).is_none());
 }

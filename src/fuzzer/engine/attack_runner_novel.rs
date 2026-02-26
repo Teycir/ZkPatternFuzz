@@ -1448,33 +1448,43 @@ impl FuzzingEngine {
             .with_public_input_scope(scope_public_inputs);
 
         if scope_public_inputs {
-            let public_input_indices = if let Some(inspector) = self.executor.constraint_inspector()
-            {
-                let public_wires: std::collections::HashSet<_> =
-                    inspector.public_input_indices().into_iter().collect();
-                let mut wire_indices = inspector.public_input_indices();
-                wire_indices.extend(inspector.private_input_indices());
-                if wire_indices.is_empty() {
+            let public_input_indices: Vec<usize> =
+                if let Some(inspector) = self.executor.constraint_inspector() {
+                    let public_wires: std::collections::HashSet<_> =
+                        inspector.public_input_indices().into_iter().collect();
+                    let mut wire_indices = inspector.public_input_indices();
+                    wire_indices.extend(inspector.private_input_indices());
+                    if wire_indices.is_empty() {
                     wire_indices = (0..self.config.inputs.len()).collect();
                 }
-                wire_indices
-                    .into_iter()
-                    .enumerate()
-                    .filter_map(|(input_idx, wire_idx)| {
-                        if public_wires.contains(&wire_idx) {
+                    wire_indices
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(input_idx, wire_idx)| {
+                            if public_wires.contains(&wire_idx) {
                             Some(input_idx)
                         } else {
                             None
                         }
-                    })
-                    .collect()
-            } else {
-                (0..self
-                    .executor
-                    .num_public_inputs()
-                    .min(self.config.inputs.len()))
-                    .collect()
-            };
+                        })
+                        .collect()
+                } else {
+                    (0..self
+                        .executor
+                        .num_public_inputs()
+                        .min(self.config.inputs.len()))
+                        .collect()
+                };
+            if public_input_indices.is_empty() {
+                tracing::warn!(
+                    "Skipping witness collision detection: target exposes 0 public inputs, \
+                     so output collisions across different private witnesses are expected."
+                );
+                if let Some(p) = progress {
+                    p.inc();
+                }
+                return Ok(());
+            }
             detector = detector.with_public_input_indices(public_input_indices);
         }
 

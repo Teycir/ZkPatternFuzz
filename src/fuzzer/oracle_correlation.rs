@@ -204,10 +204,35 @@ impl OracleCorrelator {
         self
     }
 
+    fn is_vacuous_empty_interface_finding(finding: &Finding) -> bool {
+        if !finding.poc.public_inputs.is_empty() {
+            return false;
+        }
+
+        // Cross-witness collisions with no observable public interface are tautological.
+        let has_cross_witness_evidence = finding
+            .poc
+            .witness_b
+            .as_ref()
+            .is_some_and(|witness_b| !witness_b.is_empty());
+        if has_cross_witness_evidence {
+            return true;
+        }
+
+        // Boundary-only overflow hints are also vacuous without public observability.
+        finding.attack_type == AttackType::ArithmeticOverflow
+            && finding
+                .description
+                .to_lowercase()
+                .contains("output near field boundary")
+    }
+
     /// Count distinct oracle groups from findings
     fn count_independent_groups(&self, findings: &[&Finding]) -> (usize, Vec<OracleGroup>) {
         let groups: HashSet<OracleGroup> = findings
             .iter()
+            .copied()
+            .filter(|f| !Self::is_vacuous_empty_interface_finding(f))
             .map(|f| OracleGroup::from_attack_type(f.attack_type.clone()))
             .collect();
         let group_vec: Vec<OracleGroup> = groups.into_iter().collect();

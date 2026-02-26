@@ -355,8 +355,12 @@ impl WitnessCollisionDetector {
 
     /// Convert collisions to findings
     pub fn to_findings(&self, collisions: &[WitnessCollision]) -> Vec<Finding> {
-        collisions.iter()
+        collisions
+            .iter()
             .filter(|c| !c.is_expected)
+            // Empty public scope means there is no observable public interface for
+            // this collision class; keep raw collision data but suppress critical finding emission.
+            .filter(|c| !(c.public_inputs.is_empty() && c.public_input_indices.is_empty()))
             .map(|c| {
                 Finding {
                     attack_type: AttackType::WitnessCollision,
@@ -402,6 +406,47 @@ impl WitnessCollisionDetector {
         }
 
         analysis
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_findings_skips_empty_public_interface_collision() {
+        let detector = WitnessCollisionDetector::new();
+        let collisions = vec![WitnessCollision {
+            witness_a: vec![FieldElement::from_u64(1)],
+            witness_b: vec![FieldElement::from_u64(2)],
+            public_inputs: vec![],
+            public_input_indices: vec![],
+            output_hash: "deadbeef".to_string(),
+            outputs: vec![FieldElement::one()],
+            is_expected: false,
+        }];
+
+        let findings = detector.to_findings(&collisions);
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn to_findings_keeps_observable_public_collision() {
+        let detector = WitnessCollisionDetector::new();
+        let collisions = vec![WitnessCollision {
+            witness_a: vec![FieldElement::from_u64(1)],
+            witness_b: vec![FieldElement::from_u64(2)],
+            public_inputs: vec![FieldElement::from_u64(7)],
+            public_input_indices: vec![0],
+            output_hash: "feedface".to_string(),
+            outputs: vec![FieldElement::one()],
+            is_expected: false,
+        }];
+
+        let findings = detector.to_findings(&collisions);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].attack_type, AttackType::WitnessCollision);
+        assert_eq!(findings[0].severity, Severity::Critical);
     }
 }
 

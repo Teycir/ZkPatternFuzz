@@ -1,7 +1,11 @@
 use super::*;
 use crate::constants::BN254_SCALAR_MODULUS_HEX;
 
-fn make_finding(description: &str, witness_b: Option<Vec<FieldElement>>) -> Finding {
+fn make_finding(
+    description: &str,
+    witness_b: Option<Vec<FieldElement>>,
+    public_inputs: Vec<FieldElement>,
+) -> Finding {
     Finding {
         attack_type: AttackType::Underconstrained,
         severity: Severity::High,
@@ -11,7 +15,7 @@ fn make_finding(description: &str, witness_b: Option<Vec<FieldElement>>) -> Find
         poc: ProofOfConcept {
             witness_a: vec![FieldElement::from_u64(1)],
             witness_b,
-            public_inputs: vec![],
+            public_inputs,
             proof: None,
         },
     }
@@ -19,7 +23,7 @@ fn make_finding(description: &str, witness_b: Option<Vec<FieldElement>>) -> Find
 
 #[test]
 fn classify_single_witness_is_heuristic() {
-    let finding = make_finding("Potential semantic check fired", None);
+    let finding = make_finding("Potential semantic check fired", None, vec![]);
     assert_eq!(finding.classify(), FindingClass::Heuristic);
 }
 
@@ -28,14 +32,25 @@ fn classify_cross_witness_evidence_as_oracle_violation() {
     let finding = make_finding(
         "Different witnesses produce identical output",
         Some(vec![FieldElement::from_u64(2)]),
+        vec![FieldElement::from_u64(1)],
     );
     assert_eq!(finding.classify(), FindingClass::OracleViolation);
 }
 
 #[test]
 fn classify_invariant_violation() {
-    let finding = make_finding("Invariant violated: output uniqueness", None);
+    let finding = make_finding("Invariant violated: output uniqueness", None, vec![]);
     assert_eq!(finding.classify(), FindingClass::InvariantViolation);
+}
+
+#[test]
+fn classify_cross_witness_without_public_inputs_is_heuristic() {
+    let finding = make_finding(
+        "Different witnesses produce identical output",
+        Some(vec![FieldElement::from_u64(2)]),
+        vec![],
+    );
+    assert_eq!(finding.classify(), FindingClass::Heuristic);
 }
 
 #[test]
@@ -151,7 +166,7 @@ fn deserialize_finding_supports_phase3_and_advanced_attack_variants() {
 
 #[test]
 fn serialize_finding_uses_structured_attack_type_and_class() {
-    let finding = make_finding("Invariant violated: output uniqueness", None);
+    let finding = make_finding("Invariant violated: output uniqueness", None, vec![]);
     let value = serde_json::to_value(&finding).expect("serialize finding");
     assert_eq!(
         value.get("attack_type").and_then(|v| v.as_str()),
