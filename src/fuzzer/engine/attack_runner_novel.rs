@@ -837,8 +837,42 @@ impl FuzzingEngine {
             }]
         };
 
+        let config_timeout = config
+            .get("timeout_ms")
+            .and_then(|v| v.as_u64())
+            .map(Duration::from_millis);
+        let attack_timeout = match (config_timeout, self.wall_clock_remaining()) {
+            (Some(config_limit), Some(wall_clock_remaining)) => {
+                Some(config_limit.min(wall_clock_remaining))
+            }
+            (Some(config_limit), None) => Some(config_limit),
+            (None, Some(wall_clock_remaining)) => Some(wall_clock_remaining),
+            (None, None) => None,
+        };
+        if let Some(limit) = attack_timeout {
+            tracing::info!(
+                "Constraint slice analysis time budget: {} ms",
+                limit.as_millis()
+            );
+        }
+
+        if self.wall_clock_timeout_reached() {
+            tracing::warn!(
+                "Skipping constraint slice attack execution: wall-clock timeout reached"
+            );
+            if let Some(p) = progress {
+                p.inc();
+            }
+            return Ok(());
+        }
+
         let findings = oracle
-            .run(self.executor.as_ref(), &base_witness_inputs, &outputs)
+            .run_with_budget(
+                self.executor.as_ref(),
+                &base_witness_inputs,
+                &outputs,
+                attack_timeout,
+            )
             .await;
 
         let _kept = self.record_custom_findings(findings, AttackType::ConstraintSlice, progress)?;

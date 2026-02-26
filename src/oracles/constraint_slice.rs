@@ -23,6 +23,7 @@
 
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::time::{Duration, Instant};
 use zk_core::{
     AttackType, CircuitExecutor, ConstraintEquation, ConstraintInspector, ExecutionResult,
     FieldElement, Finding, ProofOfConcept, Severity,
@@ -304,8 +305,21 @@ impl ConstraintSliceOracle {
         base_witness: &[FieldElement],
         outputs: &[OutputMapping],
     ) -> Vec<Finding> {
+        self.run_with_budget(executor, base_witness, outputs, None)
+            .await
+    }
+
+    /// Run the oracle with an optional wall-clock budget.
+    pub async fn run_with_budget(
+        &self,
+        executor: &dyn CircuitExecutor,
+        base_witness: &[FieldElement],
+        outputs: &[OutputMapping],
+        max_duration: Option<Duration>,
+    ) -> Vec<Finding> {
         let mut findings = Vec::new();
         let mut rng = rand::thread_rng();
+        let started_at = Instant::now();
 
         let inspector = match executor.constraint_inspector() {
             Some(i) => i,
@@ -327,8 +341,26 @@ impl ConstraintSliceOracle {
 
         // Test each cone
         for cone in &cones {
+            if let Some(remaining) = Self::remaining_budget(started_at, max_duration) {
+                if remaining.is_zero() {
+                    tracing::warn!(
+                        "Constraint slice oracle reached time budget before cone {}",
+                        cone.output_index
+                    );
+                    break;
+                }
+            }
+
             let cone_findings = self
-                .test_cone(executor, &slicer, cone, base_witness, &mut rng)
+                .test_cone(
+                    executor,
+                    &slicer,
+                    cone,
+                    base_witness,
+                    &mut rng,
+                    started_at,
+                    max_duration,
+                )
                 .await;
             findings.extend(cone_findings);
         }
@@ -351,6 +383,10 @@ impl ConstraintSliceOracle {
         findings
     }
 
+    fn remaining_budget(started_at: Instant, max_duration: Option<Duration>) -> Option<Duration> {
+        max_duration.map(|limit| limit.saturating_sub(started_at.elapsed()))
+    }
+
     /// Test a single cone
     async fn test_cone(
         &self,
@@ -359,11 +395,34 @@ impl ConstraintSliceOracle {
         cone: &ConstraintCone,
         base_witness: &[FieldElement],
         rng: &mut impl Rng,
+        started_at: Instant,
+        max_duration: Option<Duration>,
     ) -> Vec<Finding> {
         let mut findings = Vec::new();
 
         // Get base result
-        let base_result = executor.execute(base_witness).await;
+        let base_result = if let Some(remaining) = Self::remaining_budget(started_at, max_duration)
+        {
+            if remaining.is_zero() {
+                tracing::warn!(
+                    "Constraint slice oracle exhausted time budget before base execution for cone {}",
+                    cone.output_index
+                );
+                return findings;
+            }
+            match tokio::time::timeout(remaining, executor.execute(base_witness)).await {
+                Ok(result) => result,
+                Err(_) => {
+                    tracing::warn!(
+                        "Constraint slice oracle timed out during base execution for cone {}",
+                        cone.output_index
+                    );
+                    return findings;
+                }
+            }
+        } else {
+            executor.execute(base_witness).await
+        };
         if !base_result.success {
             return findings;
         }
@@ -372,7 +431,27 @@ impl ConstraintSliceOracle {
         let test_cases = slicer.mutate_in_cone(cone, base_witness, self.samples_per_cone, rng);
 
         for case in &test_cases {
-            let result = executor.execute(case).await;
+            let result = if let Some(remaining) = Self::remaining_budget(started_at, max_duration) {
+                if remaining.is_zero() {
+                    tracing::warn!(
+                        "Constraint slice oracle reached time budget while testing cone {}",
+                        cone.output_index
+                    );
+                    break;
+                }
+                match tokio::time::timeout(remaining, executor.execute(case)).await {
+                    Ok(result) => result,
+                    Err(_) => {
+                        tracing::warn!(
+                            "Constraint slice oracle timed out while testing cone {}",
+                            cone.output_index
+                        );
+                        break;
+                    }
+                }
+            } else {
+                executor.execute(case).await
+            };
             if result.success {
                 // Check for unexpected output changes
                 let unexpected =

@@ -257,6 +257,15 @@ echo \"{}=${{{}:-}}\"\n",
                 build_cache_dir: &build_cache_dir,
                 dry_run: false,
                 artifacts_root: temp.path(),
+                memory_guard: MemoryGuardConfig {
+                    enabled: false,
+                    reserved_mb: 0,
+                    mb_per_template: 1,
+                    mb_per_worker: 1,
+                    launch_floor_mb: 1,
+                    wait_secs: 1,
+                    poll_ms: 50,
+                },
             };
 
             let out =
@@ -345,6 +354,15 @@ echo \"{}=${{{}:-}}\"\n",
                 build_cache_dir: &build_cache_dir,
                 dry_run: false,
                 artifacts_root: temp.path(),
+                memory_guard: MemoryGuardConfig {
+                    enabled: false,
+                    reserved_mb: 0,
+                    mb_per_template: 1,
+                    mb_per_worker: 1,
+                    launch_floor_mb: 1,
+                    wait_secs: 1,
+                    poll_ms: 50,
+                },
             };
 
             let out =
@@ -370,6 +388,87 @@ echo \"{}=${{{}:-}}\"\n",
             assert_eq!(halo2_effective_external_timeout_secs("halo2", 5), 180);
             assert_eq!(halo2_effective_external_timeout_secs("halo2", 180), 180);
             assert_eq!(halo2_effective_external_timeout_secs("circom", 5), 5);
+        }
+
+        #[test]
+        fn parse_mem_available_kib_prefers_memavailable() {
+            let meminfo = "\
+MemTotal:       32768000 kB
+MemAvailable:    8388608 kB
+MemFree:         1024000 kB
+";
+            assert_eq!(parse_mem_available_kib(meminfo), Some(8_388_608));
+        }
+
+        #[test]
+        fn memory_guard_reduces_parallelism_when_budget_is_tight() {
+            let mut args = Args::try_parse_from([
+                "zkpatternfuzz",
+                "--template",
+                "cveX01.yaml",
+                "--target-circuit",
+                "circuits/demo.circom",
+                "--framework",
+                "circom",
+                "--jobs",
+                "4",
+                "--workers",
+                "4",
+            ])
+            .expect("parse args");
+            let guard = MemoryGuardConfig {
+                enabled: true,
+                reserved_mb: 2_048,
+                mb_per_template: 512,
+                mb_per_worker: 1_024,
+                launch_floor_mb: 256,
+                wait_secs: 1,
+                poll_ms: 50,
+            };
+
+            apply_memory_parallelism_guardrails_with_available(&mut args, guard, Some(8_192))
+                .expect("guardrail should throttle, not fail");
+
+            assert!(args.jobs <= 4);
+            assert!(args.workers <= 4);
+            assert!(
+                estimated_batch_memory_mb(args.jobs, args.workers, guard)
+                    <= 8_192u64.saturating_sub(guard.reserved_mb)
+            );
+        }
+
+        #[test]
+        fn memory_guard_fails_when_even_minimum_parallelism_exceeds_budget() {
+            let mut args = Args::try_parse_from([
+                "zkpatternfuzz",
+                "--template",
+                "cveX01.yaml",
+                "--target-circuit",
+                "circuits/demo.circom",
+                "--framework",
+                "circom",
+                "--jobs",
+                "1",
+                "--workers",
+                "1",
+            ])
+            .expect("parse args");
+            let guard = MemoryGuardConfig {
+                enabled: true,
+                reserved_mb: 1_024,
+                mb_per_template: 900,
+                mb_per_worker: 900,
+                launch_floor_mb: 256,
+                wait_secs: 1,
+                poll_ms: 50,
+            };
+
+            let err =
+                apply_memory_parallelism_guardrails_with_available(&mut args, guard, Some(1_600))
+                    .expect_err("guardrail should fail when no safe configuration exists");
+            assert!(err
+                .to_string()
+                .contains("cannot be safely reduced below jobs=1 workers=1"));
         }
 
         #[test]

@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[path = "zkpatternfuzz/checkenv.rs"]
 mod checkenv;
@@ -40,9 +40,22 @@ const SCARB_DOWNLOAD_TIMEOUT_ENV: &str = "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS"
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
 const DEFAULT_BATCH_JOBS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_JOBS";
 const DEFAULT_BATCH_WORKERS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_WORKERS";
+const MEMORY_GUARD_ENABLED_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_GUARD_ENABLED";
+const MEMORY_GUARD_RESERVED_MB_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_RESERVED_MB";
+const MEMORY_GUARD_MB_PER_TEMPLATE_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_MB_PER_TEMPLATE";
+const MEMORY_GUARD_MB_PER_WORKER_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_MB_PER_WORKER";
+const MEMORY_GUARD_LAUNCH_FLOOR_MB_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_LAUNCH_FLOOR_MB";
+const MEMORY_GUARD_WAIT_SECS_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_WAIT_SECS";
+const MEMORY_GUARD_POLL_MS_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_POLL_MS";
 const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
 const DEFAULT_BATCH_TIMEOUT_SECS: u64 = 1_800;
 const DEFAULT_HALO2_BATCH_TIMEOUT_SECS: u64 = 3_600;
+const DEFAULT_MEMORY_GUARD_RESERVED_MB: u64 = 4_096;
+const DEFAULT_MEMORY_GUARD_MB_PER_TEMPLATE: u64 = 768;
+const DEFAULT_MEMORY_GUARD_MB_PER_WORKER: u64 = 1_536;
+const DEFAULT_MEMORY_GUARD_LAUNCH_FLOOR_MB: u64 = 2_048;
+const DEFAULT_MEMORY_GUARD_WAIT_SECS: u64 = 180;
+const DEFAULT_MEMORY_GUARD_POLL_MS: u64 = 1_000;
 const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
 const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
 const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
@@ -285,6 +298,18 @@ struct ScanRunConfig<'a> {
     build_cache_dir: &'a Path,
     dry_run: bool,
     artifacts_root: &'a Path,
+    memory_guard: MemoryGuardConfig,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MemoryGuardConfig {
+    enabled: bool,
+    reserved_mb: u64,
+    mb_per_template: u64,
+    mb_per_worker: u64,
+    launch_floor_mb: u64,
+    wait_secs: u64,
+    poll_ms: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -502,6 +527,235 @@ fn ensure_positive_cli_values(args: &Args) -> anyhow::Result<()> {
         anyhow::bail!("--timeout must be >= 1");
     }
     Ok(())
+}
+
+fn env_bool_with_default(name: &str, default: bool) -> anyhow::Result<bool> {
+    let Ok(raw) = std::env::var(name) else {
+        return Ok(default);
+    };
+    let trimmed = raw.trim().to_ascii_lowercase();
+    match trimmed.as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => anyhow::bail!(
+            "Invalid {}='{}'. Use one of: 1/0, true/false, yes/no, on/off",
+            name,
+            raw
+        ),
+    }
+}
+
+fn env_u64_with_default(name: &str, default: u64, min: u64) -> anyhow::Result<u64> {
+    let Ok(raw) = std::env::var(name) else {
+        return Ok(default.max(min));
+    };
+    let trimmed = raw.trim();
+    let parsed = trimmed
+        .parse::<u64>()
+        .map_err(|_| anyhow::anyhow!("Invalid {}='{}'. Expected an unsigned integer", name, raw))?;
+    if parsed < min {
+        anyhow::bail!("Invalid {}={}: must be >= {}", name, parsed, min);
+    }
+    Ok(parsed)
+}
+
+fn load_memory_guard_config() -> anyhow::Result<MemoryGuardConfig> {
+    Ok(MemoryGuardConfig {
+        enabled: env_bool_with_default(MEMORY_GUARD_ENABLED_ENV, true)?,
+        reserved_mb: env_u64_with_default(
+            MEMORY_GUARD_RESERVED_MB_ENV,
+            DEFAULT_MEMORY_GUARD_RESERVED_MB,
+            0,
+        )?,
+        mb_per_template: env_u64_with_default(
+            MEMORY_GUARD_MB_PER_TEMPLATE_ENV,
+            DEFAULT_MEMORY_GUARD_MB_PER_TEMPLATE,
+            1,
+        )?,
+        mb_per_worker: env_u64_with_default(
+            MEMORY_GUARD_MB_PER_WORKER_ENV,
+            DEFAULT_MEMORY_GUARD_MB_PER_WORKER,
+            1,
+        )?,
+        launch_floor_mb: env_u64_with_default(
+            MEMORY_GUARD_LAUNCH_FLOOR_MB_ENV,
+            DEFAULT_MEMORY_GUARD_LAUNCH_FLOOR_MB,
+            1,
+        )?,
+        wait_secs: env_u64_with_default(
+            MEMORY_GUARD_WAIT_SECS_ENV,
+            DEFAULT_MEMORY_GUARD_WAIT_SECS,
+            1,
+        )?,
+        poll_ms: env_u64_with_default(MEMORY_GUARD_POLL_MS_ENV, DEFAULT_MEMORY_GUARD_POLL_MS, 50)?,
+    })
+}
+
+fn parse_mem_available_kib(meminfo: &str) -> Option<u64> {
+    let mut mem_available_kib: Option<u64> = None;
+    let mut mem_total_kib: Option<u64> = None;
+
+    for line in meminfo.lines() {
+        let mut parts = line.split_whitespace();
+        let Some(key) = parts.next() else {
+            continue;
+        };
+        let Some(raw_value) = parts.next() else {
+            continue;
+        };
+        let Ok(value) = raw_value.parse::<u64>() else {
+            continue;
+        };
+        match key {
+            "MemAvailable:" => mem_available_kib = Some(value),
+            "MemTotal:" => mem_total_kib = Some(value),
+            _ => {}
+        }
+    }
+
+    mem_available_kib.or(mem_total_kib)
+}
+
+fn host_available_memory_mb() -> Option<u64> {
+    let raw = fs::read_to_string("/proc/meminfo").ok()?;
+    let kib = parse_mem_available_kib(&raw)?;
+    Some((kib / 1024).max(1))
+}
+
+fn estimated_batch_memory_mb(jobs: usize, workers: usize, guard: MemoryGuardConfig) -> u64 {
+    let jobs_u64 = jobs as u64;
+    let workers_u64 = workers as u64;
+    jobs_u64.saturating_mul(
+        guard
+            .mb_per_template
+            .saturating_add(workers_u64.saturating_mul(guard.mb_per_worker)),
+    )
+}
+
+fn apply_memory_parallelism_guardrails_with_available(
+    args: &mut Args,
+    guard: MemoryGuardConfig,
+    available_mb: Option<u64>,
+) -> anyhow::Result<()> {
+    if !guard.enabled {
+        return Ok(());
+    }
+
+    let Some(available_mb) = available_mb else {
+        eprintln!(
+            "Memory guard: unable to read /proc/meminfo; skipping automatic jobs/workers throttling"
+        );
+        return Ok(());
+    };
+
+    let budget_mb = available_mb.saturating_sub(guard.reserved_mb);
+    if budget_mb == 0 {
+        anyhow::bail!(
+            "Memory guard blocked run: MemAvailable={}MB <= reserved={}MB. \
+             Lower {} or free memory.",
+            available_mb,
+            guard.reserved_mb,
+            MEMORY_GUARD_RESERVED_MB_ENV
+        );
+    }
+
+    let requested_jobs = args.jobs.max(1);
+    let requested_workers = args.workers.max(1);
+    let requested_estimate = estimated_batch_memory_mb(requested_jobs, requested_workers, guard);
+
+    let mut safe_jobs = requested_jobs;
+    let mut safe_workers = requested_workers;
+    while safe_jobs > 1 && estimated_batch_memory_mb(safe_jobs, safe_workers, guard) > budget_mb {
+        safe_jobs -= 1;
+    }
+    while safe_workers > 1 && estimated_batch_memory_mb(safe_jobs, safe_workers, guard) > budget_mb
+    {
+        safe_workers -= 1;
+    }
+
+    let safe_estimate = estimated_batch_memory_mb(safe_jobs, safe_workers, guard);
+    if safe_estimate > budget_mb {
+        anyhow::bail!(
+            "Memory guard blocked run: requested jobs={} workers={} (~{}MB) exceeds budget {}MB \
+             and cannot be safely reduced below jobs=1 workers=1 under current guardrail settings.",
+            requested_jobs,
+            requested_workers,
+            requested_estimate,
+            budget_mb
+        );
+    }
+
+    if safe_jobs != requested_jobs || safe_workers != requested_workers {
+        eprintln!(
+            "Memory guard throttled parallelism: jobs {} -> {}, workers {} -> {} \
+             (MemAvailable={}MB, reserve={}MB, budget={}MB, estimated={}MB)",
+            requested_jobs,
+            safe_jobs,
+            requested_workers,
+            safe_workers,
+            available_mb,
+            guard.reserved_mb,
+            budget_mb,
+            safe_estimate
+        );
+        args.jobs = safe_jobs;
+        args.workers = safe_workers;
+    }
+
+    Ok(())
+}
+
+fn apply_memory_parallelism_guardrails(
+    args: &mut Args,
+    guard: MemoryGuardConfig,
+) -> anyhow::Result<()> {
+    apply_memory_parallelism_guardrails_with_available(args, guard, host_available_memory_mb())
+}
+
+fn wait_for_memory_headroom(guard: MemoryGuardConfig) -> anyhow::Result<()> {
+    if !guard.enabled {
+        return Ok(());
+    }
+
+    let Some(initial_available_mb) = host_available_memory_mb() else {
+        return Ok(());
+    };
+    if initial_available_mb >= guard.launch_floor_mb {
+        return Ok(());
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(guard.wait_secs);
+    let mut last_seen_mb = initial_available_mb;
+    let mut warned = false;
+
+    loop {
+        if let Some(available_mb) = host_available_memory_mb() {
+            last_seen_mb = available_mb;
+            if available_mb >= guard.launch_floor_mb {
+                return Ok(());
+            }
+            if !warned {
+                eprintln!(
+                    "Memory guard waiting: MemAvailable={}MB below launch floor {}MB \
+                     (wait up to {}s)",
+                    available_mb, guard.launch_floor_mb, guard.wait_secs
+                );
+                warned = true;
+            }
+        }
+
+        if Instant::now() >= deadline {
+            anyhow::bail!(
+                "Memory guard timeout: MemAvailable={}MB stayed below launch floor {}MB \
+                 for {}s",
+                last_seen_mb,
+                guard.launch_floor_mb,
+                guard.wait_secs
+            );
+        }
+
+        std::thread::sleep(Duration::from_millis(guard.poll_ms));
+    }
 }
 
 fn template_family_from_name(name: &str) -> anyhow::Result<Family> {
@@ -996,6 +1250,15 @@ fn run_scan(
     output_suffix: &str,
 ) -> anyhow::Result<ScanRunResult> {
     let family_str = family.as_str();
+    if !validate_only && !run_cfg.dry_run {
+        wait_for_memory_headroom(run_cfg.memory_guard).with_context(|| {
+            format!(
+                "Template '{}' launch blocked by memory guard",
+                template.file_name
+            )
+        })?;
+    }
+
     let mut cmd = Command::new(run_cfg.bin_path);
     cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.results_root)
         .env(RUN_SIGNAL_DIR_ENV, run_cfg.run_signal_dir)
@@ -1381,6 +1644,14 @@ fn validate_template_compatibility(
     }
     let effective = effective_family(template.family, family_override);
     Ok(effective)
+}
+
+fn resolved_release_bin_path(binary_name: &str) -> PathBuf {
+    if let Some(target_dir) = std::env::var_os("CARGO_TARGET_DIR") {
+        PathBuf::from(target_dir).join("release").join(binary_name)
+    } else {
+        PathBuf::from("target").join("release").join(binary_name)
+    }
 }
 
 fn run_template(
@@ -2510,6 +2781,13 @@ fn main() -> anyhow::Result<()> {
             BUILD_CACHE_DIR_ENV,
             DEFAULT_BATCH_JOBS_ENV,
             DEFAULT_BATCH_WORKERS_ENV,
+            MEMORY_GUARD_ENABLED_ENV,
+            MEMORY_GUARD_RESERVED_MB_ENV,
+            MEMORY_GUARD_MB_PER_TEMPLATE_ENV,
+            MEMORY_GUARD_MB_PER_WORKER_ENV,
+            MEMORY_GUARD_LAUNCH_FLOOR_MB_ENV,
+            MEMORY_GUARD_WAIT_SECS_ENV,
+            MEMORY_GUARD_POLL_MS_ENV,
         ],
     )?;
 
@@ -2529,6 +2807,8 @@ fn main() -> anyhow::Result<()> {
         );
     }
     ensure_positive_cli_values(&args)?;
+    let memory_guard = load_memory_guard_config()?;
+    apply_memory_parallelism_guardrails(&mut args, memory_guard)?;
     let family_override = parse_family(&args.family)?;
 
     let explicit_patterns = split_csv(args.pattern_yaml.as_deref());
@@ -2827,7 +3107,7 @@ fn main() -> anyhow::Result<()> {
         &timestamped_run_log,
     );
 
-    let bin_path = PathBuf::from("target/release/zk-fuzzer");
+    let bin_path = resolved_release_bin_path("zk-fuzzer");
     let build_step_started = step_started(3, total_steps, "build zk-fuzzer", &timestamped_run_log);
     if args.build {
         append_run_log_best_effort(
@@ -3088,6 +3368,7 @@ fn main() -> anyhow::Result<()> {
         build_cache_dir: &build_cache_dir,
         dry_run: args.dry_run,
         artifacts_root: &artifacts_root,
+        memory_guard,
     };
 
     let execute_step_started =
