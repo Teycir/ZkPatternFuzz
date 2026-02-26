@@ -6,7 +6,8 @@ use run_outcome_docs::{classify_run_reason_code, standardize_run_outcome_doc};
 use tempfile::tempdir;
 
 fn write_required_proof_pack(dir: &std::path::Path, note_file: &str) {
-    std::fs::write(dir.join("replay_command.txt"), "cargo run -- replay\n").expect("write replay command");
+    std::fs::write(dir.join("replay_command.txt"), "cargo run -- replay\n")
+        .expect("write replay command");
     std::fs::write(dir.join(note_file), "# Notes\n").expect("write proof notes");
     std::fs::write(dir.join("impact.md"), "# Impact\n").expect("write impact");
     std::fs::write(dir.join("proof_replay.log"), "ok\n").expect("write replay log");

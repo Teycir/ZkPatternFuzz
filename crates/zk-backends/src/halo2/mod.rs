@@ -104,6 +104,23 @@ fn output_suggests_offline_dependency_miss(output: &std::process::Output) -> boo
         || text.contains("failed to load source for dependency")
 }
 
+fn output_suggests_dependency_resolution_failure(output: &std::process::Output) -> bool {
+    let text = command_output_text(output).to_ascii_lowercase();
+    output_suggests_offline_dependency_miss(output)
+        || text.contains("failed to get `")
+        || text.contains("failed to update")
+        || text.contains("unable to update")
+        || text.contains("could not clone")
+        || text.contains("failed to clone")
+        || text.contains("failed to fetch into")
+        || text.contains("couldn't find remote ref")
+        || text.contains("network failure seems to have happened")
+        || text.contains("spurious network error")
+        || text.contains("index-pack failed")
+        || text.contains("failed to download")
+        || text.contains("checksum failed")
+}
+
 fn parse_git_db_repo_paths_from_text(text: &str) -> Vec<PathBuf> {
     let marker = "/git/db/";
     let bytes = text.as_bytes();
@@ -1162,6 +1179,9 @@ impl Halo2Target {
                         candidate.label,
                         crate::util::command_failure_summary(&output)
                     ));
+                    let mut dependency_resolution_failed =
+                        output_suggests_dependency_resolution_failure(&output);
+                    let mut online_retry_attempted = false;
                     if output_suggests_offline_dependency_miss(&output) {
                         if warm_git_db_aliases_from_output(&output) {
                             let Some(repair_timeout) = compute_attempt_timeout() else {
@@ -1184,6 +1204,10 @@ impl Halo2Target {
                                     return Ok(repaired_output);
                                 }
                                 Ok(repaired_output) => {
+                                    dependency_resolution_failed =
+                                        output_suggests_dependency_resolution_failure(
+                                            &repaired_output,
+                                        );
                                     failures.push(format!(
                                         "{}(offline-repair): {}",
                                         candidate.label,
@@ -1200,6 +1224,7 @@ impl Halo2Target {
                         }
                     }
                     if allow_online_retry && output_suggests_offline_dependency_miss(&output) {
+                        online_retry_attempted = true;
                         let Some(retry_timeout) = compute_attempt_timeout() else {
                             failures.push(format!(
                                 "{}(online): total timeout budget exhausted after {:.2}s",
@@ -1220,6 +1245,8 @@ impl Halo2Target {
                                 return Ok(retry_output);
                             }
                             Ok(retry_output) => {
+                                dependency_resolution_failed =
+                                    output_suggests_dependency_resolution_failure(&retry_output);
                                 failures.push(format!(
                                     "{}(online): {}",
                                     candidate.label,
@@ -1230,6 +1257,15 @@ impl Halo2Target {
                                 failures.push(format!("{}(online): {}", candidate.label, err));
                             }
                         }
+                    }
+                    if dependency_resolution_failed
+                        && (!allow_online_retry || online_retry_attempted)
+                    {
+                        failures.push(format!(
+                            "{}: dependency resolution failed; stopping toolchain cascade to avoid repeated offline probe loops",
+                            candidate.label
+                        ));
+                        break;
                     }
                 }
                 Err(err) => {

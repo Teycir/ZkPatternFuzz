@@ -8,9 +8,9 @@ use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
-use std::thread::{self, JoinHandle};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 #[path = "zkpatternfuzz/checkenv.rs"]
@@ -66,6 +66,7 @@ const DEFAULT_MEMORY_GUARD_POLL_MS: u64 = 1_000;
 const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
 const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
 const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
+const PROOF_STAGE_NOT_STARTED_REASON_CODE: &str = "proof_stage_not_started";
 static RUN_ROOT_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Parser, Debug)]
@@ -503,7 +504,10 @@ fn template_progress_path(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> Pa
             .join(output_suffix)
             .join("progress.json")
     } else {
-        run_cfg.results_root.join(output_suffix).join("progress.json")
+        run_cfg
+            .results_root
+            .join(output_suffix)
+            .join("progress.json")
     }
 }
 
@@ -2091,8 +2095,8 @@ fn run_template(
         );
         return Ok(false);
     }
-    let proof_status = read_template_proof_status(run_cfg, output_suffix)
-        .unwrap_or_else(|| "unknown".to_string());
+    let proof_status =
+        read_template_proof_status(run_cfg, output_suffix).unwrap_or_else(|| "unknown".to_string());
     println!(
         "[TEMPLATE STAGE] {} stage=proof_done proof_status={}",
         template.file_name, proof_status
@@ -2457,7 +2461,7 @@ fn collect_template_outcome_reasons(
                 .join(&suffix)
                 .join("report.json");
 
-            TemplateOutcomeReason {
+            let mut reason = TemplateOutcomeReason {
                 template_file: template.file_name.clone(),
                 template_path: template.path.display().to_string(),
                 suffix,
@@ -2473,9 +2477,33 @@ fn collect_template_outcome_reasons(
                     .unwrap_or_else(|| classify_run_reason_code(&parsed).to_string()),
                 high_confidence_detected: report_has_high_confidence_finding(&report_path),
                 detected_pattern_count: report_detected_pattern_count(&report_path),
-            }
+            };
+            enforce_detected_pattern_proof_contract(&mut reason);
+            reason
         })
         .collect()
+}
+
+fn proof_stage_started_for_status(proof_status: Option<&str>) -> bool {
+    matches!(
+        proof_status,
+        Some("exploitable" | "not_exploitable_within_bounds" | "proof_failed")
+    )
+}
+
+fn enforce_detected_pattern_proof_contract(reason: &mut TemplateOutcomeReason) {
+    if reason.detected_pattern_count == 0
+        || proof_stage_started_for_status(reason.proof_status.as_deref())
+    {
+        return;
+    }
+    reason.proof_status = Some("proof_failed".to_string());
+    if matches!(
+        reason.reason_code.as_str(),
+        "completed" | "critical_findings_detected"
+    ) {
+        reason.reason_code = PROOF_STAGE_NOT_STARTED_REASON_CODE.to_string();
+    }
 }
 
 fn print_reason_summary(reasons: &[TemplateOutcomeReason]) {
@@ -2550,9 +2578,7 @@ fn proof_state_counts(reasons: &[TemplateOutcomeReason]) -> (usize, usize, usize
         .count();
     let not_exploitable_within_bounds = reasons
         .iter()
-        .filter(|reason| {
-            reason.proof_status.as_deref() == Some("not_exploitable_within_bounds")
-        })
+        .filter(|reason| reason.proof_status.as_deref() == Some("not_exploitable_within_bounds"))
         .count();
     let proof_failed = reasons
         .iter()
@@ -3084,7 +3110,8 @@ fn read_template_run_outcome_doc(
 
 fn read_template_reason_code(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> Option<String> {
     let parsed = read_template_run_outcome_doc(run_cfg, output_suffix)?;
-    reason_code_from_run_outcome_doc(&parsed).or_else(|| Some(classify_run_reason_code(&parsed).to_string()))
+    reason_code_from_run_outcome_doc(&parsed)
+        .or_else(|| Some(classify_run_reason_code(&parsed).to_string()))
 }
 
 fn read_template_proof_status(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> Option<String> {
@@ -3525,14 +3552,14 @@ fn main() -> anyhow::Result<()> {
             &timestamped_run_log,
             format!("step=template_preflight status=failed error={}", err),
         );
-            append_run_log_best_effort(
-                &timestamped_run_log,
-                format!(
-                    "end_utc={} campaign_success=false dry_run={} termination_cause=template_preflight",
-                    Utc::now().to_rfc3339(),
-                    args.dry_run
-                ),
-            );
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "end_utc={} campaign_success=false dry_run={} termination_cause=template_preflight",
+                Utc::now().to_rfc3339(),
+                args.dry_run
+            ),
+        );
         if let Err(log_err) =
             write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
         {
@@ -3585,14 +3612,14 @@ fn main() -> anyhow::Result<()> {
             &timestamped_run_log,
             format!("step=local_readiness status=failed error={}", err),
         );
-            append_run_log_best_effort(
-                &timestamped_run_log,
-                format!(
-                    "end_utc={} campaign_success=false dry_run={} termination_cause=local_readiness",
-                    Utc::now().to_rfc3339(),
-                    args.dry_run
-                ),
-            );
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "end_utc={} campaign_success=false dry_run={} termination_cause=local_readiness",
+                Utc::now().to_rfc3339(),
+                args.dry_run
+            ),
+        );
         if let Err(log_err) =
             write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
         {
@@ -3619,14 +3646,14 @@ fn main() -> anyhow::Result<()> {
                 &timestamped_run_log,
                 format!("step=local_readiness status=failed error={}", err),
             );
-                append_run_log_best_effort(
-                    &timestamped_run_log,
-                    format!(
-                        "end_utc={} campaign_success=false dry_run={} termination_cause=runtime_paths",
-                        Utc::now().to_rfc3339(),
-                        args.dry_run
-                    ),
-                );
+            append_run_log_best_effort(
+                &timestamped_run_log,
+                format!(
+                    "end_utc={} campaign_success=false dry_run={} termination_cause=runtime_paths",
+                    Utc::now().to_rfc3339(),
+                    args.dry_run
+                ),
+            );
             if let Err(log_err) =
                 write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
             {
@@ -3695,7 +3722,7 @@ fn main() -> anyhow::Result<()> {
                         err
                     ),
                 );
-                    append_run_log_best_effort(
+                append_run_log_best_effort(
                         &timestamped_run_log,
                         format!(
                         "end_utc={} campaign_success=false dry_run={} termination_cause=build_zk_fuzzer_command",

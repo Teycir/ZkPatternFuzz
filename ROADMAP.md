@@ -44,7 +44,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 ## Immediate Stabilization Plan (Detection -> Immediate Proof)
 
 ### Policy (no `pending_proof` in normal flow)
-- [ ] Every matched `detected_pattern` starts proof in the same run.
+- [x] Every matched `detected_pattern` starts proof in the same run.
 - [x] Remove `pending_proof` from normal completed runs.
 - [x] Allow only final proof states: `exploitable`, `not_exploitable_within_bounds`, `proof_failed`, `proof_skipped_by_policy`.
 - [x] Block "confirmed vulnerability" unless required proof artifacts exist.
@@ -57,7 +57,7 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [x] Mark `not_exploitable_within_bounds` only when bounded checks finish with no counterexample.
 - [x] Mark `proof_failed` when proof stage errors, times out, or artifacts are incomplete.
 
-Current status: ✅ `src/run_outcome_docs.rs` now classifies wall-clock timeouts (and proof-stage failures) as `proof_failed`, while still preserving `not_ready` for non-proof preflight failures; regression coverage in `tests/test_run_outcome_standardization.rs` (`classify_and_standardize_wall_clock_timeout_marks_proof_failed`, 2026-02-26).
+Current status: ✅ `src/run_outcome_docs.rs` now classifies wall-clock timeouts (and proof-stage failures) as `proof_failed`, while still preserving `not_ready` for non-proof preflight failures; `zkpatternfuzz` now enforces the detected-pattern proof contract by forcing matched-pattern templates without a started proof state to `proof_failed` + `reason_code=proof_stage_not_started` (`src/bin/zkpatternfuzz.rs`, `tests/test_bin_zkpatternfuzz.rs`, 2026-02-26).
 
 ### Console clarity
 - [x] Replace ambiguous wording (`failures`) with `template_errors`.
@@ -72,9 +72,9 @@ Current status: ✅ console + run-log proof totals now use `proven_exploitable` 
 - [x] Enforce per-template hard timeout for detection and proof stages.
 - [x] Add stuck-step warning when progress does not change for a fixed window.
 - [x] Keep memory guard on by default for proof stage and fail fast on unsafe settings.
-- [ ] Reduce repeated backend probe loops when offline dependencies are missing.
+- [x] Reduce repeated backend probe loops when offline dependencies are missing.
 
-Current status: ✅ `zkpatternfuzz` now enforces per-template hard timeouts for detection (`attack_*`) and proof/reporting (`reporting`/proof-like progress stages), kills timed-out process trees, writes synthetic `run_outcome.json` with `reason_code=wall_clock_timeout` + `proof_status=proof_failed`, emits `[TEMPLATE WARNING] ... warning=stuck_step ...` when progress is unchanged for the fixed window (`ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS`), and fails fast on unsafe proof-stage memory guard settings (`ZKF_ZKPATTERNFUZZ_MEMORY_GUARD_ENABLED=false` or `ZKF_ZKPATTERNFUZZ_MEMORY_RESERVED_MB=0`) (`src/bin/zkpatternfuzz.rs`, 2026-02-26).
+Current status: ✅ `zkpatternfuzz` now enforces per-template hard timeouts for detection (`attack_*`) and proof/reporting (`reporting`/proof-like progress stages), kills timed-out process trees, writes synthetic `run_outcome.json` with `reason_code=wall_clock_timeout` + `proof_status=proof_failed`, emits `[TEMPLATE WARNING] ... warning=stuck_step ...` when progress is unchanged for the fixed window (`ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS`), fails fast on unsafe proof-stage memory guard settings (`ZKF_ZKPATTERNFUZZ_MEMORY_GUARD_ENABLED=false` or `ZKF_ZKPATTERNFUZZ_MEMORY_RESERVED_MB=0`), and stops Halo2 toolchain cascades after dependency-resolution failures to avoid repeated offline probe loops (`crates/zk-backends/src/halo2/mod.rs`, `crates/zk-backends/tests/test_halo2_toolchain_cascade.rs`, 2026-02-26).
 
 ### Proof artifact contract (mandatory)
 - [x] Require `replay_command.txt` for every proved outcome.

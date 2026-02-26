@@ -549,7 +549,13 @@ pub(crate) fn standardize_run_outcome_doc(doc: &serde_json::Value) -> serde_json
     let discovery_state = discovery_state(status, findings_total, critical_findings);
     let output_dir = doc.get("output_dir").and_then(|v| v.as_str());
     let proof_stats = collect_evidence_proof_stats(output_dir);
-    let proof_status = proof_status(&reason_code, stage, discovery_state, findings_total, proof_stats);
+    let proof_status = proof_status(
+        &reason_code,
+        stage,
+        discovery_state,
+        findings_total,
+        proof_stats,
+    );
     let analysis_priority = analysis_priority(discovery_state);
 
     let mut normalized = match doc.as_object() {

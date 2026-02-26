@@ -473,8 +473,9 @@ MemFree:         1024000 kB
                 poll_ms: 50,
             };
 
-            let err = apply_memory_parallelism_guardrails_with_available(&mut args, guard, Some(8_192))
-                .expect_err("disabled memory guard should fail fast");
+            let err =
+                apply_memory_parallelism_guardrails_with_available(&mut args, guard, Some(8_192))
+                    .expect_err("disabled memory guard should fail fast");
             assert!(err.to_string().contains(MEMORY_GUARD_ENABLED_ENV));
         }
 
@@ -504,8 +505,9 @@ MemFree:         1024000 kB
                 poll_ms: 50,
             };
 
-            let err = apply_memory_parallelism_guardrails_with_available(&mut args, guard, Some(8_192))
-                .expect_err("zero reserved memory should fail fast");
+            let err =
+                apply_memory_parallelism_guardrails_with_available(&mut args, guard, Some(8_192))
+                    .expect_err("zero reserved memory should fail fast");
             assert!(err.to_string().contains(MEMORY_GUARD_RESERVED_MB_ENV));
         }
 
@@ -759,7 +761,8 @@ selector_normalization:
 
         #[test]
         fn format_stuck_step_warning_line_includes_window_and_stage() {
-            let line = format_stuck_step_warning_line("cveX_demo.yaml", "attack_progress", "5/11", 75, 60);
+            let line =
+                format_stuck_step_warning_line("cveX_demo.yaml", "attack_progress", "5/11", 75, 60);
             assert!(line.contains("[TEMPLATE WARNING] cveX_demo.yaml"));
             assert!(line.contains("warning=stuck_step"));
             assert!(line.contains("stage=attack_progress"));
@@ -790,8 +793,8 @@ selector_normalization:
             )
             .expect("write progress snapshot");
 
-            let update =
-                read_template_progress_update("cveX_demo.yaml", &progress_path).expect("parse progress");
+            let update = read_template_progress_update("cveX_demo.yaml", &progress_path)
+                .expect("parse progress");
             assert_eq!(update.stage, "attack_progress");
             assert_eq!(update.step_fraction, "4/11");
 
@@ -818,9 +821,13 @@ selector_normalization:
             )
             .expect("write timeout outcome");
 
-            let run_outcome_path = temp_root.join(run_root).join(suffix).join("run_outcome.json");
+            let run_outcome_path = temp_root
+                .join(run_root)
+                .join(suffix)
+                .join("run_outcome.json");
             let raw = std::fs::read_to_string(&run_outcome_path).expect("read run outcome");
-            let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse run outcome json");
+            let parsed: serde_json::Value =
+                serde_json::from_str(&raw).expect("parse run outcome json");
             assert_eq!(
                 parsed.get("reason_code").and_then(|v| v.as_str()),
                 Some("wall_clock_timeout")
@@ -838,6 +845,110 @@ selector_normalization:
             );
 
             let _ = std::fs::remove_dir_all(&temp_root);
+        }
+
+        #[test]
+        fn detected_patterns_without_started_proof_are_forced_to_proof_failed() {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let template_path = temp.path().join("pattern.yaml");
+            std::fs::write(&template_path, "patterns: []\n").expect("write template");
+            let template = TemplateInfo {
+                file_name: "pattern.yaml".to_string(),
+                path: template_path.clone(),
+                family: Family::Auto,
+            };
+            let suffix = scan_output_suffix(&template, Family::Auto);
+            let run_root = "scan_run_test";
+            let artifact_dir = temp.path().join(run_root).join(&suffix);
+            std::fs::create_dir_all(&artifact_dir).expect("create artifact dir");
+
+            std::fs::write(
+                artifact_dir.join("run_outcome.json"),
+                serde_json::json!({
+                    "status": "completed",
+                    "stage": "completed",
+                    "reason_code": "completed",
+                    "discovery_qualification": {
+                        "proof_status": "proof_skipped_by_policy"
+                    }
+                })
+                .to_string(),
+            )
+            .expect("write run outcome");
+            std::fs::write(
+                artifact_dir.join("report.json"),
+                serde_json::json!({
+                    "findings": [
+                        {"description": "pattern hit 1"},
+                        {"description": "pattern hit 2"}
+                    ]
+                })
+                .to_string(),
+            )
+            .expect("write report");
+
+            let reasons = collect_template_outcome_reasons(
+                temp.path(),
+                Some(run_root),
+                &[(template, Family::Auto)],
+            );
+            assert_eq!(reasons.len(), 1);
+            let reason = &reasons[0];
+            assert_eq!(reason.detected_pattern_count, 2);
+            assert_eq!(reason.proof_status.as_deref(), Some("proof_failed"));
+            assert_eq!(
+                reason.reason_code,
+                PROOF_STAGE_NOT_STARTED_REASON_CODE.to_string()
+            );
+        }
+
+        #[test]
+        fn detected_patterns_with_started_proof_keep_original_reason_code() {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let template_path = temp.path().join("pattern.yaml");
+            std::fs::write(&template_path, "patterns: []\n").expect("write template");
+            let template = TemplateInfo {
+                file_name: "pattern.yaml".to_string(),
+                path: template_path.clone(),
+                family: Family::Auto,
+            };
+            let suffix = scan_output_suffix(&template, Family::Auto);
+            let run_root = "scan_run_test";
+            let artifact_dir = temp.path().join(run_root).join(&suffix);
+            std::fs::create_dir_all(&artifact_dir).expect("create artifact dir");
+
+            std::fs::write(
+                artifact_dir.join("run_outcome.json"),
+                serde_json::json!({
+                    "status": "completed_with_critical_findings",
+                    "stage": "proof_done",
+                    "reason_code": "critical_findings_detected",
+                    "discovery_qualification": {
+                        "proof_status": "exploitable"
+                    }
+                })
+                .to_string(),
+            )
+            .expect("write run outcome");
+            std::fs::write(
+                artifact_dir.join("report.json"),
+                serde_json::json!({
+                    "findings": [{"description": "pattern hit"}]
+                })
+                .to_string(),
+            )
+            .expect("write report");
+
+            let reasons = collect_template_outcome_reasons(
+                temp.path(),
+                Some(run_root),
+                &[(template, Family::Auto)],
+            );
+            assert_eq!(reasons.len(), 1);
+            let reason = &reasons[0];
+            assert_eq!(reason.detected_pattern_count, 1);
+            assert_eq!(reason.proof_status.as_deref(), Some("exploitable"));
+            assert_eq!(reason.reason_code, "critical_findings_detected");
         }
     }
 }
