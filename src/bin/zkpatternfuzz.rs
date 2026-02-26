@@ -20,7 +20,7 @@ mod zkpatternfuzz_env;
 #[path = "zkpatternfuzz/zkpatternfuzz_readiness.rs"]
 mod zkpatternfuzz_readiness;
 
-use checkenv::CheckEnv;
+use checkenv::{is_set as env_is_set, var as env_var, CheckEnv};
 use zkpatternfuzz_env::{expand_env_placeholders, has_unresolved_env_placeholder};
 use zkpatternfuzz_readiness::{ensure_local_runtime_requirements, preflight_template_paths};
 
@@ -799,7 +799,7 @@ fn report_detected_pattern_count(report_path: &Path) -> usize {
 }
 
 fn high_confidence_min_oracles_from_env() -> usize {
-    std::env::var(HIGH_CONFIDENCE_MIN_ORACLES_ENV)
+    env_var(HIGH_CONFIDENCE_MIN_ORACLES_ENV)
         .ok()
         .and_then(|raw| raw.trim().parse::<usize>().ok())
         .filter(|value| *value > 0)
@@ -897,7 +897,7 @@ fn ensure_positive_cli_values(args: &Args) -> anyhow::Result<()> {
 }
 
 fn env_bool_with_default(name: &str, default: bool) -> anyhow::Result<bool> {
-    let Ok(raw) = std::env::var(name) else {
+    let Ok(raw) = env_var(name) else {
         return Ok(default);
     };
     let trimmed = raw.trim().to_ascii_lowercase();
@@ -913,7 +913,7 @@ fn env_bool_with_default(name: &str, default: bool) -> anyhow::Result<bool> {
 }
 
 fn env_u64_with_default(name: &str, default: u64, min: u64) -> anyhow::Result<u64> {
-    let Ok(raw) = std::env::var(name) else {
+    let Ok(raw) = env_var(name) else {
         return Ok(default.max(min));
     };
     let trimmed = raw.trim();
@@ -1657,16 +1657,16 @@ fn run_scan(
     for (key, value) in run_cfg.env_overrides {
         cmd.env(key, value);
     }
-    if std::env::var_os(HALO2_EXTERNAL_TIMEOUT_ENV).is_none() {
+    if !env_is_set(HALO2_EXTERNAL_TIMEOUT_ENV) {
         cmd.env(
             HALO2_EXTERNAL_TIMEOUT_ENV,
             halo2_effective_external_timeout_secs(run_cfg.framework, run_cfg.timeout).to_string(),
         );
     }
-    if std::env::var_os(CAIRO_EXTERNAL_TIMEOUT_ENV).is_none() {
+    if !env_is_set(CAIRO_EXTERNAL_TIMEOUT_ENV) {
         cmd.env(CAIRO_EXTERNAL_TIMEOUT_ENV, run_cfg.timeout.to_string());
     }
-    if std::env::var_os(SCARB_DOWNLOAD_TIMEOUT_ENV).is_none() {
+    if !env_is_set(SCARB_DOWNLOAD_TIMEOUT_ENV) {
         cmd.env(SCARB_DOWNLOAD_TIMEOUT_ENV, run_cfg.timeout.to_string());
     }
     if let Some(run_root) = run_cfg.scan_run_root {
@@ -1684,10 +1684,10 @@ fn run_scan(
 
         // External targets often live outside the writable workspace; keep Halo2 Cargo state
         // local and avoid broad toolchain cascades that trigger rustup network fetches.
-        if std::env::var_os(HALO2_USE_HOST_CARGO_HOME_ENV).is_none() {
+        if !env_is_set(HALO2_USE_HOST_CARGO_HOME_ENV) {
             cmd.env(HALO2_USE_HOST_CARGO_HOME_ENV, "0");
         }
-        if std::env::var_os(HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV).is_none()
+        if !env_is_set(HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV)
             && !auto_candidates.is_empty()
         {
             cmd.env(
@@ -1695,7 +1695,7 @@ fn run_scan(
                 auto_candidates.join(","),
             );
         }
-        if std::env::var_os(HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV).is_none() {
+        if !env_is_set(HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV) {
             let cascade_limit = auto_candidates.len().clamp(1, 8);
             cmd.env(HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV, cascade_limit.to_string());
         }
@@ -1823,7 +1823,7 @@ fn run_scan(
 
 fn resolve_build_cache_dir(results_root: &Path) -> PathBuf {
     for env_name in [BUILD_CACHE_DIR_ENV, SHARED_BUILD_CACHE_DIR_ENV] {
-        if let Ok(raw) = std::env::var(env_name) {
+        if let Ok(raw) = env_var(env_name) {
             let trimmed = raw.trim();
             if !trimmed.is_empty() {
                 return PathBuf::from(trimmed);
@@ -1863,7 +1863,7 @@ fn halo2_effective_external_timeout_secs(framework: &str, requested_timeout: u64
         return requested_timeout;
     }
 
-    let floor = std::env::var(HALO2_MIN_EXTERNAL_TIMEOUT_ENV)
+    let floor = env_var(HALO2_MIN_EXTERNAL_TIMEOUT_ENV)
         .ok()
         .and_then(|raw| raw.trim().parse::<u64>().ok())
         .filter(|value| *value > 0)
@@ -1881,7 +1881,7 @@ fn effective_batch_timeout_secs(framework: &str, requested_timeout: u64) -> u64 
         return requested_timeout;
     }
 
-    let halo2_default = std::env::var(HALO2_DEFAULT_BATCH_TIMEOUT_ENV)
+    let halo2_default = env_var(HALO2_DEFAULT_BATCH_TIMEOUT_ENV)
         .ok()
         .and_then(|raw| raw.trim().parse::<u64>().ok())
         .filter(|value| *value > 0)
@@ -2179,7 +2179,7 @@ fn scan_output_suffix(template: &TemplateInfo, family: Family) -> String {
 }
 
 fn resolve_results_root() -> anyhow::Result<PathBuf> {
-    let raw = std::env::var(SCAN_OUTPUT_ROOT_ENV).with_context(|| {
+    let raw = env_var(SCAN_OUTPUT_ROOT_ENV).with_context(|| {
         format!(
             "{} is required (output path is env-only)",
             SCAN_OUTPUT_ROOT_ENV

@@ -411,6 +411,68 @@ MemFree:         1024000 kB
         }
 
         #[test]
+        fn checkenv_uses_overlay_without_mutating_process_env() {
+            let _guard = env_lock().lock().expect("lock env");
+            let prior = env::var(SCAN_OUTPUT_ROOT_ENV).ok();
+            env::remove_var(SCAN_OUTPUT_ROOT_ENV);
+
+            let temp = tempfile::tempdir().expect("tempdir");
+            let env_file = temp.path().join(".env");
+            std::fs::write(
+                &env_file,
+                format!("{SCAN_OUTPUT_ROOT_ENV}=/tmp/overlay_output\n"),
+            )
+            .expect("write dotenv");
+
+            let _loaded =
+                CheckEnv::new(&env_file, &[SCAN_OUTPUT_ROOT_ENV]).expect("load dotenv overlay");
+
+            assert!(
+                env::var(SCAN_OUTPUT_ROOT_ENV).is_err(),
+                "CheckEnv should not mutate process-global environment"
+            );
+            assert_eq!(
+                env_var(SCAN_OUTPUT_ROOT_ENV).expect("overlay lookup"),
+                "/tmp/overlay_output"
+            );
+            assert!(env_is_set(SCAN_OUTPUT_ROOT_ENV));
+
+            if let Some(value) = prior {
+                env::set_var(SCAN_OUTPUT_ROOT_ENV, value);
+            } else {
+                env::remove_var(SCAN_OUTPUT_ROOT_ENV);
+            }
+        }
+
+        #[test]
+        fn checkenv_prefers_process_env_over_overlay() {
+            let _guard = env_lock().lock().expect("lock env");
+            let prior = env::var(SCAN_OUTPUT_ROOT_ENV).ok();
+            env::set_var(SCAN_OUTPUT_ROOT_ENV, "/tmp/process_env_output");
+
+            let temp = tempfile::tempdir().expect("tempdir");
+            let env_file = temp.path().join(".env");
+            std::fs::write(
+                &env_file,
+                format!("{SCAN_OUTPUT_ROOT_ENV}=/tmp/overlay_output\n"),
+            )
+            .expect("write dotenv");
+
+            let _loaded =
+                CheckEnv::new(&env_file, &[SCAN_OUTPUT_ROOT_ENV]).expect("load dotenv overlay");
+            assert_eq!(
+                env_var(SCAN_OUTPUT_ROOT_ENV).expect("process env should win"),
+                "/tmp/process_env_output"
+            );
+
+            if let Some(value) = prior {
+                env::set_var(SCAN_OUTPUT_ROOT_ENV, value);
+            } else {
+                env::remove_var(SCAN_OUTPUT_ROOT_ENV);
+            }
+        }
+
+        #[test]
         fn pipe_reader_caps_captured_output() {
             let oversized = vec![b'x'; MAX_PIPE_CAPTURE_BYTES + 4096];
             let handle = spawn_pipe_reader(std::io::Cursor::new(oversized));

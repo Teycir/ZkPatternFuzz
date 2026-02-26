@@ -1130,21 +1130,26 @@ gh run watch
 ## 🐛 zkpatternfuzz Binary Hardening (2026-02-26)
 
 ### Critical (P0)
-- [ ] **Bug 1**: Unbounded read_to_end on child stdout/stderr can OOM the orchestrator
-  - Issue: `src/bin/zkpatternfuzz.rs` reads child process output without size limits
-  - Fix: Use `reader.take(MAX_LOG_SIZE)` or stream to disk for large outputs
-  - Impact: High - can crash orchestrator on infinite/large child output
+- [x] **Bug 1**: Unbounded read_to_end on child stdout/stderr can OOM the orchestrator
+  - Issue: `src/bin/zkpatternfuzz.rs` and timeout wrapper paths read child output without size limits.
+  - Fix: Added capped pipe capture (`8 MiB` per stream) with truncation signaling in:
+    - `src/bin/zkpatternfuzz.rs` (`PipeCapture`, `read_pipe_with_cap`, `finalize_pipe_capture`)
+    - `src/reporting/command_timeout.rs` (same cap/truncation behavior)
+  - Validation: `cargo test --test test_reporting_command_timeout --quiet`, `cargo test --test test_bin_zkpatternfuzz --quiet`.
+  - Impact: High risk addressed - orchestrator no longer buffers unbounded child output in memory.
 
 ### High Priority (P1)
-- [ ] **Bug 2**: TOCTOU race in wait_for_memory_headroom
-  - Issue: Multiple rayon workers can simultaneously pass memory check and all launch
-  - Fix: Use atomic counter or mutex to serialize memory budget allocation
-  - Impact: Medium - can exceed memory budget under high parallelism
+- [x] **Bug 2**: TOCTOU race in wait_for_memory_headroom
+  - Issue: Multiple workers could pass headroom checks concurrently and launch together.
+  - Fix: Added global launch gate lock (`memory_headroom_launch_lock`) and moved headroom check into the same critical section as process spawn in `run_command_with_stage_timeouts`.
+  - Validation: `cargo test --test test_bin_zkpatternfuzz --quiet`.
+  - Impact: Medium risk addressed - launch check and launch are now serialized, removing check→spawn race.
 
-- [ ] **Bug 3**: append_run_log re-opens file on every call from multiple threads
-  - Issue: Inefficient file I/O pattern, potential contention
-  - Fix: Open once and share via `Mutex<BufWriter<File>>`
-  - Impact: Medium - performance degradation under high log volume
+- [x] **Bug 3**: append_run_log re-opens file on every call from multiple threads
+  - Issue: Repeated open/append/close pattern increased contention and overhead under log-heavy runs.
+  - Fix: Added per-path file-handle cache (`run_log_file_cache`) guarded by `Mutex<HashMap<PathBuf, File>>`; writes now reuse handles and flush.
+  - Validation: `append_run_log_reuses_cached_file_handle` in `tests/test_bin_zkpatternfuzz.rs`.
+  - Impact: Medium risk addressed - lower log-path syscall churn and reduced append contention.
 
 ### Medium Priority (P2)
 - [ ] **Bug 4**: 4,343-line monolith mixes CLI, config, framework logic, orchestration
@@ -1153,10 +1158,15 @@ gh run watch
   - Impact: Medium - maintainability and testability concerns
 
 ### Low Priority (P3)
-- [ ] **Bug 5**: std::env::set_var is unsafe in multithreaded contexts
-  - Issue: `checkenv.rs` mutates global environment in parallel execution
-  - Fix: Parse into config struct instead of mutating environment
-  - Impact: Low - potential race conditions, non-deterministic behavior
+- [x] **Bug 5**: std::env::set_var is unsafe in multithreaded contexts
+  - Issue: `checkenv.rs` populated process-global env via `std::env::set_var`.
+  - Fix: Replaced global mutation with a dotenv overlay store and accessor helpers (`checkenv::var`, `checkenv::is_set`) that preserve process env precedence without mutation.
+  - Wiring: Updated `zkpatternfuzz` env lookups and env-presence checks to use overlay-aware access for runtime config and defaults.
+  - Validation:
+    - `checkenv_uses_overlay_without_mutating_process_env`
+    - `checkenv_prefers_process_env_over_overlay`
+    - `cargo test --test test_bin_zkpatternfuzz --quiet`
+  - Impact: Low risk addressed - avoids process-global env races while keeping existing dotenv behavior.
 
 ---
 
