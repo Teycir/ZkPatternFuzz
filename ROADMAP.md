@@ -1751,8 +1751,8 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 ## 🎯 UX & Tooling Improvements (Post-Phase 8)
 
 ### CLI/UX Quick Wins
-- [ ] Add `--list-patterns` flag (30 min, High reward) - List all available CVE patterns with descriptions
-- [ ] Shell completions (1 hr, High reward) - Generate bash/zsh/fish completions for better discoverability
+- [x] Add `--list-patterns` flag (30 min, High reward) - List all available CVE patterns with descriptions (`src/cli/mod.rs`, `src/main.rs`; regression: `tests/cli_command_parity_tests.rs::list_patterns_flag_prints_known_cve_catalog`, 2026-02-26)
+- [x] Shell completions (1 hr, High reward) - Generate bash/zsh/fish completions for better discoverability (`zk-fuzzer completions --shell <bash|zsh|fish>` via `src/cli/mod.rs` + `src/main.rs`; regression: `tests/cli_command_parity_tests.rs::completions_command_emits_bash_script`, 2026-02-26)
 - [ ] Add `--json` global flag (2 hrs, High reward) - Structured output for CI integration
 - [ ] Progress bar for pattern loading (1 hr, Medium reward) - Shows "Loading 52 CVE patterns..." on startup
 

@@ -53,6 +53,10 @@ pub struct Cli {
     /// Kill other zk-fuzzer instances on startup (use with caution)
     #[arg(long, global = true)]
     pub kill_existing: bool,
+
+    /// List available CVE patterns and exit
+    #[arg(long, global = true, default_value_t = false)]
+    pub list_patterns: bool,
 }
 
 #[derive(Subcommand)]
@@ -192,6 +196,12 @@ pub enum Commands {
         #[arg(short, long, default_value = "circom")]
         framework: String,
     },
+    /// Generate shell completion scripts
+    Completions {
+        /// Target shell
+        #[arg(long, value_enum)]
+        shell: CompletionShell,
+    },
     #[command(hide = true)]
     ExecWorker,
 }
@@ -238,6 +248,13 @@ pub enum ScanFamily {
     Auto,
     Mono,
     Multi,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Hash)]
+pub enum CompletionShell {
+    Bash,
+    Zsh,
+    Fish,
 }
 
 #[derive(Debug, Clone)]
@@ -297,6 +314,10 @@ pub struct BinsBootstrapRequest {
 
 #[derive(Debug, Clone)]
 pub enum CommandRequest {
+    ListPatterns,
+    GenerateCompletions {
+        shell: CompletionShell,
+    },
     Scan(ScanRequest),
     RunCampaign {
         campaign: String,
@@ -328,6 +349,10 @@ pub enum CommandRequest {
 
 impl Cli {
     pub fn into_request(self) -> CommandRequest {
+        if self.list_patterns {
+            return CommandRequest::ListPatterns;
+        }
+
         match self.command {
             Some(Commands::Scan {
                 pattern,
@@ -479,6 +504,7 @@ impl Cli {
             Some(Commands::Init { output, framework }) => {
                 CommandRequest::Init { output, framework }
             }
+            Some(Commands::Completions { shell }) => CommandRequest::GenerateCompletions { shell },
             Some(Commands::ExecWorker) => CommandRequest::ExecWorker,
             None => {
                 if let Some(config_path) = self.config {

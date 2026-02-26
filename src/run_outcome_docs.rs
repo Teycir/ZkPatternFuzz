@@ -292,6 +292,10 @@ struct EvidenceProofStats {
     skipped: u64,
     pending: u64,
     unknown: u64,
+    complete_proof_packs: u64,
+    passed_with_complete_pack: u64,
+    failed_with_complete_pack: u64,
+    missing_required_artifacts: u64,
 }
 
 impl EvidenceProofStats {
@@ -310,6 +314,10 @@ fn classify_bundle_verification_result(bundle: &serde_json::Value) -> &'static s
             let lc = value.to_ascii_lowercase();
             if lc == "passed" {
                 "passed"
+            } else if lc == "failed" {
+                "failed"
+            } else if lc == "skipped" {
+                "skipped"
             } else if lc == "pending" {
                 "pending"
             } else {
@@ -329,6 +337,25 @@ fn classify_bundle_verification_result(bundle: &serde_json::Value) -> &'static s
     }
 }
 
+fn has_required_proof_artifacts(bundle_path: &Path) -> bool {
+    let Some(bundle_dir) = bundle_path.parent() else {
+        return false;
+    };
+
+    let has_replay_command = bundle_dir.join("replay_command.txt").exists();
+    let has_notes = bundle_dir.join("exploit_notes.md").exists()
+        || bundle_dir.join("no_exploit_proof.md").exists();
+    let has_impact = bundle_dir.join("impact.md").exists();
+    let has_log = std::fs::read_dir(bundle_dir)
+        .ok()
+        .into_iter()
+        .flat_map(|entries| entries.filter_map(Result::ok))
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .any(|name| name.ends_with(".log"));
+
+    has_replay_command && has_notes && has_impact && has_log
+}
+
 fn evidence_bundle_paths(output_dir: &str) -> Vec<PathBuf> {
     let evidence_dir = Path::new(output_dir).join("evidence");
     let entries = match std::fs::read_dir(&evidence_dir) {
@@ -344,11 +371,19 @@ fn evidence_bundle_paths(output_dir: &str) -> Vec<PathBuf> {
 }
 
 fn collect_evidence_proof_stats(output_dir: Option<&str>) -> Option<EvidenceProofStats> {
-    let output_dir = output_dir.map(str::trim).filter(|value| !value.is_empty())?;
+    let output_dir = output_dir
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
     let mut stats = EvidenceProofStats::default();
 
     for bundle_path in evidence_bundle_paths(output_dir) {
         stats.bundles_total += 1;
+        let has_required_artifacts = has_required_proof_artifacts(&bundle_path);
+        if has_required_artifacts {
+            stats.complete_proof_packs += 1;
+        } else {
+            stats.missing_required_artifacts += 1;
+        }
         let raw = match std::fs::read_to_string(&bundle_path) {
             Ok(raw) => raw,
             Err(_) => {
@@ -364,8 +399,18 @@ fn collect_evidence_proof_stats(output_dir: Option<&str>) -> Option<EvidenceProo
             }
         };
         match classify_bundle_verification_result(&parsed) {
-            "passed" => stats.passed += 1,
-            "failed" => stats.failed += 1,
+            "passed" => {
+                stats.passed += 1;
+                if has_required_artifacts {
+                    stats.passed_with_complete_pack += 1;
+                }
+            }
+            "failed" => {
+                stats.failed += 1;
+                if has_required_artifacts {
+                    stats.failed_with_complete_pack += 1;
+                }
+            }
             "skipped" => stats.skipped += 1,
             "pending" => stats.pending += 1,
             _ => stats.unknown += 1,
@@ -415,13 +460,14 @@ fn proof_status(
             let Some(stats) = proof_stats else {
                 return "proof_failed";
             };
-            if stats.passed > 0 {
+            if stats.passed_with_complete_pack > 0 {
                 return "exploitable";
             }
             // Every finding produced a verifier-rejected proof artifact.
             if findings_total > 0
                 && stats.bundles_total >= findings_total
                 && stats.failed >= findings_total
+                && stats.failed_with_complete_pack >= findings_total
                 && stats.skipped == 0
                 && !stats.has_unresolved()
             {
@@ -533,6 +579,10 @@ pub(crate) fn standardize_run_outcome_doc(doc: &serde_json::Value) -> serde_json
                     "skipped": proof_stats.map(|stats| stats.skipped).unwrap_or(0),
                     "pending": proof_stats.map(|stats| stats.pending).unwrap_or(0),
                     "unknown": proof_stats.map(|stats| stats.unknown).unwrap_or(0),
+                    "complete_proof_packs": proof_stats.map(|stats| stats.complete_proof_packs).unwrap_or(0),
+                    "passed_with_complete_pack": proof_stats.map(|stats| stats.passed_with_complete_pack).unwrap_or(0),
+                    "failed_with_complete_pack": proof_stats.map(|stats| stats.failed_with_complete_pack).unwrap_or(0),
+                    "missing_required_artifacts": proof_stats.map(|stats| stats.missing_required_artifacts).unwrap_or(0),
                 },
                 "analysis_inputs": {
                     "run_outcome_json": analysis_input_path(output_dir, "run_outcome.json"),

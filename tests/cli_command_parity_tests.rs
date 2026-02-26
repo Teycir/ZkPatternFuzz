@@ -39,7 +39,7 @@ fn root_help_lists_legacy_and_scan_commands() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    for command in ["scan", "run", "evidence", "chains"] {
+    for command in ["scan", "run", "evidence", "chains", "completions"] {
         assert!(
             stdout.contains(command),
             "Root help is missing command '{}': {}",
@@ -50,10 +50,72 @@ fn root_help_lists_legacy_and_scan_commands() {
 }
 
 #[test]
+fn list_patterns_flag_prints_known_cve_catalog() {
+    let output = Command::new(binary_path())
+        .arg("--list-patterns")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("Failed to run --list-patterns");
+    assert!(
+        output.status.success(),
+        "--list-patterns failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stdout.contains("Known CVE patterns:"),
+        "Expected list-patterns header in stdout, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("ZK-CVE-2022-001"),
+        "Expected known CVE ID in stdout, got: {}",
+        stdout
+    );
+    assert!(
+        !stderr.contains("ZKF_RUN_SIGNAL_DIR"),
+        "list-patterns should not require run-signal env. stderr: {}",
+        stderr
+    );
+}
+
+#[test]
 fn legacy_subcommand_help_smoke() {
     for subcommand in ["run", "evidence", "chains"] {
         assert_successful_help(subcommand);
     }
+}
+
+#[test]
+fn completions_command_emits_bash_script() {
+    let output = Command::new(binary_path())
+        .arg("completions")
+        .arg("--shell")
+        .arg("bash")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("Failed to run completions --shell bash");
+
+    assert!(
+        output.status.success(),
+        "completions --shell bash failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stdout.contains("complete -F _zk_fuzzer zk-fuzzer"),
+        "Expected bash completion footer in stdout, got: {}",
+        stdout
+    );
+    assert!(
+        !stderr.contains("ZKF_RUN_SIGNAL_DIR"),
+        "completions command should not require run-signal env. stderr: {}",
+        stderr
+    );
 }
 
 #[test]

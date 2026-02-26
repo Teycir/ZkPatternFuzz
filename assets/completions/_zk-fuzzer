@@ -1,0 +1,47 @@
+#compdef zk-fuzzer
+
+_zk_fuzzer() {
+  local -a commands
+  commands=(
+    'scan:Run unified scan command'
+    'run:Run legacy campaign mode'
+    'evidence:Run strict evidence campaign mode'
+    'chains:Run chain-focused campaign mode'
+    'preflight:Run backend/key-setup preflight'
+    'validate:Validate campaign YAML'
+    'bins:Manage local backend binaries'
+    'minimize:Minimize corpus'
+    'init:Generate sample campaign'
+    'completions:Generate shell completion script'
+  )
+
+  _arguments -s \
+    '--config[Path to YAML campaign configuration]:config:_files' \
+    '--workers[Number of parallel workers]:workers:' \
+    '--seed[Seed for reproducibility]:seed:' \
+    '--verbose[Verbose output]' \
+    '--quiet[Minimal output]' \
+    '--dry-run[Validate config without executing]' \
+    '--simple-progress[Use simple progress output]' \
+    '--real-only[Require strict backend availability checks]' \
+    '--profile[Configuration profile]:profile:(quick standard deep perf)' \
+    '--kill-existing[Kill other zk-fuzzer instances on startup]' \
+    '--list-patterns[List available CVE patterns and exit]' \
+    '1:command:->command' \
+    '*::args:->args'
+
+  case $state in
+    command)
+      _describe -t commands 'zk-fuzzer commands' commands
+      ;;
+    args)
+      case $words[2] in
+        completions)
+          _arguments '--shell[Target shell]:(bash zsh fish)'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_zk_fuzzer "$@"

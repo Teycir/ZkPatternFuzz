@@ -5,6 +5,13 @@ mod run_outcome_docs;
 use run_outcome_docs::{classify_run_reason_code, standardize_run_outcome_doc};
 use tempfile::tempdir;
 
+fn write_required_proof_pack(dir: &std::path::Path, note_file: &str) {
+    std::fs::write(dir.join("replay_command.txt"), "cargo run -- replay\n").expect("write replay command");
+    std::fs::write(dir.join(note_file), "# Notes\n").expect("write proof notes");
+    std::fs::write(dir.join("impact.md"), "# Impact\n").expect("write impact");
+    std::fs::write(dir.join("proof_replay.log"), "ok\n").expect("write replay log");
+}
+
 #[test]
 fn standardize_running_outcome_sets_analysis_defaults() {
     let input = serde_json::json!({
@@ -122,6 +129,7 @@ fn standardize_completed_with_passed_bundle_marks_exploitable() {
         r#"{"verification_result":"Passed"}"#,
     )
     .expect("write bundle");
+    write_required_proof_pack(&finding_dir, "exploit_notes.md");
 
     let input = serde_json::json!({
         "status": "completed_with_critical_findings",
@@ -153,6 +161,7 @@ fn standardize_completed_with_failed_bundle_marks_not_exploitable_within_bounds(
         r#"{"verification_result":{"Failed":"invalid proof"}}"#,
     )
     .expect("write bundle");
+    write_required_proof_pack(&finding_dir, "no_exploit_proof.md");
 
     let input = serde_json::json!({
         "status": "completed",
@@ -171,6 +180,37 @@ fn standardize_completed_with_failed_bundle_marks_not_exploitable_within_bounds(
             .and_then(|v| v.get("proof_status"))
             .and_then(|v| v.as_str()),
         Some("not_exploitable_within_bounds")
+    );
+}
+
+#[test]
+fn standardize_passed_bundle_without_required_proof_pack_stays_proof_failed() {
+    let dir = tempdir().expect("tempdir");
+    let finding_dir = dir.path().join("evidence").join("finding_abc");
+    std::fs::create_dir_all(&finding_dir).expect("create evidence dir");
+    std::fs::write(
+        finding_dir.join("bundle.json"),
+        r#"{"verification_result":"Passed"}"#,
+    )
+    .expect("write bundle");
+
+    let input = serde_json::json!({
+        "status": "completed_with_critical_findings",
+        "stage": "completed",
+        "output_dir": dir.path().display().to_string(),
+        "metrics": {
+            "findings_total": 1,
+            "critical_findings": true
+        }
+    });
+
+    let normalized = standardize_run_outcome_doc(&input);
+    assert_eq!(
+        normalized
+            .get("discovery_qualification")
+            .and_then(|v| v.get("proof_status"))
+            .and_then(|v| v.as_str()),
+        Some("proof_failed")
     );
 }
 

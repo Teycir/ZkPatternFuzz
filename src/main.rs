@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::path::PathBuf;
+use zk_fuzzer::cve::CveDatabase;
 mod cli;
 mod engagement_artifacts;
 mod output_lock;
@@ -30,7 +31,9 @@ mod scan_runner;
 mod scan_selector;
 mod scan_selector_context;
 mod toolchain_bootstrap;
-use cli::{BinsBootstrapRequest, ChainRunOptions, Cli, CommandRequest, ScanRequest};
+use cli::{
+    BinsBootstrapRequest, ChainRunOptions, Cli, CommandRequest, CompletionShell, ScanRequest,
+};
 use preflight_backend::preflight_campaign;
 use run_campaign_flow::run_campaign;
 pub(crate) use run_identity::{make_run_id, sanitize_slug};
@@ -43,6 +46,8 @@ pub(crate) use run_paths::{
 use run_process_control::kill_existing_instances;
 use runtime_misc::{generate_sample_config, minimize_corpus, validate_campaign};
 use scan_runner::run_scan as run_scan_orchestrated;
+
+const DEFAULT_CVE_DATABASE_PATH: &str = "templates/known_vulnerabilities.yaml";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -60,7 +65,6 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
-    // Initialize logging
     let log_level = if cli.quiet {
         tracing::Level::WARN
     } else if cli.verbose {
@@ -69,6 +73,17 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
         tracing::Level::INFO
     };
 
+    let dry_run = cli.dry_run;
+    let implicit_legacy_run = cli.command.is_none() && cli.config.is_some();
+    let request = cli.into_request();
+    if let CommandRequest::ListPatterns = &request {
+        return list_known_cve_patterns();
+    }
+    if let CommandRequest::GenerateCompletions { shell } = &request {
+        return generate_shell_completions(*shell);
+    }
+
+    // Initialize logging
     tracing_subscriber::fmt()
         .with_max_level(log_level)
         .with_target(false)
@@ -80,11 +95,9 @@ async fn run_cli_command(cli: Cli) -> anyhow::Result<()> {
     install_panic_hook();
     start_signal_watchers();
 
-    let dry_run = cli.dry_run;
-    let implicit_legacy_run = cli.command.is_none() && cli.config.is_some();
-    let request = cli.into_request();
-
     match request {
+        CommandRequest::ListPatterns => list_known_cve_patterns(),
+        CommandRequest::GenerateCompletions { shell } => generate_shell_completions(shell),
         CommandRequest::Scan(scan_request) => run_scan(scan_request).await,
         CommandRequest::RunCampaign { campaign, options } => {
             if implicit_legacy_run {
@@ -150,4 +163,50 @@ async fn run_scan(scan_request: ScanRequest) -> anyhow::Result<()> {
 /// Run a chain-focused fuzzing campaign (Mode 3: Deepest)
 async fn run_chain_campaign(config_path: &str, options: ChainRunOptions) -> anyhow::Result<()> {
     run_chain_campaign_flow::run_chain_campaign(config_path, options).await
+}
+
+fn list_known_cve_patterns() -> anyhow::Result<()> {
+    let database = CveDatabase::load(DEFAULT_CVE_DATABASE_PATH).map_err(|err| {
+        anyhow::anyhow!(
+            "Failed to load CVE pattern database '{}': {:#}",
+            DEFAULT_CVE_DATABASE_PATH,
+            err
+        )
+    })?;
+
+    let mut patterns: Vec<_> = database.all_patterns().iter().collect();
+    patterns.sort_by(|left, right| left.id.cmp(&right.id));
+
+    println!(
+        "Known CVE patterns: {} (version {}, updated {})",
+        patterns.len(),
+        database.version,
+        database.last_updated
+    );
+    println!("ID | Severity | Name | Summary");
+    println!("---|---|---|---");
+    for pattern in patterns {
+        let summary = pattern
+            .description
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or("-");
+        println!(
+            "{} | {} | {} | {}",
+            pattern.id, pattern.severity, pattern.name, summary
+        );
+    }
+
+    Ok(())
+}
+
+fn generate_shell_completions(shell: CompletionShell) -> anyhow::Result<()> {
+    let script = match shell {
+        CompletionShell::Bash => include_str!("../assets/completions/zk-fuzzer.bash"),
+        CompletionShell::Zsh => include_str!("../assets/completions/_zk-fuzzer"),
+        CompletionShell::Fish => include_str!("../assets/completions/zk-fuzzer.fish"),
+    };
+    print!("{}", script);
+    Ok(())
 }
