@@ -8,6 +8,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -330,11 +331,16 @@ struct ScanRunResult {
     stderr: String,
 }
 
+struct TemplateProgressUpdate {
+    dedupe_key: String,
+    rendered_line: String,
+}
+
 struct BatchProgress {
     total: usize,
     started_at: Instant,
     completed: AtomicUsize,
-    failed: AtomicUsize,
+    template_errors: AtomicUsize,
 }
 
 impl BatchProgress {
@@ -343,25 +349,25 @@ impl BatchProgress {
             total,
             started_at: Instant::now(),
             completed: AtomicUsize::new(0),
-            failed: AtomicUsize::new(0),
+            template_errors: AtomicUsize::new(0),
         }
     }
 
     fn record(&self, template_file: &str, success: bool) -> String {
         let completed = self.completed.fetch_add(1, Ordering::SeqCst) + 1;
-        let failed = if success {
-            self.failed.load(Ordering::SeqCst)
+        let template_errors = if success {
+            self.template_errors.load(Ordering::SeqCst)
         } else {
-            self.failed.fetch_add(1, Ordering::SeqCst) + 1
+            self.template_errors.fetch_add(1, Ordering::SeqCst) + 1
         };
-        let succeeded = completed.saturating_sub(failed);
+        let succeeded = completed.saturating_sub(template_errors);
         let elapsed_secs = self.started_at.elapsed().as_secs_f64();
 
         format_batch_progress_line(
             completed,
             self.total,
             succeeded,
-            failed,
+            template_errors,
             elapsed_secs,
             template_file,
             success,
@@ -373,7 +379,7 @@ fn format_batch_progress_line(
     completed: usize,
     total: usize,
     succeeded: usize,
-    failed: usize,
+    template_errors: usize,
     elapsed_secs: f64,
     template_file: &str,
     success: bool,
@@ -391,21 +397,128 @@ fn format_batch_progress_line(
     } else {
         0.0
     };
-    let result = if success { "ok" } else { "fail" };
+    let result = if success { "ok" } else { "template_error" };
 
     format!(
-        "[BATCH PROGRESS] {}/{} ({:.1}%) ok={} fail={} elapsed={:.1}s rate={:.2}/s eta={:.1}s last={} result={}",
+        "[BATCH PROGRESS] {}/{} ({:.1}%) ok={} template_errors={} elapsed={:.1}s rate={:.2}/s eta={:.1}s last={} result={}",
         completed,
         total,
         percent,
         succeeded,
-        failed,
+        template_errors,
         elapsed,
         rate,
         eta_secs,
         template_file,
         result
     )
+}
+
+fn template_progress_path(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> PathBuf {
+    if let Some(run_root) = run_cfg.scan_run_root {
+        run_cfg
+            .artifacts_root
+            .join(run_root)
+            .join(output_suffix)
+            .join("progress.json")
+    } else {
+        run_cfg.results_root.join(output_suffix).join("progress.json")
+    }
+}
+
+fn read_template_progress_update(
+    template_file: &str,
+    progress_path: &Path,
+) -> Option<TemplateProgressUpdate> {
+    let raw = fs::read_to_string(progress_path).ok()?;
+    let doc: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let progress = doc.get("progress")?;
+    let step_fraction = progress
+        .get("step_fraction")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?/??");
+    let stage = doc
+        .get("stage")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    let details = doc.get("details");
+    let attack_type = details
+        .and_then(|d| d.get("attack_type"))
+        .and_then(|v| v.as_str());
+    let elapsed_seconds = details
+        .and_then(|d| d.get("elapsed_seconds"))
+        .and_then(|v| v.as_u64());
+    let findings_total = details
+        .and_then(|d| d.get("findings_total"))
+        .and_then(|v| v.as_u64());
+
+    let mut rendered = format!(
+        "[TEMPLATE STEP] {} step={} stage={}",
+        template_file, step_fraction, stage
+    );
+    if let Some(attack_type) = attack_type {
+        rendered.push_str(&format!(" attack={}", attack_type));
+    }
+    if let Some(elapsed_seconds) = elapsed_seconds {
+        rendered.push_str(&format!(" elapsed={}s", elapsed_seconds));
+    }
+    if stage == "completed" {
+        if let Some(findings_total) = findings_total {
+            rendered.push_str(&format!(" findings={}", findings_total));
+        }
+    }
+
+    let dedupe_key = format!(
+        "{}|{}|{}|{}|{}",
+        step_fraction,
+        stage,
+        attack_type.unwrap_or_default(),
+        elapsed_seconds.unwrap_or(0),
+        findings_total.unwrap_or(0)
+    );
+
+    Some(TemplateProgressUpdate {
+        dedupe_key,
+        rendered_line: rendered,
+    })
+}
+
+fn spawn_template_progress_monitor(
+    template_file: String,
+    progress_path: PathBuf,
+) -> (Arc<AtomicUsize>, thread::JoinHandle<()>) {
+    let stop_flag = Arc::new(AtomicUsize::new(0));
+    let stop_handle = Arc::clone(&stop_flag);
+    let handle = thread::spawn(move || {
+        let mut last_dedupe_key: Option<String> = None;
+        loop {
+            if stop_handle.load(Ordering::Relaxed) != 0 {
+                break;
+            }
+            if let Some(update) = read_template_progress_update(&template_file, &progress_path) {
+                let changed = match &last_dedupe_key {
+                    Some(prev) => prev != &update.dedupe_key,
+                    None => true,
+                };
+                if changed {
+                    println!("{}", update.rendered_line);
+                    last_dedupe_key = Some(update.dedupe_key);
+                }
+            }
+            thread::sleep(Duration::from_secs(1));
+        }
+        if let Some(update) = read_template_progress_update(&template_file, &progress_path) {
+            let changed = match &last_dedupe_key {
+                Some(prev) => prev != &update.dedupe_key,
+                None => true,
+            };
+            if changed {
+                println!("{}", update.rendered_line);
+            }
+        }
+    });
+    (stop_flag, handle)
 }
 
 fn report_has_high_confidence_finding(report_path: &Path) -> bool {
@@ -1381,15 +1494,29 @@ fn run_scan(
         });
     }
 
+    let monitor_state = if !validate_only {
+        let progress_path = template_progress_path(run_cfg, output_suffix);
+        let template_file = template.file_name.clone();
+        Some(spawn_template_progress_monitor(template_file, progress_path))
+    } else {
+        None
+    };
+
     let output = cmd.output()?;
+    if let Some((stop_flag, monitor_handle)) = monitor_state {
+        stop_flag.store(1, Ordering::Relaxed);
+        let _ = monitor_handle.join();
+    }
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-    if !stdout.is_empty() {
-        print!("{}", stdout);
-    }
-    if !stderr.is_empty() {
-        eprint!("{}", stderr);
+    if !output.status.success() {
+        if !stdout.is_empty() {
+            print!("{}", stdout);
+        }
+        if !stderr.is_empty() {
+            eprint!("{}", stderr);
+        }
     }
 
     Ok(ScanRunResult {
@@ -2198,7 +2325,7 @@ struct BatchReportGates {
     gate1_expected_patterns: usize,
     gate2_completion: bool,
     gate3_artifact_reconciliation: bool,
-    reason_error_count: usize,
+    template_reason_errors: usize,
     dry_run: bool,
     campaign_success: bool,
 }
@@ -2215,7 +2342,7 @@ struct BatchReportArtifacts {
 struct BatchReportTotals {
     expected_patterns: usize,
     executed_patterns: usize,
-    failed_patterns: usize,
+    template_errors: usize,
     matched_patterns: usize,
     total_findings: usize,
     high_confidence_patterns: usize,
@@ -2229,7 +2356,7 @@ fn write_report_json(
     reasons: &[TemplateOutcomeReason],
     expected_count: usize,
     executed: usize,
-    failures: usize,
+    template_errors: usize,
     results_root: &Path,
     gate2_ok: bool,
     gate3_ok: bool,
@@ -2257,7 +2384,7 @@ fn write_report_json(
         .count();
     let verdict = if args.dry_run {
         "dry_run"
-    } else if !gate2_ok || !gate3_ok || reason_error_count > 0 || failures > 0 {
+    } else if !gate2_ok || !gate3_ok || reason_error_count > 0 || template_errors > 0 {
         "run_failed"
     } else if matched_patterns > 0 {
         "matching_patterns_found"
@@ -2313,7 +2440,7 @@ fn write_report_json(
             gate1_expected_patterns: expected_count,
             gate2_completion: gate2_ok,
             gate3_artifact_reconciliation: gate3_ok,
-            reason_error_count,
+            template_reason_errors: reason_error_count,
             dry_run: args.dry_run,
             campaign_success,
         },
@@ -2326,7 +2453,7 @@ fn write_report_json(
         totals: BatchReportTotals {
             expected_patterns: expected_count,
             executed_patterns: executed,
-            failed_patterns: failures,
+            template_errors,
             matched_patterns,
             total_findings,
             high_confidence_patterns,
@@ -2462,7 +2589,7 @@ fn is_error_reason(reason: &TemplateOutcomeReason) -> bool {
 fn write_error_log(
     path: &Path,
     reasons: &[TemplateOutcomeReason],
-    failures: usize,
+    template_errors: usize,
     gate2_ok: bool,
     gate3_ok: bool,
     dry_run: bool,
@@ -2472,7 +2599,7 @@ fn write_error_log(
     lines.push(format!("dry_run={}", dry_run));
     lines.push(format!("gate2_ok={}", gate2_ok));
     lines.push(format!("gate3_ok={}", gate3_ok));
-    lines.push(format!("failed_patterns={}", failures));
+    lines.push(format!("template_errors={}", template_errors));
 
     let mut error_count = 0usize;
     for reason in reasons {
@@ -2969,14 +3096,14 @@ fn main() -> anyhow::Result<()> {
             &timestamped_run_log,
             format!("step=template_preflight status=failed error={}", err),
         );
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "end_utc={} campaign_success=false dry_run={} failure=template_preflight",
-                Utc::now().to_rfc3339(),
-                args.dry_run
-            ),
-        );
+            append_run_log_best_effort(
+                &timestamped_run_log,
+                format!(
+                    "end_utc={} campaign_success=false dry_run={} termination_cause=template_preflight",
+                    Utc::now().to_rfc3339(),
+                    args.dry_run
+                ),
+            );
         if let Err(log_err) =
             write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
         {
@@ -3029,14 +3156,14 @@ fn main() -> anyhow::Result<()> {
             &timestamped_run_log,
             format!("step=local_readiness status=failed error={}", err),
         );
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "end_utc={} campaign_success=false dry_run={} failure=local_readiness",
-                Utc::now().to_rfc3339(),
-                args.dry_run
-            ),
-        );
+            append_run_log_best_effort(
+                &timestamped_run_log,
+                format!(
+                    "end_utc={} campaign_success=false dry_run={} termination_cause=local_readiness",
+                    Utc::now().to_rfc3339(),
+                    args.dry_run
+                ),
+            );
         if let Err(log_err) =
             write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
         {
@@ -3063,14 +3190,14 @@ fn main() -> anyhow::Result<()> {
                 &timestamped_run_log,
                 format!("step=local_readiness status=failed error={}", err),
             );
-            append_run_log_best_effort(
-                &timestamped_run_log,
-                format!(
-                    "end_utc={} campaign_success=false dry_run={} failure=runtime_paths",
-                    Utc::now().to_rfc3339(),
-                    args.dry_run
-                ),
-            );
+                append_run_log_best_effort(
+                    &timestamped_run_log,
+                    format!(
+                        "end_utc={} campaign_success=false dry_run={} termination_cause=runtime_paths",
+                        Utc::now().to_rfc3339(),
+                        args.dry_run
+                    ),
+                );
             if let Err(log_err) =
                 write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
             {
@@ -3139,14 +3266,14 @@ fn main() -> anyhow::Result<()> {
                         err
                     ),
                 );
-                append_run_log_best_effort(
-                    &timestamped_run_log,
-                    format!(
-                        "end_utc={} campaign_success=false dry_run={} failure=build_zk_fuzzer_command",
+                    append_run_log_best_effort(
+                        &timestamped_run_log,
+                        format!(
+                        "end_utc={} campaign_success=false dry_run={} termination_cause=build_zk_fuzzer_command",
                         Utc::now().to_rfc3339(),
                         args.dry_run
                     ),
-                );
+                    );
                 if let Err(log_err) =
                     write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
                 {
@@ -3173,7 +3300,7 @@ fn main() -> anyhow::Result<()> {
             append_run_log_best_effort(
                 &timestamped_run_log,
                 format!(
-                    "end_utc={} campaign_success=false dry_run={} failure=build_zk_fuzzer",
+                    "end_utc={} campaign_success=false dry_run={} termination_cause=build_zk_fuzzer",
                     Utc::now().to_rfc3339(),
                     args.dry_run
                 ),
@@ -3223,7 +3350,7 @@ fn main() -> anyhow::Result<()> {
         append_run_log_best_effort(
             &timestamped_run_log,
             format!(
-                "end_utc={} campaign_success=false dry_run={} failure=missing_binary",
+                "end_utc={} campaign_success=false dry_run={} termination_cause=missing_binary",
                 Utc::now().to_rfc3339(),
                 args.dry_run
             ),
@@ -3318,7 +3445,7 @@ fn main() -> anyhow::Result<()> {
                 append_run_log_best_effort(
                     &timestamped_run_log,
                     format!(
-                        "end_utc={} campaign_success=false dry_run={} failure=prepare_target",
+                        "end_utc={} campaign_success=false dry_run={} termination_cause=prepare_target",
                         Utc::now().to_rfc3339(),
                         args.dry_run
                     ),
@@ -3469,6 +3596,12 @@ fn main() -> anyhow::Result<()> {
             .par_iter()
             .map(|(template, family)| {
                 let suffix = scan_output_suffix(template, *family);
+                println!(
+                    "[TEMPLATE START] {} family={} output_suffix={}",
+                    template.file_name,
+                    family.as_str(),
+                    suffix
+                );
                 let ok = match run_template(
                     run_cfg,
                     template,
@@ -3482,6 +3615,11 @@ fn main() -> anyhow::Result<()> {
                         false
                     }
                 };
+                println!(
+                    "[TEMPLATE END] {} result={}",
+                    template.file_name,
+                    if ok { "ok" } else { "template_error" }
+                );
                 if let Some(progress) = progress.as_ref() {
                     println!("{}", progress.record(&template.file_name, ok));
                 }
@@ -3491,23 +3629,23 @@ fn main() -> anyhow::Result<()> {
     });
 
     let executed = outcomes.len();
-    let failures = outcomes.iter().filter(|ok| !**ok).count();
+    let template_errors = outcomes.iter().filter(|ok| !**ok).count();
     let duration_secs = batch_started_at.elapsed().as_secs_f64().max(0.001);
     let avg_rate = executed as f64 / duration_secs;
 
     println!(
-        "Batch complete. Templates executed: {}, failures: {}, duration: {:.1}s, avg_rate: {:.2}/s",
-        executed, failures, duration_secs, avg_rate
+        "Batch complete. Templates executed: {}, template_errors: {}, duration: {:.1}s, avg_rate: {:.2}/s",
+        executed, template_errors, duration_secs, avg_rate
     );
-    let gate2_ok = executed == expected_count && failures == 0;
+    let gate2_ok = executed == expected_count && template_errors == 0;
     println!(
         "Gate 2/3 (completion line): {}",
         if gate2_ok {
-            format!("PASS (executed={}, failures=0)", executed)
+            format!("PASS (executed={}, template_errors=0)", executed)
         } else {
             format!(
-                "FAIL (expected={}, executed={}, failures={})",
-                expected_count, executed, failures
+                "FAIL (expected={}, executed={}, template_errors={})",
+                expected_count, executed, template_errors
             )
         }
     );
@@ -3557,8 +3695,8 @@ fn main() -> anyhow::Result<()> {
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
-            "step=execute_templates status=completed executed={} failures={} duration_secs={:.3} avg_rate={:.3}",
-            executed, failures, duration_secs, avg_rate
+            "step=execute_templates status=completed executed={} template_errors={} duration_secs={:.3} avg_rate={:.3}",
+            executed, template_errors, duration_secs, avg_rate
         ),
     );
     append_run_log_best_effort(
@@ -3593,7 +3731,7 @@ fn main() -> anyhow::Result<()> {
     write_error_log(
         &timestamped_error_log,
         &reasons,
-        failures,
+        template_errors,
         gate2_ok,
         gate3_ok,
         args.dry_run,
@@ -3609,7 +3747,7 @@ fn main() -> anyhow::Result<()> {
             &reasons,
             expected_count,
             executed,
-            failures,
+            template_errors,
             &results_root,
             gate2_ok,
             gate3_ok,
@@ -3633,13 +3771,13 @@ fn main() -> anyhow::Result<()> {
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
-            "end_utc={} campaign_success={} dry_run={} gate2_ok={} gate3_ok={} failures={}",
+            "end_utc={} campaign_success={} dry_run={} gate2_ok={} gate3_ok={} template_errors={}",
             Utc::now().to_rfc3339(),
             campaign_success,
             args.dry_run,
             gate2_ok,
             gate3_ok,
-            failures
+            template_errors
         ),
     );
 
@@ -3653,10 +3791,10 @@ fn main() -> anyhow::Result<()> {
         );
     } else {
         let err = anyhow::anyhow!(
-            "execution gates failed (gate2_ok={}, gate3_ok={}, failures={})",
+            "execution gates failed (gate2_ok={}, gate3_ok={}, template_errors={})",
             gate2_ok,
             gate3_ok,
-            failures
+            template_errors
         );
         step_failed(
             5,
