@@ -1,11 +1,10 @@
 use anyhow::Context;
 use chrono::Utc;
 use clap::{ArgAction, Parser, ValueEnum};
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use serde::Deserialize;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::fs::OpenOptions;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -15,14 +14,34 @@ use std::time::{Duration, Instant};
 
 #[path = "zkpatternfuzz/checkenv.rs"]
 mod checkenv;
+#[path = "zkpatternfuzz/run_log.rs"]
+mod run_log;
+#[path = "zkpatternfuzz/zkpatternfuzz_config.rs"]
+mod zkpatternfuzz_config;
 #[path = "zkpatternfuzz/zkpatternfuzz_env.rs"]
 mod zkpatternfuzz_env;
 #[path = "zkpatternfuzz/zkpatternfuzz_readiness.rs"]
 mod zkpatternfuzz_readiness;
+#[path = "zkpatternfuzz/zkpatternfuzz_reporting.rs"]
+mod zkpatternfuzz_reporting;
 
 use checkenv::{is_set as env_is_set, var as env_var, CheckEnv};
+#[cfg(test)]
+use run_log::{append_run_log, run_log_file_cache};
+use run_log::{
+    append_run_log_best_effort, step_failed, step_skipped, step_started, step_succeeded,
+};
+use zkpatternfuzz_config::{
+    effective_batch_timeout_secs, halo2_effective_external_timeout_secs,
+    high_confidence_min_oracles_from_env, load_memory_guard_config, load_stage_timeout_config,
+    resolve_build_cache_dir, resolve_results_root,
+};
 use zkpatternfuzz_env::{expand_env_placeholders, has_unresolved_env_placeholder};
 use zkpatternfuzz_readiness::{ensure_local_runtime_requirements, preflight_template_paths};
+use zkpatternfuzz_reporting::{
+    create_timestamped_result_dir, is_error_reason, print_reason_tsv, proof_state_counts,
+    write_error_log, write_report_json,
+};
 
 const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
 const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
@@ -798,14 +817,6 @@ fn report_detected_pattern_count(report_path: &Path) -> usize {
         .unwrap_or(0)
 }
 
-fn high_confidence_min_oracles_from_env() -> usize {
-    env_var(HIGH_CONFIDENCE_MIN_ORACLES_ENV)
-        .ok()
-        .and_then(|raw| raw.trim().parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES)
-}
-
 fn parse_correlation_confidence(description: &str) -> Option<String> {
     let marker = "correlation:";
     let description_lc = description.to_ascii_lowercase();
@@ -894,84 +905,6 @@ fn ensure_positive_cli_values(args: &Args) -> anyhow::Result<()> {
         anyhow::bail!("--timeout must be >= 1");
     }
     Ok(())
-}
-
-fn env_bool_with_default(name: &str, default: bool) -> anyhow::Result<bool> {
-    let Ok(raw) = env_var(name) else {
-        return Ok(default);
-    };
-    let trimmed = raw.trim().to_ascii_lowercase();
-    match trimmed.as_str() {
-        "1" | "true" | "yes" | "on" => Ok(true),
-        "0" | "false" | "no" | "off" => Ok(false),
-        _ => anyhow::bail!(
-            "Invalid {}='{}'. Use one of: 1/0, true/false, yes/no, on/off",
-            name,
-            raw
-        ),
-    }
-}
-
-fn env_u64_with_default(name: &str, default: u64, min: u64) -> anyhow::Result<u64> {
-    let Ok(raw) = env_var(name) else {
-        return Ok(default.max(min));
-    };
-    let trimmed = raw.trim();
-    let parsed = trimmed
-        .parse::<u64>()
-        .map_err(|_| anyhow::anyhow!("Invalid {}='{}'. Expected an unsigned integer", name, raw))?;
-    if parsed < min {
-        anyhow::bail!("Invalid {}={}: must be >= {}", name, parsed, min);
-    }
-    Ok(parsed)
-}
-
-fn load_memory_guard_config() -> anyhow::Result<MemoryGuardConfig> {
-    Ok(MemoryGuardConfig {
-        enabled: env_bool_with_default(MEMORY_GUARD_ENABLED_ENV, true)?,
-        reserved_mb: env_u64_with_default(
-            MEMORY_GUARD_RESERVED_MB_ENV,
-            DEFAULT_MEMORY_GUARD_RESERVED_MB,
-            0,
-        )?,
-        mb_per_template: env_u64_with_default(
-            MEMORY_GUARD_MB_PER_TEMPLATE_ENV,
-            DEFAULT_MEMORY_GUARD_MB_PER_TEMPLATE,
-            1,
-        )?,
-        mb_per_worker: env_u64_with_default(
-            MEMORY_GUARD_MB_PER_WORKER_ENV,
-            DEFAULT_MEMORY_GUARD_MB_PER_WORKER,
-            1,
-        )?,
-        launch_floor_mb: env_u64_with_default(
-            MEMORY_GUARD_LAUNCH_FLOOR_MB_ENV,
-            DEFAULT_MEMORY_GUARD_LAUNCH_FLOOR_MB,
-            1,
-        )?,
-        wait_secs: env_u64_with_default(
-            MEMORY_GUARD_WAIT_SECS_ENV,
-            DEFAULT_MEMORY_GUARD_WAIT_SECS,
-            1,
-        )?,
-        poll_ms: env_u64_with_default(MEMORY_GUARD_POLL_MS_ENV, DEFAULT_MEMORY_GUARD_POLL_MS, 50)?,
-    })
-}
-
-fn load_stage_timeout_config(default_timeout_secs: u64) -> anyhow::Result<StageTimeoutConfig> {
-    Ok(StageTimeoutConfig {
-        detection_timeout_secs: env_u64_with_default(
-            DETECTION_STAGE_TIMEOUT_ENV,
-            default_timeout_secs,
-            1,
-        )?,
-        proof_timeout_secs: env_u64_with_default(PROOF_STAGE_TIMEOUT_ENV, default_timeout_secs, 1)?,
-        stuck_step_warn_secs: env_u64_with_default(
-            STUCK_STEP_WARN_SECS_ENV,
-            DEFAULT_STUCK_STEP_WARN_SECS,
-            1,
-        )?,
-    })
 }
 
 fn parse_mem_available_kib(meminfo: &str) -> Option<u64> {
@@ -1687,9 +1620,7 @@ fn run_scan(
         if !env_is_set(HALO2_USE_HOST_CARGO_HOME_ENV) {
             cmd.env(HALO2_USE_HOST_CARGO_HOME_ENV, "0");
         }
-        if !env_is_set(HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV)
-            && !auto_candidates.is_empty()
-        {
+        if !env_is_set(HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV) && !auto_candidates.is_empty() {
             cmd.env(
                 HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV,
                 auto_candidates.join(","),
@@ -1821,18 +1752,6 @@ fn run_scan(
     })
 }
 
-fn resolve_build_cache_dir(results_root: &Path) -> PathBuf {
-    for env_name in [BUILD_CACHE_DIR_ENV, SHARED_BUILD_CACHE_DIR_ENV] {
-        if let Ok(raw) = env_var(env_name) {
-            let trimmed = raw.trim();
-            if !trimmed.is_empty() {
-                return PathBuf::from(trimmed);
-            }
-        }
-    }
-    results_root.join("_build_cache")
-}
-
 fn ensure_writable_dir(path: &Path, label: &str) -> anyhow::Result<()> {
     fs::create_dir_all(path)
         .with_context(|| format!("Failed to create {} '{}'", label, path.display()))?;
@@ -1856,38 +1775,6 @@ fn preflight_runtime_paths(results_root: &Path) -> anyhow::Result<(PathBuf, Path
     let build_cache_dir = resolve_build_cache_dir(results_root);
     ensure_writable_dir(&build_cache_dir, "build cache dir")?;
     Ok((run_signal_dir, build_cache_dir))
-}
-
-fn halo2_effective_external_timeout_secs(framework: &str, requested_timeout: u64) -> u64 {
-    if !framework.eq_ignore_ascii_case("halo2") {
-        return requested_timeout;
-    }
-
-    let floor = env_var(HALO2_MIN_EXTERNAL_TIMEOUT_ENV)
-        .ok()
-        .and_then(|raw| raw.trim().parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(180);
-
-    requested_timeout.max(floor)
-}
-
-fn effective_batch_timeout_secs(framework: &str, requested_timeout: u64) -> u64 {
-    // Keep explicit user/config timeout values unchanged.
-    if requested_timeout != DEFAULT_BATCH_TIMEOUT_SECS {
-        return requested_timeout;
-    }
-    if !framework.eq_ignore_ascii_case("halo2") {
-        return requested_timeout;
-    }
-
-    let halo2_default = env_var(HALO2_DEFAULT_BATCH_TIMEOUT_ENV)
-        .ok()
-        .and_then(|raw| raw.trim().parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_HALO2_BATCH_TIMEOUT_SECS);
-
-    requested_timeout.max(halo2_default)
 }
 
 fn push_unique_nonempty(values: &mut Vec<String>, candidate: impl Into<String>) {
@@ -2176,23 +2063,6 @@ fn scan_output_suffix(template: &TemplateInfo, family: Family) -> String {
         normalized = "pattern".to_string();
     }
     format!("{}__{}", family.as_str(), normalized)
-}
-
-fn resolve_results_root() -> anyhow::Result<PathBuf> {
-    let raw = env_var(SCAN_OUTPUT_ROOT_ENV).with_context(|| {
-        format!(
-            "{} is required (output path is env-only)",
-            SCAN_OUTPUT_ROOT_ENV
-        )
-    })?;
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        anyhow::bail!(
-            "{} is set but empty; provide a writable output root",
-            SCAN_OUTPUT_ROOT_ENV
-        );
-    }
-    Ok(PathBuf::from(trimmed))
 }
 
 fn reserve_batch_scan_run_root(artifacts_root: &Path) -> anyhow::Result<String> {
@@ -2594,458 +2464,6 @@ fn print_reason_summary(reasons: &[TemplateOutcomeReason]) {
             reason.proof_status.as_deref().unwrap_or("unknown"),
         );
     }
-}
-
-fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
-    if reasons.is_empty() {
-        return;
-    }
-
-    println!("REASON_TSV_START");
-    println!(
-        "template\tsuffix\treason_code\tstatus\tstage\tproof_status\thigh_confidence_detected\tdetected_pattern_count"
-    );
-    for reason in reasons {
-        println!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            reason.template_file,
-            reason.suffix,
-            reason.reason_code,
-            reason.status.as_deref().unwrap_or("unknown"),
-            reason.stage.as_deref().unwrap_or("unknown"),
-            reason.proof_status.as_deref().unwrap_or("unknown"),
-            if reason.high_confidence_detected {
-                "1"
-            } else {
-                "0"
-            },
-            reason.detected_pattern_count,
-        );
-    }
-    println!("REASON_TSV_END");
-}
-
-fn proof_state_counts(reasons: &[TemplateOutcomeReason]) -> (usize, usize, usize, usize) {
-    let exploitable = reasons
-        .iter()
-        .filter(|reason| reason.proof_status.as_deref() == Some("exploitable"))
-        .count();
-    let not_exploitable_within_bounds = reasons
-        .iter()
-        .filter(|reason| reason.proof_status.as_deref() == Some("not_exploitable_within_bounds"))
-        .count();
-    let proof_failed = reasons
-        .iter()
-        .filter(|reason| reason.proof_status.as_deref() == Some("proof_failed"))
-        .count();
-    let proof_skipped_by_policy = reasons
-        .iter()
-        .filter(|reason| reason.proof_status.as_deref() == Some("proof_skipped_by_policy"))
-        .count();
-    (
-        exploitable,
-        not_exploitable_within_bounds,
-        proof_failed,
-        proof_skipped_by_policy,
-    )
-}
-
-#[derive(Debug, Serialize)]
-struct PatternReportRow {
-    pattern_file: String,
-    pattern_path: String,
-    output_suffix: String,
-    reason_code: String,
-    status: String,
-    stage: String,
-    proof_status: String,
-    detected_pattern_count: usize,
-    high_confidence_detected: bool,
-    matched: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct BatchFindingsReport<'a> {
-    report_schema: &'static str,
-    generated_utc: String,
-    verdict: &'static str,
-    target_circuit: &'a str,
-    framework: &'a str,
-    main_component: &'a str,
-    input: BatchReportInput<'a>,
-    run: BatchReportRun,
-    gates: BatchReportGates,
-    artifacts: BatchReportArtifacts,
-    totals: BatchReportTotals,
-    patterns: Vec<PatternReportRow>,
-}
-
-#[derive(Debug, Serialize)]
-struct BatchReportInput<'a> {
-    config_json: Option<&'a str>,
-    registry: Option<&'a str>,
-    collection: Option<&'a str>,
-    alias: Option<&'a str>,
-    template: Option<&'a str>,
-    pattern_yaml: Option<&'a str>,
-}
-
-#[derive(Debug, Serialize)]
-struct BatchReportRun {
-    jobs: usize,
-    workers: usize,
-    seed: u64,
-    iterations: u64,
-    timeout: u64,
-    results_root: String,
-}
-
-#[derive(Debug, Serialize)]
-struct BatchReportGates {
-    gate1_expected_patterns: usize,
-    gate2_completion: bool,
-    gate3_artifact_reconciliation: bool,
-    template_reason_errors: usize,
-    dry_run: bool,
-    campaign_success: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct BatchReportArtifacts {
-    timestamped_result_bundle: String,
-    timestamped_run_log: String,
-    timestamped_error_log: String,
-    batch_run_root: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct BatchReportTotals {
-    expected_patterns: usize,
-    executed_patterns: usize,
-    template_errors: usize,
-    matched_patterns: usize,
-    detected_patterns_total: usize,
-    high_confidence_patterns: usize,
-    exploitable_patterns: usize,
-    not_exploitable_within_bounds_patterns: usize,
-    proof_failed_patterns: usize,
-    proof_skipped_by_policy_patterns: usize,
-}
-
-#[allow(clippy::too_many_arguments)]
-fn write_report_json(
-    args: &Args,
-    path: &Path,
-    target_circuit: &str,
-    reasons: &[TemplateOutcomeReason],
-    expected_count: usize,
-    executed: usize,
-    template_errors: usize,
-    results_root: &Path,
-    gate2_ok: bool,
-    gate3_ok: bool,
-    campaign_success: bool,
-    timestamped_result_dir: &Path,
-    timestamped_run_log: &Path,
-    timestamped_error_log: &Path,
-    batch_run_root: Option<&str>,
-) -> anyhow::Result<()> {
-    let matched_patterns = reasons
-        .iter()
-        .filter(|reason| reason.detected_pattern_count > 0)
-        .count();
-    let detected_patterns_total = reasons
-        .iter()
-        .map(|reason| reason.detected_pattern_count)
-        .sum::<usize>();
-    let high_confidence_patterns = reasons
-        .iter()
-        .filter(|reason| reason.high_confidence_detected)
-        .count();
-    let (
-        exploitable_patterns,
-        not_exploitable_within_bounds_patterns,
-        proof_failed_patterns,
-        proof_skipped_by_policy_patterns,
-    ) = proof_state_counts(reasons);
-    let reason_error_count = reasons
-        .iter()
-        .filter(|reason| is_error_reason(reason))
-        .count();
-    let verdict = if args.dry_run {
-        "dry_run"
-    } else if !gate2_ok || !gate3_ok || reason_error_count > 0 || template_errors > 0 {
-        "run_failed"
-    } else if matched_patterns > 0 {
-        "matching_patterns_found"
-    } else {
-        "no_matching_patterns_found"
-    };
-
-    let patterns = reasons
-        .iter()
-        .map(|reason| PatternReportRow {
-            pattern_file: reason.template_file.clone(),
-            pattern_path: reason.template_path.clone(),
-            output_suffix: reason.suffix.clone(),
-            reason_code: reason.reason_code.clone(),
-            status: reason
-                .status
-                .clone()
-                .unwrap_or_else(|| "unknown".to_string()),
-            stage: reason
-                .stage
-                .clone()
-                .unwrap_or_else(|| "unknown".to_string()),
-            proof_status: reason
-                .proof_status
-                .clone()
-                .unwrap_or_else(|| "unknown".to_string()),
-            detected_pattern_count: reason.detected_pattern_count,
-            high_confidence_detected: reason.high_confidence_detected,
-            matched: reason.detected_pattern_count > 0,
-        })
-        .collect::<Vec<_>>();
-
-    let report = BatchFindingsReport {
-        report_schema: "zkfuzz.batch_detected_patterns.v2",
-        generated_utc: Utc::now().to_rfc3339(),
-        verdict,
-        target_circuit,
-        framework: &args.framework,
-        main_component: &args.main_component,
-        input: BatchReportInput {
-            config_json: args.config_json.as_deref(),
-            registry: args.registry.as_deref(),
-            collection: args.collection.as_deref(),
-            alias: args.alias.as_deref(),
-            template: args.template.as_deref(),
-            pattern_yaml: args.pattern_yaml.as_deref(),
-        },
-        run: BatchReportRun {
-            jobs: args.jobs,
-            workers: args.workers,
-            seed: args.seed,
-            iterations: args.iterations,
-            timeout: args.timeout,
-            results_root: results_root.display().to_string(),
-        },
-        gates: BatchReportGates {
-            gate1_expected_patterns: expected_count,
-            gate2_completion: gate2_ok,
-            gate3_artifact_reconciliation: gate3_ok,
-            template_reason_errors: reason_error_count,
-            dry_run: args.dry_run,
-            campaign_success,
-        },
-        artifacts: BatchReportArtifacts {
-            timestamped_result_bundle: timestamped_result_dir.display().to_string(),
-            timestamped_run_log: timestamped_run_log.display().to_string(),
-            timestamped_error_log: timestamped_error_log.display().to_string(),
-            batch_run_root: batch_run_root.map(|value| value.to_string()),
-        },
-        totals: BatchReportTotals {
-            expected_patterns: expected_count,
-            executed_patterns: executed,
-            template_errors,
-            matched_patterns,
-            detected_patterns_total,
-            high_confidence_patterns,
-            exploitable_patterns,
-            not_exploitable_within_bounds_patterns,
-            proof_failed_patterns,
-            proof_skipped_by_policy_patterns,
-        },
-        patterns,
-    };
-
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "Failed to create detected-patterns report parent directory '{}'",
-                parent.display()
-            )
-        })?;
-    }
-    let encoded = serde_json::to_string_pretty(&report)?;
-    fs::write(path, encoded)
-        .with_context(|| format!("Failed to write report JSON '{}'", path.display()))?;
-    Ok(())
-}
-
-fn create_timestamped_result_dir(results_root: &Path) -> anyhow::Result<PathBuf> {
-    let ts = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-    let dir = results_root.join("ResultJsonTimestamped").join(ts);
-    fs::create_dir_all(&dir).with_context(|| {
-        format!(
-            "Failed to create timestamped result directory '{}'",
-            dir.display()
-        )
-    })?;
-    Ok(dir)
-}
-
-fn run_log_file_cache() -> &'static Mutex<HashMap<PathBuf, fs::File>> {
-    static CACHE: OnceLock<Mutex<HashMap<PathBuf, fs::File>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn append_run_log(path: &Path, message: impl AsRef<str>) -> anyhow::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!("Failed to create run log directory '{}'", parent.display())
-        })?;
-    }
-    let path_buf = path.to_path_buf();
-    let mut cache = run_log_file_cache()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let file = match cache.entry(path_buf.clone()) {
-        std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-        std::collections::hash_map::Entry::Vacant(entry) => {
-            let file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path_buf)
-                .with_context(|| format!("Failed to open run log '{}'", path.display()))?;
-            entry.insert(file)
-        }
-    };
-    writeln!(file, "{}", message.as_ref())
-        .with_context(|| format!("Failed to write run log '{}'", path.display()))?;
-    file.flush()
-        .with_context(|| format!("Failed to flush run log '{}'", path.display()))?;
-    Ok(())
-}
-
-fn append_run_log_best_effort(path: &Path, message: impl AsRef<str>) {
-    if let Err(err) = append_run_log(path, message) {
-        eprintln!("run.log write failed ({}): {:#}", path.display(), err);
-    }
-}
-
-fn step_started(step: usize, total_steps: usize, label: &str, run_log: &Path) -> Instant {
-    println!("[STEP {}/{}] {}: started", step, total_steps, label);
-    append_run_log_best_effort(
-        run_log,
-        format!("step={} status=started", label.replace(' ', "_")),
-    );
-    Instant::now()
-}
-
-fn step_succeeded(
-    step: usize,
-    total_steps: usize,
-    label: &str,
-    started_at: Instant,
-    run_log: &Path,
-) {
-    let elapsed_secs = started_at.elapsed().as_secs_f64();
-    println!(
-        "[STEP {}/{}] {}: completed ({:.1}s)",
-        step, total_steps, label, elapsed_secs
-    );
-    append_run_log_best_effort(
-        run_log,
-        format!(
-            "step={} status=completed elapsed_secs={:.3}",
-            label.replace(' ', "_"),
-            elapsed_secs
-        ),
-    );
-}
-
-fn step_skipped(step: usize, total_steps: usize, label: &str, reason: &str, run_log: &Path) {
-    println!(
-        "[STEP {}/{}] {}: skipped ({})",
-        step, total_steps, label, reason
-    );
-    append_run_log_best_effort(
-        run_log,
-        format!(
-            "step={} status=skipped reason={}",
-            label.replace(' ', "_"),
-            reason
-        ),
-    );
-}
-
-fn step_failed(
-    step: usize,
-    total_steps: usize,
-    label: &str,
-    started_at: Instant,
-    run_log: &Path,
-    err: &anyhow::Error,
-) {
-    let elapsed_secs = started_at.elapsed().as_secs_f64();
-    println!(
-        "[STEP {}/{}] {}: FAILED ({:.1}s)",
-        step, total_steps, label, elapsed_secs
-    );
-    append_run_log_best_effort(
-        run_log,
-        format!(
-            "step={} status=failed elapsed_secs={:.3} error={}",
-            label.replace(' ', "_"),
-            elapsed_secs,
-            err.to_string().replace('\n', " | ")
-        ),
-    );
-}
-
-fn is_error_reason(reason: &TemplateOutcomeReason) -> bool {
-    if reason.proof_status.as_deref() == Some("proof_failed") {
-        return true;
-    }
-    !matches!(
-        reason.reason_code.as_str(),
-        "completed" | "critical_findings_detected"
-    )
-}
-
-fn write_error_log(
-    path: &Path,
-    reasons: &[TemplateOutcomeReason],
-    template_errors: usize,
-    gate2_ok: bool,
-    gate3_ok: bool,
-    dry_run: bool,
-) -> anyhow::Result<()> {
-    let mut lines = Vec::<String>::new();
-    lines.push(format!("generated_utc={}", Utc::now().to_rfc3339()));
-    lines.push(format!("dry_run={}", dry_run));
-    lines.push(format!("gate2_ok={}", gate2_ok));
-    lines.push(format!("gate3_ok={}", gate3_ok));
-    lines.push(format!("template_errors={}", template_errors));
-
-    let mut error_count = 0usize;
-    for reason in reasons {
-        if !is_error_reason(reason) {
-            continue;
-        }
-        error_count += 1;
-        lines.push(format!(
-            "template={} suffix={} reason_code={} status={} stage={} proof_status={} detected_pattern_count={}",
-            reason.template_file,
-            reason.suffix,
-            reason.reason_code,
-            reason.status.as_deref().unwrap_or("unknown"),
-            reason.stage.as_deref().unwrap_or("unknown"),
-            reason.proof_status.as_deref().unwrap_or("unknown"),
-            reason.detected_pattern_count,
-        ));
-    }
-
-    if error_count == 0 {
-        lines.push("no_errors_detected".to_string());
-    } else {
-        lines.push(format!("error_entries={}", error_count));
-    }
-
-    fs::write(path, lines.join("\n") + "\n")
-        .with_context(|| format!("Failed to write error log '{}'", path.display()))?;
-    Ok(())
 }
 
 fn is_selector_mismatch_validation(stdout: &str, stderr: &str) -> bool {
