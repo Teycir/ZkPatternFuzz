@@ -229,6 +229,7 @@ struct TemplateInfo {
 
 type TemplateIndex = BTreeMap<String, TemplateInfo>;
 type CollectionIndex = BTreeMap<String, Vec<String>>;
+type DedupeResult = (Vec<TemplateInfo>, Vec<(TemplateInfo, TemplateInfo)>);
 
 #[derive(Debug, Deserialize, Clone, Default)]
 struct BatchFileConfig {
@@ -1033,13 +1034,13 @@ fn run_scan(
         if std::env::var_os(HALO2_USE_HOST_CARGO_HOME_ENV).is_none() {
             cmd.env(HALO2_USE_HOST_CARGO_HOME_ENV, "0");
         }
-        if std::env::var_os(HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV).is_none() {
-            if !auto_candidates.is_empty() {
-                cmd.env(
-                    HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV,
-                    auto_candidates.join(","),
-                );
-            }
+        if std::env::var_os(HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV).is_none()
+            && !auto_candidates.is_empty()
+        {
+            cmd.env(
+                HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV,
+                auto_candidates.join(","),
+            );
         }
         if std::env::var_os(HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV).is_none() {
             let cascade_limit = auto_candidates.len().clamp(1, 8);
@@ -1958,6 +1959,7 @@ struct BatchReportTotals {
     high_confidence_patterns: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_report_json(
     args: &Args,
     path: &Path,
@@ -2457,19 +2459,19 @@ fn pattern_specificity_score(path: &Path) -> i64 {
         return 0;
     };
     let mut score = 0i64;
-    if root.contains_key(&yaml_key("profiles")) {
+    if root.contains_key(yaml_key("profiles")) {
         score += 4;
     }
-    if root.contains_key(&yaml_key("active_profile")) {
+    if root.contains_key(yaml_key("active_profile")) {
         score += 4;
     }
-    if root.contains_key(&yaml_key("selector_policy")) {
+    if root.contains_key(yaml_key("selector_policy")) {
         score += 1;
     }
-    if root.contains_key(&yaml_key("selector_synonyms")) {
+    if root.contains_key(yaml_key("selector_synonyms")) {
         score += 1;
     }
-    if root.contains_key(&yaml_key("selector_normalization")) {
+    if root.contains_key(yaml_key("selector_normalization")) {
         score += 1;
     }
     score + (raw.len() as i64 / 1024)
@@ -2477,7 +2479,7 @@ fn pattern_specificity_score(path: &Path) -> i64 {
 
 fn dedupe_patterns_by_signature(
     selected: Vec<TemplateInfo>,
-) -> anyhow::Result<(Vec<TemplateInfo>, Vec<(TemplateInfo, TemplateInfo)>)> {
+) -> anyhow::Result<DedupeResult> {
     let mut kept = Vec::<TemplateInfo>::new();
     let mut dropped = Vec::<(TemplateInfo, TemplateInfo)>::new();
     let mut signature_to_index = BTreeMap::<String, usize>::new();
@@ -2694,7 +2696,7 @@ fn main() -> anyhow::Result<()> {
     }
     append_run_log_best_effort(
         &timestamped_run_log,
-        "step=template_preflight status=completed".to_string(),
+        "step=template_preflight status=completed",
     );
     step_succeeded(
         1,
@@ -2797,7 +2799,7 @@ fn main() -> anyhow::Result<()> {
     );
     append_run_log_best_effort(
         &timestamped_run_log,
-        "step=local_readiness checks=framework_tools,target_shape,runtime_paths".to_string(),
+        "step=local_readiness checks=framework_tools,target_shape,runtime_paths",
     );
     step_succeeded(
         2,
@@ -2871,7 +2873,7 @@ fn main() -> anyhow::Result<()> {
             );
             append_run_log_best_effort(
                 &timestamped_run_log,
-                "step=build_zk_fuzzer status=failed".to_string(),
+                "step=build_zk_fuzzer status=failed",
             );
             append_run_log_best_effort(
                 &timestamped_run_log,
@@ -2894,7 +2896,7 @@ fn main() -> anyhow::Result<()> {
         }
         append_run_log_best_effort(
             &timestamped_run_log,
-            "step=build_zk_fuzzer status=completed".to_string(),
+            "step=build_zk_fuzzer status=completed",
         );
         step_succeeded(
             3,
@@ -2962,7 +2964,7 @@ fn main() -> anyhow::Result<()> {
     if args.dry_run {
         append_run_log_best_effort(
             &timestamped_run_log,
-            "step=prepare_target status=skipped reason=dry_run".to_string(),
+            "step=prepare_target status=skipped reason=dry_run",
         );
         step_skipped(
             4,
@@ -3041,7 +3043,7 @@ fn main() -> anyhow::Result<()> {
     } else {
         append_run_log_best_effort(
             &timestamped_run_log,
-            "step=prepare_target status=skipped reason=disabled_by_flag".to_string(),
+            "step=prepare_target status=skipped reason=disabled_by_flag",
         );
         step_skipped(
             4,
