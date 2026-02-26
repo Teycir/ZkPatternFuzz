@@ -27,6 +27,7 @@ fn halo2_external_command_timeout() -> std::time::Duration {
 const HALO2_TOTAL_TIMEOUT_SECS_ENV: &str = "ZK_FUZZER_HALO2_TOTAL_TIMEOUT_SECS";
 
 const CARGO_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_CARGO_BIN_CANDIDATES";
+const HALO2_CARGO_RUN_BIN_ENV: &str = "ZK_FUZZER_HALO2_CARGO_RUN_BIN";
 const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES";
 const HALO2_GO_PROXY_CACHE_DIR_ENV: &str = "ZK_FUZZER_HALO2_GO_PROXY_CACHE_DIR";
 const HALO2_CARGO_HOME_CACHE_SEED_ENV: &str = "ZK_FUZZER_HALO2_CARGO_HOME_CACHE_SEED";
@@ -1246,7 +1247,9 @@ impl Halo2Target {
 
     fn run_cargo_build(&self, project_dir: &Path) -> Result<std::process::Output> {
         self.run_cargo_command_with_fallback("Failed to build Halo2 circuit", |cmd| {
-            cmd.args(["build", "--release"]).current_dir(project_dir);
+            cmd.arg("build");
+            self.apply_cargo_run_bin_arg(cmd);
+            cmd.arg("--release").current_dir(project_dir);
         })
         .with_context(|| {
             format!(
@@ -1389,12 +1392,16 @@ impl Halo2Target {
                 };
             }
         };
+        probe_cmd.arg("run");
+        self.apply_cargo_run_bin_arg(&mut probe_cmd);
         probe_cmd
-            .args(["run", "--release", "--", "--info"])
+            .args(["--release", "--", "--info"])
             .current_dir(project_dir);
 
-        let probe_timeout =
-            std::cmp::min(halo2_external_command_timeout(), std::time::Duration::from_secs(45));
+        let probe_timeout = std::cmp::min(
+            halo2_external_command_timeout(),
+            std::time::Duration::from_secs(45),
+        );
 
         match crate::util::run_with_timeout(&mut probe_cmd, probe_timeout) {
             Ok(output) if output.status.success() => {
@@ -1589,6 +1596,19 @@ impl Halo2Target {
         }
     }
 
+    fn configured_run_bin(&self) -> Option<String> {
+        std::env::var(HALO2_CARGO_RUN_BIN_ENV)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    }
+
+    fn apply_cargo_run_bin_arg(&self, cmd: &mut Command) {
+        if let Some(bin) = self.configured_run_bin() {
+            cmd.arg("--bin").arg(bin);
+        }
+    }
+
     fn detect_project_cli_flag(
         &self,
         project_dir: &Path,
@@ -1602,7 +1622,9 @@ impl Halo2Target {
                 project_dir.display()
             ),
             |cmd| {
-                cmd.args(["run", "--release", "--", "--help"])
+                cmd.arg("run");
+                self.apply_cargo_run_bin_arg(cmd);
+                cmd.args(["--release", "--", "--help"])
                     .current_dir(project_dir);
             },
         ) {
@@ -1660,8 +1682,9 @@ impl Halo2Target {
         self.run_cargo_command_with_fallback(
             &format!("Failed running Halo2 key setup command '{flag}'"),
             |cmd| {
-                cmd.args(["run", "--release", "--", flag])
-                    .current_dir(project_dir);
+                cmd.arg("run");
+                self.apply_cargo_run_bin_arg(cmd);
+                cmd.args(["--release", "--", flag]).current_dir(project_dir);
             },
         )
         .with_context(|| format!("Failed running Halo2 key setup command '{flag}'"))
@@ -1892,7 +1915,9 @@ impl Halo2Target {
 
         let empty = ParsedConstraintSet::default();
         if self.plonk_constraints.set(empty.clone()).is_err() {
-            tracing::warn!("PLONK constraint cache already initialized while caching empty constraints");
+            tracing::warn!(
+                "PLONK constraint cache already initialized while caching empty constraints"
+            );
         }
         empty
     }
@@ -1915,7 +1940,9 @@ impl Halo2Target {
                 project_dir.display()
             ),
             |cmd| {
-                cmd.args(["run", "--release", "--", "--constraints"])
+                cmd.arg("run");
+                self.apply_cargo_run_bin_arg(cmd);
+                cmd.args(["--release", "--", "--constraints"])
                     .current_dir(project_dir);
             },
         ) {
@@ -1986,13 +2013,17 @@ impl Halo2Target {
                 }
 
                 setup_mode = "project_cli".to_string();
-                setup_command = Some(vec![
-                    "cargo".to_string(),
-                    "run".to_string(),
+                let mut recorded_setup_command = vec!["cargo".to_string(), "run".to_string()];
+                if let Some(bin) = self.configured_run_bin() {
+                    recorded_setup_command.push("--bin".to_string());
+                    recorded_setup_command.push(bin);
+                }
+                recorded_setup_command.extend([
                     "--release".to_string(),
                     "--".to_string(),
                     flag.clone(),
                 ]);
+                setup_command = Some(recorded_setup_command);
                 keygen_project_dir = Some(project_dir);
             }
         }
@@ -2074,7 +2105,9 @@ impl Halo2Target {
             .run_cargo_command_with_fallback(
                 &format!("Failed to run Halo2 execute command '{execute_flag}'"),
                 |cmd| {
-                    cmd.args(["run", "--release", "--", &execute_flag, &input_json])
+                    cmd.arg("run");
+                    self.apply_cargo_run_bin_arg(cmd);
+                    cmd.args(["--release", "--", &execute_flag, &input_json])
                         .current_dir(project_dir);
                 },
             )
@@ -2237,7 +2270,9 @@ impl TargetCircuit for Halo2Target {
             .run_cargo_command_with_fallback(
                 &format!("Failed to run Halo2 prove command '{prove_flag}'"),
                 |cmd| {
-                    cmd.args(["run", "--release", "--", &prove_flag, &witness_json])
+                    cmd.arg("run");
+                    self.apply_cargo_run_bin_arg(cmd);
+                    cmd.args(["--release", "--", &prove_flag, &witness_json])
                         .current_dir(project_dir);
                 },
             )
@@ -2283,15 +2318,10 @@ impl TargetCircuit for Halo2Target {
             .run_cargo_command_with_fallback(
                 &format!("Failed to run Halo2 verify command '{verify_flag}'"),
                 |cmd| {
-                    cmd.args([
-                        "run",
-                        "--release",
-                        "--",
-                        &verify_flag,
-                        &proof_hex,
-                        &inputs_json,
-                    ])
-                    .current_dir(project_dir);
+                    cmd.arg("run");
+                    self.apply_cargo_run_bin_arg(cmd);
+                    cmd.args(["--release", "--", &verify_flag, &proof_hex, &inputs_json])
+                        .current_dir(project_dir);
                 },
             )
             .with_context(|| format!("Failed to run Halo2 verify command '{verify_flag}'"))?;
