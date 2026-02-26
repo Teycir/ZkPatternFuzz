@@ -266,6 +266,11 @@ echo \"{}=${{{}:-}}\"\n",
                     wait_secs: 1,
                     poll_ms: 50,
                 },
+                stage_timeouts: StageTimeoutConfig {
+                    detection_timeout_secs: 30,
+                    proof_timeout_secs: 30,
+                    stuck_step_warn_secs: 10,
+                },
             };
 
             let out =
@@ -363,6 +368,11 @@ echo \"{}=${{{}:-}}\"\n",
                     wait_secs: 1,
                     poll_ms: 50,
                 },
+                stage_timeouts: StageTimeoutConfig {
+                    detection_timeout_secs: 30,
+                    proof_timeout_secs: 30,
+                    stuck_step_warn_secs: 10,
+                },
             };
 
             let out =
@@ -435,6 +445,68 @@ MemFree:         1024000 kB
                 estimated_batch_memory_mb(args.jobs, args.workers, guard)
                     <= 8_192u64.saturating_sub(guard.reserved_mb)
             );
+        }
+
+        #[test]
+        fn memory_guard_fail_fast_when_disabled_for_proof_stage() {
+            let mut args = Args::try_parse_from([
+                "zkpatternfuzz",
+                "--template",
+                "cveX01.yaml",
+                "--target-circuit",
+                "circuits/demo.circom",
+                "--framework",
+                "circom",
+                "--jobs",
+                "2",
+                "--workers",
+                "2",
+            ])
+            .expect("parse args");
+            let guard = MemoryGuardConfig {
+                enabled: false,
+                reserved_mb: 1024,
+                mb_per_template: 512,
+                mb_per_worker: 1024,
+                launch_floor_mb: 256,
+                wait_secs: 1,
+                poll_ms: 50,
+            };
+
+            let err = apply_memory_parallelism_guardrails_with_available(&mut args, guard, Some(8_192))
+                .expect_err("disabled memory guard should fail fast");
+            assert!(err.to_string().contains(MEMORY_GUARD_ENABLED_ENV));
+        }
+
+        #[test]
+        fn memory_guard_fail_fast_when_reserved_memory_is_zero() {
+            let mut args = Args::try_parse_from([
+                "zkpatternfuzz",
+                "--template",
+                "cveX01.yaml",
+                "--target-circuit",
+                "circuits/demo.circom",
+                "--framework",
+                "circom",
+                "--jobs",
+                "2",
+                "--workers",
+                "2",
+            ])
+            .expect("parse args");
+            let guard = MemoryGuardConfig {
+                enabled: true,
+                reserved_mb: 0,
+                mb_per_template: 512,
+                mb_per_worker: 1024,
+                launch_floor_mb: 256,
+                wait_secs: 1,
+                poll_ms: 50,
+            };
+
+            let err = apply_memory_parallelism_guardrails_with_available(&mut args, guard, Some(8_192))
+                .expect_err("zero reserved memory should fail fast");
+            assert!(err.to_string().contains(MEMORY_GUARD_RESERVED_MB_ENV));
         }
 
         #[test]
@@ -668,6 +740,104 @@ selector_normalization:
 
             validate_pattern_only_yaml(&yaml_path)
                 .expect("selector-policy keys should be accepted in batch validator");
+        }
+
+        #[test]
+        fn progress_stage_is_proof_detects_reporting_and_proof_labels() {
+            assert!(progress_stage_is_proof("reporting"));
+            assert!(progress_stage_is_proof("proof_done"));
+            assert!(progress_stage_is_proof("evidence_finalize"));
+            assert!(progress_stage_is_proof("completed"));
+        }
+
+        #[test]
+        fn progress_stage_is_proof_rejects_attack_progress() {
+            assert!(!progress_stage_is_proof("attack_start"));
+            assert!(!progress_stage_is_proof("attack_progress"));
+            assert!(!progress_stage_is_proof("timeout_reached"));
+        }
+
+        #[test]
+        fn format_stuck_step_warning_line_includes_window_and_stage() {
+            let line = format_stuck_step_warning_line("cveX_demo.yaml", "attack_progress", "5/11", 75, 60);
+            assert!(line.contains("[TEMPLATE WARNING] cveX_demo.yaml"));
+            assert!(line.contains("warning=stuck_step"));
+            assert!(line.contains("stage=attack_progress"));
+            assert!(line.contains("step=5/11"));
+            assert!(line.contains("no_progress_for=75s"));
+            assert!(line.contains("window=60s"));
+        }
+
+        #[test]
+        fn read_template_progress_update_tracks_step_fraction() {
+            let temp_root = std::env::temp_dir().join(format!(
+                "zkpatternfuzz_progress_update_test_{}_{}",
+                std::process::id(),
+                RUN_ROOT_NONCE.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&temp_root).expect("create temp root");
+            let progress_path = temp_root.join("progress.json");
+            std::fs::write(
+                &progress_path,
+                serde_json::json!({
+                    "stage": "attack_progress",
+                    "progress": {
+                        "step_fraction": "4/11"
+                    },
+                    "details": {}
+                })
+                .to_string(),
+            )
+            .expect("write progress snapshot");
+
+            let update =
+                read_template_progress_update("cveX_demo.yaml", &progress_path).expect("parse progress");
+            assert_eq!(update.stage, "attack_progress");
+            assert_eq!(update.step_fraction, "4/11");
+
+            let _ = std::fs::remove_dir_all(&temp_root);
+        }
+
+        #[test]
+        fn write_stage_timeout_outcome_writes_wall_clock_timeout_payload() {
+            let temp_root = std::env::temp_dir().join(format!(
+                "zkpatternfuzz_timeout_outcome_test_{}_{}",
+                std::process::id(),
+                RUN_ROOT_NONCE.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir_all(&temp_root).expect("create temp root");
+            let run_root = "scan_run_test";
+            let suffix = "auto__timeout_case";
+
+            write_stage_timeout_outcome(
+                &temp_root,
+                Some(run_root),
+                suffix,
+                HardTimeoutStage::Proving,
+                7,
+            )
+            .expect("write timeout outcome");
+
+            let run_outcome_path = temp_root.join(run_root).join(suffix).join("run_outcome.json");
+            let raw = std::fs::read_to_string(&run_outcome_path).expect("read run outcome");
+            let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse run outcome json");
+            assert_eq!(
+                parsed.get("reason_code").and_then(|v| v.as_str()),
+                Some("wall_clock_timeout")
+            );
+            assert_eq!(
+                parsed.get("stage").and_then(|v| v.as_str()),
+                Some("proof_timeout")
+            );
+            assert_eq!(
+                parsed
+                    .get("discovery_qualification")
+                    .and_then(|v| v.get("proof_status"))
+                    .and_then(|v| v.as_str()),
+                Some("proof_failed")
+            );
+
+            let _ = std::fs::remove_dir_all(&temp_root);
         }
     }
 }

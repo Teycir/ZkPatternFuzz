@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::thread;
+use std::process::{Child, Command, Output, Stdio};
+use std::thread::{self, JoinHandle};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -50,9 +50,13 @@ const MEMORY_GUARD_MB_PER_WORKER_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_MB_PER_WO
 const MEMORY_GUARD_LAUNCH_FLOOR_MB_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_LAUNCH_FLOOR_MB";
 const MEMORY_GUARD_WAIT_SECS_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_WAIT_SECS";
 const MEMORY_GUARD_POLL_MS_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_POLL_MS";
+const DETECTION_STAGE_TIMEOUT_ENV: &str = "ZKF_ZKPATTERNFUZZ_DETECTION_STAGE_TIMEOUT_SECS";
+const PROOF_STAGE_TIMEOUT_ENV: &str = "ZKF_ZKPATTERNFUZZ_PROOF_STAGE_TIMEOUT_SECS";
+const STUCK_STEP_WARN_SECS_ENV: &str = "ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS";
 const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
 const DEFAULT_BATCH_TIMEOUT_SECS: u64 = 1_800;
 const DEFAULT_HALO2_BATCH_TIMEOUT_SECS: u64 = 3_600;
+const DEFAULT_STUCK_STEP_WARN_SECS: u64 = 60;
 const DEFAULT_MEMORY_GUARD_RESERVED_MB: u64 = 4_096;
 const DEFAULT_MEMORY_GUARD_MB_PER_TEMPLATE: u64 = 768;
 const DEFAULT_MEMORY_GUARD_MB_PER_WORKER: u64 = 1_536;
@@ -303,6 +307,7 @@ struct ScanRunConfig<'a> {
     dry_run: bool,
     artifacts_root: &'a Path,
     memory_guard: MemoryGuardConfig,
+    stage_timeouts: StageTimeoutConfig,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -314,6 +319,13 @@ struct MemoryGuardConfig {
     launch_floor_mb: u64,
     wait_secs: u64,
     poll_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StageTimeoutConfig {
+    detection_timeout_secs: u64,
+    proof_timeout_secs: u64,
+    stuck_step_warn_secs: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -338,6 +350,14 @@ struct ScanRunResult {
 struct TemplateProgressUpdate {
     dedupe_key: String,
     rendered_line: String,
+    stage: String,
+    step_fraction: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HardTimeoutStage {
+    Detecting,
+    Proving,
 }
 
 struct BatchProgress {
@@ -418,6 +438,63 @@ fn format_batch_progress_line(
     )
 }
 
+#[cfg(unix)]
+fn prepare_child_process_group(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    // Place child in its own process group so timeout kills can terminate descendants.
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn prepare_child_process_group(_cmd: &mut Command) {}
+
+#[cfg(unix)]
+fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
+    let pgid = child.id() as i32;
+    let rc = unsafe { libc::killpg(pgid, libc::SIGKILL) };
+    if rc == 0 {
+        return Ok(());
+    }
+    child.kill()
+}
+
+#[cfg(not(unix))]
+fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
+    child.kill()
+}
+
+fn spawn_pipe_reader<R>(mut reader: R) -> JoinHandle<anyhow::Result<Vec<u8>>>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf)?;
+        Ok(buf)
+    })
+}
+
+fn join_pipe_reader(
+    handle: Option<JoinHandle<anyhow::Result<Vec<u8>>>>,
+) -> anyhow::Result<Vec<u8>> {
+    match handle {
+        Some(handle) => {
+            let result = handle
+                .join()
+                .map_err(|_| anyhow::anyhow!("failed to join command output reader thread"))?;
+            result
+        }
+        None => Ok(Vec::new()),
+    }
+}
+
 fn template_progress_path(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> PathBuf {
     if let Some(run_root) = run_cfg.scan_run_root {
         run_cfg
@@ -485,44 +562,156 @@ fn read_template_progress_update(
     Some(TemplateProgressUpdate {
         dedupe_key,
         rendered_line: rendered,
+        stage: stage.to_string(),
+        step_fraction: step_fraction.to_string(),
     })
 }
 
-fn spawn_template_progress_monitor(
-    template_file: String,
-    progress_path: PathBuf,
-) -> (Arc<AtomicUsize>, thread::JoinHandle<()>) {
-    let stop_flag = Arc::new(AtomicUsize::new(0));
-    let stop_handle = Arc::clone(&stop_flag);
-    let handle = thread::spawn(move || {
-        let mut last_dedupe_key: Option<String> = None;
-        loop {
-            if stop_handle.load(Ordering::Relaxed) != 0 {
-                break;
-            }
-            if let Some(update) = read_template_progress_update(&template_file, &progress_path) {
-                let changed = match &last_dedupe_key {
+fn progress_stage_is_proof(stage: &str) -> bool {
+    let normalized = stage.trim().to_ascii_lowercase();
+    normalized == "reporting"
+        || normalized == "completed"
+        || normalized.contains("proof")
+        || normalized.contains("report")
+        || normalized.contains("evidence")
+}
+
+fn format_stuck_step_warning_line(
+    template_file: &str,
+    stage: &str,
+    step_fraction: &str,
+    stagnant_secs: u64,
+    window_secs: u64,
+) -> String {
+    format!(
+        "[TEMPLATE WARNING] {} warning=stuck_step stage={} step={} no_progress_for={}s window={}s",
+        template_file, stage, step_fraction, stagnant_secs, window_secs
+    )
+}
+
+fn run_command_with_stage_timeouts(
+    cmd: &mut Command,
+    template_file: &str,
+    progress_path: &Path,
+    stage_timeouts: StageTimeoutConfig,
+) -> anyhow::Result<(Output, Option<HardTimeoutStage>)> {
+    prepare_child_process_group(cmd);
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let stdout_reader = child.stdout.take().map(spawn_pipe_reader);
+    let stderr_reader = child.stderr.take().map(spawn_pipe_reader);
+
+    let started = Instant::now();
+    let detection_timeout = Duration::from_secs(stage_timeouts.detection_timeout_secs.max(1));
+    let proof_timeout = Duration::from_secs(stage_timeouts.proof_timeout_secs.max(1));
+    let stuck_warn_window = Duration::from_secs(stage_timeouts.stuck_step_warn_secs.max(1));
+    let mut proof_stage_started: Option<Instant> = None;
+    let mut last_progress_dedupe_key: Option<String> = None;
+    let mut last_progress_change_at = started;
+    let mut next_stuck_warning_at = started + stuck_warn_window;
+    let mut last_stage_label = "unknown".to_string();
+    let mut last_step_fraction = "?/??".to_string();
+
+    loop {
+        if let Some(status) = child.try_wait()? {
+            if let Some(update) = read_template_progress_update(template_file, progress_path) {
+                let changed = match &last_progress_dedupe_key {
                     Some(prev) => prev != &update.dedupe_key,
                     None => true,
                 };
                 if changed {
                     println!("{}", update.rendered_line);
-                    last_dedupe_key = Some(update.dedupe_key);
                 }
             }
-            thread::sleep(Duration::from_secs(1));
+            let stdout = join_pipe_reader(stdout_reader)?;
+            let stderr = join_pipe_reader(stderr_reader)?;
+            return Ok((
+                Output {
+                    status,
+                    stdout,
+                    stderr,
+                },
+                None,
+            ));
         }
-        if let Some(update) = read_template_progress_update(&template_file, &progress_path) {
-            let changed = match &last_dedupe_key {
+
+        if let Some(update) = read_template_progress_update(template_file, progress_path) {
+            let changed = match &last_progress_dedupe_key {
                 Some(prev) => prev != &update.dedupe_key,
                 None => true,
             };
+            last_stage_label = update.stage.clone();
+            last_step_fraction = update.step_fraction.clone();
             if changed {
                 println!("{}", update.rendered_line);
+                last_progress_dedupe_key = Some(update.dedupe_key.clone());
+                last_progress_change_at = Instant::now();
+                next_stuck_warning_at = last_progress_change_at + stuck_warn_window;
+            }
+            if proof_stage_started.is_none() && progress_stage_is_proof(&update.stage) {
+                proof_stage_started = Some(Instant::now());
             }
         }
-    });
-    (stop_flag, handle)
+
+        let now = Instant::now();
+        if now >= next_stuck_warning_at {
+            let stagnant_secs = now.duration_since(last_progress_change_at).as_secs();
+            eprintln!(
+                "{}",
+                format_stuck_step_warning_line(
+                    template_file,
+                    &last_stage_label,
+                    &last_step_fraction,
+                    stagnant_secs,
+                    stage_timeouts.stuck_step_warn_secs,
+                )
+            );
+            next_stuck_warning_at = now + stuck_warn_window;
+        }
+        let timeout_stage = if let Some(proof_started_at) = proof_stage_started {
+            if now.duration_since(proof_started_at) >= proof_timeout {
+                Some(HardTimeoutStage::Proving)
+            } else {
+                None
+            }
+        } else if now.duration_since(started) >= detection_timeout {
+            Some(HardTimeoutStage::Detecting)
+        } else {
+            None
+        };
+
+        if let Some(stage) = timeout_stage {
+            let _ = kill_child_tree(&mut child);
+            let status = child.wait()?;
+            let stdout = join_pipe_reader(stdout_reader)?;
+            let mut stderr = join_pipe_reader(stderr_reader)?;
+            let (stage_label, stage_budget) = match stage {
+                HardTimeoutStage::Detecting => ("detection", stage_timeouts.detection_timeout_secs),
+                HardTimeoutStage::Proving => ("proof", stage_timeouts.proof_timeout_secs),
+            };
+            stderr.extend_from_slice(
+                format!(
+                    "\nPer-template hard wall-clock timeout reached during {} stage (budget={}s)\n",
+                    stage_label, stage_budget
+                )
+                .as_bytes(),
+            );
+            return Ok((
+                Output {
+                    status,
+                    stdout,
+                    stderr,
+                },
+                Some(stage),
+            ));
+        }
+
+        thread::sleep(Duration::from_millis(200));
+    }
 }
 
 fn report_has_high_confidence_finding(report_path: &Path) -> bool {
@@ -708,6 +897,22 @@ fn load_memory_guard_config() -> anyhow::Result<MemoryGuardConfig> {
     })
 }
 
+fn load_stage_timeout_config(default_timeout_secs: u64) -> anyhow::Result<StageTimeoutConfig> {
+    Ok(StageTimeoutConfig {
+        detection_timeout_secs: env_u64_with_default(
+            DETECTION_STAGE_TIMEOUT_ENV,
+            default_timeout_secs,
+            1,
+        )?,
+        proof_timeout_secs: env_u64_with_default(PROOF_STAGE_TIMEOUT_ENV, default_timeout_secs, 1)?,
+        stuck_step_warn_secs: env_u64_with_default(
+            STUCK_STEP_WARN_SECS_ENV,
+            DEFAULT_STUCK_STEP_WARN_SECS,
+            1,
+        )?,
+    })
+}
+
 fn parse_mem_available_kib(meminfo: &str) -> Option<u64> {
     let mut mem_available_kib: Option<u64> = None;
     let mut mem_total_kib: Option<u64> = None;
@@ -755,7 +960,19 @@ fn apply_memory_parallelism_guardrails_with_available(
     available_mb: Option<u64>,
 ) -> anyhow::Result<()> {
     if !guard.enabled {
-        return Ok(());
+        anyhow::bail!(
+            "Unsafe proof-stage memory settings: {}=false disables launch guardrails. \
+             Keep memory guard enabled for proof-stage runs.",
+            MEMORY_GUARD_ENABLED_ENV
+        );
+    }
+    if guard.reserved_mb == 0 {
+        anyhow::bail!(
+            "Unsafe proof-stage memory settings: {}=0 removes host safety reserve. \
+             Set {} to a positive value.",
+            MEMORY_GUARD_RESERVED_MB_ENV,
+            MEMORY_GUARD_RESERVED_MB_ENV
+        );
     }
 
     let Some(available_mb) = available_mb else {
@@ -1498,18 +1715,34 @@ fn run_scan(
         });
     }
 
-    let monitor_state = if !validate_only {
-        let progress_path = template_progress_path(run_cfg, output_suffix);
-        let template_file = template.file_name.clone();
-        Some(spawn_template_progress_monitor(template_file, progress_path))
+    let progress_path = template_progress_path(run_cfg, output_suffix);
+    let (output, timeout_stage_hit) = if !validate_only {
+        run_command_with_stage_timeouts(
+            &mut cmd,
+            &template.file_name,
+            &progress_path,
+            run_cfg.stage_timeouts,
+        )?
     } else {
-        None
+        (cmd.output()?, None)
     };
-
-    let output = cmd.output()?;
-    if let Some((stop_flag, monitor_handle)) = monitor_state {
-        stop_flag.store(1, Ordering::Relaxed);
-        let _ = monitor_handle.join();
+    if let Some(stage) = timeout_stage_hit {
+        let stage_budget_secs = match stage {
+            HardTimeoutStage::Detecting => run_cfg.stage_timeouts.detection_timeout_secs,
+            HardTimeoutStage::Proving => run_cfg.stage_timeouts.proof_timeout_secs,
+        };
+        if let Err(err) = write_stage_timeout_outcome(
+            run_cfg.artifacts_root,
+            run_cfg.scan_run_root,
+            output_suffix,
+            stage,
+            stage_budget_secs,
+        ) {
+            eprintln!(
+                "Failed to write hard-timeout run outcome for '{}' [{}]: {:#}",
+                template.file_name, output_suffix, err
+            );
+        }
     }
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -2758,6 +2991,60 @@ fn write_selector_mismatch_outcome(
     Ok(())
 }
 
+fn write_stage_timeout_outcome(
+    artifacts_root: &Path,
+    run_root: Option<&str>,
+    output_suffix: &str,
+    stage: HardTimeoutStage,
+    stage_budget_secs: u64,
+) -> anyhow::Result<()> {
+    let Some(run_root) = run_root else {
+        anyhow::bail!("scan_run_root is unavailable for hard-timeout outcome");
+    };
+
+    let template_dir = artifacts_root.join(run_root).join(output_suffix);
+    fs::create_dir_all(&template_dir).with_context(|| {
+        format!(
+            "Failed creating hard-timeout artifact dir '{}'",
+            template_dir.display()
+        )
+    })?;
+
+    let stage_name = match stage {
+        HardTimeoutStage::Detecting => "detecting",
+        HardTimeoutStage::Proving => "proof",
+    };
+    let run_outcome_stage = match stage {
+        HardTimeoutStage::Detecting => "detection_timeout",
+        HardTimeoutStage::Proving => "proof_timeout",
+    };
+
+    let run_outcome_path = template_dir.join("run_outcome.json");
+    let payload = serde_json::json!({
+        "status": "failed",
+        "stage": run_outcome_stage,
+        "reason_code": "wall_clock_timeout",
+        "reason": "wall_clock_timeout",
+        "error": format!(
+            "Per-template hard wall-clock timeout reached during {} stage (budget={}s)",
+            stage_name,
+            stage_budget_secs
+        ),
+        "discovery_qualification": {
+            "proof_status": "proof_failed"
+        },
+    });
+    let serialized = serde_json::to_string_pretty(&payload)?;
+    fs::write(&run_outcome_path, serialized).with_context(|| {
+        format!(
+            "Failed writing hard-timeout run outcome '{}'",
+            run_outcome_path.display()
+        )
+    })?;
+
+    Ok(())
+}
+
 fn template_run_outcome_path(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> Option<PathBuf> {
     let run_root = run_cfg.scan_run_root?;
     Some(
@@ -3053,6 +3340,9 @@ fn main() -> anyhow::Result<()> {
             MEMORY_GUARD_LAUNCH_FLOOR_MB_ENV,
             MEMORY_GUARD_WAIT_SECS_ENV,
             MEMORY_GUARD_POLL_MS_ENV,
+            DETECTION_STAGE_TIMEOUT_ENV,
+            PROOF_STAGE_TIMEOUT_ENV,
+            STUCK_STEP_WARN_SECS_ENV,
         ],
     )?;
 
@@ -3073,6 +3363,7 @@ fn main() -> anyhow::Result<()> {
     }
     ensure_positive_cli_values(&args)?;
     let memory_guard = load_memory_guard_config()?;
+    let stage_timeouts = load_stage_timeout_config(args.timeout)?;
     apply_memory_parallelism_guardrails(&mut args, memory_guard)?;
     let family_override = parse_family(&args.family)?;
 
@@ -3634,6 +3925,7 @@ fn main() -> anyhow::Result<()> {
         dry_run: args.dry_run,
         artifacts_root: &artifacts_root,
         memory_guard,
+        stage_timeouts,
     };
 
     let execute_step_started =
@@ -3699,13 +3991,22 @@ fn main() -> anyhow::Result<()> {
     println!(
         "Execution mode: detect patterns, then immediately resolve proof status from evidence artifacts."
     );
+    println!(
+        "Per-template hard timeouts: detection={}s proof={}s stuck_step_warn={}s",
+        stage_timeouts.detection_timeout_secs,
+        stage_timeouts.proof_timeout_secs,
+        stage_timeouts.stuck_step_warn_secs
+    );
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
-            "step=execute_templates status=started templates={} jobs={} dry_run={}",
+            "step=execute_templates status=started templates={} jobs={} dry_run={} detection_timeout_secs={} proof_timeout_secs={} stuck_step_warn_secs={}",
             selected_with_family.len(),
             jobs,
-            args.dry_run
+            args.dry_run,
+            stage_timeouts.detection_timeout_secs,
+            stage_timeouts.proof_timeout_secs,
+            stage_timeouts.stuck_step_warn_secs
         ),
     );
     let pool = rayon::ThreadPoolBuilder::new()
@@ -3838,7 +4139,7 @@ fn main() -> anyhow::Result<()> {
             proof_skipped_by_policy_patterns,
         ) = proof_state_counts(&reasons);
         println!(
-            "Proof totals: exploitable={}, not_exploitable_within_bounds={}, proof_failed={}, proof_skipped_by_policy={}",
+            "Proof totals: proven_exploitable={}, proven_not_exploitable_within_bounds={}, proof_failed={}, proof_skipped_by_policy={}",
             exploitable_patterns,
             not_exploitable_within_bounds_patterns,
             proof_failed_patterns,
@@ -3857,7 +4158,7 @@ fn main() -> anyhow::Result<()> {
             proof_skipped_by_policy_patterns,
         ) = proof_state_counts(&reasons);
         println!(
-            "Final totals: detected_patterns={} exploitable={} not_exploitable_within_bounds={} proof_failed={} proof_skipped_by_policy={} template_errors={}",
+            "Final totals: detected_patterns={} proven_exploitable={} proven_not_exploitable_within_bounds={} proof_failed={} proof_skipped_by_policy={} template_errors={}",
             detected_patterns_total,
             exploitable_patterns,
             not_exploitable_within_bounds_patterns,
@@ -3884,7 +4185,7 @@ fn main() -> anyhow::Result<()> {
         append_run_log_best_effort(
             &timestamped_run_log,
             format!(
-                "proof_totals exploitable={} not_exploitable_within_bounds={} proof_failed={} proof_skipped_by_policy={}",
+                "proof_totals proven_exploitable={} proven_not_exploitable_within_bounds={} proof_failed={} proof_skipped_by_policy={}",
                 exploitable_patterns,
                 not_exploitable_within_bounds_patterns,
                 proof_failed_patterns,
