@@ -3,6 +3,7 @@
 mod run_outcome_docs;
 
 use run_outcome_docs::{classify_run_reason_code, standardize_run_outcome_doc};
+use tempfile::tempdir;
 
 #[test]
 fn standardize_running_outcome_sets_analysis_defaults() {
@@ -43,7 +44,7 @@ fn standardize_running_outcome_sets_analysis_defaults() {
 }
 
 #[test]
-fn standardize_completed_critical_marks_candidate_pending_proof() {
+fn standardize_completed_critical_without_bundles_marks_proof_failed() {
     let input = serde_json::json!({
         "status": "completed_with_critical_findings",
         "stage": "completed",
@@ -71,7 +72,7 @@ fn standardize_completed_critical_marks_candidate_pending_proof() {
             .get("discovery_qualification")
             .and_then(|v| v.get("proof_status"))
             .and_then(|v| v.as_str()),
-        Some("pending_proof")
+        Some("proof_failed")
     );
     assert_eq!(
         normalized
@@ -84,7 +85,7 @@ fn standardize_completed_critical_marks_candidate_pending_proof() {
 }
 
 #[test]
-fn standardize_completed_without_findings_stays_pending_proof() {
+fn standardize_completed_without_findings_marks_proof_skipped() {
     let input = serde_json::json!({
         "status": "completed",
         "stage": "completed",
@@ -107,7 +108,69 @@ fn standardize_completed_without_findings_stays_pending_proof() {
             .get("discovery_qualification")
             .and_then(|v| v.get("proof_status"))
             .and_then(|v| v.as_str()),
-        Some("pending_proof")
+        Some("proof_skipped_by_policy")
+    );
+}
+
+#[test]
+fn standardize_completed_with_passed_bundle_marks_exploitable() {
+    let dir = tempdir().expect("tempdir");
+    let finding_dir = dir.path().join("evidence").join("finding_abc");
+    std::fs::create_dir_all(&finding_dir).expect("create evidence dir");
+    std::fs::write(
+        finding_dir.join("bundle.json"),
+        r#"{"verification_result":"Passed"}"#,
+    )
+    .expect("write bundle");
+
+    let input = serde_json::json!({
+        "status": "completed_with_critical_findings",
+        "stage": "completed",
+        "output_dir": dir.path().display().to_string(),
+        "metrics": {
+            "findings_total": 1,
+            "critical_findings": true
+        }
+    });
+
+    let normalized = standardize_run_outcome_doc(&input);
+    assert_eq!(
+        normalized
+            .get("discovery_qualification")
+            .and_then(|v| v.get("proof_status"))
+            .and_then(|v| v.as_str()),
+        Some("exploitable")
+    );
+}
+
+#[test]
+fn standardize_completed_with_failed_bundle_marks_not_exploitable_within_bounds() {
+    let dir = tempdir().expect("tempdir");
+    let finding_dir = dir.path().join("evidence").join("finding_abc");
+    std::fs::create_dir_all(&finding_dir).expect("create evidence dir");
+    std::fs::write(
+        finding_dir.join("bundle.json"),
+        r#"{"verification_result":{"Failed":"invalid proof"}}"#,
+    )
+    .expect("write bundle");
+
+    let input = serde_json::json!({
+        "status": "completed",
+        "stage": "completed",
+        "output_dir": dir.path().display().to_string(),
+        "metrics": {
+            "findings_total": 1,
+            "critical_findings": false
+        }
+    });
+
+    let normalized = standardize_run_outcome_doc(&input);
+    assert_eq!(
+        normalized
+            .get("discovery_qualification")
+            .and_then(|v| v.get("proof_status"))
+            .and_then(|v| v.as_str()),
+        Some("not_exploitable_within_bounds")
     );
 }
 

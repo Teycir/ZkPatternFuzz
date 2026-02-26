@@ -320,6 +320,7 @@ struct TemplateOutcomeReason {
     suffix: String,
     status: Option<String>,
     stage: Option<String>,
+    proof_status: Option<String>,
     reason_code: String,
     high_confidence_detected: bool,
     detected_pattern_count: usize,
@@ -1829,10 +1830,36 @@ fn run_template(
         }
     }
 
-    if !run_scan(run_cfg, template, family, false, output_suffix)?.success {
-        eprintln!("Template '{}' failed", template.file_name);
+    println!("[TEMPLATE STAGE] {} stage=detecting", template.file_name);
+    let scan_result = run_scan(run_cfg, template, family, false, output_suffix)?;
+    if !scan_result.success {
+        let reason_code = read_template_reason_code(run_cfg, output_suffix)
+            .unwrap_or_else(|| "unknown".to_string());
+        if reason_code == "critical_findings_detected" {
+            let proof_status = read_template_proof_status(run_cfg, output_suffix)
+                .unwrap_or_else(|| "unknown".to_string());
+            println!(
+                "[TEMPLATE STAGE] {} stage=proof_done proof_status={}",
+                template.file_name, proof_status
+            );
+            println!(
+                "[TEMPLATE STAGE] {} stage=completed_with_critical_findings",
+                template.file_name
+            );
+            return Ok(true);
+        }
+        eprintln!(
+            "Template '{}' failed (reason_code={})",
+            template.file_name, reason_code
+        );
         return Ok(false);
     }
+    let proof_status = read_template_proof_status(run_cfg, output_suffix)
+        .unwrap_or_else(|| "unknown".to_string());
+    println!(
+        "[TEMPLATE STAGE] {} stage=proof_done proof_status={}",
+        template.file_name, proof_status
+    );
 
     Ok(true)
 }
@@ -2139,6 +2166,7 @@ fn collect_template_outcome_reasons(
                     suffix,
                     status: None,
                     stage: None,
+                    proof_status: None,
                     reason_code: "run_outcome_missing".to_string(),
                     high_confidence_detected: false,
                     detected_pattern_count: 0,
@@ -2154,6 +2182,7 @@ fn collect_template_outcome_reasons(
                         suffix,
                         status: None,
                         stage: None,
+                        proof_status: None,
                         reason_code: "run_outcome_unreadable".to_string(),
                         high_confidence_detected: false,
                         detected_pattern_count: 0,
@@ -2170,6 +2199,7 @@ fn collect_template_outcome_reasons(
                         suffix,
                         status: None,
                         stage: None,
+                        proof_status: None,
                         reason_code: "run_outcome_invalid_json".to_string(),
                         high_confidence_detected: false,
                         detected_pattern_count: 0,
@@ -2196,6 +2226,7 @@ fn collect_template_outcome_reasons(
                 suffix,
                 status,
                 stage,
+                proof_status: proof_status_from_run_outcome_doc(&parsed),
                 reason_code: parsed
                     .get("reason_code")
                     .and_then(|v| v.as_str())
@@ -2229,16 +2260,19 @@ fn print_reason_summary(reasons: &[TemplateOutcomeReason]) {
     println!("Reason code summary: {}", summary_line);
 
     for reason in reasons {
-        if reason.reason_code == "completed" || reason.reason_code == "critical_findings_detected" {
+        if (reason.reason_code == "completed" || reason.reason_code == "critical_findings_detected")
+            && reason.proof_status.as_deref() != Some("proof_failed")
+        {
             continue;
         }
         println!(
-            "  - {} [{}]: reason_code={} status={} stage={}",
+            "  - {} [{}]: reason_code={} status={} stage={} proof_status={}",
             reason.template_file,
             reason.suffix,
             reason.reason_code,
             reason.status.as_deref().unwrap_or("unknown"),
             reason.stage.as_deref().unwrap_or("unknown"),
+            reason.proof_status.as_deref().unwrap_or("unknown"),
         );
     }
 }
@@ -2250,16 +2284,17 @@ fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
 
     println!("REASON_TSV_START");
     println!(
-        "template\tsuffix\treason_code\tstatus\tstage\thigh_confidence_detected\tdetected_pattern_count"
+        "template\tsuffix\treason_code\tstatus\tstage\tproof_status\thigh_confidence_detected\tdetected_pattern_count"
     );
     for reason in reasons {
         println!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             reason.template_file,
             reason.suffix,
             reason.reason_code,
             reason.status.as_deref().unwrap_or("unknown"),
             reason.stage.as_deref().unwrap_or("unknown"),
+            reason.proof_status.as_deref().unwrap_or("unknown"),
             if reason.high_confidence_detected {
                 "1"
             } else {
@@ -2271,6 +2306,33 @@ fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
     println!("REASON_TSV_END");
 }
 
+fn proof_state_counts(reasons: &[TemplateOutcomeReason]) -> (usize, usize, usize, usize) {
+    let exploitable = reasons
+        .iter()
+        .filter(|reason| reason.proof_status.as_deref() == Some("exploitable"))
+        .count();
+    let not_exploitable_within_bounds = reasons
+        .iter()
+        .filter(|reason| {
+            reason.proof_status.as_deref() == Some("not_exploitable_within_bounds")
+        })
+        .count();
+    let proof_failed = reasons
+        .iter()
+        .filter(|reason| reason.proof_status.as_deref() == Some("proof_failed"))
+        .count();
+    let proof_skipped_by_policy = reasons
+        .iter()
+        .filter(|reason| reason.proof_status.as_deref() == Some("proof_skipped_by_policy"))
+        .count();
+    (
+        exploitable,
+        not_exploitable_within_bounds,
+        proof_failed,
+        proof_skipped_by_policy,
+    )
+}
+
 #[derive(Debug, Serialize)]
 struct PatternReportRow {
     pattern_file: String,
@@ -2279,6 +2341,7 @@ struct PatternReportRow {
     reason_code: String,
     status: String,
     stage: String,
+    proof_status: String,
     detected_pattern_count: usize,
     high_confidence_detected: bool,
     matched: bool,
@@ -2346,6 +2409,10 @@ struct BatchReportTotals {
     matched_patterns: usize,
     detected_patterns_total: usize,
     high_confidence_patterns: usize,
+    exploitable_patterns: usize,
+    not_exploitable_within_bounds_patterns: usize,
+    proof_failed_patterns: usize,
+    proof_skipped_by_policy_patterns: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2378,6 +2445,12 @@ fn write_report_json(
         .iter()
         .filter(|reason| reason.high_confidence_detected)
         .count();
+    let (
+        exploitable_patterns,
+        not_exploitable_within_bounds_patterns,
+        proof_failed_patterns,
+        proof_skipped_by_policy_patterns,
+    ) = proof_state_counts(reasons);
     let reason_error_count = reasons
         .iter()
         .filter(|reason| is_error_reason(reason))
@@ -2407,6 +2480,10 @@ fn write_report_json(
                 .stage
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string()),
+            proof_status: reason
+                .proof_status
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
             detected_pattern_count: reason.detected_pattern_count,
             high_confidence_detected: reason.high_confidence_detected,
             matched: reason.detected_pattern_count > 0,
@@ -2414,7 +2491,7 @@ fn write_report_json(
         .collect::<Vec<_>>();
 
     let report = BatchFindingsReport {
-        report_schema: "zkfuzz.batch_detected_patterns.v1",
+        report_schema: "zkfuzz.batch_detected_patterns.v2",
         generated_utc: Utc::now().to_rfc3339(),
         verdict,
         target_circuit,
@@ -2457,6 +2534,10 @@ fn write_report_json(
             matched_patterns,
             detected_patterns_total,
             high_confidence_patterns,
+            exploitable_patterns,
+            not_exploitable_within_bounds_patterns,
+            proof_failed_patterns,
+            proof_skipped_by_policy_patterns,
         },
         patterns,
     };
@@ -2580,6 +2661,9 @@ fn step_failed(
 }
 
 fn is_error_reason(reason: &TemplateOutcomeReason) -> bool {
+    if reason.proof_status.as_deref() == Some("proof_failed") {
+        return true;
+    }
     !matches!(
         reason.reason_code.as_str(),
         "completed" | "critical_findings_detected"
@@ -2608,12 +2692,13 @@ fn write_error_log(
         }
         error_count += 1;
         lines.push(format!(
-            "template={} suffix={} reason_code={} status={} stage={} detected_pattern_count={}",
+            "template={} suffix={} reason_code={} status={} stage={} proof_status={} detected_pattern_count={}",
             reason.template_file,
             reason.suffix,
             reason.reason_code,
             reason.status.as_deref().unwrap_or("unknown"),
             reason.stage.as_deref().unwrap_or("unknown"),
+            reason.proof_status.as_deref().unwrap_or("unknown"),
             reason.detected_pattern_count,
         ));
     }
@@ -2667,6 +2752,53 @@ fn write_selector_mismatch_outcome(
     })?;
 
     Ok(())
+}
+
+fn template_run_outcome_path(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> Option<PathBuf> {
+    let run_root = run_cfg.scan_run_root?;
+    Some(
+        run_cfg
+            .artifacts_root
+            .join(run_root)
+            .join(output_suffix)
+            .join("run_outcome.json"),
+    )
+}
+
+fn proof_status_from_run_outcome_doc(doc: &serde_json::Value) -> Option<String> {
+    doc.get("discovery_qualification")
+        .and_then(|v| v.get("proof_status"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+}
+
+fn reason_code_from_run_outcome_doc(doc: &serde_json::Value) -> Option<String> {
+    doc.get("reason_code")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+}
+
+fn read_template_run_outcome_doc(
+    run_cfg: ScanRunConfig<'_>,
+    output_suffix: &str,
+) -> Option<serde_json::Value> {
+    let run_outcome_path = template_run_outcome_path(run_cfg, output_suffix)?;
+    let raw = fs::read_to_string(run_outcome_path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+fn read_template_reason_code(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> Option<String> {
+    let parsed = read_template_run_outcome_doc(run_cfg, output_suffix)?;
+    reason_code_from_run_outcome_doc(&parsed).or_else(|| Some(classify_run_reason_code(&parsed).to_string()))
+}
+
+fn read_template_proof_status(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> Option<String> {
+    let parsed = read_template_run_outcome_doc(run_cfg, output_suffix)?;
+    proof_status_from_run_outcome_doc(&parsed)
 }
 
 fn resolve_explicit_pattern_selection(
@@ -3690,6 +3822,19 @@ fn main() -> anyhow::Result<()> {
         if args.emit_reason_tsv {
             print_reason_tsv(&reasons);
         }
+        let (
+            exploitable_patterns,
+            not_exploitable_within_bounds_patterns,
+            proof_failed_patterns,
+            proof_skipped_by_policy_patterns,
+        ) = proof_state_counts(&reasons);
+        println!(
+            "Proof totals: exploitable={}, not_exploitable_within_bounds={}, proof_failed={}, proof_skipped_by_policy={}",
+            exploitable_patterns,
+            not_exploitable_within_bounds_patterns,
+            proof_failed_patterns,
+            proof_skipped_by_policy_patterns
+        );
     }
 
     append_run_log_best_effort(
@@ -3699,6 +3844,24 @@ fn main() -> anyhow::Result<()> {
             executed, template_errors, duration_secs, avg_rate
         ),
     );
+    if !args.dry_run {
+        let (
+            exploitable_patterns,
+            not_exploitable_within_bounds_patterns,
+            proof_failed_patterns,
+            proof_skipped_by_policy_patterns,
+        ) = proof_state_counts(&reasons);
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "proof_totals exploitable={} not_exploitable_within_bounds={} proof_failed={} proof_skipped_by_policy={}",
+                exploitable_patterns,
+                not_exploitable_within_bounds_patterns,
+                proof_failed_patterns,
+                proof_skipped_by_policy_patterns
+            ),
+        );
+    }
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
@@ -3717,12 +3880,13 @@ fn main() -> anyhow::Result<()> {
         append_run_log_best_effort(
             &timestamped_run_log,
             format!(
-                "error template={} suffix={} reason_code={} status={} stage={} detected_pattern_count={}",
+                "error template={} suffix={} reason_code={} status={} stage={} proof_status={} detected_pattern_count={}",
                 reason.template_file,
                 reason.suffix,
                 reason.reason_code,
                 reason.status.as_deref().unwrap_or("unknown"),
                 reason.stage.as_deref().unwrap_or("unknown"),
+                reason.proof_status.as_deref().unwrap_or("unknown"),
                 reason.detected_pattern_count
             ),
         );

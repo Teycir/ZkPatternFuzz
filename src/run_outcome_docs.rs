@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration as ChronoDuration, Local, Utc};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RunOutcomeDocContext<'a> {
@@ -284,6 +284,97 @@ fn findings_total_from_doc(doc: &serde_json::Value) -> u64 {
         .unwrap_or(0)
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct EvidenceProofStats {
+    bundles_total: u64,
+    passed: u64,
+    failed: u64,
+    skipped: u64,
+    pending: u64,
+    unknown: u64,
+}
+
+impl EvidenceProofStats {
+    fn has_unresolved(&self) -> bool {
+        self.pending > 0 || self.unknown > 0
+    }
+}
+
+fn classify_bundle_verification_result(bundle: &serde_json::Value) -> &'static str {
+    let Some(result) = bundle.get("verification_result") else {
+        return "unknown";
+    };
+
+    match result {
+        serde_json::Value::String(value) => {
+            let lc = value.to_ascii_lowercase();
+            if lc == "passed" {
+                "passed"
+            } else if lc == "pending" {
+                "pending"
+            } else {
+                "unknown"
+            }
+        }
+        serde_json::Value::Object(map) => {
+            if map.contains_key("Failed") {
+                "failed"
+            } else if map.contains_key("Skipped") {
+                "skipped"
+            } else {
+                "unknown"
+            }
+        }
+        _ => "unknown",
+    }
+}
+
+fn evidence_bundle_paths(output_dir: &str) -> Vec<PathBuf> {
+    let evidence_dir = Path::new(output_dir).join("evidence");
+    let entries = match std::fs::read_dir(&evidence_dir) {
+        Ok(entries) => entries,
+        Err(_) => return Vec::new(),
+    };
+
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join("bundle.json"))
+        .filter(|path| path.exists())
+        .collect()
+}
+
+fn collect_evidence_proof_stats(output_dir: Option<&str>) -> Option<EvidenceProofStats> {
+    let output_dir = output_dir.map(str::trim).filter(|value| !value.is_empty())?;
+    let mut stats = EvidenceProofStats::default();
+
+    for bundle_path in evidence_bundle_paths(output_dir) {
+        stats.bundles_total += 1;
+        let raw = match std::fs::read_to_string(&bundle_path) {
+            Ok(raw) => raw,
+            Err(_) => {
+                stats.unknown += 1;
+                continue;
+            }
+        };
+        let parsed: serde_json::Value = match serde_json::from_str(&raw) {
+            Ok(value) => value,
+            Err(_) => {
+                stats.unknown += 1;
+                continue;
+            }
+        };
+        match classify_bundle_verification_result(&parsed) {
+            "passed" => stats.passed += 1,
+            "failed" => stats.failed += 1,
+            "skipped" => stats.skipped += 1,
+            "pending" => stats.pending += 1,
+            _ => stats.unknown += 1,
+        }
+    }
+
+    Some(stats)
+}
+
 fn critical_findings_from_doc(doc: &serde_json::Value) -> bool {
     if let Some(metrics) = doc.get("metrics") {
         if let Some(value) = metrics.get("critical_findings").and_then(|v| v.as_bool()) {
@@ -314,9 +405,31 @@ fn discovery_state(status: &str, findings_total: u64, critical_findings: bool) -
     }
 }
 
-fn proof_status(discovery_state: &str) -> &'static str {
+fn proof_status(
+    discovery_state: &str,
+    findings_total: u64,
+    proof_stats: Option<EvidenceProofStats>,
+) -> &'static str {
     match discovery_state {
-        "candidate_vulnerability" | "no_vulnerability_observed" => "pending_proof",
+        "candidate_vulnerability" => {
+            let Some(stats) = proof_stats else {
+                return "proof_failed";
+            };
+            if stats.passed > 0 {
+                return "exploitable";
+            }
+            // Every finding produced a verifier-rejected proof artifact.
+            if findings_total > 0
+                && stats.bundles_total >= findings_total
+                && stats.failed >= findings_total
+                && stats.skipped == 0
+                && !stats.has_unresolved()
+            {
+                return "not_exploitable_within_bounds";
+            }
+            "proof_failed"
+        }
+        "no_vulnerability_observed" => "proof_skipped_by_policy",
         _ => "not_ready",
     }
 }
@@ -331,25 +444,29 @@ fn analysis_priority(discovery_state: &str) -> &'static str {
     }
 }
 
-fn next_step(discovery_state: &str) -> &'static str {
-    match discovery_state {
-        "candidate_vulnerability" => {
-            "Build deterministic replay evidence and prove exploitability or bounded non-exploitability."
+fn next_step(discovery_state: &str, proof_status: &str) -> &'static str {
+    match proof_status {
+        "exploitable" => "Exploit proof completed. Fix root cause, then run post-fix replay.",
+        "not_exploitable_within_bounds" => {
+            "Bounded non-exploit proof completed. Keep bounds and assumptions in the evidence pack."
         }
-        "no_vulnerability_observed" => {
-            "Run bounded non-exploitability proof campaign and record explicit assumptions and limits."
+        "proof_failed" => {
+            "Proof stage failed or incomplete. Fix proof inputs/tooling and rerun detection+proof."
         }
-        "run_failed" => {
-            "Fix root cause from stage/error, rerun campaign, then re-qualify discovery outcome."
-        }
-        "engagement_contract_failed" => {
-            "Fix engagement contract and readiness failures, then rerun strict evidence mode."
-        }
-        "stale_interrupted" => {
-            "Inspect logs for interruption cause (OOM/SIGKILL/external stop) and rerun deterministically."
-        }
-        "in_progress" => "Wait for terminal status before vulnerability qualification.",
-        _ => "Inspect run artifact manually and assign qualification state.",
+        "proof_skipped_by_policy" => "No detection signal required proof in this run.",
+        _ => match discovery_state {
+            "run_failed" => {
+                "Fix root cause from stage/error, rerun campaign, then re-qualify discovery outcome."
+            }
+            "engagement_contract_failed" => {
+                "Fix engagement contract and readiness failures, then rerun strict evidence mode."
+            }
+            "stale_interrupted" => {
+                "Inspect logs for interruption cause (OOM/SIGKILL/external stop) and rerun deterministically."
+            }
+            "in_progress" => "Wait for terminal status before vulnerability qualification.",
+            _ => "Inspect run artifact manually and assign qualification state.",
+        },
     }
 }
 
@@ -371,9 +488,10 @@ pub(crate) fn standardize_run_outcome_doc(doc: &serde_json::Value) -> serde_json
     let findings_total = findings_total_from_doc(doc);
     let critical_findings = critical_findings_from_doc(doc);
     let discovery_state = discovery_state(status, findings_total, critical_findings);
-    let proof_status = proof_status(discovery_state);
-    let analysis_priority = analysis_priority(discovery_state);
     let output_dir = doc.get("output_dir").and_then(|v| v.as_str());
+    let proof_stats = collect_evidence_proof_stats(output_dir);
+    let proof_status = proof_status(discovery_state, findings_total, proof_stats);
+    let analysis_priority = analysis_priority(discovery_state);
 
     let mut normalized = match doc.as_object() {
         Some(_) => doc.clone(),
@@ -405,9 +523,17 @@ pub(crate) fn standardize_run_outcome_doc(doc: &serde_json::Value) -> serde_json
                 "analysis_priority": analysis_priority,
                 "findings_total": findings_total,
                 "critical_findings": critical_findings,
-                "next_step": next_step(discovery_state),
+                "next_step": next_step(discovery_state, proof_status),
                 "ready_for_followup": terminal,
                 "triage_source": "auto_inferred",
+                "proof_artifacts": {
+                    "bundles_total": proof_stats.map(|stats| stats.bundles_total).unwrap_or(0),
+                    "passed": proof_stats.map(|stats| stats.passed).unwrap_or(0),
+                    "failed": proof_stats.map(|stats| stats.failed).unwrap_or(0),
+                    "skipped": proof_stats.map(|stats| stats.skipped).unwrap_or(0),
+                    "pending": proof_stats.map(|stats| stats.pending).unwrap_or(0),
+                    "unknown": proof_stats.map(|stats| stats.unknown).unwrap_or(0),
+                },
                 "analysis_inputs": {
                     "run_outcome_json": analysis_input_path(output_dir, "run_outcome.json"),
                     "report_json": analysis_input_path(output_dir, "report.json"),
