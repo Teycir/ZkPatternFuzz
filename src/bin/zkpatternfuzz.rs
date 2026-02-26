@@ -27,6 +27,7 @@ const BUILD_CACHE_DIR_ENV: &str = "ZKF_BUILD_CACHE_DIR";
 const SHARED_BUILD_CACHE_DIR_ENV: &str = "ZKF_SHARED_BUILD_CACHE_DIR";
 const HALO2_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS";
 const HALO2_MIN_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_MIN_EXTERNAL_TIMEOUT_SECS";
+const HALO2_CARGO_RUN_BIN_ENV: &str = "ZK_FUZZER_HALO2_CARGO_RUN_BIN";
 const HALO2_USE_HOST_CARGO_HOME_ENV: &str = "ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME";
 const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES";
 const HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV: &str = "ZK_FUZZER_HALO2_TOOLCHAIN_CASCADE_LIMIT";
@@ -115,7 +116,7 @@ struct Args {
     jobs: usize,
 
     /// Worker count per run
-    #[arg(long, default_value_t = 8)]
+    #[arg(long, default_value_t = 1)]
     workers: usize,
 
     /// RNG seed per run
@@ -140,8 +141,8 @@ struct Args {
 
     /// Optional extra output path for findings JSON.
     /// A timestamped `findings.json` is emitted under
-    /// `<scan_output_root>/ResultJsonTimestamped/<timestamp>/` only when the
-    /// campaign completes successfully.
+    /// `<scan_output_root>/ResultJsonTimestamped/<timestamp>/` for every
+    /// non-dry-run execution.
     #[arg(long)]
     report_json: Option<String>,
 
@@ -287,6 +288,8 @@ struct ScanRunConfig<'a> {
     timeout: u64,
     scan_run_root: Option<&'a str>,
     scan_output_root: &'a Path,
+    run_signal_dir: &'a Path,
+    build_cache_dir: &'a Path,
     dry_run: bool,
     artifacts_root: &'a Path,
 }
@@ -490,6 +493,22 @@ fn parse_family(value: &str) -> anyhow::Result<Family> {
             other
         ),
     }
+}
+
+fn ensure_positive_cli_values(args: &Args) -> anyhow::Result<()> {
+    if args.jobs == 0 {
+        anyhow::bail!("--jobs must be >= 1");
+    }
+    if args.workers == 0 {
+        anyhow::bail!("--workers must be >= 1");
+    }
+    if args.iterations == 0 {
+        anyhow::bail!("--iterations must be >= 1");
+    }
+    if args.timeout == 0 {
+        anyhow::bail!("--timeout must be >= 1");
+    }
+    Ok(())
 }
 
 fn template_family_from_name(name: &str) -> anyhow::Result<Family> {
@@ -977,12 +996,10 @@ fn run_scan(
     output_suffix: &str,
 ) -> anyhow::Result<ScanRunResult> {
     let family_str = family.as_str();
-    let run_signal_dir = run_cfg.scan_output_root.join("run_signals");
-    let build_cache_dir = resolve_build_cache_dir(run_cfg.scan_output_root);
     let mut cmd = Command::new(run_cfg.bin_path);
     cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.scan_output_root)
-        .env(RUN_SIGNAL_DIR_ENV, &run_signal_dir)
-        .env(BUILD_CACHE_DIR_ENV, &build_cache_dir);
+        .env(RUN_SIGNAL_DIR_ENV, run_cfg.run_signal_dir)
+        .env(BUILD_CACHE_DIR_ENV, run_cfg.build_cache_dir);
     for (key, value) in run_cfg.env_overrides {
         cmd.env(key, value);
     }
@@ -1000,6 +1017,12 @@ fn run_scan(
     }
     if let Some(run_root) = run_cfg.scan_run_root {
         cmd.env(SCAN_RUN_ROOT_ENV, run_root);
+    }
+    if run_cfg.framework.eq_ignore_ascii_case("halo2") {
+        let selected_bin = run_cfg.main_component.trim();
+        if !selected_bin.is_empty() {
+            cmd.env(HALO2_CARGO_RUN_BIN_ENV, selected_bin);
+        }
     }
     if is_external_target(run_cfg.target_circuit) && run_cfg.framework.eq_ignore_ascii_case("halo2")
     {
@@ -1071,9 +1094,9 @@ fn run_scan(
             SCAN_OUTPUT_ROOT_ENV,
             run_cfg.scan_output_root.display(),
             RUN_SIGNAL_DIR_ENV,
-            run_signal_dir.display(),
+            run_cfg.run_signal_dir.display(),
             BUILD_CACHE_DIR_ENV,
-            build_cache_dir.display(),
+            run_cfg.build_cache_dir.display(),
             run_cfg.bin_path.display(),
             template.path.display(),
             family_str,
@@ -1123,6 +1146,31 @@ fn resolve_build_cache_dir(scan_output_root: &Path) -> PathBuf {
         }
     }
     scan_output_root.join("_build_cache")
+}
+
+fn ensure_writable_dir(path: &Path, label: &str) -> anyhow::Result<()> {
+    fs::create_dir_all(path)
+        .with_context(|| format!("Failed to create {} '{}'", label, path.display()))?;
+
+    let probe_name = format!(
+        ".zkpatternfuzz_probe_{}_{}",
+        std::process::id(),
+        RUN_ROOT_NONCE.fetch_add(1, Ordering::Relaxed)
+    );
+    let probe_path = path.join(probe_name);
+    fs::write(&probe_path, b"probe")
+        .with_context(|| format!("{} is not writable at '{}'", label, path.display()))?;
+    let _ = fs::remove_file(&probe_path);
+    Ok(())
+}
+
+fn preflight_runtime_paths(scan_output_root: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
+    ensure_writable_dir(scan_output_root, "scan output root")?;
+    let run_signal_dir = scan_output_root.join("run_signals");
+    ensure_writable_dir(&run_signal_dir, "run signal dir")?;
+    let build_cache_dir = resolve_build_cache_dir(scan_output_root);
+    ensure_writable_dir(&build_cache_dir, "build cache dir")?;
+    Ok((run_signal_dir, build_cache_dir))
 }
 
 fn halo2_effective_external_timeout_secs(framework: &str, requested_timeout: u64) -> u64 {
@@ -1856,6 +1904,8 @@ struct BatchFindingsReport<'a> {
     main_component: &'a str,
     input: BatchReportInput<'a>,
     run: BatchReportRun,
+    gates: BatchReportGates,
+    artifacts: BatchReportArtifacts,
     totals: BatchReportTotals,
     patterns: Vec<PatternReportRow>,
 }
@@ -1881,6 +1931,24 @@ struct BatchReportRun {
 }
 
 #[derive(Debug, Serialize)]
+struct BatchReportGates {
+    gate1_expected_patterns: usize,
+    gate2_completion: bool,
+    gate3_artifact_reconciliation: bool,
+    reason_error_count: usize,
+    dry_run: bool,
+    campaign_success: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct BatchReportArtifacts {
+    timestamped_result_bundle: String,
+    timestamped_run_log: String,
+    timestamped_error_log: String,
+    batch_run_root: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 struct BatchReportTotals {
     expected_patterns: usize,
     executed_patterns: usize,
@@ -1899,6 +1967,13 @@ fn write_report_json(
     executed: usize,
     failures: usize,
     scan_output_root: &Path,
+    gate2_ok: bool,
+    gate3_ok: bool,
+    campaign_success: bool,
+    timestamped_result_dir: &Path,
+    timestamped_run_log: &Path,
+    timestamped_error_log: &Path,
+    batch_run_root: Option<&str>,
 ) -> anyhow::Result<()> {
     let matched_patterns = reasons
         .iter()
@@ -1912,7 +1987,13 @@ fn write_report_json(
         .iter()
         .filter(|reason| reason.high_confidence_detected)
         .count();
-    let verdict = if failures > 0 {
+    let reason_error_count = reasons
+        .iter()
+        .filter(|reason| is_error_reason(reason))
+        .count();
+    let verdict = if args.dry_run {
+        "dry_run"
+    } else if !gate2_ok || !gate3_ok || reason_error_count > 0 || failures > 0 {
         "run_failed"
     } else if matched_patterns > 0 {
         "matching_patterns_found"
@@ -1963,6 +2044,20 @@ fn write_report_json(
             iterations: args.iterations,
             timeout: args.timeout,
             output_root: scan_output_root.display().to_string(),
+        },
+        gates: BatchReportGates {
+            gate1_expected_patterns: expected_count,
+            gate2_completion: gate2_ok,
+            gate3_artifact_reconciliation: gate3_ok,
+            reason_error_count,
+            dry_run: args.dry_run,
+            campaign_success,
+        },
+        artifacts: BatchReportArtifacts {
+            timestamped_result_bundle: timestamped_result_dir.display().to_string(),
+            timestamped_run_log: timestamped_run_log.display().to_string(),
+            timestamped_error_log: timestamped_error_log.display().to_string(),
+            batch_run_root: batch_run_root.map(|value| value.to_string()),
         },
         totals: BatchReportTotals {
             expected_patterns: expected_count,
@@ -2032,7 +2127,13 @@ fn step_started(step: usize, total_steps: usize, label: &str, run_log: &Path) ->
     Instant::now()
 }
 
-fn step_succeeded(step: usize, total_steps: usize, label: &str, started_at: Instant, run_log: &Path) {
+fn step_succeeded(
+    step: usize,
+    total_steps: usize,
+    label: &str,
+    started_at: Instant,
+    run_log: &Path,
+) {
     let elapsed_secs = started_at.elapsed().as_secs_f64();
     println!(
         "[STEP {}/{}] {}: completed ({:.1}s)",
@@ -2425,6 +2526,7 @@ fn main() -> anyhow::Result<()> {
             requested_timeout, args.timeout, HALO2_DEFAULT_BATCH_TIMEOUT_ENV
         );
     }
+    ensure_positive_cli_values(&args)?;
     let family_override = parse_family(&args.family)?;
 
     let explicit_patterns = split_csv(args.pattern_yaml.as_deref());
@@ -2549,7 +2651,8 @@ fn main() -> anyhow::Result<()> {
         .collect();
     let total_steps = 5usize;
 
-    let preflight_step_started = step_started(1, total_steps, "template preflight", &timestamped_run_log);
+    let preflight_step_started =
+        step_started(1, total_steps, "template preflight", &timestamped_run_log);
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
@@ -2601,17 +2704,23 @@ fn main() -> anyhow::Result<()> {
         &timestamped_run_log,
     );
 
-    let readiness_step_started = step_started(2, total_steps, "local readiness", &timestamped_run_log);
+    let readiness_step_started =
+        step_started(2, total_steps, "local readiness", &timestamped_run_log);
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
-            "step=local_readiness status=started framework={} target_circuit={}",
-            args.framework, target_circuit
+            "step=local_readiness status=started framework={} target_circuit={} output_root={}",
+            args.framework,
+            target_circuit,
+            scan_output_root.display()
         ),
     );
-    if let Err(err) =
-        ensure_local_runtime_requirements(&args.framework, &target_circuit, &target_circuit_path)
-    {
+    if let Err(err) = ensure_local_runtime_requirements(
+        &args.framework,
+        &target_circuit,
+        &target_circuit_path,
+        &args.main_component,
+    ) {
         step_failed(
             2,
             total_steps,
@@ -2643,9 +2752,52 @@ fn main() -> anyhow::Result<()> {
         }
         return Err(err);
     }
+    let (run_signal_dir, build_cache_dir) = match preflight_runtime_paths(&scan_output_root) {
+        Ok(paths) => paths,
+        Err(err) => {
+            step_failed(
+                2,
+                total_steps,
+                "local readiness",
+                readiness_step_started,
+                &timestamped_run_log,
+                &err,
+            );
+            append_run_log_best_effort(
+                &timestamped_run_log,
+                format!("step=local_readiness status=failed error={}", err),
+            );
+            append_run_log_best_effort(
+                &timestamped_run_log,
+                format!(
+                    "end_utc={} campaign_success=false dry_run={} failure=runtime_paths",
+                    Utc::now().to_rfc3339(),
+                    args.dry_run
+                ),
+            );
+            if let Err(log_err) =
+                write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
+            {
+                eprintln!(
+                    "Failed to write early error log '{}': {:#}",
+                    timestamped_error_log.display(),
+                    log_err
+                );
+            }
+            return Err(err);
+        }
+    };
     append_run_log_best_effort(
         &timestamped_run_log,
-        "step=local_readiness status=completed".to_string(),
+        format!(
+            "step=local_readiness status=completed run_signal_dir={} build_cache_dir={}",
+            run_signal_dir.display(),
+            build_cache_dir.display()
+        ),
+    );
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        "step=local_readiness checks=framework_tools,target_shape,runtime_paths".to_string(),
     );
     step_succeeded(
         2,
@@ -2915,11 +3067,14 @@ fn main() -> anyhow::Result<()> {
         timeout: args.timeout,
         scan_run_root: None,
         scan_output_root: &scan_output_root,
+        run_signal_dir: &run_signal_dir,
+        build_cache_dir: &build_cache_dir,
         dry_run: args.dry_run,
         artifacts_root: &artifacts_root,
     };
 
-    let execute_step_started = step_started(5, total_steps, "execute templates", &timestamped_run_log);
+    let execute_step_started =
+        step_started(5, total_steps, "execute templates", &timestamped_run_log);
     let baseline_roots = if args.dry_run {
         BTreeSet::new()
     } else {
@@ -3148,7 +3303,7 @@ fn main() -> anyhow::Result<()> {
 
     let has_reason_errors = reasons.iter().any(is_error_reason);
     let campaign_success = !args.dry_run && gate2_ok && gate3_ok && !has_reason_errors;
-    if campaign_success {
+    if !args.dry_run {
         write_report_json(
             &args,
             &timestamped_report_path,
@@ -3158,6 +3313,13 @@ fn main() -> anyhow::Result<()> {
             executed,
             failures,
             &scan_output_root,
+            gate2_ok,
+            gate3_ok,
+            campaign_success,
+            &timestamped_result_dir,
+            &timestamped_run_log,
+            &timestamped_error_log,
+            batch_run_root.as_deref(),
         )?;
         if let Some(path_raw) = args.report_json.as_deref() {
             let path = PathBuf::from(path_raw);
@@ -3171,14 +3333,23 @@ fn main() -> anyhow::Result<()> {
                     executed,
                     failures,
                     &scan_output_root,
+                    gate2_ok,
+                    gate3_ok,
+                    campaign_success,
+                    &timestamped_result_dir,
+                    &timestamped_run_log,
+                    &timestamped_error_log,
+                    batch_run_root.as_deref(),
                 )?;
             }
             println!("Wrote findings report JSON: {}", path.display());
         }
-    } else {
         println!(
-            "Skipped findings JSON because campaign did not complete successfully (or dry run)."
+            "Wrote findings report JSON: {}",
+            timestamped_report_path.display()
         );
+    } else {
+        println!("Skipped findings JSON for dry run.");
     }
     println!(
         "Wrote timestamped result bundle: {}",

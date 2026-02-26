@@ -174,7 +174,10 @@ fn halo2_bin_readiness_from_metadata(
     Ok((bins.into_iter().collect(), default_run))
 }
 
-fn ensure_halo2_runnable_bin(manifest_path: &Path) -> anyhow::Result<()> {
+fn ensure_halo2_runnable_bin(
+    manifest_path: &Path,
+    requested_bin: Option<&str>,
+) -> anyhow::Result<()> {
     let output = Command::new("cargo")
         .arg("metadata")
         .arg("--format-version")
@@ -215,16 +218,8 @@ fn ensure_halo2_runnable_bin(manifest_path: &Path) -> anyhow::Result<()> {
         );
     }
 
-    if bins.len() > 1 && default_run.is_none() {
-        anyhow::bail!(
-            "Halo2 target '{}' has multiple bins ({}) but no default-run. Set default-run or use a single-bin target",
-            manifest_path.display(),
-            bins.join(", ")
-        );
-    }
-
-    if let Some(default_run) = default_run {
-        if !bins.iter().any(|bin| bin == &default_run) {
+    if let Some(ref default_run) = default_run {
+        if !bins.iter().any(|bin| bin == default_run) {
             anyhow::bail!(
                 "Halo2 target '{}' declares default-run='{}' but available bins are [{}]",
                 manifest_path.display(),
@@ -232,6 +227,29 @@ fn ensure_halo2_runnable_bin(manifest_path: &Path) -> anyhow::Result<()> {
                 bins.join(", ")
             );
         }
+    }
+
+    if let Some(requested_bin) = requested_bin
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !bins.iter().any(|bin| bin == requested_bin) {
+            anyhow::bail!(
+                "Halo2 target '{}' does not expose requested bin '{}' (available: [{}])",
+                manifest_path.display(),
+                requested_bin,
+                bins.join(", ")
+            );
+        }
+        return Ok(());
+    }
+
+    if bins.len() > 1 && default_run.is_none() {
+        anyhow::bail!(
+            "Halo2 target '{}' has multiple bins ({}) but no default-run. Set default-run or pass --main-component <bin> for deterministic selection",
+            manifest_path.display(),
+            bins.join(", ")
+        );
     }
 
     Ok(())
@@ -414,6 +432,7 @@ struct LocalReadinessContext<'a> {
     framework: &'a str,
     target_circuit: &'a str,
     target_circuit_path: &'a Path,
+    main_component: &'a str,
 }
 
 #[derive(Default)]
@@ -513,7 +532,7 @@ impl FrameworkReadinessChecker for Halo2ReadinessChecker {
 
     fn validate_framework(&self, ctx: &LocalReadinessContext<'_>) -> anyhow::Result<()> {
         let manifest_path = resolve_halo2_manifest_path(ctx.target_circuit_path)?;
-        ensure_halo2_runnable_bin(&manifest_path)?;
+        ensure_halo2_runnable_bin(&manifest_path, Some(ctx.main_component))?;
         ensure_halo2_dependencies_available_offline(&manifest_path)?;
         Ok(())
     }
@@ -548,11 +567,13 @@ pub fn ensure_local_runtime_requirements(
     framework: &str,
     target_circuit: &str,
     target_circuit_path: &Path,
+    main_component: &str,
 ) -> anyhow::Result<()> {
     let ctx = LocalReadinessContext {
         framework,
         target_circuit,
         target_circuit_path,
+        main_component,
     };
     make_framework_readiness_checker(ctx.framework).validate(&ctx)
 }
