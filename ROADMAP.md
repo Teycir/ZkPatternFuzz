@@ -1127,6 +1127,39 @@ gh run watch
 
 ---
 
+## 🐛 zkpatternfuzz Binary Hardening (2026-02-26)
+
+### Critical (P0)
+- [ ] **Bug 1**: Unbounded read_to_end on child stdout/stderr can OOM the orchestrator
+  - Issue: `src/bin/zkpatternfuzz.rs` reads child process output without size limits
+  - Fix: Use `reader.take(MAX_LOG_SIZE)` or stream to disk for large outputs
+  - Impact: High - can crash orchestrator on infinite/large child output
+
+### High Priority (P1)
+- [ ] **Bug 2**: TOCTOU race in wait_for_memory_headroom
+  - Issue: Multiple rayon workers can simultaneously pass memory check and all launch
+  - Fix: Use atomic counter or mutex to serialize memory budget allocation
+  - Impact: Medium - can exceed memory budget under high parallelism
+
+- [ ] **Bug 3**: append_run_log re-opens file on every call from multiple threads
+  - Issue: Inefficient file I/O pattern, potential contention
+  - Fix: Open once and share via `Mutex<BufWriter<File>>`
+  - Impact: Medium - performance degradation under high log volume
+
+### Medium Priority (P2)
+- [ ] **Bug 4**: 4,343-line monolith mixes CLI, config, framework logic, orchestration
+  - Issue: `src/bin/zkpatternfuzz.rs` violates single responsibility principle
+  - Fix: Decompose into modules: `config`, `discovery`, `execution`, `reporting`
+  - Impact: Medium - maintainability and testability concerns
+
+### Low Priority (P3)
+- [ ] **Bug 5**: std::env::set_var is unsafe in multithreaded contexts
+  - Issue: `checkenv.rs` mutates global environment in parallel execution
+  - Fix: Parse into config struct instead of mutating environment
+  - Impact: Low - potential race conditions, non-deterministic behavior
+
+---
+
 ## 🐛 Capacity & Fitness Bug Fixes (2026-02-20)
 
 ### Critical (P0)
@@ -1908,6 +1941,12 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Follow-up run after harness assertion update ended `124` (`POSTPATCH_LONGRUN_POSTASSERT_STATUS=124`) before assertion completion.
   - Follow-up log: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_replay_longrun_postassert.log`
   - Follow-up status marker: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_status_longrun_postassert.txt`
+- [ ] EXT-005 extended bounded replay follow-up (1200s) still unresolved (`pending_proof`).
+  - Proof run root: `artifacts/proof_runs/ext005/run_20260226_225545_ext005_adapter_replay_followup/`
+  - Deterministic replay command: `replay_command.txt` (same fixed witness/toolchain/SVM override stack, bounded by `timeout 1200s`).
+  - Outcome: `REPLAY_EXIT_STATUS=124`; run reached long-running test phase but did not produce deterministic assertion output before timeout.
+  - Replay log: `artifacts/proof_runs/ext005/run_20260226_225545_ext005_adapter_replay_followup/replay.log`
+  - Triage + blocker record: `triage.md`, `pending_proof.md`, `impact.md`
 
 ### Proof Continuation (2026-02-26)
 - [x] `cveX15_scroll_missing_overflow_constraint` deterministic replay + bounded non-exploit proof pack completed (manual checks only).

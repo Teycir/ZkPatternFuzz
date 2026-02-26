@@ -40,3 +40,28 @@ fn test_run_with_timeout_captures_stdout_and_stderr() {
     assert_eq!(String::from_utf8_lossy(&output.stdout), "ok-out");
     assert_eq!(String::from_utf8_lossy(&output.stderr), "ok-err");
 }
+
+#[cfg(unix)]
+#[test]
+fn test_run_with_timeout_truncates_very_large_output() {
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c")
+        .arg("head -c 9000000 /dev/zero | tr '\\000' 'A'");
+
+    let output =
+        run_with_timeout(&mut cmd, Duration::from_secs(5)).expect("command should complete");
+
+    assert!(
+        output.status.success(),
+        "expected successful exit status for large-output command"
+    );
+    assert!(
+        output.stdout.len() < 9_000_000,
+        "expected capped stdout capture, got {} bytes",
+        output.stdout.len()
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("output truncated"),
+        "expected truncation notice in stderr"
+    );
+}

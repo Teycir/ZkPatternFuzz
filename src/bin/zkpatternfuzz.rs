@@ -2,14 +2,14 @@ use anyhow::Context;
 use chrono::Utc;
 use clap::{ArgAction, Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -67,6 +67,9 @@ const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
 const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
 const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
 const PROOF_STAGE_NOT_STARTED_REASON_CODE: &str = "proof_stage_not_started";
+const MAX_PIPE_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
+const PIPE_CAPTURE_TRUNCATED_NOTICE: &str =
+    "\n[zkpatternfuzz] command output truncated to 8 MiB per stream\n";
 static RUN_ROOT_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Parser, Debug)]
@@ -471,20 +474,48 @@ fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
     child.kill()
 }
 
-fn spawn_pipe_reader<R>(mut reader: R) -> JoinHandle<anyhow::Result<Vec<u8>>>
+#[derive(Debug)]
+struct PipeCapture {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+fn read_pipe_with_cap<R: Read>(mut reader: R) -> anyhow::Result<PipeCapture> {
+    let mut bytes = Vec::new();
+    let mut scratch = [0u8; 8192];
+    let mut truncated = false;
+
+    loop {
+        let read = reader.read(&mut scratch)?;
+        if read == 0 {
+            break;
+        }
+
+        let remaining = MAX_PIPE_CAPTURE_BYTES.saturating_sub(bytes.len());
+        if remaining > 0 {
+            let keep = remaining.min(read);
+            bytes.extend_from_slice(&scratch[..keep]);
+            if keep < read {
+                truncated = true;
+            }
+        } else {
+            truncated = true;
+        }
+    }
+
+    Ok(PipeCapture { bytes, truncated })
+}
+
+fn spawn_pipe_reader<R>(reader: R) -> JoinHandle<anyhow::Result<PipeCapture>>
 where
     R: Read + Send + 'static,
 {
-    thread::spawn(move || {
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf)?;
-        Ok(buf)
-    })
+    thread::spawn(move || read_pipe_with_cap(reader))
 }
 
 fn join_pipe_reader(
-    handle: Option<JoinHandle<anyhow::Result<Vec<u8>>>>,
-) -> anyhow::Result<Vec<u8>> {
+    handle: Option<JoinHandle<anyhow::Result<PipeCapture>>>,
+) -> anyhow::Result<PipeCapture> {
     match handle {
         Some(handle) => {
             let result = handle
@@ -492,8 +523,20 @@ fn join_pipe_reader(
                 .map_err(|_| anyhow::anyhow!("failed to join command output reader thread"))?;
             result
         }
-        None => Ok(Vec::new()),
+        None => Ok(PipeCapture {
+            bytes: Vec::new(),
+            truncated: false,
+        }),
     }
+}
+
+fn finalize_pipe_capture(stdout: PipeCapture, mut stderr: PipeCapture) -> (Vec<u8>, Vec<u8>) {
+    if stdout.truncated || stderr.truncated {
+        stderr
+            .bytes
+            .extend_from_slice(PIPE_CAPTURE_TRUNCATED_NOTICE.as_bytes());
+    }
+    (stdout.bytes, stderr.bytes)
 }
 
 fn template_progress_path(run_cfg: ScanRunConfig<'_>, output_suffix: &str) -> PathBuf {
@@ -598,13 +641,25 @@ fn run_command_with_stage_timeouts(
     template_file: &str,
     progress_path: &Path,
     stage_timeouts: StageTimeoutConfig,
+    memory_guard: MemoryGuardConfig,
 ) -> anyhow::Result<(Output, Option<HardTimeoutStage>)> {
+    let launch_guard = memory_headroom_launch_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    wait_for_memory_headroom(memory_guard).with_context(|| {
+        format!(
+            "Template '{}' launch blocked by memory guard",
+            template_file
+        )
+    })?;
+
     prepare_child_process_group(cmd);
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
+    drop(launch_guard);
 
     let stdout_reader = child.stdout.take().map(spawn_pipe_reader);
     let stderr_reader = child.stderr.take().map(spawn_pipe_reader);
@@ -631,8 +686,9 @@ fn run_command_with_stage_timeouts(
                     println!("{}", update.rendered_line);
                 }
             }
-            let stdout = join_pipe_reader(stdout_reader)?;
-            let stderr = join_pipe_reader(stderr_reader)?;
+            let stdout_capture = join_pipe_reader(stdout_reader)?;
+            let stderr_capture = join_pipe_reader(stderr_reader)?;
+            let (stdout, stderr) = finalize_pipe_capture(stdout_capture, stderr_capture);
             return Ok((
                 Output {
                     status,
@@ -691,8 +747,9 @@ fn run_command_with_stage_timeouts(
         if let Some(stage) = timeout_stage {
             let _ = kill_child_tree(&mut child);
             let status = child.wait()?;
-            let stdout = join_pipe_reader(stdout_reader)?;
-            let mut stderr = join_pipe_reader(stderr_reader)?;
+            let stdout_capture = join_pipe_reader(stdout_reader)?;
+            let stderr_capture = join_pipe_reader(stderr_reader)?;
+            let (stdout, mut stderr) = finalize_pipe_capture(stdout_capture, stderr_capture);
             let (stage_label, stage_budget) = match stage {
                 HardTimeoutStage::Detecting => ("detection", stage_timeouts.detection_timeout_secs),
                 HardTimeoutStage::Proving => ("proof", stage_timeouts.proof_timeout_secs),
@@ -1048,6 +1105,11 @@ fn apply_memory_parallelism_guardrails(
     guard: MemoryGuardConfig,
 ) -> anyhow::Result<()> {
     apply_memory_parallelism_guardrails_with_available(args, guard, host_available_memory_mb())
+}
+
+fn memory_headroom_launch_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn wait_for_memory_headroom(guard: MemoryGuardConfig) -> anyhow::Result<()> {
@@ -1588,15 +1650,6 @@ fn run_scan(
     output_suffix: &str,
 ) -> anyhow::Result<ScanRunResult> {
     let family_str = family.as_str();
-    if !validate_only && !run_cfg.dry_run {
-        wait_for_memory_headroom(run_cfg.memory_guard).with_context(|| {
-            format!(
-                "Template '{}' launch blocked by memory guard",
-                template.file_name
-            )
-        })?;
-    }
-
     let mut cmd = Command::new(run_cfg.bin_path);
     cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.results_root)
         .env(RUN_SIGNAL_DIR_ENV, run_cfg.run_signal_dir)
@@ -1726,6 +1779,7 @@ fn run_scan(
             &template.file_name,
             &progress_path,
             run_cfg.stage_timeouts,
+            run_cfg.memory_guard,
         )?
     } else {
         (cmd.output()?, None)
@@ -2831,19 +2885,36 @@ fn create_timestamped_result_dir(results_root: &Path) -> anyhow::Result<PathBuf>
     Ok(dir)
 }
 
+fn run_log_file_cache() -> &'static Mutex<HashMap<PathBuf, fs::File>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, fs::File>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 fn append_run_log(path: &Path, message: impl AsRef<str>) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
             format!("Failed to create run log directory '{}'", parent.display())
         })?;
     }
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .with_context(|| format!("Failed to open run log '{}'", path.display()))?;
+    let path_buf = path.to_path_buf();
+    let mut cache = run_log_file_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let file = match cache.entry(path_buf.clone()) {
+        std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+        std::collections::hash_map::Entry::Vacant(entry) => {
+            let file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path_buf)
+                .with_context(|| format!("Failed to open run log '{}'", path.display()))?;
+            entry.insert(file)
+        }
+    };
     writeln!(file, "{}", message.as_ref())
         .with_context(|| format!("Failed to write run log '{}'", path.display()))?;
+    file.flush()
+        .with_context(|| format!("Failed to flush run log '{}'", path.display()))?;
     Ok(())
 }
 

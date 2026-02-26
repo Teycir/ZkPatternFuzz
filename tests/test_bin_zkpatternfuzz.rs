@@ -411,6 +411,54 @@ MemFree:         1024000 kB
         }
 
         #[test]
+        fn pipe_reader_caps_captured_output() {
+            let oversized = vec![b'x'; MAX_PIPE_CAPTURE_BYTES + 4096];
+            let handle = spawn_pipe_reader(std::io::Cursor::new(oversized));
+            let capture = join_pipe_reader(Some(handle)).expect("join pipe reader");
+            assert_eq!(capture.bytes.len(), MAX_PIPE_CAPTURE_BYTES);
+            assert!(capture.truncated, "expected truncation flag");
+        }
+
+        #[test]
+        fn finalize_pipe_capture_adds_truncation_notice_to_stderr() {
+            let stdout = PipeCapture {
+                bytes: vec![b'a'; MAX_PIPE_CAPTURE_BYTES],
+                truncated: true,
+            };
+            let stderr = PipeCapture {
+                bytes: b"base-stderr".to_vec(),
+                truncated: false,
+            };
+            let (_stdout, merged_stderr) = finalize_pipe_capture(stdout, stderr);
+            let rendered = String::from_utf8_lossy(&merged_stderr);
+            assert!(rendered.contains("base-stderr"));
+            assert!(rendered.contains("output truncated"));
+        }
+
+        #[test]
+        fn append_run_log_reuses_cached_file_handle() {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let log_path = temp.path().join("run.log");
+            let initial_cache_len = run_log_file_cache()
+                .lock()
+                .expect("lock run log cache")
+                .len();
+
+            append_run_log(&log_path, "line-1").expect("append run log line-1");
+            append_run_log(&log_path, "line-2").expect("append run log line-2");
+
+            let cache_len_after = run_log_file_cache()
+                .lock()
+                .expect("lock run log cache")
+                .len();
+            assert_eq!(cache_len_after, initial_cache_len + 1);
+
+            let content = std::fs::read_to_string(&log_path).expect("read run log");
+            assert!(content.contains("line-1"));
+            assert!(content.contains("line-2"));
+        }
+
+        #[test]
         fn memory_guard_reduces_parallelism_when_budget_is_tight() {
             let mut args = Args::try_parse_from([
                 "zkpatternfuzz",

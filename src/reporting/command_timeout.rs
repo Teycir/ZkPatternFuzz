@@ -8,6 +8,10 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+const MAX_PIPE_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
+const PIPE_CAPTURE_TRUNCATED_NOTICE: &str =
+    "\n[zkpatternfuzz] command output truncated to 8 MiB per stream\n";
+
 #[cfg(unix)]
 fn prepare_child_process_group(cmd: &mut Command) {
     use std::os::unix::process::CommandExt;
@@ -48,20 +52,48 @@ fn kill_child_tree(child: &mut Child) -> std::io::Result<()> {
     child.kill()
 }
 
-fn spawn_pipe_reader<R>(mut reader: R) -> JoinHandle<anyhow::Result<Vec<u8>>>
+#[derive(Debug)]
+struct PipeCapture {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+fn read_pipe_with_cap<R: Read>(mut reader: R) -> anyhow::Result<PipeCapture> {
+    let mut bytes = Vec::new();
+    let mut scratch = [0u8; 8192];
+    let mut truncated = false;
+
+    loop {
+        let read = reader.read(&mut scratch)?;
+        if read == 0 {
+            break;
+        }
+
+        let remaining = MAX_PIPE_CAPTURE_BYTES.saturating_sub(bytes.len());
+        if remaining > 0 {
+            let keep = remaining.min(read);
+            bytes.extend_from_slice(&scratch[..keep]);
+            if keep < read {
+                truncated = true;
+            }
+        } else {
+            truncated = true;
+        }
+    }
+
+    Ok(PipeCapture { bytes, truncated })
+}
+
+fn spawn_pipe_reader<R>(reader: R) -> JoinHandle<anyhow::Result<PipeCapture>>
 where
     R: Read + Send + 'static,
 {
-    thread::spawn(move || {
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf)?;
-        Ok(buf)
-    })
+    thread::spawn(move || read_pipe_with_cap(reader))
 }
 
 fn join_pipe_reader(
-    handle: Option<JoinHandle<anyhow::Result<Vec<u8>>>>,
-) -> anyhow::Result<Vec<u8>> {
+    handle: Option<JoinHandle<anyhow::Result<PipeCapture>>>,
+) -> anyhow::Result<PipeCapture> {
     match handle {
         Some(handle) => {
             let result = handle
@@ -69,8 +101,20 @@ fn join_pipe_reader(
                 .map_err(|_| anyhow::anyhow!("failed to join command output reader thread"))?;
             result
         }
-        None => Ok(Vec::new()),
+        None => Ok(PipeCapture {
+            bytes: Vec::new(),
+            truncated: false,
+        }),
     }
+}
+
+fn finalize_pipe_capture(stdout: PipeCapture, mut stderr: PipeCapture) -> (Vec<u8>, Vec<u8>) {
+    if stdout.truncated || stderr.truncated {
+        stderr
+            .bytes
+            .extend_from_slice(PIPE_CAPTURE_TRUNCATED_NOTICE.as_bytes());
+    }
+    (stdout.bytes, stderr.bytes)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -305,8 +349,9 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> anyhow::Result<
     let deadline = Instant::now() + timeout;
     loop {
         if let Some(status) = child.try_wait()? {
-            let stdout = join_pipe_reader(stdout_reader)?;
-            let stderr = join_pipe_reader(stderr_reader)?;
+            let stdout_capture = join_pipe_reader(stdout_reader)?;
+            let stderr_capture = join_pipe_reader(stderr_reader)?;
+            let (stdout, stderr) = finalize_pipe_capture(stdout_capture, stderr_capture);
             return Ok(Output {
                 status,
                 stdout,
