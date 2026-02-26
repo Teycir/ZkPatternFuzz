@@ -187,6 +187,11 @@ invariants:
 
 pub(crate) fn print_banner(config: &FuzzConfig) {
     use colored::*;
+    let run_label = if config.campaign.name.starts_with("scan_") {
+        "Template"
+    } else {
+        "Campaign"
+    };
 
     println!();
     println!(
@@ -206,8 +211,9 @@ pub(crate) fn print_banner(config: &FuzzConfig) {
         "╠═══════════════════════════════════════════════════════════╣".bright_cyan()
     );
     println!(
-        "{}  Campaign: {:<45} {}",
+        "{}  {:<9}: {:<45} {}",
         "║".bright_cyan(),
+        run_label,
         truncate_str(&config.campaign.name, 45).white(),
         "║".bright_cyan()
     );

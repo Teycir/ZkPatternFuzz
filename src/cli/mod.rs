@@ -16,7 +16,7 @@ pub struct Cli {
     pub config: Option<String>,
 
     /// Number of parallel workers
-    #[arg(short, long, default_value = "4", global = true)]
+    #[arg(short, long, default_value = "1", global = true)]
     pub workers: usize,
 
     /// Seed for reproducibility

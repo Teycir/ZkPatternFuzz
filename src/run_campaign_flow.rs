@@ -79,7 +79,12 @@ impl CampaignPipeline {
         imported_formal_invariants: usize,
     ) {
         println!("\n✓ Configuration is valid");
-        println!("  Campaign: {}", config.campaign.name);
+        let run_label = if config.campaign.name.starts_with("scan_") {
+            "Template"
+        } else {
+            "Campaign"
+        };
+        println!("  {}: {}", run_label, config.campaign.name);
         println!("  Target: {:?}", config.campaign.target.framework);
         println!("  Attacks: {}", config.attacks.len());
         println!("  Inputs: {}", config.inputs.len());
