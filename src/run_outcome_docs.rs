@@ -451,6 +451,8 @@ fn discovery_state(status: &str, findings_total: u64, critical_findings: bool) -
 }
 
 fn proof_status(
+    reason_code: &str,
+    stage: &str,
     discovery_state: &str,
     findings_total: u64,
     proof_stats: Option<EvidenceProofStats>,
@@ -474,6 +476,13 @@ fn proof_status(
                 return "not_exploitable_within_bounds";
             }
             "proof_failed"
+        }
+        "run_failed" | "stale_interrupted" => {
+            if reason_code == "wall_clock_timeout" || stage.contains("proof") {
+                "proof_failed"
+            } else {
+                "not_ready"
+            }
         }
         "no_vulnerability_observed" => "proof_skipped_by_policy",
         _ => "not_ready",
@@ -531,12 +540,16 @@ pub(crate) fn standardize_run_outcome_doc(doc: &serde_json::Value) -> serde_json
     let reason_code = reason_code_from_doc_or_classification(doc);
     let status_family = status_family(status);
     let terminal = is_terminal(status);
+    let stage = doc
+        .get("stage")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
     let findings_total = findings_total_from_doc(doc);
     let critical_findings = critical_findings_from_doc(doc);
     let discovery_state = discovery_state(status, findings_total, critical_findings);
     let output_dir = doc.get("output_dir").and_then(|v| v.as_str());
     let proof_stats = collect_evidence_proof_stats(output_dir);
-    let proof_status = proof_status(discovery_state, findings_total, proof_stats);
+    let proof_status = proof_status(&reason_code, stage, discovery_state, findings_total, proof_stats);
     let analysis_priority = analysis_priority(discovery_state);
 
     let mut normalized = match doc.as_object() {

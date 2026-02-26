@@ -236,4 +236,42 @@ fn classify_and_standardize_selector_mismatch() {
             .and_then(|v| v.as_str()),
         Some("run_failed")
     );
+    assert_eq!(
+        normalized
+            .get("discovery_qualification")
+            .and_then(|v| v.get("proof_status"))
+            .and_then(|v| v.as_str()),
+        Some("not_ready")
+    );
+}
+
+#[test]
+fn classify_and_standardize_wall_clock_timeout_marks_proof_failed() {
+    let input = serde_json::json!({
+        "status": "failed",
+        "stage": "engine_run",
+        "error": "Global wall-clock timeout reached while proving",
+    });
+
+    assert_eq!(classify_run_reason_code(&input), Some("wall_clock_timeout"));
+
+    let normalized = standardize_run_outcome_doc(&input);
+    assert_eq!(
+        normalized.get("reason_code").and_then(|v| v.as_str()),
+        Some("wall_clock_timeout")
+    );
+    assert_eq!(
+        normalized
+            .get("discovery_qualification")
+            .and_then(|v| v.get("discovery_state"))
+            .and_then(|v| v.as_str()),
+        Some("run_failed")
+    );
+    assert_eq!(
+        normalized
+            .get("discovery_qualification")
+            .and_then(|v| v.get("proof_status"))
+            .and_then(|v| v.as_str()),
+        Some("proof_failed")
+    );
 }
