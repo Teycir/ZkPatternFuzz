@@ -1,6 +1,6 @@
 use anyhow::Context;
 use chrono::Utc;
-use clap::{Parser, ValueEnum};
+use clap::{ArgAction, Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -148,6 +148,10 @@ struct Args {
     /// Disable batch-level progress lines (enabled by default)
     #[arg(long, default_value_t = false)]
     no_batch_progress: bool,
+
+    /// Prepare target artifacts before template execution (framework-specific)
+    #[arg(long, default_value_t = true, action = ArgAction::Set)]
+    prepare_target: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -259,6 +263,8 @@ struct BatchFileConfig {
     extra_args: Vec<String>,
     #[serde(default)]
     output_root: Option<String>,
+    #[serde(default)]
+    prepare_target: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -644,6 +650,9 @@ fn apply_file_config(args: &mut Args, cfg: BatchFileConfig) -> anyhow::Result<Ef
     }
     if let Some(value) = cfg.output_root {
         args.output_root = Some(value);
+    }
+    if let Some(value) = cfg.prepare_target {
+        args.prepare_target = value;
     }
 
     let mut env = BTreeMap::new();
@@ -1236,6 +1245,67 @@ fn is_external_target(target_circuit: &str) -> bool {
         return false;
     };
     !target_path.starts_with(&workspace_root)
+}
+
+fn resolve_halo2_manifest_path(target_circuit: &str) -> anyhow::Result<PathBuf> {
+    let candidate = PathBuf::from(target_circuit);
+    if candidate.is_file() {
+        let is_manifest = candidate
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name == "Cargo.toml")
+            .unwrap_or(false);
+        if is_manifest {
+            return Ok(candidate);
+        }
+        anyhow::bail!(
+            "Halo2 target '{}' must be Cargo.toml or a directory containing Cargo.toml",
+            target_circuit
+        );
+    }
+
+    if candidate.is_dir() {
+        let manifest = candidate.join("Cargo.toml");
+        if manifest.is_file() {
+            return Ok(manifest);
+        }
+        anyhow::bail!(
+            "Halo2 target directory '{}' does not contain Cargo.toml",
+            target_circuit
+        );
+    }
+
+    anyhow::bail!(
+        "Halo2 target '{}' does not exist or is not a file/directory",
+        target_circuit
+    );
+}
+
+fn prepare_target_for_framework(framework: &str, target_circuit: &str) -> anyhow::Result<bool> {
+    if !framework.eq_ignore_ascii_case("halo2") {
+        return Ok(false);
+    }
+
+    let manifest = resolve_halo2_manifest_path(target_circuit)?;
+    let status = Command::new("cargo")
+        .args(["build", "--release", "--manifest-path"])
+        .arg(&manifest)
+        .status()
+        .with_context(|| {
+            format!(
+                "Failed to execute cargo build for Halo2 target '{}'",
+                manifest.display()
+            )
+        })?;
+
+    if !status.success() {
+        anyhow::bail!(
+            "Halo2 target prepare failed: cargo build --release --manifest-path '{}' exited with non-zero status",
+            manifest.display()
+        );
+    }
+
+    Ok(true)
 }
 
 fn effective_family(template_family: Family, family_override: Family) -> Family {
@@ -1953,6 +2023,70 @@ fn append_run_log_best_effort(path: &Path, message: impl AsRef<str>) {
     }
 }
 
+fn step_started(step: usize, total_steps: usize, label: &str, run_log: &Path) -> Instant {
+    println!("[STEP {}/{}] {}: started", step, total_steps, label);
+    append_run_log_best_effort(
+        run_log,
+        format!("step={} status=started", label.replace(' ', "_")),
+    );
+    Instant::now()
+}
+
+fn step_succeeded(step: usize, total_steps: usize, label: &str, started_at: Instant, run_log: &Path) {
+    let elapsed_secs = started_at.elapsed().as_secs_f64();
+    println!(
+        "[STEP {}/{}] {}: completed ({:.1}s)",
+        step, total_steps, label, elapsed_secs
+    );
+    append_run_log_best_effort(
+        run_log,
+        format!(
+            "step={} status=completed elapsed_secs={:.3}",
+            label.replace(' ', "_"),
+            elapsed_secs
+        ),
+    );
+}
+
+fn step_skipped(step: usize, total_steps: usize, label: &str, reason: &str, run_log: &Path) {
+    println!(
+        "[STEP {}/{}] {}: skipped ({})",
+        step, total_steps, label, reason
+    );
+    append_run_log_best_effort(
+        run_log,
+        format!(
+            "step={} status=skipped reason={}",
+            label.replace(' ', "_"),
+            reason
+        ),
+    );
+}
+
+fn step_failed(
+    step: usize,
+    total_steps: usize,
+    label: &str,
+    started_at: Instant,
+    run_log: &Path,
+    err: &anyhow::Error,
+) {
+    let elapsed_secs = started_at.elapsed().as_secs_f64();
+    println!(
+        "[STEP {}/{}] {}: FAILED ({:.1}s)",
+        step, total_steps, label, elapsed_secs
+    );
+    append_run_log_best_effort(
+        run_log,
+        format!(
+            "step={} status=failed elapsed_secs={:.3} error={}",
+            label.replace(' ', "_"),
+            elapsed_secs,
+            err.to_string().replace('\n', " | ")
+        ),
+    );
+}
+
 fn is_error_reason(reason: &TemplateOutcomeReason) -> bool {
     !matches!(
         reason.reason_code.as_str(),
@@ -2413,6 +2547,9 @@ fn main() -> anyhow::Result<()> {
         .iter()
         .map(|(template, _)| template.path.clone())
         .collect();
+    let total_steps = 5usize;
+
+    let preflight_step_started = step_started(1, total_steps, "template preflight", &timestamped_run_log);
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
@@ -2421,6 +2558,14 @@ fn main() -> anyhow::Result<()> {
         ),
     );
     if let Err(err) = preflight_template_paths(&template_paths, validate_pattern_only_yaml) {
+        step_failed(
+            1,
+            total_steps,
+            "template preflight",
+            preflight_step_started,
+            &timestamped_run_log,
+            &err,
+        );
         append_run_log_best_effort(
             &timestamped_run_log,
             format!("step=template_preflight status=failed error={}", err),
@@ -2448,6 +2593,15 @@ fn main() -> anyhow::Result<()> {
         &timestamped_run_log,
         "step=template_preflight status=completed".to_string(),
     );
+    step_succeeded(
+        1,
+        total_steps,
+        "template preflight",
+        preflight_step_started,
+        &timestamped_run_log,
+    );
+
+    let readiness_step_started = step_started(2, total_steps, "local readiness", &timestamped_run_log);
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
@@ -2458,6 +2612,14 @@ fn main() -> anyhow::Result<()> {
     if let Err(err) =
         ensure_local_runtime_requirements(&args.framework, &target_circuit, &target_circuit_path)
     {
+        step_failed(
+            2,
+            total_steps,
+            "local readiness",
+            readiness_step_started,
+            &timestamped_run_log,
+            &err,
+        );
         append_run_log_best_effort(
             &timestamped_run_log,
             format!("step=local_readiness status=failed error={}", err),
@@ -2485,8 +2647,16 @@ fn main() -> anyhow::Result<()> {
         &timestamped_run_log,
         "step=local_readiness status=completed".to_string(),
     );
+    step_succeeded(
+        2,
+        total_steps,
+        "local readiness",
+        readiness_step_started,
+        &timestamped_run_log,
+    );
 
     let bin_path = PathBuf::from("target/release/zk-fuzzer");
+    let build_step_started = step_started(3, total_steps, "build zk-fuzzer", &timestamped_run_log);
     if args.build {
         append_run_log_best_effort(
             &timestamped_run_log,
@@ -2501,6 +2671,15 @@ fn main() -> anyhow::Result<()> {
         {
             Ok(status) => status,
             Err(err) => {
+                let err = anyhow::anyhow!("Failed to execute cargo build for zk-fuzzer: {}", err);
+                step_failed(
+                    3,
+                    total_steps,
+                    "build zk-fuzzer",
+                    build_step_started,
+                    &timestamped_run_log,
+                    &err,
+                );
                 append_run_log_best_effort(
                     &timestamped_run_log,
                     format!(
@@ -2525,13 +2704,19 @@ fn main() -> anyhow::Result<()> {
                         log_err
                     );
                 }
-                return Err(anyhow::anyhow!(
-                    "Failed to execute cargo build for zk-fuzzer: {}",
-                    err
-                ));
+                return Err(err);
             }
         };
         if !status.success() {
+            let err = anyhow::anyhow!("cargo build --release --bin zk-fuzzer failed");
+            step_failed(
+                3,
+                total_steps,
+                "build zk-fuzzer",
+                build_step_started,
+                &timestamped_run_log,
+                &err,
+            );
             append_run_log_best_effort(
                 &timestamped_run_log,
                 "step=build_zk_fuzzer status=failed".to_string(),
@@ -2553,13 +2738,32 @@ fn main() -> anyhow::Result<()> {
                     err
                 );
             }
-            anyhow::bail!("cargo build --release --bin zk-fuzzer failed");
+            return Err(err);
         }
         append_run_log_best_effort(
             &timestamped_run_log,
             "step=build_zk_fuzzer status=completed".to_string(),
         );
+        step_succeeded(
+            3,
+            total_steps,
+            "build zk-fuzzer",
+            build_step_started,
+            &timestamped_run_log,
+        );
     } else if !bin_path.exists() {
+        let err = anyhow::anyhow!(
+            "zk-fuzzer binary not found at '{}' and --build=false",
+            bin_path.display()
+        );
+        step_failed(
+            3,
+            total_steps,
+            "build zk-fuzzer",
+            build_step_started,
+            &timestamped_run_log,
+            &err,
+        );
         append_run_log_best_effort(
             &timestamped_run_log,
             format!(
@@ -2584,10 +2788,7 @@ fn main() -> anyhow::Result<()> {
                 err
             );
         }
-        anyhow::bail!(
-            "zk-fuzzer binary not found at '{}' and --build=false",
-            bin_path.display()
-        );
+        return Err(err);
     } else {
         append_run_log_best_effort(
             &timestamped_run_log,
@@ -2595,6 +2796,107 @@ fn main() -> anyhow::Result<()> {
                 "step=build_zk_fuzzer status=skipped_existing_binary path={}",
                 bin_path.display()
             ),
+        );
+        step_skipped(
+            3,
+            total_steps,
+            "build zk-fuzzer",
+            "existing binary (--build=false)",
+            &timestamped_run_log,
+        );
+    }
+
+    let prepare_step_started = step_started(4, total_steps, "target prepare", &timestamped_run_log);
+    if args.dry_run {
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            "step=prepare_target status=skipped reason=dry_run".to_string(),
+        );
+        step_skipped(
+            4,
+            total_steps,
+            "target prepare",
+            "dry run",
+            &timestamped_run_log,
+        );
+    } else if args.prepare_target {
+        match prepare_target_for_framework(&args.framework, &target_circuit) {
+            Ok(prepared) if prepared => {
+                append_run_log_best_effort(
+                    &timestamped_run_log,
+                    format!(
+                        "step=prepare_target status=completed framework={} target_circuit={}",
+                        args.framework, target_circuit
+                    ),
+                );
+                step_succeeded(
+                    4,
+                    total_steps,
+                    "target prepare",
+                    prepare_step_started,
+                    &timestamped_run_log,
+                );
+            }
+            Ok(_) => {
+                append_run_log_best_effort(
+                    &timestamped_run_log,
+                    format!(
+                        "step=prepare_target status=skipped framework={}",
+                        args.framework
+                    ),
+                );
+                step_skipped(
+                    4,
+                    total_steps,
+                    "target prepare",
+                    "framework has no explicit prepare phase",
+                    &timestamped_run_log,
+                );
+            }
+            Err(err) => {
+                step_failed(
+                    4,
+                    total_steps,
+                    "target prepare",
+                    prepare_step_started,
+                    &timestamped_run_log,
+                    &err,
+                );
+                append_run_log_best_effort(
+                    &timestamped_run_log,
+                    format!("step=prepare_target status=failed error={}", err),
+                );
+                append_run_log_best_effort(
+                    &timestamped_run_log,
+                    format!(
+                        "end_utc={} campaign_success=false dry_run={} failure=prepare_target",
+                        Utc::now().to_rfc3339(),
+                        args.dry_run
+                    ),
+                );
+                if let Err(log_err) =
+                    write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
+                {
+                    eprintln!(
+                        "Failed to write early error log '{}': {:#}",
+                        timestamped_error_log.display(),
+                        log_err
+                    );
+                }
+                return Err(err);
+            }
+        }
+    } else {
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            "step=prepare_target status=skipped reason=disabled_by_flag".to_string(),
+        );
+        step_skipped(
+            4,
+            total_steps,
+            "target prepare",
+            "disabled by --prepare-target=false",
+            &timestamped_run_log,
         );
     }
 
@@ -2617,16 +2919,43 @@ fn main() -> anyhow::Result<()> {
         artifacts_root: &artifacts_root,
     };
 
+    let execute_step_started = step_started(5, total_steps, "execute templates", &timestamped_run_log);
     let baseline_roots = if args.dry_run {
         BTreeSet::new()
     } else {
-        list_scan_run_roots(&artifacts_root)?
+        match list_scan_run_roots(&artifacts_root) {
+            Ok(roots) => roots,
+            Err(err) => {
+                step_failed(
+                    5,
+                    total_steps,
+                    "execute templates",
+                    execute_step_started,
+                    &timestamped_run_log,
+                    &err,
+                );
+                return Err(err);
+            }
+        }
     };
     // One batch command -> one collision-safe scan_run root.
     let batch_run_root = if args.dry_run {
         None
     } else {
-        Some(reserve_batch_scan_run_root(&artifacts_root)?)
+        match reserve_batch_scan_run_root(&artifacts_root) {
+            Ok(run_root) => Some(run_root),
+            Err(err) => {
+                step_failed(
+                    5,
+                    total_steps,
+                    "execute templates",
+                    execute_step_started,
+                    &timestamped_run_log,
+                    &err,
+                );
+                return Err(err);
+            }
+        }
     };
     let run_cfg = ScanRunConfig {
         scan_run_root: batch_run_root.as_deref(),
@@ -2661,7 +2990,21 @@ fn main() -> anyhow::Result<()> {
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(jobs)
         .build()
-        .map_err(|err| anyhow::anyhow!("Failed to build rayon thread pool: {}", err))?;
+        .map_err(|err| anyhow::anyhow!("Failed to build rayon thread pool: {}", err));
+    let pool = match pool {
+        Ok(pool) => pool,
+        Err(err) => {
+            step_failed(
+                5,
+                total_steps,
+                "execute templates",
+                execute_step_started,
+                &timestamped_run_log,
+                &err,
+            );
+            return Err(err);
+        }
+    };
     let progress = if args.no_batch_progress {
         None
     } else {
@@ -2853,6 +3196,31 @@ fn main() -> anyhow::Result<()> {
             failures
         ),
     );
+
+    if gate2_ok && gate3_ok {
+        step_succeeded(
+            5,
+            total_steps,
+            "execute templates",
+            execute_step_started,
+            &timestamped_run_log,
+        );
+    } else {
+        let err = anyhow::anyhow!(
+            "execution gates failed (gate2_ok={}, gate3_ok={}, failures={})",
+            gate2_ok,
+            gate3_ok,
+            failures
+        );
+        step_failed(
+            5,
+            total_steps,
+            "execute templates",
+            execute_step_started,
+            &timestamped_run_log,
+            &err,
+        );
+    }
 
     if !gate2_ok || !gate3_ok {
         std::process::exit(1);

@@ -43,19 +43,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ## 🚀 Getting Started
 
-### 1. [QUICKSTART_AI.md](QUICKSTART_AI.md) - **5 min read**
-**For:** Anyone wanting to fuzz a circuit immediately  
-**Contains:**
-- 3-step setup process
-- Single AI prompt template
-- Copy-paste ready examples
-- Minimal configuration
-
-**Start here if:** You have a circuit and want results fast
-
----
-
-### 2. [README.md](../README.md) - **10 min read**
+### 1. [README.md](../README.md) - **10 min read**
 **For:** Understanding what ZkPatternFuzz does  
 **Contains:**
 - Feature overview
@@ -67,21 +55,9 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 2b. [BEST_USE_CASES.md](BEST_USE_CASES.md) - **5 min read**
-**For:** Choosing the right targets and workflows  
-**Contains:**
-- Ideal target characteristics
-- Recommended workflows by mode
-- High-value use cases
-- When ZkPatternFuzz is less effective
-
-**Start here if:** You want to pick the most effective use cases quickly
-
----
-
 ## 📚 Detailed Guides
 
-### 3. [TUTORIAL.md](TUTORIAL.md) - **30 min read**
+### 2. [TUTORIAL.md](TUTORIAL.md) - **30 min read**
 **For:** Step-by-step learning with hands-on examples  
 **Contains:**
 - Detailed walkthrough
@@ -94,7 +70,16 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5. [TARGETS.md](TARGETS.md) - **Target Catalog**
+### 3. [BACKEND_SETUP.md](BACKEND_SETUP.md) - **Backend Installation**
+**For:** Installing and configuring ZK backends  
+**Contains:**
+- Circom/Noir/Halo2/Cairo installation
+- Toolchain setup
+- Verification steps
+
+---
+
+### 4. [TARGETS.md](TARGETS.md) - **Target Catalog**
 **For:** Running evidence campaigns on zk0d  
 **Contains:**
 - Target set for discovery metric
@@ -102,7 +87,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5b. [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) - **Release Gate**
+### 5. [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) - **Release Gate**
 **For:** RC and production releases  
 **Contains:**
 - release readiness checklist
@@ -111,7 +96,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5c. [TROUBLESHOOTING_PLAYBOOK.md](TROUBLESHOOTING_PLAYBOOK.md) - **Operations Guide**
+### 6. [TROUBLESHOOTING_PLAYBOOK.md](TROUBLESHOOTING_PLAYBOOK.md) - **Operations Guide**
 **For:** Debugging failing runs quickly  
 **Contains:**
 - keygen failure recovery
@@ -121,7 +106,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5d. [PLUGIN_SYSTEM_GUIDE.md](PLUGIN_SYSTEM_GUIDE.md) - **Plugin Safety Guide**
+### 7. [PLUGIN_SYSTEM_GUIDE.md](PLUGIN_SYSTEM_GUIDE.md) - **Plugin Safety Guide**
 **For:** Loading external attack plugins safely in strict engagements  
 **Contains:**
 - plugin discovery path rules
@@ -131,7 +116,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5e. [NOIR_BACKEND_TROUBLESHOOTING.md](NOIR_BACKEND_TROUBLESHOOTING.md) - **Noir Ops Guide**
+### 8. [NOIR_BACKEND_TROUBLESHOOTING.md](NOIR_BACKEND_TROUBLESHOOTING.md) - **Noir Ops Guide**
 **For:** Diagnosing Noir readiness and integration failures  
 **Contains:**
 - Noir fast health checks
@@ -141,7 +126,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5f. [CAIRO_INTEGRATION_TUTORIAL.md](CAIRO_INTEGRATION_TUTORIAL.md) - **Cairo Integration**
+### 9. [CAIRO_INTEGRATION_TUTORIAL.md](CAIRO_INTEGRATION_TUTORIAL.md) - **Cairo Integration**
 **For:** Wiring Cairo targets into readiness lanes and release gates  
 **Contains:**
 - Cairo prerequisites and first run
@@ -151,7 +136,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5g. [HALO2_REAL_EXECUTION_MIGRATION.md](HALO2_REAL_EXECUTION_MIGRATION.md) - **Halo2 Migration**
+### 10. [HALO2_REAL_EXECUTION_MIGRATION.md](HALO2_REAL_EXECUTION_MIGRATION.md) - **Halo2 Migration**
 **For:** Moving campaigns from testing mode to real Halo2 execution  
 **Contains:**
 - testing-to-real migration steps
@@ -161,7 +146,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5h. [ATTACK_DSL_SPEC.md](ATTACK_DSL_SPEC.md) - **Attack Config Spec**
+### 11. [ATTACK_DSL_SPEC.md](ATTACK_DSL_SPEC.md) - **Attack Config Spec**
 **For:** Authoring and validating `attacks` DSL in campaign YAML  
 **Contains:**
 - normative attack schema
@@ -171,7 +156,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5i. [SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md](SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md) - **Semantic Ops Runbook**
+### 12. [SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md](SEMANTIC_ANALYSIS_OPERATOR_GUIDE.md) - **Semantic Ops Runbook**
 **For:** Running invariants, witness-extension, and Halo2 lookup semantic checks reproducibly  
 **Contains:**
 - invariant validation + checker commands
@@ -181,7 +166,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5j. [TOOLS_AVAILABLE_ON_HOST.md](TOOLS_AVAILABLE_ON_HOST.md) - **Local Tool Inventory**
+### 13. [TOOLS_AVAILABLE_ON_HOST.md](TOOLS_AVAILABLE_ON_HOST.md) - **Local Tool Inventory**
 **For:** Verifying what vulnerability-discovery and formal/proof tools are actually installed on this workstation  
 **Contains:**
 - installed vs missing tool status
@@ -191,7 +176,7 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
-### 5k. [ALPHA_OPERATING_PLAYBOOK.md](ALPHA_OPERATING_PLAYBOOK.md) - **Proof Closure Workflow**
+### 14. [ALPHA_OPERATING_PLAYBOOK.md](ALPHA_OPERATING_PLAYBOOK.md) - **Proof Closure Workflow**
 **For:** Converting scan output into exploit/non-exploit proof artifacts quickly  
 **Contains:**
 - alpha definition for this repo
@@ -201,9 +186,70 @@ Complete guide to all documentation files, ordered by use case and reading level
 
 ---
 
+### 15. [PATTERN_LIBRARY.md](PATTERN_LIBRARY.md) - **Pattern Library**
+**For:** Understanding and creating vulnerability patterns  
+**Contains:**
+- Pattern structure and syntax
+- CVE pattern examples
+- Pattern contribution guide
+
+---
+
+### 16. [DEFI_ATTACK_GUIDE.md](DEFI_ATTACK_GUIDE.md) - **DeFi Attacks**
+**For:** MEV and front-running detection  
+**Contains:**
+- DeFi-specific attack types
+- Configuration examples
+- Detection strategies
+
+---
+
+### 17. [INVARIANT_SPEC_SCHEMA.md](INVARIANT_SPEC_SCHEMA.md) - **Invariant Specs**
+**For:** Defining circuit invariants  
+**Contains:**
+- Invariant specification format
+- Validation rules
+- Examples
+
+---
+
+### 18. [SECURITY_THREAT_MODEL.md](SECURITY_THREAT_MODEL.md) - **Security Model**
+**For:** Understanding security assumptions  
+**Contains:**
+- Trust boundaries
+- Threat model
+- Security guarantees
+
+---
+
+### 19. [TRIAGE_SYSTEM.md](TRIAGE_SYSTEM.md) - **Triage System**
+**For:** Automated finding triage  
+**Contains:**
+- Triage workflow
+- Confidence levels
+- False positive handling
+
+---
+
+### 20. [CHAIN_FUZZING_GUIDE.md](CHAIN_FUZZING_GUIDE.md) - **Chain Fuzzing**
+**For:** Multi-circuit composition testing  
+**Contains:**
+- Chain fuzzing concepts
+- Configuration examples
+
+---
+
+### 21. [PROFILES_GUIDE.md](PROFILES_GUIDE.md) - **Configuration Profiles**
+**For:** Dev/prod profile management  
+**Contains:**
+- Profile system overview
+- Profile customization
+
+---
+
 ## 🤖 AI Integration
 
-### 5.5. AI-Assisted Analysis - **External Workflow**
+### 22. AI-Assisted Analysis - **External Workflow**
 **For:** Using AI for semantic analysis and vulnerability assessment  
 **Contains:**
 - Handoff-artifact workflow (ai_ingest_bundle.json, worklists)
@@ -219,7 +265,7 @@ Optional `ai_assistant` behavior is local offline heuristic support and must not
 
 ## 🏗️ Architecture & Development
 
-### 6. [ARCHITECTURE.md](../ARCHITECTURE.md) - **45 min read**
+### 23. [ARCHITECTURE.md](../ARCHITECTURE.md) - **45 min read**
 **For:** Understanding internal design and extending the tool  
 **Contains:**
 - System architecture
@@ -234,7 +280,7 @@ Optional `ai_assistant` behavior is local offline heuristic support and must not
 
 ## 📋 Reference
 
-### 7. [CHANGELOG.md](../CHANGELOG.md)
+### 24. [CHANGELOG.md](../CHANGELOG.md)
 **For:** Version history and release notes  
 **Contains:**
 - Version history
@@ -246,7 +292,7 @@ Optional `ai_assistant` behavior is local offline heuristic support and must not
 
 ---
 
-### 8. [CONTRIBUTING.md](../CONTRIBUTING.md)
+### 25. [CONTRIBUTING.md](../CONTRIBUTING.md)
 **For:** Contributing to the project  
 **Contains:**
 - Development setup
@@ -261,19 +307,19 @@ Optional `ai_assistant` behavior is local offline heuristic support and must not
 ## 🎯 Quick Reference by Use Case
 
 ### I want to fuzz a circuit RIGHT NOW
-1. Read: [QUICKSTART_AI.md](QUICKSTART_AI.md) (5 min)
+1. Read: [README.md](../README.md) Quick Start section (5 min)
 2. Run: `cargo build --release`
-3. Ask AI to generate YAML
+3. Create campaign YAML (see examples in `campaigns/examples/`)
 4. Execute: `cargo run -- --config campaign.yaml`
 
 ### I want to understand all options
 1. Read: [TUTORIAL.md](TUTORIAL.md) (30 min)
-2. Reference: Example campaigns in `tests/campaigns/`
-3. Customize: Attack types and strategies
+2. Read: [ATTACK_DSL_SPEC.md](ATTACK_DSL_SPEC.md) (15 min)
+3. Reference: Example campaigns in `campaigns/examples/`
 
 ### I want to learn by example
 1. Read: [TUTORIAL.md](TUTORIAL.md) (30 min)
-2. Try: Example campaigns in `tests/campaigns/`
+2. Try: Example campaigns in `campaigns/examples/`
 3. Modify: Adapt examples to your circuits
 
 ### I want to extend the tool
@@ -285,8 +331,6 @@ Optional `ai_assistant` behavior is local offline heuristic support and must not
 1. Read: [CONTRIBUTING.md](../CONTRIBUTING.md)
 2. Setup: Development environment
 3. Submit: Pull request
-
----
 
 ## 📊 Documentation Map
 
@@ -301,12 +345,7 @@ docs/
 ├── scan_metrics.md
 │   └── Metrics to compare modes and maturity
 │
-├── QUICKSTART_AI.md ⭐ START HERE
-│   └── 3-step setup with AI
-│
-├── VULNERABILITIES.md
-│   └── 7 critical vulnerability classes
-│
+
 ├── TUTORIAL.md
 │   ├── Hands-on examples
 │   ├── Best practices
@@ -349,10 +388,10 @@ docs/
 
 **Installation & Setup**
 - [README.md](../README.md) - Installation section
-- [QUICKSTART_AI.md](QUICKSTART_AI.md) - Quick setup
+- [BACKEND_SETUP.md](BACKEND_SETUP.md) - Backend installation
 
 **Using the Tool**
-- [QUICKSTART_AI.md](QUICKSTART_AI.md) - Fastest way to start
+- [README.md](../README.md) - Quick start guide
 - [TUTORIAL.md](TUTORIAL.md) - Detailed walkthrough
 
 **YAML Configuration**
@@ -382,9 +421,9 @@ docs/
 
 ### Path 1: "I just want to fuzz" (15 minutes)
 ```
-QUICKSTART_AI.md
+README.md (Quick Start)
     ↓
-Ask AI to generate YAML
+Create campaign YAML
     ↓
 Run fuzzer
     ↓
@@ -395,8 +434,6 @@ Done!
 ```
 README.md
     ↓
-QUICKSTART_AI.md
-    ↓
 TUTORIAL.md
     ↓
 ARCHITECTURE.md
@@ -404,7 +441,7 @@ ARCHITECTURE.md
 Source code
 ```
 
-### Path 3: "I want to contribute" (3 hours)
+### Path 3: "I want to contribute" (2 hours)
 ```
 README.md
     ↓
@@ -412,14 +449,12 @@ ARCHITECTURE.md
     ↓
 CONTRIBUTING.md
     ↓
-Source code
-    ↓
 Submit PR
 ```
 
 ### Path 4: "I want to learn by doing" (1 hour)
 ```
-QUICKSTART_AI.md
+README.md (Quick Start)
     ↓
 TUTORIAL.md
     ↓
@@ -463,34 +498,13 @@ Modify for your circuits
 
 ## 🆘 Getting Help
 
-1. **Quick question?** → Check [QUICKSTART_AI.md](QUICKSTART_AI.md)
-2. **Configuration issue?** → Read [TUTORIAL.md](TUTORIAL.md)
-3. **Want to learn?** → Read [TUTORIAL.md](TUTORIAL.md)
-4. **Found a bug?** → Open GitHub issue with circuit + YAML
-5. **Want to contribute?** → Read [CONTRIBUTING.md](../CONTRIBUTING.md)
+1. **Quick question?** → [README.md](../README.md) Quick Start
+2. **Configuration issue?** → [TUTORIAL.md](TUTORIAL.md)
+3. **Backend problems?** → [TROUBLESHOOTING_PLAYBOOK.md](TROUBLESHOOTING_PLAYBOOK.md)
+4. **Found a bug?** → Open GitHub issue
+5. **Want to contribute?** → [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 ---
 
-## 📝 Document Versions
-
-| Document | Last Updated | Status |
-|----------|--------------|--------|
-| QUICKSTART_AI.md | 2025-01-XX | ✅ Current |
-| TUTORIAL.md | 2025-01-XX | ✅ Current |
-| README.md | 2025-01-XX | ✅ Current |
-| ARCHITECTURE.md | 2025-01-XX | ✅ Current |
-
----
-
-## 🔗 Quick Links
-
-- **GitHub:** https://github.com/yourusername/ZkPatternFuzz
-- **Issues:** https://github.com/yourusername/ZkPatternFuzz/issues
-- **Discussions:** https://github.com/yourusername/ZkPatternFuzz/discussions
-- **Examples:** [tests/campaigns/](../tests/campaigns/)
-- **Source:** [src/](../src/)
-
----
-
-**Last Updated:** January 2025  
+**Last Updated:** February 2026  
 **License:** BSL 1.1 (converts to Apache 2.0 in 2028)

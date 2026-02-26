@@ -38,14 +38,19 @@ ZkFuzz/report.json
 ZkFuzz/report.md
 
 # Development tools
-.history
-.qodo
-.zencoder
-.zenflow
+.history/
+.qodo/
+.zencoder/
+.zenflow/
+.opencode/
 .aider.chat.history.md
 .aider.input.history
 __pycache__/
 *.pyc
+
+# Build artifacts
+.zkfuzz_build/
+ZkFuzz/
 
 # Test artifacts
 tests/noir_projects/multiplier/target/noir_multiplier.gz
@@ -76,4 +81,3 @@ node_modules/
 /bin/
 bins/
 **/.z3-trace
-.opencode
