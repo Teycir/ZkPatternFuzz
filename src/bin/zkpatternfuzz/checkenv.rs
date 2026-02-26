@@ -14,10 +14,7 @@ fn parse_env_line(line: &str, line_no: usize) -> anyhow::Result<Option<(String, 
     };
 
     let Some((raw_key, raw_value)) = candidate.split_once('=') else {
-        bail!(
-            "Invalid .env entry at line {}: expected KEY=VALUE",
-            line_no
-        );
+        bail!("Invalid .env entry at line {}: expected KEY=VALUE", line_no);
     };
 
     let key = raw_key.trim();

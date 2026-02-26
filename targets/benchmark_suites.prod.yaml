@@ -1,7 +1,7 @@
 suites:
   vulnerable_ground_truth:
     positive: true
-    description: "Known-vulnerable ground-truth circuits for recall benchmarking (lightweight set)"
+    description: "Known-vulnerable ground-truth circuits for recall benchmarking (full set)"
     targets:
       - name: merkle_unconstrained
         target_circuit: tests/ground_truth_circuits/merkle_unconstrained.circom
@@ -25,6 +25,31 @@ suites:
         alias: benchmark
       - name: division_by_zero
         target_circuit: tests/ground_truth_circuits/division_by_zero.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: commitment_binding
+        target_circuit: tests/ground_truth_circuits/commitment_binding.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: eddsa_malleability
+        target_circuit: tests/ground_truth_circuits/eddsa_malleability.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: hash_length_extension
+        target_circuit: tests/ground_truth_circuits/hash_length_extension.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: multiexp_soundness
+        target_circuit: tests/ground_truth_circuits/multiexp_soundness.circom
+        main_component: main
+        framework: circom
+        alias: benchmark
+      - name: public_input_leak
+        target_circuit: tests/ground_truth_circuits/public_input_leak.circom
         main_component: main
         framework: circom
         alias: benchmark

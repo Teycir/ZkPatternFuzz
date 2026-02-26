@@ -12,10 +12,10 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-#[path = "zkpatternfuzz/zkpatternfuzz_env.rs"]
-mod zkpatternfuzz_env;
 #[path = "zkpatternfuzz/checkenv.rs"]
 mod checkenv;
+#[path = "zkpatternfuzz/zkpatternfuzz_env.rs"]
+mod zkpatternfuzz_env;
 #[path = "zkpatternfuzz/zkpatternfuzz_readiness.rs"]
 mod zkpatternfuzz_readiness;
 
@@ -2468,9 +2468,7 @@ fn pattern_specificity_score(path: &Path) -> i64 {
     score + (raw.len() as i64 / 1024)
 }
 
-fn dedupe_patterns_by_signature(
-    selected: Vec<TemplateInfo>,
-) -> anyhow::Result<DedupeResult> {
+fn dedupe_patterns_by_signature(selected: Vec<TemplateInfo>) -> anyhow::Result<DedupeResult> {
     let mut kept = Vec::<TemplateInfo>::new();
     let mut dropped = Vec::<(TemplateInfo, TemplateInfo)>::new();
     let mut signature_to_index = BTreeMap::<String, usize>::new();
@@ -2891,10 +2889,7 @@ fn main() -> anyhow::Result<()> {
                 &timestamped_run_log,
                 &err,
             );
-            append_run_log_best_effort(
-                &timestamped_run_log,
-                "step=build_zk_fuzzer status=failed",
-            );
+            append_run_log_best_effort(&timestamped_run_log, "step=build_zk_fuzzer status=failed");
             append_run_log_best_effort(
                 &timestamped_run_log,
                 format!(

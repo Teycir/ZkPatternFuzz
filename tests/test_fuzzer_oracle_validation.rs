@@ -1,6 +1,81 @@
-use zk_fuzzer::fuzzer::oracle_validation::{
-    GroundTruthValidationResult, OracleValidator, ValidationResult,
+use zk_core::{
+    AttackType, CircuitExecutor, CircuitInfo, ExecutionCoverage, ExecutionResult, FieldElement,
+    Finding, Framework, ProofOfConcept, Severity, TestCase,
 };
+use zk_fuzzer::fuzzer::oracle_validation::{
+    filter_validated_findings, GroundTruthValidationResult, OracleValidationConfig,
+    OracleValidator, ValidationResult,
+};
+use zk_fuzzer::fuzzer::BugOracle;
+
+struct SingleOracleDisagree;
+
+impl BugOracle for SingleOracleDisagree {
+    fn check(&mut self, _test_case: &TestCase, _output: &[FieldElement]) -> Option<Finding> {
+        None
+    }
+
+    fn name(&self) -> &str {
+        "single_oracle_disagree"
+    }
+
+    fn attack_type(&self) -> Option<AttackType> {
+        Some(AttackType::InformationLeakage)
+    }
+}
+
+struct ValidationExecutor;
+
+impl CircuitExecutor for ValidationExecutor {
+    fn framework(&self) -> Framework {
+        Framework::Circom
+    }
+
+    fn name(&self) -> &str {
+        "validation_executor"
+    }
+
+    fn circuit_info(&self) -> CircuitInfo {
+        CircuitInfo {
+            name: "validation_executor".to_string(),
+            num_constraints: 1,
+            num_private_inputs: 1,
+            num_public_inputs: 0,
+            num_outputs: 1,
+        }
+    }
+
+    fn execute_sync(&self, _inputs: &[FieldElement]) -> ExecutionResult {
+        ExecutionResult::success(
+            vec![FieldElement::from_u64(7)],
+            ExecutionCoverage::default(),
+        )
+    }
+
+    fn prove(&self, _witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
+        Ok(vec![0x01; 32])
+    }
+
+    fn verify(&self, _proof: &[u8], _public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+}
+
+fn sample_finding() -> Finding {
+    Finding {
+        attack_type: AttackType::InformationLeakage,
+        severity: Severity::High,
+        description: "single-oracle finding".to_string(),
+        poc: ProofOfConcept {
+            witness_a: vec![FieldElement::from_u64(1)],
+            witness_b: None,
+            public_inputs: vec![],
+            proof: None,
+        },
+        class: None,
+        location: None,
+    }
+}
 
 #[test]
 fn test_validation_result_creation() {
@@ -45,4 +120,36 @@ fn test_oracle_validator_stats() {
 
     assert_eq!(stats.total_validated, 0);
     assert_eq!(stats.estimated_false_positive_rate(), 0.0);
+}
+
+#[test]
+fn test_single_oracle_reproducibility_override_keeps_finding() {
+    let executor = ValidationExecutor;
+    let mut validator = OracleValidator::with_config(OracleValidationConfig::default());
+    let mut oracles: Vec<Box<dyn BugOracle>> = vec![Box::new(SingleOracleDisagree)];
+
+    let filtered = filter_validated_findings(
+        vec![sample_finding()],
+        &mut validator,
+        &mut oracles,
+        &executor,
+        false,
+    );
+    assert_eq!(filtered.len(), 1);
+}
+
+#[test]
+fn test_single_oracle_reproducibility_override_respects_strict_mode() {
+    let executor = ValidationExecutor;
+    let mut validator = OracleValidator::with_config(OracleValidationConfig::strict());
+    let mut oracles: Vec<Box<dyn BugOracle>> = vec![Box::new(SingleOracleDisagree)];
+
+    let filtered = filter_validated_findings(
+        vec![sample_finding()],
+        &mut validator,
+        &mut oracles,
+        &executor,
+        false,
+    );
+    assert!(filtered.is_empty());
 }

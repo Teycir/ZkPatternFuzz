@@ -1455,17 +1455,17 @@ impl FuzzingEngine {
                     let mut wire_indices = inspector.public_input_indices();
                     wire_indices.extend(inspector.private_input_indices());
                     if wire_indices.is_empty() {
-                    wire_indices = (0..self.config.inputs.len()).collect();
-                }
+                        wire_indices = (0..self.config.inputs.len()).collect();
+                    }
                     wire_indices
                         .into_iter()
                         .enumerate()
                         .filter_map(|(input_idx, wire_idx)| {
                             if public_wires.contains(&wire_idx) {
-                            Some(input_idx)
-                        } else {
-                            None
-                        }
+                                Some(input_idx)
+                            } else {
+                                None
+                            }
                         })
                         .collect()
                 } else {

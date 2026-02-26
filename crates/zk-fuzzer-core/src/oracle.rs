@@ -85,6 +85,8 @@ pub struct UnderconstrainedOracle {
     pub fixed_public_inputs: Option<Vec<FieldElement>>,
     /// Number of public inputs (used to scope collisions to identical public inputs)
     pub num_public_inputs: Option<usize>,
+    /// Guard to avoid spamming logs when the oracle is used without configuration.
+    warned_missing_public_input_count: bool,
 }
 
 impl UnderconstrainedOracle {
@@ -94,6 +96,7 @@ impl UnderconstrainedOracle {
             collision_count: 0,
             fixed_public_inputs: None,
             num_public_inputs: None,
+            warned_missing_public_input_count: false,
         }
     }
 
@@ -189,7 +192,17 @@ impl Default for UnderconstrainedOracle {
 
 impl BugOracle for UnderconstrainedOracle {
     fn check(&mut self, test_case: &TestCase, output: &[FieldElement]) -> Option<Finding> {
-        let num_public = self.num_public_inputs.unwrap_or_default();
+        let Some(num_public) = self.num_public_inputs else {
+            if !self.warned_missing_public_input_count {
+                tracing::warn!(
+                    "UnderconstrainedOracle is unconfigured (num_public_inputs=None); \
+                     skipping checks. Ensure with_public_input_count(executor.num_public_inputs()) \
+                     is applied during oracle construction."
+                );
+                self.warned_missing_public_input_count = true;
+            }
+            return None;
+        };
         // With no public inputs, output collisions across private witnesses are
         // expected and are not actionable underconstrained findings.
         if num_public == 0 {

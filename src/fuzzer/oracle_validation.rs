@@ -437,14 +437,26 @@ impl OracleValidator {
         } else {
             1.0
         };
+        let single_oracle_reproduction_override = self.config.allow_single_oracle_with_reproduction
+            && considered <= 1
+            && !samples.is_empty();
 
         let mut reasons = Vec::new();
-        let is_valid = agreement_ratio >= self.config.min_agreement_ratio;
+        let is_valid = agreement_ratio >= self.config.min_agreement_ratio
+            || single_oracle_reproduction_override;
 
-        if is_valid {
+        if agreement_ratio >= self.config.min_agreement_ratio {
             self.stats.passed += 1;
             reasons.push(format!(
                 "Oracle agreement: {}/{} ({:.0}%)",
+                agreeing.len(),
+                total_oracles,
+                agreement_ratio * 100.0
+            ));
+        } else if single_oracle_reproduction_override {
+            self.stats.passed += 1;
+            reasons.push(format!(
+                "Single-oracle reproducibility override: keeping finding with executable witness (agreement {}/{} = {:.0}%)",
                 agreeing.len(),
                 total_oracles,
                 agreement_ratio * 100.0

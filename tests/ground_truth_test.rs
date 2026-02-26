@@ -384,8 +384,8 @@ async fn ground_truth_known_bugs() {
     stats.print_summary();
 
     assert!(
-        stats.detection_rate() >= 0.80,
-        "Detection rate {:.1}% should be >= 80% with real circom",
+        stats.detection_rate() >= 0.90,
+        "Detection rate {:.1}% should be >= 90% with real circom",
         stats.detection_rate() * 100.0
     );
 }

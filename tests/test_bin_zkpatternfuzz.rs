@@ -25,10 +25,7 @@ mod zkpatternfuzz_under_test {
             for attempt in 0..5 {
                 match run_scan(cfg, template, family, validate_only, output_suffix) {
                     Ok(result) => return Ok(result),
-                    Err(err)
-                        if err.to_string().contains("Text file busy")
-                            && attempt < 4 =>
-                    {
+                    Err(err) if err.to_string().contains("Text file busy") && attempt < 4 => {
                         std::thread::sleep(Duration::from_millis(30));
                     }
                     Err(err) => return Err(err),
@@ -262,8 +259,9 @@ echo \"{}=${{{}:-}}\"\n",
                 artifacts_root: temp.path(),
             };
 
-            let out = run_scan_with_text_busy_retry(cfg, &template, Family::Auto, false, "auto__dummy")
-                .expect("run_scan should execute helper script");
+            let out =
+                run_scan_with_text_busy_retry(cfg, &template, Family::Auto, false, "auto__dummy")
+                    .expect("run_scan should execute helper script");
             assert!(out.success, "helper script should exit successfully");
             assert!(out.stdout.contains(&format!(
                 "{}={}",
@@ -349,8 +347,9 @@ echo \"{}=${{{}:-}}\"\n",
                 artifacts_root: temp.path(),
             };
 
-            let out = run_scan_with_text_busy_retry(cfg, &template, Family::Auto, false, "auto__dummy")
-                .expect("run_scan should execute helper script");
+            let out =
+                run_scan_with_text_busy_retry(cfg, &template, Family::Auto, false, "auto__dummy")
+                    .expect("run_scan should execute helper script");
             assert!(out.success, "helper script should exit successfully");
             assert!(out
                 .stdout
