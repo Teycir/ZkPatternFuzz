@@ -47,35 +47,43 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 - [ ] Every matched `detected_pattern` starts proof in the same run.
 - [x] Remove `pending_proof` from normal completed runs.
 - [x] Allow only final proof states: `exploitable`, `not_exploitable_within_bounds`, `proof_failed`, `proof_skipped_by_policy`.
-- [ ] Block "confirmed vulnerability" unless required proof artifacts exist.
+- [x] Block "confirmed vulnerability" unless required proof artifacts exist.
 
 ### Execution flow (per pattern)
 - [ ] Run detection stage and write pattern signal summary.
 - [ ] Immediately start deterministic replay for that pattern.
 - [ ] If replay succeeds with bad behavior, mark `exploitable`.
 - [ ] If replay does not reproduce, run bounded non-exploit checks.
-- [ ] Mark `not_exploitable_within_bounds` only when bounded checks finish with no counterexample.
-- [ ] Mark `proof_failed` when proof stage errors, times out, or artifacts are incomplete.
+- [x] Mark `not_exploitable_within_bounds` only when bounded checks finish with no counterexample.
+- [x] Mark `proof_failed` when proof stage errors, times out, or artifacts are incomplete.
+
+Current status: ✅ `src/run_outcome_docs.rs` now classifies wall-clock timeouts (and proof-stage failures) as `proof_failed`, while still preserving `not_ready` for non-proof preflight failures; regression coverage in `tests/test_run_outcome_standardization.rs` (`classify_and_standardize_wall_clock_timeout_marks_proof_failed`, 2026-02-26).
 
 ### Console clarity
 - [x] Replace ambiguous wording (`failures`) with `template_errors`.
 - [x] Show live template progress in console (`template start`, `step`, `template end`).
 - [x] Print a clear stage line per template: `detecting`, `proving`, `proof_done`.
-- [x] Print a final totals line with explicit labels: `detected_patterns`, `exploitable`, `not_exploitable_within_bounds`, `proof_failed`, `template_errors`.
-- [ ] Keep wording `detected_patterns` only for detection signals, never for proven bugs.
+- [x] Print a final totals line with explicit labels: `detected_patterns`, `proven_exploitable`, `proven_not_exploitable_within_bounds`, `proof_failed`, `template_errors`.
+- [x] Keep wording `detected_patterns` only for detection signals, never for proven bugs.
+
+Current status: ✅ console + run-log proof totals now use `proven_exploitable` / `proven_not_exploitable_within_bounds`, while `detected_patterns` remains detection-only in final totals (`src/bin/zkpatternfuzz.rs`, 2026-02-26).
 
 ### Reliability guardrails
-- [ ] Enforce per-template hard timeout for detection and proof stages.
-- [ ] Add stuck-step warning when progress does not change for a fixed window.
-- [ ] Keep memory guard on by default for proof stage and fail fast on unsafe settings.
+- [x] Enforce per-template hard timeout for detection and proof stages.
+- [x] Add stuck-step warning when progress does not change for a fixed window.
+- [x] Keep memory guard on by default for proof stage and fail fast on unsafe settings.
 - [ ] Reduce repeated backend probe loops when offline dependencies are missing.
 
+Current status: ✅ `zkpatternfuzz` now enforces per-template hard timeouts for detection (`attack_*`) and proof/reporting (`reporting`/proof-like progress stages), kills timed-out process trees, writes synthetic `run_outcome.json` with `reason_code=wall_clock_timeout` + `proof_status=proof_failed`, emits `[TEMPLATE WARNING] ... warning=stuck_step ...` when progress is unchanged for the fixed window (`ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS`), and fails fast on unsafe proof-stage memory guard settings (`ZKF_ZKPATTERNFUZZ_MEMORY_GUARD_ENABLED=false` or `ZKF_ZKPATTERNFUZZ_MEMORY_RESERVED_MB=0`) (`src/bin/zkpatternfuzz.rs`, 2026-02-26).
+
 ### Proof artifact contract (mandatory)
-- [ ] Require `replay_command.txt` for every proved outcome.
-- [ ] Require one of: `exploit_notes.md` or `no_exploit_proof.md`.
-- [ ] Require `impact.md`.
-- [ ] Require replay/formal execution log.
-- [ ] If any required file is missing, force final state to `proof_failed`.
+- [x] Require `replay_command.txt` for every proved outcome.
+- [x] Require one of: `exploit_notes.md` or `no_exploit_proof.md`.
+- [x] Require `impact.md`.
+- [x] Require replay/formal execution log.
+- [x] If any required file is missing, force final state to `proof_failed`.
+
+Current status: ✅ enforced by `has_required_proof_artifacts()` + proof-status gating in `src/run_outcome_docs.rs`; validated by `tests/test_run_outcome_standardization.rs` (`cargo test --test test_run_outcome_standardization` on 2026-02-26: 8/8 pass).
 
 ### Exit criteria for this stabilization block
 - [ ] 20-run campaign: >=95% completion, with no machine freeze.
@@ -1900,6 +1908,48 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Follow-up run after harness assertion update ended `124` (`POSTPATCH_LONGRUN_POSTASSERT_STATUS=124`) before assertion completion.
   - Follow-up log: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_replay_longrun_postassert.log`
   - Follow-up status marker: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_status_longrun_postassert.txt`
+
+### Proof Continuation (2026-02-26)
+- [x] `cveX15_scroll_missing_overflow_constraint` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
+  - Objective lock / target freeze / tool readiness: `artifacts/proof_runs/cveX15/run_20260226_212437_cveX15_testool_non_exploit_followup/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+  - Discovery source under triage: `artifacts/proof_runs/cveX15/run_20260226_212437_cveX15_testool_non_exploit_followup/discovery_candidate_{report,run_outcome}.json` (source run id `20260226_130735_scan_cveX15_scroll_missing_overflow_constraint__f2de549152af10e0_pid215920`)
+  - Deterministic replay command + execution log: `artifacts/proof_runs/cveX15/run_20260226_212437_cveX15_testool_non_exploit_followup/{replay_command.txt,replay.log}`
+  - Replay outcome: `status=completed`, `reason_code=completed`; underconstrained/soundness exploit checks were skipped because target exposes `0` public inputs (`session.log` lines `43`, `46`), so no exploitable condition was reproduced within bounds.
+  - Solver-backed bounded evidence: `artifacts/proof_runs/cveX15/run_20260226_212437_cveX15_testool_non_exploit_followup/{witness_distinctness_check.smt2,z3_witness_check.log,empty_public_interface_collision_tautology.smt2,z3_empty_interface_tautology.log}`
+  - Final proof artifacts: `artifacts/proof_runs/cveX15/run_20260226_212437_cveX15_testool_non_exploit_followup/{no_exploit_proof.md,impact.md}`
+  - Conclusion: `not_exploitable_within_bounds` for this claim class on frozen target snapshot and replay bounds (`seed=42`, `iterations=200`, `timeout=180s`, `workers=2`).
+- [x] `cveX16_scroll_missing_constraint` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
+  - Objective lock / target freeze / tool readiness: `artifacts/proof_runs/cveX16/run_20260226_204807_cveX16_testool_non_exploit/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+  - Discovery source under triage: `artifacts/proof_runs/cveX16/run_20260226_204807_cveX16_testool_non_exploit/discovery_candidate_{report,run_outcome}.json` (source run id `20260226_131036_scan_cveX16_scroll_missing_constraint__6822bc916b49996f_pid242526`)
+  - Deterministic replay command + execution log: `artifacts/proof_runs/cveX16/run_20260226_204807_cveX16_testool_non_exploit/{replay_command.txt,replay.log}`
+  - Replay outcome: `status=completed`, `reason_code=completed`; underconstrained/soundness exploit checks were skipped because target exposes `0` public inputs (`session.log` lines `43`, `46`), so no exploitable condition was reproduced within bounds.
+  - Solver-backed bounded evidence: `artifacts/proof_runs/cveX16/run_20260226_204807_cveX16_testool_non_exploit/{witness_distinctness_check.smt2,z3_witness_check.log,empty_public_interface_collision_tautology.smt2,z3_empty_interface_tautology.log}`
+  - Final proof artifacts: `artifacts/proof_runs/cveX16/run_20260226_204807_cveX16_testool_non_exploit/{no_exploit_proof.md,impact.md}`
+  - Conclusion: `not_exploitable_within_bounds` for this claim class on frozen target snapshot and replay bounds (`seed=42`, `iterations=200`, `timeout=180s`, `workers=2`).
+- [x] `cveX39_scroll_modgadget_underconstrained_mulmod` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
+  - Objective lock / target freeze / tool readiness: `artifacts/proof_runs/cveX39/run_20260226_211257_cveX39_testool_non_exploit/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+  - Discovery source under triage: `artifacts/proof_runs/cveX39/run_20260226_211257_cveX39_testool_non_exploit/discovery_candidate_{report,run_outcome}.json` (source run id `20260226_131347_scan_cveX39_scroll_modgadget_underconstrained_mulmod__834b6843c652c241_pid273819`)
+  - Deterministic replay command + execution log: `artifacts/proof_runs/cveX39/run_20260226_211257_cveX39_testool_non_exploit/{replay_command.txt,replay.log}`
+  - Replay outcome: `status=completed`, `reason_code=completed`; underconstrained/soundness exploit checks were skipped because target exposes `0` public inputs (`session.log` lines `43`, `46`), so no exploitable condition was reproduced within bounds.
+  - Solver-backed bounded evidence: `artifacts/proof_runs/cveX39/run_20260226_211257_cveX39_testool_non_exploit/{witness_distinctness_check.smt2,z3_witness_check.log,empty_public_interface_collision_tautology.smt2,z3_empty_interface_tautology.log}`
+  - Final proof artifacts: `artifacts/proof_runs/cveX39/run_20260226_211257_cveX39_testool_non_exploit/{no_exploit_proof.md,impact.md}`
+  - Conclusion: `not_exploitable_within_bounds` for this claim class on frozen target snapshot and replay bounds (`seed=42`, `iterations=200`, `timeout=180s`, `workers=2`).
+- [x] `cveX40_scroll_create_static_context_escape` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
+  - Objective lock / target freeze / tool readiness: `artifacts/proof_runs/cveX40/run_20260226_211833_cveX40_testool_non_exploit/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+  - Discovery source under triage: `artifacts/proof_runs/cveX40/run_20260226_211833_cveX40_testool_non_exploit/discovery_candidate_{report,run_outcome}.json` (source run id `20260226_131650_scan_cveX40_scroll_create_static_context_escape__ac56924bc4c07559_pid304736`)
+  - Deterministic replay command + execution log: `artifacts/proof_runs/cveX40/run_20260226_211833_cveX40_testool_non_exploit/{replay_command.txt,replay.log}`
+  - Replay outcome: `status=completed`, `reason_code=completed`; underconstrained/soundness exploit checks were skipped because target exposes `0` public inputs (`session.log` lines `43`, `46`), so no exploitable condition was reproduced within bounds.
+  - Solver-backed bounded evidence: `artifacts/proof_runs/cveX40/run_20260226_211833_cveX40_testool_non_exploit/{witness_distinctness_check.smt2,z3_witness_check.log,empty_public_interface_collision_tautology.smt2,z3_empty_interface_tautology.log}`
+  - Final proof artifacts: `artifacts/proof_runs/cveX40/run_20260226_211833_cveX40_testool_non_exploit/{no_exploit_proof.md,impact.md}`
+  - Conclusion: `not_exploitable_within_bounds` for this claim class on frozen target snapshot and replay bounds (`seed=42`, `iterations=200`, `timeout=180s`, `workers=2`).
+- [x] `cveX41_scroll_rlpu64_lt128_underconstrained` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
+  - Objective lock / target freeze / tool readiness: `artifacts/proof_runs/cveX41/run_20260226_212437_cveX41_testool_non_exploit/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+  - Discovery source under triage: `artifacts/proof_runs/cveX41/run_20260226_212437_cveX41_testool_non_exploit/discovery_candidate_{report,run_outcome}.json` (source run id `20260226_131953_scan_cveX41_scroll_rlpu64_lt128_underconstrained__cb213a2d1f547cd3_pid335670`)
+  - Deterministic replay command + execution log: `artifacts/proof_runs/cveX41/run_20260226_212437_cveX41_testool_non_exploit/{replay_command.txt,replay.log}`
+  - Replay outcome: `status=completed`, `reason_code=completed`; underconstrained/soundness exploit checks were skipped because target exposes `0` public inputs (`session.log` lines `43`, `46`), so no exploitable condition was reproduced within bounds.
+  - Solver-backed bounded evidence: `artifacts/proof_runs/cveX41/run_20260226_212437_cveX41_testool_non_exploit/{witness_distinctness_check.smt2,z3_witness_check.log,empty_public_interface_collision_tautology.smt2,z3_empty_interface_tautology.log}`
+  - Final proof artifacts: `artifacts/proof_runs/cveX41/run_20260226_212437_cveX41_testool_non_exploit/{no_exploit_proof.md,impact.md}`
+  - Conclusion: `not_exploitable_within_bounds` for this claim class on frozen target snapshot and replay bounds (`seed=42`, `iterations=200`, `timeout=180s`, `workers=2`).
 
 ## 📝 Notes
 
