@@ -45,8 +45,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 
 ### Policy (no `pending_proof` in normal flow)
 - [ ] Every matched `detected_pattern` starts proof in the same run.
-- [ ] Remove `pending_proof` from normal completed runs.
-- [ ] Allow only final proof states: `exploitable`, `not_exploitable_within_bounds`, `proof_failed`, `proof_skipped_by_policy`.
+- [x] Remove `pending_proof` from normal completed runs.
+- [x] Allow only final proof states: `exploitable`, `not_exploitable_within_bounds`, `proof_failed`, `proof_skipped_by_policy`.
 - [ ] Block "confirmed vulnerability" unless required proof artifacts exist.
 
 ### Execution flow (per pattern)
@@ -60,8 +60,8 @@ Primary goal: make the scanner production-grade for real multi-target runs with 
 ### Console clarity
 - [x] Replace ambiguous wording (`failures`) with `template_errors`.
 - [x] Show live template progress in console (`template start`, `step`, `template end`).
-- [ ] Print a clear stage line per template: `detecting`, `proving`, `proof_done`.
-- [ ] Print a final totals line with explicit labels: `detected_patterns`, `exploitable`, `not_exploitable_within_bounds`, `proof_failed`, `template_errors`.
+- [x] Print a clear stage line per template: `detecting`, `proving`, `proof_done`.
+- [x] Print a final totals line with explicit labels: `detected_patterns`, `exploitable`, `not_exploitable_within_bounds`, `proof_failed`, `template_errors`.
 - [ ] Keep wording `detected_patterns` only for detection signals, never for proven bugs.
 
 ### Reliability guardrails

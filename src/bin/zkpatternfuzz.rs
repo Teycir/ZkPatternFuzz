@@ -1831,6 +1831,7 @@ fn run_template(
     }
 
     println!("[TEMPLATE STAGE] {} stage=detecting", template.file_name);
+    println!("[TEMPLATE STAGE] {} stage=proving", template.file_name);
     let scan_result = run_scan(run_cfg, template, family, false, output_suffix)?;
     if !scan_result.success {
         let reason_code = read_template_reason_code(run_cfg, output_suffix)
@@ -3690,6 +3691,9 @@ fn main() -> anyhow::Result<()> {
             "enabled"
         }
     );
+    println!(
+        "Execution mode: detect patterns, then immediately resolve proof status from evidence artifacts."
+    );
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
@@ -3836,6 +3840,27 @@ fn main() -> anyhow::Result<()> {
             proof_skipped_by_policy_patterns
         );
     }
+    let detected_patterns_total = reasons
+        .iter()
+        .map(|reason| reason.detected_pattern_count)
+        .sum::<usize>();
+    if !args.dry_run {
+        let (
+            exploitable_patterns,
+            not_exploitable_within_bounds_patterns,
+            proof_failed_patterns,
+            proof_skipped_by_policy_patterns,
+        ) = proof_state_counts(&reasons);
+        println!(
+            "Final totals: detected_patterns={} exploitable={} not_exploitable_within_bounds={} proof_failed={} proof_skipped_by_policy={} template_errors={}",
+            detected_patterns_total,
+            exploitable_patterns,
+            not_exploitable_within_bounds_patterns,
+            proof_failed_patterns,
+            proof_skipped_by_policy_patterns,
+            template_errors
+        );
+    }
 
     append_run_log_best_effort(
         &timestamped_run_log,
@@ -3859,6 +3884,13 @@ fn main() -> anyhow::Result<()> {
                 not_exploitable_within_bounds_patterns,
                 proof_failed_patterns,
                 proof_skipped_by_policy_patterns
+            ),
+        );
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "final_totals detected_patterns={} template_errors={}",
+                detected_patterns_total, template_errors
             ),
         );
     }
