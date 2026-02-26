@@ -5,7 +5,37 @@ mod zkpatternfuzz_under_test {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use std::env;
         use std::os::unix::fs::PermissionsExt;
+        use std::sync::{Mutex, OnceLock};
+        use std::time::Duration;
+
+        fn env_lock() -> &'static Mutex<()> {
+            static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+            LOCK.get_or_init(|| Mutex::new(()))
+        }
+
+        fn run_scan_with_text_busy_retry(
+            cfg: ScanRunConfig<'_>,
+            template: &TemplateInfo,
+            family: Family,
+            validate_only: bool,
+            output_suffix: &str,
+        ) -> anyhow::Result<ScanRunResult> {
+            for attempt in 0..5 {
+                match run_scan(cfg, template, family, validate_only, output_suffix) {
+                    Ok(result) => return Ok(result),
+                    Err(err)
+                        if err.to_string().contains("Text file busy")
+                            && attempt < 4 =>
+                    {
+                        std::thread::sleep(Duration::from_millis(30));
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+            unreachable!("retry loop should have returned on final attempt");
+        }
 
         #[test]
         fn args_parser_accepts_core_flags() {
@@ -17,8 +47,6 @@ mod zkpatternfuzz_under_test {
                 "circuits/demo.circom",
                 "--framework",
                 "circom",
-                "--output-root",
-                "artifacts/external_targets/manual/scan_output",
                 "--jobs",
                 "2",
                 "--workers",
@@ -29,23 +57,51 @@ mod zkpatternfuzz_under_test {
             assert_eq!(args.template.as_deref(), Some("cveX01.yaml"));
             assert_eq!(args.target_circuit.as_deref(), Some("circuits/demo.circom"));
             assert_eq!(args.framework, "circom");
-            assert_eq!(
-                args.output_root.as_deref(),
-                Some("artifacts/external_targets/manual/scan_output")
-            );
             assert_eq!(args.jobs, 2);
             assert_eq!(args.workers, 4);
         }
 
         #[test]
-        fn resolve_scan_output_root_uses_cli_override() {
-            let root =
-                resolve_scan_output_root(Some("artifacts/external_targets/manual/scan_output"))
-                    .expect("resolve output root");
+        fn resolve_results_root_reads_env_only() {
+            let _guard = env_lock().lock().expect("lock env");
+            let prior = env::var(SCAN_OUTPUT_ROOT_ENV).ok();
+            env::set_var(
+                SCAN_OUTPUT_ROOT_ENV,
+                "artifacts/external_targets/manual/scan_output",
+            );
+
+            let root = resolve_results_root().expect("resolve results root");
             assert_eq!(
                 root,
                 std::path::PathBuf::from("artifacts/external_targets/manual/scan_output")
             );
+
+            if let Some(value) = prior {
+                env::set_var(SCAN_OUTPUT_ROOT_ENV, value);
+            } else {
+                env::remove_var(SCAN_OUTPUT_ROOT_ENV);
+            }
+        }
+
+        #[test]
+        fn load_batch_file_config_rejects_output_root_key() {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let cfg_path = temp.path().join("run_overrides.json");
+            std::fs::write(
+                &cfg_path,
+                r#"
+{
+  "run_overrides": {
+    "output_root": "/tmp/forbidden"
+  }
+}
+"#,
+            )
+            .expect("write config");
+
+            let err = load_batch_file_config(cfg_path.to_str().expect("utf8 path"))
+                .expect_err("output_root must be rejected");
+            assert!(format!("{err:#}").contains("output_root is no longer supported"));
         }
 
         #[test]
@@ -138,7 +194,7 @@ mod zkpatternfuzz_under_test {
         }
 
         #[test]
-        fn run_scan_exports_signal_and_cache_env_under_output_root() {
+        fn run_scan_exports_signal_and_cache_env_under_results_root() {
             let temp = tempfile::tempdir().expect("tempdir");
             let script_path = temp.path().join("print_env.sh");
             std::fs::write(
@@ -199,14 +255,14 @@ echo \"{}=${{{}:-}}\"\n",
                 iterations: 1,
                 timeout: 1,
                 scan_run_root: Some("scan_run_test"),
-                scan_output_root: temp.path(),
+                results_root: temp.path(),
                 run_signal_dir: &run_signal_dir,
                 build_cache_dir: &build_cache_dir,
                 dry_run: false,
                 artifacts_root: temp.path(),
             };
 
-            let out = run_scan(cfg, &template, Family::Auto, false, "auto__dummy")
+            let out = run_scan_with_text_busy_retry(cfg, &template, Family::Auto, false, "auto__dummy")
                 .expect("run_scan should execute helper script");
             assert!(out.success, "helper script should exit successfully");
             assert!(out.stdout.contains(&format!(
@@ -286,14 +342,14 @@ echo \"{}=${{{}:-}}\"\n",
                 iterations: 1,
                 timeout: 1,
                 scan_run_root: Some("scan_run_test"),
-                scan_output_root: temp.path(),
+                results_root: temp.path(),
                 run_signal_dir: &run_signal_dir,
                 build_cache_dir: &build_cache_dir,
                 dry_run: false,
                 artifacts_root: temp.path(),
             };
 
-            let out = run_scan(cfg, &template, Family::Auto, false, "auto__dummy")
+            let out = run_scan_with_text_busy_retry(cfg, &template, Family::Auto, false, "auto__dummy")
                 .expect("run_scan should execute helper script");
             assert!(out.success, "helper script should exit successfully");
             assert!(out

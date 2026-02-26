@@ -14,9 +14,12 @@ use std::time::Instant;
 
 #[path = "zkpatternfuzz/zkpatternfuzz_env.rs"]
 mod zkpatternfuzz_env;
+#[path = "zkpatternfuzz/checkenv.rs"]
+mod checkenv;
 #[path = "zkpatternfuzz/zkpatternfuzz_readiness.rs"]
 mod zkpatternfuzz_readiness;
 
+use checkenv::CheckEnv;
 use zkpatternfuzz_env::{expand_env_placeholders, has_unresolved_env_placeholder};
 use zkpatternfuzz_readiness::{ensure_local_runtime_requirements, preflight_template_paths};
 
@@ -35,6 +38,8 @@ const HALO2_DEFAULT_BATCH_TIMEOUT_ENV: &str = "ZKF_HALO2_DEFAULT_TIMEOUT_SECS";
 const CAIRO_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS";
 const SCARB_DOWNLOAD_TIMEOUT_ENV: &str = "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS";
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
+const DEFAULT_BATCH_JOBS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_JOBS";
+const DEFAULT_BATCH_WORKERS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_WORKERS";
 const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
 const DEFAULT_BATCH_TIMEOUT_SECS: u64 = 1_800;
 const DEFAULT_HALO2_BATCH_TIMEOUT_SECS: u64 = 3_600;
@@ -111,12 +116,12 @@ struct Args {
     #[arg(long, default_value_t = false)]
     dry_run: bool,
 
-    /// Maximum number of templates to execute in parallel
-    #[arg(long, default_value_t = num_cpus::get())]
+    /// Maximum number of templates to execute in parallel (env: ZKF_ZKPATTERNFUZZ_DEFAULT_JOBS)
+    #[arg(long, env = DEFAULT_BATCH_JOBS_ENV)]
     jobs: usize,
 
-    /// Worker count per run
-    #[arg(long, default_value_t = 1)]
+    /// Worker count per run (env: ZKF_ZKPATTERNFUZZ_DEFAULT_WORKERS)
+    #[arg(long, env = DEFAULT_BATCH_WORKERS_ENV)]
     workers: usize,
 
     /// RNG seed per run
@@ -131,20 +136,9 @@ struct Args {
     #[arg(long, default_value_t = DEFAULT_BATCH_TIMEOUT_SECS)]
     timeout: u64,
 
-    /// Root directory for scan output artifacts (overrides ZKF_SCAN_OUTPUT_ROOT)
-    #[arg(long)]
-    output_root: Option<String>,
-
     /// Emit per-template reason codes as TSV to stdout (for external harness ingestion)
     #[arg(long, default_value_t = false)]
     emit_reason_tsv: bool,
-
-    /// Optional extra output path for findings JSON.
-    /// A timestamped `findings.json` is emitted under
-    /// `<scan_output_root>/ResultJsonTimestamped/<timestamp>/` for every
-    /// non-dry-run execution.
-    #[arg(long)]
-    report_json: Option<String>,
 
     /// Disable batch-level progress lines (enabled by default)
     #[arg(long, default_value_t = false)]
@@ -264,8 +258,6 @@ struct BatchFileConfig {
     #[serde(default)]
     extra_args: Vec<String>,
     #[serde(default)]
-    output_root: Option<String>,
-    #[serde(default)]
     prepare_target: Option<bool>,
 }
 
@@ -288,7 +280,7 @@ struct ScanRunConfig<'a> {
     iterations: u64,
     timeout: u64,
     scan_run_root: Option<&'a str>,
-    scan_output_root: &'a Path,
+    results_root: &'a Path,
     run_signal_dir: &'a Path,
     build_cache_dir: &'a Path,
     dry_run: bool,
@@ -611,6 +603,16 @@ fn load_batch_file_config(raw_path: &str) -> anyhow::Result<BatchFileConfig> {
         }
     }
 
+    if let Some(map) = parsed.as_mapping() {
+        if map.contains_key(yaml_key("output_root")) {
+            anyhow::bail!(
+                "Invalid config '{}': output_root is no longer supported; set {} in your env config file",
+                path.display(),
+                SCAN_OUTPUT_ROOT_ENV
+            );
+        }
+    }
+
     serde_yaml::from_value(parsed).with_context(|| {
         format!(
             "Failed to decode config file '{}'. Expected keys such as pattern_yaml/target_circuit/workers/iterations/timeout/env.",
@@ -667,9 +669,6 @@ fn apply_file_config(args: &mut Args, cfg: BatchFileConfig) -> anyhow::Result<Ef
             anyhow::bail!("Invalid config: timeout cannot be zero");
         }
         args.timeout = value;
-    }
-    if let Some(value) = cfg.output_root {
-        args.output_root = Some(value);
     }
     if let Some(value) = cfg.prepare_target {
         args.prepare_target = value;
@@ -998,7 +997,7 @@ fn run_scan(
 ) -> anyhow::Result<ScanRunResult> {
     let family_str = family.as_str();
     let mut cmd = Command::new(run_cfg.bin_path);
-    cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.scan_output_root)
+    cmd.env(SCAN_OUTPUT_ROOT_ENV, run_cfg.results_root)
         .env(RUN_SIGNAL_DIR_ENV, run_cfg.run_signal_dir)
         .env(BUILD_CACHE_DIR_ENV, run_cfg.build_cache_dir);
     for (key, value) in run_cfg.env_overrides {
@@ -1070,7 +1069,7 @@ fn run_scan(
         cmd.args(run_cfg.extra_args);
     }
 
-    // Validation dry-runs should not materialize scan output roots.
+    // Validation dry-runs should not materialize results roots.
     if !validate_only {
         cmd.arg("--output-suffix").arg(output_suffix);
     }
@@ -1093,7 +1092,7 @@ fn run_scan(
         println!(
             "[DRY RUN] {}={} {}={} {}={} {} scan {} --family {} --target-circuit {} --main-component {} --framework {} --workers {} --seed {} --iterations {} --timeout {} --simple-progress{}{}{}",
             SCAN_OUTPUT_ROOT_ENV,
-            run_cfg.scan_output_root.display(),
+            run_cfg.results_root.display(),
             RUN_SIGNAL_DIR_ENV,
             run_cfg.run_signal_dir.display(),
             BUILD_CACHE_DIR_ENV,
@@ -1137,7 +1136,7 @@ fn run_scan(
     })
 }
 
-fn resolve_build_cache_dir(scan_output_root: &Path) -> PathBuf {
+fn resolve_build_cache_dir(results_root: &Path) -> PathBuf {
     for env_name in [BUILD_CACHE_DIR_ENV, SHARED_BUILD_CACHE_DIR_ENV] {
         if let Ok(raw) = std::env::var(env_name) {
             let trimmed = raw.trim();
@@ -1146,7 +1145,7 @@ fn resolve_build_cache_dir(scan_output_root: &Path) -> PathBuf {
             }
         }
     }
-    scan_output_root.join("_build_cache")
+    results_root.join("_build_cache")
 }
 
 fn ensure_writable_dir(path: &Path, label: &str) -> anyhow::Result<()> {
@@ -1165,11 +1164,11 @@ fn ensure_writable_dir(path: &Path, label: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn preflight_runtime_paths(scan_output_root: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
-    ensure_writable_dir(scan_output_root, "scan output root")?;
-    let run_signal_dir = scan_output_root.join("run_signals");
+fn preflight_runtime_paths(results_root: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
+    ensure_writable_dir(results_root, "results root")?;
+    let run_signal_dir = results_root.join("run_signals");
     ensure_writable_dir(&run_signal_dir, "run signal dir")?;
-    let build_cache_dir = resolve_build_cache_dir(scan_output_root);
+    let build_cache_dir = resolve_build_cache_dir(results_root);
     ensure_writable_dir(&build_cache_dir, "build cache dir")?;
     Ok((run_signal_dir, build_cache_dir))
 }
@@ -1459,18 +1458,10 @@ fn scan_output_suffix(template: &TemplateInfo, family: Family) -> String {
     format!("{}__{}", family.as_str(), normalized)
 }
 
-fn resolve_scan_output_root(override_root: Option<&str>) -> anyhow::Result<PathBuf> {
-    if let Some(raw) = override_root {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            anyhow::bail!("--output-root cannot be empty");
-        }
-        return Ok(PathBuf::from(trimmed));
-    }
-
+fn resolve_results_root() -> anyhow::Result<PathBuf> {
     let raw = std::env::var(SCAN_OUTPUT_ROOT_ENV).with_context(|| {
         format!(
-            "{} is required when --output-root is not provided",
+            "{} is required (output path is env-only)",
             SCAN_OUTPUT_ROOT_ENV
         )
     })?;
@@ -1928,7 +1919,7 @@ struct BatchReportRun {
     seed: u64,
     iterations: u64,
     timeout: u64,
-    output_root: String,
+    results_root: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1968,7 +1959,7 @@ fn write_report_json(
     expected_count: usize,
     executed: usize,
     failures: usize,
-    scan_output_root: &Path,
+    results_root: &Path,
     gate2_ok: bool,
     gate3_ok: bool,
     campaign_success: bool,
@@ -2045,7 +2036,7 @@ fn write_report_json(
             seed: args.seed,
             iterations: args.iterations,
             timeout: args.timeout,
-            output_root: scan_output_root.display().to_string(),
+            results_root: results_root.display().to_string(),
         },
         gates: BatchReportGates {
             gate1_expected_patterns: expected_count,
@@ -2075,7 +2066,7 @@ fn write_report_json(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
             format!(
-                "Failed to create report_json parent directory '{}'",
+                "Failed to create findings report parent directory '{}'",
                 parent.display()
             )
         })?;
@@ -2086,9 +2077,9 @@ fn write_report_json(
     Ok(())
 }
 
-fn create_timestamped_result_dir(scan_output_root: &Path) -> anyhow::Result<PathBuf> {
+fn create_timestamped_result_dir(results_root: &Path) -> anyhow::Result<PathBuf> {
     let ts = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-    let dir = scan_output_root.join("ResultJsonTimestamped").join(ts);
+    let dir = results_root.join("ResultJsonTimestamped").join(ts);
     fs::create_dir_all(&dir).with_context(|| {
         format!(
             "Failed to create timestamped result directory '{}'",
@@ -2513,6 +2504,17 @@ fn dedupe_patterns_by_signature(
 }
 
 fn main() -> anyhow::Result<()> {
+    let _check_env = CheckEnv::new(
+        Path::new(".env"),
+        &[
+            SCAN_OUTPUT_ROOT_ENV,
+            RUN_SIGNAL_DIR_ENV,
+            BUILD_CACHE_DIR_ENV,
+            DEFAULT_BATCH_JOBS_ENV,
+            DEFAULT_BATCH_WORKERS_ENV,
+        ],
+    )?;
+
     let mut args = Args::parse();
     let effective_file_cfg = if let Some(path) = args.config_json.clone() {
         let cfg = load_batch_file_config(&path)?;
@@ -2634,8 +2636,22 @@ fn main() -> anyhow::Result<()> {
     let batch_started_at = Instant::now();
 
     println!("Gate 1/3 (expected templates): {}", expected_count);
-    let scan_output_root = resolve_scan_output_root(args.output_root.as_deref())?;
-    let timestamped_result_dir = create_timestamped_result_dir(&scan_output_root)?;
+    let results_root = resolve_results_root().map_err(|err| {
+        anyhow::anyhow!(
+            "Output path configuration failed: {:#}\nHint: set {} to a writable directory (example: export {}=/home/teycir/zkfuzz)",
+            err,
+            SCAN_OUTPUT_ROOT_ENV,
+            SCAN_OUTPUT_ROOT_ENV
+        )
+    })?;
+    let timestamped_result_dir = create_timestamped_result_dir(&results_root).with_context(
+        || {
+            format!(
+                "Unable to create result directory under '{}'. Check that the path exists and is writable.",
+                results_root.display()
+            )
+        },
+    )?;
     let timestamped_report_path = timestamped_result_dir.join("findings.json");
     let timestamped_error_log = timestamped_result_dir.join("errors.log");
     let timestamped_run_log = timestamped_result_dir.join("run.log");
@@ -2711,10 +2727,10 @@ fn main() -> anyhow::Result<()> {
     append_run_log_best_effort(
         &timestamped_run_log,
         format!(
-            "step=local_readiness status=started framework={} target_circuit={} output_root={}",
+            "step=local_readiness status=started framework={} target_circuit={} results_root={}",
             args.framework,
             target_circuit,
-            scan_output_root.display()
+            results_root.display()
         ),
     );
     if let Err(err) = ensure_local_runtime_requirements(
@@ -2754,7 +2770,7 @@ fn main() -> anyhow::Result<()> {
         }
         return Err(err);
     }
-    let (run_signal_dir, build_cache_dir) = match preflight_runtime_paths(&scan_output_root) {
+    let (run_signal_dir, build_cache_dir) = match preflight_runtime_paths(&results_root) {
         Ok(paths) => paths,
         Err(err) => {
             step_failed(
@@ -2786,7 +2802,11 @@ fn main() -> anyhow::Result<()> {
                     log_err
                 );
             }
-            return Err(err);
+            return Err(anyhow::anyhow!(
+                "Output path readiness check failed for '{}': {:#}\nHint: ensure this directory and its subdirectories are writable.",
+                results_root.display(),
+                err
+            ));
         }
     };
     append_run_log_best_effort(
@@ -3054,7 +3074,7 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    let artifacts_root = scan_output_root.join(".scan_run_artifacts");
+    let artifacts_root = results_root.join(".scan_run_artifacts");
 
     let run_cfg_base = ScanRunConfig {
         bin_path: &bin_path,
@@ -3068,7 +3088,7 @@ fn main() -> anyhow::Result<()> {
         iterations: args.iterations,
         timeout: args.timeout,
         scan_run_root: None,
-        scan_output_root: &scan_output_root,
+        results_root: &results_root,
         run_signal_dir: &run_signal_dir,
         build_cache_dir: &build_cache_dir,
         dry_run: args.dry_run,
@@ -3314,7 +3334,7 @@ fn main() -> anyhow::Result<()> {
             expected_count,
             executed,
             failures,
-            &scan_output_root,
+            &results_root,
             gate2_ok,
             gate3_ok,
             campaign_success,
@@ -3323,29 +3343,6 @@ fn main() -> anyhow::Result<()> {
             &timestamped_error_log,
             batch_run_root.as_deref(),
         )?;
-        if let Some(path_raw) = args.report_json.as_deref() {
-            let path = PathBuf::from(path_raw);
-            if path != timestamped_report_path {
-                write_report_json(
-                    &args,
-                    &path,
-                    &target_circuit,
-                    &reasons,
-                    expected_count,
-                    executed,
-                    failures,
-                    &scan_output_root,
-                    gate2_ok,
-                    gate3_ok,
-                    campaign_success,
-                    &timestamped_result_dir,
-                    &timestamped_run_log,
-                    &timestamped_error_log,
-                    batch_run_root.as_deref(),
-                )?;
-            }
-            println!("Wrote findings report JSON: {}", path.display());
-        }
         println!(
             "Wrote findings report JSON: {}",
             timestamped_report_path.display()
