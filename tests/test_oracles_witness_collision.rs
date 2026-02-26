@@ -149,8 +149,8 @@ fn test_collision_detection() {
     let collision = WitnessCollision {
         witness_a: vec![FieldElement::from_u64(1)],
         witness_b: vec![FieldElement::from_u64(2)],
-        public_inputs: vec![],
-        public_input_indices: vec![],
+        public_inputs: vec![FieldElement::from_u64(7)],
+        public_input_indices: vec![0],
         output_hash: "abc123".to_string(),
         outputs: vec![FieldElement::from_u64(42)],
         is_expected: false,
@@ -159,6 +159,24 @@ fn test_collision_detection() {
     let findings = detector.to_findings(&[collision]);
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].attack_type, AttackType::WitnessCollision);
+}
+
+#[test]
+fn test_collision_detection_skips_empty_public_interface() {
+    let detector = WitnessCollisionDetector::new();
+
+    let collision = WitnessCollision {
+        witness_a: vec![FieldElement::from_u64(1)],
+        witness_b: vec![FieldElement::from_u64(2)],
+        public_inputs: vec![],
+        public_input_indices: vec![],
+        output_hash: "deadbeef".to_string(),
+        outputs: vec![FieldElement::one()],
+        is_expected: false,
+    };
+
+    let findings = detector.to_findings(&[collision]);
+    assert!(findings.is_empty());
 }
 
 #[test]
