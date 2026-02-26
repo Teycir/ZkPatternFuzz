@@ -322,7 +322,7 @@ struct TemplateOutcomeReason {
     stage: Option<String>,
     reason_code: String,
     high_confidence_detected: bool,
-    finding_count: usize,
+    detected_pattern_count: usize,
 }
 
 struct ScanRunResult {
@@ -465,7 +465,7 @@ fn read_template_progress_update(
     }
     if stage == "completed" {
         if let Some(findings_total) = findings_total {
-            rendered.push_str(&format!(" findings={}", findings_total));
+            rendered.push_str(&format!(" detected_patterns={}", findings_total));
         }
     }
 
@@ -528,7 +528,7 @@ fn report_has_high_confidence_finding(report_path: &Path) -> bool {
     )
 }
 
-fn report_finding_count(report_path: &Path) -> usize {
+fn report_detected_pattern_count(report_path: &Path) -> usize {
     let raw = match fs::read_to_string(report_path) {
         Ok(raw) => raw,
         Err(_) => return 0,
@@ -2141,7 +2141,7 @@ fn collect_template_outcome_reasons(
                     stage: None,
                     reason_code: "run_outcome_missing".to_string(),
                     high_confidence_detected: false,
-                    finding_count: 0,
+                    detected_pattern_count: 0,
                 };
             }
 
@@ -2156,7 +2156,7 @@ fn collect_template_outcome_reasons(
                         stage: None,
                         reason_code: "run_outcome_unreadable".to_string(),
                         high_confidence_detected: false,
-                        finding_count: 0,
+                        detected_pattern_count: 0,
                     };
                 }
             };
@@ -2172,7 +2172,7 @@ fn collect_template_outcome_reasons(
                         stage: None,
                         reason_code: "run_outcome_invalid_json".to_string(),
                         high_confidence_detected: false,
-                        finding_count: 0,
+                        detected_pattern_count: 0,
                     };
                 }
             };
@@ -2204,7 +2204,7 @@ fn collect_template_outcome_reasons(
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| classify_run_reason_code(&parsed).to_string()),
                 high_confidence_detected: report_has_high_confidence_finding(&report_path),
-                finding_count: report_finding_count(&report_path),
+                detected_pattern_count: report_detected_pattern_count(&report_path),
             }
         })
         .collect()
@@ -2250,7 +2250,7 @@ fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
 
     println!("REASON_TSV_START");
     println!(
-        "template\tsuffix\treason_code\tstatus\tstage\thigh_confidence_detected\tfinding_count"
+        "template\tsuffix\treason_code\tstatus\tstage\thigh_confidence_detected\tdetected_pattern_count"
     );
     for reason in reasons {
         println!(
@@ -2265,7 +2265,7 @@ fn print_reason_tsv(reasons: &[TemplateOutcomeReason]) {
             } else {
                 "0"
             },
-            reason.finding_count,
+            reason.detected_pattern_count,
         );
     }
     println!("REASON_TSV_END");
@@ -2279,7 +2279,7 @@ struct PatternReportRow {
     reason_code: String,
     status: String,
     stage: String,
-    finding_count: usize,
+    detected_pattern_count: usize,
     high_confidence_detected: bool,
     matched: bool,
 }
@@ -2344,7 +2344,7 @@ struct BatchReportTotals {
     executed_patterns: usize,
     template_errors: usize,
     matched_patterns: usize,
-    total_findings: usize,
+    detected_patterns_total: usize,
     high_confidence_patterns: usize,
 }
 
@@ -2368,11 +2368,11 @@ fn write_report_json(
 ) -> anyhow::Result<()> {
     let matched_patterns = reasons
         .iter()
-        .filter(|reason| reason.finding_count > 0)
+        .filter(|reason| reason.detected_pattern_count > 0)
         .count();
-    let total_findings = reasons
+    let detected_patterns_total = reasons
         .iter()
-        .map(|reason| reason.finding_count)
+        .map(|reason| reason.detected_pattern_count)
         .sum::<usize>();
     let high_confidence_patterns = reasons
         .iter()
@@ -2407,14 +2407,14 @@ fn write_report_json(
                 .stage
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string()),
-            finding_count: reason.finding_count,
+            detected_pattern_count: reason.detected_pattern_count,
             high_confidence_detected: reason.high_confidence_detected,
-            matched: reason.finding_count > 0,
+            matched: reason.detected_pattern_count > 0,
         })
         .collect::<Vec<_>>();
 
     let report = BatchFindingsReport {
-        report_schema: "zkfuzz.batch_findings.v1",
+        report_schema: "zkfuzz.batch_detected_patterns.v1",
         generated_utc: Utc::now().to_rfc3339(),
         verdict,
         target_circuit,
@@ -2455,7 +2455,7 @@ fn write_report_json(
             executed_patterns: executed,
             template_errors,
             matched_patterns,
-            total_findings,
+            detected_patterns_total,
             high_confidence_patterns,
         },
         patterns,
@@ -2464,7 +2464,7 @@ fn write_report_json(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
             format!(
-                "Failed to create findings report parent directory '{}'",
+                "Failed to create detected-patterns report parent directory '{}'",
                 parent.display()
             )
         })?;
@@ -2608,13 +2608,13 @@ fn write_error_log(
         }
         error_count += 1;
         lines.push(format!(
-            "template={} suffix={} reason_code={} status={} stage={} finding_count={}",
+            "template={} suffix={} reason_code={} status={} stage={} detected_pattern_count={}",
             reason.template_file,
             reason.suffix,
             reason.reason_code,
             reason.status.as_deref().unwrap_or("unknown"),
             reason.stage.as_deref().unwrap_or("unknown"),
-            reason.finding_count,
+            reason.detected_pattern_count,
         ));
     }
 
@@ -3057,7 +3057,7 @@ fn main() -> anyhow::Result<()> {
             )
         },
     )?;
-    let timestamped_report_path = timestamped_result_dir.join("findings.json");
+    let timestamped_report_path = timestamped_result_dir.join("detected_patterns.json");
     let timestamped_error_log = timestamped_result_dir.join("errors.log");
     let timestamped_run_log = timestamped_result_dir.join("run.log");
     append_run_log_best_effort(
@@ -3717,13 +3717,13 @@ fn main() -> anyhow::Result<()> {
         append_run_log_best_effort(
             &timestamped_run_log,
             format!(
-                "error template={} suffix={} reason_code={} status={} stage={} finding_count={}",
+                "error template={} suffix={} reason_code={} status={} stage={} detected_pattern_count={}",
                 reason.template_file,
                 reason.suffix,
                 reason.reason_code,
                 reason.status.as_deref().unwrap_or("unknown"),
                 reason.stage.as_deref().unwrap_or("unknown"),
-                reason.finding_count
+                reason.detected_pattern_count
             ),
         );
     }
@@ -3758,11 +3758,11 @@ fn main() -> anyhow::Result<()> {
             batch_run_root.as_deref(),
         )?;
         println!(
-            "Wrote findings report JSON: {}",
+            "Wrote detected-patterns report JSON: {}",
             timestamped_report_path.display()
         );
     } else {
-        println!("Skipped findings JSON for dry run.");
+        println!("Skipped detected-patterns JSON for dry run.");
     }
     println!(
         "Wrote timestamped result bundle: {}",
