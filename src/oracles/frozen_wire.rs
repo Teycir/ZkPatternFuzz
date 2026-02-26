@@ -116,18 +116,21 @@ impl FrozenWireDetector {
                     frozen_value == &one
                 };
 
-                let severity = if is_zero {
-                    Severity::Medium
+                let constrained = constraint_wires
+                    .as_ref()
+                    .map(|wires| wires.contains(&wire_idx));
+                let constrained = constrained.unwrap_or(false);
+                if constrained && (is_zero || is_one) {
+                    continue;
+                }
+
+                let severity = if constrained {
+                    Severity::Low
                 } else if is_one {
                     Severity::Low
                 } else {
                     Severity::Medium
                 };
-
-                let constrained = constraint_wires
-                    .as_ref()
-                    .map(|wires| wires.contains(&wire_idx));
-                let constrained = constrained.unwrap_or(true);
 
                 findings.push(Finding {
                     attack_type: AttackType::Underconstrained,

@@ -69,13 +69,17 @@ impl CanonicalizationChecker {
 
         let mut findings = Vec::new();
 
+        let num_public_inputs = executor.circuit_info().num_public_inputs;
         for (w_idx, witness) in witnesses.iter().take(self.sample_count).enumerate() {
             let baseline = executor.execute_sync(witness);
             if !baseline.success {
                 continue;
             }
 
-            for input_idx in 0..witness.len() {
+            let scoped_public_inputs: Vec<FieldElement> =
+                witness.iter().take(num_public_inputs).cloned().collect();
+            let testable_inputs = num_public_inputs.min(witness.len());
+            for input_idx in 0..testable_inputs {
                 let x = BigUint::from_bytes_be(&witness[input_idx].0);
 
                 if self.test_field_wrap {
@@ -95,7 +99,7 @@ impl CanonicalizationChecker {
                                 poc: ProofOfConcept {
                                     witness_a: witness.clone(),
                                     witness_b: Some(modified),
-                                    public_inputs: Vec::new(),
+                                    public_inputs: scoped_public_inputs.clone(),
                                     proof: None,
                                 },
                                 location: None,
@@ -121,7 +125,7 @@ impl CanonicalizationChecker {
                                 poc: ProofOfConcept {
                                     witness_a: witness.clone(),
                                     witness_b: Some(modified),
-                                    public_inputs: Vec::new(),
+                                    public_inputs: scoped_public_inputs.clone(),
                                     proof: None,
                                 },
                                 location: None,
@@ -148,7 +152,7 @@ impl CanonicalizationChecker {
                                 poc: ProofOfConcept {
                                     witness_a: witness.clone(),
                                     witness_b: Some(modified),
-                                    public_inputs: Vec::new(),
+                                    public_inputs: scoped_public_inputs.clone(),
                                     proof: None,
                                 },
                                 location: None,

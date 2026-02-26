@@ -2,7 +2,10 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use zk_core::{CircuitInfo, ExecutionCoverage, ExecutionResult, Framework};
+use zk_core::{
+    CircuitInfo, ConstraintEquation, ConstraintInspector, ConstraintResult, ExecutionCoverage,
+    ExecutionResult, Framework,
+};
 use zk_fuzzer::executor::{CircuitExecutor, FixtureCircuitExecutor};
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::oracles::{
@@ -184,6 +187,146 @@ impl CircuitExecutor for SaltedExecutor {
     }
 }
 
+struct NoOutputReplayExecutor {
+    name: String,
+    num_private_inputs: usize,
+    num_public_inputs: usize,
+}
+
+impl NoOutputReplayExecutor {
+    fn new(name: &str, num_private_inputs: usize, num_public_inputs: usize) -> Self {
+        Self {
+            name: name.to_string(),
+            num_private_inputs,
+            num_public_inputs,
+        }
+    }
+}
+
+impl CircuitExecutor for NoOutputReplayExecutor {
+    fn framework(&self) -> Framework {
+        Framework::Circom
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn circuit_info(&self) -> CircuitInfo {
+        CircuitInfo {
+            name: self.name.clone(),
+            num_constraints: 1,
+            num_private_inputs: self.num_private_inputs,
+            num_public_inputs: self.num_public_inputs,
+            num_outputs: 0,
+        }
+    }
+
+    fn execute_sync(&self, _inputs: &[FieldElement]) -> ExecutionResult {
+        ExecutionResult::success(vec![], ExecutionCoverage::default())
+    }
+
+    fn prove(&self, _witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
+        Ok(vec![0x03; 32])
+    }
+
+    fn verify(&self, _proof: &[u8], _public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+}
+
+struct ConstantOutputInspectorExecutor {
+    name: String,
+    output: FieldElement,
+    num_private_inputs: usize,
+    num_public_inputs: usize,
+}
+
+impl ConstantOutputInspectorExecutor {
+    fn new(
+        name: &str,
+        output: FieldElement,
+        num_private_inputs: usize,
+        num_public_inputs: usize,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            output,
+            num_private_inputs,
+            num_public_inputs,
+        }
+    }
+
+    fn output_wire_idx(&self) -> usize {
+        self.num_private_inputs + self.num_public_inputs
+    }
+}
+
+impl CircuitExecutor for ConstantOutputInspectorExecutor {
+    fn framework(&self) -> Framework {
+        Framework::Circom
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn circuit_info(&self) -> CircuitInfo {
+        CircuitInfo {
+            name: self.name.clone(),
+            num_constraints: 1,
+            num_private_inputs: self.num_private_inputs,
+            num_public_inputs: self.num_public_inputs,
+            num_outputs: 1,
+        }
+    }
+
+    fn execute_sync(&self, _inputs: &[FieldElement]) -> ExecutionResult {
+        ExecutionResult::success(vec![self.output.clone()], ExecutionCoverage::default())
+    }
+
+    fn prove(&self, _witness: &[FieldElement]) -> anyhow::Result<Vec<u8>> {
+        Ok(vec![0x04; 32])
+    }
+
+    fn verify(&self, _proof: &[u8], _public_inputs: &[FieldElement]) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+
+    fn constraint_inspector(&self) -> Option<&dyn ConstraintInspector> {
+        Some(self)
+    }
+}
+
+impl ConstraintInspector for ConstantOutputInspectorExecutor {
+    fn get_constraints(&self) -> Vec<ConstraintEquation> {
+        vec![ConstraintEquation {
+            id: 0,
+            a_terms: vec![(0, FieldElement::one())],
+            b_terms: vec![(1, FieldElement::one())],
+            c_terms: vec![(self.output_wire_idx(), FieldElement::one())],
+            description: Some("constant output relation".to_string()),
+        }]
+    }
+
+    fn check_constraints(&self, _witness: &[FieldElement]) -> Vec<ConstraintResult> {
+        vec![ConstraintResult {
+            constraint_id: 0,
+            satisfied: true,
+            lhs_value: FieldElement::one(),
+            rhs_value: FieldElement::one(),
+        }]
+    }
+
+    fn get_constraint_dependencies(&self) -> Vec<Vec<usize>> {
+        vec![vec![0, 1, self.output_wire_idx()]]
+    }
+
+    fn output_indices(&self) -> Vec<usize> {
+        vec![self.output_wire_idx()]
+    }
+}
+
 #[test]
 fn test_proof_malleability_scanner_detects_mutation() {
     let executor = LenientProofExecutor::new("lenient", 1, 1);
@@ -226,15 +369,16 @@ fn test_proof_malleability_random_lane_marked_negative_control() {
 
 #[test]
 fn test_determinism_oracle_detects_nondeterminism() {
-    let executor = FlakyExecutor::new("flaky", 1, 0);
-    let witness = vec![FieldElement::from_u64(1)];
+    let executor = FlakyExecutor::new("flaky", 1, 1);
+    let witness = vec![FieldElement::from_u64(1), FieldElement::from_u64(2)];
 
     let oracle = DeterminismOracle::new()
         .with_repetitions(2)
         .with_sample_count(1);
 
-    let findings = oracle.run(&executor, &[witness]);
+    let findings = oracle.run(&executor, std::slice::from_ref(&witness));
     assert!(!findings.is_empty(), "Expected determinism finding");
+    assert_eq!(findings[0].poc.public_inputs, vec![witness[0].clone()]);
 }
 
 #[test]
@@ -258,6 +402,7 @@ fn test_nullifier_replay_scanner_detects_replay() {
 
     let scanner = NullifierReplayScanner::new()
         .with_replay_attempts(5)
+        .with_nullifier_indices(vec![0])
         .with_base_samples(1);
 
     let findings = scanner.run(&executor, &[base]);
@@ -283,7 +428,7 @@ fn test_cross_backend_differential_detects_divergence() {
 
 #[test]
 fn test_canonicalization_checker_detects_non_canonical() {
-    let executor = FixtureCircuitExecutor::new("canon", 1, 0);
+    let executor = FixtureCircuitExecutor::new("canon", 0, 1);
     let witness = vec![FieldElement::from_u64(1)];
 
     let checker = CanonicalizationChecker::new()
@@ -294,6 +439,82 @@ fn test_canonicalization_checker_detects_non_canonical() {
 
     let findings = checker.run(&executor, &[witness]);
     assert!(!findings.is_empty(), "Expected canonicalization finding");
+}
+
+#[test]
+fn test_nullifier_heuristic_does_not_fallback_to_wire_zero() {
+    let executor = LenientProofExecutor::new("no_labels", 1, 1);
+    let detected = zk_fuzzer::oracles::NullifierHeuristic::detect(&executor);
+    assert!(
+        detected.is_empty(),
+        "Heuristic must not guess wire 0 when no nullifier signal is found"
+    );
+}
+
+#[test]
+fn test_nullifier_replay_scanner_skips_empty_output_targets() {
+    let executor = NoOutputReplayExecutor::new("empty_outputs", 1, 1);
+    let base = vec![FieldElement::from_u64(9), FieldElement::from_u64(3)];
+    let scanner = NullifierReplayScanner::new()
+        .with_nullifier_indices(vec![0])
+        .with_replay_attempts(10)
+        .with_base_samples(1);
+
+    let findings = scanner.run(&executor, &[base]);
+    assert!(
+        findings.is_empty(),
+        "Empty-output circuits must not produce nullifier replay findings"
+    );
+}
+
+#[test]
+fn test_canonicalization_checker_ignores_private_only_inputs() {
+    let executor = FixtureCircuitExecutor::new("canon_private_only", 1, 0);
+    let witness = vec![FieldElement::from_u64(1)];
+    let checker = CanonicalizationChecker::new()
+        .with_sample_count(1)
+        .with_field_wrap(true)
+        .with_negative_zero(false)
+        .with_additive_inverse(false);
+
+    let findings = checker.run(&executor, &[witness]);
+    assert!(
+        findings.is_empty(),
+        "Private-only inputs are not public attack surface for canonicalization checks"
+    );
+}
+
+#[test]
+fn test_frozen_wire_detector_suppresses_constrained_boolean_constants() {
+    let executor = ConstantOutputInspectorExecutor::new("const_zero", FieldElement::zero(), 1, 1);
+    let witnesses = vec![
+        vec![FieldElement::from_u64(1), FieldElement::from_u64(2)],
+        vec![FieldElement::from_u64(3), FieldElement::from_u64(4)],
+        vec![FieldElement::from_u64(5), FieldElement::from_u64(6)],
+    ];
+    let detector = FrozenWireDetector::new().with_min_samples(3);
+
+    let findings = detector.run(&executor, &witnesses);
+    assert!(
+        findings.is_empty(),
+        "Constrained boolean constants should be treated as intentional and skipped"
+    );
+}
+
+#[test]
+fn test_frozen_wire_detector_downgrades_constrained_non_boolean_constants() {
+    let executor =
+        ConstantOutputInspectorExecutor::new("const_non_bool", FieldElement::from_u64(42), 1, 1);
+    let witnesses = vec![
+        vec![FieldElement::from_u64(1), FieldElement::from_u64(2)],
+        vec![FieldElement::from_u64(3), FieldElement::from_u64(4)],
+        vec![FieldElement::from_u64(5), FieldElement::from_u64(6)],
+    ];
+    let detector = FrozenWireDetector::new().with_min_samples(3);
+
+    let findings = detector.run(&executor, &witnesses);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].severity, zk_core::Severity::Low);
 }
 
 #[test]

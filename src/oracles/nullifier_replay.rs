@@ -13,7 +13,6 @@ pub struct NullifierHeuristic;
 impl NullifierHeuristic {
     /// Detect probable nullifier wires from circuit metadata/labels
     pub fn detect(executor: &dyn CircuitExecutor) -> Vec<usize> {
-        let info = executor.circuit_info();
         let mut candidates = Vec::new();
 
         if let Some(inspector) = executor.constraint_inspector() {
@@ -48,10 +47,6 @@ impl NullifierHeuristic {
                     candidates.push(wire);
                 }
             }
-        }
-
-        if candidates.is_empty() && info.num_public_inputs > 0 {
-            candidates.push(0);
         }
 
         candidates.sort_unstable();
@@ -127,12 +122,18 @@ impl NullifierReplayScanner {
             if !base_result.success {
                 continue;
             }
+            if base_result.outputs.is_empty() {
+                continue;
+            }
 
             let nullifier_values: Vec<(usize, FieldElement)> = nullifier_wires
                 .iter()
                 .filter(|&&idx| idx < base.len())
                 .map(|&idx| (idx, base[idx].clone()))
                 .collect();
+            if nullifier_values.is_empty() {
+                continue;
+            }
 
             for _ in 0..self.replay_attempts {
                 let mut modified = base.clone();
@@ -160,7 +161,11 @@ impl NullifierReplayScanner {
                         poc: ProofOfConcept {
                             witness_a: base.clone(),
                             witness_b: Some(modified),
-                            public_inputs: Vec::new(),
+                            public_inputs: base
+                                .iter()
+                                .take(info.num_public_inputs.min(base.len()))
+                                .cloned()
+                                .collect(),
                             proof: None,
                         },
                         location: None,

@@ -756,13 +756,13 @@ impl ArithmeticOverflowOracle {
     }
 
     fn is_near_boundary(&self, value: &[u8; 32]) -> bool {
-        // Check if within 1000 of zero or modulus using exact field modulus bytes.
+        // Near-zero values are common and not overflow evidence on their own.
+        // Keep only near-modulus boundary checks for wraparound suspicion.
         const BOUNDARY_DELTA: u16 = 1000;
-        let near_zero = Self::is_small_be(value, BOUNDARY_DELTA);
         let near_max = Self::sub_be(&self.field_modulus, value)
             .as_ref()
             .is_some_and(|distance| Self::is_small_be(distance, BOUNDARY_DELTA));
-        near_zero || near_max
+        near_max
     }
 
     fn is_small_be(value: &[u8; 32], threshold: u16) -> bool {

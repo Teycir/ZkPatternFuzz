@@ -51,6 +51,11 @@ impl DeterminismOracle {
             if !baseline.success {
                 continue;
             }
+            let scoped_public_inputs: Vec<FieldElement> = witness
+                .iter()
+                .take(executor.circuit_info().num_public_inputs)
+                .cloned()
+                .collect();
 
             for rep in 1..self.repetitions {
                 let result = executor.execute_sync(witness);
@@ -65,7 +70,7 @@ impl DeterminismOracle {
                         poc: ProofOfConcept {
                             witness_a: witness.clone(),
                             witness_b: None,
-                            public_inputs: Vec::new(),
+                            public_inputs: scoped_public_inputs.clone(),
                             proof: None,
                         },
                         location: None,
@@ -85,7 +90,7 @@ impl DeterminismOracle {
                         poc: ProofOfConcept {
                             witness_a: witness.clone(),
                             witness_b: None,
-                            public_inputs: Vec::new(),
+                            public_inputs: scoped_public_inputs.clone(),
                             proof: None,
                         },
                         location: None,

@@ -114,3 +114,37 @@ fn test_arithmetic_overflow_boundary_ignored_without_public_inputs() {
     // With no observable public interface, boundary-only output signals are inapplicable.
     assert!(oracle.check(&test_case, &output).is_none());
 }
+
+#[test]
+fn test_arithmetic_overflow_boundary_does_not_flag_near_zero_values() {
+    let mut oracle = ArithmeticOverflowOracle::new().with_public_input_count(1);
+    let test_case = TestCase {
+        inputs: vec![FieldElement::from_u64(1)],
+        expected_output: None,
+        metadata: zk_core::TestMetadata::default(),
+    };
+    let output = vec![FieldElement::from_u64(1)];
+
+    // Near-zero outputs are common valid values and must not be treated as overflow hints.
+    assert!(oracle.check(&test_case, &output).is_none());
+}
+
+#[test]
+fn test_arithmetic_overflow_boundary_keeps_near_modulus_signal() {
+    let mut modulus = [0u8; 32];
+    modulus[30] = 0x0b;
+    modulus[31] = 0xb8; // 3000
+    let mut oracle = ArithmeticOverflowOracle::new_with_modulus(modulus).with_public_input_count(1);
+    let test_case = TestCase {
+        inputs: vec![FieldElement::from_u64(1)],
+        expected_output: None,
+        metadata: zk_core::TestMetadata::default(),
+    };
+    let output = vec![FieldElement::from_u64(2501)]; // distance 499 from modulus
+
+    let finding = oracle
+        .check(&test_case, &output)
+        .expect("near-modulus boundary hint should still be emitted");
+    assert_eq!(finding.attack_type, AttackType::ArithmeticOverflow);
+    assert_eq!(finding.severity, Severity::Medium);
+}
