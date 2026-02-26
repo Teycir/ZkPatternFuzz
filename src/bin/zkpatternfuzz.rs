@@ -4,11 +4,21 @@ use clap::{Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
+
+#[path = "zkpatternfuzz/zkpatternfuzz_env.rs"]
+mod zkpatternfuzz_env;
+#[path = "zkpatternfuzz/zkpatternfuzz_readiness.rs"]
+mod zkpatternfuzz_readiness;
+
+use zkpatternfuzz_env::{expand_env_placeholders, has_unresolved_env_placeholder};
+use zkpatternfuzz_readiness::{ensure_local_runtime_requirements, preflight_template_paths};
 
 const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
 const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
@@ -124,7 +134,10 @@ struct Args {
     #[arg(long, default_value_t = false)]
     emit_reason_tsv: bool,
 
-    /// Write compact JSON findings report for this batch run
+    /// Optional extra output path for findings JSON.
+    /// A timestamped `findings.json` is emitted under
+    /// `<scan_output_root>/ResultJsonTimestamped/<timestamp>/` only when the
+    /// campaign completes successfully.
     #[arg(long)]
     report_json: Option<String>,
 
@@ -643,75 +656,6 @@ fn apply_file_config(args: &mut Args, cfg: BatchFileConfig) -> anyhow::Result<Ef
         env,
         extra_args: cfg.extra_args,
     })
-}
-
-fn expand_env_placeholders(input: &str) -> String {
-    let chars: Vec<char> = input.chars().collect();
-    let mut i = 0usize;
-    let mut out = String::new();
-
-    while i < chars.len() {
-        if chars[i] != '$' {
-            out.push(chars[i]);
-            i += 1;
-            continue;
-        }
-
-        if i + 1 < chars.len() && chars[i + 1] == '{' {
-            let mut j = i + 2;
-            while j < chars.len() && chars[j] != '}' {
-                j += 1;
-            }
-            if j >= chars.len() {
-                out.push(chars[i]);
-                i += 1;
-                continue;
-            }
-
-            let inner: String = chars[i + 2..j].iter().collect();
-            let placeholder = format!("${{{}}}", inner);
-            if let Some((var, _default_ignored)) = inner.split_once(":-") {
-                match std::env::var(var) {
-                    Ok(value) => out.push_str(&value),
-                    Err(std::env::VarError::NotPresent) => out.push_str(&placeholder),
-                    Err(e) => panic!("Invalid environment variable {}: {}", var, e),
-                }
-            } else {
-                match std::env::var(&inner) {
-                    Ok(value) => out.push_str(&value),
-                    Err(std::env::VarError::NotPresent) => out.push_str(&placeholder),
-                    Err(e) => panic!("Invalid environment variable {}: {}", inner, e),
-                }
-            }
-            i = j + 1;
-            continue;
-        }
-
-        let mut j = i + 1;
-        if j < chars.len() && (chars[j].is_ascii_alphabetic() || chars[j] == '_') {
-            while j < chars.len() && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
-                j += 1;
-            }
-            let var: String = chars[i + 1..j].iter().collect();
-            let placeholder = format!("${}", var);
-            match std::env::var(&var) {
-                Ok(value) => out.push_str(&value),
-                Err(std::env::VarError::NotPresent) => out.push_str(&placeholder),
-                Err(e) => panic!("Invalid environment variable {}: {}", var, e),
-            }
-            i = j;
-            continue;
-        }
-
-        out.push(chars[i]);
-        i += 1;
-    }
-
-    out
-}
-
-fn has_unresolved_env_placeholder(input: &str) -> bool {
-    input.contains("${") || input.contains('$')
 }
 
 fn validate_pattern_only_yaml(path: &Path) -> anyhow::Result<()> {
@@ -1284,6 +1228,17 @@ fn validate_template_compatibility(
     template: &TemplateInfo,
     family_override: Family,
 ) -> anyhow::Result<Family> {
+    if template.family != Family::Auto
+        && family_override != Family::Auto
+        && template.family != family_override
+    {
+        anyhow::bail!(
+            "Template '{}' family '{}' is incompatible with override '{}'",
+            template.file_name,
+            template.family.as_str(),
+            family_override.as_str()
+        );
+    }
     let effective = effective_family(template.family, family_override);
     Ok(effective)
 }
@@ -1859,7 +1814,10 @@ fn write_report_json(
         .iter()
         .filter(|reason| reason.finding_count > 0)
         .count();
-    let total_findings = reasons.iter().map(|reason| reason.finding_count).sum::<usize>();
+    let total_findings = reasons
+        .iter()
+        .map(|reason| reason.finding_count)
+        .sum::<usize>();
     let high_confidence_patterns = reasons
         .iter()
         .filter(|reason| reason.high_confidence_detected)
@@ -1879,8 +1837,14 @@ fn write_report_json(
             pattern_path: reason.template_path.clone(),
             output_suffix: reason.suffix.clone(),
             reason_code: reason.reason_code.clone(),
-            status: reason.status.clone().unwrap_or_else(|| "unknown".to_string()),
-            stage: reason.stage.clone().unwrap_or_else(|| "unknown".to_string()),
+            status: reason
+                .status
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
+            stage: reason
+                .stage
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string()),
             finding_count: reason.finding_count,
             high_confidence_detected: reason.high_confidence_detected,
             matched: reason.finding_count > 0,
@@ -1932,6 +1896,90 @@ fn write_report_json(
     let encoded = serde_json::to_string_pretty(&report)?;
     fs::write(path, encoded)
         .with_context(|| format!("Failed to write report JSON '{}'", path.display()))?;
+    Ok(())
+}
+
+fn create_timestamped_result_dir(scan_output_root: &Path) -> anyhow::Result<PathBuf> {
+    let ts = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
+    let dir = scan_output_root.join("ResultJsonTimestamped").join(ts);
+    fs::create_dir_all(&dir).with_context(|| {
+        format!(
+            "Failed to create timestamped result directory '{}'",
+            dir.display()
+        )
+    })?;
+    Ok(dir)
+}
+
+fn append_run_log(path: &Path, message: impl AsRef<str>) -> anyhow::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!("Failed to create run log directory '{}'", parent.display())
+        })?;
+    }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("Failed to open run log '{}'", path.display()))?;
+    writeln!(file, "{}", message.as_ref())
+        .with_context(|| format!("Failed to write run log '{}'", path.display()))?;
+    Ok(())
+}
+
+fn append_run_log_best_effort(path: &Path, message: impl AsRef<str>) {
+    if let Err(err) = append_run_log(path, message) {
+        eprintln!("run.log write failed ({}): {:#}", path.display(), err);
+    }
+}
+
+fn is_error_reason(reason: &TemplateOutcomeReason) -> bool {
+    !matches!(
+        reason.reason_code.as_str(),
+        "completed" | "critical_findings_detected"
+    )
+}
+
+fn write_error_log(
+    path: &Path,
+    reasons: &[TemplateOutcomeReason],
+    failures: usize,
+    gate2_ok: bool,
+    gate3_ok: bool,
+    dry_run: bool,
+) -> anyhow::Result<()> {
+    let mut lines = Vec::<String>::new();
+    lines.push(format!("generated_utc={}", Utc::now().to_rfc3339()));
+    lines.push(format!("dry_run={}", dry_run));
+    lines.push(format!("gate2_ok={}", gate2_ok));
+    lines.push(format!("gate3_ok={}", gate3_ok));
+    lines.push(format!("failed_patterns={}", failures));
+
+    let mut error_count = 0usize;
+    for reason in reasons {
+        if !is_error_reason(reason) {
+            continue;
+        }
+        error_count += 1;
+        lines.push(format!(
+            "template={} suffix={} reason_code={} status={} stage={} finding_count={}",
+            reason.template_file,
+            reason.suffix,
+            reason.reason_code,
+            reason.status.as_deref().unwrap_or("unknown"),
+            reason.stage.as_deref().unwrap_or("unknown"),
+            reason.finding_count,
+        ));
+    }
+
+    if error_count == 0 {
+        lines.push("no_errors_detected".to_string());
+    } else {
+        lines.push(format!("error_entries={}", error_count));
+    }
+
+    fs::write(path, lines.join("\n") + "\n")
+        .with_context(|| format!("Failed to write error log '{}'", path.display()))?;
     Ok(())
 }
 
@@ -2274,7 +2322,12 @@ fn main() -> anyhow::Result<()> {
     let target_circuit_raw = args.target_circuit.as_deref().ok_or_else(|| {
         anyhow::anyhow!("Missing required --target-circuit (unless --list-catalog is used)")
     })?;
-    let target_circuit = expand_env_placeholders(target_circuit_raw);
+    let target_circuit = expand_env_placeholders(target_circuit_raw).with_context(|| {
+        format!(
+            "Failed to resolve environment placeholders in target_circuit '{}'",
+            target_circuit_raw
+        )
+    })?;
     if has_unresolved_env_placeholder(&target_circuit) {
         anyhow::bail!(
             "Unresolved env placeholder in target_circuit '{}'. Set required environment variables.",
@@ -2298,11 +2351,7 @@ fn main() -> anyhow::Result<()> {
             signature_dupes.len()
         );
         for (dup, kept) in signature_dupes.iter().take(20) {
-            eprintln!(
-                "  - {} -> kept {}",
-                dup.path.display(),
-                kept.path.display()
-            );
+            eprintln!("  - {} -> kept {}", dup.path.display(), kept.path.display());
         }
     }
 
@@ -2319,23 +2368,208 @@ fn main() -> anyhow::Result<()> {
     let batch_started_at = Instant::now();
 
     println!("Gate 1/3 (expected templates): {}", expected_count);
+    let scan_output_root = resolve_scan_output_root(args.output_root.as_deref())?;
+    let timestamped_result_dir = create_timestamped_result_dir(&scan_output_root)?;
+    let timestamped_report_path = timestamped_result_dir.join("findings.json");
+    let timestamped_error_log = timestamped_result_dir.join("errors.log");
+    let timestamped_run_log = timestamped_result_dir.join("run.log");
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        format!(
+            "start_utc={} step=gate1_expected_templates expected_patterns={}",
+            Utc::now().to_rfc3339(),
+            expected_count
+        ),
+    );
+    let template_paths: Vec<PathBuf> = selected_with_family
+        .iter()
+        .map(|(template, _)| template.path.clone())
+        .collect();
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        format!(
+            "step=template_preflight status=started templates={}",
+            template_paths.len()
+        ),
+    );
+    if let Err(err) = preflight_template_paths(&template_paths, validate_pattern_only_yaml) {
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!("step=template_preflight status=failed error={}", err),
+        );
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "end_utc={} campaign_success=false dry_run={} failure=template_preflight",
+                Utc::now().to_rfc3339(),
+                args.dry_run
+            ),
+        );
+        if let Err(log_err) =
+            write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
+        {
+            eprintln!(
+                "Failed to write early error log '{}': {:#}",
+                timestamped_error_log.display(),
+                log_err
+            );
+        }
+        return Err(err);
+    }
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        "step=template_preflight status=completed".to_string(),
+    );
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        format!(
+            "step=local_readiness status=started framework={} target_circuit={}",
+            args.framework, target_circuit
+        ),
+    );
+    if let Err(err) =
+        ensure_local_runtime_requirements(&args.framework, &target_circuit, &target_circuit_path)
+    {
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!("step=local_readiness status=failed error={}", err),
+        );
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "end_utc={} campaign_success=false dry_run={} failure=local_readiness",
+                Utc::now().to_rfc3339(),
+                args.dry_run
+            ),
+        );
+        if let Err(log_err) =
+            write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
+        {
+            eprintln!(
+                "Failed to write early error log '{}': {:#}",
+                timestamped_error_log.display(),
+                log_err
+            );
+        }
+        return Err(err);
+    }
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        "step=local_readiness status=completed".to_string(),
+    );
 
     let bin_path = PathBuf::from("target/release/zk-fuzzer");
     if args.build {
-        let status = Command::new("cargo")
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "step=build_zk_fuzzer status=started bin={}",
+                bin_path.display()
+            ),
+        );
+        let status = match Command::new("cargo")
             .args(["build", "--release", "--bin", "zk-fuzzer"])
-            .status()?;
+            .status()
+        {
+            Ok(status) => status,
+            Err(err) => {
+                append_run_log_best_effort(
+                    &timestamped_run_log,
+                    format!(
+                        "step=build_zk_fuzzer status=failed error=cargo_command_failed detail={}",
+                        err
+                    ),
+                );
+                append_run_log_best_effort(
+                    &timestamped_run_log,
+                    format!(
+                        "end_utc={} campaign_success=false dry_run={} failure=build_zk_fuzzer_command",
+                        Utc::now().to_rfc3339(),
+                        args.dry_run
+                    ),
+                );
+                if let Err(log_err) =
+                    write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
+                {
+                    eprintln!(
+                        "Failed to write early error log '{}': {:#}",
+                        timestamped_error_log.display(),
+                        log_err
+                    );
+                }
+                return Err(anyhow::anyhow!(
+                    "Failed to execute cargo build for zk-fuzzer: {}",
+                    err
+                ));
+            }
+        };
         if !status.success() {
+            append_run_log_best_effort(
+                &timestamped_run_log,
+                "step=build_zk_fuzzer status=failed".to_string(),
+            );
+            append_run_log_best_effort(
+                &timestamped_run_log,
+                format!(
+                    "end_utc={} campaign_success=false dry_run={} failure=build_zk_fuzzer",
+                    Utc::now().to_rfc3339(),
+                    args.dry_run
+                ),
+            );
+            if let Err(err) =
+                write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
+            {
+                eprintln!(
+                    "Failed to write early error log '{}': {:#}",
+                    timestamped_error_log.display(),
+                    err
+                );
+            }
             anyhow::bail!("cargo build --release --bin zk-fuzzer failed");
         }
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            "step=build_zk_fuzzer status=completed".to_string(),
+        );
     } else if !bin_path.exists() {
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "step=build_zk_fuzzer status=missing_binary path={}",
+                bin_path.display()
+            ),
+        );
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "end_utc={} campaign_success=false dry_run={} failure=missing_binary",
+                Utc::now().to_rfc3339(),
+                args.dry_run
+            ),
+        );
+        if let Err(err) =
+            write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
+        {
+            eprintln!(
+                "Failed to write early error log '{}': {:#}",
+                timestamped_error_log.display(),
+                err
+            );
+        }
         anyhow::bail!(
             "zk-fuzzer binary not found at '{}' and --build=false",
             bin_path.display()
         );
+    } else {
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "step=build_zk_fuzzer status=skipped_existing_binary path={}",
+                bin_path.display()
+            ),
+        );
     }
 
-    let scan_output_root = resolve_scan_output_root(args.output_root.as_deref())?;
     let artifacts_root = scan_output_root.join(".scan_run_artifacts");
 
     let run_cfg_base = ScanRunConfig {
@@ -2386,6 +2620,15 @@ fn main() -> anyhow::Result<()> {
         } else {
             "enabled"
         }
+    );
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        format!(
+            "step=execute_templates status=started templates={} jobs={} dry_run={}",
+            selected_with_family.len(),
+            jobs,
+            args.dry_run
+        ),
     );
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(jobs)
@@ -2487,11 +2730,57 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    if let Some(path_raw) = args.report_json.as_deref() {
-        let path = PathBuf::from(path_raw);
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        format!(
+            "step=execute_templates status=completed executed={} failures={} duration_secs={:.3} avg_rate={:.3}",
+            executed, failures, duration_secs, avg_rate
+        ),
+    );
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        format!(
+            "step=gate2 status={}",
+            if gate2_ok { "pass" } else { "fail" }
+        ),
+    );
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        format!(
+            "step=gate3 status={}",
+            if gate3_ok { "pass" } else { "fail" }
+        ),
+    );
+    for reason in reasons.iter().filter(|reason| is_error_reason(reason)) {
+        append_run_log_best_effort(
+            &timestamped_run_log,
+            format!(
+                "error template={} suffix={} reason_code={} status={} stage={} finding_count={}",
+                reason.template_file,
+                reason.suffix,
+                reason.reason_code,
+                reason.status.as_deref().unwrap_or("unknown"),
+                reason.stage.as_deref().unwrap_or("unknown"),
+                reason.finding_count
+            ),
+        );
+    }
+
+    write_error_log(
+        &timestamped_error_log,
+        &reasons,
+        failures,
+        gate2_ok,
+        gate3_ok,
+        args.dry_run,
+    )?;
+
+    let has_reason_errors = reasons.iter().any(is_error_reason);
+    let campaign_success = !args.dry_run && gate2_ok && gate3_ok && !has_reason_errors;
+    if campaign_success {
         write_report_json(
             &args,
-            &path,
+            &timestamped_report_path,
             &target_circuit,
             &reasons,
             expected_count,
@@ -2499,8 +2788,43 @@ fn main() -> anyhow::Result<()> {
             failures,
             &scan_output_root,
         )?;
-        println!("Wrote findings report JSON: {}", path.display());
+        if let Some(path_raw) = args.report_json.as_deref() {
+            let path = PathBuf::from(path_raw);
+            if path != timestamped_report_path {
+                write_report_json(
+                    &args,
+                    &path,
+                    &target_circuit,
+                    &reasons,
+                    expected_count,
+                    executed,
+                    failures,
+                    &scan_output_root,
+                )?;
+            }
+            println!("Wrote findings report JSON: {}", path.display());
+        }
+    } else {
+        println!(
+            "Skipped findings JSON because campaign did not complete successfully (or dry run)."
+        );
     }
+    println!(
+        "Wrote timestamped result bundle: {}",
+        timestamped_result_dir.display()
+    );
+    append_run_log_best_effort(
+        &timestamped_run_log,
+        format!(
+            "end_utc={} campaign_success={} dry_run={} gate2_ok={} gate3_ok={} failures={}",
+            Utc::now().to_rfc3339(),
+            campaign_success,
+            args.dry_run,
+            gate2_ok,
+            gate3_ok,
+            failures
+        ),
+    );
 
     if !gate2_ok || !gate3_ok {
         std::process::exit(1);
