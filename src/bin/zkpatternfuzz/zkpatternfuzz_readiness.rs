@@ -8,8 +8,25 @@ fn find_binary_on_path(name: &str) -> bool {
     let Some(path_os) = std::env::var_os("PATH") else {
         return false;
     };
+    let has_extension = Path::new(name).extension().is_some();
 
-    std::env::split_paths(&path_os).any(|dir| dir.join(name).is_file())
+    std::env::split_paths(&path_os).any(|dir| {
+        if dir.join(name).is_file() {
+            return true;
+        }
+        if cfg!(windows) && !has_extension {
+            let exts = std::env::var_os("PATHEXT")
+                .map(|raw| raw.to_string_lossy().to_string())
+                .unwrap_or_else(|| ".COM;.EXE;.BAT;.CMD".to_string());
+            for ext in exts.split(';').filter(|ext| !ext.trim().is_empty()) {
+                let candidate = dir.join(format!("{}{}", name, ext.trim()));
+                if candidate.is_file() {
+                    return true;
+                }
+            }
+        }
+        false
+    })
 }
 
 fn require_binary_on_path(binary: &str, reason: &str) -> anyhow::Result<()> {

@@ -3,7 +3,8 @@
 //! This module defines the data model for chain specifications, traces, and findings.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::OnceLock;
 use zk_core::{AttackType, FieldElement, Finding, ProofOfConcept, Severity};
 
 /// Specification for a multi-step chain scenario (parsed from YAML)
@@ -119,7 +120,7 @@ impl ChainSpec {
             .assertions
             .iter()
             .map(|a| a.remap_after_swap(i, j))
-            .collect();
+            .collect::<Option<Vec<_>>>()?;
 
         Some(Self {
             name: format!("{}_swap_{}_{}", self.name, i, j),
@@ -153,7 +154,7 @@ impl ChainSpec {
             .assertions
             .iter()
             .map(|a| a.remap_after_insertion(index))
-            .collect();
+            .collect::<Option<Vec<_>>>()?;
 
         Some(Self {
             name: format!("{}_dup_{}", self.name, index),
@@ -396,12 +397,12 @@ impl InputWiring {
         match self {
             InputWiring::Fresh => vec![],
             InputWiring::FromPriorOutput { step, .. } => vec![*step],
-            InputWiring::Mixed { prior, .. } => {
-                let mut steps: Vec<_> = prior.iter().map(|(s, _, _)| *s).collect();
-                steps.sort();
-                steps.dedup();
-                steps
-            }
+            InputWiring::Mixed { prior, .. } => prior
+                .iter()
+                .map(|(s, _, _)| *s)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
             InputWiring::Constant { .. } => vec![],
         }
     }
@@ -476,7 +477,8 @@ impl CrossStepAssertion {
             } else {
                 Some(idx)
             }
-        })?;
+        })
+        .ok()??;
 
         Some(Self {
             name: self.name.clone(),
@@ -487,7 +489,7 @@ impl CrossStepAssertion {
     }
 
     /// Remap step indices after steps at positions i and j have been swapped.
-    pub fn remap_after_swap(&self, i: usize, j: usize) -> Self {
+    pub fn remap_after_swap(&self, i: usize, j: usize) -> Option<Self> {
         let new_relation = remap_step_indices_in_relation(&self.relation, |idx| {
             if idx == i {
                 Some(j)
@@ -496,82 +498,78 @@ impl CrossStepAssertion {
             } else {
                 Some(idx)
             }
-        });
-        let new_relation = match new_relation {
-            Some(value) => value,
-            None => {
-                panic!(
-                    "Invalid relation during swap remap (relation='{}', i={}, j={})",
-                    self.relation, i, j
-                )
-            }
-        };
+        })
+        .ok()??;
 
-        Self {
+        Some(Self {
             name: self.name.clone(),
             relation: new_relation,
             severity: self.severity.clone(),
             description: self.description.clone(),
-        }
+        })
     }
 
     /// Remap step indices after a step has been inserted (duplicated) at position.
     /// All indices > position are incremented by 1.
-    pub fn remap_after_insertion(&self, inserted_at: usize) -> Self {
+    pub fn remap_after_insertion(&self, inserted_at: usize) -> Option<Self> {
         let new_relation = remap_step_indices_in_relation(&self.relation, |idx| {
             if idx > inserted_at {
                 Some(idx + 1)
             } else {
                 Some(idx)
             }
-        });
-        let new_relation = match new_relation {
-            Some(value) => value,
-            None => {
-                panic!(
-                    "Invalid relation during insertion remap (relation='{}', inserted_at={})",
-                    self.relation, inserted_at
-                )
-            }
-        };
+        })
+        .ok()??;
 
-        Self {
+        Some(Self {
             name: self.name.clone(),
             relation: new_relation,
             severity: self.severity.clone(),
             description: self.description.clone(),
-        }
+        })
     }
 }
 
 /// Helper function to remap step indices in a relation string.
 /// The mapper function takes an index and returns the new index, or None if the index is invalid.
-fn remap_step_indices_in_relation<F>(relation: &str, mapper: F) -> Option<String>
+fn remap_step_indices_in_relation<F>(relation: &str, mapper: F) -> Result<Option<String>, String>
 where
     F: Fn(usize) -> Option<usize>,
 {
     use regex::Regex;
 
+    static STEP_REMAP_REGEX: OnceLock<Result<Regex, regex::Error>> = OnceLock::new();
+
     // Match step[N] where N is a number (not *)
-    let re = match Regex::new(r"step\s*\[\s*(\d+)\s*\]") {
-        Ok(re) => re,
-        Err(err) => panic!("Invalid step remap regex pattern: {}", err),
-    };
+    let re = STEP_REMAP_REGEX
+        .get_or_init(|| Regex::new(r"step\s*\[\s*(\d+)\s*\]"))
+        .as_ref()
+        .map_err(|err| format!("Invalid step remap regex pattern: {}", err))?;
 
     let mut result = String::new();
     let mut last_end = 0;
     let mut all_valid = true;
 
     for caps in re.captures_iter(relation) {
-        let full_match = caps.get(0)?;
-        let idx_str = caps.get(1)?.as_str();
-        let idx: usize = match idx_str.parse() {
-            Ok(idx) => idx,
-            Err(err) => panic!(
+        let Some(full_match) = caps.get(0) else {
+            return Err(format!(
+                "Regex capture missing full match in relation '{}'",
+                relation
+            ));
+        };
+        let Some(idx_capture) = caps.get(1) else {
+            return Err(format!(
+                "Regex capture missing step index in relation '{}'",
+                relation
+            ));
+        };
+        let idx_str = idx_capture.as_str();
+        let idx: usize = idx_str.parse().map_err(|err| {
+            format!(
                 "Invalid step index '{}' in relation '{}': {}",
                 idx_str, relation, err
-            ),
-        };
+            )
+        })?;
 
         // Apply the mapper
         match mapper(idx) {
@@ -588,11 +586,11 @@ where
     }
 
     if !all_valid {
-        return None;
+        return Ok(None);
     }
 
     result.push_str(&relation[last_end..]);
-    Some(result)
+    Ok(Some(result))
 }
 
 /// Runtime trace of a chain execution
@@ -831,28 +829,33 @@ impl ChainFinding {
         self
     }
 
-    /// Convert to a standard Finding for integration with existing reporting
-    pub fn to_finding(&self) -> Finding {
-        let severity = match self.finding.severity.to_lowercase().as_str() {
+    fn parsed_severity(&self) -> Severity {
+        match self.finding.severity.to_lowercase().as_str() {
             "critical" => Severity::Critical,
             "high" => Severity::High,
             "medium" => Severity::Medium,
             "low" => Severity::Low,
             _ => Severity::Info,
-        };
+        }
+    }
+
+    /// Convert to a standard Finding for integration with existing reporting.
+    pub fn try_to_finding(&self) -> Result<Finding, String> {
+        let severity = self.parsed_severity();
 
         // CRITICAL FIX: Capture all L_min steps, not just first 2
         // This enables reproduction of deep chain bugs (L_min >= 3)
-        let witness_a = self.trace.steps.first().map(|s| s.inputs.clone());
-        let witness_a = match witness_a {
-            Some(value) => value,
-            None => {
-                panic!(
+        let witness_a = self
+            .trace
+            .steps
+            .first()
+            .map(|s| s.inputs.clone())
+            .ok_or_else(|| {
+                format!(
                     "Cannot convert ChainFinding to Finding without at least one trace step (spec='{}')",
                     self.spec_name
                 )
-            }
-        };
+            })?;
 
         // For L_min > 2, we need to capture all step inputs
         // Use witness_b for step 2, and embed remaining steps in description
@@ -897,7 +900,7 @@ impl ChainFinding {
             .take(10) // Limit to avoid huge PoCs
             .collect();
 
-        Finding {
+        Ok(Finding {
             attack_type: AttackType::CircuitComposition, // Use composition type for chain findings
             severity,
             description: full_description,
@@ -909,6 +912,30 @@ impl ChainFinding {
             },
             location: self.finding.location.clone(),
             class: None,
+        })
+    }
+
+    /// Convert to a standard Finding for integration with existing reporting.
+    /// If conversion fails, return a degraded finding instead of panicking.
+    pub fn to_finding(&self) -> Finding {
+        match self.try_to_finding() {
+            Ok(finding) => finding,
+            Err(err) => Finding {
+                attack_type: AttackType::CircuitComposition,
+                severity: self.parsed_severity(),
+                description: format!(
+                    "[Chain: {} | L_min: {}] {} (degraded conversion: {})",
+                    self.spec_name, self.l_min, self.finding.description, err
+                ),
+                poc: ProofOfConcept {
+                    witness_a: Vec::new(),
+                    witness_b: None,
+                    public_inputs: Vec::new(),
+                    proof: None,
+                },
+                location: self.finding.location.clone(),
+                class: None,
+            },
         }
     }
 

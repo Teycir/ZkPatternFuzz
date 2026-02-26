@@ -4,15 +4,18 @@
 //! named CircuitExecutors, producing a ChainTrace that records the full execution.
 
 use super::types::{ChainRunResult, ChainSpec, ChainTrace, InputWiring, StepTrace};
+use parking_lot::Mutex;
 use rand::Rng;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
 use std::thread;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use zk_core::{CircuitExecutor, ExecutionResult, FieldElement};
 
 const MAX_CHAIN_EXECUTORS: usize = 1024;
+const MAX_DETACHED_STEP_WORKERS: usize = 8;
 
 /// Executes chain specifications against circuit executors
 pub struct ChainRunner {
@@ -22,11 +25,52 @@ pub struct ChainRunner {
     timeout_per_step: Duration,
     /// Maximum chain length to prevent infinite chains
     max_chain_length: usize,
+    /// Timed-out step workers that could not be cancelled.
+    detached_timed_out_workers: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl ChainRunner {
     fn elapsed_ms(start: Instant) -> u64 {
         start.elapsed().as_millis().min(u64::MAX as u128) as u64
+    }
+
+    fn reap_timed_out_workers(&self) {
+        let mut workers = self.detached_timed_out_workers.lock();
+        if workers.is_empty() {
+            return;
+        }
+
+        let mut still_running = Vec::with_capacity(workers.len());
+        for handle in workers.drain(..) {
+            if handle.is_finished() {
+                if let Err(panic_payload) = handle.join() {
+                    tracing::warn!(
+                        "Detached timed-out worker panicked: {}",
+                        Self::panic_message(panic_payload)
+                    );
+                }
+            } else {
+                still_running.push(handle);
+            }
+        }
+        *workers = still_running;
+    }
+
+    fn can_spawn_step_worker(&self) -> bool {
+        self.reap_timed_out_workers();
+        let workers = self.detached_timed_out_workers.lock();
+        workers.len() < MAX_DETACHED_STEP_WORKERS
+    }
+
+    fn track_detached_worker(&self, handle: JoinHandle<()>) {
+        let mut workers = self.detached_timed_out_workers.lock();
+        workers.push(handle);
+        if workers.len() >= MAX_DETACHED_STEP_WORKERS {
+            tracing::error!(
+                "Step timeout worker pool saturated ({} running). New steps will fail fast until workers drain.",
+                workers.len()
+            );
+        }
     }
 
     fn execute_step_with_timeout(
@@ -38,6 +82,14 @@ impl ChainRunner {
         if self.timeout_per_step.is_zero() {
             let result = executor.execute_sync(inputs);
             return Ok((result, Self::elapsed_ms(exec_start)));
+        }
+        if !self.can_spawn_step_worker() {
+            tracing::error!(
+                "Refusing to spawn step worker: {} timed-out workers still active (limit {}).",
+                self.detached_timed_out_workers.lock().len(),
+                MAX_DETACHED_STEP_WORKERS
+            );
+            return Err(Self::elapsed_ms(exec_start));
         }
 
         let (tx, rx) = mpsc::channel();
@@ -72,10 +124,8 @@ impl ChainRunner {
                         );
                     }
                 } else {
-                    tracing::error!(
-                        "Step execution timed out while worker thread is still running; \
-                         worker is detached and may continue in background"
-                    );
+                    tracing::error!("Step execution timed out; tracking detached worker thread");
+                    self.track_detached_worker(handle);
                 }
                 Err(Self::elapsed_ms(exec_start))
             }
@@ -120,6 +170,7 @@ impl ChainRunner {
             executors,
             timeout_per_step: Duration::from_secs(30),
             max_chain_length: 100,
+            detached_timed_out_workers: Mutex::new(Vec::new()),
         })
     }
 

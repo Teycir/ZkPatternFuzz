@@ -8,7 +8,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -30,13 +30,17 @@ const HALO2_MIN_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_MIN_EXTERNAL_TIMEO
 const HALO2_USE_HOST_CARGO_HOME_ENV: &str = "ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME";
 const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES";
 const HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV: &str = "ZK_FUZZER_HALO2_TOOLCHAIN_CASCADE_LIMIT";
+const HALO2_DEFAULT_BATCH_TIMEOUT_ENV: &str = "ZKF_HALO2_DEFAULT_TIMEOUT_SECS";
 const CAIRO_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS";
 const SCARB_DOWNLOAD_TIMEOUT_ENV: &str = "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS";
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
 const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
+const DEFAULT_BATCH_TIMEOUT_SECS: u64 = 1_800;
+const DEFAULT_HALO2_BATCH_TIMEOUT_SECS: u64 = 3_600;
 const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
 const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
 const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
+static RUN_ROOT_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Parser, Debug)]
 #[command(name = "zkpatternfuzz")]
@@ -122,8 +126,8 @@ struct Args {
     #[arg(long, default_value_t = 50_000)]
     iterations: u64,
 
-    /// Timeout per run (seconds)
-    #[arg(long, default_value_t = 1_800)]
+    /// Timeout per run (seconds). Halo2 uses a higher framework default when this is left unset.
+    #[arg(long, default_value_t = DEFAULT_BATCH_TIMEOUT_SECS)]
     timeout: u64,
 
     /// Root directory for scan output artifacts (overrides ZKF_SCAN_OUTPUT_ROOT)
@@ -317,12 +321,12 @@ impl BatchProgress {
     }
 
     fn record(&self, template_file: &str, success: bool) -> String {
-        let completed = self.completed.fetch_add(1, Ordering::Relaxed) + 1;
-        if !success {
-            self.failed.fetch_add(1, Ordering::Relaxed);
-        }
-
-        let failed = self.failed.load(Ordering::Relaxed);
+        let completed = self.completed.fetch_add(1, Ordering::SeqCst) + 1;
+        let failed = if success {
+            self.failed.load(Ordering::SeqCst)
+        } else {
+            self.failed.fetch_add(1, Ordering::SeqCst) + 1
+        };
         let succeeded = completed.saturating_sub(failed);
         let elapsed_secs = self.started_at.elapsed().as_secs_f64();
 
@@ -1126,6 +1130,24 @@ fn halo2_effective_external_timeout_secs(framework: &str, requested_timeout: u64
     requested_timeout.max(floor)
 }
 
+fn effective_batch_timeout_secs(framework: &str, requested_timeout: u64) -> u64 {
+    // Keep explicit user/config timeout values unchanged.
+    if requested_timeout != DEFAULT_BATCH_TIMEOUT_SECS {
+        return requested_timeout;
+    }
+    if !framework.eq_ignore_ascii_case("halo2") {
+        return requested_timeout;
+    }
+
+    let halo2_default = std::env::var(HALO2_DEFAULT_BATCH_TIMEOUT_ENV)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_HALO2_BATCH_TIMEOUT_SECS);
+
+    requested_timeout.max(halo2_default)
+}
+
 fn push_unique_nonempty(values: &mut Vec<String>, candidate: impl Into<String>) {
     let candidate = candidate.into();
     let trimmed = candidate.trim();
@@ -1351,17 +1373,15 @@ fn reserve_batch_scan_run_root(artifacts_root: &Path) -> anyhow::Result<String> 
         )
     })?;
 
-    // Keep run-root naming stable while avoiding collisions for concurrent batch invocations.
-    for _ in 0..120 {
-        let ts = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-        let candidate = format!("scan_run{}", ts);
+    // Process-safe reservation via atomic create_dir; candidate includes pid + monotonic nonce.
+    for _ in 0..512 {
+        let ts = Utc::now().format("%Y%m%d_%H%M%S_%3f").to_string();
+        let nonce = RUN_ROOT_NONCE.fetch_add(1, Ordering::Relaxed);
+        let candidate = format!("scan_run{}_p{}_n{}", ts, std::process::id(), nonce);
         let reservation = artifacts_root.join(&candidate);
         match std::fs::create_dir(&reservation) {
             Ok(_) => return Ok(candidate),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
-                std::thread::sleep(std::time::Duration::from_millis(1100));
-                continue;
-            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(err) => {
                 return Err(anyhow::anyhow!(
                     "Failed to reserve batch scan run root '{}' under '{}': {}",
@@ -2263,6 +2283,14 @@ fn main() -> anyhow::Result<()> {
     } else {
         EffectiveFileConfig::default()
     };
+    let requested_timeout = args.timeout;
+    args.timeout = effective_batch_timeout_secs(&args.framework, args.timeout);
+    if args.timeout != requested_timeout {
+        eprintln!(
+            "Halo2 timeout default applied: {}s -> {}s (override with --timeout or {})",
+            requested_timeout, args.timeout, HALO2_DEFAULT_BATCH_TIMEOUT_ENV
+        );
+    }
     let family_override = parse_family(&args.family)?;
 
     let explicit_patterns = split_csv(args.pattern_yaml.as_deref());

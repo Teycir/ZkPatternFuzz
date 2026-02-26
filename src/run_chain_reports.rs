@@ -352,7 +352,18 @@ pub(crate) fn save_standard_chain_report(
     reporting: ReportingConfig,
     run_execution_count: u64,
 ) -> anyhow::Result<()> {
-    let standard_findings: Vec<_> = chain_findings.iter().map(|cf| cf.to_finding()).collect();
+    let standard_findings: Vec<_> = chain_findings
+        .iter()
+        .map(|cf| {
+            cf.try_to_finding().map_err(|err| {
+                anyhow::anyhow!(
+                    "Failed to convert chain finding '{}' into a standard finding: {}",
+                    cf.spec_name,
+                    err
+                )
+            })
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
     let mut report = FuzzReport::new(
         campaign_name.to_string(),
         standard_findings,

@@ -8,37 +8,30 @@ fn is_env_var_continue(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_'
 }
 
-fn parse_braced_placeholder(inner: &str) -> anyhow::Result<(&str, Option<&str>)> {
-    if let Some((var, default_value)) = inner.split_once(":-") {
-        let var = var.trim();
-        if var.is_empty() {
-            bail!("Invalid placeholder '${{{}}}': empty variable name", inner);
-        }
-        if !var.chars().all(is_env_var_continue)
-            || !is_env_var_start(var.chars().next().unwrap_or_default())
-        {
-            bail!(
-                "Invalid placeholder '${{{}}}': variable name '{}' is not a valid identifier",
-                inner,
-                var
-            );
-        }
-        return Ok((var, Some(default_value)));
-    }
-
-    let var = inner.trim();
-    if var.is_empty() {
+fn validate_env_var_name(var: &str, inner: &str) -> anyhow::Result<()> {
+    let mut chars = var.chars();
+    let Some(first) = chars.next() else {
         bail!("Invalid placeholder '${{{}}}': empty variable name", inner);
-    }
-    if !var.chars().all(is_env_var_continue)
-        || !is_env_var_start(var.chars().next().unwrap_or_default())
-    {
+    };
+    if !is_env_var_start(first) || !chars.all(is_env_var_continue) {
         bail!(
             "Invalid placeholder '${{{}}}': variable name '{}' is not a valid identifier",
             inner,
             var
         );
     }
+    Ok(())
+}
+
+fn parse_braced_placeholder(inner: &str) -> anyhow::Result<(&str, Option<&str>)> {
+    if let Some((var, default_value)) = inner.split_once(":-") {
+        let var = var.trim();
+        validate_env_var_name(var, inner)?;
+        return Ok((var, Some(default_value)));
+    }
+
+    let var = inner.trim();
+    validate_env_var_name(var, inner)?;
     Ok((var, None))
 }
 

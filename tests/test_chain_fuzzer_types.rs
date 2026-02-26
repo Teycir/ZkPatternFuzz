@@ -162,7 +162,7 @@ fn test_assertion_remap_after_swap() {
     let assertion = CrossStepAssertion::equal("test", 0, 0, 2, 0);
 
     // Swap steps 0 and 2 - indices should swap
-    let remapped = assertion.remap_after_swap(0, 2);
+    let remapped = assertion.remap_after_swap(0, 2).unwrap();
     assert!(remapped
         .relation
         .contains("step[2].out[0] == step[0].in[0]"));
@@ -174,7 +174,7 @@ fn test_assertion_remap_after_insertion() {
     let assertion = CrossStepAssertion::equal("test", 0, 0, 2, 0);
 
     // Insert step at 1 - index 0 stays 0, index 2 becomes 3
-    let remapped = assertion.remap_after_insertion(1);
+    let remapped = assertion.remap_after_insertion(1).unwrap();
     assert!(remapped.relation.contains("step[0]"));
     assert!(remapped.relation.contains("step[3]"));
     assert!(!remapped.relation.contains("step[2]"));
