@@ -25,7 +25,6 @@ fn cairo_external_command_timeout() -> std::time::Duration {
 const SCARB_BIN_CANDIDATES_ENV: &str = "ZK_FUZZER_SCARB_BIN_CANDIDATES";
 const SCARB_VERSION_CANDIDATES_ENV: &str = "ZK_FUZZER_SCARB_VERSION_CANDIDATES";
 const SCARB_TOOLCHAIN_DIR_ENV: &str = "ZK_FUZZER_SCARB_TOOLCHAIN_DIR";
-const SCARB_AUTO_DOWNLOAD_ENV: &str = "ZK_FUZZER_SCARB_AUTO_DOWNLOAD";
 const SCARB_ARCHIVE_DIR_ENV: &str = "ZK_FUZZER_SCARB_ARCHIVE_DIR";
 const SCARB_CACHE_ENV: &str = "SCARB_CACHE";
 const SCARB_CONFIG_ENV: &str = "SCARB_CONFIG";
@@ -46,18 +45,6 @@ fn push_unique_candidate(candidates: &mut Vec<String>, candidate: impl Into<Stri
         return;
     }
     candidates.push(candidate);
-}
-
-fn env_flag_enabled(name: &str, default_value: bool) -> bool {
-    match std::env::var(name) {
-        Ok(raw) => match raw.trim().to_ascii_lowercase().as_str() {
-            "1" | "true" | "yes" | "on" => true,
-            "0" | "false" | "no" | "off" => false,
-            _ => default_value,
-        },
-        Err(std::env::VarError::NotPresent) => default_value,
-        Err(_) => default_value,
-    }
 }
 
 fn parse_semver_part(raw: &str) -> Option<u64> {
@@ -375,7 +362,6 @@ fn ensure_versioned_scarb_binary(version: &str) -> Option<String> {
         return None;
     }
 
-    let allow_download = env_flag_enabled(SCARB_AUTO_DOWNLOAD_ENV, true);
     let local_archive_dir = std::env::var_os(SCARB_ARCHIVE_DIR_ENV)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from);
@@ -405,40 +391,12 @@ fn ensure_versioned_scarb_binary(version: &str) -> Option<String> {
         }
 
         if !archive_ready {
-            if !allow_download {
-                continue;
-            }
-
-            let download_url = format!(
-                "https://github.com/software-mansion/scarb/releases/download/v{parsed}/{archive_name}"
+            tracing::debug!(
+                "Skipping scarb toolchain candidate version {} ({}) because local archive '{}' is unavailable and remote auto-download is disabled",
+                parsed,
+                triple,
+                archive_name
             );
-
-            let curl_args = vec![
-                "-L".to_string(),
-                "--fail".to_string(),
-                "--retry".to_string(),
-                "2".to_string(),
-                "-o".to_string(),
-                archive_path.display().to_string(),
-                download_url,
-            ];
-            if let Err(err) = run_toolchain_setup_command(
-                "curl",
-                &curl_args,
-                "Failed downloading versioned scarb toolchain",
-            ) {
-                tracing::warn!(
-                    "Skipping scarb toolchain candidate version {} ({}) due to setup error: {}",
-                    parsed,
-                    triple,
-                    err
-                );
-                continue;
-            }
-            archive_ready = true;
-        }
-
-        if !archive_ready {
             continue;
         }
 

@@ -11,8 +11,6 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 
 def _run_git(repo_path: Path, args: Iterable[str]) -> str:
@@ -56,29 +54,6 @@ def select_latest_stable_release(releases: List[Dict[str, Any]]) -> Dict[str, An
     return stable[0]
 
 
-def _fetch_releases(repo_slug: str, timeout_seconds: int) -> List[Dict[str, Any]]:
-    url = f"https://api.github.com/repos/{repo_slug}/releases?per_page=50"
-    req = Request(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "zkpatternfuzz-zkevm-release-tracker",
-        },
-    )
-    try:
-        with urlopen(req, timeout=timeout_seconds) as response:
-            payload = response.read().decode("utf-8")
-    except HTTPError as exc:
-        raise RuntimeError(f"GitHub releases API returned HTTP {exc.code} for {repo_slug}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"Failed to reach GitHub releases API for {repo_slug}: {exc}") from exc
-
-    data = json.loads(payload)
-    if not isinstance(data, list):
-        raise RuntimeError("Unexpected GitHub releases API payload: expected JSON list")
-    return data
-
-
 def _load_releases_from_file(path: Path) -> List[Dict[str, Any]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
@@ -90,20 +65,12 @@ def _resolve_tag_commit(repo_path: Path, tag_name: str) -> str:
     if not tag_name:
         raise ValueError("Latest release is missing tag_name")
 
-    raw = _run_git(
-        repo_path,
-        ["ls-remote", "--tags", "origin", f"refs/tags/{tag_name}", f"refs/tags/{tag_name}^{{}}"],
-    )
-    lines = [line.strip() for line in raw.splitlines() if line.strip()]
-    if not lines:
-        raise RuntimeError(
-            f"Release tag '{tag_name}' was not found on origin remote for {repo_path}"
-        )
-
-    # Prefer dereferenced annotated-tag commit (^{}), recovery to direct tag line.
-    deref = [line for line in lines if line.endswith("^{}")]
-    chosen = deref[0] if deref else lines[0]
-    commit = chosen.split()[0]
+    # Local-only resolution: require the tag to exist in the local checkout.
+    # Prefer dereferenced annotated-tag commit (^{}), then fallback to direct tag.
+    try:
+        commit = _run_git(repo_path, ["rev-parse", f"refs/tags/{tag_name}^{{}}"])
+    except RuntimeError:
+        commit = _run_git(repo_path, ["rev-parse", f"refs/tags/{tag_name}"])
     if len(commit) < 7:
         raise RuntimeError(f"Invalid commit hash resolved for tag {tag_name}: {commit!r}")
     return commit
@@ -146,27 +113,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument(
         "--releases-json",
-        default="",
-        help="Optional local JSON file with GitHub releases payload (offline/testing)",
+        required=True,
+        help="Required local JSON file with releases payload (network fetch disabled)",
     )
     parser.add_argument(
         "--release-commit",
         default="",
-        help=(
-            "Optional explicit commit for latest release tag (strict offline mode). "
-            "When set, skips origin tag lookup."
-        ),
+        help=("Optional explicit commit for latest release tag. When set, skips local tag lookup."),
     )
     parser.add_argument(
         "--output",
         default="artifacts/dependency_tracking/zkevm_upstream_latest.json",
         help="Output report JSON path",
-    )
-    parser.add_argument(
-        "--timeout-seconds",
-        type=int,
-        default=15,
-        help="Network timeout when querying releases API",
     )
     parser.add_argument(
         "--enforce",
@@ -192,15 +150,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     local_head = _run_git(repo_path, ["rev-parse", "HEAD"])
     origin_url = _run_git(repo_path, ["config", "--get", "remote.origin.url"])
 
-    source = "github_api"
-    if args.releases_json:
-        releases_path = Path(args.releases_json)
-        if not releases_path.is_absolute():
-            releases_path = (root_dir / releases_path).resolve()
-        releases = _load_releases_from_file(releases_path)
-        source = f"file:{releases_path}"
-    else:
-        releases = _fetch_releases(args.repo_slug, args.timeout_seconds)
+    releases_path = Path(args.releases_json)
+    if not releases_path.is_absolute():
+        releases_path = (root_dir / releases_path).resolve()
+    releases = _load_releases_from_file(releases_path)
+    source = f"file:{releases_path}"
 
     latest = select_latest_stable_release(releases)
     tag_name = str(latest.get("tag_name") or "").strip()

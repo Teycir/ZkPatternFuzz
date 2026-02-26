@@ -16,9 +16,9 @@ cargo run --release --bin zk-fuzzer -- bins bootstrap
 ```
 
 Notes:
-- Circom is pulled from official GitHub release assets with SHA-256 verification.
-- snarkjs is installed locally under `bins/node_modules` and linked to `bins/bin/snarkjs`.
-- ptau is copied from the local fixture (or downloaded via `--ptau-url` with `--ptau-sha256`).
+- Circom is sourced from an already-installed local binary in `PATH`.
+- snarkjs is sourced from an already-installed local binary in `PATH`.
+- ptau is copied from the local fixture with checksum verification.
 
 ---
 

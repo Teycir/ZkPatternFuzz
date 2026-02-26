@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 use zk_fuzzer::config::Framework;
 use zk_fuzzer::executor::{
-    CairoExecutor, CircomExecutor, CircuitExecutor, ExecutorFactory, ExecutorFactoryOptions,
-    ExecutionCoverage, Halo2Executor, NoirExecutor,
+    CairoExecutor, CircomExecutor, CircuitExecutor, ExecutionCoverage, ExecutorFactory,
+    ExecutorFactoryOptions, Halo2Executor, NoirExecutor,
 };
 use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CairoTarget, CircomTarget, Halo2Target, NoirTarget, TargetCircuit};
@@ -955,12 +955,12 @@ fn test_backend_availability() {
     if !require_real_backends("test_backend_availability") {
         return;
     }
-    let circom_version = CircomTarget::check_circom_available()
-        .expect("Circom not available. Install with: npm install -g circom");
-    let snarkjs_version = CircomTarget::check_snarkjs_available()
-        .expect("snarkjs not available. Install with: npm install -g snarkjs");
-    let noir_version = NoirTarget::check_nargo_available()
-        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+    let circom_version =
+        CircomTarget::check_circom_available().expect("Circom not available on local PATH.");
+    let snarkjs_version =
+        CircomTarget::check_snarkjs_available().expect("snarkjs not available on local PATH.");
+    let noir_version =
+        NoirTarget::check_nargo_available().expect("Noir not available on local PATH.");
     let (cairo_version, cairo_str) = CairoTarget::check_cairo_available()
         .expect("Cairo not available. Ensure cairo-compile and cairo-run are on PATH");
 
@@ -1089,10 +1089,8 @@ fn test_circom_integration() {
     if !require_real_backends("test_circom_integration") {
         return;
     }
-    CircomTarget::check_circom_available()
-        .expect("Circom not available. Install with: npm install -g circom");
-    CircomTarget::check_snarkjs_available()
-        .expect("snarkjs not available. Install with: npm install -g snarkjs");
+    CircomTarget::check_circom_available().expect("Circom not available on local PATH.");
+    CircomTarget::check_snarkjs_available().expect("snarkjs not available on local PATH.");
 
     let circuit_path = circom_test_circuit("multiplier");
     assert!(
@@ -1118,8 +1116,7 @@ fn test_noir_integration() {
     if !require_real_backends("test_noir_integration") {
         return;
     }
-    NoirTarget::check_nargo_available()
-        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+    NoirTarget::check_nargo_available().expect("Noir not available on local PATH.");
 
     let project_path = noir_project_path("multiplier");
     assert!(
@@ -1145,8 +1142,7 @@ fn test_noir_local_prove_verify_smoke() {
     if !require_real_backends("test_noir_local_prove_verify_smoke") {
         return;
     }
-    NoirTarget::check_nargo_available()
-        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+    NoirTarget::check_nargo_available().expect("Noir not available on local PATH.");
 
     let project_path = noir_project_path("multiplier");
     assert!(
@@ -1236,10 +1232,8 @@ fn test_circom_constraint_coverage() {
     if !require_real_backends("test_circom_constraint_coverage") {
         return;
     }
-    CircomTarget::check_circom_available()
-        .expect("Circom not available. Install with: npm install -g circom");
-    CircomTarget::check_snarkjs_available()
-        .expect("snarkjs not available. Install with: npm install -g snarkjs");
+    CircomTarget::check_circom_available().expect("Circom not available on local PATH.");
+    CircomTarget::check_snarkjs_available().expect("snarkjs not available on local PATH.");
 
     let circuit_path = circom_test_circuit("multiplier");
     assert!(
@@ -1266,8 +1260,7 @@ fn test_noir_constraint_coverage() {
     if !require_real_backends("test_noir_constraint_coverage") {
         return;
     }
-    NoirTarget::check_nargo_available()
-        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+    NoirTarget::check_nargo_available().expect("Noir not available on local PATH.");
 
     let project_path = noir_project_path("multiplier");
     assert!(
@@ -1294,8 +1287,7 @@ fn test_noir_external_nargo_prove_verify_smoke() {
     if !require_real_backends("test_noir_external_nargo_prove_verify_smoke") {
         return;
     }
-    NoirTarget::check_nargo_available()
-        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+    NoirTarget::check_nargo_available().expect("Noir not available on local PATH.");
 
     let mut failures = Vec::new();
     let mut runnable = 0usize;
@@ -1331,8 +1323,7 @@ fn test_noir_external_nargo_fuzz_parity() {
     if !require_real_backends("test_noir_external_nargo_fuzz_parity") {
         return;
     }
-    NoirTarget::check_nargo_available()
-        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+    NoirTarget::check_nargo_available().expect("Noir not available on local PATH.");
 
     let mut failures = Vec::new();
     let mut runnable = 0usize;
@@ -1368,8 +1359,7 @@ fn test_noir_constraint_coverage_edge_cases() {
     if !require_real_backends("test_noir_constraint_coverage_edge_cases") {
         return;
     }
-    NoirTarget::check_nargo_available()
-        .expect("Noir not available. Install with: curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash");
+    NoirTarget::check_nargo_available().expect("Noir not available on local PATH.");
 
     let local_project = noir_project_path("multiplier");
     assert!(
@@ -1525,9 +1515,7 @@ fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
     }
 
     if let Err(err) = configure_halo2_real_env() {
-        println!(
-            "test_halo2_ext005_ezkl_replay_base_execution_failure: SKIP_INFRA ({err})"
-        );
+        println!("test_halo2_ext005_ezkl_replay_base_execution_failure: SKIP_INFRA ({err})");
         return;
     }
 
@@ -1546,10 +1534,10 @@ fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
     };
 
     // Fixed witness copied from EXT-005 continuation finding #1.
-    let witness = vec![
-        FieldElement::from_hex("0x0e0a77c19a0fdf2f406e2b6f7879462e36fc76959f60cd29ac96341c4ffffffa")
-            .expect("valid finding witness hex"),
-    ];
+    let witness = vec![FieldElement::from_hex(
+        "0x0e0a77c19a0fdf2f406e2b6f7879462e36fc76959f60cd29ac96341c4ffffffa",
+    )
+    .expect("valid finding witness hex")];
 
     let result = executor.execute_sync(&witness);
     assert!(

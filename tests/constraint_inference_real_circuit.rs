@@ -24,11 +24,11 @@ use zk_fuzzer::targets::CircomTarget;
 async fn test_constraint_inference_range_bypass() {
     // Check prerequisites
     if CircomTarget::check_circom_available().is_err() {
-        eprintln!("Skipping: circom not available. Install with: npm install -g circom");
+        eprintln!("Skipping: circom not available on local PATH.");
         return;
     }
     if CircomTarget::check_snarkjs_available().is_err() {
-        eprintln!("Skipping: snarkjs not available. Install with: npm install -g snarkjs");
+        eprintln!("Skipping: snarkjs not available on local PATH.");
         return;
     }
 

@@ -38,10 +38,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-action@stable
-        with:
-          components: clippy
+      - name: Verify Rust toolchain availability (pre-provisioned)
+        run: |
+          rustc --version || exit 1
+          cargo --version || exit 1
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -55,10 +55,8 @@ jobs:
             ${{ runner.os }}-cargo-benchmark-
             ${{ runner.os }}-cargo-
 
-      - name: Install Z3
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libz3-dev z3
+      - name: Verify Z3 availability
+        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
 
       - name: Build release binary
         run: cargo build --release
@@ -140,14 +138,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: gh-pages
-          fetch-depth: 0
         continue-on-error: true
 
-      - name: Download current results
-        uses: actions/download-artifact@v4
-        with:
-          name: benchmark-results-${{ github.sha }}
-          path: new-results
+      - name: Local-only mode notice
+        run: |
+          echo "Cross-job artifact download is disabled in local-only mode."
+          mkdir -p new-results
 
       - name: Update history
         run: |
@@ -195,11 +191,10 @@ jobs:
       - name: Checkout PR
         uses: actions/checkout@v4
 
-      - name: Download PR results
-        uses: actions/download-artifact@v4
-        with:
-          name: benchmark-results-${{ github.sha }}
-          path: pr-results
+      - name: Local-only mode notice
+        run: |
+          echo "Cross-job artifact download is disabled in local-only mode."
+          mkdir -p pr-results
 
       - name: Compare with base
         run: |

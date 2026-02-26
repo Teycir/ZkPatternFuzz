@@ -4,8 +4,8 @@
 //! Run with: cargo test --test circom_backend_test -- --ignored
 //!
 //! Prerequisites:
-//! - circom CLI installed (npm install -g circom)
-//! - snarkjs installed (npm install -g snarkjs)
+//! - circom CLI available on local PATH
+//! - snarkjs available on local PATH
 
 use std::path::PathBuf;
 use zk_fuzzer::fuzzer::FieldElement;

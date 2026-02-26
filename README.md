@@ -56,7 +56,7 @@ For portable static Z3 linking (CI/release-style builds), add `--features z3-sta
 ### Local Circom Toolchain Bootstrap
 
 ```bash
-# Install/update local circom + snarkjs + ptau under ./bins
+# Stage local circom + snarkjs + ptau under ./bins (no remote download)
 cargo run --release --bin zk-fuzzer -- bins bootstrap
 
 # Dry run only
@@ -64,9 +64,9 @@ cargo run --release --bin zk-fuzzer -- --dry-run bins bootstrap
 ```
 
 Notes:
-- `circom` is downloaded from official GitHub release assets and SHA-256 verified.
-- `snarkjs` is installed locally under `bins/node_modules` and linked to `bins/bin/snarkjs`.
-- `ptau` defaults to the repo fixture (`tests/circuits/build/pot12_final.ptau`) with checksum verification.
+- `circom` is sourced from an already-installed local binary in `PATH` and linked/copied into `bins/bin`.
+- `snarkjs` is sourced from an already-installed local binary in `PATH` and linked/copied into `bins/bin`.
+- `ptau` is copied from the local fixture (`tests/circuits/build/pot12_final.ptau`) with checksum verification.
 
 ## Quick Start
 

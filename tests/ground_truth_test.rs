@@ -418,7 +418,7 @@ fn ground_truth_full_evaluation() {
     }
 
     println!("\n⚠️  Full evaluation requires circom installation");
-    println!("   Run: npm install -g snarkjs && brew install circom (or equivalent)\n");
+    println!("   Ensure local circom and snarkjs binaries are already on PATH.\n");
 }
 
 /// Campaign YAML generator for known bug circuits

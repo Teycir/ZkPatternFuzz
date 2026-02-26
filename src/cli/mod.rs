@@ -203,19 +203,19 @@ pub enum BinsCommands {
         /// Local bins directory root
         #[arg(long, default_value = "bins")]
         bins_dir: String,
-        /// Circom release version (tag or semver, e.g. v2.2.3 or 2.2.3)
+        /// Expected circom version hint (tag or semver, e.g. v2.2.3 or 2.2.3)
         #[arg(long, default_value = "v2.2.3")]
         circom_version: String,
-        /// snarkjs npm version
+        /// Expected snarkjs version hint
         #[arg(long, default_value = "0.7.5")]
         snarkjs_version: String,
         /// Output filename under <bins_dir>/ptau/
         #[arg(long, default_value = "pot12_final.ptau")]
         ptau_file: String,
-        /// Optional ptau download URL (when omitted, uses local fixture)
+        /// Deprecated: remote ptau URL bootstrap is disabled (local fixture only)
         #[arg(long)]
         ptau_url: Option<String>,
-        /// Expected SHA-256 for ptau file (required when --ptau-url is used)
+        /// Expected SHA-256 for local ptau file
         #[arg(long)]
         ptau_sha256: Option<String>,
         /// Skip circom bootstrap
@@ -227,7 +227,7 @@ pub enum BinsCommands {
         /// Skip ptau bootstrap
         #[arg(long, default_value_t = false)]
         skip_ptau: bool,
-        /// Force re-download/reinstall even when local artifacts already exist
+        /// Force re-stage local assets even when local artifacts already exist
         #[arg(long, default_value_t = false)]
         force: bool,
     },

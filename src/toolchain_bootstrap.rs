@@ -1,15 +1,13 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Command;
 
 const DEFAULT_PTAU_FIXTURE_REL: &str = "tests/circuits/build/pot12_final.ptau";
 const DEFAULT_PTAU_FIXTURE_SHA256: &str =
     "7ffca1fa4a9a4b432075d353311c44bb6ffcf42def5ae41353ac7b15c81ef49c";
-const CIRCOM_RELEASES_BY_TAG_URL: &str = "https://api.github.com/repos/iden3/circom/releases/tags";
 
 #[derive(Debug, Clone)]
 pub struct BinsBootstrapOptions {
@@ -24,19 +22,6 @@ pub struct BinsBootstrapOptions {
     pub skip_ptau: bool,
     pub force: bool,
     pub dry_run: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct CircomRelease {
-    tag_name: String,
-    assets: Vec<CircomReleaseAsset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CircomReleaseAsset {
-    name: String,
-    digest: Option<String>,
-    browser_download_url: String,
 }
 
 pub fn run_bins_bootstrap(options: &BinsBootstrapOptions) -> Result<()> {
@@ -67,7 +52,7 @@ pub fn run_bins_bootstrap(options: &BinsBootstrapOptions) -> Result<()> {
         bootstrap_circom(options, &bin_dir)?;
     }
     if !options.skip_snarkjs {
-        bootstrap_snarkjs(options, &bins_dir, &bin_dir)?;
+        bootstrap_snarkjs(options, &bin_dir)?;
     }
     if !options.skip_ptau {
         bootstrap_ptau(options, &ptau_dir)?;
@@ -93,54 +78,48 @@ fn bootstrap_circom(options: &BinsBootstrapOptions, bin_dir: &Path) -> Result<()
     }
 
     let requested_tag = normalize_circom_tag(&options.circom_version);
+    let source = find_executable_in_path("circom").ok_or_else(|| {
+        anyhow::anyhow!(
+            "circom bootstrap is local-only. Install circom in PATH or place '{}' manually under '{}'. Requested version '{}'.",
+            circom_name,
+            bin_dir.display(),
+            requested_tag
+        )
+    })?;
+
     if options.dry_run {
         println!(
-            "[DRY RUN] download circom {} to '{}'",
-            requested_tag,
+            "[DRY RUN] link/copy local circom '{}' -> '{}'",
+            source.display(),
             circom_path.display()
         );
         return Ok(());
     }
 
-    let release = fetch_circom_release(&requested_tag)?;
-    let asset = select_circom_asset_for_platform(&release)?;
-    let expected_sha = asset
-        .digest
-        .as_deref()
-        .and_then(|value| value.strip_prefix("sha256:"))
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Circom release asset '{}' has no sha256 digest in GitHub metadata",
-                asset.name
-            )
-        })?;
-
-    let tmp_path = circom_path.with_extension("download");
-    download_with_curl(&asset.browser_download_url, &tmp_path).with_context(|| {
-        format!(
-            "Failed downloading circom asset '{}' from {}",
-            asset.name, asset.browser_download_url
-        )
-    })?;
-    verify_sha256_file(&tmp_path, expected_sha)?;
-    install_file_atomically(&tmp_path, &circom_path)?;
-    make_executable(&circom_path)?;
+    if !paths_equivalent(&source, &circom_path) {
+        replace_with_link_or_copy(&source, &circom_path)?;
+        make_executable(&circom_path)?;
+    }
 
     let version = probe_command_output(&circom_path, &["--version"])
         .unwrap_or_else(|_| "version probe failed".to_string());
+    if !version_matches_request(&version, &requested_tag) {
+        println!(
+            "circom: staged local binary version '{}' which does not match requested '{}'",
+            version.trim(),
+            requested_tag
+        );
+    }
     println!(
-        "circom: installed '{}' ({})",
+        "circom: staged '{}' from local '{}' ({})",
         circom_path.display(),
+        source.display(),
         version.trim()
     );
     Ok(())
 }
 
-fn bootstrap_snarkjs(
-    options: &BinsBootstrapOptions,
-    bins_dir: &Path,
-    bin_dir: &Path,
-) -> Result<()> {
+fn bootstrap_snarkjs(options: &BinsBootstrapOptions, bin_dir: &Path) -> Result<()> {
     let snarkjs_link_name = if cfg!(windows) {
         "snarkjs.cmd"
     } else {
@@ -155,60 +134,52 @@ fn bootstrap_snarkjs(
         return Ok(());
     }
 
-    let npm_package = format!("snarkjs@{}", options.snarkjs_version.trim());
+    let source = find_executable_in_path("snarkjs").ok_or_else(|| {
+        anyhow::anyhow!(
+            "snarkjs bootstrap is local-only. Install snarkjs in PATH or place '{}' manually under '{}'. Requested version '{}'.",
+            snarkjs_link_name,
+            bin_dir.display(),
+            options.snarkjs_version.trim()
+        )
+    })?;
+
     if options.dry_run {
         println!(
-            "[DRY RUN] npm --prefix '{}' install --no-audit --no-fund --save-exact {}",
-            bins_dir.display(),
-            npm_package
-        );
-        println!(
-            "[DRY RUN] link '{}' -> '{}'",
-            snarkjs_path.display(),
-            bins_dir
-                .join("node_modules")
-                .join(".bin")
-                .join(snarkjs_link_name)
-                .display()
+            "[DRY RUN] link/copy local snarkjs '{}' -> '{}'",
+            source.display(),
+            snarkjs_path.display()
         );
         return Ok(());
     }
 
-    run_command(
-        Command::new("npm")
-            .arg("--prefix")
-            .arg(bins_dir)
-            .arg("install")
-            .arg("--no-audit")
-            .arg("--no-fund")
-            .arg("--save-exact")
-            .arg(npm_package),
-        "npm install snarkjs",
-    )?;
-
-    let source = bins_dir
-        .join("node_modules")
-        .join(".bin")
-        .join(snarkjs_link_name);
-    if !source.exists() {
-        anyhow::bail!(
-            "Expected snarkjs executable '{}' after npm install, but it was not found",
-            source.display()
-        );
+    if !paths_equivalent(&source, &snarkjs_path) {
+        replace_with_link_or_copy(&source, &snarkjs_path)?;
     }
-
-    replace_with_link_or_copy(&source, &snarkjs_path)?;
     let version =
         probe_snarkjs_version(&snarkjs_path).unwrap_or_else(|_| "version probe failed".to_string());
+    if !version_matches_request(&version, options.snarkjs_version.trim()) {
+        println!(
+            "snarkjs: staged local binary version '{}' which does not match requested '{}'",
+            version.trim(),
+            options.snarkjs_version.trim()
+        );
+    }
     println!(
-        "snarkjs: installed '{}' ({})",
+        "snarkjs: staged '{}' from local '{}' ({})",
         snarkjs_path.display(),
+        source.display(),
         version.trim()
     );
     Ok(())
 }
 
 fn bootstrap_ptau(options: &BinsBootstrapOptions, ptau_dir: &Path) -> Result<()> {
+    if options.ptau_url.is_some() {
+        anyhow::bail!(
+            "Remote ptau download is disabled. Remove --ptau-url and stage ptau locally."
+        );
+    }
+
     let file_name = options.ptau_file_name.trim();
     if file_name.is_empty() {
         anyhow::bail!("--ptau-file cannot be empty");
@@ -216,17 +187,13 @@ fn bootstrap_ptau(options: &BinsBootstrapOptions, ptau_dir: &Path) -> Result<()>
 
     let ptau_dest = ptau_dir.join(file_name);
     let expected_sha = if let Some(sha) = options.ptau_sha256.as_deref() {
-        Some(normalize_sha256_hex(sha)?)
-    } else if options.ptau_url.is_none() {
-        Some(DEFAULT_PTAU_FIXTURE_SHA256.to_string())
+        normalize_sha256_hex(sha)?
     } else {
-        None
+        DEFAULT_PTAU_FIXTURE_SHA256.to_string()
     };
 
     if ptau_dest.exists() && !options.force {
-        if let Some(expected) = expected_sha.as_deref() {
-            verify_sha256_file(&ptau_dest, expected)?;
-        }
+        verify_sha256_file(&ptau_dest, &expected_sha)?;
         verify_ptau_magic(&ptau_dest)?;
         println!(
             "ptau: using existing local file '{}' (use --force to refresh)",
@@ -236,56 +203,31 @@ fn bootstrap_ptau(options: &BinsBootstrapOptions, ptau_dir: &Path) -> Result<()>
     }
 
     if options.dry_run {
-        if let Some(url) = options.ptau_url.as_deref() {
-            println!(
-                "[DRY RUN] download ptau from '{}' to '{}'",
-                url,
-                ptau_dest.display()
-            );
-        } else {
-            println!(
-                "[DRY RUN] copy default ptau fixture '{}' to '{}'",
-                DEFAULT_PTAU_FIXTURE_REL,
-                ptau_dest.display()
-            );
-        }
+        println!(
+            "[DRY RUN] copy default ptau fixture '{}' to '{}'",
+            DEFAULT_PTAU_FIXTURE_REL,
+            ptau_dest.display()
+        );
         return Ok(());
     }
 
-    if let Some(url) = options.ptau_url.as_deref() {
-        let Some(expected) = expected_sha.as_deref() else {
-            anyhow::bail!(
-                "When --ptau-url is used, --ptau-sha256 is required for checksum verification"
-            );
-        };
-        let tmp = ptau_dest.with_extension("download");
-        download_with_curl(url, &tmp)
-            .with_context(|| format!("Failed to download ptau from '{}'", url))?;
-        verify_sha256_file(&tmp, expected)?;
-        verify_ptau_magic(&tmp)?;
-        install_file_atomically(&tmp, &ptau_dest)?;
-    } else {
-        let fixture = PathBuf::from(DEFAULT_PTAU_FIXTURE_REL);
-        if !fixture.exists() {
-            anyhow::bail!(
-                "Default ptau fixture '{}' not found. Either add it or pass --ptau-url and --ptau-sha256.",
-                fixture.display()
-            );
-        }
-        let expected = expected_sha
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("Missing expected checksum for default ptau fixture"))?;
-        verify_sha256_file(&fixture, expected)?;
-        verify_ptau_magic(&fixture)?;
-        fs::copy(&fixture, &ptau_dest).with_context(|| {
-            format!(
-                "Failed to copy ptau fixture '{}' to '{}'",
-                fixture.display(),
-                ptau_dest.display()
-            )
-        })?;
-        verify_sha256_file(&ptau_dest, expected)?;
+    let fixture = PathBuf::from(DEFAULT_PTAU_FIXTURE_REL);
+    if !fixture.exists() {
+        anyhow::bail!(
+            "Default ptau fixture '{}' not found. Stage the file locally before bootstrap.",
+            fixture.display()
+        );
     }
+    verify_sha256_file(&fixture, &expected_sha)?;
+    verify_ptau_magic(&fixture)?;
+    fs::copy(&fixture, &ptau_dest).with_context(|| {
+        format!(
+            "Failed to copy ptau fixture '{}' to '{}'",
+            fixture.display(),
+            ptau_dest.display()
+        )
+    })?;
+    verify_sha256_file(&ptau_dest, &expected_sha)?;
 
     println!("ptau: installed '{}'", ptau_dest.display());
     Ok(())
@@ -300,119 +242,54 @@ fn normalize_circom_tag(version: &str) -> String {
     }
 }
 
-fn fetch_circom_release(tag: &str) -> Result<CircomRelease> {
-    let url = format!("{}/{}", CIRCOM_RELEASES_BY_TAG_URL, tag);
-    let output = run_command_capture(
-        Command::new("curl")
-            .arg("-fsSL")
-            .arg("-H")
-            .arg("Accept: application/vnd.github+json")
-            .arg("-H")
-            .arg("User-Agent: zk-fuzzer-bootstrap")
-            .arg(url),
-        "curl circom release metadata",
-    )?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!(
-            "Failed to fetch circom release metadata for '{}': {}",
-            tag,
-            stderr.trim()
-        );
-    }
+fn find_executable_in_path(program: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    #[cfg(not(windows))]
+    let names = vec![program.to_string()];
+    #[cfg(windows)]
+    let mut names = vec![program.to_string()];
 
-    let release: CircomRelease = serde_json::from_slice(&output.stdout)
-        .context("Failed to parse circom GitHub release metadata")?;
-    Ok(release)
-}
-
-fn select_circom_asset_for_platform(release: &CircomRelease) -> Result<&CircomReleaseAsset> {
-    let names = circom_asset_candidates()?;
-    for candidate in &names {
-        if let Some(asset) = release.assets.iter().find(|asset| asset.name == *candidate) {
-            return Ok(asset);
+    #[cfg(windows)]
+    {
+        use std::ffi::OsString;
+        if Path::new(program).extension().is_none() {
+            let pathext = std::env::var_os("PATHEXT")
+                .unwrap_or_else(|| OsString::from(".EXE;.CMD;.BAT;.COM"));
+            for ext in pathext.to_string_lossy().split(';') {
+                let ext = ext.trim();
+                if ext.is_empty() {
+                    continue;
+                }
+                names.push(format!("{program}{ext}"));
+            }
         }
     }
 
-    let available = release
-        .assets
-        .iter()
-        .map(|asset| asset.name.clone())
-        .collect::<Vec<_>>();
-    anyhow::bail!(
-        "No circom asset for current platform in release '{}'. Wanted one of [{}], available [{}]",
-        release.tag_name,
-        names.join(", "),
-        available.join(", ")
-    );
-}
-
-fn circom_asset_candidates() -> Result<Vec<&'static str>> {
-    let os = std::env::consts::OS;
-    let arch = std::env::consts::ARCH;
-
-    let candidates = match (os, arch) {
-        ("linux", "x86_64") => vec!["circom-linux-amd64"],
-        ("linux", "aarch64") => vec!["circom-linux-arm64", "circom-linux-aarch64"],
-        ("macos", "x86_64") => vec!["circom-macos-amd64"],
-        ("macos", "aarch64") => vec!["circom-macos-arm64", "circom-macos-aarch64"],
-        ("windows", "x86_64") => vec!["circom-windows-amd64.exe"],
-        _ => {
-            anyhow::bail!(
-                "Unsupported platform for automatic circom bootstrap: os='{}' arch='{}'",
-                os,
-                arch
-            )
+    for dir in std::env::split_paths(&path) {
+        for name in &names {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
         }
-    };
-
-    Ok(candidates)
-}
-
-fn download_with_curl(url: &str, output_path: &Path) -> Result<()> {
-    run_command(
-        Command::new("curl")
-            .arg("-fL")
-            .arg("--retry")
-            .arg("3")
-            .arg("--connect-timeout")
-            .arg("15")
-            .arg("--max-time")
-            .arg("1800")
-            .arg("-o")
-            .arg(output_path)
-            .arg(url),
-        &format!("curl download {}", url),
-    )
-}
-
-fn install_file_atomically(from: &Path, to: &Path) -> Result<()> {
-    if to.exists() {
-        fs::remove_file(to)
-            .with_context(|| format!("Failed to remove old file '{}'", to.display()))?;
     }
-    fs::rename(from, to).with_context(|| {
-        format!(
-            "Failed to move downloaded file '{}' to '{}'",
-            from.display(),
-            to.display()
-        )
-    })?;
-    Ok(())
+
+    None
 }
 
-fn run_command(cmd: &mut Command, label: &str) -> Result<()> {
-    let output = run_command_capture(cmd, label)?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("{} failed: {}", label, stderr.trim());
+fn paths_equivalent(left: &Path, right: &Path) -> bool {
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
     }
-    Ok(())
 }
 
-fn run_command_capture(cmd: &mut Command, label: &str) -> Result<Output> {
-    cmd.output()
-        .with_context(|| format!("Failed to execute {}", label))
+fn version_matches_request(observed: &str, requested: &str) -> bool {
+    let requested = requested.trim().trim_start_matches('v');
+    if requested.is_empty() {
+        return true;
+    }
+    observed.contains(requested) || observed.contains(&format!("v{requested}"))
 }
 
 fn probe_command_output(program: &Path, args: &[&str]) -> Result<String> {

@@ -328,8 +328,6 @@ fn create_test_config(circuit_path: &Path, component: &str, framework: Framework
 }
 
 fn require_circom_tools() {
-    CircomTarget::check_circom_available()
-        .expect("Circom not available. Install with: npm install -g circom");
-    CircomTarget::check_snarkjs_available()
-        .expect("snarkjs not available. Install with: npm install -g snarkjs");
+    CircomTarget::check_circom_available().expect("Circom not available on local PATH.");
+    CircomTarget::check_snarkjs_available().expect("snarkjs not available on local PATH.");
 }
