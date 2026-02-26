@@ -11,7 +11,7 @@ nargo --version
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_integration -- --exact
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_local_prove_verify_smoke -- --exact
 ZKFUZZ_REAL_BACKENDS=1 cargo test -q --test backend_integration_tests test_noir_constraint_coverage -- --exact
-scripts/run_noir_readiness.sh --workers 2 --iterations 100 --timeout 20
+target/release/zkpatternfuzz --alias readiness_noir --framework noir --workers 2 --iterations 100 --timeout 20
 ```
 
 Then inspect:
@@ -69,7 +69,7 @@ target/release/zkpatternfuzz \
 Run all backend lanes plus aggregate dashboard:
 
 ```bash
-scripts/run_backend_readiness_lanes.sh --enforce-dashboard
+scripts/backend_readiness_dashboard.sh
 ```
 
 Default gate intent is non-Circom readiness with:

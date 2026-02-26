@@ -82,7 +82,7 @@ cargo run --release --bin zkpatternfuzz -- \
 Then build a per-backend report:
 
 ```bash
-./scripts/run_multibackend_effectiveness_sample.sh
+python3 scripts/build_backend_effectiveness_report.py --repo-root .
 ```
 
 Outputs are written under:
@@ -121,11 +121,9 @@ Use the memory profiling harness to run selected large targets under
 `/usr/bin/time -v` and capture peak RSS by backend/framework.
 
 ```bash
-./scripts/profile_large_circuit_memory.sh \
-  --max-targets 6 \
-  --max-targets-per-framework 2 \
-  --iterations 20 \
-  --timeout 20
+# Memory profiling is now integrated into the release candidate gate.
+# Use the --backend-capacity-fitness-* flags of release_candidate_gate.sh
+# or run benchmark_cross_backend_throughput.sh for throughput measurements.
 ```
 
 Artifacts:

@@ -8,19 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Validation-plan baseline artifacts and automation:
-  - Added `tests/campaigns/validation/*` templates
-  - Added `tests/scripts/*` validation utilities
-  - Added `reports/validation/*.md` baselines
-  - Added consolidated `docs/VALIDATION_RESULTS.md`
-- **Phase 3.1: MEV & Front-Running Attacks** (`src/attacks/mev.rs`, `src/attacks/front_running.rs`)
-  - MEV attack detection: ordering dependency, sandwich attacks, state leakage
-  - Front-running detection: information leakage, commitment bypass, delay attacks
-  - Price impact analyzer for DEX circuits
-  - Arbitrage detector for cross-circuit opportunities
-  - State leakage analyzer for privacy circuits
-  - DeFi audit campaign template (`campaigns/templates/defi_audit.yaml`)
-  - Comprehensive documentation (`docs/DEFI_ATTACK_GUIDE.md`)
 - **Phase 2.4: Automated Triage System** (`src/reporting/triage.rs`)
   - Confidence-based ranking of findings (0.0-1.0)
   - Cross-oracle validation bonus (multiple oracles agree = higher confidence)
@@ -205,7 +192,7 @@ The framework has been tested with various circuits and is ready for real-world 
 ### Installation
 
 ```bash
-git clone https://github.com/yourusername/ZkPatternFuzz.git
+git clone https://github.com/teycir/zkpatternfuzz.git
 cd ZkPatternFuzz
 cargo build --release
 ```
@@ -236,5 +223,5 @@ Not applicable (initial release)
 - **0.1.0** (2024-02-04): Initial release with full feature set
 - **Unreleased**: Documentation improvements
 
-[Unreleased]: https://github.com/yourusername/ZkPatternFuzz/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourusername/ZkPatternFuzz/releases/tag/v0.1.0
+[Unreleased]: https://github.com/teycir/zkpatternfuzz/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/teycir/zkpatternfuzz/releases/tag/v0.1.0

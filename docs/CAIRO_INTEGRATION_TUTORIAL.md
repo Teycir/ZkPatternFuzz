@@ -59,7 +59,7 @@ Artifacts to check:
 - run outcomes under `artifacts/backend_readiness/cairo/.scan_run_artifacts/`
 
 ```bash
-scripts/run_backend_readiness_lanes.sh --enforce-dashboard
+scripts/backend_readiness_dashboard.sh
 cat artifacts/backend_readiness/latest_report.json
 ```
 
