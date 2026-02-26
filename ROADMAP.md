@@ -1748,6 +1748,30 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 
 ---
 
+## 🎯 UX & Tooling Improvements (Post-Phase 8)
+
+### CLI/UX Quick Wins
+- [ ] Add `--list-patterns` flag (30 min, High reward) - List all available CVE patterns with descriptions
+- [ ] Shell completions (1 hr, High reward) - Generate bash/zsh/fish completions for better discoverability
+- [ ] Add `--json` global flag (2 hrs, High reward) - Structured output for CI integration
+- [ ] Progress bar for pattern loading (1 hr, Medium reward) - Shows "Loading 52 CVE patterns..." on startup
+
+### Reporting/Output Improvements
+- [ ] Markdown summary export (2 hrs, High reward) - `--format markdown` for findings; auditors paste into reports
+- [ ] SARIF output validation badge (1 hr, Medium reward) - Add GitHub Security tab integration
+- [ ] Timing breakdown in reports (2 hrs, Medium reward) - Show detection time vs proof time per pattern
+
+### Developer Experience
+- [ ] `--validate-circuit` dry-run (3 hrs, High reward) - Check if circuit compiles/executes without full fuzzing
+- [ ] Config schema validation on load (2 hrs, Medium reward) - Fail fast with line numbers on YAML errors
+- [ ] Pattern template generator (2 hrs, Medium reward) - `zk-fuzzer template new-pattern --name cveXXX` creates boilerplate
+
+
+
+
+
+---
+
 ### Post-Roadmap Execution Workflow (Deferred Additions)
 
 **Applies to:** AI semantic intent analysis, compiler fuzzing, ZK/non-ZK boundary fuzzing, and cryptographic primitive fuzzing.

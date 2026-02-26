@@ -41,6 +41,8 @@ const SCARB_DOWNLOAD_TIMEOUT_ENV: &str = "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS"
 const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
 const DEFAULT_BATCH_JOBS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_JOBS";
 const DEFAULT_BATCH_WORKERS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_WORKERS";
+const DEFAULT_BATCH_ITERATIONS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_ITERATIONS";
+const DEFAULT_BATCH_TIMEOUT_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_TIMEOUT_SECS";
 const MEMORY_GUARD_ENABLED_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_GUARD_ENABLED";
 const MEMORY_GUARD_RESERVED_MB_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_RESERVED_MB";
 const MEMORY_GUARD_MB_PER_TEMPLATE_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_MB_PER_TEMPLATE";
@@ -142,12 +144,13 @@ struct Args {
     #[arg(long, default_value_t = 42)]
     seed: u64,
 
-    /// Iterations per run
-    #[arg(long, default_value_t = 50_000)]
+    /// Iterations per run (env: ZKF_ZKPATTERNFUZZ_DEFAULT_ITERATIONS)
+    #[arg(long, env = DEFAULT_BATCH_ITERATIONS_ENV, default_value_t = 50_000)]
     iterations: u64,
 
-    /// Timeout per run (seconds). Halo2 uses a higher framework default when this is left unset.
-    #[arg(long, default_value_t = DEFAULT_BATCH_TIMEOUT_SECS)]
+    /// Timeout per run in seconds (env: ZKF_ZKPATTERNFUZZ_DEFAULT_TIMEOUT_SECS).
+    /// Halo2 uses a higher framework default when this is left unset.
+    #[arg(long, env = DEFAULT_BATCH_TIMEOUT_ENV, default_value_t = DEFAULT_BATCH_TIMEOUT_SECS)]
     timeout: u64,
 
     /// Emit per-template reason codes as TSV to stdout (for external harness ingestion)
@@ -3041,6 +3044,8 @@ fn main() -> anyhow::Result<()> {
             BUILD_CACHE_DIR_ENV,
             DEFAULT_BATCH_JOBS_ENV,
             DEFAULT_BATCH_WORKERS_ENV,
+            DEFAULT_BATCH_ITERATIONS_ENV,
+            DEFAULT_BATCH_TIMEOUT_ENV,
             MEMORY_GUARD_ENABLED_ENV,
             MEMORY_GUARD_RESERVED_MB_ENV,
             MEMORY_GUARD_MB_PER_TEMPLATE_ENV,
