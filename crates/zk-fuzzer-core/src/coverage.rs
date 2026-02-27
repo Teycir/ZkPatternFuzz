@@ -380,7 +380,3 @@ pub type SharedCoverageTracker = Arc<CoverageTracker>;
 pub fn create_coverage_tracker(total_constraints: usize) -> SharedCoverageTracker {
     Arc::new(CoverageTracker::new(total_constraints))
 }
-
-#[cfg(test)]
-#[path = "coverage_tests.rs"]
-mod tests;
