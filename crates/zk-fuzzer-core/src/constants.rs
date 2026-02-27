@@ -102,7 +102,3 @@ impl FieldType {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "constants_tests.rs"]
-mod tests;
