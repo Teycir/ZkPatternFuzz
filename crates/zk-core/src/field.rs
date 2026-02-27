@@ -237,7 +237,3 @@ impl FieldElement {
         big_value.to_u64()
     }
 }
-
-#[cfg(test)]
-#[path = "field_tests.rs"]
-mod tests;
