@@ -1959,6 +1959,53 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Outcome: `REPLAY_EXIT_STATUS=124`; run reached long-running test phase but did not produce deterministic assertion output before timeout.
   - Replay log: `artifacts/proof_runs/ext005/run_20260226_225545_ext005_adapter_replay_followup/replay.log`
   - Triage + blocker record: `triage.md`, `pending_proof.md`, `impact.md`
+- [ ] EXT-005 follow-up replay cycle (2026-02-27) still unresolved (`pending_proof`).
+  - Proof run root: `artifacts/proof_runs/ext005/run_20260227_023616_ext005_adapter_replay_followup2/`
+  - Objective/target/tool readiness artifacts: `{objective_lock.md,target_freeze.md,tool_readiness.md}`
+  - Long-window attempt (`timeout 1500s`) was manually interrupted after prolonged silent stall (`REPLAY_EXIT_STATUS=130`) with no assertion output (`replay.log`).
+  - Bounded diagnostic replay (`timeout 180s`) reproduced the stall as a strict timeout (`REPLAY_SHORT_EXIT_STATUS=124`) before assertion completion (`replay_short_timeout.log`).
+  - Triage + blocker record: `triage.md`, `pending_proof.md`, `impact.md`, `replay_command_short_timeout.txt`
+- [x] EXT-005 stabilized replay with full console progress output completed for fixed witness (`manual checks only`).
+  - Proof run root: `artifacts/proof_runs/ext005/run_20260227_030425_ext005_stable_console/`
+  - Stability hardening: replay test now emits phase heartbeats every 20s and applies default `ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS=180` when unset (`tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure`).
+  - Terminal result: `REPLAY_EXIT_STATUS=0` with complete phase trace in `replay.log`; test summary `1 passed; 0 failed`.
+  - Proof artifacts: `replay_command.txt`, `no_exploit_proof.md`, `impact.md`, `triage.md`, `target_freeze.md`, `tool_readiness.md`, `final_clearout.md`.
+  - Conclusion for this replay claim class/witness: `not_exploitable_within_bounds` on frozen snapshot; broader EXT-005 target-level closure remains separately tracked.
+
+### EXT-005 Closure Sprint (2026-02-27)
+- [ ] Close remaining EXT-005 findings one-by-one with the replay/proof bundle standard.
+  - Required per-finding artifact set: `objective_lock.md`, `target_freeze.md`, `tool_readiness.md`, `replay_command.txt`, `replay.log`, `triage.md`, `exploit_notes.md` or `no_exploit_proof.md`, `impact.md`.
+  - Artifact root convention: `artifacts/proof_runs/ext005/run_<UTC>_ext005_findingNN_{exploit|non_exploit}/`.
+- [x] `EXT-005-F01` witness `0x0e0a77c19a0fdf2f406e2b6f7879462e36fc76959f60cd29ac96341c4ffffffa` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260227_030425_ext005_stable_console/no_exploit_proof.md`).
+- [x] `EXT-005-F02` witness `0x0000000000000000000000380000000000000000000000000000000000000000` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260227_042922_ext005_finding02_stable_console_retry3/no_exploit_proof.md`).
+- [x] `EXT-005-F03` witness `0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260227_045628_ext005_finding03_stable_console/no_exploit_proof.md`).
+- [ ] `EXT-005-F04` witness `0x0000000000000000000000000000000000000000000000000000000000000000` pending replay/proof bundle.
+- [ ] `EXT-005-F05` witness `0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593efffffff` pending replay/proof bundle.
+- [ ] `EXT-005-F06` witness `0x0e0a77c19a07df2f666ca36f7879412e36fee3849f6179e4ac96341c4ffffffc` pending replay/proof bundle.
+
+- [ ] Add runtime phase timing metrics to all heavy replay tests.
+  - [x] Heartbeat visibility shipped for EXT-005 replay harness (`tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure`).
+  - [x] Emit bounded-run phase timing summary line (`phase_metrics ...`) for EXT-005 replay harness.
+  - [ ] Emit machine-readable per-phase timing line (`phase_timing_ms=<json>`) for heavy replay harnesses.
+  - [ ] Persist timing payload to `<run_dir>/phase_timing.json` for every proof bundle run.
+  - [ ] Apply timing instrumentation to current heavy replay tests:
+    - `[x]` `tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure`
+    - `tests/backend_integration_tests.rs::test_halo2_scaffold_execution_stability`
+    - `tests/backend_integration_tests.rs::test_halo2_real_circuit_constraint_coverage`
+
+- [ ] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
+
+| Target | Closure Class | Current Scope | Artifact Link |
+|---|---|---|---|
+| `EXT-003` | `exploitable` | target-level closed | `artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/exploit_notes.md` |
+| `EXT-013` | `not_exploitable_within_bounds` | target-level closed | `artifacts/external_targets/ext_batch_013/reports/evidence/EXT-013/run_20260225_ext013_relu_bounded_non_exploit/no_exploit_proof.md` |
+| `EXT-005` | `blocked` | partial closure (`F01..F03` closed; `F04..F06` open) | `artifacts/proof_runs/ext005/run_20260227_045628_ext005_finding03_stable_console/no_exploit_proof.md` |
+| `EXT-010` | `blocked` | critical findings pending deterministic exploit/non-exploit bundle | `artifacts/external_targets/ext_batch_008/reports/run_signals/report_1771891097_20260223_235817_evidence_ext010_circomlib_iszero_campaign_pid2847870/summary.json` |
+| `EXT-011` | `blocked` | critical findings pending deterministic exploit/non-exploit bundle | `artifacts/external_targets/ext_batch_008/reports/run_signals/report_1771891131_20260223_235851_evidence_ext011_circomlib_lessthan_campaign_pid2873855/summary.json` |
+| `EXT-012` | `blocked` | critical findings pending deterministic exploit/non-exploit bundle | `artifacts/external_targets/ext_batch_004/reports/run_signals/report_1771886353/summary.json` |
+| `EXT-004` | `blocked` | backend/preflight instability prevents proof closure | `artifacts/external_targets/recheck/run_signals_ext004/report_1771976147_20260224_233547_evidence_ext004_orion_scarb_campaign_pid3974196/summary.json` |
+| `EXT-008` | `blocked` | backend/preflight instability prevents proof closure | `artifacts/external_targets/ext_batch_010/run_signals/report_1771893391_20260224_003631_evidence_ext008_orion_linear_classifier_campaign_pid3096040/summary.json` |
+| `EXT-015` | `blocked` | deterministic toolchain mismatch blocker persists | `artifacts/external_targets/recheck_ext015_continue_20260225/reports/ext015_triage.md` |
 
 ### Proof Continuation (2026-02-26)
 - [x] `cveX15_scroll_missing_overflow_constraint` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
