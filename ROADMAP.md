@@ -1152,10 +1152,10 @@ gh run watch
   - Impact: Medium risk addressed - lower log-path syscall churn and reduced append contention.
 
 ### Medium Priority (P2)
-- [ ] **Bug 4**: 3,832-line monolith mixes CLI, config, framework logic, orchestration
+- [ ] **Bug 4**: 2,425-line monolith mixes CLI, config, framework logic, orchestration
   - Issue: `src/bin/zkpatternfuzz.rs` violates single responsibility principle.
   - Fix: Continue decomposing into modules: `config`, `discovery`, `execution`, `reporting`.
-  - Progress (2026-02-27): extracted run-log lifecycle helpers into `src/bin/zkpatternfuzz/run_log.rs`, reporting helpers into `src/bin/zkpatternfuzz/zkpatternfuzz_reporting.rs`, and env/default config helpers into `src/bin/zkpatternfuzz/zkpatternfuzz_config.rs`; rewired `zkpatternfuzz.rs` to consume all three modules.
+  - Progress (2026-02-27): extracted run-log lifecycle helpers into `src/bin/zkpatternfuzz/run_log.rs`, reporting helpers into `src/bin/zkpatternfuzz/zkpatternfuzz_reporting.rs`, config/env helpers (including file config parsing/application) into `src/bin/zkpatternfuzz/zkpatternfuzz_config.rs`, registry/template discovery + dedupe logic into `src/bin/zkpatternfuzz/zkpatternfuzz_discovery.rs`, and command execution/template orchestration helpers into `src/bin/zkpatternfuzz/zkpatternfuzz_execution.rs`; rewired `zkpatternfuzz.rs` to consume these modules.
   - Validation: `cargo test --test test_bin_zkpatternfuzz --quiet`, `cargo test --test test_reporting_command_timeout --quiet`.
   - Impact: Medium - maintainability and testability concerns remain until additional slices are extracted.
 

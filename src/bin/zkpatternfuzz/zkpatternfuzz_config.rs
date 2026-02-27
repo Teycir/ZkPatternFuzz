@@ -1,9 +1,11 @@
 use anyhow::Context;
+use std::collections::BTreeMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::{
-    env_var, MemoryGuardConfig, StageTimeoutConfig, BUILD_CACHE_DIR_ENV,
-    DEFAULT_BATCH_TIMEOUT_SECS, DEFAULT_HALO2_BATCH_TIMEOUT_SECS,
+    env_var, Args, BatchFileConfig, EffectiveFileConfig, MemoryGuardConfig, StageTimeoutConfig,
+    BUILD_CACHE_DIR_ENV, DEFAULT_BATCH_TIMEOUT_SECS, DEFAULT_HALO2_BATCH_TIMEOUT_SECS,
     DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES, DEFAULT_MEMORY_GUARD_LAUNCH_FLOOR_MB,
     DEFAULT_MEMORY_GUARD_MB_PER_TEMPLATE, DEFAULT_MEMORY_GUARD_MB_PER_WORKER,
     DEFAULT_MEMORY_GUARD_POLL_MS, DEFAULT_MEMORY_GUARD_RESERVED_MB, DEFAULT_MEMORY_GUARD_WAIT_SECS,
@@ -164,4 +166,139 @@ pub(super) fn resolve_results_root() -> anyhow::Result<PathBuf> {
         );
     }
     Ok(PathBuf::from(trimmed))
+}
+
+fn yaml_key(name: &str) -> serde_yaml::Value {
+    serde_yaml::Value::String(name.to_string())
+}
+
+fn env_value_to_string(value: &serde_yaml::Value) -> anyhow::Result<Option<String>> {
+    let rendered = match value {
+        serde_yaml::Value::Null => return Ok(None),
+        serde_yaml::Value::Bool(v) => {
+            if *v {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
+        }
+        serde_yaml::Value::Number(v) => v.to_string(),
+        serde_yaml::Value::String(v) => v.clone(),
+        other => anyhow::bail!(
+            "Unsupported env override value type: {:?}. Use scalar string/number/bool.",
+            other
+        ),
+    };
+    Ok(Some(rendered))
+}
+
+pub(super) fn load_batch_file_config(raw_path: &str) -> anyhow::Result<BatchFileConfig> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("--config-json cannot be empty");
+    }
+    let path = PathBuf::from(trimmed);
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read config file '{}'", path.display()))?;
+    let mut parsed: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("Failed to parse config file '{}'", path.display()))?;
+
+    if let Some(map) = parsed.as_mapping_mut() {
+        if let Some(inner) = map.get(yaml_key("run_overrides")) {
+            parsed = inner.clone();
+        } else if let Some(inner) = map.get(yaml_key("run")) {
+            parsed = inner.clone();
+        } else if let Some(inner) = map.get(yaml_key("config")) {
+            parsed = inner.clone();
+        }
+    }
+
+    if let Some(map) = parsed.as_mapping() {
+        if map.contains_key(yaml_key("output_root")) {
+            anyhow::bail!(
+                "Invalid config '{}': output_root is no longer supported; set {} in your env config file",
+                path.display(),
+                SCAN_OUTPUT_ROOT_ENV
+            );
+        }
+    }
+
+    serde_yaml::from_value(parsed).with_context(|| {
+        format!(
+            "Failed to decode config file '{}'. Expected keys such as pattern_yaml/target_circuit/workers/iterations/timeout/env.",
+            path.display()
+        )
+    })
+}
+
+pub(super) fn apply_file_config(
+    args: &mut Args,
+    cfg: BatchFileConfig,
+) -> anyhow::Result<EffectiveFileConfig> {
+    if args.target_circuit.is_none() {
+        args.target_circuit = cfg.target_circuit;
+    }
+    if args.collection.is_none() {
+        args.collection = cfg.collection;
+    }
+    if args.alias.is_none() {
+        args.alias = cfg.alias;
+    }
+    if args.template.is_none() {
+        args.template = cfg.template;
+    }
+    if args.pattern_yaml.is_none() {
+        args.pattern_yaml = cfg.pattern_yaml;
+    }
+    if let Some(value) = cfg.main_component {
+        args.main_component = value;
+    }
+    if let Some(value) = cfg.framework {
+        args.framework = value;
+    }
+    if let Some(value) = cfg.family {
+        args.family = value;
+    }
+    if let Some(value) = cfg.jobs {
+        if value == 0 {
+            anyhow::bail!("Invalid config: jobs cannot be zero");
+        }
+        args.jobs = value;
+    }
+    if let Some(value) = cfg.workers {
+        if value == 0 {
+            anyhow::bail!("Invalid config: workers cannot be zero");
+        }
+        args.workers = value;
+    }
+    if let Some(value) = cfg.seed {
+        args.seed = value;
+    }
+    if let Some(value) = cfg.iterations {
+        args.iterations = value;
+    }
+    if let Some(value) = cfg.timeout {
+        if value == 0 {
+            anyhow::bail!("Invalid config: timeout cannot be zero");
+        }
+        args.timeout = value;
+    }
+    if let Some(value) = cfg.prepare_target {
+        args.prepare_target = value;
+    }
+
+    let mut env = BTreeMap::new();
+    for (key, value) in cfg.env {
+        if key.trim().is_empty() {
+            anyhow::bail!("Invalid config: env key cannot be empty");
+        }
+        if let Some(rendered) = env_value_to_string(&value)? {
+            env.insert(key, rendered);
+        }
+    }
+
+    Ok(EffectiveFileConfig {
+        env,
+        extra_args: cfg.extra_args,
+    })
 }
