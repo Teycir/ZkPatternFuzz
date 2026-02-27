@@ -1,9 +1,6 @@
-use clap::{ArgAction, Parser, ValueEnum};
-use serde::Deserialize;
-use std::collections::BTreeMap;
+use clap::Parser;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU64;
-#[cfg(test)]
+#[allow(unused_imports)]
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
@@ -35,9 +32,11 @@ mod zkpatternfuzz_reporting;
 mod zkpatternfuzz_runtime;
 #[path = "zkpatternfuzz/zkpatternfuzz_selection.rs"]
 mod zkpatternfuzz_selection;
+#[path = "zkpatternfuzz/zkpatternfuzz_types.rs"]
+mod zkpatternfuzz_types;
 
 use checkenv::{is_set as env_is_set, var as env_var, CheckEnv};
-#[cfg(test)]
+#[allow(unused_imports)]
 use run_log::{append_run_log, run_log_file_cache};
 use run_log::{
     append_run_log_best_effort, step_failed, step_skipped, step_started, step_succeeded,
@@ -47,7 +46,7 @@ use zkpatternfuzz_batch::{
     progress_stage_is_proof, read_template_progress_update, reserve_batch_scan_run_root,
     template_progress_path, validate_template_compatibility, BatchProgress,
 };
-#[cfg(test)]
+#[allow(unused_imports)]
 use zkpatternfuzz_batch::{
     apply_memory_parallelism_guardrails_with_available, estimated_batch_memory_mb,
     parse_mem_available_kib,
@@ -57,7 +56,7 @@ use zkpatternfuzz_campaign::{
     classify_run_reason_code, collect_observed_suffixes_for_roots,
     collect_template_outcome_reasons, list_scan_run_roots, print_reason_summary,
 };
-#[cfg(test)]
+#[allow(unused_imports)]
 use zkpatternfuzz_campaign::{parse_correlation_confidence, parse_correlation_oracle_count};
 use zkpatternfuzz_config::{
     apply_file_config, effective_batch_timeout_secs, halo2_effective_external_timeout_secs,
@@ -70,7 +69,7 @@ use zkpatternfuzz_discovery::{
     validate_pattern_only_yaml,
 };
 use zkpatternfuzz_env::{expand_env_placeholders, has_unresolved_env_placeholder};
-#[cfg(test)]
+#[allow(unused_imports)]
 use zkpatternfuzz_execution::{
     finalize_pipe_capture, join_pipe_reader, run_scan, spawn_pipe_reader,
     write_stage_timeout_outcome, PipeCapture,
@@ -88,344 +87,12 @@ use zkpatternfuzz_runtime::{
     auto_halo2_toolchain_candidates, is_external_target, preflight_runtime_paths,
     prepare_target_for_framework, resolved_release_bin_path,
 };
-#[cfg(test)]
+#[allow(unused_imports)]
 use zkpatternfuzz_runtime::{parse_rustup_toolchain_names, push_unique_nonempty};
 use zkpatternfuzz_selection::{
     ensure_positive_cli_values, parse_family, resolve_batch_selection, SelectionResolution,
 };
-
-const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
-const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
-const RUN_SIGNAL_DIR_ENV: &str = "ZKF_RUN_SIGNAL_DIR";
-const BUILD_CACHE_DIR_ENV: &str = "ZKF_BUILD_CACHE_DIR";
-const SHARED_BUILD_CACHE_DIR_ENV: &str = "ZKF_SHARED_BUILD_CACHE_DIR";
-const HALO2_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS";
-const HALO2_MIN_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_HALO2_MIN_EXTERNAL_TIMEOUT_SECS";
-const HALO2_CARGO_RUN_BIN_ENV: &str = "ZK_FUZZER_HALO2_CARGO_RUN_BIN";
-const HALO2_USE_HOST_CARGO_HOME_ENV: &str = "ZK_FUZZER_HALO2_USE_HOST_CARGO_HOME";
-const HALO2_CARGO_TOOLCHAIN_CANDIDATES_ENV: &str = "ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES";
-const HALO2_TOOLCHAIN_CASCADE_LIMIT_ENV: &str = "ZK_FUZZER_HALO2_TOOLCHAIN_CASCADE_LIMIT";
-const HALO2_DEFAULT_BATCH_TIMEOUT_ENV: &str = "ZKF_HALO2_DEFAULT_TIMEOUT_SECS";
-const CAIRO_EXTERNAL_TIMEOUT_ENV: &str = "ZK_FUZZER_CAIRO_EXTERNAL_TIMEOUT_SECS";
-const SCARB_DOWNLOAD_TIMEOUT_ENV: &str = "ZK_FUZZER_SCARB_DOWNLOAD_TIMEOUT_SECS";
-const HIGH_CONFIDENCE_MIN_ORACLES_ENV: &str = "ZKF_HIGH_CONFIDENCE_MIN_ORACLES";
-const DEFAULT_BATCH_JOBS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_JOBS";
-const DEFAULT_BATCH_WORKERS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_WORKERS";
-const DEFAULT_BATCH_ITERATIONS_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_ITERATIONS";
-const DEFAULT_BATCH_TIMEOUT_ENV: &str = "ZKF_ZKPATTERNFUZZ_DEFAULT_TIMEOUT_SECS";
-const MEMORY_GUARD_ENABLED_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_GUARD_ENABLED";
-const MEMORY_GUARD_RESERVED_MB_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_RESERVED_MB";
-const MEMORY_GUARD_MB_PER_TEMPLATE_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_MB_PER_TEMPLATE";
-const MEMORY_GUARD_MB_PER_WORKER_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_MB_PER_WORKER";
-const MEMORY_GUARD_LAUNCH_FLOOR_MB_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_LAUNCH_FLOOR_MB";
-const MEMORY_GUARD_WAIT_SECS_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_WAIT_SECS";
-const MEMORY_GUARD_POLL_MS_ENV: &str = "ZKF_ZKPATTERNFUZZ_MEMORY_POLL_MS";
-const DETECTION_STAGE_TIMEOUT_ENV: &str = "ZKF_ZKPATTERNFUZZ_DETECTION_STAGE_TIMEOUT_SECS";
-const PROOF_STAGE_TIMEOUT_ENV: &str = "ZKF_ZKPATTERNFUZZ_PROOF_STAGE_TIMEOUT_SECS";
-const STUCK_STEP_WARN_SECS_ENV: &str = "ZKF_ZKPATTERNFUZZ_STUCK_STEP_WARN_SECS";
-const DEFAULT_HIGH_CONFIDENCE_MIN_ORACLES: usize = 2;
-const DEFAULT_BATCH_TIMEOUT_SECS: u64 = 1_800;
-const DEFAULT_HALO2_BATCH_TIMEOUT_SECS: u64 = 3_600;
-const DEFAULT_STUCK_STEP_WARN_SECS: u64 = 60;
-const DEFAULT_MEMORY_GUARD_RESERVED_MB: u64 = 4_096;
-const DEFAULT_MEMORY_GUARD_MB_PER_TEMPLATE: u64 = 768;
-const DEFAULT_MEMORY_GUARD_MB_PER_WORKER: u64 = 1_536;
-const DEFAULT_MEMORY_GUARD_LAUNCH_FLOOR_MB: u64 = 2_048;
-const DEFAULT_MEMORY_GUARD_WAIT_SECS: u64 = 180;
-const DEFAULT_MEMORY_GUARD_POLL_MS: u64 = 1_000;
-const DEFAULT_REGISTRY_PATH: &str = "targets/fuzzer_registry.yaml";
-const DEV_REGISTRY_PATH: &str = "targets/fuzzer_registry.dev.yaml";
-const PROD_REGISTRY_PATH: &str = "targets/fuzzer_registry.prod.yaml";
-const PROOF_STAGE_NOT_STARTED_REASON_CODE: &str = "proof_stage_not_started";
-const MAX_PIPE_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
-const PIPE_CAPTURE_TRUNCATED_NOTICE: &str =
-    "\n[zkpatternfuzz] command output truncated to 8 MiB per stream\n";
-static RUN_ROOT_NONCE: AtomicU64 = AtomicU64::new(0);
-
-#[derive(Parser, Debug)]
-#[command(name = "zkpatternfuzz")]
-#[command(about = "Batch runner for YAML attack-pattern catalogs")]
-struct Args {
-    /// Path to JSON/YAML run config (target/env/iterations/timeouts); `run_overrides` wrapper is supported
-    #[arg(long)]
-    config_json: Option<String>,
-
-    /// Path to fuzzer registry YAML
-    #[arg(long)]
-    registry: Option<String>,
-
-    /// Config profile for default registry path selection
-    #[arg(long, value_enum)]
-    config_profile: Option<ConfigProfile>,
-
-    /// List available collections/aliases/templates and exit
-    #[arg(long, default_value_t = false)]
-    list_catalog: bool,
-
-    /// Comma-separated collection names to run
-    /// If no selector flags are provided, all discovered pattern YAML files are executed.
-    #[arg(long)]
-    collection: Option<String>,
-
-    /// Comma-separated alias names to run
-    /// If no selector flags are provided, all discovered pattern YAML files are executed.
-    #[arg(long)]
-    alias: Option<String>,
-
-    /// Comma-separated template filenames to run
-    /// If no selector flags are provided, all discovered pattern YAML files are executed.
-    #[arg(long)]
-    template: Option<String>,
-
-    /// Comma-separated pattern YAML paths (bypasses registry selectors)
-    /// If omitted with no selector flags, the runner auto-discovers all pattern-compatible YAML files.
-    #[arg(long)]
-    pattern_yaml: Option<String>,
-
-    /// Target circuit path used for all selected templates
-    #[arg(long)]
-    target_circuit: Option<String>,
-
-    /// Main component used for all selected templates
-    #[arg(long, default_value = "main")]
-    main_component: String,
-
-    /// Framework used for all selected templates
-    #[arg(long, default_value = "circom")]
-    framework: String,
-
-    /// Family override passed to `zk-fuzzer scan`
-    #[arg(long, default_value = "auto")]
-    family: String,
-
-    /// Build release binary if missing
-    #[arg(long, default_value_t = true)]
-    build: bool,
-
-    /// Skip YAML validation pass
-    #[arg(long, default_value_t = false)]
-    skip_validate: bool,
-
-    /// Dry run (print commands only)
-    #[arg(long, default_value_t = false)]
-    dry_run: bool,
-
-    /// Maximum number of templates to execute in parallel (env: ZKF_ZKPATTERNFUZZ_DEFAULT_JOBS)
-    #[arg(long, env = DEFAULT_BATCH_JOBS_ENV)]
-    jobs: usize,
-
-    /// Worker count per run (env: ZKF_ZKPATTERNFUZZ_DEFAULT_WORKERS)
-    #[arg(long, env = DEFAULT_BATCH_WORKERS_ENV)]
-    workers: usize,
-
-    /// RNG seed per run
-    #[arg(long, default_value_t = 42)]
-    seed: u64,
-
-    /// Iterations per run (env: ZKF_ZKPATTERNFUZZ_DEFAULT_ITERATIONS)
-    #[arg(long, env = DEFAULT_BATCH_ITERATIONS_ENV, default_value_t = 50_000)]
-    iterations: u64,
-
-    /// Timeout per run in seconds (env: ZKF_ZKPATTERNFUZZ_DEFAULT_TIMEOUT_SECS).
-    /// Halo2 uses a higher framework default when this is left unset.
-    #[arg(long, env = DEFAULT_BATCH_TIMEOUT_ENV, default_value_t = DEFAULT_BATCH_TIMEOUT_SECS)]
-    timeout: u64,
-
-    /// Emit per-template reason codes as TSV to stdout (for external harness ingestion)
-    #[arg(long, default_value_t = false)]
-    emit_reason_tsv: bool,
-
-    /// Disable batch-level progress lines (enabled by default)
-    #[arg(long, default_value_t = false)]
-    no_batch_progress: bool,
-
-    /// Prepare target artifacts before template execution (framework-specific)
-    #[arg(long, default_value_t = true, action = ArgAction::Set)]
-    prepare_target: bool,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum ConfigProfile {
-    Dev,
-    Prod,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Family {
-    Auto,
-    Mono,
-    Multi,
-}
-
-impl Family {
-    fn as_str(self) -> &'static str {
-        match self {
-            Family::Auto => "auto",
-            Family::Mono => "mono",
-            Family::Multi => "multi",
-        }
-    }
-}
-
-fn default_registry_for_profile(profile: Option<ConfigProfile>) -> &'static str {
-    match profile {
-        Some(ConfigProfile::Dev) => DEV_REGISTRY_PATH,
-        Some(ConfigProfile::Prod) => PROD_REGISTRY_PATH,
-        None => DEFAULT_REGISTRY_PATH,
-    }
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct RegistryFile {
-    version: serde_yaml::Value,
-    #[serde(default)]
-    registries: BTreeMap<String, RegistryEntry>,
-    #[serde(default)]
-    collections: BTreeMap<String, CollectionEntry>,
-    #[serde(default)]
-    aliases: BTreeMap<String, Vec<String>>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct RegistryEntry {
-    #[serde(default)]
-    path: Option<String>,
-    #[serde(default)]
-    url: Option<String>,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    maintainer: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-struct CollectionEntry {
-    registry: String,
-    #[serde(default)]
-    path: Option<String>,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    templates: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-struct TemplateInfo {
-    file_name: String,
-    path: PathBuf,
-    family: Family,
-}
-
-type TemplateIndex = BTreeMap<String, TemplateInfo>;
-type CollectionIndex = BTreeMap<String, Vec<String>>;
-type DedupeResult = (Vec<TemplateInfo>, Vec<(TemplateInfo, TemplateInfo)>);
-
-#[derive(Debug, Deserialize, Clone, Default)]
-struct BatchFileConfig {
-    #[serde(default)]
-    target_circuit: Option<String>,
-    #[serde(default)]
-    main_component: Option<String>,
-    #[serde(default)]
-    framework: Option<String>,
-    #[serde(default)]
-    family: Option<String>,
-    #[serde(default)]
-    collection: Option<String>,
-    #[serde(default)]
-    alias: Option<String>,
-    #[serde(default)]
-    template: Option<String>,
-    #[serde(default)]
-    pattern_yaml: Option<String>,
-    #[serde(default)]
-    jobs: Option<usize>,
-    #[serde(default)]
-    workers: Option<usize>,
-    #[serde(default)]
-    seed: Option<u64>,
-    #[serde(default)]
-    iterations: Option<u64>,
-    #[serde(default)]
-    timeout: Option<u64>,
-    #[serde(default)]
-    env: BTreeMap<String, serde_yaml::Value>,
-    #[serde(default)]
-    extra_args: Vec<String>,
-    #[serde(default)]
-    prepare_target: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct EffectiveFileConfig {
-    env: BTreeMap<String, String>,
-    extra_args: Vec<String>,
-}
-
-#[derive(Clone, Copy)]
-struct ScanRunConfig<'a> {
-    bin_path: &'a Path,
-    target_circuit: &'a str,
-    framework: &'a str,
-    main_component: &'a str,
-    env_overrides: &'a BTreeMap<String, String>,
-    extra_args: &'a [String],
-    workers: usize,
-    seed: u64,
-    iterations: u64,
-    timeout: u64,
-    scan_run_root: Option<&'a str>,
-    results_root: &'a Path,
-    run_signal_dir: &'a Path,
-    build_cache_dir: &'a Path,
-    dry_run: bool,
-    artifacts_root: &'a Path,
-    memory_guard: MemoryGuardConfig,
-    stage_timeouts: StageTimeoutConfig,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct MemoryGuardConfig {
-    enabled: bool,
-    reserved_mb: u64,
-    mb_per_template: u64,
-    mb_per_worker: u64,
-    launch_floor_mb: u64,
-    wait_secs: u64,
-    poll_ms: u64,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct StageTimeoutConfig {
-    detection_timeout_secs: u64,
-    proof_timeout_secs: u64,
-    stuck_step_warn_secs: u64,
-}
-
-#[derive(Debug, Clone)]
-struct TemplateOutcomeReason {
-    template_file: String,
-    template_path: String,
-    suffix: String,
-    status: Option<String>,
-    stage: Option<String>,
-    proof_status: Option<String>,
-    reason_code: String,
-    high_confidence_detected: bool,
-    detected_pattern_count: usize,
-}
-
-struct ScanRunResult {
-    success: bool,
-    stdout: String,
-    stderr: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HardTimeoutStage {
-    Detecting,
-    Proving,
-}
+use zkpatternfuzz_types::*;
 
 fn main() -> anyhow::Result<()> {
     let _check_env = CheckEnv::new(
