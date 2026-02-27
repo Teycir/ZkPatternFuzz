@@ -4,7 +4,7 @@
 //! when the required tools are available in the environment.
 
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use zk_fuzzer::config::Framework;
 use zk_fuzzer::executor::{
     CairoExecutor, CircomExecutor, CircuitExecutor, ExecutionCoverage, ExecutorFactory,
@@ -14,6 +14,12 @@ use zk_fuzzer::fuzzer::FieldElement;
 use zk_fuzzer::targets::{CairoTarget, CircomTarget, Halo2Target, NoirTarget, TargetCircuit};
 
 const DEFAULT_ZK0D_BASE: &str = "/media/elements/Repos/zk0d";
+const EXT005_EZKL_PATH_ENV: &str = "EXT005_EZKL_PATH";
+const EXT005_EZKL_BUILD_DIR_ENV: &str = "EXT005_EZKL_BUILD_DIR";
+const EXT005_REPLAY_WITNESS_HEX_ENV: &str = "EXT005_REPLAY_WITNESS_HEX";
+const EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV: &str = "ZK_FUZZER_EXT005_REPLAY_SKIP_CONSTRAINT_LOAD";
+const EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV_LEGACY: &str = "EXT005_REPLAY_SKIP_CONSTRAINT_LOAD";
+const HALO2_EXTERNAL_TIMEOUT_SECS_ENV: &str = "ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS";
 
 fn real_backend_tests_enabled() -> bool {
     match std::env::var("ZKFUZZ_REAL_BACKENDS") {
@@ -107,17 +113,86 @@ fn halo2_real_repo_path() -> PathBuf {
 }
 
 fn ext005_ezkl_manifest_path() -> PathBuf {
-    if let Ok(path) = std::env::var("EXT005_EZKL_PATH") {
+    if let Ok(path) = std::env::var(EXT005_EZKL_PATH_ENV) {
         return PathBuf::from(path);
     }
     PathBuf::from("/media/elements/Repos/zkml/ezkl/Cargo.toml")
 }
 
 fn ext005_ezkl_build_dir() -> PathBuf {
-    if let Ok(path) = std::env::var("EXT005_EZKL_BUILD_DIR") {
+    if let Ok(path) = std::env::var(EXT005_EZKL_BUILD_DIR_ENV) {
         return PathBuf::from(path);
     }
     std::env::temp_dir().join("zk0d_halo2_ext005_replay_build")
+}
+
+fn ext005_replay_witness_hex() -> String {
+    if let Ok(value) = std::env::var(EXT005_REPLAY_WITNESS_HEX_ENV) {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    // Default: EXT-005-F01 witness from continuation finding set.
+    "0x0e0a77c19a0fdf2f406e2b6f7879462e36fc76959f60cd29ac96341c4ffffffa".to_string()
+}
+
+fn env_flag_enabled(name: &str) -> bool {
+    match std::env::var(name) {
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    }
+}
+
+fn ext005_skip_constraint_load_enabled() -> bool {
+    if env_flag_enabled(EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV) {
+        return true;
+    }
+    if env_flag_enabled(EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV_LEGACY) {
+        println!(
+            "test_halo2_ext005_ezkl_replay_base_execution_failure: legacy env '{}' is deprecated; prefer '{}'",
+            EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV_LEGACY,
+            EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV
+        );
+        return true;
+    }
+    false
+}
+
+fn with_console_progress<T, F>(label: &str, interval: Duration, op: F) -> T
+where
+    F: FnOnce() -> T,
+{
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let started = Instant::now();
+    let done = Arc::new(AtomicBool::new(false));
+    let done_for_thread = Arc::clone(&done);
+    let label_for_thread = label.to_string();
+    let heartbeat_started = started;
+    let heartbeat = std::thread::spawn(move || {
+        while !done_for_thread.load(Ordering::Relaxed) {
+            std::thread::sleep(interval);
+            if done_for_thread.load(Ordering::Relaxed) {
+                break;
+            }
+            println!(
+                "{}: still running (elapsed={}s)",
+                label_for_thread,
+                heartbeat_started.elapsed().as_secs()
+            );
+        }
+    });
+
+    let output = op();
+    done.store(true, Ordering::Relaxed);
+    let _ = heartbeat.join();
+    println!("{label}: completed (elapsed={}s)", started.elapsed().as_secs());
+    output
 }
 
 fn noir_external_nargo_projects() -> Vec<(&'static str, PathBuf)> {
@@ -1518,28 +1593,58 @@ fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
         println!("test_halo2_ext005_ezkl_replay_base_execution_failure: SKIP_INFRA ({err})");
         return;
     }
+    if std::env::var_os(HALO2_EXTERNAL_TIMEOUT_SECS_ENV).is_none() {
+        // Keep replay deterministic and bounded by default for proof-followup runs.
+        std::env::set_var(HALO2_EXTERNAL_TIMEOUT_SECS_ENV, "180");
+    }
+    println!(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure: using ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS={}",
+        std::env::var(HALO2_EXTERNAL_TIMEOUT_SECS_ENV)
+            .unwrap_or_else(|_| "180".to_string())
+    );
 
     let build_dir = ext005_ezkl_build_dir();
+    let test_started = Instant::now();
+    let create_executor_started = Instant::now();
+    println!(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure: phase=create_executor build_dir={}",
+        build_dir.display()
+    );
     let executor = match expect_or_skip_infra(
         "test_halo2_ext005_ezkl_replay_base_execution_failure",
         "create Halo2 executor",
-        Halo2Executor::new_with_build_dir(
-            manifest_path.to_str().unwrap(),
-            "main",
-            build_dir.clone(),
+        with_console_progress(
+            "test_halo2_ext005_ezkl_replay_base_execution_failure: create_executor",
+            Duration::from_secs(20),
+            || {
+                Halo2Executor::new_with_build_dir(
+                    manifest_path.to_str().unwrap(),
+                    "main",
+                    build_dir.clone(),
+                )
+            },
         ),
     ) {
         Some(executor) => executor,
         None => return,
     };
+    let create_executor_elapsed = create_executor_started.elapsed();
 
-    // Fixed witness copied from EXT-005 continuation finding #1.
-    let witness = vec![FieldElement::from_hex(
-        "0x0e0a77c19a0fdf2f406e2b6f7879462e36fc76959f60cd29ac96341c4ffffffa",
-    )
-    .expect("valid finding witness hex")];
+    let witness_hex = ext005_replay_witness_hex();
+    println!(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure: using witness={}",
+        witness_hex
+    );
+    let witness = vec![FieldElement::from_hex(&witness_hex).expect("valid finding witness hex")];
 
-    let result = executor.execute_sync(&witness);
+    println!("test_halo2_ext005_ezkl_replay_base_execution_failure: phase=executor_execute_sync");
+    let executor_execute_started = Instant::now();
+    let result = with_console_progress(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure: executor_execute_sync",
+        Duration::from_secs(20),
+        || executor.execute_sync(&witness),
+    );
+    let executor_execute_elapsed = executor_execute_started.elapsed();
     assert!(
         result.success,
         "Expected Halo2 executor success via output-hash fallback, got error {:?}",
@@ -1562,32 +1667,52 @@ fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
         "Expected fallback execution coverage with no extracted constraint IDs"
     );
 
+    let create_target_started = Instant::now();
     let mut target = match expect_or_skip_infra(
         "test_halo2_ext005_ezkl_replay_base_execution_failure",
         "create Halo2 target",
-        Halo2Target::new(manifest_path.to_str().unwrap()),
+        with_console_progress(
+            "test_halo2_ext005_ezkl_replay_base_execution_failure: create_target",
+            Duration::from_secs(20),
+            || Halo2Target::new(manifest_path.to_str().unwrap()),
+        ),
     ) {
         Some(target) => target,
         None => return,
     };
+    let create_target_elapsed = create_target_started.elapsed();
     target = target.with_build_dir(build_dir.join("target_replay"));
 
+    println!("test_halo2_ext005_ezkl_replay_base_execution_failure: phase=target_setup");
+    let target_setup_started = Instant::now();
     if let None = expect_or_skip_infra(
         "test_halo2_ext005_ezkl_replay_base_execution_failure",
         "setup Halo2 target",
-        target.setup(),
+        with_console_progress(
+            "test_halo2_ext005_ezkl_replay_base_execution_failure: target_setup",
+            Duration::from_secs(20),
+            || target.setup(),
+        ),
     ) {
         return;
     }
+    let target_setup_elapsed = target_setup_started.elapsed();
 
+    println!("test_halo2_ext005_ezkl_replay_base_execution_failure: phase=target_execute");
+    let target_execute_started = Instant::now();
     let direct_outputs = match expect_or_skip_infra(
         "test_halo2_ext005_ezkl_replay_base_execution_failure",
         "direct Halo2 target execute",
-        target.execute(&witness),
+        with_console_progress(
+            "test_halo2_ext005_ezkl_replay_base_execution_failure: target_execute",
+            Duration::from_secs(20),
+            || target.execute(&witness),
+        ),
     ) {
         Some(outputs) => outputs,
         None => return,
     };
+    let target_execute_elapsed = target_execute_started.elapsed();
     assert!(
         !direct_outputs.is_empty(),
         "Expected direct Halo2 target execution to produce at least one output"
@@ -1597,15 +1722,55 @@ fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
         "Executor output should match direct target execution output for replay witness"
     );
 
-    let parsed = target.load_plonk_constraints();
-    assert!(
-        parsed.constraints.is_empty(),
-        "Expected empty extracted PLONK constraints for EXT-005 replay target"
+    let skip_constraint_load = ext005_skip_constraint_load_enabled();
+    println!(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure: {}={}",
+        EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV,
+        skip_constraint_load
     );
-    assert_eq!(
-        target.constraint_export_supported(),
-        Some(false),
-        "Expected EXT-005 target to be marked as unsupported for --constraints export"
+
+    let load_constraints_elapsed = if skip_constraint_load {
+        None
+    } else {
+        println!(
+            "test_halo2_ext005_ezkl_replay_base_execution_failure: phase=load_plonk_constraints"
+        );
+        let load_constraints_started = Instant::now();
+        let parsed = with_console_progress(
+            "test_halo2_ext005_ezkl_replay_base_execution_failure: load_plonk_constraints",
+            Duration::from_secs(20),
+            || target.load_plonk_constraints(),
+        );
+        let elapsed = load_constraints_started.elapsed();
+        assert!(
+            parsed.constraints.is_empty(),
+            "Expected empty extracted PLONK constraints for EXT-005 replay target"
+        );
+        assert_eq!(
+            target.constraint_export_supported(),
+            Some(false),
+            "Expected EXT-005 target to be marked as unsupported for --constraints export"
+        );
+        Some(elapsed)
+    };
+
+    let total_elapsed = test_started.elapsed();
+    println!(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure: phase_metrics create_executor_s={} executor_execute_sync_s={} create_target_s={} target_setup_s={} target_execute_s={} load_plonk_constraints_s={} total_s={}",
+        create_executor_elapsed.as_secs(),
+        executor_execute_elapsed.as_secs(),
+        create_target_elapsed.as_secs(),
+        target_setup_elapsed.as_secs(),
+        target_execute_elapsed.as_secs(),
+        load_constraints_elapsed
+            .map(|elapsed| elapsed.as_secs().to_string())
+            .unwrap_or_else(|| "skipped".to_string()),
+        total_elapsed.as_secs()
+    );
+    println!(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure: completed_successfully outputs={} coverage_hash={}",
+        result.outputs.len(),
+        result.coverage.coverage_hash
     );
 }
 
