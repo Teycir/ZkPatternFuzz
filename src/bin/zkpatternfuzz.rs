@@ -1,14 +1,10 @@
-use anyhow::Context;
-use chrono::Utc;
 use clap::{ArgAction, Parser, ValueEnum};
 use serde::Deserialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::AtomicU64;
 #[cfg(test)]
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Instant;
 
 #[path = "zkpatternfuzz/checkenv.rs"]
@@ -17,6 +13,8 @@ mod checkenv;
 mod run_log;
 #[path = "zkpatternfuzz/zkpatternfuzz_batch.rs"]
 mod zkpatternfuzz_batch;
+#[path = "zkpatternfuzz/zkpatternfuzz_bootstrap.rs"]
+mod zkpatternfuzz_bootstrap;
 #[path = "zkpatternfuzz/zkpatternfuzz_campaign.rs"]
 mod zkpatternfuzz_campaign;
 #[path = "zkpatternfuzz/zkpatternfuzz_config.rs"]
@@ -27,6 +25,8 @@ mod zkpatternfuzz_discovery;
 mod zkpatternfuzz_env;
 #[path = "zkpatternfuzz/zkpatternfuzz_execution.rs"]
 mod zkpatternfuzz_execution;
+#[path = "zkpatternfuzz/zkpatternfuzz_pipeline.rs"]
+mod zkpatternfuzz_pipeline;
 #[path = "zkpatternfuzz/zkpatternfuzz_readiness.rs"]
 mod zkpatternfuzz_readiness;
 #[path = "zkpatternfuzz/zkpatternfuzz_reporting.rs"]
@@ -52,6 +52,7 @@ use zkpatternfuzz_batch::{
     apply_memory_parallelism_guardrails_with_available, estimated_batch_memory_mb,
     parse_mem_available_kib,
 };
+use zkpatternfuzz_bootstrap::{bootstrap_pre_execution, TOTAL_STEPS};
 use zkpatternfuzz_campaign::{
     classify_run_reason_code, collect_observed_suffixes_for_roots,
     collect_template_outcome_reasons, list_scan_run_roots, print_reason_summary,
@@ -77,6 +78,7 @@ use zkpatternfuzz_execution::{
 use zkpatternfuzz_execution::{
     proof_status_from_run_outcome_doc, run_template, scan_output_suffix,
 };
+use zkpatternfuzz_pipeline::{execute_templates_step, ExecuteStepInput};
 use zkpatternfuzz_readiness::{ensure_local_runtime_requirements, preflight_template_paths};
 use zkpatternfuzz_reporting::{
     create_timestamped_result_dir, is_error_reason, print_reason_tsv, proof_state_counts,
@@ -481,443 +483,27 @@ fn main() -> anyhow::Result<()> {
     let expected_count = expected_suffixes.len();
     let batch_started_at = Instant::now();
 
-    println!("Gate 1/3 (expected templates): {}", expected_count);
-    let results_root = resolve_results_root().map_err(|err| {
-        anyhow::anyhow!(
-            "Output path configuration failed: {:#}\nHint: set {} to a writable directory (example: export {}=/home/teycir/zkfuzz)",
-            err,
-            SCAN_OUTPUT_ROOT_ENV,
-            SCAN_OUTPUT_ROOT_ENV
-        )
-    })?;
-    let timestamped_result_dir = create_timestamped_result_dir(&results_root).with_context(
-        || {
-            format!(
-                "Unable to create result directory under '{}'. Check that the path exists and is writable.",
-                results_root.display()
-            )
-        },
-    )?;
-    let timestamped_report_path = timestamped_result_dir.join("detected_patterns.json");
-    let timestamped_error_log = timestamped_result_dir.join("errors.log");
-    let timestamped_run_log = timestamped_result_dir.join("run.log");
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        format!(
-            "start_utc={} step=gate1_expected_templates expected_patterns={}",
-            Utc::now().to_rfc3339(),
-            expected_count
-        ),
-    );
     let template_paths: Vec<PathBuf> = selected_with_family
         .iter()
         .map(|(template, _)| template.path.clone())
         .collect();
-    let total_steps = 5usize;
-
-    let preflight_step_started =
-        step_started(1, total_steps, "template preflight", &timestamped_run_log);
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        format!(
-            "step=template_preflight status=started templates={}",
-            template_paths.len()
-        ),
-    );
-    if let Err(err) = preflight_template_paths(&template_paths, validate_pattern_only_yaml) {
-        step_failed(
-            1,
-            total_steps,
-            "template preflight",
-            preflight_step_started,
-            &timestamped_run_log,
-            &err,
-        );
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!("step=template_preflight status=failed error={}", err),
-        );
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "end_utc={} campaign_success=false dry_run={} termination_cause=template_preflight",
-                Utc::now().to_rfc3339(),
-                args.dry_run
-            ),
-        );
-        if let Err(log_err) =
-            write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
-        {
-            eprintln!(
-                "Failed to write early error log '{}': {:#}",
-                timestamped_error_log.display(),
-                log_err
-            );
-        }
-        return Err(err);
-    }
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        "step=template_preflight status=completed",
-    );
-    step_succeeded(
-        1,
-        total_steps,
-        "template preflight",
-        preflight_step_started,
-        &timestamped_run_log,
-    );
-
-    let readiness_step_started =
-        step_started(2, total_steps, "local readiness", &timestamped_run_log);
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        format!(
-            "step=local_readiness status=started framework={} target_circuit={} results_root={}",
-            args.framework,
-            target_circuit,
-            results_root.display()
-        ),
-    );
-    if let Err(err) = ensure_local_runtime_requirements(
-        &args.framework,
+    let bootstrap = bootstrap_pre_execution(
+        &args,
         &target_circuit,
         &target_circuit_path,
-        &args.main_component,
-    ) {
-        step_failed(
-            2,
-            total_steps,
-            "local readiness",
-            readiness_step_started,
-            &timestamped_run_log,
-            &err,
-        );
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!("step=local_readiness status=failed error={}", err),
-        );
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "end_utc={} campaign_success=false dry_run={} termination_cause=local_readiness",
-                Utc::now().to_rfc3339(),
-                args.dry_run
-            ),
-        );
-        if let Err(log_err) =
-            write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
-        {
-            eprintln!(
-                "Failed to write early error log '{}': {:#}",
-                timestamped_error_log.display(),
-                log_err
-            );
-        }
-        return Err(err);
-    }
-    let (run_signal_dir, build_cache_dir) = match preflight_runtime_paths(&results_root) {
-        Ok(paths) => paths,
-        Err(err) => {
-            step_failed(
-                2,
-                total_steps,
-                "local readiness",
-                readiness_step_started,
-                &timestamped_run_log,
-                &err,
-            );
-            append_run_log_best_effort(
-                &timestamped_run_log,
-                format!("step=local_readiness status=failed error={}", err),
-            );
-            append_run_log_best_effort(
-                &timestamped_run_log,
-                format!(
-                    "end_utc={} campaign_success=false dry_run={} termination_cause=runtime_paths",
-                    Utc::now().to_rfc3339(),
-                    args.dry_run
-                ),
-            );
-            if let Err(log_err) =
-                write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
-            {
-                eprintln!(
-                    "Failed to write early error log '{}': {:#}",
-                    timestamped_error_log.display(),
-                    log_err
-                );
-            }
-            return Err(anyhow::anyhow!(
-                "Output path readiness check failed for '{}': {:#}\nHint: ensure this directory and its subdirectories are writable.",
-                results_root.display(),
-                err
-            ));
-        }
-    };
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        format!(
-            "step=local_readiness status=completed run_signal_dir={} build_cache_dir={}",
-            run_signal_dir.display(),
-            build_cache_dir.display()
-        ),
-    );
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        "step=local_readiness checks=framework_tools,target_shape,runtime_paths",
-    );
-    step_succeeded(
-        2,
-        total_steps,
-        "local readiness",
-        readiness_step_started,
-        &timestamped_run_log,
-    );
-
-    let bin_path = resolved_release_bin_path("zk-fuzzer");
-    let build_step_started = step_started(3, total_steps, "build zk-fuzzer", &timestamped_run_log);
-    if args.build {
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "step=build_zk_fuzzer status=started bin={}",
-                bin_path.display()
-            ),
-        );
-        let status = match Command::new("cargo")
-            .args(["build", "--release", "--bin", "zk-fuzzer"])
-            .status()
-        {
-            Ok(status) => status,
-            Err(err) => {
-                let err = anyhow::anyhow!("Failed to execute cargo build for zk-fuzzer: {}", err);
-                step_failed(
-                    3,
-                    total_steps,
-                    "build zk-fuzzer",
-                    build_step_started,
-                    &timestamped_run_log,
-                    &err,
-                );
-                append_run_log_best_effort(
-                    &timestamped_run_log,
-                    format!(
-                        "step=build_zk_fuzzer status=failed error=cargo_command_failed detail={}",
-                        err
-                    ),
-                );
-                append_run_log_best_effort(
-                        &timestamped_run_log,
-                        format!(
-                        "end_utc={} campaign_success=false dry_run={} termination_cause=build_zk_fuzzer_command",
-                        Utc::now().to_rfc3339(),
-                        args.dry_run
-                    ),
-                    );
-                if let Err(log_err) =
-                    write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
-                {
-                    eprintln!(
-                        "Failed to write early error log '{}': {:#}",
-                        timestamped_error_log.display(),
-                        log_err
-                    );
-                }
-                return Err(err);
-            }
-        };
-        if !status.success() {
-            let err = anyhow::anyhow!("cargo build --release --bin zk-fuzzer failed");
-            step_failed(
-                3,
-                total_steps,
-                "build zk-fuzzer",
-                build_step_started,
-                &timestamped_run_log,
-                &err,
-            );
-            append_run_log_best_effort(&timestamped_run_log, "step=build_zk_fuzzer status=failed");
-            append_run_log_best_effort(
-                &timestamped_run_log,
-                format!(
-                    "end_utc={} campaign_success=false dry_run={} termination_cause=build_zk_fuzzer",
-                    Utc::now().to_rfc3339(),
-                    args.dry_run
-                ),
-            );
-            if let Err(err) =
-                write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
-            {
-                eprintln!(
-                    "Failed to write early error log '{}': {:#}",
-                    timestamped_error_log.display(),
-                    err
-                );
-            }
-            return Err(err);
-        }
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            "step=build_zk_fuzzer status=completed",
-        );
-        step_succeeded(
-            3,
-            total_steps,
-            "build zk-fuzzer",
-            build_step_started,
-            &timestamped_run_log,
-        );
-    } else if !bin_path.exists() {
-        let err = anyhow::anyhow!(
-            "zk-fuzzer binary not found at '{}' and --build=false",
-            bin_path.display()
-        );
-        step_failed(
-            3,
-            total_steps,
-            "build zk-fuzzer",
-            build_step_started,
-            &timestamped_run_log,
-            &err,
-        );
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "step=build_zk_fuzzer status=missing_binary path={}",
-                bin_path.display()
-            ),
-        );
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "end_utc={} campaign_success=false dry_run={} termination_cause=missing_binary",
-                Utc::now().to_rfc3339(),
-                args.dry_run
-            ),
-        );
-        if let Err(err) =
-            write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
-        {
-            eprintln!(
-                "Failed to write early error log '{}': {:#}",
-                timestamped_error_log.display(),
-                err
-            );
-        }
-        return Err(err);
-    } else {
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "step=build_zk_fuzzer status=skipped_existing_binary path={}",
-                bin_path.display()
-            ),
-        );
-        step_skipped(
-            3,
-            total_steps,
-            "build zk-fuzzer",
-            "existing binary (--build=false)",
-            &timestamped_run_log,
-        );
-    }
-
-    let prepare_step_started = step_started(4, total_steps, "target prepare", &timestamped_run_log);
-    if args.dry_run {
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            "step=prepare_target status=skipped reason=dry_run",
-        );
-        step_skipped(
-            4,
-            total_steps,
-            "target prepare",
-            "dry run",
-            &timestamped_run_log,
-        );
-    } else if args.prepare_target {
-        match prepare_target_for_framework(&args.framework, &target_circuit) {
-            Ok(prepared) if prepared => {
-                append_run_log_best_effort(
-                    &timestamped_run_log,
-                    format!(
-                        "step=prepare_target status=completed framework={} target_circuit={}",
-                        args.framework, target_circuit
-                    ),
-                );
-                step_succeeded(
-                    4,
-                    total_steps,
-                    "target prepare",
-                    prepare_step_started,
-                    &timestamped_run_log,
-                );
-            }
-            Ok(_) => {
-                append_run_log_best_effort(
-                    &timestamped_run_log,
-                    format!(
-                        "step=prepare_target status=skipped framework={}",
-                        args.framework
-                    ),
-                );
-                step_skipped(
-                    4,
-                    total_steps,
-                    "target prepare",
-                    "framework has no explicit prepare phase",
-                    &timestamped_run_log,
-                );
-            }
-            Err(err) => {
-                step_failed(
-                    4,
-                    total_steps,
-                    "target prepare",
-                    prepare_step_started,
-                    &timestamped_run_log,
-                    &err,
-                );
-                append_run_log_best_effort(
-                    &timestamped_run_log,
-                    format!("step=prepare_target status=failed error={}", err),
-                );
-                append_run_log_best_effort(
-                    &timestamped_run_log,
-                    format!(
-                        "end_utc={} campaign_success=false dry_run={} termination_cause=prepare_target",
-                        Utc::now().to_rfc3339(),
-                        args.dry_run
-                    ),
-                );
-                if let Err(log_err) =
-                    write_error_log(&timestamped_error_log, &[], 1, false, false, args.dry_run)
-                {
-                    eprintln!(
-                        "Failed to write early error log '{}': {:#}",
-                        timestamped_error_log.display(),
-                        log_err
-                    );
-                }
-                return Err(err);
-            }
-        }
-    } else {
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            "step=prepare_target status=skipped reason=disabled_by_flag",
-        );
-        step_skipped(
-            4,
-            total_steps,
-            "target prepare",
-            "disabled by --prepare-target=false",
-            &timestamped_run_log,
-        );
-    }
-
-    let artifacts_root = results_root.join(".scan_run_artifacts");
+        &template_paths,
+        expected_count,
+    )?;
+    let total_steps = TOTAL_STEPS;
+    let results_root = bootstrap.results_root;
+    let timestamped_result_dir = bootstrap.timestamped_result_dir;
+    let timestamped_report_path = bootstrap.timestamped_report_path;
+    let timestamped_error_log = bootstrap.timestamped_error_log;
+    let timestamped_run_log = bootstrap.timestamped_run_log;
+    let run_signal_dir = bootstrap.run_signal_dir;
+    let build_cache_dir = bootstrap.build_cache_dir;
+    let bin_path = bootstrap.bin_path;
+    let artifacts_root = bootstrap.artifacts_root;
 
     let run_cfg_base = ScanRunConfig {
         bin_path: &bin_path,
@@ -940,387 +526,24 @@ fn main() -> anyhow::Result<()> {
         stage_timeouts,
     };
 
-    let execute_step_started =
-        step_started(5, total_steps, "execute templates", &timestamped_run_log);
-    let baseline_roots = if args.dry_run {
-        BTreeSet::new()
-    } else {
-        match list_scan_run_roots(&artifacts_root) {
-            Ok(roots) => roots,
-            Err(err) => {
-                step_failed(
-                    5,
-                    total_steps,
-                    "execute templates",
-                    execute_step_started,
-                    &timestamped_run_log,
-                    &err,
-                );
-                return Err(err);
-            }
-        }
-    };
-    // One batch command -> one collision-safe scan_run root.
-    let batch_run_root = if args.dry_run {
-        None
-    } else {
-        match reserve_batch_scan_run_root(&artifacts_root) {
-            Ok(run_root) => Some(run_root),
-            Err(err) => {
-                step_failed(
-                    5,
-                    total_steps,
-                    "execute templates",
-                    execute_step_started,
-                    &timestamped_run_log,
-                    &err,
-                );
-                return Err(err);
-            }
-        }
-    };
-    let run_cfg = ScanRunConfig {
-        scan_run_root: batch_run_root.as_deref(),
-        ..run_cfg_base
-    };
+    let execute_outcome = execute_templates_step(ExecuteStepInput {
+        args: &args,
+        selected_with_family: &selected_with_family,
+        expected_suffixes: &expected_suffixes,
+        expected_count,
+        batch_started_at,
+        run_cfg_base,
+        artifacts_root: &artifacts_root,
+        target_circuit: &target_circuit,
+        timestamped_report_path: &timestamped_report_path,
+        timestamped_error_log: &timestamped_error_log,
+        timestamped_run_log: &timestamped_run_log,
+        timestamped_result_dir: &timestamped_result_dir,
+        results_root: &results_root,
+        total_steps,
+    })?;
 
-    use rayon::prelude::*;
-
-    let jobs = args.jobs.max(1);
-    println!(
-        "Running {} templates in parallel (jobs={})",
-        selected_with_family.len(),
-        jobs
-    );
-    println!(
-        "Batch progress indicator: {}",
-        if args.no_batch_progress {
-            "disabled"
-        } else {
-            "enabled"
-        }
-    );
-    println!(
-        "Execution mode: detect patterns, then immediately resolve proof status from evidence artifacts."
-    );
-    println!(
-        "Per-template hard timeouts: detection={}s proof={}s stuck_step_warn={}s",
-        stage_timeouts.detection_timeout_secs,
-        stage_timeouts.proof_timeout_secs,
-        stage_timeouts.stuck_step_warn_secs
-    );
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        format!(
-            "step=execute_templates status=started templates={} jobs={} dry_run={} detection_timeout_secs={} proof_timeout_secs={} stuck_step_warn_secs={}",
-            selected_with_family.len(),
-            jobs,
-            args.dry_run,
-            stage_timeouts.detection_timeout_secs,
-            stage_timeouts.proof_timeout_secs,
-            stage_timeouts.stuck_step_warn_secs
-        ),
-    );
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(jobs)
-        .build()
-        .map_err(|err| anyhow::anyhow!("Failed to build rayon thread pool: {}", err));
-    let pool = match pool {
-        Ok(pool) => pool,
-        Err(err) => {
-            step_failed(
-                5,
-                total_steps,
-                "execute templates",
-                execute_step_started,
-                &timestamped_run_log,
-                &err,
-            );
-            return Err(err);
-        }
-    };
-    let progress = if args.no_batch_progress {
-        None
-    } else {
-        Some(Arc::new(BatchProgress::new(selected_with_family.len())))
-    };
-
-    let outcomes = pool.install(|| {
-        selected_with_family
-            .par_iter()
-            .map(|(template, family)| {
-                let suffix = scan_output_suffix(template, *family);
-                println!(
-                    "[TEMPLATE START] {} family={} output_suffix={}",
-                    template.file_name,
-                    family.as_str(),
-                    suffix
-                );
-                let ok = match run_template(
-                    run_cfg,
-                    template,
-                    *family,
-                    args.skip_validate,
-                    suffix.as_str(),
-                ) {
-                    Ok(ok) => ok,
-                    Err(err) => {
-                        eprintln!("Template '{}' failed: {}", template.file_name, err);
-                        false
-                    }
-                };
-                println!(
-                    "[TEMPLATE END] {} result={}",
-                    template.file_name,
-                    if ok { "ok" } else { "template_error" }
-                );
-                if let Some(progress) = progress.as_ref() {
-                    println!("{}", progress.record(&template.file_name, ok));
-                }
-                ok
-            })
-            .collect::<Vec<_>>()
-    });
-
-    let executed = outcomes.len();
-    let template_errors = outcomes.iter().filter(|ok| !**ok).count();
-    let duration_secs = batch_started_at.elapsed().as_secs_f64().max(0.001);
-    let avg_rate = executed as f64 / duration_secs;
-
-    println!(
-        "Batch complete. Templates executed: {}, template_errors: {}, duration: {:.1}s, avg_rate: {:.2}/s",
-        executed, template_errors, duration_secs, avg_rate
-    );
-    let gate2_ok = executed == expected_count && template_errors == 0;
-    println!(
-        "Gate 2/3 (completion line): {}",
-        if gate2_ok {
-            format!("PASS (executed={}, template_errors=0)", executed)
-        } else {
-            format!(
-                "FAIL (expected={}, executed={}, template_errors={})",
-                expected_count, executed, template_errors
-            )
-        }
-    );
-
-    let gate3_ok = if args.dry_run {
-        println!("Gate 3/3 (artifact reconciliation): SKIP (dry run)");
-        true
-    } else {
-        let after_roots = list_scan_run_roots(&artifacts_root)?;
-        let new_roots: BTreeSet<String> =
-            after_roots.difference(&baseline_roots).cloned().collect();
-        let observed_suffixes = collect_observed_suffixes_for_roots(&artifacts_root, &new_roots)?;
-        let missing: Vec<String> = expected_suffixes
-            .difference(&observed_suffixes)
-            .cloned()
-            .collect();
-        if missing.is_empty() {
-            println!(
-                "Gate 3/3 (artifact reconciliation): PASS (new run roots={}, observed={})",
-                new_roots.len(),
-                observed_suffixes.len()
-            );
-            true
-        } else {
-            eprintln!(
-                "Gate 3/3 (artifact reconciliation): FAIL (missing={})",
-                missing.len()
-            );
-            eprintln!("Missing suffixes: {}", missing.join(", "));
-            false
-        }
-    };
-
-    let mut reasons = Vec::new();
-    if !args.dry_run {
-        reasons = collect_template_outcome_reasons(
-            &artifacts_root,
-            batch_run_root.as_deref(),
-            &selected_with_family,
-        );
-        print_reason_summary(&reasons);
-        if args.emit_reason_tsv {
-            print_reason_tsv(&reasons);
-        }
-        let (
-            exploitable_patterns,
-            not_exploitable_within_bounds_patterns,
-            proof_failed_patterns,
-            proof_skipped_by_policy_patterns,
-        ) = proof_state_counts(&reasons);
-        println!(
-            "Proof totals: proven_exploitable={}, proven_not_exploitable_within_bounds={}, proof_failed={}, proof_skipped_by_policy={}",
-            exploitable_patterns,
-            not_exploitable_within_bounds_patterns,
-            proof_failed_patterns,
-            proof_skipped_by_policy_patterns
-        );
-    }
-    let detected_patterns_total = reasons
-        .iter()
-        .map(|reason| reason.detected_pattern_count)
-        .sum::<usize>();
-    if !args.dry_run {
-        let (
-            exploitable_patterns,
-            not_exploitable_within_bounds_patterns,
-            proof_failed_patterns,
-            proof_skipped_by_policy_patterns,
-        ) = proof_state_counts(&reasons);
-        println!(
-            "Final totals: detected_patterns={} proven_exploitable={} proven_not_exploitable_within_bounds={} proof_failed={} proof_skipped_by_policy={} template_errors={}",
-            detected_patterns_total,
-            exploitable_patterns,
-            not_exploitable_within_bounds_patterns,
-            proof_failed_patterns,
-            proof_skipped_by_policy_patterns,
-            template_errors
-        );
-    }
-
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        format!(
-            "step=execute_templates status=completed executed={} template_errors={} duration_secs={:.3} avg_rate={:.3}",
-            executed, template_errors, duration_secs, avg_rate
-        ),
-    );
-    if !args.dry_run {
-        let (
-            exploitable_patterns,
-            not_exploitable_within_bounds_patterns,
-            proof_failed_patterns,
-            proof_skipped_by_policy_patterns,
-        ) = proof_state_counts(&reasons);
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "proof_totals proven_exploitable={} proven_not_exploitable_within_bounds={} proof_failed={} proof_skipped_by_policy={}",
-                exploitable_patterns,
-                not_exploitable_within_bounds_patterns,
-                proof_failed_patterns,
-                proof_skipped_by_policy_patterns
-            ),
-        );
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "final_totals detected_patterns={} template_errors={}",
-                detected_patterns_total, template_errors
-            ),
-        );
-    }
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        format!(
-            "step=gate2 status={}",
-            if gate2_ok { "pass" } else { "fail" }
-        ),
-    );
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        format!(
-            "step=gate3 status={}",
-            if gate3_ok { "pass" } else { "fail" }
-        ),
-    );
-    for reason in reasons.iter().filter(|reason| is_error_reason(reason)) {
-        append_run_log_best_effort(
-            &timestamped_run_log,
-            format!(
-                "error template={} suffix={} reason_code={} status={} stage={} proof_status={} detected_pattern_count={}",
-                reason.template_file,
-                reason.suffix,
-                reason.reason_code,
-                reason.status.as_deref().unwrap_or("unknown"),
-                reason.stage.as_deref().unwrap_or("unknown"),
-                reason.proof_status.as_deref().unwrap_or("unknown"),
-                reason.detected_pattern_count
-            ),
-        );
-    }
-
-    write_error_log(
-        &timestamped_error_log,
-        &reasons,
-        template_errors,
-        gate2_ok,
-        gate3_ok,
-        args.dry_run,
-    )?;
-
-    let has_reason_errors = reasons.iter().any(is_error_reason);
-    let campaign_success = !args.dry_run && gate2_ok && gate3_ok && !has_reason_errors;
-    if !args.dry_run {
-        write_report_json(
-            &args,
-            &timestamped_report_path,
-            &target_circuit,
-            &reasons,
-            expected_count,
-            executed,
-            template_errors,
-            &results_root,
-            gate2_ok,
-            gate3_ok,
-            campaign_success,
-            &timestamped_result_dir,
-            &timestamped_run_log,
-            &timestamped_error_log,
-            batch_run_root.as_deref(),
-        )?;
-        println!(
-            "Wrote detected-patterns report JSON: {}",
-            timestamped_report_path.display()
-        );
-    } else {
-        println!("Skipped detected-patterns JSON for dry run.");
-    }
-    println!(
-        "Wrote timestamped result bundle: {}",
-        timestamped_result_dir.display()
-    );
-    append_run_log_best_effort(
-        &timestamped_run_log,
-        format!(
-            "end_utc={} campaign_success={} dry_run={} gate2_ok={} gate3_ok={} template_errors={}",
-            Utc::now().to_rfc3339(),
-            campaign_success,
-            args.dry_run,
-            gate2_ok,
-            gate3_ok,
-            template_errors
-        ),
-    );
-
-    if gate2_ok && gate3_ok {
-        step_succeeded(
-            5,
-            total_steps,
-            "execute templates",
-            execute_step_started,
-            &timestamped_run_log,
-        );
-    } else {
-        let err = anyhow::anyhow!(
-            "execution gates failed (gate2_ok={}, gate3_ok={}, template_errors={})",
-            gate2_ok,
-            gate3_ok,
-            template_errors
-        );
-        step_failed(
-            5,
-            total_steps,
-            "execute templates",
-            execute_step_started,
-            &timestamped_run_log,
-            &err,
-        );
-    }
-
-    if !gate2_ok || !gate3_ok {
+    if !execute_outcome.gate2_ok || !execute_outcome.gate3_ok {
         std::process::exit(1);
     }
 
