@@ -75,17 +75,17 @@ fn yaml_value(snippet: &str) -> serde_yaml::Value {
 fn test_underconstrained_oracle_stateful() {
     use zk_fuzzer_core::oracle::{BugOracle, UnderconstrainedOracle};
 
-    let mut oracle = UnderconstrainedOracle::new();
+    let mut oracle = UnderconstrainedOracle::new().with_public_input_count(1);
 
-    // Create two test cases with different inputs
+    // Create two test cases with the same public input but different private inputs
     let test_case_1 = TestCase {
-        inputs: vec![FieldElement::from_u64(42)],
+        inputs: vec![FieldElement::from_u64(42), FieldElement::from_u64(1)],
         expected_output: None,
         metadata: TestMetadata::default(),
     };
 
     let test_case_2 = TestCase {
-        inputs: vec![FieldElement::from_u64(123)],
+        inputs: vec![FieldElement::from_u64(42), FieldElement::from_u64(123)],
         expected_output: None,
         metadata: TestMetadata::default(),
     };
@@ -120,10 +120,10 @@ fn test_underconstrained_oracle_stateful() {
 fn test_underconstrained_oracle_reset() {
     use zk_fuzzer_core::oracle::{BugOracle, UnderconstrainedOracle};
 
-    let mut oracle = UnderconstrainedOracle::new();
+    let mut oracle = UnderconstrainedOracle::new().with_public_input_count(1);
 
     let test_case = TestCase {
-        inputs: vec![FieldElement::from_u64(42)],
+        inputs: vec![FieldElement::from_u64(42), FieldElement::from_u64(7)],
         expected_output: None,
         metadata: TestMetadata::default(),
     };
