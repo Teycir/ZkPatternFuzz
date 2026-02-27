@@ -14,6 +14,8 @@ use std::time::Instant;
 mod checkenv;
 #[path = "zkpatternfuzz/run_log.rs"]
 mod run_log;
+#[path = "zkpatternfuzz/zkpatternfuzz_campaign.rs"]
+mod zkpatternfuzz_campaign;
 #[path = "zkpatternfuzz/zkpatternfuzz_config.rs"]
 mod zkpatternfuzz_config;
 #[path = "zkpatternfuzz/zkpatternfuzz_discovery.rs"]
@@ -26,6 +28,8 @@ mod zkpatternfuzz_execution;
 mod zkpatternfuzz_readiness;
 #[path = "zkpatternfuzz/zkpatternfuzz_reporting.rs"]
 mod zkpatternfuzz_reporting;
+#[path = "zkpatternfuzz/zkpatternfuzz_runtime.rs"]
+mod zkpatternfuzz_runtime;
 
 use checkenv::{is_set as env_is_set, var as env_var, CheckEnv};
 #[cfg(test)]
@@ -33,6 +37,12 @@ use run_log::{append_run_log, run_log_file_cache};
 use run_log::{
     append_run_log_best_effort, step_failed, step_skipped, step_started, step_succeeded,
 };
+use zkpatternfuzz_campaign::{
+    classify_run_reason_code, collect_observed_suffixes_for_roots,
+    collect_template_outcome_reasons, list_scan_run_roots, print_reason_summary,
+};
+#[cfg(test)]
+use zkpatternfuzz_campaign::{parse_correlation_confidence, parse_correlation_oracle_count};
 use zkpatternfuzz_config::{
     apply_file_config, effective_batch_timeout_secs, halo2_effective_external_timeout_secs,
     high_confidence_min_oracles_from_env, load_batch_file_config, load_memory_guard_config,
@@ -57,6 +67,12 @@ use zkpatternfuzz_reporting::{
     create_timestamped_result_dir, is_error_reason, print_reason_tsv, proof_state_counts,
     write_error_log, write_report_json,
 };
+use zkpatternfuzz_runtime::{
+    auto_halo2_toolchain_candidates, is_external_target, preflight_runtime_paths,
+    prepare_target_for_framework, resolved_release_bin_path,
+};
+#[cfg(test)]
+use zkpatternfuzz_runtime::{parse_rustup_toolchain_names, push_unique_nonempty};
 
 const SCAN_RUN_ROOT_ENV: &str = "ZKF_SCAN_RUN_ROOT";
 const SCAN_OUTPUT_ROOT_ENV: &str = "ZKF_SCAN_OUTPUT_ROOT";
@@ -573,91 +589,6 @@ fn format_stuck_step_warning_line(
     )
 }
 
-fn report_has_high_confidence_finding(report_path: &Path) -> bool {
-    report_has_high_confidence_finding_with_min_oracles(
-        report_path,
-        high_confidence_min_oracles_from_env(),
-    )
-}
-
-fn report_detected_pattern_count(report_path: &Path) -> usize {
-    let raw = match fs::read_to_string(report_path) {
-        Ok(raw) => raw,
-        Err(_) => return 0,
-    };
-    let parsed: serde_json::Value = match serde_json::from_str(&raw) {
-        Ok(parsed) => parsed,
-        Err(_) => return 0,
-    };
-    parsed
-        .get("findings")
-        .and_then(|v| v.as_array())
-        .map(|entries| entries.len())
-        .unwrap_or(0)
-}
-
-fn parse_correlation_confidence(description: &str) -> Option<String> {
-    let marker = "correlation:";
-    let description_lc = description.to_ascii_lowercase();
-    let start = description_lc.find(marker)?;
-    let tail = description_lc.get(start + marker.len()..)?.trim_start();
-    let token = tail
-        .split_whitespace()
-        .next()?
-        .trim_matches(|ch: char| ch == '(' || ch == ')' || ch == ',' || ch == ';' || ch == '.');
-    if token.is_empty() {
-        return None;
-    }
-    Some(token.to_string())
-}
-
-fn parse_correlation_oracle_count(description: &str) -> Option<usize> {
-    let marker = "oracles=";
-    let start = description.find(marker)?;
-    let tail = description.get(start + marker.len()..)?;
-    let digits: String = tail.chars().take_while(|ch| ch.is_ascii_digit()).collect();
-    if digits.is_empty() {
-        return None;
-    }
-    digits.parse::<usize>().ok()
-}
-
-fn report_has_high_confidence_finding_with_min_oracles(
-    report_path: &Path,
-    min_oracles: usize,
-) -> bool {
-    let raw = match fs::read_to_string(report_path) {
-        Ok(raw) => raw,
-        Err(_) => return false,
-    };
-    let parsed: serde_json::Value = match serde_json::from_str(&raw) {
-        Ok(parsed) => parsed,
-        Err(_) => return false,
-    };
-    let Some(findings) = parsed.get("findings").and_then(|v| v.as_array()) else {
-        return false;
-    };
-    findings.iter().any(|finding| {
-        let description = finding
-            .get("description")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default();
-        let Some(confidence) = parse_correlation_confidence(description) else {
-            return false;
-        };
-        if confidence == "critical" {
-            return true;
-        }
-        if confidence != "high" {
-            return false;
-        }
-        match parse_correlation_oracle_count(description) {
-            Some(oracles) => oracles >= min_oracles,
-            None => true,
-        }
-    })
-}
-
 fn parse_family(value: &str) -> anyhow::Result<Family> {
     match value {
         "auto" => Ok(Family::Auto),
@@ -819,182 +750,6 @@ fn apply_memory_parallelism_guardrails(
     apply_memory_parallelism_guardrails_with_available(args, guard, host_available_memory_mb())
 }
 
-fn ensure_writable_dir(path: &Path, label: &str) -> anyhow::Result<()> {
-    fs::create_dir_all(path)
-        .with_context(|| format!("Failed to create {} '{}'", label, path.display()))?;
-
-    let probe_name = format!(
-        ".zkpatternfuzz_probe_{}_{}",
-        std::process::id(),
-        RUN_ROOT_NONCE.fetch_add(1, Ordering::Relaxed)
-    );
-    let probe_path = path.join(probe_name);
-    fs::write(&probe_path, b"probe")
-        .with_context(|| format!("{} is not writable at '{}'", label, path.display()))?;
-    let _ = fs::remove_file(&probe_path);
-    Ok(())
-}
-
-fn preflight_runtime_paths(results_root: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
-    ensure_writable_dir(results_root, "results root")?;
-    let run_signal_dir = results_root.join("run_signals");
-    ensure_writable_dir(&run_signal_dir, "run signal dir")?;
-    let build_cache_dir = resolve_build_cache_dir(results_root);
-    ensure_writable_dir(&build_cache_dir, "build cache dir")?;
-    Ok((run_signal_dir, build_cache_dir))
-}
-
-fn push_unique_nonempty(values: &mut Vec<String>, candidate: impl Into<String>) {
-    let candidate = candidate.into();
-    let trimmed = candidate.trim();
-    if trimmed.is_empty() {
-        return;
-    }
-    if values.iter().any(|existing| existing == trimmed) {
-        return;
-    }
-    values.push(trimmed.to_string());
-}
-
-fn parse_rustup_toolchain_names(raw: &str) -> Vec<String> {
-    let mut parsed = Vec::new();
-    for line in raw.lines() {
-        let first = line.split_whitespace().next().unwrap_or_default().trim();
-        if first.is_empty() || first.starts_with("info:") || first.starts_with("error:") {
-            continue;
-        }
-        push_unique_nonempty(&mut parsed, first.trim_end_matches(','));
-    }
-    parsed
-}
-
-fn rustup_stdout(args: &[&str]) -> Option<String> {
-    let output = Command::new("rustup").args(args).output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-fn auto_halo2_toolchain_candidates() -> Vec<String> {
-    let mut candidates = Vec::<String>::new();
-
-    if let Some(active) = rustup_stdout(&["show", "active-toolchain"]) {
-        if let Some(toolchain) = active.split_whitespace().next() {
-            push_unique_nonempty(&mut candidates, toolchain);
-        }
-    }
-
-    let installed = rustup_stdout(&["toolchain", "list"])
-        .map(|raw| parse_rustup_toolchain_names(&raw))
-        .unwrap_or_default();
-    let installed_set = installed.iter().cloned().collect::<BTreeSet<String>>();
-
-    for preferred in [
-        "nightly-x86_64-unknown-linux-gnu",
-        "nightly",
-        "stable-x86_64-unknown-linux-gnu",
-        "stable",
-    ] {
-        if installed_set.contains(preferred) {
-            push_unique_nonempty(&mut candidates, preferred);
-        }
-    }
-
-    for name in &installed {
-        if name.starts_with("nightly-") {
-            push_unique_nonempty(&mut candidates, name);
-        }
-    }
-    for name in &installed {
-        if name.starts_with("stable-") {
-            push_unique_nonempty(&mut candidates, name);
-        }
-    }
-    for name in &installed {
-        push_unique_nonempty(&mut candidates, name);
-    }
-
-    const MAX_AUTO_TOOLCHAINS: usize = 6;
-    if candidates.len() > MAX_AUTO_TOOLCHAINS {
-        candidates.truncate(MAX_AUTO_TOOLCHAINS);
-    }
-    candidates
-}
-
-fn is_external_target(target_circuit: &str) -> bool {
-    let target_path = Path::new(target_circuit);
-    if !target_path.is_absolute() {
-        return false;
-    }
-
-    let Ok(workspace_root) = std::env::current_dir() else {
-        return false;
-    };
-    !target_path.starts_with(&workspace_root)
-}
-
-fn resolve_halo2_manifest_path(target_circuit: &str) -> anyhow::Result<PathBuf> {
-    let candidate = PathBuf::from(target_circuit);
-    if candidate.is_file() {
-        let is_manifest = candidate
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(|name| name == "Cargo.toml")
-            .unwrap_or(false);
-        if is_manifest {
-            return Ok(candidate);
-        }
-        anyhow::bail!(
-            "Halo2 target '{}' must be Cargo.toml or a directory containing Cargo.toml",
-            target_circuit
-        );
-    }
-
-    if candidate.is_dir() {
-        let manifest = candidate.join("Cargo.toml");
-        if manifest.is_file() {
-            return Ok(manifest);
-        }
-        anyhow::bail!(
-            "Halo2 target directory '{}' does not contain Cargo.toml",
-            target_circuit
-        );
-    }
-
-    anyhow::bail!(
-        "Halo2 target '{}' does not exist or is not a file/directory",
-        target_circuit
-    );
-}
-
-fn prepare_target_for_framework(framework: &str, target_circuit: &str) -> anyhow::Result<bool> {
-    if !framework.eq_ignore_ascii_case("halo2") {
-        return Ok(false);
-    }
-
-    let manifest = resolve_halo2_manifest_path(target_circuit)?;
-    let status = Command::new("cargo")
-        .args(["build", "--release", "--manifest-path"])
-        .arg(&manifest)
-        .status()
-        .with_context(|| {
-            format!(
-                "Failed to execute cargo build for Halo2 target '{}'",
-                manifest.display()
-            )
-        })?;
-
-    if !status.success() {
-        anyhow::bail!(
-            "Halo2 target prepare failed: cargo build --release --manifest-path '{}' exited with non-zero status",
-            manifest.display()
-        );
-    }
-
-    Ok(true)
-}
-
 fn effective_family(template_family: Family, family_override: Family) -> Family {
     match family_override {
         Family::Auto => template_family,
@@ -1020,14 +775,6 @@ fn validate_template_compatibility(
     }
     let effective = effective_family(template.family, family_override);
     Ok(effective)
-}
-
-fn resolved_release_bin_path(binary_name: &str) -> PathBuf {
-    if let Some(target_dir) = std::env::var_os("CARGO_TARGET_DIR") {
-        PathBuf::from(target_dir).join("release").join(binary_name)
-    } else {
-        PathBuf::from("target").join("release").join(binary_name)
-    }
 }
 
 fn reserve_batch_scan_run_root(artifacts_root: &Path) -> anyhow::Result<String> {
@@ -1062,373 +809,6 @@ fn reserve_batch_scan_run_root(artifacts_root: &Path) -> anyhow::Result<String> 
         "Failed to allocate unique batch scan run root after repeated collisions under '{}'",
         artifacts_root.display()
     )
-}
-
-fn list_scan_run_roots(artifacts_root: &Path) -> anyhow::Result<BTreeSet<String>> {
-    if !artifacts_root.exists() {
-        return Ok(BTreeSet::new());
-    }
-
-    let mut roots = BTreeSet::new();
-    for entry in fs::read_dir(artifacts_root).with_context(|| {
-        format!(
-            "Failed to read artifacts root '{}'",
-            artifacts_root.display()
-        )
-    })? {
-        let entry = entry?;
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
-            continue;
-        };
-        if !name.starts_with("scan_run") {
-            continue;
-        }
-        if entry.file_type()?.is_dir() {
-            roots.insert(name.to_string());
-        }
-    }
-
-    Ok(roots)
-}
-
-fn collect_observed_suffixes_for_roots(
-    artifacts_root: &Path,
-    run_roots: &BTreeSet<String>,
-) -> anyhow::Result<BTreeSet<String>> {
-    let mut observed = BTreeSet::new();
-    for run_root in run_roots {
-        let run_root_path = artifacts_root.join(run_root);
-        if !run_root_path.exists() {
-            continue;
-        }
-        for entry in fs::read_dir(&run_root_path).with_context(|| {
-            format!(
-                "Failed to read run artifact root '{}'",
-                run_root_path.display()
-            )
-        })? {
-            let entry = entry?;
-            if !entry.file_type()?.is_dir() {
-                continue;
-            }
-            let name = entry.file_name();
-            let Some(name) = name.to_str() else {
-                continue;
-            };
-            observed.insert(name.to_string());
-        }
-    }
-    Ok(observed)
-}
-
-fn classify_run_reason_code(doc: &serde_json::Value) -> &'static str {
-    let Some(obj) = doc.as_object() else {
-        return "invalid_run_outcome_json";
-    };
-    let status = obj
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    let stage = obj
-        .get("stage")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    let error_lc = obj
-        .get("error")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let reason_lc = obj
-        .get("reason")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let panic_message_lc = obj
-        .get("panic")
-        .and_then(|v| v.get("message"))
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let is_dependency_resolution_failure = |message: &str| -> bool {
-        message.contains("failed to load source for dependency")
-            || message.contains("failed to get `")
-            || message.contains("failed to update")
-            || message.contains("unable to update")
-            || message.contains("could not clone")
-            || message.contains("failed to clone")
-            || message.contains("failed to fetch into")
-            || message.contains("couldn't find remote ref")
-            || message.contains("network failure seems to have happened")
-            || message.contains("spurious network error")
-            || message.contains("index-pack failed")
-            || message.contains("failed to download")
-            || message.contains("checksum failed")
-    };
-    let is_input_contract_mismatch = |message: &str| -> bool {
-        message.contains("not all inputs have been set")
-            || message.contains("input map is missing")
-            || message.contains("missing required circom signals")
-    };
-    let is_circom_compilation_failure = |message: &str| -> bool {
-        message.contains("circom compilation failed")
-            || message.contains("failed to run circom compiler")
-            || (message.contains("out of bounds exception") && message.contains(".circom"))
-    };
-    let is_backend_toolchain_mismatch = |message: &str| -> bool {
-        let cascade_exhausted = message.contains("toolchain cascade exhausted")
-            || message.contains("scarb build failed for all configured candidates")
-            || message.contains("no working scarb candidate found");
-        let scarb_compile_mismatch = message.contains("scarb build failed")
-            && message.contains("could not compile `")
-            && (message.contains("error[e")
-                || message.contains("identifier not found")
-                || message.contains("type annotations needed")
-                || message.contains("unsupported"));
-        let rust_toolchain_mismatch = message.contains("requires rustc")
-            || message.contains("the package requires")
-            || message.contains("is not supported by this compiler")
-            || message.contains("cargo-features");
-        cascade_exhausted || scarb_compile_mismatch || rust_toolchain_mismatch
-    };
-
-    if status == "completed_with_critical_findings" {
-        return "critical_findings_detected";
-    }
-    if status == "completed" {
-        return "completed";
-    }
-    if status == "failed_engagement_contract" {
-        return "engagement_contract_failed";
-    }
-    if status == "stale_interrupted" {
-        return "stale_interrupted";
-    }
-    if status == "panic" {
-        if panic_message_lc.contains("missing required 'command' in run document") {
-            return "artifact_mirror_panic_missing_command";
-        }
-        return "panic";
-    }
-    if status == "running" {
-        return "running";
-    }
-    if error_lc.contains("permission denied") {
-        return "filesystem_permission_denied";
-    }
-    if stage == "preflight_backend"
-        && (error_lc.contains("backend required but not available")
-            || error_lc.contains("not found in path")
-            || error_lc.contains("snarkjs not found")
-            || error_lc.contains("circom not found")
-            || error_lc.contains("install circom"))
-    {
-        return "backend_tooling_missing";
-    }
-    if stage == "preflight_backend" && is_dependency_resolution_failure(&error_lc) {
-        return "backend_dependency_resolution_failed";
-    }
-    if stage == "preflight_backend" && is_backend_toolchain_mismatch(&error_lc) {
-        return "backend_toolchain_mismatch";
-    }
-    if is_circom_compilation_failure(&error_lc) {
-        return "circom_compilation_failed";
-    }
-    if error_lc.contains("key generation failed")
-        || error_lc.contains("key setup failed")
-        || error_lc.contains("proving key")
-    {
-        return "key_generation_failed";
-    }
-    if error_lc.contains("wall-clock timeout") || reason_lc.contains("wall-clock timeout") {
-        return "wall_clock_timeout";
-    }
-    if stage == "acquire_output_lock" {
-        return "output_dir_locked";
-    }
-    if is_input_contract_mismatch(&error_lc) {
-        return "backend_input_contract_mismatch";
-    }
-    if stage == "preflight_backend" {
-        return "backend_preflight_failed";
-    }
-    if stage == "preflight_selector" {
-        return "selector_mismatch";
-    }
-    if stage == "preflight_invariants" {
-        return "missing_invariants";
-    }
-    if stage == "preflight_readiness" {
-        return "readiness_failed";
-    }
-    if stage == "parse_chains" && reason_lc.contains("requires chains") {
-        return "missing_chains_definition";
-    }
-    if status == "failed" {
-        return "runtime_error";
-    }
-
-    "unknown"
-}
-
-fn collect_template_outcome_reasons(
-    artifacts_root: &Path,
-    run_root: Option<&str>,
-    selected_with_family: &[(TemplateInfo, Family)],
-) -> Vec<TemplateOutcomeReason> {
-    let Some(run_root) = run_root else {
-        return Vec::new();
-    };
-
-    selected_with_family
-        .iter()
-        .map(|(template, family)| {
-            let suffix = scan_output_suffix(template, *family);
-            let run_outcome_path = artifacts_root
-                .join(run_root)
-                .join(&suffix)
-                .join("run_outcome.json");
-
-            if !run_outcome_path.exists() {
-                return TemplateOutcomeReason {
-                    template_file: template.file_name.clone(),
-                    template_path: template.path.display().to_string(),
-                    suffix,
-                    status: None,
-                    stage: None,
-                    proof_status: None,
-                    reason_code: "run_outcome_missing".to_string(),
-                    high_confidence_detected: false,
-                    detected_pattern_count: 0,
-                };
-            }
-
-            let raw = match fs::read_to_string(&run_outcome_path) {
-                Ok(raw) => raw,
-                Err(_) => {
-                    return TemplateOutcomeReason {
-                        template_file: template.file_name.clone(),
-                        template_path: template.path.display().to_string(),
-                        suffix,
-                        status: None,
-                        stage: None,
-                        proof_status: None,
-                        reason_code: "run_outcome_unreadable".to_string(),
-                        high_confidence_detected: false,
-                        detected_pattern_count: 0,
-                    };
-                }
-            };
-
-            let parsed: serde_json::Value = match serde_json::from_str(&raw) {
-                Ok(parsed) => parsed,
-                Err(_) => {
-                    return TemplateOutcomeReason {
-                        template_file: template.file_name.clone(),
-                        template_path: template.path.display().to_string(),
-                        suffix,
-                        status: None,
-                        stage: None,
-                        proof_status: None,
-                        reason_code: "run_outcome_invalid_json".to_string(),
-                        high_confidence_detected: false,
-                        detected_pattern_count: 0,
-                    };
-                }
-            };
-
-            let status = parsed
-                .get("status")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let stage = parsed
-                .get("stage")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let report_path = artifacts_root
-                .join(run_root)
-                .join(&suffix)
-                .join("report.json");
-
-            let mut reason = TemplateOutcomeReason {
-                template_file: template.file_name.clone(),
-                template_path: template.path.display().to_string(),
-                suffix,
-                status,
-                stage,
-                proof_status: proof_status_from_run_outcome_doc(&parsed),
-                reason_code: parsed
-                    .get("reason_code")
-                    .and_then(|v| v.as_str())
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| classify_run_reason_code(&parsed).to_string()),
-                high_confidence_detected: report_has_high_confidence_finding(&report_path),
-                detected_pattern_count: report_detected_pattern_count(&report_path),
-            };
-            enforce_detected_pattern_proof_contract(&mut reason);
-            reason
-        })
-        .collect()
-}
-
-fn proof_stage_started_for_status(proof_status: Option<&str>) -> bool {
-    matches!(
-        proof_status,
-        Some("exploitable" | "not_exploitable_within_bounds" | "proof_failed")
-    )
-}
-
-fn enforce_detected_pattern_proof_contract(reason: &mut TemplateOutcomeReason) {
-    if reason.detected_pattern_count == 0
-        || proof_stage_started_for_status(reason.proof_status.as_deref())
-    {
-        return;
-    }
-    reason.proof_status = Some("proof_failed".to_string());
-    if matches!(
-        reason.reason_code.as_str(),
-        "completed" | "critical_findings_detected"
-    ) {
-        reason.reason_code = PROOF_STAGE_NOT_STARTED_REASON_CODE.to_string();
-    }
-}
-
-fn print_reason_summary(reasons: &[TemplateOutcomeReason]) {
-    if reasons.is_empty() {
-        return;
-    }
-
-    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    for reason in reasons {
-        *counts.entry(reason.reason_code.clone()).or_insert(0) += 1;
-    }
-
-    let summary_line = counts
-        .iter()
-        .map(|(code, count)| format!("{}={}", code, count))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    println!("Reason code summary: {}", summary_line);
-
-    for reason in reasons {
-        if (reason.reason_code == "completed" || reason.reason_code == "critical_findings_detected")
-            && reason.proof_status.as_deref() != Some("proof_failed")
-        {
-            continue;
-        }
-        println!(
-            "  - {} [{}]: reason_code={} status={} stage={} proof_status={}",
-            reason.template_file,
-            reason.suffix,
-            reason.reason_code,
-            reason.status.as_deref().unwrap_or("unknown"),
-            reason.stage.as_deref().unwrap_or("unknown"),
-            reason.proof_status.as_deref().unwrap_or("unknown"),
-        );
-    }
 }
 
 fn main() -> anyhow::Result<()> {
