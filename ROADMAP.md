@@ -1983,6 +1983,24 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - [ ] `EXT-005-F05` witness `0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593efffffff` pending replay/proof bundle.
 - [ ] `EXT-005-F06` witness `0x0e0a77c19a07df2f666ca36f7879412e36fee3849f6179e4ac96341c4ffffffc` pending replay/proof bundle.
 
+#### EXT-005 Resume Checkpoint (2026-02-27)
+- Completed and pushed test commits for this closure track:
+  - `00ee4d2` (`tests/backend_integration_tests.rs`): witness parameterization, console heartbeats, bounded phase metrics, env constant cleanup, and skip-constraint env rename.
+  - `b4114a7` (`ROADMAP.md`): F02/F03 closure and timing tracking updates.
+  - `2c1c316` (`crates/zk-core`): remove legacy `field_tests.rs` after migration.
+  - `17ffb18` (`crates/zk-fuzzer-core`): remove migrated per-module test files.
+- Replay env checkpoint for next runs:
+  - prefer `ZK_FUZZER_EXT005_REPLAY_SKIP_CONSTRAINT_LOAD=1` (legacy `EXT005_REPLAY_SKIP_CONSTRAINT_LOAD` still accepted with deprecation log).
+  - keep `ZK_FUZZER_HALO2_CARGO_TOOLCHAIN=nightly-2025-12-01`, `ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES=nightly-2025-12-01`, `ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE=false`, and `ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS=600`.
+- Latest proven runs:
+  - F02: `artifacts/proof_runs/ext005/run_20260227_042922_ext005_finding02_stable_console_retry3/` (`REPLAY_EXIT_STATUS=0`, `not_exploitable_within_bounds`).
+  - F03: `artifacts/proof_runs/ext005/run_20260227_045628_ext005_finding03_stable_console/` (`REPLAY_EXIT_STATUS=0`, `not_exploitable_within_bounds`).
+- Interrupted/incomplete run to resume from:
+  - F04 partial attempt: `artifacts/proof_runs/ext005/run_20260227_051548_ext005_finding04_stable_console/replay.log`
+  - status: interrupted during `phase=create_executor` (only `elapsed=20s,40s` recorded; no terminal status marker).
+- Resume command template (F04 next):
+  - `timeout 2200s env ZKFUZZ_REAL_BACKENDS=1 EXT005_EZKL_PATH=/media/elements/Repos/zkml/ezkl/Cargo.toml EXT005_EZKL_BUILD_DIR=/home/teycir/Repos/ZkPatternFuzz/artifacts/external_targets/recheck/build_cache/halo2/Cargo_main__607508cb5480 ZK_FUZZER_HALO2_CARGO_TOOLCHAIN=nightly-2025-12-01 ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES=nightly-2025-12-01 ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE=false ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS=600 SVM_RELEASES_LIST_JSON=/home/teycir/Repos/ZkPatternFuzz/artifacts/external_targets/recheck_ext005_continue_20260225/manifests/svm_releases_linux_amd64.json EXT005_REPLAY_WITNESS_HEX=0x0000000000000000000000000000000000000000000000000000000000000000 ZK_FUZZER_EXT005_REPLAY_SKIP_CONSTRAINT_LOAD=1 cargo test --test backend_integration_tests test_halo2_ext005_ezkl_replay_base_execution_failure -- --nocapture --test-threads=1`
+
 - [ ] Add runtime phase timing metrics to all heavy replay tests.
   - [x] Heartbeat visibility shipped for EXT-005 replay harness (`tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure`).
   - [x] Emit bounded-run phase timing summary line (`phase_metrics ...`) for EXT-005 replay harness.
