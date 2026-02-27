@@ -1,4 +1,7 @@
-use super::*;
+use zk_core::{AttackType, FieldElement, Severity, TestCase, TestMetadata};
+use zk_fuzzer_core::oracle::{
+    ArithmeticOverflowOracle, BugOracle, ConstraintCountOracle, UnderconstrainedOracle,
+};
 
 #[test]
 fn test_underconstrained_oracle() {
@@ -6,12 +9,12 @@ fn test_underconstrained_oracle() {
     let test_case_a = TestCase {
         inputs: vec![FieldElement::zero()],
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
     let test_case_b = TestCase {
         inputs: vec![FieldElement::from_u64(7)],
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
     let output = vec![FieldElement::one()];
 
@@ -29,19 +32,19 @@ fn test_underconstrained_oracle_scopes_public_inputs() {
     let tc_a = TestCase {
         inputs: vec![FieldElement::from_u64(1), FieldElement::from_u64(10)],
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
 
     let tc_b = TestCase {
         inputs: vec![FieldElement::from_u64(2), FieldElement::from_u64(20)],
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
 
     let tc_c = TestCase {
         inputs: vec![FieldElement::from_u64(1), FieldElement::from_u64(99)],
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
 
     // Different public inputs: should not collide
@@ -62,7 +65,7 @@ fn test_constraint_count_oracle_emits_variance_once() {
     let test_case = TestCase {
         inputs: vec![FieldElement::from_u64(1), FieldElement::from_u64(2)],
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
 
     assert!(oracle.check_with_count(&test_case, 8).is_none());
@@ -90,7 +93,7 @@ fn test_arithmetic_overflow_oracle() {
     let test_case = TestCase {
         inputs: vec![FieldElement([0xff; 32]), FieldElement::from_u64(42)], // Definitely overflow
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
     let output = vec![FieldElement::zero()];
 
@@ -107,7 +110,7 @@ fn test_arithmetic_overflow_boundary_ignored_without_public_inputs() {
     let test_case = TestCase {
         inputs: vec![FieldElement::from_u64(1)],
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
     let output = vec![FieldElement::zero()];
 
@@ -121,7 +124,7 @@ fn test_arithmetic_overflow_boundary_does_not_flag_near_zero_values() {
     let test_case = TestCase {
         inputs: vec![FieldElement::from_u64(1)],
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
     let output = vec![FieldElement::from_u64(1)];
 
@@ -138,7 +141,7 @@ fn test_arithmetic_overflow_boundary_keeps_near_modulus_signal() {
     let test_case = TestCase {
         inputs: vec![FieldElement::from_u64(1)],
         expected_output: None,
-        metadata: zk_core::TestMetadata::default(),
+        metadata: TestMetadata::default(),
     };
     let output = vec![FieldElement::from_u64(2501)]; // distance 499 from modulus
 

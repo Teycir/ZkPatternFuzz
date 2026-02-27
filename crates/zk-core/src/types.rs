@@ -433,10 +433,6 @@ pub struct ProofOfConcept {
     pub proof: Option<Vec<u8>>,
 }
 
-#[cfg(test)]
-#[path = "types_tests.rs"]
-mod tests;
-
 /// Coverage tracking
 #[derive(Debug, Clone, Default)]
 pub struct CoverageMap {

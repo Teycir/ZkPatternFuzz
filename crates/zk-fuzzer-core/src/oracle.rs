@@ -850,7 +850,3 @@ impl BugOracle for SemanticOracleAdapter {
         Some(self.inner.attack_type())
     }
 }
-
-#[cfg(test)]
-#[path = "oracle_tests.rs"]
-mod tests;

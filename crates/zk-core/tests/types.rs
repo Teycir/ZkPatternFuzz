@@ -1,5 +1,5 @@
-use super::*;
-use crate::constants::BN254_SCALAR_MODULUS_HEX;
+use zk_core::constants::BN254_SCALAR_MODULUS_HEX;
+use zk_core::{AttackType, FieldElement, Finding, FindingClass, ProofOfConcept, Severity};
 
 fn make_finding(
     description: &str,
