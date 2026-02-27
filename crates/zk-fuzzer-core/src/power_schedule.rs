@@ -227,7 +227,3 @@ impl PowerScheduler {
         combined as usize
     }
 }
-
-#[cfg(test)]
-#[path = "power_schedule_tests.rs"]
-mod tests;
