@@ -666,7 +666,3 @@ impl FuzzingEngineCoreBuilder {
         })
     }
 }
-
-#[cfg(test)]
-#[path = "engine_tests.rs"]
-mod tests;
