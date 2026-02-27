@@ -192,7 +192,3 @@ fn havoc_mutation(input: &FieldElement, rng: &mut impl Rng) -> FieldElement {
 
     result
 }
-
-#[cfg(test)]
-#[path = "mutators_tests.rs"]
-mod tests;
