@@ -84,8 +84,8 @@ def latest_path(paths: Sequence[Path]) -> Optional[Path]:
 
 def classify_no_exploit_doc(path: Path) -> str:
     text = path.read_text(encoding="utf-8", errors="replace").lower()
-    if "pending_proof" in text:
-        return "pending_proof"
+    # Prefer explicit closed conclusions even if the doc also references
+    # historical pending states (e.g. "pending_proof -> bounded_non_exploit...").
     if "not_exploitable_within_bounds" in text:
         return "not_exploitable_within_bounds"
     if "not exploitable within checked bounds" in text:
@@ -94,6 +94,8 @@ def classify_no_exploit_doc(path: Path) -> str:
         return "not_exploitable_within_bounds"
     if "result: **not exploitable" in text:
         return "not_exploitable_within_bounds"
+    if "pending_proof" in text:
+        return "pending_proof"
     return "unknown"
 
 

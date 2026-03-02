@@ -2059,19 +2059,63 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 
 - [x] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
   - Automated generator: `scripts/build_external_target_closure_table.py`
-  - Latest artifacts (`2026-03-02T16:21:39Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=2`, `blocked=13`; `EXT-005` open findings=`0`).
+  - Latest artifacts (`2026-03-02T16:58:16Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=7`, `blocked=8`; `EXT-005` open findings=`0`).
+  - Generator bugfix (`2026-03-02`): `classify_no_exploit_doc` now prioritizes explicit non-exploit conclusions over historical `pending_proof` mentions, preventing false `blocked` classification for transition docs (e.g., `pending_proof -> bounded_non_exploit_evidence_present`).
 
 | Target | Closure Class | Current Scope | Artifact Link |
 |---|---|---|---|
+| `EXT-001` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext001/run_20260302_165807_ext001_argmax_wrapper_non_exploit/no_exploit_proof.md` |
 | `EXT-003` | `exploitable` | target-level closed | `artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/exploit_notes.md` |
 | `EXT-013` | `not_exploitable_within_bounds` | target-level closed | `artifacts/external_targets/ext_batch_013/reports/evidence/EXT-013/run_20260225_ext013_relu_bounded_non_exploit/no_exploit_proof.md` |
 | `EXT-005` | `not_exploitable_within_bounds` | target-level closed (current `F01..F06` list all closed as bounded non-exploit) | `artifacts/proof_runs/ext005/run_20260302_160243_ext005_finding06_longwindow_resume/no_exploit_proof.md` |
-| `EXT-010` | `blocked` | critical findings pending deterministic exploit/non-exploit bundle | `artifacts/external_targets/ext_batch_008/reports/run_signals/report_1771891097_20260223_235817_evidence_ext010_circomlib_iszero_campaign_pid2847870/summary.json` |
-| `EXT-011` | `blocked` | critical findings pending deterministic exploit/non-exploit bundle | `artifacts/external_targets/ext_batch_008/reports/run_signals/report_1771891131_20260223_235851_evidence_ext011_circomlib_lessthan_campaign_pid2873855/summary.json` |
-| `EXT-012` | `blocked` | critical findings pending deterministic exploit/non-exploit bundle | `artifacts/external_targets/ext_batch_004/reports/run_signals/report_1771886353/summary.json` |
+| `EXT-010` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext010/run_20260302_164005_ext010_iszero_non_exploit_algebraic/no_exploit_proof.md` |
+| `EXT-011` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext011/run_20260302_164700_ext011_lessthan_non_exploit/no_exploit_proof.md` |
+| `EXT-012` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext012/run_20260302_164942_ext012_montgomerydouble_non_exploit/no_exploit_proof.md` |
 | `EXT-004` | `blocked` | backend/preflight instability prevents proof closure | `artifacts/external_targets/recheck/run_signals_ext004/report_1771976147_20260224_233547_evidence_ext004_orion_scarb_campaign_pid3974196/summary.json` |
 | `EXT-008` | `blocked` | backend/preflight instability prevents proof closure | `artifacts/external_targets/ext_batch_010/run_signals/report_1771893391_20260224_003631_evidence_ext008_orion_linear_classifier_campaign_pid3096040/summary.json` |
 | `EXT-015` | `blocked` | deterministic toolchain mismatch blocker persists | `artifacts/external_targets/recheck_ext015_continue_20260225/reports/ext015_triage.md` |
+
+### EXT-001 Proof Closure (2026-03-02)
+- [x] Objective lock, target freeze, and tool readiness artifacts captured.
+  - `artifacts/proof_runs/ext001/run_20260302_165807_ext001_argmax_wrapper_non_exploit/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+- [x] Deterministic bounded campaign replay command captured.
+  - `artifacts/proof_runs/ext001/run_20260302_165807_ext001_argmax_wrapper_non_exploit/replay_command.txt`
+- [x] Formal/bounded evidence pack written for non-exploit closure.
+  - Artifacts: `artifacts/proof_runs/ext001/run_20260302_165807_ext001_argmax_wrapper_non_exploit/{no_exploit_proof.md,triage.md,impact.md}`
+  - Source evidence replayed: `artifacts/external_targets/ext_batch_011/reports/evidence/EXT-001/{report.json,run_outcome.json}` and run-signal summary `artifacts/external_targets/ext_batch_012/run_signals/report_1771938763_20260224_131243_evidence_ext001_circomlibml_argmax_wrapper_campaign_pid28572/summary.json`.
+  - Conclusion: `not_exploitable_within_bounds` for bounded campaign profile (`seed=42`, `iterations=200`, `timeout=60s`, `workers=1`) on frozen snapshot `f960098`.
+
+### EXT-010 Proof Closure (2026-03-02)
+- [x] Objective lock, target freeze, and tool readiness artifacts captured.
+  - `artifacts/proof_runs/ext010/run_20260302_164005_ext010_iszero_non_exploit_algebraic/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+- [x] Deterministic replay completed with explicit terminal status.
+  - Command + log + status: `artifacts/proof_runs/ext010/run_20260302_164005_ext010_iszero_non_exploit_algebraic/{replay_command.txt,replay.log,replay_exit_status.txt}`
+  - Outcome: `REPLAY_EXIT_STATUS=0`, `EXT-010 non-exploit proof: SAFE`.
+- [x] Formal/bounded evidence pack written for finding triage.
+  - Artifacts: `artifacts/proof_runs/ext010/run_20260302_164005_ext010_iszero_non_exploit_algebraic/{no_exploit_proof.md,triage.md,impact.md}`
+  - Conclusion: `not_exploitable_within_bounds` on frozen snapshot `360715607a240041f49eb46c543fc450051c4cb7` for IsZero claim class.
+- [x] Prior solver-heavy replay stall preserved as historical blocked attempt.
+  - `artifacts/proof_runs/ext010/run_20260302_173640_ext010_iszero_non_exploit_bounded64/replay.log` (no terminal output before manual stop).
+
+### EXT-011 Proof Closure (2026-03-02)
+- [x] Objective lock, target freeze, and tool readiness artifacts captured.
+  - `artifacts/proof_runs/ext011/run_20260302_164700_ext011_lessthan_non_exploit/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+- [x] Deterministic replay completed with explicit terminal status.
+  - Command + log + status: `artifacts/proof_runs/ext011/run_20260302_164700_ext011_lessthan_non_exploit/{replay_command.txt,replay.log,replay_exit_status.txt}`
+  - Outcome: `REPLAY_EXIT_STATUS=0`, `EXT-011 non-exploit proof: SAFE`.
+- [x] Formal/bounded evidence pack written for finding triage.
+  - Artifacts: `artifacts/proof_runs/ext011/run_20260302_164700_ext011_lessthan_non_exploit/{no_exploit_proof.md,triage.md,impact.md}`
+  - Conclusion: `not_exploitable_within_bounds` on frozen snapshot `360715607a240041f49eb46c543fc450051c4cb7` for LessThan(32) underconstrained claim class.
+
+### EXT-012 Proof Closure (2026-03-02)
+- [x] Objective lock, target freeze, and tool readiness artifacts captured.
+  - `artifacts/proof_runs/ext012/run_20260302_164942_ext012_montgomerydouble_non_exploit/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+- [x] Deterministic replay completed with explicit terminal status.
+  - Command + log + status: `artifacts/proof_runs/ext012/run_20260302_164942_ext012_montgomerydouble_non_exploit/{replay_command.txt,replay.log,replay_exit_status.txt}`
+  - Outcome: `REPLAY_EXIT_STATUS=0`, `EXT-012 non-exploit proof: SAFE`.
+- [x] Formal/bounded evidence pack written for finding triage.
+  - Artifacts: `artifacts/proof_runs/ext012/run_20260302_164942_ext012_montgomerydouble_non_exploit/{no_exploit_proof.md,triage.md,impact.md}`
+  - Conclusion: `not_exploitable_within_bounds` on frozen snapshot `360715607a240041f49eb46c543fc450051c4cb7` for MontgomeryDouble constraint-slice claim class.
 
 ### Proof Continuation (2026-02-26)
 - [x] `cveX15_scroll_missing_overflow_constraint` deterministic replay + bounded non-exploit proof pack completed (manual checks only).

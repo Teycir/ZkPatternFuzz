@@ -61,6 +61,20 @@ targets:
                 "not_exploitable_within_bounds",
             )
 
+    def test_classify_no_exploit_doc_prefers_closed_over_historical_pending_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mixed = Path(tmp) / "mixed.md"
+            mixed.write_text(
+                "Status update: pending_proof -> bounded_non_exploit_evidence_present.\n"
+                "Result: **not exploitable within checked bounds**.\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                closure.classify_no_exploit_doc(mixed),
+                "not_exploitable_within_bounds",
+            )
+
     def test_resolve_target_row_ext005_stays_blocked_when_findings_open(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
