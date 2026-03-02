@@ -2021,9 +2021,10 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - [x] `EXT-005-F01` witness `0x0e0a77c19a0fdf2f406e2b6f7879462e36fc76959f60cd29ac96341c4ffffffa` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260227_030425_ext005_stable_console/no_exploit_proof.md`).
 - [x] `EXT-005-F02` witness `0x0000000000000000000000380000000000000000000000000000000000000000` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260227_042922_ext005_finding02_stable_console_retry3/no_exploit_proof.md`).
 - [x] `EXT-005-F03` witness `0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260227_045628_ext005_finding03_stable_console/no_exploit_proof.md`).
-- [ ] `EXT-005-F04` witness `0x0000000000000000000000000000000000000000000000000000000000000000` pending replay/proof bundle.
-- [ ] `EXT-005-F05` witness `0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593efffffff` pending replay/proof bundle.
-- [ ] `EXT-005-F06` witness `0x0e0a77c19a07df2f666ca36f7879412e36fee3849f6179e4ac96341c4ffffffc` pending replay/proof bundle.
+- [x] `EXT-005-F04` witness `0x0000000000000000000000000000000000000000000000000000000000000000` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260302_152346_ext005_finding04_longwindow_resume/no_exploit_proof.md`).
+  - Prior blocked attempt (`2026-03-02`): `phase=create_executor` stall through `elapsed=300s` (`artifacts/proof_runs/ext005/run_20260302_151358_ext005_finding04_stable_console/replay.log`).
+- [x] `EXT-005-F05` witness `0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593efffffff` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260302_154250_ext005_finding05_longwindow_resume/no_exploit_proof.md`).
+- [x] `EXT-005-F06` witness `0x0e0a77c19a07df2f666ca36f7879412e36fee3849f6179e4ac96341c4ffffffc` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260302_160243_ext005_finding06_longwindow_resume/no_exploit_proof.md`).
 
 #### EXT-005 Resume Checkpoint (2026-02-27)
 - Completed and pushed test commits for this closure track:
@@ -2037,11 +2038,14 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - Latest proven runs:
   - F02: `artifacts/proof_runs/ext005/run_20260227_042922_ext005_finding02_stable_console_retry3/` (`REPLAY_EXIT_STATUS=0`, `not_exploitable_within_bounds`).
   - F03: `artifacts/proof_runs/ext005/run_20260227_045628_ext005_finding03_stable_console/` (`REPLAY_EXIT_STATUS=0`, `not_exploitable_within_bounds`).
+  - F04: `artifacts/proof_runs/ext005/run_20260302_152346_ext005_finding04_longwindow_resume/` (`REPLAY_EXIT_STATUS=0`, `not_exploitable_within_bounds`).
+  - F05: `artifacts/proof_runs/ext005/run_20260302_154250_ext005_finding05_longwindow_resume/` (`REPLAY_EXIT_STATUS=0`, `not_exploitable_within_bounds`).
+  - F06: `artifacts/proof_runs/ext005/run_20260302_160243_ext005_finding06_longwindow_resume/` (`REPLAY_EXIT_STATUS=0`, `not_exploitable_within_bounds`).
 - Interrupted/incomplete run to resume from:
-  - F04 partial attempt: `artifacts/proof_runs/ext005/run_20260227_051548_ext005_finding04_stable_console/replay.log`
-  - status: interrupted during `phase=create_executor` (only `elapsed=20s,40s` recorded; no terminal status marker).
-- Resume command template (F04 next):
-  - `timeout 2200s env ZKFUZZ_REAL_BACKENDS=1 EXT005_EZKL_PATH=/media/elements/Repos/zkml/ezkl/Cargo.toml EXT005_EZKL_BUILD_DIR=/home/teycir/Repos/ZkPatternFuzz/artifacts/external_targets/recheck/build_cache/halo2/Cargo_main__607508cb5480 ZK_FUZZER_HALO2_CARGO_TOOLCHAIN=nightly-2025-12-01 ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES=nightly-2025-12-01 ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE=false ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS=600 SVM_RELEASES_LIST_JSON=/home/teycir/Repos/ZkPatternFuzz/artifacts/external_targets/recheck_ext005_continue_20260225/manifests/svm_releases_linux_amd64.json EXT005_REPLAY_WITNESS_HEX=0x0000000000000000000000000000000000000000000000000000000000000000 ZK_FUZZER_EXT005_REPLAY_SKIP_CONSTRAINT_LOAD=1 cargo test --test backend_integration_tests test_halo2_ext005_ezkl_replay_base_execution_failure -- --nocapture --test-threads=1`
+  - F04 partial attempt (old): `artifacts/proof_runs/ext005/run_20260227_051548_ext005_finding04_stable_console/replay.log`
+  - F04 partial attempt (latest): `artifacts/proof_runs/ext005/run_20260302_151358_ext005_finding04_stable_console/replay.log`
+  - status: deterministic `phase=create_executor` stall reproduced again (`elapsed=20s..300s`); no terminal proof classification.
+- [x] Replay command template execution for final open witness (`F06`) completed with deterministic terminal success (`REPLAY_EXIT_STATUS=0`) and proof bundle artifacts.
 
 - [x] Add runtime phase timing metrics to all heavy replay tests.
   - [x] Heartbeat visibility shipped for EXT-005 replay harness (`tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure`).
@@ -2053,13 +2057,15 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
     - `[x]` `tests/backend_integration_tests.rs::test_halo2_scaffold_execution_stability`
     - `[x]` `tests/backend_integration_tests.rs::test_halo2_real_circuit_constraint_coverage`
 
-- [ ] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
+- [x] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
+  - Automated generator: `scripts/build_external_target_closure_table.py`
+  - Latest artifacts (`2026-03-02T16:21:39Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=2`, `blocked=13`; `EXT-005` open findings=`0`).
 
 | Target | Closure Class | Current Scope | Artifact Link |
 |---|---|---|---|
 | `EXT-003` | `exploitable` | target-level closed | `artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/exploit_notes.md` |
 | `EXT-013` | `not_exploitable_within_bounds` | target-level closed | `artifacts/external_targets/ext_batch_013/reports/evidence/EXT-013/run_20260225_ext013_relu_bounded_non_exploit/no_exploit_proof.md` |
-| `EXT-005` | `blocked` | partial closure (`F01..F03` closed; `F04..F06` open) | `artifacts/proof_runs/ext005/run_20260227_045628_ext005_finding03_stable_console/no_exploit_proof.md` |
+| `EXT-005` | `not_exploitable_within_bounds` | target-level closed (current `F01..F06` list all closed as bounded non-exploit) | `artifacts/proof_runs/ext005/run_20260302_160243_ext005_finding06_longwindow_resume/no_exploit_proof.md` |
 | `EXT-010` | `blocked` | critical findings pending deterministic exploit/non-exploit bundle | `artifacts/external_targets/ext_batch_008/reports/run_signals/report_1771891097_20260223_235817_evidence_ext010_circomlib_iszero_campaign_pid2847870/summary.json` |
 | `EXT-011` | `blocked` | critical findings pending deterministic exploit/non-exploit bundle | `artifacts/external_targets/ext_batch_008/reports/run_signals/report_1771891131_20260223_235851_evidence_ext011_circomlib_lessthan_campaign_pid2873855/summary.json` |
 | `EXT-012` | `blocked` | critical findings pending deterministic exploit/non-exploit bundle | `artifacts/external_targets/ext_batch_004/reports/run_signals/report_1771886353/summary.json` |
