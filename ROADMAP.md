@@ -2059,7 +2059,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 
 - [x] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
   - Automated generator: `scripts/build_external_target_closure_table.py`
-  - Latest artifacts (`2026-03-02T17:33:38Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=7`, `blocked=8`; `EXT-005` open findings=`0`).
+  - Latest artifacts (`2026-03-02T18:16:46Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=7`, `blocked=8`; `EXT-005` open findings=`0`).
   - Generator bugfix (`2026-03-02`): `classify_no_exploit_doc` now prioritizes explicit non-exploit conclusions over historical `pending_proof` mentions, preventing false `blocked` classification for transition docs (e.g., `pending_proof -> bounded_non_exploit_evidence_present`).
 
 | Target | Closure Class | Current Scope | Artifact Link |
@@ -2127,6 +2127,14 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Artifacts: `artifacts/proof_runs/ext007/run_20260302_172136_ext007_aztec_hello_non_exploit/{no_exploit_proof.md,triage.md,impact.md}`
   - Observed signal: replay reached `metamorphic` stage and reported `100` findings before entering `witness_collision`.
   - Conclusion: `pending_proof` (no terminal exploit replay or bounded non-exploit proof yet).
+- [x] Bounded continuation replay reached terminal completion with deterministic caps.
+  - Artifacts: `artifacts/proof_runs/ext007/run_20260302_180623_ext007_aztec_hello_bounded_continuation/{objective_lock.md,target_freeze.md,tool_readiness.md,replay_command.txt,replay.log,replay_exit_status.txt}`
+  - Outcome: `REPLAY_EXIT_STATUS=0`, `run_outcome.status=completed`, `reason_code=completed`, duration `417s`.
+  - Bounded controls exercised: `underconstrained witness_pairs=300`, `metamorphic num_tests=25`, `witness_collision timeout_ms=45000` (budget reached at `175/300` samples), global wall-clock timeout `420s`.
+- [x] Post-run proof triage bundle recorded with unresolved finding set.
+  - Artifacts: `artifacts/proof_runs/ext007/run_20260302_180623_ext007_aztec_hello_bounded_continuation/{no_exploit_proof.md,triage.md,impact.md}`
+  - Finding summary: retained findings `16` (`medium`, `metamorphic`) after evidence filtering.
+  - Conclusion: `pending_proof` (terminal bounded run achieved, but exploit/non-exploit adjudication for metamorphic findings remains open).
 
 ### Proof Continuation (2026-02-26)
 - [x] `cveX15_scroll_missing_overflow_constraint` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
