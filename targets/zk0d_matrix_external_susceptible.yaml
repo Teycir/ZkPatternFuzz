@@ -1,0 +1,361 @@
+version: 1
+generated_utc: '2026-03-02T19:33:54.216086+00:00'
+note: Auto-generated susceptibility watchlist targets. Keep disabled by default.
+targets:
+- name: zk0d_cat3_privacy_semaphore_circom_node_modules_circomlib_circuits_montgomery_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/semaphore/node_modules/circomlib/circuits/montgomery.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 73.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+    - 'montgomery(+10): path includes Montgomery arithmetic circuit'
+    - 'semaphore(+8): path belongs to semaphore privacy circuits'
+    - 'node_modules(+1): third-party dependency surface'
+- name: zk0d_cat3_privacy_semaphore_circom_node_modules_circomlib_circuits_smt_smtverifier_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/semaphore/node_modules/circomlib/circuits/smt/smtverifier.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 69.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+    - 'semaphore(+8): path belongs to semaphore privacy circuits'
+    - 'verifier(+6): path includes verifier logic'
+    - 'node_modules(+1): third-party dependency surface'
+- name: zk0d_cat3_privacy_semaphore_circom_node_modules_circomlib_circuits_smt_smtverifierlevel_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/semaphore/node_modules/circomlib/circuits/smt/smtverifierlevel.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 69.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+    - 'semaphore(+8): path belongs to semaphore privacy circuits'
+    - 'verifier(+6): path includes verifier logic'
+    - 'node_modules(+1): third-party dependency surface'
+- name: zk0d_cat3_privacy_semaphore_circom_node_modules_circomlib_circuits_smt_smtverifiersm_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/semaphore/node_modules/circomlib/circuits/smt/smtverifiersm.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 69.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+    - 'semaphore(+8): path belongs to semaphore privacy circuits'
+    - 'verifier(+6): path includes verifier logic'
+    - 'node_modules(+1): third-party dependency surface'
+- name: zk0d_cat3_privacy_circuits_circom_node_modules_circomlib_circuits_montgomery_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/circuits/montgomery.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 65.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+    - 'montgomery(+10): path includes Montgomery arithmetic circuit'
+    - 'node_modules(+1): third-party dependency surface'
+- name: zkml_circomlib_ml_circom_circuits_circomlib_montgomery_circom
+  target_circuit: /media/elements/Repos/zkml/circomlib-ml/circuits/circomlib/montgomery.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 64.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+    - 'montgomery(+10): path includes Montgomery arithmetic circuit'
+- name: zk0d_cat2_rollups_zkevm_circuits_halo2_cargo_toml
+  target_circuit: /media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits/Cargo.toml
+  main_component: main
+  framework: halo2
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 61.0
+    rationale:
+    - framework_prior=35
+    - repo_prior=26
+- name: zk0d_cat2_rollups_zkevm_circuits_halo2_aggregator_cargo_toml
+  target_circuit: /media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits/aggregator/Cargo.toml
+  main_component: main
+  framework: halo2
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 61.0
+    rationale:
+    - framework_prior=35
+    - repo_prior=26
+- name: zk0d_cat2_rollups_zkevm_circuits_halo2_bus_mapping_cargo_toml
+  target_circuit: /media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits/bus-mapping/Cargo.toml
+  main_component: main
+  framework: halo2
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 61.0
+    rationale:
+    - framework_prior=35
+    - repo_prior=26
+- name: zk0d_cat2_rollups_zkevm_circuits_halo2_circuit_benchmarks_cargo_toml
+  target_circuit: /media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits/circuit-benchmarks/Cargo.toml
+  main_component: main
+  framework: halo2
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 61.0
+    rationale:
+    - framework_prior=35
+    - repo_prior=26
+- name: zk0d_cat3_privacy_circuits_circom_node_modules_circomlib_circuits_smt_smtverifier_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/circuits/smt/smtverifier.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 61.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+    - 'verifier(+6): path includes verifier logic'
+    - 'node_modules(+1): third-party dependency surface'
+- name: zk0d_cat3_privacy_circuits_circom_node_modules_circomlib_circuits_smt_smtverifierlevel_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/circuits/smt/smtverifierlevel.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 61.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+    - 'verifier(+6): path includes verifier logic'
+    - 'node_modules(+1): third-party dependency surface'
+- name: zk0d_cat3_privacy_circuits_circom_node_modules_circomlib_circuits_smt_smtverifiersm_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/circuits/node_modules/circomlib/circuits/smt/smtverifiersm.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 61.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+    - 'verifier(+6): path includes verifier logic'
+    - 'node_modules(+1): third-party dependency surface'
+- name: zk0d_cat3_privacy_email_wallet_circom_packages_circuits_src_account_creation_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/src/account_creation.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 55.0
+    rationale:
+    - framework_prior=45
+    - 'email-wallet(+10): path belongs to email-wallet privacy circuits'
+- name: zk0d_cat3_privacy_email_wallet_circom_packages_circuits_src_announcement_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/src/announcement.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 55.0
+    rationale:
+    - framework_prior=45
+    - 'email-wallet(+10): path belongs to email-wallet privacy circuits'
+- name: zk0d_cat3_privacy_email_wallet_circom_packages_circuits_src_claim_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/src/claim.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 55.0
+    rationale:
+    - framework_prior=45
+    - 'email-wallet(+10): path belongs to email-wallet privacy circuits'
+- name: zk0d_cat3_privacy_email_wallet_circom_packages_circuits_src_email_sender_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/email-wallet/packages/circuits/src/email_sender.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 55.0
+    rationale:
+    - framework_prior=45
+    - 'email-wallet(+10): path belongs to email-wallet privacy circuits'
+- name: zkml_circomlib_ml_circom_circuits_averagepooling2d_circom
+  target_circuit: /media/elements/Repos/zkml/circomlib-ml/circuits/AveragePooling2D.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 54.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+- name: zkml_circomlib_ml_circom_circuits_batchnormalization2d_circom
+  target_circuit: /media/elements/Repos/zkml/circomlib-ml/circuits/BatchNormalization2D.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 54.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+- name: zkml_circomlib_ml_circom_circuits_conv1d_circom
+  target_circuit: /media/elements/Repos/zkml/circomlib-ml/circuits/Conv1D.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 54.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=9
+- name: zk0d_cat3_privacy_tornado_core_circom_circuits_merkletree_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/tornado-core/circuits/merkleTree.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 53.0
+    rationale:
+    - framework_prior=45
+    - 'tornado(+8): path belongs to tornado privacy circuits'
+- name: zk0d_cat3_privacy_tornado_core_circom_circuits_withdraw_circom
+  target_circuit: /media/elements/Repos/zk0d/cat3_privacy/tornado-core/circuits/withdraw.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 53.0
+    rationale:
+    - framework_prior=45
+    - 'tornado(+8): path belongs to tornado privacy circuits'
+- name: zk0d_cat5_frameworks_risc0_circom_groth16_proof_groth16_risc0_circom
+  target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/risc0/groth16_proof/groth16/risc0.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 48.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=3
+- name: zk0d_cat5_frameworks_risc0_circom_groth16_proof_groth16_stark_verify_circom
+  target_circuit: /media/elements/Repos/zk0d/cat5_frameworks/risc0/groth16_proof/groth16/stark_verify.circom
+  main_component: main
+  framework: circom
+  alias: always
+  enabled: false
+  intel:
+    dataset: zkbugs
+    source_root: /home/teycir/Documents/ZkDatasets
+    synced_on: '2026-03-02'
+    suspicion_score: 48.0
+    rationale:
+    - framework_prior=45
+    - repo_prior=3

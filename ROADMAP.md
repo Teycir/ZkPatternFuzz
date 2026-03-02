@@ -464,6 +464,56 @@ Inventory + matrix references:
 - `targets/zk0d_matrix_external_manual.yaml`
 - `targets/external_repo_catalog_all_2026-02-25.json` (full discovered catalog; all supported entrypoints)
 - `targets/zk0d_matrix_external_all.yaml` (auto-generated all-target matrix, `enabled: false` by default)
+- `scripts/build_external_susceptibility_watchlist.py` + outputs:
+  - `artifacts/external_targets/susceptibility_watchlist/latest_report.{json,md}`
+  - `targets/zk0d_matrix_external_susceptible.yaml` (ranked susceptibility shortlist, `enabled: false` by default)
+
+#### 8.9.1b Susceptibility Refresh (2026-03-02)
+- [x] Re-scan `/media/elements/Repos` and diff against frozen full-catalog snapshot (`targets/external_repo_catalog_all_2026-02-25.json`).
+- [x] Generate ranked candidate-target shortlist from currently available external repos and priors.
+- [x] Publish disabled intake matrix for likely-susceptible follow-up targets.
+
+Refresh summary (`artifacts/external_targets/susceptibility_watchlist/latest_report.json`):
+- `zk_like_repos_discovered=93`, `catalog_repositories=20`, `new_zk_repos_not_in_catalog=73`, `shortlist_candidates=24`.
+- Newly observed zk repos outside current catalog include `/media/elements/Repos/zkml/{giza-cli,keras2circom,proto-neural-zkp,sp1}`.
+- Current executor support classification for those newly observed zkml repos:
+  - `giza-cli`, `keras2circom`: no root-level Circom/Noir/Cairo/Halo2 entrypoint detected.
+  - `proto-neural-zkp`: `plonky2` Cargo target detected (`not_supported_by_current_executor`).
+  - `sp1`: `sp1` Cargo target detected (`not_supported_by_current_executor`).
+
+#### 8.9.1c Repo Risk Ranking + Scan Roadmap (2026-03-02)
+- Objective lock: prioritize exploit/non-exploit proof work on external repos with the highest likelihood of logic vulnerabilities.
+- Target freeze: ranking generated from frozen catalog + matrix inputs (`targets/external_repo_catalog_all_2026-02-25.json`, `targets/zk0d_matrix_external_all.yaml`, `targets/zk0d_matrix_external_manual.yaml`) at `2026-03-02T19:33:54.216086+00:00`.
+- Source of truth: `artifacts/external_targets/susceptibility_watchlist/latest_report.{json,md}` (`scan_roadmap` + `repo_priority_ranking`).
+
+Ordered scan plan (most likely -> least likely):
+
+| Rank | Tier | Risk Index | Repo | Candidate Targets |
+|---:|---|---:|---|---:|
+| 1 | `P0` | 70.15 | `/media/elements/Repos/zk0d/cat3_privacy/semaphore` | 63 |
+| 2 | `P0` | 61.82 | `/media/elements/Repos/zk0d/cat3_privacy/circuits` | 130 |
+| 3 | `P0` | 61.00 | `/media/elements/Repos/zk0d/cat2_rollups/zkevm-circuits` | 10 |
+| 4 | `P0` | 58.52 | `/media/elements/Repos/zkml/circomlib-ml` | 41 |
+| 5 | `P0` | 55.00 | `/media/elements/Repos/zk0d/cat3_privacy/email-wallet` | 15 |
+| 6 | `P1` | 53.00 | `/media/elements/Repos/zk0d/cat3_privacy/tornado-core` | 2 |
+| 7 | `P1` | 47.53 | `/media/elements/Repos/zk0d/cat5_frameworks/risc0` | 3 |
+| 8 | `P1` | 47.53 | `/media/elements/Repos/zkml/risc0` | 3 |
+| 9 | `P1` | 45.00 | `/media/elements/Repos/zkml/zator` | 10 |
+| 10 | `P1` | 43.00 | `/media/elements/Repos/zk0d/cat5_frameworks/snarkjs` | 5 |
+| 11 | `P2` | 43.00 | `/media/elements/Repos/zk0d/cat8_libs/snarkjs` | 5 |
+| 12 | `P2` | 35.00 | `/media/elements/Repos/zk0d/cat3_privacy/halo2` | 8 |
+| 13 | `P2` | 35.00 | `/media/elements/Repos/zk0d/cat3_privacy/halo2-lib` | 1 |
+| 14 | `P2` | 35.00 | `/media/elements/Repos/zk0d/cat5_frameworks/Nova` | 1 |
+| 15 | `P3` | 35.00 | `/media/elements/Repos/zk0d/cat5_frameworks/halo2` | 8 |
+| 16 | `P3` | 35.00 | `/media/elements/Repos/zk0d/cat5_frameworks/halo2-scaffold` | 1 |
+| 17 | `P3` | 6.00 | `/media/elements/Repos/zk0d/cat3_privacy/aztec-packages` | 1 |
+
+Manual execution waves:
+- `Wave P0`: ranks `1-5` (highest likelihood). Run `skim` + `evidence` immediately; open proof branches for any signal in the same batch.
+- `Wave P1`: ranks `6-10` (high likelihood). Execute after P0 completion or in parallel if capacity allows.
+- `Wave P2`: ranks `11-14` (medium likelihood). Run after P1 unless a framework-specific blocker makes a P2 target cheaper.
+- `Wave P3`: ranks `15-17` (lowest current likelihood). Keep as backfill/coverage lane.
+- Mirror policy: when two rows represent mirrored copies of the same project family (for example `cat5` vs `cat8` `snarkjs`, `cat5` vs `zkml` `risc0`), execute one canonical path first; replay the same commands on the mirror only if the canonical path yields reproducible signal.
 
 #### 8.9.2 Target Selection Board
 | Target ID | Target Name | Repo Path | Backend | Circuit/Program Entry | Expected Class | Priority | Owner | Intake Status |
@@ -609,7 +659,11 @@ Intake expansion snapshot SHAs (`2026-02-25`, pre-run freeze):
 - [ ] No unresolved `high` or `critical` externally reproducible logic findings remain open.
 - [ ] External-target effectiveness report shows non-zero runs for each backend and no unresolved backend assignment gaps.
 
-#### 8.9.7 Full-Flow Exploit Validation (Step-by-Step)
+#### 8.9.7 Full-Flow Exploit Validation (Step-by-Step, Historical Template)
+Historical note:
+- This section documents the original full patch-cycle process template and batch snapshots.
+- Current track policy is discovery + proof first; patching remains explicitly opt-in after proof request, so Step 7 / fix-validation rows can remain unchecked even when exploit/non-exploit adjudication is complete.
+
 Objective for this flow: findings count only when they are reproducible and backed by exploit evidence, then converted into code fixes and regression tests.
 
 Flow checklist:
@@ -677,7 +731,10 @@ Issue-to-code-adjustment tracker:
 | `EXT-ISSUE-003` | `EXT-003` | `[ ]` | `src/fuzzer/engine/attack_runner_novel.rs`, `src/oracles/witness_collision.rs`, `src/fuzzer/engine/run_reporting.rs` | `Add detector time budget + max collision cap + timeout-aware report finalization short-circuit` | `tests/test_oracles_witness_collision.rs` | `[x]` (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/step3_evidence_ext003_rerun3_escalated.log`) | `[ ] open / [x] fixed / [x] verified` |
 | `EXT-ISSUE-004` | `EXT-003` | `[x]` | `reporting schema / operator query mismatch` | Use `poc_witness_a` / `poc_witness_b` / `poc_public_inputs` fields when extracting PoCs from report artifacts | `n/a` | `[x]` (`artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260223_204819/replay_ext003_iszero_exploit.log`) | `[ ] open / [x] fixed / [x] verified` |
 
-#### 8.9.8 Follow-Up Snapshot (2026-02-25)
+#### 8.9.8 Follow-Up Snapshot (2026-02-25, Historical)
+
+Historical note:
+- This section is a frozen as-of snapshot for `2026-02-25` and is superseded by the live closure snapshot under "Publish and maintain concise target-level closure table" (`artifacts/external_targets/closure_table/latest_{report.json,table.md}`; latest generated `2026-03-02T18:53:36Z` with `total=16`, `exploitable=1`, `not_exploitable_within_bounds=10`, `blocked=5`).
 
 Scope for this snapshot:
 - latest per-target run-state from `artifacts/**/run_signals/*/summary.json` (including `ext_batch_012` reruns),
@@ -719,7 +776,7 @@ Latest target state (manual checks only):
 Proof artifact inventory check:
 - `EXT-003` has full exploit proof artifact set (`replay_command.txt`, `exploit_notes.md`, `impact.md`, replay log).
 - `EXT-013` now has bounded non-exploit proof artifacts (`replay_command.txt`, `no_exploit_proof.md`, `impact.md`, replay log).
-- Remaining unresolved targets stay `pending_proof` until exploit replay or bounded/formal non-exploit evidence is packaged.
+- For this `2026-02-25` snapshot, remaining unresolved targets stayed `pending_proof` until exploit replay or bounded/formal non-exploit evidence was packaged.
 
 Backend readiness context for this follow-up:
 - `artifacts/backend_readiness/latest_report.json` => `overall_pass=true` (Noir/Cairo/Halo2 gates all pass with `runtime_error_count=0`, `backend_preflight_failed_count=0`, `run_outcome_missing_rate=0`).
@@ -1942,18 +1999,18 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Outcome: `status=completed`, `stage=completed`, `reason_code=completed`
   - Evidence: `artifacts/external_targets/recheck/run_signals_ext004/report_1771976147_20260224_233547_evidence_ext004_orion_scarb_campaign_pid3974196/summary.json`
   - Log: `artifacts/external_targets/recheck/logs/ext004_recheck.log`
-- [ ] EXT-005 `preflight_backend` remains open in non-escalated rerun; backend dependency/toolchain resolution still fails.
+- [x] EXT-005 historical checkpoint: `preflight_backend` remained open in non-escalated rerun; backend dependency/toolchain resolution failed.
   - Run: `./scripts/zeroday_workflow.sh evidence artifacts/external_targets/ext_batch_006/repro/ext005_ezkl_halo2_campaign.yaml --iterations 200 --timeout 180 --seed 42 --workers 1`
   - Outcome: `status=failed`, `stage=preflight_backend`, `reason_code=backend_dependency_resolution_failed`
   - Failure signals: cargo toolchain cascade exhaustion and dependency fetch failures (`github.com`, `binaries.soliditylang.org`) in this environment.
   - Evidence: `artifacts/external_targets/recheck/run_signals_ext005/report_1771976381_20260224_233941_evidence_ext005_ezkl_halo2_campaign_pid3978565/summary.json`
   - Log: `artifacts/external_targets/recheck/logs/ext005_recheck.log`
-- [ ] EXT-005 escalated rerun ended and remains open (manual checks only).
+- [x] EXT-005 historical checkpoint: escalated rerun ended open (manual checks only).
   - Outcome: `status=failed`, `stage=preflight_timeout`, `reason_code=wall_clock_timeout`
   - Note: preflight eventually passed, but global wall-clock budget was exhausted before engine start (`budget=180s`, `consumed~1396s`).
   - Evidence: `artifacts/external_targets/recheck/run_signals_ext005_escalated/report_1771977003_20260224_235003_evidence_ext005_ezkl_halo2_campaign_pid4042372/summary.json`
   - Log: `artifacts/external_targets/recheck/logs/ext005_recheck_escalated.log`
-- [ ] EXT-005 bounded follow-up rerun remains open; deterministic preflight failure reproduces under cache-first local settings.
+- [x] EXT-005 historical checkpoint: bounded follow-up rerun remained open with deterministic preflight failure under cache-first local settings.
   - Run: `ZKF_SCAN_OUTPUT_ROOT=artifacts/external_targets/recheck_ext005_followup/scan_output_ext005 ZKF_RUN_SIGNAL_DIR=artifacts/external_targets/recheck_ext005_followup/run_signals_ext005 ZKF_BUILD_CACHE_DIR=artifacts/external_targets/recheck/build_cache ZKF_HALO2_PREWARM_MODE=off ZK_FUZZER_HALO2_AUTO_ONLINE_RETRY=false ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE=false ZK_FUZZER_HALO2_CARGO_TOOLCHAIN=nightly-2025-12-01 ./scripts/zeroday_workflow.sh evidence artifacts/external_targets/ext_batch_006/repro/ext005_ezkl_halo2_campaign.yaml --iterations 20 --timeout 600 --seed 42 --workers 1`
   - Outcome: `status=failed`, `stage=preflight_backend`, `reason_code=backend_toolchain_mismatch`
   - Failure signals: `svm-rs-builds` build script still requires remote release metadata and fails on DNS lookup for `https://binaries.soliditylang.org/linux-amd64/list.json` in this environment.
@@ -1964,7 +2021,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Outcome: `status=completed`, `stage=completed`, `reason_code=completed`, `total_executions=17`, `findings_total=6`
   - Evidence: `artifacts/external_targets/recheck_ext005_continue_20260225/run_signals_ext005/report_1771983844_20260225_014404_evidence_ext005_ezkl_halo2_campaign_pid137750/summary.json`
   - Log: `artifacts/external_targets/recheck_ext005_continue_20260225/logs/ext005_continue_run.log`
-- [ ] EXT-005 proof remains open after triage (`pending_proof`).
+- [x] EXT-005 historical checkpoint: proof remained open after triage (`pending_proof` at this step).
   - Triage outcome: all 6 findings are low-correlation metamorphic `Base execution failed` signals and do not yet demonstrate exploitability.
   - Backend signal observed during run: repeated Halo2 constraint-extraction incompatibility (`error: unexpected argument '--constraints' found`).
   - Triage artifact: `artifacts/external_targets/recheck_ext005_continue_20260225/reports/ext005_triage.md`
@@ -1976,7 +2033,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - `crates/zk-backends/src/halo2/mod.rs`: cache unsupported `--constraints` capability state and cache empty parsed constraints after first failed extraction (no repeated extraction retries).
   - `src/executor/mod.rs`: when Halo2 target is known to not support `--constraints`, fall back to output-hash coverage instead of unconditional coverage-unavailable failure.
   - Local validation: `cargo test -p zk-backends --quiet`; `cargo test --test backend_integration_tests test_halo2_ext005_ezkl_replay_base_execution_failure -- --nocapture`.
-- [ ] EXT-005 post-fix bounded replay remains blocked; proof status stays `pending_proof`.
+- [x] EXT-005 historical checkpoint: post-fix bounded replay remained blocked (`pending_proof` at this step).
   - Post-fix replay command was bounded with `timeout 300s` and ended `failed:124` (timeout) before assertion completion.
   - Post-fix log: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_replay.log`
   - Status marker: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_status.txt`
@@ -1991,17 +2048,17 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Extended replay status marker: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_status_longrun.txt`
 - [x] EXT-005 replay harness assertion updated for post-fix behavior.
   - `tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure` now expects successful execution with output-hash fallback coverage when `--constraints` export is unsupported.
-- [ ] EXT-005 long-window post-assertion validation remains unstable (`pending_proof`).
+- [x] EXT-005 historical checkpoint: long-window post-assertion validation remained unstable (`pending_proof` at this step).
   - Follow-up run after harness assertion update ended `124` (`POSTPATCH_LONGRUN_POSTASSERT_STATUS=124`) before assertion completion.
   - Follow-up log: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_replay_longrun_postassert.log`
   - Follow-up status marker: `artifacts/external_targets/recheck_ext005_continue_20260225/evidence/EXT-005/run_20260225_ext005_adapter_replay/postpatch_status_longrun_postassert.txt`
-- [ ] EXT-005 extended bounded replay follow-up (1200s) still unresolved (`pending_proof`).
+- [x] EXT-005 historical checkpoint: extended bounded replay follow-up (1200s) remained unresolved (`pending_proof` at this step).
   - Proof run root: `artifacts/proof_runs/ext005/run_20260226_225545_ext005_adapter_replay_followup/`
   - Deterministic replay command: `replay_command.txt` (same fixed witness/toolchain/SVM override stack, bounded by `timeout 1200s`).
   - Outcome: `REPLAY_EXIT_STATUS=124`; run reached long-running test phase but did not produce deterministic assertion output before timeout.
   - Replay log: `artifacts/proof_runs/ext005/run_20260226_225545_ext005_adapter_replay_followup/replay.log`
   - Triage + blocker record: `triage.md`, `pending_proof.md`, `impact.md`
-- [ ] EXT-005 follow-up replay cycle (2026-02-27) still unresolved (`pending_proof`).
+- [x] EXT-005 historical checkpoint: follow-up replay cycle (2026-02-27) remained unresolved (`pending_proof` at this step).
   - Proof run root: `artifacts/proof_runs/ext005/run_20260227_023616_ext005_adapter_replay_followup2/`
   - Objective/target/tool readiness artifacts: `{objective_lock.md,target_freeze.md,tool_readiness.md}`
   - Long-window attempt (`timeout 1500s`) was manually interrupted after prolonged silent stall (`REPLAY_EXIT_STATUS=130`) with no assertion output (`replay.log`).
@@ -2015,7 +2072,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Conclusion for this replay claim class/witness: `not_exploitable_within_bounds` on frozen snapshot; broader EXT-005 target-level closure remains separately tracked.
 
 ### EXT-005 Closure Sprint (2026-02-27)
-- [ ] Close remaining EXT-005 findings one-by-one with the replay/proof bundle standard.
+- [x] Close remaining EXT-005 findings one-by-one with the replay/proof bundle standard.
   - Required per-finding artifact set: `objective_lock.md`, `target_freeze.md`, `tool_readiness.md`, `replay_command.txt`, `replay.log`, `triage.md`, `exploit_notes.md` or `no_exploit_proof.md`, `impact.md`.
   - Artifact root convention: `artifacts/proof_runs/ext005/run_<UTC>_ext005_findingNN_{exploit|non_exploit}/`.
 - [x] `EXT-005-F01` witness `0x0e0a77c19a0fdf2f406e2b6f7879462e36fc76959f60cd29ac96341c4ffffffa` closed as `not_exploitable_within_bounds` (`artifacts/proof_runs/ext005/run_20260227_030425_ext005_stable_console/no_exploit_proof.md`).
@@ -2059,23 +2116,27 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 
 - [x] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
   - Automated generator: `scripts/build_external_target_closure_table.py`
-  - Latest artifacts (`2026-03-02T18:43:51Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=9`, `blocked=6`; `EXT-005` open findings=`0`).
+  - Latest artifacts (`2026-03-02T18:53:36Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=10`, `blocked=5`; `EXT-005` open findings=`0`).
   - Generator bugfix (`2026-03-02`): `classify_no_exploit_doc` now prioritizes explicit non-exploit conclusions over historical `pending_proof` mentions, preventing false `blocked` classification for transition docs (e.g., `pending_proof -> bounded_non_exploit_evidence_present`).
 
 | Target | Closure Class | Current Scope | Artifact Link |
 |---|---|---|---|
 | `EXT-001` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext001/run_20260302_165807_ext001_argmax_wrapper_non_exploit/no_exploit_proof.md` |
+| `EXT-002` | `blocked` | proof bundle pending | `artifacts/run_signals/report_1771906071_20260224_040751_evidence_ext002_test_bulk_assignment_campaign_pid3926379/summary.json` |
 | `EXT-003` | `exploitable` | target-level closed | `artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/exploit_notes.md` |
-| `EXT-013` | `not_exploitable_within_bounds` | target-level closed | `artifacts/external_targets/ext_batch_013/reports/evidence/EXT-013/run_20260225_ext013_relu_bounded_non_exploit/no_exploit_proof.md` |
+| `EXT-004` | `blocked` | proof bundle pending | `artifacts/external_targets/rerun_20260225/run_signals_ext004/report_1771979934_20260225_003854_evidence_ext004_orion_scarb_campaign_pid4144335/summary.json` |
 | `EXT-005` | `not_exploitable_within_bounds` | target-level closed (current `F01..F06` list all closed as bounded non-exploit) | `artifacts/proof_runs/ext005/run_20260302_160243_ext005_finding06_longwindow_resume/no_exploit_proof.md` |
+| `EXT-006` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext006/run_20260302_184915_ext006_metamorphic_non_exploit_closure/no_exploit_proof.md` |
 | `EXT-007` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext007/run_20260302_183119_ext007_metamorphic_remaining_replay_triage/no_exploit_proof.md` |
+| `EXT-008` | `blocked` | proof bundle pending | `artifacts/run_signals/report_1771906315_20260224_041155_evidence_ext008_orion_linear_classifier_campaign_pid3937531/summary.json` |
 | `EXT-009` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext009/run_20260302_184244_ext009_bounded_non_exploit_closure/no_exploit_proof.md` |
 | `EXT-010` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext010/run_20260302_164005_ext010_iszero_non_exploit_algebraic/no_exploit_proof.md` |
 | `EXT-011` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext011/run_20260302_164700_ext011_lessthan_non_exploit/no_exploit_proof.md` |
 | `EXT-012` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext012/run_20260302_164942_ext012_montgomerydouble_non_exploit/no_exploit_proof.md` |
-| `EXT-004` | `blocked` | backend/preflight instability prevents proof closure | `artifacts/external_targets/recheck/run_signals_ext004/report_1771976147_20260224_233547_evidence_ext004_orion_scarb_campaign_pid3974196/summary.json` |
-| `EXT-008` | `blocked` | backend/preflight instability prevents proof closure | `artifacts/external_targets/ext_batch_010/run_signals/report_1771893391_20260224_003631_evidence_ext008_orion_linear_classifier_campaign_pid3096040/summary.json` |
-| `EXT-015` | `blocked` | deterministic toolchain mismatch blocker persists | `artifacts/external_targets/recheck_ext015_continue_20260225/reports/ext015_triage.md` |
+| `EXT-013` | `not_exploitable_within_bounds` | target-level closed | `artifacts/external_targets/ext_batch_013/reports/evidence/EXT-013/run_20260225_ext013_relu_bounded_non_exploit/no_exploit_proof.md` |
+| `EXT-014` | `not_exploitable_within_bounds` | target-level closed | `artifacts/external_targets/ext_batch_014/reports/evidence/EXT-014/run_20260225_ext014_dense_bounded_non_exploit/no_exploit_proof.md` |
+| `EXT-015` | `blocked` | proof bundle pending | `artifacts/external_targets/recheck_ext015_continue_20260225/evidence/EXT-015/run_20260225_ext015_preflight_blocker/no_exploit_proof.md` |
+| `EXT-016` | `blocked` | proof bundle pending | `artifacts/external_targets/ext_batch_014/run_signals/report_1772035385_20260225_160305_evidence_ext016_aztec_recursive_proof_campaign_inputs3_pid460364/summary.json` |
 
 ### EXT-001 Proof Closure (2026-03-02)
 - [x] Objective lock, target freeze, and tool readiness artifacts captured.
