@@ -2059,7 +2059,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 
 - [x] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
   - Automated generator: `scripts/build_external_target_closure_table.py`
-  - Latest artifacts (`2026-03-02T16:58:16Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=7`, `blocked=8`; `EXT-005` open findings=`0`).
+  - Latest artifacts (`2026-03-02T17:33:38Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=7`, `blocked=8`; `EXT-005` open findings=`0`).
   - Generator bugfix (`2026-03-02`): `classify_no_exploit_doc` now prioritizes explicit non-exploit conclusions over historical `pending_proof` mentions, preventing false `blocked` classification for transition docs (e.g., `pending_proof -> bounded_non_exploit_evidence_present`).
 
 | Target | Closure Class | Current Scope | Artifact Link |
@@ -2116,6 +2116,17 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - [x] Formal/bounded evidence pack written for finding triage.
   - Artifacts: `artifacts/proof_runs/ext012/run_20260302_164942_ext012_montgomerydouble_non_exploit/{no_exploit_proof.md,triage.md,impact.md}`
   - Conclusion: `not_exploitable_within_bounds` on frozen snapshot `360715607a240041f49eb46c543fc450051c4cb7` for MontgomeryDouble constraint-slice claim class.
+
+### EXT-007 Proof Continuation (2026-03-02)
+- [x] Objective lock, target freeze, and tool readiness artifacts captured.
+  - `artifacts/proof_runs/ext007/run_20260302_172136_ext007_aztec_hello_non_exploit/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+- [x] Deterministic replay command + log captured with explicit non-terminal stop marker.
+  - Artifacts: `artifacts/proof_runs/ext007/run_20260302_172136_ext007_aztec_hello_non_exploit/{replay_command.txt,replay.log,replay_exit_status.txt}`
+  - Exit status: `137` (manual bounded stop during long `witness_collision` phase).
+- [x] Proof status logged as blocked with concrete blockers and next step.
+  - Artifacts: `artifacts/proof_runs/ext007/run_20260302_172136_ext007_aztec_hello_non_exploit/{no_exploit_proof.md,triage.md,impact.md}`
+  - Observed signal: replay reached `metamorphic` stage and reported `100` findings before entering `witness_collision`.
+  - Conclusion: `pending_proof` (no terminal exploit replay or bounded non-exploit proof yet).
 
 ### Proof Continuation (2026-02-26)
 - [x] `cveX15_scroll_missing_overflow_constraint` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
