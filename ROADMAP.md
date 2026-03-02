@@ -2059,7 +2059,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 
 - [x] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
   - Automated generator: `scripts/build_external_target_closure_table.py`
-  - Latest artifacts (`2026-03-02T18:35:05Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=8`, `blocked=7`; `EXT-005` open findings=`0`).
+  - Latest artifacts (`2026-03-02T18:43:51Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=9`, `blocked=6`; `EXT-005` open findings=`0`).
   - Generator bugfix (`2026-03-02`): `classify_no_exploit_doc` now prioritizes explicit non-exploit conclusions over historical `pending_proof` mentions, preventing false `blocked` classification for transition docs (e.g., `pending_proof -> bounded_non_exploit_evidence_present`).
 
 | Target | Closure Class | Current Scope | Artifact Link |
@@ -2069,6 +2069,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 | `EXT-013` | `not_exploitable_within_bounds` | target-level closed | `artifacts/external_targets/ext_batch_013/reports/evidence/EXT-013/run_20260225_ext013_relu_bounded_non_exploit/no_exploit_proof.md` |
 | `EXT-005` | `not_exploitable_within_bounds` | target-level closed (current `F01..F06` list all closed as bounded non-exploit) | `artifacts/proof_runs/ext005/run_20260302_160243_ext005_finding06_longwindow_resume/no_exploit_proof.md` |
 | `EXT-007` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext007/run_20260302_183119_ext007_metamorphic_remaining_replay_triage/no_exploit_proof.md` |
+| `EXT-009` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext009/run_20260302_184244_ext009_bounded_non_exploit_closure/no_exploit_proof.md` |
 | `EXT-010` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext010/run_20260302_164005_ext010_iszero_non_exploit_algebraic/no_exploit_proof.md` |
 | `EXT-011` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext011/run_20260302_164700_ext011_lessthan_non_exploit/no_exploit_proof.md` |
 | `EXT-012` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext012/run_20260302_164942_ext012_montgomerydouble_non_exploit/no_exploit_proof.md` |
@@ -2141,6 +2142,17 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Remaining findings (`4..16`) replay triage: `artifacts/proof_runs/ext007/run_20260302_183119_ext007_metamorphic_remaining_replay_triage/{objective_lock.md,target_freeze.md,tool_readiness.md,replay_command.txt,replay.log,replay_exit_status.txt,case_classification.csv,triage.md,no_exploit_proof.md,impact.md}`
   - Result: control case succeeds; finding-derived cases resolve to `u64` type-range rejections, expected `assert(x != y)` failures, or benign successful execution.
   - Final conclusion: `not_exploitable_within_bounds` for EXT-007 on the frozen snapshot and replayed witness bounds.
+
+### EXT-009 Proof Closure (2026-03-02)
+- [x] Objective lock, target freeze, and tool readiness artifacts captured.
+  - `artifacts/proof_runs/ext009/run_20260302_184244_ext009_bounded_non_exploit_closure/{objective_lock.md,target_freeze.md,tool_readiness.md}`
+- [x] Deterministic bounded-evidence verification command executed with explicit terminal status.
+  - Command + log + status: `artifacts/proof_runs/ext009/run_20260302_184244_ext009_bounded_non_exploit_closure/{replay_command.txt,replay.log,replay_exit_status.txt}`
+  - Outcome: `REPLAY_EXIT_STATUS=0`, `EXT009_BOUNDED_NON_EXPLOIT_CHECK=PASS`.
+- [x] Formal/bounded evidence pack written for non-exploit closure.
+  - Artifacts: `artifacts/proof_runs/ext009/run_20260302_184244_ext009_bounded_non_exploit_closure/{no_exploit_proof.md,triage.md,impact.md}`
+  - Verified bounded facts: `status=completed`, `timeout_seconds=60`, `total_executions=257`, `findings_total=0`, `critical_findings=false`.
+  - Final conclusion: `not_exploitable_within_bounds` for EXT-009 on snapshot `2a9dd27afb1c03f9085c79a218bf928ddfebf031` within the recorded campaign bounds.
 
 ### Proof Continuation (2026-02-26)
 - [x] `cveX15_scroll_missing_overflow_constraint` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
