@@ -1172,6 +1172,48 @@ gh run watch
 
 ---
 
+## 🐛 Detection Capacity Bug Fixes (2026-03-02)
+
+### Critical (P0)
+- [ ] **Bug 1**: `UnderconstrainedOracle` silently disables when `num_public_inputs` is unconfigured
+  - Issue: `crates/zk-fuzzer-core/src/oracle.rs` logs one warning then returns `None` for all subsequent checks, making campaigns appear clean while the core detection mechanism is off.
+  - Fix: Require `num_public_inputs` at construction time or fail the campaign explicitly instead of silent skip.
+  - Impact: Critical - false sense of security; campaigns report 0 findings when the oracle is actually disabled.
+
+### High Priority (P1)
+- [ ] **Bug 2**: Underconstrained attack runner is a no-op on empty corpus
+  - Issue: `src/fuzzer/engine/attack_runner_underconstrained.rs` falls back to random field elements when corpus is empty. For any non-trivial circuit (hashes, signatures, multiplications), random inputs fail constraint satisfaction with near-100% probability, so the oracle never processes a successful execution.
+  - Fix: Integrate solver-backed or witness-generator-backed seed creation for valid initial inputs, or enforce non-empty corpus requirement for this attack type.
+  - Impact: High - zero bug-finding capacity on complex circuits without a pre-seeded corpus.
+
+- [ ] **Bug 3**: `SpecInference` oracle discards output-wire post-conditions
+  - Issue: `src/oracles/spec_inference.rs` `is_actionable` filter rejects inferred specs where `wire_index >= num_inputs`, excluding all output-wire invariants from detection (e.g., "output should always be boolean").
+  - Fix: Allow `wire_index` to cover output signal indices, or remove the filter when the executor handles output indexing correctly.
+  - Impact: High - significant recall gap for bugs that manifest as output-wire constraint violations.
+
+- [ ] **Bug 4**: Taint analysis over-taints due to selector/MUX-unaware propagation
+  - Issue: `src/analysis/taint.rs` treats all constraint terms uniformly without distinguishing selector/multiplexer wires from data wires, causing over-tainting (false positives on info-leak claims) or missed implicit flows.
+  - Fix: Add MUX-pattern recognition for R1CS constraints or integrate with higher-level AST analysis to distinguish control-path selectors from data-path signals.
+  - Impact: High - taint-based information-leakage claims are unreliable for circuits with conditional logic.
+
+### Medium Priority (P2)
+- [ ] **Bug 5**: Constraint inference rejects valid findings due to naive witness overlay
+  - Issue: `crates/zk-attacks/src/constraint_inference.rs` violation confirmation overlays violation values onto a seed witness without solving dependent wires, causing structurally-invalid witnesses and `ViolationConfirmation::Rejected` for real missing-constraint findings.
+  - Fix: Use Z3 or minimal R1CS solver to re-solve remaining wires after injecting violation values, or relax rejection criteria to allow partial-witness violations.
+  - Impact: Medium - reduces recall of the constraint inference engine on circuits with arithmetic dependencies.
+
+- [ ] **Bug 6**: Structure-aware mutation relies on regex variable name matching
+  - Issue: `crates/zk-fuzzer-core/src/structure_aware.rs` infers signal types via regex on names (`sig`, `hash`, `merkle`). Fails on minified, obfuscated, or non-English targets, degrading to random field noise.
+  - Fix: Integrate with compiler ABI/debug artifacts (Circom `.sym` files, Noir ABI JSON) or infer types from usage patterns (e.g., "this signal feeds a Poseidon template").
+  - Impact: Medium - mutation quality degrades silently on targets without English-convention naming.
+
+- [ ] **Bug 7**: Soundness attack byte-flip can produce invalid field elements
+  - Issue: `src/fuzzer/engine/attack_runner_soundness.rs` last-byte XOR mutation (`bytes[31] ^= 0x01`) can exceed BN254 modulus, causing verifier rejection for encoding reasons rather than testing actual soundness.
+  - Fix: Use `mutate_field_element` with modular reduction, or add explicit modulus check after byte manipulation.
+  - Impact: Medium - some soundness test iterations are wasted on invalid-encoding rejections instead of real soundness probes.
+
+---
+
 ## 🐛 Capacity & Fitness Bug Fixes (2026-02-20)
 
 ### Critical (P0)

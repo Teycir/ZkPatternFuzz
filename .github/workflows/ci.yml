@@ -64,7 +64,7 @@ jobs:
         run: python3 scripts/check_prod_test_separation.py --repo-root .
 
       - name: Readiness matrix target coverage gate
-        run: python3 -m unittest -q tests/test_readiness_matrix_targets.py tests/test_backend_readiness_dashboard.py tests/test_backend_maturity_scorecard.py tests/test_circom_flake_gate.py tests/test_release_streak_status.py
+        run: python3 -m unittest -q tests/test_readiness_matrix_targets.py tests/test_backend_readiness_dashboard.py tests/test_backend_maturity_scorecard.py tests/test_circom_flake_gate.py tests/test_release_streak_status.py tests/test_build_external_target_closure_table.py
 
       # Full warning-free lint gate across all targets/features.
       # Scope to production crates/binaries to keep the gate stable across
