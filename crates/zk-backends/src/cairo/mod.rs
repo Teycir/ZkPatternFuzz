@@ -148,9 +148,7 @@ fn resolve_versioned_scarb_binary_on_path(version: &str) -> Option<String> {
         return None;
     }
     let binary_name = format!("scarb-{trimmed}");
-    let Some(path_os) = std::env::var_os("PATH") else {
-        return None;
-    };
+    let path_os = std::env::var_os("PATH")?;
 
     for dir in std::env::split_paths(&path_os) {
         let candidate = dir.join(&binary_name);

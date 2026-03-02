@@ -35,7 +35,9 @@ fn power_schedule_exploit_prioritizes_findings() {
     };
     let without_findings = TestCaseMetrics::default();
 
-    assert!(scheduler.calculate_energy(&with_findings) > scheduler.calculate_energy(&without_findings));
+    assert!(
+        scheduler.calculate_energy(&with_findings) > scheduler.calculate_energy(&without_findings)
+    );
 }
 
 #[test]

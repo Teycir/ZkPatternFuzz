@@ -311,7 +311,7 @@ impl SemanticIntentAdapter for HeuristicAugmentedSemanticIntentAdapter {
 
         let mut security_properties = BTreeSet::new();
         security_properties.extend(base.security_properties.drain(..));
-        security_properties.extend(security_critical_properties.into_iter());
+        security_properties.extend(security_critical_properties);
 
         base.source = format!("{}:{}", self.provider_name(), self.guidance_label);
         base.invariants = invariants.into_iter().collect();

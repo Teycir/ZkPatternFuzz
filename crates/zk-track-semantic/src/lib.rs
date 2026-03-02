@@ -1217,6 +1217,7 @@ fn build_scorecard(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_semantic_report(
     input: &TrackInput,
     report_dir: &Path,
@@ -1317,15 +1318,13 @@ fn write_ai_ingest_bundle(
 
 fn truncate_bundle_text(value: &str, max_chars: usize) -> String {
     let mut out = String::new();
-    let mut count = 0usize;
     let mut truncated = false;
-    for character in value.chars() {
+    for (count, character) in value.chars().enumerate() {
         if count >= max_chars {
             truncated = true;
             break;
         }
         out.push(character);
-        count += 1;
     }
     if truncated {
         out.push_str("...[truncated]");

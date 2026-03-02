@@ -77,6 +77,12 @@ impl PairingFuzzConfig {
     }
 }
 
+impl Default for PairingFuzzConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PairingFuzzFinding {
     pub case_id: String,

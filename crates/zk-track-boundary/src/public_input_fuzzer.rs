@@ -105,6 +105,12 @@ impl PublicInputManipulationConfig {
     }
 }
 
+impl Default for PublicInputManipulationConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PublicInputManipulationFinding {
     pub case_id: String,

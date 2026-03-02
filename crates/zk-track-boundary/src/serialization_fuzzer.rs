@@ -151,6 +151,12 @@ impl SerializationFuzzConfig {
     }
 }
 
+impl Default for SerializationFuzzConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SerializationFuzzFinding {
     pub case_id: String,
@@ -462,7 +468,7 @@ fn decode_public_inputs(
             let text = String::from_utf8_lossy(&decoded_bytes);
             let tokens: Vec<String> = text
                 .trim_matches(|ch| ch == '[' || ch == ']')
-                .split(|ch| ch == ',' || ch == ' ' || ch == '\n' || ch == '|')
+                .split([',', ' ', '\n', '|'])
                 .map(str::trim)
                 .filter(|token| !token.is_empty())
                 .map(|token| token.trim_matches('"').to_string())
@@ -568,7 +574,7 @@ fn mutate_public_inputs_payload(
                 format,
                 3,
             ) {
-                if case_index % 2 == 0 && parsed.len() > 1 {
+                if case_index.is_multiple_of(2) && parsed.len() > 1 {
                     parsed.pop();
                 } else {
                     parsed.push("999999".to_string());
@@ -644,7 +650,7 @@ fn mutate_cross_language_payload(
         }
         CrossLanguageSerializationCase::LanguageAToLanguageB => {
             let mut inputs = encoded_inputs.to_vec();
-            if case_index % 2 == 0 {
+            if case_index.is_multiple_of(2) {
                 inputs.extend_from_slice(b"|extra|field");
             } else {
                 match format {
@@ -743,7 +749,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 }
 
 fn hex_decode(input: &[u8]) -> Option<Vec<u8>> {
-    if input.len() % 2 != 0 {
+    if !input.len().is_multiple_of(2) {
         return None;
     }
     let mut out = Vec::with_capacity(input.len() / 2);
@@ -763,7 +769,7 @@ fn tolerant_hex_decode(input: &[u8]) -> Vec<u8> {
         .copied()
         .filter(|b| b.is_ascii_hexdigit())
         .collect();
-    let usable = if filtered.len() % 2 == 0 {
+    let usable = if filtered.len().is_multiple_of(2) {
         filtered
     } else {
         filtered[..filtered.len() - 1].to_vec()

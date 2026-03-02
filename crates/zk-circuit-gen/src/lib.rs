@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -2040,7 +2040,7 @@ fn classify_compiler_failure(
 
 fn generate_compiler_bug_reports(
     results: &[CompilerProbeResult],
-    repro_dir: &PathBuf,
+    repro_dir: &Path,
 ) -> Result<Vec<CompilerBugReport>, CircuitGenError> {
     let mut reports = Vec::new();
     for result in results {

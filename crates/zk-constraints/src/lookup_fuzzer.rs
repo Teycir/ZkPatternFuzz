@@ -209,6 +209,7 @@ impl LookupFuzzer {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_case(
     baseline: &HashMap<usize, FieldElement>,
     enable_wire: Option<usize>,

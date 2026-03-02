@@ -316,7 +316,7 @@ impl FuzzingEngine {
             self.config.inputs.len().max(1),
             EnhancedSymbolicConfig {
                 max_paths: max_subsets.max(1),
-                max_depth: symbolic_constraints.len().min(1024).max(1),
+                max_depth: symbolic_constraints.len().clamp(1, 1024),
                 solver_timeout_ms,
                 random_seed: self.seed,
                 pruning_strategy: crate::analysis::PruningStrategy::DepthBounded,

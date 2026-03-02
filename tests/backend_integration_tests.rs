@@ -191,7 +191,10 @@ where
     let output = op();
     done.store(true, Ordering::Relaxed);
     let _ = heartbeat.join();
-    println!("{label}: completed (elapsed={}s)", started.elapsed().as_secs());
+    println!(
+        "{label}: completed (elapsed={}s)",
+        started.elapsed().as_secs()
+    );
     output
 }
 
@@ -1725,8 +1728,7 @@ fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
     let skip_constraint_load = ext005_skip_constraint_load_enabled();
     println!(
         "test_halo2_ext005_ezkl_replay_base_execution_failure: {}={}",
-        EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV,
-        skip_constraint_load
+        EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV, skip_constraint_load
     );
 
     let load_constraints_elapsed = if skip_constraint_load {

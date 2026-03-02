@@ -42,10 +42,6 @@ impl PostRoadmapRunner {
         }
     }
 
-    pub fn default() -> Self {
-        Self::new(default_post_roadmap_tracks())
-    }
-
     pub async fn execute(&self, input: &TrackInput) -> PostRoadmapRunSummary {
         let mut summary = PostRoadmapRunSummary::default();
 
@@ -99,6 +95,12 @@ impl PostRoadmapRunner {
     fn sort_tracks(mut tracks: Vec<Box<dyn TrackRunner>>) -> Vec<Box<dyn TrackRunner>> {
         tracks.sort_by_key(|runner| runner.track().execution_order());
         tracks
+    }
+}
+
+impl Default for PostRoadmapRunner {
+    fn default() -> Self {
+        Self::new(default_post_roadmap_tracks())
     }
 }
 

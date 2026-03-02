@@ -108,6 +108,12 @@ impl FieldArithmeticFuzzConfig {
     }
 }
 
+impl Default for FieldArithmeticFuzzConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FieldArithmeticFuzzFinding {
     pub case_id: String,

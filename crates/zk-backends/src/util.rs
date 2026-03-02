@@ -285,7 +285,7 @@ pub(crate) fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<O
             let _ = tx.send(child.wait_with_output());
         });
 
-        return match rx.recv_timeout(timeout) {
+        match rx.recv_timeout(timeout) {
             Ok(output) => output.context("Failed collecting external command output"),
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if let Err(e) = kill_process_group_by_pid(child_id) {
@@ -298,7 +298,7 @@ pub(crate) fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<O
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 anyhow::bail!("External command waiter disconnected unexpectedly")
             }
-        };
+        }
     }
 
     #[cfg(not(unix))]

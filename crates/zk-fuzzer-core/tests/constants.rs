@@ -1,6 +1,4 @@
-use zk_fuzzer_core::constants::{
-    bn254_modulus_bytes, bn254_modulus_minus_one_bytes, FieldType,
-};
+use zk_fuzzer_core::constants::{bn254_modulus_bytes, bn254_modulus_minus_one_bytes, FieldType};
 
 #[test]
 fn test_bn254_modulus_bytes() {

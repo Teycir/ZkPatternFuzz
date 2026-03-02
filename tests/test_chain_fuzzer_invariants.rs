@@ -81,6 +81,6 @@ fn test_relation_supported_rejects_malformed_indices_without_panic() {
             "relation_supported should never panic for relation '{}'",
             relation
         );
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 }

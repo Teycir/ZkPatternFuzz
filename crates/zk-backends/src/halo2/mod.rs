@@ -1182,44 +1182,40 @@ impl Halo2Target {
                     let mut dependency_resolution_failed =
                         output_suggests_dependency_resolution_failure(&output);
                     let mut online_retry_attempted = false;
-                    if output_suggests_offline_dependency_miss(&output) {
-                        if warm_git_db_aliases_from_output(&output) {
-                            let Some(repair_timeout) = compute_attempt_timeout() else {
+                    if output_suggests_offline_dependency_miss(&output)
+                        && warm_git_db_aliases_from_output(&output)
+                    {
+                        let Some(repair_timeout) = compute_attempt_timeout() else {
+                            failures.push(format!(
+                                "{}(offline-repair): total timeout budget exhausted after {:.2}s",
+                                candidate.label,
+                                started.elapsed().as_secs_f64()
+                            ));
+                            break;
+                        };
+                        let mut repaired_cmd = self.cargo_command_with_binary_and_toolchain(
+                            &candidate.binary,
+                            candidate.toolchain.as_deref(),
+                            false,
+                        )?;
+                        configure(&mut repaired_cmd);
+                        match crate::util::run_with_timeout(&mut repaired_cmd, repair_timeout) {
+                            Ok(repaired_output) if repaired_output.status.success() => {
+                                self.remember_selected_cargo_binary(&candidate.binary);
+                                return Ok(repaired_output);
+                            }
+                            Ok(repaired_output) => {
+                                dependency_resolution_failed =
+                                    output_suggests_dependency_resolution_failure(&repaired_output);
                                 failures.push(format!(
-                                    "{}(offline-repair): total timeout budget exhausted after {:.2}s",
+                                    "{}(offline-repair): {}",
                                     candidate.label,
-                                    started.elapsed().as_secs_f64()
+                                    crate::util::command_failure_summary(&repaired_output)
                                 ));
-                                break;
-                            };
-                            let mut repaired_cmd = self.cargo_command_with_binary_and_toolchain(
-                                &candidate.binary,
-                                candidate.toolchain.as_deref(),
-                                false,
-                            )?;
-                            configure(&mut repaired_cmd);
-                            match crate::util::run_with_timeout(&mut repaired_cmd, repair_timeout) {
-                                Ok(repaired_output) if repaired_output.status.success() => {
-                                    self.remember_selected_cargo_binary(&candidate.binary);
-                                    return Ok(repaired_output);
-                                }
-                                Ok(repaired_output) => {
-                                    dependency_resolution_failed =
-                                        output_suggests_dependency_resolution_failure(
-                                            &repaired_output,
-                                        );
-                                    failures.push(format!(
-                                        "{}(offline-repair): {}",
-                                        candidate.label,
-                                        crate::util::command_failure_summary(&repaired_output)
-                                    ));
-                                }
-                                Err(err) => {
-                                    failures.push(format!(
-                                        "{}(offline-repair): {}",
-                                        candidate.label, err
-                                    ));
-                                }
+                            }
+                            Err(err) => {
+                                failures
+                                    .push(format!("{}(offline-repair): {}", candidate.label, err));
                             }
                         }
                     }
@@ -1788,6 +1784,7 @@ impl Halo2Target {
         Some((proving, verification))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn write_key_setup_manifest(
         &self,
         setup_mode: &str,

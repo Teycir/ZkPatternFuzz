@@ -124,9 +124,7 @@ impl FrozenWireDetector {
                     continue;
                 }
 
-                let severity = if constrained {
-                    Severity::Low
-                } else if is_one {
+                let severity = if constrained || is_one {
                     Severity::Low
                 } else {
                     Severity::Medium

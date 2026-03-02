@@ -159,6 +159,7 @@ impl NonNativeFieldOracle {
         findings
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn finding_from_case(
         &self,
         circuit_name: &str,

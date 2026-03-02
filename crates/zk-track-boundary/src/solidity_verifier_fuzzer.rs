@@ -143,6 +143,12 @@ impl SolidityVerifierFuzzConfig {
     }
 }
 
+impl Default for SolidityVerifierFuzzConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SolidityVerifierFinding {
     pub case_id: String,
@@ -600,7 +606,7 @@ fn mutate_pairing_case(
         }
         PairingManipulationCase::MalformedPairingInput => {
             case.pairing.malformed_input = true;
-            if case_index % 2 == 0 {
+            if case_index.is_multiple_of(2) {
                 let mut malformed = CALLDATA_SELECTOR.to_vec();
                 malformed.extend_from_slice(b"\x01\x02pairing");
                 case.calldata = malformed;

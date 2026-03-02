@@ -388,6 +388,7 @@ impl ConstraintSliceOracle {
     }
 
     /// Test a single cone
+    #[allow(clippy::too_many_arguments)]
     async fn test_cone(
         &self,
         executor: &dyn CircuitExecutor,

@@ -6,7 +6,7 @@ mod solidity_verifier_fuzzer;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -390,7 +390,7 @@ fn collect_findings(
     serialization: &SerializationFuzzReport,
     solidity_verifier: &SolidityVerifierFuzzReport,
     cross_component: &CrossComponentFuzzReport,
-    report_path: &PathBuf,
+    report_path: &Path,
 ) -> Vec<TrackFinding> {
     let mut findings = Vec::new();
 
@@ -421,7 +421,7 @@ fn collect_findings(
                         .to_string(),
                 ),
             ]),
-            report_path.clone(),
+            report_path.to_path_buf(),
         ));
     }
 
@@ -456,7 +456,7 @@ fn collect_findings(
                         .to_string(),
                 ),
             ]),
-            report_path.clone(),
+            report_path.to_path_buf(),
         ));
     }
 
@@ -491,7 +491,7 @@ fn collect_findings(
                         .to_string(),
                 ),
             ]),
-            report_path.clone(),
+            report_path.to_path_buf(),
         ));
     }
 
@@ -526,7 +526,7 @@ fn collect_findings(
                         .to_string(),
                 ),
             ]),
-            report_path.clone(),
+            report_path.to_path_buf(),
         ));
     }
 
@@ -555,7 +555,7 @@ fn track_finding(
 
 fn build_scorecard(
     track: TrackKind,
-    report_path: &PathBuf,
+    report_path: &Path,
     findings: &[TrackFinding],
 ) -> PostRoadmapResult<Scorecard> {
     let report_text = fs::read_to_string(report_path).map_err(|error| {

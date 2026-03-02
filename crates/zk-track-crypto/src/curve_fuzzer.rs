@@ -116,6 +116,12 @@ impl CurveOperationFuzzConfig {
     }
 }
 
+impl Default for CurveOperationFuzzConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CurveOperationFuzzFinding {
     pub case_id: String,

@@ -68,6 +68,7 @@ impl CampaignPipeline {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn print_dry_run_summary(
         config: &zk_fuzzer::config::FuzzConfig,
         options: &CampaignRunOptions,

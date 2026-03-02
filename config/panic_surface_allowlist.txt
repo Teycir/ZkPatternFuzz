@@ -1,13 +1,3 @@
-crates/zk-attacks/src/constraint_inference.rs|all_implied.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
-crates/zk-backends/src/cairo/mod.rs|.expect("Cairo metadata unavailable; call compile() before querying num_constraints")
-crates/zk-backends/src/cairo/mod.rs|.expect("Cairo metadata unavailable; call compile() before querying num_private_inputs")
-crates/zk-backends/src/cairo/mod.rs|.expect("Cairo metadata unavailable; call compile() before querying num_public_inputs")
-crates/zk-backends/src/cairo/mod.rs|.expect("cairo IO lock poisoned during execute");
-crates/zk-backends/src/cairo/mod.rs|.expect("cairo IO lock poisoned during prove");
-crates/zk-backends/src/cairo/mod.rs|.expect("cairo IO lock poisoned during verify");
-crates/zk-backends/src/cairo/mod.rs|.expect("cairo1 execution id lock poisoned during prove") = Some(execution_id.clone());
-crates/zk-backends/src/cairo/mod.rs|.expect("cairo1 execution id lock poisoned during verify")
-crates/zk-backends/src/cairo/mod.rs|hex::decode(STARK252_MODULUS_HEX).expect("STARK252 modulus constant must be valid hex");
 crates/zk-backends/src/circom/mod.rs|.expect("Circom metadata missing; call compile() before querying field_name")
 crates/zk-backends/src/circom/mod.rs|.expect("Circom metadata missing; call compile() before querying num_constraints")
 crates/zk-backends/src/circom/mod.rs|.expect("Circom metadata missing; call compile() before querying num_private_inputs")
@@ -19,49 +9,45 @@ crates/zk-backends/src/halo2/mod.rs|.expect("Halo2 circuit path must have parent
 crates/zk-backends/src/halo2/mod.rs|.expect("Halo2 metadata unavailable; call setup() before querying num_constraints")
 crates/zk-backends/src/halo2/mod.rs|.expect("Halo2 metadata unavailable; call setup() before querying num_private_inputs")
 crates/zk-backends/src/halo2/mod.rs|.expect("Halo2 metadata unavailable; call setup() before querying num_public_inputs")
-crates/zk-backends/src/noir/mod.rs|.expect("Noir metadata unavailable; call compile() before querying name")
-crates/zk-backends/src/noir/mod.rs|.expect("Noir metadata unavailable; call compile() before querying num_constraints")
-crates/zk-backends/src/noir/mod.rs|.expect("Noir metadata unavailable; call compile() before querying num_private_inputs");
-crates/zk-backends/src/noir/mod.rs|.expect("Noir metadata unavailable; call compile() before querying num_public_inputs");
-crates/zk-backends/src/noir/mod.rs|.expect("noir IO lock poisoned during compile");
-crates/zk-backends/src/noir/mod.rs|.expect("noir IO lock poisoned during execute");
-crates/zk-backends/src/noir/mod.rs|.expect("noir IO lock poisoned during prove");
-crates/zk-backends/src/noir/mod.rs|.expect("noir IO lock poisoned during verify");
-crates/zk-backends/src/noir/mod.rs|.expect("noir IO lock poisoned while building ACIR info");
-crates/zk-backends/src/noir/mod.rs|.expect("noir IO lock poisoned while loading ACIR text");
-crates/zk-backends/src/noir/mod.rs|let decoded = hex::decode(hex_str).expect("Noir BN254 modulus constant must be valid hex");
-crates/zk-constraints/src/proof_forgery.rs|let alt_witness = alt_result.alternative_witness.as_ref().unwrap();
-crates/zk-core/src/field.rs|.unwrap();
-crates/zk-fuzzer-core/src/corpus/deduplication.rs|let pos = inputs.iter().position(|fe| !fe.is_zero()).unwrap();
+crates/zk-backends/src/halo2/mod.rs|let execute_flag = execute_flag.expect("checked is_some");
+crates/zk-backends/src/halo2/mod.rs|let prove_flag = prove_flag.expect("checked is_some");
+crates/zk-backends/src/halo2/mod.rs|let verify_flag = verify_flag.expect("checked is_some");
+crates/zk-backends/src/util.rs|.expect("expected fallback command execution to succeed");
+crates/zk-backends/src/util.rs|.expect("rustc --version should run");
+crates/zk-backends/src/util.rs|.expect("rustc with bad flag should execute");
+crates/zk-backends/src/util.rs|candidate_writable_bind_paths(&cmd, temp.path()).expect("collect writable bind paths");
+crates/zk-backends/src/util.rs|let temp = tempfile::tempdir().expect("tempdir");
+crates/zk-backends/src/util.rs|let version = command_version_line(&output).expect("version line expected");
+crates/zk-core/src/constants.rs|.expect("BN254 modulus constant must parse")
+crates/zk-core/src/constants.rs|.expect("BN254 modulus minus one constant must parse")
+crates/zk-core/src/invariants.rs|.expect("validation must pass");
+crates/zk-core/src/invariants.rs|let ast = parse_invariant_relation("root == merkle(leaf, path)").expect("parse");
+crates/zk-core/src/invariants.rs|let ast = parse_invariant_relation("∀i: path[i] ∈ {0,1}").expect("parse");
 crates/zk-fuzzer-core/src/engine.rs|.expect("FuzzingEngineCore::new should have all required fields")
 crates/zk-symbolic/src/enhanced.rs|let model = solver.get_model().unwrap();
 crates/zk-symbolic/src/enhanced.rs|let modulus = ast::Int::from_str(ctx, &self.modulus).unwrap();
 crates/zk-symbolic/src/executor.rs|let model = solver.get_model().unwrap();
 crates/zk-symbolic/src/executor.rs|let modulus = ast::Int::from_str(ctx, &self.modulus).unwrap();
 crates/zk-symbolic/src/symbolic_v2.rs|return states.into_iter().next().unwrap();
-src/analysis/opus.rs|hints.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
-src/bin/gen_tornado_seed.rs|.expect("normalize_value(Value::Object(_)) always returns Value::Object"))
-src/bin/zkpatternfuzz.rs|.expect("checked contains_key");
-src/chain_fuzzer/corpus.rs|let meta = per_chain.get_mut(&e.spec_name).expect("just inserted");
-src/chain_fuzzer/invariants.rs|.expect("Specific step reference must resolve to an index"),
-src/cve/mod.rs|.expect("semantic oracle state mutex poisoned; aborting CVE check");
-src/executor/mod.rs|.expect(
-src/fuzzer/engine/report_generator.rs|let now_epoch = now_epoch.expect("System clock is before UNIX_EPOCH");
-src/fuzzer/oracles/merkle_oracle.rs|let (len1, count1) = self.path_lengths.iter().next().unwrap();
-src/fuzzer/oracles/merkle_oracle.rs|let (len2, count2) = self.path_lengths.iter().nth(1).unwrap();
-src/fuzzer/oracles/range_oracle.rs|.expect("accepted_values is non-empty due to length check");
-src/fuzzer/oracles/range_oracle.rs|BigUint::parse_bytes(BN254_MODULUS.as_bytes(), 10).expect("Invalid BN254 modulus")
-src/fuzzer/oracles/range_oracle.rs|BigUint::parse_bytes(BN254_MODULUS.as_bytes(), 10).expect("Invalid BN254 modulus");
-src/oracles/frozen_wire.rs|let frozen_value = values.iter().next().unwrap();
-src/oracles/spec_inference.rs|.expect("values is non-empty when inferring non-zero constraints");
-src/oracles/spec_inference.rs|let max = *values.iter().max().unwrap();
-src/oracles/spec_inference.rs|let min = *values.iter().min().unwrap();
-src/progress/mod.rs|.unwrap()
-src/progress/mod.rs|.unwrap(),
-src/reporting/evidence_cairo.rs|path.parent().unwrap().display()
-src/reporting/evidence_halo2.rs|.expect("Failed to read witness");
-src/reporting/evidence_halo2.rs|serde_json::from_str(&witness_content).expect("Failed to parse witness");
-src/reporting/evidence_noir.rs|path.parent().unwrap().display()
+crates/zk-track-boundary/src/lib.rs|.expect("validate passes for bug probe mode");
+crates/zk-track-boundary/src/lib.rs|.expect("validate passes for strict mode");
+crates/zk-track-boundary/src/lib.rs|let emitted = runner.emit(&execution).await.expect("emit passes");
+crates/zk-track-boundary/src/lib.rs|let execution = runner.run(&input).await.expect("run passes");
+crates/zk-track-boundary/src/lib.rs|let temp_dir = TempDir::new().expect("temp dir");
+crates/zk-track-boundary/src/lib.rs|runner.prepare(&input).await.expect("prepare passes");
+crates/zk-track-compiler/src/lib.rs|.expect("validate passes for bug probe mode");
+crates/zk-track-compiler/src/lib.rs|.expect("validate passes for strict mode");
+crates/zk-track-compiler/src/lib.rs|let emitted = runner.emit(&execution).await.expect("emit passes");
+crates/zk-track-compiler/src/lib.rs|let execution = runner.run(&input).await.expect("run passes");
+crates/zk-track-compiler/src/lib.rs|let scorecard = execution.scorecard.expect("scorecard");
+crates/zk-track-compiler/src/lib.rs|let temp_dir = TempDir::new().expect("temp dir");
+crates/zk-track-compiler/src/lib.rs|runner.prepare(&input).await.expect("prepare passes");
+crates/zk-track-crypto/src/lib.rs|.expect("validate passes for bug probe mode");
+crates/zk-track-crypto/src/lib.rs|.expect("validate passes for strict mode");
+crates/zk-track-crypto/src/lib.rs|let emitted = runner.emit(&execution).await.expect("emit passes");
+crates/zk-track-crypto/src/lib.rs|let execution = runner.run(&input).await.expect("run passes");
+crates/zk-track-crypto/src/lib.rs|let temp_dir = TempDir::new().expect("temp dir");
+crates/zk-track-crypto/src/lib.rs|runner.prepare(&input).await.expect("prepare passes");
 src/reporting/poc_generator.rs|"            FieldElement::from_hex(\"{}\").unwrap(),",
 src/reporting/poc_generator.rs|"        let output_a = executor.execute(&witness_a).unwrap();"
 src/reporting/poc_generator.rs|"        let output_b = executor.execute(&witness_b).unwrap();"

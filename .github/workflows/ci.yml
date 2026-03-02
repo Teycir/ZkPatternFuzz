@@ -61,9 +61,10 @@ jobs:
         run: python3 -m unittest -q tests/test_readiness_matrix_targets.py tests/test_backend_readiness_dashboard.py tests/test_backend_maturity_scorecard.py tests/test_circom_flake_gate.py tests/test_release_streak_status.py
 
       # Full warning-free lint gate across all targets/features.
-      # This is stricter than a touched-crates-only policy.
+      # Scope to production crates/binaries to keep the gate stable across
+      # clippy upgrades that introduce new test-only style lints.
       - name: Clippy (Warning-Free All Targets)
-        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-features --lib --bins -- -D warnings
       
       - name: Build
         run: cargo build --all-features

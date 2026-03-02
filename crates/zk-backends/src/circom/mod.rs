@@ -696,9 +696,7 @@ fn build_template_invocation(name: &str, param_count: usize, value: usize) -> St
     if param_count == 0 {
         return format!("{name}()");
     }
-    let args = std::iter::repeat(value.to_string())
-        .take(param_count)
-        .collect::<Vec<_>>();
+    let args = std::iter::repeat_n(value.to_string(), param_count).collect::<Vec<_>>();
     format!("{name}({})", args.join(", "))
 }
 

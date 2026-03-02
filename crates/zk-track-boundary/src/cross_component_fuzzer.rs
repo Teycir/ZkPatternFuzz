@@ -113,6 +113,12 @@ impl CrossComponentFuzzConfig {
     }
 }
 
+impl Default for CrossComponentFuzzConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CrossComponentFinding {
     pub case_id: String,
@@ -305,6 +311,7 @@ struct VerificationOutcome {
     reverted: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compare_case(
     report: &mut CrossComponentFuzzReport,
     case_id: &str,
@@ -628,7 +635,7 @@ fn apply_component_mismatch(
         }
     }
 
-    if case_index % 2 == 0 {
+    if case_index.is_multiple_of(2) {
         case.transport.payload = encode_transport(
             &case.proof,
             &case.public_inputs,
