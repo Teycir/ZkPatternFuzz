@@ -2059,7 +2059,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 
 - [x] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
   - Automated generator: `scripts/build_external_target_closure_table.py`
-  - Latest artifacts (`2026-03-02T18:16:46Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=7`, `blocked=8`; `EXT-005` open findings=`0`).
+  - Latest artifacts (`2026-03-02T18:35:05Z`): `artifacts/external_targets/closure_table/latest_{report.json,table.md}` (`total=16`, `exploitable=1`, `not_exploitable_within_bounds=8`, `blocked=7`; `EXT-005` open findings=`0`).
   - Generator bugfix (`2026-03-02`): `classify_no_exploit_doc` now prioritizes explicit non-exploit conclusions over historical `pending_proof` mentions, preventing false `blocked` classification for transition docs (e.g., `pending_proof -> bounded_non_exploit_evidence_present`).
 
 | Target | Closure Class | Current Scope | Artifact Link |
@@ -2068,6 +2068,7 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 | `EXT-003` | `exploitable` | target-level closed | `artifacts/external_targets/ext_batch_001/reports/evidence/EXT-003/run_20260224_231300_clean_checkout/exploit_notes.md` |
 | `EXT-013` | `not_exploitable_within_bounds` | target-level closed | `artifacts/external_targets/ext_batch_013/reports/evidence/EXT-013/run_20260225_ext013_relu_bounded_non_exploit/no_exploit_proof.md` |
 | `EXT-005` | `not_exploitable_within_bounds` | target-level closed (current `F01..F06` list all closed as bounded non-exploit) | `artifacts/proof_runs/ext005/run_20260302_160243_ext005_finding06_longwindow_resume/no_exploit_proof.md` |
+| `EXT-007` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext007/run_20260302_183119_ext007_metamorphic_remaining_replay_triage/no_exploit_proof.md` |
 | `EXT-010` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext010/run_20260302_164005_ext010_iszero_non_exploit_algebraic/no_exploit_proof.md` |
 | `EXT-011` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext011/run_20260302_164700_ext011_lessthan_non_exploit/no_exploit_proof.md` |
 | `EXT-012` | `not_exploitable_within_bounds` | target-level closed | `artifacts/proof_runs/ext012/run_20260302_164942_ext012_montgomerydouble_non_exploit/no_exploit_proof.md` |
@@ -2135,6 +2136,11 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
   - Artifacts: `artifacts/proof_runs/ext007/run_20260302_180623_ext007_aztec_hello_bounded_continuation/{no_exploit_proof.md,triage.md,impact.md}`
   - Finding summary: retained findings `16` (`medium`, `metamorphic`) after evidence filtering.
   - Conclusion: `pending_proof` (terminal bounded run achieved, but exploit/non-exploit adjudication for metamorphic findings remains open).
+- [x] Deterministic finding-level adjudication completed for full retained set (`16/16`).
+  - Top-3 replay triage: `artifacts/proof_runs/ext007/run_20260302_182256_ext007_metamorphic_top3_replay_triage/{replay_command.txt,replay.log,replay_exit_status.txt,triage.md}`
+  - Remaining findings (`4..16`) replay triage: `artifacts/proof_runs/ext007/run_20260302_183119_ext007_metamorphic_remaining_replay_triage/{objective_lock.md,target_freeze.md,tool_readiness.md,replay_command.txt,replay.log,replay_exit_status.txt,case_classification.csv,triage.md,no_exploit_proof.md,impact.md}`
+  - Result: control case succeeds; finding-derived cases resolve to `u64` type-range rejections, expected `assert(x != y)` failures, or benign successful execution.
+  - Final conclusion: `not_exploitable_within_bounds` for EXT-007 on the frozen snapshot and replayed witness bounds.
 
 ### Proof Continuation (2026-02-26)
 - [x] `cveX15_scroll_missing_overflow_constraint` deterministic replay + bounded non-exploit proof pack completed (manual checks only).
