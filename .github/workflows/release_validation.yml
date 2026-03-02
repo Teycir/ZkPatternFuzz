@@ -170,9 +170,17 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
 
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
+
       - name: Verify backend toolchain availability (pre-provisioned)
         run: |
-          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
           command -v bubblewrap >/dev/null 2>&1 || command -v bwrap >/dev/null 2>&1 || { echo "::error::bubblewrap/bwrap not found in PATH"; exit 1; }
           command -v circom >/dev/null 2>&1 || { echo "::error::circom not found in PATH"; exit 1; }
           command -v snarkjs >/dev/null 2>&1 || { echo "::error::snarkjs not found in PATH"; exit 1; }
@@ -352,8 +360,14 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
 
-      - name: Verify Z3 availability
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
 
       - name: Run rollback validation against stable ref
         run: |

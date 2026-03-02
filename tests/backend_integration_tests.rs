@@ -20,6 +20,7 @@ const EXT005_REPLAY_WITNESS_HEX_ENV: &str = "EXT005_REPLAY_WITNESS_HEX";
 const EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV: &str = "ZK_FUZZER_EXT005_REPLAY_SKIP_CONSTRAINT_LOAD";
 const EXT005_REPLAY_SKIP_CONSTRAINT_LOAD_ENV_LEGACY: &str = "EXT005_REPLAY_SKIP_CONSTRAINT_LOAD";
 const HALO2_EXTERNAL_TIMEOUT_SECS_ENV: &str = "ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS";
+const PHASE_TIMING_RUN_DIR_ENV: &str = "ZK_FUZZER_PHASE_TIMING_RUN_DIR";
 
 fn real_backend_tests_enabled() -> bool {
     match std::env::var("ZKFUZZ_REAL_BACKENDS") {
@@ -196,6 +197,50 @@ where
         started.elapsed().as_secs()
     );
     output
+}
+
+fn phase_timing_run_dir(default_run_dir: &std::path::Path) -> PathBuf {
+    match std::env::var(PHASE_TIMING_RUN_DIR_ENV) {
+        Ok(path) if !path.trim().is_empty() => PathBuf::from(path),
+        _ => default_run_dir.to_path_buf(),
+    }
+}
+
+fn serialize_phase_timing_ms_json(phases: &[(&str, Option<Duration>)]) -> String {
+    let entries = phases
+        .iter()
+        .map(|(phase, elapsed)| match elapsed {
+            Some(duration) => format!(r#""{}":{}"#, phase, duration.as_millis()),
+            None => format!(r#""{}":null"#, phase),
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{{{entries}}}")
+}
+
+fn emit_phase_timing_ms(
+    test_name: &str,
+    default_run_dir: &std::path::Path,
+    phases: &[(&str, Option<Duration>)],
+) {
+    let payload = serialize_phase_timing_ms_json(phases);
+    println!("{test_name}: phase_timing_ms={payload}");
+
+    let run_dir = phase_timing_run_dir(default_run_dir);
+    if let Err(err) = std::fs::create_dir_all(&run_dir) {
+        panic!(
+            "{test_name}: failed to create phase timing run dir '{}': {err}",
+            run_dir.display()
+        );
+    }
+    let timing_path = run_dir.join("phase_timing.json");
+    if let Err(err) = std::fs::write(&timing_path, format!("{payload}\n")) {
+        panic!(
+            "{test_name}: failed to write phase timing payload to '{}': {err}",
+            timing_path.display()
+        );
+    }
+    println!("{test_name}: phase_timing_path={}", timing_path.display());
 }
 
 fn noir_external_nargo_projects() -> Vec<(&'static str, PathBuf)> {
@@ -1537,14 +1582,21 @@ fn test_halo2_real_circuit_constraint_coverage() {
     }
 
     let build_dir = std::env::temp_dir().join("zk0d_halo2_build");
+    let test_started = Instant::now();
+    let create_executor_started = Instant::now();
     let executor = match expect_or_skip_infra(
         "test_halo2_real_circuit_constraint_coverage",
         "create Halo2 executor",
-        Halo2Executor::new_with_build_dir(repo_path.to_str().unwrap(), "zk0d_mul", build_dir),
+        Halo2Executor::new_with_build_dir(
+            repo_path.to_str().unwrap(),
+            "zk0d_mul",
+            build_dir.clone(),
+        ),
     ) {
         Some(executor) => executor,
         None => return,
     };
+    let create_executor_elapsed = create_executor_started.elapsed();
 
     let inputs = vec![
         FieldElement::from_u64(3),
@@ -1552,7 +1604,9 @@ fn test_halo2_real_circuit_constraint_coverage() {
         FieldElement::from_u64(15),
     ];
 
+    let execute_sync_started = Instant::now();
     let result = executor.execute_sync(&inputs);
+    let execute_sync_elapsed = execute_sync_started.elapsed();
     if !result.success {
         let message = result
             .error
@@ -1569,6 +1623,17 @@ fn test_halo2_real_circuit_constraint_coverage() {
     assert!(
         !result.coverage.satisfied_constraints.is_empty(),
         "Expected constraint-level coverage for Halo2 executor"
+    );
+
+    let total_elapsed = test_started.elapsed();
+    emit_phase_timing_ms(
+        "test_halo2_real_circuit_constraint_coverage",
+        &build_dir,
+        &[
+            ("create_executor", Some(create_executor_elapsed)),
+            ("execute_sync", Some(execute_sync_elapsed)),
+            ("total", Some(total_elapsed)),
+        ],
     );
 }
 
@@ -1769,6 +1834,19 @@ fn test_halo2_ext005_ezkl_replay_base_execution_failure() {
             .unwrap_or_else(|| "skipped".to_string()),
         total_elapsed.as_secs()
     );
+    emit_phase_timing_ms(
+        "test_halo2_ext005_ezkl_replay_base_execution_failure",
+        &build_dir,
+        &[
+            ("create_executor", Some(create_executor_elapsed)),
+            ("executor_execute_sync", Some(executor_execute_elapsed)),
+            ("create_target", Some(create_target_elapsed)),
+            ("target_setup", Some(target_setup_elapsed)),
+            ("target_execute", Some(target_execute_elapsed)),
+            ("load_plonk_constraints", load_constraints_elapsed),
+            ("total", Some(total_elapsed)),
+        ],
+    );
     println!(
         "test_halo2_ext005_ezkl_replay_base_execution_failure: completed_successfully outputs={} coverage_hash={}",
         result.outputs.len(),
@@ -1796,15 +1874,23 @@ fn test_halo2_scaffold_execution_stability() {
     }
 
     let build_dir = std::env::temp_dir().join("zk0d_halo2_build_stability");
+    let test_started = Instant::now();
+    let create_executor_started = Instant::now();
     let executor = match expect_or_skip_infra(
         "test_halo2_scaffold_execution_stability",
         "create Halo2 executor",
-        Halo2Executor::new_with_build_dir(repo_path.to_str().unwrap(), "zk0d_mul", build_dir),
+        Halo2Executor::new_with_build_dir(
+            repo_path.to_str().unwrap(),
+            "zk0d_mul",
+            build_dir.clone(),
+        ),
     ) {
         Some(executor) => executor,
         None => return,
     };
+    let create_executor_elapsed = create_executor_started.elapsed();
 
+    let fixture_stability_started = Instant::now();
     for fixture in halo2_stability_fixtures() {
         let first = executor.execute_sync(&fixture);
         if !first.success {
@@ -1865,12 +1951,15 @@ fn test_halo2_scaffold_execution_stability() {
             fixture
         );
     }
+    let fixture_stability_elapsed = fixture_stability_started.elapsed();
 
     let prove_fixture = halo2_stability_fixtures()
         .into_iter()
         .next()
         .expect("stability fixtures should not be empty");
+    let prove_fixture_execute_started = Instant::now();
     let prove_result = executor.execute_sync(&prove_fixture);
+    let prove_fixture_execute_elapsed = prove_fixture_execute_started.elapsed();
     if !prove_result.success {
         let message = prove_result
             .error
@@ -1884,14 +1973,18 @@ fn test_halo2_scaffold_execution_stability() {
             MatrixStatus::Pass => unreachable!("classify_error never returns MatrixStatus::Pass"),
         }
     }
+    let proof_started = Instant::now();
+    let proof_result = executor.prove(&prove_fixture);
+    let proof_elapsed = proof_started.elapsed();
     let proof = match expect_or_skip_infra(
         "test_halo2_scaffold_execution_stability",
         "Halo2 proof generation",
-        executor.prove(&prove_fixture),
+        proof_result,
     ) {
         Some(proof) => proof,
         None => return,
     };
+    let verify_started = Instant::now();
     let verified = match expect_or_skip_infra(
         "test_halo2_scaffold_execution_stability",
         "Halo2 proof verification",
@@ -1900,7 +1993,22 @@ fn test_halo2_scaffold_execution_stability() {
         Some(verified) => verified,
         None => return,
     };
+    let verify_elapsed = verify_started.elapsed();
     assert!(verified, "Halo2 proof verification returned false");
+
+    let total_elapsed = test_started.elapsed();
+    emit_phase_timing_ms(
+        "test_halo2_scaffold_execution_stability",
+        &build_dir,
+        &[
+            ("create_executor", Some(create_executor_elapsed)),
+            ("fixture_stability_loop", Some(fixture_stability_elapsed)),
+            ("prove_fixture_execute", Some(prove_fixture_execute_elapsed)),
+            ("prove", Some(proof_elapsed)),
+            ("verify", Some(verify_elapsed)),
+            ("total", Some(total_elapsed)),
+        ],
+    );
 }
 
 /// Throughput gate for production-like Halo2 scaffold execution.

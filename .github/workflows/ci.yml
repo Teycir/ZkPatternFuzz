@@ -42,8 +42,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
       
-      - name: Verify Z3 availability
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
       
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -92,13 +98,24 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
 
-      - name: Verify Z3 (Ubuntu)
+      - name: Install and verify Z3 (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
 
-      - name: Verify Z3 (macOS)
+      - name: Install and verify Z3 (macOS)
         if: matrix.os == 'macos-latest'
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            brew install z3
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
 
       # On Windows we default to static-linking Z3 in solver crates.
       - name: Check solver crates
@@ -136,8 +153,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
       
-      - name: Verify Z3 availability
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
       
       - name: Run tests
         run: cargo test --all-features --verbose
@@ -181,9 +204,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
+
       - name: Verify backend toolchain availability (pre-provisioned)
         run: |
-          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
           command -v circom >/dev/null 2>&1 || { echo "::error::circom not found in PATH"; exit 1; }
           command -v snarkjs >/dev/null 2>&1 || { echo "::error::snarkjs not found in PATH"; exit 1; }
           command -v nargo >/dev/null 2>&1 || { echo "::error::nargo not found in PATH"; exit 1; }
@@ -266,9 +297,17 @@ jobs:
             ${{ runner.os }}-cargo-${{ matrix.track }}-
             ${{ runner.os }}-cargo-
 
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
+
       - name: Verify benchmark toolchain availability (pre-provisioned)
         run: |
-          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
           command -v circom >/dev/null 2>&1 || { echo "::error::circom not found in PATH"; exit 1; }
           command -v snarkjs >/dev/null 2>&1 || { echo "::error::snarkjs not found in PATH"; exit 1; }
 
@@ -359,10 +398,18 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
       
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
+
       - name: Verify coverage toolchain availability (pre-provisioned)
         run: |
           command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "::error::cargo-llvm-cov not found in PATH"; exit 1; }
-          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
       
       - name: Generate coverage report
         run: cargo llvm-cov --all-features --lcov --output-path lcov.info
@@ -392,8 +439,14 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
       
-      - name: Verify Z3 availability
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
       
       - name: Run benchmarks
         run: cargo bench --all-features -- --noplot
@@ -423,8 +476,14 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
       
-      - name: Verify Z3 availability
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
       
       - name: Build release
         run: cargo build --release --all-features
@@ -502,13 +561,24 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
       
-      - name: Verify Z3 (Ubuntu)
+      - name: Install and verify Z3 (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
 
-      - name: Verify Z3 (macOS)
+      - name: Install and verify Z3 (macOS)
         if: matrix.os == 'macos-latest'
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            brew install z3
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
       
       - name: Build
         run: cargo build --release --all-features
@@ -535,8 +605,14 @@ jobs:
           rustc --version || exit 1
           cargo --version || exit 1
       
-      - name: Verify Z3 availability
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
       
       - name: Build release binary
         run: cargo build --release --all-features

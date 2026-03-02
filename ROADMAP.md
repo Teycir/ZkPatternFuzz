@@ -2001,15 +2001,15 @@ assert_eq!(e1, GT::one(), "e(O, G2) should be 1");
 - Resume command template (F04 next):
   - `timeout 2200s env ZKFUZZ_REAL_BACKENDS=1 EXT005_EZKL_PATH=/media/elements/Repos/zkml/ezkl/Cargo.toml EXT005_EZKL_BUILD_DIR=/home/teycir/Repos/ZkPatternFuzz/artifacts/external_targets/recheck/build_cache/halo2/Cargo_main__607508cb5480 ZK_FUZZER_HALO2_CARGO_TOOLCHAIN=nightly-2025-12-01 ZK_FUZZER_HALO2_CARGO_TOOLCHAIN_CANDIDATES=nightly-2025-12-01 ZK_FUZZER_HALO2_RUSTUP_TOOLCHAIN_CASCADE=false ZK_FUZZER_HALO2_EXTERNAL_TIMEOUT_SECS=600 SVM_RELEASES_LIST_JSON=/home/teycir/Repos/ZkPatternFuzz/artifacts/external_targets/recheck_ext005_continue_20260225/manifests/svm_releases_linux_amd64.json EXT005_REPLAY_WITNESS_HEX=0x0000000000000000000000000000000000000000000000000000000000000000 ZK_FUZZER_EXT005_REPLAY_SKIP_CONSTRAINT_LOAD=1 cargo test --test backend_integration_tests test_halo2_ext005_ezkl_replay_base_execution_failure -- --nocapture --test-threads=1`
 
-- [ ] Add runtime phase timing metrics to all heavy replay tests.
+- [x] Add runtime phase timing metrics to all heavy replay tests.
   - [x] Heartbeat visibility shipped for EXT-005 replay harness (`tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure`).
   - [x] Emit bounded-run phase timing summary line (`phase_metrics ...`) for EXT-005 replay harness.
-  - [ ] Emit machine-readable per-phase timing line (`phase_timing_ms=<json>`) for heavy replay harnesses.
-  - [ ] Persist timing payload to `<run_dir>/phase_timing.json` for every proof bundle run.
-  - [ ] Apply timing instrumentation to current heavy replay tests:
+  - [x] Emit machine-readable per-phase timing line (`phase_timing_ms=<json>`) for heavy replay harnesses.
+  - [x] Persist timing payload to `<run_dir>/phase_timing.json` for every proof bundle run (`ZK_FUZZER_PHASE_TIMING_RUN_DIR=<run_dir>` override; defaults to test build dir).
+  - [x] Apply timing instrumentation to current heavy replay tests:
     - `[x]` `tests/backend_integration_tests.rs::test_halo2_ext005_ezkl_replay_base_execution_failure`
-    - `tests/backend_integration_tests.rs::test_halo2_scaffold_execution_stability`
-    - `tests/backend_integration_tests.rs::test_halo2_real_circuit_constraint_coverage`
+    - `[x]` `tests/backend_integration_tests.rs::test_halo2_scaffold_execution_stability`
+    - `[x]` `tests/backend_integration_tests.rs::test_halo2_real_circuit_constraint_coverage`
 
 - [ ] Publish and maintain concise target-level closure table (`exploitable` vs `not_exploitable_within_bounds` vs `blocked`) with artifact links.
 

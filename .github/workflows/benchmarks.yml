@@ -55,8 +55,14 @@ jobs:
             ${{ runner.os }}-cargo-benchmark-
             ${{ runner.os }}-cargo-
 
-      - name: Verify Z3 availability
-        run: command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+      - name: Install and verify Z3
+        run: |
+          if ! command -v z3 >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y z3 libz3-dev
+          fi
+          command -v z3 >/dev/null 2>&1 || { echo "::error::z3 not found in PATH"; exit 1; }
+          z3 --version
 
       - name: Build release binary
         run: cargo build --release
