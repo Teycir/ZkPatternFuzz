@@ -2,6 +2,7 @@ use super::prelude::*;
 use super::FuzzingEngine;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone)]
@@ -237,7 +238,31 @@ impl FuzzingEngine {
             self.config.reporting.clone(),
         );
         report.duration_seconds = duration;
-        report.statistics.total_executions = self.core.execution_count();
+        let core_stats = self.core.stats();
+        report.statistics.total_executions =
+            self.core.execution_count().max(core_stats.executions);
+        report.statistics.unique_crashes = report.statistics.unique_crashes.max(core_stats.crashes);
+        report.statistics.coverage_percentage = report
+            .statistics
+            .coverage_percentage
+            .max(core_stats.coverage_percentage);
+        report.statistics.executions_per_second = core_stats.executions_per_second;
+        report.statistics.corpus_size = core_stats.corpus_size as u64;
+
+        let fired_oracle_types: HashSet<String> = report
+            .findings
+            .iter()
+            .map(|finding| format!("{:?}", finding.attack_type))
+            .collect();
+        report.statistics.oracle_types_fired = fired_oracle_types.len() as u64;
+        report.statistics.oracle_types_registered = self.core.oracle_count() as u64;
+        report.statistics.oracle_diversity_score = if report.statistics.oracle_types_registered == 0 {
+            0.0
+        } else {
+            report.statistics.oracle_types_fired as f64
+                / report.statistics.oracle_types_registered as f64
+        };
+        report.statistics.unique_violation_patterns = report.findings.len() as u64;
         report
     }
 

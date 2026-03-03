@@ -3,15 +3,26 @@ patterns:
   - id: scroll_create_context
     kind: regex
     pattern: 'CREATE2?|create\\s*opcode|creation'
+    group: context
     message: 'CREATE/CREATE2 context detected'
   - id: scroll_static_context_terms
     kind: regex
     pattern: 'static\\s*context|is_static|CALL'
+    group: signal
     message: 'Static-context opcode terms detected'
   - id: scroll_create_constraint_gap
     kind: regex
     pattern: 'unconstrain|under\\s*constrain|missing\\s*check'
+    group: signal
     message: 'Constraint gap around CREATE/CREATE2 detected'
+
+selector_policy:
+  k_of_n: 2
+  groups:
+    - name: context
+      k_of_n: 1
+    - name: signal
+      k_of_n: 1
 
 invariants:
   - name: placeholder_output_reflexive

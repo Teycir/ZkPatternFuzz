@@ -3,15 +3,26 @@ patterns:
   - id: scroll_rlp_u64_context
     kind: regex
     pattern: 'RlpU64|RLP|rlp'
+    group: context
     message: 'RLP/U64 gadget context detected'
   - id: scroll_lt128_terms
     kind: regex
     pattern: 'lt_?128|is_lt_?128'
+    group: signal
     message: 'lt_128 gating context detected'
   - id: scroll_rlp_underconstraint_terms
     kind: regex
     pattern: 'under\\s*constrain|missing\\s*constraint|incorrect\\s*state\\s*transition'
+    group: signal
     message: 'RLP underconstraint terms detected'
+
+selector_policy:
+  k_of_n: 2
+  groups:
+    - name: context
+      k_of_n: 1
+    - name: signal
+      k_of_n: 1
 
 invariants:
   - name: placeholder_output_reflexive

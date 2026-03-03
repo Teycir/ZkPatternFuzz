@@ -52,12 +52,14 @@ collections:
       - cveX50_herodotus_mmr_range_check_gaps.yaml
       - cveX51_circomlib_montgomery_windowmulfix_underconstrained.yaml
       - cveX52_lurk_neptune_zero_padding_soundness.yaml
+      - cveX53_circomlib_comparator_boolean_output.yaml
+      - cveX54_circomlib_iszero_boolean_output.yaml
   circom_readiness:
     registry: local_cve_patterns
     description: "Circom readiness profile (high selector-fit templates)"
     templates:
-      - cveX20_polygon_missing_remainder_constraint.yaml
-      - cveX51_circomlib_montgomery_windowmulfix_underconstrained.yaml
+      - cveX53_circomlib_comparator_boolean_output.yaml
+      - cveX54_circomlib_iszero_boolean_output.yaml
   noir_readiness:
     registry: local_cve_patterns
     description: "Noir readiness profile (constraint/soundness focused)"
@@ -157,3 +159,7 @@ aliases:
     - cveX51_circomlib_montgomery_windowmulfix_underconstrained.yaml
   cveX52_lurk_neptune_zero_padding_soundness:
     - cveX52_lurk_neptune_zero_padding_soundness.yaml
+  cveX53_circomlib_comparator_boolean_output:
+    - cveX53_circomlib_comparator_boolean_output.yaml
+  cveX54_circomlib_iszero_boolean_output:
+    - cveX54_circomlib_iszero_boolean_output.yaml

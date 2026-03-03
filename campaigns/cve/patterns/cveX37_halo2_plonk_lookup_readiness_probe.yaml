@@ -1,9 +1,23 @@
 ---
 patterns:
-  - id: halo2_plonk_lookup_context
+  - id: halo2_plonk_context
     kind: regex
-    pattern: 'plonk|lookups|snark-verifier|proofs'
-    message: 'Halo2 PLONK/lookup/proof context detected'
+    pattern: 'plonk|halo2_proofs|proofs'
+    group: context
+    message: 'Halo2 PLONK context detected'
+  - id: halo2_lookup_terms
+    kind: regex
+    pattern: 'lookup|lookups|snark-verifier'
+    group: signal
+    message: 'Halo2 lookup verifier terms detected'
+
+selector_policy:
+  k_of_n: 2
+  groups:
+    - name: context
+      k_of_n: 1
+    - name: signal
+      k_of_n: 1
 
 invariants:
   - name: placeholder_output_reflexive

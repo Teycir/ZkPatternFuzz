@@ -3,15 +3,26 @@ patterns:
   - id: circomlib_context
     kind: regex
     pattern: 'circomlib|iden3'
+    group: context
     message: 'circomlib context detected'
   - id: circomlib_ec_math_terms
     kind: regex
     pattern: 'windowmulfix|window4|montgomery(Add|Double|2Edwards)|edwards2Montgomery'
+    group: signal
     message: 'EC/montgomery arithmetic gadget context detected'
   - id: circomlib_underconstraint_terms
     kind: regex
     pattern: 'under\\s*constrain|bogus\\s*output|decoder|missing\\s*constraint'
+    group: signal
     message: 'Underconstraint/bogus-output terms detected'
+
+selector_policy:
+  k_of_n: 2
+  groups:
+    - name: context
+      k_of_n: 1
+    - name: signal
+      k_of_n: 1
 
 invariants:
   - name: placeholder_output_reflexive

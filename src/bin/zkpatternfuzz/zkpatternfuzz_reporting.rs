@@ -73,6 +73,7 @@ struct PatternReportRow {
     proof_status: String,
     detected_pattern_count: usize,
     high_confidence_detected: bool,
+    selector_matched: bool,
     matched: bool,
 }
 
@@ -135,6 +136,7 @@ struct BatchReportTotals {
     expected_patterns: usize,
     executed_patterns: usize,
     template_errors: usize,
+    selector_matched_patterns: usize,
     matched_patterns: usize,
     detected_patterns_total: usize,
     high_confidence_patterns: usize,
@@ -165,6 +167,10 @@ pub(super) fn write_report_json(
     let matched_patterns = reasons
         .iter()
         .filter(|reason| reason.detected_pattern_count > 0)
+        .count();
+    let selector_matched_patterns = reasons
+        .iter()
+        .filter(|reason| reason.reason_code != "selector_mismatch")
         .count();
     let detected_patterns_total = reasons
         .iter()
@@ -215,6 +221,7 @@ pub(super) fn write_report_json(
                 .unwrap_or_else(|| "unknown".to_string()),
             detected_pattern_count: reason.detected_pattern_count,
             high_confidence_detected: reason.high_confidence_detected,
+            selector_matched: reason.reason_code != "selector_mismatch",
             matched: reason.detected_pattern_count > 0,
         })
         .collect::<Vec<_>>();
@@ -260,6 +267,7 @@ pub(super) fn write_report_json(
             expected_patterns: expected_count,
             executed_patterns: executed,
             template_errors,
+            selector_matched_patterns,
             matched_patterns,
             detected_patterns_total,
             high_confidence_patterns,

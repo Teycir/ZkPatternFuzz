@@ -141,6 +141,10 @@ impl FuzzingEngineCore {
         self.stats.read().clone()
     }
 
+    pub fn oracle_count(&self) -> usize {
+        self.oracles.len()
+    }
+
     pub fn update_power_scheduler_globals(&mut self) {
         let avg_time = *self.avg_exec_time.read();
         let total_edges = self.coverage.unique_constraints_hit() as u64;

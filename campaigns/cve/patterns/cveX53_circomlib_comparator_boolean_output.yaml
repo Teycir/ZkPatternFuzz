@@ -1,36 +1,36 @@
 ---
 patterns:
-  - id: polygon_zkevm_context
+  - id: circom_context
     kind: regex
-    pattern: 'Polygon\s*zkEVM|polygon\s*zkevm|zkEVM'
+    pattern: 'pragma\s+circom|component\s+main'
     group: context
-    message: 'Polygon zkEVM context detected'
-  - id: polygon_remainder_terms
+    message: 'Circom source context detected'
+  - id: circomlib_comparator_terms
     kind: regex
-    pattern: 'remainder|mod'
-    group: signal
-    message: 'Remainder/mod arithmetic context detected'
-  - id: polygon_pil_constraint_context
+    pattern: 'LessThan\s*\(|comparators\.circom|Comp(Constant)?\s*\('
+    group: gadget
+    message: 'Comparator gadget context detected'
+  - id: circomlib_boolean_semantics
     kind: regex
-    pattern: '\bPIL\b|constraint'
-    group: signal
-    message: 'PIL constraint context detected'
+    pattern: 'iszero|lessthan|boolean|bit'
+    group: semantics
+    message: 'Boolean-output semantics context detected'
 
 selector_policy:
   k_of_n: 2
   groups:
     - name: context
       k_of_n: 1
-    - name: signal
+    - name: gadget
       k_of_n: 1
 
 invariants:
-  - name: placeholder_output_reflexive
+  - name: comparator_boolean_output
     invariant_type: constraint
-    relation: output_0 == output_0
+    relation: output_0 * (1 - output_0) == 0
     oracle: must_hold
-    severity: low
-    description: "Placeholder invariant for regex-driven CVE templates."
+    severity: medium
+    description: 'Comparator outputs must be boolean in a well-constrained circuit.'
 
 attacks:
   - type: underconstrained

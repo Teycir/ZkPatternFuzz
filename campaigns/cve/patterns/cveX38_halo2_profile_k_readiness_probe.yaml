@@ -1,9 +1,23 @@
 ---
 patterns:
-  - id: halo2_profile_or_k_context
+  - id: halo2_profile_context
     kind: regex
-    pattern: 'edition\s*=\s*"2021"|opt-level|"k"\s*:\s*[0-9]+'
-    message: 'Halo2 profile/k configuration context detected'
+    pattern: 'edition\s*=\s*"2021"|opt-level|profile'
+    group: context
+    message: 'Cargo profile context detected'
+  - id: halo2_k_parameter
+    kind: regex
+    pattern: '"k"\s*:\s*[0-9]+|\bk\s*[:=]\s*[0-9]+'
+    group: signal
+    message: 'Halo2 circuit k-parameter context detected'
+
+selector_policy:
+  k_of_n: 2
+  groups:
+    - name: context
+      k_of_n: 1
+    - name: signal
+      k_of_n: 1
 
 invariants:
   - name: placeholder_output_reflexive

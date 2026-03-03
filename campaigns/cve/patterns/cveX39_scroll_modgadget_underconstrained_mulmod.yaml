@@ -3,15 +3,26 @@ patterns:
   - id: scroll_zkevm_context
     kind: regex
     pattern: 'Scroll\\s*zkEVM|scroll-tech|zkevm-circuits'
+    group: context
     message: 'Scroll zkEVM context detected'
   - id: scroll_modgadget_mulmod_terms
     kind: regex
     pattern: 'ModGadget|MULMOD|MulAdd'
+    group: signal
     message: 'ModGadget/MULMOD context detected'
   - id: scroll_modgadget_underconstraint_terms
     kind: regex
     pattern: 'under\\s*constrain|missing\\s*constraint|incorrect\\s*MULMOD'
+    group: signal
     message: 'Potential underconstrained ModGadget pattern detected'
+
+selector_policy:
+  k_of_n: 2
+  groups:
+    - name: context
+      k_of_n: 1
+    - name: signal
+      k_of_n: 1
 
 invariants:
   - name: placeholder_output_reflexive

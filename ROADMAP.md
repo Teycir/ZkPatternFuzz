@@ -405,6 +405,15 @@ Current status: ✅ enforced by `has_required_proof_artifacts()` + proof-status 
 - [x] Raise Cairo maturity score from `4.95` to `5.0` and begin a non-zero 14-day streak (now `5.0/5.0`, streak `1/14`; scorecard applies a bounded selector-mismatch grace rate so benign low mismatch does not cap constraint-coverage fidelity in `scripts/backend_maturity_scorecard.sh`).
 - [ ] Continue strict daily lane to move backend maturity streaks and Circom flake streak to `14/14` (`scripts/run_release_streak_status.sh` refreshed on `2026-03-03`: maturity streaks `circom=1/14`, `noir=1/14`, `cairo=1/14`, `halo2=2/14`; Circom flake streak `1/14`; projected completion days: `halo2=2026-03-15`, others `2026-03-16`).
 
+### 8.6B Reform: Selector Fit + Evidence Signal (2026-03-03)
+- [x] Block selector false positives caused by synthetic metadata header lines in selector source construction (`src/scan_selector.rs`, `tests/test_scan_selector_behavior.rs`).
+- [x] Preserve static source-evidence findings through evidence-mode validation instead of filtering them as execution-oracle noise (`src/fuzzer/engine/finding_pipeline.rs`, `src/fuzzer/oracle_validation.rs`).
+- [x] Populate report statistics from live engine/core counters so `total_executions`, coverage, corpus size, and oracle diversity are non-zero when data exists (`src/fuzzer/engine/report_generator.rs`, `crates/zk-fuzzer-core/src/engine.rs`).
+- [x] Add strict selector group-policy to high-priority Scroll/Halo2 templates to reduce low-signal template runs (`cveX15`, `cveX16`, `cveX39`, `cveX40`, `cveX41`, `cveX35..cveX38`).
+- [x] Introduce Circom comparator/IsZero boolean-output readiness templates and switch `circom_readiness` profile to those high-fit templates (`campaigns/cve/patterns/cveX53_circomlib_comparator_boolean_output.yaml`, `campaigns/cve/patterns/cveX54_circomlib_iszero_boolean_output.yaml`, `targets/fuzzer_registry.prod.yaml`).
+- [x] Extend batch report schema with explicit selector-fit counters (`selector_matched`, `selector_matched_patterns`) for quick mismatch diagnosis (`src/bin/zkpatternfuzz/zkpatternfuzz_reporting.rs`).
+- [ ] Run post-reform benchmark lane and publish before/after selector-mismatch rate + attack-stage reach comparison for external Circom/Halo2 targets.
+
 ### 8.7 Logic Error Triage (2026-02-23)
 - [x] Harden UTC date-boundary determinism in Circom flake streak tests so the two-day streak assertion cannot flake around midnight (`tests/test_circom_flake_gate.py`).
 - [x] Harden isolated worker response-file cleanup: ignore expected `NotFound` during cleanup and keep warning logs for unexpected remove failures (`src/executor/isolated.rs`).

@@ -110,13 +110,18 @@ impl FuzzingEngine {
     }
 
     pub(super) fn has_static_source_evidence(finding: &Finding) -> bool {
-        matches!(
-            finding.attack_type,
-            AttackType::QuantumResistance | AttackType::CircomStaticLint
-        ) && finding
+        let has_location = finding
             .location
             .as_ref()
             .map(|value| !value.trim().is_empty())
-            .unwrap_or(false)
+            .unwrap_or(false);
+        if !has_location {
+            return false;
+        }
+
+        matches!(
+            finding.attack_type,
+            AttackType::QuantumResistance | AttackType::CircomStaticLint
+        ) || finding.description.starts_with("Static pattern match:")
     }
 }

@@ -3,15 +3,26 @@ patterns:
   - id: scroll_zkevm_context
     kind: regex
     pattern: 'zkEVM|zkevm|Scroll'
+    group: context
     message: 'Scroll zkEVM context detected'
   - id: scroll_overflow_terms
     kind: regex
     pattern: 'overflow|carry'
+    group: signal
     message: 'Overflow/carry arithmetic context detected'
   - id: scroll_pil_constraint_terms
     kind: regex
     pattern: '\bPIL\b|constraint'
+    group: signal
     message: 'PIL constraint context detected'
+
+selector_policy:
+  k_of_n: 2
+  groups:
+    - name: context
+      k_of_n: 1
+    - name: signal
+      k_of_n: 1
 
 invariants:
   - name: placeholder_output_reflexive

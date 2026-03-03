@@ -1,9 +1,23 @@
 ---
 patterns:
-  - id: halo2_signature_token
+  - id: halo2_signature_context
     kind: regex
     pattern: 'halo2|minimal_halo2|halo2-scaffold|halo2_proofs'
-    message: 'Halo2 signature token detected'
+    group: context
+    message: 'Halo2 signature context detected'
+  - id: halo2_signature_terms
+    kind: regex
+    pattern: 'signature|secp256k1|ecdsa|verify'
+    group: signal
+    message: 'Signature verification terms detected'
+
+selector_policy:
+  k_of_n: 2
+  groups:
+    - name: context
+      k_of_n: 1
+    - name: signal
+      k_of_n: 1
 
 invariants:
   - name: placeholder_output_reflexive

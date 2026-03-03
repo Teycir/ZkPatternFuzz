@@ -589,6 +589,7 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
     }
 
     let source = build_selector_source(target_circuit)?;
+    let source = strip_selector_metadata_lines(&source);
 
     let mut line_starts = vec![0usize];
     for (idx, ch) in source.char_indices() {
@@ -780,6 +781,18 @@ pub(crate) fn evaluate_loaded_scan_regex_patterns(
     );
 
     Ok(summary)
+}
+
+fn strip_selector_metadata_lines(source: &str) -> String {
+    source
+        .lines()
+        .filter(|line| {
+            !line.starts_with("__selector_target_path__: ")
+                && !line.starts_with("__selector_target_file__: ")
+                && !line.starts_with("__selector_context_file__: ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn selector_failure_detail(summary: &ScanRegexPatternSummary) -> String {

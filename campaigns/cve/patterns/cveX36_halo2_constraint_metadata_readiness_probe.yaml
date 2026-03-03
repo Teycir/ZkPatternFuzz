@@ -1,9 +1,23 @@
 ---
 patterns:
+  - id: halo2_constraint_context
+    kind: regex
+    pattern: 'constraints|constraint|halo2-base'
+    group: context
+    message: 'Halo2 constraint context detected'
   - id: halo2_constraint_metadata
     kind: regex
-    pattern: 'constraints|constraint|public_inputs|private_inputs|advice_columns|instance_columns|halo2-base'
-    message: 'Halo2 constraint/metadata context detected'
+    pattern: 'public_inputs|private_inputs|advice_columns|instance_columns|create_gate'
+    group: signal
+    message: 'Halo2 metadata/context terms detected'
+
+selector_policy:
+  k_of_n: 2
+  groups:
+    - name: context
+      k_of_n: 1
+    - name: signal
+      k_of_n: 1
 
 invariants:
   - name: placeholder_output_reflexive

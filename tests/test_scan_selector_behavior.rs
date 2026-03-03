@@ -314,6 +314,27 @@ selector_policy:
 }
 
 #[test]
+fn scan_selector_ignores_selector_metadata_header_lines() {
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let target_path = temp_dir.path().join("mod_target.circom");
+    fs::write(&target_path, "pragma circom 2.0.0;\ncomponent main = IsZero();\n")
+        .expect("write target");
+
+    let pattern_yaml = r#"
+patterns:
+  - id: metadata_only_hit
+    kind: regex
+    pattern: "mod_target\\.circom"
+"#;
+    let summary = evaluate_selector_summary_with_target_file(pattern_yaml, &target_path);
+    assert!(
+        !summary.selector_passed,
+        "selector should not match metadata-only target file/path header"
+    );
+    assert_eq!(summary.matched_patterns, 0);
+}
+
+#[test]
 fn run_doc_command_extraction_uses_context_recovery() {
     let doc = serde_json::json!({
         "status": "panic",

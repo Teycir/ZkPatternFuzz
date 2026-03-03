@@ -651,6 +651,12 @@ pub fn filter_validated_findings(
     findings
         .into_iter()
         .filter(|finding| {
+            if is_static_source_finding(finding) {
+                // Static selector/source evidence is not an execution oracle signal.
+                // Keep it in evidence mode without differential-oracle filtering.
+                return true;
+            }
+
             let mut test_cases = Vec::new();
             let mut outputs = Vec::new();
 
@@ -720,4 +726,13 @@ pub fn filter_validated_findings(
             result.is_valid
         })
         .collect()
+}
+
+fn is_static_source_finding(finding: &Finding) -> bool {
+    finding.description.starts_with("Static pattern match:")
+        && finding
+            .location
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
 }
